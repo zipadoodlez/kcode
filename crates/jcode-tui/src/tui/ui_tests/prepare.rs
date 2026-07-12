@@ -111,6 +111,40 @@ fn test_prepare_messages_places_live_swarm_card_beneath_matching_spawn_tool_call
 }
 
 #[test]
+fn test_prepare_messages_uses_exact_spawn_member_outside_gallery_subtree() {
+    let session_id = "spawned-session-outside-filter";
+    let state = TestState {
+        display_messages: vec![DisplayMessage {
+            role: "tool".to_string(),
+            content: format!("Spawned new agent: {session_id}"),
+            tool_calls: Vec::new(),
+            duration_secs: None,
+            title: None,
+            tool_data: Some(ToolCall {
+                id: "call-spawn-filter-race".to_string(),
+                name: "swarm".to_string(),
+                input: serde_json::json!({"action": "spawn", "label": "API reviewer"}),
+                intent: Some("Spawn an authentication reviewer".to_string()),
+                thought_signature: None,
+            }),
+        }],
+        // Simulate a stale/missing ownership edge excluding the member from the
+        // persistent gallery while the authoritative spawn result still names it.
+        swarm_members: Vec::new(),
+        transcript_swarm_members: Some(vec![chat_swarm_member(session_id)]),
+        ..Default::default()
+    };
+
+    let rendered = prepare::prepare_messages(&state, 110, 30)
+        .materialize_all_lines()
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(rendered.contains("🐝  API reviewer"), "rendered={rendered}");
+}
+
+#[test]
 fn test_prepare_messages_matches_real_prefixed_spawn_result_without_input_metadata() {
     let session_id = "spawned-session-123";
     let state = TestState {

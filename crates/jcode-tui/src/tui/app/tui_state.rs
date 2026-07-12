@@ -1652,6 +1652,42 @@ impl crate::tui::TuiState for App {
         }
     }
 
+    fn swarm_members_for_transcript(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
+        if !self.swarm_enabled {
+            return Vec::new();
+        }
+
+        // Start with the ownership-scoped gallery members. Then recover any
+        // exact session IDs recorded by spawn tool results. The latter remains
+        // safe in shared-repository swarms and survives a missing/stale parent
+        // edge in the live member snapshot.
+        let mut members = self.inline_swarm_members();
+        let mut included: std::collections::HashSet<String> = members
+            .iter()
+            .map(|member| member.session_id.clone())
+            .collect();
+        let spawned_ids: std::collections::HashSet<&str> = self
+            .display_messages
+            .iter()
+            .filter_map(|message| message.tool_data.as_ref().map(|tool| (message, tool)))
+            .filter(|(_, tool)| tool.name.eq_ignore_ascii_case("swarm"))
+            .flat_map(|(message, _)| message.content.lines())
+            .filter_map(|line| {
+                line.split_once("Spawned new agent: ")
+                    .map(|(_, id)| id.trim())
+            })
+            .collect();
+
+        for member in &self.remote_swarm_members {
+            if spawned_ids.contains(member.session_id.as_str())
+                && included.insert(member.session_id.clone())
+            {
+                members.push(member.clone());
+            }
+        }
+        members
+    }
+
     fn swarm_panel_selected(&self) -> usize {
         let count = self.inline_swarm_members().len();
         if count == 0 {

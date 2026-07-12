@@ -143,6 +143,7 @@ struct TestState {
     cache_ttl_status: Option<crate::tui::CacheTtlInfo>,
     status_notice: Option<String>,
     swarm_members: Vec<crate::protocol::SwarmMemberStatus>,
+    transcript_swarm_members: Option<Vec<crate::protocol::SwarmMemberStatus>>,
     swarm_panel_selected: usize,
     swarm_panel_focused: bool,
 }
@@ -300,6 +301,11 @@ impl crate::tui::TuiState for TestState {
     }
     fn inline_swarm_members(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
         self.swarm_members.clone()
+    }
+    fn swarm_members_for_transcript(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
+        self.transcript_swarm_members
+            .clone()
+            .unwrap_or_else(|| self.swarm_members.clone())
     }
     fn swarm_panel_selected(&self) -> usize {
         self.swarm_panel_selected

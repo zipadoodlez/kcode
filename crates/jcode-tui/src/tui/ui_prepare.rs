@@ -657,7 +657,7 @@ pub(super) fn prepare_messages(
         inline_images_signature: app.side_pane_images_signature(),
         inline_images_visible: app.inline_images_visible(),
         expanded_images_version: app.expanded_images_version(),
-        swarm_members_signature: swarm_members_signature(&app.inline_swarm_members()),
+        swarm_members_signature: swarm_members_signature(&app.swarm_members_for_transcript()),
     };
 
     super::note_full_prep_request();
@@ -905,7 +905,7 @@ fn prepare_body_cached(app: &dyn TuiState, width: u16) -> Arc<PreparedMessages> 
         inline_images_visible: app.inline_images_visible(),
         images_signature: app.side_pane_images_signature(),
         expanded_images_version: app.expanded_images_version(),
-        swarm_members_signature: swarm_members_signature(&app.inline_swarm_members()),
+        swarm_members_signature: swarm_members_signature(&app.swarm_members_for_transcript()),
     };
     let msg_count = app.display_messages().len();
     let cache_lookup_start = Instant::now();
@@ -1556,7 +1556,7 @@ pub(super) fn prepare_body_incremental(
         anchored_images,
         inline_images_visible: app.inline_images_visible(),
         messages,
-        swarm_members: app.inline_swarm_members(),
+        swarm_members: app.swarm_members_for_transcript(),
     };
 
     let mut acc = BodyAcc {
@@ -1882,7 +1882,7 @@ pub(super) fn prepare_body_prepended(
         anchored_images: super::inline_image_ui::resolve_anchored_items_cached(app),
         inline_images_visible: app.inline_images_visible(),
         messages,
-        swarm_members: app.inline_swarm_members(),
+        swarm_members: app.swarm_members_for_transcript(),
     };
 
     // The head sits at the very top of the transcript, so it starts with the
@@ -2132,7 +2132,7 @@ pub(super) fn prepare_body(
         anchored_images: super::inline_image_ui::resolve_anchored_items_cached(app),
         inline_images_visible: app.inline_images_visible(),
         messages,
-        swarm_members: app.inline_swarm_members(),
+        swarm_members: app.swarm_members_for_transcript(),
     };
 
     let mut acc = BodyAcc::default();
