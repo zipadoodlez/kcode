@@ -276,6 +276,7 @@ async fn submit_remote_transcript_input(
     app: &mut App,
     remote: &mut RemoteConnection,
 ) -> Result<()> {
+    input::promote_dropped_images(app);
     let trimmed = app.input.trim().to_string();
     if trimmed.is_empty() {
         app.set_status_notice("Transcript was empty");

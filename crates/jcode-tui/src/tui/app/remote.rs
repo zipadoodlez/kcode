@@ -1647,6 +1647,7 @@ fn handle_disconnected_local_command(app: &mut App, trimmed: &str) -> bool {
 }
 
 fn queue_message_for_reconnect(app: &mut App) {
+    input::promote_dropped_images(app);
     let trimmed = app.input.trim().to_string();
     if trimmed.is_empty() {
         return;

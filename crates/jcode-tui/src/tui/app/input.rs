@@ -647,12 +647,43 @@ fn dropped_image_files(text: &str) -> Option<Vec<(String, Vec<u8>)>> {
         .collect()
 }
 
+/// Terminal emulators normally send file drops as bracketed paste, but some send
+/// the path as ordinary key events. Promote a complete image-path-only composer
+/// value before command/skill routing so an absolute `/...` path is never treated
+/// as a slash command.
+pub(super) fn promote_dropped_images(app: &mut App) -> bool {
+    let Some(images) = dropped_image_files(&app.input) else {
+        return false;
+    };
+    let count = images.len();
+    app.input.clear();
+    app.cursor_pos = 0;
+    for (media_type, data) in images {
+        attach_image(
+            app,
+            media_type,
+            base64::engine::general_purpose::STANDARD.encode(data),
+        );
+    }
+    app.set_status_notice(format!(
+        "Dropped {count} image{}",
+        if count == 1 { "" } else { "s" }
+    ));
+    true
+}
+
 fn parse_dropped_paths(text: &str) -> Option<Vec<PathBuf>> {
+    let trimmed = text.trim();
+    let literal_path = PathBuf::from(trimmed);
+    if literal_path.is_file() {
+        return Some(vec![literal_path]);
+    }
+
     let mut tokens = Vec::new();
     let mut token = String::new();
     let mut quote = None;
     let mut escaped = false;
-    for ch in text.trim().chars() {
+    for ch in trimmed.chars() {
         if escaped {
             token.push(ch);
             escaped = false;
@@ -2051,6 +2082,7 @@ pub(super) fn handle_global_control_shortcuts(
 }
 
 pub(super) fn handle_enter(app: &mut App) -> bool {
+    promote_dropped_images(app);
     if app.activate_picker_from_preview() {
         return true;
     }
@@ -3134,6 +3166,7 @@ impl App {
 
     /// Submit input - just sets up message and flags, processing happens in next loop iteration
     pub(super) fn submit_input(&mut self) {
+        promote_dropped_images(self);
         if self.activate_picker_from_preview() {
             return;
         }

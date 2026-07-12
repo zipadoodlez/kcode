@@ -157,6 +157,20 @@ fn test_handle_paste_single_line() {
 }
 
 #[test]
+fn test_typed_absolute_image_path_promotes_before_slash_routing() {
+    let mut app = create_test_app();
+    let dir = tempfile::tempdir().unwrap();
+    let image = dir.path().join("dropped photo.png");
+    std::fs::write(&image, b"png bytes").unwrap();
+    app.set_input_for_test(image.display().to_string());
+
+    assert!(crate::tui::app::input::promote_dropped_images(&mut app));
+    assert_eq!(app.input(), "[image 1]");
+    assert_eq!(app.pending_images.len(), 1);
+    assert_eq!(app.pending_images[0].0, "image/png");
+}
+
+#[test]
 fn test_handle_paste_multi_line() {
     let mut app = create_test_app();
 
