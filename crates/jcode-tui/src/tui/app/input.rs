@@ -11,8 +11,10 @@ use crate::bus::{
 };
 use crate::util::truncate_str;
 use anyhow::Result;
+use base64::Engine;
 use crossterm::event::{EventStream, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::DefaultTerminal;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
@@ -366,10 +368,41 @@ where
 mod tests {
     use super::{
         ClipboardPasteContent, ClipboardPasteKind, is_clipboard_paste_shortcut,
-        preferred_wayland_text_type, read_clipboard_for_paste_with, shifted_printable_fallback,
-        text_input_for_key,
+        dropped_image_files, parse_dropped_paths, preferred_wayland_text_type,
+        read_clipboard_for_paste_with, shifted_printable_fallback, text_input_for_key,
     };
     use crossterm::event::{KeyCode, KeyModifiers};
+
+    #[test]
+    fn dropped_paths_accept_quotes_shell_escapes_and_file_urls() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("first image.png");
+        let second = dir.path().join("second.jpg");
+        std::fs::write(&first, b"png").unwrap();
+        std::fs::write(&second, b"jpeg").unwrap();
+
+        let quoted = parse_dropped_paths(&format!("'{}'", first.display())).unwrap();
+        assert_eq!(quoted, vec![first.clone()]);
+        let escaped = parse_dropped_paths(&first.display().to_string().replace(' ', "\\ ")).unwrap();
+        assert_eq!(escaped, vec![first.clone()]);
+        let url = url::Url::from_file_path(&second).unwrap();
+        assert_eq!(parse_dropped_paths(url.as_str()).unwrap(), vec![second]);
+    }
+
+    #[test]
+    fn dropped_images_load_all_supported_files_and_reject_mixed_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let png = dir.path().join("a.png");
+        let jpeg = dir.path().join("b.jpeg");
+        std::fs::write(&png, b"png bytes").unwrap();
+        std::fs::write(&jpeg, b"jpeg bytes").unwrap();
+
+        let images = dropped_image_files(&format!("'{}' '{}'", png.display(), jpeg.display()))
+            .unwrap();
+        assert_eq!(images[0], ("image/png".to_string(), b"png bytes".to_vec()));
+        assert_eq!(images[1], ("image/jpeg".to_string(), b"jpeg bytes".to_vec()));
+        assert!(dropped_image_files("ordinary pasted text").is_none());
+    }
 
     #[test]
     fn smart_paste_prefers_normal_text_when_clipboard_has_text() {
@@ -571,7 +604,16 @@ pub(super) fn handle_paste(app: &mut App, text: String) {
     // text pastes were misidentified as images when the clipboard also had image data
     // (common on Wayland where apps advertise multiple MIME types). Image pasting is
     // handled by explicit clipboard shortcuts instead (Ctrl+V/Alt+V/Cmd+V smart-paste).
-    if let Some(url) = super::extract_image_url(&text) {
+    if let Some(images) = dropped_image_files(&text) {
+        let count = images.len();
+        for (media_type, data) in images {
+            attach_image(app, media_type, base64::engine::general_purpose::STANDARD.encode(data));
+        }
+        app.set_status_notice(format!(
+            "Dropped {count} image{}",
+            if count == 1 { "" } else { "s" }
+        ));
+    } else if let Some(url) = super::extract_image_url(&text) {
         crate::logging::info(&format!("Downloading image from pasted URL: {}", url));
         app.set_status_notice("Downloading image...");
         let session_id = active_clipboard_session_id(app);
@@ -588,9 +630,83 @@ pub(super) fn handle_paste(app: &mut App, text: String) {
             );
         });
         return;
+    } else {
+        handle_text_paste(app, text);
+    }
+}
+
+fn dropped_image_files(text: &str) -> Option<Vec<(String, Vec<u8>)>> {
+    let paths = parse_dropped_paths(text)?;
+    paths
+        .into_iter()
+        .map(|path| {
+            let media_type = image_media_type(&path)?;
+            let data = std::fs::read(path).ok()?;
+            Some((media_type.to_string(), data))
+        })
+        .collect()
+}
+
+fn parse_dropped_paths(text: &str) -> Option<Vec<PathBuf>> {
+    let mut tokens = Vec::new();
+    let mut token = String::new();
+    let mut quote = None;
+    let mut escaped = false;
+    for ch in text.trim().chars() {
+        if escaped {
+            token.push(ch);
+            escaped = false;
+        } else if ch == '\\' && quote != Some('\'') {
+            escaped = true;
+        } else if matches!(ch, '\'' | '"') {
+            if quote == Some(ch) {
+                quote = None;
+            } else if quote.is_none() {
+                quote = Some(ch);
+            } else {
+                token.push(ch);
+            }
+        } else if ch.is_whitespace() && quote.is_none() {
+            if !token.is_empty() {
+                tokens.push(std::mem::take(&mut token));
+            }
+        } else {
+            token.push(ch);
+        }
+    }
+    if escaped || quote.is_some() {
+        return None;
+    }
+    if !token.is_empty() {
+        tokens.push(token);
+    }
+    if tokens.is_empty() {
+        return None;
     }
 
-    handle_text_paste(app, text);
+    tokens
+        .into_iter()
+        .map(|token| {
+            let path = if token.starts_with("file://") {
+                url::Url::parse(&token).ok()?.to_file_path().ok()?
+            } else {
+                PathBuf::from(token)
+            };
+            path.is_file().then_some(path)
+        })
+        .collect()
+}
+
+fn image_media_type(path: &std::path::Path) -> Option<&'static str> {
+    match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "bmp" => Some("image/bmp"),
+        "tif" | "tiff" => Some("image/tiff"),
+        _ => None,
+    }
 }
 
 pub(super) fn handle_text_paste(app: &mut App, text: String) {
