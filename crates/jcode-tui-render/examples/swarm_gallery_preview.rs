@@ -136,6 +136,8 @@ fn main() {
         sort_key: name.to_string(),
         todo: None,
         todo_items: Vec::new(),
+        model: None,
+        elapsed_secs: None,
     };
     let panel_members = vec![
         gm(
