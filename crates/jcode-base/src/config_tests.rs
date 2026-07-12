@@ -73,10 +73,10 @@ fn mermaid_environment_override_uses_standard_boolean_values() {
 }
 
 #[test]
-fn latex_rendering_defaults_to_unicode_and_parses_all_modes() {
+fn latex_rendering_defaults_to_image_and_parses_all_modes() {
     assert_eq!(
         Config::default().display.latex_rendering,
-        LatexRenderingMode::Unicode
+        LatexRenderingMode::Image
     );
     for (value, expected) in [
         ("none", LatexRenderingMode::None),

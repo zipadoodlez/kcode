@@ -18,8 +18,8 @@ pub enum MarkdownSpacingMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum LatexRenderingMode {
     None,
-    #[default]
     Unicode,
+    #[default]
     Image,
 }
 

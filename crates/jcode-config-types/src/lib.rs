@@ -165,9 +165,9 @@ pub enum LatexRenderingMode {
     /// Preserve the original LaTeX source and delimiters.
     None,
     /// Convert supported notation to terminal-friendly Unicode text.
-    #[default]
     Unicode,
     /// Typeset formulas to PNG and display them with the terminal image protocol.
+    #[default]
     Image,
 }
 
@@ -1009,7 +1009,7 @@ pub struct DisplayConfig {
     pub diagram_mode: DiagramDisplayMode,
     /// Markdown block spacing style (compact/document, default: compact)
     pub markdown_spacing: MarkdownSpacingMode,
-    /// LaTeX rendering style (none/unicode/image, default: unicode)
+    /// LaTeX rendering style (none/unicode/image, default: image)
     pub latex_rendering: LatexRenderingMode,
     /// Pin read images to side pane (default: true)
     pub pin_images: bool,
