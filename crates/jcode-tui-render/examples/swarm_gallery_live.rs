@@ -106,6 +106,8 @@ fn workers_to_members(workers: &[MockWorker]) -> Vec<GalleryMember> {
                 sort_key: w.name.clone(),
                 todo: None,
                 todo_items: Vec::new(),
+                model: None,
+                elapsed_secs: Some(w.age_secs()),
             }
         })
         .collect()
