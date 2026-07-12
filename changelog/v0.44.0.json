@@ -1,0 +1,22 @@
+{
+  "version": "0.44.0",
+  "date": "2026-07-12",
+  "title": "More reliable swarms across platforms",
+  "highlights": [
+    "Swarm sessions use broader collision-resistant identities and clean up finished terminal members more reliably",
+    "Windows process handling now terminates detached task trees reliably and avoids startup and named-pipe failures",
+    "Amazon Bedrock now accepts tools whose top-level JSON Schema uses oneOf, anyOf, or allOf"
+  ],
+  "improvements": [
+    "Swarm cards use calmer status indicators, stable worker identities, cleaner layouts, and tighter placement beneath spawn calls",
+    "Markdown and LaTeX rendering handles more notation forms and malformed input safely",
+    "Usage displays show reset countdowns, clear stale values correctly, and hide billing details when account authentication is unavailable",
+    "Project links and website integrations now use jcode.sh"
+  ],
+  "fixes": [
+    "Remote server sessions initialize with the client's actual working directory",
+    "Command previews strip ANSI control sequences before rendering",
+    "Reload handoffs no longer issue unwanted terminal queries",
+    "Swarm gallery previews build correctly with current member metadata"
+  ]
+}
