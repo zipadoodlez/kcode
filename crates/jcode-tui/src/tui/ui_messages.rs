@@ -881,6 +881,34 @@ enum TodoCardPayload {
     Legacy(Vec<crate::todo::TodoItem>),
 }
 
+// Todo cards sit directly on the terminal background, so the global
+// `dim_color()` (RGB 80) is too faint for meaningful metadata. Keep a compact
+// semantic palette here: cool colors describe structure/state, while amber is
+// reserved for priority and blocked work.
+fn todo_title_color() -> Color {
+    rgb(210, 220, 235)
+}
+
+fn todo_group_color() -> Color {
+    rgb(190, 165, 235)
+}
+
+fn todo_label_color() -> Color {
+    rgb(145, 155, 175)
+}
+
+fn todo_meta_color() -> Color {
+    rgb(155, 165, 180)
+}
+
+fn todo_score_color() -> Color {
+    rgb(105, 205, 165)
+}
+
+fn todo_confidence_color() -> Color {
+    rgb(135, 155, 180)
+}
+
 impl TodoCardPayload {
     fn into_parts(self) -> (Vec<crate::todo::TodoItem>, Vec<crate::todo::TodoGoal>) {
         match self {
@@ -921,7 +949,7 @@ pub(crate) fn render_todos_message(
     let (todos, goals) = payload.into_parts();
 
     let centered = markdown::center_code_blocks();
-    let dim_style = Style::default().fg(dim_color());
+    let meta_style = Style::default().fg(todo_meta_color());
     let card_width = if centered {
         (width.saturating_sub(4) as usize).min(120)
     } else {
@@ -942,7 +970,7 @@ pub(crate) fn render_todos_message(
     let mut lines = vec![todo_card_line(
         vec![Span::styled(
             title,
-            Style::default().fg(rgb(210, 220, 230)).bold(),
+            Style::default().fg(todo_title_color()).bold(),
         )],
         base_indent,
         inner_width,
@@ -951,7 +979,7 @@ pub(crate) fn render_todos_message(
         lines.push(todo_card_line(
             vec![Span::styled(
                 "No todos yet. The model populates them with the todo tool.",
-                dim_style,
+                meta_style,
             )],
             base_indent,
             inner_width,
@@ -1039,11 +1067,11 @@ fn todo_goal_score_spans(goal: Option<&crate::todo::TodoGoal>) -> Vec<Span<'stat
     if let Some(score) = goal.hill_climbability {
         spans.push(Span::styled(
             "Hill climbability ",
-            Style::default().fg(rgb(140, 145, 155)),
+            Style::default().fg(todo_label_color()),
         ));
         spans.push(Span::styled(
             format!("{}%", score),
-            Style::default().fg(rgb(120, 190, 160)),
+            Style::default().fg(todo_score_color()),
         ));
     }
     if let Some(score) = goal.end_to_end_ownership {
@@ -1052,11 +1080,11 @@ fn todo_goal_score_spans(goal: Option<&crate::todo::TodoGoal>) -> Vec<Span<'stat
         }
         spans.push(Span::styled(
             "Ownership ",
-            Style::default().fg(rgb(140, 145, 155)),
+            Style::default().fg(todo_label_color()),
         ));
         spans.push(Span::styled(
             format!("{}%", score),
-            Style::default().fg(rgb(120, 190, 160)),
+            Style::default().fg(todo_score_color()),
         ));
     }
     spans
@@ -1066,7 +1094,7 @@ fn render_todo_goal_header(label: &str, base_indent: &str, inner_width: usize) -
     todo_card_line(
         vec![Span::styled(
             label.to_string(),
-            Style::default().fg(rgb(160, 170, 195)).bold(),
+            Style::default().fg(todo_group_color()).bold(),
         )],
         base_indent,
         inner_width,
@@ -1096,11 +1124,11 @@ fn push_todo_goal_details(
                 let mut spans = vec![Span::raw("  ")];
                 spans.push(Span::styled(
                     format!("{} ", label),
-                    Style::default().fg(rgb(140, 145, 155)),
+                    Style::default().fg(todo_label_color()),
                 ));
                 spans.push(Span::styled(
                     format!("{}%", score.expect("score checked above")),
-                    Style::default().fg(rgb(120, 190, 160)),
+                    Style::default().fg(todo_score_color()),
                 ));
                 lines.push(todo_card_line(spans, base_indent, inner_width));
             }
@@ -1122,9 +1150,9 @@ fn push_todo_goal_details(
                 Span::styled("  ", Style::default()),
                 Span::styled(
                     format!("{} · ", label),
-                    Style::default().fg(rgb(120, 125, 135)),
+                    Style::default().fg(todo_label_color()),
                 ),
-                Span::styled(value.to_string(), Style::default().fg(dim_color())),
+                Span::styled(value.to_string(), Style::default().fg(todo_meta_color())),
             ],
             base_indent,
             inner_width,
@@ -1154,19 +1182,20 @@ fn render_todo_card_item_line(
 ) -> Line<'static> {
     let blocked = !todo.blocked_by.is_empty() && todo.status != "completed";
     let (glyph, glyph_color) = if blocked {
-        ("⊳", rgb(180, 140, 100))
+        ("⊳", rgb(225, 165, 90))
     } else {
         match todo.status.as_str() {
-            "completed" => ("✓", rgb(100, 180, 100)),
-            "in_progress" => ("●", rgb(255, 200, 100)),
-            "cancelled" => ("✗", rgb(150, 90, 90)),
-            _ => ("○", rgb(120, 120, 130)),
+            "completed" => ("✓", rgb(105, 190, 125)),
+            "in_progress" => ("●", asap_color()),
+            "cancelled" => ("✗", rgb(190, 105, 115)),
+            _ => ("○", rgb(135, 145, 160)),
         }
     };
     let text_color = match todo.status.as_str() {
-        "completed" | "cancelled" => rgb(120, 120, 130),
-        "in_progress" => rgb(230, 232, 240),
-        _ => rgb(185, 190, 200),
+        "completed" => rgb(135, 150, 145),
+        "cancelled" => rgb(145, 130, 135),
+        "in_progress" => rgb(225, 232, 240),
+        _ => rgb(195, 202, 212),
     };
     let mut spans = vec![
         Span::raw("  "),
@@ -1176,13 +1205,13 @@ fn render_todo_card_item_line(
     if todo.priority == "high" && todo.status != "completed" && todo.status != "cancelled" {
         spans.push(Span::styled(
             " (high)",
-            Style::default().fg(rgb(230, 150, 130)),
+            Style::default().fg(rgb(235, 175, 95)),
         ));
     }
     if let Some(label) = todo_card_confidence_label(todo) {
         spans.push(Span::styled(
             format!(" · {}", label),
-            Style::default().fg(dim_color()),
+            Style::default().fg(todo_confidence_color()),
         ));
     }
     todo_card_line(spans, base_indent, inner_width)

@@ -488,6 +488,47 @@ fn render_todos_message_shows_goal_scores_and_feedback() {
 }
 
 #[test]
+fn render_todos_message_uses_readable_semantic_colors() {
+    let todos = vec![crate::todo::TodoItem {
+        id: "1".to_string(),
+        content: "Tune the palette".to_string(),
+        status: "in_progress".to_string(),
+        priority: "high".to_string(),
+        group: Some("todo rendering".to_string()),
+        confidence: Some(85),
+        completion_confidence: None,
+        confidence_history: Vec::new(),
+        blocked_by: Vec::new(),
+        assigned_to: None,
+    }];
+    let goals = vec![crate::todo::TodoGoal {
+        group: Some("todo rendering".to_string()),
+        hill_climbability: Some(95),
+        objective: Some("Readable metadata".to_string()),
+        feedback_loop: None,
+        end_to_end_ownership: None,
+    }];
+    let msg =
+        DisplayMessage::todos(serde_json::json!({ "todos": todos, "goals": goals }).to_string());
+    let lines = render_todos_message(&msg, 100, crate::config::DiffDisplayMode::Off);
+    let color_for = |text: &str| {
+        lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .find(|span| span.content.as_ref() == text)
+            .and_then(|span| span.style.fg)
+    };
+
+    assert_eq!(color_for("todo rendering"), Some(todo_group_color()));
+    assert_eq!(color_for("Readable metadata"), Some(todo_meta_color()));
+    assert_eq!(color_for("● "), Some(asap_color()));
+    assert_eq!(color_for(" (high)"), Some(rgb(235, 175, 95)));
+    assert_eq!(color_for(" · 85%"), Some(todo_confidence_color()));
+    assert_ne!(todo_meta_color(), dim_color());
+    assert_ne!(asap_color(), rgb(235, 175, 95));
+}
+
+#[test]
 fn render_todos_message_wraps_goal_scores_at_narrow_widths() {
     let todos = vec![crate::todo::TodoItem {
         id: "1".to_string(),
