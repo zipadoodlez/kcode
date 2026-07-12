@@ -5,9 +5,9 @@
 //! 1. `JCODE_THEME=dark|light` env override (also accepts `auto`).
 //! 2. `display.theme` config: "dark", "light", or "auto"/empty.
 //! 3. Auto: query the terminal's background color (OSC 11 via
-//!    `terminal-colorsaurus`) and classify by perceived lightness. The crate
-//!    uses a fast feature-detection heuristic, so unsupported terminals fail
-//!    quickly instead of hanging on the timeout.
+//!    `terminal-colorsaurus`) and classify by perceived lightness. Terminals
+//!    known not to support OSC queries are rejected before the bounded query so
+//!    they do not add hundreds of milliseconds to startup.
 //! 4. Fallback: dark (jcode's native palette).
 //!
 //! The result is stored in `jcode_tui_style::theme_mode` where the renderer
@@ -96,6 +96,16 @@ fn detect_terminal_theme() -> Option<ThemeMode> {
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         return None;
     }
+    if !terminal_background_query_supported(
+        std::env::var("TERM").ok().as_deref(),
+        std::env::var("TERM_PROGRAM").ok().as_deref(),
+        std::env::var("LC_TERMINAL").ok().as_deref(),
+    ) {
+        crate::logging::info(
+            "Skipping terminal background query for a terminal without OSC query support",
+        );
+        return None;
+    }
     let mut options = terminal_colorsaurus::QueryOptions::default();
     // Keep startup snappy; supporting terminals answer in a few ms, and
     // colorsaurus detects non-supporting terminals before the timeout anyway.
@@ -112,5 +122,55 @@ fn detect_terminal_theme() -> Option<ThemeMode> {
             ));
             None
         }
+    }
+}
+
+/// Reject terminal classes that cannot answer OSC 11 before entering the
+/// colorsaurus timeout path. A concrete terminal-program hint wins because
+/// launchers and multiplexers occasionally leave a conservative `TERM` value
+/// in place even though the outer emulator supports OSC queries.
+fn terminal_background_query_supported(
+    term: Option<&str>,
+    term_program: Option<&str>,
+    lc_terminal: Option<&str>,
+) -> bool {
+    if term_program.is_some_and(|value| !value.trim().is_empty())
+        || lc_terminal.is_some_and(|value| !value.trim().is_empty())
+    {
+        return true;
+    }
+
+    let term = term.unwrap_or("").trim().to_ascii_lowercase();
+    !matches!(term.as_str(), "" | "dumb" | "linux" | "cons25" | "emacs")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::terminal_background_query_supported;
+
+    #[test]
+    fn skips_terminals_without_osc_query_support() {
+        for term in [None, Some(""), Some("dumb"), Some("linux"), Some("cons25")] {
+            assert!(!terminal_background_query_supported(term, None, None));
+        }
+    }
+
+    #[test]
+    fn queries_terminal_emulators_and_honors_program_hints() {
+        assert!(terminal_background_query_supported(
+            Some("xterm-256color"),
+            None,
+            None
+        ));
+        assert!(terminal_background_query_supported(
+            Some("linux"),
+            Some("kitty"),
+            None
+        ));
+        assert!(terminal_background_query_supported(
+            Some("linux"),
+            None,
+            Some("iTerm2")
+        ));
     }
 }
