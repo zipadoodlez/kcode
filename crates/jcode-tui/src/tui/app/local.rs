@@ -270,6 +270,7 @@ pub(super) fn handle_bus_event(
         }
         Ok(BusEvent::TodoUpdated(event)) => {
             if event.session_id == app.session.id {
+                app.update_terminal_title();
                 app.refresh_todos_view_now()
             } else {
                 false

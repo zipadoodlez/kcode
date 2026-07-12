@@ -110,6 +110,10 @@ impl App {
             && let Some(session_id) = self.active_client_session_id().map(str::to_string)
         {
             super::helpers::invalidate_todos_cache(&session_id);
+            // Local sessions also receive TodoUpdated, while remote sessions only
+            // observe the completed tool call. Refresh here as well so both paths
+            // adopt the same todo-derived title that /resume displays.
+            self.update_terminal_title();
         }
 
         // The schedule tool queues/cancels ambient tasks, which the ambient panel

@@ -57,7 +57,13 @@ pub fn terminal_session_label_for_id(session_id: &str) -> String {
     let session_name = session_name(session_id);
     let display_title = crate::session::Session::load_startup_stub(session_id)
         .ok()
-        .and_then(|session| session.display_title().map(ToOwned::to_owned));
+        .and_then(|session| {
+            session
+                .custom_title
+                .filter(|title| !title.trim().is_empty())
+                .or_else(|| crate::todo::load_session_title(session_id))
+                .or(session.title)
+        });
     match display_title.as_deref() {
         Some(title) => terminal_session_label(&session_name, Some(title)),
         None => session_name,
@@ -144,6 +150,49 @@ mod tests {
         assert_eq!(
             terminal_session_label_for_id("session_fox_123"),
             "Release planning (fox)"
+        );
+
+        if let Some(previous_home) = previous_home {
+            crate::env::set_var("JCODE_HOME", previous_home);
+        } else {
+            crate::env::remove_var("JCODE_HOME");
+        }
+    }
+
+    #[test]
+    fn terminal_session_label_for_id_prefers_todo_title_over_generated_title() {
+        let _guard = lock_test_env();
+        let previous_home = std::env::var_os("JCODE_HOME");
+        let temp = tempfile::tempdir().expect("temp dir");
+        crate::env::set_var("JCODE_HOME", temp.path());
+
+        let session_id = "session_fox_456";
+        let mut session = crate::session::Session::create_with_id(
+            session_id.to_string(),
+            None,
+            Some("Generated title".to_string()),
+        );
+        session.save().expect("save session");
+        crate::todo::save_todos(
+            session_id,
+            &[crate::todo::TodoItem {
+                content: "Synchronize terminal window names".to_string(),
+                status: "in_progress".to_string(),
+                priority: "high".to_string(),
+                id: "window-title".to_string(),
+                group: Some("resume title sync".to_string()),
+                confidence: Some(90),
+                completion_confidence: None,
+                confidence_history: Vec::new(),
+                blocked_by: Vec::new(),
+                assigned_to: None,
+            }],
+        )
+        .expect("save todos");
+
+        assert_eq!(
+            terminal_session_label_for_id(session_id),
+            "resume title sync (fox)"
         );
 
         if let Some(previous_home) = previous_home {

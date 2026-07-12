@@ -76,10 +76,22 @@ impl App {
             .map(|s| s.to_string())
             .unwrap_or_else(|| session_id.to_string());
         let session_icon = crate::id::session_icon(&session_name);
-        let session_label = crate::process_title::terminal_session_label(
-            &session_name,
-            self.session.display_title(),
-        );
+        // Keep the live terminal title aligned with /resume: an explicit rename
+        // wins, then the model's current todo/goal title, then the generated title.
+        let todo_title = self
+            .session
+            .custom_title
+            .is_none()
+            .then(|| crate::todo::load_session_title(session_id))
+            .flatten();
+        let display_title = self
+            .session
+            .custom_title
+            .as_deref()
+            .or(todo_title.as_deref())
+            .or(self.session.title.as_deref());
+        let session_label =
+            crate::process_title::terminal_session_label(&session_name, display_title);
         let is_canary = if self.is_remote {
             self.remote_is_canary.unwrap_or(self.session.is_canary)
         } else {
