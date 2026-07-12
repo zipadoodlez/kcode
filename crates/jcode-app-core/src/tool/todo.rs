@@ -218,7 +218,7 @@ impl Tool for TodoTool {
     }
 
     fn description(&self) -> &str {
-        "Read or update the todo list. Include confidence for each item, update it as evidence accumulates while working, and include completion_confidence when marking an item completed. Rate each goal's hill_climbability and end-to-end ownership via the goals param."
+        "Read or update the todo list. Include confidence for each item, update it as evidence accumulates while working, and include completion_confidence when marking an item completed. Rate each goal's hill_climbability via the goals param to indicate the strength of its feedback loop: how reliably progress can be measured and each iteration judged as an improvement. Also rate each goal's end-to-end ownership."
     }
 
     fn parameters_schema(&self) -> Value {
