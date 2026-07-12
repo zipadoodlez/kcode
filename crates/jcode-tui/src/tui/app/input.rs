@@ -895,6 +895,7 @@ pub(super) fn handle_text_input(app: &mut App, text: &str) -> bool {
     }
 
     insert_input_text(app, text);
+    promote_dropped_images(app);
     true
 }
 

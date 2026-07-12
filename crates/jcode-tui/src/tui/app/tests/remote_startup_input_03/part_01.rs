@@ -171,6 +171,21 @@ fn test_typed_absolute_image_path_promotes_before_slash_routing() {
 }
 
 #[test]
+fn test_incremental_terminal_drop_promotes_immediately_when_path_completes() {
+    let mut app = create_test_app();
+    let dir = tempfile::tempdir().unwrap();
+    let image = dir.path().join("instant.png");
+    std::fs::write(&image, b"png bytes").unwrap();
+
+    for ch in image.display().to_string().chars() {
+        crate::tui::app::input::handle_text_input(&mut app, &ch.to_string());
+    }
+
+    assert_eq!(app.input(), "[image 1]");
+    assert_eq!(app.pending_images.len(), 1);
+}
+
+#[test]
 fn test_handle_paste_multi_line() {
     let mut app = create_test_app();
 
