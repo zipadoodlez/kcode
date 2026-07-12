@@ -75,6 +75,10 @@ pub fn set_memory_snapshot_hook(hook: fn() -> ProcessMemorySnapshot) {
     }
 }
 
+pub fn set_latex_log_hook(hook: fn(&str)) {
+    latex_image::set_log_hook(hook);
+}
+
 pub(crate) fn config_snapshot() -> MarkdownConfigSnapshot {
     CONFIG_SNAPSHOT_HOOK
         .lock()
@@ -983,7 +987,13 @@ fn latex_image_lines(
     display: bool,
     max_width: Option<usize>,
 ) -> Option<Vec<Line<'static>>> {
-    latex_image::render_latex_image(math, display, max_width).ok()
+    match latex_image::render_latex_image(math, display, max_width) {
+        Ok(lines) => Some(lines),
+        Err(error) => {
+            latex_image::report_error(&error);
+            None
+        }
+    }
 }
 fn table_color() -> Color {
     rgb(150, 150, 150)
