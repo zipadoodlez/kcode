@@ -428,6 +428,13 @@ fn format_goal_markdown(goals: &[crate::todo::TodoGoal], group: Option<&str>) ->
     {
         line.push_str(&format!("- Objective: {}\n", objective.trim()));
     }
+    if let Some(feedback_loop) = goal
+        .feedback_loop
+        .as_deref()
+        .filter(|feedback_loop| !feedback_loop.trim().is_empty())
+    {
+        line.push_str(&format!("- Feedback loop: {}\n", feedback_loop.trim()));
+    }
     if let Some(score) = goal.end_to_end_ownership {
         line.push_str(&format!("- End-to-end ownership: **{}%**\n", score));
     }
@@ -598,6 +605,7 @@ fn hash_todos_payload(
         goal.group.hash(&mut hasher);
         goal.hill_climbability.hash(&mut hasher);
         goal.objective.hash(&mut hasher);
+        goal.feedback_loop.hash(&mut hasher);
         goal.end_to_end_ownership.hash(&mut hasher);
     }
     hasher.finish()
@@ -719,6 +727,9 @@ mod tests {
                 group: Some("optimize rendering".to_string()),
                 hill_climbability: Some(90),
                 objective: Some("frame time under 8ms".to_string()),
+                feedback_loop: Some(
+                    "run the frame benchmark and compare p95 frame time".to_string(),
+                ),
                 end_to_end_ownership: Some(85),
                 ..Default::default()
             }],
@@ -734,6 +745,11 @@ mod tests {
         );
         assert!(
             markdown.contains("- Objective: frame time under 8ms"),
+            "{markdown}"
+        );
+        assert!(
+            markdown
+                .contains("- Feedback loop: run the frame benchmark and compare p95 frame time"),
             "{markdown}"
         );
         assert!(
@@ -768,6 +784,19 @@ mod tests {
             hill_climbability: Some(30),
             ..Default::default()
         }];
+        let after = hash_todos_payload(Some("session_test"), &todos, &goals);
+        assert_ne!(before, after);
+    }
+
+    #[test]
+    fn todos_view_hash_changes_when_feedback_loop_changes() {
+        let todos = vec![todo("g", "Goal hash", "pending", "high", Some(80), None)];
+        let mut goals = vec![crate::todo::TodoGoal {
+            feedback_loop: Some("run test A".to_string()),
+            ..Default::default()
+        }];
+        let before = hash_todos_payload(Some("session_test"), &todos, &goals);
+        goals[0].feedback_loop = Some("run test B".to_string());
         let after = hash_todos_payload(Some("session_test"), &todos, &goals);
         assert_ne!(before, after);
     }

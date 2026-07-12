@@ -121,8 +121,8 @@ fn take_reframe_nudges(goals: &[TodoGoal], todos: &[TodoItem]) -> Vec<String> {
         let label = goal.group.as_deref().unwrap_or("the current goal");
         nudges.push(format!(
             "Goal '{}' has low hill-climbability ({}). Reframe it into a quantifiable, \
-             verifiable objective (set the goal's `objective`, e.g. a metric plus target, and \
-             build a harness that measures it).",
+             verifiable objective, set the goal's `feedback_loop` to the concrete process that \
+             measures whether each iteration improves it, and build any harness that loop needs.",
             label, score
         ));
     }
@@ -218,7 +218,7 @@ impl Tool for TodoTool {
     }
 
     fn description(&self) -> &str {
-        "Read or update the todo list. Include confidence for each item, update it as evidence accumulates while working, and include completion_confidence when marking an item completed. Rate each goal's hill_climbability via the goals param to indicate the strength of its feedback loop: how reliably progress can be measured and each iteration judged as an improvement. Also rate each goal's end-to-end ownership."
+        "Read or update the todo list. Include confidence for each item, update it as evidence accumulates while working, and include completion_confidence when marking an item completed. For each goal, describe its concrete feedback_loop and rate hill_climbability to indicate how reliably that loop can measure progress and judge each iteration as an improvement. Also rate each goal's end-to-end ownership."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -270,10 +270,10 @@ impl Tool for TodoTool {
                 },
                 "goals": {
                     "type": "array",
-                    "description": "Goal-level assessments, one per todo group (use group: null for an ungrouped flat list, which is one implicit goal). Rate how hill-climbable each goal is and state its measurable objective when one exists. Stored goals for groups not mentioned in a write are retained.",
+                    "description": "Goal-level assessments, one per todo group (use group: null for an ungrouped flat list, which is one implicit goal). State the concrete feedback loop used to judge improvement, rate how hill-climbable the goal is, and state its measurable objective when one exists. Stored goals for groups not mentioned in a write are retained.",
                     "items": {
                         "type": "object",
-                        "required": ["hill_climbability"],
+                        "required": ["hill_climbability", "feedback_loop"],
                         "properties": {
                             "group": {
                                 "type": "string",
@@ -288,6 +288,10 @@ impl Tool for TodoTool {
                             "objective": {
                                 "type": "string",
                                 "description": "The measurable objective progress climbs toward, e.g. 'p50 grep latency under 50ms on the repo corpus'. State one whenever it exists; a high hill_climbability without an objective is not credible."
+                            },
+                            "feedback_loop": {
+                                "type": "string",
+                                "description": "The concrete process for observing whether each iteration improves the outcome, including what is measured and how it is checked, e.g. 'run the grep benchmark after each change and compare p50 latency'."
                             },
                             "end_to_end_ownership": {
                                 "type": "integer",
@@ -414,8 +418,19 @@ mod tests {
         assert!(goal_props.contains_key("group"));
         assert!(goal_props.contains_key("hill_climbability"));
         assert!(goal_props.contains_key("objective"));
+        assert!(goal_props.contains_key("feedback_loop"));
         assert!(goal_props.contains_key("end_to_end_ownership"));
-        assert_eq!(goal_props.len(), 4);
+        assert_eq!(goal_props.len(), 5);
+
+        let goal_required = props["goals"]["items"]["required"]
+            .as_array()
+            .expect("goals should advertise required fields");
+        assert!(
+            goal_required
+                .iter()
+                .any(|value| value == "hill_climbability")
+        );
+        assert!(goal_required.iter().any(|value| value == "feedback_loop"));
 
         let ownership_description = goal_props["end_to_end_ownership"]
             .get("description")
@@ -496,7 +511,7 @@ mod tests {
     fn accepts_goals_including_string_coercion() {
         let input = json!({
             "goals": [
-                {"group": "optimize grep", "hill_climbability": "95", "objective": "p50 under 50ms"},
+                {"group": "optimize grep", "hill_climbability": "95", "objective": "p50 under 50ms", "feedback_loop": "run the grep benchmark and compare p50"},
                 {"hill_climbability": 20}
             ]
         });
@@ -504,6 +519,13 @@ mod tests {
         let goals = parsed.goals.expect("goals present");
         assert_eq!(goals[0].hill_climbability, Some(95));
         assert_eq!(goals[0].objective.as_deref(), Some("p50 under 50ms"));
+        assert_eq!(
+            goals[0].feedback_loop.as_deref(),
+            Some("run the grep benchmark and compare p50")
+        );
+        // Runtime parsing remains backward-compatible with stored or older
+        // provider payloads even though the advertised schema requires the field.
+        assert_eq!(goals[1].feedback_loop, None);
         assert_eq!(goals[1].group, None);
     }
 

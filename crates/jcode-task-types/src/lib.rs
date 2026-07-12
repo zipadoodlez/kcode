@@ -247,6 +247,10 @@ pub struct TodoGoal {
     /// objective is what makes a high score credible.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub objective: Option<String>,
+    /// The concrete feedback loop used to judge whether each iteration improves
+    /// the outcome (e.g. a benchmark command and the metric it reports).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feedback_loop: Option<String>,
     /// How completely the agent owned the goal's full outcome, including the
     /// requested work, reasonably necessary adjacent work, end-to-end
     /// validation, cleanup, and explicit disclosure of remaining gaps.
