@@ -93,6 +93,12 @@ impl App {
         };
         let server_name = self.remote_server_short_name.as_deref().unwrap_or("jcode");
         let icon = connection_type_icon(self.connection_type.as_deref()).unwrap_or(session_icon);
+        let session_label = crate::process_title::terminal_session_label(&session_name, None);
+        let fallback_label = if server_name.eq_ignore_ascii_case("jcode") {
+            format!("jcode {session_label}")
+        } else {
+            format!("jcode/{} {session_label}", server_name.to_lowercase())
+        };
         if server_name.eq_ignore_ascii_case("jcode") {
             crate::process_title::set_client_display_title(&session_name, is_canary);
         } else {
@@ -102,8 +108,12 @@ impl App {
                 is_canary,
             );
         }
-        let window_title =
-            crate::process_title::terminal_window_title(&icon, display_title, is_canary);
+        let window_title = crate::process_title::terminal_window_title(
+            &icon,
+            display_title,
+            Some(&fallback_label),
+            is_canary,
+        );
         let _ = crossterm::execute!(
             std::io::stdout(),
             crossterm::terminal::SetTitle(window_title)
