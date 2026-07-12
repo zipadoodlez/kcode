@@ -22,6 +22,53 @@ pub const TODO_CONFIDENCE_SUMMARY_PREFIX: &str = "All todos are done. Todo confi
 /// were always right.
 pub const TODO_CONFIDENCE_SPIKE: u8 = 15;
 
+// Kept private so model-facing tool metadata and validation responses do not
+// turn the assessment into a disclosed target.
+const END_TO_END_OWNERSHIP_COMPLETION_THRESHOLD: u8 = 90;
+
+fn normalized_group(group: Option<&str>) -> Option<String> {
+    group
+        .map(str::trim)
+        .filter(|group| !group.is_empty())
+        .map(str::to_string)
+}
+
+fn group_is_complete(todos: &[TodoItem], group: &Option<String>) -> bool {
+    let mut matching = todos
+        .iter()
+        .filter(|todo| normalized_group(todo.group.as_deref()) == *group)
+        .peekable();
+    matching.peek().is_some() && matching.all(|todo| todo.status == "completed")
+}
+
+/// Whether every group newly closed by this update has a sufficient assessment
+/// of ownership over its full outcome. Groups completed before this check was
+/// introduced are intentionally grandfathered so existing sessions stay writable.
+pub fn newly_completed_groups_have_sufficient_ownership(
+    previous: &[TodoItem],
+    incoming: &[TodoItem],
+    goals: &[TodoGoal],
+) -> bool {
+    let mut groups: Vec<Option<String>> = Vec::new();
+    for todo in incoming {
+        let group = normalized_group(todo.group.as_deref());
+        if !groups.contains(&group) {
+            groups.push(group);
+        }
+    }
+
+    groups.into_iter().all(|group| {
+        if !group_is_complete(incoming, &group) || group_is_complete(previous, &group) {
+            return true;
+        }
+        goals
+            .iter()
+            .find(|goal| normalized_group(goal.group.as_deref()) == group)
+            .and_then(|goal| goal.end_to_end_ownership)
+            .is_some_and(|score| score > END_TO_END_OWNERSHIP_COMPLETION_THRESHOLD)
+    })
+}
+
 /// Completed todos whose confidence trail ends in an unearned jump: a final
 /// step of [`TODO_CONFIDENCE_SPIKE`]+ points in the tool-maintained
 /// `confidence_history`, or, for todos without a recorded trail, an equally
@@ -212,6 +259,62 @@ mod tests {
         }
     }
 
+    fn ownership_goal(group: Option<&str>, ownership: Option<u8>) -> TodoGoal {
+        TodoGoal {
+            group: group.map(str::to_string),
+            end_to_end_ownership: ownership,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn newly_completed_group_requires_sufficient_end_to_end_ownership() {
+        let previous = vec![todo("work", "in_progress", Some("ship"))];
+        let completed = vec![todo("work", "completed", Some("ship"))];
+
+        for ownership in [None, Some(0), Some(90)] {
+            assert!(!newly_completed_groups_have_sufficient_ownership(
+                &previous,
+                &completed,
+                &[ownership_goal(Some("ship"), ownership)],
+            ));
+        }
+        assert!(newly_completed_groups_have_sufficient_ownership(
+            &previous,
+            &completed,
+            &[ownership_goal(Some("ship"), Some(91))],
+        ));
+    }
+
+    #[test]
+    fn ownership_gate_normalizes_groups_and_supports_ungrouped_work() {
+        let previous = vec![todo("work", "in_progress", Some(" ship "))];
+        let completed = vec![todo("work", "completed", Some("ship"))];
+        assert!(newly_completed_groups_have_sufficient_ownership(
+            &previous,
+            &completed,
+            &[ownership_goal(Some(" ship"), Some(95))],
+        ));
+
+        let previous = vec![todo("work", "in_progress", None)];
+        let completed = vec![todo("work", "completed", None)];
+        assert!(newly_completed_groups_have_sufficient_ownership(
+            &previous,
+            &completed,
+            &[ownership_goal(None, Some(95))],
+        ));
+    }
+
+    #[test]
+    fn ownership_gate_grandfathers_preexisting_completed_groups() {
+        let completed = vec![todo("legacy", "completed", Some("legacy"))];
+        assert!(newly_completed_groups_have_sufficient_ownership(
+            &completed,
+            &completed,
+            &[],
+        ));
+    }
+
     #[test]
     fn session_title_prefers_in_progress_todo_group() {
         let todos = vec![
@@ -246,6 +349,7 @@ mod tests {
             group: None,
             hill_climbability: Some(90),
             objective: Some("All resume naming tests pass".to_string()),
+            ..Default::default()
         }];
 
         assert_eq!(

@@ -428,6 +428,9 @@ fn format_goal_markdown(goals: &[crate::todo::TodoGoal], group: Option<&str>) ->
     {
         line.push_str(&format!("- Objective: {}\n", objective.trim()));
     }
+    if let Some(score) = goal.end_to_end_ownership {
+        line.push_str(&format!("- End-to-end ownership: **{}%**\n", score));
+    }
     line
 }
 
@@ -595,6 +598,7 @@ fn hash_todos_payload(
         goal.group.hash(&mut hasher);
         goal.hill_climbability.hash(&mut hasher);
         goal.objective.hash(&mut hasher);
+        goal.end_to_end_ownership.hash(&mut hasher);
     }
     hasher.finish()
 }
@@ -715,6 +719,7 @@ mod tests {
                 group: Some("optimize rendering".to_string()),
                 hill_climbability: Some(90),
                 objective: Some("frame time under 8ms".to_string()),
+                end_to_end_ownership: Some(85),
                 ..Default::default()
             }],
         );
@@ -729,6 +734,10 @@ mod tests {
         );
         assert!(
             markdown.contains("- Objective: frame time under 8ms"),
+            "{markdown}"
+        );
+        assert!(
+            markdown.contains("- End-to-end ownership: **85%**"),
             "{markdown}"
         );
         assert!(markdown.contains("## scrollback (0/1)"), "{markdown}");

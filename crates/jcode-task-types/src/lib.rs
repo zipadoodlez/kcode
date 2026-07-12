@@ -247,6 +247,11 @@ pub struct TodoGoal {
     /// objective is what makes a high score credible.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub objective: Option<String>,
+    /// How completely the agent owned the goal's full outcome, including the
+    /// requested work, reasonably necessary adjacent work, end-to-end
+    /// validation, cleanup, and explicit disclosure of remaining gaps.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_to_end_ownership: Option<u8>,
 }
 
 use std::collections::HashMap;

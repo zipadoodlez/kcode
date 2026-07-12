@@ -1,7 +1,8 @@
 use super::{Tool, ToolContext, ToolOutput};
 use crate::bus::{Bus, BusEvent, TodoEvent};
 use crate::todo::{
-    LOW_HILL_CLIMBABILITY, TodoGoal, TodoItem, load_goals, load_todos, save_goals, save_todos,
+    LOW_HILL_CLIMBABILITY, TodoGoal, TodoItem, load_goals, load_todos,
+    newly_completed_groups_have_sufficient_ownership, save_goals, save_todos,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -10,6 +11,8 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 
 pub struct TodoTool;
+
+const END_TO_END_OWNERSHIP_NUDGE: &str = "Your end-to-end ownership isn't high enough. Go back and review the full outcome, handle any missing adjacent work, validate it end to end, clean up remaining loose ends, and then update the assessment before completing the group.";
 
 impl TodoTool {
     pub fn new() -> Self {
@@ -166,7 +169,12 @@ fn normalize_todo_input(mut input: Value) -> Value {
                 let Some(fields) = item.as_object_mut() else {
                     continue;
                 };
-                for key in ["confidence", "completion_confidence", "hill_climbability"] {
+                for key in [
+                    "confidence",
+                    "completion_confidence",
+                    "hill_climbability",
+                    "end_to_end_ownership",
+                ] {
                     if let Some(value) = fields.get_mut(key) {
                         coerce_value_to_integer(value);
                     }
@@ -210,7 +218,7 @@ impl Tool for TodoTool {
     }
 
     fn description(&self) -> &str {
-        "Read or update the todo list. Include confidence for each item, update it as evidence accumulates while working, and include completion_confidence when marking an item completed. Rate each goal's hill_climbability via the goals param: how measurable and iterable progress toward it is."
+        "Read or update the todo list. Include confidence for each item, update it as evidence accumulates while working, and include completion_confidence when marking an item completed. Rate each goal's hill_climbability and end-to-end ownership via the goals param."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -280,6 +288,12 @@ impl Tool for TodoTool {
                             "objective": {
                                 "type": "string",
                                 "description": "The measurable objective progress climbs toward, e.g. 'p50 grep latency under 50ms on the repo corpus'. State one whenever it exists; a high hill_climbability without an objective is not credible."
+                            },
+                            "end_to_end_ownership": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 100,
+                                "description": "How completely the full outcome was owned, including the requested work, reasonably necessary adjacent work, end-to-end validation, cleanup, and explicit disclosure of remaining gaps. Base the score on concrete evidence."
                             }
                         }
                     }
@@ -300,10 +314,14 @@ impl Tool for TodoTool {
             let previous = load_todos(&ctx.session_id).unwrap_or_default();
             let mut todos = params.todos.unwrap_or_else(|| previous.clone());
             merge_confidence_history(&previous, &mut todos);
-            save_todos(&ctx.session_id, &todos).and_then(|_| {
+            (|| {
                 let stored_goals = load_goals(&ctx.session_id).unwrap_or_default();
                 let goals = merge_goals(&stored_goals, params.goals);
+                if !newly_completed_groups_have_sufficient_ownership(&previous, &todos, &goals) {
+                    anyhow::bail!(END_TO_END_OWNERSHIP_NUDGE);
+                }
                 let nudges = take_reframe_nudges(&goals, &todos);
+                save_todos(&ctx.session_id, &todos)?;
                 save_goals(&ctx.session_id, &goals)?;
 
                 Bus::global().publish(BusEvent::TodoUpdated(TodoEvent {
@@ -324,7 +342,7 @@ impl Tool for TodoTool {
                 Ok(ToolOutput::new(text)
                     .with_title(format!("{} todos", remaining))
                     .with_metadata(json!({"todos": todos, "goals": goals})))
-            })
+            })()
         } else {
             (|| {
                 let todos = load_todos(&ctx.session_id)?;
@@ -396,7 +414,20 @@ mod tests {
         assert!(goal_props.contains_key("group"));
         assert!(goal_props.contains_key("hill_climbability"));
         assert!(goal_props.contains_key("objective"));
-        assert_eq!(goal_props.len(), 3);
+        assert!(goal_props.contains_key("end_to_end_ownership"));
+        assert_eq!(goal_props.len(), 4);
+
+        let ownership_description = goal_props["end_to_end_ownership"]
+            .get("description")
+            .and_then(Value::as_str)
+            .expect("ownership should have a neutral description");
+        assert!(!ownership_description.contains("90"));
+        assert!(!ownership_description.contains("91"));
+        assert!(
+            !ownership_description
+                .to_ascii_lowercase()
+                .contains("threshold")
+        );
     }
 
     fn parse(input: Value) -> Result<TodoInput, serde_json::Error> {
