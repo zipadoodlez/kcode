@@ -53,9 +53,11 @@ pub fn terminal_session_label(session_name: &str, display_title: Option<&str>) -
     format!("{} ({})", truncate_chars(&title, 48), session_name)
 }
 
-pub fn terminal_session_label_for_id(session_id: &str) -> String {
-    let session_name = session_name(session_id);
-    let display_title = crate::session::Session::load_startup_stub(session_id)
+/// Resolve the human-authored title used by terminal windows and `/resume`.
+/// Explicit renames win over todo/goal-derived titles, which win over the
+/// generated session title.
+pub fn terminal_display_title_for_id(session_id: &str) -> Option<String> {
+    crate::session::Session::load_startup_stub(session_id)
         .ok()
         .and_then(|session| {
             session
@@ -63,7 +65,26 @@ pub fn terminal_session_label_for_id(session_id: &str) -> String {
                 .filter(|title| !title.trim().is_empty())
                 .or_else(|| crate::todo::load_session_title(session_id))
                 .or(session.title)
-        });
+        })
+}
+
+/// Build the deliberately minimal terminal window title. The emoji already
+/// identifies the session/connection, so do not repeat `jcode` or the memorable
+/// animal name in window chrome.
+pub fn terminal_window_title(icon: &str, display_title: Option<&str>, is_selfdev: bool) -> String {
+    let display_title = display_title
+        .and_then(normalized_display_title)
+        .map(|title| truncate_chars(&title, 48));
+    let suffix = if is_selfdev { " [self-dev]" } else { "" };
+    match display_title {
+        Some(title) => format!("{icon} {title}{suffix}"),
+        None => format!("{icon}{suffix}"),
+    }
+}
+
+pub fn terminal_session_label_for_id(session_id: &str) -> String {
+    let session_name = session_name(session_id);
+    let display_title = terminal_display_title_for_id(session_id);
     match display_title.as_deref() {
         Some(title) => terminal_session_label(&session_name, Some(title)),
         None => session_name,
@@ -130,6 +151,19 @@ mod tests {
         );
         assert_eq!(terminal_session_label("fox", Some("Fox")), "Fox");
         assert_eq!(terminal_session_label("fox", None), "Fox");
+    }
+
+    #[test]
+    fn terminal_window_title_omits_product_and_animal_names() {
+        assert_eq!(
+            terminal_window_title("🐙", Some("resume window title"), false),
+            "🐙 resume window title"
+        );
+        assert_eq!(terminal_window_title("🐙", None, false), "🐙");
+        assert_eq!(
+            terminal_window_title("🐙", Some("resume window title"), true),
+            "🐙 resume window title [self-dev]"
+        );
     }
 
     #[test]

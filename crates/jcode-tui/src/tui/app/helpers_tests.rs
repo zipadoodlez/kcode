@@ -459,7 +459,7 @@ fn fresh_session_command_includes_fresh_spawn_and_socket() {
     let command = super::build_fresh_session_command(Some("/tmp/test.sock"));
     assert!(command.fresh_spawn, "must hand off as a fresh spawn");
     assert_eq!(command.kind.as_deref(), Some("new-terminal"));
-    assert_eq!(command.title.as_deref(), Some("jcode · new session"));
+    assert_eq!(command.title.as_deref(), Some("✨"));
     assert_eq!(
         command.args,
         vec![

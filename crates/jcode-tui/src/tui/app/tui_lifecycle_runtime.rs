@@ -47,11 +47,7 @@ impl App {
 
         app.suppress_terminal_title_updates = !set_title;
         if set_title && !session_name.is_empty() {
-            let icon = crate::id::session_icon(&session_name);
-            let _ = crossterm::execute!(
-                std::io::stdout(),
-                crossterm::terminal::SetTitle(format!("{} replay: {}", icon, session_name))
-            );
+            app.update_terminal_title();
         }
         app
     }
@@ -90,21 +86,13 @@ impl App {
             .as_deref()
             .or(todo_title.as_deref())
             .or(self.session.title.as_deref());
-        let session_label =
-            crate::process_title::terminal_session_label(&session_name, display_title);
         let is_canary = if self.is_remote {
             self.remote_is_canary.unwrap_or(self.session.is_canary)
         } else {
             self.session.is_canary
         };
-        let suffix = if is_canary { " [self-dev]" } else { "" };
         let server_name = self.remote_server_short_name.as_deref().unwrap_or("jcode");
         let icon = connection_type_icon(self.connection_type.as_deref()).unwrap_or(session_icon);
-        let server_label = if server_name.eq_ignore_ascii_case("jcode") {
-            "jcode".to_string()
-        } else {
-            format!("jcode/{}", server_name.to_lowercase())
-        };
         if server_name.eq_ignore_ascii_case("jcode") {
             crate::process_title::set_client_display_title(&session_name, is_canary);
         } else {
@@ -114,12 +102,11 @@ impl App {
                 is_canary,
             );
         }
+        let window_title =
+            crate::process_title::terminal_window_title(&icon, display_title, is_canary);
         let _ = crossterm::execute!(
             std::io::stdout(),
-            crossterm::terminal::SetTitle(format!(
-                "{} {} {}{}",
-                icon, server_label, session_label, suffix
-            ))
+            crossterm::terminal::SetTitle(window_title)
         );
     }
 
