@@ -16,7 +16,7 @@ pub const LOW_HILL_CLIMBABILITY: u8 = QUALITY_GATE_THRESHOLD;
 
 /// Model-facing continuation for the private hill-climbability check. Names the
 /// assessment category without disclosing the score or threshold.
-pub const TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE: &str = "Your hill-climbability is not high enough. Think more about how to make this goal hill-climbable. The goal is to create a strong feedback loop you can iterate against.";
+pub const TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE: &str = "Your hill-climbability is not high enough. First, improve the goal's objective and feedback loop so progress can be measured across iterations. Then call the todo tool again with the revised goal before continuing the task. The goal is to create a strong feedback loop you can iterate against.";
 
 /// Model-facing continuation for the private end-to-end ownership check. Names
 /// the assessment category without disclosing the score or threshold.
@@ -241,6 +241,9 @@ mod tests {
         }
 
         assert!(TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE.contains("strong feedback loop"));
+        assert!(TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE.contains("First, improve"));
+        assert!(TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE.contains("call the todo tool again"));
+        assert!(TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE.contains("before continuing the task"));
         assert!(TODO_OWNERSHIP_CONTINUATION_MESSAGE.contains("full user outcome"));
         assert!(TODO_OWNERSHIP_CONTINUATION_MESSAGE.contains("complete workflow"));
         assert!(TODO_OWNERSHIP_CONTINUATION_MESSAGE.contains("necessary follow-through"));
