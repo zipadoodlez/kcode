@@ -388,6 +388,8 @@ pub struct DiscoveryEvent {
     pub result_count: Option<u32>,
     pub query_present: bool,
     pub reason_present: bool,
+    #[serde(default)]
+    pub benchmark_run: bool,
     pub custom_endpoint: bool,
     pub schema_version: u32,
     pub build_channel: String,
