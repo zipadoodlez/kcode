@@ -886,6 +886,80 @@ fn skill_invocation_with_prompt_attaches_pending_image_to_user_message() {
 }
 
 #[test]
+fn unknown_skill_invocation_surfaces_error_and_sends_nothing() {
+    let mut app = create_test_app();
+    let temp = tempfile::tempdir().expect("tempdir");
+    app.session.working_dir = Some(temp.path().to_string_lossy().to_string());
+    app.input = "/definitely-not-a-real-skill".to_string();
+    app.cursor_pos = app.input.len();
+    let session_messages_before = app.session.messages.len();
+
+    app.submit_input();
+
+    assert!(!app.is_processing, "unknown skill must not start a turn");
+    assert_eq!(
+        app.session.messages.len(),
+        session_messages_before,
+        "no message should be sent to the model"
+    );
+    assert!(app.active_skill.is_none());
+    let last = app.display_messages().last().expect("error message");
+    assert_eq!(last.role, "error");
+    assert_eq!(last.content, "Unknown skill: /definitely-not-a-real-skill");
+}
+
+#[test]
+fn endorsed_but_not_installed_skill_invocation_surfaces_install_hint() {
+    let mut app = create_test_app();
+    // Empty working dir so no endorsed skill is actually installed there.
+    let temp = tempfile::tempdir().expect("tempdir");
+    app.session.working_dir = Some(temp.path().to_string_lossy().to_string());
+
+    let endorsed = crate::skill::endorsed_skills()
+        .iter()
+        .find(|endorsed| {
+            endorsed.install.is_some()
+                && app.current_skills_snapshot().get(endorsed.name).is_none()
+        })
+        .expect("an endorsed skill with an install hint that is not installed");
+
+    app.input = format!("/{}", endorsed.name);
+    app.cursor_pos = app.input.len();
+    let session_messages_before = app.session.messages.len();
+
+    app.submit_input();
+
+    assert!(!app.is_processing, "missing skill must not start a turn");
+    assert_eq!(
+        app.session.messages.len(),
+        session_messages_before,
+        "no message should be sent to the model"
+    );
+    assert!(app.active_skill.is_none());
+    let last = app.display_messages().last().expect("error message");
+    assert_eq!(last.role, "error");
+    assert!(
+        last.content.contains(&format!(
+            "Skill /{} is endorsed but not installed",
+            endorsed.name
+        )),
+        "{}",
+        last.content
+    );
+    assert!(
+        last.content
+            .contains(&format!("`{}`", endorsed.install.unwrap())),
+        "install hint missing from: {}",
+        last.content
+    );
+    assert!(
+        !last.content.contains("Unknown skill"),
+        "endorsed skill must not be reported as a typo: {}",
+        last.content
+    );
+}
+
+#[test]
 fn update_command_reloads_stale_remote_server_before_client_update_check() {
     use tokio::io::AsyncBufReadExt;
 
