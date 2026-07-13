@@ -256,12 +256,8 @@ fn present_swarm_notification_inner(
             },
             Some("swarm_await") => SwarmNotificationPresentation {
                 title: "🐝 Swarm await".to_string(),
-                message: strip_message_prefix(trimmed, "🐝 **Swarm await finished**")
-                    .map(str::trim)
-                    .filter(|body| !body.is_empty())
-                    .unwrap_or(trimmed)
-                    .to_string(),
-                status_notice: "Swarm await finished".to_string(),
+                message: crate::tui::ui::compact_swarm_await_summary(trimmed),
+                status_notice: "🐝 Swarm await finished".to_string(),
             },
             Some(other) => SwarmNotificationPresentation {
                 title: format!("{} · {}", capitalize(other), sender),
@@ -387,7 +383,7 @@ mod tests {
     }
 
     #[test]
-    fn present_swarm_notification_formats_swarm_await_scope_with_bee_title() {
+    fn present_swarm_notification_compacts_swarm_await_without_report_prose() {
         let presentation = present_swarm_notification(
             "swarm await",
             &NotificationType::Message {
@@ -395,16 +391,15 @@ mod tests {
                 channel: None,
                 tldr: None,
             },
-            "🐝 **Swarm await finished**\n\nAll members done. All 2 members are done: fox, wolf",
+            "🐝 **Swarm await finished**\n\nAll members done. All 2 members are done: fox, wolf\n\nMember statuses:\n  ✓ fox (completed)\n  ✓ wolf (completed)\n\nCompletion reports:\n\n--- fox (completed) ---\nParser tests pass.",
             false,
         );
 
         assert_eq!(presentation.title, "🐝 Swarm await");
-        assert_eq!(
-            presentation.message,
-            "All members done. All 2 members are done: fox, wolf"
-        );
-        assert_eq!(presentation.status_notice, "Swarm await finished");
+        assert_eq!(presentation.message, "✓ 2/2");
+        assert!(!presentation.message.contains("fox"));
+        assert!(!presentation.message.contains("Parser tests"));
+        assert_eq!(presentation.status_notice, "🐝 Swarm await finished");
     }
 
     #[test]

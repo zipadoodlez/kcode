@@ -115,6 +115,34 @@ fn test_render_swarm_message_matches_exact_compact_snapshot() {
 }
 
 #[test]
+fn test_render_swarm_await_as_compact_rail_free_summary() {
+    crate::tui::markdown::set_center_code_blocks(false);
+    let msg = DisplayMessage::swarm("🐝 Swarm await", "✓ 2/2");
+
+    let lines = render_swarm_message(&msg, 80, crate::config::DiffDisplayMode::Off);
+    let rendered: Vec<String> = lines.iter().map(extract_line_text).collect();
+
+    assert_eq!(rendered, vec!["🐝 ✓ 2/2"]);
+    assert!(rendered.iter().all(|line| !line.contains('│')));
+}
+
+#[test]
+fn test_render_swarm_await_wake_message_as_compact_rail_free_summary() {
+    crate::tui::markdown::set_center_code_blocks(false);
+    let msg = DisplayMessage::background_task(
+        "🐝 **Swarm await finished**\n\nAll members done. All 1 members are done: sabertooth\n\nMember statuses:\n  ✓ sabertooth (completed)\n\nCompletion reports:\n\n--- sabertooth (completed) ---\nAwait UI demo complete."
+            .to_string(),
+    );
+
+    let lines = render_background_task_message(&msg, 80, crate::config::DiffDisplayMode::Off);
+    let rendered: Vec<String> = lines.iter().map(extract_line_text).collect();
+
+    assert_eq!(rendered, vec!["🐝 ✓ 1/1"]);
+    assert!(rendered.iter().all(|line| !line.contains('│')));
+    assert!(!rendered.join("\n").contains("sabertooth"));
+}
+
+#[test]
 fn test_render_swarm_message_trims_extra_newlines() {
     crate::tui::markdown::set_center_code_blocks(false);
     let msg = DisplayMessage::swarm("Broadcast · coordinator", "\n\nPlan updated\n\n");

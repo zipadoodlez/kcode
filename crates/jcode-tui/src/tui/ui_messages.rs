@@ -1878,6 +1878,18 @@ pub(crate) fn render_background_task_message(
     width: u16,
     diff_mode: crate::config::DiffDisplayMode,
 ) -> Vec<Line<'static>> {
+    if msg
+        .content
+        .trim_start()
+        .starts_with("🐝 **Swarm await finished**")
+    {
+        return render_compact_swarm_await(
+            "🐝 Swarm await",
+            &compact_swarm_await_summary(&msg.content),
+            width,
+        )
+        .unwrap_or_default();
+    }
     if let Some(progress) = parse_background_task_progress_notification_markdown(&msg.content) {
         return render_background_task_progress_message(&progress, width);
     }
@@ -2144,6 +2156,47 @@ pub(crate) const SWARM_EXPAND_BADGE: &str = "▸ expand";
 pub(crate) const SWARM_COLLAPSE_BADGE: &str = "▾ collapse";
 pub(crate) const SWARM_AGENT_SNAPSHOT_TITLE: &str = "swarm-agent-snapshot";
 
+pub(crate) fn compact_swarm_await_summary(message: &str) -> String {
+    let body = message
+        .trim()
+        .strip_prefix("🐝 **Swarm await finished**")
+        .map(str::trim)
+        .unwrap_or_else(|| message.trim());
+    let mut done = 0usize;
+    let mut total = 0usize;
+    let mut in_statuses = false;
+
+    for line in body.lines() {
+        let line = line.trim();
+        if line == "Member statuses:" {
+            in_statuses = true;
+            continue;
+        }
+        if in_statuses && (line == "Completion reports:" || line.ends_with("reports:")) {
+            break;
+        }
+        if !in_statuses || line.is_empty() {
+            continue;
+        }
+        if line.starts_with('✓') {
+            done += 1;
+            total += 1;
+        } else if line.starts_with('✗') {
+            total += 1;
+        }
+    }
+
+    if total > 0 {
+        if done == total {
+            format!("✓ {done}/{total}")
+        } else {
+            format!("{done}/{total} finished")
+        }
+    } else {
+        "finished".to_string()
+    }
+}
+
 pub(crate) fn encode_swarm_agent_snapshot(
     member: &crate::protocol::SwarmMemberStatus,
 ) -> Option<String> {
@@ -2222,6 +2275,27 @@ fn render_compact_agent_notification(
     Some(lines)
 }
 
+fn render_compact_swarm_await(
+    title: &str,
+    content: &str,
+    width: u16,
+) -> Option<Vec<Line<'static>>> {
+    if title != "🐝 Swarm await" {
+        return None;
+    }
+    let mut lines = vec![Line::from(vec![
+        Span::styled("🐝 ", Style::default().fg(rgb(255, 200, 100))),
+        Span::styled(
+            content.trim().to_string(),
+            Style::default().fg(rgb(225, 225, 235)),
+        ),
+    ])];
+    if markdown::center_code_blocks() {
+        left_pad_lines_for_centered_mode(&mut lines, width);
+    }
+    Some(lines)
+}
+
 pub(crate) fn render_swarm_message(
     msg: &DisplayMessage,
     width: u16,
@@ -2239,6 +2313,9 @@ pub(crate) fn render_swarm_message(
     let centered = markdown::center_code_blocks();
     let title = msg.title.as_deref().unwrap_or("Swarm").trim();
     if let Some(lines) = render_compact_agent_notification(title, &msg.content, width) {
+        return lines;
+    }
+    if let Some(lines) = render_compact_swarm_await(title, &msg.content, width) {
         return lines;
     }
     let collapsible = jcode_tui_messages::parse_collapsible_swarm_content(&msg.content);
