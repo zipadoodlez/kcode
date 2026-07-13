@@ -14,6 +14,7 @@ use jcode_tui_render::swarm_gallery::{
     render_swarm_strip_vertical,
 };
 use ratatui::prelude::*;
+use std::collections::{HashMap, HashSet};
 
 fn member_label(member: &SwarmMemberStatus) -> String {
     member
@@ -134,6 +135,176 @@ pub(crate) fn render_swarm_chat_card_lines(
         }
     }
     jcode_tui_render::swarm_gallery::render_swarm_chat_cards(&gallery_members, width)
+}
+
+/// Render the member attached to a transcript spawn row plus every agent that
+/// member subsequently spawned. Descendants use compact cards connected by a
+/// tree rail, preserving the existing root card while making nested ownership
+/// visible in the chat where the root agent was introduced.
+pub(crate) fn render_swarm_chat_tree_lines(
+    root: &SwarmMemberStatus,
+    members: &[SwarmMemberStatus],
+    width: usize,
+) -> Vec<Line<'static>> {
+    let mut out = render_swarm_chat_card_lines(std::slice::from_ref(root), width);
+    if out.is_empty() {
+        return out;
+    }
+
+    let mut children_by_parent: HashMap<&str, Vec<&SwarmMemberStatus>> = HashMap::new();
+    for member in members {
+        if let Some(parent) = member.report_back_to_session_id.as_deref() {
+            children_by_parent.entry(parent).or_default().push(member);
+        }
+    }
+    for children in children_by_parent.values_mut() {
+        children.sort_by(|a, b| a.session_id.cmp(&b.session_id));
+    }
+    if !children_by_parent.contains_key(root.session_id.as_str()) {
+        return out;
+    }
+
+    out.push(Line::from(vec![
+        Span::raw("       "),
+        Span::styled("│", Style::default().fg(Color::Rgb(80, 80, 90))),
+    ]));
+    let mut visited = HashSet::from([root.session_id.as_str()]);
+    append_swarm_chat_descendants(
+        &mut out,
+        root.session_id.as_str(),
+        &children_by_parent,
+        &mut visited,
+        &[],
+        width,
+    );
+    out
+}
+
+fn append_swarm_chat_descendants<'a>(
+    out: &mut Vec<Line<'static>>,
+    parent_id: &str,
+    children_by_parent: &HashMap<&'a str, Vec<&'a SwarmMemberStatus>>,
+    visited: &mut HashSet<&'a str>,
+    ancestor_is_last: &[bool],
+    width: usize,
+) {
+    let Some(children) = children_by_parent.get(parent_id) else {
+        return;
+    };
+    let unvisited: Vec<_> = children
+        .iter()
+        .copied()
+        .filter(|child| !visited.contains(child.session_id.as_str()))
+        .collect();
+    for (index, child) in unvisited.iter().enumerate() {
+        visited.insert(child.session_id.as_str());
+        let is_last = index + 1 == unvisited.len();
+        let header_prefix = swarm_tree_prefix(ancestor_is_last, is_last, false);
+        let body_prefix = swarm_tree_prefix(ancestor_is_last, is_last, true);
+        let render_width = width.saturating_sub(display_width(&header_prefix));
+        if render_width < 8 {
+            continue;
+        }
+
+        let mut gallery = members_to_gallery(std::slice::from_ref(*child));
+        let Some(mut gallery) = gallery.pop() else {
+            continue;
+        };
+        if let Some(label) = child
+            .task_label
+            .as_deref()
+            .map(str::trim)
+            .filter(|label| !label.is_empty())
+        {
+            gallery.label = label.to_string();
+        }
+        // Nested cards answer "what is this child doing now" without repeating
+        // the root card's full todo viewport for every descendant.
+        if gallery.todo_items.len() > 1 {
+            let selected = gallery
+                .todo_items
+                .iter()
+                .position(|todo| todo.status == "in_progress")
+                .or_else(|| {
+                    gallery
+                        .todo_items
+                        .iter()
+                        .position(|todo| todo.status != "completed")
+                })
+                .unwrap_or(gallery.todo_items.len() - 1);
+            gallery.todo_items = vec![gallery.todo_items[selected].clone()];
+        }
+
+        let card = jcode_tui_render::swarm_gallery::render_swarm_chat_cards(
+            std::slice::from_ref(&gallery),
+            render_width,
+        );
+        for (line_index, line) in card.into_iter().enumerate() {
+            let prefix = if line_index == 0 {
+                &header_prefix
+            } else {
+                &body_prefix
+            };
+            out.push(prepend_tree_prefix(prefix, trim_leading_spaces(line, 4)));
+        }
+
+        let mut child_ancestors = ancestor_is_last.to_vec();
+        child_ancestors.push(is_last);
+        append_swarm_chat_descendants(
+            out,
+            child.session_id.as_str(),
+            children_by_parent,
+            visited,
+            &child_ancestors,
+            width,
+        );
+    }
+}
+
+fn swarm_tree_prefix(ancestor_is_last: &[bool], is_last: bool, body: bool) -> String {
+    let mut prefix = String::from("       ");
+    for &ancestor_last in ancestor_is_last {
+        prefix.push_str(if ancestor_last { "   " } else { "│  " });
+    }
+    prefix.push_str(if body {
+        if is_last { "   " } else { "│  " }
+    } else if is_last {
+        "└─ "
+    } else {
+        "├─ "
+    });
+    prefix
+}
+
+fn display_width(text: &str) -> usize {
+    unicode_width::UnicodeWidthStr::width(text)
+}
+
+fn prepend_tree_prefix(prefix: &str, line: Line<'static>) -> Line<'static> {
+    let mut spans = Vec::with_capacity(line.spans.len() + 1);
+    spans.push(Span::styled(
+        prefix.to_string(),
+        Style::default().fg(Color::Rgb(80, 80, 90)),
+    ));
+    spans.extend(line.spans);
+    Line::from(spans)
+}
+
+fn trim_leading_spaces(line: Line<'static>, mut spaces: usize) -> Line<'static> {
+    let mut spans = Vec::with_capacity(line.spans.len());
+    for span in line.spans {
+        if spaces == 0 {
+            spans.push(span);
+            continue;
+        }
+        let leading = span.content.chars().take_while(|ch| *ch == ' ').count();
+        let remove = leading.min(spaces);
+        spaces -= remove;
+        if remove < span.content.len() {
+            spans.push(Span::styled(span.content[remove..].to_string(), span.style));
+        }
+    }
+    Line::from(spans)
 }
 
 /// Render the inline swarm gallery for the given members into `area`-width lines.
@@ -444,5 +615,35 @@ mod tests {
 
         assert!(rendered.contains("card demo"), "rendered={rendered}");
         assert!(!rendered.contains("cow"), "rendered={rendered}");
+    }
+
+    #[test]
+    fn nested_chat_tree_is_width_bounded_and_cycle_safe() {
+        let mut root = member("root", "running", Some("coordinating"), None);
+        root.task_label = Some("Root reviewer".to_string());
+        root.report_back_to_session_id = Some("grandchild".to_string());
+        let mut child = member("child", "running", Some("testing"), None);
+        child.task_label = Some("Auth tests".to_string());
+        child.report_back_to_session_id = Some("root".to_string());
+        let mut grandchild = member("grandchild", "running", Some("fuzzing"), None);
+        grandchild.task_label = Some("Race check".to_string());
+        grandchild.report_back_to_session_id = Some("child".to_string());
+        let members = vec![root.clone(), child, grandchild];
+
+        for width in 0..80 {
+            let lines = render_swarm_chat_tree_lines(&root, &members, width);
+            assert!(lines.len() <= 8, "cycle expanded at width {width}");
+            for line in lines {
+                let text: String = line
+                    .spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect();
+                assert!(
+                    unicode_width::UnicodeWidthStr::width(text.as_str()) <= width,
+                    "line exceeded width {width}: {text:?}"
+                );
+            }
+        }
     }
 }

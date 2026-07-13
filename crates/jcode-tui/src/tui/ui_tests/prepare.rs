@@ -51,6 +51,26 @@ fn chat_swarm_member(session_id: &str) -> crate::protocol::SwarmMemberStatus {
     }
 }
 
+fn nested_chat_swarm_member(
+    session_id: &str,
+    parent_id: &str,
+    name: &str,
+    label: &str,
+    todo: &str,
+) -> crate::protocol::SwarmMemberStatus {
+    let mut member = chat_swarm_member(session_id);
+    member.friendly_name = Some(name.to_string());
+    member.task_label = Some(label.to_string());
+    member.report_back_to_session_id = Some(parent_id.to_string());
+    member.todo_progress = Some((0, 1));
+    member.todo_items = vec![crate::protocol::SwarmTodoItem {
+        content: todo.to_string(),
+        status: "in_progress".to_string(),
+        tool_intents: Vec::new(),
+    }];
+    member
+}
+
 #[test]
 fn test_prepare_messages_places_live_swarm_card_beneath_matching_spawn_tool_call() {
     let session_id = "spawned-session-123";
@@ -111,6 +131,98 @@ fn test_prepare_messages_places_live_swarm_card_beneath_matching_spawn_tool_call
         all.contains("bash · Run targeted authentication tests · 27/43"),
         "tool intent missing: {all}"
     );
+}
+
+#[test]
+fn test_prepare_messages_renders_nested_swarm_descendants_as_tree() {
+    let root_id = "root-reviewer";
+    let child_a = nested_chat_swarm_member(
+        "child-auth-tests",
+        root_id,
+        "otter",
+        "Auth tests",
+        "Run authentication integration tests",
+    );
+    let child_b = nested_chat_swarm_member(
+        "child-token-audit",
+        root_id,
+        "owl",
+        "Token audit",
+        "Audit JWT validation",
+    );
+    let grandchild = nested_chat_swarm_member(
+        "grandchild-race-check",
+        "child-token-audit",
+        "turtle",
+        "Race-condition check",
+        "Fuzz refresh-token rotation",
+    );
+    let unrelated = nested_chat_swarm_member(
+        "unrelated-worker",
+        "another-root",
+        "fox",
+        "Unrelated worker",
+        "Must not appear here",
+    );
+    let state = TestState {
+        display_messages: vec![DisplayMessage {
+            role: "tool".to_string(),
+            content: format!("Spawned new agent: {root_id}"),
+            tool_calls: Vec::new(),
+            duration_secs: None,
+            title: None,
+            tool_data: Some(ToolCall {
+                id: "call-nested-spawn".to_string(),
+                name: "swarm".to_string(),
+                input: serde_json::json!({"action": "spawn", "label": "API reviewer"}),
+                intent: Some("Spawn an authentication reviewer".to_string()),
+                thought_signature: None,
+            }),
+        }],
+        transcript_swarm_members: Some(vec![
+            chat_swarm_member(root_id),
+            child_a,
+            child_b,
+            grandchild,
+            unrelated,
+        ]),
+        ..Default::default()
+    };
+
+    let rendered = prepare::prepare_messages(&state, 110, 40)
+        .materialize_all_lines()
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>();
+    let all = rendered.join("\n");
+    let root = rendered
+        .iter()
+        .position(|line| line.contains("🐄 ● API reviewer"))
+        .expect("missing root card");
+    let auth = rendered
+        .iter()
+        .position(|line| line.contains("├─ 🦦 ● Auth tests"))
+        .expect("missing first child branch");
+    let token = rendered
+        .iter()
+        .position(|line| line.contains("└─ 🦉 ● Token audit"))
+        .expect("missing last child branch");
+    let race = rendered
+        .iter()
+        .position(|line| line.contains("└─ 🐢 ● Race-condition check"))
+        .expect("missing grandchild branch");
+
+    assert!(
+        root < auth && auth < token && token < race,
+        "rendered={all}"
+    );
+    assert!(
+        all.contains("Run authentication integration tests")
+            && all.contains("Fuzz refresh-token rotation"),
+        "nested current work missing: {all}"
+    );
+    assert!(!all.contains("Unrelated worker"), "rendered={all}");
+    assert!(!all.contains("Must not appear here"), "rendered={all}");
 }
 
 #[test]

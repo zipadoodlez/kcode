@@ -1291,8 +1291,9 @@ fn render_message_into(
                 acc.push_auto(align_if_unset(line, align));
             }
             if let Some(member) = spawned_member_for_tool(msg, &ctx.swarm_members) {
-                for line in crate::tui::info_widget::swarm_gallery::render_swarm_chat_card_lines(
-                    std::slice::from_ref(member),
+                for line in crate::tui::info_widget::swarm_gallery::render_swarm_chat_tree_lines(
+                    member,
+                    &ctx.swarm_members,
                     width.saturating_sub(1) as usize,
                 ) {
                     acc.push_auto(line.alignment(ratatui::layout::Alignment::Left));
