@@ -2323,7 +2323,7 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
         app.is_processing = true;
         super::local::finish_turn(&mut app);
 
-        assert!(!app.auto_poke_incomplete_todos);
+        assert!(app.auto_poke_incomplete_todos);
         assert!(app.pending_queued_dispatch);
         assert!(app.queued_messages().is_empty());
         assert_eq!(app.hidden_queued_system_messages.len(), 1);
@@ -2342,10 +2342,40 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
         assert!(
             app.display_messages()
                 .iter()
-                .any(|msg| msg
-                    .content
-                    .contains("Todos complete. Completion confidence: 86%. Internal quality gate requested more validation."))
+                .any(|msg| msg.content.contains(
+                    "Todo completion gate: completion confidence needs stronger validation."
+                ))
         );
+
+        // Dispatching the follow-up does not disarm the gate. If the model
+        // finishes another turn without improving completion confidence, the
+        // same validation follow-up is queued again.
+        app.hidden_queued_system_messages.clear();
+        app.pending_queued_dispatch = false;
+        app.is_processing = true;
+        super::local::finish_turn(&mut app);
+        assert!(app.auto_poke_incomplete_todos);
+        assert!(app.pending_queued_dispatch);
+        assert_eq!(app.hidden_queued_system_messages.len(), 1);
+
+        // Once the model records sufficient completion confidence through the
+        // todo tool, the next completion check passes and disarms auto-poke.
+        let mut validated = crate::todo::load_todos(&app.session.id).expect("load todos");
+        for todo in &mut validated {
+            todo.completion_confidence = Some(100);
+        }
+        crate::todo::save_todos(&app.session.id, &validated).expect("save validated todos");
+        app.hidden_queued_system_messages.clear();
+        app.pending_queued_dispatch = false;
+        app.is_processing = true;
+        super::local::finish_turn(&mut app);
+        assert!(!app.auto_poke_incomplete_todos);
+        assert!(!app.pending_queued_dispatch);
+        assert!(app.hidden_queued_system_messages.is_empty());
+        assert!(app.display_messages().iter().any(|msg| {
+            msg.content
+                .contains("Todos complete. Completion confidence: 100%.")
+        }));
     });
 }
 

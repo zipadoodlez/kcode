@@ -20,7 +20,7 @@ pub const TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE: &str = "Your hill-climbab
 
 /// Model-facing continuation for the private end-to-end ownership check. Names
 /// the assessment category without disclosing the score or threshold.
-pub const TODO_OWNERSHIP_CONTINUATION_MESSAGE: &str = "Your end-to-end ownership is not high enough to complete this goal. Think through the full outcome, address the remaining gaps, and validate the result end to end before marking it complete.";
+pub const TODO_OWNERSHIP_CONTINUATION_MESSAGE: &str = "Your end-to-end ownership is not high enough to complete this goal. Take ownership of the full user outcome, not just the immediate implementation. Follow the work through every relevant integration and runtime path, resolve consequential gaps, validate the complete workflow, and finish the necessary follow-through.";
 
 /// Model-facing continuation for private completion-confidence checks. Names
 /// the assessment category without disclosing scores, items, or thresholds.
@@ -241,7 +241,9 @@ mod tests {
         }
 
         assert!(TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE.contains("strong feedback loop"));
-        assert!(TODO_OWNERSHIP_CONTINUATION_MESSAGE.contains("before marking it complete"));
+        assert!(TODO_OWNERSHIP_CONTINUATION_MESSAGE.contains("full user outcome"));
+        assert!(TODO_OWNERSHIP_CONTINUATION_MESSAGE.contains("complete workflow"));
+        assert!(TODO_OWNERSHIP_CONTINUATION_MESSAGE.contains("necessary follow-through"));
         assert!(TODO_COMPLETION_CONTINUATION_MESSAGE.contains("Validate the completed result"));
     }
 

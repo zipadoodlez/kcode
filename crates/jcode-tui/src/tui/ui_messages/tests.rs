@@ -662,6 +662,57 @@ fn render_todo_tool_result_uses_borderless_card_with_goal_scores() {
 }
 
 #[test]
+fn render_ownership_gated_todo_result_keeps_the_full_card() {
+    let todos = vec![crate::todo::TodoItem {
+        id: "ship".to_string(),
+        content: "Deliver the complete workflow".to_string(),
+        status: "in_progress".to_string(),
+        priority: "high".to_string(),
+        group: Some("ship outcome".to_string()),
+        confidence: Some(95),
+        ..Default::default()
+    }];
+    let goals = vec![crate::todo::TodoGoal {
+        group: Some("ship outcome".to_string()),
+        hill_climbability: Some(100),
+        feedback_loop: Some("Run the complete workflow".to_string()),
+        end_to_end_ownership: Some(80),
+        ..Default::default()
+    }];
+    let content = format!(
+        "{}\n\nGoals:\n{}\n\n{}",
+        serde_json::to_string_pretty(&todos).unwrap(),
+        serde_json::to_string_pretty(&goals).unwrap(),
+        crate::todo::TODO_OWNERSHIP_CONTINUATION_MESSAGE
+    );
+    let msg = DisplayMessage {
+        role: "tool".to_string(),
+        content,
+        tool_calls: Vec::new(),
+        duration_secs: None,
+        title: Some("1 todos".to_string()),
+        tool_data: Some(crate::message::ToolCall {
+            id: "call_todo_ownership".to_string(),
+            name: "todo".to_string(),
+            input: serde_json::json!({ "todos": todos, "goals": goals }),
+            intent: Some("Complete the full user outcome".to_string()),
+            thought_signature: None,
+        }),
+    };
+
+    let plain = render_tool_message(&msg, 100, crate::config::DiffDisplayMode::Off)
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(plain.contains("ship outcome  ●"), "{plain}");
+    assert!(plain.contains("Deliver the complete workflow"), "{plain}");
+    assert!(plain.contains("Ownership 80%"), "{plain}");
+    assert!(!plain.contains("todo 1 items"), "{plain}");
+}
+
+#[test]
 fn render_background_task_messages_prefer_display_name() {
     let completion = DisplayMessage::background_task(
         "**Background task** `bg123` · `Run integration tests` (`bash`) · ✓ completed · 7.1s · exit 0\n\n_No output captured._\n\n_Full output:_ `bg action=\"output\" task_id=\"bg123\"`",

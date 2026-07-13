@@ -2586,7 +2586,6 @@ fn run_todos(session_id: &str) -> Vec<crate::todo::TodoItem> {
 
 fn build_run_auto_poke_follow_up_from_todos(
     todos: &[crate::todo::TodoItem],
-    confidence_summary_sent: bool,
 ) -> Option<RunAutoPokeFollowUp> {
     let incomplete: Vec<_> = todos
         .iter()
@@ -2599,8 +2598,7 @@ fn build_run_auto_poke_follow_up_from_todos(
             message: build_run_poke_message(&incomplete),
         });
     }
-    if !confidence_summary_sent
-        && !todos.is_empty()
+    if !todos.is_empty()
         && let Some(message) = build_run_todo_validation_message(todos)
     {
         return Some(RunAutoPokeFollowUp::ConfidenceSummary {
@@ -2648,7 +2646,6 @@ async fn run_single_message_command_plain_with_auto_poke(
     let mut next_message = message.to_string();
     let max_turns = run_command_auto_poke_max_turns();
     let mut turns_completed = 0usize;
-    let mut confidence_summary_sent = false;
     loop {
         agent.run_once(&next_message).await?;
         turns_completed += 1;
@@ -2656,9 +2653,16 @@ async fn run_single_message_command_plain_with_auto_poke(
             break;
         }
         let todos = run_todos(agent.session_id());
-        match build_run_auto_poke_follow_up_from_todos(&todos, confidence_summary_sent) {
+        match build_run_auto_poke_follow_up_from_todos(&todos) {
             Some(RunAutoPokeFollowUp::ConfidenceSummary { message, .. }) => {
-                confidence_summary_sent = true;
+                if run_command_auto_poke_limit_reached(turns_completed, max_turns) {
+                    if let Some(max_turns) = max_turns {
+                        eprintln!(
+                            "Auto-poke stopped after {max_turns} turn(s) with completion confidence still needing validation."
+                        );
+                    }
+                    break;
+                }
                 next_message = message;
                 eprintln!(
                     "Auto-poking: todos complete; sending confidence summary follow-up. Set JCODE_RUN_AUTO_POKE=0 to disable."
@@ -2695,7 +2699,6 @@ async fn run_single_message_command_capture_with_auto_poke(
     let max_turns = run_command_auto_poke_max_turns();
     let mut outputs = Vec::new();
     let mut turns_completed = 0usize;
-    let mut confidence_summary_sent = false;
     loop {
         outputs.push(agent.run_once_capture(&next_message).await?);
         turns_completed += 1;
@@ -2703,9 +2706,16 @@ async fn run_single_message_command_capture_with_auto_poke(
             break;
         }
         let todos = run_todos(agent.session_id());
-        match build_run_auto_poke_follow_up_from_todos(&todos, confidence_summary_sent) {
+        match build_run_auto_poke_follow_up_from_todos(&todos) {
             Some(RunAutoPokeFollowUp::ConfidenceSummary { message, .. }) => {
-                confidence_summary_sent = true;
+                if run_command_auto_poke_limit_reached(turns_completed, max_turns) {
+                    if let Some(max_turns) = max_turns {
+                        outputs.push(format!(
+                            "Auto-poke stopped after {max_turns} turn(s) with completion confidence still needing validation."
+                        ));
+                    }
+                    break;
+                }
                 next_message = message;
                 continue;
             }
@@ -2763,7 +2773,6 @@ async fn run_single_message_command_ndjson(
     let mut next_message = message.to_string();
     let mut result: Result<()> = Ok(());
     let mut turns_completed = 0usize;
-    let mut confidence_summary_sent = false;
     loop {
         let turn_result = {
             let mut run_future = std::pin::pin!(agent.run_once_streaming_mpsc(
@@ -2804,12 +2813,25 @@ async fn run_single_message_command_ndjson(
             break;
         }
         let todos = run_todos(&session_id);
-        match build_run_auto_poke_follow_up_from_todos(&todos, confidence_summary_sent) {
+        match build_run_auto_poke_follow_up_from_todos(&todos) {
             Some(RunAutoPokeFollowUp::ConfidenceSummary {
                 total_todos,
                 message,
             }) => {
-                confidence_summary_sent = true;
+                if run_command_auto_poke_limit_reached(turns_completed, max_turns) {
+                    if let Some(max_turns) = max_turns {
+                        write_json_line(
+                            &mut stdout,
+                            &serde_json::json!({
+                                "type": "auto_poke_stopped",
+                                "session_id": session_id,
+                                "completion_confidence_needs_validation": true,
+                                "max_turns": max_turns,
+                            }),
+                        )?;
+                    }
+                    break;
+                }
                 next_message = message;
                 write_json_line(
                     &mut stdout,

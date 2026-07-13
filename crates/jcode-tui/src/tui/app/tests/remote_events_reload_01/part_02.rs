@@ -193,7 +193,7 @@ fn test_remote_auto_poke_completion_below_threshold_tells_model_to_keep_working(
         app.status = ProcessingStatus::Streaming;
         app.current_message_id = Some(42);
         app.handle_server_event(crate::protocol::ServerEvent::Done { id: 42 }, &mut remote);
-        assert!(!app.auto_poke_incomplete_todos);
+        assert!(app.auto_poke_incomplete_todos);
         assert!(app.pending_queued_dispatch);
         assert_eq!(app.hidden_queued_system_messages.len(), 1);
         assert_eq!(
@@ -202,7 +202,7 @@ fn test_remote_auto_poke_completion_below_threshold_tells_model_to_keep_working(
         );
         assert!(app.display_messages().iter().any(|msg| {
             msg.content
-                .contains("Todos complete. Completion confidence: 80%. Internal quality gate requested more validation.")
+                .contains("Todo completion gate: completion confidence needs stronger validation.")
         }));
     });
 }

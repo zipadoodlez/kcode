@@ -122,6 +122,29 @@ fn take_reframe_nudges(goals: &[TodoGoal], todos: &[TodoItem]) -> Vec<String> {
     nudges
 }
 
+fn build_todo_output(
+    todos: Vec<TodoItem>,
+    goals: Vec<TodoGoal>,
+    continuations: impl IntoIterator<Item = String>,
+) -> Result<ToolOutput> {
+    let remaining = todos
+        .iter()
+        .filter(|todo| todo.status != "completed")
+        .count();
+    let mut text = serde_json::to_string_pretty(&todos)?;
+    if !goals.is_empty() {
+        text.push_str("\n\nGoals:\n");
+        text.push_str(&serde_json::to_string_pretty(&goals)?);
+    }
+    for continuation in continuations {
+        text.push_str("\n\n");
+        text.push_str(&continuation);
+    }
+    Ok(ToolOutput::new(text)
+        .with_title(format!("{} todos", remaining))
+        .with_metadata(json!({"todos": todos, "goals": goals})))
+}
+
 /// Leniently normalize raw todo-tool arguments before strict deserialization.
 ///
 /// Some providers (notably Claude tool calling) intermittently emit tool
@@ -294,7 +317,7 @@ impl Tool for TodoTool {
                                 "type": "integer",
                                 "minimum": 0,
                                 "maximum": 100,
-                                "description": "Self-assessment, 0-100, of how completely the stated goal and its relevant outcomes were handled. Use only when completing the goal."
+                                "description": "Completion-time self-assessment, 0-100, of whether the full intended user outcome and its necessary follow-through were delivered, rather than only the immediate implementation. Use only when completing the goal."
                             }
                         }
                     }
@@ -319,7 +342,11 @@ impl Tool for TodoTool {
                 let stored_goals = load_goals(&ctx.session_id).unwrap_or_default();
                 let goals = merge_goals(&stored_goals, params.goals);
                 if !newly_completed_groups_have_sufficient_ownership(&previous, &todos, &goals) {
-                    anyhow::bail!(TODO_OWNERSHIP_CONTINUATION_MESSAGE);
+                    return build_todo_output(
+                        previous,
+                        stored_goals,
+                        [TODO_OWNERSHIP_CONTINUATION_MESSAGE.to_string()],
+                    );
                 }
                 let nudges = take_reframe_nudges(&goals, &todos);
                 save_todos(&ctx.session_id, &todos)?;
@@ -330,33 +357,13 @@ impl Tool for TodoTool {
                     todos: todos.clone(),
                 }));
 
-                let remaining = todos.iter().filter(|t| t.status != "completed").count();
-                let mut text = serde_json::to_string_pretty(&todos)?;
-                if !goals.is_empty() {
-                    text.push_str("\n\nGoals:\n");
-                    text.push_str(&serde_json::to_string_pretty(&goals)?);
-                }
-                for nudge in &nudges {
-                    text.push_str("\n\n");
-                    text.push_str(nudge);
-                }
-                Ok(ToolOutput::new(text)
-                    .with_title(format!("{} todos", remaining))
-                    .with_metadata(json!({"todos": todos, "goals": goals})))
+                build_todo_output(todos, goals, nudges)
             })()
         } else {
             (|| {
                 let todos = load_todos(&ctx.session_id)?;
                 let goals = load_goals(&ctx.session_id).unwrap_or_default();
-                let remaining = todos.iter().filter(|t| t.status != "completed").count();
-                let mut text = serde_json::to_string_pretty(&todos)?;
-                if !goals.is_empty() {
-                    text.push_str("\n\nGoals:\n");
-                    text.push_str(&serde_json::to_string_pretty(&goals)?);
-                }
-                Ok(ToolOutput::new(text)
-                    .with_title(format!("{} todos", remaining))
-                    .with_metadata(json!({"todos": todos, "goals": goals})))
+                build_todo_output(todos, goals, Vec::new())
             })()
         };
         result.map_err(|err| {
@@ -434,6 +441,8 @@ mod tests {
             .and_then(Value::as_str)
             .expect("ownership should have a neutral description");
         assert!(ownership_description.contains("Use only when completing the goal."));
+        assert!(ownership_description.contains("full intended user outcome"));
+        assert!(ownership_description.contains("necessary follow-through"));
         assert!(!ownership_description.contains("90"));
         assert!(!ownership_description.contains("91"));
         assert!(
@@ -581,6 +590,27 @@ mod tests {
             group: group.map(str::to_string),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn ownership_gate_output_preserves_the_saved_todo_card() {
+        let todos = vec![open_todo(Some("ship"))];
+        let goals = vec![goal(Some("ship"), 96)];
+        let output = build_todo_output(
+            todos.clone(),
+            goals.clone(),
+            [TODO_OWNERSHIP_CONTINUATION_MESSAGE.to_string()],
+        )
+        .expect("ownership gate should produce a structured todo result");
+
+        assert_eq!(output.title.as_deref(), Some("1 todos"));
+        assert!(output.output.starts_with('['));
+        assert!(output.output.contains("\"status\": \"in_progress\""));
+        assert!(output.output.contains(TODO_OWNERSHIP_CONTINUATION_MESSAGE));
+        assert_eq!(
+            output.metadata,
+            Some(json!({"todos": todos, "goals": goals}))
+        );
     }
 
     #[test]

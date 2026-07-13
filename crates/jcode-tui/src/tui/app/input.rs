@@ -1242,29 +1242,28 @@ impl App {
             .cloned()
             .collect();
         if incomplete.is_empty() {
-            self.auto_poke_incomplete_todos = false;
             if todos.is_empty() {
+                self.auto_poke_incomplete_todos = false;
                 return false;
             }
             let confidence_summary = super::commands::todo_confidence_summary(&todos);
             let confidence_label =
                 super::commands::format_todo_completion_confidence(confidence_summary);
-            let gate_notice = if confidence_summary.needs_more_work {
-                " Internal quality gate requested more validation."
-            } else {
-                ""
-            };
-            self.push_display_message(DisplayMessage::system(format!(
-                "✅ Todos complete. Completion confidence: {}.{}",
-                confidence_label, gate_notice
-            )));
             if confidence_summary.needs_more_work {
+                self.push_display_message(DisplayMessage::system(
+                    "🛑 Todo completion gate: completion confidence needs stronger validation.",
+                ));
                 self.hidden_queued_system_messages.push(
                     super::commands::build_todo_confidence_summary_message(&todos),
                 );
                 self.pending_queued_dispatch = true;
                 return true;
             }
+            self.auto_poke_incomplete_todos = false;
+            self.push_display_message(DisplayMessage::system(format!(
+                "✅ Todos complete. Completion confidence: {}.",
+                confidence_label
+            )));
             self.pending_queued_dispatch = false;
             return false;
         }

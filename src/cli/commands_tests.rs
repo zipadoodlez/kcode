@@ -272,7 +272,7 @@ fn run_auto_poke_followup_targets_below_threshold_todos() {
         test_todo("b", "completed", "low", Some(80), Some(80)),
     ];
 
-    let followup = build_run_auto_poke_follow_up_from_todos(&todos, false);
+    let followup = build_run_auto_poke_follow_up_from_todos(&todos);
 
     match followup {
         Some(RunAutoPokeFollowUp::ConfidenceSummary {
@@ -294,7 +294,7 @@ fn run_auto_poke_followup_ignores_precompletion_confidence() {
     let mut todo = test_todo("a", "completed", "high", Some(0), Some(100));
     todo.confidence_history = vec![0, 100];
 
-    assert!(build_run_auto_poke_follow_up_from_todos(&[todo], false).is_none());
+    assert!(build_run_auto_poke_follow_up_from_todos(&[todo]).is_none());
 }
 
 #[test]
@@ -305,7 +305,7 @@ fn run_auto_poke_followup_silent_when_confident_and_earned() {
         test_todo("a", "completed", "high", Some(95), Some(95)),
         test_todo("b", "completed", "low", Some(92), Some(98)),
     ];
-    assert!(build_run_auto_poke_follow_up_from_todos(&todos, false).is_none());
+    assert!(build_run_auto_poke_follow_up_from_todos(&todos).is_none());
 }
 
 #[test]
@@ -315,7 +315,7 @@ fn run_auto_poke_followup_prioritizes_incomplete_todos() {
         test_todo("b", "in_progress", "medium", Some(80), None),
     ];
 
-    let followup = build_run_auto_poke_follow_up_from_todos(&todos, false);
+    let followup = build_run_auto_poke_follow_up_from_todos(&todos);
 
     match followup {
         Some(RunAutoPokeFollowUp::Incomplete { count, message }) => {
@@ -330,10 +330,19 @@ fn run_auto_poke_followup_prioritizes_incomplete_todos() {
 }
 
 #[test]
-fn run_auto_poke_followup_sends_confidence_summary_once() {
-    let todos = vec![test_todo("a", "completed", "high", Some(95), Some(95))];
+fn run_auto_poke_followup_rechecks_completion_confidence_until_it_passes() {
+    let needs_validation = vec![test_todo("a", "completed", "high", Some(80), Some(80))];
+    assert!(matches!(
+        build_run_auto_poke_follow_up_from_todos(&needs_validation),
+        Some(RunAutoPokeFollowUp::ConfidenceSummary { .. })
+    ));
+    assert!(matches!(
+        build_run_auto_poke_follow_up_from_todos(&needs_validation),
+        Some(RunAutoPokeFollowUp::ConfidenceSummary { .. })
+    ));
 
-    assert!(build_run_auto_poke_follow_up_from_todos(&todos, true).is_none());
+    let validated = vec![test_todo("a", "completed", "high", Some(80), Some(100))];
+    assert!(build_run_auto_poke_follow_up_from_todos(&validated).is_none());
 }
 
 #[test]

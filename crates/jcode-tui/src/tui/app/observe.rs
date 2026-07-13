@@ -197,8 +197,8 @@ fn todo_gate_notice(name: &str, output: &str, is_error: bool) -> Option<&'static
         return None;
     }
 
-    if is_error && output.contains(crate::todo::TODO_OWNERSHIP_CONTINUATION_MESSAGE) {
-        Some("🛑 Todo completion gate: end-to-end ownership needs more work.")
+    if output.contains(crate::todo::TODO_OWNERSHIP_CONTINUATION_MESSAGE) {
+        Some("🛑 Todo completion gate: end-to-end ownership needs full-outcome follow-through.")
     } else if !is_error && output.contains(crate::todo::TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE)
     {
         Some("👉 Todo quality gate: hill-climbability needs a stronger feedback loop.")
@@ -297,7 +297,7 @@ mod tests {
         let ownership = todo_gate_notice(
             "todo",
             crate::todo::TODO_OWNERSHIP_CONTINUATION_MESSAGE,
-            true,
+            false,
         )
         .expect("ownership gate should produce a notice");
         let hill = todo_gate_notice(
