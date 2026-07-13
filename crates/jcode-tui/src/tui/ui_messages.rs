@@ -1164,6 +1164,44 @@ fn render_todo_goal_header(
     todo_card_line(spans, base_indent, inner_width)
 }
 
+fn wrap_todo_detail(value: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+
+    for word in value.split_whitespace() {
+        let word_width = word.width();
+        if !current.is_empty() && current.width() + 1 + word_width <= width {
+            current.push(' ');
+            current.push_str(word);
+            continue;
+        }
+        if current.is_empty() && word_width <= width {
+            current.push_str(word);
+            continue;
+        }
+        if !current.is_empty() {
+            chunks.push(std::mem::take(&mut current));
+        }
+        if word_width <= width {
+            current.push_str(word);
+            continue;
+        }
+        let mut word_chunks = split_by_display_width(word, width).into_iter().peekable();
+        while let Some(chunk) = word_chunks.next() {
+            if word_chunks.peek().is_some() {
+                chunks.push(chunk);
+            } else {
+                current = chunk;
+            }
+        }
+    }
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+    chunks
+}
+
 fn push_todo_goal_details(
     lines: &mut Vec<Line<'static>>,
     goal: Option<&crate::todo::TodoGoal>,
@@ -1208,18 +1246,26 @@ fn push_todo_goal_details(
         let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
             continue;
         };
-        lines.push(todo_card_line(
-            vec![
-                Span::styled("  ", Style::default()),
-                Span::styled(
-                    format!("{} · ", label),
-                    Style::default().fg(todo_label_color()),
-                ),
-                Span::styled(value.to_string(), Style::default().fg(todo_meta_color())),
-            ],
-            base_indent,
-            inner_width,
-        ));
+        let prefix = format!("  {} · ", label);
+        let prefix_width = prefix.width();
+        let available = inner_width.saturating_sub(prefix_width).max(1);
+        for (index, chunk) in wrap_todo_detail(value, available).into_iter().enumerate() {
+            lines.push(todo_card_line(
+                vec![
+                    Span::styled(
+                        if index == 0 {
+                            prefix.clone()
+                        } else {
+                            " ".repeat(prefix_width)
+                        },
+                        Style::default().fg(todo_label_color()),
+                    ),
+                    Span::styled(chunk, Style::default().fg(todo_meta_color())),
+                ],
+                base_indent,
+                inner_width,
+            ));
+        }
     }
 }
 
@@ -2705,15 +2751,18 @@ pub(crate) fn render_tool_message(
         return lines;
     }
 
-    let mut lines: Vec<Line<'static>> = Vec::new();
-    let Some(ref tc) = msg.tool_data else {
-        return lines;
-    };
-
     let centered = markdown::center_code_blocks();
     let token_badge = tool_output_token_badge(&msg.content);
 
-    if tools_ui::canonical_tool_name(&tc.name) == "todo"
+    // A restored or remotely mirrored transcript can occasionally retain the
+    // todo result while losing its paired ToolCall metadata. Recognize the
+    // structured todo payload itself so the full card never disappears merely
+    // because that display-only association was unavailable.
+    let is_todo_tool = msg
+        .tool_data
+        .as_ref()
+        .is_none_or(|tc| tools_ui::canonical_tool_name(&tc.name) == "todo");
+    if is_todo_tool
         && !tools_ui::tool_output_looks_failed(&msg.content)
         && let Some((todos, goals)) = parse_todo_tool_output(&msg.content)
     {
@@ -2724,6 +2773,11 @@ pub(crate) fn render_tool_message(
             crate::config::DiffDisplayMode::Off,
         );
     }
+
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    let Some(ref tc) = msg.tool_data else {
+        return lines;
+    };
 
     if tools_ui::is_memory_store_tool(tc) && !msg.content.starts_with("Error:") {
         let content = tc

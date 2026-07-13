@@ -7,6 +7,10 @@ fn extract_line_text(line: &Line<'_>) -> String {
         .collect::<String>()
 }
 
+fn without_whitespace(text: &str) -> String {
+    text.chars().filter(|ch| !ch.is_whitespace()).collect()
+}
+
 fn leading_spaces(text: &str) -> usize {
     text.chars().take_while(|c| *c == ' ').count()
 }
@@ -658,6 +662,122 @@ fn render_todo_tool_result_uses_borderless_card_with_goal_scores() {
     assert!(
         !plain.contains("todo 1 items"),
         "generic tool row leaked:\n{plain}"
+    );
+}
+
+#[test]
+fn unbiased_visual_prompt_retry_renders_complete_feedback_change() {
+    const PROMPT: &str = "can you make a pelican riding a bike animation in html and vanillia js ";
+    const INITIAL_FEEDBACK: &str = "Open the page in a browser, inspect runtime errors, and verify animation state changes over time.";
+    const REVISED_FEEDBACK: &str = "Serve the files locally, load them in a real browser at desktop and mobile viewport sizes, assert zero console/page errors, sample wheel and scenery transforms at two timestamps to prove motion, and exercise pause plus speed controls to confirm state changes.";
+    const REVISED_OBJECTIVE: &str = "Deliver a responsive standalone animation whose pelican visibly pedals a moving bicycle through a layered seaside scene at 60fps where supported, with working pause/resume and three-speed controls, accessible labels, no external runtime dependencies, and zero browser console errors.";
+
+    // Keep the eval input neutral. The visual verification strategy must come
+    // from the model's todo refinement, not from criteria planted in the prompt.
+    for biased_term in [
+        "feedback loop",
+        "browser",
+        "console",
+        "viewport",
+        "screenshot",
+        "visual quality",
+    ] {
+        assert!(!PROMPT.to_ascii_lowercase().contains(biased_term));
+    }
+
+    let todos = vec![crate::todo::TodoItem {
+        id: "implement".to_string(),
+        content: "Implement the illustrated pelican bicycle scene and responsive styling"
+            .to_string(),
+        status: "in_progress".to_string(),
+        priority: "high".to_string(),
+        group: Some("pelican-bike-animation".to_string()),
+        confidence: Some(90),
+        ..Default::default()
+    }];
+    let render = |goal: crate::todo::TodoGoal,
+                  continuation: Option<&str>,
+                  tool_data: Option<crate::message::ToolCall>| {
+        let mut content = format!(
+            "{}\n\nGoals:\n{}",
+            serde_json::to_string_pretty(&todos).unwrap(),
+            serde_json::to_string_pretty(&vec![goal]).unwrap()
+        );
+        if let Some(continuation) = continuation {
+            content.push_str("\n\n");
+            content.push_str(continuation);
+        }
+        let msg = DisplayMessage {
+            role: "tool".to_string(),
+            content,
+            tool_calls: Vec::new(),
+            duration_secs: None,
+            title: Some("1 todos".to_string()),
+            tool_data,
+        };
+        render_tool_message(&msg, 72, crate::config::DiffDisplayMode::Off)
+            .iter()
+            .map(extract_line_text)
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    let initial = render(
+        crate::todo::TodoGoal {
+            group: Some("pelican-bike-animation".to_string()),
+            hill_climbability: Some(90),
+            objective: Some(
+                "Create a polished, working pelican-riding-a-bike animation using only HTML, CSS, and vanilla JavaScript."
+                    .to_string(),
+            ),
+            feedback_loop: Some(INITIAL_FEEDBACK.to_string()),
+            end_to_end_ownership: None,
+        },
+        Some(crate::todo::TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE),
+        Some(crate::message::ToolCall {
+            id: "call_initial_todo".to_string(),
+            name: "todo".to_string(),
+            input: serde_json::Value::Null,
+            intent: Some("Track implementation and browser verification".to_string()),
+            thought_signature: None,
+        }),
+    );
+    assert!(initial.contains("pelican-bike-animation"), "{initial}");
+    assert!(
+        without_whitespace(&initial).contains(&without_whitespace(INITIAL_FEEDBACK)),
+        "initial feedback loop was truncated:\n{initial}"
+    );
+
+    // Simulate a restored/mirrored result whose ToolCall association was lost.
+    // The structured result must still render as the same complete todo card.
+    let revised = render(
+        crate::todo::TodoGoal {
+            group: Some("pelican-bike-animation".to_string()),
+            hill_climbability: Some(98),
+            objective: Some(REVISED_OBJECTIVE.to_string()),
+            feedback_loop: Some(REVISED_FEEDBACK.to_string()),
+            end_to_end_ownership: None,
+        },
+        None,
+        None,
+    );
+    let compact_revised = without_whitespace(&revised);
+    assert!(revised.contains("pelican-bike-animation"), "{revised}");
+    assert!(
+        compact_revised.contains(&without_whitespace(REVISED_OBJECTIVE)),
+        "revised objective was truncated:\n{revised}"
+    );
+    assert!(
+        compact_revised.contains(&without_whitespace(REVISED_FEEDBACK)),
+        "revised feedback loop was truncated:\n{revised}"
+    );
+    let goal_details = revised
+        .split("● Implement")
+        .next()
+        .expect("todo item should follow the goal details");
+    assert!(
+        !goal_details.contains('…'),
+        "todo goal details must not truncate:\n{revised}"
     );
 }
 

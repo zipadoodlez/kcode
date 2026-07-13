@@ -474,6 +474,18 @@ mod tests {
                 "model-visible todo schema disclosed calibration wording: {disclosure}"
             );
         }
+        for domain_hint in [
+            "visual quality",
+            "screenshot",
+            "browser",
+            "viewport",
+            "console error",
+        ] {
+            assert!(
+                !model_visible_schema.contains(domain_hint),
+                "model-visible todo schema biased visual-work feedback: {domain_hint}"
+            );
+        }
     }
 
     fn parse(input: Value) -> Result<TodoInput, serde_json::Error> {
