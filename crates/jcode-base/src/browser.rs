@@ -111,13 +111,28 @@ pub fn ensure_browser_session(session_id: &str) -> Option<String> {
         return None;
     }
 
-    // Bind each agent session to a dedicated browser window so parallel
-    // sessions do not fight over the shared active tab. Fall back to an
-    // unbound session for older bridge CLIs without --bind-window.
-    if let Some(name) = spawn_browser_session(&bin, &session_name, true) {
+    // Bind each agent session to a dedicated browser window when the installed
+    // bridge supports it. Older bridge CLIs reject --bind-window, so probe the
+    // command surface instead of paying for a known-failing process launch on
+    // every browser action.
+    if browser_supports_bind_window(&bin)
+        && let Some(name) = spawn_browser_session(&bin, &session_name, true)
+    {
         return Some(name);
     }
     spawn_browser_session(&bin, &session_name, false)
+}
+
+fn browser_supports_bind_window(bin: &std::path::Path) -> bool {
+    std::process::Command::new(bin)
+        .args(["session", "start", "--help"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .ok()
+        .is_some_and(|output| {
+            String::from_utf8_lossy(&output.stdout).contains("--bind-window")
+                || String::from_utf8_lossy(&output.stderr).contains("--bind-window")
+        })
 }
 
 fn spawn_browser_session(
@@ -163,6 +178,8 @@ fn spawn_browser_session(
                 "[browser] session '{}' did not start within 10s",
                 session_name
             );
+            let _ = child.kill();
+            let _ = child.wait();
             None
         }
         Err(e) => {

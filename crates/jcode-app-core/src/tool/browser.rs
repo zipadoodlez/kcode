@@ -429,10 +429,9 @@ async fn firefox_setup(provider: &FirefoxBridgeProvider) -> Result<ToolOutput> {
 }
 
 async fn ensure_firefox_ready() -> Result<Option<String>> {
-    if crate::browser::is_setup_complete() {
-        return Ok(None);
-    }
-
+    // A setup marker only proves that installation once completed. Always
+    // verify the live bridge before launching an action because Firefox or the
+    // extension may have stopped or become incompatible since then.
     let status = crate::browser::ensure_browser_ready_noninteractive().await?;
     if status.ready {
         return Ok(None);
@@ -455,8 +454,9 @@ async fn ensure_firefox_ready() -> Result<Option<String>> {
     } else {
         message.push_str("Browser bridge binaries are installed, but the live Firefox bridge is not responding.\n");
     }
-    message
-        .push_str("Normal browser tool calls will not reopen the installer automatically anymore.");
+    message.push_str(
+        "Normal browser tool calls will not reopen the installer automatically anymore. Do not retry browser actions until status reports ready. Continue with another available capability; if the goal requires an external capability unavailable in this session, use capability discovery.",
+    );
     anyhow::bail!(message)
 }
 

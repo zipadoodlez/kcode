@@ -169,3 +169,44 @@ fn ensure_browser_session_fails_fast_when_session_process_exits_immediately() {
         crate::env::remove_var("JCODE_HOME");
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn ensure_browser_session_does_not_pass_unsupported_bind_window_flag() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _guard = crate::storage::lock_test_env();
+    let prev_home = std::env::var_os("JCODE_HOME");
+    let temp = tempfile::TempDir::new().expect("create temp dir");
+    crate::env::set_var("JCODE_HOME", temp.path());
+
+    let browser_dir = temp.path().join("browser");
+    std::fs::create_dir_all(&browser_dir).expect("create browser dir");
+    let bin = browser_dir.join("browser");
+    let invocations = temp.path().join("invocations");
+    std::fs::write(
+        &bin,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{}'\nif [ \"$1 $2 $3\" = \"session start --help\" ]; then\n  echo 'Usage: browser session start [NAME]'\nfi\nexit 2\n",
+            invocations.display()
+        ),
+    )
+    .expect("write fake browser binary");
+    let mut perms = std::fs::metadata(&bin)
+        .expect("stat fake browser binary")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).expect("chmod fake browser binary");
+
+    assert!(ensure_browser_session("legacy-session").is_none());
+    let calls = std::fs::read_to_string(invocations).expect("read invocations");
+    assert!(calls.contains("session start --help"), "{calls}");
+    assert!(calls.contains("session start legacy-session"), "{calls}");
+    assert!(!calls.contains("--bind-window"), "{calls}");
+
+    if let Some(prev_home) = prev_home {
+        crate::env::set_var("JCODE_HOME", prev_home);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+}

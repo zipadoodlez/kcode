@@ -215,3 +215,43 @@ fn description_tells_models_to_check_status_before_setup() {
     assert!(description.contains("action='setup' only"));
     assert!(description.contains("Do not run setup before every browser task"));
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn readiness_does_not_trust_a_stale_setup_marker() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _guard = jcode_base::storage::lock_test_env();
+    let prev_home = std::env::var_os("JCODE_HOME");
+    let temp = tempfile::TempDir::new().expect("create temp dir");
+    jcode_base::env::set_var("JCODE_HOME", temp.path());
+
+    let browser_dir = temp.path().join("browser");
+    std::fs::create_dir_all(&browser_dir).expect("create browser dir");
+    let browser = browser_dir.join("browser");
+    std::fs::write(&browser, "#!/bin/sh\nexit 1\n").expect("write fake browser");
+    let mut perms = std::fs::metadata(&browser)
+        .expect("stat fake browser")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&browser, perms).expect("chmod fake browser");
+    std::fs::write(browser_dir.join("firefox-agent-bridge-host"), "host").expect("write fake host");
+    std::fs::write(browser_dir.join(".setup-complete"), "complete").expect("write setup marker");
+
+    let error = ensure_firefox_ready()
+        .await
+        .expect_err("stale setup marker must not bypass live readiness");
+    let message = error.to_string();
+    assert!(message.contains("not responding"), "{message}");
+    assert!(
+        message.contains("Do not retry browser actions"),
+        "{message}"
+    );
+    assert!(message.contains("capability discovery"), "{message}");
+
+    if let Some(prev_home) = prev_home {
+        jcode_base::env::set_var("JCODE_HOME", prev_home);
+    } else {
+        jcode_base::env::remove_var("JCODE_HOME");
+    }
+}
