@@ -1,0 +1,19 @@
+{
+  "version": "0.46.0",
+  "date": "2026-07-13",
+  "title": "Clearer swarm hierarchies and steadier math rendering",
+  "highlights": [
+    "Spawn cards now show nested agents and their active work directly in the chat transcript",
+    "Swarm prompts can be opened from inline controls without leaving the current workflow",
+    "Multiline LaTeX stays stable while responses stream and standalone equations render as complete math blocks"
+  ],
+  "improvements": [
+    "LaTeX images scale to the terminal font size for more consistent visual proportions",
+    "OpenAI OAuth usage displays adapt to dynamically reported context and rate-limit windows"
+  ],
+  "fixes": [
+    "Mouse capture remains enabled after restarting the TUI",
+    "Task graph seeding rejects collisions safely instead of partially applying conflicting nodes",
+    "Structured Markdown layouts preserve constrained widths when tables, lists, and blockquotes contain math"
+  ]
+}
