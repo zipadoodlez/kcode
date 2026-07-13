@@ -33,7 +33,7 @@ use std::time::Instant;
 pub(super) const REVIEW_PREFERRED_MODEL: &str = "gpt-5.5";
 const POKE_OFF_UI_HINT: &str = "/poke off to stop.";
 const TODO_CONFIDENCE_THRESHOLD: u8 = crate::todo::QUALITY_GATE_THRESHOLD;
-const TODO_CONFIDENCE_SUMMARY_PREFIX: &str = crate::todo::TODO_CONFIDENCE_SUMMARY_PREFIX;
+const TODO_QUALITY_CONTINUATION_MESSAGE: &str = crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct TodoConfidenceSummary {
@@ -74,7 +74,8 @@ pub(super) fn is_poke_message(message: &str) -> bool {
 }
 
 pub(super) fn is_todo_confidence_summary_message(message: &str) -> bool {
-    message.starts_with(TODO_CONFIDENCE_SUMMARY_PREFIX)
+    message.starts_with(TODO_QUALITY_CONTINUATION_MESSAGE)
+        || message.starts_with("All todos are done. Todo confidence summary:")
 }
 
 pub(super) fn queued_messages_are_only_pokes(messages: &[String]) -> bool {
@@ -2528,107 +2529,8 @@ fn weighted_confidence_average(scores: impl IntoIterator<Item = (u8, u32)>) -> O
 }
 
 pub(super) fn build_todo_confidence_summary_message(todos: &[crate::todo::TodoItem]) -> String {
-    let summary = todo_confidence_summary(todos);
-    let completed: Vec<&crate::todo::TodoItem> = todos
-        .iter()
-        .filter(|todo| todo.status == "completed")
-        .collect();
-    let cancelled_count = todos
-        .iter()
-        .filter(|todo| todo.status == "cancelled")
-        .count();
-
-    let planning_average = weighted_confidence_average(todos.iter().filter_map(|todo| {
-        todo.confidence
-            .map(|score| (score, todo_confidence_weight(&todo.priority)))
-    }));
-    let completion_scores: Vec<(&crate::todo::TodoItem, u8, u32)> = completed
-        .iter()
-        .filter_map(|todo| {
-            todo.completion_confidence
-                .map(|score| (*todo, score, todo_confidence_weight(&todo.priority)))
-        })
-        .collect();
-    let completion_average = summary.completion_average;
-    let missing_completion_confidence = completed
-        .iter()
-        .filter(|todo| todo.completion_confidence.is_none())
-        .count();
-    let below_threshold_count = completion_scores
-        .iter()
-        .filter(|(_, score, _)| *score < TODO_CONFIDENCE_THRESHOLD)
-        .count();
-    let lowest_completed = completion_scores
-        .iter()
-        .min_by_key(|(_, score, _)| *score)
-        .map(|(_, score, _)| *score);
-
-    let mut lines = vec![TODO_CONFIDENCE_SUMMARY_PREFIX.to_string()];
-    lines.push(format!(
-        "- Completed todos: {}{}.",
-        completed.len(),
-        if cancelled_count == 0 {
-            String::new()
-        } else {
-            format!(
-                " ({} cancelled todo{} skipped)",
-                cancelled_count,
-                if cancelled_count == 1 { "" } else { "s" }
-            )
-        }
-    ));
-
-    match completion_average {
-        Some(avg) => lines.push(format!("- Weighted completion confidence: {}%.", avg)),
-        None if !completed.is_empty() => lines.push(
-            "- Weighted completion confidence: unknown because no completed todo has completion_confidence."
-                .to_string(),
-        ),
-        None => lines.push("- No completed todos recorded completion confidence.".to_string()),
-    }
-    match planning_average {
-        Some(avg) => lines.push(format!("- Weighted planning confidence: {}%.", avg)),
-        None => lines.push("- Weighted planning confidence: unknown.".to_string()),
-    }
-
-    match lowest_completed {
-        Some(score) => lines.push(format!("- Lowest completed todo confidence: {}%.", score)),
-        None => lines.push("- Lowest completed todo confidence: unknown.".to_string()),
-    }
-
-    if missing_completion_confidence > 0 {
-        lines.push(format!(
-            "- Missing completion_confidence on {} completed todo{}.",
-            missing_completion_confidence,
-            if missing_completion_confidence == 1 {
-                ""
-            } else {
-                "s"
-            }
-        ));
-    }
-
-    if below_threshold_count > 0 {
-        lines.push(format!(
-            "- {} completed todo{} did not clear the internal confidence gate.",
-            below_threshold_count,
-            if below_threshold_count == 1 { "" } else { "s" },
-        ));
-    }
-
-    if summary.needs_more_work {
-        lines.push(format!(
-            "- {}",
-            crate::prompt::TODO_CONFIDENCE_NEEDS_VALIDATION_PROMPT.trim()
-        ));
-    } else {
-        lines.push(format!(
-            "- {}",
-            crate::prompt::TODO_CONFIDENCE_READY_PROMPT.trim()
-        ));
-    }
-
-    lines.join("\n")
+    let _ = todos;
+    TODO_QUALITY_CONTINUATION_MESSAGE.to_string()
 }
 
 pub(super) fn todo_confidence_summary(todos: &[crate::todo::TodoItem]) -> TodoConfidenceSummary {

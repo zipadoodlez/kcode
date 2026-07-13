@@ -14,17 +14,10 @@ pub const QUALITY_GATE_THRESHOLD: u8 = 96;
 /// quantifiable and verifiable.
 pub const LOW_HILL_CLIMBABILITY: u8 = QUALITY_GATE_THRESHOLD;
 
-/// Prefix of the synthetic "all todos done" confidence summary follow-up that
-/// auto-poke queues once every todo is complete.
-pub const TODO_CONFIDENCE_SUMMARY_PREFIX: &str = "All todos are done. Todo confidence summary:";
-
-/// Stable model-visible marker returned when a newly completed todo group does
-/// not clear the private end-to-end ownership gate. Keep the threshold private.
-pub const TODO_OWNERSHIP_GATE_MESSAGE: &str = "Your end-to-end ownership isn't high enough. Go back and review the full outcome, handle any missing adjacent work, validate it end to end, clean up remaining loose ends, and then update the assessment before completing the group.";
-
-/// Stable model-visible fragment used to identify hill-climbability gate
-/// guidance in tool output without exposing the private threshold.
-pub const TODO_HILL_CLIMBABILITY_GATE_FRAGMENT: &str = "has low hill-climbability";
+/// Generic model-facing continuation used by private todo quality checks.
+/// Deliberately does not disclose which check fired, its score, or its threshold.
+pub const TODO_QUALITY_CONTINUATION_MESSAGE: &str = "Continue working before finalizing. Review the todo and goal assessments after validating the result.";
+const LEGACY_TODO_CONFIDENCE_SUMMARY_PREFIX: &str = "All todos are done. Todo confidence summary:";
 
 /// A completed todo is "spike-finished" when its confidence jumped at least
 /// this many points in its final step. Benchmark analysis (TB2.1 k=5) showed
@@ -127,7 +120,8 @@ pub fn is_auto_poke_message(message: &str) -> bool {
     (trimmed.starts_with("You have ")
         && trimmed.contains(" incomplete todo")
         && trimmed.ends_with("update the todo tool."))
-        || trimmed.starts_with(TODO_CONFIDENCE_SUMMARY_PREFIX)
+        || trimmed.starts_with(TODO_QUALITY_CONTINUATION_MESSAGE)
+        || trimmed.starts_with(LEGACY_TODO_CONFIDENCE_SUMMARY_PREFIX)
 }
 
 pub fn load_todos(session_id: &str) -> Result<Vec<TodoItem>> {
@@ -237,10 +231,8 @@ mod tests {
     fn built_auto_poke_messages_are_detected() {
         assert!(is_auto_poke_message(&build_auto_poke_message(1)));
         assert!(is_auto_poke_message(&build_auto_poke_message(3)));
-        assert!(is_auto_poke_message(&format!(
-            "{} core work 95%",
-            TODO_CONFIDENCE_SUMMARY_PREFIX
-        )));
+        assert!(is_auto_poke_message(TODO_QUALITY_CONTINUATION_MESSAGE));
+        assert!(is_auto_poke_message(LEGACY_TODO_CONFIDENCE_SUMMARY_PREFIX));
     }
 
     #[test]

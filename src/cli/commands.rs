@@ -2631,58 +2631,19 @@ fn build_run_todo_validation_message(todos: &[crate::todo::TodoItem]) -> Option<
     //   unearned step instead of rising with evidence. Benchmark data shows
     //   this is where every wrong 100%-confidence claim lives, and that the
     //   planning-time score correctly identified the risky step.
-    let below: Vec<&&crate::todo::TodoItem> = completed
-        .iter()
-        .filter(|todo| {
-            todo.completion_confidence
-                .is_none_or(|score| score < RUN_TODO_CONFIDENCE_THRESHOLD)
-        })
-        .collect();
+    let has_below = completed.iter().any(|todo| {
+        todo.completion_confidence
+            .is_none_or(|score| score < RUN_TODO_CONFIDENCE_THRESHOLD)
+    });
     let spiked = crate::todo::spike_completed_todos(todos);
 
-    if below.is_empty() && spiked.is_empty() {
+    if !has_below && spiked.is_empty() {
         // Nothing actionable: completing the loop with a generic summary just
         // spends tokens on "all good" theater, so send nothing and end the run.
         return None;
     }
 
-    let mut lines = vec![crate::todo::TODO_CONFIDENCE_SUMMARY_PREFIX.to_string()];
-    for todo in &below {
-        match todo.completion_confidence {
-            Some(score) => lines.push(format!(
-                "- \"{}\" was completed at {}% confidence (threshold {}%).",
-                todo.content, score, RUN_TODO_CONFIDENCE_THRESHOLD
-            )),
-            None => lines.push(format!(
-                "- \"{}\" was completed without recording completion confidence.",
-                todo.content
-            )),
-        }
-    }
-    for todo in &spiked {
-        let trail = if todo.confidence_history.len() >= 2 {
-            todo.confidence_history
-                .iter()
-                .map(|value| value.to_string())
-                .collect::<Vec<_>>()
-                .join(" -> ")
-        } else {
-            format!(
-                "{} -> {}",
-                todo.confidence.unwrap_or_default(),
-                todo.completion_confidence.unwrap_or_default()
-            )
-        };
-        lines.push(format!(
-            "- \"{}\" jumped to its final confidence in one step ({}). You planned it as one of the riskier items; the confidence was not earned through intermediate validation.",
-            todo.content, trail
-        ));
-    }
-    lines.push(format!(
-        "- {}",
-        crate::prompt::TODO_CONFIDENCE_NEEDS_VALIDATION_PROMPT.trim()
-    ));
-    Some(lines.join("\n"))
+    Some(crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE.to_string())
 }
 
 async fn run_single_message_command_plain_with_auto_poke(

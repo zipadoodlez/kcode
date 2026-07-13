@@ -196,11 +196,10 @@ fn test_remote_auto_poke_completion_below_threshold_tells_model_to_keep_working(
         assert!(!app.auto_poke_incomplete_todos);
         assert!(app.pending_queued_dispatch);
         assert_eq!(app.hidden_queued_system_messages.len(), 1);
-        // Below-threshold completions queue the needs-validation guidance.
-        // Reference the shared prompt constant so this test cannot drift when
-        // the guidance wording changes.
-        assert!(app.hidden_queued_system_messages[0]
-            .contains(crate::prompt::TODO_CONFIDENCE_NEEDS_VALIDATION_PROMPT.trim()));
+        assert_eq!(
+            app.hidden_queued_system_messages[0],
+            crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE
+        );
         assert!(app.display_messages().iter().any(|msg| {
             msg.content
                 .contains("Todos complete. Completion confidence: 80%. Internal quality gate requested more validation.")

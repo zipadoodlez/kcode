@@ -1256,8 +1256,7 @@ fn test_render_messages_honors_system_display_role_override() {
 
 #[test]
 fn test_render_messages_shows_auto_poke_continuations_as_system_not_user() {
-    // Regression: auto-poke continuations ("You have N incomplete todos...",
-    // "All todos are done. Todo confidence summary:...") are persisted as
+    // Regression: incomplete-todo and private-quality continuations are persisted as
     // Role::User so the model continues the turn, but the live UI hides them.
     // On reload/resume/remote attach the renderer must not resurrect them as
     // the user's last prompt.
@@ -1291,10 +1290,7 @@ fn test_render_messages_shows_auto_poke_continuations_as_system_not_user() {
     session.add_message(
         Role::User,
         vec![ContentBlock::Text {
-            text: format!(
-                "{} core work 95%",
-                crate::todo::TODO_CONFIDENCE_SUMMARY_PREFIX
-            ),
+            text: crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE.to_string(),
             cache_control: None,
         }],
     );
@@ -1325,8 +1321,8 @@ fn test_render_messages_shows_auto_poke_continuations_as_system_not_user() {
     assert!(
         system_contents
             .iter()
-            .any(|content| content.contains("Todo confidence summary")),
-        "confidence summary should render as system: {rendered:?}"
+            .any(|content| content.contains("before finalizing")),
+        "quality continuation should render as system: {rendered:?}"
     );
 }
 

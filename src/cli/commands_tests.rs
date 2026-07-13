@@ -280,9 +280,10 @@ fn run_auto_poke_followup_targets_below_threshold_todos() {
             message,
         }) => {
             assert_eq!(total_todos, 2);
-            assert!(message.contains("All todos are done. Todo confidence summary:"));
-            assert!(message.contains("\"todo b\" was completed at 80% confidence"));
-            assert!(!message.contains("todo a\" was completed at"));
+            assert_eq!(message, crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE);
+            assert!(!message.chars().any(|ch| ch.is_ascii_digit()));
+            assert!(!message.to_ascii_lowercase().contains("confidence"));
+            assert!(!message.to_ascii_lowercase().contains("threshold"));
         }
         _ => panic!("expected confidence-summary follow-up"),
     }
@@ -305,9 +306,9 @@ fn run_auto_poke_followup_flags_confidence_spikes() {
 
     match build_run_auto_poke_follow_up_from_todos(&[steady, spiked], false) {
         Some(RunAutoPokeFollowUp::ConfidenceSummary { message, .. }) => {
-            assert!(message.contains("\"todo b\" jumped to its final confidence in one step"));
-            assert!(message.contains("75 -> 100"));
-            assert!(!message.contains("todo a\" jumped"));
+            assert_eq!(message, crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE);
+            assert!(!message.contains("\"todo a\""));
+            assert!(!message.contains("\"todo b\""));
         }
         _ => panic!("expected spike follow-up"),
     }
@@ -320,7 +321,7 @@ fn run_auto_poke_followup_flags_spike_without_history() {
     let todos = vec![test_todo("a", "completed", "high", Some(70), Some(100))];
     match build_run_auto_poke_follow_up_from_todos(&todos, false) {
         Some(RunAutoPokeFollowUp::ConfidenceSummary { message, .. }) => {
-            assert!(message.contains("jumped to its final confidence"));
+            assert_eq!(message, crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE);
         }
         _ => panic!("expected spike follow-up from scalar fields"),
     }

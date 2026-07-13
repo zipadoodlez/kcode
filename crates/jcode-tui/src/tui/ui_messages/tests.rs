@@ -615,9 +615,10 @@ fn render_todo_tool_result_uses_borderless_card_with_goal_scores() {
         end_to_end_ownership: Some(92),
     }];
     let content = format!(
-        "{}\n\nGoals:\n{}\n\nKeep the feedback loop concrete.",
+        "{}\n\nGoals:\n{}\n\n{}",
         serde_json::to_string_pretty(&todos).unwrap(),
-        serde_json::to_string_pretty(&goals).unwrap()
+        serde_json::to_string_pretty(&goals).unwrap(),
+        crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE
     );
     let msg = DisplayMessage {
         role: "tool".to_string(),

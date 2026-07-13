@@ -1,8 +1,8 @@
 use super::{Tool, ToolContext, ToolOutput};
 use crate::bus::{Bus, BusEvent, TodoEvent};
 use crate::todo::{
-    LOW_HILL_CLIMBABILITY, TODO_OWNERSHIP_GATE_MESSAGE, TodoGoal, TodoItem, load_goals, load_todos,
-    newly_completed_groups_have_sufficient_ownership, save_goals, save_todos,
+    LOW_HILL_CLIMBABILITY, TODO_QUALITY_CONTINUATION_MESSAGE, TodoGoal, TodoItem, load_goals,
+    load_todos, newly_completed_groups_have_sufficient_ownership, save_goals, save_todos,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -116,13 +116,7 @@ fn take_reframe_nudges(goals: &[TodoGoal], todos: &[TodoItem]) -> Vec<String> {
         if !group_open {
             continue;
         }
-        let label = goal.group.as_deref().unwrap_or("the current goal");
-        nudges.push(format!(
-            "Goal '{}' has low hill-climbability ({}). Reframe it into a quantifiable, \
-             verifiable objective, set the goal's `feedback_loop` to the concrete process that \
-             measures whether each iteration improves it, and build any harness that loop needs.",
-            label, score
-        ));
+        nudges.push(TODO_QUALITY_CONTINUATION_MESSAGE.to_string());
     }
     nudges
 }
@@ -220,7 +214,7 @@ impl Tool for TodoTool {
         // deliberately handwritten. Never generate it from gate constants or
         // interpolate private thresholds, because that would teach the model
         // how to target the evaluator instead of reporting an honest assessment.
-        "Read or update the todo list. Include confidence for each item, update it as evidence accumulates while working, and include completion_confidence when marking an item completed. For each goal, describe its concrete feedback_loop and rate hill_climbability to indicate how reliably that loop can measure progress and judge each iteration as an improvement. Also rate each goal's end-to-end ownership."
+        "Read or update structured todo items and optional goal-level assessments."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -259,20 +253,20 @@ impl Tool for TodoTool {
                                 "type": "integer",
                                 "minimum": 0,
                                 "maximum": 100,
-                                "description": "Current confidence, 0-100, that this todo can be completed correctly. Set when creating the todo, and update it as evidence accumulates while working (each validation or test that passes justifies a step up). Confidence should rise in evidence-backed steps, not jump to 100 at the end."
+                                "description": "Self-assessed confidence, 0-100, that this todo can be completed correctly."
                             },
                             "completion_confidence": {
                                 "type": "integer",
                                 "minimum": 0,
                                 "maximum": 100,
-                                "description": "Confidence, 0-100, that this todo is correctly completed. Set when marking the todo completed; omit until then."
+                                "description": "Self-assessed confidence, 0-100, that this todo was completed correctly. Use only for completed items."
                             }
                         }
                     }
                 },
                 "goals": {
                     "type": "array",
-                    "description": "Goal-level assessments, one per todo group (use group: null for an ungrouped flat list, which is one implicit goal). State the concrete feedback loop used to judge improvement, rate how hill-climbable the goal is, and state its measurable objective when one exists. Stored goals for groups not mentioned in a write are retained.",
+                    "description": "Optional goal-level assessments, one per todo group. Use group: null for an ungrouped list. Stored assessments for groups omitted from an update are retained.",
                     "items": {
                         "type": "object",
                         "required": ["hill_climbability", "feedback_loop"],
@@ -285,21 +279,21 @@ impl Tool for TodoTool {
                                 "type": "integer",
                                 "minimum": 0,
                                 "maximum": 100,
-                                "description": "How hill-climbable this goal is, 0-100: can progress be measured against a quantifiable, verifiable objective and iterated on? An internal quality check may return recurring reframe guidance when the assessment is not supported by a clear metric and stated objective (e.g. p50 grep latency under 50ms, all targeted tests pass)."
+                                "description": "Self-assessment, 0-100, of how readily progress toward this goal can be measured and compared across iterations."
                             },
                             "objective": {
                                 "type": "string",
-                                "description": "The measurable objective progress climbs toward, e.g. 'p50 grep latency under 50ms on the repo corpus'. State one whenever it exists; a high hill_climbability without an objective is not credible."
+                                "description": "Optional concise statement of the intended measurable outcome."
                             },
                             "feedback_loop": {
                                 "type": "string",
-                                "description": "The concrete process for observing whether each iteration improves the outcome, including what is measured and how it is checked, e.g. 'run the grep benchmark after each change and compare p50 latency'."
+                                "description": "Concrete process, observation, or check used to compare progress across iterations."
                             },
                             "end_to_end_ownership": {
                                 "type": "integer",
                                 "minimum": 0,
                                 "maximum": 100,
-                                "description": "How completely the full outcome was owned, including the requested work, reasonably necessary adjacent work, end-to-end validation, cleanup, and explicit disclosure of remaining gaps. Base the score on concrete evidence."
+                                "description": "Self-assessment, 0-100, of how completely the stated goal and its relevant outcomes were handled."
                             }
                         }
                     }
@@ -324,7 +318,7 @@ impl Tool for TodoTool {
                 let stored_goals = load_goals(&ctx.session_id).unwrap_or_default();
                 let goals = merge_goals(&stored_goals, params.goals);
                 if !newly_completed_groups_have_sufficient_ownership(&previous, &todos, &goals) {
-                    anyhow::bail!(TODO_OWNERSHIP_GATE_MESSAGE);
+                    anyhow::bail!(TODO_QUALITY_CONTINUATION_MESSAGE);
                 }
                 let nudges = take_reframe_nudges(&goals, &todos);
                 save_todos(&ctx.session_id, &todos)?;
@@ -452,6 +446,23 @@ mod tests {
             .expect("hill-climbability should describe the assessment neutrally");
         assert!(!hill_description.contains(&LOW_HILL_CLIMBABILITY.to_string()));
         assert!(!hill_description.to_ascii_lowercase().contains("threshold"));
+
+        let model_visible_schema = serde_json::to_string(&schema)
+            .expect("todo schema should serialize")
+            .to_ascii_lowercase();
+        for disclosure in [
+            "threshold",
+            "quality gate",
+            "internal quality check",
+            "not jump",
+            "test that passes",
+            "isn't high enough",
+        ] {
+            assert!(
+                !model_visible_schema.contains(disclosure),
+                "model-visible todo schema disclosed calibration wording: {disclosure}"
+            );
+        }
     }
 
     fn parse(input: Value) -> Result<TodoInput, serde_json::Error> {
@@ -576,10 +587,12 @@ mod tests {
         let goals = vec![goal(Some("design"), 95), goal(Some("perf"), 96)];
         let nudges = take_reframe_nudges(&goals, &todos);
         assert_eq!(nudges.len(), 1);
-        assert!(nudges[0].contains("design"));
-        assert!(!nudges[0].contains("open-ended"));
-        assert!(!nudges[0].contains("checkpoints"));
-        // A subsequent write receives the same guidance until the score reaches 96.
+        assert_eq!(nudges[0], TODO_QUALITY_CONTINUATION_MESSAGE);
+        assert!(!nudges[0].contains("95"));
+        assert!(!nudges[0].contains("hill-climbability"));
+        assert!(!nudges[0].to_ascii_lowercase().contains("gate"));
+        // A subsequent write receives the same generic guidance while the
+        // private condition remains applicable.
         assert_eq!(take_reframe_nudges(&goals, &todos).len(), 1);
     }
 
@@ -598,7 +611,7 @@ mod tests {
         let goals = vec![goal(None, 15)];
         let nudges = take_reframe_nudges(&goals, &todos);
         assert_eq!(nudges.len(), 1);
-        assert!(nudges[0].contains("the current goal"));
+        assert_eq!(nudges[0], TODO_QUALITY_CONTINUATION_MESSAGE);
     }
 
     #[test]

@@ -2330,24 +2330,15 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
         let summary = &app.hidden_queued_system_messages[0];
         assert!(super::commands::is_poke_message(summary));
         assert!(super::commands::is_todo_confidence_summary_message(summary));
-        assert!(summary.starts_with("All todos are done. Todo confidence summary:"));
-        assert!(summary.contains("\n- Completed todos: 2."));
-        assert!(summary.contains("\n- Weighted completion confidence: 86%."));
-        assert!(!summary.contains("Confidence threshold:"));
-        assert!(!summary.contains("96%"));
-        assert!(summary.contains("\n- Weighted planning confidence: 78%."));
-        assert!(summary.contains("\n- Lowest completed todo confidence: 80%."));
-        assert!(!summary.contains("Finish risky provider path"));
-        assert!(!summary.contains("Confidence meets the threshold"));
-        assert!(
-            summary.contains("2 completed todos did not clear the internal confidence gate")
+        assert_eq!(
+            summary,
+            crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE
         );
-        // Reference the shared prompt constant so this test cannot drift when
-        // the guidance wording changes.
-        assert!(summary.contains(&format!(
-            "\n- {}",
-            crate::prompt::TODO_CONFIDENCE_NEEDS_VALIDATION_PROMPT.trim()
-        )));
+        assert!(!summary.chars().any(|ch| ch.is_ascii_digit()));
+        assert!(!summary.to_ascii_lowercase().contains("confidence"));
+        assert!(!summary.to_ascii_lowercase().contains("gate"));
+        assert!(!summary.to_ascii_lowercase().contains("threshold"));
+        assert!(!summary.contains("Finish risky provider path"));
         assert!(
             app.display_messages()
                 .iter()

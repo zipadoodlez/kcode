@@ -197,9 +197,9 @@ fn todo_gate_notice(name: &str, output: &str, is_error: bool) -> Option<&'static
         return None;
     }
 
-    if is_error && output.contains(crate::todo::TODO_OWNERSHIP_GATE_MESSAGE) {
+    if is_error && output.contains(crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE) {
         Some("🛑 Todo quality gate: end-to-end ownership needs more review.")
-    } else if !is_error && output.contains(crate::todo::TODO_HILL_CLIMBABILITY_GATE_FRAGMENT) {
+    } else if !is_error && output.contains(crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE) {
         Some("👉 Todo quality gate: a goal needs a more measurable feedback loop.")
     } else {
         None
@@ -293,14 +293,12 @@ mod tests {
 
     #[test]
     fn todo_gate_notices_are_user_visible_without_private_thresholds() {
-        let ownership = todo_gate_notice("todo", crate::todo::TODO_OWNERSHIP_GATE_MESSAGE, true)
-            .expect("ownership gate should produce a notice");
+        let ownership =
+            todo_gate_notice("todo", crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE, true)
+                .expect("ownership gate should produce a notice");
         let hill = todo_gate_notice(
             "todo",
-            &format!(
-                "Goal 'ship' {} (reported score omitted).",
-                crate::todo::TODO_HILL_CLIMBABILITY_GATE_FRAGMENT
-            ),
+            crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE,
             false,
         )
         .expect("hill-climbability gate should produce a notice");
