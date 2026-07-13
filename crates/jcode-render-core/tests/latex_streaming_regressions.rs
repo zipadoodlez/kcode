@@ -148,3 +148,39 @@ fn escaped_and_literal_delimiters_never_become_math() {
     let unclosed_display = "$$\nx\n=\ny";
     assert_eq!(normalize_latex_math(unclosed_display), unclosed_display);
 }
+
+#[test]
+fn standalone_multiline_inline_delimiters_promote_without_losing_content() {
+    for source in [
+        "\\(\nx\n=\ny\n\\)",
+        "$\nx\n=\ny\n$",
+        "> $\n> x\n> =\n> y\n> $",
+        "- $\n  x\n  =\n  y\n  $",
+        "$\r\nx\r\n=\r\ny\r\n$",
+    ] {
+        let normalized = normalize_latex_math(source);
+        let visible = parse_markdown(source)
+            .blocks
+            .iter()
+            .flat_map(|block| &block.lines)
+            .map(|line| line.plain_text())
+            .collect::<Vec<_>>()
+            .join("\n");
+        for expected in ["x", "=", "y"] {
+            assert!(visible.contains(expected), "{source:?} => {visible:?}");
+        }
+        assert_eq!(
+            math_display_count(source),
+            1,
+            "{source:?} => {normalized:?}"
+        );
+        assert_eq!(normalize_latex_math(&normalized), normalized);
+    }
+
+    let unclosed = "$\nx\n=\ny";
+    assert_eq!(normalize_latex_math(unclosed), unclosed);
+
+    let fenced = "```text\n$\nx\n$\n```";
+    assert_eq!(normalize_latex_math(fenced), fenced);
+    assert_eq!(math_display_count(fenced), 0);
+}

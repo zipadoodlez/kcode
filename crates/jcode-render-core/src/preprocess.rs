@@ -51,7 +51,78 @@ enum MathDelimiter {
 pub fn normalize_latex_math(text: &str) -> String {
     let fenced = normalize_math_fences(text);
     let normalized = normalize_latex_delimiters_and_environments(&fenced);
-    stabilize_display_math(&normalized)
+    let promoted = promote_standalone_inline_math(&normalized);
+    stabilize_display_math(&promoted)
+}
+
+/// A single-dollar or `\(`/`\)` pair placed on lines by itself is visibly a
+/// block construct even though its delimiter spelling is inline. pulldown-cmark
+/// does not tokenize inline math across physical newlines, so promote this
+/// unambiguous line-oriented form to display math. Embedded multiline inline
+/// delimiters keep Markdown's ordinary literal fallback behavior.
+fn promote_standalone_inline_math(text: &str) -> String {
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let mut out = String::with_capacity(text.len());
+    let mut index = 0usize;
+    let mut fence: Option<(char, usize)> = None;
+
+    while index < lines.len() {
+        let line = lines[index];
+        let logical = line
+            .strip_suffix('\n')
+            .unwrap_or(line)
+            .trim_end_matches('\r');
+        if let Some((marker, len)) = fence {
+            out.push_str(line);
+            if closing_fence(logical, marker, len) {
+                fence = None;
+            }
+            index += 1;
+            continue;
+        }
+        let Some((prefix, marker_start)) = math_line_prefix(logical, "$") else {
+            if let Some((_, marker, len, _)) = opening_fence(logical) {
+                fence = Some((marker, len));
+            }
+            out.push_str(line);
+            index += 1;
+            continue;
+        };
+
+        let Some(close_offset) = lines[index + 1..].iter().position(|candidate| {
+            let candidate = candidate
+                .strip_suffix('\n')
+                .unwrap_or(candidate)
+                .trim_end_matches('\r');
+            prefix
+                .strip_continuation(candidate)
+                .and_then(|rest| math_line_prefix(rest, "$"))
+                .is_some()
+        }) else {
+            out.push_str(line);
+            index += 1;
+            continue;
+        };
+        let close_index = index + 1 + close_offset;
+        out.push_str(&line[..marker_start]);
+        out.push_str("$$");
+        out.push_str(&line[marker_start + 1..]);
+        for body_line in &lines[index + 1..close_index] {
+            out.push_str(body_line);
+        }
+        let close = lines[close_index];
+        let close_logical = close
+            .strip_suffix('\n')
+            .unwrap_or(close)
+            .trim_end_matches('\r');
+        let close_start = close_logical.rfind('$').expect("matched closing marker");
+        out.push_str(&close[..close_start]);
+        out.push_str("$$");
+        out.push_str(&close[close_start + 1..]);
+        index = close_index + 1;
+    }
+
+    out
 }
 
 /// pulldown-cmark recognizes block constructs before it finishes collecting a
@@ -82,7 +153,7 @@ fn stabilize_display_math(text: &str) -> String {
             index += 1;
             continue;
         }
-        let Some(prefix) = display_math_line_prefix(logical) else {
+        let Some((prefix, _)) = math_line_prefix(logical, "$$") else {
             if let Some((_, marker, len, _)) = opening_fence(logical) {
                 fence = Some((marker, len));
             }
@@ -148,9 +219,11 @@ impl DisplayMathLinePrefix {
     }
 }
 
-fn display_math_line_prefix(line: &str) -> Option<DisplayMathLinePrefix> {
-    let marker_start = line.rfind("$$")?;
-    if line[marker_start..].trim() != "$$" {
+fn math_line_prefix(line: &str, marker: &str) -> Option<(DisplayMathLinePrefix, usize)> {
+    let marker_start = line.rfind(marker)?;
+    if line[marker_start..].trim() != marker
+        || (marker == "$" && line[..marker_start].ends_with('$'))
+    {
         return None;
     }
     let before = &line[..marker_start];
@@ -176,17 +249,23 @@ fn display_math_line_prefix(line: &str) -> Option<DisplayMathLinePrefix> {
         if !has_quote && leading_columns > 3 {
             return None;
         }
-        return Some(DisplayMathLinePrefix {
-            continuation: before.to_string(),
-            containerized: has_quote,
-        });
+        return Some((
+            DisplayMathLinePrefix {
+                continuation: before.to_string(),
+                containerized: has_quote,
+            },
+            marker_start,
+        ));
     }
 
     let marker_width = markdown_list_marker_width(list_marker)?;
-    Some(DisplayMathLinePrefix {
-        continuation: format!("{}{}", &line[..position], " ".repeat(marker_width)),
-        containerized: true,
-    })
+    Some((
+        DisplayMathLinePrefix {
+            continuation: format!("{}{}", &line[..position], " ".repeat(marker_width)),
+            containerized: true,
+        },
+        marker_start,
+    ))
 }
 
 fn markdown_list_marker_width(marker: &str) -> Option<usize> {
