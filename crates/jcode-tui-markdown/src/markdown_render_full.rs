@@ -28,7 +28,17 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
     let streaming_mode = streaming_render_context_enabled();
     let deferred_mermaid_mode = deferred_mermaid_render_context_enabled();
     let spacing_mode = effective_markdown_spacing_mode();
-    let latex_mode = config_snapshot().latex_rendering;
+    let configured_latex_mode = config_snapshot().latex_rendering;
+    // Image rendering invokes an external TeX toolchain synchronously. Doing
+    // that for every partial token batch can block the UI for hundreds of
+    // milliseconds and leave the last incomplete delimiter frame visible even
+    // after the response has completed. Stream with the deterministic Unicode
+    // renderer, then let the normal completed-message render upgrade to images.
+    let latex_mode = if streaming_mode && configured_latex_mode == LatexRenderingMode::Image {
+        LatexRenderingMode::Unicode
+    } else {
+        configured_latex_mode
+    };
 
     // Style stack for nested formatting
     let mut bold = false;

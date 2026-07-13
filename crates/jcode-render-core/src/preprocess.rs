@@ -50,7 +50,177 @@ enum MathDelimiter {
 /// spans and code fences are intentionally left byte-for-byte unchanged.
 pub fn normalize_latex_math(text: &str) -> String {
     let fenced = normalize_math_fences(text);
-    normalize_latex_delimiters_and_environments(&fenced)
+    let normalized = normalize_latex_delimiters_and_environments(&fenced);
+    stabilize_display_math(&normalized)
+}
+
+/// pulldown-cmark recognizes block constructs before it finishes collecting a
+/// multiline `$$` span. A perfectly valid TeX line such as `=` can therefore
+/// become a Setext heading underline and split the math block. Prefix those
+/// interrupting body lines with an empty TeX group (`{}`), which is invisible to
+/// both the terminal renderer and a real LaTeX toolchain while making the line
+/// unambiguously part of the math span. Unlike flattening the display to one
+/// line, this preserves TeX comments and other newline-sensitive source.
+fn stabilize_display_math(text: &str) -> String {
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let mut out = String::with_capacity(text.len());
+    let mut index = 0usize;
+    let mut fence: Option<(char, usize)> = None;
+
+    while index < lines.len() {
+        let line = lines[index];
+        let logical = line
+            .strip_suffix('\n')
+            .unwrap_or(line)
+            .trim_end_matches('\r');
+
+        if let Some((marker, len)) = fence {
+            out.push_str(line);
+            if closing_fence(logical, marker, len) {
+                fence = None;
+            }
+            index += 1;
+            continue;
+        }
+        let Some(prefix) = display_math_line_prefix(logical) else {
+            if let Some((_, marker, len, _)) = opening_fence(logical) {
+                fence = Some((marker, len));
+            }
+            out.push_str(line);
+            index += 1;
+            continue;
+        };
+
+        let Some(close_offset) = lines[index + 1..].iter().position(|candidate| {
+            let candidate = candidate
+                .strip_suffix('\n')
+                .unwrap_or(candidate)
+                .trim_end_matches('\r');
+            prefix
+                .strip_continuation(candidate)
+                .is_some_and(|rest| rest.trim() == "$$")
+        }) else {
+            out.push_str(line);
+            index += 1;
+            continue;
+        };
+        let close_index = index + 1 + close_offset;
+        out.push_str(line);
+        for body_line in &lines[index + 1..close_index] {
+            let without_newline = body_line.strip_suffix('\n').unwrap_or(body_line);
+            let logical_body = without_newline.trim_end_matches('\r');
+            let ending = &body_line[logical_body.len()..];
+            let (container, math) = prefix.split_body(logical_body);
+            out.push_str(container);
+            if markdown_interrupts_math(math) {
+                out.push_str("{}");
+            }
+            out.push_str(math);
+            out.push_str(ending);
+        }
+        out.push_str(lines[close_index]);
+        index = close_index + 1;
+    }
+
+    out
+}
+
+#[derive(Debug)]
+struct DisplayMathLinePrefix {
+    continuation: String,
+    containerized: bool,
+}
+
+impl DisplayMathLinePrefix {
+    fn strip_continuation<'a>(&self, line: &'a str) -> Option<&'a str> {
+        if self.containerized {
+            line.strip_prefix(&self.continuation)
+        } else {
+            Some(line.strip_prefix(&self.continuation).unwrap_or(line))
+        }
+    }
+
+    fn split_body<'a>(&self, line: &'a str) -> (&'a str, &'a str) {
+        match line.strip_prefix(&self.continuation) {
+            Some(math) => line.split_at(line.len() - math.len()),
+            None => ("", line),
+        }
+    }
+}
+
+fn display_math_line_prefix(line: &str) -> Option<DisplayMathLinePrefix> {
+    let marker_start = line.rfind("$$")?;
+    if line[marker_start..].trim() != "$$" {
+        return None;
+    }
+    let before = &line[..marker_start];
+    let leading_len = before.len() - before.trim_start_matches([' ', '\t']).len();
+    let leading = &before[..leading_len];
+    let mut position = leading_len;
+    let mut has_quote = false;
+
+    while line[position..marker_start].starts_with('>') {
+        has_quote = true;
+        position += 1;
+        if line[position..marker_start].starts_with([' ', '\t']) {
+            position += 1;
+        }
+    }
+
+    let list_marker = &line[position..marker_start];
+    if list_marker.is_empty() {
+        let leading_columns = leading
+            .chars()
+            .map(|ch| if ch == '\t' { 4 } else { 1 })
+            .sum::<usize>();
+        if !has_quote && leading_columns > 3 {
+            return None;
+        }
+        return Some(DisplayMathLinePrefix {
+            continuation: before.to_string(),
+            containerized: has_quote,
+        });
+    }
+
+    let marker_width = markdown_list_marker_width(list_marker)?;
+    Some(DisplayMathLinePrefix {
+        continuation: format!("{}{}", &line[..position], " ".repeat(marker_width)),
+        containerized: true,
+    })
+}
+
+fn markdown_list_marker_width(marker: &str) -> Option<usize> {
+    if matches!(marker, "- " | "* " | "+ ") {
+        return Some(marker.len());
+    }
+    let (number, suffix) = marker.split_once(['.', ')'])?;
+    (!number.is_empty()
+        && number.chars().all(|ch| ch.is_ascii_digit())
+        && matches!(suffix, " " | "\t"))
+    .then_some(marker.len())
+}
+
+fn markdown_interrupts_math(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    let is_setext = trimmed.chars().all(|ch| ch == '=')
+        || (trimmed.len() >= 3 && trimmed.chars().all(|ch| ch == '-'));
+    let is_fence = trimmed.starts_with("```") || trimmed.starts_with("~~~");
+    let is_atx_heading = trimmed.starts_with('#');
+    let is_quote = trimmed.starts_with('>');
+    let is_list = trimmed.starts_with("- ")
+        || trimmed.starts_with("* ")
+        || trimmed.starts_with("+ ")
+        || trimmed
+            .split_once(['.', ')'])
+            .is_some_and(|(number, rest)| {
+                !number.is_empty()
+                    && number.chars().all(|ch| ch.is_ascii_digit())
+                    && rest.starts_with([' ', '\t'])
+            });
+    is_setext || is_fence || is_atx_heading || is_quote || is_list
 }
 
 fn normalize_math_fences(text: &str) -> String {
@@ -195,7 +365,12 @@ fn normalize_latex_delimiters_and_environments(text: &str) -> String {
             continue;
         }
 
-        if inline_ticks == 0 && line_start && leading_columns <= 3 && matches!(ch, '`' | '~') {
+        if inline_ticks == 0
+            && math_delimiter.is_none()
+            && line_start
+            && leading_columns <= 3
+            && matches!(ch, '`' | '~')
+        {
             let run = rest
                 .chars()
                 .take_while(|candidate| *candidate == ch)
@@ -231,7 +406,7 @@ fn normalize_latex_delimiters_and_environments(text: &str) -> String {
             continue;
         }
 
-        if ch == '`' {
+        if ch == '`' && math_delimiter.is_none() {
             let run = rest
                 .chars()
                 .take_while(|candidate| *candidate == '`')
