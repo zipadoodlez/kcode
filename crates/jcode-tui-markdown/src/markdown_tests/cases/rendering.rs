@@ -205,6 +205,43 @@ fn test_table_width_wrapping_with_three_columns_stays_within_limit() {
 }
 
 #[test]
+fn test_math_in_table_stays_within_constrained_width() {
+    let md = "| Formula | Result |\n| - | - |\n| $\\frac{x+1}{y}$ | $\\alpha_2 + x^2$ |";
+    let rendered: Vec<String> = render_markdown_with_width(md, Some(24))
+        .iter()
+        .map(line_to_string)
+        .collect();
+
+    assert!(rendered.iter().any(|line| line.contains("x+1")), "{rendered:?}");
+    assert!(rendered.iter().any(|line| line.contains("α₂")), "{rendered:?}");
+    assert!(
+        rendered.iter().map(|line| line.width()).max().unwrap_or(0) <= 24,
+        "table math exceeded width: {rendered:?}"
+    );
+}
+
+#[test]
+fn test_math_in_list_and_blockquote_wraps_without_losing_gutter() {
+    let md = "- Compute $\\frac{x+1}{y}$ for the long explanatory value\n\n> Result is $\\alpha_2 + x^2$ with a quoted explanation";
+    let rendered: Vec<String> = render_markdown_with_width(md, Some(24))
+        .iter()
+        .map(line_to_string)
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    assert!(rendered.iter().any(|line| line.contains("x+1")), "{rendered:?}");
+    assert!(rendered.iter().any(|line| line.contains("α₂")), "{rendered:?}");
+    assert!(
+        rendered.iter().any(|line| line.starts_with("│ ")),
+        "blockquote gutter was not preserved: {rendered:?}"
+    );
+    assert!(
+        rendered.iter().map(|line| line.width()).max().unwrap_or(0) <= 48,
+        "structured math grew unexpectedly wide: {rendered:?}"
+    );
+}
+
+#[test]
 fn test_table_width_wrap_keeps_apostrophe_words_intact_when_possible() {
     let md = "| Movie | Notes |\n| - | - |\n| Test | Anderson's thriller shouldn't truncate |";
     let lines = render_markdown_with_width(md, Some(32));
