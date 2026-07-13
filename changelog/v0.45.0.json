@@ -1,0 +1,22 @@
+{
+  "version": "0.45.0",
+  "date": "2026-07-13",
+  "title": "Sharper planning and richer terminal workflows",
+  "highlights": [
+    "Image files can be dragged directly into the composer and attach immediately",
+    "LaTeX can render as terminal images by default, including reliable multiline output",
+    "Todo and swarm activity now use compact borderless cards, clearer notifications, and denser progress indicators"
+  ],
+  "improvements": [
+    "Todo goals now capture concrete feedback loops and enforce stronger measurable quality and end-to-end ownership gates",
+    "Terminal titles stay synchronized with todo session titles while preserving legacy title fallbacks",
+    "Startup avoids blocking terminal capability probes",
+    "Managed phone-server deployment guidance and defaults use stronger AWS access controls"
+  ],
+  "fixes": [
+    "Agentgrep outline searches no longer duplicate relative file paths",
+    "Exact fuzzy-search matches rank correctly",
+    "Swarm cards resolve correctly outside gallery-filtered views",
+    "Dropped images bypass slash-command routing and attach without delay"
+  ]
+}
