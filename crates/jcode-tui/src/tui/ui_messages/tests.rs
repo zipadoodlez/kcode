@@ -619,7 +619,7 @@ fn render_todo_tool_result_uses_borderless_card_with_goal_scores() {
         end_to_end_ownership: Some(92),
     }];
     let content = format!(
-        "[tool timing: start=2026-07-13T19:51:50.261Z finish=2026-07-13T19:51:50.265Z duration=4ms] {}\n\nGoals:\n{}\n\n{}",
+        "[todo] [tool timing: start=2026-07-13T19:51:50.261Z finish=2026-07-13T19:51:50.265Z duration=4ms] {}\n\nGoals:\n{}\n\n{}",
         serde_json::to_string_pretty(&todos).unwrap(),
         serde_json::to_string_pretty(&goals).unwrap(),
         crate::todo::TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE
@@ -675,7 +675,7 @@ fn parse_todo_tool_output_accepts_timestamp_only_header() {
         ..Default::default()
     }];
     let content = format!(
-        "[2026-07-13T19:51:50.261Z] {}",
+        "[2026-07-13T19:51:50.261Z] [todo] {}",
         serde_json::to_string(&todos).unwrap()
     );
 
@@ -720,7 +720,7 @@ fn unbiased_visual_prompt_retry_renders_complete_feedback_change() {
                   continuation: Option<&str>,
                   tool_data: Option<crate::message::ToolCall>| {
         let mut content = format!(
-            "[tool timing: start=2026-07-13T19:51:50.261Z finish=2026-07-13T19:51:50.265Z duration=4ms] {}\n\nGoals:\n{}",
+            "[todo] [tool timing: start=2026-07-13T19:51:50.261Z finish=2026-07-13T19:51:50.265Z duration=4ms] {}\n\nGoals:\n{}",
             serde_json::to_string_pretty(&todos).unwrap(),
             serde_json::to_string_pretty(&vec![goal]).unwrap()
         );

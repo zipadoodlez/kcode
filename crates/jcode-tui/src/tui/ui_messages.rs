@@ -918,10 +918,10 @@ impl TodoCardPayload {
 fn parse_todo_tool_output(
     content: &str,
 ) -> Option<(Vec<crate::todo::TodoItem>, Vec<crate::todo::TodoGoal>)> {
-    // Timestamp injection decorates persisted tool results before they are
-    // restored into the transcript. Keep that transport metadata outside the
+    // Remote display and timestamp injection can decorate tool results before
+    // they reach this renderer. Keep that transport metadata outside the
     // structured payload parser so a valid todo result still renders as a card.
-    let content = strip_tool_result_timestamp_header(content);
+    let content = strip_todo_tool_output_headers(content);
     let mut todo_stream =
         serde_json::Deserializer::from_str(content).into_iter::<Vec<crate::todo::TodoItem>>();
     let todos = todo_stream.next()?.ok()?;
@@ -934,6 +934,34 @@ fn parse_todo_tool_output(
         Vec::new()
     };
     Some((todos, goals))
+}
+
+fn strip_todo_tool_output_headers(content: &str) -> &str {
+    let mut content = content.trim_start();
+    // Remote clients prefix outputs with the tool name, while restored history
+    // may independently prefix timing metadata. Accept either order without
+    // weakening the JSON shape that follows.
+    for _ in 0..3 {
+        if let Some(rest) = strip_todo_tool_name_header(content) {
+            content = rest;
+            continue;
+        }
+        let rest = strip_tool_result_timestamp_header(content);
+        if rest.len() < content.len() {
+            content = rest;
+            continue;
+        }
+        break;
+    }
+    content
+}
+
+fn strip_todo_tool_name_header(content: &str) -> Option<&str> {
+    let after_open = content.strip_prefix('[')?;
+    let header_end = after_open.find(']')?;
+    let name = after_open[..header_end].trim();
+    (tools_ui::canonical_tool_name(name) == "todo")
+        .then(|| after_open[header_end + 1..].trim_start())
 }
 
 fn strip_tool_result_timestamp_header(content: &str) -> &str {
