@@ -619,7 +619,7 @@ fn render_todo_tool_result_uses_borderless_card_with_goal_scores() {
         end_to_end_ownership: Some(92),
     }];
     let content = format!(
-        "{}\n\nGoals:\n{}\n\n{}",
+        "[tool timing: start=2026-07-13T19:51:50.261Z finish=2026-07-13T19:51:50.265Z duration=4ms] {}\n\nGoals:\n{}\n\n{}",
         serde_json::to_string_pretty(&todos).unwrap(),
         serde_json::to_string_pretty(&goals).unwrap(),
         crate::todo::TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE
@@ -666,6 +666,27 @@ fn render_todo_tool_result_uses_borderless_card_with_goal_scores() {
 }
 
 #[test]
+fn parse_todo_tool_output_accepts_timestamp_only_header() {
+    let todos = vec![crate::todo::TodoItem {
+        id: "timed".to_string(),
+        content: "Render the restored todo".to_string(),
+        status: "in_progress".to_string(),
+        priority: "high".to_string(),
+        ..Default::default()
+    }];
+    let content = format!(
+        "[2026-07-13T19:51:50.261Z] {}",
+        serde_json::to_string(&todos).unwrap()
+    );
+
+    let (parsed, goals) = parse_todo_tool_output(&content).expect("timestamped todo payload");
+    assert_eq!(parsed.len(), 1);
+    assert_eq!(parsed[0].id, todos[0].id);
+    assert_eq!(parsed[0].content, todos[0].content);
+    assert!(goals.is_empty());
+}
+
+#[test]
 fn unbiased_visual_prompt_retry_renders_complete_feedback_change() {
     const PROMPT: &str = "can you make a pelican riding a bike animation in html and vanillia js ";
     const INITIAL_FEEDBACK: &str = "Open the page in a browser, inspect runtime errors, and verify animation state changes over time.";
@@ -699,7 +720,7 @@ fn unbiased_visual_prompt_retry_renders_complete_feedback_change() {
                   continuation: Option<&str>,
                   tool_data: Option<crate::message::ToolCall>| {
         let mut content = format!(
-            "{}\n\nGoals:\n{}",
+            "[tool timing: start=2026-07-13T19:51:50.261Z finish=2026-07-13T19:51:50.265Z duration=4ms] {}\n\nGoals:\n{}",
             serde_json::to_string_pretty(&todos).unwrap(),
             serde_json::to_string_pretty(&vec![goal]).unwrap()
         );

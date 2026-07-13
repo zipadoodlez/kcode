@@ -918,6 +918,10 @@ impl TodoCardPayload {
 fn parse_todo_tool_output(
     content: &str,
 ) -> Option<(Vec<crate::todo::TodoItem>, Vec<crate::todo::TodoGoal>)> {
+    // Timestamp injection decorates persisted tool results before they are
+    // restored into the transcript. Keep that transport metadata outside the
+    // structured payload parser so a valid todo result still renders as a card.
+    let content = strip_tool_result_timestamp_header(content);
     let mut todo_stream =
         serde_json::Deserializer::from_str(content).into_iter::<Vec<crate::todo::TodoItem>>();
     let todos = todo_stream.next()?.ok()?;
@@ -930,6 +934,23 @@ fn parse_todo_tool_output(
         Vec::new()
     };
     Some((todos, goals))
+}
+
+fn strip_tool_result_timestamp_header(content: &str) -> &str {
+    let trimmed = content.trim_start();
+    let Some(after_open) = trimmed.strip_prefix('[') else {
+        return content;
+    };
+    let Some(header_end) = after_open.find(']') else {
+        return content;
+    };
+    let header = &after_open[..header_end];
+    let is_timing_header = header.starts_with("tool timing:");
+    let is_timestamp_header = chrono::DateTime::parse_from_rfc3339(header).is_ok();
+    if !is_timing_header && !is_timestamp_header {
+        return content;
+    }
+    after_open[header_end + 1..].trim_start()
 }
 
 /// Render the inline todo-list card (`role == "todos"`). New payloads contain
