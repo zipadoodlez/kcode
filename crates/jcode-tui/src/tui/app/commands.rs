@@ -32,7 +32,7 @@ use std::time::Instant;
 
 pub(super) const REVIEW_PREFERRED_MODEL: &str = "gpt-5.5";
 const POKE_OFF_UI_HINT: &str = "/poke off to stop.";
-const TODO_CONFIDENCE_THRESHOLD: u8 = 90;
+const TODO_CONFIDENCE_THRESHOLD: u8 = crate::todo::QUALITY_GATE_THRESHOLD;
 const TODO_CONFIDENCE_SUMMARY_PREFIX: &str = crate::todo::TODO_CONFIDENCE_SUMMARY_PREFIX;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

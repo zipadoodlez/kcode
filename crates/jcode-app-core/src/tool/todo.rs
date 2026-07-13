@@ -283,7 +283,7 @@ impl Tool for TodoTool {
                                 "type": "integer",
                                 "minimum": 0,
                                 "maximum": 100,
-                                "description": "How hill-climbable this goal is, 0-100: can progress be measured against a quantifiable, verifiable objective and iterated on? Scores below 90 trigger recurring reframe guidance on every applicable todo write. High scores should have a clear metric and stated objective (e.g. p50 grep latency under 50ms, all targeted tests pass)."
+                                "description": "How hill-climbable this goal is, 0-100: can progress be measured against a quantifiable, verifiable objective and iterated on? Scores below 96 trigger recurring reframe guidance on every applicable todo write. High scores should have a clear metric and stated objective (e.g. p50 grep latency under 50ms, all targeted tests pass)."
                             },
                             "objective": {
                                 "type": "string",
@@ -564,13 +564,13 @@ mod tests {
     #[test]
     fn reframe_nudge_recurs_for_every_low_open_goal_write() {
         let todos = vec![open_todo(Some("design"))];
-        let goals = vec![goal(Some("design"), 89), goal(Some("perf"), 90)];
+        let goals = vec![goal(Some("design"), 95), goal(Some("perf"), 96)];
         let nudges = take_reframe_nudges(&goals, &todos);
         assert_eq!(nudges.len(), 1);
         assert!(nudges[0].contains("design"));
         assert!(!nudges[0].contains("open-ended"));
         assert!(!nudges[0].contains("checkpoints"));
-        // A subsequent write receives the same guidance until the score reaches 90.
+        // A subsequent write receives the same guidance until the score reaches 96.
         assert_eq!(take_reframe_nudges(&goals, &todos).len(), 1);
     }
 

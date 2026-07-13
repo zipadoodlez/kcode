@@ -2333,12 +2333,12 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
         assert!(summary.starts_with("All todos are done. Todo confidence summary:"));
         assert!(summary.contains("\n- Completed todos: 2."));
         assert!(summary.contains("\n- Weighted completion confidence: 86%."));
-        assert!(summary.contains("\n- Confidence threshold: 90%."));
+        assert!(summary.contains("\n- Confidence threshold: 96%."));
         assert!(summary.contains("\n- Weighted planning confidence: 78%."));
         assert!(summary.contains("\n- Lowest completed todo confidence: 80%."));
         assert!(!summary.contains("Finish risky provider path"));
         assert!(!summary.contains("Confidence meets the threshold"));
-        assert!(summary.contains("1 completed todo is below the 90% confidence threshold"));
+        assert!(summary.contains("2 completed todos are below the 96% confidence threshold"));
         // Reference the shared prompt constant so this test cannot drift when
         // the guidance wording changes.
         assert!(summary.contains(&format!(

@@ -4,11 +4,15 @@ use std::path::PathBuf;
 
 pub use jcode_task_types::{TodoGoal, TodoItem};
 
+/// Minimum passing score for 0-100 quality assessments. Scores below this do
+/// not provide enough evidence to clear their respective quality gate.
+pub const QUALITY_GATE_THRESHOLD: u8 = 96;
+
 /// Goals with a hill-climbability score strictly below this are considered
 /// low: no credible metric to iterate against. The todo tool nudges the model
 /// on every applicable write to reframe the objective into something
 /// quantifiable and verifiable.
-pub const LOW_HILL_CLIMBABILITY: u8 = 90;
+pub const LOW_HILL_CLIMBABILITY: u8 = QUALITY_GATE_THRESHOLD;
 
 /// Prefix of the synthetic "all todos done" confidence summary follow-up that
 /// auto-poke queues once every todo is complete.
@@ -21,10 +25,6 @@ pub const TODO_CONFIDENCE_SUMMARY_PREFIX: &str = "All todos are done. Todo confi
 /// completion ended in such a spike, while stepped, evidence-backed rises
 /// were always right.
 pub const TODO_CONFIDENCE_SPIKE: u8 = 15;
-
-// Kept private so model-facing tool metadata and validation responses do not
-// turn the assessment into a disclosed target.
-const END_TO_END_OWNERSHIP_COMPLETION_THRESHOLD: u8 = 90;
 
 fn normalized_group(group: Option<&str>) -> Option<String> {
     group
@@ -65,7 +65,7 @@ pub fn newly_completed_groups_have_sufficient_ownership(
             .iter()
             .find(|goal| normalized_group(goal.group.as_deref()) == group)
             .and_then(|goal| goal.end_to_end_ownership)
-            .is_some_and(|score| score > END_TO_END_OWNERSHIP_COMPLETION_THRESHOLD)
+            .is_some_and(|score| score >= QUALITY_GATE_THRESHOLD)
     })
 }
 
@@ -272,7 +272,7 @@ mod tests {
         let previous = vec![todo("work", "in_progress", Some("ship"))];
         let completed = vec![todo("work", "completed", Some("ship"))];
 
-        for ownership in [None, Some(0), Some(90)] {
+        for ownership in [None, Some(0), Some(95)] {
             assert!(!newly_completed_groups_have_sufficient_ownership(
                 &previous,
                 &completed,
@@ -282,7 +282,7 @@ mod tests {
         assert!(newly_completed_groups_have_sufficient_ownership(
             &previous,
             &completed,
-            &[ownership_goal(Some("ship"), Some(91))],
+            &[ownership_goal(Some("ship"), Some(96))],
         ));
     }
 
@@ -293,7 +293,7 @@ mod tests {
         assert!(newly_completed_groups_have_sufficient_ownership(
             &previous,
             &completed,
-            &[ownership_goal(Some(" ship"), Some(95))],
+            &[ownership_goal(Some(" ship"), Some(96))],
         ));
 
         let previous = vec![todo("work", "in_progress", None)];
@@ -301,7 +301,7 @@ mod tests {
         assert!(newly_completed_groups_have_sufficient_ownership(
             &previous,
             &completed,
-            &[ownership_goal(None, Some(95))],
+            &[ownership_goal(None, Some(96))],
         ));
     }
 
