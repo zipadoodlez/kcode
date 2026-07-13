@@ -222,6 +222,9 @@ async fn test_batch_resolves_function_namespaced_tools() {
 
     assert!(result.output.contains("Completed: 2 succeeded, 0 failed"));
     assert!(!result.output.contains("Unknown tool"));
+    assert!(result.output.contains("--- [1] bash ---"));
+    assert!(result.output.contains("--- [2] bash ---"));
+    assert!(!result.output.contains("functions."));
 }
 
 #[tokio::test]

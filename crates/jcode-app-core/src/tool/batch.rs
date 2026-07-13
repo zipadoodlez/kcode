@@ -192,6 +192,7 @@ impl Tool for BatchTool {
             .enumerate()
             .map(|(i, tc)| {
                 let (tool_name, parameters) = tc.resolved_parameters();
+                let tool_name = Registry::resolve_tool_name(&tool_name).to_string();
                 (i, tool_name, parameters)
             })
             .collect();
