@@ -918,8 +918,7 @@ fn endorsed_but_not_installed_skill_invocation_surfaces_install_hint() {
     let endorsed = crate::skill::endorsed_skills()
         .iter()
         .find(|endorsed| {
-            endorsed.install.is_some()
-                && app.current_skills_snapshot().get(endorsed.name).is_none()
+            endorsed.install.is_some() && app.current_skills_snapshot().get(endorsed.name).is_none()
         })
         .expect("an endorsed skill with an install hint that is not installed");
 
