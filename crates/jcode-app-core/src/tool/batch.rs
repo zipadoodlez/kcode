@@ -178,7 +178,7 @@ impl Tool for BatchTool {
 
         // Check for disallowed tools
         for tc in &params.tool_calls {
-            if tc.tool == "batch" {
+            if Registry::resolve_tool_name(&tc.tool) == "batch" {
                 return Err(anyhow::anyhow!("Cannot batch the 'batch' tool"));
             }
         }
