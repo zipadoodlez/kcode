@@ -3083,6 +3083,24 @@ pub(crate) fn render_tool_message(
                 Some(row_width),
                 sub_result.map(|result| result.content.as_str()),
             ));
+
+            if tools_ui::canonical_tool_name(&sub_tc.name) == "todo"
+                && !sub_errored
+                && let Some(result) = sub_result
+                && let Some((todos, goals)) = parse_todo_tool_output(&result.content)
+            {
+                let payload = serde_json::json!({ "todos": todos, "goals": goals }).to_string();
+                let nested_width = row_width.saturating_sub(4).max(1).min(u16::MAX as usize) as u16;
+                let mut todo_lines = render_todos_message(
+                    &DisplayMessage::todos(payload),
+                    nested_width,
+                    crate::config::DiffDisplayMode::Off,
+                );
+                for line in &mut todo_lines {
+                    line.spans.insert(0, Span::raw("    "));
+                }
+                lines.extend(todo_lines);
+            }
         }
     }
 

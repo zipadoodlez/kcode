@@ -77,6 +77,7 @@ fn todo_alias_shows_card() {
 
 #[test]
 fn refresh_todo_card_updates_content_when_todos_change() {
+    let _env_lock = crate::storage::lock_test_env();
     let mut app = create_test_app();
     let session_id = app.session.id.clone();
 
@@ -121,6 +122,7 @@ fn refresh_todo_card_updates_content_when_todos_change() {
 
 #[test]
 fn refresh_todo_card_updates_content_when_goal_scores_change() {
+    let _env_lock = crate::storage::lock_test_env();
     let mut app = create_test_app();
     let session_id = app.session.id.clone();
     let todos = [crate::todo::TodoItem {

@@ -782,6 +782,101 @@ fn unbiased_visual_prompt_retry_renders_complete_feedback_change() {
 }
 
 #[test]
+fn visually_appealing_prompt_batched_retry_renders_complete_todo_card() {
+    // This fixture is only the first todo retry emitted after the
+    // hill-climbability continuation. The eval stops here and deliberately does
+    // not depend on the model implementing or completing the visual task.
+    const PROMPT: &str =
+        "make the most visually appealing pelican on a bike animation with html and vanillia js";
+    const FEEDBACK: &str = "At each iteration, render at 1440x900 and 390x844, capture screenshots, and score five checks: scene fills viewport without clipping, focal subject is centered, at least six distinct motion layers run smoothly, controls respond, and no console errors occur. Refine until all checks pass.";
+    const OBJECTIVE: &str = "Deliver a single-page vanilla HTML/CSS/JS animation whose pelican cyclist remains legible and visually balanced at desktop and mobile sizes, includes six or more coordinated motion layers, supports interactive speed controls, and runs with zero console errors.";
+
+    assert!(!PROMPT.contains("1440x900"));
+    assert!(!PROMPT.contains("screenshot"));
+    assert!(!PROMPT.contains("console"));
+    assert!(!PROMPT.contains("feedback"));
+
+    let todos = vec![crate::todo::TodoItem {
+        id: "inspect".to_string(),
+        content: "Inspect the starter project and determine the page structure".to_string(),
+        status: "in_progress".to_string(),
+        priority: "high".to_string(),
+        group: Some("pelican-bike".to_string()),
+        confidence: Some(95),
+        ..Default::default()
+    }];
+    let goals = vec![crate::todo::TodoGoal {
+        group: Some("pelican-bike".to_string()),
+        hill_climbability: Some(98),
+        objective: Some(OBJECTIVE.to_string()),
+        feedback_loop: Some(FEEDBACK.to_string()),
+        end_to_end_ownership: None,
+    }];
+    let todo_output = format!(
+        "{}\n\nGoals:\n{}",
+        serde_json::to_string_pretty(&todos).unwrap(),
+        serde_json::to_string_pretty(&goals).unwrap()
+    );
+    let content = format!(
+        "--- [1] todo ---\n{todo_output}\n\n--- [2] ls ---\n./\n\n0 files, 0 directories\n\nCompleted: 2 succeeded, 0 failed"
+    );
+    let msg = DisplayMessage {
+        role: "tool".to_string(),
+        content,
+        tool_calls: Vec::new(),
+        duration_secs: None,
+        title: None,
+        tool_data: Some(crate::message::ToolCall {
+            id: "call_batch".to_string(),
+            name: "batch".to_string(),
+            input: serde_json::json!({
+                "intent": "Inspect starter files and strengthen measurable visual goals",
+                "tool_calls": [
+                    {
+                        "tool": "todo",
+                        "intent": "Make the visual outcome objectively verifiable",
+                        "todos": todos,
+                        "goals": goals
+                    },
+                    { "tool": "ls", "path": "." }
+                ]
+            }),
+            intent: Some(
+                "Inspect starter files and strengthen measurable visual goals".to_string(),
+            ),
+            thought_signature: None,
+        }),
+    };
+
+    let rendered = render_tool_message(&msg, 84, crate::config::DiffDisplayMode::Off)
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let compact = without_whitespace(&rendered);
+
+    assert!(rendered.contains("✓ todo"), "{rendered}");
+    assert!(rendered.contains("pelican-bike"), "{rendered}");
+    assert!(
+        compact.contains(&without_whitespace(OBJECTIVE)),
+        "batched todo objective was truncated:\n{rendered}"
+    );
+    assert!(
+        compact.contains(&without_whitespace(FEEDBACK)),
+        "batched todo feedback loop was truncated:\n{rendered}"
+    );
+    let goal_details = rendered
+        .split_once("pelican-bike")
+        .map(|(_, details)| details)
+        .and_then(|details| details.split("● Inspect").next())
+        .expect("todo item should follow the batched goal details");
+    assert!(
+        !goal_details.contains('…'),
+        "batched todo goal details must not truncate:\n{rendered}"
+    );
+}
+
+#[test]
 fn render_ownership_gated_todo_result_keeps_the_full_card() {
     let todos = vec![crate::todo::TodoItem {
         id: "ship".to_string(),
