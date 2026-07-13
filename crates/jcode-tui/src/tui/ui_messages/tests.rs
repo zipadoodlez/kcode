@@ -618,7 +618,7 @@ fn render_todo_tool_result_uses_borderless_card_with_goal_scores() {
         "{}\n\nGoals:\n{}\n\n{}",
         serde_json::to_string_pretty(&todos).unwrap(),
         serde_json::to_string_pretty(&goals).unwrap(),
-        crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE
+        crate::todo::TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE
     );
     let msg = DisplayMessage {
         role: "tool".to_string(),

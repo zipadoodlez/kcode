@@ -33,7 +33,8 @@ use std::time::Instant;
 pub(super) const REVIEW_PREFERRED_MODEL: &str = "gpt-5.5";
 const POKE_OFF_UI_HINT: &str = "/poke off to stop.";
 const TODO_CONFIDENCE_THRESHOLD: u8 = crate::todo::QUALITY_GATE_THRESHOLD;
-const TODO_QUALITY_CONTINUATION_MESSAGE: &str = crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE;
+const TODO_COMPLETION_CONTINUATION_MESSAGE: &str =
+    crate::todo::TODO_COMPLETION_CONTINUATION_MESSAGE;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct TodoConfidenceSummary {
@@ -74,7 +75,7 @@ pub(super) fn is_poke_message(message: &str) -> bool {
 }
 
 pub(super) fn is_todo_confidence_summary_message(message: &str) -> bool {
-    message.starts_with(TODO_QUALITY_CONTINUATION_MESSAGE)
+    message.starts_with(TODO_COMPLETION_CONTINUATION_MESSAGE)
         || message.starts_with("All todos are done. Todo confidence summary:")
 }
 
@@ -2530,7 +2531,7 @@ fn weighted_confidence_average(scores: impl IntoIterator<Item = (u8, u32)>) -> O
 
 pub(super) fn build_todo_confidence_summary_message(todos: &[crate::todo::TodoItem]) -> String {
     let _ = todos;
-    TODO_QUALITY_CONTINUATION_MESSAGE.to_string()
+    TODO_COMPLETION_CONTINUATION_MESSAGE.to_string()
 }
 
 pub(super) fn todo_confidence_summary(todos: &[crate::todo::TodoItem]) -> TodoConfidenceSummary {

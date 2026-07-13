@@ -2332,10 +2332,10 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
         assert!(super::commands::is_todo_confidence_summary_message(summary));
         assert_eq!(
             summary,
-            crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE
+            crate::todo::TODO_COMPLETION_CONTINUATION_MESSAGE
         );
         assert!(!summary.chars().any(|ch| ch.is_ascii_digit()));
-        assert!(!summary.to_ascii_lowercase().contains("confidence"));
+        assert!(summary.contains("completion-confidence"));
         assert!(!summary.to_ascii_lowercase().contains("gate"));
         assert!(!summary.to_ascii_lowercase().contains("threshold"));
         assert!(!summary.contains("Finish risky provider path"));
@@ -2347,6 +2347,21 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
                     .contains("Todos complete. Completion confidence: 86%. Internal quality gate requested more validation."))
         );
     });
+}
+
+#[test]
+fn test_todo_completion_gate_ignores_precompletion_confidence() {
+    let summary = super::commands::todo_confidence_summary(&[crate::todo::TodoItem {
+        status: "completed".to_string(),
+        priority: "high".to_string(),
+        confidence: Some(0),
+        completion_confidence: Some(100),
+        confidence_history: vec![0, 100],
+        ..Default::default()
+    }]);
+
+    assert_eq!(summary.completion_average, Some(100));
+    assert!(!summary.needs_more_work);
 }
 
 #[test]

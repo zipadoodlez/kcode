@@ -2624,26 +2624,21 @@ fn build_run_todo_validation_message(todos: &[crate::todo::TodoItem]) -> Option<
         return None;
     }
 
-    // Todos whose confidence claims are suspect:
-    // - below the threshold (the model itself admits doubt), or
-    // - missing a completion confidence entirely, or
-    // - "spike-finished": confidence jumped to its final value in one large
-    //   unearned step instead of rising with evidence. Benchmark data shows
-    //   this is where every wrong 100%-confidence claim lives, and that the
-    //   planning-time score correctly identified the risky step.
+    // Completion validation deliberately considers only completion_confidence.
+    // Planning-time confidence expresses expected feasibility and must never
+    // trigger this gate.
     let has_below = completed.iter().any(|todo| {
         todo.completion_confidence
             .is_none_or(|score| score < RUN_TODO_CONFIDENCE_THRESHOLD)
     });
-    let spiked = crate::todo::spike_completed_todos(todos);
 
-    if !has_below && spiked.is_empty() {
+    if !has_below {
         // Nothing actionable: completing the loop with a generic summary just
         // spends tokens on "all good" theater, so send nothing and end the run.
         return None;
     }
 
-    Some(crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE.to_string())
+    Some(crate::todo::TODO_COMPLETION_CONTINUATION_MESSAGE.to_string())
 }
 
 async fn run_single_message_command_plain_with_auto_poke(

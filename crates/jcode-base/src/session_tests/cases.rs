@@ -1290,7 +1290,7 @@ fn test_render_messages_shows_auto_poke_continuations_as_system_not_user() {
     session.add_message(
         Role::User,
         vec![ContentBlock::Text {
-            text: crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE.to_string(),
+            text: crate::todo::TODO_COMPLETION_CONTINUATION_MESSAGE.to_string(),
             cache_control: None,
         }],
     );

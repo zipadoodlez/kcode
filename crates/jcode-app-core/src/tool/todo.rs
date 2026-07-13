@@ -1,8 +1,9 @@
 use super::{Tool, ToolContext, ToolOutput};
 use crate::bus::{Bus, BusEvent, TodoEvent};
 use crate::todo::{
-    LOW_HILL_CLIMBABILITY, TODO_QUALITY_CONTINUATION_MESSAGE, TodoGoal, TodoItem, load_goals,
-    load_todos, newly_completed_groups_have_sufficient_ownership, save_goals, save_todos,
+    LOW_HILL_CLIMBABILITY, TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE,
+    TODO_OWNERSHIP_CONTINUATION_MESSAGE, TodoGoal, TodoItem, load_goals, load_todos,
+    newly_completed_groups_have_sufficient_ownership, save_goals, save_todos,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -116,7 +117,7 @@ fn take_reframe_nudges(goals: &[TodoGoal], todos: &[TodoItem]) -> Vec<String> {
         if !group_open {
             continue;
         }
-        nudges.push(TODO_QUALITY_CONTINUATION_MESSAGE.to_string());
+        nudges.push(TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE.to_string());
     }
     nudges
 }
@@ -318,7 +319,7 @@ impl Tool for TodoTool {
                 let stored_goals = load_goals(&ctx.session_id).unwrap_or_default();
                 let goals = merge_goals(&stored_goals, params.goals);
                 if !newly_completed_groups_have_sufficient_ownership(&previous, &todos, &goals) {
-                    anyhow::bail!(TODO_QUALITY_CONTINUATION_MESSAGE);
+                    anyhow::bail!(TODO_OWNERSHIP_CONTINUATION_MESSAGE);
                 }
                 let nudges = take_reframe_nudges(&goals, &todos);
                 save_todos(&ctx.session_id, &todos)?;
@@ -587,9 +588,10 @@ mod tests {
         let goals = vec![goal(Some("design"), 95), goal(Some("perf"), 96)];
         let nudges = take_reframe_nudges(&goals, &todos);
         assert_eq!(nudges.len(), 1);
-        assert_eq!(nudges[0], TODO_QUALITY_CONTINUATION_MESSAGE);
+        assert_eq!(nudges[0], TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE);
         assert!(!nudges[0].contains("95"));
-        assert!(!nudges[0].contains("hill-climbability"));
+        assert!(nudges[0].contains("hill-climbability"));
+        assert!(!nudges[0].to_ascii_lowercase().contains("threshold"));
         assert!(!nudges[0].to_ascii_lowercase().contains("gate"));
         // A subsequent write receives the same generic guidance while the
         // private condition remains applicable.
@@ -611,7 +613,7 @@ mod tests {
         let goals = vec![goal(None, 15)];
         let nudges = take_reframe_nudges(&goals, &todos);
         assert_eq!(nudges.len(), 1);
-        assert_eq!(nudges[0], TODO_QUALITY_CONTINUATION_MESSAGE);
+        assert_eq!(nudges[0], TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE);
     }
 
     #[test]

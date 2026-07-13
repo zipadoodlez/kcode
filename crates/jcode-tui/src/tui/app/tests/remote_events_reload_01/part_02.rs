@@ -126,7 +126,7 @@ fn test_remote_auto_poke_followup_preserves_visible_timer_and_stays_hidden() {
 }
 
 #[test]
-fn test_remote_auto_poke_completion_above_threshold_only_updates_ui() {
+fn test_remote_auto_poke_completion_ignores_precompletion_confidence() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -142,9 +142,9 @@ fn test_remote_auto_poke_completion_above_threshold_only_updates_ui() {
                 priority: "high".to_string(),
                 blocked_by: Vec::new(),
                 assigned_to: None,
-                confidence: Some(95),
-                completion_confidence: Some(95),
-                confidence_history: Vec::new(),
+                confidence: Some(0),
+                completion_confidence: Some(100),
+                confidence_history: vec![0, 100],
             }],
         )
         .expect("save todos");
@@ -159,7 +159,7 @@ fn test_remote_auto_poke_completion_above_threshold_only_updates_ui() {
         assert!(app.hidden_queued_system_messages.is_empty());
         assert!(app.display_messages().iter().any(|msg| {
             msg.content
-                .contains("Todos complete. Completion confidence: 95%.")
+                .contains("Todos complete. Completion confidence: 100%.")
         }));
     });
 }
@@ -198,7 +198,7 @@ fn test_remote_auto_poke_completion_below_threshold_tells_model_to_keep_working(
         assert_eq!(app.hidden_queued_system_messages.len(), 1);
         assert_eq!(
             app.hidden_queued_system_messages[0],
-            crate::todo::TODO_QUALITY_CONTINUATION_MESSAGE
+            crate::todo::TODO_COMPLETION_CONTINUATION_MESSAGE
         );
         assert!(app.display_messages().iter().any(|msg| {
             msg.content

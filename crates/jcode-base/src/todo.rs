@@ -14,18 +14,18 @@ pub const QUALITY_GATE_THRESHOLD: u8 = 96;
 /// quantifiable and verifiable.
 pub const LOW_HILL_CLIMBABILITY: u8 = QUALITY_GATE_THRESHOLD;
 
-/// Generic model-facing continuation used by private todo quality checks.
-/// Deliberately does not disclose which check fired, its score, or its threshold.
-pub const TODO_QUALITY_CONTINUATION_MESSAGE: &str = "Continue working before finalizing. Review the todo and goal assessments after validating the result.";
-const LEGACY_TODO_CONFIDENCE_SUMMARY_PREFIX: &str = "All todos are done. Todo confidence summary:";
+/// Model-facing continuation for the private hill-climbability check. Names the
+/// assessment category without disclosing the score or threshold.
+pub const TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE: &str = "Continue working before finalizing. The hill-climbability assessment needs further review after validating how progress can be compared across iterations.";
 
-/// A completed todo is "spike-finished" when its confidence jumped at least
-/// this many points in its final step. Benchmark analysis (TB2.1 k=5) showed
-/// planning confidence correctly flags the riskiest step, but a bulk
-/// end-of-task stamp to 100 erases that signal: every wrong 100%-confidence
-/// completion ended in such a spike, while stepped, evidence-backed rises
-/// were always right.
-pub const TODO_CONFIDENCE_SPIKE: u8 = 15;
+/// Model-facing continuation for the private end-to-end ownership check. Names
+/// the assessment category without disclosing the score or threshold.
+pub const TODO_OWNERSHIP_CONTINUATION_MESSAGE: &str = "Continue working before finalizing. The end-to-end ownership assessment needs further review after validating the full result.";
+
+/// Model-facing continuation for private completion-confidence checks. Names
+/// the assessment category without disclosing scores, items, or thresholds.
+pub const TODO_COMPLETION_CONTINUATION_MESSAGE: &str = "Continue working before finalizing. The completion-confidence assessment needs further review after validating the result.";
+const LEGACY_TODO_CONFIDENCE_SUMMARY_PREFIX: &str = "All todos are done. Todo confidence summary:";
 
 fn normalized_group(group: Option<&str>) -> Option<String> {
     group
@@ -70,31 +70,6 @@ pub fn newly_completed_groups_have_sufficient_ownership(
     })
 }
 
-/// Completed todos whose confidence trail ends in an unearned jump: a final
-/// step of [`TODO_CONFIDENCE_SPIKE`]+ points in the tool-maintained
-/// `confidence_history`, or, for todos without a recorded trail, an equally
-/// large gap between planning `confidence` and `completion_confidence`.
-pub fn spike_completed_todos(todos: &[TodoItem]) -> Vec<&TodoItem> {
-    todos
-        .iter()
-        .filter(|todo| todo.status == "completed")
-        .filter(|todo| {
-            let history = &todo.confidence_history;
-            match history.len() {
-                0 => {
-                    todo.confidence
-                        .zip(todo.completion_confidence)
-                        .is_some_and(|(first, last)| {
-                            last.saturating_sub(first) >= TODO_CONFIDENCE_SPIKE
-                        })
-                }
-                1 => false,
-                n => history[n - 1].saturating_sub(history[n - 2]) >= TODO_CONFIDENCE_SPIKE,
-            }
-        })
-        .collect()
-}
-
 /// Build the synthetic auto-poke continuation prompt sent when the model
 /// stops with incomplete todos. Kept here so every producer (TUI auto-poke,
 /// `jcode run` auto-poke) and the transcript renderer agree on the exact text.
@@ -120,7 +95,9 @@ pub fn is_auto_poke_message(message: &str) -> bool {
     (trimmed.starts_with("You have ")
         && trimmed.contains(" incomplete todo")
         && trimmed.ends_with("update the todo tool."))
-        || trimmed.starts_with(TODO_QUALITY_CONTINUATION_MESSAGE)
+        || trimmed.starts_with(TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE)
+        || trimmed.starts_with(TODO_OWNERSHIP_CONTINUATION_MESSAGE)
+        || trimmed.starts_with(TODO_COMPLETION_CONTINUATION_MESSAGE)
         || trimmed.starts_with(LEGACY_TODO_CONFIDENCE_SUMMARY_PREFIX)
 }
 
@@ -231,8 +208,37 @@ mod tests {
     fn built_auto_poke_messages_are_detected() {
         assert!(is_auto_poke_message(&build_auto_poke_message(1)));
         assert!(is_auto_poke_message(&build_auto_poke_message(3)));
-        assert!(is_auto_poke_message(TODO_QUALITY_CONTINUATION_MESSAGE));
+        assert!(is_auto_poke_message(
+            TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE
+        ));
+        assert!(is_auto_poke_message(TODO_OWNERSHIP_CONTINUATION_MESSAGE));
+        assert!(is_auto_poke_message(TODO_COMPLETION_CONTINUATION_MESSAGE));
         assert!(is_auto_poke_message(LEGACY_TODO_CONFIDENCE_SUMMARY_PREFIX));
+    }
+
+    #[test]
+    fn quality_continuations_name_only_the_assessment_category() {
+        for (message, category) in [
+            (
+                TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE,
+                "hill-climbability",
+            ),
+            (TODO_OWNERSHIP_CONTINUATION_MESSAGE, "end-to-end ownership"),
+            (
+                TODO_COMPLETION_CONTINUATION_MESSAGE,
+                "completion-confidence",
+            ),
+        ] {
+            let lower = message.to_ascii_lowercase();
+            assert!(lower.contains(category));
+            assert!(!message.chars().any(|ch| ch.is_ascii_digit()));
+            for disclosure in ["threshold", "score", "percent", "below", "quality gate"] {
+                assert!(
+                    !lower.contains(disclosure),
+                    "category-only continuation disclosed {disclosure}: {message}"
+                );
+            }
+        }
     }
 
     #[test]
