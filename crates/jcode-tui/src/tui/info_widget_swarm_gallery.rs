@@ -179,7 +179,7 @@ pub(crate) fn render_swarm_panel_lines(
 /// `horizontal` packs all agents as chips on a single row.
 ///
 /// `focus_key` is the configured chord to enter the controls (e.g. "ctrl+t"),
-/// used both for the unfocused enter-hint and as the first focused hint.
+/// used for the unfocused enter-hint.
 /// `spinner_frame` animates active agents' glyphs. `max_height` bounds the
 /// focused strip (chips + expanded hovered-agent detail + hints).
 pub(crate) fn render_swarm_strip_lines(
@@ -199,16 +199,16 @@ pub(crate) fn render_swarm_strip_lines(
     // keeps flowing to the chat input while the panel is focused.
     let hints = vec![
         SwarmStripHint {
-            key: focus_key.to_string(),
-            label: "next".into(),
-        },
-        SwarmStripHint {
             key: "alt+↑/↓".into(),
             label: "select".into(),
         },
         SwarmStripHint {
             key: "alt+o".into(),
             label: "open".into(),
+        },
+        SwarmStripHint {
+            key: "alt+shift+p".into(),
+            label: "prompt".into(),
         },
         SwarmStripHint {
             key: "esc".into(),

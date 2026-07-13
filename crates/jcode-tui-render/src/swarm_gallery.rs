@@ -828,7 +828,7 @@ pub fn render_swarm_strip(
 ///    │ checking the signing secret path
 ///    │ ▸ verify replay protection
 ///    ✓ 🐅 · support/contact page
-///    alt+n next · alt+↑/↓ select · alt+o open · esc exit
+///    alt+↑/↓ select · alt+o open · alt+shift+p prompt · esc exit
 /// ```
 #[allow(clippy::too_many_arguments)]
 pub fn render_swarm_strip_vertical(

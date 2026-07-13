@@ -2721,8 +2721,8 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // see `agents.swarm_strip_layout`) directly above the status line instead
     // of a big gallery band. When the panel is focused (alt+n), the selected
     // agent's row expands in place with its live transcript tail and todos;
-    // alt+n cycles agents, alt+↑/↓ select, alt+o pops out, esc exits, and
-    // plain typing keeps flowing to the chat input. The strip stands
+    // alt+↑/↓ select, alt+o pops out, alt+shift+p opens the swarm prompt,
+    // esc exits, and plain typing keeps flowing to the chat input. The strip stands
     // down while the SwarmStatus dock widget (margin HUD) is showing the same
     // agents, unless the panel is focused (keyboard interaction lives here).
     // The stand-down is sticky (anchored blinks count as engaged, plus a short

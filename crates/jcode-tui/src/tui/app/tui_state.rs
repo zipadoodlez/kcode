@@ -1973,16 +1973,6 @@ impl App {
         self.swarm_panel_selected = next as usize;
     }
 
-    /// Advance the swarm panel selection by one, wrapping at the end. Used by
-    /// repeated presses of the focus chord (alt+n, alt+n, ... cycles agents).
-    pub(crate) fn cycle_swarm_panel_selection(&mut self) {
-        let count = self.inline_swarm_members().len();
-        if count == 0 {
-            return;
-        }
-        self.swarm_panel_selected = (self.swarm_panel_selected + 1) % count;
-    }
-
     /// Handle a key while the swarm panel is focused. Returns true if the key was
     /// consumed.
     ///
@@ -2008,6 +1998,10 @@ impl App {
             }
             Some(SwarmPanelAction::PopOut) => {
                 self.pop_out_selected_swarm_agent();
+                true
+            }
+            Some(SwarmPanelAction::OpenPrompt) => {
+                super::commands::handle_swarm_prompt_command(self, "/swarm-prompt");
                 true
             }
             Some(SwarmPanelAction::Exit) => {
@@ -2057,6 +2051,7 @@ pub(crate) enum SwarmPanelAction {
     SelectNext,
     SelectPrev,
     PopOut,
+    OpenPrompt,
     Exit,
 }
 
@@ -2067,10 +2062,8 @@ pub(crate) enum SwarmPanelAction {
 /// only Esc and Alt-chords are claimed:
 /// - Alt+↑ / Alt+↓ (also Alt+k / Alt+j): move the selection
 /// - Alt+o / Alt+Enter: pop the selected agent out to a terminal
+/// - Alt+Shift+p: open the active swarm routing prompt in the editor
 /// - Esc: exit the panel
-///
-/// (Alt+N itself cycles the selection; that is handled at the toggle-key
-/// call sites since the chord is user-configurable.)
 pub(crate) fn swarm_panel_action_for_key(
     code: crossterm::event::KeyCode,
     modifiers: crossterm::event::KeyModifiers,
@@ -2087,6 +2080,10 @@ pub(crate) fn swarm_panel_action_for_key(
         KeyCode::Down | KeyCode::Char('j') if alt => Some(SwarmPanelAction::SelectNext),
         KeyCode::Up | KeyCode::Char('k') if alt => Some(SwarmPanelAction::SelectPrev),
         KeyCode::Char('o') | KeyCode::Enter if alt => Some(SwarmPanelAction::PopOut),
+        KeyCode::Char('P') if alt => Some(SwarmPanelAction::OpenPrompt),
+        KeyCode::Char('p') if alt && modifiers.contains(KeyModifiers::SHIFT) => {
+            Some(SwarmPanelAction::OpenPrompt)
+        }
         _ => match macos_letter {
             Some('j') => Some(SwarmPanelAction::SelectNext),
             Some('k') => Some(SwarmPanelAction::SelectPrev),
@@ -2211,6 +2208,14 @@ mod swarm_panel_key_tests {
         assert_eq!(
             swarm_panel_action_for_key(KeyCode::Enter, KeyModifiers::ALT),
             Some(SwarmPanelAction::PopOut)
+        );
+        assert_eq!(
+            swarm_panel_action_for_key(KeyCode::Char('P'), KeyModifiers::ALT | KeyModifiers::SHIFT),
+            Some(SwarmPanelAction::OpenPrompt)
+        );
+        assert_eq!(
+            swarm_panel_action_for_key(KeyCode::Char('p'), KeyModifiers::ALT | KeyModifiers::SHIFT),
+            Some(SwarmPanelAction::OpenPrompt)
         );
         assert_eq!(
             swarm_panel_action_for_key(KeyCode::Esc, KeyModifiers::NONE),

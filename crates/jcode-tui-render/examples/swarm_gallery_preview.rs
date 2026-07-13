@@ -183,16 +183,16 @@ fn main() {
     // ---- New compact strip (above status line) ----
     let hints = vec![
         SwarmStripHint {
-            key: "alt+n".into(),
-            label: "next".into(),
-        },
-        SwarmStripHint {
             key: "alt+↑/↓".into(),
             label: "select".into(),
         },
         SwarmStripHint {
             key: "alt+o".into(),
             label: "open".into(),
+        },
+        SwarmStripHint {
+            key: "alt+shift+p".into(),
+            label: "prompt".into(),
         },
         SwarmStripHint {
             key: "esc".into(),

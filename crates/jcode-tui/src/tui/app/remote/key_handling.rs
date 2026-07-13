@@ -385,16 +385,13 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    // Inline swarm panel: Alt+N focuses the managed-agents panel; pressing it
-    // again cycles through agents. While focused, Alt+↑/↓ select, Alt+O pops
-    // the selection out to a terminal, Esc exits. Plain typing is NOT captured
-    // (it keeps flowing to the chat input).
+    // Inline swarm panel: Alt+N focuses/unfocuses the managed-agents panel.
+    // While focused, Alt+↑/↓ select, Alt+O pops the selection out to a terminal,
+    // Alt+Shift+P opens the swarm prompt, and Esc exits. Plain typing is NOT
+    // captured (it keeps flowing to the chat input).
     if app.toggle_keys.swarm_panel_focus.matches(code, modifiers) {
-        use crate::tui::TuiState as _;
-        if app.swarm_panel_focused() {
-            app.cycle_swarm_panel_selection();
-        } else if app.toggle_swarm_panel_focus() {
-            app.set_status_notice("Swarm: alt+n next · alt+↑/↓ select · alt+o open · esc");
+        if app.toggle_swarm_panel_focus() {
+            app.set_status_notice("Swarm: alt+↑/↓ select · alt+o open · alt+shift+p prompt · esc");
         }
         return Ok(());
     }

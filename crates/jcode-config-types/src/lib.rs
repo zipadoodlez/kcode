@@ -888,9 +888,9 @@ pub struct KeybindingsConfig {
     /// transcript (default: "alt+x")
     pub todo_card_toggle: String,
     /// Focus/unfocus the inline swarm panel for keyboard navigation (default:
-    /// "alt+n"; press again to cycle agents, alt+↑/↓ select, alt+o pop out,
-    /// esc exits). Active only when `agents.swarm_spawn_mode = "inline"` and
-    /// the session manages swarm agents.
+    /// "alt+n"; alt+↑/↓ select, alt+o pops out, alt+shift+p opens the swarm
+    /// prompt, esc exits). Active only when `agents.swarm_spawn_mode = "inline"`
+    /// and the session manages swarm agents.
     pub swarm_panel_focus: String,
     /// Spawn a fresh jcode session in a new terminal window (default: unbound).
     /// Example: "alt+enter".
