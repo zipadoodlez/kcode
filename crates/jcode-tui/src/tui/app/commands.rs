@@ -2586,11 +2586,6 @@ pub(super) fn build_todo_confidence_summary_message(todos: &[crate::todo::TodoIt
         ),
         None => lines.push("- No completed todos recorded completion confidence.".to_string()),
     }
-    lines.push(format!(
-        "- Confidence threshold: {}%.",
-        TODO_CONFIDENCE_THRESHOLD
-    ));
-
     match planning_average {
         Some(avg) => lines.push(format!("- Weighted planning confidence: {}%.", avg)),
         None => lines.push("- Weighted planning confidence: unknown.".to_string()),
@@ -2615,14 +2610,9 @@ pub(super) fn build_todo_confidence_summary_message(todos: &[crate::todo::TodoIt
 
     if below_threshold_count > 0 {
         lines.push(format!(
-            "- {} completed todo{} below the {}% confidence threshold.",
+            "- {} completed todo{} did not clear the internal confidence gate.",
             below_threshold_count,
-            if below_threshold_count == 1 {
-                " is"
-            } else {
-                "s are"
-            },
-            TODO_CONFIDENCE_THRESHOLD
+            if below_threshold_count == 1 { "" } else { "s" },
         ));
     }
 

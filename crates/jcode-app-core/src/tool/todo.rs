@@ -1,7 +1,7 @@
 use super::{Tool, ToolContext, ToolOutput};
 use crate::bus::{Bus, BusEvent, TodoEvent};
 use crate::todo::{
-    LOW_HILL_CLIMBABILITY, TodoGoal, TodoItem, load_goals, load_todos,
+    LOW_HILL_CLIMBABILITY, TODO_OWNERSHIP_GATE_MESSAGE, TodoGoal, TodoItem, load_goals, load_todos,
     newly_completed_groups_have_sufficient_ownership, save_goals, save_todos,
 };
 use anyhow::Result;
@@ -11,8 +11,6 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 
 pub struct TodoTool;
-
-const END_TO_END_OWNERSHIP_NUDGE: &str = "Your end-to-end ownership isn't high enough. Go back and review the full outcome, handle any missing adjacent work, validate it end to end, clean up remaining loose ends, and then update the assessment before completing the group.";
 
 impl TodoTool {
     pub fn new() -> Self {
@@ -218,6 +216,10 @@ impl Tool for TodoTool {
     }
 
     fn description(&self) -> &str {
+        // SECURITY/EVAL: This is model-visible calibration text. Keep it
+        // deliberately handwritten. Never generate it from gate constants or
+        // interpolate private thresholds, because that would teach the model
+        // how to target the evaluator instead of reporting an honest assessment.
         "Read or update the todo list. Include confidence for each item, update it as evidence accumulates while working, and include completion_confidence when marking an item completed. For each goal, describe its concrete feedback_loop and rate hill_climbability to indicate how reliably that loop can measure progress and judge each iteration as an improvement. Also rate each goal's end-to-end ownership."
     }
 
@@ -283,7 +285,7 @@ impl Tool for TodoTool {
                                 "type": "integer",
                                 "minimum": 0,
                                 "maximum": 100,
-                                "description": "How hill-climbable this goal is, 0-100: can progress be measured against a quantifiable, verifiable objective and iterated on? Scores below 96 trigger recurring reframe guidance on every applicable todo write. High scores should have a clear metric and stated objective (e.g. p50 grep latency under 50ms, all targeted tests pass)."
+                                "description": "How hill-climbable this goal is, 0-100: can progress be measured against a quantifiable, verifiable objective and iterated on? An internal quality check may return recurring reframe guidance when the assessment is not supported by a clear metric and stated objective (e.g. p50 grep latency under 50ms, all targeted tests pass)."
                             },
                             "objective": {
                                 "type": "string",
@@ -322,7 +324,7 @@ impl Tool for TodoTool {
                 let stored_goals = load_goals(&ctx.session_id).unwrap_or_default();
                 let goals = merge_goals(&stored_goals, params.goals);
                 if !newly_completed_groups_have_sufficient_ownership(&previous, &todos, &goals) {
-                    anyhow::bail!(END_TO_END_OWNERSHIP_NUDGE);
+                    anyhow::bail!(TODO_OWNERSHIP_GATE_MESSAGE);
                 }
                 let nudges = take_reframe_nudges(&goals, &todos);
                 save_todos(&ctx.session_id, &todos)?;
@@ -443,6 +445,13 @@ mod tests {
                 .to_ascii_lowercase()
                 .contains("threshold")
         );
+
+        let hill_description = goal_props["hill_climbability"]
+            .get("description")
+            .and_then(Value::as_str)
+            .expect("hill-climbability should describe the assessment neutrally");
+        assert!(!hill_description.contains(&LOW_HILL_CLIMBABILITY.to_string()));
+        assert!(!hill_description.to_ascii_lowercase().contains("threshold"));
     }
 
     fn parse(input: Value) -> Result<TodoInput, serde_json::Error> {

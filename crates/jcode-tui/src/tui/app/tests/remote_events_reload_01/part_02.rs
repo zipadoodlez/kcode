@@ -203,7 +203,7 @@ fn test_remote_auto_poke_completion_below_threshold_tells_model_to_keep_working(
             .contains(crate::prompt::TODO_CONFIDENCE_NEEDS_VALIDATION_PROMPT.trim()));
         assert!(app.display_messages().iter().any(|msg| {
             msg.content
-                .contains("Todos complete. Completion confidence: 80%.")
+                .contains("Todos complete. Completion confidence: 80%. Internal quality gate requested more validation.")
         }));
     });
 }

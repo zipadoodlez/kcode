@@ -18,6 +18,14 @@ pub const LOW_HILL_CLIMBABILITY: u8 = QUALITY_GATE_THRESHOLD;
 /// auto-poke queues once every todo is complete.
 pub const TODO_CONFIDENCE_SUMMARY_PREFIX: &str = "All todos are done. Todo confidence summary:";
 
+/// Stable model-visible marker returned when a newly completed todo group does
+/// not clear the private end-to-end ownership gate. Keep the threshold private.
+pub const TODO_OWNERSHIP_GATE_MESSAGE: &str = "Your end-to-end ownership isn't high enough. Go back and review the full outcome, handle any missing adjacent work, validate it end to end, clean up remaining loose ends, and then update the assessment before completing the group.";
+
+/// Stable model-visible fragment used to identify hill-climbability gate
+/// guidance in tool output without exposing the private threshold.
+pub const TODO_HILL_CLIMBABILITY_GATE_FRAGMENT: &str = "has low hill-climbability";
+
 /// A completed todo is "spike-finished" when its confidence jumped at least
 /// this many points in its final step. Benchmark analysis (TB2.1 k=5) showed
 /// planning confidence correctly flags the riskiest step, but a bulk
