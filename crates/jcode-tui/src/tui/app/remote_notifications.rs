@@ -116,33 +116,6 @@ fn file_activity_summary_line(operation: &str, summary: Option<&str>) -> String 
         .unwrap_or_else(|| capitalize(operation))
 }
 
-fn format_file_activity_message(
-    path: &str,
-    operation: &str,
-    intent: Option<&str>,
-    summary: Option<&str>,
-    detail: Option<&str>,
-) -> String {
-    let mut message = format!(
-        "`{}`\n\n{}",
-        compact_swarm_path(path),
-        file_activity_summary_line(operation, summary)
-    );
-
-    if let Some(intent) = intent.map(str::trim).filter(|intent| !intent.is_empty()) {
-        message.push_str("\n\nIntent: ");
-        message.push_str(intent);
-    }
-
-    if let Some(detail) = detail.map(str::trim).filter(|detail| !detail.is_empty()) {
-        message.push_str("\n\n```text\n");
-        message.push_str(&sanitize_code_fence_content(detail));
-        message.push_str("\n```");
-    }
-
-    message
-}
-
 /// Single-line file-activity body for compact notifications mode: keeps the
 /// compacted path and the summary line, dropping the intent and diff preview.
 fn format_file_activity_message_compact(
@@ -185,7 +158,7 @@ fn present_swarm_notification_inner(
     sender: &str,
     notification_type: &NotificationType,
     message: &str,
-    compact: bool,
+    _compact: bool,
 ) -> SwarmNotificationPresentation {
     let trimmed = message.trim();
     match notification_type {
@@ -260,7 +233,7 @@ fn present_swarm_notification_inner(
                 status_notice: "🐝 Swarm await finished".to_string(),
             },
             Some(other) => SwarmNotificationPresentation {
-                title: format!("{} · {}", capitalize(other), sender),
+                title: format!("Swarm · {}", sender),
                 message: trimmed.to_string(),
                 status_notice: format!("{} update", capitalize(other)),
             },
@@ -281,21 +254,61 @@ fn present_swarm_notification_inner(
             intent,
             summary,
             detail,
-        } => SwarmNotificationPresentation {
-            title: format!("File activity · {}", sender),
-            message: if compact {
+        } => {
+            let summary_line =
                 format_file_activity_message_compact(path, operation, summary.as_deref())
-            } else {
-                format_file_activity_message(
-                    path,
-                    operation,
-                    intent.as_deref(),
-                    summary.as_deref(),
-                    detail.as_deref(),
-                )
-            },
-            status_notice: format!("File activity · {}", compact_swarm_path(path)),
-        },
+                    .replace('`', "");
+            let mut detail_parts = Vec::new();
+            if let Some(intent) = intent
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                detail_parts.push(format!("Intent: {intent}"));
+            }
+            if let Some(detail) = detail
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                detail_parts.push(format!(
+                    "```text\n{}\n```",
+                    sanitize_code_fence_content(detail)
+                ));
+            }
+            let detail_body = detail_parts.join("\n\n");
+            let has_details = intent
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty())
+                || detail
+                    .as_deref()
+                    .is_some_and(|value| !value.trim().is_empty());
+            let conflict = operation.to_ascii_lowercase().contains("conflict")
+                || summary.as_deref().is_some_and(|value| {
+                    let value = value.to_ascii_lowercase();
+                    value.contains("conflict") || value.contains("concurrent")
+                });
+            SwarmNotificationPresentation {
+                title: format!(
+                    "{} · {}",
+                    if conflict {
+                        "File conflict"
+                    } else {
+                        "File activity"
+                    },
+                    sender
+                ),
+                message: if has_details {
+                    jcode_tui_messages::encode_collapsible_swarm_content(
+                        &summary_line,
+                        &detail_body,
+                    )
+                } else {
+                    summary_line
+                },
+                status_notice: format!("File activity · {}", compact_swarm_path(path)),
+            }
+        }
     }
 }
 
@@ -495,24 +508,16 @@ mod tests {
         );
 
         assert_eq!(presentation.title, "File activity · moss");
-        assert!(
-            presentation
-                .message
-                .contains("`…/jcode/src/tool/communicate.rs`")
+        let parsed = jcode_tui_messages::parse_collapsible_swarm_content(&presentation.message)
+            .expect("file activity with details should be collapsible");
+        assert_eq!(
+            parsed.tldr,
+            "…/jcode/src/tool/communicate.rs · Edited lines 323-348 (1 occurrence)"
         );
+        assert!(parsed.body.contains("Intent: wire swarm intent display"));
         assert!(
-            presentation
-                .message
-                .contains("Edited lines 323-348 (1 occurrence)")
-        );
-        assert!(
-            presentation
-                .message
-                .contains("Intent: wire swarm intent display")
-        );
-        assert!(
-            presentation
-                .message
+            parsed
+                .body
                 .contains("```text\n323- old line\n323+ new line\n```")
         );
         assert_eq!(
@@ -537,25 +542,14 @@ mod tests {
         );
 
         assert_eq!(presentation.title, "File activity · moss");
+        let parsed = jcode_tui_messages::parse_collapsible_swarm_content(&presentation.message)
+            .expect("compact mode should retain collapsible details");
         assert_eq!(
-            presentation.message,
-            "`…/jcode/src/tool/communicate.rs` · Edited lines 323-348 (1 occurrence)"
+            parsed.tldr,
+            "…/jcode/src/tool/communicate.rs · Edited lines 323-348 (1 occurrence)"
         );
-        assert!(
-            !presentation.message.contains('\n'),
-            "compact file activity body should be a single line: {:?}",
-            presentation.message
-        );
-        assert!(
-            !presentation.message.contains("Intent:"),
-            "compact mode should drop the intent line: {:?}",
-            presentation.message
-        );
-        assert!(
-            !presentation.message.contains("```"),
-            "compact mode should drop the diff preview: {:?}",
-            presentation.message
-        );
+        assert!(parsed.body.contains("Intent: wire swarm intent display"));
+        assert!(parsed.body.contains("323- old line"));
         assert_eq!(
             presentation.status_notice,
             "File activity · …/jcode/src/tool/communicate.rs"

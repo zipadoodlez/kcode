@@ -410,7 +410,8 @@ mod tests {
         let lines = render_swarm_gallery_lines(&members, 80, 12);
         assert!(!lines.is_empty());
         let header: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
-        assert!(header.contains("swarm · 2 agents"), "got: {header}");
+        assert!(header.contains("🐝 2 agents · 1 active"), "got: {header}");
+        assert!(!header.contains("swarm"), "got: {header}");
         for line in &lines {
             assert!(line.width() <= 80);
         }

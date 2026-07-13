@@ -2305,12 +2305,17 @@ pub(crate) fn swarm_expand_target_from_screen(column: u16, row: u16) -> Option<u
     };
     let text = snapshot.wrapped_plain_line(point.abs_line)?;
     let trimmed = text.trim_end();
-    let badge_start = [messages::SWARM_EXPAND_BADGE, messages::SWARM_COLLAPSE_BADGE]
-        .iter()
-        .find_map(|badge| {
-            let prefix = trimmed.strip_suffix(badge)?;
-            Some(line_display_width(prefix))
-        })?;
+    let badge_start = [
+        messages::SWARM_EXPAND_BADGE,
+        messages::SWARM_COLLAPSE_BADGE,
+        messages::SWARM_DIFF_EXPAND_BADGE,
+        messages::SWARM_DIFF_COLLAPSE_BADGE,
+    ]
+    .iter()
+    .find_map(|badge| {
+        let prefix = trimmed.strip_suffix(badge)?;
+        Some(line_display_width(prefix))
+    })?;
     if point.column < badge_start {
         return None;
     }

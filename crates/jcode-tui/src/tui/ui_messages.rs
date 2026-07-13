@@ -2,7 +2,8 @@ use super::*;
 #[path = "ui_messages_cache.rs"]
 mod cache_support;
 use crate::message::{
-    ParsedBackgroundTaskProgressNotification, parse_background_task_notification_markdown,
+    ParsedBackgroundTaskNotification, ParsedBackgroundTaskProgressNotification,
+    parse_background_task_notification_markdown,
     parse_background_task_progress_notification_markdown, strip_ansi_escape_sequences,
 };
 pub(super) use cache_support::get_cached_message_lines;
@@ -1891,6 +1892,9 @@ pub(crate) fn render_background_task_message(
         .unwrap_or_default();
     }
     if let Some(progress) = parse_background_task_progress_notification_markdown(&msg.content) {
+        if progress.tool_name == "swarm" {
+            return render_compact_swarm_background_progress(&progress, width);
+        }
         return render_background_task_progress_message(&progress, width);
     }
 
@@ -1904,6 +1908,9 @@ pub(crate) fn render_background_task_message(
         parsed.display_name.as_deref(),
     );
     let is_swarm = parsed.tool_name == "swarm";
+    if is_swarm {
+        return render_compact_swarm_background_completion(&parsed, width);
+    }
     let (title, border_color, status_color, preview_color) = if parsed.status.starts_with('✓') {
         (
             if is_swarm {
@@ -2006,6 +2013,84 @@ pub(crate) fn render_background_task_message(
 
     let mut lines = render_rounded_box(&title, box_content, max_box_width, border_style);
     if centered {
+        left_pad_lines_for_centered_mode(&mut lines, width);
+    }
+    lines
+}
+
+fn compact_swarm_operation_label(label: &str) -> String {
+    label
+        .split_once(" (")
+        .map(|(label, _)| label)
+        .unwrap_or(label)
+        .replace('_', " ")
+}
+
+fn compact_swarm_progress_fraction(summary: &str) -> Option<&str> {
+    summary.split_whitespace().find(|part| {
+        let part = part.trim_matches(|ch: char| !ch.is_ascii_digit() && ch != '/');
+        let Some((done, total)) = part.split_once('/') else {
+            return false;
+        };
+        !done.is_empty()
+            && !total.is_empty()
+            && done.chars().all(|ch| ch.is_ascii_digit())
+            && total.chars().all(|ch| ch.is_ascii_digit())
+    })
+}
+
+fn render_compact_swarm_background_progress(
+    progress: &ParsedBackgroundTaskProgressNotification,
+    width: u16,
+) -> Vec<Line<'static>> {
+    let label = compact_swarm_operation_label(&crate::message::background_task_display_label(
+        &progress.tool_name,
+        progress.display_name.as_deref(),
+    ));
+    let fraction = compact_swarm_progress_fraction(&progress.summary)
+        .map(|value| value.trim_matches(|ch: char| !ch.is_ascii_digit() && ch != '/'));
+    let text = fraction
+        .map(|fraction| format!("● {label} · {fraction}"))
+        .unwrap_or_else(|| format!("● {label}"));
+    render_compact_swarm_operation_line(&text, width, rgb(255, 214, 120))
+}
+
+fn render_compact_swarm_background_completion(
+    parsed: &ParsedBackgroundTaskNotification,
+    width: u16,
+) -> Vec<Line<'static>> {
+    let label = compact_swarm_operation_label(&crate::message::background_task_display_label(
+        &parsed.tool_name,
+        parsed.display_name.as_deref(),
+    ));
+    let (text, color) = if parsed.status.starts_with('✓') {
+        (
+            format!("✓ {label} · {}", parsed.duration),
+            rgb(120, 210, 140),
+        )
+    } else if parsed.status.starts_with('✗') {
+        (
+            format!("✗ {label} · failed after {}", parsed.duration),
+            rgb(255, 150, 150),
+        )
+    } else {
+        (
+            format!("● {label} · {}", parsed.duration),
+            rgb(255, 214, 120),
+        )
+    };
+    render_compact_swarm_operation_line(&text, width, color)
+}
+
+fn render_compact_swarm_operation_line(text: &str, width: u16, color: Color) -> Vec<Line<'static>> {
+    let mut lines = vec![super::truncate_line_with_ellipsis_to_width(
+        &Line::from(vec![
+            Span::styled("🐝 ", Style::default().fg(rgb(255, 200, 100))),
+            Span::styled(text.to_string(), Style::default().fg(color)),
+        ]),
+        width.max(1) as usize,
+    )];
+    if markdown::center_code_blocks() {
         left_pad_lines_for_centered_mode(&mut lines, width);
     }
     lines
@@ -2154,6 +2239,8 @@ fn swarm_notification_style(title: Option<&str>) -> (&'static str, Color, Color)
 /// constants so click hit-testing and rendering stay in sync.
 pub(crate) const SWARM_EXPAND_BADGE: &str = "▸ expand";
 pub(crate) const SWARM_COLLAPSE_BADGE: &str = "▾ collapse";
+pub(crate) const SWARM_DIFF_EXPAND_BADGE: &str = "▸ diff";
+pub(crate) const SWARM_DIFF_COLLAPSE_BADGE: &str = "▾ hide";
 pub(crate) const SWARM_AGENT_SNAPSHOT_TITLE: &str = "swarm-agent-snapshot";
 
 pub(crate) fn compact_swarm_await_summary(message: &str) -> String {
@@ -2203,12 +2290,52 @@ pub(crate) fn encode_swarm_agent_snapshot(
     serde_json::to_string(member).ok()
 }
 
-fn compact_agent_notification_sender(title: &str) -> Option<&str> {
-    title
-        .strip_prefix("DM from ")
-        .or_else(|| title.strip_prefix("Task · "))
-        .map(str::trim)
-        .filter(|sender| !sender.is_empty())
+struct CompactSwarmNotification<'a> {
+    sender: &'a str,
+    marker: String,
+    marker_before_icon: bool,
+    text_color: Color,
+    file_activity: bool,
+}
+
+fn compact_swarm_notification(title: &str) -> Option<CompactSwarmNotification<'_>> {
+    let (sender, marker, marker_before_icon, text_color, file_activity) =
+        if let Some(sender) = title.strip_prefix("DM from ") {
+            (sender, String::new(), false, rgb(214, 232, 255), false)
+        } else if let Some(sender) = title.strip_prefix("Task · ") {
+            (sender, String::new(), false, rgb(220, 236, 255), false)
+        } else if let Some((channel, sender)) = title
+            .strip_prefix('#')
+            .and_then(|rest| rest.rsplit_once(" · "))
+        {
+            (
+                sender,
+                format!("#{channel} · "),
+                false,
+                rgb(214, 247, 244),
+                false,
+            )
+        } else if let Some(sender) = title.strip_prefix("Broadcast · ") {
+            (sender, "📣 ".to_string(), false, rgb(255, 240, 214), false)
+        } else if let Some(sender) = title.strip_prefix("Shared context · ") {
+            (sender, "🧠 ".to_string(), false, rgb(221, 247, 232), false)
+        } else if let Some(sender) = title.strip_prefix("File activity · ") {
+            (sender, "✎ ".to_string(), false, rgb(255, 228, 214), true)
+        } else if let Some(sender) = title.strip_prefix("File conflict · ") {
+            (sender, "⚠ ".to_string(), true, rgb(255, 190, 150), true)
+        } else if let Some(sender) = title.strip_prefix("Swarm · ") {
+            (sender, String::new(), false, rgb(225, 225, 235), false)
+        } else {
+            return None;
+        };
+    let sender = sender.trim();
+    (!sender.is_empty()).then_some(CompactSwarmNotification {
+        sender,
+        marker,
+        marker_before_icon,
+        text_color,
+        file_activity,
+    })
 }
 
 fn render_compact_agent_notification(
@@ -2216,22 +2343,34 @@ fn render_compact_agent_notification(
     content: &str,
     width: u16,
 ) -> Option<Vec<Line<'static>>> {
-    let sender = compact_agent_notification_sender(title)?;
-    let icon = crate::id::session_icon(sender);
+    let notification = compact_swarm_notification(title)?;
+    let icon = crate::id::session_icon(notification.sender);
     let collapsible = jcode_tui_messages::parse_collapsible_swarm_content(content);
     let (body, badge) = match collapsible {
         Some(parsed) if parsed.expanded => (
             format!("{}\n{}", parsed.tldr, parsed.body.trim()),
-            Some(SWARM_COLLAPSE_BADGE),
+            Some(if notification.file_activity {
+                SWARM_DIFF_COLLAPSE_BADGE
+            } else {
+                SWARM_COLLAPSE_BADGE
+            }),
         ),
-        Some(parsed) => (parsed.tldr.to_string(), Some(SWARM_EXPAND_BADGE)),
+        Some(parsed) => (
+            parsed.tldr.to_string(),
+            Some(if notification.file_activity {
+                SWARM_DIFF_EXPAND_BADGE
+            } else {
+                SWARM_EXPAND_BADGE
+            }),
+        ),
         None => (content.trim().to_string(), None),
     };
-    let text_color = if title.starts_with("Task · ") {
-        rgb(220, 236, 255)
+    let body = if title.starts_with("Shared context · ") {
+        body.replace(" = ", " · ")
     } else {
-        rgb(214, 232, 255)
+        body
     };
+    let text_color = notification.text_color;
     let icon_style = Style::default().fg(rgb(255, 200, 100));
     let body_style = Style::default().fg(text_color);
     let max_width = width.max(1) as usize;
@@ -2252,11 +2391,16 @@ fn render_compact_agent_notification(
                 span.style.fg = Some(text_color);
             }
         }
-        let mut spans = vec![if index == 0 {
+        let mut spans = vec![if index == 0 && notification.marker_before_icon {
+            Span::styled(format!("{}{} ", notification.marker, icon), body_style)
+        } else if index == 0 {
             Span::styled(format!("{} ", icon), icon_style)
         } else {
             Span::raw("   ")
         }];
+        if index == 0 && !notification.marker.is_empty() && !notification.marker_before_icon {
+            spans.push(Span::styled(notification.marker.clone(), body_style));
+        }
         spans.extend(line.spans);
         if index == 0
             && let Some(badge) = badge
@@ -2296,6 +2440,63 @@ fn render_compact_swarm_await(
     Some(lines)
 }
 
+fn render_compact_plan_graph(title: &str, content: &str, width: u16) -> Option<Vec<Line<'static>>> {
+    let version = title.strip_prefix("Plan graph · ")?.trim();
+    let centered = markdown::center_code_blocks();
+    let body_width = width.saturating_sub(3).max(1) as usize;
+    let mut lines = vec![Line::from(vec![
+        Span::styled("🐝 ", Style::default().fg(rgb(255, 200, 100))),
+        Span::styled("Plan", Style::default().fg(rgb(186, 139, 255)).bold()),
+        Span::styled(
+            format!(" · {version}"),
+            Style::default().fg(rgb(150, 150, 160)),
+        ),
+    ])];
+    let mut fill_rows = 0usize;
+    for mut line in markdown::render_markdown_with_width(content.trim(), Some(body_width)) {
+        if let Some((_, rows, _)) = mermaid::parse_inline_image_placeholder(&line) {
+            fill_rows = rows.saturating_sub(1) as usize;
+            lines.push(line);
+            continue;
+        }
+        if fill_rows > 0 {
+            fill_rows -= 1;
+            lines.push(line);
+            continue;
+        }
+        let mut spans = vec![Span::raw("   ")];
+        spans.append(&mut line.spans);
+        lines.push(Line::from(spans));
+    }
+    if centered {
+        left_pad_lines_for_centered_mode(&mut lines, width);
+    }
+    Some(lines)
+}
+
+fn render_compact_plan_update(
+    title: &str,
+    content: &str,
+    width: u16,
+) -> Option<Vec<Line<'static>>> {
+    title.strip_prefix("Plan · ")?;
+    let mut lines = vec![super::truncate_line_with_ellipsis_to_width(
+        &Line::from(vec![
+            Span::styled("🐝 ", Style::default().fg(rgb(255, 200, 100))),
+            Span::styled("Plan", Style::default().fg(rgb(186, 139, 255)).bold()),
+            Span::styled(
+                format!(" · {}", content.trim()),
+                Style::default().fg(rgb(225, 225, 235)),
+            ),
+        ]),
+        width.max(1) as usize,
+    )];
+    if markdown::center_code_blocks() {
+        left_pad_lines_for_centered_mode(&mut lines, width);
+    }
+    Some(lines)
+}
+
 pub(crate) fn render_swarm_message(
     msg: &DisplayMessage,
     width: u16,
@@ -2318,6 +2519,12 @@ pub(crate) fn render_swarm_message(
     if let Some(lines) = render_compact_swarm_await(title, &msg.content, width) {
         return lines;
     }
+    if let Some(lines) = render_compact_plan_graph(title, &msg.content, width) {
+        return lines;
+    }
+    if let Some(lines) = render_compact_plan_update(title, &msg.content, width) {
+        return lines;
+    }
     let collapsible = jcode_tui_messages::parse_collapsible_swarm_content(&msg.content);
     let (content, tldr_line): (String, Option<(String, bool)>) = match collapsible {
         Some(parsed) if !parsed.expanded => (String::new(), Some((parsed.tldr.to_string(), false))),
@@ -2329,7 +2536,6 @@ pub(crate) fn render_swarm_message(
     };
     let content = content.as_str();
     let (icon, rail_color, text_color) = swarm_notification_style(msg.title.as_deref());
-    let rail_style = Style::default().fg(rail_color);
     let header_style = Style::default().fg(rail_color).bold();
     let body_style = Style::default().fg(text_color);
 
@@ -2347,10 +2553,10 @@ pub(crate) fn render_swarm_message(
     .max(1);
 
     let mut lines = Vec::new();
-    lines.push(Line::from(vec![
-        Span::styled("│ ", rail_style),
-        Span::styled(format!("{} {}", icon, title), header_style),
-    ]));
+    lines.push(Line::from(Span::styled(
+        format!("{} {}", icon, title),
+        header_style,
+    )));
 
     // Collapsed/expanded tldr line with its toggle badge. The badge is a
     // click target (see `swarm_expand_target_from_screen`) and must stay the
@@ -2362,7 +2568,7 @@ pub(crate) fn render_swarm_message(
             SWARM_EXPAND_BADGE
         };
         lines.push(Line::from(vec![
-            Span::styled("│ ", rail_style),
+            Span::raw("  "),
             Span::styled(tldr.clone(), body_style),
             Span::styled(
                 format!("  {}", badge),
@@ -2436,7 +2642,7 @@ pub(crate) fn render_swarm_message(
                 span.style.fg = Some(text_color);
             }
         }
-        let mut spans = vec![Span::styled("│ ", rail_style)];
+        let mut spans = vec![Span::raw("  ")];
         spans.extend(line.spans);
         lines.push(Line::from(spans));
     }

@@ -150,13 +150,59 @@ fn test_render_swarm_message_trims_extra_newlines() {
     let lines = render_swarm_message(&msg, 80, crate::config::DiffDisplayMode::Off);
     let rendered: Vec<String> = lines.iter().map(extract_line_text).collect();
 
-    assert_eq!(rendered[0], "│ 📣 Broadcast · coordinator");
-    assert_eq!(rendered[1], "│ Plan updated");
-    assert_eq!(
-        rendered.len(),
-        2,
-        "trimmed message should not add blank lines"
+    assert_eq!(rendered, vec!["💫 📣 Plan updated"]);
+    assert!(rendered.iter().all(|line| !line.contains('│')));
+}
+
+#[test]
+fn test_render_channel_and_shared_context_as_compact_agent_rows() {
+    crate::tui::markdown::set_center_code_blocks(false);
+
+    let channel = DisplayMessage::swarm("#dev · fox", "Can someone review this?");
+    let context = DisplayMessage::swarm("Shared context · fox", "branch = feature/auth");
+
+    let channel_lines = render_swarm_message(&channel, 80, crate::config::DiffDisplayMode::Off)
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>();
+    let context_lines = render_swarm_message(&context, 80, crate::config::DiffDisplayMode::Off)
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>();
+
+    assert_eq!(channel_lines, vec!["🦊 #dev · Can someone review this?"]);
+    assert_eq!(context_lines, vec!["🦊 🧠 branch · feature/auth"]);
+}
+
+#[test]
+fn test_render_file_activity_as_collapsible_compact_row() {
+    crate::tui::markdown::set_center_code_blocks(false);
+    let content = jcode_tui_messages::encode_collapsible_swarm_content(
+        "src/auth.rs · modified",
+        "```text\n-old\n+new\n```",
     );
+    let msg = DisplayMessage::swarm("File activity · fox", content);
+
+    let rendered = render_swarm_message(&msg, 80, crate::config::DiffDisplayMode::Off)
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>();
+
+    assert_eq!(rendered, vec!["🦊 ✎ src/auth.rs · modified  ▸ diff"]);
+    assert!(rendered.iter().all(|line| !line.contains('│')));
+}
+
+#[test]
+fn test_render_file_conflict_places_warning_before_agent() {
+    crate::tui::markdown::set_center_code_blocks(false);
+    let msg = DisplayMessage::swarm("File conflict · fox", "src/auth.rs · concurrent edits");
+
+    let rendered = render_swarm_message(&msg, 80, crate::config::DiffDisplayMode::Off)
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>();
+
+    assert_eq!(rendered, vec!["⚠ 🦊 src/auth.rs · concurrent edits"]);
 }
 
 #[test]
@@ -179,20 +225,15 @@ fn test_render_swarm_message_centered_mode_left_aligns_with_shared_padding() {
     let lines = render_swarm_message(&msg, 80, crate::config::DiffDisplayMode::Off);
     let rendered: Vec<String> = lines.iter().map(extract_line_text).collect();
 
-    assert_eq!(rendered.len(), 2, "expected compact header + body layout");
+    assert_eq!(rendered.len(), 1, "expected one compact plan row");
 
     let header_pad = rendered[0].chars().take_while(|c| *c == ' ').count();
-    let body_pad = rendered[1].chars().take_while(|c| *c == ' ').count();
     assert!(
         header_pad > 0,
         "centered swarm header should be padded: {rendered:?}"
     );
-    assert_eq!(
-        header_pad, body_pad,
-        "centered swarm block should share one left pad"
-    );
-    assert_eq!(rendered[0].trim_start(), "│ ≡ Plan · sheep");
-    assert_eq!(rendered[1].trim_start(), "│ 4 items · v1");
+    assert_eq!(rendered[0].trim_start(), "🐝 Plan · 4 items · v1");
+    assert!(!rendered[0].contains('│'));
     for line in &lines {
         assert_eq!(
             line.alignment,

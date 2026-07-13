@@ -164,7 +164,7 @@ pub fn gallery_header(total: usize, active: usize) -> Line<'static> {
         Span::styled("🐝 ", Style::default().fg(rgb(255, 200, 100))),
         Span::styled(
             format!(
-                "swarm · {} agent{}{}",
+                "{} agent{}{}",
                 total,
                 if total == 1 { "" } else { "s" },
                 if active > 0 {
@@ -1715,7 +1715,7 @@ fn panel_header(total: usize, active: usize, focused: bool) -> Line<'static> {
         Span::styled("🐝 ", Style::default().fg(rgb(255, 200, 100))),
         Span::styled(
             format!(
-                "swarm · {} agent{}{}",
+                "{} agent{}{}",
                 total,
                 if total == 1 { "" } else { "s" },
                 if active > 0 {
@@ -1985,7 +1985,8 @@ mod tests {
         let lines = render_gallery(&members, 80, 12);
         assert!(!lines.is_empty());
         let header: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
-        assert!(header.contains("swarm · 2 agents"), "got: {header}");
+        assert!(header.contains("🐝 2 agents · 1 active"), "got: {header}");
+        assert!(!header.contains("swarm"), "got: {header}");
         for line in &lines {
             assert!(line.width() <= 80);
         }
@@ -2038,7 +2039,8 @@ mod tests {
             assert!(line.width() <= 70, "line too wide: {}", plain_line(line));
         }
         let header = plain_line(&lines[0]);
-        assert!(header.contains("swarm · 3 agents"), "got: {header}");
+        assert!(header.contains("🐝 3 agents"), "got: {header}");
+        assert!(!header.contains("swarm"), "got: {header}");
         // Every agent label appears as a list row.
         let joined: String = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
         for name in ["researcher", "implementer", "reviewer"] {
