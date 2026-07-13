@@ -2335,7 +2335,7 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
             crate::todo::TODO_COMPLETION_CONTINUATION_MESSAGE
         );
         assert!(!summary.chars().any(|ch| ch.is_ascii_digit()));
-        assert!(summary.contains("completion-confidence"));
+        assert!(summary.contains("completion confidence"));
         assert!(!summary.to_ascii_lowercase().contains("gate"));
         assert!(!summary.to_ascii_lowercase().contains("threshold"));
         assert!(!summary.contains("Finish risky provider path"));

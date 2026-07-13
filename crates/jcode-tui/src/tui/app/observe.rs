@@ -198,10 +198,10 @@ fn todo_gate_notice(name: &str, output: &str, is_error: bool) -> Option<&'static
     }
 
     if is_error && output.contains(crate::todo::TODO_OWNERSHIP_CONTINUATION_MESSAGE) {
-        Some("🛑 Todo quality gate: end-to-end ownership needs more review.")
+        Some("🛑 Todo completion gate: end-to-end ownership needs more work.")
     } else if !is_error && output.contains(crate::todo::TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE)
     {
-        Some("👉 Todo quality gate: a goal needs a more measurable feedback loop.")
+        Some("👉 Todo quality gate: hill-climbability needs a stronger feedback loop.")
     } else {
         None
     }
@@ -307,7 +307,7 @@ mod tests {
         )
         .expect("hill-climbability gate should produce a notice");
 
-        assert!(ownership.contains("quality gate"));
+        assert!(ownership.contains("completion gate"));
         assert!(hill.contains("quality gate"));
         assert!(!ownership.contains(&crate::todo::QUALITY_GATE_THRESHOLD.to_string()));
         assert!(!hill.contains(&crate::todo::QUALITY_GATE_THRESHOLD.to_string()));

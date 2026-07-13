@@ -16,15 +16,15 @@ pub const LOW_HILL_CLIMBABILITY: u8 = QUALITY_GATE_THRESHOLD;
 
 /// Model-facing continuation for the private hill-climbability check. Names the
 /// assessment category without disclosing the score or threshold.
-pub const TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE: &str = "Continue working before finalizing. The hill-climbability assessment needs further review after validating how progress can be compared across iterations.";
+pub const TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE: &str = "Your hill-climbability is not high enough. Think more about how to make this goal hill-climbable. The goal is to create a strong feedback loop you can iterate against.";
 
 /// Model-facing continuation for the private end-to-end ownership check. Names
 /// the assessment category without disclosing the score or threshold.
-pub const TODO_OWNERSHIP_CONTINUATION_MESSAGE: &str = "Continue working before finalizing. The end-to-end ownership assessment needs further review after validating the full result.";
+pub const TODO_OWNERSHIP_CONTINUATION_MESSAGE: &str = "Your end-to-end ownership is not high enough to complete this goal. Think through the full outcome, address the remaining gaps, and validate the result end to end before marking it complete.";
 
 /// Model-facing continuation for private completion-confidence checks. Names
 /// the assessment category without disclosing scores, items, or thresholds.
-pub const TODO_COMPLETION_CONTINUATION_MESSAGE: &str = "Continue working before finalizing. The completion-confidence assessment needs further review after validating the result.";
+pub const TODO_COMPLETION_CONTINUATION_MESSAGE: &str = "Your completion confidence is missing or not high enough. Validate the completed result more thoroughly, address any remaining issues, and then reassess whether the work is ready to finalize.";
 const LEGACY_TODO_CONFIDENCE_SUMMARY_PREFIX: &str = "All todos are done. Todo confidence summary:";
 
 fn normalized_group(group: Option<&str>) -> Option<String> {
@@ -217,7 +217,7 @@ mod tests {
     }
 
     #[test]
-    fn quality_continuations_name_only_the_assessment_category() {
+    fn quality_continuations_are_actionable_without_private_calibration() {
         for (message, category) in [
             (
                 TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE,
@@ -226,7 +226,7 @@ mod tests {
             (TODO_OWNERSHIP_CONTINUATION_MESSAGE, "end-to-end ownership"),
             (
                 TODO_COMPLETION_CONTINUATION_MESSAGE,
-                "completion-confidence",
+                "completion confidence",
             ),
         ] {
             let lower = message.to_ascii_lowercase();
@@ -239,6 +239,10 @@ mod tests {
                 );
             }
         }
+
+        assert!(TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE.contains("strong feedback loop"));
+        assert!(TODO_OWNERSHIP_CONTINUATION_MESSAGE.contains("before marking it complete"));
+        assert!(TODO_COMPLETION_CONTINUATION_MESSAGE.contains("Validate the completed result"));
     }
 
     #[test]
@@ -289,6 +293,18 @@ mod tests {
             &previous,
             &completed,
             &[ownership_goal(Some("ship"), Some(96))],
+        ));
+    }
+
+    #[test]
+    fn ownership_is_not_required_before_group_completion() {
+        let previous = vec![todo("work", "pending", Some("ship"))];
+        let in_progress = vec![todo("work", "in_progress", Some("ship"))];
+
+        assert!(newly_completed_groups_have_sufficient_ownership(
+            &previous,
+            &in_progress,
+            &[],
         ));
     }
 

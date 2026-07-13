@@ -282,7 +282,7 @@ fn run_auto_poke_followup_targets_below_threshold_todos() {
             assert_eq!(total_todos, 2);
             assert_eq!(message, crate::todo::TODO_COMPLETION_CONTINUATION_MESSAGE);
             assert!(!message.chars().any(|ch| ch.is_ascii_digit()));
-            assert!(message.contains("completion-confidence"));
+            assert!(message.contains("completion confidence"));
             assert!(!message.to_ascii_lowercase().contains("threshold"));
         }
         _ => panic!("expected confidence-summary follow-up"),

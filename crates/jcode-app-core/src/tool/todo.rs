@@ -294,7 +294,7 @@ impl Tool for TodoTool {
                                 "type": "integer",
                                 "minimum": 0,
                                 "maximum": 100,
-                                "description": "Self-assessment, 0-100, of how completely the stated goal and its relevant outcomes were handled."
+                                "description": "Self-assessment, 0-100, of how completely the stated goal and its relevant outcomes were handled. Use only when completing the goal."
                             }
                         }
                     }
@@ -433,6 +433,7 @@ mod tests {
             .get("description")
             .and_then(Value::as_str)
             .expect("ownership should have a neutral description");
+        assert!(ownership_description.contains("Use only when completing the goal."));
         assert!(!ownership_description.contains("90"));
         assert!(!ownership_description.contains("91"));
         assert!(
