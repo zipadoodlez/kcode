@@ -139,7 +139,7 @@ pub(super) async fn create_headless_session(
         let mut sessions_guard = sessions.write().await;
         sessions_guard.insert(client_session_id.clone(), Arc::clone(&agent));
     }
-    let provider_model = {
+    let (provider_model, provider_name, auth_method, effort) = {
         let agent_guard = agent.lock().await;
         register_session_interrupt_queue(
             soft_interrupt_queues,
@@ -148,7 +148,28 @@ pub(super) async fn create_headless_session(
         )
         .await;
         register_background_tool_signal(&client_session_id, agent_guard.background_tool_signal());
-        agent_guard.provider_model()
+        let route_api_method = agent_guard.session_route_api_method();
+        let auth_method = agent_guard
+            .active_resolved_credential()
+            .map(|credential| credential.auth_method_label().to_string())
+            .or_else(|| {
+                route_api_method.as_deref().and_then(|route| {
+                    let route = route.to_ascii_lowercase();
+                    if route.contains("oauth") {
+                        Some("OAuth".to_string())
+                    } else if route.contains("api") || route.contains("compatible") {
+                        Some("API key".to_string())
+                    } else {
+                        None
+                    }
+                })
+            });
+        (
+            agent_guard.provider_model(),
+            agent_guard.provider_name(),
+            auth_method,
+            crate::session_effort::session_effort(&client_session_id),
+        )
     };
 
     let swarm_id = if swarm_enabled {
@@ -194,7 +215,10 @@ pub(super) async fn create_headless_session(
                 todo_items: Vec::new(),
                 runtime: crate::protocol::SwarmMemberRuntime {
                     model: Some(provider_model),
-                    elapsed_secs: None,
+                    provider: Some(provider_name),
+                    auth_method,
+                    effort,
+                    elapsed_secs: Some(0),
                 },
             },
         );

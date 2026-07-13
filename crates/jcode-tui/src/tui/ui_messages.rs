@@ -2142,14 +2142,105 @@ fn swarm_notification_style(title: Option<&str>) -> (&'static str, Color, Color)
 /// constants so click hit-testing and rendering stay in sync.
 pub(crate) const SWARM_EXPAND_BADGE: &str = "▸ expand";
 pub(crate) const SWARM_COLLAPSE_BADGE: &str = "▾ collapse";
+pub(crate) const SWARM_AGENT_SNAPSHOT_TITLE: &str = "swarm-agent-snapshot";
+
+pub(crate) fn encode_swarm_agent_snapshot(
+    member: &crate::protocol::SwarmMemberStatus,
+) -> Option<String> {
+    serde_json::to_string(member).ok()
+}
+
+fn compact_agent_notification_sender(title: &str) -> Option<&str> {
+    title
+        .strip_prefix("DM from ")
+        .or_else(|| title.strip_prefix("Task · "))
+        .map(str::trim)
+        .filter(|sender| !sender.is_empty())
+}
+
+fn render_compact_agent_notification(
+    title: &str,
+    content: &str,
+    width: u16,
+) -> Option<Vec<Line<'static>>> {
+    let sender = compact_agent_notification_sender(title)?;
+    let icon = crate::id::session_icon(sender);
+    let collapsible = jcode_tui_messages::parse_collapsible_swarm_content(content);
+    let (body, badge) = match collapsible {
+        Some(parsed) if parsed.expanded => (
+            format!("{}\n{}", parsed.tldr, parsed.body.trim()),
+            Some(SWARM_COLLAPSE_BADGE),
+        ),
+        Some(parsed) => (parsed.tldr.to_string(), Some(SWARM_EXPAND_BADGE)),
+        None => (content.trim().to_string(), None),
+    };
+    let text_color = if title.starts_with("Task · ") {
+        rgb(220, 236, 255)
+    } else {
+        rgb(214, 232, 255)
+    };
+    let icon_style = Style::default().fg(rgb(255, 200, 100));
+    let body_style = Style::default().fg(text_color);
+    let max_width = width.max(1) as usize;
+    let body_width = max_width.saturating_sub(3).max(1);
+    let mut rendered_body = if body.is_empty() {
+        vec![Line::from(Span::styled(String::new(), body_style))]
+    } else {
+        markdown::render_markdown_with_width(&body, Some(body_width))
+    };
+    if rendered_body.is_empty() {
+        rendered_body.push(Line::from(Span::styled(body, body_style)));
+    }
+
+    let mut lines = Vec::new();
+    for (index, mut line) in rendered_body.into_iter().enumerate() {
+        for span in &mut line.spans {
+            if span.style.fg.is_none() {
+                span.style.fg = Some(text_color);
+            }
+        }
+        let mut spans = vec![if index == 0 {
+            Span::styled(format!("{} ", icon), icon_style)
+        } else {
+            Span::raw("   ")
+        }];
+        spans.extend(line.spans);
+        if index == 0
+            && let Some(badge) = badge
+        {
+            spans.push(Span::styled(
+                format!("  {badge}"),
+                Style::default().fg(text_color).dim(),
+            ));
+        }
+        lines.push(Line::from(spans));
+    }
+
+    if markdown::center_code_blocks() {
+        left_pad_lines_for_centered_mode(&mut lines, width);
+    }
+    Some(lines)
+}
 
 pub(crate) fn render_swarm_message(
     msg: &DisplayMessage,
     width: u16,
     _diff_mode: crate::config::DiffDisplayMode,
 ) -> Vec<Line<'static>> {
+    if msg.title.as_deref() == Some(SWARM_AGENT_SNAPSHOT_TITLE)
+        && let Ok(member) = serde_json::from_str::<crate::protocol::SwarmMemberStatus>(&msg.content)
+    {
+        return crate::tui::info_widget::swarm_gallery::render_swarm_chat_card_lines(
+            &[member],
+            width as usize,
+        );
+    }
+
     let centered = markdown::center_code_blocks();
     let title = msg.title.as_deref().unwrap_or("Swarm").trim();
+    if let Some(lines) = render_compact_agent_notification(title, &msg.content, width) {
+        return lines;
+    }
     let collapsible = jcode_tui_messages::parse_collapsible_swarm_content(&msg.content);
     let (content, tldr_line): (String, Option<(String, bool)>) = match collapsible {
         Some(parsed) if !parsed.expanded => (String::new(), Some((parsed.tldr.to_string(), false))),

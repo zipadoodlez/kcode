@@ -83,21 +83,19 @@ fn test_render_rounded_box_long_title_keeps_body_width_in_sync() {
 }
 
 #[test]
-fn test_render_swarm_message_uses_left_rail_not_box() {
+fn test_render_direct_message_as_compact_agent_row() {
     crate::tui::markdown::set_center_code_blocks(false);
     let msg = DisplayMessage::swarm("DM from fox", "Can you take parser tests?");
 
     let lines = render_swarm_message(&msg, 80, crate::config::DiffDisplayMode::Off);
     let rendered: Vec<String> = lines.iter().map(extract_line_text).collect();
 
-    assert_eq!(rendered.len(), 2, "expected compact header + body layout");
-    assert!(rendered[0].starts_with("│ ✉ DM from fox"));
-    assert_eq!(rendered[1], "│ Can you take parser tests?");
+    assert_eq!(rendered, vec!["🦊 Can you take parser tests?"]);
     assert!(
         rendered
             .iter()
-            .all(|line| !line.contains('╭') && !line.contains('╰')),
-        "swarm notifications should no longer render as rounded boxes: {:?}",
+            .all(|line| !line.contains('│') && !line.contains('✉')),
+        "direct messages should render without rails or type icons: {:?}",
         rendered
     );
 }
@@ -112,10 +110,7 @@ fn test_render_swarm_message_matches_exact_compact_snapshot() {
 
     assert_eq!(
         rendered,
-        vec![
-            "│ ⚑ Task · sheep".to_string(),
-            "│ Implement compaction asymptotic fixes".to_string(),
-        ]
+        vec!["🐑 Implement compaction asymptotic fixes".to_string()]
     );
 }
 
@@ -137,15 +132,14 @@ fn test_render_swarm_message_trims_extra_newlines() {
 }
 
 #[test]
-fn test_render_swarm_message_uses_task_icon_for_assignments() {
+fn test_render_swarm_message_uses_agent_emoji_for_assignments() {
     crate::tui::markdown::set_center_code_blocks(false);
     let msg = DisplayMessage::swarm("Task · sheep", "Implement compaction asymptotic fixes");
 
     let lines = render_swarm_message(&msg, 80, crate::config::DiffDisplayMode::Off);
     let rendered: Vec<String> = lines.iter().map(extract_line_text).collect();
 
-    assert_eq!(rendered[0], "│ ⚑ Task · sheep");
-    assert_eq!(rendered[1], "│ Implement compaction asymptotic fixes");
+    assert_eq!(rendered, vec!["🐑 Implement compaction asymptotic fixes"]);
 }
 
 #[test]
@@ -195,10 +189,9 @@ fn test_render_swarm_message_centered_mode_keeps_task_icon_and_padding() {
         rendered[0].starts_with(' '),
         "centered task header should be padded: {rendered:?}"
     );
-    assert_eq!(rendered[0].trim_start(), "│ ⚑ Task · sheep");
     assert_eq!(
-        rendered[1].trim_start(),
-        "│ Implement compaction asymptotic fixes"
+        rendered[0].trim_start(),
+        "🐑 Implement compaction asymptotic fixes"
     );
 
     crate::tui::markdown::set_center_code_blocks(saved);

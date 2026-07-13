@@ -652,7 +652,17 @@ async fn broadcast_swarm_status_now(
                     todo_items: m.todo_items.clone(),
                     runtime: crate::protocol::SwarmMemberRuntime {
                         model: m.runtime.model.clone(),
-                        elapsed_secs: Some(m.joined_at.elapsed().as_secs()),
+                        provider: m.runtime.provider.clone(),
+                        auth_method: m.runtime.auth_method.clone(),
+                        effort: m.runtime.effort.clone(),
+                        elapsed_secs: if matches!(
+                            m.status.as_str(),
+                            "running" | "streaming" | "thinking"
+                        ) {
+                            Some(m.joined_at.elapsed().as_secs())
+                        } else {
+                            Some(m.runtime.elapsed_secs.unwrap_or(0))
+                        },
                     },
                 })
         })
@@ -1314,6 +1324,14 @@ pub(super) async fn update_member_status_with_report_tldr(
             let member_changed = status_changed || detail_changed || report_changed;
             if status_changed {
                 member.last_status_change = Instant::now();
+                if matches!(status, "running" | "streaming" | "thinking") {
+                    member.runtime.elapsed_secs = None;
+                } else if matches!(
+                    previous_status.as_str(),
+                    "running" | "streaming" | "thinking"
+                ) {
+                    member.runtime.elapsed_secs = Some(member.joined_at.elapsed().as_secs());
+                }
             }
             let name = member.friendly_name.clone();
             let is_headless = member.is_headless;
@@ -1667,7 +1685,7 @@ mod tests {
     };
     use std::collections::{HashMap, HashSet};
     use std::sync::Arc;
-    use std::time::Instant;
+    use std::time::{Duration, Instant};
     use tokio::sync::{RwLock, mpsc};
 
     fn plan_item(id: &str, content: &str) -> PlanItem {
@@ -2390,6 +2408,75 @@ mod tests {
                 } if message.contains("finished their work and is ready for more")
             )
         }));
+    }
+
+    #[tokio::test]
+    async fn member_elapsed_time_runs_only_while_active_and_freezes_afterward() {
+        let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+        let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+            "swarm-1".to_string(),
+            HashSet::from(["worker".to_string()]),
+        )])));
+        let (mut worker, _worker_rx) = swarm_member("worker", "agent", true);
+        worker.runtime.elapsed_secs = Some(12);
+        swarm_members
+            .write()
+            .await
+            .insert("worker".to_string(), worker);
+
+        update_member_status(
+            "worker",
+            "running",
+            None,
+            &swarm_members,
+            &swarms_by_id,
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert_eq!(
+            swarm_members
+                .read()
+                .await
+                .get("worker")
+                .and_then(|member| member.runtime.elapsed_secs),
+            None,
+            "active members should derive elapsed time from joined_at"
+        );
+
+        {
+            let mut members = swarm_members.write().await;
+            members.get_mut("worker").unwrap().joined_at = Instant::now() - Duration::from_secs(37);
+        }
+        update_member_status(
+            "worker",
+            "completed",
+            None,
+            &swarm_members,
+            &swarms_by_id,
+            None,
+            None,
+            None,
+        )
+        .await;
+
+        let frozen = swarm_members
+            .read()
+            .await
+            .get("worker")
+            .and_then(|member| member.runtime.elapsed_secs)
+            .expect("terminal member should retain frozen elapsed time");
+        assert!((37..=38).contains(&frozen), "frozen={frozen}");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert_eq!(
+            swarm_members
+                .read()
+                .await
+                .get("worker")
+                .and_then(|member| member.runtime.elapsed_secs),
+            Some(frozen)
+        );
     }
 
     #[tokio::test]

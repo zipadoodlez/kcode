@@ -2559,6 +2559,46 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.set_status_notice(format!("{} · {}", presentation.title, presentation.message));
                 return false;
             }
+            let swarm_report_scope = matches!(
+                &notification_type,
+                crate::protocol::NotificationType::Message {
+                    scope: Some(scope),
+                    ..
+                } if scope == "swarm"
+            );
+            if swarm_report_scope {
+                // A report is the terminal snapshot of an agent, not another
+                // prose message to read. Keep the live card under the spawn call
+                // and insert a duplicate snapshot where the report arrived.
+                if let Some(mut member) = app
+                    .remote_swarm_members
+                    .iter()
+                    .find(|member| member.session_id == from_session)
+                    .cloned()
+                {
+                    if matches!(member.status.as_str(), "running" | "streaming" | "thinking") {
+                        member.status = "completed".to_string();
+                    }
+                    if let Some(snapshot) = crate::tui::ui::encode_swarm_agent_snapshot(&member) {
+                        app.push_display_message(DisplayMessage::swarm(
+                            crate::tui::ui::SWARM_AGENT_SNAPSHOT_TITLE,
+                            snapshot.clone(),
+                        ));
+                        persist_replay_display_message(
+                            app,
+                            "swarm",
+                            Some(crate::tui::ui::SWARM_AGENT_SNAPSHOT_TITLE.to_string()),
+                            &snapshot,
+                        );
+                    }
+                }
+                app.set_status_notice(format!(
+                    "{} {} finished",
+                    crate::id::session_icon(&sender),
+                    sender
+                ));
+                return false;
+            }
             app.push_display_message(DisplayMessage::swarm(
                 presentation.title.clone(),
                 presentation.message.clone(),

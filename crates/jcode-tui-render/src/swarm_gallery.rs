@@ -210,6 +210,11 @@ pub struct GalleryMember {
     pub todo_items: Vec<GalleryTodo>,
     /// Provider model currently running this member, when known.
     pub model: Option<String>,
+    /// Provider display name and credential route used by this member.
+    pub provider: Option<String>,
+    pub auth_method: Option<String>,
+    /// Reasoning effort selected for this member.
+    pub effort: Option<String>,
     /// Seconds since this member was spawned.
     pub elapsed_secs: Option<u64>,
 }
@@ -302,14 +307,7 @@ pub fn render_swarm_chat_cards(members: &[GalleryMember], width: usize) -> Vec<L
         }
 
         let accent = status_accent(&member.status);
-        let mut metadata = vec![format!(
-            "{} {}",
-            card_status_glyph(&member.status),
-            card_status_label(&member.status)
-        )];
-        if let Some((done, total)) = member.todo {
-            metadata.push(format!("Todo {done}/{total}"));
-        }
+        let mut metadata = Vec::new();
         if let Some(elapsed) = member.elapsed_secs {
             metadata.push(format_elapsed(elapsed));
         }
@@ -320,13 +318,47 @@ pub fn render_swarm_chat_cards(members: &[GalleryMember], width: usize) -> Vec<L
         {
             metadata.push(format_model(model));
         }
+        if let Some(provider) = member
+            .provider
+            .as_deref()
+            .filter(|provider| !provider.trim().is_empty())
+        {
+            let route = member
+                .auth_method
+                .as_deref()
+                .filter(|method| !method.trim().is_empty())
+                .map(|method| format!("{provider} {method}"))
+                .unwrap_or_else(|| provider.to_string());
+            metadata.push(route);
+        } else if let Some(method) = member
+            .auth_method
+            .as_deref()
+            .filter(|method| !method.trim().is_empty())
+        {
+            metadata.push(method.to_string());
+        }
+        if let Some(effort) = member
+            .effort
+            .as_deref()
+            .filter(|effort| !effort.trim().is_empty())
+        {
+            metadata.push(effort.to_string());
+        }
 
-        let lead = format!("    {}  ", member.icon.as_deref().unwrap_or("🐝"));
-        let label = format!("{} ", member.label);
-        let mut tail = metadata.join(" · ");
-        while metadata.len() > 1 && disp_w(&lead) + disp_w(&label) + 2 + disp_w(&tail) > width {
+        let lead = format!(
+            "    {} {} ",
+            member.icon.as_deref().unwrap_or("🐝"),
+            card_status_glyph(&member.status)
+        );
+        let label = member.label.clone();
+        let mut tail = if metadata.is_empty() {
+            String::new()
+        } else {
+            format!(" · {}", metadata.join(" · "))
+        };
+        while metadata.len() > 1 && disp_w(&lead) + disp_w(&label) + disp_w(&tail) > width {
             metadata.pop();
-            tail = metadata.join(" · ");
+            tail = format!(" · {}", metadata.join(" · "));
         }
 
         let mut header = vec![
@@ -337,8 +369,7 @@ pub fn render_swarm_chat_cards(members: &[GalleryMember], width: usize) -> Vec<L
             ),
         ];
         let consumed = disp_w(&lead) + disp_w(&label);
-        if consumed + 2 + disp_w(&tail) <= width {
-            header.push(Span::raw(" ".repeat(width - consumed - disp_w(&tail))));
+        if consumed + disp_w(&tail) <= width {
             header.push(Span::styled(tail, Style::default().fg(rgb(150, 150, 160))));
         }
         out.push(Line::from(header));
@@ -1868,6 +1899,9 @@ mod tests {
             todo: None,
             todo_items: Vec::new(),
             model: None,
+            provider: None,
+            auth_method: None,
+            effort: None,
             elapsed_secs: None,
         }
     }
@@ -2216,6 +2250,9 @@ mod tests {
         worker.task = Some("review authentication changes".to_string());
         worker.todo = Some((2, 4));
         worker.model = Some("openai:gpt-5.6-sol".into());
+        worker.provider = Some("OpenAI".into());
+        worker.auth_method = Some("OAuth".into());
+        worker.effort = Some("high".into());
         worker.elapsed_secs = Some(18);
         worker.todo_items = vec![
             GalleryTodo {
@@ -2269,11 +2306,11 @@ mod tests {
         let all = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
         assert_eq!(lines.len(), 8, "header + 4 todos + 3 intents: {all}");
         assert!(
-            all.contains("🦕  reviewer"),
+            all.contains("🦕 ● reviewer"),
             "assigned agent emoji missing: {all}"
         );
         assert!(
-            all.contains("● Working · Todo 2/4 · 00:18 · GPT-5.6"),
+            all.contains("reviewer · 00:18 · GPT-5.6 · OpenAI OAuth · high"),
             "header metadata missing: {all}"
         );
         assert!(

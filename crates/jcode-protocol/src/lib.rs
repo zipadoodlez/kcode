@@ -489,12 +489,23 @@ pub struct SwarmMemberRuntime {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// Human-facing credential route, such as "OAuth" or "API key".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_method: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub elapsed_secs: Option<u64>,
 }
 
 impl SwarmMemberRuntime {
     fn is_empty(&self) -> bool {
-        self.model.is_none() && self.elapsed_secs.is_none()
+        self.model.is_none()
+            && self.provider.is_none()
+            && self.auth_method.is_none()
+            && self.effort.is_none()
+            && self.elapsed_secs.is_none()
     }
 }
 

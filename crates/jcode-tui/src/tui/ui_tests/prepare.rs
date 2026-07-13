@@ -3,10 +3,10 @@ use super::*;
 fn chat_swarm_member(session_id: &str) -> crate::protocol::SwarmMemberStatus {
     crate::protocol::SwarmMemberStatus {
         session_id: session_id.to_string(),
-        friendly_name: Some("API reviewer".to_string()),
+        friendly_name: Some("cow".to_string()),
         status: "running".to_string(),
         detail: None,
-        task_label: Some("review authentication changes".to_string()),
+        task_label: Some("API reviewer".to_string()),
         role: Some("agent".to_string()),
         is_headless: Some(true),
         live_attachments: None,
@@ -43,6 +43,9 @@ fn chat_swarm_member(session_id: &str) -> crate::protocol::SwarmMemberStatus {
         ],
         runtime: crate::protocol::SwarmMemberRuntime {
             model: Some("openai:gpt-5.6-sol".to_string()),
+            provider: Some("OpenAI".to_string()),
+            auth_method: Some("OAuth".to_string()),
+            effort: Some("high".to_string()),
             elapsed_secs: Some(18),
         },
     }
@@ -87,7 +90,7 @@ fn test_prepare_messages_places_live_swarm_card_beneath_matching_spawn_tool_call
         .expect("missing swarm tool row");
     let card_row = rendered
         .iter()
-        .position(|line| line.contains("🐝  API reviewer"))
+        .position(|line| line.contains("🐄 ● API reviewer"))
         .expect("missing live member card");
     let all = rendered.join("\n");
 
@@ -97,7 +100,7 @@ fn test_prepare_messages_places_live_swarm_card_beneath_matching_spawn_tool_call
         "card must directly follow tool: {all}"
     );
     assert!(
-        all.contains("Working · Todo 1/3 · 00:18 · GPT-5.6"),
+        all.contains("API reviewer · 00:18 · GPT-5.6 · OpenAI OAuth · high"),
         "runtime metadata missing: {all}"
     );
     assert!(
@@ -141,7 +144,10 @@ fn test_prepare_messages_uses_exact_spawn_member_outside_gallery_subtree() {
         .map(extract_line_text)
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(rendered.contains("🐝  API reviewer"), "rendered={rendered}");
+    assert!(
+        rendered.contains("🐄 ● API reviewer"),
+        "rendered={rendered}"
+    );
 }
 
 #[test]
@@ -172,7 +178,10 @@ fn test_prepare_messages_matches_real_prefixed_spawn_result_without_input_metada
         .map(extract_line_text)
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(rendered.contains("🐝  API reviewer"), "rendered={rendered}");
+    assert!(
+        rendered.contains("🐄 ● API reviewer"),
+        "rendered={rendered}"
+    );
 }
 
 #[test]
@@ -203,7 +212,7 @@ fn test_prepare_messages_does_not_attach_member_to_unmatched_spawn_result() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        !rendered.contains("🐝  API reviewer"),
+        !rendered.contains("🐄 ● API reviewer"),
         "rendered={rendered}"
     );
 }
@@ -237,7 +246,10 @@ fn test_prepare_messages_matches_spawn_member_by_unique_label_when_result_is_ref
         .map(extract_line_text)
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(rendered.contains("🐝  API reviewer"), "rendered={rendered}");
+    assert!(
+        rendered.contains("🐄 ● API reviewer"),
+        "rendered={rendered}"
+    );
 }
 
 #[test]
@@ -272,7 +284,7 @@ fn test_prepare_messages_does_not_guess_when_spawn_label_is_ambiguous() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        !rendered.contains("🐝  API reviewer"),
+        !rendered.contains("🐄 ● API reviewer"),
         "rendered={rendered}"
     );
 }

@@ -84,6 +84,9 @@ pub(crate) fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMe
             sort_key: member.session_id.clone(),
             todo: member.todo_progress,
             model: member.runtime.model.clone(),
+            provider: member.runtime.provider.clone(),
+            auth_method: member.runtime.auth_method.clone(),
+            effort: member.runtime.effort.clone(),
             elapsed_secs: member.runtime.elapsed_secs,
             todo_items: member
                 .todo_items
@@ -115,7 +118,22 @@ pub(crate) fn render_swarm_chat_card_lines(
     members: &[SwarmMemberStatus],
     width: usize,
 ) -> Vec<Line<'static>> {
-    jcode_tui_render::swarm_gallery::render_swarm_chat_cards(&members_to_gallery(members), width)
+    let mut gallery_members = members_to_gallery(members);
+    for (gallery, member) in gallery_members.iter_mut().zip(members) {
+        if let Some(label) = member
+            .task_label
+            .as_deref()
+            .map(str::trim)
+            .filter(|label| !label.is_empty())
+        {
+            // Transcript cards belong to the spawn call, so the user-provided
+            // spawn label is the useful primary identity. The generated animal
+            // name remains represented by the session icon and is still used by
+            // the persistent swarm gallery/panel.
+            gallery.label = label.to_string();
+        }
+    }
+    jcode_tui_render::swarm_gallery::render_swarm_chat_cards(&gallery_members, width)
 }
 
 /// Render the inline swarm gallery for the given members into `area`-width lines.
@@ -411,5 +429,19 @@ mod tests {
         assert_eq!(body[0], "line one");
         assert_eq!(body[1], "line two");
         assert!(!body.iter().any(|l| l.contains("the detail line")));
+    }
+
+    #[test]
+    fn transcript_card_prefers_spawn_label_over_generated_name() {
+        let mut m = member("cow", "ready", None, None);
+        m.task_label = Some("card demo".to_string());
+        let rendered = render_swarm_chat_card_lines(&[m], 80)
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+
+        assert!(rendered.contains("card demo"), "rendered={rendered}");
+        assert!(!rendered.contains("cow"), "rendered={rendered}");
     }
 }
