@@ -374,8 +374,10 @@ impl App {
 
         let cost_based_usage = || crate::tui::info_widget::UsageInfo {
             provider: crate::tui::info_widget::UsageProvider::CostBased,
+            primary_limit_label: None,
             five_hour: 0.0,
             five_hour_resets_at: None,
+            secondary_limit_label: None,
             seven_day: 0.0,
             seven_day_resets_at: None,
             spark: None,
@@ -392,8 +394,10 @@ impl App {
         match route.provider {
             WidgetProviderKind::Copilot => Some(crate::tui::info_widget::UsageInfo {
                 provider: crate::tui::info_widget::UsageProvider::Copilot,
+                primary_limit_label: None,
                 five_hour: 0.0,
                 five_hour_resets_at: None,
+                secondary_limit_label: None,
                 seven_day: 0.0,
                 seven_day_resets_at: None,
                 spark: None,
@@ -418,8 +422,10 @@ impl App {
                 let usage = crate::usage::get_sync();
                 Some(crate::tui::info_widget::UsageInfo {
                     provider: crate::tui::info_widget::UsageProvider::Anthropic,
+                    primary_limit_label: Some("5-hour".to_string()),
                     five_hour: usage.five_hour,
                     five_hour_resets_at: usage.five_hour_resets_at.clone(),
+                    secondary_limit_label: Some("Weekly".to_string()),
                     seven_day: usage.seven_day,
                     seven_day_resets_at: usage.seven_day_resets_at.clone(),
                     spark: None,
@@ -445,6 +451,10 @@ impl App {
                 let openai_usage = crate::usage::get_openai_usage_sync();
                 Some(crate::tui::info_widget::UsageInfo {
                     provider: crate::tui::info_widget::UsageProvider::OpenAI,
+                    primary_limit_label: openai_usage
+                        .five_hour
+                        .as_ref()
+                        .map(|window| window.name.trim_end_matches(" window").to_string()),
                     five_hour: openai_usage
                         .five_hour
                         .as_ref()
@@ -454,6 +464,10 @@ impl App {
                         .five_hour
                         .as_ref()
                         .and_then(|w| w.resets_at.clone()),
+                    secondary_limit_label: openai_usage
+                        .seven_day
+                        .as_ref()
+                        .map(|window| window.name.trim_end_matches(" window").to_string()),
                     seven_day: openai_usage
                         .seven_day
                         .as_ref()

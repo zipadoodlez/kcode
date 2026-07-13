@@ -66,20 +66,24 @@ pub(super) fn render_usage_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
                         .add_modifier(ratatui::style::Modifier::DIM),
                 )]));
             }
-            lines.push(render_labeled_bar(
-                "5-hour",
-                five_hr_used,
-                five_hr_left,
-                five_hr_reset.as_deref(),
-                inner.width,
-            ));
-            lines.push(render_labeled_bar(
-                "Weekly",
-                seven_day_used,
-                seven_day_left,
-                seven_day_reset.as_deref(),
-                inner.width,
-            ));
+            if let Some(primary_label) = info.primary_limit_label.as_deref() {
+                lines.push(render_labeled_bar(
+                    primary_label,
+                    five_hr_used,
+                    five_hr_left,
+                    five_hr_reset.as_deref(),
+                    inner.width,
+                ));
+            }
+            if let Some(secondary_label) = info.secondary_limit_label.as_deref() {
+                lines.push(render_labeled_bar(
+                    secondary_label,
+                    seven_day_used,
+                    seven_day_left,
+                    seven_day_reset.as_deref(),
+                    inner.width,
+                ));
+            }
             if let Some(spark_usage) = info.spark {
                 let spark_used = (spark_usage * 100.0).round().clamp(0.0, 100.0) as u8;
                 let spark_left = 100u8.saturating_sub(spark_used);
@@ -140,20 +144,24 @@ pub(super) fn render_usage_compact(info: &UsageInfo, width: u16) -> Vec<Line<'st
                 .add_modifier(ratatui::style::Modifier::DIM),
         )]));
     }
-    lines.push(render_labeled_bar(
-        "5-hour",
-        five_hr_used,
-        five_hr_left,
-        five_hr_reset.as_deref(),
-        width,
-    ));
-    lines.push(render_labeled_bar(
-        "Weekly",
-        seven_day_used,
-        seven_day_left,
-        seven_day_reset.as_deref(),
-        width,
-    ));
+    if let Some(primary_label) = info.primary_limit_label.as_deref() {
+        lines.push(render_labeled_bar(
+            primary_label,
+            five_hr_used,
+            five_hr_left,
+            five_hr_reset.as_deref(),
+            width,
+        ));
+    }
+    if let Some(secondary_label) = info.secondary_limit_label.as_deref() {
+        lines.push(render_labeled_bar(
+            secondary_label,
+            seven_day_used,
+            seven_day_left,
+            seven_day_reset.as_deref(),
+            width,
+        ));
+    }
     if let Some(spark_usage) = info.spark {
         let spark_used = (spark_usage * 100.0).round().clamp(0.0, 100.0) as u8;
         let spark_left = 100u8.saturating_sub(spark_used);
@@ -271,6 +279,25 @@ mod tests {
         assert!(text.contains("resets 12m"));
         assert!(!text.contains("0% left"));
         assert!(UnicodeWidthStr::width(text.as_str()) <= 24);
+    }
+
+    #[test]
+    fn openai_monthly_usage_renders_only_the_reported_window() {
+        let info = UsageInfo {
+            provider: UsageProvider::OpenAI,
+            primary_limit_label: Some("Monthly".to_string()),
+            five_hour: 1.0,
+            available: true,
+            ..Default::default()
+        };
+
+        let lines = render_usage_compact(&info, 40);
+        let text = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
+
+        assert!(text.contains("Monthly"));
+        assert!(!text.contains("5-hour"));
+        assert!(!text.contains("Weekly"));
+        assert_eq!(lines.len(), 2); // Provider label plus one quota bar.
     }
 }
 

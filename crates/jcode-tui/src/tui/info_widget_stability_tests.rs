@@ -51,7 +51,9 @@ fn rich_data() -> InfoWidgetData {
         }),
         usage_info: Some(UsageInfo {
             provider: UsageProvider::Anthropic,
+            primary_limit_label: Some("5-hour".to_string()),
             five_hour: 0.4,
+            secondary_limit_label: Some("Weekly".to_string()),
             seven_day: 0.6,
             available: true,
             ..Default::default()

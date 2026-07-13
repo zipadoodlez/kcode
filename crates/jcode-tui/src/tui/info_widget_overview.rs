@@ -173,12 +173,14 @@ fn compact_usage_height(data: &InfoWidgetData) -> u16 {
             // Single "$cost · tokens" line.
             return 1;
         }
-        // Subscription-style providers render an optional label line plus the
-        // 5-hour and weekly bars, plus an optional Spark bar.
+        // Subscription-style providers render an optional provider label plus
+        // whichever primary, secondary, and Spark windows are actually present.
         let label = info.provider.label();
         let label_line = u16::from(!label.is_empty());
+        let primary_line = u16::from(info.primary_limit_label.is_some());
+        let secondary_line = u16::from(info.secondary_limit_label.is_some());
         let spark_line = u16::from(info.spark.is_some());
-        return 2 + label_line + spark_line;
+        return label_line + primary_line + secondary_line + spark_line;
     }
     0
 }

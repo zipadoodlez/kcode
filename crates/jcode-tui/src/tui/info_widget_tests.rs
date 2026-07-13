@@ -1655,7 +1655,9 @@ fn placements_never_include_border_only_widgets() {
         }),
         usage_info: Some(UsageInfo {
             provider: UsageProvider::Anthropic,
+            primary_limit_label: Some("5-hour".to_string()),
             five_hour: 0.35,
+            secondary_limit_label: Some("Weekly".to_string()),
             seven_day: 0.62,
             available: true,
             ..Default::default()
@@ -1707,7 +1709,9 @@ fn compact_page_height_estimate_matches_rendered_lines() {
         }),
         usage_info: Some(UsageInfo {
             provider: UsageProvider::Anthropic,
+            primary_limit_label: Some("5-hour".to_string()),
             five_hour: 0.3,
+            secondary_limit_label: Some("Weekly".to_string()),
             seven_day: 0.5,
             available: true,
             ..Default::default()

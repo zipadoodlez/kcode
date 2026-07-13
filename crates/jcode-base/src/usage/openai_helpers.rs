@@ -233,7 +233,34 @@ pub(super) fn parse_openai_hard_limit_reached(json: &serde_json::Value) -> bool 
         == Some(false)
 }
 
-fn parse_wham_window(window: &serde_json::Value, name: &str) -> Option<UsageLimit> {
+fn parse_window_seconds(obj: &serde_json::Map<String, serde_json::Value>) -> Option<u64> {
+    ["limit_window_seconds", "window_seconds"]
+        .iter()
+        .find_map(|key| obj.get(*key).and_then(|value| value.as_u64()))
+}
+
+fn window_duration_label(seconds: u64) -> String {
+    const HOUR: u64 = 60 * 60;
+    const DAY: u64 = 24 * HOUR;
+
+    // OpenAI's monthly agentic pool is reported as a calendar-like duration
+    // (currently 2,628,000 seconds), rather than an exact multiple of days.
+    if (28 * DAY..=32 * DAY).contains(&seconds) {
+        return "Monthly window".to_string();
+    }
+    if seconds >= DAY && seconds.is_multiple_of(DAY) {
+        let days = seconds / DAY;
+        return format!("{days}-day window");
+    }
+    if seconds >= HOUR && seconds.is_multiple_of(HOUR) {
+        let hours = seconds / HOUR;
+        return format!("{hours}-hour window");
+    }
+
+    format!("{}-second window", seconds)
+}
+
+fn parse_wham_window(window: &serde_json::Value, fallback_name: &str) -> Option<UsageLimit> {
     let obj = window.as_object()?;
     let used_percent = obj
         .get("used_percent")
@@ -245,7 +272,9 @@ fn parse_wham_window(window: &serde_json::Value, name: &str) -> Option<UsageLimi
             .unwrap_or_else(|| format!("{}", ts as i64))
     });
     Some(UsageLimit {
-        name: name.to_string(),
+        name: parse_window_seconds(obj)
+            .map(window_duration_label)
+            .unwrap_or_else(|| fallback_name.to_string()),
         usage_percent: used_percent,
         resets_at,
     })
@@ -271,6 +300,17 @@ fn parse_wham_rate_limit(
     out
 }
 
+fn qualify_additional_limit(limit_name: &str, mut limit: UsageLimit) -> UsageLimit {
+    let duration = limit.name.strip_suffix(" window").unwrap_or(&limit.name);
+    let duration = match duration {
+        "5-hour" => "5h",
+        "7-day" => "7d",
+        other => other,
+    };
+    limit.name = format!("{limit_name} ({duration})");
+    limit
+}
+
 pub(super) fn parse_openai_usage_payload(json: &serde_json::Value) -> ParsedOpenAIUsageReport {
     let mut parsed = ParsedOpenAIUsageReport {
         hard_limit_reached: parse_openai_hard_limit_reached(json),
@@ -293,11 +333,11 @@ pub(super) fn parse_openai_usage_payload(json: &serde_json::Value) -> ParsedOpen
                 .and_then(|v| v.as_str())
                 .unwrap_or("Additional");
             if let Some(rl) = entry.get("rate_limit") {
-                let primary = format!("{} (5h)", limit_name);
-                let secondary = format!("{} (7d)", limit_name);
-                parsed
-                    .limits
-                    .extend(parse_wham_rate_limit(rl, &primary, &secondary));
+                parsed.limits.extend(
+                    parse_wham_rate_limit(rl, "5-hour window", "7-day window")
+                        .into_iter()
+                        .map(|limit| qualify_additional_limit(limit_name, limit)),
+                );
             }
         }
     }

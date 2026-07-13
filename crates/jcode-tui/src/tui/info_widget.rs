@@ -85,7 +85,7 @@ pub enum WidgetKind {
     BackgroundTasks,
     /// Conversation context compaction status
     Compaction,
-    /// 5-hour/weekly subscription bars
+    /// Subscription quota bars
     UsageLimits,
     /// Session-level KV cache hit ratio
     KvCache,
@@ -349,13 +349,17 @@ pub enum AuthMethod {
 pub struct UsageInfo {
     /// Which provider this usage is for
     pub provider: UsageProvider,
-    /// Five-hour window utilization (0.0-1.0) - for OAuth providers
+    /// Primary subscription window label. OpenAI reports this dynamically.
+    pub primary_limit_label: Option<String>,
+    /// Primary window utilization (0.0-1.0) - for OAuth providers
     pub five_hour: f32,
-    /// Five-hour reset timestamp (RFC3339), if known
+    /// Primary reset timestamp (RFC3339), if known
     pub five_hour_resets_at: Option<String>,
-    /// Seven-day window utilization (0.0-1.0) - for OAuth providers
+    /// Secondary subscription window label, when one exists.
+    pub secondary_limit_label: Option<String>,
+    /// Secondary window utilization (0.0-1.0) - for OAuth providers
     pub seven_day: f32,
-    /// Seven-day reset timestamp (RFC3339), if known
+    /// Secondary reset timestamp (RFC3339), if known
     pub seven_day_resets_at: Option<String>,
     /// Codex Spark window utilization (0.0-1.0), if available
     pub spark: Option<f32>,

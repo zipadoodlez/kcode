@@ -176,18 +176,11 @@ impl OpenAIUsageData {
             return false;
         }
 
-        let five_hour_exhausted = self
-            .five_hour
-            .as_ref()
-            .map(|w| w.usage_ratio >= 0.99)
-            .unwrap_or(false);
-        let seven_day_exhausted = self
-            .seven_day
-            .as_ref()
-            .map(|w| w.usage_ratio >= 0.99)
-            .unwrap_or(false);
-
-        five_hour_exhausted && seven_day_exhausted
+        let mut windows = [self.five_hour.as_ref(), self.seven_day.as_ref()]
+            .into_iter()
+            .flatten()
+            .peekable();
+        windows.peek().is_some() && windows.all(|window| window.usage_ratio >= 0.99)
     }
 
     pub fn diagnostic_fields(&self) -> String {
@@ -276,7 +269,9 @@ pub struct AccountUsageSnapshot {
     pub label: String,
     pub email: Option<String>,
     pub exhausted: bool,
+    pub primary_label: Option<String>,
     pub five_hour_ratio: Option<f32>,
+    pub secondary_label: Option<String>,
     pub seven_day_ratio: Option<f32>,
     pub resets_at: Option<String>,
     pub error: Option<String>,
@@ -290,10 +285,18 @@ impl AccountUsageSnapshot {
 
         let mut parts = Vec::new();
         if let Some(ratio) = self.five_hour_ratio {
-            parts.push(format!("5h {:.0}%", ratio * 100.0));
+            parts.push(format!(
+                "{} {:.0}%",
+                self.primary_label.as_deref().unwrap_or("primary"),
+                ratio * 100.0
+            ));
         }
         if let Some(ratio) = self.seven_day_ratio {
-            parts.push(format!("7d {:.0}%", ratio * 100.0));
+            parts.push(format!(
+                "{} {:.0}%",
+                self.secondary_label.as_deref().unwrap_or("secondary"),
+                ratio * 100.0
+            ));
         }
         if let Some(reset) = &self.resets_at {
             parts.push(format!("resets {}", format_reset_time(reset)));
