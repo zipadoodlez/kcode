@@ -12,22 +12,29 @@ use super::{
 };
 
 /// Seed the initial DAG from a batch of specs (the first agent's draft). All
-/// referenced dependencies must resolve within the supplied set, the ids must be
-/// unique, and the result must be acyclic. The seed has no owner yet; ownership is
-/// assigned on dispatch.
+/// referenced dependencies must resolve within the supplied set and the result
+/// must be acyclic. Replaying an identical seed definition is a no-op, which makes
+/// transport/tool retries safe. Reusing an id for a different definition remains
+/// an error. The seed has no owner yet; ownership is assigned on dispatch.
 pub fn seed(graph: &mut TaskGraph, specs: Vec<NodeSpec>) -> Result<(), DagError> {
-    // Validate ids: present, unique within the batch, and not already present.
-    let mut seen = std::collections::HashSet::new();
-    let mut ids = Vec::new();
-    for spec in &specs {
-        let id = validated_spec_id(spec, "seed")?;
-        if graph.contains(&id) || !seen.insert(id.clone()) {
-            return Err(DagError::DuplicateNode(id));
+    // Validate ids and collapse exact replays within the same request. A repeated
+    // id with different declarative fields is still ambiguous and rejected.
+    let mut unique_specs: Vec<NodeSpec> = Vec::with_capacity(specs.len());
+    let mut indexes = std::collections::HashMap::<String, usize>::new();
+    for spec in specs {
+        let id = validated_spec_id(&spec, "seed")?;
+        if let Some(existing_index) = indexes.get(&id).copied() {
+            if !seed_specs_equivalent(&unique_specs[existing_index], &spec) {
+                return Err(DagError::DuplicateNode(id));
+            }
+            continue;
         }
-        ids.push(id);
+        indexes.insert(id, unique_specs.len());
+        unique_specs.push(spec);
     }
-    let known: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
-    for spec in &specs {
+
+    let known: std::collections::HashSet<&str> = indexes.keys().map(String::as_str).collect();
+    for spec in &unique_specs {
         for dep in &spec.depends_on {
             if !known.contains(dep.as_str()) && !graph.contains(dep) {
                 return Err(DagError::UnknownDependency {
@@ -40,7 +47,14 @@ pub fn seed(graph: &mut TaskGraph, specs: Vec<NodeSpec>) -> Result<(), DagError>
 
     // Apply onto a clone, verify acyclicity, then commit.
     let mut staged = graph.clone();
-    for spec in specs {
+    for spec in unique_specs {
+        let id = spec.id.as_deref().expect("seed ids were validated above");
+        if let Some(existing) = graph.get(id) {
+            if !seed_spec_matches_existing(graph, existing, &spec) {
+                return Err(DagError::DuplicateNode(id.to_string()));
+            }
+            continue;
+        }
         staged.push(spec_to_node(spec, None, NodeOrigin::Seed));
     }
     // Deep mode: the whole plan ends in a mandatory adversarial audit. Without
@@ -59,6 +73,63 @@ pub fn seed(graph: &mut TaskGraph, specs: Vec<NodeSpec>) -> Result<(), DagError>
     }
     *graph = staged;
     Ok(())
+}
+
+fn seed_specs_equivalent(left: &NodeSpec, right: &NodeSpec) -> bool {
+    left.id == right.id
+        && left.content == right.content
+        && left.kind == right.kind
+        && left.priority == right.priority
+        && dependency_sets_equal(&left.depends_on, &right.depends_on)
+}
+
+fn seed_spec_matches_existing(graph: &TaskGraph, node: &TaskNode, spec: &NodeSpec) -> bool {
+    // Only top-level seeded (or legacy, origin-less) work can be replayed. A
+    // collision with an expanded child or an auto-generated gate must never be
+    // silently treated as the same declaration.
+    if node.parent.is_some()
+        || node.is_gate
+        || !matches!(node.origin, None | Some(NodeOrigin::Seed))
+        || node.content != spec.content
+        || node.kind != spec.kind
+        || node.priority != spec.priority
+    {
+        return false;
+    }
+
+    // Expanding a seeded node appends its children and gate to the parent's
+    // dependency list. Filter those machinery-owned join edges so a later replay
+    // can still be recognized from the original upstream dependencies.
+    let declared_dependencies: Vec<&str> = node
+        .depends_on
+        .iter()
+        .filter(|dependency| {
+            graph
+                .get(dependency)
+                .is_none_or(|candidate| candidate.parent.as_deref() != Some(node.id.as_str()))
+        })
+        .map(String::as_str)
+        .collect();
+    dependency_sets_equal_iter(
+        declared_dependencies,
+        spec.depends_on.iter().map(String::as_str),
+    )
+}
+
+fn dependency_sets_equal(left: &[String], right: &[String]) -> bool {
+    dependency_sets_equal_iter(
+        left.iter().map(String::as_str),
+        right.iter().map(String::as_str),
+    )
+}
+
+fn dependency_sets_equal_iter<'a>(
+    left: impl IntoIterator<Item = &'a str>,
+    right: impl IntoIterator<Item = &'a str>,
+) -> bool {
+    let left: std::collections::HashSet<&str> = left.into_iter().collect();
+    let right: std::collections::HashSet<&str> = right.into_iter().collect();
+    left == right
 }
 
 /// Insert or refresh the deep-mode root gate so it audits the current

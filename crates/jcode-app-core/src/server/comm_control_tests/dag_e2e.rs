@@ -250,6 +250,86 @@ async fn e2e_seed_creates_plan_with_kinds_and_edges() {
 }
 
 #[tokio::test]
+async fn e2e_identical_seed_replay_succeeds_without_version_or_node_churn() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let mut fx = graph_fixture_named("swarm-seed-replay", "coord-replay", "worker-replay").await;
+    let nodes = vec![
+        node_spec("explore", "explore", &[]),
+        node_spec("synth", "synthesize", &["explore"]),
+    ];
+
+    fx.seed("deep", nodes.clone()).await;
+    while fx.client_rx.try_recv().is_ok() {}
+    let (version, item_count) = {
+        let plans = fx.swarm_plans.read().await;
+        let plan = &plans[&fx.swarm_id];
+        (plan.version, plan.items.len())
+    };
+
+    fx.seed("deep", nodes).await;
+
+    let plans = fx.swarm_plans.read().await;
+    let plan = &plans[&fx.swarm_id];
+    assert_eq!(plan.version, version, "a replay must not bump plan version");
+    assert_eq!(plan.items.len(), item_count, "a replay must not add nodes");
+    drop(plans);
+    let events: Vec<_> = std::iter::from_fn(|| fx.client_rx.try_recv().ok()).collect();
+    assert!(
+        events.iter().all(|event| !matches!(event, ServerEvent::Error { .. })),
+        "an identical replay must acknowledge success: {events:?}"
+    );
+    assert!(events.iter().any(|event| matches!(event, ServerEvent::Done { .. })));
+}
+
+#[tokio::test]
+async fn e2e_seed_rejects_conflicting_existing_definition_without_mutation() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let mut fx = graph_fixture_named("swarm-seed-conflict", "coord-conflict", "worker-conflict").await;
+    fx.seed("light", vec![node_spec("shared", "explore", &[])])
+        .await;
+    while fx.client_rx.try_recv().is_ok() {}
+    let (before_version, before_items, before_content) = {
+        let plans = fx.swarm_plans.read().await;
+        let plan = &plans[&fx.swarm_id];
+        (
+            plan.version,
+            plan.items.len(),
+            plan.items
+                .iter()
+                .find(|item| item.id == "shared")
+                .expect("seeded node")
+                .content
+                .clone(),
+        )
+    };
+    let mut conflicting = node_spec("shared", "explore", &[]);
+    conflicting.content = "a different task using the same id".to_string();
+
+    fx.seed("light", vec![conflicting]).await;
+
+    let plans = fx.swarm_plans.read().await;
+    let after = &plans[&fx.swarm_id];
+    assert_eq!(after.version, before_version);
+    assert_eq!(after.items.len(), before_items);
+    assert_eq!(
+        after
+            .items
+            .iter()
+            .find(|item| item.id == "shared")
+            .expect("original node remains")
+            .content,
+        before_content,
+        "a conflicting replay must preserve the original definition"
+    );
+    drop(plans);
+    let events: Vec<_> = std::iter::from_fn(|| fx.client_rx.try_recv().ok()).collect();
+    assert!(events.iter().any(|event| matches!(
+        event,
+        ServerEvent::Error { message, .. } if message.contains("duplicate node id 'shared'")
+    )));
+}
+
+#[tokio::test]
 async fn e2e_seed_rejects_cycle_without_mutating_plan() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let mut fx = graph_fixture().await;

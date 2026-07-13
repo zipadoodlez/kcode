@@ -19,7 +19,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use futures::StreamExt;
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,6 +28,79 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[test]
 fn tool_is_named_swarm() {
     assert_eq!(CommunicateTool::new().name(), "swarm");
+}
+
+#[test]
+fn task_graph_seed_collision_is_detected_from_server_error() {
+    let response = ServerEvent::Error {
+        id: 1,
+        message: "Seed rejected: duplicate node id 'final-synthesis'".to_string(),
+        retry_after_secs: None,
+    };
+    assert_eq!(
+        super::seed_node_id_collision(&response),
+        Some("final-synthesis")
+    );
+    assert_eq!(
+        super::seed_node_id_collision(&ServerEvent::Done { id: 1 }),
+        None
+    );
+}
+
+#[test]
+fn conflicting_seed_ids_are_scoped_and_dependencies_follow_the_remap() {
+    let nodes = vec![
+        crate::protocol::TaskGraphNodeSpec {
+            id: "explore".to_string(),
+            content: "explore".to_string(),
+            kind: Some("explore".to_string()),
+            depends_on: Vec::new(),
+            priority: 10,
+        },
+        crate::protocol::TaskGraphNodeSpec {
+            id: "final-synthesis".to_string(),
+            content: "synthesize".to_string(),
+            kind: Some("synthesize".to_string()),
+            depends_on: vec!["explore".to_string()],
+            priority: 20,
+        },
+        crate::protocol::TaskGraphNodeSpec {
+            id: "verify".to_string(),
+            content: "verify".to_string(),
+            kind: Some("verify".to_string()),
+            depends_on: vec!["final-synthesis".to_string()],
+            priority: 30,
+        },
+    ];
+    let occupied = HashSet::from([
+        // This node represents an exact replay. The server would have accepted it
+        // after the conflicting id was fixed, so the client must not rename every
+        // occupied id preemptively.
+        "explore".to_string(),
+        "final-synthesis".to_string(),
+        "final-synthesis::seed-deadbeef".to_string(),
+    ]);
+
+    let (remapped, changes) =
+        super::remap_conflicting_seed_nodes(&nodes, &occupied, "final-synthesis", "seed-deadbeef");
+
+    assert_eq!(
+        changes,
+        vec![(
+            "final-synthesis".to_string(),
+            "final-synthesis::seed-deadbeef-2".to_string()
+        )]
+    );
+    assert_eq!(remapped[0], nodes[0], "non-conflicting nodes stay stable");
+    assert_eq!(remapped[1].id, "final-synthesis::seed-deadbeef-2");
+    assert_eq!(
+        remapped[2].depends_on,
+        vec!["final-synthesis::seed-deadbeef-2".to_string()]
+    );
+    assert_eq!(
+        super::format_seed_remaps(&changes),
+        "final-synthesis -> final-synthesis::seed-deadbeef-2"
+    );
 }
 
 #[test]

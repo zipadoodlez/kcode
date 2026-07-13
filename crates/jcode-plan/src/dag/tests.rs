@@ -17,14 +17,95 @@ fn dag(mode: Mode, specs: Vec<NodeSpec>) -> TaskGraph {
 // ----- seed validation -----
 
 #[test]
-fn seed_rejects_duplicate_ids() {
+fn seed_rejects_duplicate_ids_with_conflicting_definitions() {
     let mut g = TaskGraph::new(Mode::Light);
-    let err = seed(
-        &mut g,
-        vec![spec("a", NodeKind::Explore), spec("a", NodeKind::Explore)],
-    )
-    .unwrap_err();
+    let mut conflicting = spec("a", NodeKind::Explore);
+    conflicting.content = "different task".to_string();
+    let err = seed(&mut g, vec![spec("a", NodeKind::Explore), conflicting]).unwrap_err();
     assert_eq!(err, DagError::DuplicateNode("a".into()));
+}
+
+#[test]
+fn seed_collapses_identical_duplicate_specs_in_one_batch() {
+    let mut g = TaskGraph::new(Mode::Light);
+    let repeated = spec("a", NodeKind::Explore).depends_on(["upstream", "upstream"]);
+    seed(
+        &mut g,
+        vec![
+            spec("upstream", NodeKind::Explore),
+            repeated.clone(),
+            repeated,
+        ],
+    )
+    .unwrap();
+    assert_eq!(g.nodes().iter().filter(|node| node.id == "a").count(), 1);
+}
+
+#[test]
+fn seed_replay_is_idempotent_and_preserves_runtime_state() {
+    let original = spec("a", NodeKind::Explore).depends_on(["upstream"]);
+    let mut g = dag(
+        Mode::Light,
+        vec![spec("upstream", NodeKind::Explore), original.clone()],
+    );
+    dispatch(&mut g, "upstream", "worker");
+    let before = g.clone();
+
+    seed(&mut g, vec![original]).unwrap();
+
+    assert_eq!(g, before, "an identical replay must be a complete no-op");
+}
+
+#[test]
+fn seed_replay_accepts_dependency_order_and_duplicate_differences() {
+    let mut g = dag(
+        Mode::Light,
+        vec![
+            spec("a", NodeKind::Explore),
+            spec("b", NodeKind::Explore),
+            spec("join", NodeKind::Synthesize).depends_on(["a", "b"]),
+        ],
+    );
+    let before = g.clone();
+
+    seed(
+        &mut g,
+        vec![spec("join", NodeKind::Synthesize).depends_on(["b", "a", "a"])],
+    )
+    .unwrap();
+
+    assert_eq!(g, before);
+}
+
+#[test]
+fn partial_seed_replay_adds_only_new_nodes() {
+    let existing = spec("a", NodeKind::Explore);
+    let mut g = dag(Mode::Deep, vec![existing.clone()]);
+
+    seed(
+        &mut g,
+        vec![existing, spec("b", NodeKind::Implement).depends_on(["a"])],
+    )
+    .unwrap();
+
+    assert_eq!(g.nodes().iter().filter(|node| node.id == "a").count(), 1);
+    assert_eq!(g.nodes().iter().filter(|node| node.id == "b").count(), 1);
+    let root_gate = g.get("plan::gate").expect("root gate");
+    assert!(root_gate.depends_on.contains(&"a".to_string()));
+    assert!(root_gate.depends_on.contains(&"b".to_string()));
+}
+
+#[test]
+fn seed_replay_rejects_changed_existing_definition() {
+    let mut g = dag(Mode::Light, vec![spec("a", NodeKind::Explore)]);
+    let before = g.clone();
+    let mut changed = spec("a", NodeKind::Explore);
+    changed.priority = 7;
+
+    let err = seed(&mut g, vec![changed]).unwrap_err();
+
+    assert_eq!(err, DagError::DuplicateNode("a".into()));
+    assert_eq!(g, before, "a conflict must not partially mutate the graph");
 }
 
 #[test]

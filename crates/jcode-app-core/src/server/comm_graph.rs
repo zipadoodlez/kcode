@@ -281,10 +281,13 @@ pub(super) async fn handle_comm_seed_graph(
         }
         plan.participants.insert(req_session_id.clone());
         let mut graph = to_task_graph(plan);
+        let before = graph.clone();
         match dag::seed(&mut graph, specs) {
             Ok(()) => {
-                apply_task_graph(plan, &graph);
-                plan.version += 1;
+                if graph != before {
+                    apply_task_graph(plan, &graph);
+                    plan.version += 1;
+                }
                 Ok(())
             }
             Err(e) => Err(e),

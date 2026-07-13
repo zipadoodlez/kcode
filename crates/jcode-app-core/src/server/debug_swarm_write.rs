@@ -563,10 +563,13 @@ async fn handle_debug_graph_op(arg: &str, ctx: &DebugSwarmWriteContext<'_>) -> S
                 }
                 let count = parsed.nodes.len();
                 let mut graph = to_task_graph(plan);
+                let before = graph.clone();
                 match dag::seed(&mut graph, debug_specs(parsed.nodes)) {
                     Ok(()) => {
-                        apply_task_graph(plan, &graph);
-                        plan.version += 1;
+                        if graph != before {
+                            apply_task_graph(plan, &graph);
+                            plan.version += 1;
+                        }
                         Ok((count, "seed"))
                     }
                     Err(e) => Err(e.to_string()),
