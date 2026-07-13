@@ -845,6 +845,47 @@ fn skill_invocation_with_prompt_activates_and_submits_in_one_turn() {
 }
 
 #[test]
+fn skill_invocation_with_prompt_attaches_pending_image_to_user_message() {
+    let mut app = create_test_app();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let skill_dir = temp.path().join(".jcode/skills/image-skill");
+    std::fs::create_dir_all(&skill_dir).expect("create skill dir");
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: image-skill\ndescription: Image attachment regression skill\n---\nUse it.\n",
+    )
+    .expect("write skill");
+    app.session.working_dir = Some(temp.path().to_string_lossy().to_string());
+    app.pending_images = vec![("image/png".to_string(), "ZmFrZSBwbmcgYnl0ZXM=".to_string())];
+    app.input = "/image-skill describe this screenshot".to_string();
+    app.cursor_pos = app.input.len();
+
+    app.submit_input();
+
+    assert_eq!(app.active_skill.as_deref(), Some("image-skill"));
+    assert!(app.is_processing, "the trailing prompt should start a turn");
+    assert!(
+        app.pending_images.is_empty(),
+        "pending images must be consumed by the submitted turn"
+    );
+    let submitted = app
+        .session
+        .messages
+        .last()
+        .expect("submitted session message");
+    assert_eq!(submitted.role, Role::User);
+    assert!(matches!(
+        submitted.content.as_slice(),
+        [
+            ContentBlock::Image { media_type, data },
+            ContentBlock::Text { text, .. },
+        ] if media_type == "image/png"
+            && data == "ZmFrZSBwbmcgYnl0ZXM="
+            && text == "describe this screenshot"
+    ));
+}
+
+#[test]
 fn update_command_reloads_stale_remote_server_before_client_update_check() {
     use tokio::io::AsyncBufReadExt;
 
