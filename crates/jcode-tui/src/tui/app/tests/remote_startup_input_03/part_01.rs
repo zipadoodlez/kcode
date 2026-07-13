@@ -157,6 +157,119 @@ fn test_handle_paste_single_line() {
 }
 
 #[test]
+fn test_terminal_file_drop_submits_as_user_input_instead_of_a_skill() {
+    let mut app = create_test_app();
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("dropped notes.txt");
+    std::fs::write(&file, b"notes").unwrap();
+    let dropped = file.display().to_string();
+
+    app.handle_paste(dropped.clone());
+    assert_eq!(app.input(), dropped);
+
+    app.submit_input();
+
+    assert!(app.is_processing, "the dropped file path should start a turn");
+    assert!(
+        app.display_messages()
+            .iter()
+            .all(|message| message.role != "error"),
+        "a dropped absolute path must not produce an unknown-skill error"
+    );
+    let submitted = app
+        .session
+        .messages
+        .last()
+        .expect("submitted file path message");
+    assert!(matches!(
+        submitted.content.as_slice(),
+        [ContentBlock::Text { text, .. }] if text == &file.display().to_string()
+    ));
+}
+
+#[test]
+fn test_terminal_escaped_file_drop_normalizes_the_path() {
+    let mut app = create_test_app();
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("dropped notes.txt");
+    std::fs::write(&file, b"notes").unwrap();
+    let escaped = file.display().to_string().replace(' ', "\\ ");
+
+    app.handle_paste(escaped);
+
+    assert_eq!(app.input(), file.display().to_string());
+}
+
+#[test]
+fn test_terminal_file_drop_with_followup_text_stays_normal_input() {
+    let mut app = create_test_app();
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("report.md");
+    std::fs::write(&file, b"report").unwrap();
+    let prompt = format!("{} please review this file", file.display());
+    app.set_input_for_test(prompt.clone());
+
+    app.submit_input();
+
+    assert!(app.is_processing, "the file prompt should start a turn");
+    assert!(
+        app.display_messages()
+            .iter()
+            .all(|message| message.role != "error"),
+        "a path followed by instructions must not be parsed as a skill"
+    );
+    let submitted = app
+        .session
+        .messages
+        .last()
+        .expect("submitted file prompt message");
+    assert!(matches!(
+        submitted.content.as_slice(),
+        [ContentBlock::Text { text, .. }] if text == &prompt
+    ));
+}
+
+#[test]
+fn test_mixed_file_and_image_drop_keeps_file_and_attaches_image() {
+    let mut app = create_test_app();
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("notes with spaces.txt");
+    let image = dir.path().join("screenshot.png");
+    std::fs::write(&file, b"notes").unwrap();
+    std::fs::write(&image, b"png bytes").unwrap();
+    let dropped = format!(
+        "{} {}",
+        file.display().to_string().replace(' ', "\\ "),
+        image.display()
+    );
+
+    app.handle_paste(dropped);
+
+    assert_eq!(app.input(), format!("\"{}\" [image 1]", file.display()));
+    assert_eq!(app.pending_images.len(), 1);
+    assert_eq!(app.pending_images[0].0, "image/png");
+}
+
+#[test]
+fn test_terminal_image_drop_attaches_image_instead_of_routing_as_a_skill() {
+    let mut app = create_test_app();
+    let dir = tempfile::tempdir().unwrap();
+    let image = dir.path().join("dropped screenshot.png");
+    std::fs::write(&image, b"png bytes").unwrap();
+
+    app.handle_paste(image.display().to_string());
+
+    assert_eq!(app.input(), "[image 1]");
+    assert_eq!(app.pending_images.len(), 1);
+    assert_eq!(app.pending_images[0].0, "image/png");
+    assert!(
+        app.display_messages()
+            .iter()
+            .all(|message| message.role != "error")
+    );
+}
+
+#[test]
 fn test_typed_absolute_image_path_promotes_before_slash_routing() {
     let mut app = create_test_app();
     let dir = tempfile::tempdir().unwrap();

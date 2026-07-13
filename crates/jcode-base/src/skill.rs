@@ -647,6 +647,9 @@ impl SkillRegistry {
     /// The trailing prompt is kept verbatim apart from surrounding whitespace.
     /// Quotes are intentionally not interpreted as shell syntax, so incomplete
     /// or literal quotes can never put the input path into a continuation state.
+    /// Skill command tokens are limited to identifier-like names. In particular,
+    /// path separators and filename punctuation are rejected so a terminal file
+    /// drop such as `/tmp/screenshot.png` remains ordinary user input.
     pub fn parse_invocation(input: &str) -> Option<SkillInvocation<'_>> {
         let trimmed = input.trim();
         let invocation = trimmed.strip_prefix('/')?;
@@ -654,7 +657,11 @@ impl SkillRegistry {
             .find(char::is_whitespace)
             .unwrap_or(invocation.len());
         let name = &invocation[..name_end];
-        if name.is_empty() {
+        if name.is_empty()
+            || !name
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
+        {
             return None;
         }
 
@@ -995,6 +1002,23 @@ mod tests {
             })
         );
         assert_eq!(SkillRegistry::parse_invocation("/"), None);
+    }
+
+    #[test]
+    fn parse_invocation_rejects_terminal_file_drop_paths() {
+        for input in [
+            "/tmp/screenshot.png",
+            "/Users/example/My\\ File.txt inspect this",
+            "/home/example/project/file.rs",
+            "/.hidden-file",
+            "/network\\share\\file.txt",
+        ] {
+            assert_eq!(
+                SkillRegistry::parse_invocation(input),
+                None,
+                "filesystem path must not parse as a skill invocation: {input}"
+            );
+        }
     }
 
     #[test]

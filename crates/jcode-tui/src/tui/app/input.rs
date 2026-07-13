@@ -608,19 +608,44 @@ pub(super) fn handle_paste(app: &mut App, text: String) {
     // text pastes were misidentified as images when the clipboard also had image data
     // (common on Wayland where apps advertise multiple MIME types). Image pasting is
     // handled by explicit clipboard shortcuts instead (Ctrl+V/Alt+V/Cmd+V smart-paste).
-    if let Some(images) = dropped_image_files(&text) {
-        let count = images.len();
-        for (media_type, data) in images {
-            attach_image(
-                app,
-                media_type,
-                base64::engine::general_purpose::STANDARD.encode(data),
-            );
+    if let Some(paths) = parse_dropped_paths(&text) {
+        let item_count = paths.len();
+        let mut image_count = 0;
+        let mut file_count = 0;
+
+        for (index, path) in paths.into_iter().enumerate() {
+            if index > 0 {
+                insert_input_text(app, " ");
+            }
+
+            if let Some(media_type) = image_media_type(&path)
+                && let Ok(data) = std::fs::read(&path)
+            {
+                attach_image(
+                    app,
+                    media_type.to_string(),
+                    base64::engine::general_purpose::STANDARD.encode(data),
+                );
+                image_count += 1;
+            } else {
+                insert_input_text(app, &format_dropped_path(&path, item_count > 1));
+                file_count += 1;
+            }
         }
-        app.set_status_notice(format!(
-            "Dropped {count} image{}",
-            if count == 1 { "" } else { "s" }
-        ));
+
+        let notice = match (image_count, file_count) {
+            (images, 0) => format!(
+                "Dropped {images} image{}",
+                if images == 1 { "" } else { "s" }
+            ),
+            (0, files) => format!("Dropped {files} file{}", if files == 1 { "" } else { "s" }),
+            (images, files) => format!(
+                "Dropped {images} image{} and {files} file{}",
+                if images == 1 { "" } else { "s" },
+                if files == 1 { "" } else { "s" }
+            ),
+        };
+        app.set_status_notice(notice);
     } else if let Some(url) = super::extract_image_url(&text) {
         crate::logging::info(&format!("Downloading image from pasted URL: {}", url));
         app.set_status_notice("Downloading image...");
@@ -640,6 +665,15 @@ pub(super) fn handle_paste(app: &mut App, text: String) {
         return;
     } else {
         handle_text_paste(app, text);
+    }
+}
+
+fn format_dropped_path(path: &std::path::Path, quote_whitespace: bool) -> String {
+    let value = path.to_string_lossy();
+    if quote_whitespace && value.chars().any(char::is_whitespace) {
+        format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+    } else {
+        value.into_owned()
     }
 }
 
@@ -3273,8 +3307,16 @@ impl App {
             return;
         }
 
-        // Check for skill invocation
-        if let Some(invocation) = SkillRegistry::parse_invocation(&input) {
+        // A terminal file drop is user input even when its absolute path starts
+        // with `/`. Check the filesystem-aware drop parser before slash routing
+        // so a real file can never collide with a skill name.
+        let skill_invocation = parse_dropped_paths(&input)
+            .is_none()
+            .then(|| SkillRegistry::parse_invocation(&input))
+            .flatten();
+
+        // Check for skill invocation.
+        if let Some(invocation) = skill_invocation {
             let skill_name = invocation.name.to_string();
             let trailing_prompt = invocation.prompt.map(str::to_string);
             let mut skill = self.current_skills_snapshot().get(&skill_name).cloned();
