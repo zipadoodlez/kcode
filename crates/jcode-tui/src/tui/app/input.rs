@@ -367,8 +367,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        ClipboardPasteContent, ClipboardPasteKind, is_clipboard_paste_shortcut,
-        dropped_image_files, parse_dropped_paths, preferred_wayland_text_type,
+        ClipboardPasteContent, ClipboardPasteKind, dropped_image_files,
+        is_clipboard_paste_shortcut, parse_dropped_paths, preferred_wayland_text_type,
         read_clipboard_for_paste_with, shifted_printable_fallback, text_input_for_key,
     };
     use crossterm::event::{KeyCode, KeyModifiers};
@@ -383,7 +383,8 @@ mod tests {
 
         let quoted = parse_dropped_paths(&format!("'{}'", first.display())).unwrap();
         assert_eq!(quoted, vec![first.clone()]);
-        let escaped = parse_dropped_paths(&first.display().to_string().replace(' ', "\\ ")).unwrap();
+        let escaped =
+            parse_dropped_paths(&first.display().to_string().replace(' ', "\\ ")).unwrap();
         assert_eq!(escaped, vec![first.clone()]);
         let url = url::Url::from_file_path(&second).unwrap();
         assert_eq!(parse_dropped_paths(url.as_str()).unwrap(), vec![second]);
@@ -397,10 +398,13 @@ mod tests {
         std::fs::write(&png, b"png bytes").unwrap();
         std::fs::write(&jpeg, b"jpeg bytes").unwrap();
 
-        let images = dropped_image_files(&format!("'{}' '{}'", png.display(), jpeg.display()))
-            .unwrap();
+        let images =
+            dropped_image_files(&format!("'{}' '{}'", png.display(), jpeg.display())).unwrap();
         assert_eq!(images[0], ("image/png".to_string(), b"png bytes".to_vec()));
-        assert_eq!(images[1], ("image/jpeg".to_string(), b"jpeg bytes".to_vec()));
+        assert_eq!(
+            images[1],
+            ("image/jpeg".to_string(), b"jpeg bytes".to_vec())
+        );
         assert!(dropped_image_files("ordinary pasted text").is_none());
     }
 
@@ -607,7 +611,11 @@ pub(super) fn handle_paste(app: &mut App, text: String) {
     if let Some(images) = dropped_image_files(&text) {
         let count = images.len();
         for (media_type, data) in images {
-            attach_image(app, media_type, base64::engine::general_purpose::STANDARD.encode(data));
+            attach_image(
+                app,
+                media_type,
+                base64::engine::general_purpose::STANDARD.encode(data),
+            );
         }
         app.set_status_notice(format!(
             "Dropped {count} image{}",
