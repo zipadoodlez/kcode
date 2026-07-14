@@ -288,78 +288,27 @@ pub fn render_gallery(
     out
 }
 
-/// Render expanded swarm-member cards for placement directly beneath a
-/// `swarm spawn` tool call in the chat transcript.
+/// Render stable, one-line swarm summaries beneath `swarm spawn` tool calls.
 ///
-/// Unlike the persistent swarm strip, this renderer is intentionally just the
-/// member card: identity/runtime metadata followed by the bounded todo/tool
-/// activity tree. Callers are responsible for associating members with the
-/// tool call that spawned them.
+/// Transcript content deliberately excludes elapsed time, output tails, todos,
+/// tool progress, and animated glyphs. Those fields update frequently and make
+/// old chat rows move while the user is reading them. The dedicated live swarm
+/// page owns the detailed, animated representation instead.
 pub fn render_swarm_chat_cards(members: &[GalleryMember], width: usize) -> Vec<Line<'static>> {
     if members.is_empty() || width < 8 {
         return Vec::new();
     }
 
     let mut out = Vec::new();
-    for (card_index, member) in sort_members_for_display(members).into_iter().enumerate() {
-        if card_index > 0 {
-            out.push(Line::from(""));
-        }
-
+    for member in sort_members_for_display(members) {
         let accent = status_accent(&member.status);
-        let mut metadata = Vec::new();
-        if let Some(elapsed) = member.elapsed_secs {
-            metadata.push(format_elapsed(elapsed));
-        }
-        if let Some(model) = member
-            .model
-            .as_deref()
-            .filter(|model| !model.trim().is_empty())
-        {
-            metadata.push(format_model(model));
-        }
-        if let Some(provider) = member
-            .provider
-            .as_deref()
-            .filter(|provider| !provider.trim().is_empty())
-        {
-            let route = member
-                .auth_method
-                .as_deref()
-                .filter(|method| !method.trim().is_empty())
-                .map(|method| format!("{provider} {method}"))
-                .unwrap_or_else(|| provider.to_string());
-            metadata.push(route);
-        } else if let Some(method) = member
-            .auth_method
-            .as_deref()
-            .filter(|method| !method.trim().is_empty())
-        {
-            metadata.push(method.to_string());
-        }
-        if let Some(effort) = member
-            .effort
-            .as_deref()
-            .filter(|effort| !effort.trim().is_empty())
-        {
-            metadata.push(effort.to_string());
-        }
-
         let lead = format!(
             "    {} {} ",
             member.icon.as_deref().unwrap_or("🐝"),
             card_status_glyph(&member.status)
         );
         let label = member.label.clone();
-        let mut tail = if metadata.is_empty() {
-            String::new()
-        } else {
-            format!(" · {}", metadata.join(" · "))
-        };
-        while metadata.len() > 1 && disp_w(&lead) + disp_w(&label) + disp_w(&tail) > width {
-            metadata.pop();
-            tail = format!(" · {}", metadata.join(" · "));
-        }
+        let tail = format!(" · {}", card_status_label(&member.status));
 
         let mut header = vec![
             Span::styled(lead.clone(), Style::default().fg(rgb(255, 200, 100))),
@@ -373,11 +322,100 @@ pub fn render_swarm_chat_cards(members: &[GalleryMember], width: usize) -> Vec<L
             header.push(Span::styled(tail, Style::default().fg(rgb(150, 150, 160))));
         }
         out.push(Line::from(header));
-
-        let body_budget = member.todo_items.len().min(4).saturating_add(3).max(1);
-        out.extend(hovered_detail_body(member, None, width, body_budget, false));
     }
 
+    for line in &mut out {
+        clamp_line_to_width(line, width);
+    }
+    out
+}
+
+/// Render the selected member's detailed live card for the dedicated swarm
+/// page. Active states use the animated spinner and the body includes current
+/// todos/tool activity, runtime metadata, and the streamed output tail.
+pub fn render_swarm_live_card(
+    member: &GalleryMember,
+    spinner_frame: usize,
+    width: usize,
+    max_height: usize,
+) -> Vec<Line<'static>> {
+    if width < 8 || max_height == 0 {
+        return Vec::new();
+    }
+
+    let accent = status_accent(&member.status);
+    let mut metadata = Vec::new();
+    if let Some(elapsed) = member.elapsed_secs {
+        metadata.push(format_elapsed(elapsed));
+    }
+    if let Some(model) = member
+        .model
+        .as_deref()
+        .filter(|model| !model.trim().is_empty())
+    {
+        metadata.push(format_model(model));
+    }
+    if let Some(provider) = member
+        .provider
+        .as_deref()
+        .filter(|provider| !provider.trim().is_empty())
+    {
+        let route = member
+            .auth_method
+            .as_deref()
+            .filter(|method| !method.trim().is_empty())
+            .map(|method| format!("{provider} {method}"))
+            .unwrap_or_else(|| provider.to_string());
+        metadata.push(route);
+    } else if let Some(method) = member
+        .auth_method
+        .as_deref()
+        .filter(|method| !method.trim().is_empty())
+    {
+        metadata.push(method.to_string());
+    }
+    if let Some(effort) = member
+        .effort
+        .as_deref()
+        .filter(|effort| !effort.trim().is_empty())
+    {
+        metadata.push(effort.to_string());
+    }
+
+    let lead = format!(
+        "  {} {} ",
+        member.icon.as_deref().unwrap_or("🐝"),
+        status_glyph(&member.status, spinner_frame)
+    );
+    let label = member.label.clone();
+    let mut tail = if metadata.is_empty() {
+        String::new()
+    } else {
+        format!(" · {}", metadata.join(" · "))
+    };
+    while metadata.len() > 1 && disp_w(&lead) + disp_w(&label) + disp_w(&tail) > width {
+        metadata.pop();
+        tail = format!(" · {}", metadata.join(" · "));
+    }
+
+    let mut header = vec![
+        Span::styled(lead.clone(), Style::default().fg(rgb(255, 200, 100))),
+        Span::styled(
+            label.clone(),
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        ),
+    ];
+    let consumed = disp_w(&lead) + disp_w(&label);
+    if consumed + disp_w(&tail) <= width {
+        header.push(Span::styled(tail, Style::default().fg(rgb(150, 150, 160))));
+    }
+
+    let mut out = vec![Line::from(header)];
+    let body_budget = max_height.saturating_sub(1);
+    if body_budget > 0 {
+        out.extend(hovered_detail_body(member, None, width, body_budget, false));
+    }
+    out.truncate(max_height);
     for line in &mut out {
         clamp_line_to_width(line, width);
     }
@@ -2246,7 +2284,7 @@ mod tests {
     }
 
     #[test]
-    fn chat_card_shows_four_todos_and_last_three_tool_intents() {
+    fn chat_card_is_stable_while_live_card_shows_details() {
         let mut worker = member("reviewer", "running", None, &[]);
         worker.icon = Some("🦕".to_string());
         worker.task = Some("review authentication changes".to_string());
@@ -2304,16 +2342,16 @@ mod tests {
             },
         ];
 
-        let lines = render_swarm_chat_cards(&[worker], 100);
+        let lines = render_swarm_chat_cards(std::slice::from_ref(&worker), 100);
         let all = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
-        assert_eq!(lines.len(), 8, "header + 4 todos + 3 intents: {all}");
+        assert_eq!(lines.len(), 1, "chat summary must remain one line: {all}");
         assert!(
             all.contains("🦕 ● reviewer"),
             "assigned agent emoji missing: {all}"
         );
         assert!(
-            all.contains("reviewer · 00:18 · GPT-5.6 · OpenAI OAuth · high"),
-            "header metadata missing: {all}"
+            all.contains("reviewer · Working"),
+            "stable status label missing: {all}"
         );
         assert!(
             STRIP_SPINNER_FRAMES
@@ -2322,45 +2360,28 @@ mod tests {
             "transcript cards must not animate while being read: {all}"
         );
         assert!(
-            all.contains("       ● test token refresh flow")
-                && all.contains("         └─ ● bash · Run targeted authentication tests"),
-            "active todo and tool should use stable markers: {all}"
+            !all.contains("00:18")
+                && !all.contains("GPT-5.6")
+                && !all.contains("test token refresh flow")
+                && !all.contains("Run targeted authentication tests")
+                && !all.contains("27/43"),
+            "chat summary must exclude frequently changing live details: {all}"
+        );
+
+        let live_lines = render_swarm_live_card(&worker, 0, 100, 12);
+        let live = live_lines
+            .iter()
+            .map(plain_line)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            live.contains("reviewer · 00:18 · GPT-5.6 · OpenAI OAuth · high"),
+            "live header metadata missing: {live}"
         );
         assert!(
-            all.contains("test token refresh flow"),
-            "active todo missing: {all}"
-        );
-        assert!(
-            all.contains("agentgrep · Locate refresh implementation"),
-            "{all}"
-        );
-        assert!(
-            all.contains("read · Inspect refresh-token handler"),
-            "{all}"
-        );
-        assert!(
-            all.contains("bash · Run targeted authentication tests · 27/43"),
-            "{all}"
-        );
-        assert!(
-            all.contains("       ✓ inspect middleware"),
-            "todo indentation missing: {all}"
-        );
-        assert!(
-            all.contains("         ├─ ✓ agentgrep"),
-            "nested tool branch missing: {all}"
-        );
-        assert!(
-            all.contains("       ○ report findings"),
-            "final todo indentation missing: {all}"
-        );
-        assert!(
-            !all.contains('│'),
-            "chat card must not draw a vertical line beneath the member emoji: {all}"
-        );
-        assert!(
-            !all.contains("Old intent"),
-            "oldest intent should roll off: {all}"
+            live.contains("test token refresh flow")
+                && live.contains("bash · Run targeted authentication tests · 27/43"),
+            "live page should retain todo and tool progress: {live}"
         );
     }
 

@@ -9,9 +9,9 @@
 
 use crate::protocol::SwarmMemberStatus;
 use jcode_tui_render::swarm_gallery::{
-    GalleryMember, SwarmStripHint, display_order, humanize_age, render_gallery,
-    render_swarm_compact, render_swarm_dock, render_swarm_panel, render_swarm_strip,
-    render_swarm_strip_vertical,
+    GalleryMember, SwarmStripHint, display_order, humanize_age, is_active_status, render_gallery,
+    render_swarm_compact, render_swarm_dock, render_swarm_live_card, render_swarm_panel,
+    render_swarm_strip, render_swarm_strip_vertical, status_accent, status_glyph,
 };
 use ratatui::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -137,174 +137,310 @@ pub(crate) fn render_swarm_chat_card_lines(
     jcode_tui_render::swarm_gallery::render_swarm_chat_cards(&gallery_members, width)
 }
 
-/// Render the member attached to a transcript spawn row plus every agent that
-/// member subsequently spawned. Descendants use compact cards connected by a
-/// tree rail, preserving the existing root card while making nested ownership
-/// visible in the chat where the root agent was introduced.
-pub(crate) fn render_swarm_chat_tree_lines(
-    root: &SwarmMemberStatus,
+#[derive(Clone)]
+struct SwarmTreeRow<'a> {
+    member: &'a SwarmMemberStatus,
+    depth: usize,
+    is_last: bool,
+    ancestor_is_last: Vec<bool>,
+}
+
+/// Render the dedicated live swarm page. The upper section is a nested,
+/// ownership-aware tree of every managed agent with animated status glyphs.
+/// The lower section is the selected agent's detailed live card.
+pub(crate) fn render_swarm_page_lines(
     members: &[SwarmMemberStatus],
+    selected: usize,
+    spinner_frame: usize,
     width: usize,
+    max_height: usize,
 ) -> Vec<Line<'static>> {
-    let mut out = render_swarm_chat_card_lines(std::slice::from_ref(root), width);
-    if out.is_empty() {
-        return out;
+    if members.is_empty() || width < 8 || max_height == 0 {
+        return Vec::new();
     }
 
-    let mut children_by_parent: HashMap<&str, Vec<&SwarmMemberStatus>> = HashMap::new();
-    for member in members {
-        if let Some(parent) = member.report_back_to_session_id.as_deref() {
-            children_by_parent.entry(parent).or_default().push(member);
+    let gallery = members_to_gallery(members);
+    let display = display_order(&gallery);
+    let selected = selected.min(display.len().saturating_sub(1));
+    let selected_member_index = display[selected];
+    let selected_id = members[selected_member_index].session_id.as_str();
+    let tree = swarm_tree_rows(members, &display);
+    let selected_tree_index = tree
+        .iter()
+        .position(|row| row.member.session_id == selected_id)
+        .unwrap_or(0);
+    let active = members
+        .iter()
+        .filter(|member| is_active_status(&member.status))
+        .count();
+
+    let mut out = vec![Line::from(vec![
+        Span::styled("🐝 ", Style::default().fg(Color::Rgb(255, 200, 100))),
+        Span::styled(
+            "swarm",
+            Style::default().fg(Color::Rgb(230, 230, 240)).bold(),
+        ),
+        Span::styled(
+            format!(
+                " · {} agent{} · {active} active",
+                members.len(),
+                if members.len() == 1 { "" } else { "s" }
+            ),
+            Style::default().fg(Color::Rgb(150, 150, 160)),
+        ),
+    ])];
+    if max_height > 1 {
+        out.push(Line::from(Span::styled(
+            "alt+n chat  ·  alt+↑/↓ select  ·  alt+o open  ·  alt+shift+p prompt  ·  esc chat",
+            Style::default().fg(Color::Rgb(105, 105, 120)),
+        )));
+    }
+
+    let detail_reserve = if max_height >= 12 { 6 } else { 0 };
+    let list_budget = max_height
+        .saturating_sub(out.len())
+        .saturating_sub(detail_reserve)
+        .saturating_sub(1)
+        .max(1);
+    let first = if tree.len() <= list_budget {
+        0
+    } else {
+        selected_tree_index
+            .saturating_sub(list_budget / 2)
+            .min(tree.len().saturating_sub(list_budget))
+    };
+    for row in tree.iter().skip(first).take(list_budget) {
+        out.push(render_swarm_tree_row(
+            row,
+            row.member.session_id == selected_id,
+            spinner_frame,
+            width,
+        ));
+    }
+
+    let remaining = max_height.saturating_sub(out.len());
+    if remaining >= 3 {
+        out.push(Line::from(Span::styled(
+            "─".repeat(width),
+            Style::default().fg(Color::Rgb(60, 60, 72)),
+        )));
+        let mut selected_gallery = gallery[selected_member_index].clone();
+        if let Some(task) = selected_gallery
+            .task
+            .as_deref()
+            .map(str::trim)
+            .filter(|task| !task.is_empty())
+            && task != selected_gallery.label
+        {
+            selected_gallery.label = format!("{} · {task}", selected_gallery.label);
         }
-    }
-    for children in children_by_parent.values_mut() {
-        children.sort_by(|a, b| a.session_id.cmp(&b.session_id));
-    }
-    if !children_by_parent.contains_key(root.session_id.as_str()) {
-        return out;
+        out.extend(render_swarm_live_card(
+            &selected_gallery,
+            spinner_frame,
+            width,
+            max_height.saturating_sub(out.len()),
+        ));
     }
 
-    out.push(Line::from(vec![
-        Span::raw("       "),
-        Span::styled("│", Style::default().fg(Color::Rgb(80, 80, 90))),
-    ]));
-    let mut visited = HashSet::from([root.session_id.as_str()]);
-    append_swarm_chat_descendants(
-        &mut out,
-        root.session_id.as_str(),
-        &children_by_parent,
-        &mut visited,
-        &[],
-        width,
-    );
+    out.truncate(max_height);
+    for line in &mut out {
+        clamp_line_to_width(line, width);
+    }
     out
 }
 
-fn append_swarm_chat_descendants<'a>(
-    out: &mut Vec<Line<'static>>,
-    parent_id: &str,
-    children_by_parent: &HashMap<&'a str, Vec<&'a SwarmMemberStatus>>,
+fn swarm_tree_rows<'a>(
+    members: &'a [SwarmMemberStatus],
+    display: &[usize],
+) -> Vec<SwarmTreeRow<'a>> {
+    let rank: HashMap<&str, usize> = display
+        .iter()
+        .enumerate()
+        .map(|(rank, &index)| (members[index].session_id.as_str(), rank))
+        .collect();
+    let ids: HashSet<&str> = members
+        .iter()
+        .map(|member| member.session_id.as_str())
+        .collect();
+    let mut children: HashMap<&str, Vec<&SwarmMemberStatus>> = HashMap::new();
+    for member in members {
+        if let Some(parent) = member.report_back_to_session_id.as_deref()
+            && ids.contains(parent)
+        {
+            children.entry(parent).or_default().push(member);
+        }
+    }
+    for siblings in children.values_mut() {
+        siblings.sort_by_key(|member| {
+            rank.get(member.session_id.as_str())
+                .copied()
+                .unwrap_or(usize::MAX)
+        });
+    }
+
+    let mut roots: Vec<_> = members
+        .iter()
+        .filter(|member| {
+            member
+                .report_back_to_session_id
+                .as_deref()
+                .is_none_or(|parent| !ids.contains(parent))
+        })
+        .collect();
+    roots.sort_by_key(|member| {
+        rank.get(member.session_id.as_str())
+            .copied()
+            .unwrap_or(usize::MAX)
+    });
+
+    let mut rows = Vec::new();
+    let mut visited: HashSet<&str> = HashSet::new();
+    for root in roots {
+        append_swarm_tree_rows(root, 0, true, &children, &mut visited, &mut rows, &[]);
+    }
+    // Corrupt/cyclic parent edges should not make agents disappear. Append any
+    // unvisited component as another root in stable display order.
+    for &index in display {
+        let member = &members[index];
+        if !visited.contains(member.session_id.as_str()) {
+            append_swarm_tree_rows(member, 0, true, &children, &mut visited, &mut rows, &[]);
+        }
+    }
+    rows
+}
+
+fn append_swarm_tree_rows<'a>(
+    member: &'a SwarmMemberStatus,
+    depth: usize,
+    is_last: bool,
+    children: &HashMap<&'a str, Vec<&'a SwarmMemberStatus>>,
     visited: &mut HashSet<&'a str>,
+    rows: &mut Vec<SwarmTreeRow<'a>>,
     ancestor_is_last: &[bool],
-    width: usize,
 ) {
-    let Some(children) = children_by_parent.get(parent_id) else {
+    if !visited.insert(member.session_id.as_str()) {
+        return;
+    }
+    rows.push(SwarmTreeRow {
+        member,
+        depth,
+        is_last,
+        ancestor_is_last: ancestor_is_last.to_vec(),
+    });
+
+    let Some(member_children) = children.get(member.session_id.as_str()) else {
         return;
     };
-    let unvisited: Vec<_> = children
-        .iter()
-        .copied()
-        .filter(|child| !visited.contains(child.session_id.as_str()))
-        .collect();
-    for (index, child) in unvisited.iter().enumerate() {
-        visited.insert(child.session_id.as_str());
-        let is_last = index + 1 == unvisited.len();
-        let header_prefix = swarm_tree_prefix(ancestor_is_last, is_last, false);
-        let body_prefix = swarm_tree_prefix(ancestor_is_last, is_last, true);
-        let render_width = width.saturating_sub(display_width(&header_prefix));
-        if render_width < 8 {
-            continue;
-        }
-
-        let mut gallery = members_to_gallery(std::slice::from_ref(*child));
-        let Some(mut gallery) = gallery.pop() else {
-            continue;
-        };
-        if let Some(label) = child
-            .task_label
-            .as_deref()
-            .map(str::trim)
-            .filter(|label| !label.is_empty())
-        {
-            gallery.label = label.to_string();
-        }
-        // Nested cards answer "what is this child doing now" without repeating
-        // the root card's full todo viewport for every descendant.
-        if gallery.todo_items.len() > 1 {
-            let selected = gallery
-                .todo_items
-                .iter()
-                .position(|todo| todo.status == "in_progress")
-                .or_else(|| {
-                    gallery
-                        .todo_items
-                        .iter()
-                        .position(|todo| todo.status != "completed")
-                })
-                .unwrap_or(gallery.todo_items.len() - 1);
-            gallery.todo_items = vec![gallery.todo_items[selected].clone()];
-        }
-
-        let card = jcode_tui_render::swarm_gallery::render_swarm_chat_cards(
-            std::slice::from_ref(&gallery),
-            render_width,
-        );
-        for (line_index, line) in card.into_iter().enumerate() {
-            let prefix = if line_index == 0 {
-                &header_prefix
-            } else {
-                &body_prefix
-            };
-            out.push(prepend_tree_prefix(prefix, trim_leading_spaces(line, 4)));
-        }
-
-        let mut child_ancestors = ancestor_is_last.to_vec();
-        child_ancestors.push(is_last);
-        append_swarm_chat_descendants(
-            out,
-            child.session_id.as_str(),
-            children_by_parent,
+    let mut next_ancestors = ancestor_is_last.to_vec();
+    next_ancestors.push(is_last);
+    for (index, child) in member_children.iter().enumerate() {
+        append_swarm_tree_rows(
+            child,
+            depth + 1,
+            index + 1 == member_children.len(),
+            children,
             visited,
-            &child_ancestors,
-            width,
+            rows,
+            &next_ancestors,
         );
     }
 }
 
-fn swarm_tree_prefix(ancestor_is_last: &[bool], is_last: bool, body: bool) -> String {
-    let mut prefix = String::from("       ");
-    for &ancestor_last in ancestor_is_last {
-        prefix.push_str(if ancestor_last { "   " } else { "│  " });
+fn render_swarm_tree_row(
+    row: &SwarmTreeRow<'_>,
+    selected: bool,
+    spinner_frame: usize,
+    width: usize,
+) -> Line<'static> {
+    let member = row.member;
+    let mut prefix = String::new();
+    if row.depth > 0 {
+        for &ancestor_last in row
+            .ancestor_is_last
+            .iter()
+            .take(row.depth.saturating_sub(1))
+        {
+            prefix.push_str(if ancestor_last { "   " } else { "│  " });
+        }
+        prefix.push_str(if row.is_last { "└─ " } else { "├─ " });
     }
-    prefix.push_str(if body {
-        if is_last { "   " } else { "│  " }
-    } else if is_last {
-        "└─ "
-    } else {
-        "├─ "
-    });
-    prefix
+    let label = member_label(member);
+    let icon = member_icon(member).unwrap_or_else(|| "🐝".to_string());
+    let mut spans = vec![
+        Span::styled(
+            if selected { "▸ " } else { "  " },
+            Style::default().fg(Color::Rgb(255, 200, 100)),
+        ),
+        Span::styled(prefix, Style::default().fg(Color::Rgb(75, 75, 88))),
+        Span::styled(
+            format!("{icon} "),
+            Style::default().fg(Color::Rgb(255, 200, 100)),
+        ),
+        Span::styled(
+            format!("{} ", status_glyph(&member.status, spinner_frame)),
+            Style::default().fg(status_accent(&member.status)),
+        ),
+        Span::styled(
+            label,
+            Style::default()
+                .fg(status_accent(&member.status))
+                .add_modifier(if selected {
+                    Modifier::BOLD
+                } else {
+                    Modifier::empty()
+                }),
+        ),
+    ];
+    if let Some(task) = member
+        .task_label
+        .as_deref()
+        .map(str::trim)
+        .filter(|task| !task.is_empty())
+    {
+        spans.push(Span::styled(
+            format!(" · {task}"),
+            Style::default().fg(Color::Rgb(145, 145, 158)),
+        ));
+    }
+    if let Some((done, total)) = member.todo_progress {
+        spans.push(Span::styled(
+            format!("  {done}/{total}"),
+            Style::default().fg(Color::Rgb(105, 105, 120)),
+        ));
+    }
+    let mut line = Line::from(spans);
+    clamp_line_to_width(&mut line, width);
+    line
 }
 
-fn display_width(text: &str) -> usize {
-    unicode_width::UnicodeWidthStr::width(text)
-}
-
-fn prepend_tree_prefix(prefix: &str, line: Line<'static>) -> Line<'static> {
-    let mut spans = Vec::with_capacity(line.spans.len() + 1);
-    spans.push(Span::styled(
-        prefix.to_string(),
-        Style::default().fg(Color::Rgb(80, 80, 90)),
-    ));
-    spans.extend(line.spans);
-    Line::from(spans)
-}
-
-fn trim_leading_spaces(line: Line<'static>, mut spaces: usize) -> Line<'static> {
+fn clamp_line_to_width(line: &mut Line<'static>, width: usize) {
+    let mut remaining = width;
     let mut spans = Vec::with_capacity(line.spans.len());
-    for span in line.spans {
-        if spaces == 0 {
+    for span in line.spans.drain(..) {
+        if remaining == 0 {
+            break;
+        }
+        let span_width = unicode_width::UnicodeWidthStr::width(span.content.as_ref());
+        if span_width <= remaining {
+            remaining -= span_width;
             spans.push(span);
             continue;
         }
-        let leading = span.content.chars().take_while(|ch| *ch == ' ').count();
-        let remove = leading.min(spaces);
-        spaces -= remove;
-        if remove < span.content.len() {
-            spans.push(Span::styled(span.content[remove..].to_string(), span.style));
+        let mut text = String::new();
+        for ch in span.content.chars() {
+            let char_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+            if char_width > remaining {
+                break;
+            }
+            remaining -= char_width;
+            text.push(ch);
         }
+        if !text.is_empty() {
+            spans.push(Span::styled(text, span.style));
+        }
+        break;
     }
-    Line::from(spans)
+    line.spans = spans;
 }
 
 /// Render the inline swarm gallery for the given members into `area`-width lines.
@@ -369,6 +505,10 @@ pub(crate) fn render_swarm_strip_lines(
     // Focused hints: only Alt-chords (plus esc) are claimed so plain typing
     // keeps flowing to the chat input while the panel is focused.
     let hints = vec![
+        SwarmStripHint {
+            key: "alt+n".into(),
+            label: "page".into(),
+        },
         SwarmStripHint {
             key: "alt+↑/↓".into(),
             label: "select".into(),
@@ -618,7 +758,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_chat_tree_is_width_bounded_and_cycle_safe() {
+    fn full_page_tree_is_width_bounded_and_cycle_safe() {
         let mut root = member("root", "running", Some("coordinating"), None);
         root.task_label = Some("Root reviewer".to_string());
         root.report_back_to_session_id = Some("grandchild".to_string());
@@ -631,8 +771,8 @@ mod tests {
         let members = vec![root.clone(), child, grandchild];
 
         for width in 0..80 {
-            let lines = render_swarm_chat_tree_lines(&root, &members, width);
-            assert!(lines.len() <= 8, "cycle expanded at width {width}");
+            let lines = render_swarm_page_lines(&members, 0, 0, width, 12);
+            assert!(lines.len() <= 12, "cycle expanded at width {width}");
             for line in lines {
                 let text: String = line
                     .spans

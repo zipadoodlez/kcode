@@ -506,9 +506,20 @@ pub(super) fn active_batch_progress_hash(app: &dyn TuiState) -> u64 {
 }
 
 fn swarm_members_signature(members: &[crate::protocol::SwarmMemberStatus]) -> u64 {
-    serde_json::to_string(members)
-        .map(|snapshot| super::hash_text_for_cache(&snapshot))
-        .unwrap_or_default()
+    // Chat only renders a stable one-line identity/status summary. Excluding
+    // elapsed time, age, output tails, todos, tool progress, and runtime details
+    // prevents high-frequency live swarm updates from invalidating the entire
+    // transcript preparation cache.
+    let mut ordered: Vec<_> = members.iter().collect();
+    ordered.sort_by(|a, b| a.session_id.cmp(&b.session_id));
+    let mut hasher = DefaultHasher::new();
+    for member in ordered {
+        member.session_id.hash(&mut hasher);
+        member.friendly_name.hash(&mut hasher);
+        member.status.hash(&mut hasher);
+        member.task_label.hash(&mut hasher);
+    }
+    hasher.finish()
 }
 
 fn spawned_member_for_tool<'a>(
@@ -1291,9 +1302,8 @@ fn render_message_into(
                 acc.push_auto(align_if_unset(line, align));
             }
             if let Some(member) = spawned_member_for_tool(msg, &ctx.swarm_members) {
-                for line in crate::tui::info_widget::swarm_gallery::render_swarm_chat_tree_lines(
-                    member,
-                    &ctx.swarm_members,
+                for line in crate::tui::info_widget::swarm_gallery::render_swarm_chat_card_lines(
+                    std::slice::from_ref(member),
                     width.saturating_sub(1) as usize,
                 ) {
                     acc.push_auto(line.alignment(ratatui::layout::Alignment::Left));

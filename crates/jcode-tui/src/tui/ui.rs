@@ -2537,6 +2537,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     } else {
         None
     };
+    let swarm_page_active = app.swarm_panel_full_page();
 
     // Check diagram display mode and get active diagrams early so we can
     // determine the horizontal split before computing input width etc.
@@ -2550,17 +2551,18 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     };
     let pane_enabled = app.diagram_pane_enabled();
     let pane_position = app.diagram_pane_position();
-    let has_side_panel_content = app.side_panel().focused_page().is_some();
+    let has_side_panel_content = !swarm_page_active && app.side_panel().focused_page().is_some();
     let diff_mode = app.diff_mode();
     let collect_diffs = diff_mode.is_pinned();
     // Images now render inline in the transcript, so the side panel only handles
     // pinned file diffs. `pin_images` no longer feeds the side-panel surface.
-    let has_pinned_content = if collect_diffs {
+    let has_pinned_content = if collect_diffs && !swarm_page_active {
         collect_pinned_diffs_cached(app.display_messages(), app.display_messages_version())
     } else {
         false
     };
-    let has_file_diff_edits = diff_mode.is_file() && app.has_display_edit_tool_messages();
+    let has_file_diff_edits =
+        !swarm_page_active && diff_mode.is_file() && app.has_display_edit_tool_messages();
     let has_right_side_pane_content =
         has_side_panel_content || has_pinned_content || has_file_diff_edits;
     // The side panel is itself a single right-hand auxiliary surface and can render
@@ -2570,7 +2572,8 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // like pinned images + Mermaid can produce chat + side pane + diagram triple-split
     // layouts.
     let suppress_side_diagram = has_right_side_pane_content;
-    let pinned_diagram = if diagram_mode == crate::config::DiagramDisplayMode::Pinned
+    let pinned_diagram = if !swarm_page_active
+        && diagram_mode == crate::config::DiagramDisplayMode::Pinned
         && pane_enabled
         && !suppress_side_diagram
     {
@@ -2730,7 +2733,8 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // the bottom chrome and shoves the transcript up: reacting to raw
     // frame-by-frame dock visibility made the strip pop in and out and the
     // whole screen bounce (flicker).
-    let swarm_strip_lines: Vec<Line<'static>> = if app.inline_swarm_gallery_active()
+    let swarm_strip_lines: Vec<Line<'static>> = if !swarm_page_active
+        && app.inline_swarm_gallery_active()
         && (app.swarm_panel_focused() || !super::info_widget::swarm_strip_stands_down_for_dock())
     {
         let members = app.inline_swarm_members();
@@ -2920,7 +2924,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let content_height = prepared.total_wrapped_lines().max(1) as u16;
 
     // Use packed layout when content fits, scrolling layout otherwise
-    let use_packed = content_height + fixed_height <= available_height;
+    let use_packed = !swarm_page_active && content_height + fixed_height <= available_height;
 
     // Layout: messages (includes header), queued, status, notification, inline UI, gap, input, donut
     // All vertical chunks are within the chat_area (left column).
@@ -3058,6 +3062,25 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
             centered: app.centered_mode(),
             ..Default::default()
         }
+    } else if swarm_page_active {
+        let members = app.inline_swarm_members();
+        let spinner_frame =
+            (app.animation_elapsed() * jcode_tui_render::swarm_gallery::STRIP_SPINNER_FPS) as usize;
+        let lines = super::info_widget::swarm_gallery::render_swarm_page_lines(
+            &members,
+            app.swarm_panel_selected(),
+            spinner_frame,
+            messages_area.width as usize,
+            messages_area.height as usize,
+        );
+        clear_area(frame, messages_area);
+        frame.render_widget(Paragraph::new(lines), messages_area);
+        info_widget::Margins {
+            right_widths: Vec::new(),
+            left_widths: Vec::new(),
+            centered: false,
+            ..Default::default()
+        }
     } else {
         draw_messages(
             frame,
@@ -3184,7 +3207,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let mut widget_render_ms: Option<f32> = None;
     let mut placements: Vec<info_widget::WidgetPlacement> = Vec::new();
     let widget_bounds = messages_area;
-    if !widget_data.is_empty() && !show_donut {
+    if !widget_data.is_empty() && !show_donut && !swarm_page_active {
         if let Some(ref mut capture) = debug_capture {
             capture.render_order.push("render_info_widgets".to_string());
         }

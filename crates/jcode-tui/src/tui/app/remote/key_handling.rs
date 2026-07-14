@@ -385,13 +385,20 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    // Inline swarm panel: Alt+N focuses/unfocuses the managed-agents panel.
-    // While focused, Alt+↑/↓ select, Alt+O pops the selection out to a terminal,
-    // Alt+Shift+P opens the swarm prompt, and Esc exits. Plain typing is NOT
-    // captured (it keeps flowing to the chat input).
+    // Swarm views: Alt+N cycles chat → inline controls → full live page → chat.
+    // Selection/open/prompt controls stay available in both active views, while
+    // plain typing continues to flow to the chat input.
     if app.toggle_keys.swarm_panel_focus.matches(code, modifiers) {
-        if app.toggle_swarm_panel_focus() {
-            app.set_status_notice("Swarm: alt+↑/↓ select · alt+o open · alt+shift+p prompt · esc");
+        match app.cycle_swarm_panel_view() {
+            app_mod::tui_state::SwarmPanelView::Chat => {
+                app.set_status_notice("Swarm view closed");
+            }
+            app_mod::tui_state::SwarmPanelView::Controls => {
+                app.set_status_notice("Swarm: alt+n full page · alt+↑/↓ select · alt+o open · esc");
+            }
+            app_mod::tui_state::SwarmPanelView::FullPage => {
+                app.set_status_notice("Swarm page: alt+n chat · alt+↑/↓ select · alt+o open · esc");
+            }
         }
         return Ok(());
     }

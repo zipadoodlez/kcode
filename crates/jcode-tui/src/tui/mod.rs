@@ -387,6 +387,10 @@ pub trait TuiState {
     fn swarm_panel_focused(&self) -> bool {
         false
     }
+    /// Whether the live swarm page currently replaces the transcript viewport.
+    fn swarm_panel_full_page(&self) -> bool {
+        false
+    }
 
     // ---- Workspace ----
     /// Whether workspace mode is enabled for this client.

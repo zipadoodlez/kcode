@@ -1146,6 +1146,8 @@ pub struct App {
     swarm_panel_selected: usize,
     // Whether the inline swarm panel has keyboard focus (navigable list + detail).
     swarm_panel_focused: bool,
+    // Whether the focused swarm panel owns the main transcript viewport.
+    swarm_panel_full_page: bool,
     // Diff display mode (toggle with Alt+G)
     diff_mode: crate::config::DiffDisplayMode,
     // Center all content (from config)

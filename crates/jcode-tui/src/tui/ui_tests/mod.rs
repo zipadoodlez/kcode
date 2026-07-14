@@ -146,6 +146,7 @@ struct TestState {
     transcript_swarm_members: Option<Vec<crate::protocol::SwarmMemberStatus>>,
     swarm_panel_selected: usize,
     swarm_panel_focused: bool,
+    swarm_panel_full_page: bool,
 }
 
 impl crate::tui::TuiState for TestState {
@@ -312,6 +313,9 @@ impl crate::tui::TuiState for TestState {
     }
     fn swarm_panel_focused(&self) -> bool {
         self.swarm_panel_focused
+    }
+    fn swarm_panel_full_page(&self) -> bool {
+        self.swarm_panel_full_page
     }
     fn remote_startup_phase_active(&self) -> bool {
         self.remote_startup_phase_active

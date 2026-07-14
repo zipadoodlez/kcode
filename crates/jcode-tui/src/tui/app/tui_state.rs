@@ -1715,6 +1715,10 @@ impl crate::tui::TuiState for App {
         self.swarm_panel_focused
     }
 
+    fn swarm_panel_full_page(&self) -> bool {
+        self.swarm_panel_full_page && self.inline_swarm_gallery_active()
+    }
+
     fn diagram_focus(&self) -> bool {
         self.diagram_focus
     }
@@ -1937,28 +1941,53 @@ impl crate::tui::TuiState for App {
     }
 }
 
+/// The three Alt+N swarm views. Repeated presses cycle in declaration order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SwarmPanelView {
+    Chat,
+    Controls,
+    FullPage,
+}
+
 impl App {
-    /// Toggle keyboard focus on the inline swarm panel. Returns the new state.
-    /// Focus is only meaningful while the panel is actually visible.
-    pub(crate) fn toggle_swarm_panel_focus(&mut self) -> bool {
+    /// Cycle chat → inline controls → full live swarm page → chat.
+    pub(crate) fn cycle_swarm_panel_view(&mut self) -> SwarmPanelView {
         if !self.inline_swarm_gallery_active() {
             self.swarm_panel_focused = false;
-            return false;
+            self.swarm_panel_full_page = false;
+            return SwarmPanelView::Chat;
         }
-        self.swarm_panel_focused = !self.swarm_panel_focused;
-        if self.swarm_panel_focused {
-            // Clamp selection on entry.
-            let count = self.inline_swarm_members().len();
-            if count > 0 {
-                self.swarm_panel_selected = self.swarm_panel_selected.min(count - 1);
+
+        let next = match (self.swarm_panel_focused, self.swarm_panel_full_page) {
+            (false, _) => SwarmPanelView::Controls,
+            (true, false) => SwarmPanelView::FullPage,
+            (true, true) => SwarmPanelView::Chat,
+        };
+        match next {
+            SwarmPanelView::Chat => {
+                self.swarm_panel_focused = false;
+                self.swarm_panel_full_page = false;
+            }
+            SwarmPanelView::Controls => {
+                self.swarm_panel_focused = true;
+                self.swarm_panel_full_page = false;
+            }
+            SwarmPanelView::FullPage => {
+                self.swarm_panel_focused = true;
+                self.swarm_panel_full_page = true;
             }
         }
-        self.swarm_panel_focused
+        if next != SwarmPanelView::Chat {
+            let count = self.inline_swarm_members().len();
+            self.swarm_panel_selected = self.swarm_panel_selected.min(count.saturating_sub(1));
+        }
+        next
     }
 
     #[allow(dead_code)]
     pub(crate) fn set_swarm_panel_focus(&mut self, focused: bool) {
         self.swarm_panel_focused = focused && self.inline_swarm_gallery_active();
+        self.swarm_panel_full_page = false;
     }
 
     /// Move the swarm panel selection by `delta` (e.g. +1 for next, -1 for
@@ -2006,6 +2035,7 @@ impl App {
             }
             Some(SwarmPanelAction::Exit) => {
                 self.swarm_panel_focused = false;
+                self.swarm_panel_full_page = false;
                 true
             }
             None => false,
