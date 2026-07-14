@@ -171,15 +171,22 @@ pub fn tool_output_looks_failed(content: &str) -> bool {
     if trimmed.is_empty() {
         return false;
     }
-    let lower = trimmed.to_ascii_lowercase();
-    if concise_tool_error_summary(trimmed).is_some()
+    let normalized = trimmed
+        .strip_prefix('[')
+        .and_then(|rest| rest.split_once("] "))
+        .filter(|(label, _)| !label.is_empty() && !label.contains(['\n', '\r']))
+        .map(|(_, rest)| rest)
+        .unwrap_or(trimmed);
+    let lower = normalized.to_ascii_lowercase();
+    if concise_tool_error_summary(normalized).is_some()
         || lower.starts_with("error:")
         || lower.starts_with("failed:")
+        || normalized.starts_with('✗')
     {
         return true;
     }
 
-    trimmed.lines().any(|line| {
+    normalized.lines().any(|line| {
         let line = line.trim();
         parse_nonzero_exit_code_line(line)
             || line.eq_ignore_ascii_case("Status: failed")
@@ -215,6 +222,12 @@ mod tests {
     fn detects_failed_tool_output() {
         assert!(tool_output_looks_failed("Status: failed"));
         assert!(tool_output_looks_failed("Exit code: 1"));
+        assert!(tool_output_looks_failed(
+            "✗ demo.txt: failed to find expected lines"
+        ));
+        assert!(tool_output_looks_failed(
+            "[apply_patch] ✗ demo.txt: failed to find expected lines"
+        ));
         assert!(!tool_output_looks_failed("Exit code: 0"));
         assert!(!tool_output_looks_failed("completed successfully"));
     }

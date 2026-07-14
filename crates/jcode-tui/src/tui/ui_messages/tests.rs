@@ -1769,6 +1769,113 @@ fn render_tool_message_shows_inline_diff_for_pascal_case_multiedit() {
 }
 
 #[test]
+fn render_tool_message_shows_numbered_write_result_diff_after_input_compaction() {
+    let msg = DisplayMessage {
+        role: "tool".to_string(),
+        content: "Created /tmp/head-to-head.html (2 lines):\n1+ <!doctype html>\n2+ <html lang=\"en\">\n..."
+            .to_string(),
+        tool_calls: Vec::new(),
+        duration_secs: None,
+        title: Some("/tmp/head-to-head.html".to_string()),
+        tool_data: Some(crate::message::ToolCall {
+            id: "call_write_compacted".to_string(),
+            name: "write".to_string(),
+            input: serde_json::json!({"file_path": "/tmp/head-to-head.html"}),
+            intent: Some("Create an honest data-driven benchmark comparison page".to_string()),
+            thought_signature: None,
+        }),
+    };
+
+    let lines = render_tool_message(&msg, 100, crate::config::DiffDisplayMode::Inline);
+    let plain = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        lines[0].spans.iter().any(|span| span.content == "+2"),
+        "plain={plain}"
+    );
+    assert!(plain.contains("┌─ diff"), "plain={plain}");
+    assert!(plain.contains("<!doctype html>"), "plain={plain}");
+    assert!(plain.contains("<html lang=\"en\">"), "plain={plain}");
+}
+
+#[test]
+fn render_tool_message_never_draws_an_empty_edit_diff_frame() {
+    for (name, content) in [
+        ("write", "Created empty.txt (0 lines):\n"),
+        ("edit", "Edited demo.txt: replaced 1 occurrence(s)"),
+        (
+            "multiedit",
+            "Edited demo.txt\n\nTotal: 1 applied, 0 failed\n",
+        ),
+        ("patch", "Patch applied successfully"),
+        ("apply_patch", "✓ demo.txt: modified (1 hunks)"),
+    ] {
+        let msg = DisplayMessage {
+            role: "tool".to_string(),
+            content: content.to_string(),
+            tool_calls: Vec::new(),
+            duration_secs: None,
+            title: Some("demo.txt".to_string()),
+            tool_data: Some(crate::message::ToolCall {
+                id: format!("call_{name}_compacted"),
+                name: name.to_string(),
+                input: serde_json::json!({"file_path": "demo.txt"}),
+                intent: None,
+                thought_signature: None,
+            }),
+        };
+
+        let lines = render_tool_message(&msg, 100, crate::config::DiffDisplayMode::Inline);
+        let plain = lines
+            .iter()
+            .map(extract_line_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(!plain.contains("┌─ diff"), "tool={name}, plain={plain}");
+        assert!(!plain.contains("(+0 -0)"), "tool={name}, plain={plain}");
+    }
+}
+
+#[test]
+fn render_tool_message_marks_failed_apply_patch_without_empty_diff() {
+    let msg = DisplayMessage {
+        role: "tool".to_string(),
+        content:
+            "[apply_patch] ✗ /tmp/main.rs: Failed to find expected lines in /tmp/main.rs:\nfn missing() {}"
+                .to_string(),
+        tool_calls: Vec::new(),
+        duration_secs: None,
+        title: Some("/tmp/main.rs".to_string()),
+        tool_data: Some(crate::message::ToolCall {
+            id: "call_apply_patch_failed".to_string(),
+            name: "apply_patch".to_string(),
+            input: serde_json::json!({"file_path": "/tmp/main.rs"}),
+            intent: Some("Replace the benchmark placeholder".to_string()),
+            thought_signature: None,
+        }),
+    };
+
+    let lines = render_tool_message(&msg, 100, crate::config::DiffDisplayMode::Inline);
+    let plain = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        plain.trim_start().starts_with("✗ apply_patch"),
+        "plain={plain}"
+    );
+    assert!(!plain.contains("┌─ diff"), "plain={plain}");
+    assert!(!plain.contains("(+0 -0)"), "plain={plain}");
+}
+
+#[test]
 fn render_tool_message_inline_mode_truncates_large_diffs() {
     let old = (1..=7)
         .map(|i| format!("old line {i}\n"))
