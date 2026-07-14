@@ -225,22 +225,6 @@ jobs:
           JCODE_RELEASE_BUILD: "1"
           JCODE_BUILD_SEMVER: ${{ github.ref_name }}
 
-      - name: Run Windows runtime smoke tests (x64)
-        if: matrix.target == 'x86_64-pc-windows-msvc'
-        shell: pwsh
-        run: |
-          $tests = @(
-            'provider_behavior::test_socket_model_cycle_supported_models',
-            'provider_behavior::test_model_switch_resets_provider_session'
-          )
-
-          foreach ($testName in $tests) {
-            & cargo test --locked --target ${{ matrix.target }} --test e2e $testName -- --exact --nocapture
-            if ($LASTEXITCODE -ne 0) {
-              throw "Windows smoke test failed: $testName"
-            }
-          }
-
       - name: Verify built Windows binary launches
         shell: pwsh
         run: |
@@ -277,6 +261,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${env:GITHUB_REF_NAME}" "dist/${{ matrix.artifact }}.tar.gz" "dist/${{ matrix.artifact }}.exe" --clobber
+
+      # These debug-harness tests provide extra signal, but they must not block
+      # publishing a release binary that already built, launched, and passed the
+      # installer verification. A transient server-test disconnect caused the
+      # Windows x64 asset to disappear from releases v0.44.0-v0.46.0 (#480).
+      - name: Run advisory Windows runtime smoke tests (x64)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $tests = @(
+            'provider_behavior::test_socket_model_cycle_supported_models',
+            'provider_behavior::test_model_switch_resets_provider_session'
+          )
+
+          foreach ($testName in $tests) {
+            & cargo test --locked --target ${{ matrix.target }} --test e2e $testName -- --exact --nocapture
+            if ($LASTEXITCODE -ne 0) {
+              throw "Windows smoke test failed: $testName"
+            }
+          }
 
   build-freebsd:
     name: Build (x86_64-unknown-freebsd)
