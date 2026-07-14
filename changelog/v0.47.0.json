@@ -1,0 +1,23 @@
+{
+  "version": "0.47.0",
+  "date": "2026-07-14",
+  "title": "Live swarm views and smarter first runs",
+  "highlights": [
+    "Alt+N now opens a full live swarm page with an ownership tree, animated status, and detailed activity for the selected agent",
+    "First-run onboarding can launch a bounded read-only architecture review of your most recent substantive coding project",
+    "External Claude, Codex, Pi, OpenCode, and Cursor sessions resume faster with bounded provider-safe history and reuse of existing continuations"
+  ],
+  "improvements": [
+    "Swarm spawn rows stay compact and stable in chat while rapidly changing todos, tool progress, and output remain on the live page",
+    "Sponsored tool discovery requires specific reporting context and blocks recognizable secrets or personal data before any request is sent",
+    "Todo, batch, and remote todo results render more consistently as compact cards with clearer retry and feedback-loop details",
+    "Terminal file drops attach directly without being misrouted through skill commands"
+  ],
+  "fixes": [
+    "Imported logins activate the correct provider route and strongest available model before onboarding validates readiness",
+    "Per-model image support is honored so images are only sent to routes that accept them",
+    "Remote client turns reach every live attachment instead of only one connected view",
+    "The browser bridge fails fast when its state is stale instead of attempting actions through an invalid connection",
+    "Release smoke tests wait for Windows assets to be published"
+  ]
+}
