@@ -331,6 +331,14 @@ impl Provider for OpenRouterProvider {
     }
 
     fn supports_image_input(&self) -> bool {
+        let raw_model = self.model();
+        let model_id = self
+            .strip_session_profile_prefix(&raw_model)
+            .trim()
+            .to_ascii_lowercase();
+        if let Some(supports_images) = self.static_image_input_support.get(&model_id) {
+            return *supports_images;
+        }
         if Self::profile_rejects_image_input(self.profile_id.as_deref()) {
             return false;
         }
@@ -734,6 +742,7 @@ impl Provider for OpenRouterProvider {
             extra_body: self.extra_body.clone(),
             static_models: self.static_models.clone(),
             static_context_limits: self.static_context_limits.clone(),
+            static_image_input_support: self.static_image_input_support.clone(),
             send_openrouter_headers: self.send_openrouter_headers,
             models_cache: Arc::clone(&self.models_cache),
             model_catalog_refresh: Arc::clone(&self.model_catalog_refresh),

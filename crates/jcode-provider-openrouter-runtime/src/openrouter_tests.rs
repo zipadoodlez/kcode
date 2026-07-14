@@ -320,6 +320,42 @@ fn direct_openai_compatible_provider_advertises_image_input_support() {
 }
 
 #[test]
+fn named_openai_compatible_provider_uses_per_model_image_input_support() {
+    let _lock = ENV_LOCK.lock();
+    let _namespace = EnvVarGuard::remove("JCODE_OPENROUTER_CACHE_NAMESPACE");
+
+    let profile = jcode_base::config::NamedProviderConfig {
+        base_url: "http://localhost:1234/v1".to_string(),
+        auth: jcode_base::config::NamedProviderAuth::None,
+        default_model: Some("vision-model".to_string()),
+        models: vec![
+            jcode_base::config::NamedProviderModelConfig {
+                id: "vision-model".to_string(),
+                input: vec!["text".to_string(), "image".to_string()],
+                ..Default::default()
+            },
+            jcode_base::config::NamedProviderModelConfig {
+                id: "text-model".to_string(),
+                input: vec!["text".to_string()],
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+
+    let provider = OpenRouterProvider::new_named_openai_compatible("local-compat", &profile)
+        .expect("local named profile should initialize without auth");
+
+    assert!(provider.supports_image_input());
+    provider.set_model("text-model").expect("switch model");
+    assert!(!provider.supports_image_input());
+    provider
+        .set_model("local-compat:vision-model")
+        .expect("switch using qualified model");
+    assert!(provider.supports_image_input());
+}
+
+#[test]
 fn direct_deepseek_profile_does_not_advertise_image_input_support() {
     let provider = OpenRouterProvider {
         profile_id: Some("deepseek".to_string()),
@@ -1070,6 +1106,7 @@ fn make_provider() -> OpenRouterProvider {
         extra_body: None,
         static_models: Vec::new(),
         static_context_limits: HashMap::new(),
+        static_image_input_support: HashMap::new(),
         send_openrouter_headers: true,
         models_cache: Arc::new(RwLock::new(ModelsCache::default())),
         model_catalog_refresh: Arc::new(Mutex::new(ModelCatalogRefreshState::default())),
@@ -1098,6 +1135,7 @@ fn make_custom_compatible_provider() -> OpenRouterProvider {
         extra_body: None,
         static_models: Vec::new(),
         static_context_limits: HashMap::new(),
+        static_image_input_support: HashMap::new(),
         send_openrouter_headers: false,
         models_cache: Arc::new(RwLock::new(ModelsCache::default())),
         model_catalog_refresh: Arc::new(Mutex::new(ModelCatalogRefreshState::default())),

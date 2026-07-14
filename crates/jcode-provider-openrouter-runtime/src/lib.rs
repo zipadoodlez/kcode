@@ -964,6 +964,9 @@ pub struct OpenRouterProvider {
     extra_body: Option<serde_json::Map<String, Value>>,
     static_models: Vec<String>,
     static_context_limits: HashMap<String, usize>,
+    /// Explicit per-model image-input capability from named-provider `models[].input`.
+    /// Missing entries mean unspecified and preserve the provider-level fallback.
+    static_image_input_support: HashMap<String, bool>,
     send_openrouter_headers: bool,
     models_cache: Arc<RwLock<ModelsCache>>,
     model_catalog_refresh: Arc<Mutex<ModelCatalogRefreshState>>,
@@ -1337,6 +1340,21 @@ impl OpenRouterProvider {
                     .map(|limit| (id.to_ascii_lowercase(), limit))
             })
             .collect::<HashMap<_, _>>();
+        let static_image_input_support = profile
+            .models
+            .iter()
+            .filter_map(|model| {
+                let id = model.id.trim();
+                if id.is_empty() || model.input.is_empty() {
+                    return None;
+                }
+                let supports_images = model
+                    .input
+                    .iter()
+                    .any(|input| input.eq_ignore_ascii_case("image"));
+                Some((id.to_ascii_lowercase(), supports_images))
+            })
+            .collect::<HashMap<_, _>>();
         Ok(Self {
             client: jcode_provider_core::shared_http_client(),
             model: Arc::new(RwLock::new(model)),
@@ -1369,6 +1387,7 @@ impl OpenRouterProvider {
             ),
             static_models,
             static_context_limits,
+            static_image_input_support,
             send_openrouter_headers: false,
             models_cache: Arc::new(RwLock::new(ModelsCache::default())),
             model_catalog_refresh: Arc::new(Mutex::new(ModelCatalogRefreshState::default())),
@@ -1562,6 +1581,7 @@ impl OpenRouterProvider {
             extra_body,
             static_models,
             static_context_limits,
+            static_image_input_support: HashMap::new(),
             send_openrouter_headers,
             models_cache: Arc::new(RwLock::new(ModelsCache::default())),
             model_catalog_refresh: Arc::new(Mutex::new(ModelCatalogRefreshState::default())),
@@ -1602,6 +1622,7 @@ impl OpenRouterProvider {
             extra_body: Self::resolve_extra_body(None, DEFAULT_ENV_FILE),
             static_models: Vec::new(),
             static_context_limits: HashMap::new(),
+            static_image_input_support: HashMap::new(),
             send_openrouter_headers: true,
             models_cache: Arc::new(RwLock::new(ModelsCache::default())),
             model_catalog_refresh: Arc::new(Mutex::new(ModelCatalogRefreshState::default())),
@@ -1670,6 +1691,7 @@ impl OpenRouterProvider {
             extra_body: Self::resolve_extra_body(None, &resolved.env_file),
             static_models,
             static_context_limits,
+            static_image_input_support: HashMap::new(),
             send_openrouter_headers: false,
             models_cache: Arc::new(RwLock::new(ModelsCache::default())),
             model_catalog_refresh: Arc::new(Mutex::new(ModelCatalogRefreshState::default())),
@@ -1893,6 +1915,7 @@ impl OpenRouterProvider {
                 extra_body: None,
                 static_models: Vec::new(),
                 static_context_limits: HashMap::new(),
+                static_image_input_support: HashMap::new(),
                 send_openrouter_headers: true,
                 models_cache: Arc::new(RwLock::new(ModelsCache::default())),
                 model_catalog_refresh: Arc::new(Mutex::new(ModelCatalogRefreshState::default())),
