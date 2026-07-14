@@ -12,6 +12,7 @@ use std::borrow::Cow;
 use unicode_width::UnicodeWidthStr;
 
 const MAX_INLINE_DIFF_LINES: usize = 12;
+const MAX_GMAIL_DRAFT_BODY_LINES: usize = 18;
 
 fn prefer_width_stable_system_glyphs() -> bool {
     std::env::var("TERM_PROGRAM")
@@ -764,7 +765,7 @@ pub(crate) fn render_overnight_message(
         status_style,
     )];
 
-    push_overnight_kv_line(
+    push_wrapped_kv_line(
         &mut box_content,
         "Target",
         &format!("{} · {}", card.time_relation, card.target_wake_at),
@@ -772,7 +773,7 @@ pub(crate) fn render_overnight_message(
         label_style,
         text_style,
     );
-    push_overnight_kv_line(
+    push_wrapped_kv_line(
         &mut box_content,
         "Coordinator",
         &format!(
@@ -783,7 +784,7 @@ pub(crate) fn render_overnight_message(
         label_style,
         text_style,
     );
-    push_overnight_kv_line(
+    push_wrapped_kv_line(
         &mut box_content,
         "Last activity",
         &format!(
@@ -794,7 +795,7 @@ pub(crate) fn render_overnight_message(
         label_style,
         text_style,
     );
-    push_overnight_kv_line(
+    push_wrapped_kv_line(
         &mut box_content,
         "Tasks",
         &format_overnight_task_counts(&card),
@@ -807,7 +808,7 @@ pub(crate) fn render_overnight_message(
         .as_deref()
         .filter(|value| !value.trim().is_empty())
     {
-        push_overnight_kv_line(
+        push_wrapped_kv_line(
             &mut box_content,
             "Current",
             active,
@@ -816,7 +817,7 @@ pub(crate) fn render_overnight_message(
             text_style,
         );
     }
-    push_overnight_kv_line(
+    push_wrapped_kv_line(
         &mut box_content,
         "Usage",
         &format!(
@@ -827,7 +828,7 @@ pub(crate) fn render_overnight_message(
         label_style,
         text_style,
     );
-    push_overnight_kv_line(
+    push_wrapped_kv_line(
         &mut box_content,
         "Resources",
         &card.resources_summary,
@@ -845,7 +846,7 @@ pub(crate) fn render_overnight_message(
             .as_deref()
             .map(|kind| format!("{}: {}", kind, summary))
             .unwrap_or_else(|| summary.to_string());
-        push_overnight_kv_line(
+        push_wrapped_kv_line(
             &mut box_content,
             "Latest",
             &latest,
@@ -854,7 +855,7 @@ pub(crate) fn render_overnight_message(
             text_style,
         );
     }
-    push_overnight_kv_line(
+    push_wrapped_kv_line(
         &mut box_content,
         "Review",
         &format!("{} · log: {}", card.review_path, card.log_path),
@@ -1421,7 +1422,7 @@ fn render_overnight_progress_line(
     super::truncate_line_with_ellipsis_to_width(&line, inner_width)
 }
 
-fn push_overnight_kv_line(
+fn push_wrapped_kv_line(
     content: &mut Vec<Line<'static>>,
     label: &str,
     value: &str,
@@ -2791,6 +2792,156 @@ pub(super) fn edit_tool_inline_diff_is_expandable(
     })
 }
 
+fn gmail_draft_id(tool_output: &str) -> Option<&str> {
+    tool_output.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("Draft ID:")
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+    })
+}
+
+fn render_gmail_draft_card(
+    tool: &ToolCall,
+    tool_output: &str,
+    is_error: bool,
+    available_width: usize,
+) -> Option<Vec<Line<'static>>> {
+    if tools_ui::canonical_tool_name(&tool.name) != "gmail"
+        || tool.input.get("action").and_then(|value| value.as_str()) != Some("draft")
+    {
+        return None;
+    }
+
+    let max_box_width = available_width.min(88);
+    if max_box_width < 10 {
+        return None;
+    }
+    let inner_width = max_box_width.saturating_sub(4).max(1);
+    let label_style = Style::default()
+        .fg(tool_color())
+        .add_modifier(Modifier::BOLD);
+    let metadata_style = Style::default().fg(dim_color());
+    let body_style = Style::default();
+    let border_style = if is_error {
+        Style::default().fg(rgb(220, 100, 100))
+    } else {
+        Style::default().fg(rgb(210, 105, 95))
+    };
+
+    let to = tool
+        .input
+        .get("to")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("(recipient missing)");
+    let subject = tool
+        .input
+        .get("subject")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("(no subject)");
+
+    let mut content: Vec<Line<'static>> = Vec::new();
+    push_wrapped_kv_line(
+        &mut content,
+        "To",
+        to,
+        inner_width,
+        label_style,
+        metadata_style,
+    );
+    push_wrapped_kv_line(
+        &mut content,
+        "Subject",
+        subject,
+        inner_width,
+        label_style,
+        metadata_style,
+    );
+
+    if let Some(attachments) = tool
+        .input
+        .get("attachments")
+        .and_then(|value| value.as_array())
+    {
+        let attachments = attachments
+            .iter()
+            .filter_map(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        if !attachments.is_empty() {
+            push_wrapped_kv_line(
+                &mut content,
+                "Attachments",
+                &attachments.join(", "),
+                inner_width,
+                label_style,
+                metadata_style,
+            );
+        }
+    }
+
+    content.push(Line::from(""));
+    content.push(Line::from(Span::styled("Body", label_style)));
+
+    let body = tool
+        .input
+        .get("body")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    let body = strip_ansi_escape_sequences(body)
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
+    let body = if body.trim().is_empty() {
+        "(empty body)".to_string()
+    } else {
+        body
+    };
+    let body_lines = render_plaintext_lines(&body, inner_width);
+    let hidden_line_count = body_lines.len().saturating_sub(MAX_GMAIL_DRAFT_BODY_LINES);
+    for mut line in body_lines.into_iter().take(MAX_GMAIL_DRAFT_BODY_LINES) {
+        for span in &mut line.spans {
+            span.style = body_style;
+        }
+        content.push(line);
+    }
+    if hidden_line_count > 0 {
+        content.push(Line::from(Span::styled(
+            format!(
+                "… {} more line{}",
+                hidden_line_count,
+                if hidden_line_count == 1 { "" } else { "s" }
+            ),
+            metadata_style,
+        )));
+    }
+
+    let title = if is_error {
+        "✉ Gmail draft failed".to_string()
+    } else if tool_output
+        .lines()
+        .any(|line| line.trim() == "Draft created successfully.")
+    {
+        match gmail_draft_id(tool_output) {
+            Some(id) => format!("✉ Gmail draft created · {}", id),
+            None => "✉ Gmail draft created".to_string(),
+        }
+    } else {
+        "✉ Gmail draft".to_string()
+    };
+
+    Some(render_rounded_box(
+        &title,
+        content,
+        max_box_width,
+        border_style,
+    ))
+}
+
 pub(crate) fn render_tool_message(
     msg: &DisplayMessage,
     width: u16,
@@ -3048,6 +3199,10 @@ pub(crate) fn render_tool_message(
     let rendered_tool_line_text = super::line_plain_text(&rendered_tool_line);
     lines.push(rendered_tool_line);
 
+    if let Some(draft_lines) = render_gmail_draft_card(tc, &msg.content, is_error, row_width) {
+        lines.extend(draft_lines);
+    }
+
     // Optionally render the full agentgrep search output inline in the
     // transcript. Gated behind `display.show_agentgrep_output` (default false)
     // so most users keep the compact one-line summary.
@@ -3132,6 +3287,20 @@ pub(crate) fn render_tool_message(
                 Some(row_width),
                 sub_result.map(|result| result.content.as_str()),
             ));
+
+            if let Some(result) = sub_result
+                && let Some(mut draft_lines) = render_gmail_draft_card(
+                    &sub_tc,
+                    &result.content,
+                    sub_errored,
+                    row_width.saturating_sub(4),
+                )
+            {
+                for line in &mut draft_lines {
+                    line.spans.insert(0, Span::raw("    "));
+                }
+                lines.extend(draft_lines);
+            }
 
             if tools_ui::canonical_tool_name(&sub_tc.name) == "todo"
                 && !sub_errored

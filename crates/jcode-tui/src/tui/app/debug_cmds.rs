@@ -334,6 +334,39 @@ impl App {
                 "display_messages": self.display_messages.len(),
             })
             .to_string()
+        } else if cmd == "gmail-draft-fixture" {
+            self.display_messages = vec![
+                DisplayMessage::user("Draft a launch update for the team"),
+                DisplayMessage::tool(
+                    "Draft created successfully.\nDraft ID: draft_visual_123\nTo: team@example.com\nSubject: Launch update\nAttachments: 1"
+                        .to_string(),
+                    crate::message::ToolCall {
+                        id: "debug_gmail_draft_1".to_string(),
+                        name: "gmail".to_string(),
+                        input: serde_json::json!({
+                            "action": "draft",
+                            "to": "team@example.com",
+                            "subject": "Launch update",
+                            "body": "Hi team,\n\nThe launch is ready for final review. Please add any blocking feedback by 3 PM.\n\nThanks,\nJeremy",
+                            "attachments": ["/tmp/launch-checklist.pdf"],
+                            "intent": "Prepare launch update",
+                        }),
+                        intent: Some("Prepare launch update".to_string()),
+                        thought_signature: None,
+                    },
+                ),
+            ];
+            self.bump_display_messages_version();
+            self.scroll_offset = 0;
+            self.auto_scroll_paused = false;
+            self.input.clear();
+            self.cursor_pos = 0;
+            self.set_status_notice("Debug Gmail draft fixture ready");
+            serde_json::json!({
+                "ok": true,
+                "display_messages": self.display_messages.len(),
+            })
+            .to_string()
         } else if cmd == "picker" || cmd == "picker:state" {
             self.debug_picker_state_json(None)
         } else if cmd == "model-picker" || cmd == "model-picker:live" {
