@@ -14,15 +14,27 @@ pub const JCODE_PRICING_URL: &str = "https://jcode.sh/pricing";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum JcodeTier {
     Plus,
+    Pro,
+    Max,
+    Ultra,
     Flagship,
 }
 
 impl JcodeTier {
-    pub const ALL: &'static [JcodeTier] = &[JcodeTier::Plus, JcodeTier::Flagship];
+    pub const ALL: &'static [JcodeTier] = &[
+        JcodeTier::Plus,
+        JcodeTier::Pro,
+        JcodeTier::Max,
+        JcodeTier::Ultra,
+        JcodeTier::Flagship,
+    ];
 
     pub fn retail_price_usd(self) -> u32 {
         match self {
             Self::Plus => 10,
+            Self::Pro => 20,
+            Self::Max => 100,
+            Self::Ultra => 200,
             Self::Flagship => 1000,
         }
     }
@@ -30,6 +42,9 @@ impl JcodeTier {
     pub fn usable_budget_usd(self) -> f64 {
         match self {
             Self::Plus => 18.00,
+            Self::Pro => 40.00,
+            Self::Max => 225.00,
+            Self::Ultra => 500.00,
             Self::Flagship => 3000.00,
         }
     }
@@ -37,6 +52,9 @@ impl JcodeTier {
     pub fn display_name(self) -> &'static str {
         match self {
             Self::Plus => "Plus",
+            Self::Pro => "Pro",
+            Self::Max => "Max",
+            Self::Ultra => "Ultra",
             Self::Flagship => "Flagship",
         }
     }
@@ -45,6 +63,9 @@ impl JcodeTier {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Plus => "plus",
+            Self::Pro => "pro",
+            Self::Max => "max",
+            Self::Ultra => "ultra",
             Self::Flagship => "flagship",
         }
     }
@@ -53,6 +74,9 @@ impl JcodeTier {
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "plus" => Some(Self::Plus),
+            "pro" => Some(Self::Pro),
+            "max" => Some(Self::Max),
+            "ultra" => Some(Self::Ultra),
             "flagship" => Some(Self::Flagship),
             _ => None,
         }
@@ -118,8 +142,8 @@ pub const CURATED_MODELS: &[CuratedModel] = &[
         aliases: &["gpt-5.6-sol", "gpt 5.6 sol", "sol"],
         default_enabled: false,
         routing_policy: UpstreamRoutingPolicy::ServerManaged,
-        min_tier: JcodeTier::Flagship,
-        note: "Flagship-tier model; routed server-side to OpenAI by the jcode router.",
+        min_tier: JcodeTier::Plus,
+        note: "Frontier model; routed server-side to OpenAI by the jcode router.",
     },
 ];
 
@@ -294,12 +318,21 @@ mod tests {
 
     #[test]
     fn tier_pricing_matches_launched_plans() {
-        assert_eq!(JcodeTier::Plus.retail_price_usd(), 10);
-        assert_eq!(JcodeTier::Plus.usable_budget_usd(), 18.00);
-        assert_eq!(JcodeTier::Plus.display_name(), "Plus");
-        assert_eq!(JcodeTier::Flagship.retail_price_usd(), 1000);
-        assert_eq!(JcodeTier::Flagship.usable_budget_usd(), 3000.00);
-        assert_eq!(JcodeTier::Flagship.display_name(), "Flagship");
+        let expected = [
+            (JcodeTier::Plus, "plus", "Plus", 10, 18.00),
+            (JcodeTier::Pro, "pro", "Pro", 20, 40.00),
+            (JcodeTier::Max, "max", "Max", 100, 225.00),
+            (JcodeTier::Ultra, "ultra", "Ultra", 200, 500.00),
+            (JcodeTier::Flagship, "flagship", "Flagship", 1000, 3000.00),
+        ];
+
+        assert_eq!(JcodeTier::ALL, expected.map(|(tier, ..)| tier));
+        for (tier, id, display_name, retail_price, usable_budget) in expected {
+            assert_eq!(tier.as_str(), id);
+            assert_eq!(tier.display_name(), display_name);
+            assert_eq!(tier.retail_price_usd(), retail_price);
+            assert_eq!(tier.usable_budget_usd(), usable_budget);
+        }
     }
 
     #[test]
@@ -308,27 +341,45 @@ mod tests {
             assert_eq!(JcodeTier::parse(tier.as_str()), Some(*tier));
         }
         assert_eq!(JcodeTier::parse("PLUS"), Some(JcodeTier::Plus));
+        assert_eq!(JcodeTier::parse(" Pro "), Some(JcodeTier::Pro));
+        assert_eq!(JcodeTier::parse("MAX"), Some(JcodeTier::Max));
+        assert_eq!(JcodeTier::parse(" ultra "), Some(JcodeTier::Ultra));
         assert_eq!(JcodeTier::parse(" Flagship "), Some(JcodeTier::Flagship));
         assert_eq!(JcodeTier::parse("starter"), None);
     }
 
     #[test]
-    fn tier_gating_orders_plus_below_flagship() {
-        assert!(JcodeTier::Plus.allows(JcodeTier::Plus));
-        assert!(!JcodeTier::Plus.allows(JcodeTier::Flagship));
-        assert!(JcodeTier::Flagship.allows(JcodeTier::Plus));
-        assert!(JcodeTier::Flagship.allows(JcodeTier::Flagship));
+    fn tier_gating_follows_catalog_order() {
+        for (account_index, account_tier) in JcodeTier::ALL.iter().copied().enumerate() {
+            for (required_index, required_tier) in JcodeTier::ALL.iter().copied().enumerate() {
+                assert_eq!(
+                    account_tier.allows(required_tier),
+                    account_index >= required_index,
+                    "{} gating {}",
+                    account_tier.display_name(),
+                    required_tier.display_name()
+                );
+            }
+        }
     }
 
     #[test]
-    fn flagship_models_are_gated_above_plus() {
+    fn model_entitlements_match_paid_tiers() {
         for model in CURATED_MODELS {
             match model.id {
-                "claude-fable-5" | "gpt-5.6-sol" => {
-                    assert_eq!(model.min_tier, JcodeTier::Flagship)
-                }
+                "claude-fable-5" => assert_eq!(model.min_tier, JcodeTier::Flagship),
                 _ => assert_eq!(model.min_tier, JcodeTier::Plus),
             }
+        }
+
+        for tier in JcodeTier::ALL {
+            assert!(tier.allows(find_curated_model("claude-opus-4-8").unwrap().min_tier));
+            assert!(tier.allows(find_curated_model("gpt-5.5").unwrap().min_tier));
+            assert!(tier.allows(find_curated_model("gpt-5.6-sol").unwrap().min_tier));
+            assert_eq!(
+                tier.allows(find_curated_model("claude-fable-5").unwrap().min_tier),
+                *tier == JcodeTier::Flagship
+            );
         }
     }
 
@@ -342,8 +393,24 @@ mod tests {
         assert_eq!(cached_tier(), None);
         assert_eq!(effective_tier(), JcodeTier::Plus);
         assert!(is_model_allowed_for_current_tier("claude-opus-4-8"));
+        assert!(is_model_allowed_for_current_tier("gpt-5.5"));
+        assert!(is_model_allowed_for_current_tier("gpt-5.6-sol"));
         assert!(!is_model_allowed_for_current_tier("claude-fable-5"));
 
+        crate::env::set_var(JCODE_TIER_ENV, "mystery");
+        assert_eq!(cached_tier(), None);
+        assert_eq!(effective_tier(), JcodeTier::Plus);
+
+        for tier in [JcodeTier::Pro, JcodeTier::Max, JcodeTier::Ultra] {
+            crate::env::set_var(JCODE_TIER_ENV, tier.as_str());
+            assert_eq!(effective_tier(), tier);
+            assert!(is_model_allowed_for_current_tier("claude-opus-4-8"));
+            assert!(is_model_allowed_for_current_tier("gpt-5.5"));
+            assert!(is_model_allowed_for_current_tier("gpt-5.6-sol"));
+            assert!(!is_model_allowed_for_current_tier("claude-fable-5"));
+        }
+
+        crate::env::remove_var(JCODE_TIER_ENV);
         store_cached_tier(Some(JcodeTier::Flagship)).expect("persist tier");
         assert_eq!(cached_tier(), Some(JcodeTier::Flagship));
         assert!(is_model_allowed_for_current_tier("claude-fable-5"));

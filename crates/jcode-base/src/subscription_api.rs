@@ -26,7 +26,7 @@ pub struct SubscriptionUsage {
 pub struct SubscriptionMe {
     pub account_id: String,
     pub email: String,
-    /// Wire tier value, e.g. "plus" or "flagship".
+    /// Stable wire tier value: "plus", "pro", "max", "ultra", or "flagship".
     pub tier: String,
     pub status: String,
     pub usage: SubscriptionUsage,

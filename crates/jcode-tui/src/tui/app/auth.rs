@@ -113,9 +113,10 @@ impl App {
             } else {
                 ""
             };
-            let tier_suffix = match model.min_tier {
-                crate::subscription_catalog::JcodeTier::Plus => "",
-                crate::subscription_catalog::JcodeTier::Flagship => " [Flagship]",
+            let tier_suffix = if model.min_tier == crate::subscription_catalog::JcodeTier::Plus {
+                String::new()
+            } else {
+                format!(" [{}]", model.min_tier.display_name())
             };
             message.push_str(&format!(
                 "  - {} - {}{}{}\n      - {}\n      - {}\n",
