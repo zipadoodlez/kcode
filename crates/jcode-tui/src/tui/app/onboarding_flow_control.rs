@@ -275,7 +275,7 @@ impl App {
     /// Advance out of the model-selection phase once a model has been chosen.
     /// When we detect external Codex / Claude Code transcripts, drop the user
     /// straight into the resume picker (with an onboarding banner + a
-    /// "Start a new session" option) instead of asking a separate Yes/No
+    /// start-fresh and read-only review options) instead of asking a separate Yes/No
     /// "continue where you left off" question. When both CLIs are present we
     /// show *both* their transcripts together in one combined, recency-sorted
     /// list rather than hiding one behind the other.
@@ -895,7 +895,7 @@ impl App {
             format!("Resume a {} session", headline_cli.label())
         };
         self.set_status_notice(format!(
-            "{resume_label} (↑↓ to choose, Enter to resume) or pick \"Start a new session\""
+            "{resume_label}, start fresh, or run a read-only architecture review (↑↓, Enter)"
         ));
     }
 
@@ -937,10 +937,23 @@ impl App {
                 Style::default().fg(Color::White),
             )]),
             Line::from(vec![Span::styled(
-                "Press Enter to start a new session, or arrow down to resume one below.",
+                "Start fresh, review your recent project's architecture, or resume below.",
                 Style::default().fg(Color::White),
             )]),
         ]
+    }
+
+    /// First-turn prompt launched by the onboarding recent-project review action.
+    /// Keep the guardrails explicit because this is a proactive workflow selected
+    /// before the user has entered their own prompt.
+    pub(super) fn onboarding_recent_project_review_prompt() -> &'static str {
+        "Use session_search, including external session sources, to inspect my recent coding sessions. Use a few broad code-work queries and compare timestamps and working_dir metadata. Identify the repository where I have done the most recent substantive coding work, rather than choosing a newer but unrelated chat. Confirm that the repository path exists, then inspect that codebase without modifying anything.\n\nUse a light swarm with no more than 3 worker agents. Give each worker a distinct architectural area, then synthesize their evidence. Focus on the highest-impact structural problems, including boundaries and coupling, data and control flow, reliability and security risks, testability, performance and scalability, and long-term maintainability. Return a short prioritized list. For every finding, cite concrete files or symbols, explain why it matters, and recommend a direction.\n\nThis is a read-only review. Do not edit files, run destructive commands, create commits, or push. When the review is complete, state which repository you selected and why, present the prioritized findings, and ask whether I want you to implement any of them. Do not begin implementation until I explicitly approve it."
+    }
+
+    pub(super) fn onboarding_prepare_recent_project_review(&mut self) {
+        self.onboarding_finish();
+        self.input = Self::onboarding_recent_project_review_prompt().to_string();
+        self.cursor_pos = self.input.len();
     }
 
     /// Fallback when an external CLI login is present but no resumable

@@ -1619,3 +1619,29 @@ fn onboarding_resume_picker_is_shown_only_once_per_install() {
         ));
     });
 }
+
+#[test]
+fn recent_project_review_prompt_is_bounded_read_only_and_requires_approval() {
+    let prompt = App::onboarding_recent_project_review_prompt();
+
+    assert!(prompt.contains("Use session_search"), "{prompt}");
+    assert!(prompt.contains("external session sources"), "{prompt}");
+    assert!(prompt.contains("most recent substantive coding work"), "{prompt}");
+    assert!(prompt.contains("light swarm"), "{prompt}");
+    assert!(prompt.contains("no more than 3 worker agents"), "{prompt}");
+    assert!(prompt.contains("without modifying anything"), "{prompt}");
+    assert!(prompt.contains("Do not edit files"), "{prompt}");
+    assert!(prompt.contains("ask whether I want you to implement"), "{prompt}");
+    assert!(prompt.contains("until I explicitly approve it"), "{prompt}");
+}
+
+#[test]
+fn preparing_recent_project_review_finishes_onboarding_and_seeds_the_first_turn() {
+    let mut app = onboarding_test_app();
+
+    app.onboarding_prepare_recent_project_review();
+
+    assert!(matches!(app.onboarding_phase(), Some(OnboardingPhase::Done)));
+    assert_eq!(app.input, App::onboarding_recent_project_review_prompt());
+    assert_eq!(app.cursor_pos, app.input.len());
+}

@@ -1192,13 +1192,14 @@ fn onboarding_banner_defaults_to_start_new_when_transcripts_exist() {
 
     assert!(picker.onboarding_banner_active());
     // First-run onboarding highlights "Start a new session" by default so the
-    // common "just start" case is one Enter away; resuming is one Down away.
+    // common "just start" case remains one Enter away.
     assert!(picker.onboarding_start_new_highlighted());
+    assert!(!picker.onboarding_review_recent_project_highlighted());
 }
 
 #[test]
 fn onboarding_banner_defaults_to_start_new_when_no_transcripts() {
-    // No Codex transcripts -> the only selectable affordance is "Start new".
+    // No Codex transcripts still leaves both onboarding actions selectable.
     let jcode = make_session("jcode_only", "jcode", false, SessionStatus::Closed);
     let mut picker = SessionPicker::new(vec![jcode]);
     picker.activate_external_cli_filter(SessionFilterMode::Codex);
@@ -1209,7 +1210,7 @@ fn onboarding_banner_defaults_to_start_new_when_no_transcripts() {
 }
 
 #[test]
-fn onboarding_banner_enter_returns_start_new_and_arrows_toggle_list() {
+fn onboarding_banner_actions_precede_the_resumable_session_list() {
     let mut picker = SessionPicker::new(vec![codex_session("codex_one")]);
     picker.activate_external_cli_filter(SessionFilterMode::Codex);
     picker.activate_onboarding_banner(vec![Line::from("welcome")]);
@@ -1226,15 +1227,29 @@ fn onboarding_banner_enter_returns_start_new_and_arrows_toggle_list() {
         OverlayAction::Selected(PickerResult::StartNewSession)
     ));
 
-    // Down moves into the session list; Up returns to the start-new row.
+    // First Down selects the read-only architecture review.
     picker.next();
     assert!(!picker.onboarding_start_new_highlighted());
+    assert!(picker.onboarding_review_recent_project_highlighted());
+    let action = picker
+        .handle_overlay_key(KeyCode::Enter, KeyModifiers::empty())
+        .expect("overlay key");
+    assert!(matches!(
+        action,
+        OverlayAction::Selected(PickerResult::ReviewRecentProject)
+    ));
+
+    // Second Down enters the transcript list. Up walks back through both actions.
+    picker.next();
+    assert!(!picker.onboarding_review_recent_project_highlighted());
+    picker.previous();
+    assert!(picker.onboarding_review_recent_project_highlighted());
     picker.previous();
     assert!(picker.onboarding_start_new_highlighted());
 }
 
 #[test]
-fn onboarding_banner_renders_prompt_and_start_new_row() {
+fn onboarding_banner_renders_prompt_and_both_action_rows() {
     let mut picker = SessionPicker::new(vec![codex_session("codex_one")]);
     picker.activate_external_cli_filter(SessionFilterMode::Codex);
     picker.activate_onboarding_banner(vec![
@@ -1258,6 +1273,10 @@ fn onboarding_banner_renders_prompt_and_start_new_row() {
     assert!(
         text.contains("Start a new session"),
         "start-new row should render in the banner: {text:?}"
+    );
+    assert!(
+        text.contains("Review my recent project's architecture"),
+        "architecture-review row should render in the banner: {text:?}"
     );
 }
 

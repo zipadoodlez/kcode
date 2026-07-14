@@ -15,13 +15,16 @@ impl SessionPicker {
     }
 
     pub fn next(&mut self) {
-        // Onboarding: from the "Start a new session" row, Down moves into the
-        // session list (the first selectable session).
+        // Onboarding actions form a short list above the resumable sessions.
         if self.onboarding_start_new_highlighted() {
-            self.onboarding_start_new_highlighted = false;
+            self.onboarding_action = Some(OnboardingAction::ReviewRecentProject);
+            return;
+        }
+        if self.onboarding_review_recent_project_highlighted() {
+            self.onboarding_action = None;
             if self.visible_sessions.is_empty() {
-                // Nothing to move to; stay on the start-new row.
-                self.onboarding_start_new_highlighted = true;
+                // Nothing below the actions, so stay on the last action.
+                self.onboarding_action = Some(OnboardingAction::ReviewRecentProject);
             }
             return;
         }
@@ -37,15 +40,19 @@ impl SessionPicker {
     }
 
     pub fn previous(&mut self) {
-        // Onboarding: already on the start-new row -> nothing above it.
+        // Onboarding: already on the first action -> nothing above it.
         if self.onboarding_start_new_highlighted() {
             return;
         }
+        if self.onboarding_review_recent_project_highlighted() {
+            self.onboarding_action = Some(OnboardingAction::StartNewSession);
+            return;
+        }
         if self.visible_sessions.is_empty() {
-            // Onboarding picker with no transcripts: Up lands on the start-new
-            // row (it's the only selectable thing).
+            // Onboarding picker with no transcripts: Up lands on the final
+            // onboarding action.
             if self.onboarding_banner.is_some() {
-                self.onboarding_start_new_highlighted = true;
+                self.onboarding_action = Some(OnboardingAction::ReviewRecentProject);
             }
             return;
         }
@@ -56,8 +63,8 @@ impl SessionPicker {
             self.auto_scroll_preview = true;
         } else if self.onboarding_banner.is_some() {
             // At the top of the session list in onboarding mode -> move up to
-            // the "Start a new session" row.
-            self.onboarding_start_new_highlighted = true;
+            // the final onboarding action.
+            self.onboarding_action = Some(OnboardingAction::ReviewRecentProject);
         }
     }
 

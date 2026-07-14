@@ -2465,6 +2465,15 @@ impl App {
                         self.onboarding_show_suggestions();
                         return Ok(());
                     }
+                    PickerResult::ReviewRecentProject => {
+                        self.session_picker_overlay = None;
+                        self.session_picker_mode = SessionPickerMode::Resume;
+                        let _ = cli;
+                        self.onboarding_prepare_recent_project_review();
+                        self.follow_chat_bottom_for_typing();
+                        self.submit_input();
+                        return Ok(());
+                    }
                 };
                 self.session_picker_overlay = None;
                 self.session_picker_mode = SessionPickerMode::Resume;
@@ -2500,6 +2509,12 @@ impl App {
                 // Only the onboarding picker emits this, and that case is
                 // handled by the onboarding arm above. Outside onboarding,
                 // treat it as a no-op close.
+                self.session_picker_overlay = None;
+                self.session_picker_mode = SessionPickerMode::Resume;
+            }
+            OverlayAction::Selected(PickerResult::ReviewRecentProject) => {
+                // Only the onboarding picker emits this. Outside onboarding,
+                // close defensively without launching a proactive turn.
                 self.session_picker_overlay = None;
                 self.session_picker_mode = SessionPickerMode::Resume;
             }

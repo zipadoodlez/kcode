@@ -54,6 +54,14 @@ pub enum PickerResult {
     RestoreCrashedGroup(Vec<String>),
     /// The onboarding "Start a new session" row was chosen.
     StartNewSession,
+    /// The onboarding read-only recent-project architecture review was chosen.
+    ReviewRecentProject,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OnboardingAction {
+    StartNewSession,
+    ReviewRecentProject,
 }
 
 #[derive(Clone, Debug)]
@@ -258,13 +266,12 @@ pub struct SessionPicker {
     preview_load_failures: HashSet<String>,
     /// Onboarding banner shown at the top of the picker (first-run "resume or
     /// start new" experience). When set, the picker reserves space at the top
-    /// for the formatted onboarding prompt and shows a selectable
-    /// "Start a new session" row above the session list.
+    /// for the formatted onboarding prompt and shows selectable action rows
+    /// above the session list.
     onboarding_banner: Option<Vec<Line<'static>>>,
-    /// Whether the "Start a new session" row is currently highlighted (only
-    /// meaningful while `onboarding_banner` is set). Selecting it returns
-    /// [`PickerResult::StartNewSession`].
-    onboarding_start_new_highlighted: bool,
+    /// The highlighted onboarding action. `None` means focus is in the session
+    /// list below the action rows.
+    onboarding_action: Option<OnboardingAction>,
     /// Cached, fully-wrapped preview content so scrolling does not re-render and
     /// re-wrap the whole preview every frame. Invalidated by content hash and
     /// pane geometry (see [`PreviewCacheKey`]).
@@ -324,7 +331,7 @@ impl SessionPicker {
             pending_preview_load: None,
             preview_load_failures: HashSet::new(),
             onboarding_banner: None,
-            onboarding_start_new_highlighted: false,
+            onboarding_action: None,
             preview_cache: None,
             current_dir: None,
             live_presence: std::collections::HashMap::new(),
@@ -368,7 +375,7 @@ impl SessionPicker {
             pending_preview_load: None,
             preview_load_failures: HashSet::new(),
             onboarding_banner: None,
-            onboarding_start_new_highlighted: false,
+            onboarding_action: None,
             preview_cache: None,
             current_dir: None,
             live_presence: std::collections::HashMap::new(),
@@ -444,7 +451,7 @@ impl SessionPicker {
             pending_preview_load: None,
             preview_load_failures: HashSet::new(),
             onboarding_banner: None,
-            onboarding_start_new_highlighted: false,
+            onboarding_action: None,
             preview_cache: None,
             current_dir: None,
             live_presence: std::collections::HashMap::new(),
@@ -672,18 +679,12 @@ impl SessionPicker {
         self.rebuild_items();
     }
 
-    /// Turn this picker into the first-run onboarding "resume or start new"
-    /// experience: a formatted onboarding prompt is reserved at the top, a
-    /// selectable "Start a new session" row sits above the session list, and the
-    /// start-new row starts highlighted so a first-run user who just wants to
-    /// dive in can press Enter to land on the clean new-session screen; the
-    /// resumable transcripts are one ↓ keystroke away.
+    /// Turn this picker into the first-run onboarding action/resume experience.
+    /// The clean new-session action starts highlighted, followed by a read-only
+    /// recent-project architecture review and then the resumable transcript list.
     pub fn activate_onboarding_banner(&mut self, banner_lines: Vec<Line<'static>>) {
         self.onboarding_banner = Some(banner_lines);
-        // Default the highlight to the "Start a new session" row. First-run
-        // onboarding optimizes for the common "just start" case; resuming an
-        // existing transcript is a deliberate down-arrow away.
-        self.onboarding_start_new_highlighted = true;
+        self.onboarding_action = Some(OnboardingAction::StartNewSession);
     }
 
     /// Whether the onboarding banner experience is active.
@@ -693,7 +694,14 @@ impl SessionPicker {
 
     /// Whether the onboarding "Start a new session" row is currently highlighted.
     pub fn onboarding_start_new_highlighted(&self) -> bool {
-        self.onboarding_banner.is_some() && self.onboarding_start_new_highlighted
+        self.onboarding_banner.is_some()
+            && self.onboarding_action == Some(OnboardingAction::StartNewSession)
+    }
+
+    /// Whether the onboarding recent-project review row is currently highlighted.
+    pub fn onboarding_review_recent_project_highlighted(&self) -> bool {
+        self.onboarding_banner.is_some()
+            && self.onboarding_action == Some(OnboardingAction::ReviewRecentProject)
     }
 
     /// Number of sessions currently visible under the active filter.
@@ -1145,6 +1153,9 @@ impl SessionPicker {
             KeyCode::Enter => {
                 if self.onboarding_start_new_highlighted() {
                     return Ok(OverlayAction::Selected(PickerResult::StartNewSession));
+                }
+                if self.onboarding_review_recent_project_highlighted() {
+                    return Ok(OverlayAction::Selected(PickerResult::ReviewRecentProject));
                 }
                 let targets = self.selection_or_current_targets();
                 if !targets.is_empty() {
@@ -2000,8 +2011,8 @@ impl SessionPicker {
     }
 
     /// Render the reserved top band for the first-run onboarding experience:
-    /// the formatted onboarding prompt followed by a selectable
-    /// "Start a new session" row.
+    /// the formatted prompt followed by the fresh-session and read-only review
+    /// actions.
     fn render_onboarding_band(&self, frame: &mut Frame, area: Rect) {
         if area.height == 0 {
             return;
@@ -2018,11 +2029,15 @@ impl SessionPicker {
             return;
         }
 
-        // Reserve the last line of the band for the "Start a new session" row.
-        let prompt_height = inner.height.saturating_sub(1);
+        // Reserve the last two lines for the onboarding actions.
+        let prompt_height = inner.height.saturating_sub(2);
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(prompt_height), Constraint::Length(1)])
+            .constraints([
+                Constraint::Length(prompt_height),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ])
             .split(inner);
 
         let prompt_lines = self.onboarding_banner.clone().unwrap_or_default();
@@ -2033,38 +2048,56 @@ impl SessionPicker {
             frame.render_widget(prompt, chunks[0]);
         }
 
-        let selected = self.onboarding_start_new_highlighted;
-        // Render "Start a new session" as a real button (a filled capsule when
-        // selected) instead of a bare text row, so first-run users immediately
-        // read it as the primary action rather than a list caption. The hint
-        // next to it spells out both moves: Enter commits, Down browses.
-        let (cap_style, body_style) = if selected {
-            (
-                Style::default().fg(accent),
-                Style::default()
-                    .fg(rgb(20, 24, 32))
-                    .bg(accent)
-                    .add_modifier(Modifier::BOLD),
-            )
-        } else {
-            (
-                Style::default().fg(rgb(58, 62, 70)),
-                Style::default().fg(rgb(170, 174, 182)).bg(rgb(58, 62, 70)),
-            )
+        let action_line = |label: &'static str, selected: bool, hint: &'static str| {
+            let (cap_style, body_style) = if selected {
+                (
+                    Style::default().fg(accent),
+                    Style::default()
+                        .fg(rgb(20, 24, 32))
+                        .bg(accent)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else {
+                (
+                    Style::default().fg(rgb(58, 62, 70)),
+                    Style::default().fg(rgb(170, 174, 182)).bg(rgb(58, 62, 70)),
+                )
+            };
+            Line::from(vec![
+                Span::styled("\u{25D6}", cap_style),
+                Span::styled(format!(" {label} "), body_style),
+                Span::styled("\u{25D7}", cap_style),
+                Span::styled(hint, Style::default().fg(rgb(120, 120, 130))),
+            ])
         };
-        let hint = if selected {
-            "  Enter starts fresh · ↓ resume a session below"
-        } else {
-            "  ↑ back to this button · Enter resumes the highlighted session"
-        };
-        let start_new = Line::from(vec![
-            Span::styled("\u{25D6}", cap_style),
-            Span::styled(" Start a new session ", body_style),
-            Span::styled("\u{25D7}", cap_style),
-            Span::styled(hint, Style::default().fg(rgb(120, 120, 130))),
-        ]);
-        let row = Paragraph::new(start_new);
-        frame.render_widget(row, chunks[1]);
+
+        let start_selected = self.onboarding_start_new_highlighted();
+        frame.render_widget(
+            Paragraph::new(action_line(
+                "Start a new session",
+                start_selected,
+                if start_selected {
+                    "  Enter starts fresh · ↓ review or resume"
+                } else {
+                    "  ↑ starts fresh"
+                },
+            )),
+            chunks[1],
+        );
+
+        let review_selected = self.onboarding_review_recent_project_highlighted();
+        frame.render_widget(
+            Paragraph::new(action_line(
+                "Review my recent project's architecture",
+                review_selected,
+                if review_selected {
+                    "  Enter runs a read-only audit · ↓ resumes"
+                } else {
+                    "  Use ↑↓ to select"
+                },
+            )),
+            chunks[2],
+        );
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
@@ -2074,11 +2107,11 @@ impl SessionPicker {
         // Build vertical constraints
         let mut v_constraints = Vec::new();
         if has_onboarding {
-            // Reserve ~20% of the height for the onboarding prompt + the
-            // "Start a new session" row, clamped to a sensible band.
+            // Reserve ~20% of the height for the onboarding prompt and actions,
+            // clamped to a sensible band.
             let total = frame.area().height;
-            let reserved = ((total as u32 * 20 / 100) as u16).clamp(6, total.saturating_sub(6));
-            v_constraints.push(Constraint::Length(reserved.max(6)));
+            let reserved = ((total as u32 * 20 / 100) as u16).clamp(7, total.saturating_sub(6));
+            v_constraints.push(Constraint::Length(reserved.max(7)));
         }
         if has_banner {
             v_constraints.push(Constraint::Length(1));
@@ -2095,7 +2128,7 @@ impl SessionPicker {
 
         let mut chunk_idx = 0;
 
-        // Render the onboarding band (prompt + start-new row) if present.
+        // Render the onboarding band (prompt + action rows) if present.
         if has_onboarding {
             self.render_onboarding_band(frame, v_chunks[chunk_idx]);
             chunk_idx += 1;

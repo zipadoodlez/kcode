@@ -10,13 +10,13 @@
 //!   2. `TranscriptPick` - if we detect external Codex / Claude Code
 //!      transcripts, drop the user straight into a
 //!      resume-style picker. The picker reserves a top band
-//!      for an onboarding prompt and offers a selectable
-//!      "Start a new session" row alongside the resumable
-//!      sessions. Nothing auto-selects; the user resumes a
-//!      session or starts fresh explicitly.
+//!      for an onboarding prompt and offers selectable actions
+//!      to start fresh or run a read-only architecture review,
+//!      followed by the resumable sessions. Nothing auto-selects;
+//!      the user explicitly chooses an action or session.
 //!   3. `Suggestions` - the existing prompt-suggestion cards. Reached when
-//!      they choose "Start a new session", when there is no
-//!      external OAuth, or as the terminal resting state.
+//!      they choose "Start a new session", when there is no external OAuth,
+//!      or as the terminal resting state.
 //!
 //!   (`ContinuePrompt` is retained as a legacy phase for replay/test fixtures
 //!   but is no longer entered by the live flow.)
