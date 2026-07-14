@@ -2383,7 +2383,11 @@ impl App {
         }
     }
 
-    fn trigger_provider_auth_changed(&mut self) {
+    fn trigger_provider_auth_changed(
+        &mut self,
+        provider_hint: Option<&str>,
+        prefer_strongest: bool,
+    ) {
         crate::logging::auth_event(
             "auth_changed_triggered",
             self.provider.name(),
@@ -2397,16 +2401,83 @@ impl App {
             ),
         ));
         let provider = Arc::clone(&self.provider);
+        let provider_hint = provider_hint.map(str::to_string);
+        let session_id = self.session.id.clone();
+        let select_local_model = !self.is_remote;
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
+                let activation = crate::auth::lifecycle::activate_auth_change(
+                    &crate::auth::lifecycle::AuthActivationRequest::new(provider_hint, None),
+                );
                 provider.on_auth_changed();
+                if select_local_model && activation.provider_id.is_some() {
+                    // Hot initialization is synchronous, but provider catalogs can
+                    // arrive shortly afterward. Retry briefly so a first-run import
+                    // selects the strongest live route rather than validating the
+                    // stale pre-import model.
+                    for delay_ms in [0_u64, 150, 350, 750, 1_500] {
+                        if delay_ms > 0 {
+                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        }
+                        let routes = provider.model_routes();
+                        let current_model = (!prefer_strongest).then(|| provider.model());
+                        let Some(model) = crate::auth::lifecycle::provider_model_to_select_after_auth(
+                            &activation,
+                            current_model.as_deref(),
+                            &routes,
+                        ) else {
+                            if prefer_strongest {
+                                continue;
+                            }
+                            break;
+                        };
+                        let model_request =
+                            activation.model_switch_request(provider.name(), &model);
+                        if provider.set_model(&model_request).is_ok() {
+                            let provider_key = crate::provider::MultiProvider::session_provider_key_for_model_request(
+                                &model_request,
+                                provider.name(),
+                            );
+                            crate::bus::Bus::global().publish_models_updated();
+                            crate::bus::Bus::global().publish(
+                                crate::bus::BusEvent::ProviderModelActivated {
+                                    session_id: session_id.clone(),
+                                    model: model.clone(),
+                                    provider_key,
+                                    message: format!(
+                                        "Login ready. Switched to the strongest available default model: {model}."
+                                    ),
+                                    open_picker: false,
+                                },
+                            );
+                            break;
+                        }
+                    }
+                }
                 // Hot provider initialization is complete even if live catalog
                 // prefetches are still running. Wake the picker now so it can use
                 // the newly available routes instead of the pre-login snapshot.
                 crate::bus::Bus::global().publish(crate::bus::BusEvent::AuthCatalogRefreshReady);
             });
         } else {
+            let activation = crate::auth::lifecycle::activate_auth_change(
+                &crate::auth::lifecycle::AuthActivationRequest::new(provider_hint, None),
+            );
             provider.on_auth_changed();
+            if select_local_model && activation.provider_id.is_some() {
+                let routes = provider.model_routes();
+                let current_model = (!prefer_strongest).then(|| provider.model());
+                if let Some(model) = crate::auth::lifecycle::provider_model_to_select_after_auth(
+                    &activation,
+                    current_model.as_deref(),
+                    &routes,
+                ) {
+                    let model_request = activation.model_switch_request(provider.name(), &model);
+                    if provider.set_model(&model_request).is_ok() {
+                        self.finalize_model_switch(&model_request);
+                    }
+                }
+            }
             self.finish_auth_catalog_refresh();
         }
     }
@@ -2428,7 +2499,7 @@ impl App {
                     "azure-openai",
                     &[("surface", "tui"), ("reason", message.as_str())],
                 );
-                self.trigger_provider_auth_changed();
+                self.trigger_provider_auth_changed(Some("azure-openai"), false);
                 return;
             }
         };
@@ -2738,7 +2809,8 @@ impl App {
             if Self::login_provider_is_azure(&login.provider) {
                 self.activate_azure_runtime_model_after_login();
             } else {
-                self.trigger_provider_auth_changed();
+                let prefer_strongest = self.onboarding_flow_active();
+                self.trigger_provider_auth_changed(Some(&login.provider), prefer_strongest);
             }
             // First-run onboarding: once the user has authenticated on a fresh
             // install, walk them through model selection -> continue/suggestions.

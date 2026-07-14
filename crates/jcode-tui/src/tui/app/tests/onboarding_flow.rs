@@ -979,6 +979,30 @@ fn remote_post_login_validation_waits_for_catalog_refresh() {
 }
 
 #[test]
+fn local_post_import_validation_waits_for_model_activation() {
+    use crate::tui::app::onboarding_flow::OnboardingPendingValidation;
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.is_remote = false;
+        app.auth_catalog_refresh_pending = true;
+        app.onboarding_pending_model_validation = Some(
+            OnboardingPendingValidation::awaiting_catalog_refresh(app.session.id.clone(), 0),
+        );
+
+        assert!(
+            !app.onboarding_pending_validation_ready_to_fire(),
+            "Continue must not validate the stale pre-import model"
+        );
+
+        app.auth_catalog_refresh_pending = false;
+        assert!(
+            app.onboarding_pending_validation_ready_to_fire(),
+            "validation should start once local provider/model activation finishes"
+        );
+    });
+}
+
+#[test]
 fn startup_check_skips_user_with_established_session_history() {
     with_temp_jcode_home(|| {
         // A low/missing launch_count alone must NOT classify someone as a new
@@ -1421,6 +1445,107 @@ fn import_summary_defaults_to_continue_and_enter_imports_all() {
             app.onboarding_import_in_progress.is_some() || app.onboarding_import_error.is_some(),
             "Continue must either start the import or fail it gracefully"
         );
+    });
+}
+
+#[test]
+fn import_continue_reaches_ready_strongest_openai_model() {
+    use crate::external_auth::ExternalAuthReviewCandidate;
+    use crate::tui::app::onboarding_flow::ImportReview;
+
+    with_temp_jcode_home(|| {
+        let config_dir = crate::storage::app_config_dir().expect("config dir");
+        std::fs::create_dir_all(&config_dir).expect("create config dir");
+        std::fs::write(config_dir.join("openai.env"), "OPENAI_API_KEY=sk-onboarding-test\n")
+            .expect("seed imported OpenAI key");
+        crate::auth::AuthStatus::invalidate_cache();
+
+        let runtime = tokio::runtime::Runtime::new().expect("test runtime");
+        runtime.block_on(async {
+            let mut app = create_test_app();
+            app.onboarding_flow = None;
+            app.begin_onboarding_flow_at_login();
+            let review = ImportReview::new(vec![ExternalAuthReviewCandidate::fixture(
+                "OpenAI/Codex",
+                "Codex auth.json",
+            )])
+            .unwrap();
+            if let Some(flow) = app.onboarding_flow.as_mut() {
+                flow.phase = OnboardingPhase::Login {
+                    import: Some(review),
+                };
+            }
+
+            let mut bus_rx = crate::bus::Bus::global().subscribe();
+            assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
+
+            let login = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+                loop {
+                    if let Ok(crate::bus::BusEvent::LoginCompleted(login)) = bus_rx.recv().await {
+                        break login;
+                    }
+                }
+            })
+            .await
+            .expect("import completion event");
+            assert!(login.success, "Continue should complete the approved import");
+            assert_eq!(
+                login.provider, "openai-api",
+                "import completion must preserve the concrete provider route"
+            );
+
+            app.handle_login_completed(login);
+            assert!(matches!(
+                app.onboarding_phase(),
+                Some(OnboardingPhase::Suggestions)
+            ));
+            assert!(
+                app.onboarding_pending_model_validation.is_some(),
+                "validation should wait for post-import model activation"
+            );
+
+            let (model, provider_key) = tokio::time::timeout(
+                std::time::Duration::from_secs(4),
+                async {
+                    loop {
+                        match bus_rx.recv().await {
+                            Ok(crate::bus::BusEvent::ProviderModelActivated {
+                                model,
+                                provider_key,
+                                ..
+                            }) => break (model, provider_key),
+                            Ok(crate::bus::BusEvent::AuthCatalogRefreshReady) => {
+                                app.finish_auth_catalog_refresh();
+                            }
+                            _ => {}
+                        }
+                    }
+                },
+            )
+            .await
+            .expect("strongest model activation event");
+
+            assert_eq!(model, crate::provider::ALL_OPENAI_MODELS[0]);
+            assert_eq!(provider_key.as_deref(), Some("openai"));
+
+            // Drain the refresh-ready event if it followed model activation, then
+            // verify the deferred validation can proceed against the new model.
+            if app.auth_catalog_refresh_pending {
+                let _ = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                    loop {
+                        if let Ok(crate::bus::BusEvent::AuthCatalogRefreshReady) =
+                            bus_rx.recv().await
+                        {
+                            app.finish_auth_catalog_refresh();
+                            break;
+                        }
+                    }
+                })
+                .await;
+            }
+            assert!(!app.auth_catalog_refresh_pending);
+            assert!(app.onboarding_pending_validation_ready_to_fire());
+        });
     });
 }
 

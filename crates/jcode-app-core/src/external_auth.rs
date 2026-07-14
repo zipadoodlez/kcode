@@ -161,6 +161,27 @@ pub struct ExternalAuthAutoImportOutcome {
 }
 
 impl ExternalAuthAutoImportOutcome {
+    /// Provider to activate after a successful multi-source import. This mirrors
+    /// jcode's global provider preference: OpenAI first, then Anthropic, followed
+    /// by the remaining supported providers. The precise OAuth/API-key variant
+    /// is resolved from `AuthStatus` by the caller when possible.
+    pub fn preferred_activation_provider(&self) -> Option<&'static str> {
+        const ORDER: &[&str] = &[
+            "openai",
+            "claude",
+            "copilot",
+            "gemini",
+            "cursor",
+            "antigravity",
+            "openrouter",
+        ];
+        ORDER.iter().copied().find(|provider| {
+            self.imported_auth_labels
+                .iter()
+                .any(|(imported, _)| imported == provider)
+        })
+    }
+
     pub fn render_markdown(&self) -> String {
         if self.messages.is_empty() {
             return "No external logins were imported.".to_string();
@@ -712,6 +733,30 @@ mod render_markdown_tests {
         };
         let md = outcome.render_markdown();
         assert!(md.contains("Reusing 1 existing login:"), "got: {md}");
+    }
+
+    #[test]
+    fn preferred_activation_provider_is_deterministic_for_multi_import() {
+        let outcome = ExternalAuthAutoImportOutcome {
+            imported: 3,
+            messages: Vec::new(),
+            imported_auth_labels: vec![
+                ("gemini", "import"),
+                ("claude", "import"),
+                ("openai", "import"),
+            ],
+        };
+        assert_eq!(outcome.preferred_activation_provider(), Some("openai"));
+
+        let anthropic_only = ExternalAuthAutoImportOutcome {
+            imported: 1,
+            messages: Vec::new(),
+            imported_auth_labels: vec![("claude", "import")],
+        };
+        assert_eq!(
+            anthropic_only.preferred_activation_provider(),
+            Some("claude")
+        );
     }
 
     #[test]

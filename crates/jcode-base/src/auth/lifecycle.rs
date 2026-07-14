@@ -707,6 +707,42 @@ pub fn normalized_auth_provider_id(provider_hint: Option<&str>) -> Option<&'stat
     }
 }
 
+/// Pick the preferred first-run provider when the machine already has working
+/// OpenAI and/or Anthropic credentials. Keep this aligned with
+/// `jcode_provider_core::auto_default_provider`: OpenAI wins when both families
+/// are available, and OAuth wins over an API key within the same family.
+///
+/// Returning the auth-specific provider id (`openai` vs `openai-api`, `claude`
+/// vs `claude-api`) matters because post-login activation uses it to select the
+/// matching route and its strongest available model.
+pub fn preferred_frontier_auth_provider(status: &crate::auth::AuthStatus) -> Option<&'static str> {
+    use crate::auth::AuthState;
+
+    if status.openai == AuthState::Available {
+        if status.openai_has_oauth && status.openai_oauth_state == AuthState::Available {
+            return Some("openai");
+        }
+        if status.openai_has_api_key {
+            return Some("openai-api");
+        }
+        // Preserve compatibility with older/partial status snapshots that only
+        // populated the aggregate state.
+        return Some("openai");
+    }
+
+    if status.anthropic.state == AuthState::Available {
+        if status.anthropic.has_oauth && status.anthropic.oauth_state == AuthState::Available {
+            return Some("claude");
+        }
+        if status.anthropic.has_api_key {
+            return Some("claude-api");
+        }
+        return Some("claude");
+    }
+
+    None
+}
+
 fn normalized_login_provider_id(provider_id: &str) -> Option<&'static str> {
     match provider_id.trim().to_ascii_lowercase().as_str() {
         "claude" | "anthropic" => Some("claude"),
@@ -2230,6 +2266,68 @@ mod tests {
             provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
             Some("claude-opus-4-8"),
             "copilot tie-break should prefer the Claude flagship family first"
+        );
+    }
+
+    #[test]
+    fn onboarding_frontier_provider_preference_matrix() {
+        use crate::auth::{AuthState, AuthStatus, ProviderAuth};
+
+        let none = AuthStatus::default();
+        assert_eq!(preferred_frontier_auth_provider(&none), None);
+
+        let openai_api = AuthStatus {
+            openai: AuthState::Available,
+            openai_has_api_key: true,
+            ..AuthStatus::default()
+        };
+        assert_eq!(
+            preferred_frontier_auth_provider(&openai_api),
+            Some("openai-api")
+        );
+
+        let anthropic_api = AuthStatus {
+            anthropic: ProviderAuth {
+                state: AuthState::Available,
+                has_api_key: true,
+                ..ProviderAuth::default()
+            },
+            ..AuthStatus::default()
+        };
+        assert_eq!(
+            preferred_frontier_auth_provider(&anthropic_api),
+            Some("claude-api")
+        );
+
+        let both_oauth = AuthStatus {
+            openai: AuthState::Available,
+            openai_has_oauth: true,
+            openai_oauth_state: AuthState::Available,
+            anthropic: ProviderAuth {
+                state: AuthState::Available,
+                has_oauth: true,
+                oauth_state: AuthState::Available,
+                ..ProviderAuth::default()
+            },
+            ..AuthStatus::default()
+        };
+        assert_eq!(
+            preferred_frontier_auth_provider(&both_oauth),
+            Some("openai"),
+            "OpenAI remains the global first-run default when both frontier providers work"
+        );
+
+        let openai_api_and_oauth = AuthStatus {
+            openai: AuthState::Available,
+            openai_has_oauth: true,
+            openai_oauth_state: AuthState::Available,
+            openai_has_api_key: true,
+            ..AuthStatus::default()
+        };
+        assert_eq!(
+            preferred_frontier_auth_provider(&openai_api_and_oauth),
+            Some("openai"),
+            "OAuth is preferred over an API key within one provider family"
         );
     }
 }
