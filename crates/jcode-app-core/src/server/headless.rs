@@ -246,6 +246,20 @@ pub(super) async fn create_headless_session(
         broadcast_swarm_status(id, swarm_members, swarms_by_id).await;
     }
 
+    crate::runtime_memory_log::emit_event(
+        crate::runtime_memory_log::RuntimeMemoryLogEvent::new(
+            "session_created",
+            "headless_session_created",
+        )
+        .with_session_id(client_session_id.clone())
+        .with_detail(
+            swarm_id
+                .as_deref()
+                .map(|id| format!("headless swarm={id}"))
+                .unwrap_or_else(|| "headless swarm=<none>".to_string()),
+        ),
+    );
+
     Ok(serde_json::json!({
         "session_id": client_session_id,
         "working_dir": working_dir,

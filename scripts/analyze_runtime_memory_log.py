@@ -23,6 +23,7 @@ class Sample:
     timestamp_ms: int
     kind: str
     target: str
+    instance_id: str
     source: str
     trigger_category: str
     trigger_reason: str
@@ -129,6 +130,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top", type=int, default=DEFAULT_TOP_N, help="How many spikes/sessions/deltas to show")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON summary")
     parser.add_argument(
+        "--all-instances",
+        action="store_true",
+        help="Analyze all process instances in the selected files instead of the latest server/client instance",
+    )
+    parser.add_argument(
         "--min-spike-mb",
         type=float,
         default=8.0,
@@ -201,6 +207,7 @@ def load_samples(paths: Iterable[Path]) -> list[Sample]:
             source = str(raw.get("source") or "")
             kind = infer_kind(raw, source)
             target = infer_target(raw, path)
+            instance_id = infer_instance_id(raw, target)
             trigger_category, trigger_reason = infer_trigger(raw, kind, source, trigger)
             samples.append(
                 Sample(
@@ -210,6 +217,7 @@ def load_samples(paths: Iterable[Path]) -> list[Sample]:
                     timestamp_ms=int(raw.get("timestamp_ms") or 0),
                     kind=kind,
                     target=target,
+                    instance_id=instance_id,
                     source=source,
                     trigger_category=trigger_category,
                     trigger_reason=trigger_reason,
@@ -219,6 +227,38 @@ def load_samples(paths: Iterable[Path]) -> list[Sample]:
             )
     samples.sort(key=lambda sample: (sample.timestamp_ms, str(sample.path), sample.line_no))
     return samples
+
+
+def infer_instance_id(raw: dict[str, Any], target: str) -> str:
+    if target == "server":
+        server = raw.get("server") or {}
+        value = server.get("id")
+    else:
+        client = raw.get("client") or {}
+        value = client.get("client_instance_id")
+    return str(value) if value else "legacy"
+
+
+def select_latest_instances(samples: list[Sample]) -> list[Sample]:
+    """Keep one coherent process lifetime per target.
+
+    Daily JSONL files contain multiple server reloads and client processes. PSS
+    deltas across process boundaries are meaningless and previously produced
+    multi-gigabyte false spikes. The default report now follows the latest
+    instance for each target; --all-instances preserves the old forensic view.
+    """
+    latest_by_target: dict[str, tuple[str, int]] = {}
+    for sample in samples:
+        current = latest_by_target.get(sample.target)
+        if current is None or sample.timestamp_ms > current[1]:
+            latest_by_target[sample.target] = (sample.instance_id, sample.timestamp_ms)
+    selected = [
+        sample
+        for sample in samples
+        if latest_by_target.get(sample.target, (None, 0))[0] == sample.instance_id
+    ]
+    selected.sort(key=lambda sample: (sample.timestamp_ms, str(sample.path), sample.line_no))
+    return selected
 
 
 def infer_kind(raw: dict[str, Any], source: str) -> str:
@@ -525,6 +565,226 @@ def process_summary(samples: list[Sample]) -> dict[str, Any]:
     }
 
 
+def session_population_summary(samples: list[Sample]) -> dict[str, Any]:
+    attribution = [
+        sample
+        for sample in samples
+        if sample.sessions and isinstance(sample.sessions.get("live_count"), int | float)
+    ]
+    if not attribution:
+        return {}
+    first = attribution[0]
+    last = attribution[-1]
+    peak = max(attribution, key=lambda sample: int((sample.sessions or {}).get("live_count") or 0))
+    baseline_live = int((first.sessions or {}).get("live_count") or 0)
+    final_live = int((last.sessions or {}).get("live_count") or 0)
+    peak_live = int((peak.sessions or {}).get("live_count") or 0)
+    baseline_allocated = first.allocator_allocated_bytes
+    final_allocated = last.allocator_allocated_bytes
+    net_allocated_growth = (
+        final_allocated - baseline_allocated
+        if final_allocated is not None and baseline_allocated is not None
+        else None
+    )
+    added_sessions = final_live - baseline_live
+    connected_count = first_int(last.raw.get("clients") or {}, "connected_count", "connected_clients")
+    return {
+        "baseline_timestamp_ms": first.timestamp_ms,
+        "final_timestamp_ms": last.timestamp_ms,
+        "baseline_live_sessions": baseline_live,
+        "final_live_sessions": final_live,
+        "peak_live_sessions": peak_live,
+        "peak_timestamp_ms": peak.timestamp_ms,
+        "net_live_session_growth": added_sessions,
+        "final_connected_clients": connected_count,
+        "detached_or_headless_live_sessions": (
+            max(0, final_live - connected_count) if connected_count is not None else None
+        ),
+        "baseline_allocator_live_bytes": baseline_allocated,
+        "final_allocator_live_bytes": final_allocated,
+        "net_allocator_live_growth_bytes": net_allocated_growth,
+        "allocator_growth_per_added_session_bytes": (
+            max(0, net_allocated_growth) // added_sessions
+            if net_allocated_growth is not None and added_sessions > 0
+            else None
+        ),
+    }
+
+
+def build_incident_assessment(
+    samples: list[Sample],
+    process: dict[str, Any],
+    coverage: dict[str, Any] | None,
+    population: dict[str, Any],
+) -> dict[str, Any]:
+    if not samples:
+        return {}
+    final_pss = int(process.get("final_pss_bytes") or 0)
+    growth = int(process.get("net_pss_growth_bytes") or 0)
+    final_live = int(population.get("final_live_sessions") or 0)
+    live_growth = int(population.get("net_live_session_growth") or 0)
+    connected = population.get("final_connected_clients")
+    detached = population.get("detached_or_headless_live_sessions")
+    allocator_live = int((coverage or {}).get("allocator_live_bytes") or 0)
+    attributed = int((coverage or {}).get("attributed_live_bytes") or 0)
+    retained_resident = int(
+        (coverage or {}).get("allocator_retained_resident_estimate_bytes") or 0
+    )
+    coverage_live = (coverage or {}).get("coverage_ratio_live_heap")
+
+    runaway_population = final_live >= 128 and (
+        live_growth >= 64
+        or (isinstance(detached, int) and detached >= 128)
+        or (isinstance(connected, int) and final_live >= max(128, connected * 16))
+    )
+    retention_dominates = (
+        retained_resident >= 256 * 1024 * 1024
+        and final_pss > 0
+        and retained_resident * 4 >= final_pss
+    )
+    attributed_state_dominates = (
+        allocator_live > 0 and attributed >= 512 * 1024 * 1024 and attributed * 2 >= allocator_live
+    )
+
+    if runaway_population:
+        cause = "runaway_live_session_population"
+        confidence = "high"
+        summary = (
+            f"Live Agent population grew from {population.get('baseline_live_sessions')} to "
+            f"{final_live} while allocator live memory grew by "
+            f"{fmt_mb(population.get('net_allocator_live_growth_bytes'))}."
+        )
+        evidence = [
+            f"{final_live} live sessions vs {connected if connected is not None else 'unknown'} connected clients",
+            f"{live_growth:+d} live sessions during this process lifetime",
+            f"{fmt_mb(population.get('allocator_growth_per_added_session_bytes'))} allocator growth per added session",
+            f"allocator live {fmt_mb(allocator_live)} vs attributed session JSON {fmt_mb(attributed)}",
+        ]
+        actions = [
+            {
+                "priority": 1,
+                "action": "Pause or cap the workload creating headless sessions.",
+                "why": "These are live allocations; allocator purge is not the first response.",
+                "commands": ["jcode debug 'server:memory-incident'", "jcode debug 'swarm:list'"],
+            },
+            {
+                "priority": 2,
+                "action": "Inspect the largest live swarm and clean only workers confirmed disposable by its owning coordinator.",
+                "commands": ["Use `swarm list` and `swarm cleanup` from the owning coordinator"],
+            },
+            {
+                "priority": 3,
+                "action": "Re-measure and require live_sessions, allocator live, and PSS to fall together.",
+                "commands": ["python scripts/analyze_runtime_memory_log.py --days 1"],
+            },
+            {
+                "priority": 4,
+                "action": "Purge only after session cleanup if freed-but-held memory remains high.",
+                "commands": ["jcode debug 'allocator:purge'"],
+            },
+        ]
+    elif retention_dominates:
+        cause = "allocator_retention"
+        confidence = "high"
+        summary = "Freed-but-held allocator pages are a material share of current PSS."
+        evidence = [
+            f"retained resident estimate {fmt_mb(retained_resident)}",
+            f"allocator live {fmt_mb(allocator_live)} vs PSS {fmt_mb(final_pss)}",
+        ]
+        actions = [
+            {
+                "priority": 1,
+                "action": "Capture a before/after allocator purge and compare PSS.",
+                "commands": ["jcode debug 'allocator:purge'", "jcode debug 'server:memory-incident'"],
+            },
+            {
+                "priority": 2,
+                "action": "If retained pages repeatedly regrow, inspect allocation churn and allocator decay.",
+                "commands": ["jcode debug 'allocator'", "jcode debug 'allocator:decay:1000'"],
+            },
+        ]
+    elif attributed_state_dominates:
+        cause = "session_payload_growth"
+        confidence = "high"
+        summary = "Tracked transcript, provider-cache, tool-result, or blob state explains most live heap."
+        evidence = [
+            f"attributed live {fmt_mb(attributed)}",
+            f"live-heap attribution coverage {coverage_live:.1%}"
+            if isinstance(coverage_live, int | float)
+            else "live-heap attribution coverage unavailable",
+        ]
+        actions = [
+            {
+                "priority": 1,
+                "action": "Start with the heaviest sessions and dominant payload category in this report.",
+                "commands": ["jcode debug 'server:memory'"],
+            }
+        ]
+    elif allocator_live >= 1024 * 1024 * 1024:
+        cause = "unattributed_live_heap"
+        confidence = "medium"
+        summary = "Live allocator bytes are high, but current application attribution is incomplete."
+        evidence = [
+            f"allocator live {fmt_mb(allocator_live)}",
+            f"attributed live {fmt_mb(attributed)}",
+            f"live-heap attribution coverage {coverage_live:.1%}"
+            if isinstance(coverage_live, int | float)
+            else "live-heap attribution coverage unavailable",
+        ]
+        actions = [
+            {
+                "priority": 1,
+                "action": "Capture full server attribution and add counters for the missing owner.",
+                "commands": ["jcode debug 'server:memory'"],
+            },
+            {
+                "priority": 2,
+                "action": "Use a jemalloc-prof build and heap dump if coverage remains below 50%.",
+                "commands": [
+                    "jcode debug 'allocator:profile:on'",
+                    "jcode debug 'allocator:profile:dump /tmp/jcode-server.heap'",
+                ],
+            },
+        ]
+    elif final_pss >= 1024 * 1024 * 1024:
+        cause = "non_heap_or_mapping_growth"
+        confidence = "medium"
+        summary = "PSS is high without matching allocator live bytes; inspect mappings and threads."
+        evidence = [f"PSS {fmt_mb(final_pss)}", f"allocator live {fmt_mb(allocator_live)}"]
+        actions = [
+            {
+                "priority": 1,
+                "action": "Inspect smaps, pmap, thread count, and shared mappings.",
+                "commands": ["cat /proc/<pid>/smaps_rollup", "pmap -x <pid> | sort -k3 -nr | head"],
+            }
+        ]
+    else:
+        cause = "within_normal_operating_range"
+        confidence = "high"
+        summary = "No server memory incident threshold is exceeded in this process lifetime."
+        evidence = [f"final PSS {fmt_mb(final_pss)}", f"net PSS growth {fmt_signed_mb(growth)}"]
+        actions = [
+            {
+                "priority": 1,
+                "action": "Continue normal monitoring and preserve this process-lifetime baseline.",
+                "commands": ["python scripts/analyze_runtime_memory_log.py --days 1"],
+            }
+        ]
+
+    critical = final_pss >= 2 * 1024 * 1024 * 1024 or growth >= 1024 * 1024 * 1024 or final_live >= 512
+    warning = final_pss >= 1024 * 1024 * 1024 or growth >= 256 * 1024 * 1024 or final_live >= 128
+    severity = "critical" if critical else "warning" if warning else "healthy"
+    return {
+        "severity": severity,
+        "primary_cause": cause,
+        "confidence": confidence,
+        "summary": summary,
+        "evidence": evidence,
+        "recommended_actions": actions,
+        "runbook": "docs/MEMORY_INCIDENT_RUNBOOK.md",
+    }
+
+
 def build_server_hints(samples: list[Sample], session_peaks: list[dict[str, Any]]) -> list[str]:
     hints: list[str] = []
     last_attr = last_attribution_sample(samples)
@@ -537,6 +797,13 @@ def build_server_hints(samples: list[Sample], session_peaks: list[dict[str, Any]
     tool_result_bytes = int(sessions.get("total_tool_result_bytes") or 0)
     large_blob_bytes = int(sessions.get("total_large_blob_bytes") or 0)
     payload_text_bytes = int(sessions.get("total_payload_text_bytes") or 0)
+    population = session_population_summary(samples)
+
+    if int(population.get("final_live_sessions") or 0) >= 128:
+        hints.append(
+            f"Live session population is high ({population['final_live_sessions']} sessions, "
+            f"{population.get('final_connected_clients') or 0} connected clients). Reduce or cap session population before optimizing individual transcripts."
+        )
 
     if total_json > 0 and provider_cache_json / total_json >= 0.35:
         hints.append(
@@ -683,14 +950,23 @@ def summarize_target(samples: list[Sample], top_n: int, min_spike_bytes: int) ->
     proc = process_summary(samples)
     last_attr = last_attribution_sample(samples)
     coverage = build_coverage_report(last_attr) if last_attr else None
+    population = session_population_summary(samples) if target == "server" else {}
+    incident = (
+        build_incident_assessment(samples, proc, coverage, population)
+        if target == "server"
+        else {}
+    )
     summary = {
         "target": target,
+        "instance_id": samples[-1].instance_id if samples else None,
         "sample_count": len(samples),
         "first_timestamp_ms": samples[0].timestamp_ms if samples else None,
         "last_timestamp_ms": samples[-1].timestamp_ms if samples else None,
         "kinds": Counter(sample.kind for sample in samples),
         "process": proc,
         "coverage": coverage,
+        "session_population": population,
+        "incident": incident,
         "last_attribution": {
             "timestamp_ms": last_attr.timestamp_ms,
             "sessions": last_attr.sessions,
@@ -775,6 +1051,8 @@ def print_human(summary: dict[str, Any], paths: list[Path]) -> None:
         for path in paths:
             print(f"  - {path}")
     print(f"samples: {summary['sample_count']}")
+    if summary.get("instance_id"):
+        print(f"instance: {summary['instance_id']}")
     if summary.get("first_timestamp_ms") is not None:
         print(f"window: {fmt_ts(summary['first_timestamp_ms'])} -> {fmt_ts(summary['last_timestamp_ms'])}")
         print(
@@ -797,6 +1075,41 @@ def print_human(summary: dict[str, Any], paths: list[Path]) -> None:
         print(
             f"allocator: allocated {fmt_mb(proc.get('allocator_allocated_bytes'))} | resident {fmt_mb(proc.get('allocator_resident_bytes'))} | retained {fmt_mb(proc.get('allocator_retained_bytes'))}"
         )
+
+    population = summary.get("session_population") or {}
+    if population:
+        print("\nSession population")
+        print("------------------")
+        print(
+            f"live sessions:     {population.get('baseline_live_sessions')} -> {population.get('final_live_sessions')} "
+            f"({population.get('net_live_session_growth'):+d}) | peak {population.get('peak_live_sessions')}"
+        )
+        print(
+            f"connected clients: {population.get('final_connected_clients') if population.get('final_connected_clients') is not None else 'n/a'} | "
+            f"detached/headless {population.get('detached_or_headless_live_sessions') if population.get('detached_or_headless_live_sessions') is not None else 'n/a'}"
+        )
+        print(
+            f"allocator growth:  {fmt_signed_mb(population.get('net_allocator_live_growth_bytes'))} | "
+            f"{fmt_mb(population.get('allocator_growth_per_added_session_bytes'))} per added session"
+        )
+
+    incident = summary.get("incident") or {}
+    if incident:
+        print("\nIncident assessment")
+        print("-------------------")
+        print(
+            f"severity: {incident.get('severity')} | cause: {incident.get('primary_cause')} | confidence: {incident.get('confidence')}"
+        )
+        print(incident.get("summary") or "")
+        for item in incident.get("evidence") or []:
+            print(f"- evidence: {item}")
+        print("next actions:")
+        for action in incident.get("recommended_actions") or []:
+            print(f"  {action.get('priority')}. {action.get('action')}")
+            if action.get("why"):
+                print(f"     why: {action['why']}")
+            for command in action.get("commands") or []:
+                print(f"     $ {command}")
 
     coverage = summary.get("coverage") or {}
     if coverage:
@@ -904,6 +1217,8 @@ def main() -> int:
     samples = load_samples(paths)
     if not samples:
         raise SystemExit("No runtime memory samples found in selected files.")
+    if not args.all_instances:
+        samples = select_latest_instances(samples)
     summary = summarize(samples, top_n=args.top, min_spike_bytes=int(args.min_spike_mb * 1024 * 1024))
     if args.json:
         payload = to_jsonable(summary)

@@ -45,6 +45,7 @@ SERVER COMMANDS (server: prefix or no prefix):
   jobs:purge               - Remove completed/failed jobs
   jobs:session:<id>        - List jobs for a session
   background:tasks         - List background tasks
+  server:memory-incident   - Fast cause classification + prescribed next actions
   server:memory            - Get global server memory breakdown
   server:memory-history    - Recent server process memory samples
   memory-judge             - No-LLM memory-mode conversion + degradation rates
