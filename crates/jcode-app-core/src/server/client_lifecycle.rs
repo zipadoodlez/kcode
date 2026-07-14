@@ -734,7 +734,6 @@ pub(super) async fn handle_client(
                                 )
                                 .await;
                             }
-                            let _ = client_event_tx.send(ServerEvent::Done { id: done_id });
                         }
                         Err(e) => {
                             if let Some(session_id) = done_session.as_deref() {
@@ -769,11 +768,6 @@ pub(super) async fn handle_client(
                                     crate::telemetry::record_error(crate::telemetry::ErrorCategory::AuthFailed);
                                 }
                             }
-                            let _ = client_event_tx.send(ServerEvent::Error {
-                                id: done_id,
-                                message: crate::util::format_error_chain(&e),
-                                retry_after_secs,
-                            });
                         }
                     }
                 } else {
@@ -2814,7 +2808,11 @@ async fn start_processing_message(
     };
     let agent = Arc::clone(agent);
     let report_agent = Arc::clone(&agent);
-    let tx = client_event_tx.clone();
+    let tx = super::state::session_event_fanout_sender_with_fallback(
+        client_session_id.to_string(),
+        Arc::clone(swarm.members),
+        client_event_tx.clone(),
+    );
     let done_tx = processing_done_tx.clone();
     crate::logging::info(&format!("Processing message id={} spawning task", id));
     *state.task = Some(tokio::spawn(async move {
@@ -2861,6 +2859,20 @@ async fn start_processing_message(
         } else {
             None
         };
+        // Keep the terminal event on the same ordered fanout channel as the
+        // stream. Sending it later from the owning client's event loop could
+        // race ahead of the final MessageEnd for newly attached clients.
+        let terminal_event = match &result {
+            Ok(()) => ServerEvent::Done { id },
+            Err(error) => ServerEvent::Error {
+                id,
+                message: crate::util::format_error_chain(error),
+                retry_after_secs: error
+                    .downcast_ref::<StreamError>()
+                    .and_then(|stream_error| stream_error.retry_after_secs),
+            },
+        };
+        let _ = tx.send(terminal_event);
         let _ = done_tx.send((id, result, completion_report));
     }));
 }
