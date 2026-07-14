@@ -5,6 +5,7 @@ fn test_openai_supports_codex_models() {
         "openai-supports-codex-models".to_string(),
     ));
     jcode_base::provider::populate_account_models(vec![
+        "gpt-5.6-sol".to_string(),
         "gpt-5.1-codex".to_string(),
         "gpt-5.1-codex-mini".to_string(),
         "gpt-5.2-codex".to_string(),
@@ -21,6 +22,10 @@ fn test_openai_supports_codex_models() {
     let provider = OpenAIProvider::new(creds);
     assert!(provider.available_models().contains(&"gpt-5.2-codex"));
     assert!(provider.available_models().contains(&"gpt-5.1-codex-mini"));
+    assert!(provider.available_models().contains(&"gpt-5.6-sol"));
+
+    provider.set_model("gpt-5.6-sol").unwrap();
+    assert_eq!(provider.model(), "gpt-5.6-sol");
 
     provider.set_model("gpt-5.1-codex").unwrap();
     assert_eq!(provider.model(), "gpt-5.1-codex");

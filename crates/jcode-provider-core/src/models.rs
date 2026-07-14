@@ -21,6 +21,7 @@ pub const ALL_CLAUDE_MODELS: &[&str] = &[
 /// Available OpenAI models used by model lists and provider routing.
 pub const ALL_OPENAI_MODELS: &[&str] = &[
     "gpt-5.5",
+    "gpt-5.6-sol",
     "gpt-5.4",
     "gpt-5.4-pro",
     "gpt-5.3-codex",
