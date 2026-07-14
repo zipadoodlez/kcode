@@ -1708,6 +1708,164 @@ fn render_batch_tool_message_shows_nested_gmail_draft_card() {
     assert!(plain.contains("Created inside a batch"), "{plain}");
 }
 
+fn discovery_message(content: &str, input: serde_json::Value) -> DisplayMessage {
+    DisplayMessage {
+        role: "tool".to_string(),
+        content: content.to_string(),
+        tool_calls: Vec::new(),
+        duration_secs: None,
+        title: None,
+        tool_data: Some(crate::message::ToolCall {
+            id: "call_discovery".to_string(),
+            name: "discover_tools".to_string(),
+            input,
+            intent: None,
+            thought_signature: None,
+        }),
+    }
+}
+
+#[test]
+fn render_tool_message_shows_discovery_browse_results_and_rationale() {
+    let msg = discovery_message(
+        "Discoverable tools in 'payments' (sponsored discovery: placement, not preference; details: https://jcode.sh/sponsored-discovery):\n\n- agentcard: prepaid virtual Visa cards for AI agents (https://agentcard.sh/?via=jcode-discovery)\n\nBrowse request ID: `11111111-2222-4333-8444-555555555555`",
+        serde_json::json!({
+            "action": "browse",
+            "category": "payments",
+            "query": "manage Stripe sandbox products and recurring prices",
+            "reason": "the task needs test-mode catalog administration through scoped agent access"
+        }),
+    );
+    let lines = render_tool_message(&msg, 100, crate::config::DiffDisplayMode::Off);
+    let plain = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        plain.contains("Discovery · payments · 1 tool · sponsored"),
+        "{plain}"
+    );
+    assert!(
+        plain.contains("Capability: manage Stripe sandbox"),
+        "{plain}"
+    );
+    assert!(
+        plain.contains("Rationale: the task needs test-mode"),
+        "{plain}"
+    );
+    assert!(plain.contains("agentcard"), "{plain}");
+    assert!(plain.contains("prepaid virtual Visa cards"), "{plain}");
+    assert!(plain.contains("agentcard.sh"), "{plain}");
+    assert!(
+        plain.contains("Sponsored placement, not preference"),
+        "{plain}"
+    );
+    assert!(
+        !plain.contains("11111111-2222"),
+        "request IDs stay model-only: {plain}"
+    );
+}
+
+#[test]
+fn render_tool_message_shows_selected_discovery_setup() {
+    let msg = discovery_message(
+        "Selected 'agentcard' from 'payments' (sponsored discovery: placement, not preference; details: https://jcode.sh/sponsored-discovery):\n\nagentcard: prepaid virtual Visa cards for AI agents (https://agentcard.sh/?via=jcode-discovery)\n\nSetup: Run `npx -y agentcard-mcp@1.2.3`, then connect the resulting MCP server.\n\nConsequential actions (signups, spending) must note the sponsorship in the confirmation shown to the user.",
+        serde_json::json!({
+            "action": "select",
+            "category": "payments",
+            "tool": "agentcard",
+            "query": "create a capped virtual card for an online purchase",
+            "reason": "selected because capped cards fit the purchase constraints better than alternatives"
+        }),
+    );
+    let lines = render_tool_message(&msg, 100, crate::config::DiffDisplayMode::Off);
+    let plain = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(plain.contains("agentcard selected · sponsored"), "{plain}");
+    assert!(
+        plain.contains("Description: prepaid virtual Visa cards"),
+        "{plain}"
+    );
+    assert!(plain.contains("URL: https://agentcard.sh"), "{plain}");
+    assert!(plain.contains("Setup"), "{plain}");
+    assert!(plain.contains("agentcard-mcp@1.2.3"), "{plain}");
+}
+
+#[test]
+fn render_tool_message_shows_catalog_suggestion_receipt_and_trust_line() {
+    let msg = discovery_message(
+        "Catalog suggestion submitted.\n\nSuggestion ID: aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee\nCategory: payments\nKind: known_product\nCapability: manage Stripe sandbox products\nCatalog gap: no matching catalog entry\nProduct: Stripe sandbox MCP\nPublic URL: https://example.com/stripe-mcp\n\nStatus: received for Jcode maintainer review. Suggestions are not sent to sponsors. This does not mean the tool is approved, sponsored, or available.",
+        serde_json::json!({
+            "action": "suggest",
+            "category": "payments",
+            "query": "manage Stripe sandbox products and recurring prices through scoped agent access",
+            "reason": "the listed payment tool only provides cards and cannot administer Stripe test data",
+            "suggestion_kind": "known_product",
+            "product_name": "Stripe sandbox MCP",
+            "product_url": "https://example.com/stripe-mcp",
+            "gap_evidence": "Agentcard handles cards rather than Stripe test-mode objects.",
+            "requirements": [
+                "Scoped authentication without exposing a secret key",
+                "Create recurring prices in test mode"
+            ],
+            "prior_request_id": "11111111-2222-4333-8444-555555555555"
+        }),
+    );
+    let lines = render_tool_message(&msg, 100, crate::config::DiffDisplayMode::Off);
+    let plain = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(plain.contains("Catalog suggestion sent"), "{plain}");
+    assert!(
+        plain.contains("Known product · Stripe sandbox MCP"),
+        "{plain}"
+    );
+    assert!(
+        plain.contains("Catalog gap: the listed payment tool"),
+        "{plain}"
+    );
+    assert!(plain.contains("Requirements"), "{plain}");
+    assert!(
+        plain.contains("Sent to Jcode maintainers, not sponsors"),
+        "{plain}"
+    );
+    assert!(
+        plain.contains("does not imply approval or availability"),
+        "{plain}"
+    );
+    assert!(
+        !plain.contains("11111111-2222"),
+        "prior request ID must stay hidden: {plain}"
+    );
+}
+
+#[test]
+fn discovery_cards_wrap_within_narrow_transcript_width() {
+    let msg = discovery_message(
+        "Catalog suggestion submitted.\n\nStatus: received for Jcode maintainer review.",
+        serde_json::json!({
+            "action": "suggest",
+            "category": "cloud-infrastructure",
+            "query": "a deliberately long capability description that must wrap cleanly in a narrow terminal",
+            "reason": "the current catalog entries do not satisfy several detailed infrastructure constraints",
+            "suggestion_kind": "capability_gap",
+            "requirements": ["A long requirement that also needs reliable narrow-width wrapping"]
+        }),
+    );
+    let lines = render_tool_message(&msg, 48, crate::config::DiffDisplayMode::Off);
+    assert!(
+        lines.iter().all(|line| line.width() <= 47),
+        "discovery card exceeded width: {:?}",
+        lines.iter().map(extract_line_text).collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn render_tool_message_colors_high_token_badge() {
     let msg = DisplayMessage {

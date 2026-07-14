@@ -1242,15 +1242,30 @@ pub(super) fn get_tool_summary_with_budget(
             }
         }
         "discover_tools" => {
+            let action = tool
+                .input
+                .get("action")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let category = tool
                 .input
                 .get("category")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            match tool.input.get("tool").and_then(|v| v.as_str()) {
-                Some(name) => format!("select {}", truncate_end_display(name, bounded(30))),
-                None if !category.is_empty() => format!("browse {}", category),
-                None => "browse".to_string(),
+            if action == "suggest" {
+                let detail = tool
+                    .input
+                    .get("product_name")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| tool.input.get("suggestion_kind").and_then(|v| v.as_str()))
+                    .unwrap_or(category);
+                format!("suggest {}", truncate_end_display(detail, bounded(30)))
+            } else {
+                match tool.input.get("tool").and_then(|v| v.as_str()) {
+                    Some(name) => format!("select {}", truncate_end_display(name, bounded(30))),
+                    None if !category.is_empty() => format!("browse {}", category),
+                    None => "browse".to_string(),
+                }
             }
         }
         "codesearch" => tool

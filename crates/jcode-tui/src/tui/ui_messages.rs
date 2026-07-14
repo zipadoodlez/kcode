@@ -13,6 +13,7 @@ use unicode_width::UnicodeWidthStr;
 
 const MAX_INLINE_DIFF_LINES: usize = 12;
 const MAX_GMAIL_DRAFT_BODY_LINES: usize = 18;
+const MAX_DISCOVERY_SETUP_LINES: usize = 12;
 
 fn prefer_width_stable_system_glyphs() -> bool {
     std::env::var("TERM_PROGRAM")
@@ -2947,6 +2948,341 @@ fn render_gmail_draft_card(
     ))
 }
 
+#[derive(Debug, Clone)]
+struct DiscoveryListingEntry {
+    name: String,
+    blurb: String,
+    url: Option<String>,
+}
+
+fn split_discovery_blurb_url(value: &str) -> (String, Option<String>) {
+    let value = value.trim();
+    if let Some((blurb, url)) = value.rsplit_once(" (")
+        && let Some(url) = url.strip_suffix(')')
+        && url.starts_with("http")
+    {
+        return (blurb.trim().to_string(), Some(url.to_string()));
+    }
+    (value.to_string(), None)
+}
+
+fn parse_discovery_listing_entries(output: &str) -> Vec<DiscoveryListingEntry> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let (name, value) = line.trim().strip_prefix("- ")?.split_once(": ")?;
+            let (blurb, url) = split_discovery_blurb_url(value);
+            Some(DiscoveryListingEntry {
+                name: name.trim().to_string(),
+                blurb,
+                url,
+            })
+        })
+        .collect()
+}
+
+fn discovery_selected_details(output: &str, name: &str) -> (Option<String>, Option<String>) {
+    let prefix = format!("{name}: ");
+    output
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(&prefix))
+        .map(split_discovery_blurb_url)
+        .map(|(blurb, url)| (Some(blurb), url))
+        .unwrap_or((None, None))
+}
+
+fn discovery_setup(output: &str) -> Option<String> {
+    let (_, rest) = output.split_once("\n\nSetup: ")?;
+    Some(
+        rest.split("\n\nConsequential actions")
+            .next()
+            .unwrap_or(rest)
+            .trim()
+            .to_string(),
+    )
+    .filter(|value| !value.is_empty())
+}
+
+fn push_discovery_setup(
+    content: &mut Vec<Line<'static>>,
+    setup: &str,
+    inner_width: usize,
+    label_style: Style,
+    body_style: Style,
+) {
+    content.push(Line::from(""));
+    content.push(Line::from(Span::styled("Setup", label_style)));
+    let setup_lines = render_plaintext_lines(setup, inner_width);
+    let hidden = setup_lines.len().saturating_sub(MAX_DISCOVERY_SETUP_LINES);
+    for mut line in setup_lines.into_iter().take(MAX_DISCOVERY_SETUP_LINES) {
+        for span in &mut line.spans {
+            span.style = body_style;
+        }
+        content.push(line);
+    }
+    if hidden > 0 {
+        content.push(Line::from(Span::styled(
+            format!("… {hidden} more line{}", if hidden == 1 { "" } else { "s" }),
+            Style::default().fg(dim_color()),
+        )));
+    }
+}
+
+fn render_discovery_card(
+    tool: &ToolCall,
+    tool_output: &str,
+    is_error: bool,
+    available_width: usize,
+) -> Option<Vec<Line<'static>>> {
+    if tools_ui::canonical_tool_name(&tool.name) != "discover_tools" || is_error {
+        return None;
+    }
+    let max_box_width = available_width.min(96);
+    if max_box_width < 18 {
+        return None;
+    }
+    let inner_width = max_box_width.saturating_sub(4).max(1);
+    let category = tool
+        .input
+        .get("category")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("other");
+    let explicit_action = tool
+        .input
+        .get("action")
+        .and_then(|value| value.as_str())
+        .map(str::trim);
+    let action = explicit_action.unwrap_or_else(|| {
+        if tool
+            .input
+            .get("tool")
+            .and_then(|value| value.as_str())
+            .is_some()
+        {
+            "select"
+        } else {
+            "browse"
+        }
+    });
+
+    let accent = rgb(102, 184, 214);
+    let border_style = Style::default().fg(accent);
+    let label_style = Style::default().fg(accent).add_modifier(Modifier::BOLD);
+    let value_style = Style::default().fg(dim_color());
+    let body_style = Style::default();
+    let mut content = Vec::new();
+
+    if let Some(query) = tool.input.get("query").and_then(|value| value.as_str()) {
+        push_wrapped_kv_line(
+            &mut content,
+            "Capability",
+            query,
+            inner_width,
+            label_style,
+            value_style,
+        );
+    }
+    if let Some(reason) = tool.input.get("reason").and_then(|value| value.as_str()) {
+        push_wrapped_kv_line(
+            &mut content,
+            if action == "suggest" {
+                "Catalog gap"
+            } else {
+                "Rationale"
+            },
+            reason,
+            inner_width,
+            label_style,
+            value_style,
+        );
+    }
+
+    let title = match action {
+        "suggest" => {
+            let kind = tool
+                .input
+                .get("suggestion_kind")
+                .and_then(|value| value.as_str())
+                .unwrap_or("capability_gap");
+            let kind_label = match kind {
+                "known_product" => tool
+                    .input
+                    .get("product_name")
+                    .and_then(|value| value.as_str())
+                    .map(|name| format!("Known product · {name}"))
+                    .unwrap_or_else(|| "Known product".to_string()),
+                _ => "Capability gap".to_string(),
+            };
+            push_wrapped_kv_line(
+                &mut content,
+                "Suggestion",
+                &kind_label,
+                inner_width,
+                label_style,
+                body_style,
+            );
+            if let Some(url) = tool
+                .input
+                .get("product_url")
+                .and_then(|value| value.as_str())
+            {
+                push_wrapped_kv_line(
+                    &mut content,
+                    "Public URL",
+                    url,
+                    inner_width,
+                    label_style,
+                    value_style,
+                );
+            }
+            if let Some(evidence) = tool
+                .input
+                .get("gap_evidence")
+                .and_then(|value| value.as_str())
+            {
+                push_wrapped_kv_line(
+                    &mut content,
+                    "Evidence",
+                    evidence,
+                    inner_width,
+                    label_style,
+                    value_style,
+                );
+            }
+            if let Some(requirements) = tool
+                .input
+                .get("requirements")
+                .and_then(|value| value.as_array())
+            {
+                let requirements = requirements
+                    .iter()
+                    .filter_map(|value| value.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .collect::<Vec<_>>();
+                if !requirements.is_empty() {
+                    content.push(Line::from(""));
+                    content.push(Line::from(Span::styled("Requirements", label_style)));
+                    for requirement in requirements {
+                        for (index, chunk) in split_by_display_width(
+                            requirement,
+                            inner_width.saturating_sub(2).max(1),
+                        )
+                        .into_iter()
+                        .enumerate()
+                        {
+                            content.push(Line::from(vec![
+                                Span::styled(if index == 0 { "• " } else { "  " }, label_style),
+                                Span::styled(chunk, value_style),
+                            ]));
+                        }
+                    }
+                }
+            }
+            content.push(Line::from(""));
+            content.push(Line::from(Span::styled(
+                "Sent to Jcode maintainers, not sponsors. Submission does not imply approval or availability.",
+                value_style,
+            )));
+            if tool_output.starts_with("Catalog suggestion already recorded.") {
+                "◇ Catalog suggestion already recorded".to_string()
+            } else {
+                "◇ Catalog suggestion sent".to_string()
+            }
+        }
+        "select" => {
+            let name = tool
+                .input
+                .get("tool")
+                .and_then(|value| value.as_str())
+                .unwrap_or("selected tool");
+            let (blurb, url) = discovery_selected_details(tool_output, name);
+            if let Some(blurb) = blurb.as_deref() {
+                push_wrapped_kv_line(
+                    &mut content,
+                    "Description",
+                    blurb,
+                    inner_width,
+                    label_style,
+                    body_style,
+                );
+            }
+            if let Some(url) = url.as_deref() {
+                push_wrapped_kv_line(
+                    &mut content,
+                    "URL",
+                    url,
+                    inner_width,
+                    label_style,
+                    value_style,
+                );
+            }
+            if let Some(setup) = discovery_setup(tool_output) {
+                push_discovery_setup(&mut content, &setup, inner_width, label_style, body_style);
+            }
+            format!("⌕ Discovery · {name} selected · sponsored")
+        }
+        _ => {
+            let entries = parse_discovery_listing_entries(tool_output);
+            content.push(Line::from(""));
+            content.push(Line::from(Span::styled("Catalog results", label_style)));
+            if entries.is_empty() {
+                content.push(Line::from(Span::styled(
+                    "No catalog entries matched this category.",
+                    value_style,
+                )));
+            } else {
+                for entry in &entries {
+                    content.push(Line::from(vec![
+                        Span::styled("• ", label_style),
+                        Span::styled(entry.name.clone(), label_style),
+                    ]));
+                    if !entry.blurb.is_empty() {
+                        for chunk in split_by_display_width(
+                            &entry.blurb,
+                            inner_width.saturating_sub(2).max(1),
+                        ) {
+                            content.push(Line::from(vec![
+                                Span::raw("  "),
+                                Span::styled(chunk, body_style),
+                            ]));
+                        }
+                    }
+                    if let Some(url) = &entry.url {
+                        for chunk in
+                            split_by_display_width(url, inner_width.saturating_sub(2).max(1))
+                        {
+                            content.push(Line::from(vec![
+                                Span::raw("  "),
+                                Span::styled(chunk, value_style),
+                            ]));
+                        }
+                    }
+                }
+            }
+            content.push(Line::from(""));
+            content.push(Line::from(Span::styled(
+                "Sponsored placement, not preference. Select only if it genuinely fits; otherwise suggest the missing capability.",
+                value_style,
+            )));
+            format!(
+                "⌕ Discovery · {category} · {} tool{} · sponsored",
+                entries.len(),
+                if entries.len() == 1 { "" } else { "s" }
+            )
+        }
+    };
+
+    Some(render_rounded_box(
+        &title,
+        content,
+        max_box_width,
+        border_style,
+    ))
+}
+
 pub(crate) fn render_tool_message(
     msg: &DisplayMessage,
     width: u16,
@@ -3208,6 +3544,9 @@ pub(crate) fn render_tool_message(
     if let Some(draft_lines) = render_gmail_draft_card(tc, &msg.content, is_error, row_width) {
         lines.extend(draft_lines);
     }
+    if let Some(discovery_lines) = render_discovery_card(tc, &msg.content, is_error, row_width) {
+        lines.extend(discovery_lines);
+    }
 
     // Optionally render the full agentgrep search output inline in the
     // transcript. Gated behind `display.show_agentgrep_output` (default false)
@@ -3306,6 +3645,20 @@ pub(crate) fn render_tool_message(
                     line.spans.insert(0, Span::raw("    "));
                 }
                 lines.extend(draft_lines);
+            }
+
+            if let Some(result) = sub_result
+                && let Some(mut discovery_lines) = render_discovery_card(
+                    &sub_tc,
+                    &result.content,
+                    sub_errored,
+                    row_width.saturating_sub(4),
+                )
+            {
+                for line in &mut discovery_lines {
+                    line.spans.insert(0, Span::raw("    "));
+                }
+                lines.extend(discovery_lines);
             }
 
             if tools_ui::canonical_tool_name(&sub_tc.name) == "todo"
