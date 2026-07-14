@@ -129,10 +129,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--days", type=int, default=None, help="Only include files from the last N daily logs")
     parser.add_argument("--top", type=int, default=DEFAULT_TOP_N, help="How many spikes/sessions/deltas to show")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON summary")
-    parser.add_argument(
+    instance_mode = parser.add_mutually_exclusive_group()
+    instance_mode.add_argument(
         "--all-instances",
         action="store_true",
         help="Analyze all process instances in the selected files instead of the latest server/client instance",
+    )
+    instance_mode.add_argument(
+        "--instance",
+        help="Analyze one exact server or client process instance ID",
+    )
+    instance_mode.add_argument(
+        "--list-instances",
+        action="store_true",
+        help="List available process instance IDs and their time ranges, then exit",
     )
     parser.add_argument(
         "--min-spike-mb",
@@ -259,6 +269,35 @@ def select_latest_instances(samples: list[Sample]) -> list[Sample]:
     ]
     selected.sort(key=lambda sample: (sample.timestamp_ms, str(sample.path), sample.line_no))
     return selected
+
+
+def select_instance(samples: list[Sample], instance_id: str) -> list[Sample]:
+    selected = [sample for sample in samples if sample.instance_id == instance_id]
+    selected.sort(key=lambda sample: (sample.timestamp_ms, str(sample.path), sample.line_no))
+    return selected
+
+
+def instance_inventory(samples: list[Sample]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str], list[Sample]] = {}
+    for sample in samples:
+        grouped.setdefault((sample.target, sample.instance_id), []).append(sample)
+
+    inventory: list[dict[str, Any]] = []
+    for (target, instance_id), group in grouped.items():
+        ordered = sorted(group, key=lambda sample: (sample.timestamp_ms, str(sample.path), sample.line_no))
+        inventory.append(
+            {
+                "target": target,
+                "instance_id": instance_id,
+                "sample_count": len(ordered),
+                "first_timestamp_ms": ordered[0].timestamp_ms,
+                "last_timestamp_ms": ordered[-1].timestamp_ms,
+                "duration_ms": max(0, ordered[-1].timestamp_ms - ordered[0].timestamp_ms),
+                "kinds": dict(Counter(sample.kind for sample in ordered)),
+            }
+        )
+    inventory.sort(key=lambda item: (item["last_timestamp_ms"], item["target"]), reverse=True)
+    return inventory
 
 
 def infer_kind(raw: dict[str, Any], source: str) -> str:
@@ -1209,6 +1248,18 @@ def to_jsonable(value: Any) -> Any:
     return value
 
 
+def print_instance_inventory(inventory: list[dict[str, Any]], paths: list[Path]) -> None:
+    print("Runtime Memory Process Instances")
+    print("================================")
+    print(f"files: {len(paths)}")
+    for item in inventory:
+        print(
+            f"{item['instance_id']} | target={item['target']} | samples={item['sample_count']} | "
+            f"{fmt_ts(item['first_timestamp_ms'])} -> {fmt_ts(item['last_timestamp_ms'])} | "
+            f"duration={fmt_duration_ms(item['duration_ms'])}"
+        )
+
+
 def main() -> int:
     args = parse_args()
     paths = resolve_paths(args)
@@ -1217,7 +1268,29 @@ def main() -> int:
     samples = load_samples(paths)
     if not samples:
         raise SystemExit("No runtime memory samples found in selected files.")
-    if not args.all_instances:
+    inventory = instance_inventory(samples)
+    if args.list_instances:
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "files": [str(path) for path in paths],
+                        "instances": inventory,
+                    },
+                    indent=2,
+                )
+            )
+        else:
+            print_instance_inventory(inventory, paths)
+        return 0
+    if args.instance:
+        samples = select_instance(samples, args.instance)
+        if not samples:
+            available = ", ".join(item["instance_id"] for item in inventory)
+            raise SystemExit(
+                f"Process instance {args.instance!r} was not found. Available instances: {available}"
+            )
+    elif not args.all_instances:
         samples = select_latest_instances(samples)
     summary = summarize(samples, top_n=args.top, min_spike_bytes=int(args.min_spike_mb * 1024 * 1024))
     if args.json:

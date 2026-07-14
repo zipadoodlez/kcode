@@ -2766,18 +2766,23 @@ pub(crate) fn render_swarm_message(
     wrapped_lines
 }
 
+fn edit_tool_inline_diff_lines(tc: &ToolCall, content: &str) -> Option<Vec<ParsedDiffLine>> {
+    let from_content = collect_diff_lines(content);
+    let change_lines = if !from_content.is_empty() {
+        from_content
+    } else {
+        generate_diff_lines_from_tool_input(tc)
+    };
+    (!change_lines.is_empty()).then_some(change_lines)
+}
+
 pub(super) fn edit_tool_inline_diff_is_expandable(
     tc: &ToolCall,
     content: &str,
     width: u16,
 ) -> bool {
-    let change_lines = {
-        let from_content = collect_diff_lines(content);
-        if !from_content.is_empty() {
-            from_content
-        } else {
-            generate_diff_lines_from_tool_input(tc)
-        }
+    let Some(change_lines) = edit_tool_inline_diff_lines(tc, content) else {
+        return false;
     };
     if change_lines.len() > MAX_INLINE_DIFF_LINES {
         return true;
@@ -3090,6 +3095,7 @@ pub(crate) fn render_tool_message(
     } else {
         (0, 0)
     };
+    let has_diff_changes = additions > 0 || deletions > 0;
 
     let block_width = if centered {
         super::centered_content_block_width(width, 96)
@@ -3101,7 +3107,7 @@ pub(crate) fn render_tool_message(
     let base_prefix = format!("  {} {} ", icon, display_name);
     let token_suffix_width =
         UnicodeWidthStr::width(format!(" · {}", token_badge.label.as_str()).as_str());
-    let edit_suffix_width = if is_edit_tool {
+    let edit_suffix_width = if is_edit_tool && has_diff_changes {
         UnicodeWidthStr::width(format!(" (+{} -{})", additions, deletions).as_str())
     } else {
         0
@@ -3173,7 +3179,7 @@ pub(crate) fn render_tool_message(
             Style::default().fg(dim_color()),
         ));
     }
-    if is_edit_tool {
+    if is_edit_tool && has_diff_changes {
         tool_line.push(Span::styled(" (", Style::default().fg(dim_color())));
         tool_line.push(Span::styled(
             format!("+{}", additions),
@@ -3322,7 +3328,10 @@ pub(crate) fn render_tool_message(
         }
     }
 
-    if diff_mode.is_inline() && is_edit_tool {
+    if diff_mode.is_inline()
+        && is_edit_tool
+        && let Some(change_lines) = edit_tool_inline_diff_lines(tc, &msg.content)
+    {
         let full_inline = diff_mode.is_full_inline();
         let file_path_for_ext = tc
             .input
@@ -3343,15 +3352,6 @@ pub(crate) fn render_tool_message(
             .as_deref()
             .and_then(|p| std::path::Path::new(p).extension())
             .and_then(|e| e.to_str());
-
-        let change_lines = {
-            let from_content = collect_diff_lines(&msg.content);
-            if !from_content.is_empty() {
-                from_content
-            } else {
-                generate_diff_lines_from_tool_input(tc)
-            }
-        };
 
         const MAX_DIFF_LINES: usize = MAX_INLINE_DIFF_LINES;
         let total_changes = change_lines.len();

@@ -87,6 +87,29 @@ class RuntimeMemoryAnalyzerTests(unittest.TestCase):
         self.assertEqual(summary["baseline_pss_bytes"], 80 * MB)
         self.assertEqual(summary["net_pss_growth_bytes"], 40 * MB)
 
+    def test_explicit_instance_selection_preserves_historical_incident(self) -> None:
+        samples = [
+            sample(timestamp_ms=1, instance_id="old", pss_mb=70, allocated_mb=38, live_sessions=9),
+            sample(
+                timestamp_ms=2,
+                instance_id="old",
+                pss_mb=3900,
+                allocated_mb=3700,
+                live_sessions=1140,
+                connected_clients=5,
+            ),
+            sample(timestamp_ms=3, instance_id="new", pss_mb=80, allocated_mb=40, live_sessions=2),
+        ]
+
+        selected = analyzer.select_instance(samples, "old")
+        summary = analyzer.summarize_target(selected, top_n=5, min_spike_bytes=8 * MB)
+        inventory = analyzer.instance_inventory(samples)
+
+        self.assertEqual({item.instance_id for item in selected}, {"old"})
+        self.assertEqual(summary["session_population"]["peak_live_sessions"], 1140)
+        self.assertEqual(summary["incident"]["primary_cause"], "runaway_live_session_population")
+        self.assertEqual([item["instance_id"] for item in inventory], ["new", "old"])
+
     def test_runaway_session_population_is_primary_cause(self) -> None:
         samples = [
             sample(
