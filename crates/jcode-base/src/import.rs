@@ -28,6 +28,49 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::path::PathBuf;
 
+// Keep enough recent context for a useful continuation while preventing an
+// imported multi-hundred-message transcript from dominating first paint and
+// every subsequent TUI frame. Roughly 256 KiB is also a comfortable provider
+// context tail once the system prompt and tool schemas are added.
+const IMPORT_HISTORY_MAX_MESSAGES: usize = 160;
+const IMPORT_HISTORY_MAX_TEXT_BYTES: usize = 256 * 1024;
+const IMPORT_BLOCK_MAX_TEXT_BYTES: usize = 32 * 1024;
+
+fn json_line_has_message_role(line: &str) -> bool {
+    fn has_value(bytes: &[u8], value: &[u8]) -> bool {
+        let needle = b"\"role\"";
+        let mut offset = 0usize;
+        while let Some(relative) = bytes[offset..]
+            .windows(needle.len())
+            .position(|window| window == needle)
+        {
+            let mut index = offset + relative + needle.len();
+            while bytes.get(index).is_some_and(u8::is_ascii_whitespace) {
+                index += 1;
+            }
+            if bytes.get(index) != Some(&b':') {
+                offset = index;
+                continue;
+            }
+            index += 1;
+            while bytes.get(index).is_some_and(u8::is_ascii_whitespace) {
+                index += 1;
+            }
+            if bytes.get(index) == Some(&b'\"')
+                && bytes.get(index + 1..index + 1 + value.len()) == Some(value)
+                && bytes.get(index + 1 + value.len()) == Some(&b'\"')
+            {
+                return true;
+            }
+            offset = index;
+        }
+        false
+    }
+
+    let bytes = line.as_bytes();
+    has_value(bytes, b"user") || has_value(bytes, b"assistant")
+}
+
 /// Discover all Claude Code project directories under ~/.claude/projects.
 fn discover_project_dirs() -> Result<Vec<PathBuf>> {
     let claude_dir = crate::storage::user_home_path(".claude/projects")
@@ -61,15 +104,21 @@ fn discover_projects() -> Result<Vec<PathBuf>> {
 }
 
 fn load_claude_code_entries(path: &Path) -> Result<Vec<ClaudeCodeEntry>> {
-    let content = std::fs::read_to_string(path)
+    let file = File::open(path)
         .with_context(|| format!("Failed to read session file: {}", path.display()))?;
-
     let mut entries = Vec::new();
-    for line in content.lines() {
+    for line in BufReader::new(file).lines() {
+        let line = line?;
         if line.trim().is_empty() {
             continue;
         }
-        match serde_json::from_str::<ClaudeCodeEntry>(line) {
+        // Claude transcripts contain progress, attachment, queue, and other
+        // records that can dwarf the actual conversation. Avoid fully parsing
+        // those records when all we need here are user/assistant messages.
+        if !json_line_has_message_role(&line) {
+            continue;
+        }
+        match serde_json::from_str::<ClaudeCodeEntry>(&line) {
             Ok(entry) => entries.push(entry),
             Err(e) => {
                 crate::logging::debug(&format!(
@@ -374,6 +423,176 @@ fn convert_content_blocks(content: &ClaudeCodeContent) -> Vec<ContentBlock> {
     }
 }
 
+fn truncate_import_text(text: String, max_bytes: usize) -> String {
+    if text.len() <= max_bytes {
+        return text;
+    }
+    let suffix = format!(
+        "\n[... {} bytes omitted from imported history]",
+        text.len() - max_bytes
+    );
+    let prefix_budget = max_bytes.saturating_sub(suffix.len());
+    format!(
+        "{}{}",
+        jcode_core::util::truncate_str(&text, prefix_budget),
+        suffix
+    )
+}
+
+fn imported_message_text(blocks: &[ContentBlock], truncate_blocks: bool) -> (String, bool) {
+    let mut parts = Vec::new();
+    let mut changed = blocks.len() != 1;
+
+    for block in blocks {
+        let text = match block {
+            ContentBlock::Text {
+                text,
+                cache_control,
+            } => {
+                changed |= cache_control.is_some();
+                text.clone()
+            }
+            // Provider-native reasoning cannot safely be replayed under a
+            // different provider and is not required to continue the visible
+            // conversation. Dropping it also avoids importing large hidden
+            // traces that would slow initial rendering and request building.
+            ContentBlock::Reasoning { .. }
+            | ContentBlock::ReasoningTrace { .. }
+            | ContentBlock::AnthropicThinking { .. }
+            | ContentBlock::OpenAIReasoning { .. }
+            | ContentBlock::OpenAICompaction { .. } => {
+                changed = true;
+                continue;
+            }
+            ContentBlock::ToolUse { name, input, .. } => {
+                changed = true;
+                let arguments = serde_json::to_string(input).unwrap_or_else(|_| "{}".to_string());
+                format!("[Imported tool call: {name}]\n{arguments}")
+            }
+            ContentBlock::ToolResult {
+                tool_use_id,
+                content,
+                is_error,
+            } => {
+                changed = true;
+                let outcome = if *is_error == Some(true) {
+                    "error"
+                } else {
+                    "result"
+                };
+                format!("[Imported tool {outcome}: {tool_use_id}]\n{content}")
+            }
+            ContentBlock::Image { media_type, .. } => {
+                changed = true;
+                format!("[Imported image: {media_type}]")
+            }
+        };
+
+        let text = if truncate_blocks {
+            let original_len = text.len();
+            let truncated = truncate_import_text(text, IMPORT_BLOCK_MAX_TEXT_BYTES);
+            changed |= truncated.len() < original_len;
+            truncated
+        } else {
+            text
+        };
+        if !text.trim().is_empty() {
+            parts.push(text);
+        }
+    }
+
+    let combined = parts.join("\n\n");
+    if truncate_blocks {
+        let original_len = combined.len();
+        let combined = truncate_import_text(combined, IMPORT_BLOCK_MAX_TEXT_BYTES);
+        changed |= combined.len() < original_len;
+        (combined, changed)
+    } else {
+        (combined, changed)
+    }
+}
+
+fn normalize_imported_history(session: &mut Session, apply_limits: bool) -> bool {
+    let original_count = session.messages.len();
+    let mut changed = false;
+    let mut normalized = Vec::with_capacity(original_count);
+
+    for mut message in std::mem::take(&mut session.messages) {
+        let (text, message_changed) = imported_message_text(&message.content, apply_limits);
+        changed |= message_changed;
+        if text.trim().is_empty() {
+            changed = true;
+            continue;
+        }
+        message.content = vec![ContentBlock::Text {
+            text,
+            cache_control: None,
+        }];
+        normalized.push(message);
+    }
+
+    if apply_limits {
+        let normalized_count = normalized.len();
+        let mut kept_reversed = Vec::new();
+        let mut kept_bytes = 0usize;
+        for message in normalized.into_iter().rev() {
+            let message_bytes = message
+                .content
+                .iter()
+                .map(|block| match block {
+                    ContentBlock::Text { text, .. } => text.len(),
+                    _ => 0,
+                })
+                .sum::<usize>();
+            if kept_reversed.len() >= IMPORT_HISTORY_MAX_MESSAGES
+                || (!kept_reversed.is_empty()
+                    && kept_bytes.saturating_add(message_bytes) > IMPORT_HISTORY_MAX_TEXT_BYTES)
+            {
+                break;
+            }
+            kept_bytes = kept_bytes.saturating_add(message_bytes);
+            kept_reversed.push(message);
+        }
+        kept_reversed.reverse();
+        let omitted = normalized_count.saturating_sub(kept_reversed.len());
+        if omitted > 0 {
+            changed = true;
+            kept_reversed.insert(
+                0,
+                StoredMessage {
+                    id: crate::id::new_id("message"),
+                    role: Role::User,
+                    content: vec![ContentBlock::Text {
+                        text: format!(
+                            "[Imported session: {omitted} older messages were omitted for a fast, provider-safe resume. Use session_search to inspect earlier external history.]"
+                        ),
+                        cache_control: None,
+                    }],
+                    display_role: None,
+                    timestamp: None,
+                    tool_duration_ms: None,
+                    token_usage: None,
+                },
+            );
+        }
+        session.replace_messages(kept_reversed);
+    } else {
+        session.replace_messages(normalized);
+    }
+
+    changed || session.messages.len() != original_count
+}
+
+fn reuse_existing_imported_session(session_id: &str) -> bool {
+    // An imported snapshot becomes a normal jcode continuation as soon as the
+    // user resumes it. Never rewrite that snapshot merely because the external
+    // transcript changed or because an older import contains structured blocks:
+    // doing so can discard jcode-only turns and journal state. New imports are
+    // normalized before their first save, while existing imports remain the
+    // durable source of truth for subsequent resumes.
+    Session::load(session_id).is_ok()
+}
+
 /// Import a Claude Code session by ID
 pub fn import_session(session_id: &str) -> Result<Session> {
     let session_file = find_session_file(session_id)?;
@@ -408,6 +627,9 @@ pub fn resolve_resume_target_to_jcode(
 ) -> Result<jcode_session_types::ResumeTarget> {
     use jcode_session_types::ResumeTarget;
 
+    let prepare_start = std::time::Instant::now();
+    let cache_hit;
+    let source_label;
     let session_id = match target {
         ResumeTarget::JcodeSession { session_id } => {
             return Ok(ResumeTarget::JcodeSession {
@@ -418,35 +640,65 @@ pub fn resolve_resume_target_to_jcode(
             session_id,
             session_path,
         } => {
-            import_session_from_file(Path::new(session_path), session_id)?;
-            imported_claude_code_session_id(session_id)
+            source_label = "claude-code";
+            let imported_id = imported_claude_code_session_id(session_id);
+            cache_hit = reuse_existing_imported_session(&imported_id);
+            if !cache_hit {
+                import_session_from_file(Path::new(session_path), session_id)?;
+            }
+            imported_id
         }
         ResumeTarget::CodexSession {
             session_id,
             session_path,
         } => {
-            import_codex_session_from_path(Path::new(session_path), Some(session_id))?;
-            imported_codex_session_id(session_id)
+            source_label = "codex";
+            let imported_id = imported_codex_session_id(session_id);
+            cache_hit = reuse_existing_imported_session(&imported_id);
+            if !cache_hit {
+                import_codex_session_from_path(Path::new(session_path), Some(session_id))?;
+            }
+            imported_id
         }
         ResumeTarget::PiSession { session_path } => {
-            import_pi_session(session_path)?;
-            imported_pi_session_id(session_path)
+            source_label = "pi";
+            let imported_id = imported_pi_session_id(session_path);
+            cache_hit = reuse_existing_imported_session(&imported_id);
+            if !cache_hit {
+                import_pi_session(session_path)?;
+            }
+            imported_id
         }
         ResumeTarget::OpenCodeSession {
             session_id,
             session_path,
         } => {
-            import_opencode_session_from_path(Path::new(session_path), Some(session_id))?;
-            imported_opencode_session_id(session_id)
+            source_label = "opencode";
+            let imported_id = imported_opencode_session_id(session_id);
+            cache_hit = reuse_existing_imported_session(&imported_id);
+            if !cache_hit {
+                import_opencode_session_from_path(Path::new(session_path), Some(session_id))?;
+            }
+            imported_id
         }
         ResumeTarget::CursorSession {
             session_id,
             session_path,
         } => {
-            import_cursor_session_from_path(Path::new(session_path), Some(session_id))?;
-            imported_cursor_session_id(session_id)
+            source_label = "cursor";
+            let imported_id = imported_cursor_session_id(session_id);
+            cache_hit = reuse_existing_imported_session(&imported_id);
+            if !cache_hit {
+                import_cursor_session_from_path(Path::new(session_path), Some(session_id))?;
+            }
+            imported_id
         }
     };
+
+    crate::logging::info(&format!(
+        "[TIMING] external_resume_prepare: source={source_label} cache_hit={cache_hit} elapsed_ms={}",
+        prepare_start.elapsed().as_millis()
+    ));
 
     Ok(ResumeTarget::JcodeSession { session_id })
 }
@@ -483,24 +735,7 @@ pub fn import_external_resume_id(resume_id: &str) -> Result<Option<String>> {
 
 /// Import a Claude Code session from a file path
 pub fn import_session_from_file(path: &Path, session_id: &str) -> Result<Session> {
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("Failed to read session file: {}", path.display()))?;
-
-    // Parse JSONL entries
-    let mut entries: Vec<ClaudeCodeEntry> = Vec::new();
-    for line in content.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        match serde_json::from_str::<ClaudeCodeEntry>(line) {
-            Ok(entry) => entries.push(entry),
-            Err(e) => {
-                // Log but skip malformed lines
-                crate::logging::debug(&format!("Skipping malformed entry: {}", e));
-            }
-        }
-    }
-
+    let entries = load_claude_code_entries(path)?;
     let ordered_entries = ordered_claude_code_message_entries(&entries);
 
     // Extract metadata from entries
@@ -575,36 +810,18 @@ pub fn import_session_from_file(path: &Path, session_id: &str) -> Result<Session
     // Create jcode session
     let jcode_session_id = imported_claude_code_session_id(session_id);
 
-    // Don't clobber a continuation. The resume picker hides the imported jcode
-    // session and only shows the external `claude:<id>` entry, so re-selecting it
-    // calls back into this function. If the user already resumed and continued
-    // the imported session inside jcode, a plain re-import would overwrite their
-    // snapshot and silently drop those messages. When the existing imported
-    // snapshot already has more messages than the external transcript (i.e. it
-    // diverged with jcode-side work), keep it as-is and resume that instead.
-    if crate::session::session_exists(&jcode_session_id)
-        && let Ok(existing) = Session::load(&jcode_session_id)
-        && existing.messages.len() > imported_messages.len()
-    {
-        return Ok(existing);
-    }
-
     let mut session = Session::create_with_id(jcode_session_id, None, title);
     session.provider_session_id = Some(session_id.to_string());
     session.provider_key = Some("claude-code".to_string());
     session.working_dir = working_dir;
     session.model = model;
     session.created_at = created_at;
-    session.status = SessionStatus::Closed;
 
     for message in imported_messages {
         session.append_stored_message(message);
     }
 
-    // Save the session
-    session.save()?;
-
-    Ok(session)
+    finalize_imported_session(session, created_at, None)
 }
 
 fn append_text_message(
@@ -636,11 +853,29 @@ fn finalize_imported_session(
     created_at: DateTime<Utc>,
     updated_at: Option<DateTime<Utc>>,
 ) -> Result<Session> {
+    // Never overwrite a jcode-side continuation with a shorter external
+    // transcript. This protection applies to every importer, not only Claude.
+    if crate::session::session_exists(&session.id)
+        && let Ok(mut existing) = Session::load(&session.id)
+        && existing.messages.len() > session.messages.len()
+    {
+        if normalize_imported_history(&mut existing, false) {
+            existing.save()?;
+        }
+        return Ok(existing);
+    }
+
+    let original_messages = session.messages.len();
     session.created_at = created_at;
     session.updated_at = updated_at.unwrap_or(created_at);
     session.last_active_at = updated_at.or(Some(created_at));
     session.status = SessionStatus::Closed;
+    normalize_imported_history(&mut session, true);
     session.save()?;
+    crate::logging::info(&format!(
+        "Imported session prepared: source_messages={original_messages} kept_messages={}",
+        session.messages.len()
+    ));
     Ok(session)
 }
 
@@ -716,6 +951,12 @@ pub fn import_codex_session_from_path(
         let line = line?;
         let trimmed = line.trim();
         if trimmed.is_empty() {
+            continue;
+        }
+        // Codex rollouts are dominated by reasoning, world-state, tool-output,
+        // and telemetry records. Only message records carry a user/assistant
+        // role, so reject the rest before serde allocates their often-large JSON.
+        if !json_line_has_message_role(trimmed) {
             continue;
         }
         let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {

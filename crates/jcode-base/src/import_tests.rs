@@ -86,6 +86,190 @@ fn test_convert_blocks_content() {
 }
 
 #[test]
+fn imported_tool_history_is_provider_neutral() {
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::TempDir::new().unwrap();
+    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let transcript = temp.path().join("tool-history.jsonl");
+    std::fs::write(
+        &transcript,
+        concat!(
+            "{\"type\":\"user\",\"uuid\":\"u1\",\"sessionId\":\"safe-tools\",\"message\":{\"role\":\"user\",\"content\":\"inspect it\"},\"timestamp\":\"2026-07-13T10:00:00Z\"}\n",
+            "{\"type\":\"assistant\",\"uuid\":\"a1\",\"sessionId\":\"safe-tools\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"hidden\"},{\"type\":\"tool_use\",\"id\":\"call/unsafe\",\"name\":\"mcp:read\",\"input\":{\"path\":\"a.txt\"}}]},\"timestamp\":\"2026-07-13T10:00:01Z\"}\n",
+            "{\"type\":\"user\",\"uuid\":\"u2\",\"sessionId\":\"safe-tools\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"call/unsafe\",\"content\":\"contents\"}]},\"timestamp\":\"2026-07-13T10:00:02Z\"}\n"
+        ),
+    )
+    .unwrap();
+
+    let imported = import_session_from_file(&transcript, "safe-tools").unwrap();
+    assert_eq!(imported.messages.len(), 3);
+    assert!(imported.messages.iter().all(|message| {
+        message
+            .content
+            .iter()
+            .all(|block| matches!(block, ContentBlock::Text { .. }))
+    }));
+    let visible = imported
+        .messages
+        .iter()
+        .flat_map(|message| message.content.iter())
+        .filter_map(|block| match block {
+            ContentBlock::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(visible.contains("[Imported tool call: mcp:read]"));
+    assert!(visible.contains("[Imported tool result: call/unsafe]"));
+    assert!(!visible.contains("hidden"));
+}
+
+#[test]
+fn imported_history_is_bounded_for_fast_initial_render() {
+    let mut session = Session::create_with_id("imported_test_bounded".to_string(), None, None);
+    for index in 0..(IMPORT_HISTORY_MAX_MESSAGES + 80) {
+        session.append_stored_message(StoredMessage {
+            id: format!("message-{index}"),
+            role: if index % 2 == 0 {
+                Role::User
+            } else {
+                Role::Assistant
+            },
+            content: vec![ContentBlock::Text {
+                text: format!("message {index} {}", "x".repeat(4096)),
+                cache_control: None,
+            }],
+            display_role: None,
+            timestamp: None,
+            tool_duration_ms: None,
+            token_usage: None,
+        });
+    }
+
+    assert!(normalize_imported_history(&mut session, true));
+    assert!(session.messages.len() <= IMPORT_HISTORY_MAX_MESSAGES + 1);
+    let text_bytes = session
+        .messages
+        .iter()
+        .flat_map(|message| message.content.iter())
+        .map(|block| match block {
+            ContentBlock::Text { text, .. } => text.len(),
+            _ => 0,
+        })
+        .sum::<usize>();
+    assert!(text_bytes <= IMPORT_HISTORY_MAX_TEXT_BYTES + 512);
+    assert!(matches!(
+        session.messages[0].content.first(),
+        Some(ContentBlock::Text { text, .. }) if text.contains("older messages were omitted")
+    ));
+}
+
+#[test]
+fn repeated_external_resume_reuses_the_imported_snapshot() {
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::TempDir::new().unwrap();
+    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let transcript = temp.path().join("cached.jsonl");
+    std::fs::write(
+        &transcript,
+        "{\"type\":\"user\",\"uuid\":\"u1\",\"sessionId\":\"cached\",\"message\":{\"role\":\"user\",\"content\":\"hello\"},\"timestamp\":\"2026-07-13T10:00:00Z\"}\n",
+    )
+    .unwrap();
+    let target = jcode_session_types::ResumeTarget::ClaudeCodeSession {
+        session_id: "cached".to_string(),
+        session_path: transcript.to_string_lossy().to_string(),
+    };
+
+    let first = resolve_resume_target_to_jcode(&target).unwrap();
+    std::fs::remove_file(&transcript).unwrap();
+    let second = resolve_resume_target_to_jcode(&target).unwrap();
+    assert_eq!(first, second);
+    assert!(Session::load(&imported_claude_code_session_id("cached")).is_ok());
+}
+
+#[test]
+fn cached_imported_session_preserves_existing_history_verbatim() {
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::TempDir::new().unwrap();
+    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let imported_id = imported_codex_session_id("legacy-tools");
+    let mut legacy = Session::create_with_id(imported_id.clone(), None, None);
+    legacy.append_stored_message(StoredMessage {
+        id: "assistant-tool".to_string(),
+        role: Role::Assistant,
+        content: vec![ContentBlock::ToolUse {
+            id: "legacy/call".to_string(),
+            name: "legacy:tool".to_string(),
+            input: serde_json::json!({"value": 1}),
+            thought_signature: None,
+        }],
+        display_role: None,
+        timestamp: None,
+        tool_duration_ms: None,
+        token_usage: None,
+    });
+    legacy.append_stored_message(StoredMessage {
+        id: "user-result".to_string(),
+        role: Role::User,
+        content: vec![ContentBlock::ToolResult {
+            tool_use_id: "legacy/call".to_string(),
+            content: "done".to_string(),
+            is_error: Some(false),
+        }],
+        display_role: None,
+        timestamp: None,
+        tool_duration_ms: None,
+        token_usage: None,
+    });
+    legacy.append_stored_message(StoredMessage {
+        id: "jcode-continuation".to_string(),
+        role: Role::Assistant,
+        content: vec![ContentBlock::Text {
+            text: "continued inside jcode".to_string(),
+            cache_control: None,
+        }],
+        display_role: None,
+        timestamp: None,
+        tool_duration_ms: None,
+        token_usage: None,
+    });
+    legacy.save().unwrap();
+
+    let resolved =
+        resolve_resume_target_to_jcode(&jcode_session_types::ResumeTarget::CodexSession {
+            session_id: "legacy-tools".to_string(),
+            session_path: temp
+                .path()
+                .join("source-no-longer-present.jsonl")
+                .to_string_lossy()
+                .to_string(),
+        })
+        .unwrap();
+    assert_eq!(
+        resolved,
+        jcode_session_types::ResumeTarget::JcodeSession {
+            session_id: imported_id.clone(),
+        }
+    );
+    let preserved = Session::load(&imported_id).unwrap();
+    assert_eq!(
+        serde_json::to_value(&preserved.messages).unwrap(),
+        serde_json::to_value(&legacy.messages).unwrap()
+    );
+}
+
+#[test]
+fn message_role_prefilter_accepts_json_whitespace() {
+    assert!(json_line_has_message_role(
+        r#"{"payload":{"role" : "assistant"}}"#
+    ));
+    assert!(json_line_has_message_role(r#"{"role":"user"}"#));
+    assert!(!json_line_has_message_role(
+        r#"{"type":"reasoning","content":"role text only"}"#
+    ));
+}
+
+#[test]
 fn test_discover_projects_uses_sandboxed_external_home() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::TempDir::new().unwrap();
