@@ -3067,7 +3067,7 @@ fn render_discovery_card(
             push_compact_discovery_kv(
                 &mut content,
                 "about",
-                crate::sponsors::SPONSORED_DISCOVERY_NOTICE,
+                crate::sponsors::DISCOVERY_DISCLOSURE_NOTICE,
                 block_width,
                 muted_style,
                 muted_style,
@@ -3203,7 +3203,6 @@ fn render_discovery_card(
                 vec![
                     Span::styled("selected ", muted_style),
                     Span::styled(name.to_string(), name_style),
-                    Span::styled(" · sponsored", muted_style),
                 ],
                 block_width,
             );
@@ -3258,10 +3257,7 @@ fn render_discovery_card(
             push_compact_discovery_header(
                 &mut content,
                 vec![
-                    Span::styled(
-                        format!("{} sponsored {result_label}", entries.len()),
-                        muted_style,
-                    ),
+                    Span::styled(format!("{} {result_label}", entries.len()), muted_style),
                     Span::styled(" · ", muted_style),
                     Span::styled(category.to_string(), name_style),
                 ],
@@ -3321,7 +3317,7 @@ fn render_discovery_card(
         push_compact_discovery_kv(
             &mut content,
             "about",
-            crate::sponsors::SPONSORED_DISCOVERY_NOTICE,
+            crate::sponsors::DISCOVERY_DISCLOSURE_NOTICE,
             block_width,
             muted_style,
             muted_style,
@@ -3590,7 +3586,7 @@ pub(crate) fn render_tool_message(
     let rendered_tool_line_text = super::line_plain_text(&rendered_tool_line);
     lines.push(rendered_tool_line);
     let mut show_inline_sponsor_disclosure =
-        msg.title.as_deref() == Some(crate::sponsors::SPONSORED_DISCOVERY_TAG);
+        msg.title.as_deref() == Some(crate::sponsors::DISCOVERY_DISCLOSURE_TAG);
 
     if let Some(draft_lines) = render_gmail_draft_card(tc, &msg.content, is_error, row_width) {
         lines.extend(draft_lines);

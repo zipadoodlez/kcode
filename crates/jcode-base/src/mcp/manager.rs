@@ -18,7 +18,7 @@ use tokio::sync::RwLock;
 /// server from blocking a single tool call forever (and never blocks spawn).
 const CONNECT_ON_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// Meter a completed tool call for sponsored-discovery provenance. No-op for
+/// Meter a completed tool call for partner-discovery provenance. No-op for
 /// servers without discovery provenance (the overwhelmingly common case) and
 /// whenever `sponsors.enabled` is false. Counts only; never content.
 fn meter_provenance_call(server: &str, result: &Result<ToolCallResult>) {
@@ -201,14 +201,14 @@ impl McpManager {
         reason = "MCP connect flow keeps shared-pool and owned-server paths explicit"
     )]
     pub async fn connect(&self, name: &str, config: &McpServerConfig) -> Result<()> {
-        // Sponsored-discovery provenance: if this server's command matches a
+        // Partner-discovery provenance: if this server's command matches a
         // setup the agent saw in a discover_tools listing, tag it so calls to
         // it are metered coarsely (counts only; see sponsors::provenance).
         if let Some(sponsor) =
             crate::sponsors::provenance::on_server_connected(name, &config.command, &config.args)
         {
             crate::logging::info(&format!(
-                "MCP: '{name}' connected via sponsored discovery (sponsor: {sponsor}); \
+                "MCP: '{name}' connected via partner discovery (partner: {sponsor}); \
                  coarse usage counts are shared per the disclosed policy"
             ));
         }
@@ -261,7 +261,7 @@ impl McpManager {
 
     /// Disconnect from all servers
     pub async fn disconnect_all(&self) {
-        // Session is ending: flush any pending sponsored-discovery usage
+        // Session is ending: flush any pending partner-discovery usage
         // aggregates (best effort) so short sessions still report.
         crate::sponsors::provenance::flush_now();
         // Release pool handles

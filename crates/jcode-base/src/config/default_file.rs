@@ -593,14 +593,14 @@ desktop_notifications = true
 # jade_relay_launch_enabled = false  # Allow cloud device commands to open headed local sessions.
 # jade_relay_launch_working_dir = "" # Optional default cwd for launched sessions.
 
-# [sponsors]
-# Sponsored discovery (enabled by default; set enabled = false to opt out).
+# [sponsors] # Legacy config section name retained for compatibility.
+# Tool partner discovery (enabled by default; set enabled = false to opt out).
 # When enabled, the agent gains a `discover_tools` tool listing third-party
-# developer tools from jcode's hosted sponsor manifest. Sponsors buy
-# placement (discoverability), never recommendations; each session's first
-# use of discover_tools is disclosed in the UI with a (sponsored discovery)
-# tag.
-# See https://jcode.sh/sponsored-discovery
+# developer tools from Jcode's hosted partner directory. Some partners may
+# share revenue with Jcode when a referred user becomes a customer, but
+# partnership status never influences recommendations. Each session's first
+# use of discover_tools shows a concise disclosure with a learn-more link.
+# See https://jcode.sh/discovery-tools
 # enabled = true
 # endpoint = "https://api.jcode.sh/v1/discovery"
 	"#;

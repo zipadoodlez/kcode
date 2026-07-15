@@ -1738,14 +1738,14 @@ fn discovery_message(content: &str, input: serde_json::Value) -> DisplayMessage 
 
 fn first_discovery_message(content: &str, input: serde_json::Value) -> DisplayMessage {
     let mut message = discovery_message(content, input);
-    message.title = Some(crate::sponsors::SPONSORED_DISCOVERY_TAG.to_string());
+    message.title = Some(crate::sponsors::DISCOVERY_DISCLOSURE_TAG.to_string());
     message
 }
 
 #[test]
 fn render_tool_message_shows_discovery_browse_results_and_rationale() {
     let msg = first_discovery_message(
-        "Discoverable tools in 'payments' (sponsored discovery: placement, not preference; details: https://jcode.sh/sponsored-discovery):\n\n- agentcard: prepaid virtual Visa cards for AI agents (https://agentcard.sh/?via=jcode-discovery)\n\nBrowse request ID: `11111111-2222-4333-8444-555555555555`",
+        "Discoverable tools in 'payments' (Jcode tool directory; recommendations must be based only on fit; details: https://jcode.sh/discovery-tools):\n\n- agentcard: prepaid virtual Visa cards for AI agents (https://agentcard.sh/?via=jcode-discovery)\n\nBrowse request ID: `11111111-2222-4333-8444-555555555555`",
         serde_json::json!({
             "action": "browse",
             "category": "payments",
@@ -1759,16 +1759,20 @@ fn render_tool_message_shows_discovery_browse_results_and_rationale() {
         .map(extract_line_text)
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(plain.contains("1 sponsored result · payments"), "{plain}");
+    assert!(plain.contains("1 result · payments"), "{plain}");
     assert!(plain.contains("why: the task needs test-mode"), "{plain}");
     assert!(plain.contains("agentcard"), "{plain}");
     assert!(plain.contains("prepaid virtual Visa cards"), "{plain}");
     assert!(plain.contains("agentcard.sh"), "{plain}");
     assert!(
-        plain.contains("sponsors make tools discoverable, never recommended"),
+        plain.contains("Jcode partners with tool providers to make their tools discoverable"),
         "{plain}"
     );
-    assert!(plain.contains("jcode.sh/sponsored-discovery"), "{plain}");
+    assert!(
+        without_whitespace(&plain).contains("Learnmore:https://jcode.sh/discovery-tools"),
+        "{plain}"
+    );
+    assert!(!plain.contains("sponsored result"), "{plain}");
     assert!(
         lines.len() <= 8,
         "compact discovery details used {} lines: {plain}",
@@ -1794,10 +1798,10 @@ fn render_tool_message_shows_discovery_browse_results_and_rationale() {
 fn batched_discovery_renders_first_use_disclosure_inline_once() {
     let msg = DisplayMessage {
         role: "tool".to_string(),
-        content: "--- [1] discover_tools ---\nDiscoverable tools in 'payments' (sponsored discovery: placement, not preference; details: https://jcode.sh/sponsored-discovery):\n\n- agentcard: prepaid virtual Visa cards for AI agents (https://agentcard.sh/?via=jcode-discovery)\n\nBrowse request ID: `11111111-2222-4333-8444-555555555555`\n\nCompleted: 1 succeeded, 0 failed".to_string(),
+        content: "--- [1] discover_tools ---\nDiscoverable tools in 'payments' (Jcode tool directory; recommendations must be based only on fit; details: https://jcode.sh/discovery-tools):\n\n- agentcard: prepaid virtual Visa cards for AI agents (https://agentcard.sh/?via=jcode-discovery)\n\nBrowse request ID: `11111111-2222-4333-8444-555555555555`\n\nCompleted: 1 succeeded, 0 failed".to_string(),
         tool_calls: Vec::new(),
         duration_secs: None,
-        title: Some(crate::sponsors::SPONSORED_DISCOVERY_TAG.to_string()),
+        title: Some(crate::sponsors::DISCOVERY_DISCLOSURE_TAG.to_string()),
         tool_data: Some(crate::message::ToolCall {
             id: "call_batch_discovery".to_string(),
             name: "batch".to_string(),
@@ -1824,10 +1828,10 @@ fn batched_discovery_renders_first_use_disclosure_inline_once() {
         .collect::<Vec<_>>()
         .join("\n");
 
-    assert!(plain.contains("1 sponsored result · payments"), "{plain}");
+    assert!(plain.contains("1 result · payments"), "{plain}");
     assert_eq!(
         plain
-            .matches("sponsors make tools discoverable, never recommended")
+            .matches("Jcode partners with tool providers to make their tools discoverable")
             .count(),
         1,
         "the batched first-use notice must render exactly once: {plain}"
@@ -1843,7 +1847,7 @@ fn batched_discovery_renders_first_use_disclosure_inline_once() {
 #[test]
 fn render_tool_message_shows_selected_discovery_setup() {
     let msg = discovery_message(
-        "Selected 'agentcard' from 'payments' (sponsored discovery: placement, not preference; details: https://jcode.sh/sponsored-discovery):\n\nagentcard: prepaid virtual Visa cards for AI agents (https://agentcard.sh/?via=jcode-discovery)\n\nSetup: Run `npx -y agentcard-mcp@1.2.3`, then connect the resulting MCP server.\n\nConsequential actions (signups, spending) must note the sponsorship in the confirmation shown to the user.",
+        "Selected 'agentcard' from 'payments' (Jcode tool directory; selection must be based only on fit; details: https://jcode.sh/discovery-tools):\n\nagentcard: prepaid virtual Visa cards for AI agents (https://agentcard.sh/?via=jcode-discovery)\n\nSetup: Run `npx -y agentcard-mcp@1.2.3`, then connect the resulting MCP server.\n\nConsequential actions (signups, spending) must note the partnership in the confirmation shown to the user.",
         serde_json::json!({
             "action": "select",
             "category": "payments",
@@ -1858,7 +1862,8 @@ fn render_tool_message_shows_selected_discovery_setup() {
         .map(extract_line_text)
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(plain.contains("selected agentcard · sponsored"), "{plain}");
+    assert!(plain.contains("selected agentcard"), "{plain}");
+    assert!(!plain.contains("sponsored"), "{plain}");
     assert!(
         plain.contains("details: prepaid virtual Visa cards"),
         "{plain}"
@@ -1867,7 +1872,7 @@ fn render_tool_message_shows_selected_discovery_setup() {
     assert!(plain.contains("setup:"), "{plain}");
     assert!(plain.contains("agentcard-mcp@1.2.3"), "{plain}");
     assert!(
-        !plain.contains("sponsors make tools discoverable"),
+        !plain.contains("Jcode partners with tool providers"),
         "later discovery results must not repeat the first-use notice: {plain}"
     );
 }
@@ -1875,7 +1880,7 @@ fn render_tool_message_shows_selected_discovery_setup() {
 #[test]
 fn render_tool_message_shows_catalog_suggestion_receipt_and_trust_line() {
     let msg = discovery_message(
-        "Catalog suggestion submitted.\n\nSuggestion ID: aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee\nCategory: payments\nKind: known_product\nCapability: manage Stripe sandbox products\nCatalog gap: no matching catalog entry\nProduct: Stripe sandbox MCP\nPublic URL: https://example.com/stripe-mcp\n\nStatus: received for Jcode maintainer review. Suggestions are not sent to sponsors. This does not mean the tool is approved, sponsored, or available.",
+        "Catalog suggestion submitted.\n\nSuggestion ID: aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee\nCategory: payments\nKind: known_product\nCapability: manage Stripe sandbox products\nCatalog gap: no matching catalog entry\nProduct: Stripe sandbox MCP\nPublic URL: https://example.com/stripe-mcp\n\nStatus: received for Jcode maintainer review. Suggestions are not sent to partners. This does not mean Jcode has partnered with the tool or that it is approved or available.",
         serde_json::json!({
             "action": "suggest",
             "category": "payments",

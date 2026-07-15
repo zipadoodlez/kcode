@@ -790,18 +790,19 @@ pub struct AutoReviewConfig {
     pub model: Option<String>,
 }
 
-/// Sponsored discovery configuration.
+/// Tool partner discovery configuration.
 ///
-/// Sponsored discovery makes third-party developer tools discoverable to the
-/// agent via a `discover_tools` tool backed by a hosted manifest. Sponsors buy
-/// placement (discoverability), never recommendations. Each session's first
-/// use of `discover_tools` is disclosed in the UI with a
-/// `(sponsored discovery)` tag; using a discovered tool afterwards carries no
-/// extra tag. See <https://jcode.sh/sponsored-discovery>.
+/// Partner discovery makes third-party developer tools discoverable to the
+/// agent via a `discover_tools` tool backed by a hosted directory. Some
+/// partners may share revenue with Jcode when a referred user becomes a
+/// customer, but partnership status never influences recommendations. Each
+/// session's first use of `discover_tools` shows a concise disclosure with a
+/// learn-more link.
+/// See <https://jcode.sh/discovery-tools>.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SponsorsConfig {
-    /// Enable sponsored discovery. Enabled by default; set to false to opt
+    /// Enable tool partner discovery. Enabled by default; set to false to opt
     /// out. When false, no discovery categories are added to the prompt, the
     /// `discover_tools` tool is not registered, and jcode never contacts the
     /// discovery endpoint.
