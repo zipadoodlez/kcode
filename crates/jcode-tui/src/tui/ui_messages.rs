@@ -12,7 +12,6 @@ use std::borrow::Cow;
 use unicode_width::UnicodeWidthStr;
 
 const MAX_INLINE_DIFF_LINES: usize = 12;
-const MAX_GMAIL_DRAFT_BODY_LINES: usize = 18;
 const MAX_DISCOVERY_DETAIL_LINES: usize = 2;
 const MAX_DISCOVERY_SETUP_LINES: usize = 3;
 const MAX_DISCOVERY_LISTING_ENTRIES: usize = 4;
@@ -2909,37 +2908,25 @@ fn render_gmail_draft_card(
     } else {
         body
     };
-    let body_lines = render_plaintext_lines(&body, inner_width);
-    let hidden_line_count = body_lines.len().saturating_sub(MAX_GMAIL_DRAFT_BODY_LINES);
-    for mut line in body_lines.into_iter().take(MAX_GMAIL_DRAFT_BODY_LINES) {
+    for mut line in render_plaintext_lines(&body, inner_width) {
         for span in &mut line.spans {
             span.style = body_style;
         }
         content.push(line);
     }
-    if hidden_line_count > 0 {
-        content.push(Line::from(Span::styled(
-            format!(
-                "… {} more line{}",
-                hidden_line_count,
-                if hidden_line_count == 1 { "" } else { "s" }
-            ),
-            metadata_style,
-        )));
-    }
 
     let title = if is_error {
-        "✉ Gmail draft failed".to_string()
+        "Gmail draft failed".to_string()
     } else if tool_output
         .lines()
         .any(|line| line.trim() == "Draft created successfully.")
     {
         match gmail_draft_id(tool_output) {
-            Some(id) => format!("✉ Gmail draft created · {}", id),
-            None => "✉ Gmail draft created".to_string(),
+            Some(id) => format!("Gmail draft created · {}", id),
+            None => "Gmail draft created".to_string(),
         }
     } else {
-        "✉ Gmail draft".to_string()
+        "Gmail draft".to_string()
     };
 
     Some(render_rounded_box(

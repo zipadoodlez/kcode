@@ -347,7 +347,7 @@ impl App {
                             "action": "draft",
                             "to": "team@example.com",
                             "subject": "Launch update",
-                            "body": "Hi team,\n\nThe launch is ready for final review. Please add any blocking feedback by 3 PM.\n\nThanks,\nJeremy",
+                            "body": "Hi team,\n\nThe launch is ready for final review. Please add any blocking feedback by 3 PM.\n\nChecklist:\n1. Confirm production configuration\n2. Verify the rollout dashboard\n3. Review support coverage\n4. Approve the customer announcement\n5. Confirm the rollback owner\n6. Run the final smoke test\n7. Record launch approval\n8. Notify regional teams\n9. Publish the status update\n10. Monitor the initial rollout\n11. Review early telemetry\n12. Confirm support handoff\n13. Check the incident channel\n14. Validate the public changelog\n15. Archive the launch checklist\n16. Schedule the retrospective\n17. Share the launch summary\n18. Thank the release team\n19. Capture follow-up tasks\n20. Confirm launch completion\n\nFULL DRAFT END\n\nThanks,\nJeremy",
                             "attachments": ["/tmp/launch-checklist.pdf"],
                             "intent": "Prepare launch update",
                         }),

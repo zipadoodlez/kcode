@@ -1570,6 +1570,10 @@ fn render_tool_message_shows_gmail_draft_card() {
         .join("\n");
 
     assert!(plain.contains("Gmail draft created · draft_123"), "{plain}");
+    assert!(
+        !plain.contains('✉'),
+        "draft card should not show an icon: {plain}"
+    );
     assert!(plain.contains("To: bob@example.com"), "{plain}");
     assert!(plain.contains("Subject: Project update"), "{plain}");
     assert!(
@@ -1603,7 +1607,7 @@ fn render_gmail_draft_card_marks_failures_and_empty_fields() {
 }
 
 #[test]
-fn render_gmail_draft_card_wraps_attachments_and_caps_long_body() {
+fn render_gmail_draft_card_wraps_attachments_and_shows_complete_long_body() {
     let body = (1..=30)
         .map(|index| format!("body line {index}"))
         .collect::<Vec<_>>()
@@ -1625,17 +1629,27 @@ fn render_gmail_draft_card_wraps_attachments_and_caps_long_body() {
     let lines = render_tool_message(&msg, 48, crate::config::DiffDisplayMode::Off);
     let rendered = lines.iter().map(extract_line_text).collect::<Vec<_>>();
     let plain = rendered.join("\n");
+    let compact = without_whitespace(&plain.replace('│', ""));
 
-    assert!(plain.contains("Attachments:"), "{plain}");
-    assert!(plain.contains("body line 18"), "{plain}");
-    assert!(plain.contains("12 more lines"), "{plain}");
     assert!(
-        !plain.contains("body line 19"),
-        "body should be capped after 18 visual lines: {plain}"
+        compact.contains("To:a-very-long-recipient-address@example.com"),
+        "{plain}"
     );
     assert!(
-        !plain.contains("body line 30"),
-        "body should be capped: {plain}"
+        compact.contains("Subject:Asubjectthatshouldwrapcleanlyinanarrowtranscript"),
+        "{plain}"
+    );
+    assert!(
+        compact
+            .contains("Attachments:/tmp/a-very-long-quarterly-report-filename.pdf,/tmp/notes.txt"),
+        "{plain}"
+    );
+    assert!(plain.contains("body line 18"), "{plain}");
+    assert!(plain.contains("body line 19"), "{plain}");
+    assert!(plain.contains("body line 30"), "{plain}");
+    assert!(
+        !plain.contains("more lines"),
+        "body must not be truncated: {plain}"
     );
     assert!(
         lines.iter().all(|line| line.width() <= 47),
