@@ -1326,6 +1326,7 @@ fn push_todo_goal_details(
         }
     }
     for (label, value) in [
+        ("User intention", goal.user_intention.as_deref()),
         ("Objective", goal.objective.as_deref()),
         ("Feedback", goal.feedback_loop.as_deref()),
     ] {

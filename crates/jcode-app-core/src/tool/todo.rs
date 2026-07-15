@@ -76,6 +76,22 @@ fn merge_goals(stored: &[TodoGoal], incoming: Option<Vec<TodoGoal>>) -> Vec<Todo
     let mut merged: Vec<TodoGoal> = Vec::new();
     for mut goal in incoming {
         goal.group = goal_group_key(goal.group.as_deref());
+        // User intention describes why the user asked for the goal and should
+        // remain stable while the agent revises metrics, feedback, or scores.
+        // An omitted intention therefore inherits the current value for the
+        // same goal. Sending an empty string remains an explicit way to clear
+        // its visible value.
+        if goal.user_intention.is_none() {
+            goal.user_intention = merged
+                .iter()
+                .find(|existing| existing.group == goal.group)
+                .or_else(|| {
+                    stored
+                        .iter()
+                        .find(|existing| goal_group_key(existing.group.as_deref()) == goal.group)
+                })
+                .and_then(|existing| existing.user_intention.clone());
+        }
         if let Some(slot) = merged
             .iter_mut()
             .find(|existing| existing.group == goal.group)
@@ -299,6 +315,10 @@ impl Tool for TodoTool {
                                 "type": "string",
                                 "description": "Group label this goal describes. Omit or null for the ungrouped list."
                             },
+                            "user_intention": {
+                                "type": "string",
+                                "description": "Optional concise statement of the user's underlying reason or desired outcome for this goal. Omit on later updates to retain the stored intention."
+                            },
                             "hill_climbability": {
                                 "type": "integer",
                                 "minimum": 0,
@@ -420,11 +440,12 @@ mod tests {
             .and_then(|v| v.as_object())
             .expect("goals should describe item objects");
         assert!(goal_props.contains_key("group"));
+        assert!(goal_props.contains_key("user_intention"));
         assert!(goal_props.contains_key("hill_climbability"));
         assert!(goal_props.contains_key("objective"));
         assert!(goal_props.contains_key("feedback_loop"));
         assert!(goal_props.contains_key("end_to_end_ownership"));
-        assert_eq!(goal_props.len(), 5);
+        assert_eq!(goal_props.len(), 6);
 
         let goal_required = props["goals"]["items"]["required"]
             .as_array()
@@ -554,13 +575,17 @@ mod tests {
     fn accepts_goals_including_string_coercion() {
         let input = json!({
             "goals": [
-                {"group": "optimize grep", "hill_climbability": "95", "objective": "p50 under 50ms", "feedback_loop": "run the grep benchmark and compare p50"},
+                {"group": "optimize grep", "user_intention": "make repository search feel instant", "hill_climbability": "95", "objective": "p50 under 50ms", "feedback_loop": "run the grep benchmark and compare p50"},
                 {"hill_climbability": 20}
             ]
         });
         let parsed = parse(input).expect("goals should parse");
         let goals = parsed.goals.expect("goals present");
         assert_eq!(goals[0].hill_climbability, Some(95));
+        assert_eq!(
+            goals[0].user_intention.as_deref(),
+            Some("make repository search feel instant")
+        );
         assert_eq!(goals[0].objective.as_deref(), Some("p50 under 50ms"));
         assert_eq!(
             goals[0].feedback_loop.as_deref(),
@@ -591,6 +616,21 @@ mod tests {
         assert_eq!(merged[1].group.as_deref(), Some("b"));
         // No incoming goals: stored goals unchanged.
         assert_eq!(merge_goals(&stored, None).len(), 2);
+    }
+
+    #[test]
+    fn merge_goals_retains_user_intention_when_update_omits_it() {
+        let mut stored_goal = goal(Some("a"), 20);
+        stored_goal.user_intention = Some("make search feel instant".to_string());
+        let stored = vec![stored_goal];
+
+        let merged = merge_goals(&stored, Some(vec![goal(Some("a"), 90)]));
+
+        assert_eq!(merged[0].hill_climbability, Some(90));
+        assert_eq!(
+            merged[0].user_intention.as_deref(),
+            Some("make search feel instant")
+        );
     }
 
     fn open_todo(group: Option<&str>) -> TodoItem {

@@ -138,7 +138,7 @@ pub fn load_goals(session_id: &str) -> Result<Vec<TodoGoal>> {
 ///
 /// Todo groups are intended to name coherent goals, so the group containing the
 /// current (or latest incomplete) item is the strongest signal. Ungrouped plans
-/// fall back to their measurable objective, then the item text itself.
+/// fall back to their measurable objective, user intention, then item text.
 pub fn derive_session_title(todos: &[TodoItem], goals: &[TodoGoal]) -> Option<String> {
     fn non_empty(value: Option<&str>) -> Option<String> {
         value
@@ -173,11 +173,22 @@ pub fn derive_session_title(todos: &[TodoItem], goals: &[TodoGoal]) -> Option<St
             return Some(objective);
         }
 
+        if let Some(user_intention) = goals
+            .iter()
+            .rev()
+            .find(|goal| goal.group.is_none())
+            .and_then(|goal| non_empty(goal.user_intention.as_deref()))
+        {
+            return Some(user_intention);
+        }
+
         return non_empty(Some(&todo.content));
     }
 
     goals.iter().rev().find_map(|goal| {
-        non_empty(goal.group.as_deref()).or_else(|| non_empty(goal.objective.as_deref()))
+        non_empty(goal.group.as_deref())
+            .or_else(|| non_empty(goal.objective.as_deref()))
+            .or_else(|| non_empty(goal.user_intention.as_deref()))
     })
 }
 
@@ -387,5 +398,44 @@ mod tests {
             derive_session_title(&todos, &[]).as_deref(),
             Some("Run targeted tests")
         );
+    }
+
+    #[test]
+    fn ungrouped_session_title_uses_user_intention_without_objective() {
+        let todos = vec![todo("Run targeted tests", "in_progress", None)];
+        let goals = vec![TodoGoal {
+            user_intention: Some("Keep resumed work easy to identify".to_string()),
+            ..Default::default()
+        }];
+
+        assert_eq!(
+            derive_session_title(&todos, &goals).as_deref(),
+            Some("Keep resumed work easy to identify")
+        );
+    }
+
+    #[test]
+    fn goal_user_intention_round_trips_through_storage() {
+        let _guard = crate::storage::lock_test_env();
+        let previous_home = std::env::var_os("JCODE_HOME");
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        crate::env::set_var("JCODE_HOME", dir.path());
+
+        let goals = vec![TodoGoal {
+            group: Some("todo user intention".to_string()),
+            user_intention: Some("Preserve why the user requested the work".to_string()),
+            ..Default::default()
+        }];
+        save_goals("user-intention-round-trip", &goals).expect("save goals");
+        let loaded = load_goals("user-intention-round-trip").expect("load goals");
+
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].group, goals[0].group);
+        assert_eq!(loaded[0].user_intention, goals[0].user_intention);
+
+        match previous_home {
+            Some(value) => crate::env::set_var("JCODE_HOME", value),
+            None => crate::env::remove_var("JCODE_HOME"),
+        }
     }
 }

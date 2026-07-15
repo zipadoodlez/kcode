@@ -238,6 +238,10 @@ pub struct TodoGoal {
     /// Group label this goal describes. `None` covers the ungrouped list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+    /// The user's underlying reason or desired outcome for this goal, kept
+    /// distinct from the agent's measurable objective and validation loop.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_intention: Option<String>,
     /// How hill-climbable this goal is, from 0-100: can progress be measured
     /// against a quantifiable, verifiable objective and iterated on?
     #[serde(default, skip_serializing_if = "Option::is_none")]
