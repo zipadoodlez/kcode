@@ -39,6 +39,51 @@ fn render_system_message_forces_system_color_on_all_spans() {
 }
 
 #[test]
+fn render_cold_cache_warning_is_always_one_width_bounded_line() {
+    let saved = crate::tui::markdown::center_code_blocks();
+    let msg = DisplayMessage::system(
+        "🧊 Prompt cache went cold · next turn may resend ~96K tok · /cache extends",
+    );
+
+    for centered in [false, true] {
+        crate::tui::markdown::set_center_code_blocks(centered);
+        for width in [80_u16, 50, 30] {
+            let lines = render_system_message(&msg, width, crate::config::DiffDisplayMode::Off);
+            assert_eq!(
+                lines.len(),
+                1,
+                "cold-cache notice wrapped at width {width} (centered={centered}): {lines:?}"
+            );
+            let text = extract_line_text(&lines[0]);
+            assert!(
+                !text.contains('\n'),
+                "cold-cache notice contains a newline: {text:?}"
+            );
+            assert!(
+                lines[0].width() <= width as usize,
+                "cold-cache notice width {} exceeds {width}: {text:?}",
+                lines[0].width()
+            );
+            assert!(
+                text.contains("Prompt cache went cold"),
+                "cold-cache identity was truncated away: {text:?}"
+            );
+            if width < 80 {
+                assert!(
+                    text.ends_with('…'),
+                    "narrow cold-cache notice should end in an ellipsis: {text:?}"
+                );
+            }
+            for span in &lines[0].spans {
+                assert_eq!(span.style.fg, Some(system_message_color()));
+            }
+        }
+    }
+
+    crate::tui::markdown::set_center_code_blocks(saved);
+}
+
+#[test]
 fn render_system_message_renders_markdown_formatting() {
     let msg = DisplayMessage::system(
         "**bold** and `code` and # heading\n- bullet item\n[link](http://example.com)",

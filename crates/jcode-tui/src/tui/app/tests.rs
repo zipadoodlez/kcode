@@ -211,7 +211,7 @@ fn cold_cache_warning_fires_on_idle_tick_before_next_message() {
         })
         .expect("idle cold cache warning should be persisted in the transcript");
     assert!(
-        warning.content.contains("resent with your next message"),
+        warning.content.contains("next turn may resend"),
         "{warning:?}"
     );
     assert!(

@@ -1772,11 +1772,11 @@ impl App {
         // suspended TUI), where the age is genuinely informative.
         let message = match trigger {
             ColdCacheWarningTrigger::IdleExpiry => format!(
-                "🧊 Prompt cache went cold: ~{} tok resent with your next message (/cache to extend)",
+                "🧊 Prompt cache went cold · next turn may resend ~{} tok · /cache extends",
                 token_label
             ),
             ColdCacheWarningTrigger::RequestStart => format!(
-                "🧊 Prompt cache went cold {} ago: ~{} tok may be resent on this request",
+                "🧊 Prompt cache went cold {} ago · this request may resend ~{} tok",
                 crate::tui::format_compact_age(expired_ago_secs),
                 token_label
             ),

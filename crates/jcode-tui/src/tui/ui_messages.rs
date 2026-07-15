@@ -48,6 +48,34 @@ fn normalize_system_content_for_display(content: &str) -> Cow<'_, str> {
     Cow::Owned(normalized)
 }
 
+fn render_single_line_system_notice(
+    msg: &DisplayMessage,
+    width: u16,
+) -> Option<Vec<Line<'static>>> {
+    if !msg.content.starts_with("🧊 Prompt cache went cold") {
+        return None;
+    }
+
+    let centered = markdown::center_code_blocks();
+    let line_width = centered_wrap_width(width.saturating_sub(4), centered, 96);
+    let display_content = normalize_system_content_for_display(&msg.content);
+    let compact = display_content
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let line = Line::from(Span::styled(compact, system_message_color()));
+    let mut lines = vec![super::truncate_line_with_ellipsis_to_width(
+        &line, line_width,
+    )];
+    if centered {
+        left_pad_lines_for_centered_mode(&mut lines, width);
+    }
+    for span in &mut lines[0].spans {
+        span.style.fg = Some(system_message_color());
+    }
+    Some(lines)
+}
+
 pub(crate) fn render_assistant_message(
     msg: &DisplayMessage,
     width: u16,
@@ -525,6 +553,12 @@ pub(crate) fn render_system_message(
         || msg.content.starts_with("⚡ Connection lost - retrying")
     {
         return render_connection_system_message(msg, width);
+    }
+
+    // Cache-expiry warnings are transient status notices. Keep them scannable
+    // and prevent a narrow viewport from turning one warning into a paragraph.
+    if let Some(lines) = render_single_line_system_notice(msg, width) {
+        return lines;
     }
 
     if let Some(lines) = render_scheduled_session_message(msg, width) {
