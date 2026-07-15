@@ -96,6 +96,7 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
         "/reasoning",
         "Show/change reasoning display (off/full/current)",
     ),
+    RegisteredCommand::public("/cancel", "Cancel the current prompt or operation"),
     RegisteredCommand::public("/clear", "Clear conversation history"),
     RegisteredCommand::public("/rewind", "Rewind conversation to previous message"),
     RegisteredCommand::public("/poke", "Poke model to resume with incomplete todos"),

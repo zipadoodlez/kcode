@@ -812,6 +812,7 @@ fn test_registered_command_suggestions_include_aliases_and_hide_secret_commands(
     let suggestions = app.get_suggestions_for("/");
     let commands: Vec<&str> = suggestions.iter().map(|(cmd, _)| cmd.as_str()).collect();
 
+    assert_eq!(commands.iter().filter(|cmd| **cmd == "/cancel").count(), 1);
     assert!(commands.contains(&"/models"));
     assert!(commands.contains(&"/sessions"));
     assert!(commands.contains(&"/dictation"));
@@ -820,6 +821,16 @@ fn test_registered_command_suggestions_include_aliases_and_hide_secret_commands(
     assert!(!commands.contains(&"/z"));
     assert!(!commands.contains(&"/zz"));
     assert!(!commands.contains(&"/zzz"));
+}
+
+#[test]
+fn test_cancel_command_is_available_for_prefix_autocomplete() {
+    let app = create_test_app();
+    let suggestions = app.get_suggestions_for("/can");
+
+    assert!(suggestions.iter().any(|(cmd, help)| {
+        cmd == "/cancel" && *help == "Cancel the current prompt or operation"
+    }));
 }
 
 #[test]
