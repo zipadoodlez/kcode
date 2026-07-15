@@ -7,7 +7,6 @@ Jcode is open source: <https://github.com/1jehuang/jcode>
 
 ## Tool call notes
 
-Use `batch` tool to parallelize tool calls.
 You can't interact with interactive commands. Use non-interactive instead.
 
 ## Autonomy and persistence
