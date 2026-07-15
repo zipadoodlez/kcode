@@ -1,3 +1,9 @@
+/// Quality-first default for Claude-capable routes.
+pub const DEFAULT_CLAUDE_MODEL: &str = "claude-fable-5";
+
+/// Quality-first default for OpenAI-capable routes.
+pub const DEFAULT_OPENAI_MODEL: &str = "gpt-5.6-sol";
+
 /// Available Claude models used by model lists and provider routing.
 ///
 /// NOTE: The Mythos preview family was retired by Anthropic and 404s, so it is
@@ -5,7 +11,7 @@
 /// live again. The list is curated best-first; position 0 is the flagship
 /// used for post-login default selection.
 pub const ALL_CLAUDE_MODELS: &[&str] = &[
-    "claude-fable-5",
+    DEFAULT_CLAUDE_MODEL,
     "claude-opus-4-8",
     "claude-opus-4-6",
     "claude-opus-4-6[1m]",
@@ -19,9 +25,10 @@ pub const ALL_CLAUDE_MODELS: &[&str] = &[
 ];
 
 /// Available OpenAI models used by model lists and provider routing.
+/// The list is curated best-first; position 0 is the quality-first default.
 pub const ALL_OPENAI_MODELS: &[&str] = &[
+    DEFAULT_OPENAI_MODEL,
     "gpt-5.5",
-    "gpt-5.6-sol",
     "gpt-5.4",
     "gpt-5.4-pro",
     "gpt-5.3-codex",
@@ -389,6 +396,18 @@ pub fn normalize_copilot_model_name(model: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quality_first_defaults_are_first_in_curated_model_orders() {
+        assert_eq!(
+            ALL_CLAUDE_MODELS.first().copied(),
+            Some(DEFAULT_CLAUDE_MODEL)
+        );
+        assert_eq!(
+            ALL_OPENAI_MODELS.first().copied(),
+            Some(DEFAULT_OPENAI_MODEL)
+        );
+    }
 
     #[test]
     fn context_limit_handles_claude_1m_aliases() {

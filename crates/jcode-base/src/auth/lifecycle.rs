@@ -414,6 +414,10 @@ struct FrontierFamily {
 /// strongest family per provider is listed (Claude Opus, GPT base, Gemini Pro) so
 /// we never auto-promote a cheaper family/tier over the curated flagship.
 fn frontier_families(activation: &AuthActivationResult) -> &'static [FrontierFamily] {
+    const FABLE: FrontierFamily = FrontierFamily {
+        prefix: "claude-fable",
+        flagship_token: None,
+    };
     const CLAUDE: FrontierFamily = FrontierFamily {
         prefix: "claude-opus",
         flagship_token: None,
@@ -427,10 +431,10 @@ fn frontier_families(activation: &AuthActivationResult) -> &'static [FrontierFam
         flagship_token: Some("pro"),
     };
     match activation.provider_id.as_deref() {
-        Some("claude") | Some("claude-api") => &[CLAUDE],
+        Some("claude") | Some("claude-api") => &[FABLE, CLAUDE],
         Some("openai") | Some("openai-api") | Some("azure-openai") => &[GPT],
         // Copilot/Cursor proxy both families under canonical ids.
-        Some("copilot") | Some("cursor") => &[CLAUDE, GPT],
+        Some("copilot") | Some("cursor") => &[FABLE, CLAUDE, GPT],
         // Bedrock hosts Claude under `anthropic.claude-opus-...` (prefix stripped
         // by normalize), so the Claude family applies.
         Some("bedrock") => &[CLAUDE],
@@ -451,28 +455,60 @@ fn parse_frontier_model(model: &str, families: &[FrontierFamily]) -> Option<Fron
         .filter(|fam| normalized.starts_with(fam.prefix))
         .max_by_key(|fam| fam.prefix.len())?;
 
+    let version = parse_frontier_version_for_family(&normalized, *family, false)?;
+    Some(FrontierModel {
+        family: family.prefix.to_string(),
+        version,
+    })
+}
+
+/// Parse a model version within one known frontier family. Curated defaults may
+/// carry a quality-profile suffix such as `gpt-5.6-sol`; when `allow_suffix` is
+/// true, the leading numeric release is still used as the promotion baseline.
+/// Live promotion candidates remain strict, so cheap/specialized variants never
+/// self-promote merely because they contain a higher version number.
+fn parse_frontier_version_for_family(
+    normalized_model: &str,
+    family: FrontierFamily,
+    allow_suffix: bool,
+) -> Option<Vec<u64>> {
+    if !normalized_model.starts_with(family.prefix) {
+        return None;
+    }
+
     match family.flagship_token {
         None => {
             // Bare-flagship family (Claude/OpenAI): reject any tier word, then
             // require a pure-numeric remainder after the prefix.
-            if NON_FLAGSHIP_TIER_WORDS
-                .iter()
-                .any(|word| normalized.contains(word))
+            if !allow_suffix
+                && NON_FLAGSHIP_TIER_WORDS
+                    .iter()
+                    .any(|word| normalized_model.contains(word))
             {
                 return None;
             }
-            let remainder = normalized[family.prefix.len()..].trim_matches(['-', '.', ' ']);
-            let version = parse_version_components(remainder)?;
-            Some(FrontierModel {
-                family: family.prefix.to_string(),
-                version,
-            })
+            let remainder = normalized_model[family.prefix.len()..].trim_matches(['-', '.', ' ']);
+            if !allow_suffix {
+                return parse_version_components(remainder);
+            }
+            let mut version = Vec::new();
+            for part in remainder.split(['.', '-']) {
+                if part.is_empty() {
+                    continue;
+                }
+                match part.parse::<u64>() {
+                    Ok(number) => version.push(number),
+                    Err(_) if !version.is_empty() => break,
+                    Err(_) => return None,
+                }
+            }
+            (!version.is_empty()).then_some(version)
         }
         Some(flagship_token) => {
             // Flagship-token family (Gemini): the id must contain the flagship
             // token and nothing else but version numbers + that token. Reject any
             // other word (e.g. `flash`, `lite`).
-            let remainder = normalized[family.prefix.len()..].trim_matches(['-', '.', ' ']);
+            let remainder = normalized_model[family.prefix.len()..].trim_matches(['-', '.', ' ']);
             if remainder.is_empty() {
                 return None;
             }
@@ -492,10 +528,7 @@ fn parse_frontier_model(model: &str, families: &[FrontierFamily]) -> Option<Fron
             if !saw_flagship_token || version.is_empty() {
                 return None;
             }
-            Some(FrontierModel {
-                family: family.prefix.to_string(),
-                version,
-            })
+            Some(version)
         }
     }
 }
@@ -549,18 +582,42 @@ fn newest_frontier_release(
         return None;
     }
 
-    // Baseline: the strongest curated flagship version per family. We only
-    // auto-promote a live model that beats its family's curated baseline, so a
-    // new release must genuinely exceed what we already ship.
-    let curated_baseline = |family: &str| -> Option<Vec<u64>> {
+    // Only auto-promote within the strongest frontier family that is actually
+    // present. This prevents a newer lower-priority Opus id from displacing an
+    // available Fable default, while still allowing Opus promotion when Fable is
+    // absent and GPT promotion when Sol is the active quality profile.
+    let active_family = families.iter().copied().find(|family| {
+        routes.iter().any(|route| {
+            let normalized = normalize_model_for_preference(&route.model);
+            parse_frontier_version_for_family(&normalized, *family, true).is_some()
+        })
+    })?;
+
+    // Baseline: the strongest *available* curated release in the active family.
+    // If the preferred profile (for example Sol 5.6) is unavailable, a clean
+    // model at that release may still promote over the next available fallback
+    // (for example GPT 5.5). When no curated route is available at all, fall back
+    // to the shipped catalog baseline so an old unknown id cannot self-promote.
+    let curated_baseline = |family: FrontierFamily| -> Option<Vec<u64>> {
         let orders = provider_preferred_model_orders(activation);
-        orders
+        let available_baseline = routes
             .iter()
-            .flat_map(|order| order.iter())
-            .filter_map(|id| parse_frontier_model(id, families))
-            .filter(|m| m.family == family)
-            .map(|m| m.version)
-            .max_by(|a, b| version_cmp(a, b))
+            .filter(|route| preferred_model_rank(orders, &route.model) != usize::MAX)
+            .filter_map(|route| {
+                let normalized = normalize_model_for_preference(&route.model);
+                parse_frontier_version_for_family(&normalized, family, true)
+            })
+            .max_by(|a, b| version_cmp(a, b));
+        available_baseline.or_else(|| {
+            orders
+                .iter()
+                .flat_map(|order| order.iter())
+                .filter_map(|id| {
+                    let normalized = normalize_model_for_preference(id);
+                    parse_frontier_version_for_family(&normalized, family, true)
+                })
+                .max_by(|a, b| version_cmp(a, b))
+        })
     };
 
     let mut best: Option<(FrontierModel, String)> = None;
@@ -568,8 +625,11 @@ fn newest_frontier_release(
         let Some(parsed) = parse_frontier_model(&route.model, families) else {
             continue;
         };
+        if parsed.family != active_family.prefix {
+            continue;
+        }
         // Must strictly beat the curated baseline for its family.
-        let Some(baseline) = curated_baseline(&parsed.family) else {
+        let Some(baseline) = curated_baseline(active_family) else {
             continue;
         };
         if version_cmp(&parsed.version, &baseline) != std::cmp::Ordering::Greater {
@@ -709,7 +769,7 @@ pub fn normalized_auth_provider_id(provider_hint: Option<&str>) -> Option<&'stat
 
 /// Pick the preferred first-run provider when the machine already has working
 /// OpenAI and/or Anthropic credentials. Keep this aligned with
-/// `jcode_provider_core::auto_default_provider`: OpenAI wins when both families
+/// `jcode_provider_core::auto_default_provider`: Claude wins when both families
 /// are available, and OAuth wins over an API key within the same family.
 ///
 /// Returning the auth-specific provider id (`openai` vs `openai-api`, `claude`
@@ -717,6 +777,16 @@ pub fn normalized_auth_provider_id(provider_hint: Option<&str>) -> Option<&'stat
 /// matching route and its strongest available model.
 pub fn preferred_frontier_auth_provider(status: &crate::auth::AuthStatus) -> Option<&'static str> {
     use crate::auth::AuthState;
+
+    if status.anthropic.state == AuthState::Available {
+        if status.anthropic.has_oauth && status.anthropic.oauth_state == AuthState::Available {
+            return Some("claude");
+        }
+        if status.anthropic.has_api_key {
+            return Some("claude-api");
+        }
+        return Some("claude");
+    }
 
     if status.openai == AuthState::Available {
         if status.openai_has_oauth && status.openai_oauth_state == AuthState::Available {
@@ -728,16 +798,6 @@ pub fn preferred_frontier_auth_provider(status: &crate::auth::AuthStatus) -> Opt
         // Preserve compatibility with older/partial status snapshots that only
         // populated the aggregate state.
         return Some("openai");
-    }
-
-    if status.anthropic.state == AuthState::Available {
-        if status.anthropic.has_oauth && status.anthropic.oauth_state == AuthState::Available {
-            return Some("claude");
-        }
-        if status.anthropic.has_api_key {
-            return Some("claude-api");
-        }
-        return Some("claude");
     }
 
     None
@@ -1665,7 +1725,7 @@ mod tests {
         // Live Anthropic catalogs list `claude-haiku-4-5-...` before the
         // flagship, and an API-key login supplies no activated model. Plain
         // catalog order would auto-select Haiku; the flagship-first fallback
-        // must land on the curated default (`claude-opus-4-8`) instead.
+        // must land on the curated quality-first default (Fable 5) instead.
         let activation = AuthActivationResult {
             provider_id: Some("claude-api".to_string()),
             provider_label: Some("Anthropic".to_string()),
@@ -1677,12 +1737,13 @@ mod tests {
             route("claude-haiku-4-5-20251001", "Anthropic", "claude-api", true),
             route("claude-opus-4-6", "Anthropic", "claude-api", true),
             route("claude-opus-4-8", "Anthropic", "claude-api", true),
+            route("claude-fable-5", "Anthropic", "claude-api", true),
             route("claude-sonnet-4-6", "Anthropic", "claude-api", true),
         ];
 
         assert_eq!(
             provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
-            Some("claude-opus-4-8"),
+            Some("claude-fable-5"),
             "API-key login should auto-select the Anthropic flagship, not the first catalog route"
         );
     }
@@ -1699,11 +1760,12 @@ mod tests {
         let routes = vec![
             route("claude-haiku-4-5", "Anthropic", "claude-oauth", true),
             route("claude-opus-4-8", "Anthropic", "claude-oauth", true),
+            route("claude-fable-5", "Anthropic", "claude-oauth", true),
         ];
 
         assert_eq!(
             provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
-            Some("claude-opus-4-8")
+            Some("claude-fable-5")
         );
     }
 
@@ -1719,11 +1781,47 @@ mod tests {
         let routes = vec![
             route("gpt-5.1", "OpenAI", "openai-api", true),
             route("gpt-5.5", "OpenAI", "openai-api", true),
+            route("gpt-5.6-sol", "OpenAI", "openai-api", true),
         ];
 
         assert_eq!(
             provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
+            Some("gpt-5.6-sol")
+        );
+    }
+
+    #[test]
+    fn post_auth_model_selection_falls_back_when_quality_first_model_is_unavailable() {
+        let claude = activation_for_provider_id("claude-api");
+        let claude_routes = vec![
+            route("claude-fable-5", "Anthropic", "claude-api", false),
+            route("claude-opus-4-8", "Anthropic", "claude-api", true),
+        ];
+        assert_eq!(
+            provider_model_to_select_after_auth(&claude, None, &claude_routes).as_deref(),
+            Some("claude-opus-4-8")
+        );
+
+        let openai = activation_for_provider_id("openai-api");
+        let openai_routes = vec![
+            route("gpt-5.6-sol", "OpenAI", "openai-api", false),
+            route("gpt-5.5", "OpenAI", "openai-api", true),
+        ];
+        assert_eq!(
+            provider_model_to_select_after_auth(&openai, None, &openai_routes).as_deref(),
             Some("gpt-5.5")
+        );
+
+        let openai_routes_with_clean_release = vec![
+            route("gpt-5.6-sol", "OpenAI", "openai-api", false),
+            route("gpt-5.5", "OpenAI", "openai-api", true),
+            route("gpt-5.6", "OpenAI", "openai-api", true),
+        ];
+        assert_eq!(
+            provider_model_to_select_after_auth(&openai, None, &openai_routes_with_clean_release)
+                .as_deref(),
+            Some("gpt-5.6"),
+            "a clean same-generation release should beat GPT 5.5 when Sol is unavailable"
         );
     }
 
@@ -1834,16 +1932,41 @@ mod tests {
             "a newer pure Opus flagship in the live catalog should auto-promote"
         );
 
-        // Same for OpenAI: `gpt-5.6` beats curated `gpt-5.5`.
+        // Same for OpenAI: a future `gpt-5.7` beats the curated Sol 5.6 baseline.
         let activation = activation_for_provider_id("openai");
         let routes = vec![
             route("gpt-5-mini", "OpenAI", "openai", true),
-            route("gpt-5.5", "OpenAI", "openai", true),
-            route("gpt-5.6", "OpenAI", "openai", true),
+            route("gpt-5.6-sol", "OpenAI", "openai", true),
+            route("gpt-5.7", "OpenAI", "openai", true),
         ];
         assert_eq!(
             provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
-            Some("gpt-5.6")
+            Some("gpt-5.7")
+        );
+    }
+
+    #[test]
+    fn quality_first_defaults_are_not_displaced_by_lower_family_or_equal_release() {
+        let claude = activation_for_provider_id("claude-api");
+        let claude_routes = vec![
+            route("claude-opus-4-9", "Anthropic", "claude-api", true),
+            route("claude-fable-5", "Anthropic", "claude-api", true),
+        ];
+        assert_eq!(
+            provider_model_to_select_after_auth(&claude, None, &claude_routes).as_deref(),
+            Some("claude-fable-5"),
+            "a newer lower-priority Opus release must not displace available Fable"
+        );
+
+        let openai = activation_for_provider_id("openai");
+        let openai_routes = vec![
+            route("gpt-5.6", "OpenAI", "openai", true),
+            route("gpt-5.6-sol", "OpenAI", "openai", true),
+        ];
+        assert_eq!(
+            provider_model_to_select_after_auth(&openai, None, &openai_routes).as_deref(),
+            Some("gpt-5.6-sol"),
+            "the base model at the same release must not displace the Sol quality profile"
         );
     }
 
@@ -2313,8 +2436,8 @@ mod tests {
         };
         assert_eq!(
             preferred_frontier_auth_provider(&both_oauth),
-            Some("openai"),
-            "OpenAI remains the global first-run default when both frontier providers work"
+            Some("claude"),
+            "Claude is the quality-first default when both frontier providers work"
         );
 
         let openai_api_and_oauth = AuthStatus {

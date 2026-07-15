@@ -39,7 +39,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 const CHATGPT_API_BASE: &str = "https://chatgpt.com/backend-api/codex";
 const RESPONSES_PATH: &str = "responses";
-const DEFAULT_MODEL: &str = "gpt-5.5";
+const DEFAULT_MODEL: &str = jcode_provider_core::DEFAULT_OPENAI_MODEL;
 const ORIGINATOR: &str = "codex_cli_rs";
 
 /// Whether the hosted `image_generation` tool can be attached for `model_id`.

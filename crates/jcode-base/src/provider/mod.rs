@@ -1605,13 +1605,13 @@ impl Provider for MultiProvider {
                 } else if let Some(claude) = self.claude_provider() {
                     claude.model()
                 } else {
-                    "claude-opus-4-5-20251101".to_string()
+                    jcode_provider_core::DEFAULT_CLAUDE_MODEL.to_string()
                 }
             }
             ActiveProvider::OpenAI => self
                 .openai_provider()
                 .map(|o| o.model())
-                .unwrap_or_else(|| "gpt-5.5".to_string()),
+                .unwrap_or_else(|| jcode_provider_core::DEFAULT_OPENAI_MODEL.to_string()),
             ActiveProvider::Copilot => self
                 .copilot_provider()
                 .map(|o| o.model())

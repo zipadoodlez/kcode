@@ -205,7 +205,7 @@ fn test_set_model_rejects_cross_provider_without_creds() {
 }
 
 #[test]
-fn test_auto_default_prefers_openai_over_claude_when_both_available() {
+fn test_auto_default_prefers_claude_over_openai_when_both_available() {
     let active = MultiProvider::auto_default_provider(ProviderAvailability {
         openai: true,
         claude: true,
@@ -217,7 +217,7 @@ fn test_auto_default_prefers_openai_over_claude_when_both_available() {
         openrouter: false,
         copilot_premium_zero: false,
     });
-    assert_eq!(active, ActiveProvider::OpenAI);
+    assert_eq!(active, ActiveProvider::Claude);
 }
 
 #[test]

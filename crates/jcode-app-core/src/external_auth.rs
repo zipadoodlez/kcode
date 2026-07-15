@@ -162,13 +162,13 @@ pub struct ExternalAuthAutoImportOutcome {
 
 impl ExternalAuthAutoImportOutcome {
     /// Provider to activate after a successful multi-source import. This mirrors
-    /// jcode's global provider preference: OpenAI first, then Anthropic, followed
+    /// jcode's global provider preference: Anthropic first, then OpenAI, followed
     /// by the remaining supported providers. The precise OAuth/API-key variant
     /// is resolved from `AuthStatus` by the caller when possible.
     pub fn preferred_activation_provider(&self) -> Option<&'static str> {
         const ORDER: &[&str] = &[
-            "openai",
             "claude",
+            "openai",
             "copilot",
             "gemini",
             "cursor",
@@ -746,7 +746,7 @@ mod render_markdown_tests {
                 ("openai", "import"),
             ],
         };
-        assert_eq!(outcome.preferred_activation_provider(), Some("openai"));
+        assert_eq!(outcome.preferred_activation_provider(), Some("claude"));
 
         let anthropic_only = ExternalAuthAutoImportOutcome {
             imported: 1,

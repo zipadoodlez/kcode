@@ -44,10 +44,10 @@ impl ProviderAvailability {
 pub fn auto_default_provider(availability: ProviderAvailability) -> ActiveProvider {
     if availability.copilot_premium_zero && availability.copilot {
         ActiveProvider::Copilot
-    } else if availability.openai {
-        ActiveProvider::OpenAI
     } else if availability.claude {
         ActiveProvider::Claude
+    } else if availability.openai {
+        ActiveProvider::OpenAI
     } else if availability.copilot {
         ActiveProvider::Copilot
     } else if availability.antigravity {
@@ -657,6 +657,16 @@ mod tests {
             ..ProviderAvailability::default()
         });
         assert_eq!(provider, ActiveProvider::Copilot);
+    }
+
+    #[test]
+    fn auto_default_prefers_claude_when_both_frontier_providers_are_available() {
+        let provider = auto_default_provider(ProviderAvailability {
+            openai: true,
+            claude: true,
+            ..ProviderAvailability::default()
+        });
+        assert_eq!(provider, ActiveProvider::Claude);
     }
 
     #[test]

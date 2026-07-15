@@ -2,6 +2,72 @@
 
 use super::onboarding_flow::{ExternalCli, OnboardingFlow, OnboardingPhase};
 
+#[derive(Clone)]
+struct QualityFirstOpenAiProvider {
+    model: std::sync::Arc<std::sync::RwLock<String>>,
+}
+
+#[async_trait::async_trait]
+impl Provider for QualityFirstOpenAiProvider {
+    async fn complete(
+        &self,
+        _messages: &[Message],
+        _tools: &[crate::message::ToolDefinition],
+        _system: &str,
+        _resume_session_id: Option<&str>,
+    ) -> Result<crate::provider::EventStream> {
+        unimplemented!("QualityFirstOpenAiProvider")
+    }
+
+    fn name(&self) -> &str {
+        "OpenAI"
+    }
+
+    fn model(&self) -> String {
+        self.model.read().unwrap().clone()
+    }
+
+    fn model_routes(&self) -> Vec<crate::provider::ModelRoute> {
+        vec![
+            crate::provider::ModelRoute {
+                model: "gpt-5.1".to_string(),
+                provider: "OpenAI".to_string(),
+                api_method: "openai-api-key".to_string(),
+                available: true,
+                detail: String::new(),
+                cheapness: None,
+            },
+            crate::provider::ModelRoute {
+                model: jcode_provider_core::DEFAULT_OPENAI_MODEL.to_string(),
+                provider: "OpenAI".to_string(),
+                api_method: "openai-api-key".to_string(),
+                available: true,
+                detail: String::new(),
+                cheapness: None,
+            },
+        ]
+    }
+
+    fn set_model(&self, model: &str) -> Result<()> {
+        let bare = model.rsplit_once(':').map_or(model, |(_, bare)| bare);
+        *self.model.write().unwrap() = bare.to_string();
+        Ok(())
+    }
+
+    fn fork(&self) -> Arc<dyn Provider> {
+        Arc::new(self.clone())
+    }
+}
+
+fn quality_first_openai_test_app() -> App {
+    let provider: Arc<dyn Provider> = Arc::new(QualityFirstOpenAiProvider {
+        model: std::sync::Arc::new(std::sync::RwLock::new("gpt-5.1".to_string())),
+    });
+    let runtime = tokio::runtime::Runtime::new().expect("registry runtime");
+    let registry = runtime.block_on(crate::tool::Registry::new(provider.clone()));
+    App::new_for_test_harness(provider, registry)
+}
+
 fn onboarding_test_app() -> App {
     let mut app = create_test_app();
     // Force the flow on regardless of the on-disk new-user heuristic.
@@ -1449,20 +1515,26 @@ fn import_summary_defaults_to_continue_and_enter_imports_all() {
 }
 
 #[test]
-fn import_continue_reaches_ready_strongest_openai_model() {
+fn import_continue_reaches_ready_quality_first_openai_model() {
     use crate::external_auth::ExternalAuthReviewCandidate;
     use crate::tui::app::onboarding_flow::ImportReview;
 
     with_temp_jcode_home(|| {
-        let config_dir = crate::storage::app_config_dir().expect("config dir");
-        std::fs::create_dir_all(&config_dir).expect("create config dir");
-        std::fs::write(config_dir.join("openai.env"), "OPENAI_API_KEY=sk-onboarding-test\n")
-            .expect("seed imported OpenAI key");
+        let legacy_auth = crate::auth::codex::legacy_auth_file_path().expect("legacy auth path");
+        std::fs::create_dir_all(legacy_auth.parent().expect("legacy auth parent"))
+            .expect("create legacy auth dir");
+        std::fs::write(
+            legacy_auth,
+            r#"{"OPENAI_API_KEY":"sk-onboarding-test"}"#,
+        )
+        .expect("seed importable Codex key");
         crate::auth::AuthStatus::invalidate_cache();
 
+        // App construction performs synchronous runtime-backed setup, so build
+        // it before entering the async test runtime to avoid nested `block_on`.
+        let mut app = quality_first_openai_test_app();
         let runtime = tokio::runtime::Runtime::new().expect("test runtime");
         runtime.block_on(async {
-            let mut app = create_test_app();
             app.onboarding_flow = None;
             app.begin_onboarding_flow_at_login();
             let review = ImportReview::new(vec![ExternalAuthReviewCandidate::fixture(
@@ -1488,7 +1560,11 @@ fn import_continue_reaches_ready_strongest_openai_model() {
             })
             .await
             .expect("import completion event");
-            assert!(login.success, "Continue should complete the approved import");
+            assert!(
+                login.success,
+                "Continue should complete the approved import: {}",
+                login.message
+            );
             assert_eq!(
                 login.provider, "openai-api",
                 "import completion must preserve the concrete provider route"
@@ -1525,7 +1601,7 @@ fn import_continue_reaches_ready_strongest_openai_model() {
             .await
             .expect("strongest model activation event");
 
-            assert_eq!(model, crate::provider::ALL_OPENAI_MODELS[0]);
+            assert_eq!(model, jcode_provider_core::DEFAULT_OPENAI_MODEL);
             assert_eq!(provider_key.as_deref(), Some("openai"));
 
             // Drain the refresh-ready event if it followed model activation, then

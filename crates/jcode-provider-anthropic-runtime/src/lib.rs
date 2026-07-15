@@ -343,9 +343,8 @@ async fn ensure_oauth_preflight(
     Ok(())
 }
 
-/// Default model. Kept on Opus 4.8; `claude-fable-5` is available again after
-/// its brief retirement and can be selected explicitly.
-const DEFAULT_MODEL: &str = "claude-opus-4-8";
+/// Quality-first default shared with model routing and first-run selection.
+const DEFAULT_MODEL: &str = jcode_provider_core::DEFAULT_CLAUDE_MODEL;
 
 /// API version header
 const API_VERSION: &str = "2023-06-01";
