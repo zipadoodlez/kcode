@@ -440,9 +440,8 @@ fn render_todos_message_shows_grouped_card_with_status_glyphs() {
     // Completed items show completion confidence; open ones planning confidence.
     assert!(plain.contains("80→95%"), "{plain}");
     assert!(plain.contains("80%"), "{plain}");
-    // Only open items carry the high-priority marker.
-    assert!(!plain.contains("Wire the hotkey (high)"), "{plain}");
-    assert!(plain.contains("Render the card (high)"), "{plain}");
+    // Priority remains metadata and is not repeated in the visible item label.
+    assert!(!plain.contains("(high)"), "{plain}");
     assert!(
         !plain.contains('╭'),
         "todo card should be borderless:\n{plain}"
@@ -495,7 +494,8 @@ fn render_todos_message_shows_goal_scores_and_feedback() {
         plain.contains("Feedback · Inspect a debug frame"),
         "{plain}"
     );
-    assert!(plain.contains("● Render the card (high) · 85%"), "{plain}");
+    assert!(plain.contains("● Render the card · 85%"), "{plain}");
+    assert!(!plain.contains("(high)"), "{plain}");
 }
 
 #[test]
@@ -533,10 +533,9 @@ fn render_todos_message_uses_readable_semantic_colors() {
     assert_eq!(color_for("todo rendering"), Some(todo_group_color()));
     assert_eq!(color_for("Readable metadata"), Some(todo_meta_color()));
     assert_eq!(color_for("● "), Some(asap_color()));
-    assert_eq!(color_for(" (high)"), Some(rgb(235, 175, 95)));
+    assert_eq!(color_for(" (high)"), None);
     assert_eq!(color_for(" · 85%"), Some(todo_confidence_color()));
     assert_ne!(todo_meta_color(), dim_color());
-    assert_ne!(asap_color(), rgb(235, 175, 95));
 }
 
 #[test]
@@ -651,10 +650,8 @@ fn render_todo_tool_result_uses_borderless_card_with_goal_scores() {
         plain.contains("Hill climbability 95% · Ownership 92%"),
         "{plain}"
     );
-    assert!(
-        plain.contains("● Render the todo result (high) · 92%"),
-        "{plain}"
-    );
+    assert!(plain.contains("● Render the todo result · 92%"), "{plain}");
+    assert!(!plain.contains("(high)"), "{plain}");
     assert!(
         !plain.contains('╭'),
         "todo tool result should be borderless:\n{plain}"

@@ -1363,12 +1363,6 @@ fn render_todo_card_item_line(
         Span::styled(format!("{} ", glyph), Style::default().fg(glyph_color)),
         Span::styled(todo.content.clone(), Style::default().fg(text_color)),
     ];
-    if todo.priority == "high" && todo.status != "completed" && todo.status != "cancelled" {
-        spans.push(Span::styled(
-            " (high)",
-            Style::default().fg(rgb(235, 175, 95)),
-        ));
-    }
     if let Some(label) = todo_card_confidence_label(todo) {
         spans.push(Span::styled(
             format!(" · {}", label),
