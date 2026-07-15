@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Quick release script - builds Linux + macOS locally and uploads to GitHub.
+# Quick release script - builds Linux + macOS locally and stages a draft release.
 # Linux is built inside an Ubuntu 22.04 container for an older glibc baseline.
 # macOS is cross-compiled via osxcross (~/.osxcross). Windows is built by CI.
 #
@@ -13,7 +13,7 @@ set -euo pipefail
 #        linker = "aarch64-apple-darwin23.5-clang"
 #
 # Usage:
-#   scripts/quick-release.sh v0.5.5              # tag + build + release
+#   scripts/quick-release.sh v0.5.5              # tag + build + draft release
 #   scripts/quick-release.sh v0.5.5 "Fix bug"    # with custom title
 #   scripts/quick-release.sh --dry-run v0.5.5    # build only, don't publish
 
@@ -103,54 +103,48 @@ fi
 
 echo ""
 echo "▸ Tagging $VERSION..."
-if git tag -l "$VERSION" | grep -q "$VERSION"; then
+if git tag -l "$VERSION" | grep -qx "$VERSION"; then
     echo "  Tag already exists"
 else
     git tag "$VERSION" -m "$TITLE"
+fi
+if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
+    echo "  Remote tag already exists"
+else
     git push origin "$VERSION"
     echo "  Tag pushed (CI will add Windows)"
 fi
 
-echo "▸ Creating GitHub release..."
+echo "▸ Staging GitHub draft release..."
 # Human-readable changelog body (issue #435): changelog/v<version>.json when
 # present, otherwise grouped commit subjects, always with the compare link.
 NOTES_FILE="$DIST/release_notes.md"
-if scripts/generate_release_notes.sh "$VERSION" > "$NOTES_FILE" && [[ -s "$NOTES_FILE" ]]; then
-    gh release create "$VERSION" \
-        "$DIST/jcode-linux-x86_64.tar.gz" \
-        "$DIST/jcode-macos-aarch64.tar.gz" \
-        --title "$TITLE" \
-        --notes-file "$NOTES_FILE"
-else
-    echo "  Warning: release notes generation failed, falling back to --generate-notes"
-    gh release create "$VERSION" \
-        "$DIST/jcode-linux-x86_64.tar.gz" \
-        "$DIST/jcode-macos-aarch64.tar.gz" \
-        --title "$TITLE" \
-        --generate-notes
+if ! scripts/generate_release_notes.sh "$VERSION" > "$NOTES_FILE" || [[ ! -s "$NOTES_FILE" ]]; then
+    echo "  Warning: release notes generation failed, using the release title"
+    printf '%s\n' "$TITLE" > "$NOTES_FILE"
 fi
 
-# Close issues marked fixed-but-not-yet-released.
-PENDING_LABEL="triage: fixed-pending-release"
-echo "▸ Closing issues labeled '$PENDING_LABEL'..."
-PENDING_ISSUES="$(gh issue list --label "$PENDING_LABEL" --state open --json number --jq '.[].number' 2>/dev/null || true)"
-if [[ -n "$PENDING_ISSUES" ]]; then
-    while read -r issue; do
-        [[ -z "$issue" ]] && continue
-        gh issue close "$issue" \
-            --comment "Released in [$VERSION](https://github.com/$(gh repo view --json nameWithOwner --jq .nameWithOwner)/releases/tag/$VERSION). Run \`jcode update\` to get it." \
-            --reason completed >/dev/null 2>&1 \
-            && echo "  ✅ Closed #$issue"
-        gh issue edit "$issue" --remove-label "$PENDING_LABEL" >/dev/null 2>&1 || true
-    done <<< "$PENDING_ISSUES"
-else
-    echo "  (none)"
+if ! gh release view "$VERSION" >/dev/null 2>&1; then
+    # The tag-triggered workflow may create the same draft concurrently. A
+    # failed create is acceptable only if that draft becomes visible.
+    if ! gh release create "$VERSION" \
+        --draft \
+        --title "$TITLE" \
+        --notes-file "$NOTES_FILE"; then
+        sleep 2
+        gh release view "$VERSION" >/dev/null
+    fi
 fi
+gh release edit "$VERSION" --title "$TITLE" --notes-file "$NOTES_FILE"
+gh release upload "$VERSION" \
+    "$DIST/jcode-linux-x86_64.tar.gz" \
+    "$DIST/jcode-macos-aarch64.tar.gz" \
+    --clobber
 
 TOTAL_TIME=$(( $(date +%s) - OVERALL_START ))
 echo ""
-echo "=== Released $VERSION in ${TOTAL_TIME}s ==="
-echo "  ✅ Linux + macOS: available now"
-echo "  ⏳ Windows: CI (~15 min)"
+echo "=== Staged $VERSION in ${TOTAL_TIME}s ==="
+echo "  ✅ Linux + macOS: attached to draft"
+echo "  ⏳ CI: building, signing, and publishing the complete release (~15 min)"
 echo ""
-echo "Users can now: jcode update"
+echo "The release becomes visible after all required platform gates pass."

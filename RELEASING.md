@@ -4,7 +4,7 @@ jcode has two release paths: a fast local path for hotfixes, and CI for full rel
 
 ## Quick Release (local, ~2.5 minutes)
 
-For hotfixes and urgent updates. Builds Linux + macOS locally and uploads directly.
+For hotfixes and urgent updates. Builds Linux + macOS locally and stages them on a draft release while CI completes the remaining platforms.
 
 ```bash
 scripts/quick-release.sh v0.5.5                # Build + tag + release
@@ -16,9 +16,9 @@ scripts/quick-release.sh --dry-run v0.5.5       # Build only, don't publish
 
 1. Builds Linux x86_64 natively and macOS aarch64 via osxcross **in parallel**
 2. Verifies both binaries (ELF and Mach-O checks)
-3. Creates a git tag and pushes it (this also triggers CI for the Windows build)
-4. Uploads both binaries to a GitHub Release via `gh release create`
-5. Users can immediately run `jcode update`
+3. Creates a git tag and pushes it (this also triggers CI for the Windows build and signing job)
+4. Uploads both binaries to a draft GitHub Release
+5. CI signs and verifies Windows, generates checksums, and publishes every platform atomically
 
 ### Prerequisites
 
@@ -35,10 +35,9 @@ Already set up on the dev laptop (xps13):
 0s     Start parallel builds (Linux native + macOS cross-compile)
 ~90s   Linux build finishes
 ~150s  macOS build finishes
-~153s  Binaries uploaded, release live
-         ✅ Linux + macOS users can `jcode update`
-~16m   CI finishes Windows build, uploads to same release
-         ✅ Windows users can `jcode update`
+~153s  Linux + macOS binaries attached to the draft release
+~16m   CI finishes all required builds, signing, and checksums
+         ✅ Complete release becomes public for every platform
 ```
 
 ## CI Release (automated, ~11 min Linux+macOS, ~16 min Windows)
@@ -50,25 +49,32 @@ Triggered automatically when a `v*` tag is pushed to GitHub.
 ```
 Tag push (v*)
     │
+    ├─► create-release
+    │     └─► Create or update a hidden draft release
+    │
     ├─► build-linux-macos (parallel)
     │     ├─► Linux x86_64   (ubuntu-latest)     ~8 min
     │     └─► macOS aarch64  (macos-latest)       ~11 min
     │
-    ├─► build-windows (parallel, non-blocking)
+    ├─► build-windows (parallel)
     │     ├─► Windows x86_64 (windows-latest)     ~16 min
     │     └─► Windows ARM64 (windows-11-arm)      ~16 min
     │
-    ├─► release (after Linux + macOS complete)
-    │     ├─► Create GitHub Release with binaries
-    │     ├─► Update Homebrew formula (1jehuang/homebrew-jcode)
-    │     └─► Update AUR package (jcode-bin)
+    ├─► publish-windows (after both Windows builds)
+    │     ├─► Sign x86_64 + ARM64 with Azure Artifact Signing
+    │     ├─► Verify Authenticode signatures
+    │     └─► Package and upload final Windows assets
     │
-    └─► upload-windows-assets (after Windows + release complete)
-          └─► Upload Windows binaries to existing release
+    └─► release (after all platform assets complete)
+          ├─► Generate and upload SHA256SUMS
+          ├─► Publish the complete release atomically
+          ├─► Update Homebrew formula (1jehuang/homebrew-jcode)
+          └─► Update AUR package (jcode-bin)
 ```
 
 Key design decisions:
-- **Windows does not block the release.** Linux and macOS binaries are published as soon as they're ready. Windows is added later.
+- **All platform assets remain on a draft until the complete release passes.** Users never see a partial release or a checksum file that omits a late platform.
+- **Windows executables must be signed before public upload.** Signing is required by default. `WINDOWS_SIGNING_REQUIRED=false` is an explicit emergency override and is not suitable for an official Windows release.
 - **Shallow clones** (`fetch-depth: 1`) to minimize checkout time.
 - **`CARGO_INCREMENTAL=0`** for CI (incremental adds overhead on clean CI builds).
 - **sccache + rust-cache** for dependency caching across runs.
@@ -81,17 +87,27 @@ CI handles Homebrew and AUR updates automatically:
 - **Homebrew**: Updates `Formula/jcode.rb` in `1jehuang/homebrew-jcode` with new SHA256 hashes
 - **AUR**: Updates `PKGBUILD` and `.SRCINFO` in the `jcode-bin` AUR repo
 
-Both are triggered by the `release` job after Linux + macOS builds complete.
+Both are triggered by the final `release` job after all platform builds complete.
+
+### Windows signing prerequisites
+
+The full one-time setup is documented in [docs/WINDOWS.md](docs/WINDOWS.md#enable-authenticode-signing). The release repository needs:
+
+- Secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
+- Variables: `WINDOWS_SIGNING_ENDPOINT`, `WINDOWS_SIGNING_ACCOUNT`, `WINDOWS_SIGNING_CERTIFICATE_PROFILE`
+- Optional emergency override only: `WINDOWS_SIGNING_REQUIRED=false`
+
+Before announcing Defender or SmartScreen remediation, download both Windows executables from the public release and confirm `Get-AuthenticodeSignature` reports `Valid`.
 
 ## Which to use
 
 | Scenario | Method | Time to Linux+macOS | Time to Windows |
 |----------|--------|-------------------|-----------------|
-| Hotfix / urgent bug | `scripts/quick-release.sh` | **~2.5 min** | ~16 min (CI) |
+| Hotfix / urgent bug | `scripts/quick-release.sh` | ~16 min (atomic CI publish) | ~16 min |
 | Regular release | Push `v*` tag | ~11 min | ~16 min |
 | Need Homebrew/AUR | Push `v*` tag | ~11 min | ~16 min |
 
-For quick releases that also need Homebrew/AUR updates, use the script first (gets binaries out fast), then the CI tag push handles the package manager updates automatically. CI's `softprops/action-gh-release` will update the existing release created by the script.
+The quick-release script reduces local build latency, but it deliberately leaves the release as a draft. The tag-triggered workflow publishes it only after the required platform, signing, and checksum gates pass, then updates Homebrew and AUR.
 
 ## Cross-Compilation Setup
 

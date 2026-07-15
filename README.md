@@ -37,7 +37,12 @@ Built for multi-session workflows, infinite customizability, and performance.
 curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.sh | bash
 ```
 
-Need Windows, Homebrew, source builds, provider setup, or tell your agent to set it up for you?
+```powershell
+# Windows 11 (PowerShell 5.1+)
+irm https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.ps1 | iex
+```
+
+Need Homebrew, source builds, provider setup, or want an agent to set it up for you?
 [Jump to detailed installation](#detailed-installation).
 
 ---
@@ -794,9 +799,14 @@ curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/insta
 ```
 
 ```powershell
-# Windows (PowerShell)
+# Windows 11 x64 or ARM64 (PowerShell 5.1+)
 irm https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.ps1 | iex
 ```
+
+The Windows installer selects the correct architecture and verifies the download
+against the release's `SHA256SUMS`. Alacritty and the optional global launch
+hotkey require explicit consent and are not installed by default. See
+[Windows support, security, Defender, and SmartScreen notes](docs/WINDOWS.md).
 
 ### macOS via Homebrew
 
