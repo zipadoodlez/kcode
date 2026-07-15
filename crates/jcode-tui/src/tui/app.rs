@@ -1322,8 +1322,8 @@ pub struct App {
     learn_hint_shown_this_session: bool,
     // Whether the swarm-config-is-a-prompt hint has been surfaced this session.
     swarm_hint_shown_this_session: bool,
-    // Whether the sponsored-discovery disclosure line has been surfaced this
-    // session. Disclosure fires once per session on first discover_tools use.
+    // Whether the inline sponsored-discovery policy detail has been attached
+    // this session. It appears once, on the first discover_tools result.
     sponsor_disclosure_shown_this_session: bool,
     // Inline hotkey feedback: "you just pressed X → does Y" for rarely-used
     // known chords, or "X isn't bound · nearest: ..." for unknown chords.

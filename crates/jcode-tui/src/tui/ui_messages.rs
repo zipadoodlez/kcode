@@ -13,7 +13,9 @@ use unicode_width::UnicodeWidthStr;
 
 const MAX_INLINE_DIFF_LINES: usize = 12;
 const MAX_GMAIL_DRAFT_BODY_LINES: usize = 18;
-const MAX_DISCOVERY_SETUP_LINES: usize = 12;
+const MAX_DISCOVERY_DETAIL_LINES: usize = 2;
+const MAX_DISCOVERY_SETUP_LINES: usize = 3;
+const MAX_DISCOVERY_LISTING_ENTRIES: usize = 4;
 
 fn prefer_width_stable_system_glyphs() -> bool {
     std::env::var("TERM_PROGRAM")
@@ -3003,29 +3005,57 @@ fn discovery_setup(output: &str) -> Option<String> {
     .filter(|value| !value.is_empty())
 }
 
-fn push_discovery_setup(
+fn push_compact_discovery_kv(
     content: &mut Vec<Line<'static>>,
-    setup: &str,
-    inner_width: usize,
+    label: &str,
+    value: &str,
+    available_width: usize,
     label_style: Style,
-    body_style: Style,
+    value_style: Style,
+    max_lines: usize,
 ) {
-    content.push(Line::from(""));
-    content.push(Line::from(Span::styled("Setup", label_style)));
-    let setup_lines = render_plaintext_lines(setup, inner_width);
-    let hidden = setup_lines.len().saturating_sub(MAX_DISCOVERY_SETUP_LINES);
-    for mut line in setup_lines.into_iter().take(MAX_DISCOVERY_SETUP_LINES) {
-        for span in &mut line.spans {
-            span.style = body_style;
-        }
+    let inner_width = available_width.saturating_sub(2).max(1);
+    let mut wrapped = Vec::new();
+    push_wrapped_kv_line(
+        &mut wrapped,
+        label,
+        value,
+        inner_width,
+        label_style,
+        value_style,
+    );
+    if wrapped.is_empty() {
+        return;
+    }
+
+    let hidden = wrapped.len().saturating_sub(max_lines);
+    let mut visible = wrapped.into_iter().take(max_lines).collect::<Vec<_>>();
+    if hidden > 0
+        && let Some(last) = visible.pop()
+    {
+        visible.push(super::truncate_line_preserving_suffix_to_width(
+            &last,
+            &Line::from(Span::styled(" …", value_style)),
+            inner_width,
+        ));
+    }
+    for mut line in visible {
+        line.spans.insert(0, Span::raw("  "));
         content.push(line);
     }
-    if hidden > 0 {
-        content.push(Line::from(Span::styled(
-            format!("… {hidden} more line{}", if hidden == 1 { "" } else { "s" }),
-            Style::default().fg(dim_color()),
-        )));
-    }
+}
+
+fn push_compact_discovery_header(
+    content: &mut Vec<Line<'static>>,
+    spans: Vec<Span<'static>>,
+    available_width: usize,
+) {
+    let mut line_spans = vec![Span::raw("  ")];
+    line_spans.extend(spans);
+    content.push(super::truncate_line_with_ellipsis_to_width(
+        &Line::from(line_spans),
+        available_width,
+    ));
 }
 
 fn render_discovery_card(
@@ -3033,15 +3063,39 @@ fn render_discovery_card(
     tool_output: &str,
     is_error: bool,
     available_width: usize,
+    show_inline_disclosure: bool,
 ) -> Option<Vec<Line<'static>>> {
-    if tools_ui::canonical_tool_name(&tool.name) != "discover_tools" || is_error {
+    if tools_ui::canonical_tool_name(&tool.name) != "discover_tools" {
         return None;
     }
-    let max_box_width = available_width.min(96);
-    if max_box_width < 18 {
+    let block_width = available_width.min(96);
+    if block_width < 12 {
         return None;
     }
-    let inner_width = max_box_width.saturating_sub(4).max(1);
+    if tool_output.trim().is_empty() || tool_output.trim() == tool.name {
+        return None;
+    }
+
+    let muted_style = Style::default().fg(dim_color());
+    let label_style = muted_style;
+    let name_style = Style::default();
+    let mut content = Vec::new();
+
+    if is_error {
+        if show_inline_disclosure {
+            push_compact_discovery_kv(
+                &mut content,
+                "about",
+                crate::sponsors::SPONSORED_DISCOVERY_NOTICE,
+                block_width,
+                muted_style,
+                muted_style,
+                MAX_DISCOVERY_DETAIL_LINES,
+            );
+        }
+        return (!content.is_empty()).then_some(content);
+    }
+
     let category = tool
         .input
         .get("category")
@@ -3067,39 +3121,7 @@ fn render_discovery_card(
         }
     });
 
-    let accent = rgb(102, 184, 214);
-    let border_style = Style::default().fg(accent);
-    let label_style = Style::default().fg(accent).add_modifier(Modifier::BOLD);
-    let value_style = Style::default().fg(dim_color());
-    let body_style = Style::default();
-    let mut content = Vec::new();
-
-    if let Some(query) = tool.input.get("query").and_then(|value| value.as_str()) {
-        push_wrapped_kv_line(
-            &mut content,
-            "Capability",
-            query,
-            inner_width,
-            label_style,
-            value_style,
-        );
-    }
-    if let Some(reason) = tool.input.get("reason").and_then(|value| value.as_str()) {
-        push_wrapped_kv_line(
-            &mut content,
-            if action == "suggest" {
-                "Catalog gap"
-            } else {
-                "Rationale"
-            },
-            reason,
-            inner_width,
-            label_style,
-            value_style,
-        );
-    }
-
-    let title = match action {
+    match action {
         "suggest" => {
             let kind = tool
                 .input
@@ -3115,40 +3137,45 @@ fn render_discovery_card(
                     .unwrap_or_else(|| "Known product".to_string()),
                 _ => "Capability gap".to_string(),
             };
-            push_wrapped_kv_line(
+            let receipt = if tool_output.starts_with("Catalog suggestion already recorded.") {
+                "suggestion already recorded"
+            } else {
+                "suggestion sent"
+            };
+            push_compact_discovery_header(
                 &mut content,
-                "Suggestion",
-                &kind_label,
-                inner_width,
-                label_style,
-                body_style,
+                vec![
+                    Span::styled(receipt.to_string(), muted_style),
+                    Span::styled(" · ", muted_style),
+                    Span::styled(kind_label, name_style),
+                ],
+                block_width,
             );
+
+            if let Some(reason) = tool.input.get("reason").and_then(|value| value.as_str()) {
+                push_compact_discovery_kv(
+                    &mut content,
+                    "gap",
+                    reason,
+                    block_width,
+                    label_style,
+                    muted_style,
+                    MAX_DISCOVERY_DETAIL_LINES,
+                );
+            }
             if let Some(url) = tool
                 .input
                 .get("product_url")
                 .and_then(|value| value.as_str())
             {
-                push_wrapped_kv_line(
+                push_compact_discovery_kv(
                     &mut content,
-                    "Public URL",
+                    "url",
                     url,
-                    inner_width,
+                    block_width,
                     label_style,
-                    value_style,
-                );
-            }
-            if let Some(evidence) = tool
-                .input
-                .get("gap_evidence")
-                .and_then(|value| value.as_str())
-            {
-                push_wrapped_kv_line(
-                    &mut content,
-                    "Evidence",
-                    evidence,
-                    inner_width,
-                    label_style,
-                    value_style,
+                    muted_style,
+                    1,
                 );
             }
             if let Some(requirements) = tool
@@ -3163,34 +3190,26 @@ fn render_discovery_card(
                     .filter(|value| !value.is_empty())
                     .collect::<Vec<_>>();
                 if !requirements.is_empty() {
-                    content.push(Line::from(""));
-                    content.push(Line::from(Span::styled("Requirements", label_style)));
-                    for requirement in requirements {
-                        for (index, chunk) in split_by_display_width(
-                            requirement,
-                            inner_width.saturating_sub(2).max(1),
-                        )
-                        .into_iter()
-                        .enumerate()
-                        {
-                            content.push(Line::from(vec![
-                                Span::styled(if index == 0 { "• " } else { "  " }, label_style),
-                                Span::styled(chunk, value_style),
-                            ]));
-                        }
-                    }
+                    push_compact_discovery_kv(
+                        &mut content,
+                        "needs",
+                        &requirements.join(" · "),
+                        block_width,
+                        label_style,
+                        muted_style,
+                        MAX_DISCOVERY_DETAIL_LINES,
+                    );
                 }
             }
-            content.push(Line::from(""));
-            content.push(Line::from(Span::styled(
-                "Sent to Jcode maintainers, not sponsors. Submission does not imply approval or availability.",
-                value_style,
-            )));
-            if tool_output.starts_with("Catalog suggestion already recorded.") {
-                "◇ Catalog suggestion already recorded".to_string()
-            } else {
-                "◇ Catalog suggestion sent".to_string()
-            }
+            push_compact_discovery_kv(
+                &mut content,
+                "review",
+                "Jcode maintainers only; not approval or availability",
+                block_width,
+                label_style,
+                muted_style,
+                MAX_DISCOVERY_DETAIL_LINES,
+            );
         }
         "select" => {
             let name = tool
@@ -3198,89 +3217,138 @@ fn render_discovery_card(
                 .get("tool")
                 .and_then(|value| value.as_str())
                 .unwrap_or("selected tool");
+            push_compact_discovery_header(
+                &mut content,
+                vec![
+                    Span::styled("selected ", muted_style),
+                    Span::styled(name.to_string(), name_style),
+                    Span::styled(" · sponsored", muted_style),
+                ],
+                block_width,
+            );
             let (blurb, url) = discovery_selected_details(tool_output, name);
-            if let Some(blurb) = blurb.as_deref() {
-                push_wrapped_kv_line(
+            let description = match (blurb.as_deref(), url.as_deref()) {
+                (Some(blurb), Some(url)) => Some(format!("{blurb} · {url}")),
+                (Some(blurb), None) => Some(blurb.to_string()),
+                (None, Some(url)) => Some(url.to_string()),
+                (None, None) => None,
+            };
+            if let Some(description) = description {
+                push_compact_discovery_kv(
                     &mut content,
-                    "Description",
-                    blurb,
-                    inner_width,
+                    "details",
+                    &description,
+                    block_width,
                     label_style,
-                    body_style,
+                    muted_style,
+                    MAX_DISCOVERY_DETAIL_LINES,
                 );
             }
-            if let Some(url) = url.as_deref() {
-                push_wrapped_kv_line(
+            if let Some(reason) = tool.input.get("reason").and_then(|value| value.as_str()) {
+                push_compact_discovery_kv(
                     &mut content,
-                    "URL",
-                    url,
-                    inner_width,
+                    "why",
+                    reason,
+                    block_width,
                     label_style,
-                    value_style,
+                    muted_style,
+                    MAX_DISCOVERY_DETAIL_LINES,
                 );
             }
             if let Some(setup) = discovery_setup(tool_output) {
-                push_discovery_setup(&mut content, &setup, inner_width, label_style, body_style);
+                push_compact_discovery_kv(
+                    &mut content,
+                    "setup",
+                    &setup,
+                    block_width,
+                    label_style,
+                    muted_style,
+                    MAX_DISCOVERY_SETUP_LINES,
+                );
             }
-            format!("⌕ Discovery · {name} selected · sponsored")
         }
         _ => {
             let entries = parse_discovery_listing_entries(tool_output);
-            content.push(Line::from(""));
-            content.push(Line::from(Span::styled("Catalog results", label_style)));
-            if entries.is_empty() {
-                content.push(Line::from(Span::styled(
-                    "No catalog entries matched this category.",
-                    value_style,
-                )));
+            let result_label = if entries.len() == 1 {
+                "result"
             } else {
-                for entry in &entries {
-                    content.push(Line::from(vec![
-                        Span::styled("• ", label_style),
-                        Span::styled(entry.name.clone(), label_style),
-                    ]));
-                    if !entry.blurb.is_empty() {
-                        for chunk in split_by_display_width(
-                            &entry.blurb,
-                            inner_width.saturating_sub(2).max(1),
-                        ) {
-                            content.push(Line::from(vec![
-                                Span::raw("  "),
-                                Span::styled(chunk, body_style),
-                            ]));
-                        }
-                    }
-                    if let Some(url) = &entry.url {
-                        for chunk in
-                            split_by_display_width(url, inner_width.saturating_sub(2).max(1))
-                        {
-                            content.push(Line::from(vec![
-                                Span::raw("  "),
-                                Span::styled(chunk, value_style),
-                            ]));
-                        }
-                    }
+                "results"
+            };
+            push_compact_discovery_header(
+                &mut content,
+                vec![
+                    Span::styled(
+                        format!("{} sponsored {result_label}", entries.len()),
+                        muted_style,
+                    ),
+                    Span::styled(" · ", muted_style),
+                    Span::styled(category.to_string(), name_style),
+                ],
+                block_width,
+            );
+            if entries.is_empty() {
+                push_compact_discovery_kv(
+                    &mut content,
+                    "catalog",
+                    "no matching entries",
+                    block_width,
+                    label_style,
+                    muted_style,
+                    1,
+                );
+            } else {
+                for entry in entries.iter().take(MAX_DISCOVERY_LISTING_ENTRIES) {
+                    let details = match (&entry.blurb[..], entry.url.as_deref()) {
+                        ("", Some(url)) => url.to_string(),
+                        (blurb, Some(url)) => format!("{blurb} · {url}"),
+                        (blurb, None) => blurb.to_string(),
+                    };
+                    push_compact_discovery_kv(
+                        &mut content,
+                        &entry.name,
+                        &details,
+                        block_width,
+                        name_style,
+                        muted_style,
+                        MAX_DISCOVERY_DETAIL_LINES,
+                    );
+                }
+                let hidden = entries.len().saturating_sub(MAX_DISCOVERY_LISTING_ENTRIES);
+                if hidden > 0 {
+                    push_compact_discovery_header(
+                        &mut content,
+                        vec![Span::styled(format!("+{hidden} more"), muted_style)],
+                        block_width,
+                    );
                 }
             }
-            content.push(Line::from(""));
-            content.push(Line::from(Span::styled(
-                "Sponsored placement, not preference. Select only if it genuinely fits; otherwise suggest the missing capability.",
-                value_style,
-            )));
-            format!(
-                "⌕ Discovery · {category} · {} tool{} · sponsored",
-                entries.len(),
-                if entries.len() == 1 { "" } else { "s" }
-            )
+            if let Some(reason) = tool.input.get("reason").and_then(|value| value.as_str()) {
+                push_compact_discovery_kv(
+                    &mut content,
+                    "why",
+                    reason,
+                    block_width,
+                    label_style,
+                    muted_style,
+                    MAX_DISCOVERY_DETAIL_LINES,
+                );
+            }
         }
-    };
+    }
 
-    Some(render_rounded_box(
-        &title,
-        content,
-        max_box_width,
-        border_style,
-    ))
+    if show_inline_disclosure {
+        push_compact_discovery_kv(
+            &mut content,
+            "about",
+            crate::sponsors::SPONSORED_DISCOVERY_NOTICE,
+            block_width,
+            muted_style,
+            muted_style,
+            MAX_DISCOVERY_DETAIL_LINES,
+        );
+    }
+
+    Some(content)
 }
 
 pub(crate) fn render_tool_message(
@@ -3540,11 +3608,20 @@ pub(crate) fn render_tool_message(
     );
     let rendered_tool_line_text = super::line_plain_text(&rendered_tool_line);
     lines.push(rendered_tool_line);
+    let mut show_inline_sponsor_disclosure =
+        msg.title.as_deref() == Some(crate::sponsors::SPONSORED_DISCOVERY_TAG);
 
     if let Some(draft_lines) = render_gmail_draft_card(tc, &msg.content, is_error, row_width) {
         lines.extend(draft_lines);
     }
-    if let Some(discovery_lines) = render_discovery_card(tc, &msg.content, is_error, row_width) {
+    if let Some(discovery_lines) = render_discovery_card(
+        tc,
+        &msg.content,
+        is_error,
+        row_width,
+        show_inline_sponsor_disclosure,
+    ) {
+        show_inline_sponsor_disclosure = false;
         lines.extend(discovery_lines);
     }
 
@@ -3653,8 +3730,10 @@ pub(crate) fn render_tool_message(
                     &result.content,
                     sub_errored,
                     row_width.saturating_sub(4),
+                    show_inline_sponsor_disclosure,
                 )
             {
+                show_inline_sponsor_disclosure = false;
                 for line in &mut discovery_lines {
                     line.spans.insert(0, Span::raw("    "));
                 }

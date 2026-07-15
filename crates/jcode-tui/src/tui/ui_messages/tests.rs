@@ -1725,9 +1725,15 @@ fn discovery_message(content: &str, input: serde_json::Value) -> DisplayMessage 
     }
 }
 
+fn first_discovery_message(content: &str, input: serde_json::Value) -> DisplayMessage {
+    let mut message = discovery_message(content, input);
+    message.title = Some(crate::sponsors::SPONSORED_DISCOVERY_TAG.to_string());
+    message
+}
+
 #[test]
 fn render_tool_message_shows_discovery_browse_results_and_rationale() {
-    let msg = discovery_message(
+    let msg = first_discovery_message(
         "Discoverable tools in 'payments' (sponsored discovery: placement, not preference; details: https://jcode.sh/sponsored-discovery):\n\n- agentcard: prepaid virtual Visa cards for AI agents (https://agentcard.sh/?via=jcode-discovery)\n\nBrowse request ID: `11111111-2222-4333-8444-555555555555`",
         serde_json::json!({
             "action": "browse",
@@ -1742,28 +1748,84 @@ fn render_tool_message_shows_discovery_browse_results_and_rationale() {
         .map(extract_line_text)
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(
-        plain.contains("Discovery · payments · 1 tool · sponsored"),
-        "{plain}"
-    );
-    assert!(
-        plain.contains("Capability: manage Stripe sandbox"),
-        "{plain}"
-    );
-    assert!(
-        plain.contains("Rationale: the task needs test-mode"),
-        "{plain}"
-    );
+    assert!(plain.contains("1 sponsored result · payments"), "{plain}");
+    assert!(plain.contains("why: the task needs test-mode"), "{plain}");
     assert!(plain.contains("agentcard"), "{plain}");
     assert!(plain.contains("prepaid virtual Visa cards"), "{plain}");
     assert!(plain.contains("agentcard.sh"), "{plain}");
     assert!(
-        plain.contains("Sponsored placement, not preference"),
+        plain.contains("sponsors make tools discoverable, never recommended"),
         "{plain}"
+    );
+    assert!(plain.contains("jcode.sh/sponsored-discovery"), "{plain}");
+    assert!(
+        lines.len() <= 8,
+        "compact discovery details used {} lines: {plain}",
+        lines.len()
+    );
+    assert!(
+        !plain.contains("\n\n"),
+        "compact details contain a blank row: {plain}"
+    );
+    assert!(
+        !plain
+            .chars()
+            .any(|ch| matches!(ch, '╭' | '╮' | '╰' | '╯' | '│')),
+        "discovery details must remain borderless: {plain}"
     );
     assert!(
         !plain.contains("11111111-2222"),
         "request IDs stay model-only: {plain}"
+    );
+}
+
+#[test]
+fn batched_discovery_renders_first_use_disclosure_inline_once() {
+    let msg = DisplayMessage {
+        role: "tool".to_string(),
+        content: "--- [1] discover_tools ---\nDiscoverable tools in 'payments' (sponsored discovery: placement, not preference; details: https://jcode.sh/sponsored-discovery):\n\n- agentcard: prepaid virtual Visa cards for AI agents (https://agentcard.sh/?via=jcode-discovery)\n\nBrowse request ID: `11111111-2222-4333-8444-555555555555`\n\nCompleted: 1 succeeded, 0 failed".to_string(),
+        tool_calls: Vec::new(),
+        duration_secs: None,
+        title: Some(crate::sponsors::SPONSORED_DISCOVERY_TAG.to_string()),
+        tool_data: Some(crate::message::ToolCall {
+            id: "call_batch_discovery".to_string(),
+            name: "batch".to_string(),
+            input: serde_json::json!({
+                "tool_calls": [{
+                    "tool": "discover_tools",
+                    "parameters": {
+                        "action": "browse",
+                        "category": "payments",
+                        "query": "issue a capped virtual card",
+                        "reason": "the task requires a payment instrument with a hard limit"
+                    }
+                }]
+            }),
+            intent: None,
+            thought_signature: None,
+        }),
+    };
+
+    let lines = render_tool_message(&msg, 100, crate::config::DiffDisplayMode::Off);
+    let plain = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(plain.contains("1 sponsored result · payments"), "{plain}");
+    assert_eq!(
+        plain
+            .matches("sponsors make tools discoverable, never recommended")
+            .count(),
+        1,
+        "the batched first-use notice must render exactly once: {plain}"
+    );
+    assert!(
+        !plain
+            .chars()
+            .any(|ch| matches!(ch, '╭' | '╮' | '╰' | '╯' | '│')),
+        "batched discovery details must remain borderless: {plain}"
     );
 }
 
@@ -1785,14 +1847,18 @@ fn render_tool_message_shows_selected_discovery_setup() {
         .map(extract_line_text)
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(plain.contains("agentcard selected · sponsored"), "{plain}");
+    assert!(plain.contains("selected agentcard · sponsored"), "{plain}");
     assert!(
-        plain.contains("Description: prepaid virtual Visa cards"),
+        plain.contains("details: prepaid virtual Visa cards"),
         "{plain}"
     );
-    assert!(plain.contains("URL: https://agentcard.sh"), "{plain}");
-    assert!(plain.contains("Setup"), "{plain}");
+    assert!(plain.contains("https://agentcard.sh"), "{plain}");
+    assert!(plain.contains("setup:"), "{plain}");
     assert!(plain.contains("agentcard-mcp@1.2.3"), "{plain}");
+    assert!(
+        !plain.contains("sponsors make tools discoverable"),
+        "later discovery results must not repeat the first-use notice: {plain}"
+    );
 }
 
 #[test]
@@ -1821,24 +1887,15 @@ fn render_tool_message_shows_catalog_suggestion_receipt_and_trust_line() {
         .map(extract_line_text)
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(plain.contains("Catalog suggestion sent"), "{plain}");
+    assert!(plain.contains("suggestion sent"), "{plain}");
     assert!(
         plain.contains("Known product · Stripe sandbox MCP"),
         "{plain}"
     );
-    assert!(
-        plain.contains("Catalog gap: the listed payment tool"),
-        "{plain}"
-    );
-    assert!(plain.contains("Requirements"), "{plain}");
-    assert!(
-        plain.contains("Sent to Jcode maintainers, not sponsors"),
-        "{plain}"
-    );
-    assert!(
-        plain.contains("does not imply approval or availability"),
-        "{plain}"
-    );
+    assert!(plain.contains("gap: the listed payment tool"), "{plain}");
+    assert!(plain.contains("needs:"), "{plain}");
+    assert!(plain.contains("Jcode maintainers only"), "{plain}");
+    assert!(plain.contains("not approval or availability"), "{plain}");
     assert!(
         !plain.contains("11111111-2222"),
         "prior request ID must stay hidden: {plain}"

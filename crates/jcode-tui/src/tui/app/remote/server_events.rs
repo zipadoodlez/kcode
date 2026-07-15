@@ -719,7 +719,6 @@ pub(in crate::tui::app) fn handle_server_event(
             if tool_call.name == "swarm" {
                 app.maybe_surface_swarm_config_hint();
             }
-            app.maybe_surface_sponsor_disclosure(&tool_call.name);
             if let Some(tc) = app.streaming_tool_calls.iter_mut().find(|tc| tc.id == id) {
                 tc.input = parsed_input;
                 tc.refresh_intent_from_input();

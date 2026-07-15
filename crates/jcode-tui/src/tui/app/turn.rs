@@ -564,7 +564,8 @@ impl App {
                                             if tool.name == "swarm" {
                                                 self.maybe_surface_swarm_config_hint();
                                             }
-                                            self.maybe_surface_sponsor_disclosure(&tool.name);
+                                            let sponsor_disclosure_title =
+                                                self.inline_sponsor_disclosure_title(&tool);
                                             if let Some(streaming_tool) = self
                                                 .streaming_tool_calls
                                                 .iter_mut()
@@ -585,7 +586,7 @@ impl App {
                                                 content: tool.name.clone(),
                                                 tool_calls: vec![],
                                                 duration_secs: None,
-                                                title: None,
+                                                title: sponsor_disclosure_title,
                                                 tool_data: Some(tool.clone()),
                                             });
 
