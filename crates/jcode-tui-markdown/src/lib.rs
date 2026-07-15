@@ -470,6 +470,8 @@ fn rendered_rule_width(max_width: Option<usize>) -> usize {
 
 // Colors matching ui.rs palette
 use jcode_tui_workspace::color_support::rgb;
+const MATH_FOREGROUND: (u8, u8, u8) = (100, 160, 255);
+
 fn code_bg() -> Color {
     rgb(45, 45, 45)
 }
@@ -477,7 +479,7 @@ fn code_fg() -> Color {
     rgb(180, 180, 180)
 }
 fn math_fg() -> Color {
-    rgb(130, 210, 235)
+    rgb(MATH_FOREGROUND.0, MATH_FOREGROUND.1, MATH_FOREGROUND.2)
 }
 fn link_fg() -> Color {
     rgb(120, 180, 240)
