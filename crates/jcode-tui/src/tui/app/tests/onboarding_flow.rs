@@ -1602,7 +1602,7 @@ fn import_continue_reaches_ready_quality_first_openai_model() {
             .expect("strongest model activation event");
 
             assert_eq!(model, jcode_provider_core::DEFAULT_OPENAI_MODEL);
-            assert_eq!(provider_key.as_deref(), Some("openai"));
+            assert_eq!(provider_key.as_deref(), Some("openai-api"));
 
             // Drain the refresh-ready event if it followed model activation, then
             // verify the deferred validation can proceed against the new model.
