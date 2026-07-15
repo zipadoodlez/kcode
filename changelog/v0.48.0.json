@@ -1,0 +1,23 @@
+{
+  "version": "0.48.0",
+  "date": "2026-07-15",
+  "title": "Smarter discovery and deeper diagnostics",
+  "highlights": [
+    "Tool discovery can suggest missing catalog capabilities for review when no existing integration fits",
+    "Server memory incidents now include actionable diagnostics and support selecting historical incidents for analysis",
+    "Gmail draft actions render complete previews directly in the terminal"
+  ],
+  "improvements": [
+    "Pro Max and Ultra subscription tiers are recognized with the correct model access",
+    "Imported provider accounts prefer the strongest quality-first model available",
+    "Windows installation and release assets now have production-ready signing, verification, and documentation",
+    "LaTeX renders in blue for clearer visual separation",
+    "Tool discovery results and todo cards use more compact, focused presentation"
+  ],
+  "fixes": [
+    "Production telemetry events are delivered to the configured worker again",
+    "GPT-5.6 Sol can be selected directly through OpenAI routes",
+    "Autocomplete cancel commands work reliably",
+    "Cold-cache notices remain on one line instead of disrupting the transcript layout"
+  ]
+}
