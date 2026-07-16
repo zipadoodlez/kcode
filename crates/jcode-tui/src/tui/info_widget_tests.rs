@@ -165,11 +165,15 @@ fn todos_widgets_render_group_headers_when_groups_present() {
         ..Default::default()
     };
 
-    let expanded = lines_text(&render_todos_expanded(&data, Rect::new(0, 0, 80, 14)));
+    let expanded = lines_text_concat(&render_todos_expanded(&data, Rect::new(0, 0, 80, 14)));
     // Group headers appear with per-group progress counters, first-seen order,
     // and the ungrouped bucket renders under "Other".
     assert!(expanded.contains("optimize rendering"), "{expanded}");
     assert!(expanded.contains("1/2"), "{expanded}");
+    assert!(
+        expanded.contains("1/2 · confidence 80%"),
+        "group confidence missing: {expanded}"
+    );
     assert!(expanded.contains("fix scrollback"), "{expanded}");
     assert!(expanded.contains("Other"), "{expanded}");
     let opt_idx = expanded.find("optimize rendering").unwrap();
@@ -177,6 +181,44 @@ fn todos_widgets_render_group_headers_when_groups_present() {
     let other_idx = expanded.find("Other").unwrap();
     assert!(opt_idx < fix_idx, "first-seen group order: {expanded}");
     assert!(fix_idx < other_idx, "ungrouped bucket last: {expanded}");
+}
+
+#[test]
+fn task_group_headers_render_their_own_weighted_confidence() {
+    let mk = |group: &str, id: &str, priority: &str, confidence: u8| crate::todo::TodoItem {
+        group: Some(group.to_string()),
+        id: id.to_string(),
+        content: format!("task {id}"),
+        status: "pending".to_string(),
+        priority: priority.to_string(),
+        confidence: Some(confidence),
+        completion_confidence: None,
+        confidence_history: Vec::new(),
+        blocked_by: Vec::new(),
+        assigned_to: None,
+    };
+    let data = InfoWidgetData {
+        todos: vec![
+            mk("high confidence", "a", "high", 100),
+            mk("high confidence", "b", "low", 40),
+            mk("lower confidence", "c", "medium", 60),
+        ],
+        ..Default::default()
+    };
+
+    for text in [
+        lines_text_concat(&render_todos_widget(&data, Rect::new(0, 0, 90, 10))),
+        lines_text_concat(&render_todos_expanded(&data, Rect::new(0, 0, 90, 14))),
+    ] {
+        assert!(
+            text.contains("high confidence 0/2 · confidence 85%"),
+            "weighted group confidence missing: {text}"
+        );
+        assert!(
+            text.contains("lower confidence 0/1 · confidence 60%"),
+            "group-scoped confidence missing: {text}"
+        );
+    }
 }
 
 #[test]

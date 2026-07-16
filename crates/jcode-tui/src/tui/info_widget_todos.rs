@@ -64,10 +64,12 @@ fn todo_display_confidence(todo: &crate::todo::TodoItem) -> Option<u8> {
     }
 }
 
-fn aggregate_todo_confidence(todos: &[crate::todo::TodoItem]) -> Option<u8> {
+fn aggregate_todo_confidence<'a>(
+    todos: impl IntoIterator<Item = &'a crate::todo::TodoItem>,
+) -> Option<u8> {
     let mut weighted_sum = 0u32;
     let mut total_weight = 0u32;
-    for todo in todos.iter().filter(|todo| todo.status != "cancelled") {
+    for todo in todos.into_iter().filter(|todo| todo.status != "cancelled") {
         let Some(score) = todo_display_confidence(todo) else {
             continue;
         };
@@ -243,8 +245,15 @@ fn push_todo_pips(spans: &mut Vec<Span<'static>>, data: &InfoWidgetData, width_p
     }
 }
 
-fn push_aggregate_confidence_suffix(spans: &mut Vec<Span<'static>>, data: &InfoWidgetData) {
-    let Some(score) = aggregate_todo_confidence(&data.todos) else {
+fn aggregate_confidence_suffix_width(score: Option<u8>) -> u16 {
+    match score {
+        Some(score) => 3 + "confidence ".len() as u16 + confidence_label(Some(score)).len() as u16,
+        None => 0,
+    }
+}
+
+fn push_aggregate_confidence_suffix(spans: &mut Vec<Span<'static>>, score: Option<u8>) {
+    let Some(score) = score else {
         return;
     };
     spans.push(Span::styled(" · ", Style::default().fg(rgb(100, 100, 110))));
@@ -317,10 +326,12 @@ fn push_group_header(
     let total = items.len();
     let completed = items.iter().filter(|t| t.status == "completed").count();
     let counter = format!(" {}/{}", completed, total);
+    let confidence = aggregate_todo_confidence(items.iter().copied());
+    let confidence_width = aggregate_confidence_suffix_width(confidence);
     let hill_width = goal.map(goal_hill_suffix_width).unwrap_or(0);
     let max_name = inner
         .width
-        .saturating_sub(counter.len() as u16 + hill_width)
+        .saturating_sub(counter.len() as u16 + confidence_width + hill_width)
         .max(4) as usize;
     let highlight = items.iter().any(|t| t.status == "in_progress");
     let name_style = if highlight {
@@ -332,6 +343,7 @@ fn push_group_header(
         Span::styled(truncate_smart(name, max_name), name_style),
         Span::styled(counter, Style::default().fg(rgb(120, 120, 140))),
     ];
+    push_aggregate_confidence_suffix(&mut spans, confidence);
     if let Some(goal) = goal {
         push_goal_hill_suffix(&mut spans, goal);
     }
@@ -490,7 +502,7 @@ pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
     ];
     let pip_budget = (inner.width.saturating_sub(12) / 2).clamp(0, 10) as usize;
     push_todo_pips(&mut header, data, pip_budget);
-    push_aggregate_confidence_suffix(&mut header, data);
+    push_aggregate_confidence_suffix(&mut header, aggregate_todo_confidence(&data.todos));
 
     let available_lines = inner.height.saturating_sub(1) as usize; // Account for header
     let budget = available_lines.clamp(1, 5);
@@ -571,7 +583,7 @@ pub(super) fn render_todos_expanded(data: &InfoWidgetData, inner: Rect) -> Vec<L
     ];
     let pip_budget = (inner.width.saturating_sub(12) / 2).clamp(0, 14) as usize;
     push_todo_pips(&mut header, data, pip_budget);
-    push_aggregate_confidence_suffix(&mut header, data);
+    push_aggregate_confidence_suffix(&mut header, aggregate_todo_confidence(&data.todos));
 
     let available_lines = MAX_TODO_LINES.saturating_sub(1); // Account for header
 
@@ -662,7 +674,7 @@ pub(super) fn render_todos_compact(data: &InfoWidgetData, _inner: Rect) -> Vec<L
             Style::default().fg(rgb(140, 140, 150)),
         ),
     ];
-    push_aggregate_confidence_suffix(&mut summary, data);
+    push_aggregate_confidence_suffix(&mut summary, aggregate_todo_confidence(&data.todos));
     if let Some(goal) = goal_for_group(&data.todo_goals, None) {
         push_goal_hill_suffix(&mut summary, goal);
     }
