@@ -1276,23 +1276,28 @@ fn onboarding_banner_renders_prompt_and_both_action_rows() {
         .iter()
         .position(|line| line.contains("Start a new session"))
         .expect("start-new row");
-    let top_gap = welcome_y.saturating_sub(1);
-    let bottom_gap = (buffer.area.height as usize)
-        .saturating_sub(2)
-        .saturating_sub(start_y);
+    let review_x = lines[review_y]
+        .find("Find bugs in what I've been working on")
+        .expect("review column");
+    let start_x = lines[start_y]
+        .find("Start a new session")
+        .expect("start-new column");
 
     assert!(
-        welcome_y >= 10,
-        "choice content should be padded away from the top like the first onboarding page: {lines:#?}"
+        welcome_y < review_y,
+        "welcome copy should introduce the centered suggested prompt: {lines:#?}"
     );
     assert!(
-        top_gap.abs_diff(bottom_gap) <= 2,
-        "choice content should have balanced top/bottom whitespace (top={top_gap}, bottom={bottom_gap}): {lines:#?}"
+        review_y.abs_diff(buffer.area.height as usize / 2) <= 1,
+        "suggested prompt should be vertically centered: {lines:#?}"
     );
-    assert_eq!(
-        start_y,
-        review_y + 1,
-        "the two actions should remain stacked together: {lines:#?}"
+    assert!(
+        review_x < 50,
+        "suggested prompt should span the visual center: {lines:#?}"
+    );
+    assert!(
+        start_y >= buffer.area.height as usize - 3 && start_x >= 95,
+        "blank-session action should stay secondary in the bottom-right: {lines:#?}"
     );
 }
 

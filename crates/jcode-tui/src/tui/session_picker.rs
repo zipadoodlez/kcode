@@ -2007,7 +2007,8 @@ impl SessionPicker {
         frame.render_widget(Paragraph::new(preview_lines), header_area);
     }
 
-    /// Render the first-run prompt followed by its two stacked actions.
+    /// Render the suggested first-run prompt as the primary centered action,
+    /// with the blank-session escape hatch kept secondary in the bottom-right.
     fn render_onboarding_band(&self, frame: &mut Frame, area: Rect) {
         if area.height == 0 {
             return;
@@ -2024,9 +2025,6 @@ impl SessionPicker {
             return;
         }
 
-        // Match the first onboarding page's vertical rhythm: keep a compact
-        // content block centered in the available height, with one quiet line
-        // between the explanation and the two stacked actions.
         let content_width = inner.width.min(108);
         let content_x = inner.x + inner.width.saturating_sub(content_width) / 2;
         let prompt_lines = self.onboarding_banner.clone().unwrap_or_default();
@@ -2037,32 +2035,26 @@ impl SessionPicker {
                 width.div_ceil(content_width.max(1))
             })
             .sum::<u16>()
-            .min(inner.height.saturating_sub(3));
-        let content_height = prompt_height.saturating_add(3).min(inner.height);
-        let content_area = Rect {
+            .min(inner.height.saturating_sub(2));
+        let review_y = inner.y + inner.height.saturating_sub(1) / 2;
+        let prompt_y = review_y
+            .saturating_sub(prompt_height.saturating_add(2))
+            .max(inner.y);
+        let prompt_area = Rect {
             x: content_x,
-            y: inner.y + inner.height.saturating_sub(content_height) / 2,
+            y: prompt_y,
             width: content_width,
-            height: content_height,
+            height: prompt_height.min(review_y.saturating_sub(prompt_y)),
         };
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(prompt_height),
-                Constraint::Length(1),
-                Constraint::Length(1),
-                Constraint::Length(1),
-            ])
-            .split(content_area);
 
-        if prompt_height > 0 {
+        if prompt_area.height > 0 {
             let prompt = Paragraph::new(prompt_lines)
                 .alignment(Alignment::Center)
                 .wrap(ratatui::widgets::Wrap { trim: false });
-            frame.render_widget(prompt, chunks[0]);
+            frame.render_widget(prompt, prompt_area);
         }
 
-        let action_line = |label: &'static str, selected: bool, hint: &'static str| {
+        let action_line = |label: &'static str, selected: bool| {
             let (cap_style, body_style) = if selected {
                 (
                     Style::default().fg(accent),
@@ -2081,7 +2073,6 @@ impl SessionPicker {
                 Span::styled("\u{25D6}", cap_style),
                 Span::styled(format!(" {label} "), body_style),
                 Span::styled("\u{25D7}", cap_style),
-                Span::styled(hint, Style::default().fg(rgb(120, 120, 130))),
             ])
         };
 
@@ -2090,29 +2081,26 @@ impl SessionPicker {
             Paragraph::new(action_line(
                 "Find bugs in what I've been working on",
                 review_selected,
-                if review_selected {
-                    "  Enter runs it · recent Git activity → bugs + architecture"
-                } else {
-                    "  ↑ selects the suggested review"
-                },
             ))
             .alignment(Alignment::Center),
-            chunks[2],
+            Rect {
+                x: inner.x,
+                y: review_y,
+                width: inner.width,
+                height: 1,
+            },
         );
 
         let start_selected = self.onboarding_start_new_highlighted();
         frame.render_widget(
-            Paragraph::new(action_line(
-                "Start a new session",
-                start_selected,
-                if start_selected {
-                    "  Enter starts with a blank prompt"
-                } else {
-                    "  ↓ selects a blank session"
-                },
-            ))
-            .alignment(Alignment::Center),
-            chunks[3],
+            Paragraph::new(action_line("Start a new session", start_selected))
+                .alignment(Alignment::Right),
+            Rect {
+                x: inner.x,
+                y: inner.y + inner.height.saturating_sub(1),
+                width: inner.width,
+                height: 1,
+            },
         );
     }
 

@@ -839,10 +839,6 @@ impl App {
                 "How would you like to begin?",
                 Style::default().fg(Color::White),
             )]),
-            Line::from(vec![Span::styled(
-                "The suggested review uses recent Git activity to find your latest work, then checks it for bugs and architecture problems.",
-                Style::default().fg(Color::White),
-            )]),
         ]
     }
 
