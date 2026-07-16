@@ -272,9 +272,9 @@ pub async fn run_login_provider(
                 eprintln!("Imported {} existing auth source(s).", imported);
                 Ok(LoginFlowOutcome::Completed)
             }
-            LoginProviderTarget::Jcode => {
-                login_jcode_flow(options.no_browser).map(|_| LoginFlowOutcome::Completed)
-            }
+            LoginProviderTarget::Jcode => login_jcode_flow(options.no_browser)
+                .await
+                .map(|_| LoginFlowOutcome::Completed),
             LoginProviderTarget::Claude => login_claude_flow(account_label, options.no_browser)
                 .await
                 .map(|_| LoginFlowOutcome::Completed),
@@ -459,70 +459,14 @@ async fn notify_running_server_auth_changed_best_effort(provider: Option<&str>) 
     }
 }
 
-fn login_jcode_flow(no_browser: bool) -> Result<()> {
+async fn login_jcode_flow(no_browser: bool) -> Result<()> {
     eprintln!("Starting jcode subscription sign-in...");
-    eprintln!(
-        "Enter the email for your jcode subscription account. We'll send you a sign-in link.\n(Or press Enter to paste an API key from your account portal instead.)\n"
-    );
-    let email = read_line_trimmed("Email: ")?;
-
-    if !email.is_empty() {
-        return tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(jcode_device::login_jcode_device_flow(&email, no_browser))
-        });
-    }
-
-    eprintln!("\nFalling back to manual API key entry.");
-    eprint!("Paste your Jcode API key: ");
-    io::stdout().flush()?;
-
-    let key = read_secret_line()?;
-    if key.is_empty() {
-        anyhow::bail!("No API key provided.");
-    }
-
-    eprint!("Optional router base URL (press Enter to use the default placeholder): ");
-    io::stdout().flush()?;
-    let api_base = read_secret_line()?;
-
-    let mut content = format!(
-        "{}={}\n",
-        crate::subscription_catalog::JCODE_API_KEY_ENV,
-        key
-    );
-    if !api_base.trim().is_empty() {
-        content.push_str(&format!(
-            "{}={}\n",
-            crate::subscription_catalog::JCODE_API_BASE_ENV,
-            api_base.trim()
-        ));
-    }
-
-    let config_dir = crate::storage::app_config_dir()?;
-    let file_path = config_dir.join(crate::subscription_catalog::JCODE_ENV_FILE);
-    crate::storage::write_text_secret(&file_path, &content)?;
-
-    crate::env::set_var(crate::subscription_catalog::JCODE_API_KEY_ENV, key);
-    if !api_base.trim().is_empty() {
-        crate::env::set_var(
-            crate::subscription_catalog::JCODE_API_BASE_ENV,
-            api_base.trim(),
-        );
-    }
-
-    eprintln!("\nSuccessfully saved Jcode subscription credentials!");
-    eprintln!("Stored at {}", file_path.display());
-    eprintln!(
-        "Curated models available now: {}",
-        crate::subscription_catalog::curated_models()
-            .iter()
-            .map(|model| model.display_name)
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-    crate::telemetry::record_auth_success("jcode", "api_key");
+    let _ = jcode_device::login_jcode_device_flow(no_browser).await?;
     Ok(())
+}
+
+pub(crate) async fn run_jcode_account_login(no_browser: bool) -> Result<()> {
+    login_jcode_flow(no_browser).await
 }
 
 fn login_openai_api_key_flow() -> Result<()> {

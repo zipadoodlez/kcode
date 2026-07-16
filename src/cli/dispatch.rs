@@ -16,7 +16,8 @@ use crate::{
 };
 
 use super::{
-    acp, commands, debug, hot_exec, login, output, provider_init, selfdev, terminal, tui_launch,
+    account, acp, commands, debug, hot_exec, login, output, provider_init, selfdev, terminal,
+    tui_launch,
 };
 use provider_init::ProviderChoice;
 
@@ -159,6 +160,14 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             )
             .await?;
         }
+        Some(Command::Account { action }) => match action {
+            super::args::AccountCommand::Login { no_browser } => {
+                account::run_login(no_browser).await?
+            }
+            super::args::AccountCommand::Status { json } => account::run_status(json).await?,
+            super::args::AccountCommand::Manage => account::run_manage()?,
+            super::args::AccountCommand::Logout => account::run_logout().await?,
+        },
         Some(Command::Repl) => {
             let (provider, registry) =
                 provider_init::init_provider_and_registry(&args.provider, args.model.as_deref())

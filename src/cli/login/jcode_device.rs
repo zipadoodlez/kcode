@@ -1,378 +1,205 @@
-//! Jcode subscription device-code (magic-link) login flow.
+//! CLI orchestration for the Jcode account device authorization flow.
 //!
-//! Contract (the live backend lives in the private solosystems-backend repo):
-//! - `POST {auth_base}/v1/auth/device {"email": "..."}` ->
-//!   `{device_code, verify_url, expires_in, interval}`
-//! - `POST {auth_base}/v1/auth/token {"device_code": "..."}` ->
-//!   HTTP 202 (or `{"status":"pending"}`) until approved, then
-//!   `{api_key, account_id, email, tier}`
-//!
-//! `auth_base` is derived by stripping a trailing `/v1` from the configured
-//! jcode API base (`JCODE_API_BASE` / `DEFAULT_JCODE_API_BASE`), since the
-//! auth endpoints live at the service root rather than under the model API
-//! `/v1` prefix.
+//! Protocol parsing and HTTP behavior live in `subscription_api` so the CLI and
+//! TUI share the same contract and redaction guarantees.
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
 use std::time::Duration;
 
-#[derive(Debug, Clone, Deserialize)]
-pub(super) struct DeviceAuthResponse {
-    pub device_code: String,
-    pub verify_url: String,
-    #[serde(default = "default_expires_in")]
-    pub expires_in: u64,
-    #[serde(default = "default_interval")]
-    pub interval: u64,
+use crate::subscription_api::{
+    self, ActivationOutcome, ApprovedAccountKey, PollingBackoff, TokenPollOutcome,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum LoginCompletion {
+    Active,
+    KeySavedPlanPending,
+    CanceledBeforeApproval,
 }
 
-fn default_expires_in() -> u64 {
-    900
-}
-
-fn default_interval() -> u64 {
-    5
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub(super) struct TokenApprovedResponse {
-    pub api_key: String,
-    #[serde(default)]
-    pub account_id: Option<String>,
-    #[serde(default)]
-    pub email: Option<String>,
-    #[serde(default)]
-    pub tier: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-struct TokenErrorResponse {
-    #[serde(default)]
-    status: Option<String>,
-    #[serde(default)]
-    error: Option<ErrorField>,
-    #[serde(default)]
-    error_description: Option<String>,
-    #[serde(default)]
-    message: Option<String>,
-}
-
-/// The backend nests errors as `{"error":{"code","message"}}`; also accept a
-/// flat OAuth-style `{"error":"code","error_description":"..."}` shape.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
-enum ErrorField {
-    Code(String),
-    Object {
-        #[serde(default)]
-        code: Option<String>,
-        #[serde(default)]
-        message: Option<String>,
-    },
-}
-
-impl TokenErrorResponse {
-    fn code(&self) -> Option<&str> {
-        match &self.error {
-            Some(ErrorField::Code(code)) => Some(code.as_str()),
-            Some(ErrorField::Object { code, .. }) => code.as_deref(),
-            None => self.status.as_deref(),
-        }
-    }
-
-    fn description(&self) -> Option<String> {
-        if let Some(ErrorField::Object {
-            message: Some(message),
-            ..
-        }) = &self.error
-        {
-            return Some(message.clone());
-        }
-        self.error_description
-            .clone()
-            .or_else(|| self.message.clone())
-    }
-}
-
-/// Outcome of a single `/v1/auth/token` poll attempt.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum PollOutcome {
-    Pending,
-    SlowDown,
-    Approved(TokenApprovedState),
-    Expired,
-    Denied(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct TokenApprovedState {
-    pub api_key: String,
-    pub account_id: Option<String>,
-    pub email: Option<String>,
-    pub tier: Option<String>,
-}
-
-/// Derive the auth service base URL from the configured (or default) jcode
-/// model API base by stripping a trailing `/v1` segment.
-pub(super) fn auth_base_url() -> String {
-    let base = crate::subscription_catalog::configured_api_base()
-        .unwrap_or_else(|| crate::subscription_catalog::DEFAULT_JCODE_API_BASE.to_string());
-    strip_v1_suffix(&base)
-}
-
-pub(super) fn strip_v1_suffix(base: &str) -> String {
-    let trimmed = base.trim().trim_end_matches('/');
-    trimmed
-        .strip_suffix("/v1")
-        .unwrap_or(trimmed)
-        .trim_end_matches('/')
-        .to_string()
-}
-
-pub(super) async fn request_device_code(
-    client: &reqwest::Client,
-    auth_base: &str,
-    email: &str,
-) -> Result<DeviceAuthResponse> {
-    let url = format!("{}/v1/auth/device", auth_base.trim_end_matches('/'));
-    let resp = client
-        .post(&url)
-        .json(&serde_json::json!({ "email": email }))
-        .send()
-        .await
-        .with_context(|| format!("Failed to reach jcode auth service at {}", url))?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!(
-            "jcode auth service rejected the device authorization request (HTTP {}): {}",
-            status.as_u16(),
-            body.trim()
-        );
-    }
-
-    resp.json::<DeviceAuthResponse>()
-        .await
-        .context("Failed to parse device authorization response")
-}
-
-/// Perform one poll of `/v1/auth/token` and classify the response.
-pub(super) async fn poll_token_once(
-    client: &reqwest::Client,
-    auth_base: &str,
-    device_code: &str,
-) -> Result<PollOutcome> {
-    let url = format!("{}/v1/auth/token", auth_base.trim_end_matches('/'));
-    let resp = client
-        .post(&url)
-        .json(&serde_json::json!({ "device_code": device_code }))
-        .send()
-        .await
-        .with_context(|| format!("Failed to reach jcode auth service at {}", url))?;
-
-    let status = resp.status();
-    let body = resp.text().await.unwrap_or_default();
-
-    if status.as_u16() == 202 || status.as_u16() == 428 {
-        return Ok(PollOutcome::Pending);
-    }
-    if status.as_u16() == 429 {
-        return Ok(PollOutcome::SlowDown);
-    }
-
-    if status.is_success() {
-        // Some backends signal pending with 200 + {"status":"pending"}.
-        if let Ok(err_body) = serde_json::from_str::<TokenErrorResponse>(&body)
-            && matches!(
-                err_body.status.as_deref(),
-                Some("pending") | Some("authorization_pending")
-            )
-        {
-            return Ok(PollOutcome::Pending);
-        }
-        let approved: TokenApprovedResponse = serde_json::from_str(&body)
-            .context("Failed to parse approved token response from jcode auth service")?;
-        if approved.api_key.trim().is_empty() {
-            anyhow::bail!("jcode auth service returned an empty API key");
-        }
-        return Ok(PollOutcome::Approved(TokenApprovedState {
-            api_key: approved.api_key,
-            account_id: approved.account_id,
-            email: approved.email,
-            tier: approved.tier,
-        }));
-    }
-
-    let parsed: TokenErrorResponse = serde_json::from_str(&body).unwrap_or_default();
-    let code = parsed.code().unwrap_or("");
-    match code {
-        "authorization_pending" | "pending" => Ok(PollOutcome::Pending),
-        "slow_down" => Ok(PollOutcome::SlowDown),
-        "expired_token" | "expired" | "expired_device_code" => Ok(PollOutcome::Expired),
-        "access_denied" | "denied" => {
-            Ok(PollOutcome::Denied(parsed.description().unwrap_or_else(
-                || "Authorization was denied.".to_string(),
-            )))
-        }
-        _ if status.as_u16() == 404 || status.as_u16() == 410 => Ok(PollOutcome::Expired),
-        _ => anyhow::bail!(
-            "jcode auth service returned an unexpected error (HTTP {}): {}",
-            status.as_u16(),
-            body.trim()
-        ),
-    }
-}
-
-/// Poll `/v1/auth/token` until approval, denial, or expiry.
-///
-/// `interval` and `expires_in` come from the device authorization response.
 pub(super) async fn poll_for_api_key(
     client: &reqwest::Client,
-    auth_base: &str,
+    api_base: &str,
     device_code: &str,
     interval: u64,
     expires_in: u64,
-) -> Result<TokenApprovedState> {
-    let interval = interval.max(1);
-    let deadline = std::time::Instant::now() + Duration::from_secs(expires_in.max(interval));
-    let mut wait = Duration::from_secs(interval);
+) -> Result<ApprovedAccountKey> {
+    let base_delay = Duration::from_secs(interval.max(1));
+    let deadline =
+        tokio::time::Instant::now() + Duration::from_secs(expires_in.max(interval.max(1)));
+    let mut backoff = PollingBackoff::new(base_delay);
+    let mut reported_offline = false;
 
     loop {
-        tokio::time::sleep(wait).await;
-        if std::time::Instant::now() >= deadline {
+        let delay = backoff.delay();
+        if tokio::time::Instant::now() + delay >= deadline {
             anyhow::bail!(
-                "The sign-in link expired before it was approved. Run `jcode login jcode` again."
+                "Jcode account login timed out before browser approval. Run `jcode account login` to try again."
             );
         }
-        match poll_token_once(client, auth_base, device_code).await? {
-            PollOutcome::Pending => {}
-            PollOutcome::SlowDown => {
-                wait += Duration::from_secs(5);
+        tokio::time::sleep(delay).await;
+
+        match subscription_api::poll_device_token_once(client, api_base, device_code).await {
+            Ok(TokenPollOutcome::Pending) => {
+                backoff.on_pending();
+                reported_offline = false;
             }
-            PollOutcome::Approved(state) => return Ok(state),
-            PollOutcome::Expired => {
-                anyhow::bail!(
-                    "The sign-in link expired before it was approved. Run `jcode login jcode` again."
-                );
+            Ok(TokenPollOutcome::SlowDown { retry_after }) => {
+                backoff.on_slow_down(retry_after);
+                reported_offline = false;
             }
-            PollOutcome::Denied(reason) => {
-                anyhow::bail!("jcode sign-in was denied: {}", reason);
+            Ok(TokenPollOutcome::Approved(key)) => return Ok(key),
+            Ok(TokenPollOutcome::Expired) => anyhow::bail!(
+                "The browser approval expired or was already exchanged. Run `jcode account login` to start a new single-use flow."
+            ),
+            Ok(TokenPollOutcome::Denied) => {
+                anyhow::bail!("Jcode account login was canceled or denied in the browser.")
             }
+            Err(error) if error.is_temporary() => {
+                if !reported_offline {
+                    eprintln!("  Connection interrupted. Retrying with backoff...");
+                    reported_offline = true;
+                }
+                backoff.on_offline_error();
+            }
+            Err(error) => return Err(anyhow::Error::new(error)),
         }
     }
 }
 
-/// Persist an approved subscription credential set to the jcode-subscription
-/// env file and process environment, preserving any configured API base.
-pub(super) fn persist_subscription_credentials(state: &TokenApprovedState) -> Result<()> {
-    use crate::subscription_catalog as cat;
-
-    crate::provider_catalog::save_env_value_to_env_file(
-        cat::JCODE_API_KEY_ENV,
-        cat::JCODE_ENV_FILE,
-        Some(state.api_key.trim()),
+fn persist_approved_key(approved: &ApprovedAccountKey) -> Result<()> {
+    crate::subscription_catalog::persist_account_credentials(
+        &approved.api_key,
+        Some(&approved.account_id),
+        Some(&approved.email),
+        Some(&approved.tier),
     )?;
-    crate::provider_catalog::save_env_value_to_env_file(
-        cat::JCODE_ACCOUNT_ID_ENV,
-        cat::JCODE_ENV_FILE,
-        state
-            .account_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty()),
-    )?;
-    crate::provider_catalog::save_env_value_to_env_file(
-        cat::JCODE_ACCOUNT_EMAIL_ENV,
-        cat::JCODE_ENV_FILE,
-        state
-            .email
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty()),
-    )?;
-    crate::provider_catalog::save_env_value_to_env_file(
-        cat::JCODE_TIER_ENV,
-        cat::JCODE_ENV_FILE,
-        state
-            .tier
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty()),
-    )?;
+    crate::auth::AuthStatus::invalidate_cache();
     Ok(())
 }
 
-/// Full interactive device-code login flow for the jcode subscription.
-pub(super) async fn login_jcode_device_flow(email: &str, no_browser: bool) -> Result<()> {
+/// Full browser-first device login. No email or secret is requested in the
+/// terminal. A valid exchanged key is retained when plan activation times out or
+/// the user cancels activation polling.
+pub(super) async fn login_jcode_device_flow(no_browser: bool) -> Result<LoginCompletion> {
     let client = crate::provider::shared_http_client();
-    let auth_base = auth_base_url();
-
-    let device = request_device_code(&client, &auth_base, email).await?;
-
-    eprintln!();
-    eprintln!("  Check your email ({}) for a sign-in link.", email);
-    eprintln!("  If it does not arrive, open this URL to approve the sign-in:");
-    eprintln!("    {}", device.verify_url);
-    eprintln!();
-    eprintln!("  Waiting for approval...");
-
-    super::maybe_open_browser(&device.verify_url, no_browser);
-
-    let approved = poll_for_api_key(
+    let api_base = subscription_api::configured_api_base();
+    let device = subscription_api::request_device_authorization(
         &client,
-        &auth_base,
-        &device.device_code,
-        device.interval,
-        device.expires_in,
+        &api_base,
+        Some(crate::subscription_catalog::JcodeTier::Pro),
     )
-    .await?;
+    .await
+    .map_err(anyhow::Error::new)
+    .context("Failed to start Jcode account login")?;
 
-    persist_subscription_credentials(&approved)?;
-    crate::auth::AuthStatus::invalidate_cache();
+    eprintln!("\nJcode Account Login");
+    eprintln!("  Opening the secure account approval page:");
+    eprintln!("  {}", device.verification_uri_complete);
+    eprintln!("\n  Approve the request in that browser. No terminal email entry is needed.");
+    super::maybe_open_browser(&device.verification_uri_complete, no_browser);
+    eprintln!("  Waiting for browser approval. Press Ctrl-C to cancel...");
 
-    let config_dir = crate::storage::app_config_dir()?;
-    eprintln!();
-    eprintln!(
-        "  ✓ Signed in to the jcode subscription{}{}",
-        approved
-            .email
-            .as_deref()
-            .map(|value| format!(" as {}", value))
-            .unwrap_or_default(),
-        approved
-            .tier
-            .as_deref()
-            .map(|value| format!(" ({} tier)", value))
-            .unwrap_or_default(),
-    );
-    eprintln!(
-        "  Credentials stored at {}",
-        config_dir
-            .join(crate::subscription_catalog::JCODE_ENV_FILE)
-            .display()
-    );
-    if approved
-        .tier
-        .as_deref()
-        .map(str::trim)
-        .is_none_or(|tier| tier.eq_ignore_ascii_case("none") || tier.is_empty())
-    {
-        eprintln!();
-        eprintln!(
-            "  Choose a hosted-token plan at {}",
-            crate::subscription_catalog::JCODE_PRICING_URL
-        );
-        eprintln!("  The sign-in tab is already connected to this account.");
-    }
+    let approved = tokio::select! {
+        result = poll_for_api_key(
+            &client,
+            &api_base,
+            &device.device_code,
+            device.interval,
+            device.expires_in,
+        ) => result?,
+        signal = tokio::signal::ctrl_c() => {
+            signal.context("Failed to listen for Ctrl-C")?;
+            eprintln!("\n  Login canceled before approval. No credential was saved.");
+            return Ok(LoginCompletion::CanceledBeforeApproval);
+        }
+    };
 
-    crate::telemetry::record_auth_success("jcode-subscription", "device_code_magic_link");
-    // TODO(telemetry): emit a dedicated `account_linked` event carrying
-    // `account_id` once jcode-telemetry-core grows a generic event with an
-    // account field; the current AuthEvent schema has no account_id slot and
-    // adding one is out of scope for this change.
+    persist_approved_key(&approved)?;
+    eprintln!("\n  Account approved for {}.", approved.email);
+    eprintln!("  Credential saved securely with owner-only permissions.");
+    eprintln!("  Waiting for an active paid plan on /v1/me...");
 
-    Ok(())
+    let activation = tokio::select! {
+        result = subscription_api::poll_for_paid_activation(
+            &client,
+            &api_base,
+            &approved.api_key,
+            subscription_api::ACTIVATION_TIMEOUT,
+            Duration::from_secs(device.interval.max(2)),
+        ) => Some(result),
+        signal = tokio::signal::ctrl_c() => {
+            signal.context("Failed to listen for Ctrl-C")?;
+            None
+        }
+    };
+
+    let completion = match activation {
+        Some(ActivationOutcome::Active(me)) => {
+            crate::subscription_catalog::persist_account_credentials(
+                &approved.api_key,
+                Some(&me.account_id),
+                Some(&me.email),
+                Some(&me.tier),
+            )?;
+            let tier = me
+                .parsed_tier()
+                .map(|tier| tier.display_name().to_string())
+                .unwrap_or(me.tier);
+            eprintln!(
+                "  ✓ {} plan is active. Jcode account login is complete.",
+                tier
+            );
+            LoginCompletion::Active
+        }
+        Some(ActivationOutcome::Canceled(_)) => {
+            eprintln!(
+                "  Checkout was canceled. Your account key remains saved, but no paid plan is active."
+            );
+            print_recovery_actions();
+            LoginCompletion::KeySavedPlanPending
+        }
+        Some(ActivationOutcome::TimedOut {
+            last_error_was_offline,
+        }) => {
+            if last_error_was_offline {
+                eprintln!(
+                    "  Plan activation could not be confirmed before timeout because the account API remained unreachable."
+                );
+            } else {
+                eprintln!("  Plan activation was not detected before timeout.");
+            }
+            eprintln!("  Your valid account key remains saved.");
+            print_recovery_actions();
+            LoginCompletion::KeySavedPlanPending
+        }
+        Some(ActivationOutcome::Revoked) => {
+            crate::subscription_catalog::clear_account_credentials()?;
+            anyhow::bail!(
+                "The newly issued account key was revoked before plan activation. Local credentials were cleared; run `jcode account login` again."
+            );
+        }
+        Some(ActivationOutcome::Denied) => {
+            crate::subscription_catalog::clear_account_credentials()?;
+            anyhow::bail!(
+                "The account server denied plan activation checks. Local credentials were cleared; run `jcode account login` again."
+            );
+        }
+        None => {
+            eprintln!("\n  Activation wait canceled. Your valid account key remains saved.");
+            print_recovery_actions();
+            LoginCompletion::KeySavedPlanPending
+        }
+    };
+
+    crate::telemetry::record_auth_success("jcode-subscription", "device_code_browser");
+    Ok(completion)
+}
+
+fn print_recovery_actions() {
+    eprintln!("  Check:   jcode account status");
+    eprintln!("  Manage:  jcode account manage");
+    eprintln!("  Log out: jcode account logout");
 }
 
 #[cfg(test)]

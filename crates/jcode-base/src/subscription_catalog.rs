@@ -10,6 +10,7 @@ pub const JCODE_CACHE_NAMESPACE: &str = "jcode-subscription";
 pub const JCODE_SUBSCRIPTION_ACTIVE_ENV: &str = "JCODE_SUBSCRIPTION_ACTIVE";
 pub const DEFAULT_JCODE_API_BASE: &str = "https://api.jcode.sh/v1";
 pub const JCODE_PRICING_URL: &str = "https://jcode.sh/pricing";
+pub const JCODE_ACCOUNT_URL: &str = "https://jcode.sh/account";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum JcodeTier {
@@ -235,6 +236,78 @@ pub fn configured_api_base() -> Option<String> {
 
 pub fn has_credentials() -> bool {
     configured_api_key().is_some()
+}
+
+/// Persist an account API key and its non-secret account metadata in jcode's
+/// owner-only subscription file.
+pub fn persist_account_credentials(
+    api_key: &str,
+    account_id: Option<&str>,
+    email: Option<&str>,
+    tier: Option<&str>,
+) -> anyhow::Result<()> {
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        anyhow::bail!("refusing to persist an empty jcode account API key");
+    }
+
+    for (key, value) in [
+        (JCODE_API_KEY_ENV, Some(api_key)),
+        (JCODE_ACCOUNT_ID_ENV, nonempty(account_id)),
+        (JCODE_ACCOUNT_EMAIL_ENV, nonempty(email)),
+        (JCODE_TIER_ENV, nonempty(tier)),
+    ] {
+        provider_catalog::save_env_value_to_env_file(key, JCODE_ENV_FILE, value)?;
+    }
+    ensure_account_credential_permissions()
+}
+
+/// Remove the local account credential and cached account identity/tier. The
+/// configured API base is intentionally retained because it is endpoint
+/// configuration, not an authorization credential.
+pub fn clear_account_credentials() -> anyhow::Result<()> {
+    for key in [
+        JCODE_API_KEY_ENV,
+        JCODE_ACCOUNT_ID_ENV,
+        JCODE_ACCOUNT_EMAIL_ENV,
+        JCODE_TIER_ENV,
+    ] {
+        provider_catalog::save_env_value_to_env_file(key, JCODE_ENV_FILE, None)?;
+    }
+    clear_runtime_env();
+    ensure_account_credential_permissions()
+}
+
+fn nonempty(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+pub fn account_credential_path() -> anyhow::Result<std::path::PathBuf> {
+    Ok(crate::storage::app_config_dir()?.join(JCODE_ENV_FILE))
+}
+
+/// Re-harden and verify the subscription file after every credential mutation.
+/// This is deliberately an explicit postcondition even though the shared secret
+/// writer also applies owner-only permissions.
+pub fn ensure_account_credential_permissions() -> anyhow::Result<()> {
+    let path = account_credential_path()?;
+    if !path.exists() {
+        return Ok(());
+    }
+    crate::storage::harden_secret_file_permissions(&path);
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&path)?.permissions().mode() & 0o777;
+        if mode & 0o077 != 0 {
+            anyhow::bail!(
+                "jcode account credential file has unsafe permissions {:03o}; expected owner-only access",
+                mode
+            );
+        }
+    }
+    Ok(())
 }
 
 pub fn has_router_base() -> bool {

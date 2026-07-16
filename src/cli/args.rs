@@ -218,6 +218,12 @@ pub(crate) enum Command {
         api_key_env: Option<String>,
     },
 
+    /// Log in to and manage your Jcode account
+    Account {
+        #[command(subcommand)]
+        action: AccountCommand,
+    },
+
     /// Run in simple REPL mode (no TUI)
     Repl,
 
@@ -501,6 +507,26 @@ pub(crate) enum Command {
         #[arg(long, conflicts_with = "once")]
         json: bool,
     },
+}
+
+#[derive(Subcommand, Debug)]
+pub(crate) enum AccountCommand {
+    /// Open browser-based device authorization and wait for plan activation
+    Login {
+        /// Do not open a browser automatically; print the public approval URL instead
+        #[arg(long, alias = "headless")]
+        no_browser: bool,
+    },
+    /// Show canonical account, plan, and usage status from /v1/me
+    Status {
+        /// Emit JSON instead of human-readable output
+        #[arg(long)]
+        json: bool,
+    },
+    /// Open the public Jcode account management page
+    Manage,
+    /// Revoke the current key when reachable, then securely clear local state
+    Logout,
 }
 
 #[derive(Subcommand, Debug)]

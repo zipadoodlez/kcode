@@ -16,6 +16,7 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::Connect) => "jcode:client".to_string(),
         Some(Command::Run { .. }) => "jcode run".to_string(),
         Some(Command::Login { .. }) => "jcode login".to_string(),
+        Some(Command::Account { .. }) => "jcode account".to_string(),
         Some(Command::Repl) => "jcode repl".to_string(),
         Some(Command::Update) => "jcode update".to_string(),
         Some(Command::Version { .. }) => "jcode version".to_string(),
