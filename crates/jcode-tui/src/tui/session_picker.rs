@@ -11,10 +11,10 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEv
 use jcode_session_types::SessionStatus;
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
 use std::collections::HashSet;
 use std::io::IsTerminal;
@@ -2014,13 +2014,10 @@ impl SessionPicker {
             return;
         }
         let accent = rgb(186, 139, 255);
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(accent))
-            .padding(Padding::horizontal(1));
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
+        let inner = area.inner(Margin {
+            horizontal: 2,
+            vertical: 1,
+        });
         if inner.height == 0 {
             return;
         }

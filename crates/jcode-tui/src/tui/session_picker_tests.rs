@@ -1263,6 +1263,10 @@ fn onboarding_banner_renders_prompt_and_both_action_rows() {
         !text.contains("Sessions"),
         "resume chrome must be absent: {text:?}"
     );
+    assert!(
+        !text.contains('╭') && !text.contains('╰') && !text.contains('│'),
+        "onboarding choice should not render an outer boundary: {lines:#?}"
+    );
 
     let welcome_y = lines
         .iter()
