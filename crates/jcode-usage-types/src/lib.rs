@@ -248,6 +248,8 @@ pub struct InstallEvent {
     pub is_git_checkout: bool,
     pub is_ci: bool,
     pub ran_from_cargo: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub install_conversion_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
