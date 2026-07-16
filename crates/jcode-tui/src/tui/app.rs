@@ -34,6 +34,7 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -962,6 +963,10 @@ pub struct App {
     /// Active guided first-run onboarding flow (model select -> continue ->
     /// transcript pick -> suggestions). `None` when not onboarding.
     onboarding_flow: Option<onboarding_flow::OnboardingFlow>,
+    /// Shared cancellation guard for delayed post-login model catalog refreshes.
+    /// Onboarding completion clears it so a late catalog result cannot override
+    /// the model after the user has moved into a normal session.
+    onboarding_auto_model_selection_active: Arc<AtomicBool>,
     /// One-shot guard: have we evaluated whether to auto-start the onboarding
     /// flow on startup yet? The fresh-install path logs in at the CLI before the
     /// TUI launches, so no in-TUI login event fires; this lets us still begin the

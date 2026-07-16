@@ -2024,27 +2024,40 @@ impl SessionPicker {
             return;
         }
 
-        // Keep the actions immediately below the short explanation instead of
-        // pinning them to the bottom of a tall terminal.
-        let prompt_height = (self
-            .onboarding_banner
-            .as_ref()
-            .map_or(0, Vec::len)
-            .saturating_add(1) as u16)
-            .min(inner.height.saturating_sub(2));
+        // Match the first onboarding page's vertical rhythm: keep a compact
+        // content block centered in the available height, with one quiet line
+        // between the explanation and the two stacked actions.
+        let content_width = inner.width.min(108);
+        let content_x = inner.x + inner.width.saturating_sub(content_width) / 2;
+        let prompt_lines = self.onboarding_banner.clone().unwrap_or_default();
+        let prompt_height = prompt_lines
+            .iter()
+            .map(|line| {
+                let width = line.width().max(1) as u16;
+                width.div_ceil(content_width.max(1))
+            })
+            .sum::<u16>()
+            .min(inner.height.saturating_sub(3));
+        let content_height = prompt_height.saturating_add(3).min(inner.height);
+        let content_area = Rect {
+            x: content_x,
+            y: inner.y + inner.height.saturating_sub(content_height) / 2,
+            width: content_width,
+            height: content_height,
+        };
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(prompt_height),
                 Constraint::Length(1),
                 Constraint::Length(1),
+                Constraint::Length(1),
             ])
-            .split(inner);
+            .split(content_area);
 
-        let prompt_lines = self.onboarding_banner.clone().unwrap_or_default();
         if prompt_height > 0 {
             let prompt = Paragraph::new(prompt_lines)
-                .alignment(Alignment::Left)
+                .alignment(Alignment::Center)
                 .wrap(ratatui::widgets::Wrap { trim: false });
             frame.render_widget(prompt, chunks[0]);
         }
@@ -2082,8 +2095,9 @@ impl SessionPicker {
                 } else {
                     "  ↑ selects the suggested review"
                 },
-            )),
-            chunks[1],
+            ))
+            .alignment(Alignment::Center),
+            chunks[2],
         );
 
         let start_selected = self.onboarding_start_new_highlighted();
@@ -2096,8 +2110,9 @@ impl SessionPicker {
                 } else {
                     "  ↓ selects a blank session"
                 },
-            )),
-            chunks[2],
+            ))
+            .alignment(Alignment::Center),
+            chunks[3],
         );
     }
 

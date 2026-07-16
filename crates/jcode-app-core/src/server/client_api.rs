@@ -318,6 +318,7 @@ impl Client {
             id,
             provider: provider.map(str::to_string),
             auth: None,
+            prefer_strongest: false,
         };
         let json = serde_json::to_string(&request)? + "\n";
         self.writer.write_all(json.as_bytes()).await?;

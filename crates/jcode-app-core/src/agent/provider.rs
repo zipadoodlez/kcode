@@ -72,15 +72,33 @@ impl Agent {
         &mut self,
         selection: &crate::provider::RouteSelection,
     ) -> Result<()> {
+        self.set_route_selection_from_provider_state_event(
+            selection,
+            crate::provider::ProviderModelSelectionSource::User,
+        )
+    }
+
+    pub(crate) fn set_route_selection_from_auth(
+        &mut self,
+        selection: &crate::provider::RouteSelection,
+    ) -> Result<()> {
+        self.set_route_selection_from_provider_state_event(
+            selection,
+            crate::provider::ProviderModelSelectionSource::Auth,
+        )
+    }
+
+    fn set_route_selection_from_provider_state_event(
+        &mut self,
+        selection: &crate::provider::RouteSelection,
+        source: crate::provider::ProviderModelSelectionSource,
+    ) -> Result<()> {
         self.provider.set_route_selection(selection)?;
         let resolved_model = self.provider.model();
         self.session.provider_key = Some(selection.runtime_key.stable_id());
         self.session.route_api_method = Some(selection.api_method.clone());
         self.session.model = Some(resolved_model.clone());
-        let event = crate::provider::ProviderStateEvent::selected_model(
-            crate::provider::ProviderModelSelectionSource::User,
-            resolved_model,
-        );
+        let event = crate::provider::ProviderStateEvent::selected_model(source, resolved_model);
         self.provider_runtime_state.apply(event);
         self.persist_session_best_effort("route selection");
         self.log_env_snapshot("set_route_selection");

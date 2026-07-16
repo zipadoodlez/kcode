@@ -15,6 +15,7 @@ struct AuthChangeMockState {
     selected_model: StdRwLock<Option<String>>,
     route_provider: StdRwLock<String>,
     route_api_method: StdRwLock<String>,
+    routes_override: StdRwLock<Option<Vec<ModelRoute>>>,
     expose_selected_model_in_routes: StdRwLock<bool>,
     complete_calls: AtomicUsize,
     complete_models: StdMutex<Vec<String>>,
@@ -77,6 +78,9 @@ impl Provider for AuthChangeMockProvider {
     }
 
     fn available_models_display(&self) -> Vec<String> {
+        if let Some(routes) = self.state.routes_override.read().unwrap().as_ref() {
+            return routes.iter().map(|route| route.model.clone()).collect();
+        }
         let mut models = if *self.state.logged_in.read().unwrap() {
             vec!["logged-in-model".to_string(), "second-model".to_string()]
         } else {
@@ -113,6 +117,9 @@ impl Provider for AuthChangeMockProvider {
     }
 
     fn model_routes(&self) -> Vec<ModelRoute> {
+        if let Some(routes) = self.state.routes_override.read().unwrap().as_ref() {
+            return routes.clone();
+        }
         let provider = self.state.route_provider.read().unwrap().clone();
         let api_method = self.state.route_api_method.read().unwrap().clone();
         self.available_models_display()
@@ -216,6 +223,7 @@ async fn notify_auth_changed_emits_available_models_updated_after_provider_updat
         42,
         None,
         None,
+        false,
         &provider,
         &provider,
         &sessions,
@@ -324,6 +332,7 @@ async fn notify_auth_changed_defers_busy_session_refresh_until_idle() {
         43,
         None,
         None,
+        false,
         &current_provider,
         &current_provider,
         &sessions,
@@ -401,6 +410,7 @@ async fn notify_auth_changed_with_azure_hint_applies_runtime_model_without_compl
         44,
         Some("Azure OpenAI".to_string()),
         None,
+        false,
         &provider,
         &provider,
         &sessions,
@@ -557,6 +567,7 @@ async fn notify_auth_changed_typed_cerebras_event_controls_user_visible_catalog_
         45,
         Some("openai".to_string()),
         Some(auth),
+        false,
         &provider,
         &provider,
         &sessions,
@@ -669,6 +680,7 @@ async fn notify_auth_changed_switches_from_stale_model_to_matching_provider_rout
         46,
         Some("openai".to_string()),
         Some(auth),
+        false,
         &provider,
         &provider,
         &sessions,
@@ -724,6 +736,82 @@ async fn notify_auth_changed_switches_from_stale_model_to_matching_provider_rout
 }
 
 #[tokio::test]
+async fn onboarding_auth_refresh_prefers_global_gpt_5_6_route_over_fable() {
+    let _guard = EnvGuard::save(&[
+        "JCODE_RUNTIME_PROVIDER",
+        "JCODE_ACTIVE_PROVIDER",
+        "JCODE_FORCE_PROVIDER",
+    ]);
+    crate::bus::reset_models_updated_publish_state_for_tests();
+
+    let provider = Arc::new(AuthChangeMockProvider::new());
+    *provider.state.routes_override.write().unwrap() = Some(vec![
+        ModelRoute {
+            model: "claude-fable-5".to_string(),
+            provider: "Anthropic".to_string(),
+            api_method: "claude-oauth".to_string(),
+            available: true,
+            detail: String::new(),
+            cheapness: None,
+        },
+        ModelRoute {
+            model: "gpt-5.5".to_string(),
+            provider: "OpenAI".to_string(),
+            api_method: "openai-api-key".to_string(),
+            available: true,
+            detail: String::new(),
+            cheapness: None,
+        },
+        ModelRoute {
+            model: "gpt-5.6-sol".to_string(),
+            provider: "OpenAI".to_string(),
+            api_method: "openai-api-key".to_string(),
+            available: true,
+            detail: String::new(),
+            cheapness: None,
+        },
+    ]);
+    let provider: Arc<dyn Provider> = provider;
+    let agent = Arc::new(Mutex::new(Agent::new(provider.clone(), Registry::empty())));
+    let session_id = { agent.lock().await.session_id().to_string() };
+    let sessions: SessionAgents = Arc::new(RwLock::new(HashMap::new()));
+    let (client_event_tx, _client_event_rx) = mpsc::unbounded_channel();
+    let mut bus_rx = crate::bus::Bus::global().subscribe();
+    while bus_rx.try_recv().is_ok() {}
+
+    handle_notify_auth_changed(
+        49,
+        Some("claude".to_string()),
+        None,
+        true,
+        &provider,
+        &provider,
+        &sessions,
+        session_id.as_str(),
+        &agent,
+        &client_event_tx,
+    )
+    .await;
+
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            if matches!(
+                bus_rx.recv().await,
+                Ok(crate::bus::BusEvent::UiActivity(ref activity))
+                    if activity.kind == crate::bus::UiActivityKind::Catalog
+                        && activity.message.contains("Auth Model Catalog Updated")
+            ) {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("global auth selection should finish");
+
+    assert_eq!(agent.lock().await.provider_model(), "gpt-5.6-sol");
+}
+
+#[tokio::test]
 async fn notify_auth_changed_does_not_override_manual_model_selected_during_refresh() {
     let _guard = EnvGuard::save(&[
         "JCODE_OPENROUTER_API_BASE",
@@ -775,6 +863,7 @@ async fn notify_auth_changed_does_not_override_manual_model_selected_during_refr
         48,
         None,
         Some(auth),
+        false,
         &provider,
         &provider,
         &sessions,
@@ -919,6 +1008,7 @@ async fn auth_model_first_prompt_e2e_state_space_is_bounded_by_selection_source(
             148,
             None,
             Some(auth),
+            false,
             &provider,
             &provider,
             &sessions,
@@ -1107,6 +1197,7 @@ async fn notify_auth_changed_switches_only_current_session_model() {
         47,
         Some("openai".to_string()),
         Some(auth),
+        false,
         &current_provider,
         &current_provider,
         &sessions,

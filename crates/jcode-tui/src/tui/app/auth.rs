@@ -2614,6 +2614,33 @@ impl App {
         }
     }
 
+    pub(super) fn onboarding_should_prefer_strongest_model(&self) -> bool {
+        if !self.onboarding_flow_active() {
+            return false;
+        }
+
+        let provider_config = &crate::config::config().provider;
+        let has_explicit_default = provider_config
+            .default_provider
+            .as_deref()
+            .is_some_and(|provider| !provider.trim().is_empty())
+            || provider_config
+                .default_model
+                .as_deref()
+                .is_some_and(|model| !model.trim().is_empty());
+        let runtime_provider_forced =
+            std::env::var("JCODE_FORCE_PROVIDER")
+                .ok()
+                .is_some_and(|value| {
+                    matches!(
+                        value.trim().to_ascii_lowercase().as_str(),
+                        "1" | "true" | "yes" | "on"
+                    )
+                });
+
+        !has_explicit_default && !runtime_provider_forced
+    }
+
     fn trigger_provider_auth_changed(
         &mut self,
         provider_hint: Option<&str>,
@@ -2635,6 +2662,7 @@ impl App {
         let provider_hint = provider_hint.map(str::to_string);
         let session_id = self.session.id.clone();
         let select_local_model = !self.is_remote;
+        let auto_selection_active = Arc::clone(&self.onboarding_auto_model_selection_active);
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
                 let activation = crate::auth::lifecycle::activate_auth_change(
@@ -2642,6 +2670,7 @@ impl App {
                 );
                 provider.on_auth_changed();
                 if select_local_model && activation.provider_id.is_some() {
+                    let model_before_catalog_wait = provider.model();
                     // Hot initialization is synchronous, but provider catalogs can
                     // arrive shortly afterward. Retry briefly so a first-run import
                     // selects the strongest live route rather than validating the
@@ -2651,24 +2680,62 @@ impl App {
                             tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                         }
                         let routes = provider.model_routes();
-                        let current_model = (!prefer_strongest).then(|| provider.model());
-                        let Some(model) = crate::auth::lifecycle::provider_model_to_select_after_auth(
-                            &activation,
-                            current_model.as_deref(),
-                            &routes,
-                        ) else {
-                            if prefer_strongest {
-                                continue;
+                        let selection = if prefer_strongest {
+                            if !auto_selection_active.load(std::sync::atomic::Ordering::Acquire)
+                                || provider.model() != model_before_catalog_wait
+                            {
+                                break;
                             }
+                            let Some(route) =
+                                crate::auth::lifecycle::globally_preferred_default_route(&routes)
+                            else {
+                                continue;
+                            };
+                            let exact_route = crate::provider::RouteSelection::from_model_route(&route);
+                            let default_selection =
+                                crate::provider::MultiProvider::default_model_selection_from_route(
+                                    &route.model,
+                                    &route.api_method,
+                                    &route.provider,
+                                );
+                            Some((
+                                route.model,
+                                exact_route.routed_model_spec(),
+                                default_selection.provider_key,
+                                Some(exact_route),
+                            ))
+                        } else {
+                            let current_model = provider.model();
+                            crate::auth::lifecycle::provider_model_to_select_after_auth(
+                                &activation,
+                                Some(&current_model),
+                                &routes,
+                            )
+                            .map(|model| {
+                                let model_request =
+                                    activation.model_switch_request(provider.name(), &model);
+                                let provider_key = crate::provider::MultiProvider::session_provider_key_for_model_request(
+                                    &model_request,
+                                    provider.name(),
+                                );
+                                (model, model_request, provider_key, None)
+                            })
+                        };
+                        let Some((model, model_request, provider_key, exact_route)) = selection else {
                             break;
                         };
-                        let model_request =
-                            activation.model_switch_request(provider.name(), &model);
-                        if provider.set_model(&model_request).is_ok() {
-                            let provider_key = crate::provider::MultiProvider::session_provider_key_for_model_request(
-                                &model_request,
-                                provider.name(),
-                            );
+                        if prefer_strongest
+                            && (!auto_selection_active
+                                .load(std::sync::atomic::Ordering::Acquire)
+                                || provider.model() != model_before_catalog_wait)
+                        {
+                            break;
+                        }
+                        let applied = exact_route.as_ref().map_or_else(
+                            || provider.set_model(&model_request),
+                            |selection| provider.set_route_selection(selection),
+                        );
+                        if applied.is_ok() {
                             crate::bus::Bus::global().publish_models_updated();
                             crate::bus::Bus::global().publish(
                                 crate::bus::BusEvent::ProviderModelActivated {
@@ -2697,15 +2764,28 @@ impl App {
             provider.on_auth_changed();
             if select_local_model && activation.provider_id.is_some() {
                 let routes = provider.model_routes();
-                let current_model = (!prefer_strongest).then(|| provider.model());
-                if let Some(model) = crate::auth::lifecycle::provider_model_to_select_after_auth(
-                    &activation,
-                    current_model.as_deref(),
-                    &routes,
-                ) {
-                    let model_request = activation.model_switch_request(provider.name(), &model);
-                    if provider.set_model(&model_request).is_ok() {
-                        self.finalize_model_switch(&model_request);
+                if prefer_strongest {
+                    if let Some(route) =
+                        crate::auth::lifecycle::globally_preferred_default_route(&routes)
+                    {
+                        let selection = crate::provider::RouteSelection::from_model_route(&route);
+                        let model_request = selection.routed_model_spec();
+                        if provider.set_route_selection(&selection).is_ok() {
+                            self.finalize_model_switch(&model_request);
+                        }
+                    }
+                } else {
+                    let current_model = provider.model();
+                    if let Some(model) = crate::auth::lifecycle::provider_model_to_select_after_auth(
+                        &activation,
+                        Some(&current_model),
+                        &routes,
+                    ) {
+                        let model_request =
+                            activation.model_switch_request(provider.name(), &model);
+                        if provider.set_model(&model_request).is_ok() {
+                            self.finalize_model_switch(&model_request);
+                        }
                     }
                 }
             }
@@ -3040,7 +3120,11 @@ impl App {
             if Self::login_provider_is_azure(&login.provider) {
                 self.activate_azure_runtime_model_after_login();
             } else {
-                let prefer_strongest = self.onboarding_flow_active();
+                let prefer_strongest = self.onboarding_should_prefer_strongest_model();
+                if prefer_strongest {
+                    self.onboarding_auto_model_selection_active
+                        .store(true, std::sync::atomic::Ordering::Release);
+                }
                 self.trigger_provider_auth_changed(Some(&login.provider), prefer_strongest);
             }
             // First-run onboarding: once the user has authenticated on a fresh

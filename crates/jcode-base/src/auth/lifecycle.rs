@@ -217,6 +217,56 @@ pub fn provider_model_to_select_after_auth(
     matching_routes.first().map(|route| route.model.clone())
 }
 
+/// Pick the strongest available route across every authenticated provider.
+///
+/// This is intentionally separate from [`provider_model_to_select_after_auth`],
+/// which keeps normal re-authentication scoped to the provider that changed.
+/// First-run onboarding can use this global selector after importing multiple
+/// accounts. Returning the complete route preserves OAuth/API-key/profile
+/// identity when the caller applies the selection.
+pub fn globally_preferred_default_route(routes: &[ModelRoute]) -> Option<ModelRoute> {
+    routes
+        .iter()
+        .enumerate()
+        .filter(|(_, route)| route.available)
+        .min_by_key(|(catalog_index, route)| {
+            (globally_preferred_model_rank(&route.model), *catalog_index)
+        })
+        .map(|(_, route)| route.clone())
+}
+
+fn globally_preferred_model_rank(model: &str) -> (u8, usize) {
+    let normalized = normalize_model_for_preference(model);
+    let openai_default = normalize_model_for_preference(jcode_provider_core::DEFAULT_OPENAI_MODEL);
+    let claude_default = normalize_model_for_preference(jcode_provider_core::DEFAULT_CLAUDE_MODEL);
+
+    if normalized == openai_default {
+        return (0, 0);
+    }
+    // Some catalogs expose the clean release id instead of jcode's Sol route.
+    if normalized == "gpt-5.6" {
+        return (1, 0);
+    }
+    if normalized == claude_default {
+        return (2, 0);
+    }
+    if let Some(position) = crate::provider::ALL_CLAUDE_MODELS
+        .iter()
+        .position(|candidate| normalize_model_for_preference(candidate) == normalized)
+    {
+        return (3, position);
+    }
+    if let Some(position) = crate::provider::ALL_OPENAI_MODELS
+        .iter()
+        .position(|candidate| normalize_model_for_preference(candidate) == normalized)
+    {
+        return (4, position);
+    }
+
+    // Unknown provider families retain catalog order as the final fallback.
+    (5, usize::MAX)
+}
+
 /// Curated flagship-first order for Bedrock-hosted models. Bedrock ids carry a
 /// vendor prefix (`anthropic.claude-opus-4-...`, `us.anthropic.claude-...`) which
 /// `parse_frontier_model`/`normalize_model_for_preference` strip before matching,
@@ -1788,6 +1838,59 @@ mod tests {
             provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
             Some("gpt-5.6-sol")
         );
+    }
+
+    #[test]
+    fn global_default_route_prefers_gpt_5_6_over_fable_and_preserves_route() {
+        let routes = vec![
+            route("gpt-5.5", "OpenAI", "openai-api-key", true),
+            route("claude-fable-5", "Anthropic", "anthropic-api-key", true),
+            route("gpt-5.6-sol", "OpenAI", "openai-oauth", true),
+        ];
+
+        let selected = globally_preferred_default_route(&routes).expect("strongest route");
+        assert_eq!(selected.model, "gpt-5.6-sol");
+        assert_eq!(selected.provider, "OpenAI");
+        assert_eq!(selected.api_method, "openai-oauth");
+    }
+
+    #[test]
+    fn global_default_route_uses_clean_gpt_5_6_then_fable_before_weaker_models() {
+        let clean_release = vec![
+            route("claude-fable-5", "Anthropic", "claude-oauth", true),
+            route("gpt-5.6", "OpenAI", "openai-api-key", true),
+        ];
+        assert_eq!(
+            globally_preferred_default_route(&clean_release)
+                .as_ref()
+                .map(|route| route.model.as_str()),
+            Some("gpt-5.6")
+        );
+
+        let unavailable_gpt = vec![
+            route("gpt-5.6-sol", "OpenAI", "openai-api-key", false),
+            route("gpt-5.5", "OpenAI", "openai-api-key", true),
+            route("claude-fable-5", "Anthropic", "claude-oauth", true),
+        ];
+        assert_eq!(
+            globally_preferred_default_route(&unavailable_gpt)
+                .as_ref()
+                .map(|route| route.model.as_str()),
+            Some("claude-fable-5")
+        );
+    }
+
+    #[test]
+    fn global_default_route_ignores_unavailable_routes_and_preserves_unknown_order() {
+        let routes = vec![
+            route("provider-a-frontier", "Provider A", "provider-a", true),
+            route("gpt-5.6-sol", "OpenAI", "openai-api-key", false),
+            route("provider-b-frontier", "Provider B", "provider-b", true),
+        ];
+
+        let selected = globally_preferred_default_route(&routes).expect("fallback route");
+        assert_eq!(selected.model, "provider-a-frontier");
+        assert_eq!(selected.api_method, "provider-a");
     }
 
     #[test]

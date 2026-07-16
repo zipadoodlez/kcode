@@ -1350,6 +1350,8 @@ impl App {
 
     /// Mark the flow complete; the normal UI takes over.
     pub(super) fn onboarding_finish(&mut self) {
+        self.onboarding_auto_model_selection_active
+            .store(false, std::sync::atomic::Ordering::Release);
         if let Some(flow) = self.onboarding_flow.as_mut() {
             flow.phase = OnboardingPhase::Done;
         }

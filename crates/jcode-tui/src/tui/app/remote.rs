@@ -548,9 +548,10 @@ pub(super) async fn handle_bus_event(
             let success = login.success && login.provider != "copilot_code";
             let provider_hint = auth_provider_hint_for_login_provider(&login.provider);
             let auth = auth_changed_event_for_login_provider(&login.provider);
+            let prefer_strongest = success && app.onboarding_should_prefer_strongest_model();
             app.handle_login_completed(login);
             if success {
-                remote.notify_auth_changed_detached_event(provider_hint, auth);
+                remote.notify_auth_changed_detached_event(provider_hint, auth, prefer_strongest);
             }
             true
         }

@@ -1795,11 +1795,13 @@ pub(super) async fn handle_client(
                 id,
                 provider: provider_hint,
                 auth,
+                prefer_strongest,
             } => {
                 handle_notify_auth_changed(
                     id,
                     provider_hint,
                     auth,
+                    prefer_strongest,
                     &provider,
                     &provider_template,
                     &sessions,

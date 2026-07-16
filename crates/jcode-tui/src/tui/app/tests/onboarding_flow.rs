@@ -30,6 +30,14 @@ impl Provider for QualityFirstOpenAiProvider {
     fn model_routes(&self) -> Vec<crate::provider::ModelRoute> {
         vec![
             crate::provider::ModelRoute {
+                model: jcode_provider_core::DEFAULT_CLAUDE_MODEL.to_string(),
+                provider: "Anthropic".to_string(),
+                api_method: "claude-oauth".to_string(),
+                available: true,
+                detail: String::new(),
+                cheapness: None,
+            },
+            crate::provider::ModelRoute {
                 model: "gpt-5.1".to_string(),
                 provider: "OpenAI".to_string(),
                 api_method: "openai-api-key".to_string(),
@@ -73,6 +81,47 @@ fn onboarding_test_app() -> App {
     // Force the flow on regardless of the on-disk new-user heuristic.
     app.onboarding_flow = Some(OnboardingFlow::begin());
     app
+}
+
+#[test]
+fn onboarding_strongest_model_only_runs_without_explicit_defaults() {
+    with_temp_jcode_home(|| {
+        let previous_force = std::env::var_os("JCODE_FORCE_PROVIDER");
+        crate::env::remove_var("JCODE_FORCE_PROVIDER");
+
+        let mut app = onboarding_test_app();
+        assert!(app.onboarding_should_prefer_strongest_model());
+
+        let mut config = crate::config::Config::load();
+        config.provider.default_model = Some("claude-fable-5".to_string());
+        config.save().expect("save explicit model default");
+        assert!(!app.onboarding_should_prefer_strongest_model());
+
+        config.provider.default_model = None;
+        config.provider.default_provider = Some("openai".to_string());
+        config.save().expect("save explicit provider default");
+        assert!(!app.onboarding_should_prefer_strongest_model());
+
+        config.provider.default_provider = None;
+        config.save().expect("clear explicit defaults");
+        crate::env::set_var("JCODE_FORCE_PROVIDER", "1");
+        assert!(!app.onboarding_should_prefer_strongest_model());
+
+        app.onboarding_auto_model_selection_active
+            .store(true, std::sync::atomic::Ordering::Release);
+        app.onboarding_finish();
+        assert!(
+            !app.onboarding_auto_model_selection_active
+                .load(std::sync::atomic::Ordering::Acquire),
+            "finishing onboarding must cancel a delayed catalog selection"
+        );
+
+        if let Some(value) = previous_force {
+            crate::env::set_var("JCODE_FORCE_PROVIDER", value);
+        } else {
+            crate::env::remove_var("JCODE_FORCE_PROVIDER");
+        }
+    });
 }
 
 #[test]
@@ -1377,17 +1426,16 @@ fn import_continue_reaches_ready_quality_first_openai_model() {
                 login.provider, "openai-api",
                 "import completion must preserve the concrete provider route"
             );
+            assert!(
+                app.onboarding_should_prefer_strongest_model(),
+                "first-run import without explicit defaults should use global ranking"
+            );
 
             app.handle_login_completed(login);
             assert!(matches!(
                 app.onboarding_phase(),
-                Some(OnboardingPhase::Suggestions)
+                Some(OnboardingPhase::StartChoice { .. })
             ));
-            assert!(
-                app.onboarding_pending_model_validation.is_some(),
-                "validation should wait for post-import model activation"
-            );
-
             let (model, provider_key) = tokio::time::timeout(
                 std::time::Duration::from_secs(4),
                 async {
@@ -1411,24 +1459,6 @@ fn import_continue_reaches_ready_quality_first_openai_model() {
 
             assert_eq!(model, jcode_provider_core::DEFAULT_OPENAI_MODEL);
             assert_eq!(provider_key.as_deref(), Some("openai-api"));
-
-            // Drain the refresh-ready event if it followed model activation, then
-            // verify the deferred validation can proceed against the new model.
-            if app.auth_catalog_refresh_pending {
-                let _ = tokio::time::timeout(std::time::Duration::from_secs(1), async {
-                    loop {
-                        if let Ok(crate::bus::BusEvent::AuthCatalogRefreshReady) =
-                            bus_rx.recv().await
-                        {
-                            app.finish_auth_catalog_refresh();
-                            break;
-                        }
-                    }
-                })
-                .await;
-            }
-            assert!(!app.auth_catalog_refresh_pending);
-            assert!(app.onboarding_pending_validation_ready_to_fire());
         });
     });
 }

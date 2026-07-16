@@ -1239,6 +1239,13 @@ fn onboarding_banner_renders_prompt_and_both_action_rows() {
 
     let buffer = terminal.backend().buffer().clone();
     let text: String = buffer.content().iter().map(|cell| cell.symbol()).collect();
+    let lines = (0..buffer.area.height)
+        .map(|y| {
+            (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>();
 
     assert!(
         text.contains("Welcome to jcode"),
@@ -1255,6 +1262,37 @@ fn onboarding_banner_renders_prompt_and_both_action_rows() {
     assert!(
         !text.contains("Sessions"),
         "resume chrome must be absent: {text:?}"
+    );
+
+    let welcome_y = lines
+        .iter()
+        .position(|line| line.contains("Welcome to jcode"))
+        .expect("welcome row");
+    let review_y = lines
+        .iter()
+        .position(|line| line.contains("Find bugs in what I've been working on"))
+        .expect("review row");
+    let start_y = lines
+        .iter()
+        .position(|line| line.contains("Start a new session"))
+        .expect("start-new row");
+    let top_gap = welcome_y.saturating_sub(1);
+    let bottom_gap = (buffer.area.height as usize)
+        .saturating_sub(2)
+        .saturating_sub(start_y);
+
+    assert!(
+        welcome_y >= 10,
+        "choice content should be padded away from the top like the first onboarding page: {lines:#?}"
+    );
+    assert!(
+        top_gap.abs_diff(bottom_gap) <= 2,
+        "choice content should have balanced top/bottom whitespace (top={top_gap}, bottom={bottom_gap}): {lines:#?}"
+    );
+    assert_eq!(
+        start_y,
+        review_y + 1,
+        "the two actions should remain stacked together: {lines:#?}"
     );
 }
 
