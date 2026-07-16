@@ -1775,6 +1775,56 @@ fn render_batch_tool_message_shows_nested_gmail_draft_card() {
     assert!(plain.contains("Created inside a batch"), "{plain}");
 }
 
+#[test]
+fn render_batch_tool_message_shows_flat_and_nested_subcall_intents() {
+    let msg = DisplayMessage {
+        role: "tool".to_string(),
+        content: "--- [1] read ---\nflat output\n\n--- [2] read ---\nnested output\n\nCompleted: 2 succeeded, 0 failed".to_string(),
+        tool_calls: Vec::new(),
+        duration_secs: None,
+        title: None,
+        tool_data: Some(crate::message::ToolCall {
+            id: "call_batch_intents".to_string(),
+            name: "batch".to_string(),
+            input: serde_json::json!({
+                "tool_calls": [
+                    {
+                        "tool": "read",
+                        "intent": "Inspect flat batch input",
+                        "file_path": "src/flat.rs"
+                    },
+                    {
+                        "tool": "read",
+                        "parameters": {
+                            "intent": "Inspect nested batch input",
+                            "file_path": "src/nested.rs"
+                        }
+                    }
+                ]
+            }),
+            intent: None,
+            thought_signature: None,
+        }),
+    };
+
+    let plain = render_tool_message(&msg, 120, crate::config::DiffDisplayMode::Off)
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        plain.contains("read · Inspect flat batch input ·"),
+        "{plain}"
+    );
+    assert!(
+        plain.contains("read · Inspect nested batch input ·"),
+        "{plain}"
+    );
+    assert!(plain.contains("flat.rs"), "{plain}");
+    assert!(plain.contains("nested.rs"), "{plain}");
+}
+
 fn discovery_message(content: &str, input: serde_json::Value) -> DisplayMessage {
     DisplayMessage {
         role: "tool".to_string(),

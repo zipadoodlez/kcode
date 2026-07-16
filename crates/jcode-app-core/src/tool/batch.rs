@@ -24,7 +24,8 @@ pub(crate) fn generic_batch_schema() -> Value {
                         "tool": {
                             "type": "string",
                             "description": "Tool name."
-                        }
+                        },
+                        "intent": super::intent_schema_property()
                     },
                     "additionalProperties": true
                 },
@@ -123,6 +124,21 @@ fn normalize_batch_input(mut input: Value) -> Value {
                             break;
                         }
                     }
+                }
+
+                // Canonical batch calls may keep the display intent beside
+                // `parameters`. Forward it into the effective tool input so
+                // live progress events and the nested tool execution retain it.
+                let top_level_intent = obj
+                    .get("intent")
+                    .and_then(|value| value.as_str())
+                    .map(str::trim)
+                    .filter(|intent| !intent.is_empty())
+                    .map(ToString::to_string);
+                if let Some(intent) = top_level_intent
+                    && let Some(params) = obj.get_mut("parameters").and_then(Value::as_object_mut)
+                {
+                    params.insert("intent".to_string(), Value::String(intent));
                 }
 
                 if !obj.contains_key("parameters") && obj.contains_key("tool") {

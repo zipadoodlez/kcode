@@ -163,6 +163,20 @@ pub(crate) fn batch_subcall_params(call: &serde_json::Value) -> serde_json::Valu
     serde_json::Value::Object(serde_json::Map::new())
 }
 
+/// Recover a batch sub-call's model-provided intent from either supported
+/// shape: beside `tool`, or inside the canonical `parameters` payload.
+pub(crate) fn batch_subcall_intent(
+    call: &serde_json::Value,
+    params: &serde_json::Value,
+) -> Option<String> {
+    call.get("intent")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|intent| !intent.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| crate::message::ToolCall::intent_from_input(params))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -64,9 +64,9 @@ fn infer_selfdev_action_from_display_text(text: Option<&str>) -> Option<&'static
 #[path = "ui_tools/batch.rs"]
 mod batch;
 
-pub(crate) use batch::batch_subcall_params;
 #[cfg(test)]
 pub(super) use batch::parse_batch_sub_outputs;
+pub(crate) use batch::{batch_subcall_intent, batch_subcall_params};
 pub(super) use batch::{parse_batch_completion_counts, parse_batch_sub_outputs_by_index};
 
 pub(super) fn summarize_unified_patch_input(patch_text: &str) -> String {

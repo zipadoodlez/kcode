@@ -34,6 +34,24 @@ fn test_normalize_already_nested() {
 }
 
 #[test]
+fn test_normalize_forwards_top_level_intent_into_nested_parameters() {
+    let input = json!({
+        "tool_calls": [{
+            "tool": "read",
+            "intent": "Inspect the batch renderer",
+            "parameters": {"file_path": "src/tui/ui_messages.rs"}
+        }]
+    });
+
+    let normalized = normalize_batch_input(input);
+    let parsed: BatchInput = serde_json::from_value(normalized).unwrap();
+    let params = parsed.tool_calls[0].parameters.as_ref().unwrap();
+
+    assert_eq!(params["intent"], "Inspect the batch renderer");
+    assert_eq!(params["file_path"], "src/tui/ui_messages.rs");
+}
+
+#[test]
 fn test_normalize_name_key_to_tool() {
     let input = json!({
         "tool_calls": [
@@ -124,6 +142,7 @@ fn test_schema_only_requires_tool() {
         schema["properties"]["tool_calls"]["items"]["properties"]["tool"]["description"],
         json!("Tool name.")
     );
+    assert!(schema["properties"]["tool_calls"]["items"]["properties"]["intent"].is_object());
     assert!(schema["properties"]["tool_calls"]["items"]["properties"]["parameters"].is_null());
 }
 
@@ -137,7 +156,7 @@ fn test_schema_keeps_flat_generic_subcall_shape() {
         schema["properties"]["tool_calls"]["items"]["properties"]
             .as_object()
             .map(|props| props.len()),
-        Some(1)
+        Some(2)
     );
     assert!(schema["properties"]["tool_calls"]["items"]["oneOf"].is_null());
 }

@@ -3689,15 +3689,13 @@ pub(crate) fn render_tool_message(
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown");
             let params = tools_ui::batch_subcall_params(call);
+            let intent = tools_ui::batch_subcall_intent(call, &params);
 
             let sub_tc = ToolCall {
                 id: String::new(),
                 name: tools_ui::resolve_display_tool_name(raw_name).to_string(),
                 input: params,
-                intent: call
-                    .get("intent")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
+                intent,
                 thought_signature: None,
             };
 

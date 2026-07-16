@@ -66,6 +66,34 @@ fn test_batch_subcall_params_excludes_name_key() {
 }
 
 #[test]
+fn test_batch_subcall_intent_supports_flat_and_nested_shapes() {
+    let flat = serde_json::json!({
+        "tool": "read",
+        "intent": "Inspect flat input",
+        "file_path": "src/lib.rs"
+    });
+    let nested = serde_json::json!({
+        "tool": "read",
+        "parameters": {
+            "intent": "Inspect nested input",
+            "file_path": "src/main.rs"
+        }
+    });
+
+    let flat_params = tools_ui::batch_subcall_params(&flat);
+    let nested_params = tools_ui::batch_subcall_params(&nested);
+
+    assert_eq!(
+        tools_ui::batch_subcall_intent(&flat, &flat_params).as_deref(),
+        Some("Inspect flat input")
+    );
+    assert_eq!(
+        tools_ui::batch_subcall_intent(&nested, &nested_params).as_deref(),
+        Some("Inspect nested input")
+    );
+}
+
+#[test]
 fn test_parse_batch_sub_outputs_strips_footer_and_tracks_errors() {
     let content = "--- [1] read ---\n1234\n\n--- [2] grep ---\nError: 12345678\n\nCompleted: 1 succeeded, 1 failed";
 
@@ -670,6 +698,27 @@ fn test_render_batch_subcall_line_keeps_full_bash_summary_when_row_fits() {
     );
     assert!(rendered.contains("-- --nocapture"), "rendered={rendered:?}");
     assert!(!rendered.contains('…'), "rendered={rendered:?}");
+}
+
+#[test]
+fn test_render_batch_subcall_line_shows_model_provided_intent() {
+    let tool = ToolCall {
+        id: "batch-1-read".to_string(),
+        name: "read".to_string(),
+        input: serde_json::json!({"file_path": "src/tui/ui_messages.rs"}),
+        intent: Some("Inspect completed batch rendering".to_string()),
+        thought_signature: None,
+    };
+
+    let line =
+        tools_ui::render_batch_subcall_line(&tool, "✓", rgb(100, 180, 100), 50, Some(120), None);
+    let rendered = extract_line_text(&line);
+
+    assert!(
+        rendered.contains("read · Inspect completed batch rendering ·"),
+        "rendered={rendered:?}"
+    );
+    assert!(rendered.contains("ui_messages.rs"), "rendered={rendered:?}");
 }
 
 #[test]

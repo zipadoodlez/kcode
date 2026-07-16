@@ -388,25 +388,18 @@ fn compact_tool_input_for_display(name: &str, input: &serde_json::Value) -> serd
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("?");
                             let params = crate::tui::ui::tools_ui::batch_subcall_params(call);
-                            let sub_tool = crate::message::ToolCall {
-                                id: String::new(),
-                                name: crate::tui::ui::tools_ui::resolve_display_tool_name(raw_name)
-                                    .to_string(),
-                                input: params.clone(),
-                                intent: crate::message::ToolCall::intent_from_input(&params),
-                                thought_signature: None,
-                            };
-                            let summary = crate::tui::ui::tools_ui::get_tool_summary(&sub_tool);
+                            let intent =
+                                crate::tui::ui::tools_ui::batch_subcall_intent(call, &params);
                             let compacted = compact_tool_input_for_display(raw_name, &params);
                             let mut entry = serde_json::Map::new();
                             entry.insert(
                                 "tool".to_string(),
                                 serde_json::Value::String(raw_name.to_string()),
                             );
-                            if !summary.is_empty() {
+                            if let Some(intent) = intent {
                                 entry.insert(
                                     "intent".to_string(),
-                                    serde_json::Value::String(summary),
+                                    serde_json::Value::String(intent),
                                 );
                             }
                             if let Some(compacted_obj) = compacted.as_object() {
@@ -553,6 +546,49 @@ mod tests {
         compact_display_message_tool_data(&mut message);
         let tool = message.tool_data.expect("tool data");
         assert_eq!(tool.intent.as_deref(), Some("Check release notes"));
+    }
+
+    #[test]
+    fn compaction_preserves_flat_and_nested_batch_subcall_intents() {
+        let mut message = tool_message(
+            "batch",
+            serde_json::json!({
+                "tool_calls": [
+                    {
+                        "tool": "read",
+                        "intent": "Inspect flat batch input",
+                        "file_path": "src/flat.rs"
+                    },
+                    {
+                        "tool": "read",
+                        "parameters": {
+                            "intent": "Inspect nested batch input",
+                            "file_path": "src/nested.rs"
+                        }
+                    },
+                    {
+                        "tool": "read",
+                        "file_path": "src/no-intent.rs"
+                    }
+                ]
+            }),
+        );
+
+        compact_display_message_tool_data(&mut message);
+        let calls = message
+            .tool_data
+            .expect("tool data")
+            .input
+            .get("tool_calls")
+            .and_then(|value| value.as_array())
+            .cloned()
+            .expect("batch calls");
+
+        assert_eq!(calls[0]["intent"], "Inspect flat batch input");
+        assert_eq!(calls[1]["intent"], "Inspect nested batch input");
+        assert!(calls[2].get("intent").is_none());
+        assert_eq!(calls[0]["file_path"], "src/flat.rs");
+        assert_eq!(calls[1]["file_path"], "src/nested.rs");
     }
 
     #[test]
