@@ -395,12 +395,23 @@ pub fn append_deep_node_instructions(message: &str, node_id: &str) -> String {
         return message.to_string();
     }
 
+    let explicitly_non_expandable = message
+        .to_ascii_lowercase()
+        .contains("do not expand this node");
+
     let mut out = message.trim_end().to_string();
     if !out.is_empty() {
         out.push_str("\n\n");
     }
     out.push_str("<system-reminder>\n");
     out.push_str(SWARM_DEEP_NODE_MARKER);
+    if explicitly_non_expandable {
+        out.push_str(&format!(
+            "\nYou are executing node '{node_id}' of a deep task graph. The planner explicitly marked this node as bounded and non-expandable. Do NOT call expand_node, even if the node contains multiple concerns. Execute the assigned scope atomically, then call the swarm tool with action=\"complete_node\", node_id=\"{node_id}\", and a typed artifact containing findings, evidence (file:line refs), validation, open_questions, a REQUIRED confidence (low, medium, or high), and an honest what_i_did_not_check list. A turn that ends without complete_node gets re-queued and may fail.\n"
+        ));
+        out.push_str("</system-reminder>");
+        return out;
+    }
     out.push_str(&format!(
         "\nYou are executing node '{node_id}' of a deep task graph with a large parallel agent \
 budget (up to {MAX_SWARM_MEMBERS} live agents per swarm; using it is expected, not wasteful). \
@@ -700,6 +711,20 @@ mod tests {
         assert!(out.contains("what_i_did_not_check"));
         // Idempotent: re-appending (even with a different id) is a no-op.
         assert_eq!(append_deep_node_instructions(&out, "other"), out);
+    }
+
+    #[test]
+    fn deep_node_instructions_honor_explicit_non_expansion_marker() {
+        let out = append_deep_node_instructions(
+            "Audit the bounded surface. Do not expand this node.",
+            "audit.bounded",
+        );
+
+        assert!(out.contains("bounded and non-expandable"));
+        assert!(out.contains("Do NOT call expand_node"));
+        assert!(!out.contains("action=\"expand_node\""));
+        assert!(out.contains("action=\"complete_node\", node_id=\"audit.bounded\""));
+        assert!(out.contains("what_i_did_not_check"));
     }
 
     #[test]
