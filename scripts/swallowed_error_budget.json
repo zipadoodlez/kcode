@@ -1,8 +1,8 @@
 {
-  "total": 3008,
+  "total": 3012,
   "totals_by_pattern": {
-    "dot_ok": 1093,
-    "let_underscore": 1124,
+    "dot_ok": 1096,
+    "let_underscore": 1125,
     "unwrap_or_default": 791
   },
   "tracked_files": {
@@ -1622,8 +1622,8 @@
       "unwrap_or_default": 0
     },
     "crates/jcode-telemetry-core/src/state_support.rs": {
-      "dot_ok": 19,
-      "let_underscore": 7,
+      "dot_ok": 22,
+      "let_underscore": 8,
       "unwrap_or_default": 0
     },
     "crates/jcode-terminal-launch/src/lib.rs": {
