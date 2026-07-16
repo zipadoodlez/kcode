@@ -2058,8 +2058,8 @@ impl Tool for CommunicateTool {
                 },
                 "mode": {
                     "type": "string",
-                    "enum": ["all", "any"],
-                    "description": "For await_members: wait for all targeted members or wake when any targeted member matches."
+                    "enum": ["all", "any", "deep", "light"],
+                    "description": "For task_graph: deep enables comprehensive gated execution and light enables simple fan-out. For await_members: wait for all targeted members or wake when any targeted member matches."
                 },
                 "target_status": {
                     "type": "array",
