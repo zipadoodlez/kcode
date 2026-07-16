@@ -33,8 +33,6 @@ mod render;
 
 #[cfg(test)]
 use loading::collect_recent_session_stems;
-pub(crate) use loading::latest_external_cli_session_secs;
-pub(crate) use loading::load_external_cli_sessions_grouped_multi;
 use loading::{build_messages_preview, build_search_index, crashed_sessions_from_all_sessions};
 pub use loading::{
     invalidate_session_list_cache, load_cached_sessions_grouped, load_servers, load_sessions,
@@ -679,12 +677,11 @@ impl SessionPicker {
         self.rebuild_items();
     }
 
-    /// Turn this picker into the first-run onboarding action/resume experience.
-    /// The clean new-session action starts highlighted, followed by a read-only
-    /// recent-project architecture review and then the resumable transcript list.
+    /// Turn this picker into the first-run action-only experience. The suggested
+    /// Git-based bug review starts highlighted above the blank-session action.
     pub fn activate_onboarding_banner(&mut self, banner_lines: Vec<Line<'static>>) {
         self.onboarding_banner = Some(banner_lines);
-        self.onboarding_action = Some(OnboardingAction::StartNewSession);
+        self.onboarding_action = Some(OnboardingAction::ReviewRecentProject);
     }
 
     /// Whether the onboarding banner experience is active.
@@ -2010,9 +2007,7 @@ impl SessionPicker {
         frame.render_widget(Paragraph::new(preview_lines), header_area);
     }
 
-    /// Render the reserved top band for the first-run onboarding experience:
-    /// the formatted prompt followed by the fresh-session and read-only review
-    /// actions.
+    /// Render the first-run prompt followed by its two stacked actions.
     fn render_onboarding_band(&self, frame: &mut Frame, area: Rect) {
         if area.height == 0 {
             return;
@@ -2029,8 +2024,14 @@ impl SessionPicker {
             return;
         }
 
-        // Reserve the last two lines for the onboarding actions.
-        let prompt_height = inner.height.saturating_sub(2);
+        // Keep the actions immediately below the short explanation instead of
+        // pinning them to the bottom of a tall terminal.
+        let prompt_height = (self
+            .onboarding_banner
+            .as_ref()
+            .map_or(0, Vec::len)
+            .saturating_add(1) as u16)
+            .min(inner.height.saturating_sub(2));
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -2071,29 +2072,29 @@ impl SessionPicker {
             ])
         };
 
+        let review_selected = self.onboarding_review_recent_project_highlighted();
+        frame.render_widget(
+            Paragraph::new(action_line(
+                "Find bugs in what I've been working on",
+                review_selected,
+                if review_selected {
+                    "  Enter runs it · recent Git activity → bugs + architecture"
+                } else {
+                    "  ↑ selects the suggested review"
+                },
+            )),
+            chunks[1],
+        );
+
         let start_selected = self.onboarding_start_new_highlighted();
         frame.render_widget(
             Paragraph::new(action_line(
                 "Start a new session",
                 start_selected,
                 if start_selected {
-                    "  Enter starts fresh · ↓ review or resume"
+                    "  Enter starts with a blank prompt"
                 } else {
-                    "  ↑ starts fresh"
-                },
-            )),
-            chunks[1],
-        );
-
-        let review_selected = self.onboarding_review_recent_project_highlighted();
-        frame.render_widget(
-            Paragraph::new(action_line(
-                "Review my recent project's architecture",
-                review_selected,
-                if review_selected {
-                    "  Enter runs a read-only audit · ↓ resumes"
-                } else {
-                    "  Use ↑↓ to select"
+                    "  ↓ selects a blank session"
                 },
             )),
             chunks[2],
@@ -2104,6 +2105,15 @@ impl SessionPicker {
         let has_banner = self.crashed_sessions.is_some();
         let has_search = self.search_active || !self.search_query.is_empty();
         let has_onboarding = self.onboarding_banner.is_some();
+        // The first-run picker is action-only. Do not render the session list or
+        // preview panes underneath it, which would make this look like `/resume`.
+        if has_onboarding && self.visible_sessions.is_empty() {
+            self.last_list_area = None;
+            self.last_preview_area = None;
+            self.render_onboarding_band(frame, frame.area());
+            return;
+        }
+
         // Build vertical constraints
         let mut v_constraints = Vec::new();
         if has_onboarding {

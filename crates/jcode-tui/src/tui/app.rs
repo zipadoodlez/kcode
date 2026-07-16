@@ -376,10 +376,8 @@ pub(super) enum SessionPickerMode {
     /// Opt-in active sessions manager: the picker scoped to live (open)
     /// sessions, showing which are still working vs ready for input.
     ActiveSessions,
-    /// First-run onboarding "continue where you left off" single-select picker.
-    Onboarding {
-        cli: onboarding_flow::ExternalCli,
-    },
+    /// First-run onboarding action picker.
+    Onboarding,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

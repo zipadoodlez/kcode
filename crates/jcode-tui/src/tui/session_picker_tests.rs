@@ -1172,65 +1172,31 @@ fn onboarding_external_filter_with_no_matches_has_no_target() {
     assert!(picker.latest_visible_resume_target().is_none());
 }
 
-fn codex_session(id: &str) -> SessionInfo {
-    let mut s = make_session(id, id, false, SessionStatus::Closed);
-    s.source = SessionSource::Codex;
-    s.model = Some("gpt-5-codex".to_string());
-    s.last_active_at = Some(Utc::now());
-    s.resume_target = ResumeTarget::CodexSession {
-        session_id: id.to_string(),
-        session_path: format!("/tmp/{id}.jsonl"),
-    };
-    s
-}
-
 #[test]
-fn onboarding_banner_defaults_to_start_new_when_transcripts_exist() {
-    let mut picker = SessionPicker::new(vec![codex_session("codex_one")]);
-    picker.activate_external_cli_filter(SessionFilterMode::Codex);
+fn onboarding_banner_defaults_to_suggested_review() {
+    let mut picker = SessionPicker::new(Vec::new());
     picker.activate_onboarding_banner(vec![Line::from("welcome")]);
 
     assert!(picker.onboarding_banner_active());
-    // First-run onboarding highlights "Start a new session" by default so the
-    // common "just start" case remains one Enter away.
-    assert!(picker.onboarding_start_new_highlighted());
-    assert!(!picker.onboarding_review_recent_project_highlighted());
+    assert!(picker.onboarding_review_recent_project_highlighted());
+    assert!(!picker.onboarding_start_new_highlighted());
 }
 
 #[test]
-fn onboarding_banner_defaults_to_start_new_when_no_transcripts() {
-    // No Codex transcripts still leaves both onboarding actions selectable.
-    let jcode = make_session("jcode_only", "jcode", false, SessionStatus::Closed);
-    let mut picker = SessionPicker::new(vec![jcode]);
-    picker.activate_external_cli_filter(SessionFilterMode::Codex);
+fn onboarding_banner_is_action_only() {
+    let mut picker = SessionPicker::new(Vec::new());
     picker.activate_onboarding_banner(vec![Line::from("welcome")]);
 
     assert_eq!(picker.visible_session_count(), 0);
-    assert!(picker.onboarding_start_new_highlighted());
+    assert!(picker.onboarding_review_recent_project_highlighted());
 }
 
 #[test]
-fn onboarding_banner_actions_precede_the_resumable_session_list() {
-    let mut picker = SessionPicker::new(vec![codex_session("codex_one")]);
-    picker.activate_external_cli_filter(SessionFilterMode::Codex);
+fn onboarding_banner_offers_review_then_new_session() {
+    let mut picker = SessionPicker::new(Vec::new());
     picker.activate_onboarding_banner(vec![Line::from("welcome")]);
 
-    // Start-new is highlighted by default on first run.
-    assert!(picker.onboarding_start_new_highlighted());
-
-    // Enter while start-new is highlighted returns StartNewSession.
-    let action = picker
-        .handle_overlay_key(KeyCode::Enter, KeyModifiers::empty())
-        .expect("overlay key");
-    assert!(matches!(
-        action,
-        OverlayAction::Selected(PickerResult::StartNewSession)
-    ));
-
-    // First Down selects the read-only architecture review.
-    picker.next();
-    assert!(!picker.onboarding_start_new_highlighted());
-    assert!(picker.onboarding_review_recent_project_highlighted());
+    // The suggested review is the default top action.
     let action = picker
         .handle_overlay_key(KeyCode::Enter, KeyModifiers::empty())
         .expect("overlay key");
@@ -1239,22 +1205,30 @@ fn onboarding_banner_actions_precede_the_resumable_session_list() {
         OverlayAction::Selected(PickerResult::ReviewRecentProject)
     ));
 
-    // Second Down enters the transcript list. Up walks back through both actions.
+    // Down selects the blank-session action.
     picker.next();
-    assert!(!picker.onboarding_review_recent_project_highlighted());
+    assert!(picker.onboarding_start_new_highlighted());
+    let action = picker
+        .handle_overlay_key(KeyCode::Enter, KeyModifiers::empty())
+        .expect("overlay key");
+    assert!(matches!(
+        action,
+        OverlayAction::Selected(PickerResult::StartNewSession)
+    ));
+
+    // There is no session list below the two actions.
+    picker.next();
+    assert!(picker.onboarding_start_new_highlighted());
     picker.previous();
     assert!(picker.onboarding_review_recent_project_highlighted());
-    picker.previous();
-    assert!(picker.onboarding_start_new_highlighted());
 }
 
 #[test]
 fn onboarding_banner_renders_prompt_and_both_action_rows() {
-    let mut picker = SessionPicker::new(vec![codex_session("codex_one")]);
-    picker.activate_external_cli_filter(SessionFilterMode::Codex);
+    let mut picker = SessionPicker::new(Vec::new());
     picker.activate_onboarding_banner(vec![
         Line::from("Welcome to jcode"),
-        Line::from("We found your Codex sessions."),
+        Line::from("Choose how to begin."),
     ]);
 
     let backend = ratatui::backend::TestBackend::new(120, 40);
@@ -1275,8 +1249,12 @@ fn onboarding_banner_renders_prompt_and_both_action_rows() {
         "start-new row should render in the banner: {text:?}"
     );
     assert!(
-        text.contains("Review my recent project's architecture"),
-        "architecture-review row should render in the banner: {text:?}"
+        text.contains("Find bugs in what I've been working on"),
+        "suggested-review row should render in the banner: {text:?}"
+    );
+    assert!(
+        !text.contains("Sessions"),
+        "resume chrome must be absent: {text:?}"
     );
 }
 

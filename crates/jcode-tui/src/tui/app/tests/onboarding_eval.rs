@@ -43,7 +43,7 @@
 enum ScreenSurface {
     /// Rendered by the onboarding welcome body (`draw_onboarding_welcome`).
     WelcomeBody,
-    /// Rendered as the session-picker overlay (transcript resume).
+    /// Rendered as the action-only onboarding picker overlay.
     PickerOverlay,
     /// Transient/auto-advancing: never rests in front of the user.
     Transient,
@@ -57,7 +57,7 @@ fn classify_phase_surface(phase: &OnboardingPhase) -> ScreenSurface {
         OnboardingPhase::LoginOpenAi { .. } => ScreenSurface::WelcomeBody,
         OnboardingPhase::ContinuePrompt { .. } => ScreenSurface::WelcomeBody,
         OnboardingPhase::Suggestions => ScreenSurface::WelcomeBody,
-        OnboardingPhase::TranscriptPick { .. } => ScreenSurface::PickerOverlay,
+        OnboardingPhase::StartChoice { .. } => ScreenSurface::PickerOverlay,
         // ModelSelect immediately auto-advances; it never rests on screen.
         OnboardingPhase::ModelSelect => ScreenSurface::Transient,
         OnboardingPhase::Done => ScreenSurface::Terminal,
@@ -89,8 +89,8 @@ fn all_onboarding_phases() -> Vec<(&'static str, OnboardingPhase)> {
             },
         ),
         (
-            "TranscriptPick",
-            OnboardingPhase::TranscriptPick { cli: ExternalCli::Codex, shown_at: now },
+            "StartChoice",
+            OnboardingPhase::StartChoice { shown_at: now },
         ),
         ("Suggestions", OnboardingPhase::Suggestions),
         ("Done", OnboardingPhase::Done),
@@ -138,7 +138,7 @@ fn entry_paths() -> Vec<Path> {
             reaches_ready: true,
             steps: vec![
                 Step { phase: "LoginOpenAi", keystrokes: 1, is_decision: true, external_boundary: true },
-                Step { phase: "Suggestions", keystrokes: 0, is_decision: false, external_boundary: false },
+                Step { phase: "StartChoice", keystrokes: 1, is_decision: true, external_boundary: false },
             ],
         },
         Path {
@@ -156,7 +156,7 @@ fn entry_paths() -> Vec<Path> {
             reaches_ready: true,
             steps: vec![
                 Step { phase: "Login{import}", keystrokes: 1, is_decision: true, external_boundary: false },
-                Step { phase: "Suggestions", keystrokes: 0, is_decision: false, external_boundary: false },
+                Step { phase: "StartChoice", keystrokes: 1, is_decision: true, external_boundary: false },
             ],
         },
         Path {
@@ -167,25 +167,15 @@ fn entry_paths() -> Vec<Path> {
                 // Single-screen checkbox list, all pre-checked: one Enter imports
                 // every detected login at once (no per-candidate page).
                 Step { phase: "Login{import}", keystrokes: 1, is_decision: true, external_boundary: false },
-                Step { phase: "Suggestions", keystrokes: 0, is_decision: false, external_boundary: false },
+                Step { phase: "StartChoice", keystrokes: 1, is_decision: true, external_boundary: false },
             ],
         },
         Path {
-            name: "Already authenticated at startup, no transcripts",
-            weight: 0.15,
+            name: "Already authenticated at startup",
+            weight: 0.20,
             reaches_ready: true,
             steps: vec![
-                // ModelSelect auto-advances; the user lands directly on
-                // Suggestions with zero keystrokes.
-                Step { phase: "Suggestions", keystrokes: 0, is_decision: false, external_boundary: false },
-            ],
-        },
-        Path {
-            name: "Already authenticated, resume a detected transcript",
-            weight: 0.05,
-            reaches_ready: true,
-            steps: vec![
-                Step { phase: "TranscriptPick", keystrokes: 1, is_decision: true, external_boundary: false },
+                Step { phase: "StartChoice", keystrokes: 1, is_decision: true, external_boundary: false },
             ],
         },
     ]
@@ -511,7 +501,7 @@ fn tier4_metrics() -> Tier4Metrics {
         // default would be `Done` (login/session lost) or leaving the flow.
         matches!(
             app.onboarding_phase(),
-            Some(OnboardingPhase::TranscriptPick { .. } | OnboardingPhase::Suggestions)
+            Some(OnboardingPhase::StartChoice { .. } | OnboardingPhase::Suggestions)
         )
     };
 
@@ -601,7 +591,7 @@ enum GraphNode {
     LoginRecovery,
     ModelSelect,
     ContinuePrompt,
-    TranscriptPick,
+    StartChoice,
     Suggestions,
     Done,
 }
@@ -615,7 +605,7 @@ fn phase_to_node(phase: &OnboardingPhase) -> GraphNode {
         OnboardingPhase::Login { import: None } => GraphNode::LoginRecovery,
         OnboardingPhase::ModelSelect => GraphNode::ModelSelect,
         OnboardingPhase::ContinuePrompt { .. } => GraphNode::ContinuePrompt,
-        OnboardingPhase::TranscriptPick { .. } => GraphNode::TranscriptPick,
+        OnboardingPhase::StartChoice { .. } => GraphNode::StartChoice,
         OnboardingPhase::Suggestions => GraphNode::Suggestions,
         OnboardingPhase::Done => GraphNode::Done,
     }
@@ -647,8 +637,8 @@ fn node_props(n: GraphNode) -> NodeProps {
         ModelSelect => NodeProps { is_decision: false, has_default: true, is_ready: false, is_terminal: false },
         // Continue prompt auto-opens the resume menu on timeout (default Yes).
         ContinuePrompt => NodeProps { is_decision: true, has_default: true, is_ready: false, is_terminal: false },
-        // Resume picker: a pick (or "start new") reaches a ready session.
-        TranscriptPick => NodeProps { is_decision: true, has_default: false, is_ready: true, is_terminal: true },
+        // Choosing either action reaches a ready session.
+        StartChoice => NodeProps { is_decision: true, has_default: false, is_ready: true, is_terminal: false },
         Suggestions => NodeProps { is_decision: false, has_default: false, is_ready: true, is_terminal: true },
         Done => NodeProps { is_decision: false, has_default: false, is_ready: false, is_terminal: true },
     }
@@ -674,18 +664,22 @@ fn flow_edges() -> Vec<Edge> {
         Edge { from: Start, to: LoginImport, keystrokes: 0 },
         Edge { from: Start, to: ModelSelect, keystrokes: 0 },
         // OpenAI sign-in: Yes -> (browser OAuth) -> Suggestions; No -> Done.
-        Edge { from: LoginOpenAi, to: Suggestions, keystrokes: 1 },
+        Edge { from: LoginOpenAi, to: StartChoice, keystrokes: 1 },
         Edge { from: LoginOpenAi, to: Done, keystrokes: 1 },
         // Import review: accept/decline each candidate, then suggestions. A
         // failed/declined import drops to the recovery fallback.
-        Edge { from: LoginImport, to: Suggestions, keystrokes: 1 },
+        Edge { from: LoginImport, to: StartChoice, keystrokes: 1 },
         Edge { from: LoginImport, to: LoginRecovery, keystrokes: 1 },
         // Recovery: Enter opens the provider picker, ending at suggestions.
-        Edge { from: LoginRecovery, to: Suggestions, keystrokes: 1 },
+        Edge { from: LoginRecovery, to: StartChoice, keystrokes: 1 },
         // Transient model-select auto-advances with no keystroke.
-        Edge { from: ModelSelect, to: Suggestions, keystrokes: 0 },
+        Edge { from: ModelSelect, to: StartChoice, keystrokes: 0 },
+        // The two actions either enter the normal blank-session suggestions or
+        // finish onboarding while launching the suggested review.
+        Edge { from: StartChoice, to: Suggestions, keystrokes: 1 },
+        Edge { from: StartChoice, to: Done, keystrokes: 1 },
         // Continue prompt: Yes -> resume picker; No -> suggestions.
-        Edge { from: ContinuePrompt, to: TranscriptPick, keystrokes: 1 },
+        Edge { from: ContinuePrompt, to: StartChoice, keystrokes: 1 },
         Edge { from: ContinuePrompt, to: Suggestions, keystrokes: 1 },
     ]
 }
@@ -785,7 +779,7 @@ fn entry_node_for(path: &Path) -> GraphNode {
         Some("Login{import}") => GraphNode::LoginImport,
         Some("Login{recovery}") => GraphNode::LoginRecovery,
         Some("Suggestions") => GraphNode::Suggestions,
-        Some("TranscriptPick") => GraphNode::TranscriptPick,
+        Some("StartChoice") => GraphNode::StartChoice,
         Some("ContinuePrompt") => GraphNode::ContinuePrompt,
         // ModelSelect/Done never lead an entry path; default to Start so an
         // unexpected label is conservatively treated as full-path overhead.
@@ -827,7 +821,7 @@ fn tier5_metrics() -> Tier5Metrics {
         GraphNode::LoginImport,
         GraphNode::LoginRecovery,
         GraphNode::ContinuePrompt,
-        GraphNode::TranscriptPick,
+        GraphNode::StartChoice,
     ]
     .into_iter()
     .filter(|&n| {
@@ -844,7 +838,7 @@ fn tier5_metrics() -> Tier5Metrics {
         GraphNode::LoginRecovery,
         GraphNode::ModelSelect,
         GraphNode::ContinuePrompt,
-        GraphNode::TranscriptPick,
+        GraphNode::StartChoice,
         GraphNode::Suggestions,
         GraphNode::Done,
     ];
@@ -1427,7 +1421,7 @@ fn tier8_metrics() -> Tier8Metrics {
             OnboardingPhase::Login { .. } => false,
             OnboardingPhase::ModelSelect => false,
             OnboardingPhase::ContinuePrompt { .. } => false,
-            OnboardingPhase::TranscriptPick { .. } => false,
+            OnboardingPhase::StartChoice { .. } => false,
             OnboardingPhase::Suggestions => false,
             OnboardingPhase::Done => false,
         }
@@ -1454,7 +1448,7 @@ fn tier8_metrics() -> Tier8Metrics {
         app.onboarding_tick();
         matches!(
             app.onboarding_phase(),
-            Some(OnboardingPhase::TranscriptPick { .. } | OnboardingPhase::Suggestions)
+            Some(OnboardingPhase::StartChoice { .. } | OnboardingPhase::Suggestions)
         )
     };
 
@@ -2190,14 +2184,13 @@ fn onboarding_eval_scorecard() {
 #[test]
 fn onboarding_eval_fidelity_real_transitions() {
     with_temp_jcode_home(|| {
-        // Edge: "no transcripts" begin -> lands on Suggestions with 0 keystrokes
-        // (the "already authenticated, no transcripts" path).
+        // Edge: an authenticated start lands on the action-only choice.
         let mut app = create_test_app();
         app.onboarding_flow = None;
         app.begin_onboarding_flow();
         assert!(
-            matches!(app.onboarding_phase(), Some(OnboardingPhase::Suggestions)),
-            "authed/no-transcripts path must rest on Suggestions"
+            matches!(app.onboarding_phase(), Some(OnboardingPhase::StartChoice { .. })),
+            "authenticated startup must rest on StartChoice"
         );
 
         // Edge: LoginOpenAi decline ('n') -> terminal Done, login still required
@@ -2246,13 +2239,12 @@ fn truncate(s: &str, n: usize) -> String {
 #[test]
 fn onboarding_eval_graph_fidelity() {
     with_temp_jcode_home(|| {
-        // Real transition: authed/no-transcripts begin -> Suggestions, which the
-        // graph models as a ready terminal node.
+        // Real transition: authenticated begin -> StartChoice.
         let mut app = create_test_app();
         app.onboarding_flow = None;
         app.begin_onboarding_flow();
         if let Some(phase) = app.onboarding_phase() {
-            assert_eq!(phase_to_node(phase), GraphNode::Suggestions);
+            assert_eq!(phase_to_node(phase), GraphNode::StartChoice);
             assert!(node_props(phase_to_node(phase)).is_ready);
         }
 
@@ -2278,7 +2270,7 @@ fn onboarding_eval_graph_fidelity() {
             GraphNode::LoginRecovery,
             GraphNode::ModelSelect,
             GraphNode::ContinuePrompt,
-            GraphNode::TranscriptPick,
+            GraphNode::StartChoice,
             GraphNode::Suggestions,
             GraphNode::Done,
         ] {
@@ -2288,13 +2280,14 @@ fn onboarding_eval_graph_fidelity() {
         // Every live entry node is reachable from Start via the edges.
         // (`ContinuePrompt` is intentionally excluded: it is a retained
         // compat phase that the live flow no longer routes into from Start -
-        // it opens the resume picker directly - so it has outgoing edges but
+        // it opens the start choice directly - so it has outgoing edges but
         // no Start-reachable inbound edge, which is faithful to production.)
         let edges = flow_edges();
         for n in [
             GraphNode::LoginOpenAi,
             GraphNode::LoginImport,
             GraphNode::ModelSelect,
+            GraphNode::StartChoice,
             GraphNode::Suggestions,
             GraphNode::Done,
         ] {

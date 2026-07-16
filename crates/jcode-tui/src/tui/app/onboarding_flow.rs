@@ -7,24 +7,16 @@
 //!      user to log in right inside the TUI (the fresh
 //!      install no longer runs a blocking CLI login).
 //!      Skipped entirely when credentials already exist.
-//!   2. `TranscriptPick` - if we detect external Codex / Claude Code
-//!      transcripts, drop the user straight into a
-//!      resume-style picker. The picker reserves a top band
-//!      for an onboarding prompt and offers selectable actions
-//!      to start fresh or run a read-only architecture review,
-//!      followed by the resumable sessions. Nothing auto-selects;
-//!      the user explicitly chooses an action or session.
+//!   2. `StartChoice` - show two stacked actions: run a suggested Git-based bug
+//!      and architecture review, or start a blank new session.
 //!   3. `Suggestions` - the existing prompt-suggestion cards. Reached when
-//!      they choose "Start a new session", when there is no external OAuth,
-//!      or as the terminal resting state.
+//!      they choose "Start a new session" or as the terminal resting state.
 //!
 //!   (`ContinuePrompt` is retained as a legacy phase for replay/test fixtures
 //!   but is no longer entered by the live flow.)
 //!
-//! If anything fails along the continue path (no transcripts, load error,
-//! resume failure) we fall back to seeding the input with a prompt that asks
-//! the agent to session-search the latest Codex/Claude Code session and
-//! continue from there.
+//! Session history is intentionally excluded from onboarding and remains
+//! available later through `/resume`.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -276,8 +268,8 @@ pub(crate) enum OnboardingPhase {
         /// When the prompt was shown, for the countdown.
         shown_at: Instant,
     },
-    /// Single-select transcript picker with a 10s auto-select of the latest.
-    TranscriptPick { cli: ExternalCli, shown_at: Instant },
+    /// Action-only picker offering the suggested review or a blank new session.
+    StartChoice { shown_at: Instant },
     /// Existing prompt-suggestion cards (resting / "No" state).
     Suggestions,
     /// Flow finished; nothing onboarding-specific to render.

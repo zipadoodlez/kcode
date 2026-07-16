@@ -81,17 +81,16 @@ fn onboarding_begins_and_advances_past_model_select() {
     app.onboarding_flow = None;
     app.begin_onboarding_flow();
     // `begin_onboarding_flow` immediately advances past the legacy ModelSelect
-    // phase: with no external transcripts to resume it lands on the
-    // suggestion-card (new-session) screen rather than blocking on a picker.
+    // phase into the action-only start choice.
     assert!(matches!(
         app.onboarding_phase(),
-        Some(OnboardingPhase::Suggestions)
+        Some(OnboardingPhase::StartChoice { .. })
     ));
     // begin is idempotent: a second call does not reset the phase.
     app.begin_onboarding_flow();
     assert!(matches!(
         app.onboarding_phase(),
-        Some(OnboardingPhase::Suggestions)
+        Some(OnboardingPhase::StartChoice { .. })
     ));
 }
 
@@ -583,7 +582,7 @@ fn continue_prompt_key_y_consumes_and_advances() {
         }
         // 'Y' is consumed by the onboarding handler.
         assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Char('Y')));
-        // It either opened the picker (TranscriptPick) or fell back depending on
+        // It either opened the picker (StartChoice) or fell back depending on
         // whether transcripts exist in the temp home; either way it leaves
         // ContinuePrompt.
         assert!(!matches!(
@@ -601,218 +600,27 @@ fn continue_prompt_key_ignored_when_not_in_phase() {
 }
 
 #[test]
-fn no_external_transcripts_lands_on_suggestions_without_autosubmit() {
-    with_temp_jcode_home(|| {
-        let mut app = onboarding_test_app();
-        if let Some(flow) = app.onboarding_flow.as_mut() {
-            flow.phase = OnboardingPhase::ContinuePrompt {
-                cli: ExternalCli::Codex,
-                yes_highlighted: true,
-                shown_at: std::time::Instant::now(),
-            };
-        }
-        // Temp home has no Codex transcripts, so opening the picker should land
-        // the user on the clean new-session suggestion cards rather than
-        // auto-submitting a "search for my last session" turn.
-        app.onboarding_open_transcript_picker(&[ExternalCli::Codex]);
-        assert!(matches!(
-            app.onboarding_phase(),
-            Some(OnboardingPhase::Suggestions)
-        ));
-        assert!(app.session_picker_overlay.is_none());
-        // It must NOT have queued/dispatched an agent turn.
-        assert!(!app.pending_queued_dispatch);
-        assert!(app.queued_messages.is_empty());
-    });
-}
+fn onboarding_start_choice_is_action_only_and_defaults_to_review() {
+    let mut app = onboarding_test_app();
+    if let Some(flow) = app.onboarding_flow.as_mut() {
+        flow.phase = OnboardingPhase::ModelSelect;
+    }
 
-#[test]
-fn onboarding_picker_mode_carries_cli() {
-    let mode = SessionPickerMode::Onboarding {
-        cli: ExternalCli::ClaudeCode,
-    };
-    assert!(matches!(mode, SessionPickerMode::Onboarding { .. }));
-    assert_ne!(mode, SessionPickerMode::Resume);
-}
+    app.onboarding_after_model_select();
 
-#[test]
-fn onboarding_picker_shows_both_codex_and_claude_transcripts() {
-    use std::fs;
-    with_temp_jcode_home(|| {
-        // Seed one Codex transcript and one Claude Code transcript under the
-        // sandbox-aware external home ($JCODE_HOME/external/...), mirroring a
-        // user who is logged into BOTH CLIs.
-        let home = std::env::var_os("JCODE_HOME").expect("JCODE_HOME");
-        let external = std::path::Path::new(&home).join("external");
-
-        let codex_dir = external.join(".codex/sessions/2026/04/05");
-        fs::create_dir_all(&codex_dir).expect("codex dir");
-        fs::write(
-            codex_dir.join("rollout-2026-04-05T19-00-00-codextest.jsonl"),
-            concat!(
-                "{\"timestamp\":\"2026-04-05T19:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"019d-codex-both\",\"timestamp\":\"2026-04-05T18:59:00Z\",\"cwd\":\"/tmp/codex-demo\",\"source\":\"cli\"}}\n",
-                "{\"timestamp\":\"2026-04-05T19:00:03Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"CODEX_MARKER fix the widget\"}]}}\n",
-            ),
-        )
-        .expect("write codex transcript");
-
-        let claude_dir = external.join(".claude/projects/demo-project");
-        fs::create_dir_all(&claude_dir).expect("claude dir");
-        fs::write(
-            claude_dir.join("claude-session-both.jsonl"),
-            concat!(
-                "{\"type\":\"user\",\"uuid\":\"u1\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"CLAUDE_MARKER fix the flaky test\"}]}}\n",
-                "{\"type\":\"assistant\",\"uuid\":\"a1\",\"parentUuid\":\"u1\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"done\"}]}}\n"
-            ),
-        )
-        .expect("write claude transcript");
-
-        let mut app = onboarding_test_app();
-        // Open the combined picker for BOTH detected CLIs.
-        app.onboarding_open_transcript_picker(&[ExternalCli::Codex, ExternalCli::ClaudeCode]);
-
-        // The picker overlay should be up with both CLIs' sessions visible
-        // (not just one).
-        let picker_cell = app
-            .session_picker_overlay
-            .as_ref()
-            .expect("picker overlay should be open");
-        let picker = picker_cell.borrow();
-        assert!(
-            picker.visible_session_count() >= 2,
-            "combined picker should list both CLIs' sessions, got {}",
-            picker.visible_session_count()
-        );
-
-        let mut saw_codex = false;
-        let mut saw_claude = false;
-        for session in picker.visible_session_iter_for_test() {
-            match session.source {
-                jcode_tui_session_picker::SessionSource::Codex => saw_codex = true,
-                jcode_tui_session_picker::SessionSource::ClaudeCode => saw_claude = true,
-                _ => {}
-            }
-        }
-        assert!(saw_codex, "Codex session should be present in combined picker");
-        assert!(
-            saw_claude,
-            "Claude Code session should be present in combined picker"
-        );
-    });
-}
-
-#[test]
-fn onboarding_picker_shows_pi_and_opencode_transcripts() {
-    use std::fs;
-    with_temp_jcode_home(|| {
-        // Seed one Pi transcript and one OpenCode session under the
-        // sandbox-aware external home, mirroring a user logged into both.
-        let home = std::env::var_os("JCODE_HOME").expect("JCODE_HOME");
-        let external = std::path::Path::new(&home).join("external");
-
-        let pi_dir = external.join(".pi/agent/sessions/demo-project");
-        fs::create_dir_all(&pi_dir).expect("pi dir");
-        fs::write(
-            pi_dir.join("pi-session-both.jsonl"),
-            concat!(
-                "{\"type\":\"session\",\"id\":\"pi-both-0001\",\"timestamp\":\"2026-04-05T19:00:00Z\",\"cwd\":\"/tmp/pi-demo\"}\n",
-                "{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"PI_MARKER\"}]}\n",
-            ),
-        )
-        .expect("write pi transcript");
-
-        let oc_dir = external.join(".local/share/opencode/storage/session/global");
-        fs::create_dir_all(&oc_dir).expect("opencode dir");
-        fs::write(
-            oc_dir.join("ses_both.json"),
-            concat!(
-                "{\"id\":\"ses_both\",\"directory\":\"/tmp/opencode-demo\",",
-                "\"title\":\"OPENCODE_MARKER demo\",",
-                "\"time\":{\"created\":1775415600000,\"updated\":1775415660000}}",
-            ),
-        )
-        .expect("write opencode session");
-
-        let mut app = onboarding_test_app();
-        app.onboarding_open_transcript_picker(&[ExternalCli::Pi, ExternalCli::OpenCode]);
-
-        let picker_cell = app
-            .session_picker_overlay
-            .as_ref()
-            .expect("picker overlay should be open");
-        let picker = picker_cell.borrow();
-        assert!(
-            picker.visible_session_count() >= 2,
-            "combined picker should list both CLIs' sessions, got {}",
-            picker.visible_session_count()
-        );
-
-        let mut saw_pi = false;
-        let mut saw_opencode = false;
-        for session in picker.visible_session_iter_for_test() {
-            match session.source {
-                jcode_tui_session_picker::SessionSource::Pi => saw_pi = true,
-                jcode_tui_session_picker::SessionSource::OpenCode => saw_opencode = true,
-                _ => {}
-            }
-        }
-    assert!(saw_pi, "Pi session should be present in combined picker");
-    assert!(
-        saw_opencode,
-        "OpenCode session should be present in combined picker"
-    );
-    });
-}
-
-#[test]
-fn onboarding_picker_shows_cursor_transcripts() {
-    use std::fs;
-    with_temp_jcode_home(|| {
-        // Seed one Cursor agent transcript under the sandbox-aware external home,
-        // mirroring a user who has used the Cursor CLI.
-        let home = std::env::var_os("JCODE_HOME").expect("JCODE_HOME");
-        let external = std::path::Path::new(&home).join("external");
-
-        let session_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
-        let cursor_dir = external.join(format!(
-            ".cursor/projects/tmp-cursor-demo/agent-transcripts/{session_id}"
-        ));
-        fs::create_dir_all(&cursor_dir).expect("cursor dir");
-        fs::write(
-            cursor_dir.join(format!("{session_id}.jsonl")),
-            concat!(
-                "{\"role\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"CURSOR_MARKER hi\"}]}}\n",
-                "{\"role\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"sure\"}]}}\n",
-            ),
-        )
-        .expect("write cursor transcript");
-
-        // Detection should surface Cursor purely from the transcript presence
-        // (Cursor stores credentials in a vscdb/keychain, not a JSON file).
-        let detected = crate::tui::app::onboarding_flow::detect_external_cli_oauths();
-        assert!(
-            detected.contains(&ExternalCli::Cursor),
-            "Cursor should be detected from transcripts, got {detected:?}"
-        );
-
-        let mut app = onboarding_test_app();
-        app.onboarding_open_transcript_picker(&[ExternalCli::Cursor]);
-
-        let picker_cell = app
-            .session_picker_overlay
-            .as_ref()
-            .expect("picker overlay should be open");
-        let picker = picker_cell.borrow();
-        assert!(
-            picker.visible_session_count() >= 1,
-            "cursor picker should list the seeded session, got {}",
-            picker.visible_session_count()
-        );
-        let saw_cursor = picker.visible_session_iter_for_test().any(|session| {
-            session.source == jcode_tui_session_picker::SessionSource::Cursor
-        });
-        assert!(saw_cursor, "Cursor session should be present in picker");
-    });
+    assert!(matches!(
+        app.onboarding_phase(),
+        Some(OnboardingPhase::StartChoice { .. })
+    ));
+    assert_eq!(app.session_picker_mode, SessionPickerMode::Onboarding);
+    let picker = app
+        .session_picker_overlay
+        .as_ref()
+        .expect("start choice picker")
+        .borrow();
+    assert_eq!(picker.visible_session_count(), 0);
+    assert!(picker.onboarding_review_recent_project_highlighted());
+    assert!(!picker.onboarding_start_new_highlighted());
 }
 
 #[test]
@@ -1144,7 +952,7 @@ fn startup_check_imported_transcripts_do_not_count_as_history() {
 
 /// A phase is a "safe resting/exit state" if the user is no longer trapped by
 /// the guided flow: onboarding finished (`None`/`Done`), they reached a ready
-/// surface (`Suggestions`/`TranscriptPick`), or an interactive picker overlay is
+/// surface (`Suggestions`/`StartChoice`), or an interactive picker overlay is
 /// open for them to act in.
 fn onboarding_state_is_escapable(app: &App) -> bool {
     use crate::tui::app::onboarding_flow::OnboardingPhase;
@@ -1154,7 +962,7 @@ fn onboarding_state_is_escapable(app: &App) -> bool {
     match app.onboarding_phase() {
         None => true, // flow finished / inactive
         Some(OnboardingPhase::Suggestions) => true,
-        Some(OnboardingPhase::TranscriptPick { .. }) => true,
+        Some(OnboardingPhase::StartChoice { .. }) => true,
         Some(OnboardingPhase::Done) => true,
         _ => false,
     }
@@ -1674,40 +1482,20 @@ fn import_summary_choose_pill_opens_checkbox_list() {
 }
 
 #[test]
-fn onboarding_resume_picker_is_shown_only_once_per_install() {
-    with_temp_jcode_home(|| {
-        // First pass: mark the resume screen as already shown.
-        let mut hints = crate::setup_hints::SetupHintsState::load();
-        assert!(!hints.onboarding_resume_shown, "fresh home starts unseen");
-        hints.onboarding_resume_shown = true;
-        hints.save().unwrap();
-
-        // Second pass: even if external transcripts exist, ModelSelect must
-        // fall through to Suggestions instead of re-opening the resume picker.
-        let mut app = create_test_app();
-        app.onboarding_flow = None;
-        app.onboarding_flow = Some(crate::tui::app::onboarding_flow::OnboardingFlow::begin());
-        app.onboarding_after_model_select();
-        assert!(app.session_picker_overlay.is_none());
-        assert!(matches!(
-            app.onboarding_phase(),
-            Some(OnboardingPhase::Suggestions) | None
-        ));
-    });
-}
-
-#[test]
 fn recent_project_review_prompt_is_bounded_read_only_and_requires_approval() {
     let prompt = App::onboarding_recent_project_review_prompt();
 
-    assert!(prompt.contains("Use session_search"), "{prompt}");
-    assert!(prompt.contains("external session sources"), "{prompt}");
-    assert!(prompt.contains("most recent substantive coding work"), "{prompt}");
-    assert!(prompt.contains("light swarm"), "{prompt}");
-    assert!(prompt.contains("no more than 3 worker agents"), "{prompt}");
-    assert!(prompt.contains("without modifying anything"), "{prompt}");
+    assert!(prompt.contains("Use Git"), "{prompt}");
+    assert!(prompt.contains("worked in most recently"), "{prompt}");
+    assert!(prompt.contains("recent commits"), "{prompt}");
+    assert!(prompt.contains("reflog activity"), "{prompt}");
+    assert!(prompt.contains("uncommitted changes"), "{prompt}");
+    assert!(prompt.contains("concrete bugs"), "{prompt}");
+    assert!(prompt.contains("architecture problems"), "{prompt}");
+    assert!(!prompt.contains("session_search"), "{prompt}");
+    assert!(prompt.contains("without modifying it"), "{prompt}");
     assert!(prompt.contains("Do not edit files"), "{prompt}");
-    assert!(prompt.contains("ask whether I want you to implement"), "{prompt}");
+    assert!(prompt.contains("ask whether I want you to fix"), "{prompt}");
     assert!(prompt.contains("until I explicitly approve it"), "{prompt}");
 }
 
@@ -1717,7 +1505,51 @@ fn preparing_recent_project_review_finishes_onboarding_and_seeds_the_first_turn(
 
     app.onboarding_prepare_recent_project_review();
 
-    assert!(matches!(app.onboarding_phase(), Some(OnboardingPhase::Done)));
+    assert!(!app.onboarding_flow_active());
     assert_eq!(app.input, App::onboarding_recent_project_review_prompt());
     assert_eq!(app.cursor_pos, app.input.len());
+}
+
+#[test]
+fn starting_recent_project_review_runs_as_a_visible_local_turn() {
+    let mut app = onboarding_test_app();
+
+    app.onboarding_start_recent_project_review();
+
+    assert!(!app.onboarding_flow_active());
+    assert!(app.pending_turn, "local review should start a local turn");
+    assert!(app.is_processing, "local review should enter Sending");
+    assert!(app.queued_messages.is_empty());
+    assert_eq!(
+        app.session.messages.last().and_then(|message| {
+            message.content.iter().find_map(|block| match block {
+                crate::message::ContentBlock::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+        }),
+        Some(App::onboarding_recent_project_review_prompt())
+    );
+}
+
+#[test]
+fn starting_recent_project_review_queues_remote_turn_without_stuck_sending() {
+    let mut app = onboarding_test_app();
+    app.is_remote = true;
+
+    app.onboarding_start_recent_project_review();
+
+    assert!(!app.onboarding_flow_active());
+    assert!(
+        !app.pending_turn,
+        "remote review must not set the local pending-turn flag"
+    );
+    assert!(
+        !app.is_processing,
+        "remote review must stay idle until the remote queue dispatches"
+    );
+    assert!(app.input.is_empty());
+    assert_eq!(
+        app.queued_messages,
+        vec![App::onboarding_recent_project_review_prompt().to_string()]
+    );
 }

@@ -1962,35 +1962,6 @@ fn load_external_codex_sessions(scan_limit: usize) -> Vec<SessionInfo> {
         .collect()
 }
 
-/// Newest external-transcript modification time (Unix seconds) for the given
-/// external CLI, scanning the sandbox-aware session roots. Returns `None` when
-/// no transcript exists. Cheap: it only stats files, never parses them, so it
-/// is safe to call during onboarding to decide which CLI was most recently
-/// active.
-pub(crate) fn latest_external_cli_session_secs(
-    cli: crate::tui::app::onboarding_flow::ExternalCli,
-) -> Option<u64> {
-    use crate::tui::app::onboarding_flow::ExternalCli;
-    let (rel_root, ext) = match cli {
-        ExternalCli::Codex => (".codex/sessions", "jsonl"),
-        ExternalCli::ClaudeCode => (".claude/projects", "jsonl"),
-        ExternalCli::Pi => (".pi/agent/sessions", "jsonl"),
-        ExternalCli::OpenCode => (".local/share/opencode/storage/session", "json"),
-        ExternalCli::Cursor => (".cursor/projects", "jsonl"),
-    };
-    let root = crate::storage::user_home_path(rel_root).ok()?;
-    if !root.exists() {
-        return None;
-    }
-    // One file is enough to learn the newest mtime.
-    collect_recent_files_recursive(&root, ext, 1)
-        .first()
-        .and_then(|path| path.metadata().ok())
-        .and_then(|meta| meta.modified().ok())
-        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|duration| duration.as_secs())
-}
-
 fn load_codex_session_stub(path: &Path) -> Result<Option<SessionInfo>> {
     let file = File::open(path)?;
     let mut lines = BufReader::new(file).lines();
@@ -2939,15 +2910,7 @@ pub fn load_sessions_grouped() -> Result<(Vec<ServerGroup>, Vec<SessionInfo>)> {
 /// returned as orphan [`SessionInfo`] grouped output compatible with
 /// `SessionPicker::new_grouped`.
 ///
-/// First-run onboarding's "continue where you left off" picker is filtered to a
-/// single external CLI, so the full `load_sessions_grouped` work (parsing every
-/// jcode snapshot, the other CLIs, and listing servers) is wasted there. This
-/// scoped loader keeps onboarding responsive by touching only the relevant
-/// transcripts.
-///
-/// The live onboarding flow now uses [`load_external_cli_sessions_grouped_multi`]
-/// (it shows every logged-in CLI together), so this single-CLI variant is kept
-/// only as a focused test helper.
+/// Kept as a focused test helper for the external transcript importers.
 #[cfg(test)]
 pub(crate) fn load_external_cli_sessions_grouped(
     cli: crate::tui::app::onboarding_flow::ExternalCli,
@@ -2961,54 +2924,6 @@ pub(crate) fn load_external_cli_sessions_grouped(
         ExternalCli::OpenCode => load_external_opencode_sessions(scan_limit),
         ExternalCli::Cursor => load_external_cursor_sessions(scan_limit),
     };
-    (Vec::new(), sessions)
-}
-
-/// Load sessions for several external CLIs at once (Codex and/or Claude Code),
-/// returned as a single combined orphan list compatible with
-/// `SessionPicker::new_grouped`.
-///
-/// First-run onboarding's "continue where you left off" picker shows every
-/// external CLI the user is logged into, not just one, so it loads all of them
-/// here. Each CLI is still scoped to its own transcripts (no jcode snapshots /
-/// servers), keeping onboarding responsive. The picker sorts the merged result
-/// by recency, so the newest session across all CLIs floats to the top.
-pub(crate) fn load_external_cli_sessions_grouped_multi(
-    clis: &[crate::tui::app::onboarding_flow::ExternalCli],
-) -> (Vec<ServerGroup>, Vec<SessionInfo>) {
-    use crate::tui::app::onboarding_flow::ExternalCli;
-    let scan_limit = session_scan_limit();
-    let mut sessions = Vec::new();
-    let mut seen_codex = false;
-    let mut seen_claude = false;
-    let mut seen_pi = false;
-    let mut seen_opencode = false;
-    let mut seen_cursor = false;
-    for cli in clis {
-        match cli {
-            ExternalCli::Codex if !seen_codex => {
-                seen_codex = true;
-                sessions.extend(load_external_codex_sessions(scan_limit));
-            }
-            ExternalCli::ClaudeCode if !seen_claude => {
-                seen_claude = true;
-                sessions.extend(load_external_claude_code_sessions(scan_limit));
-            }
-            ExternalCli::Pi if !seen_pi => {
-                seen_pi = true;
-                sessions.extend(load_external_pi_sessions(scan_limit));
-            }
-            ExternalCli::OpenCode if !seen_opencode => {
-                seen_opencode = true;
-                sessions.extend(load_external_opencode_sessions(scan_limit));
-            }
-            ExternalCli::Cursor if !seen_cursor => {
-                seen_cursor = true;
-                sessions.extend(load_external_cursor_sessions(scan_limit));
-            }
-            _ => {}
-        }
-    }
     (Vec::new(), sessions)
 }
 

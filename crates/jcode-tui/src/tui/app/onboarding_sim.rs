@@ -7,7 +7,7 @@
 //! way a brand-new user would see them.
 //!
 //! Unlike the real flow, the simulator:
-//!   - never starts a real login, import, or external session resume,
+//!   - never starts a real login, import, or suggested review,
 //!   - never auto-advances on a countdown (the tick loop is frozen for the sim),
 //!   - can be exited at any point, restoring the prior session state.
 //!
@@ -15,7 +15,8 @@
 //! (`onboarding_welcome_kind`), so what you see here is what first-run users see.
 
 use super::App;
-use super::onboarding_flow::{ExternalCli, ImportReview, OnboardingFlow, OnboardingPhase};
+use super::SessionPickerMode;
+use super::onboarding_flow::{ImportReview, OnboardingFlow, OnboardingPhase};
 use crossterm::event::{KeyCode, KeyModifiers};
 use std::time::Instant;
 
@@ -61,6 +62,8 @@ impl App {
     pub(super) fn stop_onboarding_simulator(&mut self) {
         self.onboarding_sim = None;
         self.onboarding_flow = None;
+        self.session_picker_overlay = None;
+        self.session_picker_mode = SessionPickerMode::Resume;
         self.onboarding_preview_mode = false;
         self.force_full_redraw = true;
         self.set_status_notice("Onboarding simulator: off");
@@ -137,18 +140,8 @@ impl App {
                 phase: OnboardingPhase::Login { import: None },
             },
             SimScreen {
-                title: "Continue where you left off (Codex)",
-                phase: OnboardingPhase::ContinuePrompt {
-                    cli: ExternalCli::Codex,
-                    yes_highlighted: true,
-                    shown_at: Instant::now(),
-                },
-            },
-            SimScreen {
-                title: "Continue where you left off (Claude Code)",
-                phase: OnboardingPhase::ContinuePrompt {
-                    cli: ExternalCli::ClaudeCode,
-                    yes_highlighted: true,
+                title: "Choose a suggested review or blank session",
+                phase: OnboardingPhase::StartChoice {
                     shown_at: Instant::now(),
                 },
             },
@@ -175,9 +168,15 @@ impl App {
             return;
         }
         let screen = screens.remove(index);
+        let is_start_choice = matches!(&screen.phase, OnboardingPhase::StartChoice { .. });
+        self.session_picker_overlay = None;
+        self.session_picker_mode = SessionPickerMode::Resume;
         self.onboarding_flow = Some(OnboardingFlow {
             phase: screen.phase,
         });
+        if is_start_choice {
+            self.onboarding_open_start_choice();
+        }
     }
 
     /// Refresh the status line with the current screen position and controls.

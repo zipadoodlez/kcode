@@ -8,7 +8,7 @@ use super::onboarding_flow::{
     ExternalCli, ImportReview, OnboardingFlow, OnboardingPendingValidation, OnboardingPhase,
 };
 use super::{App, DisplayMessage, SessionPickerMode};
-use crate::tui::session_picker::{self, SessionFilterMode, SessionPicker};
+use crate::tui::session_picker::SessionPicker;
 use crossterm::event::KeyCode;
 use std::cell::RefCell;
 use std::time::{Duration, Instant};
@@ -272,37 +272,13 @@ impl App {
         self.onboarding_after_model_select();
     }
 
-    /// Advance out of the model-selection phase once a model has been chosen.
-    /// When we detect external Codex / Claude Code transcripts, drop the user
-    /// straight into the resume picker (with an onboarding banner + a
-    /// start-fresh and read-only review options) instead of asking a separate Yes/No
-    /// "continue where you left off" question. When both CLIs are present we
-    /// show *both* their transcripts together in one combined, recency-sorted
-    /// list rather than hiding one behind the other.
-    ///
-    /// The resume picker is a one-time offer: once it has been shown (recorded
-    /// in `setup_hints.json`), later launches land on the normal new-session
-    /// screen. Old transcripts stay reachable via `/resume`.
+    /// Advance out of model selection into the simple first-run choice: run the
+    /// suggested Git-based bug review or start with a blank new session.
     pub(super) fn onboarding_after_model_select(&mut self) {
         if !matches!(self.onboarding_phase(), Some(OnboardingPhase::ModelSelect)) {
             return;
         }
-        let mut hints = crate::setup_hints::SetupHintsState::load();
-        if hints.onboarding_resume_shown {
-            self.onboarding_show_suggestions();
-            return;
-        }
-        let present = crate::tui::app::onboarding_flow::detect_external_cli_oauths();
-        if present.is_empty() {
-            self.onboarding_show_suggestions();
-        } else {
-            // Persist the guard BEFORE opening the picker so a crash/quit while
-            // it is up still counts as "shown": the user is never trapped in a
-            // resume-screen loop across launches.
-            hints.onboarding_resume_shown = true;
-            let _ = hints.save();
-            self.onboarding_open_transcript_picker(&present);
-        }
+        self.onboarding_open_start_choice();
     }
 
     /// Enter the "Continue where you left off?" phase. Highlightable Yes/No
@@ -311,7 +287,7 @@ impl App {
     ///
     /// Retained for compatibility with replay/test fixtures and the
     /// `ContinuePrompt` rendering/key/tick paths. The live onboarding flow now
-    /// opens the resume picker directly instead of asking this Yes/No question.
+    /// opens the two-action start choice directly.
     #[allow(dead_code)]
     fn onboarding_enter_continue_prompt(&mut self, cli: ExternalCli) {
         if let Some(flow) = self.onboarding_flow.as_mut() {
@@ -347,7 +323,8 @@ impl App {
             _ => return,
         };
         if wants_continue {
-            self.onboarding_open_transcript_picker(std::slice::from_ref(&cli));
+            let _ = cli;
+            self.onboarding_open_start_choice();
         } else {
             self.onboarding_show_suggestions();
         }
@@ -833,111 +810,37 @@ impl App {
         });
     }
 
-    /// Open a single-select resume-style picker showing the transcripts of every
-    /// detected external CLI together (Codex and/or Claude Code), sorted by
-    /// recency. Falls back to the session-search prompt if none load.
-    ///
-    /// `clis` is the set of external CLIs the user is logged into. When more than
-    /// one is present we still show them in one combined list so the user never
-    /// has a CLI's history hidden behind the other.
-    pub(super) fn onboarding_open_transcript_picker(&mut self, clis: &[ExternalCli]) {
-        // Choose a representative CLI for the banner/mode headline: the one with
-        // the most recent transcript (falling back to detection order).
-        let headline_cli = clis
-            .iter()
-            .copied()
-            .max_by_key(|cli| session_picker::latest_external_cli_session_secs(*cli).unwrap_or(0))
-            .or_else(|| clis.first().copied())
-            .unwrap_or(ExternalCli::Codex);
-
-        let multi = clis.len() > 1;
-        let filter = if multi {
-            SessionFilterMode::ExternalClis
-        } else {
-            match headline_cli {
-                ExternalCli::Codex => SessionFilterMode::Codex,
-                ExternalCli::ClaudeCode => SessionFilterMode::ClaudeCode,
-                ExternalCli::Pi => SessionFilterMode::Pi,
-                ExternalCli::OpenCode => SessionFilterMode::OpenCode,
-                ExternalCli::Cursor => SessionFilterMode::Cursor,
-            }
-        };
-
-        // The onboarding picker only shows external CLI transcripts, so load just
-        // those instead of paying the full `load_sessions_grouped` cost (parsing
-        // every jcode snapshot and listing servers). This keeps first-run
-        // onboarding snappy while still surfacing every logged-in CLI.
-        let (server_groups, orphan_sessions) =
-            session_picker::load_external_cli_sessions_grouped_multi(clis);
-
-        let mut picker = SessionPicker::new_grouped(server_groups, orphan_sessions);
-        picker.activate_external_cli_filter(filter);
-
-        if picker.visible_session_count() == 0 {
-            self.onboarding_fallback_to_session_search(headline_cli);
-            return;
-        }
-
-        picker.activate_onboarding_banner(Self::onboarding_resume_banner_lines(clis));
-
+    /// Open the action-only onboarding choice. Session history remains available
+    /// later through `/resume`, but first run stays focused on two clear paths.
+    pub(super) fn onboarding_open_start_choice(&mut self) {
+        let mut picker = SessionPicker::new(Vec::new());
+        picker.activate_onboarding_banner(Self::onboarding_start_choice_banner_lines());
         self.session_picker_overlay = Some(RefCell::new(picker));
-        self.session_picker_mode = SessionPickerMode::Onboarding { cli: headline_cli };
+        self.session_picker_mode = SessionPickerMode::Onboarding;
         if let Some(flow) = self.onboarding_flow.as_mut() {
-            flow.phase = OnboardingPhase::TranscriptPick {
-                cli: headline_cli,
+            flow.phase = OnboardingPhase::StartChoice {
                 shown_at: Instant::now(),
             };
         }
-        let resume_label = if multi {
-            let labels = Self::onboarding_cli_label_list(clis);
-            format!("Resume a {labels} session")
-        } else {
-            format!("Resume a {} session", headline_cli.label())
-        };
-        self.set_status_notice(format!(
-            "{resume_label}, start fresh, or run a read-only architecture review (↑↓, Enter)"
-        ));
+        self.set_status_notice("Choose a suggested review or start a new session (↑↓, Enter)");
     }
 
-    /// Join the detected CLI labels into a human-readable list, e.g.
-    /// "Codex", "Codex and Claude Code", or "Codex, Claude Code and Pi".
-    /// De-duplicates while preserving detection order.
-    fn onboarding_cli_label_list(clis: &[ExternalCli]) -> String {
-        let mut labels: Vec<&'static str> = Vec::new();
-        for cli in clis {
-            let label = cli.label();
-            if !labels.contains(&label) {
-                labels.push(label);
-            }
-        }
-        match labels.as_slice() {
-            [] => "external".to_string(),
-            [only] => (*only).to_string(),
-            [first, second] => format!("{first} and {second}"),
-            [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
-        }
-    }
-
-    /// Formatted onboarding prompt shown in the reserved top band of the
-    /// resume picker on first run.
-    fn onboarding_resume_banner_lines(clis: &[ExternalCli]) -> Vec<ratatui::text::Line<'static>> {
+    /// Formatted copy shown above the two first-run actions.
+    fn onboarding_start_choice_banner_lines() -> Vec<ratatui::text::Line<'static>> {
         use ratatui::style::{Color, Modifier, Style};
         use ratatui::text::{Line, Span};
         let accent = crate::tui::color_support::rgb(186, 139, 255);
-        // Describe whichever CLIs were detected, e.g. "Codex", "Codex and
-        // Claude Code", or "Codex, Claude Code and Pi" when several are present.
-        let found = Self::onboarding_cli_label_list(clis);
         vec![
             Line::from(vec![Span::styled(
                 "Welcome to jcode 🎉",
                 Style::default().fg(accent).add_modifier(Modifier::BOLD),
             )]),
             Line::from(vec![Span::styled(
-                format!("We found your {found} sessions."),
+                "How would you like to begin?",
                 Style::default().fg(Color::White),
             )]),
             Line::from(vec![Span::styled(
-                "Start fresh, review your recent project's architecture, or resume below.",
+                "The suggested review uses recent Git activity to find your latest work, then checks it for bugs and architecture problems.",
                 Style::default().fg(Color::White),
             )]),
         ]
@@ -947,7 +850,7 @@ impl App {
     /// Keep the guardrails explicit because this is a proactive workflow selected
     /// before the user has entered their own prompt.
     pub(super) fn onboarding_recent_project_review_prompt() -> &'static str {
-        "Use session_search, including external session sources, to inspect my recent coding sessions. Use a few broad code-work queries and compare timestamps and working_dir metadata. Identify the repository where I have done the most recent substantive coding work, rather than choosing a newer but unrelated chat. Confirm that the repository path exists, then inspect that codebase without modifying anything.\n\nUse a light swarm with no more than 3 worker agents. Give each worker a distinct architectural area, then synthesize their evidence. Focus on the highest-impact structural problems, including boundaries and coupling, data and control flow, reliability and security risks, testability, performance and scalability, and long-term maintainability. Return a short prioritized list. For every finding, cite concrete files or symbols, explain why it matters, and recommend a direction.\n\nThis is a read-only review. Do not edit files, run destructive commands, create commits, or push. When the review is complete, state which repository you selected and why, present the prioritized findings, and ask whether I want you to implement any of them. Do not begin implementation until I explicitly approve it."
+        "Use Git to find which repository under my home directory I have worked in most recently. Compare recent commits, reflog activity, and uncommitted changes. Ignore dependencies, generated directories, caches, and repositories I have not meaningfully touched. Confirm the repository path exists and briefly explain why you selected it.\n\nThen inspect that repository without modifying it. Find concrete bugs and important architecture problems, prioritizing issues that could cause incorrect behavior, data loss, security problems, reliability failures, or hard-to-maintain coupling. Start with recent diffs and commits, then trace the relevant code and tests. For each finding, cite specific files or symbols, explain the impact, and recommend a fix.\n\nThis is a read-only review. Do not edit files, run destructive commands, create commits, or push. End with a short prioritized list and ask whether I want you to fix the findings. Do not begin implementation until I explicitly approve it."
     }
 
     pub(super) fn onboarding_prepare_recent_project_review(&mut self) {
@@ -956,14 +859,21 @@ impl App {
         self.cursor_pos = self.input.len();
     }
 
-    /// Fallback when an external CLI login is present but no resumable
-    /// transcripts load: just land the user on the clean new-session screen with
-    /// the prompt-suggestion cards. We intentionally do NOT auto-submit a
-    /// "search for my last session" turn here; firing an agent turn the user
-    /// never asked for on first run is surprising. They can resume later via
-    /// `/resume` if they want.
-    pub(super) fn onboarding_fallback_to_session_search(&mut self, _cli: ExternalCli) {
-        self.onboarding_show_suggestions();
+    /// Start the proactive recent-project review on the active runtime.
+    ///
+    /// Local TUIs consume `pending_turn` in their run loop, while remote-attached
+    /// TUIs send queued messages from the remote tick loop. Calling
+    /// [`App::submit_input`] in remote mode leaves the client permanently parked
+    /// in `Sending` because no local run loop exists to consume that flag.
+    pub(super) fn onboarding_start_recent_project_review(&mut self) {
+        self.onboarding_prepare_recent_project_review();
+        self.follow_chat_bottom_for_typing();
+        if self.is_remote {
+            super::input::queue_message(self);
+            self.set_status_notice("Architecture review queued");
+        } else {
+            self.submit_input();
+        }
     }
 
     /// Drop into the suggestion-card state (the "No" / no-OAuth path). Prints
@@ -1625,10 +1535,8 @@ impl App {
             _ => {}
         }
 
-        // The transcript/resume picker no longer auto-selects: the user either
-        // resumes a session or chooses "Start a new session" explicitly. Return
-        // `changed` so the import-progress watchdog keeps the screen repainting
-        // while it waits.
+        // The action picker waits for an explicit choice. Return `changed` so the
+        // import-progress watchdog keeps the screen repainting while it waits.
         changed
     }
 }
