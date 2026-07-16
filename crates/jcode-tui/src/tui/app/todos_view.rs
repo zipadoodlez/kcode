@@ -761,7 +761,6 @@ mod tests {
                     "run the frame benchmark and compare p95 frame time".to_string(),
                 ),
                 end_to_end_ownership: Some(85),
-                ..Default::default()
             }],
         );
 
