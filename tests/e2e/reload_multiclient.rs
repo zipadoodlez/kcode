@@ -145,6 +145,7 @@ async fn reload_notifies_successor_after_session_takeover() -> Result<()> {
 
         // Successor reconnects to the same session with takeover semantics.
         let mut client_b = server::Client::connect_with_path(socket_path.clone()).await?;
+        subscribe_client(&mut client_b).await?;
         let resume_b = client_b
             .resume_session_with_options(&session_id, true, true)
             .await?;

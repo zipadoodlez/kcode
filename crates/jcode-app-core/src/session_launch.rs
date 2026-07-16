@@ -100,7 +100,7 @@ pub fn resumed_window_title(session_id: &str) -> String {
         format!("jcode {}", session_label)
     };
     crate::process_title::terminal_window_title(
-        &icon,
+        icon,
         display_title.as_deref(),
         Some(&fallback_label),
         false,

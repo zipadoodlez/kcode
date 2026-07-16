@@ -1260,6 +1260,7 @@ impl App {
     /// 1. A jcode login that exists but expired (they clearly use it).
     /// 2. Credentials detected from another CLI (Codex -> openai, Claude Code
     ///    -> claude, Cursor -> cursor), since that login will succeed instantly.
+    ///
     /// Falls back to plain `/login` when nothing is detected.
     pub(super) fn onboarding_login_suggestion() -> String {
         Self::onboarding_login_suggestion_provider()

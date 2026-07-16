@@ -662,7 +662,6 @@ pub(super) fn handle_paste(app: &mut App, text: String) {
                 content,
             );
         });
-        return;
     } else {
         handle_text_paste(app, text);
     }

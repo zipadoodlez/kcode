@@ -109,7 +109,7 @@ impl App {
             );
         }
         let window_title = crate::process_title::terminal_window_title(
-            &icon,
+            icon,
             display_title,
             Some(&fallback_label),
             is_canary,
