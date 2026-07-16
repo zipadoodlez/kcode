@@ -1,4 +1,5 @@
 use super::*;
+use std::future;
 use std::io::{Read, Write};
 
 fn spawn_scripted_http_server(
@@ -49,9 +50,19 @@ async fn polling_pending_slow_down_then_approval() {
             r#"{"api_key":"jck_live_test","account_id":"acct_42","email":"user@example.com","tier":"none","status":"active"}"#.to_string(),
         ),
     ]);
-    let approved = poll_for_api_key(&test_client(), &base, "device-secret", 1, 10)
-        .await
-        .expect("approval");
+    let approved = poll_for_api_key(
+        &test_client(),
+        &base,
+        "device-secret",
+        1,
+        10,
+        future::pending(),
+    )
+    .await
+    .expect("approval");
+    let KeyPollCompletion::Approved(approved) = approved else {
+        panic!("approval was unexpectedly canceled");
+    };
     assert_eq!(approved.account_id, "acct_42");
     assert_eq!(approved.email, "user@example.com");
     assert_eq!(approved.tier, "none");
@@ -64,9 +75,16 @@ async fn polling_denied_has_clear_redacted_error() {
         vec![],
         r#"{"error":"access_denied","message":"device-secret-must-not-appear"}"#.to_string(),
     )]);
-    let error = poll_for_api_key(&test_client(), &base, "device-secret", 1, 3)
-        .await
-        .expect_err("denied");
+    let error = poll_for_api_key(
+        &test_client(),
+        &base,
+        "device-secret",
+        1,
+        3,
+        future::pending(),
+    )
+    .await
+    .expect_err("denied");
     let message = error.to_string();
     assert!(message.contains("canceled or denied"), "{message}");
     assert!(!message.contains("device-secret"), "{message}");
@@ -80,10 +98,40 @@ async fn polling_timeout_is_deterministic_before_first_request() {
         "device-secret",
         2,
         1,
+        future::pending(),
     )
     .await
     .expect_err("timeout");
     assert!(error.to_string().contains("timed out"));
+}
+
+#[tokio::test]
+async fn cancellation_during_consumed_exchange_finishes_and_returns_the_key() {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind test server");
+    let addr = listener.local_addr().expect("local addr");
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept exchange");
+        let mut buf = [0u8; 4096];
+        let _ = stream.read(&mut buf);
+        std::thread::sleep(Duration::from_millis(300));
+        let body = r#"{"api_key":"jck_live_test","account_id":"acct_42","email":"user@example.com","tier":"pro","status":"active"}"#;
+        let response = format!(
+            "HTTP/1.1 200 Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        stream
+            .write_all(response.as_bytes())
+            .expect("write exchange");
+    });
+    let base = format!("http://127.0.0.1:{}/v1", addr.port());
+    let cancel = async {
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        Ok(())
+    };
+    let outcome = poll_for_api_key(&test_client(), &base, "device-secret", 1, 5, cancel)
+        .await
+        .expect("exchange must finish");
+    assert!(matches!(outcome, KeyPollCompletion::Approved(_)));
 }
 
 #[test]

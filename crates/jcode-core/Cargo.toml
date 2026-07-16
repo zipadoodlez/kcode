@@ -8,3 +8,11 @@ publish = false
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.9.3"
 libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Threading",
+] }

@@ -4,6 +4,7 @@
 //! TUI share the same contract and redaction guarantees.
 
 use anyhow::{Context, Result};
+use std::future::Future;
 use std::time::Duration;
 
 use crate::subscription_api::{
@@ -17,13 +18,24 @@ pub(super) enum LoginCompletion {
     CanceledBeforeApproval,
 }
 
-pub(super) async fn poll_for_api_key(
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum KeyPollCompletion {
+    Approved(ApprovedAccountKey),
+    Canceled,
+}
+
+pub(super) async fn poll_for_api_key<C>(
     client: &reqwest::Client,
     api_base: &str,
     device_code: &str,
     interval: u64,
     expires_in: u64,
-) -> Result<ApprovedAccountKey> {
+    cancel: C,
+) -> Result<KeyPollCompletion>
+where
+    C: Future<Output = std::io::Result<()>>,
+{
+    tokio::pin!(cancel);
     let base_delay = Duration::from_secs(interval.max(1));
     let deadline =
         tokio::time::Instant::now() + Duration::from_secs(expires_in.max(interval.max(1)));
@@ -37,8 +49,19 @@ pub(super) async fn poll_for_api_key(
                 "Jcode account login timed out before browser approval. Run `jcode account login` to try again."
             );
         }
-        tokio::time::sleep(delay).await;
+        tokio::select! {
+            _ = tokio::time::sleep(delay) => {}
+            signal = &mut cancel => {
+                signal.context("Failed to listen for Ctrl-C")?;
+                return Ok(KeyPollCompletion::Canceled);
+            }
+        }
 
+        // Deliberately do not poll cancellation while an exchange request is
+        // in flight. The backend may atomically consume the one-time device
+        // credential before the response reaches us. Finishing this bounded
+        // request and persisting an approved key avoids stranding a live key
+        // that the user can neither see nor revoke.
         match subscription_api::poll_device_token_once(client, api_base, device_code).await {
             Ok(TokenPollOutcome::Pending) => {
                 backoff.on_pending();
@@ -48,7 +71,9 @@ pub(super) async fn poll_for_api_key(
                 backoff.on_slow_down(retry_after);
                 reported_offline = false;
             }
-            Ok(TokenPollOutcome::Approved(key)) => return Ok(key),
+            Ok(TokenPollOutcome::Approved(key)) => {
+                return Ok(KeyPollCompletion::Approved(key));
+            }
             Ok(TokenPollOutcome::Expired) => anyhow::bail!(
                 "The browser approval expired or was already exchanged. Run `jcode account login` to start a new single-use flow."
             ),
@@ -100,16 +125,18 @@ pub(super) async fn login_jcode_device_flow(no_browser: bool) -> Result<LoginCom
     super::maybe_open_browser(&device.verification_uri_complete, no_browser);
     eprintln!("  Waiting for browser approval. Press Ctrl-C to cancel...");
 
-    let approved = tokio::select! {
-        result = poll_for_api_key(
-            &client,
-            &api_base,
-            &device.device_code,
-            device.interval,
-            device.expires_in,
-        ) => result?,
-        signal = tokio::signal::ctrl_c() => {
-            signal.context("Failed to listen for Ctrl-C")?;
+    let approved = match poll_for_api_key(
+        &client,
+        &api_base,
+        &device.device_code,
+        device.interval,
+        device.expires_in,
+        tokio::signal::ctrl_c(),
+    )
+    .await?
+    {
+        KeyPollCompletion::Approved(approved) => approved,
+        KeyPollCompletion::Canceled => {
             eprintln!("\n  Login canceled before approval. No credential was saved.");
             return Ok(LoginCompletion::CanceledBeforeApproval);
         }
