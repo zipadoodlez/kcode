@@ -2,8 +2,9 @@ use super::{Tool, ToolContext, ToolOutput};
 use crate::bus::{Bus, BusEvent, TodoEvent};
 use crate::todo::{
     LOW_HILL_CLIMBABILITY, TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE,
-    TODO_OWNERSHIP_CONTINUATION_MESSAGE, TodoGoal, TodoItem, load_goals, load_todos,
-    newly_completed_groups_have_sufficient_ownership, save_goals, save_todos,
+    TODO_OWNERSHIP_CONTINUATION_MESSAGE, TodoGoal, TodoGoalChange, TodoGoalField, TodoItem,
+    load_goals, load_todos, newly_completed_groups_have_sufficient_ownership, save_goals,
+    save_todos,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -110,6 +111,77 @@ fn merge_goals(stored: &[TodoGoal], incoming: Option<Vec<TodoGoal>>) -> Vec<Todo
     merged
 }
 
+fn changed_goal_fields(before: Option<&TodoGoal>, after: Option<&TodoGoal>) -> Vec<TodoGoalField> {
+    let mut fields = Vec::new();
+    if before.and_then(|goal| goal.user_intention.as_ref())
+        != after.and_then(|goal| goal.user_intention.as_ref())
+    {
+        fields.push(TodoGoalField::UserIntention);
+    }
+    if before.and_then(|goal| goal.user_intention_alignment)
+        != after.and_then(|goal| goal.user_intention_alignment)
+    {
+        fields.push(TodoGoalField::UserIntentionAlignment);
+    }
+    if before.and_then(|goal| goal.hill_climbability)
+        != after.and_then(|goal| goal.hill_climbability)
+    {
+        fields.push(TodoGoalField::HillClimbability);
+    }
+    if before.and_then(|goal| goal.objective.as_ref())
+        != after.and_then(|goal| goal.objective.as_ref())
+    {
+        fields.push(TodoGoalField::Objective);
+    }
+    if before.and_then(|goal| goal.feedback_loop.as_ref())
+        != after.and_then(|goal| goal.feedback_loop.as_ref())
+    {
+        fields.push(TodoGoalField::FeedbackLoop);
+    }
+    if before.and_then(|goal| goal.end_to_end_ownership)
+        != after.and_then(|goal| goal.end_to_end_ownership)
+    {
+        fields.push(TodoGoalField::EndToEndOwnership);
+    }
+    fields
+}
+
+fn goal_changes(before: &[TodoGoal], after: &[TodoGoal]) -> Vec<TodoGoalChange> {
+    let mut changes = Vec::new();
+    for current in after {
+        let key = goal_group_key(current.group.as_deref());
+        let previous = before
+            .iter()
+            .find(|goal| goal_group_key(goal.group.as_deref()) == key);
+        let fields = changed_goal_fields(previous, Some(current));
+        if !fields.is_empty() {
+            changes.push(TodoGoalChange {
+                before: previous.cloned(),
+                after: Some(current.clone()),
+                fields,
+            });
+        }
+    }
+    for previous in before {
+        let key = goal_group_key(previous.group.as_deref());
+        if after
+            .iter()
+            .any(|goal| goal_group_key(goal.group.as_deref()) == key)
+        {
+            continue;
+        }
+        let fields = changed_goal_fields(Some(previous), None);
+        if !fields.is_empty() {
+            changes.push(TodoGoalChange {
+                before: Some(previous.clone()),
+                after: None,
+                fields,
+            });
+        }
+    }
+    changes
+}
+
 /// Reframe nudges for goals that score low on hill-climbability.
 ///
 /// A low score means there is no credible metric to iterate against, so the
@@ -141,6 +213,7 @@ fn take_reframe_nudges(goals: &[TodoGoal], todos: &[TodoItem]) -> Vec<String> {
 fn build_todo_output(
     todos: Vec<TodoItem>,
     goals: Vec<TodoGoal>,
+    goal_changes: Option<Vec<TodoGoalChange>>,
     continuations: impl IntoIterator<Item = String>,
 ) -> Result<ToolOutput> {
     let remaining = todos
@@ -152,13 +225,21 @@ fn build_todo_output(
         text.push_str("\n\nGoals:\n");
         text.push_str(&serde_json::to_string_pretty(&goals)?);
     }
+    if let Some(goal_changes) = goal_changes.as_ref().filter(|changes| !changes.is_empty()) {
+        text.push_str("\n\nGoal updates:\n");
+        text.push_str(&serde_json::to_string_pretty(goal_changes)?);
+    }
     for continuation in continuations {
         text.push_str("\n\n");
         text.push_str(&continuation);
     }
+    let mut metadata = json!({"todos": todos, "goals": goals});
+    if let Some(goal_changes) = goal_changes.filter(|changes| !changes.is_empty()) {
+        metadata["goal_updates"] = serde_json::to_value(goal_changes)?;
+    }
     Ok(ToolOutput::new(text)
         .with_title(format!("{} todos", remaining))
-        .with_metadata(json!({"todos": todos, "goals": goals})))
+        .with_metadata(metadata))
 }
 
 /// Leniently normalize raw todo-tool arguments before strict deserialization.
@@ -372,10 +453,16 @@ impl Tool for TodoTool {
                     return build_todo_output(
                         previous,
                         stored_goals,
+                        None,
                         [TODO_OWNERSHIP_CONTINUATION_MESSAGE.to_string()],
                     );
                 }
                 let nudges = take_reframe_nudges(&goals, &todos);
+                // Goal-only writes, especially hill-climbability quality-gate
+                // retries, should render the assessment fields that changed
+                // instead of repeating an otherwise identical todo plan.
+                let concise_goal_changes = (todos == previous && !stored_goals.is_empty())
+                    .then(|| goal_changes(&stored_goals, &goals));
                 save_todos(&ctx.session_id, &todos)?;
                 save_goals(&ctx.session_id, &goals)?;
 
@@ -384,13 +471,13 @@ impl Tool for TodoTool {
                     todos: todos.clone(),
                 }));
 
-                build_todo_output(todos, goals, nudges)
+                build_todo_output(todos, goals, concise_goal_changes, nudges)
             })()
         } else {
             (|| {
                 let todos = load_todos(&ctx.session_id)?;
                 let goals = load_goals(&ctx.session_id).unwrap_or_default();
-                build_todo_output(todos, goals, Vec::new())
+                build_todo_output(todos, goals, None, Vec::new())
             })()
         };
         result.map_err(|err| {
@@ -670,6 +757,7 @@ mod tests {
         let output = build_todo_output(
             todos.clone(),
             goals.clone(),
+            None,
             [TODO_OWNERSHIP_CONTINUATION_MESSAGE.to_string()],
         )
         .expect("ownership gate should produce a structured todo result");
@@ -681,6 +769,34 @@ mod tests {
         assert_eq!(
             output.metadata,
             Some(json!({"todos": todos, "goals": goals}))
+        );
+    }
+
+    #[test]
+    fn goal_changes_include_only_updated_quality_fields() {
+        let before = TodoGoal {
+            group: Some("search".to_string()),
+            user_intention: Some("make search feel instant".to_string()),
+            user_intention_alignment: Some(99),
+            hill_climbability: Some(90),
+            objective: Some("Keep p50 below 50ms".to_string()),
+            feedback_loop: Some("Run one benchmark".to_string()),
+            end_to_end_ownership: None,
+        };
+        let after = TodoGoal {
+            hill_climbability: Some(98),
+            feedback_loop: Some("Run five benchmarks and compare p50".to_string()),
+            ..before.clone()
+        };
+
+        let changes = goal_changes(&[before.clone()], &[after.clone()]);
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].before.as_ref(), Some(&before));
+        assert_eq!(changes[0].after.as_ref(), Some(&after));
+        assert_eq!(
+            changes[0].fields,
+            vec![TodoGoalField::HillClimbability, TodoGoalField::FeedbackLoop,]
         );
     }
 

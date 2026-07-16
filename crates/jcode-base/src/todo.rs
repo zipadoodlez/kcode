@@ -2,7 +2,7 @@ use crate::storage;
 use anyhow::Result;
 use std::path::PathBuf;
 
-pub use jcode_task_types::{TodoGoal, TodoItem};
+pub use jcode_task_types::{TodoGoal, TodoGoalChange, TodoGoalField, TodoItem};
 
 /// Minimum passing score for 0-100 quality assessments. Scores below this do
 /// not provide enough evidence to clear their respective quality gate.

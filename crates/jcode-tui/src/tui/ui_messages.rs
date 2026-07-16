@@ -952,9 +952,13 @@ impl TodoCardPayload {
     }
 }
 
-fn parse_todo_tool_output(
-    content: &str,
-) -> Option<(Vec<crate::todo::TodoItem>, Vec<crate::todo::TodoGoal>)> {
+struct ParsedTodoToolOutput {
+    todos: Vec<crate::todo::TodoItem>,
+    goals: Vec<crate::todo::TodoGoal>,
+    goal_updates: Vec<crate::todo::TodoGoalChange>,
+}
+
+fn parse_todo_tool_output(content: &str) -> Option<ParsedTodoToolOutput> {
     // Remote display and timestamp injection can decorate tool results before
     // they reach this renderer. Keep that transport metadata outside the
     // structured payload parser so a valid todo result still renders as a card.
@@ -962,15 +966,35 @@ fn parse_todo_tool_output(
     let mut todo_stream =
         serde_json::Deserializer::from_str(content).into_iter::<Vec<crate::todo::TodoItem>>();
     let todos = todo_stream.next()?.ok()?;
-    let remainder = content.get(todo_stream.byte_offset()..)?.trim_start();
+    let mut remainder = content.get(todo_stream.byte_offset()..)?.trim_start();
     let goals = if let Some(goal_json) = remainder.strip_prefix("Goals:") {
         let mut goal_stream = serde_json::Deserializer::from_str(goal_json.trim_start())
             .into_iter::<Vec<crate::todo::TodoGoal>>();
-        goal_stream.next().and_then(Result::ok).unwrap_or_default()
+        let goals = goal_stream.next().and_then(Result::ok).unwrap_or_default();
+        remainder = goal_json
+            .trim_start()
+            .get(goal_stream.byte_offset()..)
+            .unwrap_or_default()
+            .trim_start();
+        goals
     } else {
         Vec::new()
     };
-    Some((todos, goals))
+    let goal_updates = if let Some(update_json) = remainder.strip_prefix("Goal updates:") {
+        let mut update_stream = serde_json::Deserializer::from_str(update_json.trim_start())
+            .into_iter::<Vec<crate::todo::TodoGoalChange>>();
+        update_stream
+            .next()
+            .and_then(Result::ok)
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    Some(ParsedTodoToolOutput {
+        todos,
+        goals,
+        goal_updates,
+    })
 }
 
 fn strip_todo_tool_output_headers(content: &str) -> &str {
@@ -1359,6 +1383,197 @@ fn push_todo_goal_details(
                 inner_width,
             ));
         }
+    }
+}
+
+fn render_todo_goal_updates(
+    updates: &[crate::todo::TodoGoalChange],
+    width: u16,
+) -> Vec<Line<'static>> {
+    let centered = markdown::center_code_blocks();
+    let card_width = if centered {
+        (width.saturating_sub(4) as usize).min(120)
+    } else {
+        (width.saturating_sub(2) as usize).min(100)
+    }
+    .max(1);
+    let base_indent = if centered { "" } else { "  " };
+    let inner_width = card_width.saturating_sub(base_indent.width()).max(1);
+    let mut lines = Vec::new();
+
+    for update in updates {
+        let goal = update.after.as_ref().or(update.before.as_ref());
+        let label = goal
+            .and_then(|goal| goal.group.as_deref())
+            .map(str::trim)
+            .filter(|group| !group.is_empty())
+            .unwrap_or("Goal");
+        lines.push(todo_card_line(
+            vec![
+                Span::styled(
+                    label.to_string(),
+                    Style::default().fg(todo_group_color()).bold(),
+                ),
+                Span::styled("  updated", Style::default().fg(todo_meta_color())),
+            ],
+            base_indent,
+            inner_width,
+        ));
+
+        for field in &update.fields {
+            match field {
+                crate::todo::TodoGoalField::UserIntentionAlignment => push_todo_score_update(
+                    &mut lines,
+                    "User intention alignment",
+                    update
+                        .before
+                        .as_ref()
+                        .and_then(|goal| goal.user_intention_alignment),
+                    update
+                        .after
+                        .as_ref()
+                        .and_then(|goal| goal.user_intention_alignment),
+                    base_indent,
+                    inner_width,
+                ),
+                crate::todo::TodoGoalField::HillClimbability => push_todo_score_update(
+                    &mut lines,
+                    "Hill climbability",
+                    update
+                        .before
+                        .as_ref()
+                        .and_then(|goal| goal.hill_climbability),
+                    update
+                        .after
+                        .as_ref()
+                        .and_then(|goal| goal.hill_climbability),
+                    base_indent,
+                    inner_width,
+                ),
+                crate::todo::TodoGoalField::EndToEndOwnership => push_todo_score_update(
+                    &mut lines,
+                    "Ownership",
+                    update
+                        .before
+                        .as_ref()
+                        .and_then(|goal| goal.end_to_end_ownership),
+                    update
+                        .after
+                        .as_ref()
+                        .and_then(|goal| goal.end_to_end_ownership),
+                    base_indent,
+                    inner_width,
+                ),
+                crate::todo::TodoGoalField::UserIntention => push_todo_text_update(
+                    &mut lines,
+                    "User intention",
+                    update
+                        .after
+                        .as_ref()
+                        .and_then(|goal| goal.user_intention.as_deref()),
+                    base_indent,
+                    inner_width,
+                ),
+                crate::todo::TodoGoalField::Objective => push_todo_text_update(
+                    &mut lines,
+                    "Objective",
+                    update
+                        .after
+                        .as_ref()
+                        .and_then(|goal| goal.objective.as_deref()),
+                    base_indent,
+                    inner_width,
+                ),
+                crate::todo::TodoGoalField::FeedbackLoop => push_todo_text_update(
+                    &mut lines,
+                    "Feedback",
+                    update
+                        .after
+                        .as_ref()
+                        .and_then(|goal| goal.feedback_loop.as_deref()),
+                    base_indent,
+                    inner_width,
+                ),
+            }
+        }
+    }
+
+    if centered {
+        left_pad_lines_for_centered_mode(&mut lines, width);
+    }
+    lines
+}
+
+fn push_todo_score_update(
+    lines: &mut Vec<Line<'static>>,
+    label: &str,
+    before: Option<u8>,
+    after: Option<u8>,
+    base_indent: &str,
+    inner_width: usize,
+) {
+    let mut spans = vec![
+        Span::raw("  "),
+        Span::styled(
+            format!("{} ", label),
+            Style::default().fg(todo_label_color()),
+        ),
+    ];
+    match (before, after) {
+        (Some(before), Some(after)) => {
+            spans.push(Span::styled(
+                format!("{}%", before),
+                Style::default().fg(todo_meta_color()),
+            ));
+            spans.push(Span::styled(" → ", Style::default().fg(todo_label_color())));
+            spans.push(Span::styled(
+                format!("{}%", after),
+                Style::default().fg(todo_score_color()),
+            ));
+        }
+        (None, Some(after)) => spans.push(Span::styled(
+            format!("{}%", after),
+            Style::default().fg(todo_score_color()),
+        )),
+        (_, None) => spans.push(Span::styled(
+            "cleared",
+            Style::default().fg(todo_meta_color()),
+        )),
+    }
+    lines.push(todo_card_line(spans, base_indent, inner_width));
+}
+
+fn push_todo_text_update(
+    lines: &mut Vec<Line<'static>>,
+    label: &str,
+    after: Option<&str>,
+    base_indent: &str,
+    inner_width: usize,
+) {
+    let value = after.map(str::trim).filter(|value| !value.is_empty());
+    let prefix = format!("  {} · ", label);
+    let prefix_width = prefix.width();
+    let available = inner_width.saturating_sub(prefix_width).max(1);
+    let chunks = value
+        .map(|value| wrap_todo_detail(value, available))
+        .filter(|chunks| !chunks.is_empty())
+        .unwrap_or_else(|| vec!["cleared".to_string()]);
+    for (index, chunk) in chunks.into_iter().enumerate() {
+        lines.push(todo_card_line(
+            vec![
+                Span::styled(
+                    if index == 0 {
+                        prefix.clone()
+                    } else {
+                        " ".repeat(prefix_width)
+                    },
+                    Style::default().fg(todo_label_color()),
+                ),
+                Span::styled(chunk, Style::default().fg(todo_meta_color())),
+            ],
+            base_indent,
+            inner_width,
+        ));
     }
 }
 
@@ -3391,9 +3606,13 @@ pub(crate) fn render_tool_message(
         .is_none_or(|tc| tools_ui::canonical_tool_name(&tc.name) == "todo");
     if is_todo_tool
         && !tools_ui::tool_output_looks_failed(&msg.content)
-        && let Some((todos, goals)) = parse_todo_tool_output(&msg.content)
+        && let Some(parsed) = parse_todo_tool_output(&msg.content)
     {
-        let payload = serde_json::json!({ "todos": todos, "goals": goals }).to_string();
+        if !parsed.goal_updates.is_empty() {
+            return render_todo_goal_updates(&parsed.goal_updates, width);
+        }
+        let payload =
+            serde_json::json!({ "todos": parsed.todos, "goals": parsed.goals }).to_string();
         return render_todos_message(
             &DisplayMessage::todos(payload),
             width,
@@ -3759,15 +3978,23 @@ pub(crate) fn render_tool_message(
             if tools_ui::canonical_tool_name(&sub_tc.name) == "todo"
                 && !sub_errored
                 && let Some(result) = sub_result
-                && let Some((todos, goals)) = parse_todo_tool_output(&result.content)
+                && let Some(parsed) = parse_todo_tool_output(&result.content)
             {
-                let payload = serde_json::json!({ "todos": todos, "goals": goals }).to_string();
                 let nested_width = row_width.saturating_sub(4).max(1).min(u16::MAX as usize) as u16;
-                let mut todo_lines = render_todos_message(
-                    &DisplayMessage::todos(payload),
-                    nested_width,
-                    crate::config::DiffDisplayMode::Off,
-                );
+                let mut todo_lines = if parsed.goal_updates.is_empty() {
+                    let payload = serde_json::json!({
+                        "todos": parsed.todos,
+                        "goals": parsed.goals,
+                    })
+                    .to_string();
+                    render_todos_message(
+                        &DisplayMessage::todos(payload),
+                        nested_width,
+                        crate::config::DiffDisplayMode::Off,
+                    )
+                } else {
+                    render_todo_goal_updates(&parsed.goal_updates, nested_width)
+                };
                 for line in &mut todo_lines {
                     line.spans.insert(0, Span::raw("    "));
                 }

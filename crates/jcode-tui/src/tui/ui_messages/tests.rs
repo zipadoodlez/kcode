@@ -721,6 +721,86 @@ fn render_todo_tool_result_uses_borderless_card_with_goal_scores() {
 }
 
 #[test]
+fn render_todo_quality_gate_retry_shows_only_changed_goal_fields() {
+    let todos = vec![crate::todo::TodoItem {
+        id: "render".to_string(),
+        content: "Render the entire unchanged todo plan".to_string(),
+        status: "in_progress".to_string(),
+        priority: "high".to_string(),
+        group: Some("todo rendering".to_string()),
+        confidence: Some(92),
+        ..Default::default()
+    }];
+    let before = crate::todo::TodoGoal {
+        group: Some("todo rendering".to_string()),
+        user_intention: Some("See current work at a glance".to_string()),
+        user_intention_alignment: Some(99),
+        hill_climbability: Some(90),
+        objective: Some("Keep the todo card concise".to_string()),
+        feedback_loop: Some("Inspect one frame".to_string()),
+        end_to_end_ownership: None,
+    };
+    let after = crate::todo::TodoGoal {
+        hill_climbability: Some(98),
+        feedback_loop: Some(
+            "Render before and after fixtures and assert unchanged fields are absent".to_string(),
+        ),
+        ..before.clone()
+    };
+    let updates = vec![crate::todo::TodoGoalChange {
+        before: Some(before),
+        after: Some(after.clone()),
+        fields: vec![
+            crate::todo::TodoGoalField::HillClimbability,
+            crate::todo::TodoGoalField::FeedbackLoop,
+        ],
+    }];
+    let content = format!(
+        "{}\n\nGoals:\n{}\n\nGoal updates:\n{}\n\n{}",
+        serde_json::to_string_pretty(&todos).unwrap(),
+        serde_json::to_string_pretty(&vec![after]).unwrap(),
+        serde_json::to_string_pretty(&updates).unwrap(),
+        crate::todo::TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE,
+    );
+    let msg = DisplayMessage {
+        role: "tool".to_string(),
+        content,
+        tool_calls: Vec::new(),
+        duration_secs: None,
+        title: Some("1 todos".to_string()),
+        tool_data: Some(crate::message::ToolCall {
+            id: "call_todo_update".to_string(),
+            name: "todo".to_string(),
+            input: serde_json::Value::Null,
+            intent: Some("Refine the todo feedback loop".to_string()),
+            thought_signature: None,
+        }),
+    };
+
+    let plain = render_tool_message(&msg, 100, crate::config::DiffDisplayMode::Off)
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(plain.contains("todo rendering  updated"), "{plain}");
+    assert!(plain.contains("Hill climbability 90% → 98%"), "{plain}");
+    assert!(
+        plain.contains(
+            "Feedback · Render before and after fixtures and assert unchanged fields are absent"
+        ),
+        "{plain}"
+    );
+    assert!(
+        !plain.contains("Render the entire unchanged todo plan"),
+        "{plain}"
+    );
+    assert!(!plain.contains("User intention alignment"), "{plain}");
+    assert!(!plain.contains("Keep the todo card concise"), "{plain}");
+    assert!(!plain.contains("See current work at a glance"), "{plain}");
+}
+
+#[test]
 fn parse_todo_tool_output_accepts_timestamp_only_header() {
     let todos = vec![crate::todo::TodoItem {
         id: "timed".to_string(),
@@ -734,11 +814,12 @@ fn parse_todo_tool_output_accepts_timestamp_only_header() {
         serde_json::to_string(&todos).unwrap()
     );
 
-    let (parsed, goals) = parse_todo_tool_output(&content).expect("timestamped todo payload");
-    assert_eq!(parsed.len(), 1);
-    assert_eq!(parsed[0].id, todos[0].id);
-    assert_eq!(parsed[0].content, todos[0].content);
-    assert!(goals.is_empty());
+    let parsed = parse_todo_tool_output(&content).expect("timestamped todo payload");
+    assert_eq!(parsed.todos.len(), 1);
+    assert_eq!(parsed.todos[0].id, todos[0].id);
+    assert_eq!(parsed.todos[0].content, todos[0].content);
+    assert!(parsed.goals.is_empty());
+    assert!(parsed.goal_updates.is_empty());
 }
 
 #[test]
