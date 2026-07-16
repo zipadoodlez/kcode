@@ -38,9 +38,12 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::Dictate { .. }) => "jcode dictate".to_string(),
         Some(Command::SetupHotkey {
             listen_macos_hotkey,
+            notify_cli_launch,
         }) => {
             if *listen_macos_hotkey {
                 "jcode hotkey listener".to_string()
+            } else if notify_cli_launch.is_some() {
+                "jcode shortcut reminder".to_string()
             } else {
                 "jcode hotkey setup".to_string()
             }

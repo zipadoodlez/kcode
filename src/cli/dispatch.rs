@@ -288,8 +288,9 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         }
         Some(Command::SetupHotkey {
             listen_macos_hotkey,
+            notify_cli_launch,
         }) => {
-            setup_hints::run_setup_hotkey(listen_macos_hotkey)?;
+            setup_hints::run_setup_hotkey(listen_macos_hotkey, notify_cli_launch.as_deref())?;
         }
         Some(Command::SetupLauncher) => {
             setup_hints::run_setup_launcher()?;

@@ -339,6 +339,10 @@ pub(crate) enum Command {
         /// Internal: run as the macOS hotkey listener process.
         #[arg(long, hide = true)]
         listen_macos_hotkey: bool,
+
+        /// Internal: show a rate-limited shortcut reminder from a CLI SessionStart hook.
+        #[arg(long, hide = true, value_name = "CLI")]
+        notify_cli_launch: Option<String>,
     },
 
     /// Install a launcher so jcode appears in your app launcher
