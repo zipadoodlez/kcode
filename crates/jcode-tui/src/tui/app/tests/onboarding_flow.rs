@@ -1513,36 +1513,48 @@ fn import_summary_choose_pill_opens_checkbox_list() {
 
 #[test]
 fn recent_project_review_prompt_is_bounded_read_only_and_requires_approval() {
-    let prompt = App::onboarding_recent_project_review_prompt();
+    let repository = std::path::Path::new("/home/example/projects/demo");
+    let prompt = App::onboarding_recent_project_review_prompt(repository);
 
-    assert!(prompt.contains("Use Git"), "{prompt}");
-    assert!(prompt.contains("worked in most recently"), "{prompt}");
-    assert!(prompt.contains("recent commits"), "{prompt}");
-    assert!(prompt.contains("reflog activity"), "{prompt}");
-    assert!(prompt.contains("uncommitted changes"), "{prompt}");
+    assert!(prompt.contains("/home/example/projects/demo"), "{prompt}");
+    assert!(!prompt.contains("Use Git to find"), "{prompt}");
+    assert!(!prompt.contains("worked in most recently"), "{prompt}");
+    assert!(!prompt.contains("reflog activity"), "{prompt}");
+    assert!(prompt.contains("recent diffs and commits"), "{prompt}");
     assert!(prompt.contains("concrete bugs"), "{prompt}");
     assert!(prompt.contains("architecture problems"), "{prompt}");
-    assert!(!prompt.contains("session_search"), "{prompt}");
     assert!(prompt.contains("without modifying it"), "{prompt}");
     assert!(prompt.contains("Do not edit files"), "{prompt}");
-    assert!(prompt.contains("ask whether I want you to fix"), "{prompt}");
-    assert!(prompt.contains("until I explicitly approve it"), "{prompt}");
+    assert!(prompt.contains("ask whether I want you to fix anything"), "{prompt}");
+    assert!(prompt.contains("Wait for explicit approval"), "{prompt}");
+    assert!(
+        prompt.split_whitespace().count() < 100,
+        "onboarding review prompt grew too large: {prompt}"
+    );
 }
 
 #[test]
 fn preparing_recent_project_review_finishes_onboarding_and_seeds_the_first_turn() {
     let mut app = onboarding_test_app();
+    let repository = app
+        .onboarding_recent_project_path()
+        .expect("test session should start in a Git repository");
+    let expected = App::onboarding_recent_project_review_prompt(&repository);
 
-    app.onboarding_prepare_recent_project_review();
+    assert!(app.onboarding_prepare_recent_project_review());
 
     assert!(!app.onboarding_flow_active());
-    assert_eq!(app.input, App::onboarding_recent_project_review_prompt());
+    assert_eq!(app.input, expected);
     assert_eq!(app.cursor_pos, app.input.len());
 }
 
 #[test]
 fn starting_recent_project_review_runs_as_a_visible_local_turn() {
     let mut app = onboarding_test_app();
+    let repository = app
+        .onboarding_recent_project_path()
+        .expect("test session should start in a Git repository");
+    let expected = App::onboarding_recent_project_review_prompt(&repository);
 
     app.onboarding_start_recent_project_review();
 
@@ -1557,7 +1569,7 @@ fn starting_recent_project_review_runs_as_a_visible_local_turn() {
                 _ => None,
             })
         }),
-        Some(App::onboarding_recent_project_review_prompt())
+        Some(expected.as_str())
     );
 }
 
@@ -1565,6 +1577,10 @@ fn starting_recent_project_review_runs_as_a_visible_local_turn() {
 fn starting_recent_project_review_queues_remote_turn_without_stuck_sending() {
     let mut app = onboarding_test_app();
     app.is_remote = true;
+    let repository = app
+        .onboarding_recent_project_path()
+        .expect("remote session should provide its working directory");
+    let expected = App::onboarding_recent_project_review_prompt(&repository);
 
     app.onboarding_start_recent_project_review();
 
@@ -1580,6 +1596,22 @@ fn starting_recent_project_review_queues_remote_turn_without_stuck_sending() {
     assert!(app.input.is_empty());
     assert_eq!(
         app.queued_messages,
-        vec![App::onboarding_recent_project_review_prompt().to_string()]
+        vec![expected]
     );
+}
+
+#[test]
+fn recent_project_review_falls_back_cleanly_when_no_repo_is_known() {
+    let mut app = onboarding_test_app();
+    app.is_remote = true;
+    app.session.working_dir = dirs::home_dir().map(|path| path.to_string_lossy().into_owned());
+
+    app.onboarding_start_recent_project_review();
+
+    assert!(!app.pending_turn);
+    assert!(app.queued_messages.is_empty());
+    assert!(matches!(app.onboarding_phase(), Some(OnboardingPhase::Suggestions)));
+    assert!(app.status_notice.as_ref().is_some_and(|(notice, _)| {
+        notice.contains("No recent Git repository found")
+    }));
 }

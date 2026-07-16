@@ -213,6 +213,69 @@ pub fn rank_repositories(
     rank_repositories_with(locations, now, opts, resolve_git_root)
 }
 
+/// Select the Git repository with the newest observed session activity.
+///
+/// Unlike [`rank_repositories`], this intentionally ignores frequency: the
+/// onboarding "recent project" action should follow the newest known work, not
+/// a historically common repository. Working directories are folded into Git
+/// roots, excluded roots are dropped, and path ordering breaks timestamp ties
+/// deterministically.
+pub fn most_recent_repository_with<F>(
+    locations: &[SessionLocation],
+    excluded_paths: &[PathBuf],
+    mut resolve_root: F,
+) -> Option<PathBuf>
+where
+    F: FnMut(&Path) -> Option<PathBuf>,
+{
+    let excluded: Vec<PathBuf> = excluded_paths
+        .iter()
+        .map(|path| normalize_path(path))
+        .collect();
+    let mut newest_by_repo: HashMap<PathBuf, Option<DateTime<Utc>>> = HashMap::new();
+
+    for location in locations {
+        let working_dir = location.working_dir.trim();
+        if working_dir.is_empty() {
+            continue;
+        }
+        let Some(root) = resolve_root(Path::new(working_dir)) else {
+            continue;
+        };
+        let root = normalize_path(&root);
+        if excluded.iter().any(|excluded| excluded == &root) {
+            continue;
+        }
+        newest_by_repo
+            .entry(root)
+            .and_modify(|newest| {
+                if location.last_used > *newest {
+                    *newest = location.last_used;
+                }
+            })
+            .or_insert(location.last_used);
+    }
+
+    newest_by_repo
+        .into_iter()
+        .max_by(|(path_a, last_used_a), (path_b, last_used_b)| {
+            last_used_a
+                .cmp(last_used_b)
+                // Reverse the path comparison so `max_by` picks the
+                // lexicographically smaller path when timestamps tie.
+                .then_with(|| path_b.cmp(path_a))
+        })
+        .map(|(path, _)| path)
+}
+
+/// Filesystem-backed convenience wrapper for [`most_recent_repository_with`].
+pub fn most_recent_repository(
+    locations: &[SessionLocation],
+    excluded_paths: &[PathBuf],
+) -> Option<PathBuf> {
+    most_recent_repository_with(locations, excluded_paths, resolve_git_root)
+}
+
 /// Normalize a path for comparison: strip a single trailing slash and collapse
 /// the macOS `/private` symlink prefix that `std::env::current_dir` sometimes
 /// reports for `/tmp` and `/var`, so the same repo seen under both spellings
@@ -527,6 +590,67 @@ mod tests {
             Some(PathBuf::from("/x"))
         });
         assert!(ranked.is_empty());
+    }
+
+    #[test]
+    fn most_recent_repository_prefers_newest_activity_over_frequency() {
+        let locations = vec![
+            SessionLocation::new("/work/old/a", Some(ts(2025, 1, 1))),
+            SessionLocation::new("/work/old/b", Some(ts(2025, 1, 2))),
+            SessionLocation::new("/work/old/c", Some(ts(2025, 1, 3))),
+            SessionLocation::new("/work/recent/src", Some(ts(2025, 2, 1))),
+        ];
+
+        let selected = most_recent_repository_with(
+            &locations,
+            &[],
+            fake_resolver(&["/work/old", "/work/recent"]),
+        );
+
+        assert_eq!(selected, Some(PathBuf::from("/work/recent")));
+    }
+
+    #[test]
+    fn most_recent_repository_excludes_home_and_breaks_ties_by_path() {
+        let locations = vec![
+            SessionLocation::new("/home/me", Some(ts(2025, 2, 1))),
+            SessionLocation::new("/work/zeta/src", Some(ts(2025, 2, 1))),
+            SessionLocation::new("/work/alpha/src", Some(ts(2025, 2, 1))),
+        ];
+
+        let mut resolve = fake_resolver(&["/work/zeta", "/work/alpha"]);
+        let selected =
+            most_recent_repository_with(&locations, &[PathBuf::from("/home/me")], |path| {
+                if path == Path::new("/home/me") {
+                    Some(path.to_path_buf())
+                } else {
+                    resolve(path)
+                }
+            });
+
+        assert_eq!(selected, Some(PathBuf::from("/work/alpha")));
+    }
+
+    #[test]
+    fn most_recent_repository_resolves_real_git_fixture_roots() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let home = temp.path().join("home");
+        let old_repo = home.join("old-project");
+        let recent_repo = home.join("recent-project");
+        std::fs::create_dir_all(old_repo.join(".git")).expect("old git fixture");
+        std::fs::create_dir_all(recent_repo.join(".git")).expect("recent git fixture");
+        std::fs::create_dir_all(recent_repo.join("src")).expect("recent source fixture");
+        let locations = vec![
+            SessionLocation::new(old_repo.to_string_lossy(), Some(ts(2025, 1, 1))),
+            SessionLocation::new(
+                recent_repo.join("src").to_string_lossy(),
+                Some(ts(2025, 2, 1)),
+            ),
+        ];
+
+        let selected = most_recent_repository(&locations, &[home]);
+
+        assert_eq!(selected, Some(recent_repo));
     }
 
     fn repo(path: &str, score: f64) -> RankedRepo {

@@ -8,9 +8,11 @@ use super::onboarding_flow::{
     ExternalCli, ImportReview, OnboardingFlow, OnboardingPendingValidation, OnboardingPhase,
 };
 use super::{App, DisplayMessage, SessionPickerMode};
-use crate::tui::session_picker::SessionPicker;
+use crate::import::repo_ranking::{self, SessionLocation};
+use crate::tui::session_picker::{SessionPicker, load_sessions};
 use crossterm::event::KeyCode;
 use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 impl App {
@@ -842,17 +844,76 @@ impl App {
         ]
     }
 
-    /// First-turn prompt launched by the onboarding recent-project review action.
-    /// Keep the guardrails explicit because this is a proactive workflow selected
-    /// before the user has entered their own prompt.
-    pub(super) fn onboarding_recent_project_review_prompt() -> &'static str {
-        "Use Git to find which repository under my home directory I have worked in most recently. Compare recent commits, reflog activity, and uncommitted changes. Ignore dependencies, generated directories, caches, and repositories I have not meaningfully touched. Confirm the repository path exists and briefly explain why you selected it.\n\nThen inspect that repository without modifying it. Find concrete bugs and important architecture problems, prioritizing issues that could cause incorrect behavior, data loss, security problems, reliability failures, or hard-to-maintain coupling. Start with recent diffs and commits, then trace the relevant code and tests. For each finding, cite specific files or symbols, explain the impact, and recommend a fix.\n\nThis is a read-only review. Do not edit files, run destructive commands, create commits, or push. End with a short prioritized list and ask whether I want you to fix the findings. Do not begin implementation until I explicitly approve it."
+    /// Resolve the project to review before the agent turn starts. The active
+    /// session directory wins when it is already inside a Git repository;
+    /// otherwise recent native and external session metadata supplies the newest
+    /// known repository. This keeps repository discovery out of the model prompt.
+    pub(super) fn onboarding_recent_project_path(&self) -> Option<PathBuf> {
+        let home = dirs::home_dir();
+        let excluded: Vec<PathBuf> = home.iter().cloned().collect();
+
+        if let Some(working_dir) = self.session.working_dir.as_deref() {
+            let working_dir = Path::new(working_dir);
+            if self.is_remote {
+                // The path belongs to the remote runtime and cannot generally be
+                // statted by the attached client. Trust the server-provided
+                // session directory, but never turn a home-directory launch into
+                // a broad home review.
+                if !working_dir.as_os_str().is_empty()
+                    && !home.as_deref().is_some_and(|home| home == working_dir)
+                {
+                    return Some(working_dir.to_path_buf());
+                }
+            } else if let Some(root) = repo_ranking::resolve_git_root(working_dir)
+                && !excluded.iter().any(|excluded| excluded == &root)
+            {
+                return Some(root);
+            }
+        }
+
+        if self.is_remote {
+            return None;
+        }
+
+        let sessions = load_sessions().unwrap_or_default();
+        let locations: Vec<SessionLocation> = sessions
+            .into_iter()
+            .filter(|session| {
+                session.id != self.session.id && !session.is_debug && !session.is_canary
+            })
+            .filter_map(|session| {
+                let working_dir = session.working_dir?;
+                Some(SessionLocation::new(
+                    working_dir,
+                    session.last_active_at.or(Some(session.last_message_time)),
+                ))
+            })
+            .collect();
+        repo_ranking::most_recent_repository(&locations, &excluded)
     }
 
-    pub(super) fn onboarding_prepare_recent_project_review(&mut self) {
+    /// First-turn prompt launched by the onboarding recent-project review action.
+    /// Repository discovery is deliberately absent: the path has already been
+    /// selected programmatically before this prompt is built.
+    pub(super) fn onboarding_recent_project_review_prompt(repository: &Path) -> String {
+        let repository = format!("{:?}", repository.to_string_lossy());
+        format!(
+            "Review this Git repository without modifying it:\n{repository}\n\nStart with recent diffs and commits, then inspect relevant code and tests. Find concrete bugs and important architecture problems, especially risks to correctness, data, security, reliability, or maintainability. For each finding, cite files or symbols, explain the impact, and recommend a fix.\n\nDo not edit files, run destructive commands, commit, or push. End with a prioritized list and ask whether I want you to fix anything. Wait for explicit approval before implementing."
+        )
+    }
+
+    pub(super) fn onboarding_prepare_recent_project_review(&mut self) -> bool {
+        let Some(repository) = self.onboarding_recent_project_path() else {
+            self.onboarding_show_suggestions();
+            self.set_status_notice(
+                "No recent Git repository found. Start jcode inside a project to review it.",
+            );
+            return false;
+        };
         self.onboarding_finish();
-        self.input = Self::onboarding_recent_project_review_prompt().to_string();
+        self.input = Self::onboarding_recent_project_review_prompt(&repository);
         self.cursor_pos = self.input.len();
+        true
     }
 
     /// Start the proactive recent-project review on the active runtime.
@@ -862,7 +923,9 @@ impl App {
     /// [`App::submit_input`] in remote mode leaves the client permanently parked
     /// in `Sending` because no local run loop exists to consume that flag.
     pub(super) fn onboarding_start_recent_project_review(&mut self) {
-        self.onboarding_prepare_recent_project_review();
+        if !self.onboarding_prepare_recent_project_review() {
+            return;
+        }
         self.follow_chat_bottom_for_typing();
         if self.is_remote {
             super::input::queue_message(self);
