@@ -2,9 +2,9 @@ use super::*;
 use std::future;
 use std::io::{Read, Write};
 
-fn spawn_scripted_http_server(
-    responses: Vec<(u16, Vec<(&'static str, &'static str)>, String)>,
-) -> String {
+type ScriptedHttpResponse = (u16, Vec<(&'static str, &'static str)>, String);
+
+fn spawn_scripted_http_server(responses: Vec<ScriptedHttpResponse>) -> String {
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind test server");
     let addr = listener.local_addr().expect("local addr");
     std::thread::spawn(move || {

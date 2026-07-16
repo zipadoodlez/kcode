@@ -1940,11 +1940,10 @@ fn parse_scheduled_tool_message(msg: &DisplayMessage) -> Option<ParsedScheduledT
         } else {
             (when_part.trim().to_string(), None)
         }
-    } else if let Some(rest) = first_line.strip_prefix("Scheduled ambient task ") {
+    } else {
+        let rest = first_line.strip_prefix("Scheduled ambient task ")?;
         let (id, when) = rest.split_once(" for ")?;
         (when.trim().to_string(), Some(id.trim().to_string()))
-    } else {
-        return None;
     };
 
     let mut working_dir = None;
@@ -2671,10 +2670,9 @@ fn compact_swarm_notification(title: &str) -> Option<CompactSwarmNotification<'_
             (sender, "✎ ".to_string(), false, rgb(255, 228, 214), true)
         } else if let Some(sender) = title.strip_prefix("File conflict · ") {
             (sender, "⚠ ".to_string(), true, rgb(255, 190, 150), true)
-        } else if let Some(sender) = title.strip_prefix("Swarm · ") {
-            (sender, String::new(), false, rgb(225, 225, 235), false)
         } else {
-            return None;
+            let sender = title.strip_prefix("Swarm · ")?;
+            (sender, String::new(), false, rgb(225, 225, 235), false)
         };
     let sender = sender.trim();
     (!sender.is_empty()).then_some(CompactSwarmNotification {
