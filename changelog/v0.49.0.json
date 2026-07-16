@@ -1,0 +1,22 @@
+{
+  "version": "0.49.0",
+  "date": "2026-07-16",
+  "title": "Secure sign-in and smoother onboarding",
+  "highlights": [
+    "Secure browser-based Jcode account sign-in is now available from both the CLI and TUI",
+    "Onboarding presents a simpler start flow with clearer provider and model choices",
+    "Launch shortcuts for supported external CLIs can be learned, installed automatically, and surfaced when useful"
+  ],
+  "improvements": [
+    "Todo goals can capture the user's intention and score how well planned work aligns with it",
+    "Deep swarm task graphs accept deep and light modes and honor nodes explicitly marked as bounded and non-expandable",
+    "Batch tool activity and todo goal updates use more concise, informative terminal presentation",
+    "The pelican bike demo has refreshed animation and controls"
+  ],
+  "fixes": [
+    "Windows account credentials use secure storage and canceled browser exchanges are cleaned up safely",
+    "External CLI hooks launch Jcode through a trusted path instead of project-controlled executables",
+    "Redirected output no longer attempts terminal image rendering",
+    "Background telemetry delivery is bounded to prevent unrestrained concurrency"
+  ]
+}
