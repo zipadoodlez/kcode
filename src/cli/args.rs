@@ -67,6 +67,10 @@ pub(crate) struct Args {
     #[arg(long, global = true, hide = true)]
     pub(crate) fresh_spawn: bool,
 
+    /// Internal: canonical global hotkey that launched this process.
+    #[arg(long, global = true, hide = true, value_name = "CHORD")]
+    pub(crate) spawn_hotkey: Option<String>,
+
     /// Disable auto-detection of jcode repository and self-dev mode
     #[arg(long, global = true)]
     pub(crate) no_selfdev: bool,

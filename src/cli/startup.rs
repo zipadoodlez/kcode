@@ -2,7 +2,9 @@ use anyhow::Result;
 use clap::Parser;
 use std::process::Command as ProcessCommand;
 
-use crate::{build, logging, perf, server, startup_profile, storage, telemetry, update};
+use crate::{
+    build, logging, perf, server, setup_hints, startup_profile, storage, telemetry, update,
+};
 
 use super::{
     args::{Args, Command},
@@ -212,6 +214,10 @@ fn parse_and_prepare_args() -> Result<Args> {
     let args = Args::parse();
     startup_profile::mark("args_parse");
 
+    if let Some(chord) = args.spawn_hotkey.as_deref() {
+        setup_hints::record_launch_hotkey_use(chord);
+    }
+
     output::set_quiet_enabled(args.quiet);
 
     if let Some(cwd) = &args.cwd {
@@ -405,6 +411,13 @@ mod tests {
         assert!(matches!(args.command, Some(Command::Update)));
         assert!(!should_spawn_background_update_check(&args));
         assert!(should_auto_install_update(&args));
+    }
+
+    #[test]
+    fn hidden_spawn_hotkey_argument_is_global_and_preserves_canonical_text() {
+        let args = parse_args(&["jcode", "--spawn-hotkey", "shift+cmd+'", "self-dev"]);
+        assert_eq!(args.spawn_hotkey.as_deref(), Some("shift+cmd+'"));
+        assert!(matches!(args.command, Some(Command::SelfDev { .. })));
     }
     #[test]
     fn external_provider_runtimes_register_and_instantiate() {
