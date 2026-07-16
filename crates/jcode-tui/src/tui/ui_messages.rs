@@ -1142,22 +1142,19 @@ fn todo_goal_score_spans(goal: Option<&crate::todo::TodoGoal>) -> Vec<Span<'stat
         return Vec::new();
     };
     let mut spans = Vec::new();
-    if let Some(score) = goal.hill_climbability {
-        spans.push(Span::styled(
-            "Hill climbability ",
-            Style::default().fg(todo_label_color()),
-        ));
-        spans.push(Span::styled(
-            format!("{}%", score),
-            Style::default().fg(todo_score_color()),
-        ));
-    }
-    if let Some(score) = goal.end_to_end_ownership {
+    for (label, score) in [
+        ("User intention alignment", goal.user_intention_alignment),
+        ("Hill climbability", goal.hill_climbability),
+        ("Ownership", goal.end_to_end_ownership),
+    ] {
+        let Some(score) = score else {
+            continue;
+        };
         if !spans.is_empty() {
             spans.push(Span::styled(" · ", Style::default().fg(dim_color())));
         }
         spans.push(Span::styled(
-            "Ownership ",
+            format!("{} ", label),
             Style::default().fg(todo_label_color()),
         ));
         spans.push(Span::styled(
@@ -1300,21 +1297,30 @@ fn push_todo_goal_details(
     let scores = todo_goal_score_spans(Some(goal));
     if !scores.is_empty() {
         let score_width = Line::from(scores.clone()).width();
-        if score_width > inner_width.saturating_sub(2)
-            && goal.hill_climbability.is_some()
-            && goal.end_to_end_ownership.is_some()
-        {
+        let score_count = [
+            goal.user_intention_alignment,
+            goal.hill_climbability,
+            goal.end_to_end_ownership,
+        ]
+        .into_iter()
+        .flatten()
+        .count();
+        if score_width > inner_width.saturating_sub(2) && score_count > 1 {
             for (label, score) in [
+                ("User intention alignment", goal.user_intention_alignment),
                 ("Hill climbability", goal.hill_climbability),
                 ("Ownership", goal.end_to_end_ownership),
             ] {
+                let Some(score) = score else {
+                    continue;
+                };
                 let mut spans = vec![Span::raw("  ")];
                 spans.push(Span::styled(
                     format!("{} ", label),
                     Style::default().fg(todo_label_color()),
                 ));
                 spans.push(Span::styled(
-                    format!("{}%", score.expect("score checked above")),
+                    format!("{}%", score),
                     Style::default().fg(todo_score_color()),
                 ));
                 lines.push(todo_card_line(spans, base_indent, inner_width));

@@ -415,7 +415,7 @@ mod tests {
     }
 
     #[test]
-    fn goal_user_intention_round_trips_through_storage() {
+    fn goal_intention_fields_round_trip_through_storage() {
         let _guard = crate::storage::lock_test_env();
         let previous_home = std::env::var_os("JCODE_HOME");
         let dir = tempfile::TempDir::new().expect("tempdir");
@@ -424,6 +424,7 @@ mod tests {
         let goals = vec![TodoGoal {
             group: Some("todo user intention".to_string()),
             user_intention: Some("Preserve why the user requested the work".to_string()),
+            user_intention_alignment: Some(97),
             ..Default::default()
         }];
         save_goals("user-intention-round-trip", &goals).expect("save goals");
@@ -432,6 +433,10 @@ mod tests {
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].group, goals[0].group);
         assert_eq!(loaded[0].user_intention, goals[0].user_intention);
+        assert_eq!(
+            loaded[0].user_intention_alignment,
+            goals[0].user_intention_alignment
+        );
 
         match previous_home {
             Some(value) => crate::env::set_var("JCODE_HOME", value),

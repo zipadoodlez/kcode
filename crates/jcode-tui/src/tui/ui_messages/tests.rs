@@ -514,6 +514,7 @@ fn render_todos_message_shows_goal_scores_and_feedback() {
     let goals = vec![crate::todo::TodoGoal {
         group: Some("todo rendering".to_string()),
         user_intention: Some("Keep the agent aligned with the user's request".to_string()),
+        user_intention_alignment: Some(98),
         hill_climbability: Some(95),
         objective: Some("Readable at 80 columns".to_string()),
         feedback_loop: Some("Inspect a debug frame".to_string()),
@@ -529,7 +530,7 @@ fn render_todos_message_shows_goal_scores_and_feedback() {
         .join("\n");
 
     assert!(
-        plain.contains("Hill climbability 95% · Ownership 90%"),
+        plain.contains("User intention alignment 98% · Hill climbability 95% · Ownership 90%"),
         "{plain}"
     );
     assert!(
@@ -565,6 +566,7 @@ fn render_todos_message_uses_readable_semantic_colors() {
     let goals = vec![crate::todo::TodoGoal {
         group: Some("todo rendering".to_string()),
         user_intention: None,
+        user_intention_alignment: Some(98),
         hill_climbability: Some(95),
         objective: Some("Readable metadata".to_string()),
         feedback_loop: None,
@@ -606,6 +608,7 @@ fn render_todos_message_wraps_goal_scores_at_narrow_widths() {
     let goals = vec![crate::todo::TodoGoal {
         group: Some("todo rendering".to_string()),
         user_intention: None,
+        user_intention_alignment: Some(98),
         hill_climbability: Some(95),
         objective: None,
         feedback_loop: None,
@@ -621,6 +624,7 @@ fn render_todos_message_wraps_goal_scores_at_narrow_widths() {
         .collect::<Vec<_>>()
         .join("\n");
 
+    assert!(plain.contains("User intention alignment 98%"), "{plain}");
     assert!(plain.contains("Hill climbability 95%"), "{plain}");
     assert!(plain.contains("Ownership 90%"), "{plain}");
     assert!(
@@ -665,6 +669,7 @@ fn render_todo_tool_result_uses_borderless_card_with_goal_scores() {
     let goals = vec![crate::todo::TodoGoal {
         group: Some("todo rendering".to_string()),
         user_intention: Some("See current work at a glance".to_string()),
+        user_intention_alignment: Some(97),
         hill_climbability: Some(95),
         objective: Some("Readable card".to_string()),
         feedback_loop: Some("Inspect the rendered frame".to_string()),
@@ -700,7 +705,7 @@ fn render_todo_tool_result_uses_borderless_card_with_goal_scores() {
     assert!(!plain.contains("Todos"), "{plain}");
     assert!(plain.contains("todo rendering  ●"), "{plain}");
     assert!(
-        plain.contains("Hill climbability 95% · Ownership 92%"),
+        plain.contains("User intention alignment 97% · Hill climbability 95% · Ownership 92%"),
         "{plain}"
     );
     assert!(plain.contains("● Render the todo result · 92%"), "{plain}");
@@ -797,6 +802,7 @@ fn unbiased_visual_prompt_retry_renders_complete_feedback_change() {
         crate::todo::TodoGoal {
             group: Some("pelican-bike-animation".to_string()),
             user_intention: None,
+            user_intention_alignment: None,
             hill_climbability: Some(90),
             objective: Some(
                 "Create a polished, working pelican-riding-a-bike animation using only HTML, CSS, and vanilla JavaScript."
@@ -826,6 +832,7 @@ fn unbiased_visual_prompt_retry_renders_complete_feedback_change() {
         crate::todo::TodoGoal {
             group: Some("pelican-bike-animation".to_string()),
             user_intention: None,
+            user_intention_alignment: None,
             hill_climbability: Some(98),
             objective: Some(REVISED_OBJECTIVE.to_string()),
             feedback_loop: Some(REVISED_FEEDBACK.to_string()),
@@ -881,6 +888,7 @@ fn visually_appealing_prompt_batched_retry_renders_complete_todo_card() {
     let goals = vec![crate::todo::TodoGoal {
         group: Some("pelican-bike".to_string()),
         user_intention: None,
+        user_intention_alignment: None,
         hill_climbability: Some(98),
         objective: Some(OBJECTIVE.to_string()),
         feedback_loop: Some(FEEDBACK.to_string()),

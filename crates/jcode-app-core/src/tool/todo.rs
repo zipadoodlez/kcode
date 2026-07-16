@@ -204,6 +204,7 @@ fn normalize_todo_input(mut input: Value) -> Value {
                 for key in [
                     "confidence",
                     "completion_confidence",
+                    "user_intention_alignment",
                     "hill_climbability",
                     "end_to_end_ownership",
                 ] {
@@ -309,7 +310,7 @@ impl Tool for TodoTool {
                     "description": "Optional goal-level assessments, one per todo group. Use group: null for an ungrouped list. Stored assessments for groups omitted from an update are retained.",
                     "items": {
                         "type": "object",
-                        "required": ["hill_climbability", "feedback_loop"],
+                        "required": ["user_intention_alignment", "hill_climbability", "feedback_loop"],
                         "properties": {
                             "group": {
                                 "type": "string",
@@ -318,6 +319,12 @@ impl Tool for TodoTool {
                             "user_intention": {
                                 "type": "string",
                                 "description": "Optional concise statement of the user's underlying reason or desired outcome for this goal. Omit on later updates to retain the stored intention."
+                            },
+                            "user_intention_alignment": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 100,
+                                "description": "Self-assessment, 0-100, of how well the current goal, objective, and planned work align with the user's stated request and underlying intention."
                             },
                             "hill_climbability": {
                                 "type": "integer",
@@ -441,11 +448,12 @@ mod tests {
             .expect("goals should describe item objects");
         assert!(goal_props.contains_key("group"));
         assert!(goal_props.contains_key("user_intention"));
+        assert!(goal_props.contains_key("user_intention_alignment"));
         assert!(goal_props.contains_key("hill_climbability"));
         assert!(goal_props.contains_key("objective"));
         assert!(goal_props.contains_key("feedback_loop"));
         assert!(goal_props.contains_key("end_to_end_ownership"));
-        assert_eq!(goal_props.len(), 6);
+        assert_eq!(goal_props.len(), 7);
 
         let goal_required = props["goals"]["items"]["required"]
             .as_array()
@@ -456,6 +464,11 @@ mod tests {
                 .any(|value| value == "hill_climbability")
         );
         assert!(goal_required.iter().any(|value| value == "feedback_loop"));
+        assert!(
+            goal_required
+                .iter()
+                .any(|value| value == "user_intention_alignment")
+        );
 
         let ownership_description = goal_props["end_to_end_ownership"]
             .get("description")
@@ -575,13 +588,14 @@ mod tests {
     fn accepts_goals_including_string_coercion() {
         let input = json!({
             "goals": [
-                {"group": "optimize grep", "user_intention": "make repository search feel instant", "hill_climbability": "95", "objective": "p50 under 50ms", "feedback_loop": "run the grep benchmark and compare p50"},
+                {"group": "optimize grep", "user_intention": "make repository search feel instant", "user_intention_alignment": "97", "hill_climbability": "95", "objective": "p50 under 50ms", "feedback_loop": "run the grep benchmark and compare p50"},
                 {"hill_climbability": 20}
             ]
         });
         let parsed = parse(input).expect("goals should parse");
         let goals = parsed.goals.expect("goals present");
         assert_eq!(goals[0].hill_climbability, Some(95));
+        assert_eq!(goals[0].user_intention_alignment, Some(97));
         assert_eq!(
             goals[0].user_intention.as_deref(),
             Some("make repository search feel instant")
@@ -593,6 +607,7 @@ mod tests {
         );
         // Runtime parsing remains backward-compatible with stored or older
         // provider payloads even though the advertised schema requires the field.
+        assert_eq!(goals[1].user_intention_alignment, None);
         assert_eq!(goals[1].feedback_loop, None);
         assert_eq!(goals[1].group, None);
     }
@@ -622,11 +637,15 @@ mod tests {
     fn merge_goals_retains_user_intention_when_update_omits_it() {
         let mut stored_goal = goal(Some("a"), 20);
         stored_goal.user_intention = Some("make search feel instant".to_string());
+        stored_goal.user_intention_alignment = Some(60);
         let stored = vec![stored_goal];
 
-        let merged = merge_goals(&stored, Some(vec![goal(Some("a"), 90)]));
+        let mut updated_goal = goal(Some("a"), 90);
+        updated_goal.user_intention_alignment = Some(95);
+        let merged = merge_goals(&stored, Some(vec![updated_goal]));
 
         assert_eq!(merged[0].hill_climbability, Some(90));
+        assert_eq!(merged[0].user_intention_alignment, Some(95));
         assert_eq!(
             merged[0].user_intention.as_deref(),
             Some("make search feel instant")
