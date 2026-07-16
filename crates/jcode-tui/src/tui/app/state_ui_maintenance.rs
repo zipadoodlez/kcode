@@ -375,11 +375,12 @@ impl App {
         let detail = detail.trim().to_string();
 
         // A single, friendly line: no "Status: failed" header and no "Continuing
-        // with the current version." footer. Just the cause plus the recovery
-        // hotkey. Bypass `client_maintenance_card_message` (which would prepend a
+        // with the current version." footer. Put the recovery hotkey first so it
+        // remains visible when the renderer truncates the notice to one row.
+        // Bypass `client_maintenance_card_message` (which would prepend a
         // "Status:" line) and set the card content directly.
         let content = format!(
-            "Local and upstream have diverged, so the update could not fast-forward. Press {} to spawn a jcode agent that merges it for you (or run `git pull` / `git rebase` yourself).",
+            "Update diverged. Press {} to let a jcode agent merge local and upstream (or run `git pull` / `git rebase` yourself).",
             key_label
         );
         self.set_client_maintenance_message(action, content);

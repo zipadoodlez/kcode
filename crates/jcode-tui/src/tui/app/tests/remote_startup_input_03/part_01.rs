@@ -755,6 +755,11 @@ fn test_startup_update_diverged_offers_merge_without_failure_card() {
         "missing merge-agent hint: {}",
         message.content
     );
+    assert!(
+        !message.content.contains('\n'),
+        "divergence notice should be authored as one line: {}",
+        message.content
+    );
     assert!(app.pending_merge_offer.is_some());
     assert!(app.background_client_action.is_none());
 }

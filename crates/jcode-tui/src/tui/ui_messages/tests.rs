@@ -84,6 +84,50 @@ fn render_cold_cache_warning_is_always_one_width_bounded_line() {
 }
 
 #[test]
+fn render_compact_launch_and_divergence_notices_as_one_line() {
+    let saved = crate::tui::markdown::center_code_blocks();
+    let notices = [
+        DisplayMessage::system(
+            "Configured Jcode launch hotkeys (niri):\nSuper+; → jcode (/home/user/project)\n\nBound system-wide.",
+        )
+        .with_title("Launch hotkeys"),
+        DisplayMessage::system(
+            "Update diverged. Press Ctrl+Y to let a jcode agent merge local and upstream (or run `git pull` / `git rebase` yourself).",
+        )
+        .with_title("Update"),
+    ];
+
+    for centered in [false, true] {
+        crate::tui::markdown::set_center_code_blocks(centered);
+        for msg in &notices {
+            for width in [80_u16, 50, 30] {
+                let lines = render_system_message(msg, width, crate::config::DiffDisplayMode::Off);
+                assert_eq!(
+                    lines.len(),
+                    1,
+                    "compact notice wrapped at width {width} (centered={centered}): {lines:?}"
+                );
+                let text = extract_line_text(&lines[0]);
+                assert!(!text.contains('\n'), "notice contains a newline: {text:?}");
+                assert!(
+                    lines[0].width() <= width as usize,
+                    "notice width {} exceeds {width}: {text:?}",
+                    lines[0].width()
+                );
+                if width < 80 {
+                    assert!(
+                        text.ends_with('…'),
+                        "narrow compact notice should end in an ellipsis: {text:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    crate::tui::markdown::set_center_code_blocks(saved);
+}
+
+#[test]
 fn render_system_message_renders_markdown_formatting() {
     let msg = DisplayMessage::system(
         "**bold** and `code` and # heading\n- bullet item\n[link](http://example.com)",
