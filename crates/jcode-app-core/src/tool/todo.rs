@@ -22,12 +22,13 @@ impl TodoTool {
 
 /// Fold each incoming todo's confidence into its tool-maintained history.
 ///
-/// The model reports `confidence` (and `completion_confidence` at completion)
-/// as scalar fields; this keeps an append-only trail of every distinct value a
-/// todo has carried so downstream consumers (auto-poke spike checks, analysis)
-/// can distinguish a stepped, evidence-driven rise (75 -> 85 -> 95 -> 100)
-/// from a bulk end-of-task stamp (75 -> 100). Model-supplied
-/// `confidence_history` is ignored: the tool owns this field.
+/// The model reports `confidence` while working and `completion_confidence` at
+/// completion. Each todo-tool write contributes at most one observation so a
+/// single completion update cannot manufacture an apparent intermediate step.
+/// The append-only trail lets downstream consumers distinguish an
+/// evidence-driven rise (75 -> 85 -> 95 -> 100) from a bulk end-of-task stamp
+/// (75 -> 100). Model-supplied `confidence_history` is ignored: the tool owns
+/// this field.
 fn merge_confidence_history(previous: &[TodoItem], incoming: &mut [TodoItem]) {
     let prior: HashMap<&str, &TodoItem> = previous
         .iter()
@@ -38,10 +39,12 @@ fn merge_confidence_history(previous: &[TodoItem], incoming: &mut [TodoItem]) {
             .get(todo.id.as_str())
             .map(|prev| prev.confidence_history.clone())
             .unwrap_or_default();
-        for value in [todo.confidence, todo.completion_confidence]
-            .into_iter()
-            .flatten()
-        {
+        let observation = if todo.status == "completed" {
+            todo.completion_confidence.or(todo.confidence)
+        } else {
+            todo.confidence
+        };
+        if let Some(value) = observation {
             if history.last() != Some(&value) {
                 history.push(value);
             }
@@ -375,7 +378,7 @@ impl Tool for TodoTool {
                                 "type": "integer",
                                 "minimum": 0,
                                 "maximum": 100,
-                                "description": "Self-assessed confidence, 0-100, that this todo can be completed correctly."
+                                "description": "Self-assessed confidence, 0-100, that this todo can be completed correctly. Reassess it as evidence accumulates while working."
                             },
                             "completion_confidence": {
                                 "type": "integer",
@@ -527,6 +530,10 @@ mod tests {
         assert!(item_props.contains_key("confidence"));
         assert!(item_props.contains_key("completion_confidence"));
         assert!(!item_props.contains_key("hill_climbability"));
+        assert_eq!(
+            item_props["confidence"]["description"],
+            "Self-assessed confidence, 0-100, that this todo can be completed correctly. Reassess it as evidence accumulates while working."
+        );
 
         let goal_props = props["goals"]
             .get("items")
@@ -874,6 +881,19 @@ mod tests {
         merge_confidence_history(&previous, &mut incoming);
         // 75 (planning) -> 100 (final bulk stamp): the spike stays visible.
         assert_eq!(incoming[0].confidence_history, vec![75, 100]);
+    }
+
+    #[test]
+    fn completion_write_contributes_only_one_final_confidence_observation() {
+        let previous = vec![history_todo("1", Some(70), vec![70])];
+        let mut done = history_todo("1", Some(90), Vec::new());
+        done.status = "completed".to_string();
+        done.completion_confidence = Some(100);
+
+        let mut incoming = vec![done];
+        merge_confidence_history(&previous, &mut incoming);
+
+        assert_eq!(incoming[0].confidence_history, vec![70, 100]);
     }
 
     #[test]

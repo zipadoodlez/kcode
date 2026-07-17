@@ -126,7 +126,7 @@ fn test_remote_auto_poke_followup_preserves_visible_timer_and_stays_hidden() {
 }
 
 #[test]
-fn test_remote_auto_poke_completion_ignores_precompletion_confidence() {
+fn test_remote_auto_poke_challenges_abrupt_confidence_increase() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -154,12 +154,16 @@ fn test_remote_auto_poke_completion_ignores_precompletion_confidence() {
         app.status = ProcessingStatus::Streaming;
         app.current_message_id = Some(42);
         app.handle_server_event(crate::protocol::ServerEvent::Done { id: 42 }, &mut remote);
-        assert!(!app.auto_poke_incomplete_todos);
-        assert!(!app.pending_queued_dispatch);
-        assert!(app.hidden_queued_system_messages.is_empty());
+        assert!(app.auto_poke_incomplete_todos);
+        assert!(app.todo_confidence_spike_challenged);
+        assert!(app.pending_queued_dispatch);
+        assert_eq!(
+            app.hidden_queued_system_messages,
+            vec![crate::todo::TODO_CONFIDENCE_SPIKE_CONTINUATION_MESSAGE]
+        );
         assert!(app.display_messages().iter().any(|msg| {
             msg.content
-                .contains("Todos complete. Completion confidence: 100%.")
+                .contains("abrupt confidence increase needs independent validation")
         }));
     });
 }

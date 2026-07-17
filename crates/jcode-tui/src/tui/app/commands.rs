@@ -35,10 +35,14 @@ const POKE_OFF_UI_HINT: &str = "/poke off to stop.";
 const TODO_CONFIDENCE_THRESHOLD: u8 = crate::todo::QUALITY_GATE_THRESHOLD;
 const TODO_COMPLETION_CONTINUATION_MESSAGE: &str =
     crate::todo::TODO_COMPLETION_CONTINUATION_MESSAGE;
+const TODO_CONFIDENCE_SPIKE_CONTINUATION_MESSAGE: &str =
+    crate::todo::TODO_CONFIDENCE_SPIKE_CONTINUATION_MESSAGE;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct TodoConfidenceSummary {
     pub completion_average: Option<u8>,
+    pub completion_confidence_needs_validation: bool,
+    pub confidence_spike_detected: bool,
     pub needs_more_work: bool,
 }
 
@@ -76,6 +80,7 @@ pub(super) fn is_poke_message(message: &str) -> bool {
 
 pub(super) fn is_todo_confidence_summary_message(message: &str) -> bool {
     message.starts_with(TODO_COMPLETION_CONTINUATION_MESSAGE)
+        || message.starts_with(TODO_CONFIDENCE_SPIKE_CONTINUATION_MESSAGE)
         || message.starts_with("All todos are done. Todo confidence summary:")
 }
 
@@ -101,6 +106,7 @@ pub(super) fn clear_queued_poke_messages(app: &mut App) -> usize {
 pub(super) fn disable_auto_poke(app: &mut App) -> usize {
     let cleared = clear_queued_poke_messages(app);
     app.auto_poke_incomplete_todos = false;
+    app.todo_confidence_spike_challenged = false;
     cleared
 }
 
@@ -281,6 +287,7 @@ pub(super) fn poke_triggered_display_message(incomplete_count: usize) -> String 
 pub(super) fn activate_auto_poke(app: &mut App) -> PokeActivation {
     let incomplete = incomplete_poke_todos(app);
     app.auto_poke_incomplete_todos = true;
+    app.todo_confidence_spike_challenged = false;
     app.set_status_notice("Poke: ON");
 
     if incomplete.is_empty() {
@@ -2530,8 +2537,14 @@ fn weighted_confidence_average(scores: impl IntoIterator<Item = (u8, u32)>) -> O
 }
 
 pub(super) fn build_todo_confidence_summary_message(todos: &[crate::todo::TodoItem]) -> String {
-    let _ = todos;
-    TODO_COMPLETION_CONTINUATION_MESSAGE.to_string()
+    let summary = todo_confidence_summary(todos);
+    if summary.completion_confidence_needs_validation {
+        TODO_COMPLETION_CONTINUATION_MESSAGE.to_string()
+    } else if summary.confidence_spike_detected {
+        TODO_CONFIDENCE_SPIKE_CONTINUATION_MESSAGE.to_string()
+    } else {
+        TODO_COMPLETION_CONTINUATION_MESSAGE.to_string()
+    }
 }
 
 pub(super) fn todo_confidence_summary(todos: &[crate::todo::TodoItem]) -> TodoConfidenceSummary {
@@ -2559,14 +2572,18 @@ pub(super) fn todo_confidence_summary(todos: &[crate::todo::TodoItem]) -> TodoCo
         .iter()
         .filter(|(_, score, _)| *score < TODO_CONFIDENCE_THRESHOLD)
         .count();
-    let needs_more_work = completion_average
+    let completion_confidence_needs_validation = completion_average
         .map(|avg| avg < TODO_CONFIDENCE_THRESHOLD)
         .unwrap_or(true)
         || missing_completion_confidence > 0
         || below_threshold_count > 0;
+    let confidence_spike_detected = !crate::todo::spike_completed_todos(todos).is_empty();
+    let needs_more_work = completion_confidence_needs_validation || confidence_spike_detected;
 
     TodoConfidenceSummary {
         completion_average,
+        completion_confidence_needs_validation,
+        confidence_spike_detected,
         needs_more_work,
     }
 }

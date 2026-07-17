@@ -2330,10 +2330,7 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
         let summary = &app.hidden_queued_system_messages[0];
         assert!(super::commands::is_poke_message(summary));
         assert!(super::commands::is_todo_confidence_summary_message(summary));
-        assert_eq!(
-            summary,
-            crate::todo::TODO_COMPLETION_CONTINUATION_MESSAGE
-        );
+        assert_eq!(summary, crate::todo::TODO_COMPLETION_CONTINUATION_MESSAGE);
         assert!(!summary.chars().any(|ch| ch.is_ascii_digit()));
         assert!(summary.contains("completion confidence"));
         assert!(!summary.to_ascii_lowercase().contains("gate"));
@@ -2363,6 +2360,10 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
         let mut validated = crate::todo::load_todos(&app.session.id).expect("load todos");
         for todo in &mut validated {
             todo.completion_confidence = Some(100);
+            todo.confidence_history = match todo.id.as_str() {
+                "todo-1" => vec![70, 80, 90, 100],
+                _ => vec![90, 100],
+            };
         }
         crate::todo::save_todos(&app.session.id, &validated).expect("save validated todos");
         app.hidden_queued_system_messages.clear();
@@ -2380,7 +2381,7 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
 }
 
 #[test]
-fn test_todo_completion_gate_ignores_precompletion_confidence() {
+fn test_todo_completion_gate_detects_abrupt_confidence_increase() {
     let summary = super::commands::todo_confidence_summary(&[crate::todo::TodoItem {
         status: "completed".to_string(),
         priority: "high".to_string(),
@@ -2391,7 +2392,72 @@ fn test_todo_completion_gate_ignores_precompletion_confidence() {
     }]);
 
     assert_eq!(summary.completion_average, Some(100));
+    assert!(!summary.completion_confidence_needs_validation);
+    assert!(summary.confidence_spike_detected);
+    assert!(summary.needs_more_work);
+}
+
+#[test]
+fn test_todo_completion_gate_allows_evidence_backed_confidence_steps() {
+    let summary = super::commands::todo_confidence_summary(&[crate::todo::TodoItem {
+        status: "completed".to_string(),
+        priority: "high".to_string(),
+        confidence: Some(100),
+        completion_confidence: Some(100),
+        confidence_history: vec![70, 80, 90, 100],
+        ..Default::default()
+    }]);
+
+    assert_eq!(summary.completion_average, Some(100));
+    assert!(!summary.completion_confidence_needs_validation);
+    assert!(!summary.confidence_spike_detected);
     assert!(!summary.needs_more_work);
+}
+
+#[test]
+fn test_finish_turn_challenges_confidence_spike_once() {
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        crate::todo::save_todos(
+            &app.session.id,
+            &[crate::todo::TodoItem {
+                id: "todo-1".to_string(),
+                content: "Validate provider result".to_string(),
+                status: "completed".to_string(),
+                priority: "high".to_string(),
+                confidence: Some(100),
+                completion_confidence: Some(100),
+                confidence_history: vec![70, 100],
+                ..Default::default()
+            }],
+        )
+        .expect("save todos");
+
+        app.auto_poke_incomplete_todos = true;
+        app.is_processing = true;
+        super::local::finish_turn(&mut app);
+
+        assert!(app.auto_poke_incomplete_todos);
+        assert!(app.todo_confidence_spike_challenged);
+        assert!(app.pending_queued_dispatch);
+        assert_eq!(
+            app.hidden_queued_system_messages,
+            vec![crate::todo::TODO_CONFIDENCE_SPIKE_CONTINUATION_MESSAGE]
+        );
+        assert!(app.display_messages().iter().any(|msg| {
+            msg.content
+                .contains("abrupt confidence increase needs independent validation")
+        }));
+
+        app.hidden_queued_system_messages.clear();
+        app.pending_queued_dispatch = false;
+        app.is_processing = true;
+        super::local::finish_turn(&mut app);
+
+        assert!(!app.auto_poke_incomplete_todos);
+        assert!(!app.todo_confidence_spike_challenged);
+        assert!(!app.pending_queued_dispatch);
+    });
 }
 
 #[test]

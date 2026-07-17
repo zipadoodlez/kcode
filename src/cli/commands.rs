@@ -2576,8 +2576,15 @@ fn run_command_auto_poke_limit_reached(turns_completed: usize, max_turns: Option
 const RUN_TODO_CONFIDENCE_THRESHOLD: u8 = 90;
 
 enum RunAutoPokeFollowUp {
-    Incomplete { count: usize, message: String },
-    ConfidenceSummary { total_todos: usize, message: String },
+    Incomplete {
+        count: usize,
+        message: String,
+    },
+    ConfidenceSummary {
+        total_todos: usize,
+        message: String,
+        confidence_spike_challenge: bool,
+    },
 }
 
 fn run_todos(session_id: &str) -> Vec<crate::todo::TodoItem> {
@@ -2586,6 +2593,7 @@ fn run_todos(session_id: &str) -> Vec<crate::todo::TodoItem> {
 
 fn build_run_auto_poke_follow_up_from_todos(
     todos: &[crate::todo::TodoItem],
+    confidence_spike_challenged: bool,
 ) -> Option<RunAutoPokeFollowUp> {
     let incomplete: Vec<_> = todos
         .iter()
@@ -2599,11 +2607,13 @@ fn build_run_auto_poke_follow_up_from_todos(
         });
     }
     if !todos.is_empty()
-        && let Some(message) = build_run_todo_validation_message(todos)
+        && let Some((message, confidence_spike_challenge)) =
+            build_run_todo_validation_message(todos, !confidence_spike_challenged)
     {
         return Some(RunAutoPokeFollowUp::ConfidenceSummary {
             total_todos: todos.len(),
             message,
+            confidence_spike_challenge,
         });
     }
     None
@@ -2613,7 +2623,10 @@ fn build_run_poke_message(incomplete: &[crate::todo::TodoItem]) -> String {
     crate::todo::build_auto_poke_message(incomplete.len())
 }
 
-fn build_run_todo_validation_message(todos: &[crate::todo::TodoItem]) -> Option<String> {
+fn build_run_todo_validation_message(
+    todos: &[crate::todo::TodoItem],
+    allow_confidence_spike_challenge: bool,
+) -> Option<(String, bool)> {
     let completed: Vec<&crate::todo::TodoItem> = todos
         .iter()
         .filter(|todo| todo.status == "completed")
@@ -2622,21 +2635,30 @@ fn build_run_todo_validation_message(todos: &[crate::todo::TodoItem]) -> Option<
         return None;
     }
 
-    // Completion validation deliberately considers only completion_confidence.
-    // Planning-time confidence expresses expected feasibility and must never
-    // trigger this gate.
-    let has_below = completed.iter().any(|todo| {
+    let completion_confidence_needs_validation = completed.iter().any(|todo| {
         todo.completion_confidence
             .is_none_or(|score| score < RUN_TODO_CONFIDENCE_THRESHOLD)
     });
+    let confidence_spike_detected =
+        allow_confidence_spike_challenge && !crate::todo::spike_completed_todos(todos).is_empty();
 
-    if !has_below {
+    if !completion_confidence_needs_validation && !confidence_spike_detected {
         // Nothing actionable: completing the loop with a generic summary just
         // spends tokens on "all good" theater, so send nothing and end the run.
         return None;
     }
 
-    Some(crate::todo::TODO_COMPLETION_CONTINUATION_MESSAGE.to_string())
+    if completion_confidence_needs_validation {
+        Some((
+            crate::todo::TODO_COMPLETION_CONTINUATION_MESSAGE.to_string(),
+            false,
+        ))
+    } else {
+        Some((
+            crate::todo::TODO_CONFIDENCE_SPIKE_CONTINUATION_MESSAGE.to_string(),
+            true,
+        ))
+    }
 }
 
 async fn run_single_message_command_plain_with_auto_poke(
@@ -2646,6 +2668,7 @@ async fn run_single_message_command_plain_with_auto_poke(
     let mut next_message = message.to_string();
     let max_turns = run_command_auto_poke_max_turns();
     let mut turns_completed = 0usize;
+    let mut confidence_spike_challenged = false;
     loop {
         agent.run_once(&next_message).await?;
         turns_completed += 1;
@@ -2653,8 +2676,12 @@ async fn run_single_message_command_plain_with_auto_poke(
             break;
         }
         let todos = run_todos(agent.session_id());
-        match build_run_auto_poke_follow_up_from_todos(&todos) {
-            Some(RunAutoPokeFollowUp::ConfidenceSummary { message, .. }) => {
+        match build_run_auto_poke_follow_up_from_todos(&todos, confidence_spike_challenged) {
+            Some(RunAutoPokeFollowUp::ConfidenceSummary {
+                message,
+                confidence_spike_challenge,
+                ..
+            }) => {
                 if run_command_auto_poke_limit_reached(turns_completed, max_turns) {
                     if let Some(max_turns) = max_turns {
                         eprintln!(
@@ -2663,6 +2690,7 @@ async fn run_single_message_command_plain_with_auto_poke(
                     }
                     break;
                 }
+                confidence_spike_challenged |= confidence_spike_challenge;
                 next_message = message;
                 eprintln!(
                     "Auto-poking: todos complete; sending confidence summary follow-up. Set JCODE_RUN_AUTO_POKE=0 to disable."
@@ -2699,6 +2727,7 @@ async fn run_single_message_command_capture_with_auto_poke(
     let max_turns = run_command_auto_poke_max_turns();
     let mut outputs = Vec::new();
     let mut turns_completed = 0usize;
+    let mut confidence_spike_challenged = false;
     loop {
         outputs.push(agent.run_once_capture(&next_message).await?);
         turns_completed += 1;
@@ -2706,8 +2735,12 @@ async fn run_single_message_command_capture_with_auto_poke(
             break;
         }
         let todos = run_todos(agent.session_id());
-        match build_run_auto_poke_follow_up_from_todos(&todos) {
-            Some(RunAutoPokeFollowUp::ConfidenceSummary { message, .. }) => {
+        match build_run_auto_poke_follow_up_from_todos(&todos, confidence_spike_challenged) {
+            Some(RunAutoPokeFollowUp::ConfidenceSummary {
+                message,
+                confidence_spike_challenge,
+                ..
+            }) => {
                 if run_command_auto_poke_limit_reached(turns_completed, max_turns) {
                     if let Some(max_turns) = max_turns {
                         outputs.push(format!(
@@ -2716,6 +2749,7 @@ async fn run_single_message_command_capture_with_auto_poke(
                     }
                     break;
                 }
+                confidence_spike_challenged |= confidence_spike_challenge;
                 next_message = message;
                 continue;
             }
@@ -2773,6 +2807,7 @@ async fn run_single_message_command_ndjson(
     let mut next_message = message.to_string();
     let mut result: Result<()> = Ok(());
     let mut turns_completed = 0usize;
+    let mut confidence_spike_challenged = false;
     loop {
         let turn_result = {
             let mut run_future = std::pin::pin!(agent.run_once_streaming_mpsc(
@@ -2813,10 +2848,11 @@ async fn run_single_message_command_ndjson(
             break;
         }
         let todos = run_todos(&session_id);
-        match build_run_auto_poke_follow_up_from_todos(&todos) {
+        match build_run_auto_poke_follow_up_from_todos(&todos, confidence_spike_challenged) {
             Some(RunAutoPokeFollowUp::ConfidenceSummary {
                 total_todos,
                 message,
+                confidence_spike_challenge,
             }) => {
                 if run_command_auto_poke_limit_reached(turns_completed, max_turns) {
                     if let Some(max_turns) = max_turns {
@@ -2832,6 +2868,7 @@ async fn run_single_message_command_ndjson(
                     }
                     break;
                 }
+                confidence_spike_challenged |= confidence_spike_challenge;
                 next_message = message;
                 write_json_line(
                     &mut stdout,
@@ -2839,6 +2876,7 @@ async fn run_single_message_command_ndjson(
                         "type": "auto_poke_confidence_summary",
                         "session_id": session_id,
                         "todos": total_todos,
+                        "confidence_spike_challenge": confidence_spike_challenge,
                         "message": next_message,
                     }),
                 )?;

@@ -855,6 +855,10 @@ pub struct App {
     pending_turn: bool,
     // When armed by /poke, automatically continue prompting until todos are complete.
     auto_poke_incomplete_todos: bool,
+    /// Whether the current auto-poke cycle has already challenged an abrupt
+    /// final confidence increase. Low or missing completion confidence keeps
+    /// retrying, but a spike gets one dedicated independent-validation turn.
+    todo_confidence_spike_challenged: bool,
     // When armed by /overnight, automatically continue guarded follow-up turns until wake/wrap.
     overnight_auto_poke: Option<OvernightAutoPokeState>,
     // Pending cross-provider resend after a failover warning/countdown.

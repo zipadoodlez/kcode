@@ -25,6 +25,15 @@ pub const TODO_OWNERSHIP_CONTINUATION_MESSAGE: &str = "Your end-to-end ownership
 /// Model-facing continuation for private completion-confidence checks. Names
 /// the assessment category without disclosing scores, items, or thresholds.
 pub const TODO_COMPLETION_CONTINUATION_MESSAGE: &str = "Your completion confidence is missing or not high enough. Validate the completed result more thoroughly, address any remaining issues, and then reassess whether the work is ready to finalize.";
+
+/// Model-facing continuation for a completed todo whose confidence rose too
+/// sharply at the end. It names the behavior without disclosing the numeric
+/// cutoff, individual todo, or recorded scores.
+pub const TODO_CONFIDENCE_SPIKE_CONTINUATION_MESSAGE: &str = "Your completion confidence rose too sharply to count as independently validated. Recheck the completed result using concrete evidence, address any issues you find, and then reassess whether the work is ready to finalize.";
+
+/// A completed todo is considered spike-finished when its final recorded
+/// confidence increase is at least this large.
+pub const TODO_CONFIDENCE_SPIKE: u8 = 15;
 const LEGACY_TODO_CONFIDENCE_SUMMARY_PREFIX: &str = "All todos are done. Todo confidence summary:";
 
 fn normalized_group(group: Option<&str>) -> Option<String> {
@@ -70,6 +79,28 @@ pub fn newly_completed_groups_have_sufficient_ownership(
     })
 }
 
+/// Completed todos whose final confidence increase was abrupt rather than
+/// accumulated in smaller evidence-backed steps. Older todo records may not
+/// have a history, so they fall back to comparing planning and completion
+/// confidence.
+pub fn spike_completed_todos(todos: &[TodoItem]) -> Vec<&TodoItem> {
+    todos
+        .iter()
+        .filter(|todo| todo.status == "completed")
+        .filter(|todo| match todo.confidence_history.as_slice() {
+            [] => todo
+                .confidence
+                .zip(todo.completion_confidence)
+                .is_some_and(|(first, last)| last.saturating_sub(first) >= TODO_CONFIDENCE_SPIKE),
+            [_] => false,
+            history => {
+                let n = history.len();
+                history[n - 1].saturating_sub(history[n - 2]) >= TODO_CONFIDENCE_SPIKE
+            }
+        })
+        .collect()
+}
+
 /// Build the synthetic auto-poke continuation prompt sent when the model
 /// stops with incomplete todos. Kept here so every producer (TUI auto-poke,
 /// `jcode run` auto-poke) and the transcript renderer agree on the exact text.
@@ -98,6 +129,7 @@ pub fn is_auto_poke_message(message: &str) -> bool {
         || trimmed.starts_with(TODO_HILL_CLIMBABILITY_CONTINUATION_MESSAGE)
         || trimmed.starts_with(TODO_OWNERSHIP_CONTINUATION_MESSAGE)
         || trimmed.starts_with(TODO_COMPLETION_CONTINUATION_MESSAGE)
+        || trimmed.starts_with(TODO_CONFIDENCE_SPIKE_CONTINUATION_MESSAGE)
         || trimmed.starts_with(LEGACY_TODO_CONFIDENCE_SUMMARY_PREFIX)
 }
 
@@ -224,6 +256,9 @@ mod tests {
         ));
         assert!(is_auto_poke_message(TODO_OWNERSHIP_CONTINUATION_MESSAGE));
         assert!(is_auto_poke_message(TODO_COMPLETION_CONTINUATION_MESSAGE));
+        assert!(is_auto_poke_message(
+            TODO_CONFIDENCE_SPIKE_CONTINUATION_MESSAGE
+        ));
         assert!(is_auto_poke_message(LEGACY_TODO_CONFIDENCE_SUMMARY_PREFIX));
     }
 
@@ -237,6 +272,10 @@ mod tests {
             (TODO_OWNERSHIP_CONTINUATION_MESSAGE, "end-to-end ownership"),
             (
                 TODO_COMPLETION_CONTINUATION_MESSAGE,
+                "completion confidence",
+            ),
+            (
+                TODO_CONFIDENCE_SPIKE_CONTINUATION_MESSAGE,
                 "completion confidence",
             ),
         ] {
@@ -259,6 +298,48 @@ mod tests {
         assert!(TODO_OWNERSHIP_CONTINUATION_MESSAGE.contains("complete workflow"));
         assert!(TODO_OWNERSHIP_CONTINUATION_MESSAGE.contains("necessary follow-through"));
         assert!(TODO_COMPLETION_CONTINUATION_MESSAGE.contains("Validate the completed result"));
+        assert!(TODO_CONFIDENCE_SPIKE_CONTINUATION_MESSAGE.contains("concrete evidence"));
+        assert!(TODO_CONFIDENCE_SPIKE_CONTINUATION_MESSAGE.contains("rose too sharply"));
+    }
+
+    #[test]
+    fn confidence_spike_classifier_distinguishes_bulk_stamp_from_stepped_rise() {
+        let mut bulk = todo("bulk", "completed", None);
+        bulk.confidence = Some(70);
+        bulk.completion_confidence = Some(100);
+        bulk.confidence_history = vec![70, 100];
+
+        let mut stepped = todo("stepped", "completed", None);
+        stepped.confidence = Some(100);
+        stepped.completion_confidence = Some(100);
+        stepped.confidence_history = vec![70, 80, 90, 100];
+
+        let todos = [bulk, stepped];
+        let spiked = spike_completed_todos(&todos);
+        assert_eq!(spiked.len(), 1);
+        assert_eq!(spiked[0].content, "bulk");
+    }
+
+    #[test]
+    fn confidence_spike_classifier_includes_boundary_and_legacy_fallback() {
+        let mut boundary = todo("boundary", "completed", None);
+        boundary.confidence = Some(85);
+        boundary.completion_confidence = Some(100);
+        boundary.confidence_history = vec![85, 100];
+
+        let mut legacy = todo("legacy", "completed", None);
+        legacy.confidence = Some(80);
+        legacy.completion_confidence = Some(100);
+
+        let todos = [boundary, legacy];
+        let spiked = spike_completed_todos(&todos);
+        assert_eq!(
+            spiked
+                .iter()
+                .map(|todo| todo.content.as_str())
+                .collect::<Vec<_>>(),
+            vec!["boundary", "legacy"]
+        );
     }
 
     #[test]

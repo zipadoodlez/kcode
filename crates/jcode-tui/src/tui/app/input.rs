@@ -1282,10 +1282,16 @@ impl App {
             let confidence_summary = super::commands::todo_confidence_summary(&todos);
             let confidence_label =
                 super::commands::format_todo_completion_confidence(confidence_summary);
-            if confidence_summary.needs_more_work {
-                self.push_display_message(DisplayMessage::system(
-                    "🛑 Todo completion gate: completion confidence needs stronger validation.",
-                ));
+            let needs_spike_challenge = confidence_summary.confidence_spike_detected
+                && !self.todo_confidence_spike_challenged;
+            if confidence_summary.completion_confidence_needs_validation || needs_spike_challenge {
+                let notice = if confidence_summary.completion_confidence_needs_validation {
+                    "🛑 Todo completion gate: completion confidence needs stronger validation."
+                } else {
+                    self.todo_confidence_spike_challenged = true;
+                    "🛑 Todo completion gate: abrupt confidence increase needs independent validation."
+                };
+                self.push_display_message(DisplayMessage::system(notice));
                 self.hidden_queued_system_messages.push(
                     super::commands::build_todo_confidence_summary_message(&todos),
                 );
@@ -1293,6 +1299,7 @@ impl App {
                 return true;
             }
             self.auto_poke_incomplete_todos = false;
+            self.todo_confidence_spike_challenged = false;
             self.push_display_message(DisplayMessage::system(format!(
                 "✅ Todos complete. Completion confidence: {}.",
                 confidence_label
