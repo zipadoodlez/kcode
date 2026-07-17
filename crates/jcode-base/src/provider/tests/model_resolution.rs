@@ -96,6 +96,7 @@ fn test_available_models_display_uses_route_models_and_filters_placeholder_rows(
         startup_notices: RwLock::new(Vec::new()),
         forced_provider: None,
         routes_memo: std::sync::Mutex::new(None),
+        post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
     };
 
     let models = provider.available_models_display();
@@ -143,6 +144,7 @@ fn test_cerebras_model_routes_are_profile_scoped_and_unique() {
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: Some(ActiveProvider::OpenRouter),
                 routes_memo: std::sync::Mutex::new(None),
+                post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             };
 
             let routes = provider.model_routes();
@@ -239,6 +241,7 @@ fn test_direct_chutes_ignores_legacy_openrouter_catalog_cache() {
                     startup_notices: RwLock::new(Vec::new()),
                     forced_provider: Some(ActiveProvider::OpenRouter),
                     routes_memo: std::sync::Mutex::new(None),
+                    post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
                 };
 
                 let routes = provider.model_routes();
@@ -297,6 +300,7 @@ fn test_auth_changed_preserves_existing_direct_profile_session() {
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: Some(ActiveProvider::OpenRouter),
             routes_memo: std::sync::Mutex::new(None),
+            post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
 
         crate::env::set_var("GROQ_API_KEY", "test-groq-key");
@@ -357,6 +361,7 @@ fn test_auth_changed_replaces_template_direct_profile_for_new_logins() {
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: Some(ActiveProvider::OpenRouter),
             routes_memo: std::sync::Mutex::new(None),
+            post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
 
         crate::env::set_var("GROQ_API_KEY", "test-groq-key");
@@ -409,6 +414,7 @@ fn test_state_space_openrouter_default_survives_switch_to_nvidia_nim() {
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: None,
             routes_memo: std::sync::Mutex::new(None),
+            post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
 
         crate::env::set_var(nvidia.api_key_env, "test-nvidia-key");
@@ -595,6 +601,7 @@ fn test_openrouter_and_compatible_profile_transition_invariants() {
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: None,
             routes_memo: std::sync::Mutex::new(None),
+            post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
 
         provider
@@ -667,6 +674,7 @@ fn test_set_model_accepts_bare_openai_openrouter_pin_when_openrouter_available()
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: None,
                 routes_memo: std::sync::Mutex::new(None),
+                post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             };
 
             provider
@@ -709,6 +717,9 @@ fn test_forced_openrouter_treats_claude_like_model_as_provider_local() {
                             startup_notices: RwLock::new(Vec::new()),
                             forced_provider: Some(ActiveProvider::OpenRouter),
                             routes_memo: std::sync::Mutex::new(None),
+                            post_auth_refreshes_pending: Arc::new(
+                                std::sync::atomic::AtomicUsize::new(0),
+                            ),
                         };
 
                         provider.set_model("claude-opus4.6-thinking").expect(
@@ -754,6 +765,9 @@ fn test_forced_openrouter_preserves_custom_at_sign_model_ids() {
                             startup_notices: RwLock::new(Vec::new()),
                             forced_provider: Some(ActiveProvider::OpenRouter),
                             routes_memo: std::sync::Mutex::new(None),
+                            post_auth_refreshes_pending: Arc::new(
+                                std::sync::atomic::AtomicUsize::new(0),
+                            ),
                         };
 
                         provider
@@ -802,6 +816,9 @@ fn test_config_default_provider_openai_compatible_keeps_gpt_model_provider_local
                             startup_notices: RwLock::new(Vec::new()),
                             forced_provider: None,
                             routes_memo: std::sync::Mutex::new(None),
+                            post_auth_refreshes_pending: Arc::new(
+                                std::sync::atomic::AtomicUsize::new(0),
+                            ),
                         };
 
                         provider
@@ -853,6 +870,9 @@ fn test_custom_compatible_model_routes_do_not_request_openrouter_rewrite() {
                             startup_notices: RwLock::new(Vec::new()),
                             forced_provider: Some(ActiveProvider::OpenRouter),
                             routes_memo: std::sync::Mutex::new(None),
+                            post_auth_refreshes_pending: Arc::new(
+                                std::sync::atomic::AtomicUsize::new(0),
+                            ),
                         };
 
                         provider.set_model("claude-opus4.6-thinking").expect(
@@ -899,6 +919,7 @@ fn test_configured_direct_compatible_profiles_are_listed_without_openrouter_key(
                     startup_notices: RwLock::new(Vec::new()),
                     forced_provider: None,
                     routes_memo: std::sync::Mutex::new(None),
+                    post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
                 };
 
                 let routes = provider.model_routes();
@@ -981,6 +1002,7 @@ input = ["image"]
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: None,
             routes_memo: std::sync::Mutex::new(None),
+            post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
 
         // The picker must offer the text-capable configured model with a
@@ -1028,6 +1050,7 @@ input = ["image"]
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: None,
             routes_memo: std::sync::Mutex::new(None),
+            post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
         provider2
             .set_config_default_model("vendor/my-model", Some("my-gateway"))
@@ -1063,6 +1086,7 @@ fn test_config_default_provider_deepseek_applies_without_openrouter_key() {
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: None,
                 routes_memo: std::sync::Mutex::new(None),
+                post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             };
 
             provider
@@ -1097,6 +1121,7 @@ fn test_profile_prefixed_model_switch_reinitializes_direct_compatible_runtime() 
                     startup_notices: RwLock::new(Vec::new()),
                     forced_provider: None,
                     routes_memo: std::sync::Mutex::new(None),
+                    post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
                 };
 
                 provider
@@ -1153,6 +1178,7 @@ fn test_openai_auth_mode_prefixed_model_switch_changes_credentials() {
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: None,
             routes_memo: std::sync::Mutex::new(None),
+            post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
         let rt = enter_test_runtime();
         let _runtime_guard = rt.enter();
@@ -1222,6 +1248,7 @@ fn test_anthropic_auth_mode_prefixed_model_switch_changes_credentials() {
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: None,
             routes_memo: std::sync::Mutex::new(None),
+            post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
         let rt = enter_test_runtime();
         let _runtime_guard = rt.enter();
@@ -1297,6 +1324,7 @@ fn test_config_default_provider_anthropic_api_pins_api_credential() {
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: None,
                 routes_memo: std::sync::Mutex::new(None),
+                post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             };
             let rt = enter_test_runtime();
             let _runtime_guard = rt.enter();
@@ -1375,6 +1403,7 @@ fn test_config_default_model_with_credential_prefix_applies_model_and_pin() {
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: None,
                 routes_memo: std::sync::Mutex::new(None),
+                post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             };
             let rt = enter_test_runtime();
             let _runtime_guard = rt.enter();
@@ -1448,6 +1477,7 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: None,
             routes_memo: std::sync::Mutex::new(None),
+            post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
 
         let generation_before = crate::provider::pricing::auth_pricing_generation();
@@ -1520,6 +1550,7 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: None,
             routes_memo: std::sync::Mutex::new(None),
+            post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
 
         provider
@@ -1559,6 +1590,7 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: None,
             routes_memo: std::sync::Mutex::new(None),
+            post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
         provider
             .set_model("cerebras:qwen-3-235b-a22b-instruct-2507")
@@ -1592,6 +1624,7 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: None,
                 routes_memo: std::sync::Mutex::new(None),
+                post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             };
 
             provider
@@ -1626,6 +1659,7 @@ fn test_deepseek_direct_profile_supports_reasoning_effort_via_multi_provider() {
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: None,
                 routes_memo: std::sync::Mutex::new(None),
+                post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             };
 
             provider
@@ -1673,6 +1707,7 @@ fn test_forced_copilot_treats_claude_like_model_as_provider_local() {
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: Some(ActiveProvider::Copilot),
             routes_memo: std::sync::Mutex::new(None),
+            post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
 
         provider
@@ -1707,6 +1742,7 @@ fn test_provider_specific_model_prefix_cannot_bypass_provider_lock() {
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: Some(ActiveProvider::OpenRouter),
                 routes_memo: std::sync::Mutex::new(None),
+                post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             };
 
             let err = provider
