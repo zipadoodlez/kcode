@@ -25,6 +25,53 @@ selfdev_low_memory_status="disabled"
 feature_profile_status="default"
 build_jobs_status="cargo-default"
 git_meta_status="not-configured"
+build_tmpdir_status="system-default"
+
+path_is_memory_backed() {
+  local path="$1"
+  local fs_type=""
+  if command -v findmnt >/dev/null 2>&1; then
+    fs_type=$(findmnt -n -o FSTYPE --target "$path" 2>/dev/null || true)
+  elif [[ "$(uname -s)" == "Linux" ]]; then
+    fs_type=$(stat -f -c '%T' "$path" 2>/dev/null || true)
+  fi
+  case "$fs_type" in
+    tmpfs|ramfs) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+configure_build_tmpdir() {
+  local candidate="${JCODE_BUILD_TMPDIR:-}"
+  if [[ -n "$candidate" ]]; then
+    build_tmpdir_status="explicit"
+  elif [[ -n "${TMPDIR:-}" ]]; then
+    build_tmpdir_status="inherited"
+    return
+  elif ! path_is_memory_backed /tmp; then
+    return
+  elif [[ -n "${JCODE_SCRATCH_DIR:-}" ]]; then
+    candidate="$JCODE_SCRATCH_DIR/cargo-tmp"
+    build_tmpdir_status="jcode-scratch"
+  elif [[ -n "${JCODE_HOME:-}" ]]; then
+    candidate="$JCODE_HOME/scratch/cargo-tmp"
+    build_tmpdir_status="jcode-home"
+  elif [[ -n "${HOME:-}" ]]; then
+    candidate="$HOME/.jcode/scratch/cargo-tmp"
+    build_tmpdir_status="home-scratch"
+  else
+    candidate="$repo_root/target/jcode-scratch/cargo-tmp"
+    build_tmpdir_status="target-scratch"
+  fi
+
+  if mkdir -p "$candidate" 2>/dev/null; then
+    export TMPDIR="$candidate"
+    log "using disk-backed build temp directory: $TMPDIR"
+  else
+    build_tmpdir_status="fallback-system-default"
+    log "could not create build temp directory $candidate; using system default"
+  fi
+}
 
 append_rustflags() {
   local new_flag="$1"
@@ -598,6 +645,8 @@ selfdev_low_memory_status=$selfdev_low_memory_status
 parallel_frontend_status=$parallel_frontend_status
 build_jobs_status=$build_jobs_status
 cargo_build_jobs=${CARGO_BUILD_JOBS:-<unset>}
+build_tmpdir_status=$build_tmpdir_status
+tmpdir=${TMPDIR:-<unset>}
 feature_profile_status=$feature_profile_status
 git_meta_status=$git_meta_status
 build_git_hash=${JCODE_BUILD_GIT_HASH:-<unset>}
@@ -855,6 +904,7 @@ run_local_cargo() {
 }
 
 validate_feature_profile
+configure_build_tmpdir
 export_git_build_metadata
 maybe_configure_low_memory_selfdev "$@"
 maybe_enable_sccache "$@"
