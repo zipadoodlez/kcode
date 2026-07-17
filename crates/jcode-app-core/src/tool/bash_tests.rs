@@ -748,6 +748,46 @@ async fn test_background_command_without_timeout_keeps_running_past_default_fore
     let _ = tokio::fs::remove_file(status_file).await;
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn process_group_kill_guard_terminates_descendants() {
+    let mut cmd = build_shell_command("sleep 60 & echo $!; wait");
+    unsafe {
+        cmd.pre_exec(|| {
+            if libc::setpgid(0, 0) == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    cmd.kill_on_drop(true).stdout(Stdio::piped());
+
+    let mut child = cmd.spawn().expect("spawn process group probe");
+    let mut lines = BufReader::new(child.stdout.take().expect("probe stdout")).lines();
+    let descendant_pid = lines
+        .next_line()
+        .await
+        .expect("read descendant pid")
+        .expect("descendant pid line")
+        .parse::<u32>()
+        .expect("numeric descendant pid");
+
+    let guard = ProcessGroupKillGuard::new(child.id());
+    drop(guard);
+    tokio::time::timeout(Duration::from_secs(2), child.wait())
+        .await
+        .expect("shell should exit after process-group kill")
+        .expect("wait for shell");
+
+    for _ in 0..100 {
+        if !crate::platform::is_process_running(descendant_pid) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("descendant process {descendant_pid} survived process-group cleanup");
+}
+
 #[test]
 fn test_bash_tool_schema_advertises_background_progress_guidance() {
     let schema = BashTool::new().parameters_schema();

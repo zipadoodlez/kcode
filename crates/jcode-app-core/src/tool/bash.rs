@@ -470,6 +470,31 @@ fn configure_tool_scratch(command: &mut TokioCommand) {
     }
 }
 
+#[cfg(unix)]
+struct ProcessGroupKillGuard {
+    pid: Option<u32>,
+}
+
+#[cfg(unix)]
+impl ProcessGroupKillGuard {
+    fn new(pid: Option<u32>) -> Self {
+        Self { pid }
+    }
+
+    fn disarm(&mut self) {
+        self.pid = None;
+    }
+}
+
+#[cfg(unix)]
+impl Drop for ProcessGroupKillGuard {
+    fn drop(&mut self) {
+        if let Some(pid) = self.pid {
+            let _ = crate::platform::signal_detached_process_group(pid, libc::SIGKILL);
+        }
+    }
+}
+
 fn build_shell_command(cmd_str: &str) -> TokioCommand {
     #[cfg(windows)]
     {
@@ -1075,6 +1100,8 @@ impl BashTool {
                     let mut child = cmd
                         .spawn()
                         .map_err(|e| anyhow::anyhow!("Failed to spawn command: {}", e))?;
+                    #[cfg(unix)]
+                    let mut process_group_guard = ProcessGroupKillGuard::new(child.id());
 
                     // Stream output to file
                     let mut file = tokio::fs::File::create(&output_path)
@@ -1148,6 +1175,8 @@ impl BashTool {
 
                     if timed_out {
                         let _ = child.wait().await;
+                        #[cfg(unix)]
+                        process_group_guard.disarm();
                         let msg = timeout_message(timeout_ms.unwrap_or_default());
                         let timeout_line = format!("\n--- {} ---\n", msg);
                         file.write_all(timeout_line.as_bytes()).await.ok();
@@ -1155,6 +1184,8 @@ impl BashTool {
                     }
 
                     let status = child.wait().await?;
+                    #[cfg(unix)]
+                    process_group_guard.disarm();
                     let exit_code = status.code();
 
                     // Write final status line
