@@ -73,6 +73,7 @@ pub enum TelemetryToolCategory {
     Email,
     SidePanel,
     Goal,
+    Todo,
     Mcp,
     Other,
 }
@@ -95,6 +96,9 @@ pub fn classify_telemetry_tool_category(name: &str) -> TelemetryToolCategory {
         "gmail" => TelemetryToolCategory::Email,
         "side_panel" => TelemetryToolCategory::SidePanel,
         "initiative" => TelemetryToolCategory::Goal,
+        "todo" | "todowrite" | "todo_write" | "todoread" | "todo_read" => {
+            TelemetryToolCategory::Todo
+        }
         "mcp" => TelemetryToolCategory::Mcp,
         other if other.starts_with("mcp__") => TelemetryToolCategory::Mcp,
         _ => TelemetryToolCategory::Other,
@@ -451,6 +455,8 @@ pub struct SessionLifecycleEvent {
     pub feature_selfdev_used: bool,
     pub feature_background_used: bool,
     pub feature_subagent_used: bool,
+    #[serde(default)]
+    pub feature_todo_used: bool,
     pub unique_mcp_servers: u32,
     pub session_success: bool,
     pub abandoned_before_response: bool,
@@ -490,6 +496,16 @@ pub struct SessionLifecycleEvent {
     pub tool_cat_goal: u32,
     pub tool_cat_mcp: u32,
     pub tool_cat_other: u32,
+    #[serde(default)]
+    pub tool_cat_todo: u32,
+    #[serde(default)]
+    pub todo_gate_ownership_count: u32,
+    #[serde(default)]
+    pub todo_gate_hill_count: u32,
+    #[serde(default)]
+    pub todo_gate_completion_count: u32,
+    #[serde(default)]
+    pub todo_gate_spike_count: u32,
     pub command_login_used: bool,
     pub command_model_used: bool,
     pub command_usage_used: bool,
@@ -592,6 +608,8 @@ pub struct TurnEndEvent {
     pub feature_selfdev_used: bool,
     pub feature_background_used: bool,
     pub feature_subagent_used: bool,
+    #[serde(default)]
+    pub feature_todo_used: bool,
     pub unique_mcp_servers: u32,
     pub tool_cat_read_search: u32,
     pub tool_cat_write: u32,
@@ -605,6 +623,16 @@ pub struct TurnEndEvent {
     pub tool_cat_goal: u32,
     pub tool_cat_mcp: u32,
     pub tool_cat_other: u32,
+    #[serde(default)]
+    pub tool_cat_todo: u32,
+    #[serde(default)]
+    pub todo_gate_ownership_count: u32,
+    #[serde(default)]
+    pub todo_gate_hill_count: u32,
+    #[serde(default)]
+    pub todo_gate_completion_count: u32,
+    #[serde(default)]
+    pub todo_gate_spike_count: u32,
     pub workflow_chat_only: bool,
     pub workflow_coding_used: bool,
     pub workflow_research_used: bool,
@@ -701,6 +729,14 @@ mod telemetry_helper_tests {
         assert_eq!(
             classify_telemetry_tool_category("apply_patch"),
             TelemetryToolCategory::Write
+        );
+        assert_eq!(
+            classify_telemetry_tool_category("todo"),
+            TelemetryToolCategory::Todo
+        );
+        assert_eq!(
+            classify_telemetry_tool_category("todowrite"),
+            TelemetryToolCategory::Todo
         );
         assert_eq!(
             classify_telemetry_tool_category("mcp__github__issue"),

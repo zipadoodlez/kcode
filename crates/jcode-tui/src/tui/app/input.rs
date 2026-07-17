@@ -1286,9 +1286,13 @@ impl App {
                 && !self.todo_confidence_spike_challenged;
             if confidence_summary.completion_confidence_needs_validation || needs_spike_challenge {
                 let notice = if confidence_summary.completion_confidence_needs_validation {
+                    crate::telemetry::record_todo_gate(crate::telemetry::TodoGateKind::Completion);
                     "🛑 Todo completion gate: completion confidence needs stronger validation."
                 } else {
                     self.todo_confidence_spike_challenged = true;
+                    crate::telemetry::record_todo_gate(
+                        crate::telemetry::TodoGateKind::ConfidenceSpike,
+                    );
                     "🛑 Todo completion gate: abrupt confidence increase needs independent validation."
                 };
                 self.push_display_message(DisplayMessage::system(notice));

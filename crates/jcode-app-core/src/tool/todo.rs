@@ -464,6 +464,7 @@ impl Tool for TodoTool {
                 let stored_goals = load_goals(&ctx.session_id).unwrap_or_default();
                 let goals = merge_goals(&stored_goals, params.goals);
                 if !newly_completed_groups_have_sufficient_ownership(&previous, &todos, &goals) {
+                    crate::telemetry::record_todo_gate(crate::telemetry::TodoGateKind::Ownership);
                     return build_todo_output(
                         previous,
                         stored_goals,
@@ -472,6 +473,11 @@ impl Tool for TodoTool {
                     );
                 }
                 let nudges = take_reframe_nudges(&goals, &todos);
+                for _ in &nudges {
+                    crate::telemetry::record_todo_gate(
+                        crate::telemetry::TodoGateKind::HillClimbability,
+                    );
+                }
                 // Goal-only writes, especially hill-climbability quality-gate
                 // retries, should render the assessment fields that changed
                 // instead of repeating an otherwise identical todo plan.
