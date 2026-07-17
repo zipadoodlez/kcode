@@ -486,6 +486,6 @@ async-stream = "0.3"
 # ExternalAuthReviewCandidate read accessors) for the root crate's own cli test
 # target. Feature unification applies this only to test/bench/example builds,
 # never to a normal `cargo build`/release binary.
-jcode-tui = { path = "crates/jcode-tui", features = ["test-support"] }
+jcode-tui = { path = "crates/jcode-tui", default-features = false, features = ["test-support"] }
 
 [build-dependencies]

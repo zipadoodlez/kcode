@@ -232,6 +232,9 @@ if [[ "$SYNC_SOURCE" -eq 1 ]]; then
     echo ""
     echo "[1/3] Syncing source files..."
     remote_ssh "$(printf 'mkdir -p %q' "$REMOTE_DIR")"
+    # Multi-gigabyte local database dumps are gitignored operational data,
+    # not Cargo inputs. Uploading them made otherwise-small remote test
+    # requests spend minutes compressing and transferring irrelevant files.
     "$RSYNC_BIN" -avz --delete \
         -e "$RSYNC_SSH_COMMAND" \
         --exclude 'target/' \
@@ -242,6 +245,7 @@ if [[ "$SYNC_SOURCE" -eq 1 ]]; then
         --exclude '.jcode/' \
         --exclude '.tmp/' \
         --exclude '.wrangler/' \
+        --exclude 'telemetry-worker/backups/' \
         --exclude 'tmp/' \
         --exclude 'node_modules/' \
         --exclude 'assets/demos/' \

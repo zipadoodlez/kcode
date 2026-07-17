@@ -4,6 +4,12 @@ set -euo pipefail
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo_root"
 
+# `selfdev test` installs a shell-level `cargo` shim so raw `cargo test/check`
+# commands receive this wrapper's memory, linker, feature, and toolchain policy.
+# Exporting this recursion guard makes the final `cargo` invocation below bypass
+# that shim and resolve the real Cargo binary.
+export JCODE_IN_DEV_CARGO=1
+
 # shellcheck source=scripts/remote_config.sh
 source "$repo_root/scripts/remote_config.sh"
 jcode_load_remote_config
@@ -78,12 +84,6 @@ maybe_enable_sccache() {
       ;;
   esac
 
-  if [[ -n "${RUSTC_WRAPPER:-}" ]]; then
-    sccache_status="external:${RUSTC_WRAPPER}"
-    log "keeping existing RUSTC_WRAPPER=${RUSTC_WRAPPER}"
-    return
-  fi
-
   # sccache cannot cache incremental compilations, so for our default
   # incremental profiles it produces 0% hits while adding wrapper overhead and
   # misleading "enabled" status. Skip it for incremental builds unless the
@@ -98,6 +98,21 @@ maybe_enable_sccache() {
       ;;
     *) force_sccache="auto" ;;
   esac
+
+  if [[ -n "${RUSTC_WRAPPER:-}" ]]; then
+    if [[ "${RUSTC_WRAPPER}" == *sccache* ]] \
+      && [[ "$force_sccache" != "1" ]] \
+      && build_is_incremental "$@"; then
+      unset RUSTC_WRAPPER
+      sccache_status="removed-inherited-incremental"
+      log "removed inherited sccache wrapper for incremental build (it cannot cache incremental units)"
+      return
+    fi
+    sccache_status="external:${RUSTC_WRAPPER}"
+    log "keeping existing RUSTC_WRAPPER=${RUSTC_WRAPPER}"
+    return
+  fi
+
   if [[ "$force_sccache" != "1" ]] && build_is_incremental "$@"; then
     sccache_status="skipped-incremental"
     log "sccache skipped for incremental build (it cannot cache incremental units; set JCODE_SCCACHE=on to force, or use a non-incremental profile)"

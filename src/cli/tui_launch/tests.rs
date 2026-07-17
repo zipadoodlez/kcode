@@ -150,7 +150,7 @@ fn resumed_window_title_includes_server_name_when_registry_matches_socket() {
 
     assert_eq!(
         resumed_window_title("session_parrot_123"),
-        "🦜 jcode/blazing parrot"
+        "🦜 jcode/blazing Parrot"
     );
 }
 

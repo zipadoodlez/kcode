@@ -30,5 +30,5 @@ uuid = { version = "1", features = ["v4", "v5"] }
 
 [dev-dependencies]
 # The migrated anthropic tests use jcode-base's test-env sandbox.
-jcode-base = { path = "../jcode-base", features = ["test-support"] }
+jcode-base = { path = "../jcode-base", default-features = false, features = ["test-support"] }
 tempfile = "3"

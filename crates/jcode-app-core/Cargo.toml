@@ -128,7 +128,7 @@ async-stream = "0.3"
 # auth::test_sandbox, bus::reset_models_updated_publish_state_for_tests) for
 # *this* crate's own test target. Feature unification applies this only to
 # test/bench/example builds, not to a normal `cargo build`.
-jcode-base = { path = "../jcode-base", features = ["test-support"] }
+jcode-base = { path = "../jcode-base", default-features = false, features = ["test-support"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
