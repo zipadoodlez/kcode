@@ -425,6 +425,7 @@ impl App {
             cancel_requested: false,
             quit_pending: None,
             last_resize_redraw: None,
+            resize_redraw_pending: false,
             mcp_server_names: Vec::new(),
             connection_phase_started: None,
             stream_buffer: StreamBuffer::new(),
@@ -841,6 +842,7 @@ impl App {
             cancel_requested: false,
             quit_pending: None,
             last_resize_redraw: None,
+            resize_redraw_pending: false,
             mcp_server_names: Vec::new(), // Vec<(name, tool_count)>
             connection_phase_started: None,
             stream_buffer: StreamBuffer::new(),

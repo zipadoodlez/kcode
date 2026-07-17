@@ -2553,18 +2553,38 @@ impl App {
         self.force_full_repaint = true;
     }
 
-    pub(super) fn should_redraw_after_resize(&mut self) -> bool {
-        const RESIZE_REDRAW_MIN_INTERVAL: std::time::Duration =
-            std::time::Duration::from_millis(33);
+    const RESIZE_REDRAW_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(33);
 
+    fn commit_resize_redraw(&mut self, now: std::time::Instant) -> bool {
+        self.last_resize_redraw = Some(now);
+        self.resize_redraw_pending = false;
+        self.handle_diagram_geometry_change();
+        true
+    }
+
+    pub(super) fn should_redraw_after_resize(&mut self) -> bool {
         let now = std::time::Instant::now();
         match self.last_resize_redraw {
-            Some(last) if now.duration_since(last) < RESIZE_REDRAW_MIN_INTERVAL => false,
-            _ => {
-                self.last_resize_redraw = Some(now);
-                self.handle_diagram_geometry_change();
-                true
+            Some(last) if now.duration_since(last) < Self::RESIZE_REDRAW_MIN_INTERVAL => {
+                self.resize_redraw_pending = true;
+                false
             }
+            _ => self.commit_resize_redraw(now),
+        }
+    }
+
+    /// Flush the trailing edge of a debounced resize burst. Without this, the
+    /// last resize event can be suppressed after an intermediate frame, leaving
+    /// width/height-sensitive Mermaid placeholders and image state stale until
+    /// some unrelated UI event happens to redraw the terminal.
+    pub(super) fn flush_pending_resize_redraw(&mut self) -> bool {
+        if !self.resize_redraw_pending {
+            return false;
+        }
+        let now = std::time::Instant::now();
+        match self.last_resize_redraw {
+            Some(last) if now.duration_since(last) < Self::RESIZE_REDRAW_MIN_INTERVAL => false,
+            _ => self.commit_resize_redraw(now),
         }
     }
 

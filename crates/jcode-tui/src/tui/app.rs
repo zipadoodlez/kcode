@@ -892,6 +892,9 @@ pub struct App {
     quit_pending: Option<Instant>,
     // Debounce redraw storms while the terminal is being resized.
     last_resize_redraw: Option<Instant>,
+    // A throttled resize still needs one trailing geometry reset and repaint at
+    // the final terminal dimensions.
+    resize_redraw_pending: bool,
     // Cached MCP server names and tool counts (updated on connect/disconnect)
     mcp_server_names: Vec<(String, usize)>,
     // When the current connection phase (authenticating/connecting/waiting) began.

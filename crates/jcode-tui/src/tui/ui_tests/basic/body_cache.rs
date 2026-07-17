@@ -6,6 +6,7 @@ fn test_body_cache_state_keeps_multiple_width_entries() {
         messages_version: 1,
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
+        mermaid_aspect_bucket: None,
         pin_images: true,
         inline_images_visible: true,
         images_signature: (0, 0),
@@ -67,6 +68,35 @@ fn test_body_cache_state_keeps_multiple_width_entries() {
 }
 
 #[test]
+fn test_body_cache_state_does_not_reuse_a_different_mermaid_aspect_profile() {
+    let key = BodyCacheKey {
+        width: 80,
+        diff_mode: crate::config::DiffDisplayMode::Off,
+        messages_version: 1,
+        diagram_mode: crate::config::DiagramDisplayMode::None,
+        centered: false,
+        mermaid_aspect_bucket: Some(1500),
+        pin_images: true,
+        inline_images_visible: true,
+        images_signature: (0, 0),
+        expanded_images_version: 0,
+        swarm_members_signature: 0,
+    };
+    let resized_key = BodyCacheKey {
+        messages_version: 2,
+        mermaid_aspect_bucket: Some(2500),
+        ..key.clone()
+    };
+    let prepared = make_prepared_messages_with_content_bytes(128, "mermaid-profile-");
+
+    let mut cache = BodyCacheState::default();
+    cache.insert(key, prepared, 1, 0);
+
+    assert!(cache.get_exact(&resized_key).is_none());
+    assert!(cache.best_incremental_base(&resized_key, 2).is_none());
+}
+
+#[test]
 fn test_body_cache_state_evicts_oldest_entries() {
     let mut cache = BodyCacheState::default();
 
@@ -77,6 +107,7 @@ fn test_body_cache_state_evicts_oldest_entries() {
             messages_version: 1,
             diagram_mode: crate::config::DiagramDisplayMode::Pinned,
             centered: false,
+            mermaid_aspect_bucket: None,
             pin_images: true,
         inline_images_visible: true,
             images_signature: (0, 0),
@@ -117,6 +148,7 @@ fn test_body_cache_state_accepts_large_single_entry_within_total_budget() {
         messages_version: 99,
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
+        mermaid_aspect_bucket: None,
         pin_images: true,
         inline_images_visible: true,
         images_signature: (0, 0),
@@ -145,6 +177,7 @@ fn test_body_cache_state_retains_oversized_hot_entry() {
         messages_version: 120,
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
+        mermaid_aspect_bucket: None,
         pin_images: true,
         inline_images_visible: true,
         images_signature: (0, 0),
@@ -174,6 +207,7 @@ fn test_body_cache_state_keeps_two_oversized_width_entries_hot() {
         messages_version: 120,
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
+        mermaid_aspect_bucket: None,
         pin_images: true,
         inline_images_visible: true,
         images_signature: (0, 0),
@@ -210,6 +244,7 @@ fn test_body_cache_state_uses_oversized_hot_entry_as_incremental_base() {
         messages_version: 120,
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
+        mermaid_aspect_bucket: None,
         pin_images: true,
         inline_images_visible: true,
         images_signature: (0, 0),
@@ -446,6 +481,7 @@ fn test_full_prep_cache_state_keeps_multiple_width_entries() {
         messages_version: 1,
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
+        mermaid_aspect_bucket: None,
         is_processing: false,
         streaming_text_len: 0,
         streaming_text_hash: 0,
@@ -510,6 +546,37 @@ fn test_full_prep_cache_state_keeps_multiple_width_entries() {
 }
 
 #[test]
+fn test_full_prep_cache_state_does_not_reuse_a_different_mermaid_aspect_profile() {
+    let key = FullPrepCacheKey {
+        width: 80,
+        height: 30,
+        diff_mode: crate::config::DiffDisplayMode::Off,
+        messages_version: 1,
+        diagram_mode: crate::config::DiagramDisplayMode::None,
+        centered: false,
+        mermaid_aspect_bucket: Some(1500),
+        is_processing: false,
+        streaming_text_len: 0,
+        streaming_text_hash: 0,
+        batch_progress_hash: 0,
+        inline_images_signature: (0, 0),
+        inline_images_visible: true,
+        expanded_images_version: 0,
+        swarm_members_signature: 0,
+    };
+    let resized_key = FullPrepCacheKey {
+        mermaid_aspect_bucket: Some(2500),
+        ..key.clone()
+    };
+    let prepared = make_prepared_chat_frame_with_content_bytes(128, "mermaid-profile-");
+
+    let mut cache = FullPrepCacheState::default();
+    cache.insert(key, prepared);
+
+    assert!(cache.get_exact(&resized_key).is_none());
+}
+
+#[test]
 fn test_full_prep_cache_state_evicts_oldest_entries() {
     let mut cache = FullPrepCacheState::default();
 
@@ -521,6 +588,7 @@ fn test_full_prep_cache_state_evicts_oldest_entries() {
             messages_version: 1,
             diagram_mode: crate::config::DiagramDisplayMode::Pinned,
             centered: false,
+            mermaid_aspect_bucket: None,
             is_processing: false,
             streaming_text_len: 0,
             streaming_text_hash: 0,
@@ -565,6 +633,7 @@ fn test_full_prep_cache_state_accepts_large_single_entry_within_total_budget() {
         messages_version: 99,
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
+        mermaid_aspect_bucket: None,
         is_processing: false,
         streaming_text_len: 0,
         streaming_text_hash: 0,
@@ -596,6 +665,7 @@ fn test_full_prep_cache_state_retains_oversized_hot_entry() {
         messages_version: 120,
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
+        mermaid_aspect_bucket: None,
         is_processing: true,
         streaming_text_len: 4096,
         streaming_text_hash: 12345,
@@ -629,6 +699,7 @@ fn test_full_prep_cache_state_keeps_two_oversized_width_entries_hot() {
         messages_version: 120,
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
+        mermaid_aspect_bucket: None,
         is_processing: true,
         streaming_text_len: 4096,
         streaming_text_hash: 12345,

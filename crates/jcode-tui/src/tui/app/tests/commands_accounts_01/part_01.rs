@@ -206,9 +206,12 @@ fn test_resize_redraw_is_debounced() {
 
     assert!(app.should_redraw_after_resize());
     assert!(!app.should_redraw_after_resize());
+    assert!(app.resize_redraw_pending);
 
     app.last_resize_redraw = Some(Instant::now() - Duration::from_millis(40));
-    assert!(app.should_redraw_after_resize());
+    assert!(app.flush_pending_resize_redraw());
+    assert!(!app.resize_redraw_pending);
+    assert!(!app.flush_pending_resize_redraw());
 }
 
 #[test]

@@ -834,6 +834,10 @@ struct BodyCacheKey {
     messages_version: u64,
     diagram_mode: crate::config::DiagramDisplayMode,
     centered: bool,
+    /// Mermaid render geometry depends on the scoped transcript/pane aspect
+    /// profile as well as width. A vertical terminal resize can change this
+    /// bucket without changing `width`, so it must invalidate the prepared body.
+    mermaid_aspect_bucket: Option<u16>,
     /// Whether inline images render at all (Alt+M hides them).
     pin_images: bool,
     /// Whether inline images render expanded or as collapsed label stubs
@@ -922,6 +926,7 @@ impl BodyCacheState {
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.diagram_mode == key.diagram_mode
                     && entry.key.centered == key.centered
+                    && entry.key.mermaid_aspect_bucket == key.mermaid_aspect_bucket
                     // Anchored inline images render inside the body, and a
                     // late-arriving image may target an already-prepared
                     // message; only reuse bases built with the same image set.
@@ -942,6 +947,7 @@ impl BodyCacheState {
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.diagram_mode == key.diagram_mode
                     && entry.key.centered == key.centered
+                    && entry.key.mermaid_aspect_bucket == key.mermaid_aspect_bucket
                     // Anchored inline images render inside the body, and a
                     // late-arriving image may target an already-prepared
                     // message; only reuse bases built with the same image set.
@@ -981,6 +987,7 @@ impl BodyCacheState {
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.diagram_mode == key.diagram_mode
                     && entry.key.centered == key.centered
+                    && entry.key.mermaid_aspect_bucket == key.mermaid_aspect_bucket
                     // Anchored inline images render inside the body, and a
                     // late-arriving image may target an already-prepared
                     // message; only reuse bases built with the same image set.
@@ -1002,6 +1009,7 @@ impl BodyCacheState {
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.diagram_mode == key.diagram_mode
                     && entry.key.centered == key.centered
+                    && entry.key.mermaid_aspect_bucket == key.mermaid_aspect_bucket
                     // Anchored inline images render inside the body, and a
                     // late-arriving image may target an already-prepared
                     // message; only reuse bases built with the same image set.
@@ -1102,6 +1110,9 @@ struct FullPrepCacheKey {
     messages_version: u64,
     diagram_mode: crate::config::DiagramDisplayMode,
     centered: bool,
+    /// The scoped Mermaid profile can also change when pane geometry changes
+    /// while the transcript rectangle stays the same.
+    mermaid_aspect_bucket: Option<u16>,
     is_processing: bool,
     streaming_text_len: usize,
     streaming_text_hash: u64,

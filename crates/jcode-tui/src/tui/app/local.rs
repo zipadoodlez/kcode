@@ -62,6 +62,7 @@ pub(super) async fn process_turn_with_input(
 
 pub(super) fn handle_tick(app: &mut App) -> bool {
     let mut needs_redraw = crate::tui::periodic_redraw_required(app);
+    needs_redraw |= app.flush_pending_resize_redraw();
     app.maybe_capture_runtime_memory_heartbeat();
     app.maybe_release_idle_heap();
     // Surface the cold-cache transcript warning the moment the TTL expires
