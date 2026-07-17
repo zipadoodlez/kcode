@@ -6,13 +6,17 @@ struct EnvVarGuard {
 }
 
 impl EnvVarGuard {
+    fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
+        let previous = std::env::var_os(key);
+        jcode_base::env::set_var(key, value);
+        Self { key, previous }
+    }
+
     fn set_if_missing(key: &'static str, value: &str) -> Option<Self> {
         if std::env::var_os(key).is_some() {
             return None;
         }
-        let previous = std::env::var_os(key);
-        jcode_base::env::set_var(key, value);
-        Some(Self { key, previous })
+        Some(Self::set(key, value))
     }
 }
 
@@ -1563,6 +1567,68 @@ fn credential_mode_runtime_provider_identity_round_trips() {
         Some(value) => jcode_base::env::set_var("JCODE_RUNTIME_PROVIDER", value),
         None => jcode_base::env::remove_var("JCODE_RUNTIME_PROVIDER"),
     }
+}
+
+#[tokio::test]
+async fn auto_mode_falls_back_to_api_key_when_oauth_is_expired() {
+    let _guard = jcode_base::storage::lock_test_env();
+    let temp = tempfile::TempDir::new().unwrap();
+    let _home = EnvVarGuard::set("JCODE_HOME", temp.path());
+    let _api_key = EnvVarGuard::set("ANTHROPIC_API_KEY", "test-anthropic-api-key");
+    let _runtime = EnvVarGuard::set("JCODE_RUNTIME_PROVIDER", "auto");
+
+    jcode_base::auth::claude::upsert_account(jcode_base::auth::claude::AnthropicAccount {
+        label: "claude-1".to_string(),
+        access: "expired-oauth-access".to_string(),
+        refresh: String::new(),
+        expires: 0,
+        email: None,
+        subscription_type: Some("max".to_string()),
+        scopes: vec!["user:inference".to_string()],
+    })
+    .unwrap();
+
+    let provider = AnthropicProvider::new();
+    assert_eq!(
+        provider.credential_mode_snapshot(),
+        AnthropicCredentialMode::Auto
+    );
+
+    let (token, is_oauth) = provider.get_access_token().await.unwrap();
+    assert_eq!(token, "test-anthropic-api-key");
+    assert!(
+        !is_oauth,
+        "automatic fallback must use API-key request semantics"
+    );
+}
+
+#[tokio::test]
+async fn explicit_oauth_mode_does_not_silently_fall_back_to_api_key() {
+    let _guard = jcode_base::storage::lock_test_env();
+    let temp = tempfile::TempDir::new().unwrap();
+    let _home = EnvVarGuard::set("JCODE_HOME", temp.path());
+    let _api_key = EnvVarGuard::set("ANTHROPIC_API_KEY", "test-anthropic-api-key");
+    let _runtime = EnvVarGuard::set("JCODE_RUNTIME_PROVIDER", "claude");
+
+    jcode_base::auth::claude::upsert_account(jcode_base::auth::claude::AnthropicAccount {
+        label: "claude-1".to_string(),
+        access: "expired-oauth-access".to_string(),
+        refresh: String::new(),
+        expires: 0,
+        email: None,
+        subscription_type: Some("max".to_string()),
+        scopes: vec!["user:inference".to_string()],
+    })
+    .unwrap();
+
+    let provider = AnthropicProvider::new();
+    assert_eq!(
+        provider.credential_mode_snapshot(),
+        AnthropicCredentialMode::OAuth
+    );
+
+    let error = provider.get_access_token().await.unwrap_err().to_string();
+    assert!(error.contains("expired"), "unexpected error: {error}");
 }
 
 #[test]

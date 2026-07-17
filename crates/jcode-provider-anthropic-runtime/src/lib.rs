@@ -754,15 +754,25 @@ impl AnthropicProvider {
             return Ok((key, false)); // false = not OAuth
         }
 
-        // Auto mode prefers OAuth (Claude subscription) when credentials are
-        // available, falling back to the direct API key. This matches the
-        // OpenAI provider's OAuth-first Auto behavior and what most Claude
-        // Max/Pro users expect.
-        if matches!(mode, AnthropicCredentialMode::Auto)
-            && auth::claude::load_credentials().is_err()
-            && let Ok(key) = load_anthropic_api_key()
-        {
-            return Ok((key, false));
+        // Auto mode prefers OAuth (Claude subscription), but only while those
+        // credentials can actually produce a usable access token. A stale
+        // jcode OAuth account may still deserialize successfully even after its
+        // refresh token has been revoked. Treating that as "OAuth available"
+        // prevented the configured API key from ever being tried and made
+        // imported Claude Code sessions fail with a 401 on their first turn.
+        if matches!(mode, AnthropicCredentialMode::Auto) {
+            match self.get_oauth_access_token().await {
+                Ok(token) => return Ok(token),
+                Err(oauth_err) => match load_anthropic_api_key() {
+                    Ok(key) => {
+                        jcode_base::logging::warn(&format!(
+                            "Claude OAuth is unusable in automatic credential mode ({oauth_err:#}); falling back to the configured Anthropic API key"
+                        ));
+                        return Ok((key, false));
+                    }
+                    Err(_) => return Err(oauth_err),
+                },
+            }
         }
 
         self.get_oauth_access_token().await
@@ -825,12 +835,24 @@ impl AnthropicProvider {
                 }
                 Err(e) => {
                     jcode_base::logging::error(&format!("OAuth token refresh failed: {}", e));
-                    // Fall through to try the possibly-expired token
+                    // A still-unexpired token may remain usable until its
+                    // actual expiry even when a proactive refresh fails. Once
+                    // expired, however, returning it only guarantees a 401 and
+                    // prevents Auto mode from trying its API-key fallback.
+                    if fresh_creds.expires_at <= now {
+                        anyhow::bail!("Claude OAuth token is expired and refresh failed: {e:#}");
+                    }
                 }
             }
         }
 
-        // Cache and return the loaded credentials (even if expired, let the API reject it)
+        if fresh_creds.expires_at <= now {
+            anyhow::bail!(
+                "Claude OAuth token is expired and no usable refresh token is available. Run `jcode login --provider claude` to refresh OAuth credentials"
+            );
+        }
+
+        // Cache and return the still-usable loaded credentials.
         let mut cached = self.credentials.write().await;
         *cached = Some(CachedCredentials {
             access_token: fresh_creds.access_token.clone(),
