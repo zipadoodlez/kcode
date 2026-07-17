@@ -1208,6 +1208,80 @@ impl BackgroundTaskManager {
         }
     }
 
+    /// Abort every live in-process task before an exec-based server reload.
+    ///
+    /// `exec` replaces the process image without running destructors, so
+    /// without this the spawned task futures simply vanish: their
+    /// `kill_on_drop` children (e.g. cargo builds) are never killed and keep
+    /// running orphaned, and their status files stay `Running` until the next
+    /// process's reconcile sweep happens to notice. Aborting the handles here
+    /// drops the futures (killing children) and persisting a terminal
+    /// `Failed` status makes the interruption deterministic and immediately
+    /// visible to `bg wait`/`bg status` and self-dev queue reconciliation.
+    ///
+    /// Returns the number of tasks finalized.
+    pub async fn abort_live_tasks_for_reload(&self) -> usize {
+        let tasks: Vec<RunningTask> = {
+            let mut map = self.tasks.write().await;
+            map.drain().map(|(_, task)| task).collect()
+        };
+        let count = tasks.len();
+
+        for task in tasks {
+            task.handle.abort();
+            // Wait (bounded) for the aborted future to actually drop, so
+            // kill_on_drop children are killed before the upcoming exec.
+            let _ = tokio::time::timeout(Duration::from_secs(2), task.handle).await;
+
+            let (notify_flag, wake_flag) = *task.delivery_flags.borrow();
+            let prior_status = self.read_status_file(&task.status_path).await;
+            // If the task won the race and finished naturally, keep its real
+            // terminal status instead of stamping it as interrupted.
+            if prior_status
+                .as_ref()
+                .is_some_and(|status| status.status != BackgroundTaskStatus::Running)
+            {
+                continue;
+            }
+            let error = "Interrupted by server reload: the owning server process was replaced before the task finished".to_string();
+            let mut final_status = TaskStatusFile {
+                task_id: task.task_id,
+                tool_name: task.tool_name,
+                display_name: prior_status
+                    .as_ref()
+                    .and_then(|status| status.display_name.clone())
+                    .or(task.display_name),
+                session_id: task.session_id,
+                status: BackgroundTaskStatus::Failed,
+                exit_code: None,
+                error: Some(error.clone()),
+                started_at: task.started_at_rfc3339,
+                completed_at: Some(chrono::Utc::now().to_rfc3339()),
+                duration_secs: Some(task.started_at.elapsed().as_secs_f64()),
+                pid: None,
+                owner_pid: Some(std::process::id()),
+                owner_instance: Some(model::process_instance_token().to_string()),
+                detached: false,
+                notify: notify_flag,
+                wake: wake_flag,
+                progress: prior_status
+                    .as_ref()
+                    .and_then(|status| status.progress.clone()),
+                event_history: prior_status
+                    .map(|status| status.event_history)
+                    .unwrap_or_default(),
+            };
+            push_task_event(
+                &mut final_status,
+                terminal_event_record(BackgroundTaskStatus::Failed, None, Some(&error)),
+            );
+            self.write_status_file(&task.status_path, &final_status)
+                .await;
+        }
+
+        count
+    }
+
     /// Clean up old task files (older than specified hours)
     pub async fn cleanup(&self, max_age_hours: u64) -> Result<usize> {
         Ok(self

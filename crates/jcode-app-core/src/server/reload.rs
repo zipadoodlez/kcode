@@ -150,6 +150,28 @@ pub(super) async fn await_reload_signal(
             }),
         );
 
+        // Finalize in-process background tasks (selfdev builds/tests, bash
+        // tasks, run_plan drivers) before exec replaces this process image.
+        // exec runs no destructors, so without this the task futures vanish:
+        // kill_on_drop build children leak, and their status files read
+        // Running until the next process's orphan sweep. Aborting here kills
+        // the children and persists a deterministic Failed(interrupted by
+        // reload) status the agent sees immediately after reload.
+        let aborted = crate::background::global()
+            .abort_live_tasks_for_reload()
+            .await;
+        if aborted > 0 {
+            crate::logging::info(&format!(
+                "Server: finalized {} in-process background task(s) before reload exec",
+                aborted
+            ));
+        }
+        super::reload_trace::record_value(
+            &signal.request_id,
+            "background_tasks_finalized",
+            serde_json::json!({ "count": aborted }),
+        );
+
         let prefers_selfdev = signal.prefer_selfdev_binary;
 
         if let Some((binary, label)) = super::reload_exec_target(prefers_selfdev) {
