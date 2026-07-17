@@ -168,6 +168,9 @@ jobs:
     name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     needs: create-release
+    # Windows is an optional release platform. Build failures stay visible, but
+    # must not prevent successful Linux/macOS artifacts from becoming public.
+    continue-on-error: true
     # Windows x64 release smoke tests compile the e2e harness after the release
     # binary. GitHub-hosted Windows runners sometimes exceed 25 minutes, which
     # cancels otherwise healthy releases before artifacts can be uploaded.
@@ -290,6 +293,9 @@ jobs:
     name: Sign and publish Windows assets
     runs-on: windows-latest
     needs: [create-release, build-windows]
+    # Missing signing configuration or a signing outage suppresses Windows
+    # assets for this release without blocking Linux and macOS publication.
+    continue-on-error: true
     timeout-minutes: 30
     permissions:
       contents: write
@@ -472,6 +478,10 @@ jobs:
   release:
     name: Finalize release
     needs: [build-linux-macos, publish-windows, build-freebsd]
+    # Linux and macOS are the required release core. `always()` lets this job run
+    # after optional Windows/FreeBSD jobs fail, while the result check prevents a
+    # release when any required Linux/macOS matrix build failed.
+    if: ${{ always() && needs.build-linux-macos.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -483,6 +493,68 @@ jobs:
         with:
           path: artifacts
           pattern: jcode-*
+
+      - name: Validate required Linux and macOS assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            artifacts/jcode-linux-x86_64/jcode-linux-x86_64.tar.gz
+            artifacts/jcode-linux-aarch64/jcode-linux-aarch64.tar.gz
+            artifacts/jcode-macos-aarch64/jcode-macos-aarch64.tar.gz
+            artifacts/jcode-macos-x86_64/jcode-macos-x86_64.tar.gz
+          )
+          for asset in "${required[@]}"; do
+            if [ ! -f "$asset" ]; then
+              echo "Required release asset is missing: $asset" >&2
+              exit 1
+            fi
+          done
+
+      # Build jobs normally attach their own assets to the draft. Upload them
+      # again here so a late per-platform upload failure cannot leave a built
+      # artifact out of the public release.
+      - name: Attach all completed platform assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -d '' assets < <(
+            find artifacts -type f \( -name '*.tar.gz' -o -name '*.exe' \) -print0
+          )
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "No completed release assets found" >&2
+            exit 1
+          fi
+          gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" --clobber
+
+      - name: Record platform availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          windows_available=false
+          freebsd_available=false
+
+          if [ -f artifacts/jcode-windows-x86_64/jcode-windows-x86_64.exe ] && \
+             [ -f artifacts/jcode-windows-x86_64/jcode-windows-x86_64.tar.gz ] && \
+             [ -f artifacts/jcode-windows-aarch64/jcode-windows-aarch64.exe ] && \
+             [ -f artifacts/jcode-windows-aarch64/jcode-windows-aarch64.tar.gz ]; then
+            windows_available=true
+          fi
+          if [ -f artifacts/jcode-freebsd-x86_64/jcode-freebsd-x86_64.tar.gz ]; then
+            freebsd_available=true
+          fi
+
+          echo "WINDOWS_AVAILABLE=$windows_available" >> "$GITHUB_ENV"
+          echo "FREEBSD_AVAILABLE=$freebsd_available" >> "$GITHUB_ENV"
+          {
+            echo "## Platform availability"
+            echo "- Linux: available"
+            echo "- macOS: available"
+            echo "- Windows: $windows_available"
+            echo "- FreeBSD: $freebsd_available"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Generate checksums
         shell: bash
@@ -512,6 +584,47 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${GITHUB_REF_NAME}" SHA256SUMS --clobber
+
+      - name: Add platform availability to release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view "${GITHUB_REF_NAME}" --json body --jq .body > release_notes.md
+          python3 - << 'PY'
+          import os
+          import re
+          import textwrap
+          from pathlib import Path
+
+          path = Path("release_notes.md")
+          body = path.read_text(encoding="utf-8")
+          start = "<!-- jcode-platform-availability:start -->"
+          end = "<!-- jcode-platform-availability:end -->"
+          body = re.sub(
+              rf"\n?{re.escape(start)}.*?{re.escape(end)}\n?",
+              "\n",
+              body,
+              flags=re.DOTALL,
+          ).rstrip()
+
+          def status(name: str) -> str:
+              return "available" if os.environ[name] == "true" else "not available in this release"
+
+          availability = textwrap.dedent(f"""
+              {start}
+              ## Platform availability
+
+              - Linux: available
+              - macOS: available
+              - Windows: {status('WINDOWS_AVAILABLE')}
+              - FreeBSD: {status('FREEBSD_AVAILABLE')}
+              {end}
+          """).strip("\n")
+          path.write_text(f"{body}\n\n{availability}\n", encoding="utf-8")
+          PY
+          gh release edit "${GITHUB_REF_NAME}" --notes-file release_notes.md
 
       - name: Publish completed release
         env:

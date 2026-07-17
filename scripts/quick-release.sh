@@ -342,6 +342,6 @@ gh release upload "$VERSION" \
 echo ""
 echo "=== Staged $VERSION in $(elapsed)s ==="
 echo "  ✅ Linux + macOS: attached to draft"
-echo "  ⏳ CI: building, signing, and publishing the complete release"
+echo "  ⏳ CI: building optional platforms, checksums, and publishing"
 echo ""
-echo "The release becomes visible after all required platform gates pass."
+echo "The release becomes visible after the required Linux/macOS gates pass."

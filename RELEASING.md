@@ -18,7 +18,7 @@ scripts/quick-release.sh --dry-run v0.5.5       # Build only, don't publish
 2. Verifies both binaries (ELF and Mach-O checks)
 3. Creates a git tag and pushes it (this also triggers CI for the Windows build and signing job)
 4. Uploads both binaries to a draft GitHub Release
-5. CI signs and verifies Windows, generates checksums, and publishes every platform atomically
+5. CI publishes after the required Linux/macOS builds pass; signed Windows and FreeBSD assets are included when available
 
 ### Prerequisites
 
@@ -36,8 +36,8 @@ Already set up on the dev laptop (xps13):
 ~90s   Linux build finishes
 ~150s  macOS build finishes
 ~153s  Linux + macOS binaries attached to the draft release
-~16m   CI finishes all required builds, signing, and checksums
-         ✅ Complete release becomes public for every platform
+~16m   CI finishes platform jobs and checksums
+         ✅ Linux + macOS become public; optional successful platforms join them
 ```
 
 ## CI Release (automated, ~11 min Linux+macOS, ~16 min Windows)
@@ -65,16 +65,20 @@ Tag push (v*)
     │     ├─► Verify Authenticode signatures
     │     └─► Package and upload final Windows assets
     │
-    └─► release (after all platform assets complete)
+    └─► release (after platform jobs finish)
+          ├─► Require Linux x86_64/aarch64 + macOS x86_64/aarch64
+          ├─► Include Windows + FreeBSD when their jobs succeed
           ├─► Generate and upload SHA256SUMS
-          ├─► Publish the complete release atomically
+          ├─► Publish the available release assets
           ├─► Update Homebrew formula (1jehuang/homebrew-jcode)
           └─► Update AUR package (jcode-bin)
 ```
 
 Key design decisions:
-- **All platform assets remain on a draft until the complete release passes.** Users never see a partial release or a checksum file that omits a late platform.
-- **Windows executables must be signed before public upload.** Signing is required by default. `WINDOWS_SIGNING_REQUIRED=false` is an explicit emergency override and is not suitable for an official Windows release.
+- **Linux and macOS are the required release core.** Their four architecture assets must all pass before publication.
+- **Windows and FreeBSD are optional release platforms.** Failures remain visible in CI and are called out in the release notes, but do not hold back Linux/macOS users.
+- **Windows executables must be signed before public upload.** Signing is required for Windows assets. `WINDOWS_SIGNING_REQUIRED=false` remains an explicit emergency override and is not suitable for an official Windows build.
+- **Checksums describe exactly the assets published in that release.** Late or failed optional platforms are omitted instead of blocking unrelated platforms.
 - **Shallow clones** (`fetch-depth: 1`) to minimize checkout time.
 - **`CARGO_INCREMENTAL=0`** for CI (incremental adds overhead on clean CI builds).
 - **sccache + rust-cache** for dependency caching across runs.
@@ -87,7 +91,7 @@ CI handles Homebrew and AUR updates automatically:
 - **Homebrew**: Updates `Formula/jcode.rb` in `1jehuang/homebrew-jcode` with new SHA256 hashes
 - **AUR**: Updates `PKGBUILD` and `.SRCINFO` in the `jcode-bin` AUR repo
 
-Both are triggered by the final `release` job after all platform builds complete.
+Both are triggered by the final `release` job after the required Linux/macOS builds complete and optional platform jobs reach a terminal state.
 
 ### Windows signing prerequisites
 
@@ -103,11 +107,11 @@ Before announcing Defender or SmartScreen remediation, download both Windows exe
 
 | Scenario | Method | Time to Linux+macOS | Time to Windows |
 |----------|--------|-------------------|-----------------|
-| Hotfix / urgent bug | `scripts/quick-release.sh` | ~16 min (atomic CI publish) | ~16 min |
+| Hotfix / urgent bug | `scripts/quick-release.sh` | ~16 min | ~16 min when Windows succeeds |
 | Regular release | Push `v*` tag | ~11 min | ~16 min |
 | Need Homebrew/AUR | Push `v*` tag | ~11 min | ~16 min |
 
-The quick-release script reduces local build latency, but it deliberately leaves the release as a draft. The tag-triggered workflow publishes it only after the required platform, signing, and checksum gates pass, then updates Homebrew and AUR.
+The quick-release script reduces local build latency, but it deliberately leaves the release as a draft. The tag-triggered workflow publishes it after the required Linux/macOS and checksum gates pass. Windows and FreeBSD are attached only when their platform-specific gates succeed, then Homebrew and AUR are updated.
 
 ## Cross-Compilation Setup
 
