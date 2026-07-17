@@ -33,8 +33,8 @@ jobs:
       - name: Generate release notes
         run: scripts/generate_release_notes.sh "${GITHUB_REF_NAME}" > release_notes.md
 
-      # Stage all platform assets on a draft. The final job publishes the
-      # release only after every required build, signature, and checksum passes.
+      # Stage platform assets on a draft. The final job publishes every
+      # successfully completed asset and records unavailable platforms.
       - name: Create draft release if missing
         shell: bash
         env:
@@ -58,6 +58,9 @@ jobs:
     name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     needs: create-release
+    # Each matrix architecture is independent. A failed Linux or macOS target
+    # must not suppress assets produced by the other successful targets.
+    continue-on-error: true
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -477,11 +480,10 @@ jobs:
 
   release:
     name: Finalize release
-    needs: [build-linux-macos, publish-windows, build-freebsd]
-    # Linux and macOS are the required release core. `always()` lets this job run
-    # after optional Windows/FreeBSD jobs fail, while the result check prevents a
-    # release when any required Linux/macOS matrix build failed.
-    if: ${{ always() && needs.build-linux-macos.result == 'success' }}
+    needs: [create-release, build-linux-macos, publish-windows, build-freebsd]
+    # Every platform is independent. Wait until all jobs reach a terminal state,
+    # then publish whichever assets succeeded. Only draft creation is mandatory.
+    if: ${{ always() && needs.create-release.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -490,26 +492,22 @@ jobs:
           fetch-depth: 1
 
       - uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           path: artifacts
           pattern: jcode-*
 
-      - name: Validate required Linux and macOS assets
+      - name: Validate at least one completed platform asset
         shell: bash
         run: |
           set -euo pipefail
-          required=(
-            artifacts/jcode-linux-x86_64/jcode-linux-x86_64.tar.gz
-            artifacts/jcode-linux-aarch64/jcode-linux-aarch64.tar.gz
-            artifacts/jcode-macos-aarch64/jcode-macos-aarch64.tar.gz
-            artifacts/jcode-macos-x86_64/jcode-macos-x86_64.tar.gz
+          mapfile -d '' assets < <(
+            find artifacts -type f \( -name '*.tar.gz' -o -name '*.exe' \) -print0 2>/dev/null
           )
-          for asset in "${required[@]}"; do
-            if [ ! -f "$asset" ]; then
-              echo "Required release asset is missing: $asset" >&2
-              exit 1
-            fi
-          done
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "No platform produced a releasable asset; keeping the release as a draft" >&2
+            exit 1
+          fi
 
       # Build jobs normally attach their own assets to the draft. Upload them
       # again here so a late per-platform upload failure cannot leave a built
@@ -533,27 +531,48 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          windows_available=false
-          freebsd_available=false
+          available() {
+            if [ -f "$1" ]; then printf true; else printf false; fi
+          }
 
-          if [ -f artifacts/jcode-windows-x86_64/jcode-windows-x86_64.exe ] && \
-             [ -f artifacts/jcode-windows-x86_64/jcode-windows-x86_64.tar.gz ] && \
-             [ -f artifacts/jcode-windows-aarch64/jcode-windows-aarch64.exe ] && \
-             [ -f artifacts/jcode-windows-aarch64/jcode-windows-aarch64.tar.gz ]; then
-            windows_available=true
+          linux_x86_64=$(available artifacts/jcode-linux-x86_64/jcode-linux-x86_64.tar.gz)
+          linux_aarch64=$(available artifacts/jcode-linux-aarch64/jcode-linux-aarch64.tar.gz)
+          macos_aarch64=$(available artifacts/jcode-macos-aarch64/jcode-macos-aarch64.tar.gz)
+          macos_x86_64=$(available artifacts/jcode-macos-x86_64/jcode-macos-x86_64.tar.gz)
+          windows_x86_64=$(available artifacts/jcode-windows-x86_64/jcode-windows-x86_64.exe)
+          windows_aarch64=$(available artifacts/jcode-windows-aarch64/jcode-windows-aarch64.exe)
+          freebsd_x86_64=$(available artifacts/jcode-freebsd-x86_64/jcode-freebsd-x86_64.tar.gz)
+
+          homebrew_ready=false
+          aur_ready=false
+          if [ "$linux_x86_64" = true ] && [ "$linux_aarch64" = true ] && \
+             [ "$macos_aarch64" = true ] && [ "$macos_x86_64" = true ]; then
+            homebrew_ready=true
           fi
-          if [ -f artifacts/jcode-freebsd-x86_64/jcode-freebsd-x86_64.tar.gz ]; then
-            freebsd_available=true
+          if [ "$linux_x86_64" = true ]; then
+            aur_ready=true
           fi
 
-          echo "WINDOWS_AVAILABLE=$windows_available" >> "$GITHUB_ENV"
-          echo "FREEBSD_AVAILABLE=$freebsd_available" >> "$GITHUB_ENV"
+          {
+            echo "LINUX_X86_64_AVAILABLE=$linux_x86_64"
+            echo "LINUX_AARCH64_AVAILABLE=$linux_aarch64"
+            echo "MACOS_AARCH64_AVAILABLE=$macos_aarch64"
+            echo "MACOS_X86_64_AVAILABLE=$macos_x86_64"
+            echo "WINDOWS_X86_64_AVAILABLE=$windows_x86_64"
+            echo "WINDOWS_AARCH64_AVAILABLE=$windows_aarch64"
+            echo "FREEBSD_X86_64_AVAILABLE=$freebsd_x86_64"
+            echo "HOMEBREW_READY=$homebrew_ready"
+            echo "AUR_READY=$aur_ready"
+          } >> "$GITHUB_ENV"
           {
             echo "## Platform availability"
-            echo "- Linux: available"
-            echo "- macOS: available"
-            echo "- Windows: $windows_available"
-            echo "- FreeBSD: $freebsd_available"
+            echo "- Linux x86_64: $linux_x86_64"
+            echo "- Linux aarch64: $linux_aarch64"
+            echo "- macOS Apple Silicon: $macos_aarch64"
+            echo "- macOS Intel: $macos_x86_64"
+            echo "- Windows x86_64: $windows_x86_64"
+            echo "- Windows ARM64: $windows_aarch64"
+            echo "- FreeBSD x86_64: $freebsd_x86_64"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Generate checksums
@@ -616,10 +635,13 @@ jobs:
               {start}
               ## Platform availability
 
-              - Linux: available
-              - macOS: available
-              - Windows: {status('WINDOWS_AVAILABLE')}
-              - FreeBSD: {status('FREEBSD_AVAILABLE')}
+              - Linux x86_64: {status('LINUX_X86_64_AVAILABLE')}
+              - Linux aarch64: {status('LINUX_AARCH64_AVAILABLE')}
+              - macOS Apple Silicon: {status('MACOS_AARCH64_AVAILABLE')}
+              - macOS Intel: {status('MACOS_X86_64_AVAILABLE')}
+              - Windows x86_64: {status('WINDOWS_X86_64_AVAILABLE')}
+              - Windows ARM64: {status('WINDOWS_AARCH64_AVAILABLE')}
+              - FreeBSD x86_64: {status('FREEBSD_X86_64_AVAILABLE')}
               {end}
           """).strip("\n")
           path.write_text(f"{body}\n\n{availability}\n", encoding="utf-8")
@@ -640,7 +662,7 @@ jobs:
       - name: Update Homebrew formula
         env:
           HOMEBREW_DEPLOY_KEY: ${{ secrets.HOMEBREW_DEPLOY_KEY }}
-        if: env.HOMEBREW_DEPLOY_KEY != ''
+        if: env.HOMEBREW_DEPLOY_KEY != '' && env.HOMEBREW_READY == 'true'
         run: |
           VERSION="${GITHUB_REF_NAME}"
           VERSION_NUM="${VERSION#v}"
@@ -727,7 +749,7 @@ jobs:
       - name: Update AUR package
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
-        if: env.AUR_SSH_KEY != ''
+        if: env.AUR_SSH_KEY != '' && env.AUR_READY == 'true'
         run: |
           set -euo pipefail
 

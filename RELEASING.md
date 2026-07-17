@@ -18,7 +18,7 @@ scripts/quick-release.sh --dry-run v0.5.5       # Build only, don't publish
 2. Verifies both binaries (ELF and Mach-O checks)
 3. Creates a git tag and pushes it (this also triggers CI for the Windows build and signing job)
 4. Uploads both binaries to a draft GitHub Release
-5. CI publishes after the required Linux/macOS builds pass; signed Windows and FreeBSD assets are included when available
+5. CI publishes every successfully built platform independently and lists unavailable targets in the release notes
 
 ### Prerequisites
 
@@ -37,7 +37,7 @@ Already set up on the dev laptop (xps13):
 ~150s  macOS build finishes
 ~153s  Linux + macOS binaries attached to the draft release
 ~16m   CI finishes platform jobs and checksums
-         ✅ Linux + macOS become public; optional successful platforms join them
+         ✅ Every successful platform becomes public independently
 ```
 
 ## CI Release (automated, ~11 min Linux+macOS, ~16 min Windows)
@@ -66,8 +66,8 @@ Tag push (v*)
     │     └─► Package and upload final Windows assets
     │
     └─► release (after platform jobs finish)
-          ├─► Require Linux x86_64/aarch64 + macOS x86_64/aarch64
-          ├─► Include Windows + FreeBSD when their jobs succeed
+          ├─► Collect every successful architecture independently
+          ├─► Keep failed architectures unavailable without blocking others
           ├─► Generate and upload SHA256SUMS
           ├─► Publish the available release assets
           ├─► Update Homebrew formula (1jehuang/homebrew-jcode)
@@ -75,8 +75,8 @@ Tag push (v*)
 ```
 
 Key design decisions:
-- **Linux and macOS are the required release core.** Their four architecture assets must all pass before publication.
-- **Windows and FreeBSD are optional release platforms.** Failures remain visible in CI and are called out in the release notes, but do not hold back Linux/macOS users.
+- **Every platform and architecture is independent.** A failure remains visible in CI and release notes but cannot suppress another target's successful asset.
+- **At least one platform asset must succeed.** If every build fails, the release remains a draft.
 - **Windows executables must be signed before public upload.** Signing is required for Windows assets. `WINDOWS_SIGNING_REQUIRED=false` remains an explicit emergency override and is not suitable for an official Windows build.
 - **Checksums describe exactly the assets published in that release.** Late or failed optional platforms are omitted instead of blocking unrelated platforms.
 - **Shallow clones** (`fetch-depth: 1`) to minimize checkout time.
@@ -91,7 +91,7 @@ CI handles Homebrew and AUR updates automatically:
 - **Homebrew**: Updates `Formula/jcode.rb` in `1jehuang/homebrew-jcode` with new SHA256 hashes
 - **AUR**: Updates `PKGBUILD` and `.SRCINFO` in the `jcode-bin` AUR repo
 
-Both are triggered by the final `release` job after the required Linux/macOS builds complete and optional platform jobs reach a terminal state.
+Both are triggered conditionally by the final `release` job. Homebrew updates only when all four Linux/macOS formula assets exist; AUR updates whenever Linux x86_64 exists.
 
 ### Windows signing prerequisites
 
@@ -111,7 +111,7 @@ Before announcing Defender or SmartScreen remediation, download both Windows exe
 | Regular release | Push `v*` tag | ~11 min | ~16 min |
 | Need Homebrew/AUR | Push `v*` tag | ~11 min | ~16 min |
 
-The quick-release script reduces local build latency, but it deliberately leaves the release as a draft. The tag-triggered workflow publishes it after the required Linux/macOS and checksum gates pass. Windows and FreeBSD are attached only when their platform-specific gates succeed, then Homebrew and AUR are updated.
+The quick-release script reduces local build latency, but it deliberately leaves the release as a draft. The tag-triggered workflow publishes every successful architecture after checksum generation. Package managers update only when their own required assets exist.
 
 ## Cross-Compilation Setup
 
