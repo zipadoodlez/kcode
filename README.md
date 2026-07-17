@@ -808,6 +808,11 @@ against the release's `SHA256SUMS`. Alacritty and the optional global launch
 hotkey require explicit consent and are not installed by default. See
 [Windows support, security, Defender, and SmartScreen notes](docs/WINDOWS.md).
 
+If a release does not contain a matching Windows asset, the installer stops
+instead of unexpectedly starting a long compilation. An explicit source build
+is available with `-BuildFromSource` and requires Git, Rust, and Visual Studio
+2022 Build Tools with the **Desktop development with C++** workload.
+
 ### macOS via Homebrew
 
 ```bash

@@ -424,6 +424,33 @@ fn test_chat_mouse_scroll_requests_immediate_redraw_during_streaming() {
 }
 
 #[test]
+fn test_chat_mouse_wheel_scroll_does_not_recall_prompt_history() {
+    let _lock = scroll_render_test_lock();
+
+    let (mut app, mut terminal) = create_scroll_test_app(50, 12, 0, 36);
+    render_and_snap(&app, &mut terminal);
+    assert!(app.input.is_empty());
+    assert!(
+        crate::tui::ui::last_max_scroll() > 2,
+        "expected scrollable chat content"
+    );
+
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::ScrollUp,
+        column: 10,
+        row: 5,
+        modifiers: KeyModifiers::empty(),
+    });
+
+    assert!(
+        app.input.is_empty(),
+        "mouse-wheel scrolling must not copy the previous prompt into the editor"
+    );
+    assert!(app.auto_scroll_paused, "wheel-up should pause auto-scroll");
+    assert_ne!(app.scroll_offset, 0, "wheel-up should move the transcript");
+}
+
+#[test]
 fn test_chat_mouse_scroll_down_reaches_bottom_without_dead_zone() {
     let _lock = scroll_render_test_lock();
 

@@ -2361,6 +2361,12 @@ impl App {
         let mut modifiers = modifiers;
         ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers);
 
+        // Alt+5 always starts the onboarding simulator from a pristine first
+        // screen, even when another modal or a previous sim screen is active.
+        if self.handle_onboarding_sim_reset_shortcut(code, modifiers) {
+            return Ok(());
+        }
+
         // The onboarding simulator owns all key handling while active so the
         // real onboarding handlers and simulated modal overlays never fire (no
         // real logins/imports or action selection).

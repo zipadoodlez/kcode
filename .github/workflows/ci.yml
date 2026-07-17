@@ -294,6 +294,19 @@ jobs:
               -CargoArgs @('test', '--locked', '--target', 'x86_64-pc-windows-msvc', '--lib', $testName, '--', '--nocapture')
           }
 
+      - name: Run Windows hotkey and power tests
+        shell: pwsh
+        run: |
+          & ./scripts/invoke_cargo_with_timeout.ps1 `
+            -Name 'Windows setup-hints tests' `
+            -TimeoutSeconds 300 `
+            -CargoArgs @('test', '--locked', '--target', 'x86_64-pc-windows-msvc', '-p', 'jcode-setup-hints', '--lib', '--', '--nocapture')
+
+          & ./scripts/invoke_cargo_with_timeout.ps1 `
+            -Name 'Windows power-inhibit tests' `
+            -TimeoutSeconds 900 `
+            -CargoArgs @('test', '--locked', '--target', 'x86_64-pc-windows-msvc', '-p', 'jcode-base', '--no-default-features', '--lib', 'power_inhibit::tests::windows_', '--', '--nocapture')
+
       - name: Run Windows e2e smoke tests
         shell: pwsh
         run: |
@@ -342,6 +355,12 @@ jobs:
             throw 'Built Windows binary failed to run --version'
           }
 
+      - name: Run Windows installer lifecycle tests
+        shell: pwsh
+        run: |
+          & ./scripts/test_windows_launcher_install.ps1
+          & ./scripts/test_windows_setup_evaluation.ps1
+
       - name: Verify installer using local artifact
         shell: pwsh
         run: |
@@ -350,7 +369,9 @@ jobs:
             throw 'Could not determine Cargo.toml version'
           }
 
-          $version = 'v' + $cargoVersion.Matches[0].Groups[1].Value
+          # CI builds are development builds. Build metadata independently derives
+          # this identity from the root package version and appends `-dev`.
+          $version = 'v' + $cargoVersion.Matches[0].Groups[1].Value + '-dev'
           & ./.github/scripts/verify_windows_install.ps1 `
             -ArtifactExePath 'target/x86_64-pc-windows-msvc/release/jcode.exe' `
             -Version $version

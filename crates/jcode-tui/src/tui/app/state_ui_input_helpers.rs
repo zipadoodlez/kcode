@@ -154,7 +154,7 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     ),
     RegisteredCommand::public(
         "/onboarding-sim",
-        "Walk through every first-run onboarding screen (Cmd+5)",
+        "Walk through every first-run onboarding screen (Alt+5 reset, Cmd+5 toggle)",
     ),
     RegisteredCommand::public("/reload", "Reload into newest available binary"),
     RegisteredCommand::public("/restart", "Restart with current binary"),

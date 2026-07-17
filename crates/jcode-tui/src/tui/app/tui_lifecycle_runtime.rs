@@ -521,13 +521,13 @@ pub(super) fn handle_dev_command(app: &mut App, trimmed: &str) -> bool {
                     "off"
                 };
                 app.push_display_message(DisplayMessage::system(format!(
-                    "Onboarding simulator is {status}. Toggle with Cmd+5, or `/onboarding-sim on` / `off`. While active: Tab/→ next screen, Shift+Tab/← previous, h/l preview the highlight, Esc exits."
+                    "Onboarding simulator is {status}. Alt+5 resets and opens it; Cmd+5 toggles it; `/onboarding-sim on` / `off` also work. While active: Tab/→ next screen, Shift+Tab/← previous, h/l preview the highlight, Esc exits."
                 )));
             }
             "" | "on" => {
                 app.start_onboarding_simulator();
                 app.push_display_message(DisplayMessage::system(
-                    "Onboarding simulator started. Step screens with Tab/→ (or Cmd+5 to toggle). On the import screen Up/Down move the checkbox cursor; h/l preview the highlight; Esc exits. Nothing real is logged in or imported.".to_string(),
+                    "Onboarding simulator started. Step screens with Tab/→, press Alt+5 to reset to the first screen, or Cmd+5 to toggle. On the import screen Up/Down move the checkbox cursor; h/l preview the highlight; Esc exits. Nothing real is logged in or imported.".to_string(),
                 ));
             }
             "off" => {
@@ -543,7 +543,7 @@ pub(super) fn handle_dev_command(app: &mut App, trimmed: &str) -> bool {
 
     if trimmed.starts_with("/onboarding-sim ") {
         app.push_display_message(DisplayMessage::system(
-            "Usage: `/onboarding-sim`, `/onboarding-sim on`, `/onboarding-sim off`, or `/onboarding-sim status`. (Cmd+5 toggles it.)".to_string(),
+            "Usage: `/onboarding-sim`, `/onboarding-sim on`, `/onboarding-sim off`, or `/onboarding-sim status`. (Alt+5 resets and opens it; Cmd+5 toggles it.)".to_string(),
         ));
         return true;
     }

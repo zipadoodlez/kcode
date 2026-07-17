@@ -1721,9 +1721,10 @@ impl Server {
     /// all of them. We poll the swarm-member map (the authoritative "running"
     /// signal that also drives Waybar's "N streaming" indicator) on a short
     /// interval and reconcile a best-effort OS power inhibitor against it. The
-    /// inhibitor only blocks system suspend / lid sleep; the display can still
-    /// turn off. When no session is running the helper is killed so normal power
-    /// management resumes immediately.
+    /// inhibitor blocks automatic system sleep; Linux also blocks lid-switch
+    /// handling. Windows still honors explicit lid/power-button actions from the
+    /// active power plan. The display can turn off. When no session is running,
+    /// the guard is released so normal power management resumes immediately.
     fn spawn_power_inhibitor(swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>) {
         // Reconcile interval. Short enough that the inhibitor engages promptly
         // when a turn starts and releases promptly when work finishes, but cheap

@@ -2,9 +2,9 @@
 //!
 //! A developer aid for reviewing the first-run onboarding experience without
 //! resetting real auth state or installing anything. Pressing the simulator
-//! hotkey (Cmd+5) or running `/onboarding-sim` seeds the onboarding flow with
-//! synthetic, fixture-backed phases and lets you step through every screen the
-//! way a brand-new user would see them.
+//! hotkey (Alt+5 resets and opens; Cmd+5 toggles) or running `/onboarding-sim`
+//! seeds the onboarding flow with synthetic, fixture-backed phases and lets you
+//! step through every screen the way a brand-new user would see them.
 //!
 //! Unlike the real flow, the simulator:
 //!   - never starts a real login, import, or suggested review,
@@ -33,6 +33,20 @@ impl App {
         self.onboarding_sim.is_some()
     }
 
+    /// Alt+5 is the cross-platform "start over" shortcut. Require exactly Alt so
+    /// Windows AltGr chords (reported as Ctrl+Alt) never trigger the simulator.
+    pub(super) fn handle_onboarding_sim_reset_shortcut(
+        &mut self,
+        code: KeyCode,
+        modifiers: KeyModifiers,
+    ) -> bool {
+        if code != KeyCode::Char('5') || modifiers != KeyModifiers::ALT {
+            return false;
+        }
+        self.start_onboarding_simulator();
+        true
+    }
+
     /// Toggle the onboarding simulator on/off (the Cmd+5 hotkey entry point).
     pub(super) fn toggle_onboarding_simulator(&mut self) {
         if self.onboarding_sim.is_some() {
@@ -49,6 +63,40 @@ impl App {
             self.set_status_notice("Onboarding flow already active; can't start the simulator now");
             return;
         }
+
+        // Re-entering the simulator must behave like a pristine first launch,
+        // even if the previous simulated screen or an interrupted live attempt
+        // left transient progress/error state behind. This only clears
+        // onboarding-owned state; the real session transcript, input, auth, and
+        // configuration remain untouched.
+        self.onboarding_import_in_progress = None;
+        self.onboarding_import_error = None;
+        self.onboarding_import_failed_provider = None;
+        self.onboarding_pending_model_validation = None;
+        self.onboarding_auto_model_selection_active
+            .store(false, std::sync::atomic::Ordering::Release);
+
+        // The shortcut is intentionally routed ahead of modal handlers. Clear
+        // transient overlays too, otherwise a help/picker/copy modal could stay
+        // painted above the freshly-reset onboarding card and make Alt+5 appear
+        // to do nothing.
+        self.changelog_scroll = None;
+        self.help_scroll = None;
+        self.model_status_scroll = None;
+        self.session_picker_overlay = None;
+        self.session_picker_mode = SessionPickerMode::Resume;
+        self.pending_session_picker_load = None;
+        self.login_picker_overlay = None;
+        self.account_picker_overlay = None;
+        self.usage_overlay = None;
+        self.inline_interactive_state = None;
+        self.copy_selection_mode = false;
+        self.copy_selection_anchor = None;
+        self.copy_selection_cursor = None;
+        self.copy_selection_pending_anchor = None;
+        self.copy_selection_dragging = false;
+        self.copy_selection_goal_column = None;
+        self.copy_selection_edge_autoscroll = None;
         self.onboarding_sim = Some(0);
         // Force the dedicated welcome layout to render regardless of session
         // state, exactly like the static `/onboarding-preview`.
@@ -60,7 +108,11 @@ impl App {
 
     /// Exit the simulator and restore the prior (non-onboarding) state.
     pub(super) fn stop_onboarding_simulator(&mut self) {
-        self.onboarding_sim = None;
+        // `/onboarding-sim off` is also callable while a real onboarding flow is
+        // active. Never let that command erase genuine onboarding progress.
+        if self.onboarding_sim.take().is_none() {
+            return;
+        }
         self.onboarding_flow = None;
         self.session_picker_overlay = None;
         self.session_picker_mode = SessionPickerMode::Resume;
@@ -188,7 +240,7 @@ impl App {
         let total = screens.len();
         let title = screens.get(index).map(|s| s.title).unwrap_or("Onboarding");
         self.set_status_notice(format!(
-            "Onboarding sim {}/{}: {} — Tab/→ next, Shift+Tab/← prev, h/l highlight, Esc exit",
+            "Onboarding sim {}/{}: {} — Tab/→ next, Shift+Tab/← prev, h/l highlight, Alt+5 restart, Esc exit",
             index + 1,
             total,
             title,

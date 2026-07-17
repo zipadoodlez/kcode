@@ -1517,9 +1517,11 @@ impl Default for GatewayConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PowerConfig {
-    /// Prevent the machine from going to sleep (idle/lid suspend) while any
-    /// jcode session is actively streaming/processing. The display is still
-    /// allowed to sleep; only system suspend is inhibited. Default: true.
+    /// Prevent automatic system sleep while any jcode session is actively
+    /// streaming/processing. Linux also asks logind to block lid-switch suspend.
+    /// Windows cannot override a user-initiated lid close or power-button action;
+    /// those remain controlled by the active Windows power plan. The display is
+    /// still allowed to sleep. Default: true.
     ///
     /// Honored by the shared `jcode serve` daemon. The `JCODE_DISABLE_POWER_INHIBIT`
     /// environment variable forces this off regardless of the config value.

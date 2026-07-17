@@ -551,17 +551,16 @@ pub(super) async fn handle_bus_event(
             let auth = auth_changed_event_for_login_provider(&login.provider);
             let prefer_strongest = success && app.onboarding_should_prefer_strongest_model();
             app.handle_login_completed(login);
-            if success {
-                if let Err(error) = remote
+            if success
+                && let Err(error) = remote
                     .notify_auth_changed_event(provider_hint, auth, prefer_strongest)
                     .await
-                {
-                    crate::logging::warn(&format!(
-                        "Failed to notify server about refreshed auth: {error}"
-                    ));
-                    app.finish_auth_catalog_refresh();
-                    app.set_status_notice("Model setup will retry after reconnect");
-                }
+            {
+                crate::logging::warn(&format!(
+                    "Failed to notify server about refreshed auth: {error}"
+                ));
+                app.finish_auth_catalog_refresh();
+                app.set_status_notice("Model setup will retry after reconnect");
             }
             true
         }

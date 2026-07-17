@@ -965,7 +965,7 @@ pub struct App {
     /// Active onboarding simulator: `Some(index)` is the current simulated
     /// screen (driven by `onboarding_sim.rs`); `None` when not simulating. The
     /// simulator seeds synthetic phases so a developer can step through every
-    /// first-run screen via Cmd+5 without touching real auth state.
+    /// first-run screen via Alt+5 reset or Cmd+5 toggle without touching real auth state.
     onboarding_sim: Option<usize>,
     /// Active guided first-run onboarding flow (model select -> continue ->
     /// transcript pick -> suggestions). `None` when not onboarding.

@@ -55,10 +55,10 @@ fn merge_confidence_history(previous: &[TodoItem], incoming: &mut [TodoItem]) {
         } else {
             todo.confidence
         };
-        if let Some(value) = observation {
-            if history.last() != Some(&value) {
-                history.push(value);
-            }
+        if let Some(value) = observation
+            && history.last() != Some(&value)
+        {
+            history.push(value);
         }
         todo.confidence_history = history;
     }

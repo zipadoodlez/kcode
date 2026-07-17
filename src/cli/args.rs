@@ -347,6 +347,14 @@ pub(crate) enum Command {
         /// Internal: show a rate-limited shortcut reminder from a CLI SessionStart hook.
         #[arg(long, hide = true, value_name = "CLI")]
         notify_cli_launch: Option<String>,
+
+        /// Internal: run as the Windows hotkey listener process.
+        #[arg(long, hide = true)]
+        listen_windows_hotkey: bool,
+
+        /// Remove the installed platform global hotkey listener.
+        #[arg(long)]
+        uninstall: bool,
     },
 
     /// Install a launcher so jcode appears in your app launcher

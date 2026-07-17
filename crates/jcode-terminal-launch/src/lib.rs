@@ -356,7 +356,7 @@ pub fn resume_terminal_candidates() -> Vec<String> {
     if let Some(term) = detected_resume_terminal() {
         push_unique_terminal(&mut candidates, term);
     }
-    for term in ["wezterm", "wt", "alacritty"] {
+    for term in ["alacritty", "wt", "wezterm", "cmd"] {
         push_unique_terminal(&mut candidates, term);
     }
     candidates
@@ -643,6 +643,11 @@ fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Opt
             cmd.args(["new-tab", "--title", title]);
             cmd.arg(&command.program).args(&command.args);
         }
+        #[cfg(not(unix))]
+        "cmd" => {
+            cmd.args(["/C", "start", title, "cmd.exe", "/K"]);
+            cmd.arg(windows_command_line(&command_parts(command)));
+        }
         _ => return None,
     }
 
@@ -655,6 +660,27 @@ fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Opt
     }
 
     Some(cmd)
+}
+
+#[cfg(any(not(unix), test))]
+fn windows_arg_quote(arg: &str) -> String {
+    if arg.is_empty()
+        || arg
+            .chars()
+            .any(|c| c.is_whitespace() || matches!(c, '"' | '&' | '|' | '<' | '>' | '^'))
+    {
+        format!("\"{}\"", arg.replace('"', "\\\""))
+    } else {
+        arg.to_string()
+    }
+}
+
+#[cfg(any(not(unix), test))]
+fn windows_command_line(args: &[String]) -> String {
+    args.iter()
+        .map(|arg| windows_arg_quote(arg))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn command_parts(command: &TerminalCommand) -> Vec<String> {
@@ -791,6 +817,33 @@ mod tests {
         let shell = shell_command(&["jcode".to_string(), "it's ok".to_string()]);
         #[cfg(unix)]
         assert_eq!(shell, "'jcode' 'it'\"'\"'s ok'");
+    }
+
+    #[test]
+    #[cfg(not(unix))]
+    fn windows_candidates_end_with_cmd_fallback() {
+        let candidates = resume_terminal_candidates();
+        assert!(candidates.contains(&"alacritty".to_string()));
+        assert!(candidates.contains(&"wt".to_string()));
+        assert_eq!(candidates.last().map(String::as_str), Some("cmd"));
+    }
+
+    #[test]
+    #[cfg(not(unix))]
+    fn windows_cmd_fallback_runs_jcode_under_cmd_k() {
+        let command = TerminalCommand::new(
+            std::path::PathBuf::from(r"C:\Program Files\jcode\jcode.exe"),
+            vec!["self-dev".to_string()],
+        )
+        .title("jcode");
+        let cmd = build_spawn_command("cmd", &command, Path::new(r"C:\Users\me")).unwrap();
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(&args[..5], ["/C", "start", "jcode", "cmd.exe", "/K"]);
+        assert!(args[5].contains(r#""C:\Program Files\jcode\jcode.exe""#));
+        assert!(args[5].contains("self-dev"));
     }
 
     #[test]

@@ -4,7 +4,7 @@
 //! living in that process is enough to keep the laptop awake while *any* session
 //! is streaming/processing (the same signal Waybar surfaces as "N streaming").
 //!
-//! The helper process is only kept alive while active work exists, then killed
+//! The platform guard is only kept alive while active work exists, then released
 //! immediately so normal power management resumes the moment work finishes.
 //!
 //! ## Crash / reload safety
@@ -12,13 +12,19 @@
 //! The daemon reloads itself with `execv` (the PID stays the same but the
 //! process image is replaced) and can also be `kill -9`'d. In both cases a
 //! child spawned with `sleep infinity` would be orphaned and hold the inhibitor
-//! lock forever. To make leaks self-heal, the helper is spawned with a bounded
-//! TTL (`sleep <TTL>`) and refreshed periodically while work continues. After a
-//! crash or reload the stale lock expires within at most `INHIBIT_TTL`, and the
-//! freshly-started process re-acquires on its next reconcile tick.
+//! lock forever. To make Unix helper leaks self-heal, each helper is spawned with
+//! a bounded TTL (`sleep <TTL>`) and refreshed periodically while work continues.
+//! Windows uses a dedicated in-process thread instead; Windows automatically
+//! clears that thread's execution-state request if the process exits or crashes.
 
+use std::io;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
+
+#[cfg(windows)]
+use std::sync::mpsc::{self, Receiver, Sender};
+#[cfg(windows)]
+use std::thread::{self, JoinHandle};
 
 /// Legacy/global override shared with the desktop app: when set, never inhibit.
 const DISABLE_ENV: &str = "JCODE_DISABLE_POWER_INHIBIT";
@@ -34,9 +40,26 @@ const INHIBIT_REFRESH_AFTER: Duration = Duration::from_secs(90);
 /// Best-effort inhibitor that keeps the machine awake while jcode is actively
 /// streaming/processing.
 pub struct PowerInhibitor {
-    child: Option<Child>,
+    handle: Option<InhibitHandle>,
     acquired_at: Option<Instant>,
+    platform: Option<InhibitPlatform>,
     available: bool,
+}
+
+enum InhibitHandle {
+    Child(Child),
+    #[cfg(windows)]
+    Windows(WindowsPowerGuard),
+}
+
+impl InhibitHandle {
+    fn is_running(&mut self) -> bool {
+        match self {
+            Self::Child(child) => child_is_running(child),
+            #[cfg(windows)]
+            Self::Windows(guard) => guard.is_running(),
+        }
+    }
 }
 
 impl Default for PowerInhibitor {
@@ -53,13 +76,12 @@ impl PowerInhibitor {
     /// caller evaluates it per-reconcile (via [`PowerInhibitor::set_active`]) so
     /// it can be flipped at runtime in either direction without a restart.
     pub fn new() -> Self {
+        let platform = current_platform();
         Self {
-            child: None,
+            handle: None,
             acquired_at: None,
-            available: power_inhibit_available(
-                std::env::var_os(DISABLE_ENV).is_some(),
-                current_platform(),
-            ),
+            platform,
+            available: power_inhibit_available(std::env::var_os(DISABLE_ENV).is_some(), platform),
         }
     }
 
@@ -68,8 +90,8 @@ impl PowerInhibitor {
         self.available
     }
 
-    /// Reconcile the helper process against the desired active state. Safe to
-    /// call frequently; it is idempotent and also refreshes the bounded TTL.
+    /// Reconcile the platform guard against the desired active state. Safe to
+    /// call frequently; it is idempotent and refreshes bounded Unix helpers.
     pub fn set_active(&mut self, active: bool) {
         if !self.available {
             return;
@@ -84,10 +106,13 @@ impl PowerInhibitor {
 
     fn acquire(&mut self) {
         let now = Instant::now();
-        let healthy = self.child.as_mut().is_some_and(child_is_running);
-        let fresh = self
-            .acquired_at
-            .is_some_and(|at| !should_refresh(at, now, INHIBIT_REFRESH_AFTER));
+        let healthy = self.handle.as_mut().is_some_and(InhibitHandle::is_running);
+        let fresh = self.platform.is_some_and(|platform| {
+            !platform.requires_refresh()
+                || self
+                    .acquired_at
+                    .is_some_and(|at| !should_refresh(at, now, INHIBIT_REFRESH_AFTER))
+        });
         if healthy && fresh {
             return;
         }
@@ -96,14 +121,23 @@ impl PowerInhibitor {
         // (re)spawn a fresh one and drop the old.
         self.release();
 
-        let Some(platform) = current_platform() else {
+        let Some(platform) = self.platform else {
             self.available = false;
             return;
         };
 
-        match build_inhibit_command(platform, INHIBIT_TTL).spawn() {
-            Ok(child) => {
-                self.child = Some(child);
+        let acquired = match platform {
+            InhibitPlatform::LinuxSystemd | InhibitPlatform::MacosCaffeinate => {
+                build_inhibit_command(platform, INHIBIT_TTL)
+                    .spawn()
+                    .map(InhibitHandle::Child)
+            }
+            InhibitPlatform::WindowsExecutionState => acquire_windows_inhibit_handle(),
+        };
+
+        match acquired {
+            Ok(handle) => {
+                self.handle = Some(handle);
                 self.acquired_at = Some(now);
             }
             Err(error) => {
@@ -117,16 +151,28 @@ impl PowerInhibitor {
 
     fn release(&mut self) {
         self.acquired_at = None;
-        if let Some(mut child) = self.child.take() {
-            if let Err(error) = child.kill() {
-                crate::logging::warn(&format!(
-                    "power_inhibit: failed to stop inhibitor process: {error}"
-                ));
-            }
-            if let Err(error) = child.wait() {
-                crate::logging::warn(&format!(
-                    "power_inhibit: failed to reap inhibitor process: {error}"
-                ));
+        if let Some(handle) = self.handle.take() {
+            match handle {
+                InhibitHandle::Child(mut child) => {
+                    if let Err(error) = child.kill() {
+                        crate::logging::warn(&format!(
+                            "power_inhibit: failed to stop inhibitor process: {error}"
+                        ));
+                    }
+                    if let Err(error) = child.wait() {
+                        crate::logging::warn(&format!(
+                            "power_inhibit: failed to reap inhibitor process: {error}"
+                        ));
+                    }
+                }
+                #[cfg(windows)]
+                InhibitHandle::Windows(mut guard) => {
+                    if let Err(error) = guard.stop() {
+                        crate::logging::warn(&format!(
+                            "power_inhibit: failed to release Windows execution state: {error}"
+                        ));
+                    }
+                }
             }
         }
     }
@@ -151,6 +197,13 @@ fn should_refresh(acquired_at: Instant, now: Instant, refresh_after: Duration) -
 enum InhibitPlatform {
     LinuxSystemd,
     MacosCaffeinate,
+    WindowsExecutionState,
+}
+
+impl InhibitPlatform {
+    fn requires_refresh(self) -> bool {
+        !matches!(self, Self::WindowsExecutionState)
+    }
 }
 
 fn power_inhibit_available(
@@ -165,6 +218,8 @@ fn current_platform() -> Option<InhibitPlatform> {
         Some(InhibitPlatform::LinuxSystemd)
     } else if cfg!(target_os = "macos") {
         Some(InhibitPlatform::MacosCaffeinate)
+    } else if cfg!(windows) {
+        Some(InhibitPlatform::WindowsExecutionState)
     } else {
         None
     }
@@ -174,7 +229,147 @@ fn build_inhibit_command(platform: InhibitPlatform, ttl: Duration) -> Command {
     match platform {
         InhibitPlatform::LinuxSystemd => build_linux_systemd_inhibit_command(ttl),
         InhibitPlatform::MacosCaffeinate => build_macos_caffeinate_command(ttl),
+        InhibitPlatform::WindowsExecutionState => {
+            unreachable!("Windows uses an in-process execution-state guard")
+        }
     }
+}
+
+#[cfg(windows)]
+fn acquire_windows_inhibit_handle() -> io::Result<InhibitHandle> {
+    WindowsPowerGuard::acquire().map(InhibitHandle::Windows)
+}
+
+#[cfg(not(windows))]
+fn acquire_windows_inhibit_handle() -> io::Result<InhibitHandle> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "Windows execution-state guard requested on a non-Windows platform",
+    ))
+}
+
+#[cfg(windows)]
+struct WindowsPowerGuard {
+    stop_tx: Option<Sender<()>>,
+    done_rx: Option<Receiver<io::Result<()>>>,
+    thread: Option<JoinHandle<()>>,
+}
+
+#[cfg(windows)]
+impl WindowsPowerGuard {
+    fn acquire() -> io::Result<Self> {
+        let (ready_tx, ready_rx) = mpsc::sync_channel(1);
+        let (stop_tx, stop_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::sync_channel(1);
+        let thread = thread::Builder::new()
+            .name("jcode-power-inhibit".to_string())
+            .spawn(move || run_windows_power_guard(ready_tx, stop_rx, done_tx))?;
+
+        match ready_rx.recv() {
+            Ok(Ok(())) => Ok(Self {
+                stop_tx: Some(stop_tx),
+                done_rx: Some(done_rx),
+                thread: Some(thread),
+            }),
+            Ok(Err(error)) => {
+                if thread.join().is_err() {
+                    return Err(io::Error::other("Windows power guard thread panicked"));
+                }
+                Err(error)
+            }
+            Err(error) => {
+                if thread.join().is_err() {
+                    return Err(io::Error::other("Windows power guard thread panicked"));
+                }
+                Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    format!("Windows power guard exited before acquisition: {error}"),
+                ))
+            }
+        }
+    }
+
+    fn is_running(&self) -> bool {
+        self.thread
+            .as_ref()
+            .is_some_and(|thread| !thread.is_finished())
+    }
+
+    fn stop(&mut self) -> io::Result<()> {
+        if let Some(stop_tx) = self.stop_tx.take() {
+            let _stop_signal_sent = stop_tx.send(()).is_ok();
+        }
+
+        let clear_result = match self.done_rx.take() {
+            Some(done_rx) => done_rx.recv().map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    format!("Windows power guard exited before cleanup: {error}"),
+                )
+            })?,
+            None => Ok(()),
+        };
+
+        if let Some(thread) = self.thread.take()
+            && thread.join().is_err()
+        {
+            return Err(io::Error::other("Windows power guard thread panicked"));
+        }
+
+        clear_result
+    }
+}
+
+#[cfg(windows)]
+impl Drop for WindowsPowerGuard {
+    fn drop(&mut self) {
+        if let Err(error) = self.stop() {
+            jcode_logging::warn(&format!("failed to stop Windows power guard: {error}"));
+        }
+    }
+}
+
+#[cfg(windows)]
+fn run_windows_power_guard(
+    ready_tx: mpsc::SyncSender<io::Result<()>>,
+    stop_rx: Receiver<()>,
+    done_tx: mpsc::SyncSender<io::Result<()>>,
+) {
+    use windows_sys::Win32::System::Power::SetThreadExecutionState;
+
+    let acquired = unsafe { SetThreadExecutionState(windows_execution_state_flags()) };
+    if acquired == 0 {
+        drop(ready_tx.send(Err(io::Error::last_os_error())));
+        return;
+    }
+
+    if ready_tx.send(Ok(())).is_err() {
+        if unsafe { SetThreadExecutionState(windows_clear_execution_state_flags()) } == 0 {
+            jcode_logging::warn("failed to clear Windows power guard after receiver disconnect");
+        }
+        return;
+    }
+
+    let _stop_requested = stop_rx.recv().is_ok();
+    let cleared = unsafe { SetThreadExecutionState(windows_clear_execution_state_flags()) };
+    let result = if cleared == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    };
+    drop(done_tx.send(result));
+}
+
+#[cfg(windows)]
+fn windows_execution_state_flags() -> u32 {
+    use windows_sys::Win32::System::Power::{ES_CONTINUOUS, ES_SYSTEM_REQUIRED};
+
+    ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+}
+
+#[cfg(windows)]
+fn windows_clear_execution_state_flags() -> u32 {
+    windows_sys::Win32::System::Power::ES_CONTINUOUS
 }
 
 fn build_linux_systemd_inhibit_command(ttl: Duration) -> Command {
@@ -237,6 +432,10 @@ mod tests {
         ));
         // Unsupported platform.
         assert!(!super::power_inhibit_available(false, None));
+        assert!(super::power_inhibit_available(
+            false,
+            Some(InhibitPlatform::WindowsExecutionState),
+        ));
     }
 
     #[test]
@@ -291,5 +490,30 @@ mod tests {
             acquired + Duration::from_secs(120),
             refresh_after
         ));
+    }
+
+    #[test]
+    fn windows_guard_is_long_lived_instead_of_ttl_refreshed() {
+        assert!(!InhibitPlatform::WindowsExecutionState.requires_refresh());
+        assert!(InhibitPlatform::LinuxSystemd.requires_refresh());
+        assert!(InhibitPlatform::MacosCaffeinate.requires_refresh());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_guard_prevents_idle_system_sleep_and_releases_cleanly() {
+        use windows_sys::Win32::System::Power::{
+            ES_AWAYMODE_REQUIRED, ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED,
+        };
+
+        let flags = super::windows_execution_state_flags();
+        assert_eq!(flags, ES_CONTINUOUS | ES_SYSTEM_REQUIRED);
+        assert_eq!(flags & ES_DISPLAY_REQUIRED, 0);
+        assert_eq!(flags & ES_AWAYMODE_REQUIRED, 0);
+
+        let mut guard = super::WindowsPowerGuard::acquire().expect("acquire Windows power guard");
+        assert!(guard.is_running());
+        guard.stop().expect("release Windows power guard");
+        assert!(!guard.is_running());
     }
 }
