@@ -786,7 +786,7 @@ fn test_remote_final_catalog_replaces_post_login_loading_state_in_place() {
                 channel: None,
                 tldr: None,
             },
-            message: "**Model ready:** `claude-opus-4.6`\nAnthropic access refreshed: 1 model, 1 route. Use `/model` to change.".to_string(),
+            message: "**Model ready:** `claude-opus-4.6`\nAnthropic catalog changed: models +1/-0, routes +1/-0/~0. Use `/model`.".to_string(),
         },
         &mut remote,
     );

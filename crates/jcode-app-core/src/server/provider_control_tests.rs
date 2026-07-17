@@ -35,6 +35,44 @@ async fn recv_final_catalog_notification(rx: &mut mpsc::UnboundedReceiver<Server
     .expect("expected final auth catalog notification")
 }
 
+#[test]
+fn compact_auth_catalog_activity_reports_changed_and_unchanged_in_two_lines() {
+    let changed = ModelCatalogRefreshSummary {
+        model_count_before: 33,
+        model_count_after: 37,
+        models_added: 14,
+        models_removed: 10,
+        route_count_before: 33,
+        route_count_after: 38,
+        routes_added: 24,
+        routes_removed: 19,
+        routes_changed: 3,
+        ..ModelCatalogRefreshSummary::default()
+    };
+    let changed_message =
+        format_auth_catalog_refresh_complete(Some("OpenAI"), Some("gpt-5.6-sol"), &changed, false);
+    assert_eq!(changed_message.lines().count(), 2);
+    assert!(changed_message.contains("OpenAI catalog changed"));
+    assert!(changed_message.contains("models +14/-10"));
+    assert!(changed_message.contains("routes +24/-19/~3"));
+
+    let unchanged = ModelCatalogRefreshSummary {
+        model_count_before: 37,
+        model_count_after: 37,
+        route_count_before: 38,
+        route_count_after: 38,
+        ..ModelCatalogRefreshSummary::default()
+    };
+    let unchanged_message = format_auth_catalog_refresh_complete(
+        Some("OpenAI"),
+        Some("gpt-5.6-sol"),
+        &unchanged,
+        false,
+    );
+    assert_eq!(unchanged_message.lines().count(), 2);
+    assert!(unchanged_message.contains("OpenAI catalog unchanged: 37 models, 38 routes"));
+}
+
 #[derive(Default)]
 struct AuthChangeMockState {
     logged_in: StdRwLock<bool>,
@@ -326,7 +364,9 @@ async fn notify_auth_changed_emits_available_models_updated_after_provider_updat
 
     let final_message = recv_final_catalog_notification(&mut client_event_rx).await;
     assert_eq!(final_message.lines().count(), 2);
-    assert!(final_message.contains("2 models, 2 routes"));
+    assert!(final_message.contains("catalog changed"));
+    assert!(final_message.contains("models +2/-1"));
+    assert!(final_message.contains("routes +2/-1/~0"));
     assert!(final_message.contains("**Model ready:** `logged-in-model`"));
     assert!(final_message.contains("Use `/model`"));
 }
@@ -720,17 +760,17 @@ async fn notify_auth_changed_typed_cerebras_event_controls_user_visible_catalog_
     let final_message = recv_final_catalog_notification(&mut client_event_rx).await;
 
     assert!(
-        final_message.contains("Cerebras access refreshed:"),
+        final_message.contains("Cerebras catalog changed"),
         "typed auth event should control user-visible provider label, got: {}",
         final_message
     );
     assert!(
-        !final_message.contains("OpenAI access refreshed:"),
+        !final_message.contains("OpenAI catalog changed"),
         "stale legacy provider identity leaked into user-visible auth message: {}",
         final_message
     );
     assert!(
-        final_message.contains("Some expected routes are missing."),
+        final_message.contains("some routes missing"),
         "typed auth event should warn when matching provider routes are missing: {}",
         final_message
     );
@@ -799,7 +839,7 @@ async fn notify_auth_changed_switches_from_stale_model_to_matching_provider_rout
     let final_message = recv_final_catalog_notification(&mut client_event_rx).await;
 
     assert!(
-        final_message.contains("Cerebras access refreshed:"),
+        final_message.contains("Cerebras catalog changed"),
         "{}",
         final_message
     );
@@ -814,7 +854,7 @@ async fn notify_auth_changed_switches_from_stale_model_to_matching_provider_rout
         final_message
     );
     assert!(
-        !final_message.contains("Some expected routes are missing."),
+        !final_message.contains("some routes missing"),
         "successful recovery should not warn: {}",
         final_message
     );

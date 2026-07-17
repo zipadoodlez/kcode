@@ -181,20 +181,20 @@ impl AuthLifecycleResult {
             Some(spec.provider_id)
         );
         assert!(
-            transcript.contains(&format!("{} access refreshed", spec.provider_label)),
+            transcript.contains(&format!("{} catalog changed", spec.provider_label)),
             "{}",
             self.failure_report(spec)
         );
         // Anti-confusion guard: the transcript must never attribute the new
         // access to a different provider. Skip the marker matching the provider
         // under test: OpenRouter/OpenAI-labelled compat profiles legitimately
-        // produce their own access-refreshed line.
+        // produce their own catalog-changed line.
         for other_label in ["OpenAI", "OpenRouter"] {
             if spec.provider_label == other_label {
                 continue;
             }
             assert!(
-                !transcript.contains(&format!("{other_label} access refreshed")),
+                !transcript.contains(&format!("{other_label} catalog changed")),
                 "{}",
                 self.failure_report(spec)
             );
@@ -507,15 +507,17 @@ impl AuthLifecycleDriver {
                 spec.auth_path.credential_source()
             ));
         }
-        let warning_suffix = if warning.is_some() {
-            " Some expected routes are missing."
+        let catalog_status = if warning.is_some() {
+            format!(
+                "{} catalog changed; some routes missing. Use `/model`.",
+                spec.provider_label
+            )
         } else {
-            ""
+            format!("{} catalog changed. Use `/model`.", spec.provider_label)
         };
         transcript.push(format!(
-            "**Model ready:** `{}`\n{} access refreshed.{warning_suffix} Use `/model` to change.",
+            "**Model ready:** `{}`\n{catalog_status}",
             selected_model.unwrap_or("none"),
-            spec.provider_label,
         ));
         transcript
     }

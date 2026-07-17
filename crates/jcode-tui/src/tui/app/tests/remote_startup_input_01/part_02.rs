@@ -255,7 +255,7 @@ fn test_remote_final_catalog_activity_is_two_lines_and_completes_model_setup() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
-    let message = "**Model ready:** `gpt-5.6-sol`\nOpenAI access refreshed: 37 models, 38 routes. Use `/model` to change.";
+    let message = "**Model ready:** `gpt-5.6-sol`\nOpenAI catalog changed: models +14/-10, routes +24/-19/~3. Use `/model`.";
 
     app.handle_server_event(
         crate::protocol::ServerEvent::Notification {
@@ -323,7 +323,7 @@ fn test_remote_onboarding_catalog_activity_completes_model_setup_without_chat_no
                 channel: None,
                 tldr: None,
             },
-            message: "**Model ready:** `gpt-5.6-sol`\nOpenAI access refreshed: 37 models, 38 routes. Use `/model` to change.".to_string(),
+            message: "**Model ready:** `gpt-5.6-sol`\nOpenAI catalog changed: models +14/-10, routes +24/-19/~3. Use `/model`.".to_string(),
         },
         &mut remote,
     );

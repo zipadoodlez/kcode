@@ -91,15 +91,33 @@ fn format_auth_catalog_refresh_complete(
     let title = provider_model
         .map(|model| format!("**Model ready:** `{model}`"))
         .unwrap_or_else(|| "**Model access refreshed**".to_string());
-    let warning = if has_warning {
-        " Some expected routes are missing."
+    let changed = summary.models_added > 0
+        || summary.models_removed > 0
+        || summary.routes_added > 0
+        || summary.routes_removed > 0
+        || summary.routes_changed > 0;
+    let catalog_status = if has_warning {
+        if changed {
+            format!("{provider_label} catalog changed; some routes missing. Use `/model`.")
+        } else {
+            format!("{provider_label} catalog unchanged; some routes missing. Use `/model`.")
+        }
+    } else if changed {
+        format!(
+            "{provider_label} catalog changed: models +{}/-{}, routes +{}/-{}/~{}. Use `/model`.",
+            summary.models_added,
+            summary.models_removed,
+            summary.routes_added,
+            summary.routes_removed,
+            summary.routes_changed,
+        )
     } else {
-        ""
+        format!(
+            "{provider_label} catalog unchanged: {} models, {} routes. Use `/model`.",
+            summary.model_count_after, summary.route_count_after,
+        )
     };
-    format!(
-        "{title}\n{provider_label} access refreshed: {} models, {} routes.{warning} Use `/model` to change.",
-        summary.model_count_after, summary.route_count_after,
-    )
+    format!("{title}\n{catalog_status}")
 }
 
 fn log_provider_control_deferred(operation: &'static str, id: u64) -> Instant {
