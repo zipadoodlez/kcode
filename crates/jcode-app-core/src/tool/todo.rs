@@ -35,10 +35,21 @@ fn merge_confidence_history(previous: &[TodoItem], incoming: &mut [TodoItem]) {
         .map(|todo| (todo.id.as_str(), todo))
         .collect();
     for todo in incoming.iter_mut() {
-        let mut history = prior
-            .get(todo.id.as_str())
+        let previous_todo = prior.get(todo.id.as_str()).copied();
+        let mut history = previous_todo
             .map(|prev| prev.confidence_history.clone())
             .unwrap_or_default();
+        if history.is_empty()
+            && let Some(value) = previous_todo.and_then(|prev| {
+                if prev.status == "completed" {
+                    prev.completion_confidence.or(prev.confidence)
+                } else {
+                    prev.confidence
+                }
+            })
+        {
+            history.push(value);
+        }
         let observation = if todo.status == "completed" {
             todo.completion_confidence.or(todo.confidence)
         } else {
@@ -886,6 +897,19 @@ mod tests {
     #[test]
     fn completion_write_contributes_only_one_final_confidence_observation() {
         let previous = vec![history_todo("1", Some(70), vec![70])];
+        let mut done = history_todo("1", Some(90), Vec::new());
+        done.status = "completed".to_string();
+        done.completion_confidence = Some(100);
+
+        let mut incoming = vec![done];
+        merge_confidence_history(&previous, &mut incoming);
+
+        assert_eq!(incoming[0].confidence_history, vec![70, 100]);
+    }
+
+    #[test]
+    fn confidence_history_seeds_legacy_todos_before_completion() {
+        let previous = vec![history_todo("1", Some(70), Vec::new())];
         let mut done = history_todo("1", Some(90), Vec::new());
         done.status = "completed".to_string();
         done.completion_confidence = Some(100);
