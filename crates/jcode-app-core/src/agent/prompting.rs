@@ -28,7 +28,8 @@ impl Agent {
 
         let session_id = &self.session.id;
 
-        let pending = if crate::message::ends_with_fresh_user_turn(&messages) {
+        let fresh_user_turn = crate::message::ends_with_fresh_user_turn(&messages);
+        let pending = if fresh_user_turn {
             crate::memory::take_pending_memory(session_id)
         } else {
             None
@@ -38,11 +39,18 @@ impl Agent {
         // Running both this and the legacy MemoryManager background retrieval path
         // can prepare overlapping pending prompts for the same turn, which makes
         // memory injection feel overly aggressive.
-        crate::memory_agent::update_context_sync_with_dir(
-            session_id,
-            messages,
-            self.session.working_dir.clone(),
-        );
+        // Relevance results are consumed only at the start of a fresh user turn.
+        // Enqueuing again after every tool result runs the local embedding model
+        // for each provider continuation without creating an additional injection
+        // opportunity. One update per user turn keeps memory current while avoiding
+        // redundant 512-token inference during tool-heavy agent loops.
+        if fresh_user_turn {
+            crate::memory_agent::update_context_sync_with_dir(
+                session_id,
+                messages,
+                self.session.working_dir.clone(),
+            );
+        }
 
         pending
     }

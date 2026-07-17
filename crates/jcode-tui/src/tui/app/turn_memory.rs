@@ -108,19 +108,26 @@ impl App {
         }
 
         // Take pending memory if available (computed in background during last turn)
-        let pending = if crate::message::ends_with_fresh_user_turn(messages) {
+        let fresh_user_turn = crate::message::ends_with_fresh_user_turn(messages);
+        let pending = if fresh_user_turn {
             crate::memory::take_pending_memory(&self.session.id)
         } else {
             None
         };
 
         // Send context to memory agent for the NEXT turn (doesn't block current send)
-        let shared_messages: std::sync::Arc<[crate::message::Message]> = messages.to_vec().into();
-        crate::memory_agent::update_context_sync_with_dir(
-            &self.session.id,
-            shared_messages,
-            self.session.working_dir.clone(),
-        );
+        // Relevance results are consumed only at the start of a fresh user turn.
+        // Tool continuations do not provide another injection opportunity, so
+        // avoid re-running the local embedding model after every tool result.
+        if fresh_user_turn {
+            let shared_messages: std::sync::Arc<[crate::message::Message]> =
+                messages.to_vec().into();
+            crate::memory_agent::update_context_sync_with_dir(
+                &self.session.id,
+                shared_messages,
+                self.session.working_dir.clone(),
+            );
+        }
 
         // Return pending memory from previous turn
         pending
