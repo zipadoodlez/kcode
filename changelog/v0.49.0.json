@@ -9,14 +9,18 @@
   ],
   "improvements": [
     "Todo goals can capture the user's intention and score how well planned work aligns with it",
+    "Todo group headers show confidence at a glance, and abrupt completion-confidence increases receive a one-time independent validation check that survives reloads",
     "Deep swarm task graphs accept deep and light modes and honor nodes explicitly marked as bounded and non-expandable",
     "Batch tool activity and todo goal updates use more concise, informative terminal presentation",
+    "Provider and model updates after sign-in refresh more efficiently and report only meaningful catalog changes",
+    "Memory recall avoids redundant embedding work",
     "The pelican bike demo has refreshed animation and controls"
   ],
   "fixes": [
     "Windows account credentials use secure storage and canceled browser exchanges are cleaned up safely",
     "External CLI hooks launch Jcode through a trusted path instead of project-controlled executables",
     "Redirected output no longer attempts terminal image rendering",
-    "Background telemetry delivery is bounded to prevent unrestrained concurrency"
+    "Background telemetry delivery is bounded to prevent unrestrained concurrency",
+    "Handterm native scrolling animates multi-row input instead of jumping directly to the final position"
   ]
 }
