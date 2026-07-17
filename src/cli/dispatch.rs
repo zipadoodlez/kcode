@@ -875,6 +875,7 @@ async fn run_default_command(args: Args) -> Result<()> {
         !server_running,
         args.fresh_spawn,
         args.remote_working_dir,
+        args.onboarding_sim,
     )
     .await?;
 

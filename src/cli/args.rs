@@ -75,6 +75,12 @@ pub(crate) struct Args {
     #[arg(long, global = true)]
     pub(crate) no_selfdev: bool,
 
+    /// Start the onboarding simulator on launch (same as `/onboarding-sim`).
+    /// Steps through every first-run onboarding screen with synthetic data;
+    /// never touches real auth state.
+    #[arg(long = "onboarding-sim")]
+    pub(crate) onboarding_sim: bool,
+
     /// Custom socket path for server/client communication
     #[arg(long, global = true)]
     pub(crate) socket: Option<String>,

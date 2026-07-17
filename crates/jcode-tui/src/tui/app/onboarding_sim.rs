@@ -33,6 +33,12 @@ impl App {
         self.onboarding_sim.is_some()
     }
 
+    /// Entry point for the `jcode --onboarding-sim` CLI flag: start the
+    /// simulator immediately at launch, before the remote session connects.
+    pub fn start_onboarding_simulator_on_launch(&mut self) {
+        self.start_onboarding_simulator();
+    }
+
     /// Alt+5 is the cross-platform "start over" shortcut. Require exactly Alt so
     /// Windows AltGr chords (reported as Ctrl+Alt) never trigger the simulator.
     pub(super) fn handle_onboarding_sim_reset_shortcut(
