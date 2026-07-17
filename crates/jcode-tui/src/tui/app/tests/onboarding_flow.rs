@@ -1521,12 +1521,15 @@ fn recent_project_review_prompt_is_bounded_read_only_and_requires_approval() {
     assert!(!prompt.contains("worked in most recently"), "{prompt}");
     assert!(!prompt.contains("reflog activity"), "{prompt}");
     assert!(prompt.contains("recent diffs and commits"), "{prompt}");
-    assert!(prompt.contains("concrete bugs"), "{prompt}");
+    assert!(prompt.contains("read-only review"), "{prompt}");
     assert!(prompt.contains("architecture problems"), "{prompt}");
-    assert!(prompt.contains("without modifying it"), "{prompt}");
     assert!(prompt.contains("Do not edit files"), "{prompt}");
-    assert!(prompt.contains("ask whether I want you to fix anything"), "{prompt}");
-    assert!(prompt.contains("Wait for explicit approval"), "{prompt}");
+    assert!(prompt.contains("asks for my explicit approval"), "{prompt}");
+    assert_eq!(
+        prompt.matches('.').count(),
+        2,
+        "onboarding review prompt must stay at two sentences: {prompt}"
+    );
     assert!(
         prompt.split_whitespace().count() < 100,
         "onboarding review prompt grew too large: {prompt}"

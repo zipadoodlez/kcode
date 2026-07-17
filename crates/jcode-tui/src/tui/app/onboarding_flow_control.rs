@@ -898,7 +898,7 @@ impl App {
     pub(super) fn onboarding_recent_project_review_prompt(repository: &Path) -> String {
         let repository = format!("{:?}", repository.to_string_lossy());
         format!(
-            "Review this Git repository without modifying it:\n{repository}\n\nStart with recent diffs and commits, then inspect relevant code and tests. Find concrete bugs and important architecture problems, especially risks to correctness, data, security, reliability, or maintainability. For each finding, cite files or symbols, explain the impact, and recommend a fix.\n\nDo not edit files, run destructive commands, commit, or push. End with a prioritized list and ask whether I want you to fix anything. Wait for explicit approval before implementing."
+            "Perform a read-only review of the Git repository at {repository}, starting with recent diffs and commits and prioritizing concrete correctness, data-loss, security, reliability, and architecture problems while citing files or symbols, impact, and recommended fixes for each finding. Do not edit files, run destructive commands, commit, or push, and end with a prioritized list that asks for my explicit approval before implementing fixes."
         )
     }
 
