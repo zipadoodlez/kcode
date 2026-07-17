@@ -3317,7 +3317,7 @@ fn render_discovery_card(
 
     let muted_style = Style::default().fg(dim_color());
     let label_style = muted_style;
-    let name_style = Style::default();
+    let name_style = muted_style;
     let mut content = Vec::new();
 
     if is_error {
