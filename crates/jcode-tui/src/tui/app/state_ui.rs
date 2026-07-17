@@ -1754,7 +1754,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     if trimmed == "/version" {
-        let version = jcode_build_meta::VERSION;
+        let version = jcode_build_meta::version();
         let is_canary = if app.session.is_canary {
             " (canary/self-dev)"
         } else {
@@ -1852,7 +1852,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     if trimmed == "/info" {
-        let version = jcode_build_meta::VERSION;
+        let version = jcode_build_meta::version();
         let terminal_size = crossterm::terminal::size()
             .map(|(w, h)| format!("{}x{}", w, h))
             .unwrap_or_else(|_| "unknown".to_string());

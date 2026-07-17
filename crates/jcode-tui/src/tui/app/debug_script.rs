@@ -33,7 +33,7 @@ impl App {
                 "diagram_pane_enabled": self.diagram_pane_enabled,
                 "diagram_pane_position": format!("{:?}", self.diagram_pane_position),
                 "diagram_zoom": self.diagram_zoom,
-                "version": jcode_build_meta::VERSION,
+                "version": jcode_build_meta::version(),
             }),
             frame,
             recent_messages,

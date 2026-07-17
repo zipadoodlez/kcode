@@ -70,9 +70,14 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
         "Make logical commits from current changes, then push",
     ),
     RegisteredCommand::public(
-        "/cut-release",
-        "Commit + push current changes, bump version, and cut a release",
+        "/fast-release",
+        "Publish Linux immediately from the warm selfdev cache; CI adds other platforms",
     ),
+    RegisteredCommand::public(
+        "/remote-release",
+        "Push the release tag immediately; CI builds and publishes every platform",
+    ),
+    RegisteredCommand::hidden("/cut-release", "Alias for /fast-release"),
     RegisteredCommand::hidden("/commit-push-release", "Alias for /cut-release"),
     RegisteredCommand::public("/transcript", "Open the current session transcript file"),
     RegisteredCommand::public("/subagent-model", "Show/change subagent model policy"),

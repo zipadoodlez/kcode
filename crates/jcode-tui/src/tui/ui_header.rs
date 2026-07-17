@@ -634,7 +634,7 @@ pub(super) fn build_persistent_header(app: &dyn TuiState, width: u16) -> Vec<Lin
     let server_version_full = app.server_display_version();
     let client_version_full = server_name
         .as_ref()
-        .map(|_| jcode_build_meta::VERSION.to_string());
+        .map(|_| jcode_build_meta::version().to_string());
     let version_mismatch = matches!(
         (&server_version_full, &client_version_full),
         (Some(server), Some(client)) if server.trim() != client.trim()
@@ -774,7 +774,7 @@ pub(super) fn build_persistent_header(app: &dyn TuiState, width: u16) -> Vec<Lin
         // line keeps only the (non-duplicated) client build age.
         format!("built {}", build_info)
     } else if is_running_stable_release() {
-        let tag = jcode_build_meta::GIT_TAG;
+        let tag = jcode_build_meta::git_tag();
         if tag.is_empty() || tag.contains('-') {
             let full = format!("{} · release · built {}", semver(), build_info);
             if full.chars().count() <= w {
@@ -1110,7 +1110,7 @@ mod tests {
             server_line.contains("server: Blazing 🔥 · v0.14.2-dev"),
             "server line should carry the server version: {server_line}"
         );
-        let client_version = compact_version_label(jcode_build_meta::VERSION);
+        let client_version = compact_version_label(jcode_build_meta::version());
         assert!(
             client_line.contains("client: Fox"),
             "client line should keep the session name: {client_line}"
@@ -1124,7 +1124,7 @@ mod tests {
     #[test]
     fn persistent_header_keeps_git_hash_when_semvers_match_but_builds_differ() {
         let mut app = create_test_app();
-        let client_semver = compact_version_label(jcode_build_meta::VERSION);
+        let client_semver = compact_version_label(jcode_build_meta::version());
         let fake_server_version = format!("{} (0000000)", client_semver);
         app.set_remote_server_identity_for_tests(
             Some("blazing"),
@@ -1148,7 +1148,7 @@ mod tests {
             "same-semver mismatch should keep the server git hash: {server_line}"
         );
         assert!(
-            client_line.contains(&format!("· {}", jcode_build_meta::VERSION)),
+            client_line.contains(&format!("· {}", jcode_build_meta::version())),
             "same-semver mismatch should keep the client git hash: {client_line}"
         );
     }

@@ -1910,29 +1910,41 @@ async fn handle_remote_key_internal(
                 if trimmed == "/commit"
                     || trimmed == "/commit-push"
                     || trimmed == "/commit-and-push"
+                    || trimmed == "/fast-release"
+                    || trimmed == "/remote-release"
                     || trimmed == "/cut-release"
                     || trimmed == "/commit-push-release"
                 {
-                    let is_release = trimmed == "/cut-release" || trimmed == "/commit-push-release";
+                    let is_fast_release = matches!(
+                        trimmed,
+                        "/fast-release" | "/cut-release" | "/commit-push-release"
+                    );
+                    let is_remote_release = trimmed == "/remote-release";
                     let is_push = trimmed != "/commit";
-                    let prompt = if is_release {
-                        app_mod::commands::build_cut_release_prompt()
+                    let prompt = if is_fast_release {
+                        app_mod::commands::build_fast_release_prompt()
+                    } else if is_remote_release {
+                        app_mod::commands::build_remote_release_prompt()
                     } else if is_push {
                         app_mod::commands::build_commit_push_prompt()
                     } else {
                         app_mod::commands::build_commit_prompt()
                     };
                     let launch_notice = |interrupted: bool| {
-                        if is_release {
-                            app_mod::commands::cut_release_launch_notice(interrupted)
+                        if is_fast_release {
+                            app_mod::commands::fast_release_launch_notice(interrupted)
+                        } else if is_remote_release {
+                            app_mod::commands::remote_release_launch_notice(interrupted)
                         } else if is_push {
                             app_mod::commands::commit_push_launch_notice(interrupted)
                         } else {
                             app_mod::commands::commit_launch_notice(interrupted)
                         }
                     };
-                    let cmd_label = if is_release {
-                        "/cut-release"
+                    let cmd_label = if is_fast_release {
+                        "/fast-release"
+                    } else if is_remote_release {
+                        "/remote-release"
                     } else if is_push {
                         "/commit-push"
                     } else {

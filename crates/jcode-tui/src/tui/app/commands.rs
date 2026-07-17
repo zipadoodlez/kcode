@@ -1679,8 +1679,16 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    if trimmed == "/cut-release" || trimmed == "/commit-push-release" {
-        handle_cut_release_command_local(app);
+    if matches!(
+        trimmed,
+        "/fast-release" | "/cut-release" | "/commit-push-release"
+    ) {
+        handle_fast_release_command_local(app);
+        return true;
+    }
+
+    if trimmed == "/remote-release" {
+        handle_remote_release_command_local(app);
         return true;
     }
 
@@ -2125,13 +2133,32 @@ pub(super) fn build_commit_push_prompt() -> String {
     prompt
 }
 
-pub(super) fn build_cut_release_prompt() -> String {
+fn build_release_prompt(before_bump_instruction: &str, release_instruction: &str) -> String {
     let mut prompt = build_commit_push_prompt();
     prompt.push(' ');
-    prompt.push_str(
-        "Then cut a release. Find the last release tag (git describe --tags --abbrev=0 or gh release list) and review everything that changed since it to pick the semver bump: patch for fixes and small internal changes, minor for new features, major only for breaking changes. Bump the version in the root Cargo.toml, refresh Cargo.lock (for example with cargo check), and, if the repo has a changelog/ directory, write a user-facing changelog entry changelog/v<version>.json following changelog/README.md (translate commits into user-visible effects, skip internal-only changes, update changelog/index.json). Commit the version bump together with the changelog entry, and push. Then run scripts/quick-release.sh v<version> to tag, build, and publish the GitHub release, using the changelog entry as the basis for the release notes when possible. Do not force-push or move existing tags. Finally, report the new version, the commits created, and the release result.",
-    );
+    prompt.push_str("Then cut a release. Find the last release tag (git describe --tags --abbrev=0 or gh release list) and review everything that changed since it to pick the semver bump: patch for fixes and small internal changes, minor for new features, major only for breaking changes. ");
+    if !before_bump_instruction.is_empty() {
+        prompt.push_str(before_bump_instruction);
+        prompt.push(' ');
+    }
+    prompt.push_str("Bump the version in the root Cargo.toml, refresh Cargo.lock (for example with cargo check), and, if the repo has a changelog/ directory, write a user-facing changelog entry changelog/v<version>.json following changelog/README.md (translate commits into user-visible effects, skip internal-only changes, update changelog/index.json). Commit the version bump together with the changelog entry as one release-metadata commit, and push. ");
+    prompt.push_str(release_instruction);
+    prompt.push_str(" Do not force-push or move existing tags. Finally, report the new version, the commits created, the tag push, and the release status.");
     prompt
+}
+
+pub(super) fn build_fast_release_prompt() -> String {
+    build_release_prompt(
+        "Before editing Cargo.toml or the changelog for the version bump, run scripts/quick-release.sh --prepare-fast v<version>. It must refresh the warm target/selfdev cache for the Linux x86_64 binary while the existing Cargo version is unchanged and record the prepared commit.",
+        "Then run scripts/quick-release.sh --fast-local v<version>. It must wrap the prepared selfdev binary with the release identity, publish that Linux asset and the GitHub release immediately, and let CI replace it with the portable Linux artifact while adding macOS, Windows, FreeBSD, signatures, and final checksums. Do not run the separate local macOS cross-build or wait for release optimization. If preparation is stale or the release-metadata commit contains code changes, stop instead of publishing a binary that differs from the tag.",
+    )
+}
+
+pub(super) fn build_remote_release_prompt() -> String {
+    build_release_prompt(
+        "",
+        "Then run scripts/quick-release.sh --remote v<version> to push the tag immediately without any local build. Let the release workflow build, sign, checksum, and publish every platform, and leave publication gated on those remote checks.",
+    )
 }
 
 pub(super) fn commit_launch_notice(interrupted: bool) -> String {
@@ -2150,11 +2177,19 @@ pub(super) fn commit_push_launch_notice(interrupted: bool) -> String {
     }
 }
 
-pub(super) fn cut_release_launch_notice(interrupted: bool) -> String {
+pub(super) fn fast_release_launch_notice(interrupted: bool) -> String {
     if interrupted {
-        "👉 Interrupting and starting logical commits + push + release cut...".to_string()
+        "👉 Interrupting and starting logical commits + push + fast local release...".to_string()
     } else {
-        "🚀 Starting logical commits + push + release cut...".to_string()
+        "🚀 Starting logical commits + push + fast local release...".to_string()
+    }
+}
+
+pub(super) fn remote_release_launch_notice(interrupted: bool) -> String {
+    if interrupted {
+        "👉 Interrupting and starting logical commits + push + remote release...".to_string()
+    } else {
+        "🚀 Starting logical commits + push + remote release...".to_string()
     }
 }
 
@@ -2188,17 +2223,32 @@ fn handle_commit_push_command_local(app: &mut App) {
     }
 }
 
-fn handle_cut_release_command_local(app: &mut App) {
-    let prompt = build_cut_release_prompt();
+fn handle_fast_release_command_local(app: &mut App) {
+    let prompt = build_fast_release_prompt();
     if app.is_processing {
         super::commands_improve::interrupt_and_queue_synthetic_message(
             app,
             prompt,
-            "Interrupting for /cut-release...",
-            cut_release_launch_notice(true),
+            "Interrupting for /fast-release...",
+            fast_release_launch_notice(true),
         );
     } else {
-        app.push_display_message(DisplayMessage::system(cut_release_launch_notice(false)));
+        app.push_display_message(DisplayMessage::system(fast_release_launch_notice(false)));
+        super::commands_improve::start_synthetic_user_turn(app, prompt);
+    }
+}
+
+fn handle_remote_release_command_local(app: &mut App) {
+    let prompt = build_remote_release_prompt();
+    if app.is_processing {
+        super::commands_improve::interrupt_and_queue_synthetic_message(
+            app,
+            prompt,
+            "Interrupting for /remote-release...",
+            remote_release_launch_notice(true),
+        );
+    } else {
+        app.push_display_message(DisplayMessage::system(remote_release_launch_notice(false)));
         super::commands_improve::start_synthetic_user_turn(app, prompt);
     }
 }

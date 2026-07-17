@@ -82,7 +82,7 @@ impl Agent {
             working_dir,
             provider: self.provider.name().to_string(),
             model: self.provider.model().to_string(),
-            jcode_version: jcode_build_meta::VERSION.to_string(),
+            jcode_version: jcode_build_meta::version().to_string(),
             jcode_git_hash,
             jcode_git_dirty,
             os: std::env::consts::OS.to_string(),

@@ -1580,7 +1580,7 @@ async fn handle_debug_command(app: &mut App, cmd: &str, remote: &mut RemoteConne
             "remote": true,
             "server_version": app.remote_server_version.clone(),
             "server_has_update": app.remote_server_has_update,
-            "version": jcode_build_meta::VERSION,
+            "version": jcode_build_meta::version(),
             "diagram_mode": format!("{:?}", app.diagram_mode),
         })
         .to_string();

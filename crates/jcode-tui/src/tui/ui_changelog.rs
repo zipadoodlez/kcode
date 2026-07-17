@@ -145,8 +145,8 @@ pub(super) fn get_grouped_changelog() -> Vec<ChangelogGroup> {
             let entries = parse_changelog();
             group_changelog_entries_impl(
                 &entries,
-                jcode_build_meta::VERSION,
-                jcode_build_meta::GIT_DATE,
+                jcode_build_meta::version(),
+                jcode_build_meta::git_date(),
             )
         })
         .clone()

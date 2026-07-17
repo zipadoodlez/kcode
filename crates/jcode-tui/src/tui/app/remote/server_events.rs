@@ -112,7 +112,7 @@ fn client_release_version() -> String {
     {
         return v.to_string_lossy().into_owned();
     }
-    jcode_build_meta::VERSION.to_string()
+    jcode_build_meta::version().to_string()
 }
 
 fn should_defer_history_for_runtime_identity(
@@ -1577,7 +1577,7 @@ pub(in crate::tui::app) fn handle_server_event(
                     app.push_display_message(DisplayMessage::system(format!(
                         "ℹ Connected server is running an older release ({}) than this client ({}). Reloading it before applying session state. If reload does not take, run `jcode server stop` and relaunch. Set JCODE_ALLOW_SERVER_VERSION_MISMATCH=1 only for intentional compatibility testing.",
                         app.remote_server_version.as_deref().unwrap_or("unknown"),
-                        jcode_build_meta::VERSION,
+                        jcode_build_meta::version(),
                     )));
                 } else {
                     app.set_status_notice(

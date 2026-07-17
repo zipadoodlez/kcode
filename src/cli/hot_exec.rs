@@ -136,7 +136,7 @@ pub fn hot_update(session_id: &str) -> Result<()> {
 
     match update::check_for_update_blocking() {
         Ok(Some(release)) => {
-            let current = jcode_build_meta::VERSION;
+            let current = jcode_build_meta::version();
             update::print_centered(&format!(
                 "Update available: {} -> {}",
                 current, release.tag_name
@@ -186,7 +186,7 @@ pub fn hot_update(session_id: &str) -> Result<()> {
             }
             update::print_centered(&format!(
                 "Already up to date ({})",
-                jcode_build_meta::VERSION
+                jcode_build_meta::version()
             ));
         }
         Err(e) => {
@@ -337,7 +337,7 @@ pub fn run_update() -> Result<()> {
             Ok(Some(release)) => {
                 update::print_centered(&format!(
                     "Downloading {} \u{2192} {}...",
-                    jcode_build_meta::VERSION,
+                    jcode_build_meta::version(),
                     release.tag_name
                 ));
                 let _path =
@@ -358,7 +358,7 @@ pub fn run_update() -> Result<()> {
                 }
                 update::print_centered(&format!(
                     "Already up to date ({})",
-                    jcode_build_meta::VERSION
+                    jcode_build_meta::version()
                 ));
             }
             Err(e) => {

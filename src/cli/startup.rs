@@ -305,7 +305,7 @@ fn spawn_background_update_check(args: &Args) {
                 && update_available
             {
                 Bus::global().publish(BusEvent::UpdateStatus(UpdateStatus::Available {
-                    current: jcode_build_meta::VERSION.to_string(),
+                    current: jcode_build_meta::version().to_string(),
                     latest: "latest source".to_string(),
                 }));
                 if auto_update {

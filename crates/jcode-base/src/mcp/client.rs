@@ -270,7 +270,7 @@ impl McpClient {
             capabilities: ClientCapabilities::default(),
             client_info: ClientInfo {
                 name: "jcode".to_string(),
-                version: jcode_build_meta::PKG_VERSION.to_string(),
+                version: jcode_build_meta::pkg_version().to_string(),
             },
         };
 

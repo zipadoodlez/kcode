@@ -451,13 +451,13 @@ pub struct LiveVerificationBuild {
 
 impl LiveVerificationBuild {
     pub fn current() -> Self {
-        let version = jcode_build_meta::VERSION.to_string();
+        let version = jcode_build_meta::version().to_string();
         Self {
             jcode_git_dirty: version.contains("dirty"),
             jcode_version: version,
-            jcode_git_hash: jcode_build_meta::GIT_HASH.to_string(),
-            jcode_git_date: jcode_build_meta::GIT_DATE.to_string(),
-            jcode_semver: jcode_build_meta::SEMVER.to_string(),
+            jcode_git_hash: jcode_build_meta::git_hash().to_string(),
+            jcode_git_date: jcode_build_meta::git_date().to_string(),
+            jcode_semver: jcode_build_meta::semver().to_string(),
             os: std::env::consts::OS.to_string(),
             arch: std::env::consts::ARCH.to_string(),
             pid: std::process::id(),

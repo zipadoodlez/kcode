@@ -127,8 +127,8 @@ fn gather_diagnostics(app: &App) -> SupportDiagnostics {
         });
 
     SupportDiagnostics {
-        version: jcode_build_meta::VERSION.to_string(),
-        git_hash: jcode_build_meta::GIT_HASH.to_string(),
+        version: jcode_build_meta::version().to_string(),
+        git_hash: jcode_build_meta::git_hash().to_string(),
         build_channel: build_channel(),
         os: std::env::consts::OS.to_string(),
         arch: std::env::consts::ARCH.to_string(),
