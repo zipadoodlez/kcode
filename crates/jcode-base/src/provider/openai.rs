@@ -134,7 +134,8 @@ fn codex_config_responses_base() -> Option<String> {
 /// Whether `model_id` supports OpenAI's extended prompt-cache retention.
 pub fn supports_extended_prompt_cache_retention(model_id: &str) -> bool {
     let model = model_id.trim().to_ascii_lowercase();
-    model.starts_with("gpt-5.5")
+    model.starts_with("gpt-5.6")
+        || model.starts_with("gpt-5.5")
         || model.starts_with("gpt-5.4")
         || model.starts_with("gpt-5.2")
         || model.starts_with("gpt-5.1")
