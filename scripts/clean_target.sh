@@ -11,7 +11,11 @@
 # Usage:
 #   scripts/clean_target.sh                 # dry-run: report what would be freed
 #   scripts/clean_target.sh --apply         # actually delete safe items
-#   scripts/clean_target.sh --apply --aggressive  # also sweep stale per-profile artifacts
+#   scripts/clean_target.sh --sweep 7       # also sweep stale artifact generations
+#                                           # older than 7 days (keeps the newest
+#                                           # generation per crate, so the warm
+#                                           # cache survives; dry-run w/o --apply)
+#   scripts/clean_target.sh --apply --aggressive  # cargo clean stale profiles
 #
 # Env:
 #   JCODE_CLEAN_ACTIVE_WINDOW_MIN  activity window in minutes (default 20)
@@ -24,14 +28,23 @@ cd "$repo_root"
 target_dir="${CARGO_TARGET_DIR:-$repo_root/target}"
 apply="false"
 aggressive="false"
+sweep_days=""
 activity_window_min="${JCODE_CLEAN_ACTIVE_WINDOW_MIN:-20}"
 
+expect_sweep_days="false"
 for arg in "$@"; do
+  if [[ "$expect_sweep_days" == "true" ]]; then
+    sweep_days="$arg"
+    expect_sweep_days="false"
+    continue
+  fi
   case "$arg" in
     --apply) apply="true" ;;
     --aggressive) aggressive="true" ;;
+    --sweep) expect_sweep_days="true" ;;
+    --sweep=*) sweep_days="${arg#--sweep=}" ;;
     -h|--help)
-      sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -40,6 +53,14 @@ for arg in "$@"; do
       ;;
   esac
 done
+if [[ "$expect_sweep_days" == "true" ]]; then
+  printf 'clean_target: --sweep requires a day count\n' >&2
+  exit 2
+fi
+if [[ -n "$sweep_days" && ! "$sweep_days" =~ ^[0-9]+$ ]]; then
+  printf 'clean_target: --sweep expects a whole number of days, got: %s\n' "$sweep_days" >&2
+  exit 2
+fi
 
 log() { printf 'clean_target: %s\n' "$*" >&2; }
 
@@ -111,7 +132,7 @@ remove_path() {
   fi
 }
 
-log "target dir: $target_dir (activity window: ${activity_window_min}min, apply=$apply, aggressive=$aggressive)"
+log "target dir: $target_dir (activity window: ${activity_window_min}min, apply=$apply, aggressive=$aggressive, sweep=${sweep_days:-off})"
 
 # 1) Cross-compile / compat caches: not part of the local dev inner loop. They
 #    are regenerated on demand by release/compat scripts.
@@ -120,7 +141,65 @@ for d in "$target_dir"/*-apple-darwin "$target_dir"/*-pc-windows-* "$target_dir"
   remove_path "$d" "cross-compile/compat cache"
 done
 
-# 2) Aggressive: cargo clean on stale (not-recently-active, no active process)
+# 2) Sweep stale artifact generations. When a crate is recompiled (feature or
+#    flag change, dependency bump), cargo writes a new `name-<hash>` artifact
+#    into deps/ and leaves the old one behind forever. This keeps the newest
+#    generation per (crate, extension) so the warm cache is preserved, and only
+#    deletes older generations whose mtime exceeds the --sweep day threshold.
+#    Cargo transparently rebuilds anything it still needs, so this is safe.
+list_stale_dep_generations() {
+  local deps="$1" days="$2"
+  find "$deps" -maxdepth 1 -type f -printf '%T@ %s %p\n' 2>/dev/null \
+    | sort -rn \
+    | awk -v cutoff="$(date -d "-${days} days" +%s)" '
+        {
+          path=$3; file=path; sub(/^.*\//, "", file)
+          base=file; ext=""
+          if (match(file, /\.[A-Za-z0-9]+$/)) {
+            ext=substr(file, RSTART)
+            base=substr(file, 1, RSTART - 1)
+          }
+          key=base; sub(/-[0-9a-f]{16,}$/, "", key); key=key ext
+          # Newest generation per key (input is mtime-descending): keep it.
+          if (!(key in seen)) { seen[key]=1; next }
+          if ($1 < cutoff) { print $2 "\t" $3 }
+        }'
+}
+
+if [[ -n "$sweep_days" ]]; then
+  for profile_dir in "$target_dir"/debug "$target_dir"/release "$target_dir"/selfdev; do
+    [[ -d "$profile_dir" ]] || continue
+    if path_has_active_process "$profile_dir"; then
+      log "SKIP sweep (active process): $profile_dir"
+      continue
+    fi
+    profile=$(basename "$profile_dir")
+    if [[ -d "$profile_dir/deps" ]]; then
+      swept=0
+      swept_count=0
+      while IFS=$'\t' read -r bytes path; do
+        [[ -n "$path" ]] || continue
+        if [[ "$apply" == "true" ]]; then
+          rm -f -- "$path" 2>/dev/null || continue
+        fi
+        swept=$((swept + bytes))
+        swept_count=$((swept_count + 1))
+      done < <(list_stale_dep_generations "$profile_dir/deps" "$sweep_days")
+      verb=$([ "$apply" == true ] && echo "swept" || echo "would sweep")
+      log "$verb $swept_count stale dep generations (>${sweep_days}d, kept newest per crate) from $profile  [$(human "$swept")]"
+      total_reclaimed=$((total_reclaimed + swept))
+    fi
+    # Incremental compilation session dirs are cheap to regenerate and only
+    # useful while their working set is hot; drop ones idle past the threshold.
+    if [[ -d "$profile_dir/incremental" ]]; then
+      while IFS= read -r d; do
+        remove_path "$d" "stale incremental session (>${sweep_days}d)"
+      done < <(find "$profile_dir/incremental" -mindepth 1 -maxdepth 1 -type d -mtime "+$sweep_days" 2>/dev/null)
+    fi
+  done
+fi
+
+# 3) Aggressive: cargo clean on stale (not-recently-active, no active process)
 #    profiles to drop accumulated fingerprints/old artifact generations.
 if [[ "$aggressive" == "true" ]]; then
   for profile_dir in "$target_dir"/debug "$target_dir"/release "$target_dir"/selfdev; do
