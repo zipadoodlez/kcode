@@ -228,12 +228,21 @@ fn test_handterm_native_scroll_command_updates_chat_offset() {
         pane: super::handterm_native_scroll::PaneKind::Chat,
         delta: -2,
     });
+    assert_eq!(app.scroll_offset, 5, "the first row should render immediately");
+    assert_eq!(app.mouse_scroll_queue, -1, "the second row should remain queued");
+    app.progress_mouse_scroll_animation();
     assert_eq!(app.scroll_offset, 4);
 
     app.apply_handterm_native_scroll(super::handterm_native_scroll::HostToApp::Scroll {
         pane: super::handterm_native_scroll::PaneKind::Chat,
         delta: 3,
     });
+    assert_eq!(app.scroll_offset, 5, "the first row should render immediately");
+    assert_eq!(app.mouse_scroll_queue, 2, "later rows should animate on ticks");
+    app.progress_mouse_scroll_animation();
+    assert_eq!(app.scroll_offset, 6, "the queued rows should be revealed separately");
+    assert_eq!(app.mouse_scroll_queue, 1);
+    app.progress_mouse_scroll_animation();
     assert_eq!(app.scroll_offset, 7);
 }
 
@@ -286,6 +295,9 @@ fn test_handterm_native_scroll_client_roundtrips_over_socket() {
         .expect("scroll command should arrive");
 
     app.apply_handterm_native_scroll(command);
+    assert_eq!(app.scroll_offset, 5);
+    assert_eq!(app.mouse_scroll_queue, -1);
+    app.progress_mouse_scroll_animation();
     assert_eq!(app.scroll_offset, 4);
 
     unsafe {

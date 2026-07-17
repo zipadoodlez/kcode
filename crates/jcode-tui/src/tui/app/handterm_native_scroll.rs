@@ -1,4 +1,4 @@
-use super::App;
+use super::{App, MouseScrollTarget};
 #[cfg(unix)]
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -166,31 +166,14 @@ impl App {
     }
 
     pub(super) fn apply_handterm_native_scroll(&mut self, command: HostToApp) {
-        match command {
-            HostToApp::Scroll { pane, delta } if delta < 0 => {
-                let amount = delta.unsigned_abs() as usize;
-                match pane {
-                    PaneKind::Chat => {
-                        self.scroll_up(amount);
-                    }
-                    PaneKind::SidePanel => {
-                        self.side_pane_scroll_by(-(amount as isize));
-                    }
-                }
-            }
-            HostToApp::Scroll { pane, delta } if delta > 0 => {
-                let amount = delta as usize;
-                match pane {
-                    PaneKind::Chat => {
-                        self.scroll_down(amount);
-                    }
-                    PaneKind::SidePanel => {
-                        self.side_pane_scroll_by(amount as isize);
-                    }
-                }
-            }
-            _ => {}
-        }
+        let HostToApp::Scroll { pane, delta } = command;
+        self.enqueue_native_scroll(
+            match pane {
+                PaneKind::Chat => MouseScrollTarget::Chat,
+                PaneKind::SidePanel => MouseScrollTarget::SidePane,
+            },
+            delta,
+        );
     }
 }
 
