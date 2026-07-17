@@ -1516,23 +1516,9 @@ fn recent_project_review_prompt_is_bounded_read_only_and_requires_approval() {
     let repository = std::path::Path::new("/home/example/projects/demo");
     let prompt = App::onboarding_recent_project_review_prompt(repository);
 
-    assert!(prompt.contains("/home/example/projects/demo"), "{prompt}");
-    assert!(!prompt.contains("Use Git to find"), "{prompt}");
-    assert!(!prompt.contains("worked in most recently"), "{prompt}");
-    assert!(!prompt.contains("reflog activity"), "{prompt}");
-    assert!(prompt.contains("recent diffs and commits"), "{prompt}");
-    assert!(prompt.contains("read-only review"), "{prompt}");
-    assert!(prompt.contains("architecture problems"), "{prompt}");
-    assert!(prompt.contains("Do not edit files"), "{prompt}");
-    assert!(prompt.contains("asks for my explicit approval"), "{prompt}");
     assert_eq!(
-        prompt.matches('.').count(),
-        2,
-        "onboarding review prompt must stay at two sentences: {prompt}"
-    );
-    assert!(
-        prompt.split_whitespace().count() < 100,
-        "onboarding review prompt grew too large: {prompt}"
+        prompt,
+        "Find the most critical architecture problems in the repository at \"/home/example/projects/demo\". Do not fix them yet, and ask me whether I want them fixed once you find them."
     );
 }
 
