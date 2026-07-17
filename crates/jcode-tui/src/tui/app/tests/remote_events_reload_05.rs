@@ -111,6 +111,42 @@ fn test_save_input_for_reload_persists_inflight_queued_continuation() {
 }
 
 #[test]
+fn test_reload_preserves_completed_confidence_spike_challenge() {
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        let reload_session_id = format!("test-confidence-spike-reload-{}", std::process::id());
+        app.todo_confidence_spike_challenged = true;
+        app.save_input_for_reload(&reload_session_id);
+
+        let restored = App::restore_input_for_reload(&reload_session_id)
+            .expect("confidence challenge state should survive reload");
+        let mut reloaded_app = create_test_app();
+        reloaded_app.apply_restored_reload_input(restored);
+        assert!(reloaded_app.todo_confidence_spike_challenged);
+
+        crate::todo::save_todos(
+            &reloaded_app.session.id,
+            &[crate::todo::TodoItem {
+                id: "todo-1".to_string(),
+                content: "Validate release result".to_string(),
+                status: "completed".to_string(),
+                priority: "high".to_string(),
+                confidence: Some(100),
+                completion_confidence: Some(100),
+                confidence_history: vec![70, 100],
+                ..Default::default()
+            }],
+        )
+        .expect("save completed todo");
+
+        assert!(!reloaded_app.schedule_auto_poke_followup_if_needed());
+        assert!(!reloaded_app.auto_poke_incomplete_todos);
+        assert!(!reloaded_app.todo_confidence_spike_challenged);
+        assert!(reloaded_app.hidden_queued_system_messages.is_empty());
+    });
+}
+
+#[test]
 fn test_save_input_for_reload_removes_stale_file_when_state_is_empty() {
     let mut app = create_test_app();
     let session_id = format!("test-391-stale-{}", std::process::id());

@@ -22,6 +22,7 @@ pub(super) struct RestoredReloadInput {
     pub observe_page_updated_at_ms: u64,
     pub split_view_enabled: bool,
     pub todos_view_enabled: bool,
+    pub todo_confidence_spike_challenged: bool,
 }
 
 impl App {
@@ -221,6 +222,7 @@ impl App {
             && !self.observe_mode_enabled
             && !self.split_view_enabled
             && !self.todos_view_enabled
+            && !self.todo_confidence_spike_challenged
         {
             // Nothing to save, but a stale file from an earlier run could
             // still hold old queued messages/input. Leaving it behind would
@@ -310,6 +312,7 @@ impl App {
                 "observe_page_updated_at_ms": self.observe_page_updated_at_ms,
                 "split_view_enabled": self.split_view_enabled,
                 "todos_view_enabled": self.todos_view_enabled,
+                "todo_confidence_spike_challenged": self.todo_confidence_spike_challenged,
             });
             let _ = std::fs::write(&path, data.to_string());
         }
@@ -526,6 +529,10 @@ impl App {
                 .get("todos_view_enabled")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
+            let todo_confidence_spike_challenged = value
+                .get("todo_confidence_spike_challenged")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let cursor = cursor.min(input.len());
             return Some(RestoredReloadInput {
                 input,
@@ -546,6 +553,7 @@ impl App {
                 observe_page_updated_at_ms,
                 split_view_enabled,
                 todos_view_enabled,
+                todo_confidence_spike_challenged,
             });
         }
 
@@ -571,6 +579,7 @@ impl App {
             observe_page_updated_at_ms: 0,
             split_view_enabled: false,
             todos_view_enabled: false,
+            todo_confidence_spike_challenged: false,
         })
     }
 
