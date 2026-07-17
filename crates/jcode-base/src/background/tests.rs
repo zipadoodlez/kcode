@@ -545,7 +545,11 @@ async fn abort_live_tasks_for_reload_keeps_naturally_finished_status() -> Result
         sleep(Duration::from_millis(10)).await;
     }
 
-    manager.abort_live_tasks_for_reload().await;
+    assert_eq!(
+        manager.abort_live_tasks_for_reload().await,
+        0,
+        "a naturally completed task should not be counted as finalized"
+    );
 
     let status = manager
         .status(&info.task_id)

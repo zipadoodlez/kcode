@@ -1225,7 +1225,7 @@ impl BackgroundTaskManager {
             let mut map = self.tasks.write().await;
             map.drain().map(|(_, task)| task).collect()
         };
-        let count = tasks.len();
+        let mut finalized = 0;
 
         for task in tasks {
             task.handle.abort();
@@ -1277,9 +1277,10 @@ impl BackgroundTaskManager {
             );
             self.write_status_file(&task.status_path, &final_status)
                 .await;
+            finalized += 1;
         }
 
-        count
+        finalized
     }
 
     /// Clean up old task files (older than specified hours)
