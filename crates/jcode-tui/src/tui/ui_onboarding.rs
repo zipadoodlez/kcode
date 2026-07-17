@@ -44,6 +44,46 @@ fn push_esc_skip_hint(lines: &mut Vec<Line<'static>>, align: Alignment) {
     );
 }
 
+/// Whether the terminal renders the U+25D6/U+25D7 half-circle pill caps as
+/// clean full-cell semicircles. Kitty does; ghostty, Apple Terminal, and the
+/// VS Code terminal draw them as small floating glyphs that break the capsule
+/// illusion, so those fall back to half-block caps that render solidly
+/// everywhere. Override with `JCODE_ROUNDED_PILLS=on|off`.
+fn rounded_pill_caps_supported() -> bool {
+    static SUPPORTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *SUPPORTED.get_or_init(|| {
+        // Golden/eval tests assert the canonical rounded glyphs; keep test
+        // renders deterministic regardless of the terminal running the tests.
+        if cfg!(test) {
+            return true;
+        }
+        if let Ok(raw) = std::env::var("JCODE_ROUNDED_PILLS") {
+            match raw.trim().to_ascii_lowercase().as_str() {
+                "1" | "true" | "yes" | "on" => return true,
+                "0" | "false" | "no" | "off" => return false,
+                _ => {}
+            }
+        }
+        if let Ok(tp) = std::env::var("TERM_PROGRAM") {
+            let tp = tp.to_ascii_lowercase();
+            if tp == "ghostty" || tp == "apple_terminal" || tp == "vscode" {
+                return false;
+            }
+        }
+        if std::env::var("GHOSTTY_RESOURCES_DIR").is_ok()
+            || std::env::var("GHOSTTY_BIN_DIR").is_ok()
+        {
+            return false;
+        }
+        if let Ok(term) = std::env::var("TERM")
+            && term.to_ascii_lowercase().contains("ghostty")
+        {
+            return false;
+        }
+        true
+    })
+}
+
 /// Build one rounded "lozenge" pill: half-circle end caps (`◖` / `◗`) around a
 /// padded label. Both states are solid capsules; the selected pill has a bright
 /// accent fill + BOLD label, the unselected one a muted dark-gray fill with no
@@ -66,10 +106,19 @@ fn lozenge_pill_spans(label: &str, filled: bool) -> Vec<Span<'static>> {
     if bold {
         body = body.add_modifier(Modifier::BOLD);
     }
+    // Half-circle caps where they render well; half-block caps (`▐` / `▌`)
+    // elsewhere. Half blocks are part of the universally-supported block
+    // elements range, so the capsule stays a solid, aligned shape in every
+    // terminal font (the corners are square, but nothing floats or clips).
+    let (left_cap, right_cap) = if rounded_pill_caps_supported() {
+        ("\u{25D6}", "\u{25D7}")
+    } else {
+        ("\u{2590}", "\u{258C}")
+    };
     vec![
-        Span::styled("\u{25D6}", cap),
+        Span::styled(left_cap, cap),
         Span::styled(format!(" {label} "), body),
-        Span::styled("\u{25D7}", cap),
+        Span::styled(right_cap, cap),
     ]
 }
 
