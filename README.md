@@ -34,12 +34,12 @@ Built for multi-session workflows, infinite customizability, and performance.
 
 ```bash
 # macOS & Linux
-curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.sh | bash
+curl -fsSL https://jcode.sh/install | bash
 ```
 
 ```powershell
 # Windows 11 (PowerShell 5.1+)
-irm https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.ps1 | iex
+irm https://jcode.sh/install.ps1 | iex
 ```
 
 Need Homebrew, source builds, provider setup, or want an agent to set it up for you?
@@ -733,10 +733,10 @@ Set up jcode on this machine for me.
      brew install jcode
 
    - macOS or Linux via install script:
-     curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.sh | bash
+     curl -fsSL https://jcode.sh/install | bash
 
    - Windows PowerShell:
-     irm https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.ps1 | iex
+     irm https://jcode.sh/install.ps1 | iex
 
    - From source if the above paths are not appropriate:
      git clone https://github.com/1jehuang/jcode.git
@@ -786,7 +786,7 @@ This is intended to be a copy-paste bootstrap prompt for jcode itself or any oth
 
 ```bash
 # macOS & Linux
-curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.sh | bash
+curl -fsSL https://jcode.sh/install | bash
 ```
 
 On Termux, install the glibc runtime and `patchelf` first so the installer can
@@ -795,12 +795,12 @@ launcher that avoids Termux's `LD_PRELOAD` shim:
 
 ```bash
 pkg install glibc patchelf
-curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.sh | bash
+curl -fsSL https://jcode.sh/install | bash
 ```
 
 ```powershell
 # Windows 11 x64 or ARM64 (PowerShell 5.1+)
-irm https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.ps1 | iex
+irm https://jcode.sh/install.ps1 | iex
 ```
 
 The Windows installer selects the correct architecture and verifies the download
