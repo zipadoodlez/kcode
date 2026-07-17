@@ -768,8 +768,8 @@ impl App {
 
         // Never present the old catalog as authoritative immediately after a
         // login/import. Local mode clears this when the provider's synchronous
-        // auth activation finishes; remote mode clears it when the server pushes
-        // AvailableModelsUpdated.
+        // auth activation finishes; remote mode clears it when the server sends
+        // the final catalog activity after all provider work completes.
         if self.auth_catalog_refresh_pending {
             self.open_loading_model_picker(&current_model);
             return;

@@ -551,6 +551,9 @@ pub(super) async fn dispatch_ui_activity(
     activity: &crate::bus::UiActivity,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
 ) {
+    if activity.message.trim().is_empty() {
+        return;
+    }
     let Some(session_id) = activity.session_id.as_deref() else {
         return;
     };

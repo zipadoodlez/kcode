@@ -2233,10 +2233,12 @@ pub(in crate::tui::app) fn handle_server_event(
                     app.remote_provider_name = Some(pname.clone());
                 }
                 app.invalidate_model_picker_cache();
-                app.push_display_message(DisplayMessage::system(format!(
-                    "✓ Switched to model: {}",
-                    model
-                )));
+                if !app.auth_catalog_refresh_pending {
+                    app.push_display_message(DisplayMessage::system(format!(
+                        "✓ Switched to model: {}",
+                        model
+                    )));
+                }
                 app.set_status_notice(format!("Model → {}", model));
             }
             false
@@ -2274,7 +2276,6 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.replace_remote_model_catalog_snapshot(model_catalog_snapshot);
             app.remote_model_catalog_generation =
                 app.remote_model_catalog_generation.saturating_add(1);
-            app.finish_auth_catalog_refresh();
             app.persist_remote_model_catalog_cache();
             if provider_meta_changed {
                 app.update_terminal_title();
@@ -2503,6 +2504,16 @@ pub(in crate::tui::app) fn handle_server_event(
             }
 
             if let Some(scope) = runtime_activity_scope {
+                if message.trim().is_empty() {
+                    app.set_status_notice(runtime_activity_status_notice(&message));
+                    return false;
+                }
+                if scope == "catalog_activity"
+                    && (message.starts_with("**Model ready:**")
+                        || message.starts_with("**Model access refreshed**"))
+                {
+                    app.finish_auth_catalog_refresh();
+                }
                 if app.onboarding_flow_active()
                     && matches!(scope, "auth_activity" | "catalog_activity")
                 {

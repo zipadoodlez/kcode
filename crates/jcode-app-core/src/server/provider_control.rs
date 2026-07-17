@@ -6,16 +6,47 @@ use crate::protocol::{AuthChanged, NotificationType, ServerEvent};
 use crate::provider::{ModelCatalogRefreshSummary, ModelRoute, Provider, RouteSelection};
 use jcode_provider_core::ModelCatalogSnapshot;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock, mpsc};
 
 type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
+static AUTH_REFRESH_GENERATIONS: OnceLock<StdMutex<HashMap<String, u64>>> = OnceLock::new();
+static NEXT_AUTH_REFRESH_GENERATION: AtomicU64 = AtomicU64::new(1);
 
 struct AuthRefreshTargets {
     providers: Vec<Arc<dyn Provider>>,
     session_providers: Vec<Arc<dyn Provider>>,
     deferred_agents: Vec<Arc<Mutex<Agent>>>,
+}
+
+fn begin_auth_refresh(session_id: &str) -> u64 {
+    let generation = NEXT_AUTH_REFRESH_GENERATION.fetch_add(1, Ordering::Relaxed);
+    let mut generations = AUTH_REFRESH_GENERATIONS
+        .get_or_init(|| StdMutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    generations.insert(session_id.to_string(), generation);
+    generation
+}
+
+fn auth_refresh_is_current(session_id: &str, generation: u64) -> bool {
+    let generations = AUTH_REFRESH_GENERATIONS
+        .get_or_init(|| StdMutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    generations.get(session_id).copied() == Some(generation)
+}
+
+fn finish_auth_refresh(session_id: &str, generation: u64) {
+    let mut generations = AUTH_REFRESH_GENERATIONS
+        .get_or_init(|| StdMutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if generations.get(session_id).copied() == Some(generation) {
+        generations.remove(session_id);
+    }
 }
 
 fn available_models_snapshot_into_event(snapshot: ModelCatalogSnapshot) -> ServerEvent {
@@ -50,60 +81,25 @@ pub(super) fn try_available_models_updated_event(agent: &Arc<Mutex<Agent>>) -> O
     Some(available_models_updated_event_from_agent(&agent_guard))
 }
 
-fn format_model_name_list(models: &[String], limit: usize) -> String {
-    let shown = models
-        .iter()
-        .take(limit)
-        .map(|model| format!("`{}`", model))
-        .collect::<Vec<_>>()
-        .join(", ");
-    if models.len() > limit {
-        format!("{} … and {} more", shown, models.len() - limit)
-    } else {
-        shown
-    }
-}
-
 fn format_auth_catalog_refresh_complete(
     provider_name: Option<&str>,
     provider_model: Option<&str>,
     summary: &ModelCatalogRefreshSummary,
+    has_warning: bool,
 ) -> String {
     let provider_label = provider_name.unwrap_or("provider");
-    let mut message = format!(
-        "**Auth Model Catalog Updated**\n\n{} credentials are active. Catalog diff:\n\nModels: {} → {}  (+{} / -{})\nRoutes: {} → {}  (+{} / -{} / ~{})",
-        provider_label,
-        summary.model_count_before,
-        summary.model_count_after,
-        summary.models_added,
-        summary.models_removed,
-        summary.route_count_before,
-        summary.route_count_after,
-        summary.routes_added,
-        summary.routes_removed,
-        summary.routes_changed,
-    );
-    if !summary.models_added_names.is_empty() {
-        message.push_str("\nAdded models: ");
-        message.push_str(&format_model_name_list(&summary.models_added_names, 12));
-    }
-    if !summary.models_removed_names.is_empty() {
-        message.push_str("\nRemoved models: ");
-        message.push_str(&format_model_name_list(&summary.models_removed_names, 12));
-    }
-    if let Some(model) = provider_model {
-        message.push_str(&format!("\n\nSelected model: `{}`.", model));
-    }
-    message.push_str("\n\nUse `/model` if you want to choose a different accessible model.");
-    message
-}
-
-fn auth_model_refresh_quiet_period() -> std::time::Duration {
-    if cfg!(test) {
-        std::time::Duration::from_millis(20)
+    let title = provider_model
+        .map(|model| format!("**Model ready:** `{model}`"))
+        .unwrap_or_else(|| "**Model access refreshed**".to_string());
+    let warning = if has_warning {
+        " Some expected routes are missing."
     } else {
-        std::time::Duration::from_millis(750)
-    }
+        ""
+    };
+    format!(
+        "{title}\n{provider_label} access refreshed: {} models, {} routes.{warning} Use `/model` to change.",
+        summary.model_count_after, summary.route_count_after,
+    )
 }
 
 fn log_provider_control_deferred(operation: &'static str, id: u64) -> Instant {
@@ -186,6 +182,7 @@ fn spawn_deferred_provider_operation<F>(
 async fn auth_refresh_targets(
     provider_template: &Arc<dyn Provider>,
     current_provider: &Arc<dyn Provider>,
+    current_agent: &Arc<Mutex<Agent>>,
     sessions: &SessionAgents,
 ) -> AuthRefreshTargets {
     fn push_unique(handles: &mut Vec<Arc<dyn Provider>>, provider: Arc<dyn Provider>) {
@@ -209,6 +206,11 @@ async fn auth_refresh_targets(
     };
 
     for agent in agents {
+        // The requesting session's provider is already included explicitly,
+        // even when that agent is busy and its lock cannot be inspected here.
+        if Arc::ptr_eq(&agent, current_agent) {
+            continue;
+        }
         let Ok(agent_guard) = agent.try_lock() else {
             crate::logging::info(
                 "Deferring busy session provider auth-change refresh until the session is idle",
@@ -250,6 +252,7 @@ async fn apply_auth_runtime_model_to_agent(
     activation: &AuthActivationResult,
     model: Option<&str>,
     agent: &Arc<Mutex<Agent>>,
+    unless_user_selected_after: Option<u64>,
 ) {
     let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) else {
         return;
@@ -258,6 +261,16 @@ async fn apply_auth_runtime_model_to_agent(
     let provider = activation.provider_id.as_deref().unwrap_or("auth");
     let result = {
         let mut agent_guard = agent.lock().await;
+        if unless_user_selected_after
+            .is_some_and(|generation| agent_guard.user_selected_provider_model_after(generation))
+        {
+            crate::logging::auth_event(
+                "auth_changed_auto_model_skipped_after_manual_switch",
+                provider,
+                &[("reason", "user_selected_provider_model_during_refresh")],
+            );
+            return;
+        }
         let provider_name = agent_guard.provider_handle().name().to_string();
         let model_request = activation.model_switch_request(&provider_name, model);
         let result = agent_guard.set_model_from_auth(&model_request);
@@ -288,11 +301,25 @@ async fn apply_auth_runtime_model_to_agent(
     }
 }
 
-async fn apply_auth_route_to_agent(route: &ModelRoute, agent: &Arc<Mutex<Agent>>) {
+async fn apply_auth_route_to_agent(
+    route: &ModelRoute,
+    agent: &Arc<Mutex<Agent>>,
+    unless_user_selected_after: Option<u64>,
+) {
     let selection = RouteSelection::from_model_route(route);
     let requested_model = selection.routed_model_spec();
     let result = {
         let mut agent_guard = agent.lock().await;
+        if unless_user_selected_after
+            .is_some_and(|generation| agent_guard.user_selected_provider_model_after(generation))
+        {
+            crate::logging::auth_event(
+                "auth_changed_auto_model_skipped_after_manual_switch",
+                &route.provider,
+                &[("reason", "user_selected_provider_model_during_refresh")],
+            );
+            return;
+        }
         let result = agent_guard.set_route_selection_from_auth(&selection);
         if result.is_ok() {
             agent_guard.reset_provider_session();
@@ -948,6 +975,7 @@ pub(super) async fn handle_notify_auth_changed(
     agent: &Arc<Mutex<Agent>>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
 ) {
+    let refresh_started = Instant::now();
     crate::auth::AuthStatus::invalidate_cache();
     let (session_id, before_snapshot) = if let Ok(agent_guard) = agent.try_lock() {
         (
@@ -970,18 +998,22 @@ pub(super) async fn handle_notify_auth_changed(
             available_models_snapshot_from_provider(provider),
         )
     };
+    let auth_refresh_generation = begin_auth_refresh(&session_id);
     let activation_request = AuthActivationRequest::new(provider_hint, auth);
     crate::bus::Bus::global().publish(crate::bus::BusEvent::UiActivity(
         crate::bus::UiActivity::auth(
             Some(session_id.clone()),
-            "**Auth Change Received**\n\nThe server is reloading provider credentials and refreshing model route availability for this session.",
+            "",
             Some("Auth: refreshing providers..."),
         ),
     ));
-    let targets = auth_refresh_targets(provider_template, provider, sessions).await;
+    let targets = auth_refresh_targets(provider_template, provider, agent, sessions).await;
     let client_event_tx_clone = client_event_tx.clone();
     let agent_clone = agent.clone();
     tokio::spawn(async move {
+        if !auth_refresh_is_current(&session_id, auth_refresh_generation) {
+            return;
+        }
         let activation = crate::auth::lifecycle::activate_auth_change(&activation_request);
         // Snapshot which providers jcode now believes are configured right after
         // an auth change activates. This is the cornerstone for diagnosing
@@ -991,10 +1023,24 @@ pub(super) async fn handle_notify_auth_changed(
         // upstream of the picker.
         crate::auth::AuthStatus::check_fast().log_snapshot("auth_changed");
         let mut bus_rx = crate::bus::Bus::global().subscribe();
-        for provider in targets.providers {
+        let AuthRefreshTargets {
+            providers,
+            session_providers,
+            deferred_agents,
+        } = targets;
+        let mut refresh_providers = providers.clone();
+        for candidate in &session_providers {
+            if !refresh_providers
+                .iter()
+                .any(|existing| Arc::ptr_eq(existing, candidate))
+            {
+                refresh_providers.push(Arc::clone(candidate));
+            }
+        }
+        for provider in providers {
             provider.on_auth_changed();
         }
-        for provider in targets.session_providers {
+        for provider in session_providers {
             provider.on_auth_changed_preserve_current_provider();
         }
 
@@ -1002,12 +1048,15 @@ pub(super) async fn handle_notify_auth_changed(
         // configured credentials, but the automatic post-login model switch is
         // session-local. A user logging Groq/Cerebras into one workspace should
         // not silently move unrelated sessions off their chosen provider/model.
-        apply_auth_runtime_model_to_agent(
-            &activation,
-            activation.activated_model.as_deref(),
-            &agent_clone,
-        )
-        .await;
+        if auth_refresh_is_current(&session_id, auth_refresh_generation) {
+            apply_auth_runtime_model_to_agent(
+                &activation,
+                activation.activated_model.as_deref(),
+                &agent_clone,
+                None,
+            )
+            .await;
+        }
         let auth_selection_generation = {
             let agent_guard = agent_clone.lock().await;
             agent_guard.provider_model_selection_generation()
@@ -1017,12 +1066,12 @@ pub(super) async fn handle_notify_auth_changed(
         crate::bus::Bus::global().publish(crate::bus::BusEvent::UiActivity(
             crate::bus::UiActivity::catalog(
                 Some(session_id.clone()),
-                "**Auth Model Routes Updating**\n\nCredentials are reloaded. Jcode is pushing an updated model catalog snapshot to connected clients.",
+                "",
                 Some("Auth: model routes updating..."),
             ),
         ));
 
-        spawn_deferred_auth_refreshes(targets.deferred_agents);
+        spawn_deferred_auth_refreshes(deferred_agents);
 
         // Hot-initializing providers is synchronous, while dynamic catalogs may
         // continue refreshing in the background. Push an immediate snapshot so
@@ -1033,28 +1082,52 @@ pub(super) async fn handle_notify_auth_changed(
             latest_snapshot.clone(),
         ));
 
+        // Wait for the catalog work that providers actually launched. The old
+        // implementation waited for two stacked 750 ms debounce windows even
+        // when every provider had already finished. Tracking real work removes
+        // that fixed tax while retaining the 10 s safety ceiling.
+        let settle_started = Instant::now();
         let max_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
-        let quiet_period = auth_model_refresh_quiet_period();
-        let mut quiet_deadline: Option<tokio::time::Instant> = None;
-        loop {
-            let now = tokio::time::Instant::now();
-            let deadline = quiet_deadline
-                .map(|quiet| std::cmp::min(max_deadline, quiet))
-                .unwrap_or(max_deadline);
-            let remaining = deadline.saturating_duration_since(now);
-            if remaining.is_zero() {
-                break;
-            }
+        let mut model_update_events = 0_u64;
+        while refresh_providers
+            .iter()
+            .any(|provider| provider.auth_model_refresh_pending())
+            && tokio::time::Instant::now() < max_deadline
+        {
             tokio::select! {
                 event = bus_rx.recv() => {
                     if matches!(event, Ok(crate::bus::BusEvent::ModelsUpdated)) {
+                        model_update_events = model_update_events.saturating_add(1);
                         latest_snapshot = available_models_snapshot(&agent_clone).await;
                         let _ = client_event_tx_clone.send(available_models_snapshot_into_event(latest_snapshot.clone()));
-                        quiet_deadline = Some(tokio::time::Instant::now() + quiet_period);
                     }
                 }
-                _ = tokio::time::sleep(remaining) => break,
+                _ = tokio::time::sleep(std::time::Duration::from_millis(20)) => {}
             }
+        }
+        let refresh_timed_out = refresh_providers
+            .iter()
+            .any(|provider| provider.auth_model_refresh_pending());
+        latest_snapshot = available_models_snapshot(&agent_clone).await;
+        let _ = client_event_tx_clone.send(available_models_snapshot_into_event(
+            latest_snapshot.clone(),
+        ));
+        let settle_ms = settle_started.elapsed().as_millis();
+
+        if !auth_refresh_is_current(&session_id, auth_refresh_generation) {
+            crate::logging::event_info(
+                "SERVER_AUTH_MODEL_REFRESH_SUPERSEDED",
+                vec![
+                    ("session_id", session_id.clone()),
+                    ("generation", auth_refresh_generation.to_string()),
+                    (
+                        "total_ms",
+                        refresh_started.elapsed().as_millis().to_string(),
+                    ),
+                ],
+            );
+            finish_auth_refresh(&session_id, auth_refresh_generation);
+            return;
         }
 
         let manual_model_selected_during_auth_refresh = {
@@ -1076,7 +1149,12 @@ pub(super) async fn handle_notify_auth_changed(
                 if let Some(route) = crate::auth::lifecycle::globally_preferred_default_route(
                     &latest_snapshot.model_routes,
                 ) {
-                    apply_auth_route_to_agent(&route, &agent_clone).await;
+                    apply_auth_route_to_agent(
+                        &route,
+                        &agent_clone,
+                        Some(auth_selection_generation),
+                    )
+                    .await;
                 }
             } else if let Some(model_to_select) =
                 crate::auth::lifecycle::provider_model_to_select_after_auth(
@@ -1089,6 +1167,7 @@ pub(super) async fn handle_notify_auth_changed(
                     &activation,
                     Some(&model_to_select),
                     &agent_clone,
+                    Some(auth_selection_generation),
                 )
                 .await;
             }
@@ -1109,24 +1188,37 @@ pub(super) async fn handle_notify_auth_changed(
             latest_snapshot.provider_model.as_deref(),
             &latest_snapshot.model_routes,
         );
-        let mut catalog_message = format_auth_catalog_refresh_complete(
+        let catalog_warning = catalog_invariants.warning_message();
+        let catalog_message = format_auth_catalog_refresh_complete(
             activation
                 .provider_label
                 .as_deref()
                 .or(latest_snapshot.provider_name.as_deref()),
             latest_snapshot.provider_model.as_deref(),
             &summary,
+            catalog_warning.is_some(),
         );
-        if let Some(warning) = catalog_invariants.warning_message() {
-            catalog_message.push_str(&warning);
+        if let Some(warning) = catalog_warning.as_deref() {
+            crate::logging::warn(&format!("Auth catalog invariant warning: {warning}"));
         }
-        crate::bus::Bus::global().publish(crate::bus::BusEvent::UiActivity(
-            crate::bus::UiActivity::catalog(
-                Some(session_id),
-                catalog_message,
-                Some("Auth: model catalog updated"),
-            ),
-        ));
+        crate::logging::event_info(
+            "SERVER_AUTH_MODEL_REFRESH_COMPLETED",
+            vec![
+                (
+                    "total_ms",
+                    refresh_started.elapsed().as_millis().to_string(),
+                ),
+                ("settle_ms", settle_ms.to_string()),
+                ("models_before", summary.model_count_before.to_string()),
+                ("models_after", summary.model_count_after.to_string()),
+                ("routes_before", summary.route_count_before.to_string()),
+                ("routes_after", summary.route_count_after.to_string()),
+                ("model_update_events", model_update_events.to_string()),
+                ("timed_out", refresh_timed_out.to_string()),
+            ],
+        );
+        send_catalog_activity(&client_event_tx_clone, &catalog_message);
+        finish_auth_refresh(&session_id, auth_refresh_generation);
     });
     let _ = client_event_tx.send(ServerEvent::Done { id });
 }

@@ -221,7 +221,9 @@ pub(super) fn handle_bus_event(
             });
             app.session.model = Some(model.clone());
             let _ = app.session.save();
-            app.push_display_message(crate::tui::DisplayMessage::system(message));
+            if !app.auth_catalog_refresh_pending {
+                app.push_display_message(crate::tui::DisplayMessage::system(message));
+            }
             app.set_status_notice(format!("Model → {}", model));
             if open_picker {
                 app.open_model_picker();
@@ -297,7 +299,10 @@ pub(super) fn handle_ui_activity(app: &mut App, activity: UiActivity) -> bool {
             app.push_display_message(DisplayMessage::background_task(activity.message.clone()))
         }
         UiActivityKind::Auth | UiActivityKind::Catalog => {
-            if activity.kind == UiActivityKind::Catalog
+            if activity.message.trim().is_empty() {
+                // Status-only lifecycle updates should not leave blank transcript
+                // entries.
+            } else if activity.kind == UiActivityKind::Catalog
                 && crate::message::parse_background_task_progress_notification_markdown(
                     &activity.message,
                 )

@@ -181,21 +181,20 @@ impl AuthLifecycleResult {
             Some(spec.provider_id)
         );
         assert!(
-            transcript.contains(&format!("{} credentials are active", spec.provider_label)),
+            transcript.contains(&format!("{} access refreshed", spec.provider_label)),
             "{}",
             self.failure_report(spec)
         );
         // Anti-confusion guard: the transcript must never attribute the new
-        // credentials to a different provider (e.g. a Cerebras login reported
-        // as "OpenAI credentials are active"). Skip the marker matching the
-        // provider under test: OpenRouter/OpenAI-labelled compat profiles
-        // legitimately produce their own "credentials are active" line.
+        // access to a different provider. Skip the marker matching the provider
+        // under test: OpenRouter/OpenAI-labelled compat profiles legitimately
+        // produce their own access-refreshed line.
         for other_label in ["OpenAI", "OpenRouter"] {
             if spec.provider_label == other_label {
                 continue;
             }
             assert!(
-                !transcript.contains(&format!("{other_label} credentials are active")),
+                !transcript.contains(&format!("{other_label} access refreshed")),
                 "{}",
                 self.failure_report(spec)
             );
@@ -301,12 +300,7 @@ impl AuthLifecycleResult {
         } else {
             format!("**{} credentials detected.**", spec.provider_label)
         };
-        let markers = [
-            saved_or_detected.as_str(),
-            "**Auth Change Received**",
-            "**Auth Model Routes Updating**",
-            "**Auth Model Catalog Updated**",
-        ];
+        let markers = [saved_or_detected.as_str(), "**Model ready:**"];
         let mut previous = None;
         for marker in markers {
             let first = transcript.find(marker).unwrap_or_else(|| {
@@ -513,23 +507,16 @@ impl AuthLifecycleDriver {
                 spec.auth_path.credential_source()
             ));
         }
-        transcript.push(
-            "**Auth Change Received**\n\nThe server is reloading provider credentials and refreshing model route availability for this session."
-                .to_string(),
-        );
-        transcript.push(
-            "**Auth Model Routes Updating**\n\nCredentials are reloaded. Jcode is pushing an updated model catalog snapshot to connected clients."
-                .to_string(),
-        );
-        let mut updated = format!(
-            "**Auth Model Catalog Updated**\n\n{} credentials are active. Catalog diff:\n\nModels: fixture-before → fixture-after\nRoutes: fixture-before → fixture-after\n\nSelected model: `{}`.",
+        let warning_suffix = if warning.is_some() {
+            " Some expected routes are missing."
+        } else {
+            ""
+        };
+        transcript.push(format!(
+            "**Model ready:** `{}`\n{} access refreshed.{warning_suffix} Use `/model` to change.",
+            selected_model.unwrap_or("none"),
             spec.provider_label,
-            selected_model.unwrap_or("none")
-        );
-        if let Some(warning) = warning {
-            updated.push_str(warning);
-        }
-        transcript.push(updated);
+        ));
         transcript
     }
 }
@@ -1229,7 +1216,7 @@ mod tests {
         let mut duplicated = result.clone();
         duplicated
             .transcript
-            .push("**Auth Model Catalog Updated**\n\nDuplicate final success.".to_string());
+            .push("**Model ready:** `duplicate`\nDuplicate final success.".to_string());
         let duplicate_panic = std::panic::catch_unwind(|| duplicated.assert_success(&spec))
             .expect_err("duplicate final catalog update must not satisfy happy auth lifecycle");
         let duplicate_message = duplicate_panic
@@ -1243,7 +1230,7 @@ mod tests {
         );
 
         let mut out_of_order = result.clone();
-        out_of_order.transcript.swap(1, 3);
+        out_of_order.transcript.swap(1, 2);
         let order_panic = std::panic::catch_unwind(|| out_of_order.assert_success(&spec))
             .expect_err("out-of-order auth transcript must not satisfy happy lifecycle");
         let order_message = order_panic

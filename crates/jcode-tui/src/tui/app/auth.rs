@@ -2654,14 +2654,21 @@ impl App {
         crate::bus::Bus::global().publish(crate::bus::BusEvent::UiActivity(
             crate::bus::UiActivity::auth(
                 Some(self.session.id.clone()),
-                "Auth State Changed\n\nRefreshing provider credentials and model route availability for this session.",
+                "",
                 Some("Auth: refreshing model routes..."),
             ),
         ));
+        // Remote mode forwards the auth change to the server immediately after
+        // this handler returns. Refreshing the client-side provider as well used
+        // to duplicate every catalog network request and could race the first
+        // onboarding prompt with a second model switch.
+        if self.is_remote {
+            return;
+        }
         let provider = Arc::clone(&self.provider);
         let provider_hint = provider_hint.map(str::to_string);
         let session_id = self.session.id.clone();
-        let select_local_model = !self.is_remote;
+        let select_local_model = true;
         let auto_selection_active = Arc::clone(&self.onboarding_auto_model_selection_active);
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {

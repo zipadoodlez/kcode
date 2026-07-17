@@ -105,7 +105,9 @@ fn test_refresh_model_list_command_shows_summary_and_status_notice() {
     assert!(last.content.contains("cerebras-reasoning"));
     assert!(app.display_messages.iter().any(|message| {
         message.role == "background_task"
-            && message.content.contains("**Background task progress** `refresh-model-list`")
+            && message
+                .content
+                .contains("**Background task progress** `refresh-model-list`")
             && message.content.contains("Model list refresh")
     }));
 }
@@ -157,7 +159,10 @@ fn test_remote_available_models_updated_after_refresh_shows_summary_and_updates_
         &mut remote,
     );
 
-    assert!(needs_redraw, "model refresh completion must redraw immediately");
+    assert!(
+        needs_redraw,
+        "model refresh completion must redraw immediately"
+    );
     assert_eq!(
         app.status_notice(),
         Some("Model list refreshed: +1 models, +1 routes, ~1 changed".to_string())
@@ -244,8 +249,71 @@ fn test_remote_auth_activity_notification_is_status_only_during_onboarding() {
 }
 
 #[test]
+fn test_remote_final_catalog_activity_is_two_lines_and_completes_model_setup() {
+    let mut app = create_test_app();
+    app.auth_catalog_refresh_pending = true;
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+    let message = "**Model ready:** `gpt-5.6-sol`\nOpenAI access refreshed: 37 models, 38 routes. Use `/model` to change.";
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::Notification {
+            from_session: "jcode".to_string(),
+            from_name: Some("Jcode".to_string()),
+            notification_type: crate::protocol::NotificationType::Message {
+                scope: Some("catalog_activity".to_string()),
+                channel: None,
+                tldr: None,
+            },
+            message: message.to_string(),
+        },
+        &mut remote,
+    );
+
+    assert!(!app.auth_catalog_refresh_pending);
+    let last = app
+        .display_messages
+        .last()
+        .expect("compact catalog message");
+    assert_eq!(last.role, "system");
+    assert_eq!(last.content.lines().count(), 2);
+    assert_eq!(last.content, message);
+}
+
+#[test]
+fn test_remote_onboarding_catalog_activity_completes_model_setup_without_chat_noise() {
+    let mut app = create_test_app();
+    let mut flow = crate::tui::app::onboarding_flow::OnboardingFlow::begin();
+    flow.phase = crate::tui::app::onboarding_flow::OnboardingPhase::Login { import: None };
+    app.onboarding_flow = Some(flow);
+    app.auth_catalog_refresh_pending = true;
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::Notification {
+            from_session: "jcode".to_string(),
+            from_name: Some("Jcode".to_string()),
+            notification_type: crate::protocol::NotificationType::Message {
+                scope: Some("catalog_activity".to_string()),
+                channel: None,
+                tldr: None,
+            },
+            message: "**Model ready:** `gpt-5.6-sol`\nOpenAI access refreshed: 37 models, 38 routes. Use `/model` to change.".to_string(),
+        },
+        &mut remote,
+    );
+
+    assert!(!app.auth_catalog_refresh_pending);
+    assert!(app.display_messages.is_empty());
+}
+
+#[test]
 fn test_remote_catalog_activity_notification_upserts_progress_card() {
     let mut app = create_test_app();
+    app.auth_catalog_refresh_pending = true;
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
@@ -281,6 +349,7 @@ fn test_remote_catalog_activity_notification_upserts_progress_card() {
         .filter(|message| message.role == "background_task")
         .collect();
     assert_eq!(cards.len(), 1, "progress updates should upsert one card");
+    assert!(app.auth_catalog_refresh_pending);
     assert!(cards[0].content.contains("refresh-model-list"));
     assert!(cards[0].content.contains("Waiting on provider APIs"));
     let status = app.status_notice().expect("status notice");
@@ -528,7 +597,11 @@ fn test_model_picker_preserves_recommendation_priority_order() {
         .filter(|entry| entry.recommended)
         .map(|entry| {
             let route = entry.active_option().expect("recommended entry has route");
-            (entry.name.as_str(), route.provider.as_str(), route.api_method.as_str())
+            (
+                entry.name.as_str(),
+                route.provider.as_str(),
+                route.api_method.as_str(),
+            )
         })
         .collect();
     assert_eq!(

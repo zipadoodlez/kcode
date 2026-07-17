@@ -907,6 +907,25 @@ impl RemoteConnection {
         .await
     }
 
+    /// Notify the server about a typed auth lifecycle change and report
+    /// transport failure to the caller.
+    pub async fn notify_auth_changed_event(
+        &mut self,
+        provider: Option<&str>,
+        auth: Option<AuthChanged>,
+        prefer_strongest: bool,
+    ) -> Result<()> {
+        let id = self.next_request_id;
+        self.next_request_id += 1;
+        self.send_request(Request::NotifyAuthChanged {
+            id,
+            provider: provider.map(str::to_string),
+            auth,
+            prefer_strongest,
+        })
+        .await
+    }
+
     /// Notify the server about auth changes without blocking the caller.
     pub fn notify_auth_changed_detached(&mut self) {
         self.notify_auth_changed_for_provider_detached(None);

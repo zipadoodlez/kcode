@@ -249,6 +249,14 @@ pub trait Provider: Send + Sync {
         self.on_auth_changed();
     }
 
+    /// Whether asynchronous model-catalog work started by [`Provider::on_auth_changed`]
+    /// is still running. Providers that only reload credentials synchronously can
+    /// keep the default `false`; orchestrators should override this so callers can
+    /// finish auth without an arbitrary debounce delay.
+    fn auth_model_refresh_pending(&self) -> bool {
+        false
+    }
+
     /// Get the reasoning effort level (if applicable).
     fn reasoning_effort(&self) -> Option<String> {
         None

@@ -147,6 +147,10 @@ impl Provider for JcodeProvider {
         let _ = self.inner.set_model(&selected_model);
     }
 
+    fn auth_model_refresh_pending(&self) -> bool {
+        self.inner.auth_model_refresh_pending()
+    }
+
     fn reasoning_effort(&self) -> Option<String> {
         self.inner.reasoning_effort()
     }

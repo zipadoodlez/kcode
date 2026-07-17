@@ -208,7 +208,9 @@ fn test_prepare_review_spawned_session_uses_visible_transcript_for_judge_session
                     ContentBlock::ToolUse {
                         id: tool_id.clone(),
                         name: "bash".to_string(),
-                        input: serde_json::json!({"command": "git diff --stat"}), thought_signature: None, },
+                        input: serde_json::json!({"command": "git diff --stat"}),
+                        thought_signature: None,
+                    },
                 ],
             );
             parent.add_message(
@@ -721,7 +723,7 @@ fn test_available_models_updated_event_surfaces_authed_provider_in_remote_model_
 }
 
 #[test]
-fn test_remote_model_picker_replaces_post_login_loading_state_in_place() {
+fn test_remote_final_catalog_replaces_post_login_loading_state_in_place() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _guard = rt.enter();
@@ -761,6 +763,30 @@ fn test_remote_model_picker_replaces_post_login_loading_state_in_place() {
                 detail: String::new(),
                 cheapness: None,
             }],
+        },
+        &mut remote,
+    );
+
+    assert!(
+        app.auth_catalog_refresh_pending,
+        "an intermediate catalog snapshot must not release queued prompts"
+    );
+    assert!(
+        app.inline_interactive_state.as_ref().unwrap().entries[0].options[0]
+            .detail
+            .contains("updating model list")
+    );
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::Notification {
+            from_session: "jcode".to_string(),
+            from_name: Some("Jcode".to_string()),
+            notification_type: crate::protocol::NotificationType::Message {
+                scope: Some("catalog_activity".to_string()),
+                channel: None,
+                tldr: None,
+            },
+            message: "**Model ready:** `claude-opus-4.6`\nAnthropic access refreshed: 1 model, 1 route. Use `/model` to change.".to_string(),
         },
         &mut remote,
     );
@@ -844,6 +870,44 @@ fn test_remote_prompt_defers_while_model_switch_is_in_flight() {
         .expect("prompt should be deferred until ModelChanged arrives");
     assert_eq!(queued.raw_input, "hello after model switch");
     assert_eq!(queued.images.len(), 1);
+    assert!(
+        app.display_messages
+            .iter()
+            .all(|message| message.role != "user")
+    );
+}
+
+#[test]
+fn test_remote_prompt_defers_while_post_login_model_setup_is_pending() {
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let mut remote = rt.block_on(async { crate::tui::backend::RemoteConnection::dummy() });
+
+    app.is_remote = true;
+    app.auth_catalog_refresh_pending = true;
+
+    rt.block_on(crate::tui::app::remote::submit_prepared_remote_input(
+        &mut app,
+        &mut remote,
+        crate::tui::app::input::PreparedInput {
+            raw_input: "review my project".to_string(),
+            expanded: "review my project".to_string(),
+            images: Vec::new(),
+        },
+    ))
+    .expect("post-login prompt should queue until the final model snapshot");
+
+    assert!(!app.is_processing);
+    assert_eq!(
+        app.status_notice(),
+        Some("Prompt queued until model setup completes".to_string())
+    );
+    assert_eq!(
+        app.pending_prompt_after_model_switch
+            .as_ref()
+            .map(|prepared| prepared.raw_input.as_str()),
+        Some("review my project")
+    );
     assert!(
         app.display_messages
             .iter()

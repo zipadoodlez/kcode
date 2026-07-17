@@ -914,6 +914,7 @@ fn test_background_task_markdown_renders_card_even_if_role_was_lost() {
 fn test_handle_remote_disconnect_flushes_streaming_text_and_sets_reconnect_state() {
     let mut app = create_test_app();
     app.is_processing = true;
+    app.auth_catalog_refresh_pending = true;
     app.status = ProcessingStatus::Streaming;
     app.current_message_id = Some(7);
     app.rate_limit_pending_message = Some(PendingRemoteMessage {
@@ -931,6 +932,7 @@ fn test_handle_remote_disconnect_flushes_streaming_text_and_sets_reconnect_state
     remote::handle_disconnect(&mut app, &mut state, None);
 
     assert!(!app.is_processing);
+    assert!(!app.auth_catalog_refresh_pending);
     assert!(matches!(app.status, ProcessingStatus::Idle));
     assert!(app.current_message_id.is_none());
     assert!(app.rate_limit_pending_message.is_none());

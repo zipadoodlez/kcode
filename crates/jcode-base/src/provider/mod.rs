@@ -374,6 +374,10 @@ pub struct MultiProvider {
     /// into one build per TTL window; auth/model changes invalidate it
     /// explicitly so pickers never see stale routes after a switch.
     routes_memo: Mutex<Option<RoutesMemoEntry>>,
+    /// Number of model-catalog prefetches launched by the latest auth refresh.
+    /// Shared by forks so the server can wait for real work rather than sleeping
+    /// through a fixed quiet period after login.
+    post_auth_refreshes_pending: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 /// Memoized route catalog with the inputs that decide its freshness: build
@@ -1341,28 +1345,28 @@ impl MultiProvider {
         }
 
         if let Some(anthropic) = self.anthropic_provider() {
-            Self::spawn_post_auth_model_refresh(anthropic, "Anthropic");
+            self.spawn_post_auth_model_refresh(anthropic, "Anthropic");
         }
         if let Some(claude) = self.claude_provider() {
-            Self::spawn_post_auth_model_refresh(claude, "Claude");
+            self.spawn_post_auth_model_refresh(claude, "Claude");
         }
         if let Some(openai) = self.openai_provider() {
-            Self::spawn_post_auth_model_refresh(openai, "OpenAI");
+            self.spawn_post_auth_model_refresh(openai, "OpenAI");
         }
         if let Some(antigravity) = self.antigravity_provider() {
-            Self::spawn_post_auth_model_refresh(antigravity, "Antigravity");
+            self.spawn_post_auth_model_refresh(antigravity, "Antigravity");
         }
         if let Some(gemini) = self.gemini_provider() {
-            Self::spawn_post_auth_model_refresh(gemini, "Gemini");
+            self.spawn_post_auth_model_refresh(gemini, "Gemini");
         }
         if let Some(cursor) = self.cursor_provider() {
-            Self::spawn_post_auth_model_refresh(cursor, "Cursor");
+            self.spawn_post_auth_model_refresh(cursor, "Cursor");
         }
         if let Some(openrouter) = self.openrouter_provider() {
-            Self::spawn_post_auth_model_refresh(openrouter, "OpenRouter");
+            self.spawn_post_auth_model_refresh(openrouter, "OpenRouter");
         }
         if let Some(bedrock) = self.bedrock_provider() {
-            Self::spawn_post_auth_model_refresh(bedrock, "AWS Bedrock");
+            self.spawn_post_auth_model_refresh(bedrock, "AWS Bedrock");
         }
         crate::logging::auth_event("auth_changed_completed", "multi-provider", &[]);
     }
@@ -2134,6 +2138,12 @@ impl Provider for MultiProvider {
         self.handle_auth_changed(true);
     }
 
+    fn auth_model_refresh_pending(&self) -> bool {
+        self.post_auth_refreshes_pending
+            .load(std::sync::atomic::Ordering::Acquire)
+            > 0
+    }
+
     async fn invalidate_credentials(&self) {
         if let Some(anthropic) = self.anthropic_provider() {
             anthropic.invalidate_credentials().await;
@@ -2657,6 +2667,7 @@ impl Provider for MultiProvider {
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: self.forced_provider,
             routes_memo: Mutex::new(None),
+            post_auth_refreshes_pending: Arc::clone(&self.post_auth_refreshes_pending),
         };
 
         provider.spawn_anthropic_catalog_refresh_if_needed();

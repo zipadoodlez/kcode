@@ -2,6 +2,7 @@ use super::*;
 
 impl MultiProvider {
     pub(super) fn spawn_post_auth_model_refresh(
+        &self,
         provider: Arc<dyn Provider>,
         provider_label: &'static str,
     ) {
@@ -14,24 +15,41 @@ impl MultiProvider {
             return;
         };
 
+        self.post_auth_refreshes_pending
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        let pending = Arc::clone(&self.post_auth_refreshes_pending);
+
         handle.spawn(async move {
+            struct PendingGuard(Arc<std::sync::atomic::AtomicUsize>);
+            impl Drop for PendingGuard {
+                fn drop(&mut self) {
+                    self.0.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+                }
+            }
+            let _pending_guard = PendingGuard(pending);
+            let refresh_started = std::time::Instant::now();
             crate::logging::auth_event("post_auth_model_refresh_started", provider_label, &[]);
             provider.invalidate_credentials().await;
             match provider.prefetch_models().await {
                 Ok(()) => {
+                    let duration_ms = refresh_started.elapsed().as_millis().to_string();
                     crate::logging::auth_event(
                         "post_auth_model_refresh_completed",
                         provider_label,
-                        &[],
+                        &[("duration_ms", duration_ms.as_str())],
                     );
                     crate::bus::Bus::global().publish_models_updated();
                 }
                 Err(err) => {
                     let reason = err.to_string();
+                    let duration_ms = refresh_started.elapsed().as_millis().to_string();
                     crate::logging::auth_event(
                         "post_auth_model_refresh_failed",
                         provider_label,
-                        &[("reason", reason.as_str())],
+                        &[
+                            ("reason", reason.as_str()),
+                            ("duration_ms", duration_ms.as_str()),
+                        ],
                     );
                     crate::logging::info(&format!(
                         "Failed to refresh {} models after auth change: {}",
@@ -296,6 +314,7 @@ impl MultiProvider {
             startup_notices: RwLock::new(Vec::new()),
             forced_provider,
             routes_memo: Mutex::new(None),
+            post_auth_refreshes_pending: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
 
         if let Some(model) = provider_state.default_model() {

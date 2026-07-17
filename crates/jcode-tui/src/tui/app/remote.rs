@@ -551,7 +551,16 @@ pub(super) async fn handle_bus_event(
             let prefer_strongest = success && app.onboarding_should_prefer_strongest_model();
             app.handle_login_completed(login);
             if success {
-                remote.notify_auth_changed_detached_event(provider_hint, auth, prefer_strongest);
+                if let Err(error) = remote
+                    .notify_auth_changed_event(provider_hint, auth, prefer_strongest)
+                    .await
+                {
+                    crate::logging::warn(&format!(
+                        "Failed to notify server about refreshed auth: {error}"
+                    ));
+                    app.finish_auth_catalog_refresh();
+                    app.set_status_notice("Model setup will retry after reconnect");
+                }
             }
             true
         }
@@ -848,6 +857,10 @@ pub(super) fn handle_disconnect(
         "handle_disconnect: session={:?}, remote_session_id={:?}, reason={:?}, detail={}",
         app.resume_session_id, app.remote_session_id, reason, detail
     ));
+    // A disconnect can drop the final auth catalog completion event. Keep any
+    // queued prompt for reconnect, but release the transient model-setup gate so
+    // it cannot remain blocked forever waiting for an event that was lost.
+    app.finish_auth_catalog_refresh();
     state.last_disconnect_reason = Some(detail.clone());
 
     let scheduled_retry =
@@ -1159,6 +1172,7 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
     }
 
     if !app.remote_model_switch_in_flight
+        && !app.auth_catalog_refresh_pending
         && !app.is_processing
         && let Some(prepared) = app.pending_prompt_after_model_switch.take()
     {
