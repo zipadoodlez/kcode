@@ -1,0 +1,23 @@
+{
+  "version": "0.50.0",
+  "date": "2026-07-17",
+  "title": "Sturdier installs and Windows polish",
+  "highlights": [
+    "Installers verify signed release metadata and fall back to mirrors, so installs succeed even when GitHub is rate-limited or partially down",
+    "Windows gets improved setup, launcher, and global hotkey lifecycle handling",
+    "The session picker can take over live Claude Code sessions, not just finished ones"
+  ],
+  "improvements": [
+    "New jcode --onboarding-sim flag launches the onboarding simulator directly for previewing screens in any terminal",
+    "Onboarding pills render cleanly in ghostty, Apple Terminal, and VS Code by falling back to half-block end caps, with JCODE_ROUNDED_PILLS to override",
+    "Tool discovery requests now report where they originated for better transparency",
+    "Aborting a bash tool now kills the whole background process group instead of leaving orphans",
+    "Releases build and publish each platform independently, so one platform's failure no longer blocks the others"
+  ],
+  "fixes": [
+    "gpt-5.6 API-key requests keep prompts cached for 24 hours again instead of 5 minutes",
+    "Expired Claude OAuth credentials fall back gracefully instead of failing requests",
+    "Mermaid diagrams redraw correctly after a terminal resize",
+    "Reloading jcode finalizes live background tasks first, so their results are not lost"
+  ]
+}
