@@ -282,6 +282,28 @@ fn test_remote_final_catalog_activity_is_two_lines_and_completes_model_setup() {
 }
 
 #[test]
+fn test_remote_auth_model_change_does_not_add_a_third_visible_line() {
+    let mut app = create_test_app();
+    app.auth_catalog_refresh_pending = true;
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ModelChanged {
+            id: 91,
+            model: "gpt-5.6-sol".to_string(),
+            provider_name: Some("OpenAI".to_string()),
+            error: None,
+        },
+        &mut remote,
+    );
+
+    assert_eq!(app.remote_provider_model.as_deref(), Some("gpt-5.6-sol"));
+    assert!(app.display_messages.is_empty());
+}
+
+#[test]
 fn test_remote_onboarding_catalog_activity_completes_model_setup_without_chat_noise() {
     let mut app = create_test_app();
     let mut flow = crate::tui::app::onboarding_flow::OnboardingFlow::begin();
