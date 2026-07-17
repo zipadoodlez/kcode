@@ -49,6 +49,9 @@ pub enum PickerResult {
     Selected(Vec<ResumeTarget>),
     SelectedInCurrentTerminal(Vec<ResumeTarget>),
     SelectedInNewTerminal(Vec<ResumeTarget>),
+    /// The user explicitly confirmed handing a live Claude Code process over
+    /// to Jcode. This is never emitted by ordinary Enter/resume behavior.
+    TakeOverClaude(ResumeTarget),
     RestoreCrashedGroup(Vec<String>),
     /// The onboarding "Start a new session" row was chosen.
     StartNewSession,
@@ -288,6 +291,10 @@ pub struct SessionPicker {
     /// ID of the session the picker was opened from, labeled "current" in the
     /// list so the user can orient themselves in the Active view.
     current_session_id: Option<String>,
+    /// Explicit Claude takeover confirmation. Merely detecting or selecting a
+    /// live Claude session never stops it; only confirming this prompt emits
+    /// `PickerResult::TakeOverClaude`.
+    pending_claude_takeover: Option<ResumeTarget>,
 }
 
 impl SessionPicker {
@@ -335,6 +342,7 @@ impl SessionPicker {
             live_presence: std::collections::HashMap::new(),
             live_presence_refreshed_at: None,
             current_session_id: None,
+            pending_claude_takeover: None,
         };
         picker.refresh_live_presence();
         picker.rebuild_items();
@@ -379,6 +387,7 @@ impl SessionPicker {
             live_presence: std::collections::HashMap::new(),
             live_presence_refreshed_at: None,
             current_session_id: None,
+            pending_claude_takeover: None,
         }
     }
 
@@ -455,6 +464,7 @@ impl SessionPicker {
             live_presence: std::collections::HashMap::new(),
             live_presence_refreshed_at: None,
             current_session_id: None,
+            pending_claude_takeover: None,
         };
         picker.refresh_live_presence();
         picker.rebuild_items();
@@ -506,6 +516,20 @@ impl SessionPicker {
             .into_iter()
             .map(|presence| (presence.session_id.clone(), presence))
             .collect();
+        if let Ok(sessions) = crate::claude_live::live_claude_sessions() {
+            for session in sessions {
+                let session_id = format!("claude:{}", session.session_id);
+                self.live_presence.insert(
+                    session_id.clone(),
+                    crate::session::SessionPresence {
+                        session_id,
+                        pid: session.pid,
+                        streaming: false,
+                        streaming_since: None,
+                    },
+                );
+            }
+        }
         self.live_presence_refreshed_at = Some(std::time::Instant::now());
     }
 
@@ -536,6 +560,52 @@ impl SessionPicker {
     /// Whether the session has a live process right now.
     pub(super) fn session_is_live(&self, session: &SessionInfo) -> bool {
         self.live_presence.contains_key(&session.id)
+    }
+
+    fn selected_live_claude_target(&self) -> Option<ResumeTarget> {
+        let session = self.selected_session()?;
+        if session.source != SessionSource::ClaudeCode || !self.session_is_live(session) {
+            return None;
+        }
+        Some(session.resume_target.clone())
+    }
+
+    fn begin_claude_takeover_confirmation(&mut self) -> bool {
+        let Some(target) = self.selected_live_claude_target() else {
+            return false;
+        };
+        self.pending_claude_takeover = Some(target);
+        true
+    }
+
+    fn handle_claude_takeover_confirmation_key(
+        &mut self,
+        code: KeyCode,
+        modifiers: KeyModifiers,
+    ) -> Option<OverlayAction> {
+        if self.pending_claude_takeover.is_none() {
+            return None;
+        }
+        if code == KeyCode::Char('c') && modifiers.contains(KeyModifiers::CONTROL) {
+            self.pending_claude_takeover = None;
+            return Some(OverlayAction::Close);
+        }
+        Some(match code {
+            KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                let target = self.pending_claude_takeover.take()?;
+                OverlayAction::Selected(PickerResult::TakeOverClaude(target))
+            }
+            KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Char('q') => {
+                self.pending_claude_takeover = None;
+                OverlayAction::Continue
+            }
+            _ => OverlayAction::Continue,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn claude_takeover_confirmation_active_for_test(&self) -> bool {
+        self.pending_claude_takeover.is_some()
     }
 
     /// Whether the session's live process is streaming a model response.
@@ -1120,6 +1190,9 @@ impl SessionPicker {
         code: KeyCode,
         modifiers: KeyModifiers,
     ) -> Result<OverlayAction> {
+        if let Some(action) = self.handle_claude_takeover_confirmation_key(code, modifiers) {
+            return Ok(action);
+        }
         if self.loading_message.is_some() {
             return match code {
                 KeyCode::Esc | KeyCode::Char('q') => Ok(OverlayAction::Close),
@@ -1173,6 +1246,9 @@ impl SessionPicker {
             }
             KeyCode::Char('d') => {
                 self.toggle_test_sessions();
+            }
+            KeyCode::Char('T') => {
+                self.begin_claude_takeover_confirmation();
             }
             KeyCode::Char('s') => {
                 self.cycle_filter_mode();
@@ -2189,6 +2265,61 @@ impl SessionPicker {
 
         self.render_session_list(frame, chunks[0]);
         self.render_preview(frame, chunks[1]);
+        self.render_claude_takeover_confirmation(frame);
+    }
+
+    fn render_claude_takeover_confirmation(&self, frame: &mut Frame) {
+        let Some(target) = self.pending_claude_takeover.as_ref() else {
+            return;
+        };
+        let ResumeTarget::ClaudeCodeSession { session_id, .. } = target else {
+            return;
+        };
+        let frame_area = frame.area();
+        if frame_area.width < 8 || frame_area.height < 5 {
+            return;
+        }
+        let width = frame_area.width.saturating_sub(4).min(74);
+        let height = frame_area.height.saturating_sub(2).min(8);
+        let area = Rect {
+            x: frame_area.x + frame_area.width.saturating_sub(width) / 2,
+            y: frame_area.y + frame_area.height.saturating_sub(height) / 2,
+            width,
+            height,
+        };
+        frame.render_widget(Clear, area);
+        let body = vec![
+            Line::from(Span::styled(
+                format!(
+                    "Take over live Claude session {}?",
+                    jcode_core::util::truncate_str(session_id, 12)
+                ),
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Jcode will prepare the transcript first, then ask Claude to exit.",
+                Style::default().fg(rgb(190, 190, 200)),
+            )),
+            Line::from(Span::styled(
+                "Enter/Y confirm · Esc/N cancel",
+                Style::default()
+                    .fg(rgb(255, 193, 7))
+                    .add_modifier(Modifier::BOLD),
+            )),
+        ];
+        let modal = Paragraph::new(body)
+            .block(
+                Block::default()
+                    .title(" Explicit Claude takeover ")
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(rgb(255, 193, 7))),
+            )
+            .wrap(ratatui::widgets::Wrap { trim: false });
+        frame.render_widget(modal, area);
     }
 
     /// Run the interactive picker, returns selected session ID or None if cancelled
@@ -2242,66 +2373,10 @@ impl SessionPicker {
                             continue;
                         }
 
-                        // Search mode: capture typed characters
-                        if self.search_active {
-                            match self.handle_search_key(key.code, key.modifiers)? {
-                                OverlayAction::Continue => {}
-                                OverlayAction::Close => break Ok(None),
-                                OverlayAction::Selected(result) => break Ok(Some(result)),
-                            }
-                            continue;
-                        }
-
-                        // Normal mode
-                        match key.code {
-                            KeyCode::Esc => {
-                                if !self.search_query.is_empty() {
-                                    // Clear active search filter first
-                                    self.search_query.clear();
-                                    self.rebuild_items();
-                                } else {
-                                    break Ok(None);
-                                }
-                            }
-                            KeyCode::Char('q') => {
-                                break Ok(None);
-                            }
-                            KeyCode::Char(' ') => {
-                                self.toggle_selected_session();
-                            }
-                            KeyCode::Enter => {
-                                let targets = self.selection_or_current_targets();
-                                if targets.is_empty() {
-                                    break Ok(None);
-                                }
-                                break Ok(Some(
-                                    self.selection_result_for_enter(targets, key.modifiers),
-                                ));
-                            }
-                            KeyCode::Char('R') | KeyCode::Char('B') | KeyCode::Char('b') => {
-                                if let Some(info) = &self.crashed_sessions {
-                                    break Ok(Some(PickerResult::RestoreCrashedGroup(
-                                        info.session_ids.clone(),
-                                    )));
-                                }
-                            }
-                            KeyCode::Char('/') => {
-                                self.search_active = true;
-                            }
-                            KeyCode::Char('d') => {
-                                self.toggle_test_sessions();
-                            }
-                            KeyCode::Char('s') => {
-                                self.cycle_filter_mode();
-                            }
-                            KeyCode::Char('S') => {
-                                self.cycle_filter_mode_backwards();
-                            }
-                            code if self.handle_focus_navigation_key(code, key.modifiers) => {}
-                            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                                break Ok(None);
-                            }
-                            _ => {}
+                        match self.handle_overlay_key(key.code, key.modifiers)? {
+                            OverlayAction::Continue => {}
+                            OverlayAction::Close => break Ok(None),
+                            OverlayAction::Selected(result) => break Ok(Some(result)),
                         }
                     }
                     Event::Mouse(mouse) => match mouse.kind {

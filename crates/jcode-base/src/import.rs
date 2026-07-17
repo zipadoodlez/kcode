@@ -736,6 +736,18 @@ pub fn import_external_resume_id(resume_id: &str) -> Result<Option<String>> {
 
 /// Import a Claude Code session from a file path
 pub fn import_session_from_file(path: &Path, session_id: &str) -> Result<Session> {
+    import_session_from_file_with_target(
+        path,
+        session_id,
+        imported_claude_code_session_id(session_id),
+    )
+}
+
+fn import_session_from_file_with_target(
+    path: &Path,
+    session_id: &str,
+    jcode_session_id: String,
+) -> Result<Session> {
     let entries = load_claude_code_entries(path)?;
     let ordered_entries = ordered_claude_code_message_entries(&entries);
 
@@ -808,9 +820,6 @@ pub fn import_session_from_file(path: &Path, session_id: &str) -> Result<Session
         }
     }
 
-    // Create jcode session
-    let jcode_session_id = imported_claude_code_session_id(session_id);
-
     let mut session = Session::create_with_id(jcode_session_id, None, title);
     session.provider_session_id = Some(session_id.to_string());
     session.provider_key = Some("claude-code".to_string());
@@ -823,6 +832,83 @@ pub fn import_session_from_file(path: &Path, session_id: &str) -> Result<Session
     }
 
     finalize_imported_session(session, created_at, None)
+}
+
+fn remove_prepared_takeover_session(session_id: &str) {
+    let Ok(snapshot) = crate::session::session_path(session_id) else {
+        return;
+    };
+    let journal = crate::session::session_journal_path_from_snapshot(&snapshot);
+    let backup = snapshot.with_extension("bak");
+    for path in [snapshot, journal, backup] {
+        let _ = std::fs::remove_file(path);
+    }
+    crate::session_list_cache::invalidate();
+}
+
+/// Explicitly hand a currently-running Claude Code session over to Jcode.
+///
+/// This is deliberately separate from normal resume. It first imports the
+/// current transcript into a fresh durable Jcode session, then gracefully stops
+/// the exact PID guarded by Claude's process-start token. After Claude exits we
+/// refresh the prepared snapshot once to capture any final transcript flush.
+/// A stop failure rolls back the staged Jcode session and leaves ordinary
+/// resume behavior unchanged.
+pub fn take_over_live_claude_session(
+    target: &jcode_session_types::ResumeTarget,
+) -> Result<jcode_session_types::ResumeTarget> {
+    use jcode_session_types::ResumeTarget;
+
+    let ResumeTarget::ClaudeCodeSession {
+        session_id,
+        session_path,
+    } = target
+    else {
+        anyhow::bail!("live takeover is only available for Claude Code sessions");
+    };
+
+    let live = crate::claude_live::find_live_claude_session(session_id)?
+        .ok_or_else(|| anyhow::anyhow!("Claude Code session {session_id} is no longer live"))?;
+    // Use a normal memorable Jcode session ID so the handed-off conversation
+    // remains visible and resumable later. Imported-prefixed IDs are hidden from
+    // the native session list because their external source row represents them.
+    let takeover_id = Session::create(None, None).id;
+    let path = Path::new(session_path);
+
+    let prepared = import_session_from_file_with_target(path, session_id, takeover_id.clone())
+        .with_context(|| format!("failed to prepare Claude Code session {session_id}"))?;
+    if prepared.visible_conversation_message_count() == 0 {
+        remove_prepared_takeover_session(&takeover_id);
+        anyhow::bail!(
+            "Claude Code session {session_id} has no complete conversation messages to take over"
+        );
+    }
+
+    if let Err(err) =
+        crate::claude_live::stop_live_claude_session(&live, std::time::Duration::from_secs(3))
+    {
+        remove_prepared_takeover_session(&takeover_id);
+        return Err(err).with_context(|| {
+            format!("prepared Claude Code session {session_id}, but did not take it over")
+        });
+    }
+
+    // Claude may flush one last complete message while handling SIGTERM. The
+    // staged snapshot is already valid, so a refresh failure is non-fatal.
+    if let Err(err) = import_session_from_file_with_target(path, session_id, takeover_id.clone()) {
+        crate::logging::warn(&format!(
+            "Claude takeover final transcript refresh failed for {session_id}: {err}"
+        ));
+    }
+
+    crate::logging::info(&format!(
+        "Claude takeover complete: source_session={session_id} source_pid={} jcode_session={takeover_id}",
+        live.pid
+    ));
+    crate::session_list_cache::invalidate();
+    Ok(ResumeTarget::JcodeSession {
+        session_id: takeover_id,
+    })
 }
 
 fn append_text_message(

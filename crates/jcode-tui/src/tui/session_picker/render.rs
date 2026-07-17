@@ -219,7 +219,9 @@ impl SessionPicker {
         // `SessionStatus::Active` alone cannot.
         let is_current = self.session_is_current(session);
         let live_badge = if self.session_is_live(session) {
-            if self.session_is_streaming(session) {
+            if session.source == SessionSource::ClaudeCode {
+                Some(("●", rgb(120, 210, 255), "live Claude".to_string()))
+            } else if self.session_is_streaming(session) {
                 let label = match self.session_streaming_duration(session) {
                     Some(elapsed) => format!("working {}", format_short_duration(elapsed)),
                     None => "working".to_string(),
@@ -634,20 +636,23 @@ impl SessionPicker {
 
         title_parts.push(Span::styled(" ", Style::default()));
 
-        let help = if self.loading_message.is_some() {
-            " Esc cancel "
+        let mut help = if self.loading_message.is_some() {
+            " Esc cancel ".to_string()
         } else if self.search_active {
-            " type to filter · Ctrl+J/K or ↑↓ nav · Ctrl+W word-del · Esc cancel "
+            " type to filter · Ctrl+J/K or ↑↓ nav · Ctrl+W word-del · Esc cancel ".to_string()
         } else {
             match crate::config::config().keybindings.session_picker_enter {
                 crate::config::SessionPickerResumeAction::CurrentTerminal => {
-                    " Space select · Enter in place · Ctrl+Enter new terminal · d debug · / search · h/l focus · ↑↓ · q "
+                    " Space select · Enter in place · Ctrl+Enter new terminal · d debug · / search · h/l focus · ↑↓ · q ".to_string()
                 }
                 crate::config::SessionPickerResumeAction::NewTerminal => {
-                    " Space select · Enter new terminal · Ctrl+Enter in place · d debug · / search · h/l focus · ↑↓ · q "
+                    " Space select · Enter new terminal · Ctrl+Enter in place · d debug · / search · h/l focus · ↑↓ · q ".to_string()
                 }
             }
         };
+        if self.selected_live_claude_target().is_some() && !self.search_active {
+            help = format!(" T take over live Claude ·{}", help);
+        }
 
         let border_dim: Color = rgb(70, 70, 70);
         let border_focus: Color = rgb(130, 130, 160);

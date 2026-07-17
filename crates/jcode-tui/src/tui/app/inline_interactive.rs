@@ -2331,6 +2331,43 @@ impl App {
         self.set_status_notice(format!("Switching → {}", name));
     }
 
+    fn handle_live_claude_takeover(&mut self, target: &ResumeTarget) -> bool {
+        let ResumeTarget::ClaudeCodeSession { session_id, .. } = target else {
+            self.push_display_message(DisplayMessage::error(
+                "Live takeover is only available for Claude Code sessions.",
+            ));
+            return false;
+        };
+        let display_id = jcode_core::util::truncate_str(session_id, 8);
+        self.set_status_notice(format!("Preparing Claude takeover → {display_id}"));
+
+        let resolved = match crate::import::take_over_live_claude_session(target) {
+            Ok(target) => target,
+            Err(err) => {
+                self.push_display_message(DisplayMessage::error(format!(
+                    "Claude takeover failed: {err}"
+                )));
+                self.set_status_notice("Claude takeover did not complete");
+                return false;
+            }
+        };
+        let ResumeTarget::JcodeSession { session_id } = resolved else {
+            self.push_display_message(DisplayMessage::error(
+                "Claude takeover did not produce a Jcode session.",
+            ));
+            return false;
+        };
+
+        self.push_display_message(DisplayMessage::system(format!(
+            "Claude Code exited and its transcript was prepared as {session_id}."
+        )));
+        self.workspace_client.queue_resume_session(session_id);
+        self.session_picker_overlay = None;
+        self.session_picker_mode = SessionPickerMode::Resume;
+        self.set_status_notice(format!("Taking over Claude → {display_id}"));
+        true
+    }
+
     pub(super) fn handle_batch_crash_restore(&mut self, session_ids: &[String]) {
         let recovered = match crate::session::recover_crashed_sessions_by_ids(session_ids) {
             Ok(ids) => ids,
@@ -2446,6 +2483,12 @@ impl App {
                     PickerResult::Selected(ids)
                     | PickerResult::SelectedInNewTerminal(ids)
                     | PickerResult::SelectedInCurrentTerminal(ids) => ids,
+                    PickerResult::TakeOverClaude(target) => {
+                        if self.handle_live_claude_takeover(&target) {
+                            self.onboarding_finish();
+                        }
+                        return Ok(());
+                    }
                     PickerResult::RestoreCrashedGroup(_) => Vec::new(),
                     PickerResult::StartNewSession => {
                         // User explicitly chose to start fresh; close the picker
@@ -2488,6 +2531,9 @@ impl App {
                 } else {
                     self.handle_session_picker_current_terminal_selection(&ids);
                 }
+            }
+            OverlayAction::Selected(PickerResult::TakeOverClaude(target)) => {
+                let _ = self.handle_live_claude_takeover(&target);
             }
             OverlayAction::Selected(PickerResult::RestoreCrashedGroup(session_ids)) => {
                 self.handle_batch_crash_restore(&session_ids);

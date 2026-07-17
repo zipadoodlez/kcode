@@ -513,6 +513,29 @@ pub fn list_sessions() -> Result<()> {
     }
 
     match tui::session_picker::pick_session()? {
+        Some(tui::session_picker::PickerResult::TakeOverClaude(target)) => {
+            let resolved_target = crate::import::take_over_live_claude_session(&target)?;
+            let jcode_tui_session_picker::ResumeTarget::JcodeSession { session_id } =
+                &resolved_target
+            else {
+                anyhow::bail!("Claude takeover did not produce a Jcode session");
+            };
+            let exe = std::env::current_exe()?;
+            let mut session_cwd = std::env::current_dir()?;
+            if let Ok(sess) = session::Session::load(session_id)
+                && let Some(dir) = sess.working_dir.as_deref()
+                && std::path::Path::new(dir).is_dir()
+            {
+                session_cwd = std::path::PathBuf::from(dir);
+            }
+            let (program, args) = build_resume_target_command(&exe, &resolved_target);
+            let err = crate::platform::replace_process(
+                ProcessCommand::new(&program)
+                    .args(&args)
+                    .current_dir(session_cwd),
+            );
+            Err(anyhow::anyhow!("Failed to exec {:?}: {}", program, err))
+        }
         Some(
             tui::session_picker::PickerResult::Selected(targets)
             | tui::session_picker::PickerResult::SelectedInCurrentTerminal(targets),

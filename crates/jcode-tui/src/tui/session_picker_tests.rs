@@ -964,6 +964,95 @@ fn test_active_rows_render_working_and_ready_badges() {
     );
 }
 
+fn make_claude_session(session_id: &str) -> SessionInfo {
+    let mut session = make_session(
+        &format!("claude:{session_id}"),
+        "claude live",
+        false,
+        SessionStatus::Closed,
+    );
+    session.source = SessionSource::ClaudeCode;
+    session.provider_key = Some("claude-code".to_string());
+    session.resume_target = ResumeTarget::ClaudeCodeSession {
+        session_id: session_id.to_string(),
+        session_path: format!("/tmp/{session_id}.jsonl"),
+    };
+    session
+}
+
+#[test]
+fn live_claude_takeover_requires_explicit_key_and_confirmation() {
+    let session = make_claude_session("claude-live-id");
+    let target = session.resume_target.clone();
+    let mut picker = SessionPicker::new(vec![session]);
+    picker.set_live_presence_for_test(vec![live_presence("claude:claude-live-id", false)]);
+
+    // Ordinary Enter remains an ordinary resume and never implies takeover.
+    let ordinary = picker
+        .handle_overlay_key(KeyCode::Enter, KeyModifiers::empty())
+        .unwrap();
+    assert!(matches!(
+        ordinary,
+        OverlayAction::Selected(PickerResult::SelectedInCurrentTerminal(_))
+            | OverlayAction::Selected(PickerResult::SelectedInNewTerminal(_))
+    ));
+    assert!(!picker.claude_takeover_confirmation_active_for_test());
+
+    assert!(matches!(
+        picker
+            .handle_overlay_key(KeyCode::Char('T'), KeyModifiers::empty())
+            .unwrap(),
+        OverlayAction::Continue
+    ));
+    assert!(picker.claude_takeover_confirmation_active_for_test());
+
+    // Cancellation does not emit an action.
+    assert!(matches!(
+        picker
+            .handle_overlay_key(KeyCode::Esc, KeyModifiers::empty())
+            .unwrap(),
+        OverlayAction::Continue
+    ));
+    assert!(!picker.claude_takeover_confirmation_active_for_test());
+
+    picker
+        .handle_overlay_key(KeyCode::Char('T'), KeyModifiers::empty())
+        .unwrap();
+    let confirmed = picker
+        .handle_overlay_key(KeyCode::Enter, KeyModifiers::empty())
+        .unwrap();
+    assert!(matches!(
+        confirmed,
+        OverlayAction::Selected(PickerResult::TakeOverClaude(actual)) if actual == target
+    ));
+}
+
+#[test]
+fn live_claude_row_is_labeled_and_closed_claude_cannot_take_over() {
+    let mut live = make_claude_session("live-row");
+    let mut closed = make_claude_session("closed-row");
+    live.last_message_time = Utc::now();
+    closed.last_message_time = Utc::now() - ChronoDuration::minutes(1);
+    let mut picker = SessionPicker::new(vec![live.clone(), closed]);
+    picker.set_live_presence_for_test(vec![live_presence("claude:live-row", false)]);
+
+    let rendered = picker
+        .render_session_item_lines(&live, false)
+        .iter()
+        .map(line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(rendered.contains("live Claude"), "rendered row: {rendered}");
+
+    picker
+        .handle_overlay_key(KeyCode::Down, KeyModifiers::empty())
+        .unwrap();
+    picker
+        .handle_overlay_key(KeyCode::Char('T'), KeyModifiers::empty())
+        .unwrap();
+    assert!(!picker.claude_takeover_confirmation_active_for_test());
+}
+
 #[test]
 fn test_current_session_row_is_labeled() {
     let session = make_session("session_self", "self", false, SessionStatus::Active);

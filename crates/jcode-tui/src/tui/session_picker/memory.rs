@@ -39,6 +39,11 @@ pub(super) fn debug_memory_profile(picker: &SessionPicker) -> serde_json::Value 
         .as_ref()
         .map(|message| message.capacity())
         .unwrap_or(0);
+    let pending_claude_takeover_bytes = picker
+        .pending_claude_takeover
+        .as_ref()
+        .map(estimate_resume_target_bytes)
+        .unwrap_or(0);
     let total_estimate_bytes = items_estimate_bytes
         + visible_sessions_estimate_bytes
         + all_sessions_estimate_bytes
@@ -48,7 +53,8 @@ pub(super) fn debug_memory_profile(picker: &SessionPicker) -> serde_json::Value 
         + crashed_session_ids_estimate_bytes
         + selected_session_ids_estimate_bytes
         + search_query_bytes
-        + loading_message_bytes;
+        + loading_message_bytes
+        + pending_claude_takeover_bytes;
 
     serde_json::json!({
         "items_count": picker.items.len(),
@@ -60,6 +66,7 @@ pub(super) fn debug_memory_profile(picker: &SessionPicker) -> serde_json::Value 
         "selected_session_ids_count": picker.selected_session_ids.len(),
         "search_query_bytes": search_query_bytes,
         "loading_message_bytes": loading_message_bytes,
+        "pending_claude_takeover_bytes": pending_claude_takeover_bytes,
         "items_estimate_bytes": items_estimate_bytes,
         "visible_sessions_estimate_bytes": visible_sessions_estimate_bytes,
         "all_sessions_estimate_bytes": all_sessions_estimate_bytes,

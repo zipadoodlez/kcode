@@ -187,6 +187,191 @@ fn repeated_external_resume_reuses_the_imported_snapshot() {
     assert!(Session::load(&imported_claude_code_session_id("cached")).is_ok());
 }
 
+#[cfg(target_os = "linux")]
+fn linux_process_start_token(pid: u32) -> String {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
+    let close = stat.rfind(')').unwrap();
+    stat[close + 2..]
+        .split_whitespace()
+        .nth(19)
+        .unwrap()
+        .to_string()
+}
+
+#[cfg(target_os = "linux")]
+fn write_live_claude_record(
+    root: &std::path::Path,
+    child: &std::process::Child,
+    session_id: &str,
+) -> std::path::PathBuf {
+    std::fs::create_dir_all(root).unwrap();
+    let path = root.join(format!("{}.json", child.id()));
+    std::fs::write(
+        &path,
+        serde_json::json!({
+            "pid": child.id(),
+            "sessionId": session_id,
+            "cwd": "/tmp/project",
+            "procStart": linux_process_start_token(child.id()),
+            "kind": "interactive",
+            "entrypoint": "cli",
+            "startedAt": 123,
+            "name": "takeover-test",
+            "version": "2.1.212"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    path
+}
+
+#[cfg(target_os = "linux")]
+fn write_claude_transcript(path: &std::path::Path, session_id: &str) {
+    std::fs::write(
+        path,
+        format!(
+            "{{\"type\":\"user\",\"uuid\":\"u1\",\"sessionId\":\"{session_id}\",\"cwd\":\"/tmp/project\",\"message\":{{\"role\":\"user\",\"content\":\"preserve this question\"}},\"timestamp\":\"2026-07-17T00:00:00Z\"}}\n{{\"type\":\"assistant\",\"uuid\":\"a1\",\"sessionId\":\"{session_id}\",\"cwd\":\"/tmp/project\",\"message\":{{\"role\":\"assistant\",\"model\":\"claude-opus-4-8\",\"content\":\"preserve this answer\"}},\"timestamp\":\"2026-07-17T00:00:01Z\"}}\n"
+        ),
+    )
+    .unwrap();
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn ordinary_resume_never_stops_a_live_claude_process() {
+    use std::process::{Command, Stdio};
+
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::TempDir::new().unwrap();
+    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let external = temp.path().join("external/.claude");
+    let transcript = external.join("projects/demo/ordinary-live.jsonl");
+    std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+    write_claude_transcript(&transcript, "ordinary-live");
+    let mut claude = Command::new("sleep")
+        .arg("60")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    write_live_claude_record(&external.join("sessions"), &claude, "ordinary-live");
+    let target = jcode_session_types::ResumeTarget::ClaudeCodeSession {
+        session_id: "ordinary-live".to_string(),
+        session_path: transcript.to_string_lossy().to_string(),
+    };
+
+    let resolved = resolve_resume_target_to_jcode(&target).unwrap();
+    assert!(matches!(
+        resolved,
+        jcode_session_types::ResumeTarget::JcodeSession { .. }
+    ));
+    assert!(claude.try_wait().unwrap().is_none());
+
+    claude.kill().unwrap();
+    claude.wait().unwrap();
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn explicit_takeover_preserves_history_and_stops_only_matching_process() {
+    use std::process::{Command, Stdio};
+
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::TempDir::new().unwrap();
+    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let external = temp.path().join("external/.claude");
+    let transcript = external.join("projects/demo/takeover-live.jsonl");
+    std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+    write_claude_transcript(&transcript, "takeover-live");
+    let mut claude = Command::new("sleep")
+        .arg("60")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut unrelated = Command::new("sleep")
+        .arg("60")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let registry = write_live_claude_record(&external.join("sessions"), &claude, "takeover-live");
+    let target = jcode_session_types::ResumeTarget::ClaudeCodeSession {
+        session_id: "takeover-live".to_string(),
+        session_path: transcript.to_string_lossy().to_string(),
+    };
+
+    let resolved = take_over_live_claude_session(&target).unwrap();
+    let jcode_session_types::ResumeTarget::JcodeSession { session_id } = resolved else {
+        panic!("expected Jcode session");
+    };
+    assert!(session_id.starts_with("session_"));
+    claude.wait().unwrap();
+    assert!(unrelated.try_wait().unwrap().is_none());
+    assert!(!registry.exists());
+
+    let imported = Session::load(&session_id).unwrap();
+    assert_eq!(
+        imported.provider_session_id.as_deref(),
+        Some("takeover-live")
+    );
+    let visible = imported
+        .messages
+        .iter()
+        .flat_map(|message| message.content.iter())
+        .filter_map(|block| match block {
+            ContentBlock::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(visible.contains("preserve this question"));
+    assert!(visible.contains("preserve this answer"));
+
+    unrelated.kill().unwrap();
+    unrelated.wait().unwrap();
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn takeover_with_no_complete_messages_leaves_claude_running() {
+    use std::process::{Command, Stdio};
+
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::TempDir::new().unwrap();
+    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let external = temp.path().join("external/.claude");
+    let transcript = external.join("projects/demo/incomplete-live.jsonl");
+    std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+    std::fs::write(&transcript, "{\"type\":\"progress\",\"data\":{}}\n").unwrap();
+    let mut claude = Command::new("sleep")
+        .arg("60")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    write_live_claude_record(&external.join("sessions"), &claude, "incomplete-live");
+    let target = jcode_session_types::ResumeTarget::ClaudeCodeSession {
+        session_id: "incomplete-live".to_string(),
+        session_path: transcript.to_string_lossy().to_string(),
+    };
+
+    assert!(take_over_live_claude_session(&target).is_err());
+    assert!(claude.try_wait().unwrap().is_none());
+    let sessions_dir = temp.path().join("sessions");
+    let staged = std::fs::read_dir(&sessions_dir)
+        .map(|entries| entries.filter_map(|entry| entry.ok()).count())
+        .unwrap_or(0);
+    assert_eq!(staged, 0, "failed takeover must roll back staged sessions");
+
+    claude.kill().unwrap();
+    claude.wait().unwrap();
+}
+
 #[test]
 fn cached_imported_session_preserves_existing_history_verbatim() {
     let _guard = crate::storage::lock_test_env();
