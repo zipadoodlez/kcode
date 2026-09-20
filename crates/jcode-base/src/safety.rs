@@ -358,11 +358,7 @@ pub fn record_permission_via_file(
     if let Some(parent) = qp.parent() {
         storage::ensure_dir(parent)?;
     }
-    let mut queue: Vec<PermissionRequest> = if qp.exists() {
-        storage::read_json(&qp).unwrap_or_default()
-    } else {
-        Vec::new()
-    };
+    let mut queue: Vec<PermissionRequest> = storage::read_json_or_default_ok(&qp);
     queue.retain(|r| r.id != request_id);
     persist_queue(&queue)?;
 
@@ -370,11 +366,7 @@ pub fn record_permission_via_file(
     if let Some(parent) = hp.parent() {
         storage::ensure_dir(parent)?;
     }
-    let mut history: Vec<Decision> = if hp.exists() {
-        storage::read_json(&hp).unwrap_or_default()
-    } else {
-        Vec::new()
-    };
+    let mut history: Vec<Decision> = storage::read_json_or_default_ok(&hp);
     history.push(Decision {
         request_id: request_id.to_string(),
         approved,

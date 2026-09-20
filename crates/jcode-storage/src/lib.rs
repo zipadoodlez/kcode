@@ -644,6 +644,25 @@ pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
     })
 }
 
+/// Read JSON from `path`, returning `T::default()` when the file does not
+/// exist. Read and parse errors still propagate.
+///
+/// This replaces the per-feature `if path.exists() { read_json(&path) } else
+/// { Ok(T::default()) }` sidecar boilerplate.
+pub fn read_json_or_default<T: DeserializeOwned + Default>(path: &Path) -> Result<T> {
+    if path.exists() {
+        read_json(path)
+    } else {
+        Ok(T::default())
+    }
+}
+
+/// Read JSON from `path`, falling back to `T::default()` when the file is
+/// missing or unreadable. Use only where swallowing a read error is intended.
+pub fn read_json_or_default_ok<T: DeserializeOwned + Default>(path: &Path) -> T {
+    read_json(path).unwrap_or_default()
+}
+
 pub fn read_json_with_recovery_handler<T, F>(path: &Path, mut on_recovery: F) -> Result<T>
 where
     T: DeserializeOwned,
