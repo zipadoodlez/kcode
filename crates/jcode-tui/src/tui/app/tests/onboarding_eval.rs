@@ -269,7 +269,7 @@ fn render_phase_screen(label: &'static str, phase: OnboardingPhase) -> ScreenMet
     // buffer. The raw buffer also contains the decorative idle donut, whose lit
     // glyph count varies with wall-clock `animation_elapsed()` (so the raw count
     // is both non-deterministic AND counts pure decoration as "words to read").
-    // `body_prose_lines` strips the telemetry header, the ASCII art, and the
+    // `body_prose_lines` strips the ASCII art and the
     // Yes/No pill row, leaving exactly the sentences the user must read - the
     // same chrome-stripping Tier 6 already relies on.
     let prose = body_prose_lines(&text);
@@ -333,9 +333,9 @@ impl Default for Tier3Weights {
 
 fn tier3_screen_score_w(m: &ScreenMetrics, w: &Tier3Weights) -> f64 {
     let mut score = 100.0;
-    // Reading load: the telemetry header (~3 lines) is fixed overhead, so a
-    // lean screen sits around 8-12 lines. Penalize words past a comfortable
-    // budget (telemetry + title + one prompt + options + hint).
+    // Reading load: chrome overhead is fixed, so a lean screen sits around
+    // 8-12 lines. Penalize words past a comfortable budget (title + one prompt
+    // + options + hint).
     if m.word_count > w.word_budget {
         score -= (m.word_count - w.word_budget) as f64 * w.per_excess_word;
     }
@@ -903,7 +903,7 @@ fn tier5_score_w(m: &Tier5Metrics, w: &Tier5Weights) -> f64 {
 // ---------------------------------------------------------------------------
 // Tier 6: cognitive load per screen (Hick's law + reading burden), measured
 // from the REAL rendered body prose. We first strip the fixed chrome (the
-// telemetry consent header, the ASCII logo, and the movement key-hint line) so
+// ASCII logo and the movement key-hint line) so
 // the analysis sees only the human sentences the user must actually read:
 //
 //   * reading_grade_level   - Flesch-Kincaid grade estimate (syllable-based).
@@ -915,21 +915,13 @@ fn tier5_score_w(m: &Tier5Metrics, w: &Tier5Weights) -> f64 {
 // ---------------------------------------------------------------------------
 
 /// Extract just the human body prose from a rendered onboarding screen,
-/// dropping the telemetry consent header, the ASCII logo art, and the Yes/No
-/// pill row. Returns the kept prose lines.
+/// dropping the ASCII logo art and the Yes/No pill row. Returns the kept prose
+/// lines.
 fn body_prose_lines(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     for line in text.lines() {
         let t = line.trim();
         if t.is_empty() {
-            continue;
-        }
-        let lower = t.to_ascii_lowercase();
-        // Telemetry consent boilerplate (fixed 3-line header).
-        if lower.contains("anonymous usage")
-            || lower.contains("no code, prompts")
-            || lower.contains("opt out anytime")
-        {
             continue;
         }
         // The Yes/No pill row is an interactive widget, not prose to "read".
@@ -1007,7 +999,6 @@ const CONCEPT_GROUPS: &[&[&str]] = &[
     &["session"],
     &["model"],
     &["resume"],
-    &["telemetry"],
     &["onboarding"],
     &["openai"],
     &["codex"],

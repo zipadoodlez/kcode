@@ -5,9 +5,8 @@
 //! unauthenticated / new user, or `/onboarding-preview`).
 //!
 //! Layout, top to bottom, vertically centered in the chat area:
-//!   1. Grayed telemetry notice header.
-//!   2. "Welcome to jcode onboarding" title.
-//!   3. The login / getting-started prompt with suggestions.
+//!   1. "Welcome to jcode onboarding" title.
+//!   2. The login / getting-started prompt with suggestions.
 
 use super::dim_color;
 use crate::tui::TuiState;
@@ -122,8 +121,6 @@ fn lozenge_pill_spans(label: &str, filled: bool) -> Vec<Span<'static>> {
 fn yes_no_pill_line(yes_highlighted: bool, align: Alignment) -> Line<'static> {
     let mut spans = Vec::new();
     spans.extend(lozenge_pill_spans("Yes", yes_highlighted));
-    spans.push(Span::raw("   "));
-    spans.extend(lozenge_pill_spans("No", !yes_highlighted));
     Line::from(spans).alignment(align)
 }
 
@@ -136,8 +133,7 @@ fn continue_pill_line(focused: bool, align: Alignment) -> Line<'static> {
 }
 
 /// The summary-screen action row. A new user can import the logins we found or
-/// use a Jcode subscription, with secondary controls for a selective import and
-/// telemetry settings.
+/// use a Jcode subscription, with secondary controls for a selective import.
 fn import_summary_pills_line(
     focused: crate::tui::ImportSummaryPill,
     align: Alignment,
@@ -155,73 +151,7 @@ fn import_summary_pills_line(
         "Import less",
         focused == Pill::ImportLess,
     ));
-    spans.push(Span::raw("   "));
-    spans.extend(lozenge_pill_spans("Telemetry", focused == Pill::Telemetry));
     Line::from(spans).alignment(align)
-}
-
-/// The telemetry settings sub-page: three stacked pills, most sharing first,
-/// each with a dim one-line consequence caption. Reached from the "Telemetry
-/// settings" pill on the import summary; Esc returns without changing anything.
-fn telemetry_settings_lines(
-    highlighted: crate::tui::TelemetryChoice,
-    env_forced_off: bool,
-    align: Alignment,
-) -> Vec<Line<'static>> {
-    use crate::tui::TelemetryChoice as Choice;
-    let dim = Style::default().fg(dim_color());
-    let mut lines: Vec<Line<'static>> = Vec::new();
-    lines.push(
-        Line::from(Span::styled(
-            "Telemetry settings",
-            Style::default()
-                .fg(welcome_accent())
-                .add_modifier(Modifier::BOLD),
-        ))
-        .alignment(align),
-    );
-    lines.push(Line::from(""));
-
-    let options = [
-        (
-            Choice::Everything,
-            "Share full transcripts (30-day retention)",
-            "Includes prompts, model responses, reasoning, code, and tool input/output",
-        ),
-        (
-            Choice::NoContent,
-            "No prompts or transcripts",
-            "Usage stats and crash reports only",
-        ),
-        (
-            Choice::Nothing,
-            "Send nothing",
-            "We stop seeing crashes and can't fix them",
-        ),
-    ];
-    for (choice, label, caption) in options {
-        lines.push(Line::from(lozenge_pill_spans(label, choice == highlighted)).alignment(align));
-        lines.push(Line::from(Span::styled(caption, dim)).alignment(align));
-        lines.push(Line::from(""));
-    }
-
-    if env_forced_off {
-        lines.push(
-            Line::from(Span::styled(
-                "Your environment already disables telemetry (JCODE_NO_TELEMETRY).",
-                dim,
-            ))
-            .alignment(align),
-        );
-    }
-    lines.push(
-        Line::from(Span::styled(
-            "Esc goes back. Change this later with /telemetry.",
-            dim,
-        ))
-        .alignment(align),
-    );
-    lines
 }
 
 /// Render the read-only detected-login list for the import summary screen: one
@@ -352,32 +282,6 @@ fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'
     out
 }
 
-/// Grayed telemetry notice shown at the very top of the onboarding screen.
-fn telemetry_header_lines(width: u16) -> Vec<Line<'static>> {
-    let align = Alignment::Center;
-    let dim = Style::default().fg(dim_color());
-    let lines = vec![
-        "jcode collects anonymous usage statistics (version, OS, session",
-        "activity, and crash reasons). No code, prompts, or personal data.",
-        "Change anytime: /telemetry (or export JCODE_NO_TELEMETRY=1)",
-    ];
-    lines
-        .into_iter()
-        .map(|text| {
-            // Truncate defensively on very narrow terminals.
-            let text = if (text.chars().count() as u16) > width.saturating_sub(2) {
-                text.chars()
-                    .take(width.saturating_sub(3) as usize)
-                    .collect::<String>()
-                    + "…"
-            } else {
-                text.to_string()
-            };
-            Line::from(Span::styled(text, dim)).alignment(align)
-        })
-        .collect()
-}
-
 /// Welcome title line, rendered above the phase body.
 fn welcome_title_line() -> Line<'static> {
     Line::from(Span::styled(
@@ -504,21 +408,6 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                     );
                 }
                 Some(prompt) if !prompt.choosing => {
-                    // Telemetry settings sub-page takes over the body while
-                    // it is open, then returns to the summary below.
-                    if let Some(choice) = prompt.telemetry {
-                        lines.extend(telemetry_settings_lines(
-                            choice,
-                            prompt.telemetry_env_forced_off,
-                            align,
-                        ));
-                        return lines;
-                    }
-                    // Summary screen (default): show what we detected as a
-                    // read-only checkmarked list, then land the user on a
-                    // preselected "Continue" pill that imports everything.
-                    // "Import less" opens the per-login list; "Telemetry
-                    // settings" opens the telemetry sub-page.
                     let found = prompt.rows.len();
                     lines.push(
                         Line::from(Span::styled(
@@ -673,8 +562,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
 
 /// Draw the full onboarding welcome screen into `area`.
 ///
-/// Vertical structure (top to bottom):
-///   telemetry header, gap, title, keyboard hint, gap, phase body.
+/// Vertical structure (top to bottom): title, keyboard hint, gap, phase body.
 pub(super) fn draw_onboarding_welcome(frame: &mut Frame, app: &dyn TuiState, area: Rect) {
     if area.width < 4 || area.height < 6 {
         // Too small for the full treatment: fall back to a minimal welcome.
@@ -684,25 +572,23 @@ pub(super) fn draw_onboarding_welcome(frame: &mut Frame, app: &dyn TuiState, are
         return;
     }
 
-    let telemetry = telemetry_header_lines(area.width);
     let body = welcome_body_lines(app);
-    let telemetry_h = (telemetry.len() as u16).min(TELEMETRY_LINES);
     let body_h = body.len() as u16;
     const TITLE_H: u16 = 1;
     const HINT_H: u16 = 1;
 
     // The title/hint block is dropped first when the area is short so the
     // phase body (the actionable part) always fits.
-    let show_title_block = area.height > telemetry_h + TITLE_H + HINT_H + body_h + GAP * 2;
+    let show_title_block = area.height > TITLE_H + HINT_H + body_h + GAP * 2;
 
     let used = if show_title_block {
-        telemetry_h + GAP + TITLE_H + HINT_H + GAP + body_h
+        TITLE_H + HINT_H + GAP + body_h
     } else {
-        telemetry_h + GAP + body_h
+        body_h
     };
     let pad_top = area.height.saturating_sub(used) / 2;
 
-    let mut constraints = vec![Constraint::Length(pad_top), Constraint::Length(telemetry_h)];
+    let mut constraints = vec![Constraint::Length(pad_top)];
     if show_title_block {
         constraints.push(Constraint::Length(GAP));
         constraints.push(Constraint::Length(TITLE_H));
@@ -717,13 +603,8 @@ pub(super) fn draw_onboarding_welcome(frame: &mut Frame, app: &dyn TuiState, are
         .constraints(constraints)
         .split(area);
 
-    // chunks[0] = top pad, [1] = telemetry, then optional gap/title/hint, gap, body.
-    frame.render_widget(
-        Paragraph::new(telemetry).alignment(Alignment::Center),
-        chunks[1],
-    );
-
-    let mut idx = 2;
+    // chunks[0] = top pad, then optional gap/title/hint, gap, body.
+    let mut idx = 1;
     if show_title_block {
         idx += 1; // skip gap chunk
         frame.render_widget(

@@ -263,8 +263,8 @@ fn onboarding_golden_walks_every_phase() {
 
     // 2. Login with detected imports: the default SUMMARY screen. It lists
     // everything we detected read-only and lands focus on a preselected
-    // import action, with a Jcode subscription alternative and secondary
-    // import/telemetry controls beside it.
+    // import action, with a Jcode subscription alternative and a secondary
+    // selective-import control beside it.
     {
         let review = ImportReview::new(vec![
             ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
@@ -293,7 +293,6 @@ fn onboarding_golden_walks_every_phase() {
             "subscription pill label: {text}"
         );
         assert!(text.contains("Import less"), "import-less pill: {text}");
-        assert!(text.contains("Telemetry"), "telemetry pill label: {text}");
         assert!(
             text.contains("$10 to $20 inference, $20 to $40; then provider API prices"),
             "subscription allowance and overage pricing: {text}"
@@ -513,47 +512,6 @@ fn onboarding_golden_walks_failure_and_async_states() {
     }
 }
 
-/// Golden render of the "Telemetry settings" sub-page reached from the import
-/// summary. Three stacked options with dim consequence captions, defaulting to
-/// "Send everything".
-#[test]
-fn onboarding_golden_telemetry_settings_page() {
-    use crate::external_auth::ExternalAuthReviewCandidate;
-    use crate::tui::app::onboarding_flow::ImportReview;
-
-    let mut review = ImportReview::new(vec![ExternalAuthReviewCandidate::fixture(
-        "OpenAI/Codex",
-        "Codex auth.json",
-    )])
-    .unwrap();
-    review.open_telemetry();
-    let app = app_in_phase(OnboardingPhase::Login {
-        import: Some(review),
-    });
-    let text = render_onboarding_text(&app, 80, 34);
-    dump("Telemetry settings page", &text);
-    assert!(text.contains("Telemetry settings"), "title: {text}");
-    assert!(
-        text.contains("Share full transcripts (30-day retention)"),
-        "option 1: {text}"
-    );
-    assert!(
-        text.contains("Includes prompts, model responses, reasoning, code, and tool"),
-        "caption 1: {text}"
-    );
-    assert!(
-        text.contains("No prompts or transcripts"),
-        "option 2: {text}"
-    );
-    assert!(text.contains("Send nothing"), "option 3: {text}");
-    assert!(text.contains("/telemetry"), "later-change hint: {text}");
-    // The import summary is hidden while the sub-page is open.
-    assert!(
-        !text.contains("We found 1 existing login"),
-        "summary hidden: {text}"
-    );
-}
-
 /// Generate a reviewable image for every state in the onboarding graph
 /// (`onboarding_graph.rs`), rendered through the exact widget tree the live
 /// flow uses. Welcome-card states render via the onboarding welcome layout;
@@ -618,23 +576,6 @@ fn onboarding_import_happy_path_images() {
             import: Some(review),
         });
         write_onboarding_svg(&output_dir, "login-import-choose.svg", &app, width, height);
-    }
-
-    // ---- login_import (telemetry sub-page) ----
-    {
-        let mut review = ImportReview::new(many_candidates()).unwrap();
-        review.focus_summary_pill(SummaryPill::Telemetry);
-        review.open_telemetry();
-        let app = app_in_phase(OnboardingPhase::Login {
-            import: Some(review),
-        });
-        write_onboarding_svg(
-            &output_dir,
-            "login-import-telemetry.svg",
-            &app,
-            width,
-            height,
-        );
     }
 
     // ---- import committed, async import running (transient progress card) ----

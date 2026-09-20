@@ -622,11 +622,6 @@ impl App {
             && pending_time.elapsed() < QUIT_TIMEOUT
         {
             self.session.provider_session_id = self.provider_session_id.clone();
-            crate::telemetry::end_session_with_reason(
-                self.provider.name(),
-                &self.provider.model(),
-                crate::telemetry::SessionEndReason::NormalExit,
-            );
             self.session.mark_closed();
             let _ = self.session.save();
             self.should_quit = true;

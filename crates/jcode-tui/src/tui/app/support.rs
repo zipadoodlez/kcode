@@ -20,7 +20,6 @@ pub(super) struct SupportDiagnostics {
     pub build_channel: String,
     pub os: String,
     pub arch: String,
-    pub telemetry_id: Option<String>,
     pub account_id: Option<String>,
     pub account_email: Option<String>,
     pub tier: Option<String>,
@@ -37,9 +36,6 @@ pub(super) fn build_support_body(d: &SupportDiagnostics) -> String {
     body.push_str(&format!("Git hash: {}\n", d.git_hash));
     body.push_str(&format!("Build channel: {}\n", d.build_channel));
     body.push_str(&format!("OS/Arch: {}/{}\n", d.os, d.arch));
-    if let Some(id) = &d.telemetry_id {
-        body.push_str(&format!("Telemetry ID: {}\n", id));
-    }
     if let Some(id) = &d.account_id {
         body.push_str(&format!("Account ID: {}\n", id));
     }
@@ -86,15 +82,6 @@ fn build_channel() -> String {
     "dev".to_string()
 }
 
-/// Read the persisted telemetry id without creating one (read-only, so
-/// `/support` never mutates telemetry state).
-fn read_telemetry_id() -> Option<String> {
-    let path = crate::storage::jcode_dir().ok()?.join("telemetry_id");
-    let id = std::fs::read_to_string(path).ok()?;
-    let id = id.trim().to_string();
-    if id.is_empty() { None } else { Some(id) }
-}
-
 fn gather_diagnostics(app: &App) -> SupportDiagnostics {
     use crate::provider_catalog::load_env_value_from_env_or_config;
     use crate::subscription_catalog as cat;
@@ -132,7 +119,6 @@ fn gather_diagnostics(app: &App) -> SupportDiagnostics {
         build_channel: build_channel(),
         os: std::env::consts::OS.to_string(),
         arch: std::env::consts::ARCH.to_string(),
-        telemetry_id: read_telemetry_id(),
         account_id,
         account_email,
         tier,
@@ -183,7 +169,6 @@ mod tests {
             build_channel: "release".to_string(),
             os: "linux".to_string(),
             arch: "x86_64".to_string(),
-            telemetry_id: Some("11111111-2222-3333-4444-555555555555".to_string()),
             account_id: Some("acct_42".to_string()),
             account_email: Some("user@example.com".to_string()),
             tier: Some("$100 Pro".to_string()),
@@ -201,7 +186,6 @@ mod tests {
         assert!(body.contains("Git hash: abc1234"));
         assert!(body.contains("Build channel: release"));
         assert!(body.contains("OS/Arch: linux/x86_64"));
-        assert!(body.contains("Telemetry ID: 11111111-2222-3333-4444-555555555555"));
         assert!(body.contains("Account ID: acct_42"));
         assert!(body.contains("Account email: user@example.com"));
         assert!(body.contains("Tier: $100 Pro"));
@@ -222,7 +206,6 @@ mod tests {
             model: "gpt-5.5".to_string(),
             ..Default::default()
         });
-        assert!(!body.contains("Telemetry ID:"));
         assert!(!body.contains("Account ID:"));
         assert!(!body.contains("Account email:"));
         assert!(!body.contains("Tier:"));

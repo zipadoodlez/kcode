@@ -1104,7 +1104,7 @@ pub fn import_codex_session_from_path(
             continue;
         }
         // Codex rollouts are dominated by reasoning, world-state, tool-output,
-        // and telemetry records. Only message records carry a user/assistant
+        // records. Only message records carry a user/assistant
         // role, so reject the rest before serde allocates their often-large JSON.
         if !json_line_has_message_role(trimmed) {
             continue;

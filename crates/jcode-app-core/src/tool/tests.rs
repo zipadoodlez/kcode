@@ -157,19 +157,6 @@ async fn mcp_management_upgrades_registry_through_surviving_clone() {
 }
 
 #[tokio::test]
-async fn maintainer_feedback_tool_is_registered() {
-    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
-    let registry = Registry::new(provider).await;
-    assert!(
-        registry
-            .tool_names()
-            .await
-            .iter()
-            .any(|name| name == "maintainer_feedback")
-    );
-}
-
-#[tokio::test]
 async fn test_tool_definitions_are_sorted() {
     // Create registry with mock provider
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);

@@ -149,46 +149,6 @@ fn altgr_5_does_not_start_onboarding_simulator() {
 }
 
 #[test]
-fn onboarding_sim_includes_telemetry_settings_screen() {
-    let mut app = create_test_app();
-    app.start_onboarding_simulator();
-
-    // Tab through screens until the telemetry settings page shows. The sim's
-    // catalog is small, so a bounded walk is enough and it fails loudly if the
-    // screen was dropped from the catalog.
-    let mut found = false;
-    for _ in 0..12 {
-        if let Some(OnboardingPhase::Login {
-            import: Some(review),
-        }) = app.onboarding_phase()
-            && review.telemetry.is_some()
-        {
-            found = true;
-            break;
-        }
-        app.handle_key(KeyCode::Tab, KeyModifiers::NONE).unwrap();
-    }
-    assert!(found, "sim should include a telemetry settings screen");
-
-    // Down/Up preview the three options without persisting anything.
-    use crate::tui::app::onboarding_flow::TelemetryLevel;
-    app.handle_key(KeyCode::Down, KeyModifiers::NONE).unwrap();
-    match app.onboarding_phase() {
-        Some(OnboardingPhase::Login {
-            import: Some(review),
-        }) => assert_eq!(review.telemetry, Some(TelemetryLevel::NoContent)),
-        other => panic!("expected telemetry screen, got {other:?}"),
-    }
-    app.handle_key(KeyCode::Up, KeyModifiers::NONE).unwrap();
-    match app.onboarding_phase() {
-        Some(OnboardingPhase::Login {
-            import: Some(review),
-        }) => assert_eq!(review.telemetry, Some(TelemetryLevel::Everything)),
-        other => panic!("expected telemetry screen, got {other:?}"),
-    }
-}
-
-#[test]
 fn onboarding_sim_summary_arrows_preview_all_pills() {
     use crate::tui::app::onboarding_flow::SummaryPill;
     let mut app = create_test_app();
@@ -206,9 +166,7 @@ fn onboarding_sim_summary_arrows_preview_all_pills() {
     app.handle_key(KeyCode::Right, KeyModifiers::NONE).unwrap();
     assert_eq!(pill(&app), SummaryPill::ImportLess);
     app.handle_key(KeyCode::Right, KeyModifiers::NONE).unwrap();
-    assert_eq!(pill(&app), SummaryPill::Telemetry);
-    app.handle_key(KeyCode::Right, KeyModifiers::NONE).unwrap();
     assert_eq!(pill(&app), SummaryPill::Continue);
     app.handle_key(KeyCode::Left, KeyModifiers::NONE).unwrap();
-    assert_eq!(pill(&app), SummaryPill::Telemetry);
+    assert_eq!(pill(&app), SummaryPill::ImportLess);
 }

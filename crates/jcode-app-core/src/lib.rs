@@ -13,7 +13,7 @@
 //!
 //! This crate holds the server/tool/agent layer and its presentation-adjacent
 //! leaves. The foundational layer it builds on (provider, auth, config, session,
-//! message, memory, telemetry, ...) lives in the `jcode-base` crate and is
+//! message, memory, ...) lives in the `jcode-base` crate and is
 //! re-exported here via `pub use jcode_base::*`, so every existing
 //! `crate::<module>` path (e.g. `crate::config`, `crate::provider`) keeps
 //! resolving unchanged across this crate and the root `jcode` crate, which in

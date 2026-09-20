@@ -378,7 +378,6 @@ impl App {
             self.set_side_panel_snapshot(
                 crate::side_panel::snapshot_for_session(session_id).unwrap_or_default(),
             );
-            crate::telemetry::begin_resumed_session(self.provider.name(), &active_model);
             crate::logging::info(&format!("Restored session: {}", session_id));
 
             // Build stats message

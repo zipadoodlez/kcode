@@ -3079,7 +3079,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
 
     // The guided onboarding phases (login import, OpenAI prompt, continue prompt)
     // are entirely key-driven and own the whole chat column: they render their own
-    // telemetry header, a prominent donut, and the welcome body. Suppress the
+    // prominent donut and the welcome body. Suppress the
     // normal chat chrome (status line, input box, notification, idle hint) so the
     // screen stays focused and the donut gets the full height. The resting
     // Suggestions screen keeps the input box so the user can type to start.

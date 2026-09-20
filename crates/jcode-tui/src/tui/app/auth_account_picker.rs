@@ -5,7 +5,6 @@ impl App {
     pub(crate) fn open_account_center(&mut self, provider_filter: Option<&str>) {
         use crate::tui::account_picker::{AccountPicker, AccountPickerCommand, AccountPickerItem};
 
-        crate::telemetry::record_setup_step_once("account_center_opened");
 
         let status = crate::auth::AuthStatus::check_fast();
         let validation = crate::auth::validation::load_all();

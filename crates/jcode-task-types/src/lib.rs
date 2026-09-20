@@ -235,8 +235,8 @@ macro_rules! semantic_state {
                 }
             }
 
-            /// Representative 0-100 score for consumers (telemetry) that still
-            /// aggregate numerically.
+            /// Representative 0-100 score for consumers that still aggregate
+            /// numerically.
             pub fn legacy_score(&self) -> u8 {
                 match self {
                     $( Self::$variant => $score, )+

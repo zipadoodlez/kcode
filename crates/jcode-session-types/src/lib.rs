@@ -49,7 +49,7 @@ impl ResumeTarget {
 /// Durable usage for one user turn, summed across its assistant/tool rounds.
 /// Input is the raw provider-reported count, not normalized across providers.
 /// Cache reads may be included in input (OpenAI) or separate (Anthropic).
-/// Missing telemetry is unknown, not zero. Counts are absent if any assistant
+/// Missing provider metrics are unknown, not zero. Counts are absent if any assistant
 /// round lacks that metric. This is not a session total or a billing estimate.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct ResponseStats {

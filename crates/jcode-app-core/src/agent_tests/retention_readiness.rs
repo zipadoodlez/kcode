@@ -4,7 +4,7 @@
 // jcode has the product properties that make returning likely: a useful first
 // result, cheap re-entry, preserved context, durable state, recoverable failure,
 // and value that compounds across sessions. Real D1/D7/D30 cohort retention is
-// a separate telemetry outcome and is never synthesized here.
+// not measured here and is never synthesized.
 //
 // The test drives the real Agent, Provider, Session persistence, and restore
 // paths through labeled D0/D1/D7 boundaries. The labels are deterministic phase
@@ -458,7 +458,7 @@ async fn retention_readiness_scorecard() {
             factor.name, factor.rationale
         );
     }
-    println!("Observed counterpart  : D1/D7/D30 meaningful-work cohorts (telemetry, separate)\n");
+    println!("Observed counterpart  : D1/D7/D30 meaningful-work cohorts (not measured here)\n");
 
     // Hard gates: no weighted average may hide loss of first value, continuity,
     // durable state, recovery, or compounded context.

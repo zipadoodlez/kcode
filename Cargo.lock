@@ -3083,7 +3083,6 @@ dependencies = [
  "jcode-side-panel-types",
  "jcode-storage",
  "jcode-task-types",
- "jcode-telemetry-core",
  "jcode-terminal-image",
  "jcode-terminal-launch",
  "jcode-tool-core",
@@ -3774,26 +3773,6 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "jcode-telemetry-core"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "jcode-build-meta",
- "jcode-core",
- "jcode-logging",
- "jcode-provider-core",
- "jcode-selfdev-types",
- "jcode-storage",
- "jcode-usage-types",
- "reqwest 0.12.28",
- "serde_json",
- "tempfile",
- "tokio",
- "uuid",
- "walkdir",
 ]
 
 [[package]]

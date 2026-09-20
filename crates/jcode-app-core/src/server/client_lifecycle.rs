@@ -591,7 +591,7 @@ pub(super) async fn handle_client(
     let t0 = std::time::Instant::now();
     let mut new_agent =
         crate::hooks::with_client_terminal_env(active_terminal_env.clone(), async {
-            Agent::new_provisional_with_initial_working_dir(
+            Agent::new_with_initial_working_dir(
                 Arc::clone(&provider),
                 registry.clone(),
                 Some(&initial_working_dir),
@@ -1167,7 +1167,6 @@ pub(super) async fn handle_client(
                     | Request::RunSubagent { .. }
             )
         {
-            agent.lock().await.activate_concurrency_tracking();
             provisional_session = false;
         }
 
@@ -1698,8 +1697,7 @@ pub(super) async fn handle_client(
                         }
                     } else {
                         if provisional_session {
-                            agent.lock().await.activate_concurrency_tracking();
-                        }
+                                        }
                         handle_subscribe(
                             id,
                             subscribe_working_dir,
@@ -1728,8 +1726,7 @@ pub(super) async fn handle_client(
                     }
                 } else {
                     if provisional_session {
-                        agent.lock().await.activate_concurrency_tracking();
-                    }
+                                }
                     handle_subscribe(
                         id,
                         subscribe_working_dir,
@@ -3101,23 +3098,17 @@ async fn record_processing_completion(
                 .downcast_ref::<StreamError>()
                 .and_then(|se| se.retry_after_secs);
             if retry_after_secs.is_some() {
-                crate::telemetry::record_error(crate::telemetry::ErrorCategory::RateLimited);
             } else {
                 let msg = e.to_string();
                 let lower = msg.to_lowercase();
                 if lower.contains("timeout") {
-                    crate::telemetry::record_error(
-                        crate::telemetry::ErrorCategory::ProviderTimeout,
-                    );
                 } else if crate::provider::error_looks_like_credential_failure(&msg)
                     || lower.contains("403 forbidden")
                 {
                     // Use the shared credential-failure classifier instead of a
                     // bare `contains("auth")`: that substring also matched
                     // unrelated errors (e.g. any message mentioning "author" or
-                    // OAuth flow noise) and inflated the auth_failed telemetry
-                    // counter.
-                    crate::telemetry::record_error(crate::telemetry::ErrorCategory::AuthFailed);
+                    // OAuth flow noise).
                 }
             }
         }

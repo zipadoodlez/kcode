@@ -578,7 +578,6 @@ pub(super) async fn execute_debug_command(
         };
         let mut agent = agent.lock().await;
         agent.set_model(default_model)?;
-        crate::telemetry::record_provider_switch();
         let payload = serde_json::json!({
             "model": agent.provider_model(),
             "provider": agent.provider_name(),

@@ -1117,10 +1117,6 @@ pub struct App {
     /// to target the agent repair brief (`jcode auth-test --provider X`). `None`
     /// when unknown.
     onboarding_import_failed_provider: Option<String>,
-    /// Whether the user explicitly committed a choice on the onboarding
-    /// "Telemetry settings" page. When true, the post-login default write is
-    /// skipped so it cannot clobber an explicit "send everything" opt-in.
-    onboarding_telemetry_choice_made: bool,
     /// Pending first-run model-validation request for the new-session screen.
     /// In remote/client mode the live default model is reported by the server
     /// asynchronously, so we record that a validation is wanted and let the

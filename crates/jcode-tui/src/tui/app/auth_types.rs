@@ -65,39 +65,6 @@ pub(crate) enum PendingLogin {
 }
 
 impl PendingLogin {
-    pub(crate) fn telemetry_context(&self) -> Option<(String, String)> {
-        match self {
-            Self::Remote => None,
-            Self::ClaudeAccount { .. } => Some(("claude".to_string(), "oauth".to_string())),
-            Self::OpenAiAccount { .. } => Some(("openai".to_string(), "oauth".to_string())),
-            Self::Gemini { .. } => Some(("gemini".to_string(), "oauth".to_string())),
-            Self::Antigravity { .. } => Some(("antigravity".to_string(), "oauth".to_string())),
-            Self::ApiKeyProfile {
-                provider_id,
-                auth_method,
-                ..
-            } => Some((provider_id.clone(), auth_method.clone())),
-            Self::OpenAiCompatibleApiBase { profile } => {
-                let resolved = crate::provider_catalog::resolve_openai_compatible_profile(*profile);
-                Some((
-                    resolved.id,
-                    if resolved.requires_api_key {
-                        "api_key".to_string()
-                    } else {
-                        "local_endpoint".to_string()
-                    },
-                ))
-            }
-            Self::CursorApiKey => Some(("cursor".to_string(), "api_key".to_string())),
-            Self::Copilot => Some(("copilot".to_string(), "device_code".to_string())),
-            Self::GrokBuild => Some(("grok-build".to_string(), "oauth".to_string())),
-            Self::AutoImportSelection { .. } => None,
-            Self::AzureEndpoint | Self::AzureModel { .. } | Self::AzureAuthChoice { .. } => {
-                Some(("azure".to_string(), "hybrid".to_string()))
-            }
-            Self::AzureApiKey { .. } => Some(("azure".to_string(), "api_key".to_string())),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

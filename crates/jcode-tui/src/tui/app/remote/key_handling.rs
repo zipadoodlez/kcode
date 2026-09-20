@@ -1071,11 +1071,6 @@ async fn handle_remote_key_internal(
                 }
 
                 if trimmed == "/quit" {
-                    crate::telemetry::end_session_with_reason(
-                        app.provider.name(),
-                        &app.provider.model(),
-                        crate::telemetry::SessionEndReason::NormalExit,
-                    );
                     // In remote mode the shared server owns session lifecycle persistence.
                     // Exiting this client should not overwrite the server's session file.
                     app.should_quit = true;

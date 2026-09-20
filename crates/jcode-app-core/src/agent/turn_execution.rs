@@ -97,7 +97,6 @@ impl Agent {
             system_reminder.filter(|value| !value.trim().is_empty());
 
         self.append_user_context_message_with_display_role(user_message, images, display_role)?;
-        crate::telemetry::record_turn();
         let turn_started_at = Instant::now();
         let start_message_index = self.message_count();
         self.fire_turn_start_hook("chat");
@@ -207,7 +206,6 @@ impl Agent {
         let preserve_working_dir = self.session.working_dir.clone();
 
         self.session.mark_closed();
-        self.finish_concurrency_tracking();
         self.persist_session_best_effort("pre-clear session close state");
 
         let mut new_session = Session::create(None, None);
@@ -221,7 +219,6 @@ impl Agent {
         new_session.ensure_initial_session_context_message();
 
         self.session = new_session;
-        self.begin_concurrency_tracking();
         self._tool_policy_registration = crate::tool::register_session_tool_policy(
             &self.session.id,
             self.allowed_tools.clone(),
@@ -780,7 +777,6 @@ impl Agent {
 
         let mark_active_start = Instant::now();
         self.session.mark_active();
-        self.begin_concurrency_tracking();
         let mark_active_ms = mark_active_start.elapsed().as_millis();
         self.sync_memory_dedup_state_from_session();
 

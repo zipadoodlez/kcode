@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 # Foundational layer of the jcode application core: the downward-closed set of
-# modules (provider, auth, config, session, message, memory, telemetry, ...)
+# modules (provider, auth, config, session, message, memory, ...)
 # that the server/tool/agent layer depends on. Split out of `jcode-app-core` so
 # the two halves compile as separate rustc units, halving peak compile memory.
 # `jcode-app-core` re-exports this crate (`pub use jcode_base::*`) so that every
@@ -83,7 +83,6 @@ jcode-provider-gemini = { path = "../jcode-provider-gemini" }
 jcode-render-core = { path = "../jcode-render-core" }
 jcode-terminal-launch = { path = "../jcode-terminal-launch" }
 jcode-terminal-image = { path = "../jcode-terminal-image" }
-jcode-telemetry-core = { path = "../jcode-telemetry-core" }
 jcode-usage-types = { path = "../jcode-usage-types" }
 
 # Native microphone input is opt-in so CLI builds need no audio development libraries.

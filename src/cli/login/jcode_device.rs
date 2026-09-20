@@ -211,7 +211,6 @@ pub(super) async fn login_jcode_device_flow(no_browser: bool) -> Result<LoginCom
         }
     };
 
-    crate::telemetry::record_auth_success("jcode-subscription", "device_code_browser");
     Ok(completion)
 }
 

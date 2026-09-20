@@ -1846,7 +1846,6 @@ fn handle_disconnected_local_command(app: &mut App, trimmed: &str) -> bool {
 
     if handled {
         if trimmed.starts_with('/') {
-            crate::telemetry::record_command_family(trimmed);
         }
         app.input.clear();
         app.cursor_pos = 0;

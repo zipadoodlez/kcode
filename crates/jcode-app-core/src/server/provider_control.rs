@@ -389,7 +389,6 @@ fn send_model_changed_result(
 ) {
     match result {
         Ok((updated, provider_name)) => {
-            crate::telemetry::record_model_switch();
             crate::logging::event_info(
                 "server_model_changed",
                 vec![

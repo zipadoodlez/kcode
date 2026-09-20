@@ -9,7 +9,7 @@
 //!
 //! This module inverts that: probe the environment cheaply and concurrently up
 //! front, then *choose* an auth method that can actually work. The probe results
-//! are also exactly the right shape for privacy-preserving telemetry, because
+//! are also exactly the right shape for privacy-preserving diagnostics, because
 //! every field is a three-valued enum with no user data in it.
 //!
 //! Design note: [`Tri::Unknown`] always biases toward the optimistic path. A
@@ -32,7 +32,7 @@ pub enum Tri {
 }
 
 impl Tri {
-    /// Closed-vocabulary label, safe to emit in telemetry verbatim.
+    /// Closed-vocabulary label, safe to emit in diagnostics verbatim.
     pub fn label(self) -> &'static str {
         match self {
             Tri::Yes => "yes",
@@ -62,7 +62,7 @@ impl Tri {
 /// Capabilities of the machine we are trying to log in from.
 ///
 /// Every field is a `Tri` and nothing here is user data: no paths, hostnames,
-/// usernames, or error text. The whole struct can be sent as telemetry as-is.
+/// usernames, or error text. The whole struct can be forwarded as-is.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EnvFacts {
     /// Interactive stdin/stdout: can we prompt at all?
@@ -159,7 +159,7 @@ pub enum AuthMethodChoice {
 }
 
 impl AuthMethodChoice {
-    /// Closed-vocabulary label, safe for telemetry.
+    /// Closed-vocabulary label, safe for diagnostics.
     pub fn label(self) -> &'static str {
         match self {
             AuthMethodChoice::OAuthLoopback => "oauth_loopback",
@@ -447,7 +447,7 @@ mod tests {
             elapsed < Duration::from_millis(500),
             "probe budget exceeded: {elapsed:?}"
         );
-        // The serialized form is what telemetry would send. It must contain
+        // The serialized form is what a diagnostics payload would carry. It must contain
         // nothing but the closed Tri vocabulary.
         let json = serde_json::to_string(&facts).expect("facts serialize");
         for value in json
@@ -467,7 +467,7 @@ mod tests {
                         | "no"
                         | "unknown"
                 ),
-                "unexpected token {value:?} in telemetry payload {json}"
+                "unexpected token {value:?} in diagnostics payload {json}"
             );
         }
     }

@@ -32,8 +32,8 @@ pub enum CredState {
 }
 
 impl CredState {
-    /// Stable label for logs, telemetry, and UI. Closed vocabulary: these
-    /// strings are safe to send verbatim in telemetry.
+    /// Stable label for logs and UI. Closed vocabulary: these strings are
+    /// safe to send verbatim.
     pub fn label(self) -> &'static str {
         match self {
             CredState::Absent => "absent",
