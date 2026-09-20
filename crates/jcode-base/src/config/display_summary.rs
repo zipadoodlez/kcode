@@ -117,11 +117,6 @@ impl Config {
 - Work branch prefix: `{}`
 - Visible mode: {}
 
-**Notifications:**
-- ntfy.sh: {}
-- Desktop: {}
-- Email: {}
-- Email replies: {}
 *Edit the config file or set environment variables to customize.*
 *Environment variables (e.g., `JCODE_SCROLL_UP_KEY`, `JCODE_AMBIENT_ENABLED`) override file settings.*"#,
             path,
@@ -312,32 +307,6 @@ impl Config {
             self.ambient.proactive_work,
             self.ambient.work_branch_prefix,
             self.ambient.visible,
-            self.safety
-                .ntfy_topic
-                .as_deref()
-                .map(|t| format!("enabled (topic: {})", t))
-                .unwrap_or_else(|| "disabled".to_string()),
-            if self.safety.desktop_notifications {
-                "enabled"
-            } else {
-                "disabled"
-            },
-            if self.safety.email_enabled {
-                self.safety
-                    .email_to
-                    .as_deref()
-                    .unwrap_or("enabled (no recipient)")
-            } else {
-                "disabled"
-            },
-            if self.safety.email_reply_enabled {
-                self.safety
-                    .email_imap_host
-                    .as_deref()
-                    .unwrap_or("enabled (no IMAP host)")
-            } else {
-                "disabled"
-            },
         )
     }
 }

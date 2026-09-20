@@ -69,18 +69,13 @@ impl App {
         );
         let sound = cfg.turn_complete_sound.trim();
         let sound = (!sound.is_empty()).then_some(sound);
-        if !send_originating_terminal_notification(
+        // Desktop fallback removed with the notification integrations; the terminal
+        // escape path (kitty/iTerm) is the remaining notice channel.
+        let _ = send_originating_terminal_notification(
             &notification,
             self.active_client_session_id().unwrap_or("unknown"),
             sound,
-        ) {
-            crate::notifications::send_desktop_notification_rich(
-                &notification.title,
-                notification.subtitle.as_deref(),
-                &notification.body,
-                sound,
-            );
-        }
+        );
     }
 
     fn runtime_mode_allows_turn_notifications(&self) -> bool {
@@ -115,20 +110,8 @@ fn send_originating_terminal_notification(
     let is_kitty = term_program.eq_ignore_ascii_case("kitty") || term == "xterm-kitty";
 
     // Kitty's OSC 99 path is strictly better than a generic helper because the
-    // terminal itself can focus the exact originating surface. All other macOS
-    // terminals use the LSUIElement broker when installed; it carries durable
-    // route metadata and can target Terminal.app/iTerm2 by tty on click.
-    if !is_kitty
-        && crate::notifications::send_macos_turn_notification(
-            &notification.title,
-            notification.subtitle.as_deref(),
-            &notification.body,
-            sound,
-        )
-    {
-        return true;
-    }
-
+    // terminal itself can focus the exact originating surface. The macOS
+    // broker fallback went with the notification integrations.
     let sequence = if is_kitty {
         kitty_notification_sequence(notification, session_id)
     } else if term_program.eq_ignore_ascii_case("iTerm.app") {

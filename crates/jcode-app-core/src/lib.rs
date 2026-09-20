@@ -33,7 +33,6 @@ pub mod catchup;
 pub mod external_auth;
 pub mod mission;
 pub mod network_retry;
-pub mod notifications;
 pub mod overnight;
 pub mod perf;
 pub mod replay;

@@ -1,32 +1,9 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 
 use crate::storage;
-
-/// Hook invoked to deliver a permission-request notification.
-///
-/// Args: `(action, description, request_id)`.
-type PermissionNotifier = fn(&str, &str, &str);
-
-static PERMISSION_NOTIFIER: OnceLock<PermissionNotifier> = OnceLock::new();
-
-/// Register the permission-request notification dispatcher.
-///
-/// This inverts the historical `safety -> notifications` dependency: the
-/// `notifications` layer (which already depends on `safety` types like
-/// [`AmbientTranscript`]) registers its dispatcher here at startup, so
-/// `safety` no longer needs to construct a `NotificationDispatcher`.
-pub fn register_permission_notifier(notifier: PermissionNotifier) {
-    let _ = PERMISSION_NOTIFIER.set(notifier);
-}
-
-fn dispatch_permission_notification(action: &str, description: &str, request_id: &str) {
-    if let Some(notifier) = PERMISSION_NOTIFIER.get() {
-        notifier(action, description, request_id);
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Action classification
@@ -186,15 +163,10 @@ impl SafetySystem {
     /// Submit a permission request. Returns `Queued` with the request id.
     pub fn request_permission(&self, request: PermissionRequest) -> PermissionResult {
         let request_id = request.id.clone();
-        let action = request.action.clone();
-        let description = request.description.clone();
         if let Ok(mut q) = self.queue.lock() {
             q.push(request);
             let _ = persist_queue(&q);
         }
-        // Send high-priority notification for permission request via the
-        // registered dispatcher (inverts the safety -> notifications edge).
-        dispatch_permission_notification(&action, &description, &request_id);
         PermissionResult::Queued { request_id }
     }
 

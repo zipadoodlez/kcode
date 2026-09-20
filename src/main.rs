@@ -128,9 +128,6 @@ fn run_main() -> Result<()> {
     // a dedicated executable name. Intercept that multicall entry point before
     // Tokio/CLI startup so AppKit and Notification Center stay on the real main
     // thread and the helper never initializes an agent session.
-    if jcode::cli::macos_notification_broker::is_invocation() {
-        return jcode::cli::macos_notification_broker::run();
-    }
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

@@ -10,7 +10,7 @@ pub use jcode_config_types::{
     KeybindingsConfig, LatexRenderingMode, LaunchHotkeyEntry, LaunchHotkeysConfig,
     MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig, NamedProviderModelConfig,
     NamedProviderType, NativeScrollbarConfig, NotificationsConfig, OverscrollStatusMode,
-    PowerConfig, ProviderConfig, ReasoningDisplayMode, SafetyConfig, SessionPickerResumeAction,
+    PowerConfig, ProviderConfig, ReasoningDisplayMode, SessionPickerResumeAction,
     SponsorsConfig, SwarmSpawnMode, SwarmStripLayout, TerminalConfig, UpdateChannel,
     WebSearchConfig, WebSearchEngine,
 };
@@ -525,8 +525,6 @@ pub struct Config {
     /// Ambient mode configuration
     pub ambient: AmbientConfig,
 
-    /// Safety / notification configuration
-    pub safety: SafetyConfig,
 
     /// Desktop notifications for interactive sessions (e.g. turn completion)
     pub notifications: NotificationsConfig,

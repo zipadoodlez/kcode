@@ -42,7 +42,6 @@ members = [
     "crates/jcode-storage",
     "crates/jcode-side-panel-types",
     "crates/jcode-azure-auth",
-    "crates/jcode-notify-email",
     "crates/jcode-provider-metadata",
     "crates/jcode-provider-env",
     "crates/jcode-provider-core",

@@ -1419,55 +1419,6 @@ impl Default for NotificationsConfig {
     }
 }
 
-/// Safety system & notification configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct SafetyConfig {
-    /// ntfy.sh topic name (required for push notifications)
-    pub ntfy_topic: Option<String>,
-    /// ntfy.sh server URL (default: https://ntfy.sh)
-    pub ntfy_server: String,
-    /// Enable desktop notifications via notify-send (default: true)
-    pub desktop_notifications: bool,
-    /// Enable email notifications (default: false)
-    pub email_enabled: bool,
-    /// Email recipient
-    pub email_to: Option<String>,
-    /// SMTP host (e.g. smtp.gmail.com)
-    pub email_smtp_host: Option<String>,
-    /// SMTP port (default: 587)
-    pub email_smtp_port: u16,
-    /// Email sender address
-    pub email_from: Option<String>,
-    /// SMTP password (prefer JCODE_SMTP_PASSWORD env var)
-    pub email_password: Option<String>,
-    /// IMAP host for receiving email replies (e.g. imap.gmail.com)
-    pub email_imap_host: Option<String>,
-    /// IMAP port (default: 993)
-    pub email_imap_port: u16,
-    /// Enable email reply → agent directive feature (default: false)
-    pub email_reply_enabled: bool,
-}
-
-impl Default for SafetyConfig {
-    fn default() -> Self {
-        Self {
-            ntfy_topic: None,
-            ntfy_server: "https://ntfy.sh".to_string(),
-            desktop_notifications: true,
-            email_enabled: false,
-            email_to: None,
-            email_smtp_host: None,
-            email_smtp_port: 587,
-            email_from: None,
-            email_password: None,
-            email_imap_host: None,
-            email_imap_port: 993,
-            email_reply_enabled: false,
-        }
-    }
-}
-
 /// Power-management configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]

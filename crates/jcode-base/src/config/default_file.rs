@@ -547,8 +547,8 @@ swarm_max_concurrent_agents = 32
 
 [notifications]
 # Desktop notifications for interactive sessions (macOS Notification Center /
-# Linux notify-send). Separate from [safety], which covers ambient-mode
-# ntfy/email/channel notifications.
+# Linux notify-send). Platform integrations (ntfy, email, chat bridges) are not
+# part of core; use a user-written bridge over the socket.
 #
 # Notify when an agent turn finishes. Fires only for long turns and, by
 # default, only while the terminal window is unfocused. The notification is a
@@ -647,31 +647,6 @@ work_branch_prefix = "ambient/"
 # The guard is held only for as long as work is in flight. (default: true)
 # Set JCODE_DISABLE_POWER_INHIBIT=1 to force-disable regardless of this setting.
 prevent_sleep_while_streaming = true
-
-[safety]
-# Notification settings for ambient mode events
-
-# ntfy.sh push notifications (free, phone app: https://ntfy.sh)
-# ntfy_topic = "jcode-ambient-your-secret-topic"
-# ntfy_server = "https://ntfy.sh"
-
-# Desktop notifications via notify-send (default: true)
-desktop_notifications = true
-
-# Email notifications via SMTP
-# email_enabled = false
-# email_to = "you@example.com"
-# email_from = "jcode@example.com"
-# email_smtp_host = "smtp.gmail.com"
-# email_smtp_port = 587
-# Password via env: JCODE_SMTP_PASSWORD (preferred) or config below
-# email_password = ""
-
-# IMAP for email replies (reply to ambient emails to send directives)
-# email_reply_enabled = false
-# email_imap_host = "imap.gmail.com"
-# email_imap_port = 993
-
 
 # [sponsors] # Legacy config section name retained for compatibility.
 # Integration discovery (enabled by default; set enabled = false to opt out).
