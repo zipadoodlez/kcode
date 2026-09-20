@@ -18,7 +18,6 @@ mod edit;
 mod edit_stats;
 mod feedback;
 mod gmail;
-mod goal;
 pub mod inflight;
 mod invalid;
 mod jcode_docs;
