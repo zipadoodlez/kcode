@@ -104,26 +104,6 @@ path = "src/bin/test_api.rs"
 name = "jcode-harness"
 path = "src/bin/harness.rs"
 
-[[bin]]
-name = "session_memory_bench"
-path = "src/bin/session_memory_bench.rs"
-required-features = ["dev-bins"]
-
-[[bin]]
-name = "memory_recall_bench"
-path = "src/bin/memory_recall_bench.rs"
-required-features = ["dev-bins"]
-
-[[bin]]
-name = "mermaid_side_panel_probe"
-path = "src/bin/mermaid_side_panel_probe.rs"
-required-features = ["dev-bins"]
-
-[[bin]]
-name = "tui_bench"
-path = "src/bin/tui_bench.rs"
-required-features = ["dev-bins"]
-
 [dependencies]
 # Memory allocator (reduces fragmentation for long-running server)
 tikv-jemallocator = { version = "0.6", features = ["unprefixed_malloc_on_supported_platforms"], optional = true }
@@ -208,7 +188,6 @@ tempfile = "3"
 # Use `JCODE_DEV_FEATURE_PROFILE=minimal` for compile-speed probes that need
 # to skip optional default feature stacks.
 default = ["pdf", "embeddings", "bedrock"]
-dev-bins = ["jcode-tui/dev-bins"]
 jemalloc = [
     "dep:tikv-jemallocator",
     "tikv-jemallocator/stats",

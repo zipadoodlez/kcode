@@ -685,22 +685,6 @@ fn test_tool_summary_covers_action_shaped_tools_and_fallback() {
             "bash: missing command",
         ),
         (
-            "integration_tools",
-            serde_json::json!({ "category": "databases", "reason": "need a db" }),
-            "search databases",
-        ),
-        (
-            "integration_tools",
-            serde_json::json!({
-                "action": "suggest",
-                "category": "payments",
-                "suggestion_kind": "known_product",
-                "product_name": "Stripe sandbox MCP"
-            }),
-            "suggest Stripe sandbox MCP",
-        ),
-        // Unknown/unmatched tools fall back to the action field.
-        (
             "request_permission",
             serde_json::json!({ "action": "push", "description": "push commits" }),
             "push",

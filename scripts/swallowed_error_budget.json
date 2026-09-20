@@ -1,9 +1,9 @@
 {
-  "total": 3208,
+  "total": 3129,
   "totals_by_pattern": {
-    "dot_ok": 1191,
-    "let_underscore": 1190,
-    "unwrap_or_default": 827
+    "dot_ok": 1159,
+    "let_underscore": 1173,
+    "unwrap_or_default": 797
   },
   "tracked_files": {
     "crates/jcode-app-core/src/agent.rs": {
@@ -433,16 +433,6 @@
     },
     "crates/jcode-app-core/src/tool/conversation_search.rs": {
       "dot_ok": 1,
-      "let_underscore": 0,
-      "unwrap_or_default": 1
-    },
-    "crates/jcode-app-core/src/tool/discover.rs": {
-      "dot_ok": 3,
-      "let_underscore": 0,
-      "unwrap_or_default": 4
-    },
-    "crates/jcode-app-core/src/tool/discover_secrets.rs": {
-      "dot_ok": 0,
       "let_underscore": 0,
       "unwrap_or_default": 1
     },
@@ -1004,11 +994,6 @@
     "crates/jcode-base/src/soft_interrupt_store.rs": {
       "dot_ok": 0,
       "let_underscore": 2,
-      "unwrap_or_default": 0
-    },
-    "crates/jcode-base/src/sponsors/provenance.rs": {
-      "dot_ok": 0,
-      "let_underscore": 1,
       "unwrap_or_default": 0
     },
     "crates/jcode-base/src/subscription_api.rs": {

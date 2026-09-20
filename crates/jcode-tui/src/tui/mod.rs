@@ -894,11 +894,6 @@ pub trait TuiState {
     }
 }
 
-#[cfg(feature = "dev-bins")]
-pub fn debug_copy_selection_text_for_bench(range: CopySelectionRange) -> Option<String> {
-    ui::copy_selection_text(range)
-}
-
 pub(crate) fn connection_type_icon(connection_type: Option<&str>) -> Option<&'static str> {
     let normalized = connection_type?.trim().to_ascii_lowercase();
     if normalized.contains("websocket") || normalized == "ws" || normalized == "wss" {

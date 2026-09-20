@@ -5,7 +5,6 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 pub fn resolve_display_tool_name(name: &str) -> &str {
     match name {
         "communicate" => "swarm",
-        "discover_tools" => "integration_tools",
         "task" | "task_runner" => "subagent",
         "shell_exec" => "bash",
         "file_read" => "read",
@@ -21,7 +20,6 @@ pub fn resolve_display_tool_name(name: &str) -> &str {
 pub fn canonical_tool_name(name: &str) -> &str {
     match name {
         "communicate" => "swarm",
-        "discover_tools" => "integration_tools",
         "Write" => "write",
         "Edit" => "edit",
         "MultiEdit" => "multiedit",

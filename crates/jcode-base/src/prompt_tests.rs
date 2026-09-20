@@ -336,13 +336,6 @@ fn test_split_prompt_does_not_inject_session_context_per_turn() {
 }
 
 #[test]
-fn sponsored_discovery_is_not_injected_into_the_system_prompt() {
-    let (split, _) = build_system_prompt_split(None, &[], false, None, None);
-    assert!(!split.static_part.contains("Discoverable Tools"));
-    assert!(!split.static_part.contains("integration_tools"));
-}
-
-#[test]
 fn test_prompt_overlay_files_are_loaded_from_project_and_global_jcode_dirs() {
     let _guard = crate::storage::lock_test_env();
     let prev_home = std::env::var_os("JCODE_HOME");

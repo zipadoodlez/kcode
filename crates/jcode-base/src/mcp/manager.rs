@@ -18,17 +18,6 @@ use tokio::sync::RwLock;
 /// server from blocking a single tool call forever (and never blocks spawn).
 const CONNECT_ON_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// Meter a completed tool call for partner-discovery provenance. No-op for
-/// servers without discovery provenance (the overwhelmingly common case) and
-/// whenever `sponsors.enabled` is false. Counts only; never content.
-fn meter_provenance_call(server: &str, result: &Result<ToolCallResult>) {
-    let is_error = match result {
-        Ok(res) => res.is_error,
-        Err(_) => true,
-    };
-    crate::sponsors::provenance::on_tool_call(server, is_error);
-}
-
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct McpManagerMemoryProfile {
     pub shared_pool_enabled: bool,
@@ -205,17 +194,6 @@ impl McpManager {
         reason = "MCP connect flow keeps shared-pool and owned-server paths explicit"
     )]
     pub async fn connect(&self, name: &str, config: &McpServerConfig) -> Result<()> {
-        // Partner-discovery provenance: if this server's command matches a
-        // setup the agent saw in a discover_tools listing, tag it so calls to
-        // it are metered coarsely (counts only; see sponsors::provenance).
-        if let Some(sponsor) =
-            crate::sponsors::provenance::on_server_connected(name, &config.command, &config.args)
-        {
-            crate::logging::info(&format!(
-                "MCP: '{name}' connected via integration discovery (provider: {sponsor}); \
-                 coarse usage counts are shared per the disclosed policy"
-            ));
-        }
         if config.shared {
             if let Some(pool) = &self.pool {
                 pool.connect_server(name, config).await?;
@@ -266,9 +244,6 @@ impl McpManager {
 
     /// Disconnect from all servers
     pub async fn disconnect_all(&self) {
-        // Session is ending: flush any pending partner-discovery usage
-        // aggregates (best effort) so short sessions still report.
-        crate::sponsors::provenance::flush_now();
         // Release pool handles
         {
             let mut handles = self.pool_handles.write().await;
@@ -368,7 +343,6 @@ impl McpManager {
             let handles = self.pool_handles.read().await;
             if let Some(handle) = handles.get(server) {
                 let result = handle.call_tool(tool, arguments).await;
-                meter_provenance_call(server, &result);
                 return result;
             }
         }
@@ -377,7 +351,6 @@ impl McpManager {
             let clients = self.owned_clients.read().await;
             if let Some(client) = clients.get(server) {
                 let result = client.call_tool(tool, arguments).await;
-                meter_provenance_call(server, &result);
                 return result;
             }
         }
@@ -395,15 +368,13 @@ impl McpManager {
                         let handles = self.pool_handles.read().await;
                         if let Some(handle) = handles.get(server) {
                             let result = handle.call_tool(tool, arguments).await;
-                            meter_provenance_call(server, &result);
-                            return result;
+                                        return result;
                         }
                     }
                     let clients = self.owned_clients.read().await;
                     if let Some(client) = clients.get(server) {
                         let result = client.call_tool(tool, arguments).await;
-                        meter_provenance_call(server, &result);
-                        return result;
+                                return result;
                     }
                     anyhow::bail!(
                         "MCP server '{server}' connected but exposed no handle for tool '{tool}'"
@@ -679,123 +650,5 @@ mod tests {
             started.elapsed() < Duration::from_secs(35),
             "connect-on-first-call must be bounded"
         );
-    }
-}
-
-#[cfg(all(test, unix))]
-mod provenance_integration_tests {
-    use super::*;
-    use std::io::Write;
-
-    /// Write a minimal stdio MCP server as a shell script: answers
-    /// initialize, tools/list, and tools/call with canned JSON-RPC replies.
-    fn write_fake_mcp_server(dir: &std::path::Path) -> std::path::PathBuf {
-        let path = dir.join("fake-mcp-server.sh");
-        let script = r##"#!/bin/bash
-while IFS= read -r line; do
-  id=$(echo "$line" | grep -o '"id":[0-9]*' | grep -o '[0-9]*' | head -1)
-  case "$line" in
-    *'"initialize"'*)
-      echo '{"jsonrpc":"2.0","id":'"$id"',"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"fake","version":"0.0.1"}}}'
-      ;;
-    *'"tools/list"'*)
-      echo '{"jsonrpc":"2.0","id":'"$id"',"result":{"tools":[{"name":"create_card","description":"fake card","inputSchema":{"type":"object"}}]}}'
-      ;;
-    *'"tools/call"'*)
-      echo '{"jsonrpc":"2.0","id":'"$id"',"result":{"content":[{"type":"text","text":"card created"}],"isError":false}}'
-      ;;
-    *'"shutdown"'*)
-      exit 0
-      ;;
-  esac
-done
-"##;
-        let mut file = std::fs::File::create(&path).unwrap();
-        file.write_all(script.as_bytes()).unwrap();
-        drop(file);
-        let mut perms = std::fs::metadata(&path).unwrap().permissions();
-        use std::os::unix::fs::PermissionsExt;
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&path, perms).unwrap();
-        path
-    }
-
-    /// Full loop: discovery records a setup, connecting a matching server
-    /// tags provenance and counts the connect, real MCP tool calls through
-    /// the manager are metered, non-matching servers are not.
-    #[tokio::test]
-    // The test-env mutex must intentionally stay held across awaits so the
-    // JCODE_HOME/config mutation stays serialized for the whole test.
-    #[allow(clippy::await_holding_lock)]
-    async fn discovery_provenance_end_to_end_with_real_mcp_server() {
-        let env_guard = crate::storage::lock_test_env();
-        let temp = tempfile::tempdir().unwrap();
-        crate::env::set_var("JCODE_HOME", temp.path());
-        std::fs::write(
-            temp.path().join("config.toml"),
-            "[sponsors]\nenabled = true\n",
-        )
-        .unwrap();
-        crate::config::Config::invalidate_cache();
-        crate::sponsors::provenance::reset_for_tests();
-
-        let server_path = write_fake_mcp_server(temp.path());
-        let command = server_path.to_string_lossy().to_string();
-
-        // 1. Discovery listing recorded this setup.
-        crate::sponsors::provenance::record_discovered_setups(vec![
-            crate::sponsors::provenance::DiscoveredSetup {
-                sponsor: "agentcard".into(),
-                command: command.clone(),
-                args: vec![],
-            },
-        ]);
-
-        // 2. Agent connects the matching server through the real manager.
-        let mut config = McpConfig::default();
-        config.servers.insert(
-            "agentcard".to_string(),
-            McpServerConfig {
-                command: command.clone(),
-                args: vec![],
-                env: HashMap::new(),
-                shared: false,
-                transport: None,
-                url: None,
-                headers: std::collections::HashMap::new(),
-                enabled: None,
-                disabled: None,
-                timeout_secs: None,
-            },
-        );
-        let manager = McpManager::with_config(config.clone());
-        let server_config = config.servers.get("agentcard").unwrap().clone();
-        manager
-            .connect("agentcard", &server_config)
-            .await
-            .expect("fake MCP server must connect");
-        assert!(crate::sponsors::provenance::is_tagged("agentcard"));
-
-        // 3. Real tool calls through the manager are metered.
-        let result = manager
-            .call_tool("agentcard", "create_card", serde_json::json!({}))
-            .await
-            .expect("tool call through fake server");
-        assert!(!result.is_error);
-
-        // 4. A second, non-discovered server with a different command is
-        // never tagged.
-        assert!(!crate::sponsors::provenance::is_tagged("other"));
-
-        // 5. Pending aggregates hold exactly the connect + the call.
-        let reports = crate::sponsors::provenance::drain_pending_for_tests();
-        assert_eq!(reports.len(), 1);
-        assert_eq!(reports[0].sponsor, "agentcard");
-        assert_eq!(reports[0].connects, 1);
-        assert_eq!(reports[0].calls, 1);
-        assert_eq!(reports[0].errors, 0);
-
-        manager.disconnect_all().await;
-        drop(env_guard);
     }
 }

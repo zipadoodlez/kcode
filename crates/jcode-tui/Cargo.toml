@@ -90,9 +90,6 @@ jcode-tui-workspace = { path = "../jcode-tui-workspace" }
 
 [features]
 default = ["pdf", "embeddings", "bedrock"]
-# Exposes bench-only debug helpers (e.g. debug_copy_selection_text_for_bench)
-# consumed by the dev `tui_bench` binary in the root crate.
-dev-bins = []
 # Forwarded to app-core (and onward to jcode-base) so the root crate's feature
 # set fully controls the optional stacks.
 jemalloc = ["jcode-app-core/jemalloc"]
