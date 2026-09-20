@@ -2266,20 +2266,6 @@ impl OpenRouterProvider {
         routing
     }
 
-    /// Set provider routing at runtime
-    pub async fn set_provider_routing(&self, routing: ProviderRouting) {
-        if !self.supports_provider_features {
-            return;
-        }
-        let mut current = self.provider_routing.write().await;
-        *current = routing;
-    }
-
-    /// Get current provider routing
-    pub async fn get_provider_routing(&self) -> ProviderRouting {
-        self.provider_routing.read().await.clone()
-    }
-
     /// Return the currently preferred provider for display.
     /// Returns the pinned provider if set, otherwise the top-ranked provider from endpoint data.
     pub fn preferred_provider(&self) -> Option<String> {

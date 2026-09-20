@@ -815,14 +815,6 @@ impl App {
 
     // ==================== Debug Socket Methods ====================
 
-    /// Enable debug socket and return the broadcast receiver
-    /// Call this before run() to enable debug event broadcasting
-    pub fn enable_debug_socket(&mut self) -> tokio::sync::broadcast::Receiver<backend::DebugEvent> {
-        let (tx, rx) = tokio::sync::broadcast::channel(256);
-        self.debug_tx = Some(tx);
-        rx
-    }
-
     /// Broadcast a debug event to connected clients (if debug socket enabled)
     pub(super) fn broadcast_debug(&self, event: backend::DebugEvent) {
         if let Some(ref tx) = self.debug_tx {
@@ -874,90 +866,6 @@ impl App {
             cache_creation_input_tokens: self.streaming.streaming_cache_creation_tokens,
             queued_messages: self.queued_messages.clone(),
         }
-    }
-
-    /// Start debug socket listener task
-    /// Returns a JoinHandle for the listener task
-    pub fn start_debug_socket_listener(
-        &self,
-        mut rx: tokio::sync::broadcast::Receiver<backend::DebugEvent>,
-    ) -> tokio::task::JoinHandle<()> {
-        use crate::transport::Listener;
-        use tokio::io::AsyncWriteExt;
-
-        let socket_path = Self::debug_socket_path();
-        let initial_snapshot = self.create_debug_snapshot();
-
-        tokio::spawn(async move {
-            // Clean up old socket
-            let _ = std::fs::remove_file(&socket_path);
-
-            #[cfg(windows)]
-            let mut listener = match Listener::bind(&socket_path) {
-                Ok(l) => l,
-                Err(e) => {
-                    crate::logging::error(&format!("Failed to bind debug socket: {}", e));
-                    return;
-                }
-            };
-            #[cfg(not(windows))]
-            let listener = match Listener::bind(&socket_path) {
-                Ok(l) => l,
-                Err(e) => {
-                    crate::logging::error(&format!("Failed to bind debug socket: {}", e));
-                    return;
-                }
-            };
-
-            // Restrict TUI debug socket to owner-only.
-            let _ = crate::platform::set_permissions_owner_only(&socket_path);
-
-            // Accept connections and forward events
-            let clients: std::sync::Arc<tokio::sync::Mutex<Vec<crate::transport::WriteHalf>>> =
-                std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
-
-            let clients_clone = clients.clone();
-
-            // Spawn event broadcaster
-            let broadcast_handle = tokio::spawn(async move {
-                while let Ok(event) = rx.recv().await {
-                    let json = match serde_json::to_string(&event) {
-                        Ok(j) => j + "\n",
-                        Err(_) => continue,
-                    };
-                    let bytes = json.as_bytes();
-
-                    let mut clients = clients_clone.lock().await;
-                    let mut to_remove = Vec::new();
-
-                    for (i, writer) in clients.iter_mut().enumerate() {
-                        if writer.write_all(bytes).await.is_err() {
-                            to_remove.push(i);
-                        }
-                    }
-
-                    // Remove disconnected clients (reverse order to preserve indices)
-                    for i in to_remove.into_iter().rev() {
-                        clients.swap_remove(i);
-                    }
-                }
-            });
-
-            // Accept new connections
-            while let Ok((stream, _)) = listener.accept().await {
-                let (_, writer) = stream.into_split();
-                let mut writer = writer;
-
-                let snapshot_json =
-                    serde_json::to_string(&initial_snapshot).unwrap_or_default() + "\n";
-                if writer.write_all(snapshot_json.as_bytes()).await.is_ok() {
-                    clients.lock().await.push(writer);
-                }
-            }
-
-            broadcast_handle.abort();
-            let _ = std::fs::remove_file(&socket_path);
-        })
     }
 
     /// Get the debug socket path

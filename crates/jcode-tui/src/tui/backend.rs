@@ -123,79 +123,6 @@ pub struct DebugMessage {
     pub tool_data: Option<ToolCall>,
 }
 
-/// Events emitted by backends during message processing
-#[derive(Debug, Clone)]
-pub enum BackendEvent {
-    /// Text content delta from assistant
-    TextDelta(String),
-
-    /// Tool execution started
-    ToolStart {
-        id: String,
-        name: String,
-    },
-
-    /// Tool input JSON delta
-    ToolInput {
-        delta: String,
-    },
-
-    /// Tool is about to execute (after input complete)
-    ToolExec {
-        id: String,
-        name: String,
-    },
-
-    /// Tool execution completed
-    ToolDone {
-        id: String,
-        name: String,
-        output: String,
-        is_error: bool,
-    },
-
-    /// Token usage update
-    TokenUsage {
-        input_tokens: u64,
-        output_tokens: u64,
-        cache_read_input_tokens: Option<u64>,
-        cache_creation_input_tokens: Option<u64>,
-    },
-
-    /// Thinking started (extended thinking mode)
-    ThinkingStart,
-
-    /// Thinking ended
-    ThinkingEnd,
-
-    /// Thinking completed with duration
-    ThinkingDone {
-        duration_secs: f32,
-    },
-
-    /// Context compaction occurred
-    Compaction {
-        trigger: String,
-        pre_tokens: u64,
-    },
-
-    /// Session ID assigned/updated
-    SessionId(String),
-
-    /// Message processing complete
-    Done,
-
-    /// Error occurred
-    Error(String),
-
-    /// Server is reloading (remote only)
-    Reloading,
-
-    /// Connection state changed
-    Connected,
-    Disconnected,
-}
-
 #[derive(Debug, Clone)]
 pub enum RemoteDisconnectReason {
     PeerClosed,
@@ -220,15 +147,6 @@ enum LineOutcome {
     Event(Box<ServerEvent>),
     Skip,
     Disconnect(RemoteDisconnectReason),
-}
-
-/// Information about the backend's provider
-#[derive(Debug, Clone)]
-pub struct BackendInfo {
-    pub provider_name: String,
-    pub provider_model: String,
-    pub mcp_servers: Vec<String>,
-    pub skills: Vec<String>,
 }
 
 /// Remote connection to jcode server
@@ -571,16 +489,6 @@ impl RemoteConnection {
         Ok(id)
     }
 
-    /// Send a message with images to the server and return the request ID
-    pub async fn send_message_with_images(
-        &mut self,
-        content: String,
-        images: Vec<(String, String)>,
-    ) -> Result<u64> {
-        self.send_message_with_images_and_reminder(content, images, None)
-            .await
-    }
-
     pub async fn send_message_with_images_and_reminder(
         &mut self,
         content: String,
@@ -892,17 +800,6 @@ impl RemoteConnection {
         self.next_request_id += 1;
         self.send_request(request).await?;
         Ok(id)
-    }
-
-    /// Send stdin input back to a running command
-    pub async fn send_stdin_response(&mut self, request_id: &str, input: &str) -> Result<()> {
-        let request = Request::StdinResponse {
-            id: self.next_request_id,
-            request_id: request_id.to_string(),
-            input: input.to_string(),
-        };
-        self.next_request_id += 1;
-        self.send_request(request).await
     }
 
     /// Cancel the current generation on the server

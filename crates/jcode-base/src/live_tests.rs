@@ -545,11 +545,6 @@ impl LiveVerificationEvent {
         self
     }
 
-    pub fn with_retest_days(mut self, days: i64) -> Self {
-        self.retest_after = self.recorded_at + Duration::days(days.max(1));
-        self
-    }
-
     pub fn with_expected_checkpoints<I, S>(mut self, checkpoints: I) -> Self
     where
         I: IntoIterator<Item = S>,

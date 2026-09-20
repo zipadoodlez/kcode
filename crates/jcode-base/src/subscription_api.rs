@@ -224,11 +224,6 @@ fn endpoint_url(api_base: &str, path: &str) -> String {
     )
 }
 
-/// The `/v1/me` endpoint URL for the configured (or default) API base.
-pub fn me_endpoint_url() -> String {
-    endpoint_url(&configured_api_base(), "me")
-}
-
 fn offline(error: reqwest::Error) -> AccountApiError {
     // reqwest's display contains only the public endpoint URL here. Request and
     // response bodies, including device codes and API keys, are not included.

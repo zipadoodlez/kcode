@@ -400,46 +400,6 @@ impl TestBundle {
         self.events.push(event);
     }
 
-    /// Add a frame capture.
-    pub fn add_frame(&mut self, frame: serde_json::Value) {
-        self.frames.push(frame);
-    }
-
-    /// Add a trace event.
-    pub fn add_trace(&mut self, trace: serde_json::Value) {
-        self.trace.push(trace);
-    }
-
-    /// Add an assertion result.
-    pub fn add_assertion(&mut self, assertion: serde_json::Value) {
-        self.assertions.push(assertion);
-    }
-
-    /// Add stdout line.
-    pub fn add_stdout(&mut self, line: &str) {
-        self.stdout.push(line.to_string());
-    }
-
-    /// Add stderr line.
-    pub fn add_stderr(&mut self, line: &str) {
-        self.stderr.push(line.to_string());
-    }
-
-    /// Add app log line.
-    pub fn add_log(&mut self, line: &str) {
-        self.app_logs.push(line.to_string());
-    }
-
-    /// Add error.
-    pub fn add_error(&mut self, error: &str) {
-        self.errors.push(error.to_string());
-    }
-
-    /// Set metadata value.
-    pub fn set_metadata(&mut self, key: &str, value: serde_json::Value) {
-        self.metadata.insert(key.to_string(), value);
-    }
-
     /// Export to JSON.
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).unwrap_or_else(|_| "{}".to_string())
@@ -572,21 +532,6 @@ impl HeadlessBuffer {
             })
             .collect::<Vec<_>>()
             .join("\n")
-    }
-
-    /// Get text from a rectangular region.
-    pub fn get_region_text(&self, x: u16, y: u16, width: u16, height: u16) -> String {
-        let mut lines = Vec::new();
-        for row in y..(y + height).min(self.height) {
-            let mut line = String::new();
-            for col in x..(x + width).min(self.width) {
-                if let Some(cell) = self.get(col, row) {
-                    line.push(if cell.char == '\0' { ' ' } else { cell.char });
-                }
-            }
-            lines.push(line);
-        }
-        lines.join("\n")
     }
 
     /// Search for text in the buffer.
@@ -842,12 +787,6 @@ pub fn strip_ansi(s: &str) -> String {
     }
 
     result
-}
-
-/// Compare two strings ignoring whitespace differences.
-pub fn strings_equal_normalized(a: &str, b: &str) -> bool {
-    let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
-    normalize(a) == normalize(b)
 }
 
 #[cfg(test)]

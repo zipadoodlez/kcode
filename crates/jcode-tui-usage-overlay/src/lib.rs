@@ -155,16 +155,6 @@ impl UsageOverlay {
         )
     }
 
-    pub fn from_progress(progress: &jcode_usage_types::ProviderUsageProgress) -> Self {
-        Self::from_provider_reports(
-            &progress.results,
-            !progress.done,
-            progress.completed,
-            progress.total,
-            progress.from_cache,
-        )
-    }
-
     pub fn from_provider_reports(
         reports: &[jcode_usage_types::ProviderUsage],
         refreshing: bool,
@@ -282,21 +272,6 @@ impl UsageOverlay {
 
     pub fn selected_item_title(&self) -> Option<&str> {
         self.selected_item().map(|item| item.title.as_str())
-    }
-
-    pub fn replace_preserving_view(&mut self, mut next: Self) {
-        let selected_id = self.selected_item().map(|item| item.id.clone());
-        next.filter = self.filter.clone();
-        next.apply_filter();
-        if let Some(selected_id) = selected_id
-            && let Some(selected) = next
-                .filtered
-                .iter()
-                .position(|item_idx| next.items[*item_idx].id == selected_id)
-        {
-            next.selected = selected;
-        }
-        *self = next;
     }
 
     pub fn selected_item_detail_text(&self) -> String {
