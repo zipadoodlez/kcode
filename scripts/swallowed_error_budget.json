@@ -1,9 +1,9 @@
 {
-  "total": 3248,
+  "total": 3208,
   "totals_by_pattern": {
-    "dot_ok": 1218,
-    "let_underscore": 1202,
-    "unwrap_or_default": 828
+    "dot_ok": 1191,
+    "let_underscore": 1190,
+    "unwrap_or_default": 827
   },
   "tracked_files": {
     "crates/jcode-app-core/src/agent.rs": {
@@ -331,11 +331,6 @@
       "let_underscore": 1,
       "unwrap_or_default": 0
     },
-    "crates/jcode-app-core/src/session_active_pids.rs": {
-      "dot_ok": 6,
-      "let_underscore": 3,
-      "unwrap_or_default": 0
-    },
     "crates/jcode-app-core/src/session_effort.rs": {
       "dot_ok": 1,
       "let_underscore": 0,
@@ -355,11 +350,6 @@
       "dot_ok": 0,
       "let_underscore": 0,
       "unwrap_or_default": 1
-    },
-    "crates/jcode-app-core/src/telemetry_state.rs": {
-      "dot_ok": 18,
-      "let_underscore": 7,
-      "unwrap_or_default": 0
     },
     "crates/jcode-app-core/src/tool/agentgrep.rs": {
       "dot_ok": 0,
@@ -574,11 +564,6 @@
     "crates/jcode-app-core/src/update_rate_limit.rs": {
       "dot_ok": 3,
       "let_underscore": 2,
-      "unwrap_or_default": 0
-    },
-    "crates/jcode-app-core/src/usage_openai.rs": {
-      "dot_ok": 1,
-      "let_underscore": 0,
       "unwrap_or_default": 0
     },
     "crates/jcode-base/src/auth/account_store.rs": {
@@ -2019,11 +2004,6 @@
     "crates/jcode-tui/src/tui/info_widget_swarm_background.rs": {
       "dot_ok": 0,
       "let_underscore": 0,
-      "unwrap_or_default": 1
-    },
-    "crates/jcode-tui/src/tui/info_widget_timeline.rs": {
-      "dot_ok": 2,
-      "let_underscore": 2,
       "unwrap_or_default": 1
     },
     "crates/jcode-tui/src/tui/login_picker.rs": {
