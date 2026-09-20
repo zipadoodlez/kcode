@@ -281,46 +281,6 @@ pub(super) fn render_model_info(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
     lines
 }
 
-#[allow(dead_code)] // Retained for status-bar model rendering; currently unused after a layout change.
-pub(crate) fn shorten_model_name(model: &str) -> String {
-    if model.contains("claude") {
-        if model.contains("opus-4-5") || model.contains("opus-4.5") {
-            return "opus-4.5".to_string();
-        }
-        if model.contains("sonnet-4") {
-            return "sonnet-4".to_string();
-        }
-        if model.contains("sonnet-3-5") || model.contains("sonnet-3.5") {
-            return "sonnet-3.5".to_string();
-        }
-        if model.contains("haiku") {
-            return "haiku".to_string();
-        }
-        if let Some(idx) = model.find("claude-") {
-            let rest = &model[idx + 7..];
-            if let Some(end) = rest.find('-') {
-                return rest[..end].to_string();
-            }
-        }
-    }
-
-    if model.contains("gpt")
-        && let Some(start) = model.find("gpt-")
-    {
-        let rest = &model[start..];
-        let parts: Vec<&str> = rest.splitn(3, '-').collect();
-        if parts.len() >= 2 {
-            return format!("{}-{}", parts[0], parts[1]);
-        }
-    }
-
-    if model.len() > 15 {
-        format!("{}…", crate::util::truncate_str(model, 14))
-    } else {
-        model.to_string()
-    }
-}
-
 fn append_model_runtime_metadata(spans: &mut Vec<Span<'static>>, data: &InfoWidgetData) {
     if let Some(effort) = data
         .reasoning_effort

@@ -3157,6 +3157,7 @@ name = "jcode-harness-api"
 version = "0.1.0"
 dependencies = [
  "jcode-protocol",
+ "jcode-session-types",
  "jcode-usage-types",
  "serde",
  "serde_json",

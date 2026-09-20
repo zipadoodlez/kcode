@@ -1290,25 +1290,6 @@ pub(crate) fn calculate_widget_height(
     total.min(max_height)
 }
 
-/// Legacy API for backwards compatibility - will be removed
-/// Calculate the widget layout based on available space
-/// Returns the Rect where the widget should be drawn, or None if it shouldn't show
-#[deprecated(note = "Use calculate_placements instead")]
-pub fn calculate_layout(
-    messages_area: Rect,
-    free_widths: &[u16],
-    data: &InfoWidgetData,
-) -> Option<Rect> {
-    let margins = Margins {
-        right_widths: free_widths.to_vec(),
-        left_widths: Vec::new(),
-        centered: false,
-        ..Default::default()
-    };
-    let placements = calculate_placements(messages_area, &margins, data);
-    placements.first().map(|p| p.rect)
-}
-
 /// Render all placed widgets
 pub fn render_all(frame: &mut Frame, placements: &[WidgetPlacement], data: &InfoWidgetData) {
     for placement in placements {
@@ -2001,25 +1982,6 @@ fn render_ambient_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static
     }
 
     lines
-}
-
-/// Legacy render function - kept for backwards compatibility
-/// Renders the first available widget at the given rect
-#[deprecated(note = "Use render_all instead")]
-pub fn render(frame: &mut Frame, rect: Rect, data: &InfoWidgetData) {
-    // Just render as the first available widget type
-    let available = data.available_widgets();
-    if available.is_empty() {
-        return;
-    }
-
-    // Create a temporary placement for the first widget
-    let placement = WidgetPlacement {
-        kind: available[0],
-        rect,
-        side: Side::Right,
-    };
-    render_single_widget(frame, &placement, data);
 }
 
 fn render_page(kind: InfoPageKind, data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
