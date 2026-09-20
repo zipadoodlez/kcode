@@ -1,32 +1,12 @@
 use crate::logging;
 use anyhow::{Result, anyhow};
-#[cfg(feature = "jemalloc")]
-use libc::c_char;
 use serde::Serialize;
 use std::collections::VecDeque;
-#[cfg(feature = "jemalloc")]
-use std::ffi::CString;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
 const MAX_HISTORY_SAMPLES: usize = 512;
-
-#[cfg(feature = "jemalloc")]
-struct JemallocStatsMibs {
-    epoch: tikv_jemalloc_ctl::epoch_mib,
-    allocated: tikv_jemalloc_ctl::stats::allocated_mib,
-    active: tikv_jemalloc_ctl::stats::active_mib,
-    metadata: tikv_jemalloc_ctl::stats::metadata_mib,
-    resident: tikv_jemalloc_ctl::stats::resident_mib,
-    mapped: tikv_jemalloc_ctl::stats::mapped_mib,
-    retained: tikv_jemalloc_ctl::stats::retained_mib,
-}
-
-#[cfg(feature = "jemalloc-prof")]
-struct JemallocProfilingMibs {
-    enabled: tikv_jemalloc_ctl::profiling::prof_mib,
-}
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct ProcessMemorySnapshot {
@@ -197,29 +177,13 @@ pub fn history(limit: usize) -> Vec<ProcessMemoryHistoryEntry> {
 }
 
 pub fn allocator_info() -> AllocatorInfo {
-    #[cfg(feature = "jemalloc")]
-    {
-        let stats = jemalloc_stats();
-        let profiling = jemalloc_profiling_info();
-        AllocatorInfo {
-            name: "jemalloc",
-            stats_available: stats.is_some(),
-            stats,
-            tuning: jemalloc_tuning_info(),
-            profiling,
-        }
-    }
-
-    #[cfg(not(feature = "jemalloc"))]
-    {
-        let stats = glibc_malloc_stats();
-        AllocatorInfo {
-            name: "system",
-            stats_available: stats.is_some(),
-            stats,
-            tuning: None,
-            profiling: None,
-        }
+    let stats = glibc_malloc_stats();
+    AllocatorInfo {
+        name: "system",
+        stats_available: stats.is_some(),
+        stats,
+        tuning: None,
+        profiling: None,
     }
 }
 
@@ -235,7 +199,7 @@ pub fn allocator_info() -> AllocatorInfo {
 /// symbol does not exist, so a direct call fails to link. At runtime on a
 /// modern glibc the lookup succeeds and stats work as before; on an old glibc
 /// this returns `None` and callers already treat stats as unavailable.
-#[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 fn glibc_malloc_stats() -> Option<AllocatorStats> {
     // Mirrors glibc's `struct mallinfo2` (all fields `size_t`).
     #[repr(C)]
@@ -283,39 +247,13 @@ fn glibc_malloc_stats() -> Option<AllocatorStats> {
     })
 }
 
-#[cfg(all(
-    not(all(target_os = "linux", target_env = "gnu")),
-    not(feature = "jemalloc")
-))]
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
 fn glibc_malloc_stats() -> Option<AllocatorStats> {
     None
 }
 
 pub fn purge_allocator() -> Result<AllocatorTuningInfo> {
-    #[cfg(feature = "jemalloc")]
-    {
-        logging::info("purging jemalloc allocator arenas");
-        let _ = jemalloc_void_ctl("thread.idle");
-        let arena_count = tikv_jemalloc_ctl::arenas::narenas::read()
-            .map_err(|e| anyhow!("failed to read jemalloc arena count: {}", e))?;
-        let mut initialized_arenas = 0u64;
-        for arena_idx in 0..arena_count {
-            if jemalloc_read_dynamic::<bool>(&format!("arena.{arena_idx}.initialized"))
-                .unwrap_or(false)
-            {
-                initialized_arenas += 1;
-                jemalloc_void_ctl(&format!("arena.{arena_idx}.purge"))?;
-            }
-        }
-
-        Ok(jemalloc_tuning_info().unwrap_or(AllocatorTuningInfo {
-            available: true,
-            initialized_arenas: Some(initialized_arenas),
-            ..AllocatorTuningInfo::default()
-        }))
-    }
-
-    #[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
     {
         // glibc has no arena purge API, but malloc_trim(0) walks all arenas
         // and returns freed pages to the OS (MADV_DONTNEED), which is the
@@ -328,14 +266,11 @@ pub fn purge_allocator() -> Result<AllocatorTuningInfo> {
         })
     }
 
-    #[cfg(all(
-        not(all(target_os = "linux", target_env = "gnu")),
-        not(feature = "jemalloc")
-    ))]
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
     {
         logging::warn("allocator purge requested but no purge mechanism is available");
         Err(anyhow!(
-            "allocator purge unavailable on this platform: rebuild with --features jemalloc"
+            "allocator purge unavailable on this platform"
         ))
     }
 }
@@ -344,112 +279,26 @@ pub fn set_allocator_decay_ms(dirty_ms: isize, muzzy_ms: isize) -> Result<Alloca
     logging::info(&format!(
         "setting allocator decay dirty_ms={dirty_ms} muzzy_ms={muzzy_ms}"
     ));
-    #[cfg(feature = "jemalloc")]
-    {
-        unsafe {
-            tikv_jemalloc_ctl::raw::write(b"arenas.dirty_decay_ms\0", dirty_ms)
-                .map_err(|e| anyhow!("failed to update arenas.dirty_decay_ms: {}", e))?;
-            tikv_jemalloc_ctl::raw::write(b"arenas.muzzy_decay_ms\0", muzzy_ms)
-                .map_err(|e| anyhow!("failed to update arenas.muzzy_decay_ms: {}", e))?;
-        }
-
-        let arena_count = tikv_jemalloc_ctl::arenas::narenas::read()
-            .map_err(|e| anyhow!("failed to read jemalloc arena count: {}", e))?;
-        for arena_idx in 0..arena_count {
-            if jemalloc_read_dynamic::<bool>(&format!("arena.{arena_idx}.initialized"))
-                .unwrap_or(false)
-            {
-                jemalloc_write_dynamic(&format!("arena.{arena_idx}.dirty_decay_ms"), dirty_ms)?;
-                jemalloc_write_dynamic(&format!("arena.{arena_idx}.muzzy_decay_ms"), muzzy_ms)?;
-            }
-        }
-
-        Ok(jemalloc_tuning_info().unwrap_or(AllocatorTuningInfo {
-            available: true,
-            dirty_decay_ms: Some(dirty_ms as i64),
-            muzzy_decay_ms: Some(muzzy_ms as i64),
-            ..AllocatorTuningInfo::default()
-        }))
-    }
-
-    #[cfg(not(feature = "jemalloc"))]
-    {
-        let _ = (dirty_ms, muzzy_ms);
-        logging::warn("allocator decay update requested but jemalloc feature is disabled");
-        Err(anyhow!(
-            "allocator decay controls unavailable: rebuild with --features jemalloc"
-        ))
-    }
+    let _ = (dirty_ms, muzzy_ms);
+    logging::warn("allocator decay update requested but the system allocator has no decay control");
+    Err(anyhow!(
+        "allocator decay controls are unavailable with the system allocator"
+    ))
 }
 
 pub fn set_allocator_profiling_active(active: bool) -> Result<()> {
-    #[cfg(feature = "jemalloc-prof")]
-    {
-        unsafe {
-            tikv_jemalloc_ctl::raw::write(b"prof.active\0", active)
-                .map_err(|e| anyhow!("failed to update jemalloc prof.active: {}", e))
-        }
-    }
-
-    #[cfg(not(feature = "jemalloc-prof"))]
-    {
-        let _ = active;
-        Err(anyhow!(
-            "jemalloc profiling controls unavailable: rebuild with --features jemalloc-prof"
-        ))
-    }
+    let _ = active;
+    Err(anyhow!("allocator profiling is unavailable"))
 }
 
 pub fn dump_allocator_profile(path: Option<&Path>) -> Result<PathBuf> {
-    #[cfg(feature = "jemalloc-prof")]
-    {
-        let output_path = match path {
-            Some(path) => path.to_path_buf(),
-            None => default_heap_profile_path()?,
-        };
-
-        if let Some(parent) = output_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        let c_path = CString::new(output_path.to_string_lossy().as_bytes())
-            .map_err(|_| anyhow!("heap profile path contains NUL byte"))?;
-
-        unsafe {
-            tikv_jemalloc_ctl::raw::write(b"prof.dump\0", c_path.as_ptr())
-                .map_err(|e| anyhow!("failed to dump jemalloc heap profile: {}", e))?;
-        }
-
-        Ok(output_path)
-    }
-
-    #[cfg(not(feature = "jemalloc-prof"))]
-    {
-        let _ = path;
-        Err(anyhow!(
-            "jemalloc heap dumps unavailable: rebuild with --features jemalloc-prof"
-        ))
-    }
+    let _ = path;
+    Err(anyhow!("allocator heap dumps are unavailable"))
 }
 
 pub fn set_allocator_profile_prefix(prefix: &str) -> Result<()> {
-    #[cfg(feature = "jemalloc-prof")]
-    {
-        let c_prefix =
-            CString::new(prefix).map_err(|_| anyhow!("heap profile prefix contains NUL byte"))?;
-        unsafe {
-            tikv_jemalloc_ctl::raw::write(b"prof.prefix\0", c_prefix.as_ptr())
-                .map_err(|e| anyhow!("failed to update jemalloc prof.prefix: {}", e))
-        }
-    }
-
-    #[cfg(not(feature = "jemalloc-prof"))]
-    {
-        let _ = prefix;
-        Err(anyhow!(
-            "jemalloc heap profiling unavailable: rebuild with --features jemalloc-prof"
-        ))
-    }
+    let _ = prefix;
+    Err(anyhow!("allocator profiling is unavailable"))
 }
 
 pub fn estimate_json_bytes<T: Serialize>(value: &T) -> usize {
@@ -479,20 +328,10 @@ pub fn estimate_json_bytes<T: Serialize>(value: &T) -> usize {
 ///
 /// glibc malloc keeps pages freed by large transient allocations (history
 /// loads, provider payloads, render caches) inside its arenas, which shows up
-/// as unattributed RSS that never shrinks. On jemalloc builds this purges all
-/// arenas; on Linux system-allocator builds it calls `malloc_trim(0)`; on
-/// other platforms it is a no-op.
+/// as unattributed RSS that never shrinks. On Linux it calls `malloc_trim(0)`;
+/// on other platforms it is a no-op.
 pub fn release_retained_heap(reason: &str) {
-    #[cfg(feature = "jemalloc")]
-    {
-        if let Err(err) = purge_allocator() {
-            logging::info(&format!("jemalloc purge ({reason}) failed: {err}"));
-        } else {
-            logging::debug(&format!("jemalloc purge ({reason}) completed"));
-        }
-    }
-
-    #[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
     {
         unsafe extern "C" {
             fn malloc_trim(pad: usize) -> i32;
@@ -508,10 +347,7 @@ pub fn release_retained_heap(reason: &str) {
         ));
     }
 
-    #[cfg(all(
-        not(all(target_os = "linux", target_env = "gnu")),
-        not(feature = "jemalloc")
-    ))]
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
     {
         let _ = reason;
     }
@@ -746,151 +582,6 @@ fn read_linux_memory_info(status: &str) -> Option<OsProcessMemoryInfo> {
     }
 }
 
-#[cfg(feature = "jemalloc-prof")]
-fn default_heap_profile_path() -> Result<PathBuf> {
-    let base = crate::storage::jcode_dir()?.join("profiles").join("heap");
-    let timestamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
-    let pid = std::process::id();
-    Ok(base.join(format!("jcode-{}-{}.heap", pid, timestamp)))
-}
-
-#[cfg(feature = "jemalloc")]
-fn jemalloc_stats() -> Option<AllocatorStats> {
-    let mibs = jemalloc_stats_mibs()?;
-    mibs.epoch.advance().ok()?;
-
-    Some(AllocatorStats {
-        allocated_bytes: mibs.allocated.read().ok().map(|value| value as u64),
-        active_bytes: mibs.active.read().ok().map(|value| value as u64),
-        metadata_bytes: mibs.metadata.read().ok().map(|value| value as u64),
-        resident_bytes: mibs.resident.read().ok().map(|value| value as u64),
-        mapped_bytes: mibs.mapped.read().ok().map(|value| value as u64),
-        retained_bytes: mibs.retained.read().ok().map(|value| value as u64),
-    })
-}
-
-#[cfg(feature = "jemalloc")]
-fn jemalloc_tuning_info() -> Option<AllocatorTuningInfo> {
-    let arena_count = tikv_jemalloc_ctl::arenas::narenas::read().ok()?;
-    let mut initialized_arenas = 0u64;
-    for arena_idx in 0..arena_count {
-        if jemalloc_read_dynamic::<bool>(&format!("arena.{arena_idx}.initialized")).unwrap_or(false)
-        {
-            initialized_arenas += 1;
-        }
-    }
-
-    Some(AllocatorTuningInfo {
-        available: true,
-        background_thread: tikv_jemalloc_ctl::background_thread::read().ok(),
-        max_background_threads: tikv_jemalloc_ctl::max_background_threads::read()
-            .ok()
-            .map(|value| value as u64),
-        arena_count: Some(arena_count as u64),
-        initialized_arenas: Some(initialized_arenas),
-        dirty_decay_ms: unsafe {
-            tikv_jemalloc_ctl::raw::read::<isize>(b"arenas.dirty_decay_ms\0")
-        }
-        .ok()
-        .map(|value| value as i64),
-        muzzy_decay_ms: unsafe {
-            tikv_jemalloc_ctl::raw::read::<isize>(b"arenas.muzzy_decay_ms\0")
-        }
-        .ok()
-        .map(|value| value as i64),
-        retain: unsafe { tikv_jemalloc_ctl::raw::read::<bool>(b"opt.retain\0") }.ok(),
-        tcache_enabled: unsafe { tikv_jemalloc_ctl::raw::read::<bool>(b"opt.tcache\0") }.ok(),
-        tcache_max_bytes: unsafe { tikv_jemalloc_ctl::raw::read::<usize>(b"arenas.tcache_max\0") }
-            .ok()
-            .map(|value| value as u64),
-    })
-}
-
-#[cfg(feature = "jemalloc")]
-fn jemalloc_read_dynamic<T: Copy>(name: &str) -> Result<T> {
-    let c_name = CString::new(name).map_err(|_| anyhow!("mallctl name contains NUL byte"))?;
-    unsafe {
-        tikv_jemalloc_ctl::raw::read(c_name.as_bytes_with_nul())
-            .map_err(|e| anyhow!("failed to read jemalloc mallctl {}: {}", name, e))
-    }
-}
-
-#[cfg(feature = "jemalloc")]
-fn jemalloc_write_dynamic<T>(name: &str, value: T) -> Result<()> {
-    let c_name = CString::new(name).map_err(|_| anyhow!("mallctl name contains NUL byte"))?;
-    unsafe {
-        tikv_jemalloc_ctl::raw::write(c_name.as_bytes_with_nul(), value)
-            .map_err(|e| anyhow!("failed to update jemalloc mallctl {}: {}", name, e))
-    }
-}
-
-#[cfg(feature = "jemalloc")]
-fn jemalloc_void_ctl(name: &str) -> Result<()> {
-    let c_name = CString::new(name).map_err(|_| anyhow!("mallctl name contains NUL byte"))?;
-    unsafe {
-        let err = tikv_jemalloc_sys::mallctl(
-            c_name.as_ptr() as *const c_char,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            0,
-        );
-        if err != 0 {
-            return Err(anyhow!(
-                "failed to invoke jemalloc mallctl {}: {}",
-                name,
-                err
-            ));
-        }
-    }
-    Ok(())
-}
-
-#[cfg(feature = "jemalloc")]
-fn jemalloc_stats_mibs() -> Option<&'static JemallocStatsMibs> {
-    static MIBS: OnceLock<Option<JemallocStatsMibs>> = OnceLock::new();
-    MIBS.get_or_init(|| {
-        Some(JemallocStatsMibs {
-            epoch: tikv_jemalloc_ctl::epoch::mib().ok()?,
-            allocated: tikv_jemalloc_ctl::stats::allocated::mib().ok()?,
-            active: tikv_jemalloc_ctl::stats::active::mib().ok()?,
-            metadata: tikv_jemalloc_ctl::stats::metadata::mib().ok()?,
-            resident: tikv_jemalloc_ctl::stats::resident::mib().ok()?,
-            mapped: tikv_jemalloc_ctl::stats::mapped::mib().ok()?,
-            retained: tikv_jemalloc_ctl::stats::retained::mib().ok()?,
-        })
-    })
-    .as_ref()
-}
-
-#[cfg(feature = "jemalloc-prof")]
-fn jemalloc_profiling_info() -> Option<AllocatorProfilingInfo> {
-    let mibs = jemalloc_profiling_mibs()?;
-    Some(AllocatorProfilingInfo {
-        available: true,
-        enabled: mibs.enabled.read().ok(),
-    })
-}
-
-#[cfg(all(feature = "jemalloc", not(feature = "jemalloc-prof")))]
-fn jemalloc_profiling_info() -> Option<AllocatorProfilingInfo> {
-    Some(AllocatorProfilingInfo {
-        available: false,
-        enabled: None,
-    })
-}
-
-#[cfg(feature = "jemalloc-prof")]
-fn jemalloc_profiling_mibs() -> Option<&'static JemallocProfilingMibs> {
-    static MIBS: OnceLock<Option<JemallocProfilingMibs>> = OnceLock::new();
-    MIBS.get_or_init(|| {
-        Some(JemallocProfilingMibs {
-            enabled: tikv_jemalloc_ctl::profiling::prof::mib().ok()?,
-        })
-    })
-    .as_ref()
-}
-
 #[cfg(target_os = "linux")]
 fn parse_proc_status_value_bytes(status: &str, key: &str) -> Option<u64> {
     parse_proc_value_bytes(status, key)
@@ -1030,7 +721,7 @@ mod tests {
         assert!(retention_growth_exceeds(0, 0, 0));
     }
 
-    #[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
     #[test]
     fn release_retained_heap_if_excessive_runs_above_threshold_then_requires_regrowth() {
         // Threshold 0 means any growth (>= 0) triggers; with a zero debounce
@@ -1068,27 +759,14 @@ mod tests {
     /// mistake, musl selects neither and this also fails.
     #[test]
     fn glibc_only_allocator_paths_are_gated_on_gnu_not_just_linux() {
-        let glibc_arm_active = cfg!(all(
-            target_os = "linux",
-            target_env = "gnu",
-            not(feature = "jemalloc")
-        ));
-        let fallback_arm_active = cfg!(all(
-            not(all(target_os = "linux", target_env = "gnu")),
-            not(feature = "jemalloc")
-        ));
+        let glibc_arm_active = cfg!(all(target_os = "linux", target_env = "gnu"));
+        let fallback_arm_active = cfg!(not(all(target_os = "linux", target_env = "gnu")));
 
-        if cfg!(feature = "jemalloc") {
-            // jemalloc supersedes both system-allocator arms.
-            assert!(!glibc_arm_active);
-            assert!(!fallback_arm_active);
-        } else {
-            assert_ne!(
-                glibc_arm_active, fallback_arm_active,
-                "exactly one system-allocator arm must be active: \
-                 glibc={glibc_arm_active} fallback={fallback_arm_active}"
-            );
-        }
+        assert_ne!(
+            glibc_arm_active, fallback_arm_active,
+            "exactly one system-allocator arm must be active: \
+             glibc={glibc_arm_active} fallback={fallback_arm_active}"
+        );
 
         // On a musl target the glibc-only arm must never be the active one,
         // since the symbols it references do not exist there.
@@ -1102,20 +780,14 @@ mod tests {
     }
 
     #[test]
-    fn allocator_info_matches_enabled_allocator_features() {
+    fn allocator_info_reports_the_system_allocator() {
         let info = allocator_info();
-        if cfg!(feature = "jemalloc") {
-            assert_eq!(info.name, "jemalloc");
-            assert_eq!(info.stats_available, info.stats.is_some());
-            assert!(info.profiling.is_some());
-        } else {
-            assert_eq!(info.name, "system");
-            assert_eq!(info.stats_available, info.stats.is_some());
-            assert!(info.profiling.is_none());
-        }
+        assert_eq!(info.name, "system");
+        assert_eq!(info.stats_available, info.stats.is_some());
+        assert!(info.profiling.is_none());
     }
 
-    #[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
     #[test]
     fn glibc_malloc_stats_report_live_and_retained_bytes() {
         // Hold a live allocation so uordblks cannot be zero, then check the

@@ -1,33 +1,6 @@
-#[cfg(feature = "jemalloc")]
-#[global_allocator]
-static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
-
-// Tune jemalloc for a long-running server with bursty allocations (e.g. loading
-// and unloading an ~87 MB ONNX embedding model). The defaults (muzzy_decay_ms:0,
-// retain:true, narenas:8*ncpu) caused 1.4 GB RSS in previous testing.
-//
-// dirty_decay_ms:1000  — return dirty pages to OS after 1 s idle
-// muzzy_decay_ms:1000  — release muzzy pages after 1 s
-// narenas:4            — limit arena count (17 threads don't need 64 arenas)
-// prof:true            — enable profiling support in jemalloc-prof builds
-// prof_active:false    — keep sampling disabled until explicitly enabled at runtime
-#[cfg(all(feature = "jemalloc", not(feature = "jemalloc-prof")))]
-// jemalloc reads this exact exported symbol name at startup.
-#[allow(non_upper_case_globals)]
-#[unsafe(no_mangle)]
-pub static malloc_conf: Option<&'static [u8; 50]> =
-    Some(b"dirty_decay_ms:1000,muzzy_decay_ms:1000,narenas:4\0");
-
-#[cfg(feature = "jemalloc-prof")]
-// jemalloc reads this exact exported symbol name at startup.
-#[allow(non_upper_case_globals)]
-#[unsafe(no_mangle)]
-pub static malloc_conf: Option<&'static [u8; 78]> =
-    Some(b"dirty_decay_ms:1000,muzzy_decay_ms:1000,narenas:4,prof:true,prof_active:false\0");
-
 use anyhow::Result;
 
-#[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 fn configure_system_allocator() {
     unsafe extern "C" {
         fn mallopt(param: i32, value: i32) -> i32;
@@ -57,16 +30,13 @@ fn configure_system_allocator() {
 
 /// Parse a positive i32 allocator tuning knob from an env var, falling back
 /// to `default` when unset, unparsable, or non-positive.
-#[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 fn parse_alloc_tuning_env(var: &str, default: i32) -> i32 {
     parse_alloc_tuning(std::env::var(var).ok().as_deref(), default)
 }
 
 /// Pure parsing core of [`parse_alloc_tuning_env`], separated for unit tests.
-#[cfg(any(
-    test,
-    all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc"))
-))]
+#[cfg(any(test, all(target_os = "linux", target_env = "gnu")))]
 fn parse_alloc_tuning(value: Option<&str>, default: i32) -> i32 {
     value
         .and_then(|value| value.trim().parse::<i32>().ok())
@@ -74,7 +44,7 @@ fn parse_alloc_tuning(value: Option<&str>, default: i32) -> i32 {
         .unwrap_or(default)
 }
 
-#[cfg(not(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc"))))]
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
 fn configure_system_allocator() {}
 
 #[cfg(windows)]

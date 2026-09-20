@@ -15,9 +15,8 @@ name = "jcode_app_core"
 path = "src/lib.rs"
 
 [dependencies]
-# NOTE: the jemalloc allocator stats live in `jcode-base` (process_memory) and
-# local embeddings live in `jcode-base` (embedding); this crate forwards those
-# features to jcode-base rather than depending on the backing crates directly.
+# NOTE: local embeddings live in `jcode-base` (embedding); this crate forwards
+# that feature to jcode-base rather than depending on the backing crate directly.
 
 # Async runtime
 tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
@@ -106,9 +105,6 @@ agentgrep = { git = "https://github.com/1jehuang/agentgrep.git", tag = "v0.1.6" 
 
 [features]
 default = ["pdf", "embeddings", "bedrock"]
-# jemalloc allocator stats live in jcode-base (process_memory); forward there.
-jemalloc = ["jcode-base/jemalloc"]
-jemalloc-prof = ["jcode-base/jemalloc-prof"]
 # local embeddings live in jcode-base (embedding); forward there.
 embeddings = ["jcode-base/embeddings"]
 # live AWS Bedrock support lives in jcode-base (provider/bedrock); forward there.

@@ -563,7 +563,7 @@ async fn build_server_memory_incident_payload(
                 }),
                 serde_json::json!({
                     "priority": 2,
-                    "action": "Escalate to a jemalloc-prof build and heap dump if attribution remains below 50% of live heap.",
+                    "action": "Escalate to a platform heap profiler if attribution remains below 50% of live heap.",
                     "commands": ["jcode debug 'allocator:profile:on'", "jcode debug 'allocator:profile:dump /tmp/jcode-server.heap'"]
                 }),
             ],

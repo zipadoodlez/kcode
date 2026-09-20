@@ -99,8 +99,6 @@ name = "jcode-harness"
 path = "src/bin/harness.rs"
 
 [dependencies]
-# Memory allocator (reduces fragmentation for long-running server)
-tikv-jemallocator = { version = "0.6", features = ["unprefixed_malloc_on_supported_platforms"], optional = true }
 
 # Async runtime
 tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
@@ -182,16 +180,6 @@ tempfile = "3"
 # Use `JCODE_DEV_FEATURE_PROFILE=minimal` for compile-speed probes that need
 # to skip optional default feature stacks.
 default = ["pdf", "embeddings", "bedrock"]
-jemalloc = [
-    "dep:tikv-jemallocator",
-    "tikv-jemallocator/stats",
-    "jcode-tui/jemalloc",
-]
-jemalloc-prof = [
-    "jemalloc",
-    "tikv-jemallocator/profiling",
-    "jcode-tui/jemalloc-prof",
-]
 # Local embeddings and PDF extraction live in jcode-base / jcode-app-core;
 # these features just forward down the stack.
 embeddings = ["jcode-tui/embeddings"]

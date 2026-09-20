@@ -1474,7 +1474,7 @@ impl Server {
             }
         });
 
-        // Spawn the retained-heap watchdog: glibc/jemalloc keep freed pages
+        // Spawn the retained-heap watchdog: glibc keeps freed pages
         // inside arenas, and the event-driven trim hooks (turn completion,
         // history load) rarely fire on a server hosting mostly-idle sessions.
         // Periodically check the allocator's freed-but-retained byte count and

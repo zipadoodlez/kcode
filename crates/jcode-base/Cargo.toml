@@ -16,9 +16,6 @@ name = "jcode_base"
 path = "src/lib.rs"
 
 [dependencies]
-# Memory allocator (reduces fragmentation for long-running server)
-tikv-jemalloc-ctl = { version = "0.6", optional = true }
-tikv-jemalloc-sys = { version = "0.6", optional = true }
 
 # Async runtime
 tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
@@ -127,15 +124,6 @@ default = ["embeddings", "bedrock"]
 # dev-dependency feature by jcode-app-core / jcode / etc.; never in normal
 # (non-test) builds.
 test-support = []
-jemalloc = [
-    "dep:tikv-jemalloc-ctl",
-    "dep:tikv-jemalloc-sys",
-    "tikv-jemalloc-ctl/stats",
-]
-jemalloc-prof = [
-    "jemalloc",
-    "tikv-jemalloc-ctl/profiling",
-]
 embeddings = ["dep:jcode-embedding"]
 # Live AWS Bedrock support (the ~20-crate AWS SDK stack) lives in
 # jcode-provider-bedrock (aws-sdk); forward there. Without it the Bedrock

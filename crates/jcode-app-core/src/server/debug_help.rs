@@ -33,13 +33,13 @@ SERVER COMMANDS (server: prefix or no prefix):
   agent:context            - Inspect assembled prompt, mode, current and locked provider tools (no inference)
   agent:context:prepare    - Prepare/freeze actual provider tool snapshot without inference (updates tool cache)
   agent:memory             - Get process + session memory breakdown
-  allocator                - Get allocator info and jemalloc stats, if available
-  allocator:purge          - Release retained heap (jemalloc arena purge / glibc malloc_trim)
-  allocator:decay:<ms>     - Set jemalloc dirty/muzzy decay for all arenas to <ms>
-  allocator:profile:on     - Enable jemalloc sampling at runtime (jemalloc-prof builds)
-  allocator:profile:off    - Disable jemalloc sampling at runtime (jemalloc-prof builds)
-  allocator:profile:prefix:<prefix> - Set jemalloc heap dump filename prefix
-  allocator:profile:dump [path] - Write jemalloc heap profile to default or explicit path
+  allocator                - Get allocator info and stats, if available
+  allocator:purge          - Release retained heap (glibc malloc_trim)
+  allocator:decay:<ms>     - Unavailable with the system allocator
+  allocator:profile:on     - Unavailable; no allocator profiling
+  allocator:profile:off    - Unavailable; no allocator profiling
+  allocator:profile:prefix:<prefix> - Unavailable; no allocator profiling
+  allocator:profile:dump [path] - Unavailable; no allocator profiling
   jobs                     - List async debug jobs
   job_status:<id>          - Get async job status/output
   job_wait:<id>            - Wait for async job to finish

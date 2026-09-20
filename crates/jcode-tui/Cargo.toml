@@ -92,8 +92,6 @@ jcode-tui-workspace = { path = "../jcode-tui-workspace" }
 default = ["pdf", "embeddings", "bedrock"]
 # Forwarded to app-core (and onward to jcode-base) so the root crate's feature
 # set fully controls the optional stacks.
-jemalloc = ["jcode-app-core/jemalloc"]
-jemalloc-prof = ["jcode-app-core/jemalloc-prof"]
 embeddings = ["jcode-app-core/embeddings"]
 pdf = ["jcode-app-core/pdf"]
 bedrock = ["jcode-app-core/bedrock"]
