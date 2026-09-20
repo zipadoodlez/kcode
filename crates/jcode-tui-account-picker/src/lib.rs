@@ -1,12 +1,10 @@
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AccountProviderKind {
     Anthropic,
     OpenAi,
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AccountPickerCommand {
     SubmitInput(String),
     OpenAccountCenter {
@@ -39,15 +37,13 @@ pub enum AccountPickerCommand {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AccountPickerItem {
     pub provider_id: String,
     pub provider_label: String,
     pub title: String,
     pub subtitle: String,
     /// Full, wrapping detail rows, separate from the compact list subtitle.
-    #[cfg_attr(feature = "serde", serde(default))]
-    pub details: Vec<(String, String)>,
+        pub details: Vec<(String, String)>,
     pub command: AccountPickerCommand,
 }
 
@@ -76,7 +72,6 @@ impl AccountPickerItem {
 }
 
 #[derive(Debug, Clone, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AccountPickerSummary {
     pub ready_count: usize,
     pub attention_count: usize,

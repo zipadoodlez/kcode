@@ -88,7 +88,6 @@ jcode-telemetry-core = { path = "../jcode-telemetry-core" }
 jcode-usage-types = { path = "../jcode-usage-types" }
 
 # Native microphone input is opt-in so CLI builds need no audio development libraries.
-cpal = { version = "0.15", optional = true }
 
 # Streaming
 
@@ -130,7 +129,6 @@ default = ["embeddings", "bedrock"]
 # dev-dependency feature by jcode-app-core / jcode / etc.; never in normal
 # (non-test) builds.
 test-support = []
-voice-capture = ["dep:cpal"]
 jemalloc = [
     "dep:tikv-jemalloc-ctl",
     "dep:tikv-jemalloc-sys",

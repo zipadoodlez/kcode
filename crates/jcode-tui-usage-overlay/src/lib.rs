@@ -6,7 +6,6 @@ use ratatui::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum UsageOverlayStatus {
     Loading,
     Good,
@@ -56,7 +55,6 @@ impl UsageOverlayStatus {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct UsageOverlayItem {
     pub id: String,
     pub title: String,
@@ -84,7 +82,6 @@ impl UsageOverlayItem {
 }
 
 #[derive(Debug, Clone, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct UsageOverlaySummary {
     pub provider_count: usize,
     pub warning_count: usize,
