@@ -30,18 +30,6 @@ fn run_external_login_command_inner(
     Ok(())
 }
 
-pub fn run_external_login_command(program: &str, args: &[&str]) -> Result<()> {
-    let owned = args
-        .iter()
-        .map(|arg| (*arg).to_string())
-        .collect::<Vec<_>>();
-    run_external_login_command_inner(program, &owned, false)
-}
-
-pub fn run_external_login_command_owned(program: &str, args: &[String]) -> Result<()> {
-    run_external_login_command_inner(program, args, false)
-}
-
 pub fn run_external_login_command_with_terminal_handoff(
     program: &str,
     args: &[&str],

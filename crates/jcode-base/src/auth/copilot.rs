@@ -861,13 +861,6 @@ impl std::fmt::Display for CopilotAccountType {
     }
 }
 
-/// Information about the user's Copilot subscription
-#[derive(Debug, Clone)]
-pub struct CopilotSubscriptionInfo {
-    pub account_type: CopilotAccountType,
-    pub available_models: Vec<CopilotModelInfo>,
-}
-
 /// Model info from the Copilot /models endpoint
 #[derive(Debug, Clone, Deserialize)]
 pub struct CopilotModelInfo {

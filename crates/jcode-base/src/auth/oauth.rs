@@ -307,12 +307,6 @@ pub fn wait_for_callback(port: u16, expected_state: &str) -> Result<String> {
     }
 }
 
-/// Async version of wait_for_callback using tokio (for use from TUI context)
-pub async fn wait_for_callback_async(port: u16, expected_state: &str) -> Result<String> {
-    let listener = bind_callback_listener(port)?;
-    wait_for_callback_async_on_listener(listener, expected_state).await
-}
-
 pub fn bind_callback_listener(port: u16) -> Result<tokio::net::TcpListener> {
     let std_listener = std::net::TcpListener::bind(format!("127.0.0.1:{port}"))?;
     std_listener.set_nonblocking(true)?;
@@ -763,15 +757,6 @@ pub fn openai_auth_url_with_prompt(
     )
 }
 
-pub fn callback_listener_available(port: u16) -> bool {
-    std::net::TcpListener::bind(format!("127.0.0.1:{port}"))
-        .map(|listener| {
-            drop(listener);
-            true
-        })
-        .unwrap_or(false)
-}
-
 async fn exchange_openai_code_at_url(
     token_url: &str,
     code: &str,
@@ -909,12 +894,6 @@ pub async fn login_openai(no_browser: bool) -> Result<OAuthTokens> {
     exchange_openai_callback_input(&verifier, trimmed, &state, &redirect_uri).await
 }
 
-/// Save Claude tokens to jcode's credentials file (active account or first numbered account).
-pub fn save_claude_tokens(tokens: &OAuthTokens) -> Result<()> {
-    let label = claude_auth::login_target_label(None)?;
-    save_claude_tokens_for_account(tokens, &label)
-}
-
 /// Save Claude tokens for a specific stored account label.
 pub fn save_claude_tokens_for_account(tokens: &OAuthTokens, label: &str) -> Result<()> {
     let existing = claude_auth::list_accounts()?
@@ -987,33 +966,6 @@ pub async fn update_claude_account_profile(
     let email = fetch_claude_profile_email_at_url(access_token, claude::PROFILE_URL).await?;
     claude_auth::update_account_profile(label, email.clone())?;
     Ok(email)
-}
-
-/// Load Claude tokens from jcode's credentials file (active account).
-pub fn load_claude_tokens() -> Result<OAuthTokens> {
-    if let Ok(creds) = claude_auth::load_credentials() {
-        return Ok(OAuthTokens {
-            access_token: creds.access_token,
-            refresh_token: creds.refresh_token,
-            expires_at: creds.expires_at,
-            id_token: None,
-            scopes: creds.scopes,
-        });
-    }
-
-    anyhow::bail!("No Claude Max OAuth credentials found. Run 'jcode login --provider claude'.");
-}
-
-/// Load Claude tokens for a specific stored account label.
-pub fn load_claude_tokens_for_account(label: &str) -> Result<OAuthTokens> {
-    let creds = claude_auth::load_credentials_for_account(label)?;
-    Ok(OAuthTokens {
-        access_token: creds.access_token,
-        refresh_token: creds.refresh_token,
-        expires_at: creds.expires_at,
-        id_token: None,
-        scopes: creds.scopes,
-    })
 }
 
 #[derive(Serialize)]

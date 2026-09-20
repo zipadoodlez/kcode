@@ -75,21 +75,6 @@ impl GrokBuildProvider {
         }
     }
 
-    /// Verify that the CLI can initialize and authenticate with its own cached
-    /// subscription credential. This never reads or forwards credential data.
-    pub async fn authenticate_cached_cli(&self) -> Result<()> {
-        let process = self.process.clone();
-        run_on_acp_thread_with_process(process, move |connection| {
-            Box::pin(async move {
-                let initialized = initialize_and_authenticate(&connection).await?;
-                Ok::<_, anyhow::Error>(models_from_initialize(&initialized))
-            })
-        })
-        .await
-        .map(|_| ())
-        .with_context(|| cached_login_hint("Grok Build authentication failed"))
-    }
-
     fn update_models(&self, discovered: DiscoveredModels) {
         if !discovered.available.is_empty() {
             *self

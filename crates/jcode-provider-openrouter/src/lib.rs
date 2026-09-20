@@ -496,10 +496,6 @@ fn normalize_model_created_timestamp(created: Option<u64>) -> Option<u64> {
         .then_some(ts)
 }
 
-pub fn save_disk_cache(models: &[ModelInfo]) {
-    save_disk_cache_with_source(models, None);
-}
-
 pub fn save_disk_cache_with_source(models: &[ModelInfo], source_api_base: Option<&str>) {
     save_disk_cache_with_source_to_path(cache_path(), models, source_api_base);
 }

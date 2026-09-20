@@ -196,12 +196,6 @@ pub fn gemini_cli_oauth_path() -> Result<std::path::PathBuf> {
     crate::storage::user_home_path(".gemini/oauth_creds.json")
 }
 
-pub fn gemini_cli_auth_source_exists() -> bool {
-    gemini_cli_oauth_path()
-        .map(|path| path.exists())
-        .unwrap_or(false)
-}
-
 pub fn has_unconsented_cli_auth() -> bool {
     gemini_cli_oauth_path()
         .ok()

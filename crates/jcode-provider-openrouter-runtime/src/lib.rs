@@ -2707,18 +2707,6 @@ impl OpenRouterProvider {
         Ok(endpoints)
     }
 
-    /// Get context length for a model
-    pub async fn context_length_for_model(&self, model_id: &str) -> Option<u64> {
-        if let Ok(models) = self.fetch_models().await {
-            models
-                .iter()
-                .find(|m| m.id == model_id)
-                .and_then(|m| m.context_length)
-        } else {
-            None
-        }
-    }
-
     async fn model_pricing(&self, model_id: &str) -> Option<ModelPricing> {
         // Scope the read guard: `fetch_models()` below takes a write guard on the
         // same `RwLock`, and tokio's writers block new/holding readers, so holding

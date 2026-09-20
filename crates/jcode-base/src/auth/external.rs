@@ -165,15 +165,6 @@ pub fn source_provider_labels(source: ExternalAuthSource) -> Vec<&'static str> {
     labels
 }
 
-pub fn preferred_unconsented_api_key_source() -> Option<ExternalAuthSource> {
-    SOURCES
-        .into_iter()
-        .filter(|source| source.path().map(|path| path.exists()).unwrap_or(false))
-        .find(|source| {
-            !source_allowed(*source) && source_contains_supported_api_key(*source).unwrap_or(false)
-        })
-}
-
 pub fn preferred_unconsented_api_key_source_for_env(env_key: &str) -> Option<ExternalAuthSource> {
     SOURCES
         .into_iter()

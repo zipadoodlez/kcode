@@ -2,16 +2,10 @@ use anyhow::{Context, Result};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const CURSOR_API_BASE: &str = "https://api2.cursor.sh";
-// Cursor's server rejects stale client versions for chat ("Update Required").
-// This must track a real, currently-served Cursor IDE release (e.g. 3.8.x),
-// not the Composer model number. Override at runtime with
-// `JCODE_CURSOR_CLIENT_VERSION` if Cursor moves the floor again.
-const CURSOR_DIRECT_CLIENT_VERSION_DEFAULT: &str = "3.8.24";
 const CURSOR_OAUTH_CLIENT_ID: &str = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB";
 pub const CURSOR_AUTH_FILE_SOURCE_ID: &str = "cursor_auth_json";
 pub const CURSOR_VSCDB_SOURCE_ID: &str = "cursor_vscdb";
@@ -151,15 +145,6 @@ pub fn trust_external_auth_source(source: ExternalCursorAuthSource) -> Result<()
     )?;
     super::AuthStatus::invalidate_cache();
     Ok(())
-}
-
-/// Resolve the advertised client version for native Cursor API requests.
-pub fn cursor_direct_client_version() -> String {
-    std::env::var("JCODE_CURSOR_CLIENT_VERSION")
-        .ok()
-        .map(|raw| raw.trim().to_string())
-        .filter(|raw| !raw.is_empty())
-        .unwrap_or_else(|| CURSOR_DIRECT_CLIENT_VERSION_DEFAULT.to_string())
 }
 
 /// Check if Cursor IDE's local vscdb has an access token.
@@ -506,23 +491,6 @@ pub fn error_indicates_not_logged_in(err: &anyhow::Error) -> bool {
         || text.contains("action required: login")
 }
 
-/// Build the `x-client-key` header expected by Cursor's native API.
-pub fn client_key_for_access_token(access_token: &str) -> String {
-    sha256_hex(access_token)
-}
-
-/// Build the `x-session-id` header expected by Cursor's native API.
-pub fn session_id_for_access_token(access_token: &str) -> String {
-    uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_DNS, access_token.as_bytes()).to_string()
-}
-
-/// Build the `x-cursor-checksum` header expected by Cursor's native API.
-pub fn checksum_for_access_token(access_token: &str) -> String {
-    let machine_id =
-        read_vscdb_machine_id().unwrap_or_else(|_| sha256_hex(&format!("{access_token}machineId")));
-    format!("{}{}", timestamp_header_now(), machine_id)
-}
-
 async fn refresh_direct_access_token(
     client: &Client,
     refresh_token: &str,
@@ -624,33 +592,6 @@ fn token_expiry_epoch_secs(token: &str) -> Option<u64> {
     let payload = token.split('.').nth(1)?;
     let decoded = URL_SAFE_NO_PAD.decode(payload).ok()?;
     serde_json::from_slice::<JwtClaims>(&decoded).ok()?.exp
-}
-
-fn sha256_hex(input: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(input.as_bytes());
-    hex::encode(hasher.finalize())
-}
-
-fn timestamp_header_now() -> String {
-    let epoch_kiloseconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis() / 1_000_000)
-        .unwrap_or(0);
-    let mut bytes = [
-        ((epoch_kiloseconds >> 40) & 0xFF) as u8,
-        ((epoch_kiloseconds >> 32) & 0xFF) as u8,
-        ((epoch_kiloseconds >> 24) & 0xFF) as u8,
-        ((epoch_kiloseconds >> 16) & 0xFF) as u8,
-        ((epoch_kiloseconds >> 8) & 0xFF) as u8,
-        (epoch_kiloseconds & 0xFF) as u8,
-    ];
-    let mut prev = 165u8;
-    for (index, byte) in bytes.iter_mut().enumerate() {
-        *byte = (*byte ^ prev).wrapping_add(index as u8);
-        prev = *byte;
-    }
-    URL_SAFE_NO_PAD.encode(bytes)
 }
 
 #[cfg(test)]
