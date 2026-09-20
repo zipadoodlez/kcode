@@ -1597,3 +1597,167 @@ fn test_changelog_overlay_mouse_drag_release_copies_text() {
         Some("Copied selection") | Some("Failed to copy selection") | Some("Selection is empty")
     ));
 }
+
+/// Acceptance for the wrapped-row copy map: drag-selecting over a wrapped list
+/// item or blockquote must hand back the logical line, with no dropped or
+/// repeated characters at the row boundaries.
+///
+/// The `ui_prepare` unit test pins the shape of the wrapped-line map; this pins
+/// the text a user actually gets, which is what the drift report was about.
+///
+/// Two gestures, because only the second one discriminates: selecting a whole
+/// row clamps at both ends of the row's segment, which cancels a wrong copy
+/// offset. Starting partway into a continuation row exposes it.
+#[test]
+fn wrapped_row_drag_copy_returns_the_logical_line_exactly() {
+    let _render_lock = scroll_render_test_lock();
+    let words = "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima";
+    let cases: [(&str, &str); 2] = [("- ", "bullet"), ("> ", "quote")];
+
+    for (marker, label) in cases {
+        let mut app = create_test_app();
+        app.display_messages = vec![DisplayMessage {
+            role: "assistant".to_string(),
+            content: format!("{marker}{words}\n\ntail"),
+            tool_calls: vec![],
+            duration_secs: None,
+            title: None,
+            tool_data: None,
+        }];
+        app.bump_display_messages_version();
+        app.scroll_offset = 0;
+        app.auto_scroll_paused = false;
+        app.is_processing = false;
+        app.streaming.streaming_text.clear();
+        app.status = ProcessingStatus::Idle;
+
+        let backend = ratatui::backend::TestBackend::new(60, 24);
+        let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
+        let screen = render_and_snap(&app, &mut terminal);
+        let rows: Vec<String> = screen.lines().map(|row| row.to_string()).collect();
+
+        let screen_row_for = |needle: &str| -> usize {
+            rows.iter()
+                .position(|row| row.contains(needle))
+                .unwrap_or_else(|| panic!("{label}: {needle:?} row must be on screen:\n{screen}"))
+        };
+        let first_row = screen_row_for("alpha");
+        let last_row = screen_row_for("lima");
+        assert!(
+            last_row > first_row,
+            "{label}: the item should wrap over several rows:\n{screen}"
+        );
+
+        // Ground truth from the renderer itself: the prepared display rows of the
+        // logical line, with each continuation row's re-seeded prefix (hanging
+        // indent or quote gutter) removed. Independent of the copy map under test.
+        let prepared_row_for = |needle: &str| -> usize {
+            (0..4096)
+                .find(|abs| {
+                    crate::tui::ui::copy_viewport_line_text(*abs)
+                        .is_some_and(|text| text.contains(needle))
+                })
+                .unwrap_or_else(|| panic!("{label}: no prepared row contains {needle:?}"))
+        };
+        let first_abs = prepared_row_for("alpha");
+        let last_abs = prepared_row_for("lima");
+        let display: Vec<String> = (first_abs..=last_abs)
+            .map(|abs| crate::tui::ui::copy_viewport_line_text(abs).expect("display row"))
+            .collect();
+        assert_eq!(
+            display.len(),
+            last_row - first_row + 1,
+            "{label}: prepared rows {first_abs}..={last_abs} should be the {label} rows on screen"
+        );
+        let prefix_chars = display[1]
+            .chars()
+            .take_while(|c| *c == ' ' || *c == '│')
+            .count();
+        let mut expected = display[0].clone();
+        for row in &display[1..] {
+            expected.extend(row.chars().skip(prefix_chars));
+        }
+        assert!(
+            expected.contains(words),
+            "{label}: rows {first_abs}..={last_abs} should tile the logical line, got {expected:?}"
+        );
+
+        let layout = crate::tui::ui::last_layout_snapshot().expect("layout snapshot");
+        let area = layout.messages_area;
+        let leftmost_selectable = |row: usize| -> u16 {
+            (0..area.width)
+                .find(|column| {
+                    crate::tui::ui::copy_point_from_screen(area.x + column, row as u16).is_some()
+                })
+                .unwrap_or_else(|| panic!("{label}: row {row} should have a selectable column"))
+        };
+        // Screen columns and display columns line up from the row's first
+        // selectable column, so a display column can be addressed by offset.
+        let start_column = area.x + leftmost_selectable(first_row);
+        let last_row_start = area.x + leftmost_selectable(last_row);
+        let end_column = last_row_start + 30;
+
+        app.handle_key(KeyCode::Char('y'), KeyModifiers::ALT)
+            .unwrap();
+        let gesture = |app: &mut App, start: (u16, u16), end: (u16, u16)| -> Option<String> {
+            for (kind, (column, row)) in [
+                (MouseEventKind::Down(MouseButton::Left), start),
+                (MouseEventKind::Drag(MouseButton::Left), end),
+                (MouseEventKind::Up(MouseButton::Left), end),
+            ] {
+                app.handle_mouse_event(MouseEvent {
+                    kind,
+                    column,
+                    row,
+                    modifiers: KeyModifiers::empty(),
+                });
+            }
+            app.current_copy_selection_text()
+        };
+
+        // 1. Whole logical line, dragged from the start of the first row.
+        let copied = gesture(
+            &mut app,
+            (start_column, first_row as u16),
+            (end_column, last_row as u16),
+        )
+        .unwrap_or_else(|| panic!("{label}: dragging across the wrapped item should select text"));
+        assert_eq!(
+            copied, expected,
+            "{label}: wrapping must not shift the copied text\n  copied:   {copied:?}\n  expected: {expected:?}"
+        );
+
+        // 2. The same rows, but starting partway into the continuation row: the
+        //    row's re-seeded prefix is display-only, so the copied text must
+        //    begin at that word, not a prefix-width later. A whole-row drag
+        //    cannot see this, because both ends clamp to the row segment.
+        assert!(
+            expected
+                .chars()
+                .all(|c| unicode_width::UnicodeWidthChar::width(c) == Some(1)),
+            "{label}: this test indexes by char, which assumes single-width chars: {expected:?}"
+        );
+        let continuation_content: String = display[1].chars().skip(prefix_chars).collect();
+        let tokens: Vec<&str> = continuation_content.split_whitespace().collect();
+        let needle = *tokens.get(1).unwrap_or(&tokens[0]);
+        let needle_char_offset = continuation_content[..continuation_content
+            .find(needle)
+            .expect("needle in the continuation content")]
+            .chars()
+            .count();
+        let needle_display_col = prefix_chars + needle_char_offset;
+        let needle_raw_col = display[0].chars().count() + needle_char_offset;
+        let expected_chars: Vec<char> = expected.chars().collect();
+        let expected_tail: String = expected_chars[needle_raw_col..].iter().collect();
+        let copied_tail = gesture(
+            &mut app,
+            (last_row_start + needle_display_col as u16, last_row as u16),
+            (end_column, last_row as u16),
+        )
+        .unwrap_or_else(|| panic!("{label}: dragging inside a continuation row should select"));
+        assert_eq!(
+            copied_tail, expected_tail,
+            "{label}: a selection starting mid-continuation-row must not shift by the re-seeded prefix"
+        );
+    }
+}
