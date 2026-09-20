@@ -35,7 +35,6 @@ pub(crate) fn initial_title(args: &Args) -> String {
             _ => "jcode ambient".to_string(),
         },
         Some(Command::Cloud(_)) => "jcode cloud".to_string(),
-        Some(Command::Pair { .. }) => "jcode pair".to_string(),
         Some(Command::Permissions) => "jcode permissions".to_string(),
         Some(Command::Transcript { .. }) => "jcode transcript".to_string(),
         Some(Command::Dictate { .. }) => "jcode dictate".to_string(),

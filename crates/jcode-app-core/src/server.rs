@@ -33,7 +33,6 @@ mod debug_swarm_write;
 mod debug_testers;
 mod durable_state;
 mod headless;
-mod jade_relay;
 mod lifecycle;
 mod live_turn;
 mod provider_control;
@@ -687,7 +686,6 @@ pub struct Server {
     provider: Arc<dyn Provider>,
     socket_path: PathBuf,
     debug_socket_path: PathBuf,
-    gateway_config_override: Option<crate::gateway::GatewayConfig>,
     /// Server identity for multi-server support
     identity: ServerIdentity,
     /// Broadcast channel for streaming events to all subscribers
@@ -794,7 +792,6 @@ impl Server {
             provider,
             socket_path: socket_path(),
             debug_socket_path: debug_socket_path(),
-            gateway_config_override: None,
             identity,
             event_tx,
             sessions: Arc::new(RwLock::new(HashMap::new())),
@@ -838,12 +835,6 @@ impl Server {
         server
     }
 
-    pub fn with_gateway_config(mut self, gateway_config: crate::gateway::GatewayConfig) -> Self {
-        self.gateway_config_override = Some(gateway_config);
-        self
-    }
-
-    /// Get the server identity
     pub fn identity(&self) -> &ServerIdentity {
         &self.identity
     }
@@ -1242,9 +1233,6 @@ impl Server {
         // Persist auxiliary discovery metadata after the server is already live.
         self.spawn_registry_metadata_publisher(registry_info);
 
-        // Spawn WebSocket gateway for iOS/web clients (if enabled)
-        self.spawn_gateway(runtime.clone()).await;
-
         // Startup recovery can be expensive in multi-session reloads. Run it
         // only after the replacement daemon is already accepting reconnects.
         self.recover_headless_sessions_on_startup().await;
@@ -1459,17 +1447,6 @@ impl Server {
                 ambient_handle.run_loop(ambient_provider).await;
             });
         }
-
-        // Spawn the Jade cloud relay listener independently of ambient mode. The
-        // worker is strictly opt-in and requires an explicit API base, token,
-        // session id, and reply-enabled flag before it makes any outbound calls.
-        jade_relay::spawn_if_configured(
-            &crate::config::config().safety,
-            Arc::clone(&self.sessions),
-            Arc::clone(&self.soft_interrupt_queues),
-            Arc::clone(&self.shutdown_signals),
-            Arc::clone(&self.swarm_state.members),
-        );
 
         // Spawn embedding idle monitor so the model can be unloaded when this
         // server has been quiet for a while.
@@ -2388,40 +2365,6 @@ impl Server {
         Ok(())
     }
 
-    /// Spawn the WebSocket gateway if enabled in config.
-    /// The runtime task scope owns both the listener and client accept loop so
-    /// server shutdown can cancel and join them with the other connection work.
-    async fn spawn_gateway(&self, runtime: ServerRuntime) {
-        let config = if let Some(override_config) = &self.gateway_config_override {
-            override_config.clone()
-        } else {
-            let gw_config = &crate::config::config().gateway;
-            crate::gateway::GatewayConfig {
-                port: gw_config.port,
-                bind_addr: gw_config.bind_addr.clone(),
-                enabled: gw_config.enabled,
-            }
-        };
-
-        if !config.enabled {
-            return;
-        }
-
-        let (client_tx, client_rx) =
-            tokio::sync::mpsc::unbounded_channel::<crate::gateway::GatewayClient>();
-
-        let listener_runtime = runtime.clone();
-        let listener_spawned = runtime
-            .spawn_background_task(async move {
-                if let Err(e) = crate::gateway::run_gateway(config, client_tx).await {
-                    crate::logging::error(&format!("Gateway error: {}", e));
-                }
-            })
-            .await;
-        if listener_spawned {
-            let _ = listener_runtime.spawn_gateway_accept_loop(client_rx).await;
-        }
-    }
 }
 
 pub use self::client_api::Client;

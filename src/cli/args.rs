@@ -346,17 +346,6 @@ pub(crate) enum Command {
     #[command(subcommand)]
     Cloud(CloudCommand),
 
-    /// Generate a pairing code for iOS/web client
-    Pair {
-        /// List paired devices instead of generating a code
-        #[arg(long)]
-        list: bool,
-
-        /// Revoke a paired device by name or ID
-        #[arg(long)]
-        revoke: Option<String>,
-    },
-
     /// Review and respond to pending ambient permission requests
     Permissions,
 

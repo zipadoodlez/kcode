@@ -45,7 +45,6 @@ pub(super) fn ssh_unsupported_command(input: &str) -> bool {
             | "/theme"
             | "/telemetry"
             | "/ssh"
-            | "/remote"
             | "/resume"
             | "/sessions"
             | "/session"

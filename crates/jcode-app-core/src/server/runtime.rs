@@ -8,7 +8,6 @@ use super::{
 };
 use crate::agent::Agent;
 use crate::ambient_runner::AmbientRunnerHandle;
-use crate::gateway::GatewayClient;
 use crate::protocol::ServerEvent;
 use crate::provider::Provider;
 use crate::transport::{Listener, Stream};
@@ -218,51 +217,6 @@ impl ServerRuntime {
         })
     }
 
-    pub(super) async fn spawn_gateway_accept_loop(
-        &self,
-        mut client_rx: mpsc::UnboundedReceiver<GatewayClient>,
-    ) -> bool {
-        let runtime = self.clone();
-        self.tasks
-            .spawn(move |cancellation| async move {
-                loop {
-                    let gw_client = tokio::select! {
-                        _ = cancellation.cancelled() => break,
-                        client = client_rx.recv() => match client {
-                            Some(client) => client,
-                            None => break,
-                        },
-                    };
-                    runtime.increment_client_count().await;
-                    crate::logging::info(&format!(
-                        "Gateway client connected: {} ({})",
-                        gw_client.device_name, gw_client.device_id
-                    ));
-                    // Preserve prior behavior: gateway sessions do not nudge the
-                    // ambient runner on disconnect.
-                    if !runtime.spawn_gateway_client_task(gw_client).await {
-                        runtime.decrement_client_count().await;
-                        break;
-                    }
-                }
-            })
-            .await
-    }
-
-    pub(super) async fn spawn_background_task<Fut>(&self, task: Fut) -> bool
-    where
-        Fut: Future<Output = ()> + Send + 'static,
-    {
-        self.tasks
-            .spawn(move |cancellation| async move {
-                tokio::select! {
-                    _ = cancellation.cancelled() => {}
-                    _ = task => {}
-                }
-            })
-            .await
-    }
-
     async fn spawn_client_task(
         &self,
         stream: Stream,
@@ -274,22 +228,6 @@ impl ServerRuntime {
             .spawn(move |cancellation| async move {
                 runtime
                     .run_client_stream(stream, error_prefix, nudge_ambient, cancellation)
-                    .await;
-            })
-            .await
-    }
-
-    async fn spawn_gateway_client_task(&self, gw_client: GatewayClient) -> bool {
-        let runtime = self.clone();
-        self.tasks
-            .spawn(move |cancellation| async move {
-                runtime
-                    .run_client_stream(
-                        gw_client.stream,
-                        "Gateway client error",
-                        false,
-                        cancellation,
-                    )
                     .await;
             })
             .await

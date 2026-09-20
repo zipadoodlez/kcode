@@ -80,7 +80,6 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
         "/fast-macos-release",
         "Publish a prepared macOS arm64 build immediately; CI adds other platforms",
     ),
-    RegisteredCommand::public("/remote", "Reach this session from another machine"),
     RegisteredCommand::public(
         "/remote-release",
         "Push the release tag immediately; CI builds and publishes every platform",

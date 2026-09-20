@@ -188,27 +188,6 @@ fn spawn_single_response_http_server_on_host(host: &str, status: u16, body: &str
 }
 
 #[test]
-fn test_parse_tailscale_dns_name_trims_trailing_dot() {
-    let payload = br#"{"Self":{"DNSName":"yashmacbook.tailabc.ts.net."}}"#;
-    let parsed = parse_tailscale_dns_name(payload);
-    assert_eq!(parsed.as_deref(), Some("yashmacbook.tailabc.ts.net"));
-}
-
-#[test]
-fn test_parse_tailscale_dns_name_handles_missing_or_empty() {
-    let missing = br#"{"Self":{}}"#;
-    assert!(parse_tailscale_dns_name(missing).is_none());
-
-    let empty = br#"{"Self":{"DNSName":"   "}}"#;
-    assert!(parse_tailscale_dns_name(empty).is_none());
-}
-
-#[test]
-fn test_parse_tailscale_dns_name_invalid_json() {
-    assert!(parse_tailscale_dns_name(b"not-json").is_none());
-}
-
-#[test]
 fn configured_auth_test_targets_only_include_configured_supported_providers() {
     let _guard = crate::storage::lock_test_env();
     // OpenRouter has no OAuth state to set: its availability is read straight

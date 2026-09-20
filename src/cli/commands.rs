@@ -8,7 +8,7 @@ use std::net::ToSocketAddrs;
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, Stdio};
 
-use crate::{browser, gateway, memory, session, storage, tui};
+use crate::{browser, memory, session, storage, tui};
 
 use super::{output::terminal_title, terminal::init_tui_runtime};
 
@@ -1824,105 +1824,6 @@ fn run_memory_command_for_dir(
 
     Ok(())
 }
-
-pub fn run_pair_command(list: bool, revoke: Option<String>) -> Result<()> {
-    let mut registry = gateway::DeviceRegistry::load();
-
-    if list {
-        if registry.devices.is_empty() {
-            eprintln!("No paired devices.");
-        } else {
-            eprintln!("\x1b[1mPaired devices:\x1b[0m\n");
-            for device in &registry.devices {
-                let last_seen = &device.last_seen;
-                eprintln!("  \x1b[36m{}\x1b[0m  ({})", device.name, device.id);
-                eprintln!("    Paired: {}  Last seen: {}", device.paired_at, last_seen);
-                if let Some(ref apns) = device.apns_token {
-                    eprintln!("    APNs: {}...", &apns[..apns.len().min(16)]);
-                }
-                eprintln!();
-            }
-        }
-        return Ok(());
-    }
-
-    if let Some(ref target) = revoke {
-        let before = registry.devices.len();
-        registry
-            .devices
-            .retain(|d| d.id != *target && d.name != *target);
-        if registry.devices.len() < before {
-            registry.save()?;
-            eprintln!("\x1b[32m✓\x1b[0m Revoked device: {}", target);
-        } else {
-            eprintln!("\x1b[31m✗\x1b[0m No device found matching: {}", target);
-        }
-        return Ok(());
-    }
-
-    let gw_config = &crate::config::config().gateway;
-
-    if !gw_config.enabled {
-        eprintln!("\x1b[33m⚠\x1b[0m  Gateway is disabled. Enable it in ~/.jcode/config.toml:\n");
-        eprintln!("    \x1b[2m[gateway]\x1b[0m");
-        eprintln!("    \x1b[2menabled = true\x1b[0m");
-        eprintln!("    \x1b[2mport = {}\x1b[0m\n", gw_config.port);
-        eprintln!("  Then restart the jcode server.\n");
-    }
-
-    let code = registry.generate_pairing_code();
-    let connect_host = resolve_connect_host(&gw_config.bind_addr);
-    let pair_uri = format!(
-        "jcode://pair?host={}&port={}&code={}",
-        connect_host, gw_config.port, code
-    );
-
-    eprintln!();
-    eprintln!("  \x1b[1mScan with the jcode iOS app:\x1b[0m\n");
-    match crate::login_qr::render_unicode_qr(&pair_uri) {
-        Ok(qr) => {
-            for line in qr.lines() {
-                eprintln!("  {line}");
-            }
-        }
-        Err(_) => eprintln!("  \x1b[33m(QR code generation failed)\x1b[0m"),
-    }
-    eprintln!();
-    eprintln!(
-        "  Pairing code:  \x1b[1;37m{} {}\x1b[0m   \x1b[2m(expires in 5 minutes)\x1b[0m",
-        &code[..3],
-        &code[3..]
-    );
-    let resolved_hint = format!("{}:{}", connect_host, gw_config.port);
-    let bind_hint = format!("{}:{}", gw_config.bind_addr, gw_config.port);
-    eprintln!("  Connect host:  \x1b[36m{}\x1b[0m", resolved_hint);
-    if connect_host != gw_config.bind_addr {
-        eprintln!("  Bind address:  \x1b[2m{}\x1b[0m", bind_hint);
-    }
-
-    if connect_host == gateway::UNKNOWN_CONNECT_HOST {
-        eprintln!(
-            "\n  \x1b[33mTip:\x1b[0m set JCODE_GATEWAY_HOST to your reachable Tailscale hostname."
-        );
-    }
-
-    if (gw_config.bind_addr.as_str(), gw_config.port)
-        .to_socket_addrs()
-        .ok()
-        .and_then(|mut it| it.next())
-        .is_none()
-    {
-        eprintln!(
-            "  \x1b[33mWarning:\x1b[0m gateway bind address appears invalid: {}",
-            bind_hint
-        );
-    }
-    eprintln!();
-
-    Ok(())
-}
-
-pub use gateway::{detect_tailscale_dns_name, parse_tailscale_dns_name, resolve_connect_host};
 
 pub async fn run_browser(action: &str) -> Result<()> {
     match action {

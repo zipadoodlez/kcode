@@ -107,10 +107,6 @@ impl Config {
 - Memory sidecar: {}
 - Ambient: {}
 
-**Gateway:**
-- Enabled: {}
-- Bind address: {}:{}
-
 **Ambient:**
 - Enabled: {}
 - Provider: {}
@@ -132,7 +128,7 @@ impl Config {
 - Discord replies: {}
 
 *Edit the config file or set environment variables to customize.*
-*Environment variables (e.g., `JCODE_SCROLL_UP_KEY`, `JCODE_GATEWAY_ENABLED`) override file settings.*"#,
+*Environment variables (e.g., `JCODE_SCROLL_UP_KEY`, `JCODE_AMBIENT_ENABLED`) override file settings.*"#,
             path,
             self.keybindings.scroll_up,
             self.keybindings.scroll_down,
@@ -309,9 +305,6 @@ impl Config {
                 .model
                 .as_deref()
                 .unwrap_or("(provider default)"),
-            self.gateway.enabled,
-            self.gateway.bind_addr,
-            self.gateway.port,
             self.ambient.enabled,
             self.ambient.provider.as_deref().unwrap_or("(auto)"),
             self.ambient
