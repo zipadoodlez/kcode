@@ -1,6 +1,6 @@
 //! Account at successful filesystem mutation boundaries, never tool previews.
 use super::ToolContext;
-use jcode_harness_api::SessionEditStats;
+use crate::session_edit_stats::{SessionEditStats, record_session_edit};
 use similar::{ChangeTag, TextDiff};
 
 fn changed_lines(old: &str, new: &str, approximate: bool) -> SessionEditStats {
@@ -24,7 +24,7 @@ pub(super) async fn record(ctx: &ToolContext, old: &str, new: &str, approximate:
     let new = new.to_owned();
     let result = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
         let dir = crate::storage::jcode_dir()?.join("sessions");
-        jcode_harness_api::record_session_edit(&dir, &id, changed_lines(&old, &new, approximate))?;
+        record_session_edit(&dir, &id, changed_lines(&old, &new, approximate))?;
         Ok(())
     })
     .await;

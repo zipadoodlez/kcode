@@ -2897,8 +2897,6 @@ dependencies = [
  "global-hotkey",
  "hex",
  "jcode-build-meta",
- "jcode-harness-api",
- "jcode-harness-api-server",
  "jcode-provider-anthropic-runtime",
  "jcode-provider-antigravity-runtime",
  "jcode-provider-claude-cli-runtime",
@@ -2965,7 +2963,6 @@ dependencies = [
  "jcode-build-support",
  "jcode-command-risk",
  "jcode-core",
- "jcode-harness-api",
  "jcode-import-core",
  "jcode-message-types",
  "jcode-overnight-core",
@@ -3148,33 +3145,6 @@ dependencies = [
 [[package]]
 name = "jcode-fuzzy"
 version = "0.1.0"
-
-[[package]]
-name = "jcode-harness-api"
-version = "0.1.0"
-dependencies = [
- "jcode-protocol",
- "jcode-session-types",
- "jcode-usage-types",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "jcode-harness-api-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "jcode-background-types",
- "jcode-base",
- "jcode-harness-api",
- "jcode-transport",
- "libc",
- "rusqlite",
- "serde",
- "serde_json",
- "tokio",
-]
 
 [[package]]
 name = "jcode-import-core"
