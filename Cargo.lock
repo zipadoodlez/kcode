@@ -2944,14 +2944,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jcode-ambient-types"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "serde",
-]
-
-[[package]]
 name = "jcode-app-core"
 version = "0.1.0"
 dependencies = [
@@ -2969,7 +2961,6 @@ dependencies = [
  "glob",
  "global-hotkey",
  "jcode-agent-runtime",
- "jcode-ambient-types",
  "jcode-base",
  "jcode-build-meta",
  "jcode-build-support",
@@ -3055,7 +3046,6 @@ dependencies = [
  "jcode-auth-types",
  "jcode-azure-auth",
  "jcode-background-types",
- "jcode-batch-types",
  "jcode-build-meta",
  "jcode-compaction-core",
  "jcode-config-types",
@@ -3111,14 +3101,6 @@ dependencies = [
  "urlencoding",
  "uuid",
  "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "jcode-batch-types"
-version = "0.1.0"
-dependencies = [
- "jcode-message-types",
- "serde",
 ]
 
 [[package]]
@@ -3302,7 +3284,6 @@ name = "jcode-protocol"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "jcode-batch-types",
  "jcode-config-types",
  "jcode-message-types",
  "jcode-plan",

@@ -59,7 +59,6 @@ rand = "0.9.3"
 url = "2"
 open = "5"               # Open URLs in browser
 jcode-agent-runtime = { path = "../jcode-agent-runtime" }
-jcode-ambient-types = { path = "../jcode-ambient-types" }
 jcode-provider-core = { path = "../jcode-provider-core" }
 jcode-schema-dialect = { path = "../jcode-schema-dialect" }
 # NOTE: jcode-app-core does NOT depend on any jcode-tui-* crate. They were

@@ -6,7 +6,7 @@ pub use jcode_background_types::{
     BackgroundTaskProgressKind, BackgroundTaskProgressSource, BackgroundTaskStalled,
     BackgroundTaskStatus,
 };
-pub use jcode_batch_types::{BatchProgress, BatchSubcallProgress, BatchSubcallState};
+pub use jcode_message_types::{BatchProgress, BatchSubcallProgress, BatchSubcallState};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};

@@ -5,7 +5,6 @@ edition = "2024"
 publish = false
 
 [dependencies]
-jcode-batch-types = { path = "../jcode-batch-types" }
 jcode-config-types = { path = "../jcode-config-types" }
 jcode-message-types = { path = "../jcode-message-types" }
 jcode-plan = { path = "../jcode-plan" }
