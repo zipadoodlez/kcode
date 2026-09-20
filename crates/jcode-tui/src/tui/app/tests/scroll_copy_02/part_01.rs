@@ -1761,3 +1761,57 @@ fn wrapped_row_drag_copy_returns_the_logical_line_exactly() {
         );
     }
 }
+
+/// The drag-held edge autoscroll runs on its own tick cadence so its speed is a
+/// property of the gesture rather than of the redraw rate, and that branch sits
+/// ahead of the live-output branches so a drag keeps its cadence while the
+/// transcript streams. Pin the exact interval, not just "fast": the looser
+/// `interval <= REDRAW_IDLE` bound would also hold if the drag fell through to
+/// the live-output cadence, which is the regression the dedicated branch exists
+/// to prevent.
+#[test]
+fn test_drag_autoscroll_holds_its_tick_cadence_while_streaming() {
+    let _render_lock = scroll_render_test_lock();
+    let (mut app, mut terminal) = create_scroll_test_app(80, 25, 1, 12);
+    render_and_snap(&app, &mut terminal);
+
+    let policy = crate::perf::tui_policy();
+
+    // Live output with no drag: the transcript streams on its own cadence.
+    app.is_processing = true;
+    app.streaming.streaming_text = "streaming".to_string();
+    let streaming_interval = crate::tui::redraw_interval_with_policy(&app, &policy);
+    assert_ne!(
+        streaming_interval,
+        crate::tui::redraw_schedule::REDRAW_COPY_AUTOSCROLL,
+        "a streaming turn without a drag must not sit on the drag cadence"
+    );
+
+    app.handle_key(KeyCode::Char('y'), KeyModifiers::ALT)
+        .unwrap();
+    let layout = crate::tui::ui::last_layout_snapshot().expect("layout snapshot");
+    let area = layout.messages_area;
+    let col = area.x + 1;
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: col,
+        row: area.y + area.height / 2,
+        modifiers: KeyModifiers::empty(),
+    });
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::Drag(MouseButton::Left),
+        column: col,
+        row: area.y,
+        modifiers: KeyModifiers::empty(),
+    });
+    assert!(
+        crate::tui::TuiState::copy_selection_edge_autoscroll_active(&app),
+        "dragging onto the top boundary row should arm the autoscroll"
+    );
+
+    assert_eq!(
+        crate::tui::redraw_interval_with_policy(&app, &policy),
+        crate::tui::redraw_schedule::REDRAW_COPY_AUTOSCROLL,
+        "an armed drag must hold its own tick cadence even while the turn streams"
+    );
+}
