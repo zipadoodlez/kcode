@@ -1523,11 +1523,6 @@ impl Registry {
         )
         .await;
 
-        self.register(
-            "send_message".to_string(),
-            Arc::new(ambient::SendChannelMessageTool::new()) as Arc<dyn Tool>,
-        )
-        .await;
     }
 
     /// Unregister a tool

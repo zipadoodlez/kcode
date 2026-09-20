@@ -86,7 +86,6 @@ pub mod stdin_detect;
 pub mod storage;
 pub mod subscription_api;
 pub mod subscription_catalog;
-pub mod telegram;
 pub mod telemetry {
     pub use jcode_telemetry_core::*;
 }

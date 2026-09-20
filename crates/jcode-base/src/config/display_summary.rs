@@ -122,11 +122,6 @@ impl Config {
 - Desktop: {}
 - Email: {}
 - Email replies: {}
-- Telegram: {}
-- Telegram replies: {}
-- Discord: {}
-- Discord replies: {}
-
 *Edit the config file or set environment variables to customize.*
 *Environment variables (e.g., `JCODE_SCROLL_UP_KEY`, `JCODE_AMBIENT_ENABLED`) override file settings.*"#,
             path,
@@ -340,32 +335,6 @@ impl Config {
                     .email_imap_host
                     .as_deref()
                     .unwrap_or("enabled (no IMAP host)")
-            } else {
-                "disabled"
-            },
-            if self.safety.telegram_enabled {
-                self.safety
-                    .telegram_chat_id
-                    .as_deref()
-                    .unwrap_or("enabled (no chat_id)")
-            } else {
-                "disabled"
-            },
-            if self.safety.telegram_reply_enabled {
-                "enabled"
-            } else {
-                "disabled"
-            },
-            if self.safety.discord_enabled {
-                self.safety
-                    .discord_channel_id
-                    .as_deref()
-                    .unwrap_or("enabled (no channel_id)")
-            } else {
-                "disabled"
-            },
-            if self.safety.discord_reply_enabled {
-                "enabled"
             } else {
                 "disabled"
             },

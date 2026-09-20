@@ -1160,7 +1160,7 @@ impl Agent {
                 println!();
             }
 
-            // Check for soft interrupts (e.g. Telegram messages) and inject them for the next turn
+            // Check for soft interrupts (e.g. queued external messages) and inject them for the next turn
             let injected = self.inject_soft_interrupts();
             if !injected.is_empty() {
                 let total_chars: usize = injected.iter().map(|item| item.content.len()).sum();

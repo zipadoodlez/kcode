@@ -1447,24 +1447,6 @@ pub struct SafetyConfig {
     pub email_imap_port: u16,
     /// Enable email reply → agent directive feature (default: false)
     pub email_reply_enabled: bool,
-    /// Enable Telegram notifications (default: false)
-    pub telegram_enabled: bool,
-    /// Telegram bot token (from @BotFather)
-    pub telegram_bot_token: Option<String>,
-    /// Telegram chat ID to send messages to
-    pub telegram_chat_id: Option<String>,
-    /// Enable Telegram reply → agent directive feature (default: false)
-    pub telegram_reply_enabled: bool,
-    /// Enable Discord notifications (default: false)
-    pub discord_enabled: bool,
-    /// Discord bot token
-    pub discord_bot_token: Option<String>,
-    /// Discord channel ID to send messages to
-    pub discord_channel_id: Option<String>,
-    /// Discord bot user ID (for filtering own messages in polling)
-    pub discord_bot_user_id: Option<String>,
-    /// Enable Discord reply → agent directive feature (default: false)
-    pub discord_reply_enabled: bool,
 }
 
 impl Default for SafetyConfig {
@@ -1482,15 +1464,6 @@ impl Default for SafetyConfig {
             email_imap_host: None,
             email_imap_port: 993,
             email_reply_enabled: false,
-            telegram_enabled: false,
-            telegram_bot_token: None,
-            telegram_chat_id: None,
-            telegram_reply_enabled: false,
-            discord_enabled: false,
-            discord_bot_token: None,
-            discord_channel_id: None,
-            discord_bot_user_id: None,
-            discord_reply_enabled: false,
         }
     }
 }

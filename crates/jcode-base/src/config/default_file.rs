@@ -672,19 +672,6 @@ desktop_notifications = true
 # email_imap_host = "imap.gmail.com"
 # email_imap_port = 993
 
-# Telegram notifications via Bot API (free, https://telegram.org)
-# telegram_enabled = false
-# telegram_bot_token = ""  # From @BotFather (prefer JCODE_TELEGRAM_BOT_TOKEN env var)
-# telegram_chat_id = ""    # Your user/chat ID
-# telegram_reply_enabled = false  # Reply to bot messages to send directives
-
-# Discord notifications via Bot API (https://discord.com/developers)
-# discord_enabled = false
-# discord_bot_token = ""     # From Discord Developer Portal (prefer JCODE_DISCORD_BOT_TOKEN env var)
-# discord_channel_id = ""    # Channel ID to post in
-# discord_bot_user_id = ""   # Bot's user ID (for filtering own messages)
-# discord_reply_enabled = false  # Messages in channel become agent directives
-
 
 # [sponsors] # Legacy config section name retained for compatibility.
 # Integration discovery (enabled by default; set enabled = false to opt out).

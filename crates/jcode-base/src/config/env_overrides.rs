@@ -647,33 +647,6 @@ impl Config {
                 self.safety.email_reply_enabled = parsed;
             }
         }
-        if let Ok(v) = std::env::var("JCODE_TELEGRAM_BOT_TOKEN") {
-            self.safety.telegram_bot_token = Some(v);
-            self.safety.telegram_enabled = true;
-        }
-        if let Ok(v) = std::env::var("JCODE_TELEGRAM_CHAT_ID") {
-            self.safety.telegram_chat_id = Some(v);
-        }
-        if let Ok(v) = std::env::var("JCODE_TELEGRAM_REPLY_ENABLED") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.safety.telegram_reply_enabled = parsed;
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_DISCORD_BOT_TOKEN") {
-            self.safety.discord_bot_token = Some(v);
-            self.safety.discord_enabled = true;
-        }
-        if let Ok(v) = std::env::var("JCODE_DISCORD_CHANNEL_ID") {
-            self.safety.discord_channel_id = Some(v);
-        }
-        if let Ok(v) = std::env::var("JCODE_DISCORD_BOT_USER_ID") {
-            self.safety.discord_bot_user_id = Some(v);
-        }
-        if let Ok(v) = std::env::var("JCODE_DISCORD_REPLY_ENABLED") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.safety.discord_reply_enabled = parsed;
-            }
-        }
         if let Ok(v) = std::env::var("JCODE_AMBIENT_VISIBLE") {
             if let Some(parsed) = parse_env_bool(&v) {
                 self.ambient.visible = parsed;
