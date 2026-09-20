@@ -69,7 +69,7 @@ use tokio::sync::RwLock;
 
 pub(crate) use jcode_tool_core::intent_schema_property;
 pub use jcode_tool_core::{StdinInputRequest, Tool, ToolContext, ToolExecutionMode};
-pub use jcode_tool_types::{ToolImage, ToolOutput};
+pub use jcode_tool_core::{ToolImage, ToolOutput};
 pub(crate) use session_search::spawn_recent_index_warmup;
 
 #[derive(Clone, Debug, Default)]
@@ -557,11 +557,11 @@ impl Registry {
     /// names (`grep`, `bash`). This mapping ensures both forms resolve
     /// correctly.
     ///
-    /// The canonical mapping lives in `jcode-tool-types::resolve_tool_name` so
+    /// The canonical mapping lives in `jcode-tool-core::resolve_tool_name` so
     /// lower-level crates (e.g. config) can normalize tool names without
     /// depending on the tool subsystem; this method delegates to it.
     pub(crate) fn resolve_tool_name(name: &str) -> &str {
-        jcode_tool_types::resolve_tool_name(name)
+        jcode_tool_core::resolve_tool_name(name)
     }
 
     /// Suggest up to 3 available tool names that look similar to `name`.

@@ -2981,7 +2981,6 @@ dependencies = [
  "jcode-task-types",
  "jcode-terminal-image",
  "jcode-tool-core",
- "jcode-tool-types",
  "jcode-update-core",
  "libc",
  "open",
@@ -3006,22 +3005,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jcode-auth-types"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "jcode-azure-auth"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "azure_core",
- "azure_identity",
-]
-
-[[package]]
 name = "jcode-background-types"
 version = "0.1.0"
 dependencies = [
@@ -3034,6 +3017,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "azure_core",
+ "azure_identity",
  "base64 0.22.1",
  "chrono",
  "crossterm",
@@ -3043,8 +3028,6 @@ dependencies = [
  "hex",
  "image",
  "jcode-agent-runtime",
- "jcode-auth-types",
- "jcode-azure-auth",
  "jcode-background-types",
  "jcode-build-meta",
  "jcode-compaction-core",
@@ -3070,13 +3053,11 @@ dependencies = [
  "jcode-render-core",
  "jcode-selfdev-types",
  "jcode-session-types",
- "jcode-side-panel-types",
  "jcode-storage",
  "jcode-task-types",
  "jcode-terminal-image",
  "jcode-terminal-launch",
  "jcode-tool-core",
- "jcode-tool-types",
  "jcode-transport",
  "jcode-usage-types",
  "libc",
@@ -3175,7 +3156,7 @@ version = "0.1.0"
 name = "jcode-harness-api"
 version = "0.1.0"
 dependencies = [
- "jcode-side-panel-types",
+ "jcode-protocol",
  "jcode-usage-types",
  "serde",
  "serde_json",
@@ -3290,7 +3271,6 @@ dependencies = [
  "jcode-provider-core",
  "jcode-selfdev-types",
  "jcode-session-types",
- "jcode-side-panel-types",
  "rand 0.9.3",
  "serde",
  "serde_json",
@@ -3719,13 +3699,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jcode-side-panel-types"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "jcode-storage"
 version = "0.1.0"
 dependencies = [
@@ -3780,16 +3753,8 @@ dependencies = [
  "async-trait",
  "jcode-agent-runtime",
  "jcode-message-types",
- "jcode-tool-types",
  "serde_json",
  "tokio",
-]
-
-[[package]]
-name = "jcode-tool-types"
-version = "0.1.0"
-dependencies = [
- "serde_json",
 ]
 
 [[package]]

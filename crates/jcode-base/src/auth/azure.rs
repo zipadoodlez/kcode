@@ -1,4 +1,5 @@
 use anyhow::Result;
+use azure_core::credentials::TokenCredential;
 
 use crate::provider_catalog::{
     load_api_key_from_env_or_config, load_env_value_from_env_or_config, normalize_api_base,
@@ -95,7 +96,9 @@ pub fn apply_runtime_env() -> Result<()> {
 }
 
 pub async fn get_bearer_token() -> Result<String> {
-    jcode_azure_auth::get_bearer_token(COGNITIVE_SCOPE).await
+    let credential = azure_identity::DeveloperToolsCredential::new(None)?;
+    let token = credential.get_token(&[COGNITIVE_SCOPE], None).await?;
+    Ok(token.token.secret().to_string())
 }
 
 #[cfg(test)]

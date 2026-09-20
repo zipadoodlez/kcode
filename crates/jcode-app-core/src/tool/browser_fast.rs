@@ -677,7 +677,7 @@ pub(super) async fn run(
             // Retain exact capability results for the parent, not for Jev. Never truncate JSON.
             let retained=json!({"output":executed.output,"metadata":executed.metadata});
             trace.last_mut().unwrap()["result"]=retain_result(retained,&mut retained_result_bytes);
-            let image_bytes:usize=images.iter().map(|i: &jcode_tool_types::ToolImage|i.data.len()).sum();
+            let image_bytes:usize=images.iter().map(|i: &jcode_tool_core::ToolImage|i.data.len()).sum();
             if image_bytes+executed.images.iter().map(|i|i.data.len()).sum::<usize>()<=16_000_000 && images.len()+executed.images.len()<=4 {
                 images.extend(executed.images);
             } else {anyhow::bail!("Image result exceeds handoff limits; retrieve using direct browser action");}

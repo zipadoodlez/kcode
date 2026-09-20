@@ -5,7 +5,7 @@ use super::protocol::{ContentBlock, McpToolDef};
 use anyhow::Result;
 use async_trait::async_trait;
 use jcode_tool_core::{Tool, ToolContext};
-use jcode_tool_types::ToolOutput;
+use jcode_tool_core::ToolOutput;
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::RwLock;

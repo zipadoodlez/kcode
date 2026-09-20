@@ -5,7 +5,7 @@ use std::path::PathBuf;
 const REFRESH_STATUS_FILE: &str = "auth-refresh-state.json";
 const MAX_ERROR_CHARS: usize = 240;
 
-pub use jcode_auth_types::ProviderRefreshRecord;
+pub use super::types::ProviderRefreshRecord;
 
 /// Lifecycle of one provider credential, as observed from refresh outcomes.
 ///

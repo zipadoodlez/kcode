@@ -1,4 +1,4 @@
-pub use jcode_auth_types::{
+pub use super::types::{
     AuthCredentialSource, AuthExpiryConfidence, AuthReadinessLevel, AuthRefreshSupport, AuthState,
     AuthValidationMethod,
 };

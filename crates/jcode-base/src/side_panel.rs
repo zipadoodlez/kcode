@@ -6,7 +6,7 @@ use std::io::Read as _;
 pub const MAX_PDF_BYTES: u64 = 20 * 1024 * 1024;
 /// Aggregate decoded PDF budget keeps base64 snapshots within the transport cap.
 pub const MAX_SESSION_PDF_BYTES: u64 = 32 * 1024 * 1024;
-pub use jcode_side_panel_types::{
+pub use jcode_protocol::{
     PersistedSidePanelPage, PersistedSidePanelState, SidePanelPage, SidePanelPageFormat,
     SidePanelPageSource, SidePanelSnapshot, snapshot_is_empty,
 };

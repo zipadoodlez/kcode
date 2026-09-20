@@ -627,7 +627,7 @@ impl BackgroundTaskManager {
         &self,
         tool_name: &str,
         session_id: &str,
-        handle: JoinHandle<Result<jcode_tool_types::ToolOutput>>,
+        handle: JoinHandle<Result<jcode_tool_core::ToolOutput>>,
     ) -> BackgroundTaskInfo {
         self.adopt_with_options(tool_name, None, session_id, true, false, handle)
             .await
@@ -644,7 +644,7 @@ impl BackgroundTaskManager {
         session_id: &str,
         notify: bool,
         wake: bool,
-        handle: JoinHandle<Result<jcode_tool_types::ToolOutput>>,
+        handle: JoinHandle<Result<jcode_tool_core::ToolOutput>>,
     ) -> BackgroundTaskInfo {
         let (notify, wake) = normalize_delivery(notify, wake);
         let task_id = Self::generate_task_id();

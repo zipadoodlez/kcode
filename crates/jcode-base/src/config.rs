@@ -778,7 +778,7 @@ impl ToolConfig {
 
 fn normalize_tool_name(name: &str) -> String {
     let trimmed = name.trim().trim_matches('"');
-    jcode_tool_types::resolve_tool_name(trimmed).to_string()
+    jcode_tool_core::resolve_tool_name(trimmed).to_string()
 }
 
 /// External dictation / speech-to-text integration.

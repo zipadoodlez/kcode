@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 mod comm_format;
 mod notifications;
+mod side_panel;
 
 pub use comm_format::*;
 pub use notifications::{FeatureToggle, NotificationType};
@@ -18,7 +19,10 @@ pub use notifications::{FeatureToggle, NotificationType};
 use jcode_message_types::BatchProgress;
 use jcode_message_types::{InputShellResult, ToolCall};
 use jcode_plan::{PlanItem, VersionedPlan, next_runnable_item_ids, summarize_plan_graph};
-use jcode_side_panel_types::{SidePanelSnapshot, snapshot_is_empty};
+pub use side_panel::{
+    PersistedSidePanelPage, PersistedSidePanelState, SidePanelPage, SidePanelPageFormat,
+    SidePanelPageSource, SidePanelSnapshot, snapshot_is_empty,
+};
 use std::collections::BTreeMap;
 
 #[path = "protocol_memory.rs"]

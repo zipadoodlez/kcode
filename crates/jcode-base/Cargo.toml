@@ -61,8 +61,11 @@ rand = "0.9.3"
 hex = "0.4"
 url = "2"
 open = "5"               # Open URLs in browser
-jcode-auth-types = { path = "../jcode-auth-types" }
-jcode-azure-auth = { path = "../jcode-azure-auth" }
+# Use rustls instead of native-tls so the whole binary stays OpenSSL-free
+# (required for the BoringSSL-backed websearch client to link; see GH #270).
+# azure 1.0 makes the reqwest TLS backend selectable; 0.24 hardcoded native-tls.
+azure_core = { version = "1.0", default-features = false, features = ["reqwest_rustls", "reqwest_deflate", "reqwest_gzip", "tokio"] }
+azure_identity = { version = "1.0", default-features = false, features = ["tokio"] }
 jcode-agent-runtime = { path = "../jcode-agent-runtime" }
 jcode-provider-metadata = { path = "../jcode-provider-metadata" }
 jcode-provider-env = { path = "../jcode-provider-env" }
@@ -111,8 +114,6 @@ jcode-selfdev-types = { path = "../jcode-selfdev-types" }
 jcode-storage = { path = "../jcode-storage" }
 jcode-task-types = { path = "../jcode-task-types" }
 jcode-tool-core = { path = "../jcode-tool-core" }
-jcode-tool-types = { path = "../jcode-tool-types" }
-jcode-side-panel-types = { path = "../jcode-side-panel-types" }
 
 # Gzip decoding (used by provider import/helpers)
 tempfile = "3"

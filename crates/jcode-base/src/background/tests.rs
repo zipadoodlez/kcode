@@ -11,7 +11,7 @@ async fn adopted_task_output_exists_while_running_and_is_replaced_on_completion(
     let (finish_tx, finish_rx) = tokio::sync::oneshot::channel();
     let handle = tokio::spawn(async move {
         finish_rx.await?;
-        Ok(jcode_tool_types::ToolOutput::new("complete output\n"))
+        Ok(jcode_tool_core::ToolOutput::new("complete output\n"))
     });
 
     let info = manager

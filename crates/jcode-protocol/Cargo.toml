@@ -11,7 +11,6 @@ jcode-plan = { path = "../jcode-plan" }
 jcode-provider-core = { path = "../jcode-provider-core" }
 jcode-selfdev-types = { path = "../jcode-selfdev-types" }
 jcode-session-types = { path = "../jcode-session-types" }
-jcode-side-panel-types = { path = "../jcode-side-panel-types" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

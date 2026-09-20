@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 const VALIDATION_STATUS_FILE: &str = "auth-validation.json";
 
-pub use jcode_auth_types::ProviderValidationRecord;
+pub use super::types::ProviderValidationRecord;
 
 pub fn status_path() -> Result<PathBuf> {
     Ok(crate::storage::jcode_dir()?.join(VALIDATION_STATUS_FILE))
