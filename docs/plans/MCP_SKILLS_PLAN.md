@@ -116,9 +116,9 @@ MCP uses JSON-RPC 2.0 over stdio:
 4. `crates/jcode-base/src/mcp/manager.rs` - Multi-server manager
 5. `crates/jcode-base/src/mcp/tool.rs` - MCP tool wrapper
 6. `crates/jcode-app-core/src/tool/mod.rs` - Add dynamic registration
-7. `src/tool/mcp_tools.rs` - mcp_connect, mcp_list, etc.
+7. the MCP tool surface (`mcp_connect`, `mcp_list`, ...) in the `jcode-app-core` tool registry
 8. `crates/jcode-base/src/skill.rs` - Add reload()
-9. `src/tool/reload_skills.rs` - reload_skills tool
+9. the `reload_skills` tool in the `jcode-app-core` tool registry
 
 ## Order of Implementation
 1. Dynamic tool registry (prerequisite)
