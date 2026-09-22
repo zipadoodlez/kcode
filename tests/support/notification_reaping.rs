@@ -13,8 +13,8 @@ const FIXTURE_ENV: &str = "JCODE_NOTIFICATION_REAP_TEST_DIR";
 fn notification_probe() {
     let dir = PathBuf::from(std::env::var_os(FIXTURE_ENV).expect("subprocess fixture"));
     for _ in 0..5 {
-        // In app-core this public wrapper calls the rich helper. In setup-hints
-        // this is the private helper used by the shortcut notification workflow.
+        // Goes through the same desktop-notification wrapper the notification
+        // workflow used before that surface was cut.
         super::send_desktop_notification("reaping title", "reaping body");
     }
     std::fs::write(dir.join("returned"), "").unwrap();
