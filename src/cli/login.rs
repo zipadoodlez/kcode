@@ -283,7 +283,7 @@ pub async fn run_login_provider(
     );
     let login_result = if explicit_scriptable_flow {
         run_scriptable_login_provider(provider, account_label, &options).await
-    } else if let Some(reason) = auto_scriptable_reason {
+    } else if auto_scriptable_reason.is_some() {
         if !options.json {
             eprintln!(
                 "Detected a manual-safe login environment for {}. Starting the auth URL flow instead of browser-first login.",
@@ -860,7 +860,7 @@ fn login_openai_compatible_flow(
         resolved.default_model = Some(model.to_string());
     }
 
-    let auth_method = if resolved.requires_api_key {
+    if resolved.requires_api_key {
         eprintln!("API key env variable: {}\n", resolved.api_key_env);
         if options.openai_compatible_api_key.is_none() {
             existing_key_notice::announce_existing_api_key(&resolved);
@@ -892,7 +892,7 @@ fn login_openai_compatible_flow(
         )?;
         save_named_api_key(&resolved.env_file, &resolved.api_key_env, &key)?;
         eprintln!("\nSuccessfully saved {} API key!", resolved.display_name);
-        "api_key"
+        "api_key";
     } else {
         eprintln!("Endpoint: {}", resolved.api_base);
         if setup_url_depends_on_key {
@@ -922,7 +922,7 @@ fn login_openai_compatible_flow(
                 None,
             )?;
             eprintln!("\nSaved {} local endpoint setup.", resolved.display_name);
-            "local_endpoint"
+            "local_endpoint";
         } else {
             crate::provider_catalog::save_env_value_to_env_file(
                 &resolved.api_key_env,
@@ -933,9 +933,9 @@ fn login_openai_compatible_flow(
                 "\nSaved {} local endpoint setup and optional API key.",
                 resolved.display_name
             );
-            "local_endpoint_with_optional_api_key"
+            "local_endpoint_with_optional_api_key";
         }
-    };
+    }
 
     if !resolved.requires_api_key && resolved.default_model.is_none() {
         eprintln!("{}", next_step::local_endpoint_hint(&resolved.id));

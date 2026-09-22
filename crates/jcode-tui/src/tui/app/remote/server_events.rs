@@ -1333,7 +1333,7 @@ pub(in crate::tui::app) fn handle_server_event(
             // loops logging thousands of 401s per session. Stop every
             // automatic resend path and tell the user to /login or /model.
             if !is_connectivity_error && app.note_error_for_credential_breaker(&message) {
-                app.trip_credential_failure_breaker(&message);
+                app.trip_credential_failure_breaker();
                 app.offer_fallback_after_error_with_payload(
                     &message,
                     failed_fallback_payload.clone(),

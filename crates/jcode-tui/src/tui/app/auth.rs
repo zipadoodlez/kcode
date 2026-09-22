@@ -2635,9 +2635,6 @@ impl App {
                         }));
                     }
                     Err(e) => {
-                        let reason = crate::auth::login_diagnostics::classify_auth_failure_message(
-                            &e.to_string(),
-                        );
                         self.push_display_message(DisplayMessage::error(format!(
                             "Failed to save Cursor API key: {}",
                             e

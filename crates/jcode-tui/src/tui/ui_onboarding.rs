@@ -13,7 +13,6 @@ use crate::tui::TuiState;
 use crate::tui::color_support::rgb;
 use ratatui::{prelude::*, widgets::Paragraph};
 
-const TELEMETRY_LINES: u16 = 4;
 const GAP: u16 = 1;
 
 /// Accent color for the welcome title.

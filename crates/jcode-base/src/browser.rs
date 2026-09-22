@@ -46,12 +46,12 @@ fn browser_dir() -> PathBuf {
 
 pub fn browser_binary_path() -> PathBuf {
     let dir = browser_dir();
-    { dir.join("browser") }
+    dir.join("browser")
 }
 
 fn host_binary_path() -> PathBuf {
     let dir = browser_dir();
-    { dir.join("firefox-agent-bridge-host") }
+    dir.join("firefox-agent-bridge-host")
 }
 
 fn xpi_path() -> PathBuf {

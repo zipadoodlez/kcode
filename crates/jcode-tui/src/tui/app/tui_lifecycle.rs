@@ -315,7 +315,7 @@ impl App {
     /// against a dead credential can never succeed; before this breaker,
     /// auto-poke/queued-retry loops logged thousands of 401s in a single
     /// session (one failed turn per resend) until the user noticed.
-    pub(super) fn trip_credential_failure_breaker(&mut self, message: &str) {
+    pub(super) fn trip_credential_failure_breaker(&mut self) {
         let failures = self.consecutive_credential_failures;
         self.clear_pending_remote_retry();
         let cleared_pokes = if self.auto_poke_incomplete_todos {
@@ -327,7 +327,6 @@ impl App {
 
         // Report the streak explicitly so "breaker tripped on a dead
         // credential" is distinguishable from a transient blip.
-        let reason = crate::auth::login_diagnostics::classify_auth_failure_message(message);
         let provider = self.provider_name().to_string();
 
         self.push_display_message(DisplayMessage::error(format!(

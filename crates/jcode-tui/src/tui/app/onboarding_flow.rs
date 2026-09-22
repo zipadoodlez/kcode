@@ -157,6 +157,7 @@ impl ImportReview {
 
     /// Focus a specific summary pill (used by the onboarding simulator to land
     /// directly on a given screen state).
+    #[cfg(test)]
     pub(crate) fn focus_summary_pill(&mut self, pill: SummaryPill) {
         self.summary_pill = pill;
         self.continue_focused = pill == SummaryPill::Continue;

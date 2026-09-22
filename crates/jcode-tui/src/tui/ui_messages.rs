@@ -12,8 +12,6 @@ use std::borrow::Cow;
 use unicode_width::UnicodeWidthStr;
 
 const MAX_INLINE_DIFF_LINES: usize = 12;
-const MAX_DISCOVERY_DETAIL_LINES: usize = 2;
-const MAX_DISCOVERY_SETUP_LINES: usize = 3;
 
 fn prefer_width_stable_system_glyphs() -> bool {
     std::env::var("TERM_PROGRAM")

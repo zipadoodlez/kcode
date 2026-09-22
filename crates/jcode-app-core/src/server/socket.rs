@@ -70,7 +70,7 @@ pub async fn connect_socket(path: &std::path::Path) -> Result<Stream> {
 }
 
 pub(super) async fn socket_has_live_listener(path: &std::path::Path) -> bool {
-    { crate::transport::is_socket_path(path) && Stream::connect(path).await.is_ok() }
+    crate::transport::is_socket_path(path) && Stream::connect(path).await.is_ok()
 }
 
 /// Reap a provably-stale socket left behind by a dead daemon.

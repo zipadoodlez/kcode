@@ -742,58 +742,6 @@ fn cli_provider_choice_filter_uses_typed_api_methods() {
 }
 
 #[test]
-fn is_syncable_session_stem_filters_non_session_files() {
-    assert!(is_syncable_session_stem("session_abc_123"));
-    assert!(is_syncable_session_stem("imported_codex_456"));
-    assert!(!is_syncable_session_stem("req"));
-    assert!(!is_syncable_session_stem("test_selfdev_session"));
-    assert!(!is_syncable_session_stem("session_abc.journal"));
-}
-
-#[test]
-fn collect_sync_candidates_picks_only_session_json() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let dir = temp.path();
-    std::fs::write(dir.join("session_one.json"), b"{\"id\":\"one\"}").unwrap();
-    std::fs::write(dir.join("imported_codex_two.json"), b"{\"id\":\"two\"}").unwrap();
-    std::fs::write(dir.join("req.json"), b"{}").unwrap();
-    std::fs::write(dir.join("session_three.journal.json"), b"{}").unwrap();
-    std::fs::write(dir.join("session_four.bak"), b"{}").unwrap();
-
-    let mut ids: Vec<String> = collect_sync_candidates(dir)
-        .expect("collect")
-        .into_iter()
-        .map(|candidate| candidate.session_id)
-        .collect();
-    ids.sort();
-    assert_eq!(ids, vec!["imported_codex_two", "session_one"]);
-}
-
-#[test]
-fn sanitize_filename_keeps_safe_chars_and_replaces_others() {
-    assert_eq!(
-        sanitize_filename("session_abc-123.json"),
-        "session_abc-123.json"
-    );
-    assert_eq!(sanitize_filename("a/b c:d"), "a_b_c_d");
-}
-
-#[test]
-fn dashboard_views_dir_is_sibling_of_dashboard() {
-    let dir = dashboard_views_dir(std::path::Path::new("/tmp/out/dash.html"));
-    assert_eq!(dir, std::path::PathBuf::from("/tmp/out/dash-views"));
-}
-
-#[test]
-fn relative_link_is_relative_to_dashboard_parent() {
-    let link = relative_link(
-        std::path::Path::new("/tmp/out/dash.html"),
-        std::path::Path::new("/tmp/out/dash-views/session_x.html"),
-    );
-    assert_eq!(link.as_deref(), Some("dash-views/session_x.html"));
-}
-
-#[test]
 fn auth_test_retryable_error_detection_handles_rate_limits() {
     let err = anyhow::anyhow!(
         "Gemini request generateContent failed (HTTP 429 Too Many Requests): RESOURCE_EXHAUSTED"

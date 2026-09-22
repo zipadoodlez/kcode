@@ -47,10 +47,6 @@ fn validate(args: &Args) -> Result<()> {
 
 pub(crate) async fn run(args: Args) -> Result<()> {
     validate(&args)?;
-    { run_unix(args).await }
-}
-
-async fn run_unix(args: Args) -> Result<()> {
     let host = args.ssh.as_deref().expect("SSH dispatch requires a host");
     let binary = args.ssh_binary.as_deref().unwrap_or("jcode");
     super::output::stderr_info(format!("Connecting local Jcode UI to {host} over SSH..."));

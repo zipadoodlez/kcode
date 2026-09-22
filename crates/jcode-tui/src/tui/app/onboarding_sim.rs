@@ -16,7 +16,7 @@
 
 use super::App;
 use super::SessionPickerMode;
-use super::onboarding_flow::{ImportReview, OnboardingFlow, OnboardingPhase, SummaryPill};
+use super::onboarding_flow::{ImportReview, OnboardingFlow, OnboardingPhase};
 use crossterm::event::{KeyCode, KeyModifiers};
 use std::time::Instant;
 

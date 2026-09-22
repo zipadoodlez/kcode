@@ -132,8 +132,8 @@ fn desired_nofile_soft_limit(current: u64, hard: u64, minimum: u64) -> Option<u6
 }
 
 /// Create a symlink at `dst` pointing to `src` (Unix `symlink(2)`).
-pub fn symlink_or_copy(src: &Path, dst: &Path) -> std::io::Result<()> {
-    { std::os::unix::fs::symlink(src, dst) }
+pub fn symlink(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::os::unix::fs::symlink(src, dst)
 }
 
 pub use jcode_core::fs::{set_directory_permissions_owner_only, set_permissions_owner_only};

@@ -15,7 +15,6 @@
 //! lock forever. To make Unix helper leaks self-heal, each helper is spawned with
 //! a bounded TTL (`sleep <TTL>`) and refreshed periodically while work continues.
 
-use std::io;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
