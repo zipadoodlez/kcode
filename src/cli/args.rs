@@ -79,10 +79,6 @@ pub(crate) struct Args {
     #[arg(long, global = true, hide = true)]
     pub(crate) fresh_spawn: bool,
 
-    /// Internal: canonical global hotkey that launched this process.
-    #[arg(long, global = true, hide = true, value_name = "CHORD")]
-    pub(crate) spawn_hotkey: Option<String>,
-
     /// Disable auto-detection of jcode repository and self-dev mode
     #[arg(long, global = true)]
     pub(crate) no_selfdev: bool,
@@ -362,28 +358,6 @@ pub(crate) enum Command {
         r#type: bool,
     },
 
-    /// Set up the platform global hotkey to launch jcode
-    SetupHotkey {
-        /// Internal: run as the macOS hotkey listener process.
-        #[arg(long, hide = true)]
-        listen_macos_hotkey: bool,
-
-        /// Internal: show a rate-limited shortcut reminder from a CLI SessionStart hook.
-        #[arg(long, hide = true, value_name = "CLI")]
-        notify_cli_launch: Option<String>,
-
-        /// Internal: run as the Windows hotkey listener process.
-        #[arg(long, hide = true)]
-        listen_windows_hotkey: bool,
-
-        /// Remove the installed platform global hotkey listener.
-        #[arg(long)]
-        uninstall: bool,
-    },
-
-    /// Install a launcher so jcode appears in your app launcher
-    SetupLauncher,
-
     /// Browser automation setup and status
     Browser {
         /// Action (setup, status)
@@ -547,7 +521,6 @@ pub(crate) enum Command {
         #[arg(long, conflicts_with = "once")]
         json: bool,
     },
-
 }
 
 #[derive(Subcommand, Debug)]
@@ -634,11 +607,6 @@ pub(crate) enum ServerCommand {
         json: bool,
     },
 }
-
-
-
-
-
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum RestartCommand {

@@ -24,7 +24,7 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     /// The Unix side had no tests at all, so the API the bridge depends on was
-    /// only ever checked indirectly. These pin the same shape the Windows
+    /// only ever checked indirectly. These pin that shape
     /// implementation is checked against, so a future change to either cannot
     /// quietly diverge in what callers can rely on.
     #[tokio::test]
@@ -34,7 +34,7 @@ mod tests {
         let path = dir.join("round-trip.sock");
         remove_socket(&path);
 
-        let mut listener = Listener::bind(&path).expect("bind");
+        let listener = Listener::bind(&path).expect("bind");
         assert!(is_socket_path(&path), "a bound socket path should exist");
 
         let server = tokio::spawn(async move {

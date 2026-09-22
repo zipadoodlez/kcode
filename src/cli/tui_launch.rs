@@ -6,9 +6,7 @@ const MAX_INTERACTIVE_SWARM_REPLAY_PANES: usize = 16;
 use std::io::{self, Write};
 use std::process::Command as ProcessCommand;
 
-use crate::{
-    id, logging, replay, server, session, setup_hints, startup_profile, tui, video_export,
-};
+use crate::{id, logging, replay, server, session, startup_profile, tui, video_export};
 
 use super::hot_exec::{execute_requested_action, has_requested_action};
 
@@ -83,7 +81,6 @@ pub async fn run_client() -> Result<()> {
 
 pub async fn run_tui_client(
     resume_session: Option<String>,
-    startup_hints: Option<setup_hints::StartupHints>,
     server_spawning: bool,
     fresh_spawn: bool,
     remote_working_dir: Option<String>,
@@ -155,11 +152,6 @@ pub async fn run_tui_client(
         app.start_update_simulator_on_launch();
     }
     startup_profile::mark("app_new_for_remote");
-    if resume_session.is_none()
-        && let Some(hints) = startup_hints
-    {
-        apply_startup_hints(&mut app, hints);
-    }
 
     startup_profile::mark("pre_run_remote");
     startup_profile::report_to_log();
@@ -225,21 +217,6 @@ async fn should_show_server_spawning(server_spawning: bool) -> bool {
     }
 
     true
-}
-
-fn apply_startup_hints(app: &mut tui::App, hints: setup_hints::StartupHints) {
-    if let Some(status_notice) = hints.status_notice {
-        app.set_status_notice(status_notice);
-    }
-    if let Some((title, message)) = hints.display_message {
-        // Stash the card so it survives the remote History bootstrap, which
-        // clears the transcript for a brand-new session and would otherwise make
-        // the hint flash for a moment and then disappear on the idle screen.
-        app.set_pending_startup_notice(title, message);
-    }
-    if let Some(message) = hints.auto_send_message {
-        app.queue_startup_message(message);
-    }
 }
 
 #[expect(

@@ -718,12 +718,8 @@ fn launch_manual_subagent(app: &mut App, spec: ManualSubagentSpec) {
         let duration_ms = start.elapsed().as_millis() as u64;
 
         let (output, is_error, title, status) = match result {
-            Ok(output) => {
-                (output.output, false, output.title, ToolStatus::Completed)
-            }
-            Err(error) => {
-                (format!("Error: {}", error), true, None, ToolStatus::Error)
-            }
+            Ok(output) => (output.output, false, output.title, ToolStatus::Completed),
+            Err(error) => (format!("Error: {}", error), true, None, ToolStatus::Error),
         };
 
         Bus::global().publish(BusEvent::ToolUpdated(ToolEvent {
@@ -885,38 +881,6 @@ pub(super) fn handle_help_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     false
-}
-
-/// `/keys` shows the keymap diagnostics: detected terminal, discovered terminal
-/// and macOS shortcuts, and any conflicts with jcode's own keybindings.
-/// `/keys refresh` forces a fresh scan of the machine (otherwise a cached
-/// snapshot up to a day old is reused).
-pub(super) fn handle_keys_command(app: &mut App, trimmed: &str) -> bool {
-    let Some(rest) = slash_command_rest(trimmed, "/keys")
-        .or_else(|| slash_command_rest(trimmed, "/keybindings"))
-    else {
-        return false;
-    };
-
-    let force_refresh = matches!(rest.trim(), "refresh" | "rescan" | "reload");
-    let snapshot = if force_refresh {
-        crate::setup_hints::keymap::refresh_and_save()
-    } else {
-        crate::setup_hints::keymap::snapshot_cached_or_refresh()
-    };
-
-    let cfg = crate::config::config();
-    let report = crate::setup_hints::keymap::render_report(&cfg.keybindings, &snapshot);
-    app.push_display_message(DisplayMessage::system(report));
-
-    if let Some(status) =
-        crate::setup_hints::keymap::render_status_line(&cfg.keybindings, &snapshot)
-    {
-        app.set_status_notice(status);
-    } else {
-        app.set_status_notice("No keybinding conflicts detected");
-    }
-    true
 }
 
 pub(super) fn handle_model_status_command(app: &mut App, trimmed: &str) -> bool {
@@ -3589,7 +3553,6 @@ pub(super) fn handle_usage_command(app: &mut App, trimmed: &str) -> bool {
     app.request_usage_report();
     true
 }
-
 
 #[cfg(test)]
 #[path = "commands_tests.rs"]

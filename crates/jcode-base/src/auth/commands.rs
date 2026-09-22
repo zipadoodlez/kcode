@@ -89,22 +89,6 @@ fn explicit_command_exists(path: &std::path::Path) -> bool {
         return false;
     }
 
-    #[cfg(windows)]
-    {
-        let pathext =
-            std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
-        for ext in pathext
-            .split(';')
-            .map(str::trim)
-            .filter(|ext| !ext.is_empty())
-        {
-            let candidate = path.with_extension(ext.trim_start_matches('.'));
-            if candidate.exists() {
-                return true;
-            }
-        }
-    }
-
     false
 }
 
@@ -119,33 +103,7 @@ pub(crate) fn command_candidates(command: &str) -> Vec<std::ffi::OsString> {
         return vec![file_name];
     }
 
-    #[cfg(windows)]
-    let mut candidates = vec![file_name.clone()];
-    #[cfg(not(windows))]
     let candidates = vec![file_name.clone()];
-
-    #[cfg(windows)]
-    {
-        let pathext =
-            std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
-        let exts: Vec<&str> = pathext
-            .split(';')
-            .map(str::trim)
-            .filter(|ext| !ext.is_empty())
-            .collect();
-
-        for ext in exts {
-            let ext_no_dot = ext.trim_start_matches('.');
-            if ext_no_dot.is_empty() {
-                continue;
-            }
-            let mut candidate = path.to_path_buf();
-            candidate.set_extension(ext_no_dot);
-            if let Some(cand_name) = candidate.file_name() {
-                candidates.push(cand_name.to_os_string());
-            }
-        }
-    }
 
     dedup_preserve_order(candidates)
 }

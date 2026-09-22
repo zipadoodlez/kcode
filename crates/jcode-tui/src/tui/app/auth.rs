@@ -1636,7 +1636,6 @@ impl App {
     }
 
     fn start_cursor_login(&mut self) {
-
         self.push_display_message(DisplayMessage::system(
             "Cursor API Key\n\n\
              Get your API key from: https://cursor.com/settings\n\

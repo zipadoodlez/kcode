@@ -51,11 +51,10 @@ fn render_single_line_system_notice(
     msg: &DisplayMessage,
     width: u16,
 ) -> Option<Vec<Line<'static>>> {
-    let is_launch_hotkey_notice = msg.title.as_deref() == Some("Launch hotkeys");
     let is_update_divergence_notice = msg.content.starts_with("Update diverged. Press ")
         || msg.content.starts_with("Local and upstream have diverged");
     let is_cold_cache_notice = msg.content.starts_with("🧊 Prompt cache went cold");
-    if !is_cold_cache_notice && !is_launch_hotkey_notice && !is_update_divergence_notice {
+    if !is_cold_cache_notice && !is_update_divergence_notice {
         return None;
     }
 

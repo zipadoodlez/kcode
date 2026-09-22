@@ -12,7 +12,7 @@
 /// felt directly as input lag. Instead poll briefly for an early failure (e.g.
 /// no display server) so the remaining fallbacks still run, then treat a live
 /// child as success and reap it in the background.
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 #[cfg_attr(test, allow(dead_code))]
 pub(crate) fn copy_via_clipboard_helper(program: &str, args: &[&str], text: &str) -> bool {
     use std::io::Write;
@@ -65,7 +65,7 @@ pub(crate) fn copy_via_clipboard_helper(program: &str, args: &[&str], text: &str
 /// ordinary coreutils instead of real clipboard tools so they pass on headless
 /// CI: what matters is the contract (writes stdin, does not block on a
 /// long-lived owner, reports failure for a nonzero exit or a missing binary).
-#[cfg(all(test, not(any(windows, target_os = "macos"))))]
+#[cfg(all(test, not(target_os = "macos")))]
 mod tests {
     use super::copy_via_clipboard_helper;
 
@@ -108,7 +108,7 @@ mod tests {
 /// helpers on a temporary PATH. That pins the property that actually matters:
 /// the first helper that takes ownership wins, and one that fails fast hands
 /// off to the next instead of reporting a false success.
-#[cfg(all(test, not(any(windows, target_os = "macos"))))]
+#[cfg(all(test, not(target_os = "macos")))]
 mod ordering_tests {
     use super::copy_via_clipboard_helper;
     use std::io::Write;

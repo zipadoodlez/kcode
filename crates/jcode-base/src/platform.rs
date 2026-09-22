@@ -131,57 +131,19 @@ fn desired_nofile_soft_limit(current: u64, hard: u64, minimum: u64) -> Option<u6
     (desired > current).then_some(desired)
 }
 
-/// Create a symlink (Unix) or copy the file (Windows).
-///
-/// On Windows, symlinks require elevated privileges or Developer Mode,
-/// so we fall back to copying.
+/// Create a symlink at `dst` pointing to `src` (Unix `symlink(2)`).
 pub fn symlink_or_copy(src: &Path, dst: &Path) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        std::os::unix::fs::symlink(src, dst)
-    }
-    #[cfg(windows)]
-    {
-        if src.is_dir() {
-            std::os::windows::fs::symlink_dir(src, dst).or_else(|_| copy_dir_recursive(src, dst))
-        } else {
-            std::os::windows::fs::symlink_file(src, dst)
-                .or_else(|_| std::fs::copy(src, dst).map(|_| ()))
-        }
-    }
-}
-
-#[cfg(windows)]
-fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(dst)?;
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
-        } else {
-            std::fs::copy(&src_path, &dst_path)?;
-        }
-    }
-    Ok(())
+    { std::os::unix::fs::symlink(src, dst) }
 }
 
 pub use jcode_core::fs::{set_directory_permissions_owner_only, set_permissions_owner_only};
 
 /// Set file permissions to owner read/write/execute (0o755).
-/// No-op on Windows (executability is determined by file extension).
 pub fn set_permissions_executable(path: &Path) -> std::io::Result<()> {
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let perms = std::fs::Permissions::from_mode(0o755);
         std::fs::set_permissions(path, perms)
-    }
-    #[cfg(windows)]
-    {
-        let _ = path;
-        Ok(())
     }
 }
 
@@ -190,7 +152,6 @@ pub fn set_permissions_executable(path: &Path) -> std::io::Result<()> {
 /// This helps jcode survive short-lived reload/connect spikes even when it was
 /// launched from a shell with a conservative `ulimit -n` like 1024.
 pub fn raise_nofile_limit_best_effort(minimum_soft_limit: u64) {
-    #[cfg(unix)]
     {
         let mut limit = libc::rlimit {
             rlim_cur: 0,
@@ -235,19 +196,12 @@ pub fn raise_nofile_limit_best_effort(minimum_soft_limit: u64) {
             ));
         }
     }
-
-    #[cfg(not(unix))]
-    {
-        let _ = minimum_soft_limit;
-    }
 }
 
 /// Check if a process is running by PID.
 ///
-/// On Unix, uses `kill(pid, 0)` to check without sending a signal.
-/// On Windows, uses OpenProcess to query the process.
+/// Uses `kill(pid, 0)` to check without sending a signal.
 pub fn is_process_running(pid: u32) -> bool {
-    #[cfg(unix)]
     {
         let result = unsafe { libc::kill(pid as i32, 0) };
         if result == 0 {
@@ -256,83 +210,19 @@ pub fn is_process_running(pid: u32) -> bool {
         let err = std::io::Error::last_os_error();
         !matches!(err.raw_os_error(), Some(code) if code == libc::ESRCH)
     }
-    #[cfg(windows)]
-    {
-        use windows_sys::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
-        use windows_sys::Win32::System::Threading::{
-            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-        };
-        unsafe {
-            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-            if handle.is_null() {
-                return false;
-            }
-            let mut exit_code = 0u32;
-            let ok = GetExitCodeProcess(handle, &mut exit_code);
-            CloseHandle(handle);
-            ok != 0 && exit_code == STILL_ACTIVE as u32
-        }
-    }
 }
 
 /// Send a signal to an entire detached process group/session led by `pid`.
 ///
-/// On Unix, detached tasks are spawned with `setsid()`, so the leader PID is
-/// also the process-group/session ID. Signaling `-pid` reaches the full tree.
+/// Detached tasks are spawned with `setsid()`, so the leader PID is also the
+/// process-group/session ID. Signaling `-pid` reaches the full tree.
 pub fn signal_detached_process_group(pid: u32, signal: i32) -> std::io::Result<()> {
-    #[cfg(unix)]
     {
         let rc = unsafe { libc::kill(-(pid as i32), signal) };
         if rc == 0 {
             Ok(())
         } else {
             Err(std::io::Error::last_os_error())
-        }
-    }
-    #[cfg(windows)]
-    {
-        let _ = signal;
-        use std::os::windows::process::CommandExt;
-        use windows_sys::Win32::Foundation::CloseHandle;
-        use windows_sys::Win32::System::Threading::{
-            CREATE_NO_WINDOW, OpenProcess, PROCESS_TERMINATE, TerminateProcess,
-        };
-
-        // Detached commands commonly run through cmd.exe or PowerShell. Killing
-        // only that shell leaves compilers, test runners, and other descendants
-        // alive. taskkill's /T flag walks the Windows process tree. Keep the
-        // direct Win32 termination below as a fallback if taskkill is missing or
-        // the tree operation fails.
-        let tree_status = std::process::Command::new("taskkill.exe")
-            .args(["/PID", &pid.to_string(), "/T", "/F"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .status();
-        if tree_status.is_ok_and(|status| status.success()) {
-            return Ok(());
-        }
-        // taskkill can report failure when a descendant exits while it walks the
-        // tree, even though it successfully terminated the leader and remaining
-        // descendants. Avoid turning that benign race into a misleading access
-        // denied error from the direct-handle fallback.
-        for _ in 0..20 {
-            if !is_process_running(pid) {
-                return Ok(());
-            }
-            std::thread::sleep(std::time::Duration::from_millis(25));
-        }
-
-        unsafe {
-            let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
-            if handle.is_null() {
-                return Err(std::io::Error::last_os_error());
-            }
-            let ok = TerminateProcess(handle, 1);
-            CloseHandle(handle);
-            if ok == 0 {
-                Err(std::io::Error::last_os_error())
-            } else {
-                Ok(())
-            }
         }
     }
 }
@@ -343,7 +233,6 @@ pub fn signal_detached_process_group(pid: u32, signal: i32) -> std::io::Result<(
 /// - `Ok(Some(exit_code))` if the child exited and was reaped now
 /// - `Ok(None)` if it is still running or is not our child
 pub fn try_reap_child_process(pid: u32) -> std::io::Result<Option<i32>> {
-    #[cfg(unix)]
     {
         let mut status = 0;
         let rc = unsafe { libc::waitpid(pid as i32, &mut status, libc::WNOHANG) };
@@ -366,29 +255,15 @@ pub fn try_reap_child_process(pid: u32) -> std::io::Result<Option<i32>> {
             Ok(Some(-1))
         }
     }
-    #[cfg(windows)]
-    {
-        let _ = pid;
-        Ok(None)
-    }
 }
 
-/// Atomically swap a symlink by creating a temp symlink and renaming.
-///
-/// On Unix: creates temp symlink, then renames over target (atomic).
-/// On Windows: removes target, copies source (not atomic, but best effort).
+/// Atomically swap a symlink by creating a temp symlink and renaming it over
+/// the target.
 pub fn atomic_symlink_swap(src: &Path, dst: &Path, temp: &Path) -> std::io::Result<()> {
-    #[cfg(unix)]
     {
         let _ = std::fs::remove_file(temp);
         std::os::unix::fs::symlink(src, temp)?;
         std::fs::rename(temp, dst)?;
-    }
-    #[cfg(windows)]
-    {
-        let _ = std::fs::remove_file(temp);
-        let _ = std::fs::remove_file(dst);
-        std::fs::copy(src, dst).map(|_| ())?;
     }
     Ok(())
 }
@@ -399,7 +274,6 @@ pub fn atomic_symlink_swap(src: &Path, dst: &Path, temp: &Path) -> std::io::Resu
 /// crash restore, etc.) so the new client survives if the invoking jcode
 /// process exits or its terminal closes.
 pub fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<std::process::Child> {
-    #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
 
@@ -413,20 +287,11 @@ pub fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<std::p
         }
     }
 
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        use windows_sys::Win32::System::Threading::{CREATE_NEW_PROCESS_GROUP, DETACHED_PROCESS};
-
-        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS);
-    }
-
     cmd.spawn()
 }
 
 /// Reap a detached child without blocking the caller.
 pub fn reap_detached(child: std::process::Child) {
-    #[cfg(unix)]
     {
         let mut child = child;
         let _ = std::thread::Builder::new()
@@ -435,31 +300,13 @@ pub fn reap_detached(child: std::process::Child) {
                 let _ = child.wait();
             });
     }
-
-    #[cfg(windows)]
-    {
-        // Closing the process handle is sufficient on Windows. Unlike Unix,
-        // the child does not need to be waited on to avoid a zombie process.
-        drop(child);
-    }
 }
 
-#[cfg(windows)]
-fn spawn_replacement_process(
-    cmd: &mut std::process::Command,
-) -> std::io::Result<std::process::Child> {
-    cmd.spawn()
-}
-
-/// Replace the current process with a new command (exec on Unix).
+/// Replace the current process with a new command via `exec()`.
 ///
-/// On Unix, this calls exec() which never returns on success.
-/// On Windows, this spawns the process and exits.
-///
-/// Returns an error only if the operation fails. On success (Unix exec),
-/// this function never returns.
+/// Returns an error only if the operation fails. On success this function
+/// never returns.
 pub fn replace_process(cmd: &mut std::process::Command) -> std::io::Error {
-    #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
         let err = cmd.exec();
@@ -469,13 +316,6 @@ pub fn replace_process(cmd: &mut std::process::Command) -> std::io::Error {
             crate::util::process_fd_diagnostic_snapshot()
         ));
         err
-    }
-    #[cfg(windows)]
-    {
-        match spawn_replacement_process(cmd) {
-            Ok(_child) => std::process::exit(0),
-            Err(e) => e,
-        }
     }
 }
 

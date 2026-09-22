@@ -43,7 +43,7 @@ pub struct AccountPickerItem {
     pub title: String,
     pub subtitle: String,
     /// Full, wrapping detail rows, separate from the compact list subtitle.
-        pub details: Vec<(String, String)>,
+    pub details: Vec<(String, String)>,
     pub command: AccountPickerCommand,
 }
 

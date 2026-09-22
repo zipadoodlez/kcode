@@ -98,7 +98,7 @@ fn nested_tables_and_arrays_flatten_to_dotted_keys() {
 fn the_restart_required_list_is_the_reviewed_set() {
     assert_eq!(
         RESTART_REQUIRED_SECTIONS,
-        &["gateway", "acp", "launch_hotkeys"],
+        &["gateway", "acp"],
         "changing which sections need a restart changes what users are told; \
          confirm the consuming code really snapshots the value at startup"
     );

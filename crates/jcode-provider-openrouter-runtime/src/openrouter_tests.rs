@@ -61,11 +61,7 @@ fn test_config_dir(temp: &TempDir) -> std::path::PathBuf {
     {
         temp.path().join("Library").join("Application Support")
     }
-    #[cfg(target_os = "windows")]
-    {
-        temp.path().join("AppData").join("Roaming")
-    }
-    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    #[cfg(not(target_os = "macos"))]
     {
         temp.path().to_path_buf()
     }

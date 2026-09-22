@@ -12,10 +12,7 @@ pub fn is_waiting_for_stdin(pid: u32) -> StdinState {
     #[cfg(target_os = "macos")]
     return macos::check(pid);
 
-    #[cfg(target_os = "windows")]
-    return windows::check(pid);
-
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     return StdinState::Unknown;
 }
 
@@ -348,27 +345,6 @@ mod macos {
         }
 
         false
-    }
-}
-
-#[cfg(target_os = "windows")]
-mod windows {
-    use super::*;
-
-    pub fn check(_pid: u32) -> StdinState {
-        // Windows: use NtQueryInformationThread to check thread state
-        // A process blocked on ReadFile/ReadConsole on stdin will have
-        // its thread in a Wait state with a wait reason of UserRequest
-        //
-        // For now, use the simpler approach: check if the process has
-        // a console handle and its thread is in a wait state via
-        // WaitForSingleObject with zero timeout on the process handle
-
-        // TODO: implement with windows-sys crate
-        // - OpenProcess(PROCESS_QUERY_INFORMATION, pid)
-        // - NtQuerySystemInformation for thread states
-        // - Check for KWAIT_REASON::WrUserRequest on stdin handle
-        StdinState::Unknown
     }
 }
 

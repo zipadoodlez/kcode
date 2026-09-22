@@ -32,8 +32,6 @@ pub(super) fn ssh_unsupported_command(input: &str) -> bool {
             | "/permission"
             | "/agents"
             | "/swarm-prompt"
-            | "/keys"
-            | "/keybindings"
             | "/alignment"
             | "/reasoning"
             | "/thinking"
@@ -163,7 +161,6 @@ pub(super) fn dispatch_local_command(app: &mut App, trimmed: &str) -> bool {
     }
     super::commands::handle_cancel_command(app, trimmed)
         || super::commands::handle_help_command(app, trimmed)
-        || super::commands::handle_keys_command(app, trimmed)
         || super::commands::handle_ssh_command(app, trimmed)
         // `/test`, `/mission`, `/goal`, and `/goals` are dispatched inside
         // `handle_session_command`, so they need no separate entries here.

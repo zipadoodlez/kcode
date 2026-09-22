@@ -47,18 +47,9 @@ fn validate(args: &Args) -> Result<()> {
 
 pub(crate) async fn run(args: Args) -> Result<()> {
     validate(&args)?;
-    #[cfg(unix)]
-    {
-        run_unix(args).await
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = args;
-        bail!("native SSH TUI attach currently requires a Unix client")
-    }
+    { run_unix(args).await }
 }
 
-#[cfg(unix)]
 async fn run_unix(args: Args) -> Result<()> {
     let host = args.ssh.as_deref().expect("SSH dispatch requires a host");
     let binary = args.ssh_binary.as_deref().unwrap_or("jcode");
@@ -107,7 +98,7 @@ async fn run_unix(args: Args) -> Result<()> {
     let mut quit = signal(SignalKind::quit())?;
     let result = tokio::select! {
         result = super::tui_launch::run_tui_client(
-            args.resume, None, false, true, Some(working_dir), false, false,
+            args.resume, false, true, Some(working_dir), false, false,
         ) => result,
         _ = hup.recv() => Ok(()),
         _ = term.recv() => Ok(()),

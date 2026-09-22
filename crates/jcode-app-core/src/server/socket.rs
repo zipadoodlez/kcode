@@ -70,20 +70,7 @@ pub async fn connect_socket(path: &std::path::Path) -> Result<Stream> {
 }
 
 pub(super) async fn socket_has_live_listener(path: &std::path::Path) -> bool {
-    #[cfg(windows)]
-    {
-        // `is_socket_path` performs one non-blocking named-pipe open and treats
-        // ERROR_PIPE_BUSY as live. Do not follow it with a second connect: the
-        // first probe can temporarily occupy the only published pipe instance
-        // before the accept loop replaces it, making that second connect wait
-        // forever inside the Windows ERROR_PIPE_BUSY retry loop.
-        crate::transport::is_socket_path(path)
-    }
-
-    #[cfg(not(windows))]
-    {
-        crate::transport::is_socket_path(path) && Stream::connect(path).await.is_ok()
-    }
+    { crate::transport::is_socket_path(path) && Stream::connect(path).await.is_ok() }
 }
 
 /// Reap a provably-stale socket left behind by a dead daemon.
@@ -101,7 +88,6 @@ pub(super) async fn socket_has_live_listener(path: &std::path::Path) -> bool {
 /// either still be answering on the socket or still be holding the lock.
 ///
 /// Returns true if a stale socket was reaped.
-#[cfg(unix)]
 pub async fn reap_stale_socket_if_dead(path: &std::path::Path) -> bool {
     // Nothing to reap if the path isn't even present.
     if !crate::transport::is_socket_path(path) {
@@ -138,14 +124,6 @@ pub async fn reap_stale_socket_if_dead(path: &std::path::Path) -> bool {
     true
 }
 
-#[cfg(not(unix))]
-pub async fn reap_stale_socket_if_dead(_path: &std::path::Path) -> bool {
-    // Windows named pipes do not leave filesystem socket nodes behind after a
-    // process exits, so there is no stale artifact to reap. Probing and then
-    // "cleaning" the pipe only consumes a live server instance temporarily.
-    false
-}
-
 /// Return true if a live server process is listening on the socket path.
 ///
 /// This is intentionally weaker than [`is_server_ready`]: a live listener may
@@ -156,25 +134,21 @@ pub async fn has_live_listener(path: &std::path::Path) -> bool {
     socket_has_live_listener(path).await
 }
 
-#[cfg(unix)]
 pub(super) fn daemon_lock_path() -> PathBuf {
     crate::storage::runtime_dir().join("jcode-daemon.lock")
 }
 
-#[cfg(unix)]
 pub(super) struct DaemonLockGuard {
     _file: std::fs::File,
     path: PathBuf,
 }
 
-#[cfg(unix)]
 impl Drop for DaemonLockGuard {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.path);
     }
 }
 
-#[cfg(unix)]
 pub(super) fn try_acquire_daemon_lock(path: &std::path::Path) -> Result<Option<DaemonLockGuard>> {
     use std::fs::OpenOptions;
     use std::os::fd::AsRawFd;
@@ -200,7 +174,6 @@ pub(super) fn try_acquire_daemon_lock(path: &std::path::Path) -> Result<Option<D
     }
 }
 
-#[cfg(unix)]
 pub(super) fn acquire_daemon_lock() -> Result<DaemonLockGuard> {
     let path = daemon_lock_path();
     try_acquire_daemon_lock(&path)?.ok_or_else(|| {
@@ -211,7 +184,6 @@ pub(super) fn acquire_daemon_lock() -> Result<DaemonLockGuard> {
     })
 }
 
-#[cfg(unix)]
 pub(super) fn mark_close_on_exec<T: std::os::fd::AsRawFd>(io: &T) {
     let fd = io.as_raw_fd();
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
@@ -233,7 +205,6 @@ pub fn set_socket_path(path: &str) {
 ///
 /// Falls back to a short poll loop if the pipe read times out (e.g. server
 /// built without ready-fd support, or crash before bind).
-#[cfg(unix)]
 pub async fn spawn_server_notify(cmd: &mut std::process::Command) -> Result<std::process::Child> {
     use std::os::unix::io::FromRawFd;
     use std::os::unix::process::CommandExt;
@@ -362,7 +333,6 @@ pub async fn is_server_ready(path: &std::path::Path) -> bool {
     probe_server_ready(path, Duration::from_millis(50)).await
 }
 
-#[cfg(unix)]
 pub(super) fn take_server_start_stderr(child: &mut std::process::Child) -> String {
     use std::io::Read;
 
@@ -377,7 +347,6 @@ pub(super) fn take_server_start_stderr(child: &mut std::process::Child) -> Strin
         .unwrap_or_default()
 }
 
-#[cfg(unix)]
 pub(super) fn server_start_matches_existing_server(stderr_output: &str) -> bool {
     stderr_output.contains("Another jcode server process is already running")
         || stderr_output.contains("Refusing to replace active server socket")
@@ -395,7 +364,6 @@ pub(super) async fn wait_for_existing_server(path: &std::path::Path, timeout: Du
     false
 }
 
-#[cfg(unix)]
 pub(super) fn format_server_start_error(
     status: std::process::ExitStatus,
     stderr_output: &str,
@@ -414,7 +382,6 @@ pub(super) fn format_server_start_error(
     }
 }
 
-#[cfg(unix)]
 pub(super) async fn handle_server_start_exit(
     child: &mut std::process::Child,
     status: std::process::ExitStatus,
@@ -438,7 +405,6 @@ pub(super) async fn handle_server_start_exit(
 /// server can accept and service client requests. The env var is cleared so child
 /// processes (e.g. tool subprocesses) don't inherit a stale fd.
 pub(super) fn signal_ready_fd() {
-    #[cfg(unix)]
     {
         use std::os::unix::io::FromRawFd;
 

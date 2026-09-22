@@ -38,9 +38,9 @@ static TODOS_CACHE: std::sync::LazyLock<Mutex<TodosCache>> =
 /// Backdate `Instant::now()` by up to `amount`, saturating instead of
 /// panicking when the clock's epoch is too recent.
 ///
-/// `Instant` counts from boot on Windows (QPC) and Linux (CLOCK_MONOTONIC), so
-/// `Instant::now() - one_hour` panics with "overflow when subtracting duration
-/// from instant" when the machine booted more recently than that. This hit
+/// `Instant` counts from boot (CLOCK_MONOTONIC), so `Instant::now() -
+/// one_hour` panics with "overflow when subtracting duration from instant"
+/// when the machine booted more recently than that. This hit
 /// real users right after a reboot: the git cache invalidation below runs
 /// after every bash/edit tool, crashing the whole TUI (issue #424).
 pub(crate) fn backdated_now(amount: Duration) -> std::time::Instant {
@@ -378,11 +378,11 @@ pub(crate) fn stop_capturing_clipboard_for_tests() {
     }
 }
 
-/// Copy text to clipboard. On Windows and macOS, the native clipboard API
-/// (arboard) is authoritative, with OSC 52 as a remote-session fallback.
-/// Elsewhere, try wl-copy (Wayland), then xclip/xsel (X11, which keep owning
-/// the selection unlike arboard), then arboard, then OSC 52 as the
-/// remote-session fallback (SSH / Docker / tmux).
+/// Copy text to clipboard. On macOS, the native clipboard API (arboard)
+/// is authoritative, with OSC 52 as a remote-session fallback. On Linux, try
+/// wl-copy (Wayland), then xclip/xsel (X11, which keep owning the selection
+/// unlike arboard), then arboard, then OSC 52 as the remote-session fallback
+/// (SSH / Docker / tmux).
 pub(super) fn copy_to_clipboard(text: &str) -> bool {
     // Under test, never touch the OS clipboard. Beyond making results identical
     // on a desktop and a headless runner, the Linux path below spawns `wl-copy`,
@@ -409,27 +409,12 @@ pub(super) fn copy_to_clipboard(text: &str) -> bool {
 
     #[cfg(not(test))]
     {
-        // On Windows, the native clipboard API must run before OSC 52. Writing an
-        // OSC 52 sequence to stdout "succeeds" even when the console (conhost,
-        // older Windows Terminal) silently ignores it, which reported "Copied"
-        // while leaving the clipboard empty (issue #497). arboard talks to the
-        // Win32 clipboard directly and is authoritative there.
-        #[cfg(windows)]
-        {
-            if arboard::Clipboard::new()
-                .and_then(|mut cb| cb.set_text(text.to_string()))
-                .is_ok()
-            {
-                return true;
-            }
-            return copy_to_clipboard_osc52(text);
-        }
-
-        // Same class of bug on macOS: Apple Terminal (Terminal.app) silently
-        // ignores OSC 52, yet writing the sequence to stdout "succeeds", so we
-        // reported "Copied" while leaving the clipboard untouched. NSPasteboard
-        // via arboard (with pbcopy as a belt-and-braces fallback) is authoritative
-        // for local sessions; OSC 52 remains as the final remote-session fallback.
+        // The native clipboard API must run before OSC 52. Apple Terminal
+        // (Terminal.app) silently ignores OSC 52, yet writing the sequence to
+        // stdout "succeeds", so we previously reported "Copied" while leaving
+        // the clipboard untouched. NSPasteboard via arboard (with pbcopy as a
+        // belt-and-braces fallback) is authoritative for local sessions; OSC 52
+        // remains as the final remote-session fallback.
         #[cfg(target_os = "macos")]
         {
             if arboard::Clipboard::new()
@@ -465,7 +450,7 @@ pub(super) fn copy_to_clipboard(text: &str) -> bool {
         // selection), then arboard, and only then OSC 52 for genuinely
         // headless/remote sessions (SSH, Docker, tmux) where the native paths
         // fail fast for lack of a display server.
-        #[cfg(not(any(windows, target_os = "macos")))]
+        #[cfg(not(target_os = "macos"))]
         {
             if clipboard_helper::copy_via_clipboard_helper("wl-copy", &[], text) {
                 return true;
@@ -818,11 +803,8 @@ fn resumed_window_title(session_id: &str) -> String {
 
 /// Open `session_id` in a new terminal window.
 ///
-/// Routes through `terminal_launch` on every platform. This used to be a
-/// hardcoded `Ok(false)` off Unix, which made `/judge`, `/fork`, `/review`,
-/// `/transfer` and crash-restore silently print "No terminal found" on Windows
-/// even though the launcher already had Windows Terminal / Alacritty / WezTerm
-/// detection plus a `cmd /C start` fallback (see #715).
+/// Routes through `terminal_launch`, which detects the terminal emulator the
+/// client is running in (kitty, WezTerm, Ghostty, Alacritty, handterm).
 pub(super) fn spawn_in_new_terminal(
     exe: &Path,
     session_id: &str,

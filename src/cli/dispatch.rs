@@ -6,13 +6,11 @@ use std::process::{Command as ProcessCommand, Stdio};
 use std::time::Instant;
 
 use super::args::{
-    AmbientCommand, Args, AuthCommand, Command, MemoryCommand,
-    ModelCommand, ProviderCommand, RestartCommand, ServerCommand, SessionCommand,
-    TranscriptModeArg,
+    AmbientCommand, Args, AuthCommand, Command, MemoryCommand, ModelCommand, ProviderCommand,
+    RestartCommand, ServerCommand, SessionCommand, TranscriptModeArg,
 };
 use crate::{
-    agent, auth, build, provider, provider_catalog, server, session, setup_hints, startup_profile,
-    tui,
+    agent, auth, build, provider, provider_catalog, server, session, startup_profile, tui,
 };
 
 use super::{
@@ -174,7 +172,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             tui_launch::run_client().await?;
         }
         Some(Command::Server { action }) => match action {
-            #[cfg(unix)]
             ServerCommand::Stdio => {
                 crate::env::set_var("JCODE_NON_INTERACTIVE", "1");
                 tokio::time::timeout(
@@ -409,22 +406,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         }
         Some(Command::Dictate { r#type }) => {
             commands::run_dictate_command(r#type).await?;
-        }
-        Some(Command::SetupHotkey {
-            listen_macos_hotkey,
-            notify_cli_launch,
-            listen_windows_hotkey,
-            uninstall,
-        }) => {
-            setup_hints::run_setup_hotkey(
-                listen_macos_hotkey,
-                listen_windows_hotkey,
-                uninstall,
-                notify_cli_launch.as_deref(),
-            )?;
-        }
-        Some(Command::SetupLauncher) => {
-            setup_hints::run_setup_launcher()?;
         }
         Some(Command::Browser { action }) => {
             commands::run_browser(&action).await?;
@@ -704,8 +685,6 @@ fn map_ambient_subcommand(subcmd: AmbientCommand) -> commands::AmbientSubcommand
     }
 }
 
-
-
 fn map_transcript_mode(mode: TranscriptModeArg) -> crate::protocol::TranscriptMode {
     match mode {
         TranscriptModeArg::Insert => crate::protocol::TranscriptMode::Insert,
@@ -733,37 +712,6 @@ async fn run_default_command(args: Args) -> Result<()> {
         return Ok(());
     }
 
-    let startup_hints = if args.fresh_spawn {
-        None
-    } else {
-        // One-time: bake per-repo launch hotkeys from session history into config,
-        // then reinstall so the new chords take effect. Scanning session history
-        // can take a few hundred ms, so run it on a detached thread to keep it off
-        // the first-frame critical path. It is gated by an `imported` flag, so it
-        // does real work at most once and no-ops on every later launch.
-        if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
-            std::thread::Builder::new()
-                .name("launch-hotkey-bake".to_string())
-                .spawn(|| {
-                    if crate::config::Config::bake_launch_hotkeys_once() {
-                        setup_hints::reinstall_launch_hotkeys_after_config_change();
-                    }
-                })
-                .ok();
-        }
-
-        // Prefer existing setup hints (alignment/welcome/terminal nudges); only
-        // surface the keybinding-conflict heads-up when nothing else is queued,
-        // so we never clobber an early-launch tip. The conflict hint is
-        // self-debouncing (shown once per distinct conflict set).
-        setup_hints::maybe_show_setup_hints()
-            .or_else(|| {
-                setup_hints::maybe_show_keymap_conflict_hint(&crate::config::config().keybindings)
-            })
-            .or_else(setup_hints::maybe_show_glyph_safe_notice)
-    };
-    startup_profile::mark("setup_hints");
-
     // Best-effort: make sure the macOS menu bar session-count indicator is
     // running so it shows up automatically for every macOS user.
     commands::ensure_menubar_helper_running();
@@ -777,15 +725,6 @@ async fn run_default_command(args: Args) -> Result<()> {
     let in_jcode_repo = build::is_jcode_repo(&cwd);
     startup_profile::mark("is_jcode_repo");
     let already_in_selfdev = crate::cli::selfdev::client_selfdev_requested();
-
-    // Record where this interactive launch happened so the system-wide launch
-    // hotkeys can reopen jcode in the last project directory (Cmd+') and the
-    // last jcode repo for self-dev (Cmd+Shift+'). Best-effort; ignored unless a
-    // real TTY and not a fresh-spawn re-entry.
-    if !args.fresh_spawn && std::io::IsTerminal::is_terminal(&std::io::stdin()) {
-        let repo_dir = build::get_repo_dir();
-        setup_hints::record_launch_dirs(&cwd, repo_dir.as_deref());
-    }
 
     if in_jcode_repo && !already_in_selfdev && !args.no_selfdev {
         output::stderr_info("📍 Detected jcode repository - enabling self-dev mode");
@@ -871,7 +810,6 @@ async fn run_default_command(args: Args) -> Result<()> {
     }
     tui_launch::run_tui_client(
         args.resume,
-        startup_hints,
         !server_running,
         args.fresh_spawn,
         args.remote_working_dir,
@@ -983,25 +921,21 @@ async fn server_is_running_at(path: &std::path::Path) -> bool {
     server::has_live_listener(path).await || server::is_server_ready(path).await
 }
 
-#[cfg(unix)]
 fn spawn_lock_path(socket_path: &std::path::Path) -> std::path::PathBuf {
     std::path::PathBuf::from(format!("{}.spawning", socket_path.display()))
 }
 
-#[cfg(unix)]
 struct SpawnLockGuard {
     _file: std::fs::File,
     path: std::path::PathBuf,
 }
 
-#[cfg(unix)]
 impl Drop for SpawnLockGuard {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.path);
     }
 }
 
-#[cfg(unix)]
 fn try_acquire_spawn_lock(path: &std::path::Path) -> Result<Option<SpawnLockGuard>> {
     use std::fs::OpenOptions;
     use std::os::fd::AsRawFd;
@@ -1023,7 +957,6 @@ fn try_acquire_spawn_lock(path: &std::path::Path) -> Result<Option<SpawnLockGuar
     }
 }
 
-#[cfg(unix)]
 async fn acquire_spawn_lock_or_wait(
     socket_path: &std::path::Path,
 ) -> Result<Option<SpawnLockGuard>> {
@@ -1162,7 +1095,6 @@ async fn spawn_server_with_executable(
         return Ok(());
     }
 
-    #[cfg(unix)]
     let _spawn_lock = acquire_spawn_lock_or_wait(&socket_path).await?;
 
     if server_is_running_at(&socket_path).await {
@@ -1205,57 +1137,10 @@ async fn spawn_server_with_executable(
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
 
-    #[cfg(unix)]
     {
         let _child = server::spawn_server_notify(&mut cmd).await?;
         startup_profile::mark("server_ready");
     }
-    #[cfg(not(unix))]
-    {
-        use std::io::Read;
-
-        let mut child = cmd.spawn()?;
-        let start = std::time::Instant::now();
-        // Windows server bootstrap can legitimately take tens of seconds on
-        // slow hosts (auth preflights + provider init were observed at 15-60s
-        // on a Windows Server VPS, issue #503). The child's liveness is
-        // checked every poll, so a generous budget only delays the error for
-        // a genuinely hung server, while a crashed server still fails fast
-        // with its stderr.
-        let timeout = std::time::Duration::from_secs(120);
-        while start.elapsed() < timeout {
-            if server::has_live_listener(&socket_path).await {
-                startup_profile::mark("server_ready");
-                return Ok(());
-            }
-
-            if let Some(status) = child.try_wait()? {
-                let mut stderr = String::new();
-                if let Some(mut pipe) = child.stderr.take() {
-                    let _ = pipe.read_to_string(&mut stderr);
-                }
-                let detail = stderr.trim();
-                if detail.is_empty() {
-                    anyhow::bail!("Server exited before becoming ready (status: {})", status);
-                }
-                anyhow::bail!(
-                    "Server exited before becoming ready (status: {}). {}",
-                    status,
-                    detail
-                );
-            }
-
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
-
-        anyhow::bail!(
-            "Timed out waiting for server to become ready at {} after {}ms",
-            server::socket_path().display(),
-            timeout.as_millis()
-        );
-    }
-
-    #[cfg(unix)]
     Ok(())
 }
 

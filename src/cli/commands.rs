@@ -41,28 +41,11 @@ pub enum AmbientSubcommand {
     RunVisible,
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 fn non_empty(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
 }
-
-
-
-
-
 
 struct SyncCandidate {
     session_id: String,
@@ -70,9 +53,6 @@ struct SyncCandidate {
     size: u64,
     modified_unix: Option<i64>,
 }
-
-
-
 
 fn resolve_sync_sessions_dir(override_path: Option<&str>) -> Result<PathBuf> {
     if let Some(path) = override_path.map(str::trim).filter(|path| !path.is_empty()) {
@@ -187,11 +167,6 @@ fn run_jade_upload(
     Ok(())
 }
 
-
-
-
-
-
 fn json_value_kind(value: &serde_json::Value) -> &'static str {
     match value {
         serde_json::Value::Null => "null",
@@ -219,8 +194,6 @@ fn message_count_label(value: Option<&serde_json::Value>) -> String {
         _ => "-".to_string(),
     }
 }
-
-
 
 /// Directory that holds per-session viewer HTML files for a dashboard.
 fn dashboard_views_dir(dashboard_path: &Path) -> PathBuf {
@@ -254,15 +227,11 @@ fn relative_link(dashboard_path: &Path, view_file: &Path) -> Option<String> {
     Some(rel.to_string_lossy().replace('\\', "/"))
 }
 
-
 fn configured_label(value: Option<&str>) -> &str {
     value
         .filter(|value| !value.is_empty())
         .unwrap_or("not configured")
 }
-
-
-
 
 fn append_common_jade_args(
     args: &mut Vec<String>,
@@ -278,9 +247,6 @@ fn append_common_jade_args(
         args.extend(["--region".to_string(), region]);
     }
 }
-
-
-
 
 #[cfg(unix)]
 fn is_executable_file(path: &Path) -> bool {

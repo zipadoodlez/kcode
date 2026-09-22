@@ -234,7 +234,6 @@ pub struct SplitJson {
     pub trailing_partial: Option<String>,
 }
 
-#[cfg(unix)]
 fn read_max_open_files_limits() -> Option<(String, String)> {
     let contents = std::fs::read_to_string("/proc/self/limits").ok()?;
     contents.lines().find_map(|line| {
@@ -247,7 +246,6 @@ fn read_max_open_files_limits() -> Option<(String, String)> {
 /// Summarize the current process's file-descriptor usage for debugging reload or
 /// connect failures such as EMFILE/`Too many open files`.
 pub fn process_fd_diagnostic_snapshot() -> String {
-    #[cfg(unix)]
     {
         let pid = std::process::id();
         let fd_dir = std::path::Path::new("/proc/self/fd");
@@ -293,14 +291,6 @@ pub fn process_fd_diagnostic_snapshot() -> String {
         format!(
             "pid={} fds={} soft_limit={} hard_limit={} kinds={{socket:{}, pipe:{}, anon_inode:{}, char:{}, file:{}, dir:{}, other:{}}}",
             pid, total, soft_limit, hard_limit, sockets, pipes, anon, chars, regs, dirs, other
-        )
-    }
-
-    #[cfg(not(unix))]
-    {
-        format!(
-            "pid={} fd snapshot unsupported on this platform",
-            std::process::id()
         )
     }
 }

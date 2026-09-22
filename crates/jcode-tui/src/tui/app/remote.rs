@@ -1845,8 +1845,7 @@ fn handle_disconnected_local_command(app: &mut App, trimmed: &str) -> bool {
     let handled = super::commands_dispatch::dispatch_local_command(app, trimmed);
 
     if handled {
-        if trimmed.starts_with('/') {
-        }
+        if trimmed.starts_with('/') {}
         app.input.clear();
         app.cursor_pos = 0;
         app.reset_tab_completion();

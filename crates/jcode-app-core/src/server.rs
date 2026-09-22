@@ -2364,7 +2364,6 @@ impl Server {
         }
         Ok(())
     }
-
 }
 
 pub use self::client_api::Client;

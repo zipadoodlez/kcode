@@ -3,7 +3,7 @@ name = "jcode-transport"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Local IPC transport: Unix sockets, or Windows named pipes behind the same API"
+description = "Local IPC transport: a Unix socket behind one small Listener/Stream API"
 
 # Deliberately tiny. This exists so the harness API bridge can speak the
 # platform's local IPC without depending on `jcode-base`: the bridge is meant to
@@ -11,12 +11,6 @@ description = "Local IPC transport: Unix sockets, or Windows named pipes behind 
 # pipe handling into it would have been the other way to get there.
 [dependencies]
 tokio = { version = "1", features = ["io-util", "net", "time"] }
-
-[target.'cfg(windows)'.dependencies]
-sha2 = "0.10"
-hex = "0.4"
-# Only the error constants the pipe retry loops branch on.
-windows-sys = { version = "0.59", features = ["Win32_Foundation"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }

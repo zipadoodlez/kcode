@@ -23,6 +23,7 @@ pub mod mcp;
 mod memory;
 mod multiedit;
 mod open;
+mod panel;
 mod patch;
 mod read;
 pub mod selfdev;
@@ -30,7 +31,6 @@ pub(crate) mod serde_coerce;
 mod session_search;
 pub(crate) mod session_search_index;
 mod side_panel;
-mod panel;
 mod skill;
 mod todo;
 mod webfetch;
@@ -1502,7 +1502,6 @@ impl Registry {
             Arc::new(ambient::RequestPermissionTool::new()) as Arc<dyn Tool>,
         )
         .await;
-
     }
 
     /// Unregister a tool

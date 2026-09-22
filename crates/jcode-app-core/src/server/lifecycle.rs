@@ -207,18 +207,11 @@ async fn shutdown_temporary_server(
     std::process::exit(TEMP_SERVER_EXIT_CODE);
 }
 
-#[cfg(unix)]
 fn parent_pid() -> Option<u32> {
     let ppid = unsafe { libc::getppid() };
     (ppid > 0).then_some(ppid as u32)
 }
 
-#[cfg(not(unix))]
-fn parent_pid() -> Option<u32> {
-    None
-}
-
-#[cfg(unix)]
 pub(crate) fn process_alive(pid: u32) -> bool {
     if pid == 0 {
         return false;
@@ -233,11 +226,6 @@ pub(crate) fn process_alive(pid: u32) -> bool {
         std::io::Error::last_os_error().raw_os_error(),
         Some(libc::EPERM)
     )
-}
-
-#[cfg(not(unix))]
-pub(crate) fn process_alive(_pid: u32) -> bool {
-    true
 }
 
 #[cfg(test)]
@@ -313,7 +301,6 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
     #[test]
     fn current_process_is_alive() {
         assert!(process_alive(std::process::id()));

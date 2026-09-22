@@ -449,12 +449,6 @@ fn legacy_copilot_config_dir() -> PathBuf {
 
     if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
         PathBuf::from(xdg).join("github-copilot")
-    } else if cfg!(windows) {
-        let local_app_data = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_default();
-            format!("{}/AppData/Local", home)
-        });
-        PathBuf::from(local_app_data).join("github-copilot")
     } else {
         let home = std::env::var("HOME").unwrap_or_default();
         PathBuf::from(home).join(".config").join("github-copilot")

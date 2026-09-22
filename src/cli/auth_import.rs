@@ -15,7 +15,6 @@ fn selected_provider(choice: &ProviderChoice) -> Result<TransferProvider, &'stat
 
 // Tokio's stdin uses a blocking worker whose shutdown can hang after a timeout.
 // Poll the pipe directly instead, bounding the lifetime even if its writer stalls.
-#[cfg(unix)]
 fn read_private_stdin() -> Result<Vec<u8>, &'static str> {
     use std::os::fd::AsRawFd;
     use std::time::{Duration, Instant};
@@ -67,11 +66,6 @@ fn read_private_stdin() -> Result<Vec<u8>, &'static str> {
         }
         bytes.extend_from_slice(&buffer[..count]);
     }
-}
-
-#[cfg(not(unix))]
-fn read_private_stdin() -> Result<Vec<u8>, &'static str> {
-    Err("Native SSH credential import is supported on Unix hosts")
 }
 
 pub(crate) fn run(choice: &ProviderChoice, json: bool) -> Result<()> {

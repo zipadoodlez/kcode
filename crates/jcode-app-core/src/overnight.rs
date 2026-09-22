@@ -6,7 +6,6 @@ use crate::tool::Registry;
 use anyhow::{Context, Result};
 use chrono::{Duration as ChronoDuration, Utc};
 use serde_json::{Value, json};
-#[cfg(unix)]
 use std::ffi::CString;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -646,7 +645,6 @@ fn detect_battery() -> (Option<u8>, Option<String>) {
 }
 
 fn disk_available_gb(path: &Path) -> Option<f64> {
-    #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;
         let c_path = CString::new(path.as_os_str().as_bytes()).ok()?;
@@ -657,11 +655,6 @@ fn disk_available_gb(path: &Path) -> Option<f64> {
         }
         let bytes = stat.f_bavail as f64 * stat.f_frsize as f64;
         Some(bytes / 1024.0 / 1024.0 / 1024.0)
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = path;
-        None
     }
 }
 

@@ -269,9 +269,7 @@ pub fn purge_allocator() -> Result<AllocatorTuningInfo> {
     #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
     {
         logging::warn("allocator purge requested but no purge mechanism is available");
-        Err(anyhow!(
-            "allocator purge unavailable on this platform"
-        ))
+        Err(anyhow!("allocator purge unavailable on this platform"))
     }
 }
 

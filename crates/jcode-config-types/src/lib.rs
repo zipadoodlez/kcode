@@ -811,13 +811,12 @@ pub struct TerminalConfig {
     ///
     /// Env override: `JCODE_FOCUS_HOOK` (set empty to disable a config hook).
     pub focus_hook: Option<String>,
-    /// Terminal used by the macOS Cmd+; launch hotkey and in-app session spawns.
+    /// Terminal used for in-app session spawns.
     ///
     /// One of: `ghostty`, `iterm2`, `wezterm`, `warp`, `alacritty`, `vscode`,
     /// `terminal` (Apple Terminal). When set, this is the source of truth for
     /// which terminal jcode launches into and is preferred over the legacy
-    /// `~/.jcode/preferred_terminal.json` file. Re-run `jcode setup-hotkey`
-    /// after changing it so the generated launcher script picks up the change.
+    /// `~/.jcode/preferred_terminal.json` file.
     ///
     /// macOS only; ignored on other platforms.
     pub preferred: Option<String>,
@@ -1035,7 +1034,7 @@ pub struct KeybindingsConfig {
 impl Default for KeybindingsConfig {
     fn default() -> Self {
         // Pull platform-appropriate defaults from the single source of truth in
-        // `keybindings.rs`. This is where the macOS vs Windows/Linux split takes
+        // `keybindings.rs`. This is where the macOS vs Linux split takes
         // effect: each field resolves to its own platform's default binding.
         let p = KeybindingPlatform::current();
         let get = |id: &str, fallback: &'static str| {
@@ -1395,10 +1394,8 @@ impl Default for NotificationsConfig {
 #[serde(default)]
 pub struct PowerConfig {
     /// Prevent automatic system sleep while any jcode session is actively
-    /// streaming/processing. Linux also asks logind to block lid-switch suspend.
-    /// Windows cannot override a user-initiated lid close or power-button action;
-    /// those remain controlled by the active Windows power plan. The display is
-    /// still allowed to sleep. Default: true.
+    /// streaming/processing, and ask logind to block lid-switch suspend. The
+    /// display is still allowed to sleep. Default: true.
     ///
     /// Honored by the shared `jcode serve` daemon. The `JCODE_DISABLE_POWER_INHIBIT`
     /// environment variable forces this off regardless of the config value.
@@ -1411,52 +1408,6 @@ impl Default for PowerConfig {
             prevent_sleep_while_streaming: true,
         }
     }
-}
-
-/// A single global launch hotkey: a chord plus the directory it opens jcode in.
-///
-/// `dir` is usually an absolute path, but a few sentinels keep dynamic targets
-/// working without rewriting config on every launch:
-/// - `$HOME` -> the user's home directory.
-/// - `$LAST_DIR` -> the most recent non-home project directory jcode ran in.
-/// - `$LAST_REPO` -> the most recent jcode repo (for self-dev).
-///
-/// `self_dev = true` opens the directory as a self-dev session (passes the
-/// `self-dev` subcommand). `label` is an optional human name used in notices.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct LaunchHotkeyEntry {
-    /// jcode-style chord string, e.g. `cmd+;`, `cmd+[`, `cmd+shift+'`.
-    pub chord: String,
-    /// Directory to open (absolute path or a `$HOME`/`$LAST_DIR`/`$LAST_REPO`
-    /// sentinel).
-    pub dir: String,
-    /// Optional short label (e.g. the repo's directory name) for notices.
-    #[serde(default)]
-    pub label: String,
-    /// Open as a self-dev session instead of a normal session.
-    #[serde(default)]
-    pub self_dev: bool,
-}
-
-/// Configuration for the global "launch a new jcode" hotkeys (macOS).
-///
-/// When `entries` is empty, jcode uses its built-in defaults (`Cmd+;` -> home,
-/// `Cmd+'` -> last project, `Cmd+Shift+'` -> self-dev). Auto-import can bake a
-/// richer, per-repo mapping here once: the top repo on `Cmd+;`, home on
-/// `Cmd+'`, and the next repos on `Cmd+[` / `Cmd+]` / `Cmd+\`. Once baked the
-/// mapping is static and does not move around as the user's activity changes.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct LaunchHotkeysConfig {
-    /// Whether the global launch hotkeys are installed at all. `None` means
-    /// "not decided yet" (fall back to the legacy auto-install gating); `Some`
-    /// is an explicit user/import choice.
-    pub enabled: Option<bool>,
-    /// Explicit chord -> directory mapping. Empty = use built-in defaults.
-    pub entries: Vec<LaunchHotkeyEntry>,
-    /// Set true once auto-import has populated `entries`, so we only bake the
-    /// per-repo mapping a single time and never clobber later user edits.
-    pub imported: bool,
 }
 
 #[cfg(test)]

@@ -1993,12 +1993,6 @@ pub(in crate::tui::app) fn handle_server_event(
 
             app.maybe_show_catchup_after_history(&session_id);
 
-            // The bootstrap above may have cleared/replaced the transcript for a
-            // brand-new session, wiping the startup notice card (launch-hotkeys /
-            // welcome tip). Re-apply it so it stays visible on the idle screen
-            // instead of flashing for a moment and disappearing.
-            app.reapply_pending_startup_notice_if_cleared();
-
             let should_consume_pending_reload_status = match app
                 .pending_reload_reconnect_status
                 .as_ref()
@@ -2300,8 +2294,10 @@ pub(in crate::tui::app) fn handle_server_event(
         }
         ServerEvent::ModelUsageUpdated { route } => {
             for cached in &mut app.remote_model_options {
-                if cached.model == route.model && cached.provider == route.provider
-                    && cached.api_method == route.api_method {
+                if cached.model == route.model
+                    && cached.provider == route.provider
+                    && cached.api_method == route.api_method
+                {
                     cached.usage = route.usage.clone();
                 }
             }

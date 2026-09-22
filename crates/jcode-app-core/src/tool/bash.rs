@@ -10,17 +10,13 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{Value, json};
-#[cfg(unix)]
 use std::fs::OpenOptions;
 use std::path::Path;
-#[cfg(unix)]
 use std::process::Command as StdCommand;
 use std::process::Stdio;
 use std::sync::LazyLock;
 use std::time::Duration;
-#[cfg(unix)]
 use std::time::Instant;
-#[cfg(unix)]
 use tokio::io::AsyncReadExt;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command as TokioCommand;
@@ -33,10 +29,7 @@ const PROGRESS_MARKER_PREFIX: &str = "JCODE_PROGRESS ";
 const CHECKPOINT_MARKER_PREFIX: &str = "JCODE_CHECKPOINT ";
 const BACKGROUND_PROGRESS_GUIDANCE: &str = "For long-running background commands, prefer scripts or commands that periodically print progress updates. Best format: print lines starting with `JCODE_PROGRESS ` followed by JSON like {\"percent\":42,\"message\":\"Running\"} or {\"current\":120,\"total\":1000,\"unit\":\"batches\",\"message\":\"Epoch 2/5\",\"eta_seconds\":30}. Supported JSON fields are `percent`, `message`, `current`, `total`, `unit`, `eta_seconds`, and optional `kind`=`indeterminate` or `kind`=`checkpoint`. For milestone-style wakeups, print `JCODE_CHECKPOINT {\"message\":\"Unit tests passed\"}`. Generic fallback output that can be parsed includes `42%`, `3/10 tests`, `3 of 10 steps`, `1.5/3.0 GiB`, or phase lines like `Compiling ...`, `Downloading ...`, `Running ...`, and `Building ...`. If you are writing the script yourself, add these progress/checkpoint lines explicitly. Put large temporary files, worktrees, and virtual environments under `$JCODE_SCRATCH_DIR`, not `/tmp`, because `/tmp` may be RAM-backed.";
 const BASH_TOOL_DESCRIPTION: &str = "Run a bash command.";
-const WINDOWS_SHELL_TOOL_DESCRIPTION: &str =
-    "Run a Windows cmd.exe command (compatibility name `bash`). Use cmd.exe syntax, not Bash.";
 
-#[cfg(unix)]
 fn shell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
@@ -44,7 +37,6 @@ fn shell_single_quote(value: &str) -> String {
 /// Route ordinary `cargo` invocations (including those inside child scripts)
 /// through the repository wrapper. Besides applying the project's build policy,
 /// that wrapper appends real action timings to rust-actions.jsonl.
-#[cfg(unix)]
 fn wrap_repo_cargo_commands(command: &str, working_dir: Option<&Path>) -> Option<String> {
     let working_dir = working_dir?;
     let repo = crate::build::find_repo_in_ancestors(working_dir)?;
@@ -569,7 +561,6 @@ where
 /// sees their output as it streams. This follower polls the file while the task
 /// is `Running`, parsing complete lines from where it left off. It performs one
 /// final drain after the task leaves `Running` and then exits.
-#[cfg(unix)]
 fn spawn_detached_progress_follower(task_id: String, output_file: std::path::PathBuf) {
     tokio::spawn(async move {
         let manager = crate::background::global();
@@ -608,7 +599,6 @@ fn spawn_detached_progress_follower(task_id: String, output_file: std::path::Pat
     });
 }
 
-#[cfg(not(windows))]
 fn tool_scratch_dir() -> Option<std::path::PathBuf> {
     let dir = std::env::var_os("JCODE_SCRATCH_DIR")
         .filter(|value| !value.is_empty())
@@ -622,19 +612,16 @@ fn tool_scratch_dir() -> Option<std::path::PathBuf> {
     Some(dir)
 }
 
-#[cfg(not(windows))]
 fn configure_tool_scratch(command: &mut TokioCommand) {
     if let Some(dir) = tool_scratch_dir() {
         command.env("TMPDIR", &dir).env("JCODE_SCRATCH_DIR", dir);
     }
 }
 
-#[cfg(unix)]
 struct ProcessGroupKillGuard {
     pid: Option<u32>,
 }
 
-#[cfg(unix)]
 impl ProcessGroupKillGuard {
     fn new(pid: Option<u32>) -> Self {
         Self { pid }
@@ -645,7 +632,6 @@ impl ProcessGroupKillGuard {
     }
 }
 
-#[cfg(unix)]
 impl Drop for ProcessGroupKillGuard {
     fn drop(&mut self) {
         if let Some(pid) = self.pid {
@@ -655,24 +641,6 @@ impl Drop for ProcessGroupKillGuard {
 }
 
 fn build_shell_command(cmd_str: &str) -> TokioCommand {
-    #[cfg(windows)]
-    {
-        let mut cmd = TokioCommand::new("cmd.exe");
-        // cmd.exe does not use the standard C runtime argument-decoding rules.
-        // Passing the command through `arg` makes Rust escape nested quotes for
-        // CommandLineToArgvW, which can corrupt commands such as:
-        //
-        //     gh issue create --title "text with spaces"
-        //
-        // Tokio's `raw_arg` is specifically provided for `cmd.exe /C`. Wrap the
-        // full command in the outer quotes expected by cmd so its inner quotes
-        // reach child programs intact. `/D` disables AutoRun hooks and `/S`
-        // selects the documented quote handling used with this form.
-        cmd.args(["/D", "/S", "/C"])
-            .raw_arg(format!("\"{cmd_str}\""));
-        cmd
-    }
-    #[cfg(not(windows))]
     {
         let mut cmd = TokioCommand::new("bash");
         cmd.arg("-c").arg(cmd_str);
@@ -688,7 +656,6 @@ fn configure_background_command_stdio(command: &mut TokioCommand) {
         .stderr(Stdio::piped());
 }
 
-#[cfg(unix)]
 fn build_detached_shell_wrapper(command: &str) -> StdCommand {
     let mut cmd = StdCommand::new("bash");
     cmd.arg("-lc")
@@ -721,7 +688,6 @@ fn format_command_output(mut output: String, exit_code: Option<i32>) -> String {
 
 #[cfg(test)]
 mod utf8_truncation_tests {
-    #[cfg(any(windows, unix))]
     use super::build_shell_command;
     use super::format_command_output;
 
@@ -733,58 +699,6 @@ mod utf8_truncation_tests {
         assert!(output.starts_with(&"a".repeat(29_999)));
     }
 
-    #[cfg(windows)]
-    #[tokio::test]
-    async fn build_shell_command_uses_cmd_and_executes_command() {
-        let output = build_shell_command("echo hello-from-cmd")
-            .output()
-            .await
-            .expect("run cmd command");
-        assert!(output.status.success(), "cmd command should succeed");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            stdout.to_ascii_lowercase().contains("hello-from-cmd"),
-            "unexpected stdout: {}",
-            stdout
-        );
-
-        let probe_path = std::env::temp_dir().join(format!(
-            "jcode-cmd-quoting-probe-{}.cmd",
-            std::process::id()
-        ));
-        std::fs::write(
-            &probe_path,
-            concat!(
-                "@echo off\r\n",
-                "if \"%~1\"==\"text with spaces\" if \"%~2\"==\"\" (\r\n",
-                "  echo quoted-argument-ok\r\n",
-                "  exit /b 0\r\n",
-                ")\r\n",
-                "echo first=[%~1] second=[%~2]\r\n",
-                "exit /b 1\r\n",
-            ),
-        )
-        .expect("write cmd quoting probe");
-
-        let quoted_command = format!("call \"{}\" \"text with spaces\"", probe_path.display());
-        let quoted_output = build_shell_command(&quoted_command)
-            .output()
-            .await
-            .expect("run cmd quoting probe");
-        let _ = std::fs::remove_file(&probe_path);
-        let quoted_stdout = String::from_utf8_lossy(&quoted_output.stdout);
-        let quoted_stderr = String::from_utf8_lossy(&quoted_output.stderr);
-        assert!(
-            quoted_output.status.success(),
-            "quoted argument should remain one child-process argument; stdout={quoted_stdout:?} stderr={quoted_stderr:?}"
-        );
-        assert!(
-            quoted_stdout.contains("quoted-argument-ok"),
-            "unexpected quoted-command stdout: {quoted_stdout}"
-        );
-    }
-
-    #[cfg(unix)]
     #[tokio::test]
     async fn build_shell_command_uses_disk_backed_scratch_directory() {
         let expected = super::tool_scratch_dir().expect("jcode scratch directory");
@@ -845,11 +759,7 @@ impl Tool for BashTool {
     }
 
     fn description(&self) -> &str {
-        if cfg!(windows) {
-            WINDOWS_SHELL_TOOL_DESCRIPTION
-        } else {
-            BASH_TOOL_DESCRIPTION
-        }
+        BASH_TOOL_DESCRIPTION
     }
 
     fn parameters_schema(&self) -> Value {
@@ -869,7 +779,6 @@ impl Tool for BashTool {
             return Err(anyhow::anyhow!(refusal));
         }
 
-        #[cfg(unix)]
         if let Some(wrapped) = wrap_repo_cargo_commands(&params.command, ctx.working_dir.as_deref())
         {
             params.command = wrapped;
@@ -889,8 +798,7 @@ impl Tool for BashTool {
             // Start/attach a browser session for this jcode session.
             // This gives each agent its own browser tab, preventing
             // multi-agent conflicts when using the browser bridge.
-            if !cfg!(windows)
-                && std::env::var("BROWSER_SESSION").is_err()
+            if std::env::var("BROWSER_SESSION").is_err()
                 && let Some(session_name) = crate::browser::ensure_browser_session(&ctx.session_id)
             {
                 params.command = format!("BROWSER_SESSION={} {}", session_name, params.command);
@@ -908,7 +816,6 @@ impl BashTool {
         params: &BashInput,
         ctx: &ToolContext,
     ) -> Result<ToolOutput> {
-        #[cfg(unix)]
         if self.supports_reload_persistence(ctx) {
             return self
                 .execute_reload_persistable_foreground(params, ctx)
@@ -1117,7 +1024,6 @@ impl BashTool {
         }
     }
 
-    #[cfg(unix)]
     fn supports_reload_persistence(&self, ctx: &ToolContext) -> bool {
         matches!(
             ctx.execution_mode,
@@ -1126,7 +1032,6 @@ impl BashTool {
             && ctx.graceful_shutdown_signal.is_some()
     }
 
-    #[cfg(unix)]
     async fn execute_reload_persistable_foreground(
         &self,
         params: &BashInput,
@@ -1296,7 +1201,6 @@ impl BashTool {
                 wake,
 				move |output_path| async move {
 					let mut cmd = build_shell_command(&command);
-					#[cfg(unix)]
 					unsafe {
 						cmd.pre_exec(|| {
 							if libc::setpgid(0, 0) == -1 {
@@ -1313,7 +1217,6 @@ impl BashTool {
                     let mut child = cmd
                         .spawn()
                         .map_err(|e| anyhow::anyhow!("Failed to spawn command: {}", e))?;
-                    #[cfg(unix)]
                     let mut process_group_guard = ProcessGroupKillGuard::new(child.id());
 
                     // Stream output to file
@@ -1343,17 +1246,12 @@ impl BashTool {
 	                                }
 	                            }, if timeout_duration.is_some() => {
 	                                timed_out = true;
-	                                #[cfg(unix)]
 	                                {
 	                                    if let Some(pid) = child.id() {
 	                                        let _ = crate::platform::signal_detached_process_group(pid, libc::SIGKILL);
 	                                    } else {
 	                                        let _ = child.start_kill();
 	                                    }
-	                                }
-	                                #[cfg(not(unix))]
-	                                {
-	                                    let _ = child.start_kill();
 	                                }
 	                                break;
 	                            }
@@ -1388,7 +1286,6 @@ impl BashTool {
 
                     if timed_out {
                         let _ = child.wait().await;
-                        #[cfg(unix)]
                         process_group_guard.disarm();
                         let msg = timeout_message(timeout_ms.unwrap_or_default());
                         let timeout_line = format!("\n--- {} ---\n", msg);
@@ -1397,7 +1294,6 @@ impl BashTool {
                     }
 
                     let status = child.wait().await?;
-                    #[cfg(unix)]
                     process_group_guard.disarm();
                     let exit_code = status.code();
 
@@ -1478,6 +1374,6 @@ impl BashTool {
     }
 }
 
-#[cfg(all(test, not(windows)))]
+#[cfg(test)]
 #[path = "bash_tests.rs"]
 mod tests;

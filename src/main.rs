@@ -47,27 +47,6 @@ fn parse_alloc_tuning(value: Option<&str>, default: i32) -> i32 {
 #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
 fn configure_system_allocator() {}
 
-#[cfg(windows)]
-fn main() -> Result<()> {
-    // Windows executables default to a much smaller main-thread stack than the
-    // Unix environments where most development happens. The CLI/provider setup
-    // path can exceed that reserve before Tokio takes over, producing an
-    // unrecoverable STATUS_STACK_OVERFLOW. Keep the linker defaults unchanged
-    // for every auxiliary binary and run the Jcode entry point on a deliberately
-    // sized stack instead.
-    const WINDOWS_MAIN_STACK_SIZE: usize = 8 * 1024 * 1024;
-    match std::thread::Builder::new()
-        .name("jcode-main".to_string())
-        .stack_size(WINDOWS_MAIN_STACK_SIZE)
-        .spawn(run_main)?
-        .join()
-    {
-        Ok(result) => result,
-        Err(panic) => std::panic::resume_unwind(panic),
-    }
-}
-
-#[cfg(not(windows))]
 fn main() -> Result<()> {
     run_main()
 }
@@ -76,29 +55,6 @@ fn run_main() -> Result<()> {
     configure_system_allocator();
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
-    // SessionStart hooks should be effectively invisible to Claude Code and
-    // Codex. Handle this tiny callback before the Tokio runtime and normal Jcode
-    // startup path so it does not initialize providers, start cleanup threads,
-    // check for updates, or emit first-run disclosure text into the
-    // parent CLI's hook output.
-    if let Some(source) = cli_launch_hint_source_invocation() {
-        return jcode::setup_hints::run_setup_hotkey(false, false, false, Some(&source));
-    }
-
-    // The macOS global-hotkey listener must run on the real main thread with a
-    // Core Foundation run loop (Carbon `RegisterEventHotKey` delivers events
-    // there). Intercept it before building the tokio runtime, which would
-    // otherwise move execution onto a worker thread with no run loop and leave
-    // the Cmd+; hotkey silently dead.
-    if is_macos_hotkey_listener_invocation() {
-        return jcode::setup_hints::run_macos_hotkey_listener_main_thread();
-    }
-
-    // The generated LSUIElement helper hard-links this universal binary under
-    // a dedicated executable name. Intercept that multicall entry point before
-    // Tokio/CLI startup so AppKit and Notification Center stay on the real main
-    // thread and the helper never initializes an agent session.
-
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
@@ -106,34 +62,8 @@ fn run_main() -> Result<()> {
     runtime.block_on(async { jcode::run().await })
 }
 
-/// True when invoked as `jcode setup-hotkey --listen-macos-hotkey`.
-fn is_macos_hotkey_listener_invocation() -> bool {
-    args_are_macos_hotkey_listener(std::env::args().skip(1))
-}
-
-fn args_are_macos_hotkey_listener(args: impl IntoIterator<Item = String>) -> bool {
-    let args: Vec<String> = args.into_iter().collect();
-    args.first().map(String::as_str) == Some("setup-hotkey")
-        && args.iter().any(|a| a == "--listen-macos-hotkey")
-}
-
-fn cli_launch_hint_source_invocation() -> Option<String> {
-    cli_launch_hint_source(std::env::args().skip(1))
-}
-
-fn cli_launch_hint_source(args: impl IntoIterator<Item = String>) -> Option<String> {
-    let args: Vec<String> = args.into_iter().collect();
-    if args.first().map(String::as_str) != Some("setup-hotkey") {
-        return None;
-    }
-    let index = args.iter().position(|arg| arg == "--notify-cli-launch")?;
-    args.get(index + 1).cloned()
-}
-
 #[cfg(test)]
 mod tests {
-    use super::args_are_macos_hotkey_listener;
-    use super::cli_launch_hint_source;
     use super::parse_alloc_tuning;
 
     #[test]
@@ -153,51 +83,5 @@ mod tests {
         assert_eq!(parse_alloc_tuning(Some("-1"), 4), 4);
         // i32 overflow falls back to default rather than wrapping.
         assert_eq!(parse_alloc_tuning(Some("4294967296"), 4), 4);
-    }
-
-    fn argv(args: &[&str]) -> Vec<String> {
-        args.iter().map(|s| s.to_string()).collect()
-    }
-
-    #[test]
-    fn detects_listener_invocation() {
-        assert!(args_are_macos_hotkey_listener(argv(&[
-            "setup-hotkey",
-            "--listen-macos-hotkey"
-        ])));
-    }
-
-    #[test]
-    fn ignores_plain_setup_hotkey() {
-        assert!(!args_are_macos_hotkey_listener(argv(&["setup-hotkey"])));
-    }
-
-    #[test]
-    fn ignores_other_commands() {
-        assert!(!args_are_macos_hotkey_listener(argv(&[
-            "serve",
-            "--listen-macos-hotkey"
-        ])));
-        assert!(!args_are_macos_hotkey_listener(argv(&[])));
-    }
-
-    #[test]
-    fn detects_cli_launch_hint_callback() {
-        assert_eq!(
-            cli_launch_hint_source(argv(&["setup-hotkey", "--notify-cli-launch", "claude"])),
-            Some("claude".to_string())
-        );
-    }
-
-    #[test]
-    fn ignores_launch_hint_flag_on_other_commands_or_without_value() {
-        assert_eq!(
-            cli_launch_hint_source(argv(&["serve", "--notify-cli-launch", "codex"])),
-            None
-        );
-        assert_eq!(
-            cli_launch_hint_source(argv(&["setup-hotkey", "--notify-cli-launch"])),
-            None
-        );
     }
 }

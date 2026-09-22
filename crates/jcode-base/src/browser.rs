@@ -46,26 +46,12 @@ fn browser_dir() -> PathBuf {
 
 pub fn browser_binary_path() -> PathBuf {
     let dir = browser_dir();
-    #[cfg(windows)]
-    {
-        dir.join("browser.exe")
-    }
-    #[cfg(not(windows))]
-    {
-        dir.join("browser")
-    }
+    { dir.join("browser") }
 }
 
 fn host_binary_path() -> PathBuf {
     let dir = browser_dir();
-    #[cfg(windows)]
-    {
-        dir.join("firefox-agent-bridge-host.exe")
-    }
-    #[cfg(not(windows))]
-    {
-        dir.join("firefox-agent-bridge-host")
-    }
+    { dir.join("firefox-agent-bridge-host") }
 }
 
 fn xpi_path() -> PathBuf {
@@ -579,10 +565,6 @@ fn get_platform_asset_name() -> String {
     {
         "browser-macos-x64".to_string()
     }
-    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-    {
-        "browser-windows-x64.exe".to_string()
-    }
     #[cfg(not(any(
         all(target_os = "linux", target_arch = "x86_64"),
         all(target_os = "linux", target_arch = "aarch64"),
@@ -615,8 +597,6 @@ fn install_native_host_manifest() -> Result<bool> {
         && let Some(existing_path) = existing["path"].as_str()
         && std::path::Path::new(existing_path).exists()
     {
-        #[cfg(target_os = "windows")]
-        register_windows_native_host_manifest(&manifest_path)?;
         return Ok(false);
     }
 
@@ -649,49 +629,7 @@ fn install_native_host_manifest() -> Result<bool> {
 
     std::fs::write(&manifest_path, serde_json::to_string_pretty(&manifest)?)?;
 
-    #[cfg(target_os = "windows")]
-    register_windows_native_host_manifest(&manifest_path)?;
-
     Ok(true)
-}
-
-#[cfg(target_os = "windows")]
-fn register_windows_native_host_manifest(manifest_path: &std::path::Path) -> Result<()> {
-    let key = format!(
-        r"HKCU\Software\Mozilla\NativeMessagingHosts\{}",
-        NATIVE_HOST_NAME
-    );
-    let output = std::process::Command::new("reg")
-        .args([
-            "add",
-            &key,
-            "/ve",
-            "/t",
-            "REG_SZ",
-            "/d",
-            &manifest_path.to_string_lossy(),
-            "/f",
-        ])
-        .output()
-        .context("Failed to register Firefox native messaging host in Windows registry")?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let details = stderr.trim();
-        if details.is_empty() {
-            anyhow::bail!(
-                "Failed to register Firefox native messaging host in Windows registry: {}",
-                stdout.trim()
-            );
-        }
-        anyhow::bail!(
-            "Failed to register Firefox native messaging host in Windows registry: {}",
-            details
-        )
-    }
 }
 
 fn native_messaging_hosts_dir() -> Result<PathBuf> {
@@ -709,14 +647,7 @@ fn native_messaging_hosts_dir() -> Result<PathBuf> {
             .join("Mozilla")
             .join("NativeMessagingHosts"))
     }
-    #[cfg(target_os = "windows")]
-    {
-        // On Windows, native messaging hosts are registered via the Windows Registry
-        // We'll write the manifest file to a known location and handle registry separately
-        let appdata = dirs::data_dir().context("No app data directory")?;
-        Ok(appdata.join("Mozilla").join("NativeMessagingHosts"))
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         Err(anyhow::anyhow!("Unsupported platform for native messaging"))
     }
@@ -925,19 +856,7 @@ pub fn is_firefox_running() -> bool {
             .map(|s| s.success())
             .unwrap_or(false)
     }
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("tasklist")
-            .args(["/FI", "IMAGENAME eq firefox.exe", "/NH"])
-            .output()
-            .map(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .to_ascii_lowercase()
-                    .contains("firefox.exe")
-            })
-            .unwrap_or(false)
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         false
     }
@@ -986,20 +905,7 @@ fn launch_firefox_detached() -> bool {
         }
         false
     }
-    #[cfg(target_os = "windows")]
-    {
-        let mut cmd = std::process::Command::new("cmd");
-        cmd.args(["/C", "start", "", "firefox"])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-        if let Ok(child) = crate::platform::spawn_detached(&mut cmd) {
-            crate::platform::reap_detached(child);
-            return true;
-        }
-        false
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         false
     }
@@ -1089,13 +995,6 @@ async fn install_extension() -> Result<String> {
             }
         }
     }
-    #[cfg(target_os = "windows")]
-    {
-        let _ = tokio::process::Command::new("cmd")
-            .args(["/C", "start", "", &xpi_url])
-            .spawn();
-    }
-
     msg.push_str("       Opened Firefox with extension install prompt.\n");
     msg.push_str("       Click \"Add\" when prompted to install the extension.\n");
 

@@ -6,17 +6,16 @@
 pub(crate) use crate::mock_provider::MockProvider;
 pub(crate) use anyhow::{Context, Result};
 pub(crate) use async_trait::async_trait;
-pub(crate) use futures::{SinkExt, StreamExt, stream};
+pub(crate) use futures::{StreamExt, stream};
 pub(crate) use jcode::agent::Agent;
 pub(crate) use jcode::message::{ContentBlock, Message, Role, StreamEvent, ToolDefinition};
-pub(crate) use jcode::protocol::{Request, ServerEvent};
+pub(crate) use jcode::protocol::ServerEvent;
 pub(crate) use jcode::provider::{EventStream, Provider};
 pub(crate) use jcode::server;
 pub(crate) use jcode::session::{Session, StoredCompactionState};
 pub(crate) use jcode::tool::Registry;
 pub(crate) use std::ffi::OsString;
 pub(crate) use std::io::Read;
-pub(crate) use std::net::TcpListener as StdTcpListener;
 #[cfg(unix)]
 use std::os::fd::FromRawFd;
 #[cfg(unix)]
@@ -25,11 +24,7 @@ pub(crate) use std::process::{Child, Command, Stdio};
 pub(crate) use std::sync::Arc;
 pub(crate) use std::sync::Mutex;
 pub(crate) use std::time::{Duration, Instant};
-pub(crate) use tokio::net::TcpStream;
 pub(crate) use tokio::time::timeout;
-pub(crate) use tokio_tungstenite::connect_async;
-pub(crate) use tokio_tungstenite::tungstenite::Message as WsMessage;
-pub(crate) use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
 static JCODE_HOME_LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
 

@@ -160,11 +160,6 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     RegisteredCommand::public("/config", "Show or edit configuration"),
     RegisteredCommand::public("/log", "Mark the current location in the jcode logs"),
     RegisteredCommand::public(
-        "/keys",
-        "Show keybinding conflicts with your terminal and OS (/keys refresh to rescan)",
-    ),
-    RegisteredCommand::hidden("/keybindings", "Alias for /keys"),
-    RegisteredCommand::public(
         "/diff",
         "Cycle or set diff display mode (off/inline/full/pinned/file)",
     ),
@@ -2087,13 +2082,7 @@ mod external_cli_suggestion_tests {
     fn known_aliases_are_registered() {
         let names: std::collections::HashSet<&str> =
             REGISTERED_COMMANDS.iter().map(|c| c.name).collect();
-        for alias in [
-            "/keybindings",
-            "/commit-and-push",
-            "/resume-all",
-            "/hotkeys",
-            "/keys",
-        ] {
+        for alias in ["/commit-and-push", "/resume-all", "/hotkeys"] {
             assert!(names.contains(alias), "{alias} is not registered");
         }
     }

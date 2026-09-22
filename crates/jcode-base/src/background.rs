@@ -1392,11 +1392,6 @@ impl BackgroundTaskManager {
                     let _ = crate::platform::signal_detached_process_group(pid, libc::SIGKILL);
                 }
             }
-            #[cfg(windows)]
-            {
-                let _ = crate::platform::signal_detached_process_group(pid, 0);
-            }
-
             let completed_at = Utc::now();
             status.status = BackgroundTaskStatus::Failed;
             status.exit_code = None;

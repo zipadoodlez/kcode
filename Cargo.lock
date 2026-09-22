@@ -2927,9 +2927,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-stream",
- "tokio-tungstenite",
  "toml",
- "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2972,7 +2970,6 @@ dependencies = [
  "jcode-schema-dialect",
  "jcode-selfdev-types",
  "jcode-session-types",
- "jcode-setup-hints",
  "jcode-swarm-core",
  "jcode-task-types",
  "jcode-terminal-image",
@@ -2997,7 +2994,6 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
- "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3070,12 +3066,10 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
- "tokio-tungstenite",
  "toml",
  "url",
  "urlencoding",
  "uuid",
- "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3128,7 +3122,6 @@ dependencies = [
  "rand 0.9.3",
  "unicode-properties",
  "unicode-segmentation",
- "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3647,26 +3640,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jcode-setup-hints"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "dirs",
- "global-hotkey",
- "jcode-build-meta",
- "jcode-config-types",
- "jcode-core",
- "jcode-logging",
- "jcode-storage",
- "jcode-terminal-launch",
- "serde",
- "serde_json",
- "tempfile",
- "toml",
- "windows-sys 0.59.0",
-]
-
-[[package]]
 name = "jcode-storage"
 version = "0.1.0"
 dependencies = [
@@ -3729,10 +3702,7 @@ dependencies = [
 name = "jcode-transport"
 version = "0.1.0"
 dependencies = [
- "hex",
- "sha2 0.10.9",
  "tokio",
- "windows-sys 0.59.0",
 ]
 
 [[package]]

@@ -965,15 +965,9 @@ fn process_cpu_ticks() -> Option<u64> {
     None
 }
 
-#[cfg(unix)]
 fn clock_ticks_per_second() -> Option<f64> {
     let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
     if ticks > 0 { Some(ticks as f64) } else { None }
-}
-
-#[cfg(not(unix))]
-fn clock_ticks_per_second() -> Option<f64> {
-    None
 }
 
 fn maybe_record_flicker_event(history: &mut FlickerFrameHistory, current: &FlickerFrameSample) {

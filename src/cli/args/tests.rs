@@ -187,7 +187,6 @@ fn remote_working_dir_option_parses() {
     );
 }
 
-
 #[test]
 fn model_list_subcommand_parses() {
     let args = Args::try_parse_from(["jcode", "model", "list", "--json", "--verbose"]).unwrap();
@@ -242,7 +241,6 @@ fn session_rename_subcommand_parses() {
         other => panic!("unexpected command: {:?}", other),
     }
 }
-
 
 #[test]
 fn login_no_browser_flag_parses() {
@@ -742,4 +740,3 @@ fn onboarding_repair_brief_commands_are_valid_cli() {
     ])
     .expect("provider add --base-url --model --api-key-stdin must parse");
 }
-

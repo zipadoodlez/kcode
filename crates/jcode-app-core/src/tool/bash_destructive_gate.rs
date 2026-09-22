@@ -17,7 +17,6 @@ pub(super) fn destructive_command_refusal(
 ) -> Option<String> {
     let mut risk_ctx = jcode_command_risk::RiskContext::from_env(working_dir);
     // Assess the same scratch path that the child shell actually receives.
-    #[cfg(not(windows))]
     {
         risk_ctx.scratch_dir = super::tool_scratch_dir();
     }
@@ -50,11 +49,8 @@ pub(super) fn destructive_command_refusal(
 /// Lives beside the gate so the schema and the policy that reads it stay in
 /// sync, and so bash.rs stays inside the code-size budget.
 pub(super) fn bash_parameters_schema() -> serde_json::Value {
-    let cmd_desc = if cfg!(windows) {
-        "The Windows command to execute via cmd.exe. Use cmd.exe syntax and quoting, not Bash syntax."
-    } else {
-        "The bash command to execute. Put large temp files under `$JCODE_SCRATCH_DIR`, not `/tmp`."
-    };
+    let cmd_desc =
+        "The bash command to execute. Put large temp files under `$JCODE_SCRATCH_DIR`, not `/tmp`.";
     serde_json::json!({
         "type": "object",
         "required": ["command"],
@@ -92,7 +88,7 @@ pub(super) fn bash_parameters_schema() -> serde_json::Value {
     })
 }
 
-#[cfg(all(test, not(windows)))]
+#[cfg(test)]
 mod tests {
     use super::destructive_command_refusal;
 

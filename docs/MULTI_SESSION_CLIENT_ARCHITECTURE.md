@@ -14,7 +14,6 @@ See also:
 
 - [`SERVER_ARCHITECTURE.md`](./SERVER_ARCHITECTURE.md)
 - [`SWARM_ARCHITECTURE.md`](./SWARM_ARCHITECTURE.md)
-- [`WINDOWS.md`](./WINDOWS.md)
 
 ## Summary
 

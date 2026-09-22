@@ -1,30 +1,20 @@
 use super::{App, MouseScrollTarget};
-#[cfg(unix)]
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedReceiver;
-#[cfg(unix)]
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 
-#[cfg(unix)]
 use std::io::{Read, Write};
-#[cfg(unix)]
 use std::os::unix::net::UnixStream;
-#[cfg(unix)]
 use std::path::PathBuf;
-#[cfg(unix)]
 use std::sync::mpsc::{self, Receiver, Sender};
-#[cfg(unix)]
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-#[cfg(unix)]
 use std::thread::{self, JoinHandle};
-#[cfg(unix)]
 use std::time::Duration;
 
-#[cfg(unix)]
 const ENV_SOCKET: &str = "HANDTERM_NATIVE_SCROLL_SOCKET";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,7 +24,6 @@ pub(super) enum PaneKind {
     SidePanel,
 }
 
-#[cfg(unix)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct PaneState {
     pub kind: PaneKind,
@@ -47,13 +36,11 @@ pub(super) struct PaneState {
     pub viewport_length: usize,
 }
 
-#[cfg(unix)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 struct PaneSnapshot {
     panes: Vec<PaneState>,
 }
 
-#[cfg(unix)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum AppToHost {
@@ -67,32 +54,21 @@ pub(super) enum HostToApp {
 }
 
 pub(super) struct HandtermNativeScrollClient {
-    #[cfg(unix)]
     updates_tx: Sender<AppToHost>,
     commands_rx: UnboundedReceiver<HostToApp>,
-    #[cfg(unix)]
     last_sent: Option<PaneSnapshot>,
-    #[cfg(unix)]
     stop: Arc<AtomicBool>,
-    #[cfg(unix)]
     thread: Option<JoinHandle<()>>,
 }
 
 impl HandtermNativeScrollClient {
     pub(super) fn connect_from_env() -> Option<Self> {
-        #[cfg(not(unix))]
-        {
-            None
-        }
-
-        #[cfg(unix)]
         {
             let socket_path = std::env::var_os(ENV_SOCKET).map(PathBuf::from)?;
             Self::connect(socket_path)
         }
     }
 
-    #[cfg(unix)]
     fn connect(socket_path: PathBuf) -> Option<Self> {
         let (updates_tx, updates_rx) = mpsc::channel();
         let (commands_tx, commands_rx) = unbounded_channel();
@@ -108,13 +84,6 @@ impl HandtermNativeScrollClient {
     }
 
     pub(super) fn sync_from_app(&mut self, app: &App) {
-        #[cfg(not(unix))]
-        {
-            let _ = app;
-            return;
-        }
-
-        #[cfg(unix)]
         {
             let snapshot = app.current_native_scroll_snapshot();
             if self.last_sent.as_ref() == Some(&snapshot) {
@@ -137,7 +106,6 @@ impl HandtermNativeScrollClient {
     }
 }
 
-#[cfg(unix)]
 impl Drop for HandtermNativeScrollClient {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
@@ -148,7 +116,6 @@ impl Drop for HandtermNativeScrollClient {
 }
 
 impl App {
-    #[cfg(unix)]
     fn current_native_scroll_snapshot(&self) -> PaneSnapshot {
         let mut panes = Vec::new();
         if let Some(layout) = crate::tui::ui::last_layout_snapshot() {
@@ -204,7 +171,6 @@ impl App {
     }
 }
 
-#[cfg(unix)]
 fn spawn_bridge_thread(
     socket_path: PathBuf,
     updates_rx: Receiver<AppToHost>,
@@ -226,7 +192,6 @@ fn spawn_bridge_thread(
     }
 }
 
-#[cfg(unix)]
 fn bridge_thread(
     socket_path: PathBuf,
     updates_rx: Receiver<AppToHost>,
@@ -311,7 +276,6 @@ fn bridge_thread(
     }
 }
 
-#[cfg(unix)]
 fn connect_with_retry(socket_path: &PathBuf, stop: &AtomicBool) -> Option<UnixStream> {
     while !stop.load(Ordering::Relaxed) {
         match UnixStream::connect(socket_path) {
@@ -322,7 +286,6 @@ fn connect_with_retry(socket_path: &PathBuf, stop: &AtomicBool) -> Option<UnixSt
     None
 }
 
-#[cfg(unix)]
 fn write_line<T: Serialize>(stream: &mut UnixStream, message: &T) -> Result<()> {
     let mut bytes = serde_json::to_vec(message).context("failed encoding native scroll state")?;
     bytes.push(b'\n');

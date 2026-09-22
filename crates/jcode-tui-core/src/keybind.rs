@@ -513,8 +513,6 @@ pub fn format_binding(binding: &KeyBinding) -> String {
     if binding.modifiers.contains(KeyModifiers::SUPER) {
         let label = if cfg!(target_os = "macos") {
             "Cmd"
-        } else if cfg!(windows) {
-            "Win"
         } else {
             "Super"
         };

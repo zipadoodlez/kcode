@@ -4,7 +4,7 @@
 
 [![Latest Release](https://badgen.net/github/release/1jehuang/jcode?icon=github)](https://github.com/1jehuang/jcode/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-blue?style=flat-square)](https://github.com/1jehuang/jcode/releases)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS-blue?style=flat-square)](https://github.com/1jehuang/jcode/releases)
 [![Last Commit](https://badgen.net/github/last-commit/1jehuang/jcode/master?icon=github)](https://github.com/1jehuang/jcode/commits/master)
 [![GitHub Stars](https://badgen.net/github/stars/1jehuang/jcode?icon=github)](https://github.com/1jehuang/jcode/stargazers)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/nBe9vGyK9a)
@@ -35,11 +35,6 @@ The most intelligent harness
 ```bash
 # macOS & Linux
 curl -fsSL https://jcode.sh/install | bash
-```
-
-```powershell
-# Windows 11 (PowerShell 5.1+)
-irm https://jcode.sh/install.ps1 | iex
 ```
 
 Need Homebrew, source builds, provider setup, or want an agent to set it up for you?
@@ -806,7 +801,6 @@ Notes:
 - [Swarm Architecture](docs/SWARM_ARCHITECTURE.md)
 - [Server Architecture](docs/SERVER_ARCHITECTURE.md)
 - [Safety System](docs/SAFETY_SYSTEM.md)
-- [Windows Notes](docs/WINDOWS.md)
 - [Wrappers and Shell Integration](docs/WRAPPERS.md)
 - [Refactoring Notes](docs/REFACTORING.md)
 
@@ -829,9 +823,6 @@ Set up jcode on this machine for me.
 
    - macOS or Linux via install script:
      curl -fsSL https://jcode.sh/install | bash
-
-   - Windows PowerShell:
-     irm https://jcode.sh/install.ps1 | iex
 
    - From source if the above paths are not appropriate:
      git clone https://github.com/1jehuang/jcode.git
@@ -894,21 +885,6 @@ pkg install glibc patchelf
 curl -fsSL https://jcode.sh/install | bash
 ```
 
-```powershell
-# Windows 11 x64 or ARM64 (PowerShell 5.1+)
-irm https://jcode.sh/install.ps1 | iex
-```
-
-The Windows installer selects the correct architecture and verifies the download
-against the release's `SHA256SUMS`. Alacritty and the optional global launch
-hotkey require explicit consent and are not installed by default. See
-[Windows support, security, Defender, and SmartScreen notes](docs/WINDOWS.md).
-
-If a release does not contain a matching Windows asset, the installer stops
-instead of unexpectedly starting a long compilation. An explicit source build
-is available with `-BuildFromSource` and requires Git, Rust, and Visual Studio
-2022 Build Tools with the **Desktop development with C++** workload.
-
 ### macOS via Homebrew
 
 ```bash
@@ -966,7 +942,6 @@ Add `--dry-run` to preview what would be removed without deleting anything.
 |---|---|
 | **Linux** x86_64 / aarch64 | Fully supported |
 | **macOS** Apple Silicon & Intel | Supported |
-| **Windows** x86_64 | Supported (native + WSL2) |
 | **Termux** aarch64 / x86_64 | Supported with `pkg install glibc patchelf` |
 
 </div>

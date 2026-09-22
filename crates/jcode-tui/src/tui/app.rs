@@ -26,8 +26,8 @@ use crossterm::event::{
 };
 use debug::DebugTrace;
 use futures::StreamExt;
-use helpers::*;
 pub(crate) use helpers::effort_display_label;
+use helpers::*;
 use jcode_tui_messages::DisplayMessage;
 use ratatui::DefaultTerminal;
 use std::cell::RefCell;
@@ -1493,11 +1493,6 @@ pub struct App {
     unknown_hotkey_seen: std::collections::HashMap<String, u32>,
     // When the last unknown-hotkey notice was shown, for rate limiting.
     last_unknown_hotkey_notice: Option<Instant>,
-    // Persistent startup notice card (e.g. launch-hotkeys / welcome tip) shown on
-    // the idle screen of a fresh session. Stashed so it can be re-applied after
-    // the remote History bootstrap clears the transcript for a brand-new session,
-    // which otherwise makes the card flash for a moment and disappear.
-    pending_startup_notice: Option<(String, String)>,
     // Experimental feature warnings already shown in this session.
     experimental_feature_warnings_seen: HashSet<String>,
     // Active first-use experimental warning for the currently running tool.

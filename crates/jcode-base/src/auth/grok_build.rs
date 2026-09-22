@@ -203,7 +203,7 @@ fn grok_home(
 }
 
 fn managed_cli_path() -> Result<PathBuf> {
-    let name = if cfg!(windows) { "grok.exe" } else { "grok" };
+    let name = "grok";
     Ok(crate::storage::jcode_dir()?
         .join("provider-backends")
         .join("grok-build")
@@ -300,7 +300,7 @@ async fn download_from_base(client: &reqwest::Client, base: &str) -> Result<Vec<
     if !valid_version(version) {
         bail!("xAI returned an invalid Grok Build version: {version:?}");
     }
-    let extension = if cfg!(windows) { ".exe" } else { "" };
+    let extension = "";
     let url = format!("{base}/grok-{version}-{}{extension}", platform_name()?);
     Ok(client
         .get(&url)

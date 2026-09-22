@@ -343,7 +343,6 @@ pub fn export_account_at(
 fn read_store(path: &Path) -> Result<Vec<u8>, TransferError> {
     let mut options = std::fs::OpenOptions::new();
     options.read(true);
-    #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
         options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
@@ -459,13 +458,6 @@ pub fn import_at(
     secure_publish(home, provider.store_name(), &store)
 }
 
-#[cfg(not(unix))]
-fn secure_publish(_: &Path, _: &str, _: &[u8]) -> Result<(), TransferError> {
-    // Do not pretend Unix permission bits enforce a private Windows ACL.
-    Err(TransferError::UnsupportedPlatform)
-}
-
-#[cfg(unix)]
 fn secure_publish(home: &Path, name: &str, bytes: &[u8]) -> Result<(), TransferError> {
     use std::ffi::CString;
     use std::fs::File;

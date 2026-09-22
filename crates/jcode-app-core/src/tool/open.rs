@@ -199,9 +199,6 @@ fn parse_target(target: &str) -> Result<Option<ParsedTarget>> {
     };
 
     let scheme = &target[..colon_index];
-    if scheme.len() == 1 && cfg!(windows) {
-        return Ok(None);
-    }
     if !scheme
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
@@ -374,16 +371,6 @@ async fn open_target(target: &ResolvedTarget) -> Result<String> {
         };
         try_unix_openers(vec![vec![arg.clone()], vec![OsString::from("open"), arg]]).await
     }
-
-    #[cfg(windows)]
-    {
-        match target {
-            ResolvedTarget::Local { path, .. } => open::that_detached(path),
-            ResolvedTarget::Url(url) => open::that_detached(url),
-        }
-        .context("Failed to open with the system opener")?;
-        Ok("system opener".to_string())
-    }
 }
 
 async fn reveal_target(path: &Path, kind: LocalTargetKind) -> Result<(String, bool)> {
@@ -421,18 +408,6 @@ async fn reveal_target(path: &Path, kind: LocalTargetKind) -> Result<(String, bo
         ])
         .await?;
         Ok((backend, false))
-    }
-
-    #[cfg(windows)]
-    {
-        let mut cmd = Command::new("explorer.exe");
-        if kind == LocalTargetKind::Directory {
-            cmd.arg(path);
-        } else {
-            cmd.arg(format!("/select,{}", path.display()));
-        }
-        spawn_with_grace(cmd, "explorer").await?;
-        return Ok(("explorer".to_string(), true));
     }
 }
 

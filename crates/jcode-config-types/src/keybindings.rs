@@ -7,7 +7,7 @@
 //! fallbacks back onto the shared `Alt`/`Ctrl` defaults).
 //!
 //! This module splits the defaults into two explicit lists, one for macOS and
-//! one for everything else (Windows/Linux), and records *how each default was
+//! one for everything else (Linux), and records *how each default was
 //! chosen* so we can tell the difference between:
 //!
 //! * a binding a developer explicitly decided should be the default on that
@@ -24,12 +24,12 @@
 /// Which platform family a default keybinding targets.
 ///
 /// macOS terminals encode several modifier combinations differently from
-/// Windows/Linux, so the two families get independent default lists.
+/// Linux, so the two families get independent default lists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeybindingPlatform {
     /// Apple platforms (macOS).
     MacOs,
-    /// Windows, Linux, and other non-macOS platforms.
+    /// Linux and other non-macOS platforms.
     Other,
 }
 
@@ -55,7 +55,7 @@ impl KeybindingPlatform {
     pub const fn label(self) -> &'static str {
         match self {
             KeybindingPlatform::MacOs => "macOS",
-            KeybindingPlatform::Other => "Windows/Linux",
+            KeybindingPlatform::Other => "Linux",
         }
     }
 }
@@ -152,7 +152,7 @@ pub struct KeybindingDefault {
     pub description: &'static str,
     /// Default for macOS.
     pub macos: PlatformDefault,
-    /// Default for Windows/Linux.
+    /// Default for Linux.
     pub other: PlatformDefault,
 }
 
@@ -334,8 +334,8 @@ pub const KEYBINDING_DEFAULTS: &[KeybindingDefault] = &[
     KeybindingDefault {
         id: "open_resume",
         description: "Open the /resume session picker",
-        // Cmd+B is free in jcode on macOS. On Windows/Linux, Ctrl+R is already
-        // taken by session recovery, so use Alt+R there.
+        // Cmd+B is free in jcode on macOS. On Linux, Ctrl+R is already taken
+        // by session recovery, so use Alt+R there.
         macos: PlatformDefault::dev("cmd+b"),
         other: PlatformDefault::dev("alt+r"),
     },
@@ -480,7 +480,7 @@ Confirm it as the intended default for {here_label} (dev/ai) or adjust it.",
 /// platforms. Useful for `/config`-style surfaces and debugging.
 pub fn keybinding_defaults_report() -> String {
     let mut out = String::new();
-    out.push_str("Keybinding defaults (macOS | Windows/Linux):\n");
+    out.push_str("Keybinding defaults (macOS | Linux):\n");
     for entry in KEYBINDING_DEFAULTS {
         out.push_str(&format!(
             "  {id:<20} {mac:<16} ({mac_prov})  |  {other:<16} ({other_prov})\n",

@@ -89,14 +89,6 @@ pub(super) fn extract_input_shell_command(input: &str) -> Option<&str> {
 }
 
 fn build_input_shell_command(command: &str) -> std::process::Command {
-    #[cfg(windows)]
-    {
-        let mut cmd = std::process::Command::new("cmd.exe");
-        cmd.arg("/C").arg(command);
-        cmd
-    }
-
-    #[cfg(not(windows))]
     {
         let mut cmd = std::process::Command::new("bash");
         cmd.arg("-c").arg(command);
@@ -3822,8 +3814,7 @@ impl App {
         let trimmed = input.trim();
         let handled = super::commands_dispatch::dispatch_local_command(self, trimmed);
         if handled {
-            if trimmed.starts_with('/') {
-            }
+            if trimmed.starts_with('/') {}
             return;
         }
 

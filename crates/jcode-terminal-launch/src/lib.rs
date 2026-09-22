@@ -177,17 +177,11 @@ pub fn sh_escape(text: &str) -> String {
 }
 
 pub fn shell_command(args: &[String]) -> String {
-    #[cfg(unix)]
     {
         args.iter()
             .map(|arg| sh_escape(arg))
             .collect::<Vec<_>>()
             .join(" ")
-    }
-
-    #[cfg(not(unix))]
-    {
-        args.join(" ")
     }
 }
 
@@ -201,7 +195,6 @@ fn push_unique_terminal(candidates: &mut Vec<String>, term: impl Into<String>) {
     }
 }
 
-#[cfg(unix)]
 fn terminal_env_value(client_terminal_env: &[(String, String)], key: &str) -> Option<String> {
     if client_terminal_env.is_empty() {
         return std::env::var(key).ok().filter(|value| !value.is_empty());
@@ -214,7 +207,6 @@ fn terminal_env_value(client_terminal_env: &[(String, String)], key: &str) -> Op
         .filter(|value| !value.is_empty())
 }
 
-#[cfg(unix)]
 fn detected_resume_terminal_with_client_env(
     client_terminal_env: &[(String, String)],
 ) -> Option<String> {
@@ -343,26 +335,10 @@ const MACOS_TERMINAL_PREFERENCE: &[&str] = &[
     "terminal",
 ];
 
-#[cfg(unix)]
 pub fn detected_resume_terminal() -> Option<String> {
     detected_resume_terminal_with_client_env(&[])
 }
 
-#[cfg(not(unix))]
-pub fn detected_resume_terminal() -> Option<String> {
-    if std::env::var("WT_SESSION").is_ok() {
-        return Some("wt".to_string());
-    }
-    if std::env::var("WEZTERM_EXECUTABLE").is_ok() || std::env::var("WEZTERM_PANE").is_ok() {
-        return Some("wezterm".to_string());
-    }
-    if std::env::var("ALACRITTY_WINDOW_ID").is_ok() {
-        return Some("alacritty".to_string());
-    }
-    None
-}
-
-#[cfg(unix)]
 fn resume_terminal_candidates_with_client_env(
     client_terminal_env: &[(String, String)],
     configured_terminal: Option<&str>,
@@ -419,25 +395,9 @@ fn resume_terminal_candidates_with_client_env(
     candidates
 }
 
-#[cfg(unix)]
 pub fn resume_terminal_candidates() -> Vec<String> {
     let configured_terminal = std::env::var("JCODE_TERMINAL").ok();
     resume_terminal_candidates_with_client_env(&[], configured_terminal.as_deref())
-}
-
-#[cfg(not(unix))]
-pub fn resume_terminal_candidates() -> Vec<String> {
-    let mut candidates = Vec::new();
-    if let Ok(term) = std::env::var("JCODE_TERMINAL") {
-        push_unique_terminal(&mut candidates, term);
-    }
-    if let Some(term) = detected_resume_terminal() {
-        push_unique_terminal(&mut candidates, term);
-    }
-    for term in ["alacritty", "wt", "wezterm", "cmd"] {
-        push_unique_terminal(&mut candidates, term);
-    }
-    candidates
 }
 
 pub fn spawn_command_in_new_terminal_with(
@@ -447,7 +407,6 @@ pub fn spawn_command_in_new_terminal_with(
 ) -> Result<bool> {
     let mut last_spawn_error: Option<std::io::Error> = None;
 
-    #[cfg(unix)]
     let candidates = {
         let configured_terminal = std::env::var("JCODE_TERMINAL").ok();
         resume_terminal_candidates_with_client_env(
@@ -455,9 +414,6 @@ pub fn spawn_command_in_new_terminal_with(
             configured_terminal.as_deref(),
         )
     };
-    #[cfg(not(unix))]
-    let candidates = resume_terminal_candidates();
-
     for term in candidates {
         let Some(mut cmd) = build_spawn_command(&term, command, cwd) else {
             continue;
@@ -658,7 +614,6 @@ fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Opt
     }
 
     match term {
-        #[cfg(unix)]
         "herdr" => {
             // `pane split` deliberately creates a shell and returns its pane id;
             // `pane run` is the atomic, bracketed-paste-aware way to start a
@@ -687,7 +642,6 @@ fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Opt
                 cmd.env("JCODE_FRESH_SPAWN", "1");
             }
         }
-        #[cfg(unix)]
         "tmux" => {
             cmd.args(["split-window", "-h"]);
             if let Some(pane) = terminal_env_value(&command.client_terminal_env, "TMUX_PANE") {
@@ -698,7 +652,6 @@ fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Opt
                 .arg(&command.program)
                 .args(&command.args);
         }
-        #[cfg(unix)]
         "zellij" => {
             cmd.args(["action", "new-pane", "--direction", "right", "--cwd"])
                 .arg(cwd)
@@ -706,7 +659,6 @@ fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Opt
                 .arg(&command.program)
                 .args(&command.args);
         }
-        #[cfg(unix)]
         "screen" => {
             let inner = format!(
                 "cd {} && exec {}",
@@ -718,7 +670,6 @@ fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Opt
             }
             cmd.args(["-X", "screen", "sh", "-lc"]).arg(inner);
         }
-        #[cfg(unix)]
         "handterm" => {
             let shell = shell_command(&command_parts(command));
             cmd.args(["--backend", "gpu", "--exec", &shell]);
@@ -803,16 +754,6 @@ fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Opt
             cmd = Command::new("osascript");
             cmd.args(["-e", &macos_terminal_applescript(command, cwd)]);
         }
-        #[cfg(not(unix))]
-        "wt" => {
-            cmd.args(["new-tab", "--title", title]);
-            cmd.arg(&command.program).args(&command.args);
-        }
-        #[cfg(not(unix))]
-        "cmd" => {
-            cmd.args(["/C", "start", title, "cmd.exe", "/K"]);
-            cmd.arg(windows_command_line(&command_parts(command)));
-        }
         _ => return None,
     }
 
@@ -825,27 +766,6 @@ fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Opt
     }
 
     Some(cmd)
-}
-
-#[cfg(any(not(unix), test))]
-fn windows_arg_quote(arg: &str) -> String {
-    if arg.is_empty()
-        || arg
-            .chars()
-            .any(|c| c.is_whitespace() || matches!(c, '"' | '&' | '|' | '<' | '>' | '^'))
-    {
-        format!("\"{}\"", arg.replace('"', "\\\""))
-    } else {
-        arg.to_string()
-    }
-}
-
-#[cfg(any(not(unix), test))]
-fn windows_command_line(args: &[String]) -> String {
-    args.iter()
-        .map(|arg| windows_arg_quote(arg))
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 fn command_parts(command: &TerminalCommand) -> Vec<String> {
@@ -927,9 +847,6 @@ fn macos_terminal_applescript(command: &TerminalCommand, cwd: &Path) -> String {
     format!("tell application \"Terminal\"\n    activate\n    do script \"{escaped}\"\nend tell")
 }
 
-#[cfg(test)]
-#[path = "windows_portable_tests.rs"]
-mod windows_portable_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1014,7 +931,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn snapshot_client_terminal_env_captures_set_vars_only() {
         let _guard = ENV_LOCK.lock().unwrap();
         unsafe {
@@ -1034,7 +950,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn detected_resume_terminal_recognizes_ghostty_env() {
         let _guard = ENV_LOCK.lock().unwrap();
         unsafe {
@@ -1054,7 +969,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn tmux_client_context_is_preferred_over_terminal_emulator() {
         let client_env = vec![
             (
@@ -1071,7 +985,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn inner_multiplexers_are_preferred_over_outer_tmux() {
         for (marker, value, expected) in [
             ("ZELLIJ", "0", "zellij"),
@@ -1090,7 +1003,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn term_program_detects_supported_emulators_cross_platform() {
         for (value, expected) in [
             ("ghostty", "ghostty"),
@@ -1107,7 +1019,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn explicit_terminal_override_stays_ahead_of_tmux() {
         let client_env = vec![
             (
@@ -1123,7 +1034,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn authoritative_non_tmux_client_context_ignores_server_tmux() {
         let client_env = vec![("TERM".to_string(), "xterm-256color".to_string())];
 
@@ -1132,7 +1042,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn tmux_context_without_current_pane_uses_emulator_fallbacks() {
         let client_env = vec![
             (
@@ -1148,7 +1057,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn herdr_context_is_preferred_over_outer_emulator_and_tmux() {
         let client_env = vec![
             ("HERDR_ENV".to_string(), "1".to_string()),
@@ -1164,7 +1072,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn missing_tmux_binary_falls_back_to_detected_emulator() {
         let _guard = ENV_LOCK.lock().unwrap();
         let previous_terminal = std::env::var_os("JCODE_TERMINAL");
@@ -1202,7 +1109,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn tmux_spawn_opens_right_split_in_requesting_pane() {
         let command = TerminalCommand::new(
             "/usr/local/bin/jcode",
@@ -1241,7 +1147,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn zellij_spawn_opens_right_pane_with_resume_command() {
         let command = TerminalCommand::new(
             "/opt/jcode",
@@ -1270,7 +1175,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn screen_spawn_opens_window_in_requesting_session() {
         let command = TerminalCommand::new(
             "/opt/Jcode App/jcode",
@@ -1317,7 +1221,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn herdr_spawn_splits_calling_pane_and_runs_resume_command() {
         let command = TerminalCommand::new(
             "/usr/local/bin/jcode",
@@ -1349,7 +1252,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn herdr_spawn_adapter_executes_split_then_run_with_quoted_values() {
         use std::os::unix::fs::PermissionsExt;
 
@@ -1411,39 +1313,10 @@ mod tests {
     #[test]
     fn shell_command_quotes_arguments() {
         let shell = shell_command(&["jcode".to_string(), "it's ok".to_string()]);
-        #[cfg(unix)]
         assert_eq!(shell, "'jcode' 'it'\"'\"'s ok'");
     }
 
     #[test]
-    #[cfg(not(unix))]
-    fn windows_candidates_end_with_cmd_fallback() {
-        let candidates = resume_terminal_candidates();
-        assert!(candidates.contains(&"alacritty".to_string()));
-        assert!(candidates.contains(&"wt".to_string()));
-        assert_eq!(candidates.last().map(String::as_str), Some("cmd"));
-    }
-
-    #[test]
-    #[cfg(not(unix))]
-    fn windows_cmd_fallback_runs_jcode_under_cmd_k() {
-        let command = TerminalCommand::new(
-            std::path::PathBuf::from(r"C:\Program Files\jcode\jcode.exe"),
-            vec!["self-dev".to_string()],
-        )
-        .title("jcode");
-        let cmd = build_spawn_command("cmd", &command, Path::new(r"C:\Users\me")).unwrap();
-        let args: Vec<String> = cmd
-            .get_args()
-            .map(|arg| arg.to_string_lossy().into_owned())
-            .collect();
-        assert_eq!(&args[..5], ["/C", "start", "jcode", "cmd.exe", "/K"]);
-        assert!(args[5].contains(r#""C:\Program Files\jcode\jcode.exe""#));
-        assert!(args[5].contains("self-dev"));
-    }
-
-    #[test]
-    #[cfg(unix)]
     fn macos_terminal_inner_script_runs_jcode() {
         let command = TerminalCommand::new(
             std::path::PathBuf::from("/usr/local/bin/jcode"),
@@ -1459,7 +1332,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn macos_terminal_inner_script_injects_fresh_spawn() {
         let command =
             TerminalCommand::new(std::path::PathBuf::from("/usr/local/bin/jcode"), vec![])
@@ -1472,7 +1344,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn macos_terminal_applescript_uses_do_script() {
         let command = TerminalCommand::new(
             std::path::PathBuf::from("/usr/local/bin/jcode"),
@@ -1510,7 +1381,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn macos_ghostty_wrapper_falls_back_when_applescript_fails() {
         use std::os::unix::fs::PermissionsExt;
 
@@ -1656,7 +1526,6 @@ mod tests {
             env_value(&cmd, "JCODE_SPAWN_PROGRAM").as_deref(),
             Some("/usr/local/bin/jcode")
         );
-        #[cfg(unix)]
         assert_eq!(
             env_value(&cmd, "JCODE_SPAWN_COMMAND").as_deref(),
             Some("'/usr/local/bin/jcode' '--resume' 'ses_abc'")

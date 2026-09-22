@@ -81,8 +81,7 @@ terminal the user is actually attached to:
   explicitly distinguish the client's terminal from the server's.
 
 Covered keys include the terminal multiplexers (zellij, tmux, screen), terminal
-emulators (kitty, wezterm, ghostty, alacritty, iTerm, Windows Terminal,
-handterm), and the display server (`DISPLAY`, `WAYLAND_DISPLAY`). Only vars that
+emulators (kitty, wezterm, ghostty, alacritty, iTerm, handterm), and the display server (`DISPLAY`, `WAYLAND_DISPLAY`). Only vars that
 the client actually has set are forwarded.
 
 ## Examples

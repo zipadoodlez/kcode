@@ -625,7 +625,6 @@ fn test_save_input_for_reload_removes_stale_file_when_state_is_empty() {
 
     // Backdate the file past the staleness window; now an empty save must
     // remove it so a long-stale queue cannot resurrect on a later restore.
-    #[cfg(unix)]
     {
         let stale_age_secs = 400; // > 300s staleness cutoff
         let target = std::time::SystemTime::now() - Duration::from_secs(stale_age_secs);
@@ -651,10 +650,6 @@ fn test_save_input_for_reload_removes_stale_file_when_state_is_empty() {
             !path.exists(),
             "an empty save must remove a stale reload file so old queued messages cannot resurrect"
         );
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = std::fs::remove_file(&path);
     }
 }
 

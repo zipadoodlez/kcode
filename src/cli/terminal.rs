@@ -13,35 +13,6 @@ pub struct TuiRuntimeState {
 const INHERITED_MODES_ENV: &str = "JCODE_TUI_INHERITED_MODES";
 const INHERITED_THEME_ENV: &str = "JCODE_TUI_INHERITED_THEME";
 
-// Crossterm's Windows implementation enables Win32 console mouse input but does
-// not emit the VT mouse-tracking modes. Windows Terminal and other ConPTY hosts
-// use those VT modes to decide whether a wheel detent is a mouse event or should
-// be translated into Up/Down keys in the alternate screen. Without this second
-// signal, wheel scrolling can accidentally browse prompt history instead of the
-// chat transcript even though crossterm reports mouse capture as enabled.
-#[cfg(any(windows, test))]
-const WINDOWS_VT_MOUSE_ENABLE: &[u8] = b"\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1015h\x1b[?1006h";
-#[cfg(any(windows, test))]
-const WINDOWS_VT_MOUSE_DISABLE: &[u8] = b"\x1b[?1006l\x1b[?1015l\x1b[?1003l\x1b[?1002l\x1b[?1000l";
-
-#[cfg(windows)]
-fn sync_windows_vt_mouse_capture(enabled: bool) -> io::Result<()> {
-    let sequence = if enabled {
-        WINDOWS_VT_MOUSE_ENABLE
-    } else {
-        WINDOWS_VT_MOUSE_DISABLE
-    };
-    let stdout = io::stdout();
-    let mut stdout = stdout.lock();
-    stdout.write_all(sequence)?;
-    stdout.flush()
-}
-
-#[cfg(not(windows))]
-fn sync_windows_vt_mouse_capture(_enabled: bool) -> io::Result<()> {
-    Ok(())
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct InheritedTerminalModes {
     mouse_capture: bool,
@@ -402,11 +373,6 @@ pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)>
         }
         if modes.mouse_capture {
             crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
-            if let Err(err) = sync_windows_vt_mouse_capture(true) {
-                crate::logging::warn(&format!(
-                    "failed to enable Windows VT mouse tracking: {err}"
-                ));
-            }
         }
         modes
     } else {
@@ -426,11 +392,6 @@ pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)>
         }
         if modes.mouse_capture {
             crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
-            if let Err(err) = sync_windows_vt_mouse_capture(true) {
-                crate::logging::warn(&format!(
-                    "failed to enable Windows VT mouse tracking: {err}"
-                ));
-            }
         }
         modes
     };
@@ -483,11 +444,6 @@ fn cleanup_tui_runtime(state: &TuiRuntimeState, restore_terminal: bool) {
             let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableFocusChange);
         }
         if state.mouse_capture {
-            if let Err(error) = sync_windows_vt_mouse_capture(false) {
-                crate::logging::warn(&format!(
-                    "failed to disable Windows VT mouse capture: {error}"
-                ));
-            }
             let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
         }
         if state.keyboard_enhanced {
@@ -569,7 +525,6 @@ fn init_tui_terminal_resume() -> Result<ratatui::DefaultTerminal> {
     Ok(terminal)
 }
 
-#[cfg(unix)]
 pub fn signal_name(sig: i32) -> &'static str {
     match sig {
         1 => "SIGHUP",
@@ -586,12 +541,6 @@ pub fn signal_name(sig: i32) -> &'static str {
     }
 }
 
-#[cfg(not(unix))]
-pub fn signal_name(_sig: i32) -> &'static str {
-    "unknown"
-}
-
-#[cfg(unix)]
 fn signal_crash_reason(sig: i32) -> String {
     match sig {
         libc::SIGHUP => "Terminal or window closed (SIGHUP)".to_string(),
@@ -602,7 +551,6 @@ fn signal_crash_reason(sig: i32) -> String {
     }
 }
 
-#[cfg(unix)]
 fn handle_termination_signal(sig: i32) -> ! {
     mark_current_session_crashed(signal_crash_reason(sig));
 
@@ -620,7 +568,6 @@ fn handle_termination_signal(sig: i32) -> ! {
     std::process::exit(128 + sig);
 }
 
-#[cfg(unix)]
 pub fn spawn_session_signal_watchers() {
     use tokio::signal::unix::{SignalKind, signal};
 
@@ -648,179 +595,6 @@ pub fn spawn_session_signal_watchers() {
     spawn_one(libc::SIGTERM, SignalKind::terminate());
     spawn_one(libc::SIGINT, SignalKind::interrupt());
     spawn_one(libc::SIGQUIT, SignalKind::quit());
-}
-
-#[cfg(not(unix))]
-pub fn spawn_session_signal_watchers() {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Mutex;
-
-    static TEST_SESSION_LOCK: Mutex<()> = Mutex::new(());
-
-    fn test_guard() -> TuiRuntimeGuard {
-        // All terminal-mode flags disabled so teardown only performs the minimal
-        // (and TTY-safe) restore path during tests.
-        TuiRuntimeGuard::new(TuiRuntimeState {
-            mouse_capture: false,
-            keyboard_enhanced: false,
-            focus_change: false,
-        })
-    }
-
-    #[test]
-    fn inherited_terminal_modes_roundtrip() {
-        let modes = InheritedTerminalModes {
-            mouse_capture: true,
-            keyboard_enhanced: false,
-            focus_change: true,
-        };
-        assert_eq!(InheritedTerminalModes::decode(&modes.encode()), Some(modes));
-    }
-
-    #[test]
-    fn windows_vt_mouse_modes_enable_and_disable_the_same_tracking_protocols() {
-        let enable = String::from_utf8_lossy(WINDOWS_VT_MOUSE_ENABLE);
-        let disable = String::from_utf8_lossy(WINDOWS_VT_MOUSE_DISABLE);
-        for mode in ["1000", "1002", "1003", "1015", "1006"] {
-            assert!(
-                enable.contains(&format!("?{mode}h")),
-                "enable sequence must turn on VT mouse mode {mode}"
-            );
-            assert!(
-                disable.contains(&format!("?{mode}l")),
-                "disable sequence must turn off VT mouse mode {mode}"
-            );
-        }
-    }
-
-    #[test]
-    fn inherited_terminal_modes_reject_malformed_values() {
-        assert_eq!(InheritedTerminalModes::decode("mouse=1,keyboard=1"), None);
-        assert_eq!(
-            InheritedTerminalModes::decode("mouse=yes,keyboard=1,focus=1"),
-            None
-        );
-    }
-
-    #[test]
-    fn resume_requires_valid_terminal_handoff_metadata() {
-        let modes = InheritedTerminalModes {
-            mouse_capture: true,
-            keyboard_enhanced: true,
-            focus_change: true,
-        };
-        assert!(has_terminal_exec_handoff(true, Some(modes)));
-        assert!(!has_terminal_exec_handoff(true, None));
-        assert!(!has_terminal_exec_handoff(false, Some(modes)));
-    }
-
-    #[test]
-    fn every_exec_action_preserves_terminal_modes() {
-        let with = |field: &str| {
-            let mut result = crate::tui::RunResult::default();
-            match field {
-                "reload" => result.reload_session = Some("session_test".into()),
-                "rebuild" => result.rebuild_session = Some("session_test".into()),
-                "update" => result.update_session = Some("session_test".into()),
-                "restart" => result.restart_session = Some("session_test".into()),
-                _ => unreachable!(),
-            }
-            result
-        };
-
-        for field in ["reload", "rebuild", "update", "restart"] {
-            assert!(
-                run_result_will_exec(&with(field), false),
-                "{field} must preserve terminal modes across exec"
-            );
-        }
-        assert!(run_result_will_exec(
-            &crate::tui::RunResult::default(),
-            true
-        ));
-        assert!(!run_result_will_exec(
-            &crate::tui::RunResult::default(),
-            false
-        ));
-    }
-
-    #[test]
-    fn guard_drop_restores_terminal_when_not_finished() {
-        // Simulates the error/panic path where explicit teardown is skipped:
-        // the guard must restore the terminal exactly once on drop (issue #214).
-        GUARD_DROP_RESTORES.with(|c| c.set(0));
-        {
-            let _guard = test_guard();
-        }
-        let restores = GUARD_DROP_RESTORES.with(|c| c.get());
-        assert_eq!(
-            restores, 1,
-            "dropping an un-finished guard must restore the terminal once"
-        );
-    }
-
-    #[test]
-    fn guard_finish_disarms_drop_restore() {
-        // The happy path calls finish(); the drop safety net must NOT fire again.
-        GUARD_DROP_RESTORES.with(|c| c.set(0));
-        let guard = test_guard();
-        guard.finish(true);
-        let restores = GUARD_DROP_RESTORES.with(|c| c.get());
-        assert_eq!(
-            restores, 0,
-            "finish() should disarm the guard so drop does not double-restore"
-        );
-    }
-
-    #[test]
-    fn test_session_recovery_tracking() {
-        let _guard = TEST_SESSION_LOCK.lock().unwrap();
-        set_current_session("test_session_123");
-
-        let stored = get_current_session();
-        assert_eq!(stored.as_deref(), Some("test_session_123"));
-    }
-
-    #[test]
-    fn test_session_recovery_message_format() {
-        let _guard = TEST_SESSION_LOCK.lock().unwrap();
-        let test_session = "session_format_test_12345";
-        set_current_session(test_session);
-
-        if let Some(session_id) = get_current_session() {
-            let mut output = Vec::new();
-            write_session_resume_hint(&mut output, &session_id).unwrap();
-            let output = String::from_utf8(output).unwrap();
-            let expected_cmd = format!("jcode --resume {}", session_id);
-            assert!(output.contains(&expected_cmd));
-            assert!(output.contains("to resume"));
-            assert!(!session_id.is_empty());
-        } else {
-            panic!("Session ID should be set");
-        }
-    }
-
-    #[test]
-    fn session_resume_hint_writer_reports_closed_stderr_without_panicking() {
-        struct ClosedWriter;
-
-        impl Write for ClosedWriter {
-            fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
-                Err(io::Error::new(io::ErrorKind::BrokenPipe, "stderr closed"))
-            }
-
-            fn flush(&mut self) -> io::Result<()> {
-                Ok(())
-            }
-        }
-
-        let error = write_session_resume_hint(ClosedWriter, "session_closed_pipe")
-            .expect_err("closed stderr should be reported as an I/O error");
-        assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
-    }
 }
 
 #[cfg(test)]

@@ -680,7 +680,6 @@ impl App {
             hotkey_usage: None,
             unknown_hotkey_seen: std::collections::HashMap::new(),
             last_unknown_hotkey_notice: None,
-            pending_startup_notice: None,
             experimental_feature_warnings_seen: HashSet::new(),
             active_experimental_feature_notice: None,
             interleave_message: None,
@@ -831,7 +830,6 @@ impl App {
             (t_prompt - t_session).as_secs_f64() * 1000.0,
             t_prompt.as_secs_f64() * 1000.0,
         ));
-
 
         let mut app = Self {
             provider,
@@ -1122,7 +1120,6 @@ impl App {
             hotkey_usage: None,
             unknown_hotkey_seen: std::collections::HashMap::new(),
             last_unknown_hotkey_notice: None,
-            pending_startup_notice: None,
             experimental_feature_warnings_seen: HashSet::new(),
             active_experimental_feature_notice: None,
             interleave_message: None,

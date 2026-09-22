@@ -409,7 +409,6 @@ pub fn anthropic_stainless_os() -> &'static str {
     match std::env::consts::OS {
         "linux" => "Linux",
         "macos" => "MacOS",
-        "windows" => "Windows",
         other => other,
     }
 }

@@ -6,7 +6,7 @@ Thanks for contributing.
 
 Both issues and pull requests are welcome. Open an issue to report a bug or discuss an idea, or send a focused PR if you have a fix or improvement ready. For large changes, discuss the approach in an issue first to avoid spending time on work that may not fit the project.
 
-A clear issue or PR includes reproduction steps, expected behavior, actual behavior, and relevant logs, screenshots, or traces. Environment-specific fixes are especially helpful when they cover systems the maintainers may not have, such as macOS, Windows, unusual shells, terminal emulators, filesystems, GPU/display setups, or provider accounts.
+A clear issue or PR includes reproduction steps, expected behavior, actual behavior, and relevant logs, screenshots, or traces. Environment-specific fixes are especially helpful when they cover systems the maintainers may not have, such as macOS, unusual shells, terminal emulators, filesystems, GPU/display setups, or provider accounts.
 
 Every PR must link to an existing GitHub issue in this repository. If there is no issue yet, open one and reference it in the PR description, for example with `Closes #123`.
 

@@ -24,21 +24,10 @@ fn write_mock_cursor_agent(dir: &std::path::Path, script_body: &str) -> std::pat
 }
 
 #[test]
-fn command_candidates_adds_extension_on_windows() {
-    crate::env::set_var("PATHEXT", ".EXE;.BAT");
+fn command_candidates_returns_the_bare_name() {
     let candidates = command_candidates("testcmd");
-    if cfg!(windows) {
-        let normalized: Vec<String> = candidates
-            .iter()
-            .map(|c| c.to_string_lossy().to_ascii_lowercase())
-            .collect();
-        assert!(normalized.iter().any(|c| c == "testcmd"));
-        assert!(normalized.iter().any(|c| c == "testcmd.exe"));
-        assert!(normalized.iter().any(|c| c == "testcmd.bat"));
-    } else {
-        assert_eq!(candidates.len(), 1);
-        assert!(candidates.iter().any(|c| c == "testcmd"));
-    }
+    assert_eq!(candidates.len(), 1);
+    assert!(candidates.iter().any(|c| c == "testcmd"));
 }
 
 #[test]
@@ -318,11 +307,7 @@ fn provider_auth_assessment_predicates_reflect_state() {
 
 #[test]
 fn command_exists_for_known_binary() {
-    if cfg!(windows) {
-        assert!(command_exists("cmd") || command_exists("cmd.exe"));
-    } else {
-        assert!(command_exists("ls"));
-    }
+    assert!(command_exists("ls"));
 }
 
 #[test]
@@ -338,11 +323,7 @@ fn command_exists_nonexistent() {
 
 #[test]
 fn command_exists_absolute_path() {
-    if cfg!(windows) {
-        assert!(command_exists(r"C:\Windows\System32\cmd.exe"));
-    } else {
-        assert!(command_exists("/bin/ls") || command_exists("/usr/bin/ls"));
-    }
+    assert!(command_exists("/bin/ls") || command_exists("/usr/bin/ls"));
 }
 
 #[test]

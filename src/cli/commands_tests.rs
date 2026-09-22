@@ -741,8 +741,6 @@ fn cli_provider_choice_filter_uses_typed_api_methods() {
     );
 }
 
-
-
 #[test]
 fn is_syncable_session_stem_filters_non_session_files() {
     assert!(is_syncable_session_stem("session_abc_123"));
@@ -771,11 +769,6 @@ fn collect_sync_candidates_picks_only_session_json() {
     assert_eq!(ids, vec!["imported_codex_two", "session_one"]);
 }
 
-
-
-
-
-
 #[test]
 fn sanitize_filename_keeps_safe_chars_and_replaces_others() {
     assert_eq!(
@@ -799,9 +792,6 @@ fn relative_link_is_relative_to_dashboard_parent() {
     );
     assert_eq!(link.as_deref(), Some("dash-views/session_x.html"));
 }
-
-
-
 
 #[test]
 fn auth_test_retryable_error_detection_handles_rate_limits() {

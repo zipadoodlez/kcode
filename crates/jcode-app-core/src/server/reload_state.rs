@@ -132,7 +132,6 @@ pub fn reload_process_alive(pid: u32) -> bool {
         return false;
     }
 
-    #[cfg(unix)]
     {
         let rc = unsafe { libc::kill(pid as i32, 0) };
         if rc == 0 {
@@ -140,12 +139,6 @@ pub fn reload_process_alive(pid: u32) -> bool {
         }
         let err = std::io::Error::last_os_error();
         matches!(err.raw_os_error(), Some(libc::EPERM))
-    }
-
-    #[cfg(not(unix))]
-    {
-        let _ = pid;
-        true
     }
 }
 
@@ -741,7 +734,6 @@ mod tests {
     /// dead at the moment of selection. Retries guard against the (extremely
     /// rare) case where the kernel immediately recycles the pid for another
     /// test thread's process.
-    #[cfg(unix)]
     fn spawn_and_reap_dead_pid() -> u32 {
         use std::process::Command;
         for _ in 0..16 {
@@ -766,7 +758,6 @@ mod tests {
     // preservation, corrupt-marker tolerance, and the dead last-known-pid
     // fallback.
 
-    #[cfg(unix)]
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn inspect_reload_wait_status_idle_when_last_known_pid_is_dead_without_marker() {
@@ -916,7 +907,6 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
     #[test]
     fn reload_process_alive_handles_zero_and_dead_pids() {
         assert!(!reload_process_alive(0), "pid 0 is never a live reload pid");

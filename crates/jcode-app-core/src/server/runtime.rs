@@ -156,9 +156,6 @@ impl ServerRuntime {
         let runtime = self.clone();
         let cancellation = self.tasks.cancellation.child_token();
         tokio::spawn(async move {
-            #[cfg(windows)]
-            let mut listener = listener;
-
             loop {
                 let accepted = tokio::select! {
                     _ = cancellation.cancelled() => break,
@@ -191,9 +188,6 @@ impl ServerRuntime {
         let runtime = self.clone();
         let cancellation = self.tasks.cancellation.child_token();
         tokio::spawn(async move {
-            #[cfg(windows)]
-            let mut listener = listener;
-
             loop {
                 let accepted = tokio::select! {
                     _ = cancellation.cancelled() => break,

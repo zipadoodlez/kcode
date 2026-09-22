@@ -497,13 +497,7 @@ fn detect_load() -> (Option<f64>, Option<usize>) {
     (load, cpus)
 }
 
-#[cfg(windows)]
-fn detect_load() -> (Option<f64>, Option<usize>) {
-    let cpus = std::thread::available_parallelism().ok().map(|n| n.get());
-    (None, cpus)
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn detect_load() -> (Option<f64>, Option<usize>) {
     let cpus = std::thread::available_parallelism().ok().map(|n| n.get());
     (None, cpus)
@@ -538,40 +532,6 @@ fn parse_meminfo_kb(s: &str) -> Option<u64> {
     s.split_whitespace().next()?.parse().ok()
 }
 
-#[cfg(windows)]
-fn detect_memory() -> (Option<u64>, Option<u64>) {
-    use std::mem;
-
-    #[repr(C)]
-    struct MemoryStatusEx {
-        dw_length: u32,
-        dw_memory_load: u32,
-        ull_total_phys: u64,
-        ull_avail_phys: u64,
-        ull_total_page_file: u64,
-        ull_avail_page_file: u64,
-        ull_total_virtual: u64,
-        ull_avail_virtual: u64,
-        ull_avail_extended_virtual: u64,
-    }
-
-    unsafe extern "system" {
-        fn GlobalMemoryStatusEx(lpBuffer: *mut MemoryStatusEx) -> i32;
-    }
-
-    let mut status: MemoryStatusEx = unsafe { mem::zeroed() };
-    status.dw_length = mem::size_of::<MemoryStatusEx>() as u32;
-
-    let ret = unsafe { GlobalMemoryStatusEx(&mut status) };
-    if ret != 0 {
-        let total_mb = status.ull_total_phys / (1024 * 1024);
-        let avail_mb = status.ull_avail_phys / (1024 * 1024);
-        (Some(avail_mb), Some(total_mb))
-    } else {
-        (None, None)
-    }
-}
-
 #[cfg(target_os = "macos")]
 fn detect_memory() -> (Option<u64>, Option<u64>) {
     let total = {
@@ -600,7 +560,7 @@ fn detect_memory() -> (Option<u64>, Option<u64>) {
     (None, total)
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn detect_memory() -> (Option<u64>, Option<u64>) {
     (None, None)
 }

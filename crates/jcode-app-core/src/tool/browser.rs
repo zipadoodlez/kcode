@@ -837,7 +837,6 @@ async fn firefox_run_bridge_command(
     command.stdout(std::process::Stdio::piped());
     command.stderr(std::process::Stdio::piped());
 
-    #[cfg(not(windows))]
     if std::env::var("BROWSER_SESSION").is_err()
         && let Some(session_name) = crate::browser::ensure_browser_session(&_ctx.session_id)
     {

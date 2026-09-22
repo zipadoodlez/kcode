@@ -17,7 +17,7 @@ Reference documentation for the jcode codebase.
 - Memory: `MEMORY_ARCHITECTURE.md`, `MEMORY_BUDGET.md`, `MEMORY_INCIDENT_RUNBOOK.md`
 - Refactoring and quality: `REFACTORING.md`, `plans/CODE_QUALITY_10_10_PLAN.md`
 - Providers: `PROVIDER_DOCTOR.md`, `AWS_BEDROCK_PROVIDER.md`
-- Platform: `WINDOWS.md`, `TERMINAL_CAPABILITIES.md`
+- Platform: `TERMINAL_CAPABILITIES.md`
 
 ## Conventions
 

@@ -85,19 +85,13 @@ info_widget_toggle = "alt+i"
 swarm_panel_focus = "alt+n"
 
 # Spawn a fresh jcode session in a new terminal window, reusing the current
-# session's working directory. Companion to the system-wide launch hotkeys.
-# `jcode setup-hotkey` installs these three global launch hotkeys on macOS,
-# Linux niri/Hyprland/sway/i3, and Windows. The Cmd modifier maps to Super on
-# Linux and Alt on Windows. Windows also adds the physical Copilot key:
-#   Cmd+;        new jcode in your home directory
-#   Cmd+'        new jcode in your last project directory
-#   Cmd+Shift+'  new jcode self-dev session (last jcode repo)
+# session's working directory.
 # Default: Cmd+Shift+; on macOS, Alt+Shift+; elsewhere. Set "" to disable.
 # Note: some macOS terminals intercept Cmd combos; if so, pick another binding.
 # new_terminal = "cmd+shift+;"
 
 # Open the /resume session picker.
-# Default: Cmd+B on macOS, Alt+R on Windows/Linux. Set "" to disable.
+# Default: Cmd+B on macOS, Alt+R on Linux. Set "" to disable.
 # open_resume = "cmd+b"
 
 # /resume picker Enter behavior. Options: "current-terminal" or "new-terminal".
@@ -538,11 +532,9 @@ swarm_max_concurrent_agents = 32
 #   focus_hook = "~/bin/jcode-focus-router"
 # focus_hook = ""
 #
-# macOS only: terminal that the Cmd+; launch hotkey and in-app session spawns
-# open jcode into. One of: ghostty, iterm2, wezterm, warp, alacritty, vscode,
-# terminal (Apple Terminal). Preferred over the legacy
-# ~/.jcode/preferred_terminal.json file. After changing this, re-run
-# `jcode setup-hotkey` so the generated launcher script (Cmd+;) picks it up.
+# macOS only: terminal that in-app session spawns open jcode into. One of:
+# ghostty, iterm2, wezterm, warp, alacritty, vscode, terminal (Apple Terminal).
+# Preferred over the legacy ~/.jcode/preferred_terminal.json file.
 # preferred = "ghostty"
 
 [notifications]

@@ -136,7 +136,7 @@ log "target dir: $target_dir (activity window: ${activity_window_min}min, apply=
 
 # 1) Cross-compile / compat caches: not part of the local dev inner loop. They
 #    are regenerated on demand by release/compat scripts.
-for d in "$target_dir"/*-apple-darwin "$target_dir"/*-pc-windows-* "$target_dir"/linux-compat; do
+for d in "$target_dir"/*-apple-darwin "$target_dir"/linux-compat; do
   [[ -d "$d" ]] || continue
   remove_path "$d" "cross-compile/compat cache"
 done

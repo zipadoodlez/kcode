@@ -337,7 +337,7 @@ WRAPPER
     echo ""
     echo "=== Fast release published in $(elapsed)s ==="
     echo "  ✅ Linux x86_64: public now from the warm selfdev cache"
-    echo "  ⏳ CI: replacing Linux with the portable build and adding macOS, Windows, FreeBSD, signatures, and final checksums"
+    echo "  ⏳ CI: replacing Linux with the portable build and adding macOS, FreeBSD, signatures, and final checksums"
     echo ""
     echo "The immediate Linux asset targets this build host's runtime baseline until CI replaces it."
     exit 0
@@ -383,7 +383,7 @@ if [[ "$MODE" == "fast-macos-local" ]]; then
     echo ""
     echo "=== Fast macOS release published in $(elapsed)s ==="
     echo "  ✅ macOS arm64: public now from the prepared osxcross build"
-    echo "  ⏳ CI: replacing it with the signoff build and adding Linux, macOS Intel, Windows, FreeBSD, signatures, and final checksums"
+    echo "  ⏳ CI: replacing it with the signoff build and adding Linux, macOS Intel, FreeBSD, signatures, and final checksums"
     exit 0
 fi
 

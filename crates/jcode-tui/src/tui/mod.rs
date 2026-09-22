@@ -209,10 +209,6 @@ pub(crate) fn reapply_terminal_modes_to(
     }
     if mouse_capture {
         writer.queue(EnableMouseCapture)?;
-        // Crossterm toggles Win32 console mouse input on Windows, but ConPTY
-        // hosts such as VS Code also need the VT tracking modes reasserted.
-        #[cfg(windows)]
-        writer.write_all(b"\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1015h\x1b[?1006h")?;
     }
     if keyboard_enhanced {
         reapply_keyboard_enhancement_to(writer, inside_tmux())?;

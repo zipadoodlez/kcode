@@ -368,13 +368,13 @@ impl McpManager {
                         let handles = self.pool_handles.read().await;
                         if let Some(handle) = handles.get(server) {
                             let result = handle.call_tool(tool, arguments).await;
-                                        return result;
+                            return result;
                         }
                     }
                     let clients = self.owned_clients.read().await;
                     if let Some(client) = clients.get(server) {
                         let result = client.call_tool(tool, arguments).await;
-                                return result;
+                        return result;
                     }
                     anyhow::bail!(
                         "MCP server '{server}' connected but exposed no handle for tool '{tool}'"

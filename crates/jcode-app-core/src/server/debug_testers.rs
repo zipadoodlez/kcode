@@ -127,7 +127,6 @@ async fn spawn_tester(opts: serde_json::Value) -> Result<String> {
     // tester must own a real PTY. Allocate one, hand the slave end to the
     // child, and drain the master into the stdout log so the child never
     // blocks on a full PTY buffer.
-    #[cfg(unix)]
     {
         let pty = allocate_pty(cols, rows)
             .map_err(|e| anyhow::anyhow!("Failed to allocate tester PTY: {}", e))?;
@@ -167,13 +166,6 @@ async fn spawn_tester(opts: serde_json::Value) -> Result<String> {
             })
             .ok();
     }
-    #[cfg(not(unix))]
-    {
-        let _ = (cols, rows);
-        cmd.stdout(Stdio::from(stdout_file));
-        cmd.stderr(Stdio::from(stderr_file));
-    }
-
     let child = cmd.spawn()?;
     let pid = child.id().unwrap_or(0);
 
@@ -202,7 +194,6 @@ async fn spawn_tester(opts: serde_json::Value) -> Result<String> {
 }
 
 /// Master/slave ends of a freshly allocated PTY.
-#[cfg(unix)]
 struct TesterPty {
     master: std::os::fd::OwnedFd,
     slave: std::os::fd::OwnedFd,
@@ -211,7 +202,6 @@ struct TesterPty {
 /// Allocate a PTY sized `cols` x `rows` for a headless tester. The TUI's
 /// terminal init requires stdin/stdout to be a TTY, so testers get the slave
 /// end as their stdio while the server drains the master end.
-#[cfg(unix)]
 #[allow(
     clippy::unnecessary_mut_passed,
     reason = "libc::openpty takes mutable termios/winsize pointers on Apple/BSD targets"

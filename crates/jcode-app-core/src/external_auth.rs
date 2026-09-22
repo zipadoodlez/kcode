@@ -121,9 +121,7 @@ impl ExternalAuthReviewCandidate {
             ExternalAuthReviewAction::SharedExternal(source) => {
                 auth::external::source_provider_labels(*source)
                     .into_iter()
-                    .filter_map(|label| {
-                        provider_id_for_label(label).map(|id| (id, METHOD))
-                    })
+                    .filter_map(|label| provider_id_for_label(label).map(|id| (id, METHOD)))
                     .collect()
             }
         }
@@ -651,9 +649,7 @@ pub async fn run_external_auth_auto_import_candidates(
         match validate_external_auth_review_candidate(candidate).await {
             Ok(detail) => {
                 outcome.imported += 1;
-                outcome
-                    .imported_auth_labels
-                    .extend(candidate.auth_labels());
+                outcome.imported_auth_labels.extend(candidate.auth_labels());
                 outcome.messages.push(format!(
                     "✓ {} (from {}): {}",
                     candidate.provider_summary, candidate.source_name, detail
@@ -759,9 +755,6 @@ mod render_markdown_tests {
         use super::ExternalAuthReviewCandidate;
         // The fixture points at the legacy Codex action -> OpenAI provider.
         let candidate = ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json");
-        assert_eq!(
-            candidate.auth_labels(),
-            vec![("openai", "import")]
-        );
+        assert_eq!(candidate.auth_labels(), vec![("openai", "import")]);
     }
 }

@@ -64,8 +64,7 @@ pub(crate) enum PendingLogin {
     AzureApiKey { endpoint: String, model: String },
 }
 
-impl PendingLogin {
-}
+impl PendingLogin {}
 
 #[derive(Debug, Clone)]
 pub(crate) enum PendingAccountInput {

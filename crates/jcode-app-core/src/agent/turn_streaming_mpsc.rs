@@ -861,8 +861,7 @@ impl Agent {
                             .registry
                             .execute(&tool_name, ToolCall::normalize_input_to_object(input), ctx)
                             .await;
-                        if tool_result.is_err() {
-                        }
+                        if tool_result.is_err() {}
                         let native_result = match tool_result {
                             Ok(output) => NativeToolResult::success(request_id, output.output),
                             Err(e) => NativeToolResult::error(request_id, e.to_string()),
@@ -983,7 +982,6 @@ impl Agent {
                 || usage_cache_read.is_some()
                 || usage_cache_creation.is_some()
             {
-
                 let input = usage_input.unwrap_or(0);
                 let output = usage_output.unwrap_or(0);
                 let total = input

@@ -192,251 +192,6 @@ jobs:
         run: |
           gh release upload "${GITHUB_REF_NAME}" "dist/${{ matrix.artifact }}.tar.gz" --clobber
 
-  build-windows:
-    name: Build (${{ matrix.target }})
-    runs-on: ${{ matrix.os }}
-    needs: create-release
-    # Windows is an optional release platform. Build failures stay visible, but
-    # must not prevent successful Linux/macOS artifacts from becoming public.
-    continue-on-error: true
-    # Windows x64 release smoke tests compile the e2e harness after the release
-    # binary. GitHub-hosted Windows runners sometimes exceed 25 minutes, which
-    # cancels otherwise healthy releases before artifacts can be uploaded.
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact: jcode-windows-x86_64
-            unsigned_artifact: windows-unsigned-x86_64
-          - os: windows-11-arm
-            target: aarch64-pc-windows-msvc
-            artifact: jcode-windows-aarch64
-            unsigned_artifact: windows-unsigned-aarch64
-            cargo_args: "--no-default-features --features pdf"
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Configure MSVC build environment (x64)
-        if: matrix.target == 'x86_64-pc-windows-msvc'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: amd64
-
-      - name: Configure MSVC build environment (ARM64)
-        if: matrix.target == 'aarch64-pc-windows-msvc'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: amd64_arm64
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.7
-        continue-on-error: true
-        id: sccache
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
-          cache-all-crates: "true"
-
-      - name: Build release binary
-        shell: pwsh
-        run: |
-          if (Get-Command sccache -ErrorAction SilentlyContinue) {
-            sccache --start-server *> $null
-            if ($LASTEXITCODE -eq 0) {
-              $env:RUSTC_WRAPPER = "sccache"
-            }
-          }
-
-          $cargoArgs = @("build", "--release", "--target", "${{ matrix.target }}")
-          $extraArgs = "${{ matrix.cargo_args }}"
-          if (-not [string]::IsNullOrWhiteSpace($extraArgs)) {
-            $cargoArgs += $extraArgs -split ' '
-          }
-
-          & cargo @cargoArgs
-        env:
-          JCODE_RELEASE_BUILD: "1"
-          JCODE_CI_BUILD: "1"
-          JCODE_BUILD_SEMVER: ${{ github.ref_name }}
-
-      - name: Verify built Windows binary launches
-        shell: pwsh
-        run: |
-          & "target/${{ matrix.target }}/release/jcode.exe" --version
-          if ($LASTEXITCODE -ne 0) {
-            throw "Built Windows binary failed to run --version"
-          }
-
-      - name: Verify Windows installer with local artifact
-        shell: pwsh
-        run: |
-          & ./.github/scripts/verify_windows_install.ps1 `
-            -ArtifactExePath "target/${{ matrix.target }}/release/jcode.exe" `
-            -Version "${{ github.ref_name }}"
-
-      - name: Stage unsigned binary for signing
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/jcode.exe" "dist/${{ matrix.artifact }}.exe"
-
-      - name: Upload unsigned binary for signing
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.unsigned_artifact }}
-          path: dist/${{ matrix.artifact }}.exe
-
-      # These debug-harness tests provide extra signal, but they must not block
-      # publishing a release binary that already built, launched, and passed the
-      # installer verification. A transient server-test disconnect caused the
-      # Windows x64 asset to disappear from releases v0.44.0-v0.46.0 (#480).
-      - name: Run advisory Windows runtime smoke tests (x64)
-        if: matrix.target == 'x86_64-pc-windows-msvc'
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $tests = @(
-            'provider_behavior::test_socket_model_cycle_supported_models',
-            'provider_behavior::test_model_switch_resets_provider_session'
-          )
-
-          foreach ($testName in $tests) {
-            & cargo test --locked --target ${{ matrix.target }} --test e2e $testName -- --exact --nocapture
-            if ($LASTEXITCODE -ne 0) {
-              throw "Windows smoke test failed: $testName"
-            }
-          }
-
-  publish-windows:
-    name: Sign and publish Windows assets
-    runs-on: windows-latest
-    needs: [create-release, build-windows]
-    # Missing signing configuration or a signing outage suppresses Windows
-    # assets for this release without blocking Linux and macOS publication.
-    continue-on-error: true
-    timeout-minutes: 30
-    permissions:
-      contents: write
-      id-token: write
-    env:
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      WINDOWS_SIGNING_ENDPOINT: ${{ vars.WINDOWS_SIGNING_ENDPOINT }}
-      WINDOWS_SIGNING_ACCOUNT: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
-      WINDOWS_SIGNING_CERTIFICATE_PROFILE: ${{ vars.WINDOWS_SIGNING_CERTIFICATE_PROFILE }}
-      WINDOWS_SIGNING_REQUIRED: ${{ vars.WINDOWS_SIGNING_REQUIRED }}
-    steps:
-      - name: Download unsigned Windows binaries
-        uses: actions/download-artifact@v4
-        with:
-          pattern: windows-unsigned-*
-          path: artifacts
-
-      - name: Determine signing mode
-        id: signing
-        shell: pwsh
-        run: |
-          $requiredValues = @(
-            $env:AZURE_CLIENT_ID,
-            $env:AZURE_TENANT_ID,
-            $env:AZURE_SUBSCRIPTION_ID,
-            $env:WINDOWS_SIGNING_ENDPOINT,
-            $env:WINDOWS_SIGNING_ACCOUNT,
-            $env:WINDOWS_SIGNING_CERTIFICATE_PROFILE
-          )
-          $configured = -not ($requiredValues | Where-Object { [string]::IsNullOrWhiteSpace($_) })
-          "enabled=$($configured.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
-          $signingRequired = $env:WINDOWS_SIGNING_REQUIRED -ne 'false'
-          if (-not $configured -and $signingRequired) {
-            throw 'Windows signing is required, but Azure Artifact Signing configuration is incomplete. See docs/WINDOWS.md.'
-          }
-          if (-not $configured) {
-            Write-Warning 'Publishing unsigned Windows assets because WINDOWS_SIGNING_REQUIRED=false. This override is not suitable for an official Windows release.'
-          }
-
-      - name: Azure login with GitHub OIDC
-        if: steps.signing.outputs.enabled == 'true'
-        uses: azure/login@v3
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Authenticode-sign Windows binaries
-        if: steps.signing.outputs.enabled == 'true'
-        uses: azure/artifact-signing-action@v2
-        with:
-          endpoint: ${{ vars.WINDOWS_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.WINDOWS_SIGNING_CERTIFICATE_PROFILE }}
-          files: |
-            ${{ github.workspace }}\artifacts\windows-unsigned-x86_64\jcode-windows-x86_64.exe
-            ${{ github.workspace }}\artifacts\windows-unsigned-aarch64\jcode-windows-aarch64.exe
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-
-      - name: Verify signatures and package Windows assets
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $assets = @(
-            @{ Name = 'jcode-windows-x86_64'; Path = 'artifacts/windows-unsigned-x86_64/jcode-windows-x86_64.exe' },
-            @{ Name = 'jcode-windows-aarch64'; Path = 'artifacts/windows-unsigned-aarch64/jcode-windows-aarch64.exe' }
-          )
-
-          foreach ($asset in $assets) {
-            $source = (Resolve-Path -LiteralPath $asset.Path).Path
-            if ('${{ steps.signing.outputs.enabled }}' -eq 'true') {
-              $signature = Get-AuthenticodeSignature -LiteralPath $source
-              if ($signature.Status -ne 'Valid') {
-                throw "Authenticode verification failed for $($asset.Name): $($signature.Status) $($signature.StatusMessage)"
-              }
-              Write-Host "Signed by: $($signature.SignerCertificate.Subject)"
-            }
-
-            $destination = Join-Path dist "$($asset.Name).exe"
-            Copy-Item -LiteralPath $source -Destination $destination -Force
-            tar -czf "dist/$($asset.Name).tar.gz" -C dist "$($asset.Name).exe"
-          }
-
-      - name: Upload final Windows artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: jcode-windows-x86_64
-          path: |
-            dist/jcode-windows-x86_64.exe
-            dist/jcode-windows-x86_64.tar.gz
-
-      - name: Upload final Windows ARM64 artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: jcode-windows-aarch64
-          path: |
-            dist/jcode-windows-aarch64.exe
-            dist/jcode-windows-aarch64.tar.gz
-
-      - name: Publish Windows assets to release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          gh release upload "${env:GITHUB_REF_NAME}" dist/jcode-windows-x86_64.exe dist/jcode-windows-x86_64.tar.gz dist/jcode-windows-aarch64.exe dist/jcode-windows-aarch64.tar.gz --clobber
-
   build-freebsd:
     name: Build (x86_64-unknown-freebsd)
     runs-on: ubuntu-latest
@@ -508,7 +263,7 @@ jobs:
 
   release:
     name: Finalize release
-    needs: [create-release, build-linux-macos, publish-windows, build-freebsd]
+    needs: [create-release, build-linux-macos, build-freebsd]
     # Every platform is independent. Wait until all jobs reach a terminal state,
     # then publish whichever assets succeeded. Only draft creation is mandatory.
     if: ${{ always() && needs.create-release.result == 'success' }}
@@ -538,10 +293,6 @@ jobs:
             artifacts/jcode-linux-aarch64/jcode-linux-aarch64.tar.gz
             artifacts/jcode-macos-aarch64/jcode-macos-aarch64.tar.gz
             artifacts/jcode-macos-x86_64/jcode-macos-x86_64.tar.gz
-            artifacts/jcode-windows-x86_64/jcode-windows-x86_64.exe
-            artifacts/jcode-windows-x86_64/jcode-windows-x86_64.tar.gz
-            artifacts/jcode-windows-aarch64/jcode-windows-aarch64.exe
-            artifacts/jcode-windows-aarch64/jcode-windows-aarch64.tar.gz
             artifacts/jcode-freebsd-x86_64/jcode-freebsd-x86_64.tar.gz
           )
 
@@ -587,8 +338,6 @@ jobs:
           linux_aarch64=$(available artifacts/jcode-linux-aarch64/jcode-linux-aarch64.tar.gz)
           macos_aarch64=$(available artifacts/jcode-macos-aarch64/jcode-macos-aarch64.tar.gz)
           macos_x86_64=$(available artifacts/jcode-macos-x86_64/jcode-macos-x86_64.tar.gz)
-          windows_x86_64=$(available artifacts/jcode-windows-x86_64/jcode-windows-x86_64.exe)
-          windows_aarch64=$(available artifacts/jcode-windows-aarch64/jcode-windows-aarch64.exe)
           freebsd_x86_64=$(available artifacts/jcode-freebsd-x86_64/jcode-freebsd-x86_64.tar.gz)
 
           homebrew_ready=false
@@ -606,8 +355,6 @@ jobs:
             echo "LINUX_AARCH64_AVAILABLE=$linux_aarch64"
             echo "MACOS_AARCH64_AVAILABLE=$macos_aarch64"
             echo "MACOS_X86_64_AVAILABLE=$macos_x86_64"
-            echo "WINDOWS_X86_64_AVAILABLE=$windows_x86_64"
-            echo "WINDOWS_AARCH64_AVAILABLE=$windows_aarch64"
             echo "FREEBSD_X86_64_AVAILABLE=$freebsd_x86_64"
             echo "HOMEBREW_READY=$homebrew_ready"
             echo "AUR_READY=$aur_ready"
@@ -618,8 +365,6 @@ jobs:
             echo "- Linux aarch64: $linux_aarch64"
             echo "- macOS Apple Silicon: $macos_aarch64"
             echo "- macOS Intel: $macos_x86_64"
-            echo "- Windows x86_64: $windows_x86_64"
-            echo "- Windows ARM64: $windows_aarch64"
             echo "- FreeBSD x86_64: $freebsd_x86_64"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -687,8 +432,6 @@ jobs:
               - Linux aarch64: {status('LINUX_AARCH64_AVAILABLE')}
               - macOS Apple Silicon: {status('MACOS_AARCH64_AVAILABLE')}
               - macOS Intel: {status('MACOS_X86_64_AVAILABLE')}
-              - Windows x86_64: {status('WINDOWS_X86_64_AVAILABLE')}
-              - Windows ARM64: {status('WINDOWS_AARCH64_AVAILABLE')}
               - FreeBSD x86_64: {status('FREEBSD_X86_64_AVAILABLE')}
               {end}
           """).strip("\n")
