@@ -914,10 +914,9 @@ pub(crate) async fn wait_for_reloading_server() -> bool {
 }
 
 async fn server_is_running_at(path: &std::path::Path) -> bool {
-    // Check liveness before performing a protocol handshake. On Windows the
-    // named pipe may be busy while another client is connecting; that already
-    // proves a daemon exists, while a handshake connect can otherwise wait in
-    // the transport's ERROR_PIPE_BUSY retry loop and block server startup.
+    // Check liveness before performing a protocol handshake: a socket that
+    // already answers proves a daemon exists, while a handshake connect can
+    // otherwise wait in the transport's retry loop and block server startup.
     server::has_live_listener(path).await || server::is_server_ready(path).await
 }
 
@@ -998,9 +997,8 @@ pub(crate) async fn maybe_prompt_server_bootstrap_login(
     // Normal interactive launches perform onboarding inside the TUI, and an
     // explicit provider choice never needs auto-detection here. Avoid probing
     // every credential backend unless the caller explicitly opted into the
-    // legacy headless CLI bootstrap flow. On Windows those reads may trigger
-    // expensive security-product inspection even when credentials are already
-    // configured, delaying every cold launch before the server is spawned.
+    // legacy headless CLI bootstrap flow; probing those backends is slow and
+    // delays every cold launch before the server is spawned.
     let cli_bootstrap_requested = std::env::var_os("JCODE_CLI_BOOTSTRAP_LOGIN").is_some();
     if !should_detect_cli_bootstrap_credentials(provider_choice, cli_bootstrap_requested) {
         startup_profile::mark("cred_check_done");

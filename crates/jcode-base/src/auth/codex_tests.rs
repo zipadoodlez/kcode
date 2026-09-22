@@ -342,7 +342,6 @@ fn load_credentials_reads_legacy_oauth_when_allowed() {
     );
 }
 
-#[cfg(unix)]
 #[test]
 fn load_credentials_reads_legacy_oauth_without_changing_external_permissions() {
     use std::os::unix::fs::PermissionsExt;

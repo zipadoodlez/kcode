@@ -5,7 +5,7 @@ half (step 6 and the §3 telemetry design) was cut with `jcode-telemetry-core`
 (decision 3); the state-space graph work is unaffected.
 Owner: onboarding
 Related code: `crates/jcode-tui/src/tui/app/onboarding_flow.rs`,
-`onboarding_flow_control.rs`, `onboarding_graph.rs`, `onboarding_repair.rs`,
+`crates/jcode-tui/src/tui/app/onboarding_flow_control.rs`, `onboarding_graph.rs`, `onboarding_repair.rs`,
 `onboarding_sim.rs`, `crates/jcode-tui/src/tui/app/tests/onboarding_eval.rs`,
 `crates/jcode-base/src/auth/{env_facts,login_diagnostics,refresh_state,status_types}.rs`
 
@@ -149,7 +149,7 @@ These are the payoff. Once the graph is data, you can assert over it:
    the user can actually press, and that edge is named on screen.
 2. **Every failure node has a recovery edge** that is not "restart jcode".
 3. **Bounded work.** `max steps-to-ready ≤ N` and `max keystrokes ≤ K` over all paths
-   (Tier 1 of `onboarding_eval.rs` already counts this; the graph makes it exhaustive
+   (Tier 1 of `crates/jcode-tui/src/tui/app/tests/onboarding_eval.rs` already counts this; the graph makes it exhaustive
    instead of authored-by-hand).
 4. **Reachability.** Every node is reachable from `Boot` under *some* `EnvFacts`, and
    any node reachable under *no* `EnvFacts` is dead code and must be deleted.
@@ -250,7 +250,7 @@ questions answer themselves:
 - **Edge failure rate**: `oauth_loopback --fail--> ...` at 30% in `container=yes`
   installs means we should never pick loopback in containers. That is one table entry.
 - **Abandonment attribution**: which node was last before `outcome=abandoned`, split
-  by env. Today we genuinely cannot answer this, which is why `onboarding_eval.rs`
+  by env. Today we genuinely cannot answer this, which is why `crates/jcode-tui/src/tui/app/tests/onboarding_eval.rs`
   opens with "we cannot collect data from real users, so we score the artifact".
   The artifact score is a good proxy; it is not a funnel.
 - **Unreachable-in-practice nodes**: authored screens nobody ever hits -> delete them.
@@ -303,7 +303,7 @@ The existing code is in decent shape; this is mostly consolidation.
    positively cannot use a browser skips straight to a device/paste flow instead
    of waiting out a callback timeout.
 3. **Extract the transition table.** *Not started.* Move the logic in
-   `onboarding_flow_control.rs` (1.7k lines) behind `step(node, ev) ->
+   `crates/jcode-tui/src/tui/app/onboarding_flow_control.rs` (1.7k lines) behind `step(node, ev) ->
    Transition`, keeping current behavior byte-identical; the golden tests in
    `onboarding_golden.rs` are the safety net.
 4. **Effect interpreter split.** *Not started.* Live interpreter + sim

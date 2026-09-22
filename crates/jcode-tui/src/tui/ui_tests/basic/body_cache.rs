@@ -1110,7 +1110,6 @@ fn test_prefix_reuse_truncation_matches_full_build() {
 /// stays fast even when the toolchain never returns, and the resulting body
 /// carries the pending stamp, without which the placeholder would never be
 /// replaced by the finished image.
-#[cfg(unix)]
 #[test]
 fn test_prepare_body_with_math_never_blocks_on_a_stalled_tex_toolchain() {
     use std::io::Write as _;

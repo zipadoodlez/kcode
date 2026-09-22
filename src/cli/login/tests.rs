@@ -22,7 +22,6 @@ fn novita_login_saves_private_key_and_rejects_empty_replacement() {
     let saved = std::fs::read_to_string(&path).unwrap();
     assert!(saved.contains("NOVITA_API_KEY=novita_test_key"));
     assert_eq!(std::env::var("NOVITA_API_KEY").unwrap(), "novita_test_key");
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(

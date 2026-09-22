@@ -24,14 +24,14 @@ Credentials are stored locally:
 - Legacy Copilot JSON sources: `~/.config/github-copilot/hosts.json`, `~/.config/github-copilot/apps.json`
 
 Relevant code:
-- Claude provider: `src/provider/claude.rs`
-- OpenAI login + refresh: `src/auth/oauth.rs`
-- OpenAI credentials parsing: `src/auth/codex.rs`
-- OpenAI requests: `src/provider/openai.rs`
-- Azure OpenAI auth/config: `src/auth/azure.rs`
-- Azure OpenAI transport: `src/provider/openrouter.rs`
-- Gemini login + refresh: `src/auth/gemini.rs`
-- Gemini Code Assist provider: `src/provider/gemini.rs`
+- Claude provider: `crates/jcode-base/src/provider/claude.rs`
+- OpenAI login + refresh: `crates/jcode-base/src/auth/oauth.rs`
+- OpenAI credentials parsing: `crates/jcode-base/src/auth/codex.rs`
+- OpenAI requests: `crates/jcode-base/src/provider/openai.rs`
+- Azure OpenAI auth/config: `crates/jcode-base/src/auth/azure.rs`
+- Azure OpenAI transport: `crates/jcode-base/src/provider/openrouter.rs`
+- Gemini login + refresh: `crates/jcode-base/src/auth/gemini.rs`
+- Gemini Code Assist provider: `crates/jcode-base/src/provider/gemini.rs`
 - OpenAI-compatible provider metadata/login descriptors: `crates/jcode-provider-metadata/src/lib.rs`
 
 ## Claude (Claude Max)

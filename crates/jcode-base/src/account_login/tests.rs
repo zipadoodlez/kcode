@@ -236,7 +236,6 @@ async fn explicit_save_and_current_account_are_sandboxed_without_paid_plan() {
     );
     let path = subscription_catalog::account_credential_path().unwrap();
     assert!(path.starts_with(home.path()));
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(

@@ -404,7 +404,6 @@ mod tests {
         assert_eq!(truncate_bytes("short", 100), "short");
     }
 
-    #[cfg(unix)]
     fn write_executable_script(dir: &std::path::Path, name: &str, body: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
         let path = dir.join(name);
@@ -414,7 +413,6 @@ mod tests {
         path
     }
 
-    #[cfg(unix)]
     fn gate_test_config(hook: &str, timeout_ms: u64) -> impl Drop + use<> {
         struct EnvReset(Vec<(&'static str, Option<std::ffi::OsString>)>);
         impl Drop for EnvReset {
@@ -442,7 +440,6 @@ mod tests {
         reset
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn pre_tool_gate_allows_on_exit_zero_and_blocks_on_exit_two() {
         let _guard = crate::storage::lock_test_env();
@@ -475,7 +472,6 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn pre_tool_gate_runs_every_configured_command_and_preserves_first_block() {
         let _guard = crate::storage::lock_test_env();
@@ -529,7 +525,6 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn pre_tool_gate_fails_open_on_timeout_and_odd_exits() {
         let _guard = crate::storage::lock_test_env();
@@ -559,7 +554,6 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn pre_tool_gate_receives_input_on_stdin() {
         let _guard = crate::storage::lock_test_env();
@@ -581,7 +575,6 @@ mod tests {
         assert_eq!(recorded, input);
     }
 
-    #[cfg(unix)]
     #[test]
     fn observer_dispatch_runs_hook_with_event_env() {
         let _guard = crate::storage::lock_test_env();
@@ -667,7 +660,6 @@ mod tests {
         panic!("completed hook process {pid} was not reaped");
     }
 
-    #[cfg(unix)]
     #[test]
     fn observer_dispatch_runs_each_configured_command() {
         let _guard = crate::storage::lock_test_env();
@@ -741,7 +733,6 @@ mod tests {
         assert_eq!(right.as_deref(), Some("pane-right"));
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn hook_process_replaces_daemon_terminal_env_with_client_snapshot() {
         let _guard = crate::storage::lock_test_env();

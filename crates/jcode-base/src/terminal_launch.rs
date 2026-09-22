@@ -85,11 +85,10 @@ fn spawn_via_hook(hook: &str, command: &TerminalCommand, cwd: &Path) -> Result<(
     Ok(())
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
-    #[cfg(unix)]
     #[test]
     fn spawn_via_hook_runs_hook_with_metadata_env() {
         use std::os::unix::fs::PermissionsExt;

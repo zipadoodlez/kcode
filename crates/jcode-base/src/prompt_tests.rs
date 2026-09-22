@@ -265,7 +265,6 @@ fn agents_md_missing_global_file_keeps_project_instructions() {
     assert!(!content.contains("# Global Instructions (~/AGENTS.md)"));
 }
 
-#[cfg(unix)]
 #[test]
 fn agents_md_symlink_alias_is_deduplicated_by_canonical_file_path() {
     use std::os::unix::fs::symlink;
@@ -757,7 +756,6 @@ fn desktop_prompt_documents_safe_product_specific_workflow() {
     }
 }
 
-#[cfg(unix)]
 #[test]
 fn desktop_prompt_detects_symlinked_nested_working_directory() {
     let root = desktop_prompt_checkout();
@@ -815,7 +813,6 @@ fn prompt_guidance_same_project_and_global_paths_are_loaded_once() {
     });
 }
 
-#[cfg(unix)]
 #[test]
 fn prompt_guidance_symlink_aliases_are_loaded_once() {
     with_prompt_guidance_home(|home| {

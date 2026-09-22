@@ -487,7 +487,6 @@ fn test_account_command_combines_claude_and_openai_accounts() {
     });
 }
 
-#[cfg(unix)]
 #[test]
 fn test_account_command_uses_fast_auth_snapshot_without_running_cursor_status() {
     use std::os::unix::fs::PermissionsExt;

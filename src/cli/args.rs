@@ -546,7 +546,6 @@ pub(crate) enum AccountCommand {
 #[derive(Subcommand, Debug)]
 pub(crate) enum ServerCommand {
     /// Internal native client protocol bridge over stdin/stdout (for SSH attach)
-    #[cfg(unix)]
     #[command(hide = true)]
     Stdio,
 

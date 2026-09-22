@@ -1,7 +1,6 @@
 #![cfg_attr(test, allow(clippy::await_holding_lock))]
 
 use super::socket::sibling_socket_path;
-#[cfg(unix)]
 use super::socket::{
     daemon_lock_path, server_start_matches_existing_server, try_acquire_daemon_lock,
 };
@@ -10,9 +9,7 @@ use super::{
     clear_reload_marker, inspect_reload_wait_status, publish_reload_socket_ready,
     reload_marker_active, reload_marker_path, reload_process_alive, write_reload_state,
 };
-#[cfg(unix)]
 use super::{connect_socket, reap_stale_socket_if_dead};
-#[cfg(unix)]
 use crate::transport::Listener;
 use std::time::Duration;
 
@@ -48,7 +45,6 @@ fn cleanup_socket_pair_removes_main_and_debug_files() {
     assert!(!debug.exists(), "debug socket file should be removed");
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn connect_socket_preserves_refused_socket_path() {
     let temp = tempfile::tempdir().expect("tempdir");
@@ -76,7 +72,6 @@ async fn connect_socket_preserves_refused_socket_path() {
     );
 }
 
-#[cfg(unix)]
 #[test]
 fn daemon_lock_serializes_server_processes() {
     let _guard = crate::storage::lock_test_env();
@@ -104,7 +99,6 @@ fn daemon_lock_serializes_server_processes() {
     }
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn reap_stale_socket_removes_dead_socket_pair_and_lock() {
     let _guard = crate::storage::lock_test_env();
@@ -135,7 +129,6 @@ async fn reap_stale_socket_removes_dead_socket_pair_and_lock() {
     }
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn reap_stale_socket_spares_live_listener() {
     let _guard = crate::storage::lock_test_env();
@@ -159,7 +152,6 @@ async fn reap_stale_socket_spares_live_listener() {
     }
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn reap_stale_socket_spares_socket_when_lock_is_held() {
     let _guard = crate::storage::lock_test_env();
@@ -195,7 +187,6 @@ async fn reap_stale_socket_spares_socket_when_lock_is_held() {
     }
 }
 
-#[cfg(unix)]
 #[test]
 fn existing_server_start_errors_are_detected() {
     assert!(server_start_matches_existing_server(
@@ -331,7 +322,6 @@ async fn inspect_reload_wait_status_reports_ready_for_socket_ready_marker() {
     }
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn inspect_reload_wait_status_keeps_waiting_while_starting_marker_is_active_even_if_socket_is_live()
  {

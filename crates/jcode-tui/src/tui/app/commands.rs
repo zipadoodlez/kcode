@@ -3078,7 +3078,7 @@ fn resume_terminal_after_editor() {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod interactive_editor_tests {
     use super::run_interactive_editor_with;
     use std::cell::RefCell;

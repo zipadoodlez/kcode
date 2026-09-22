@@ -313,7 +313,6 @@ mod tests {
         assert!(!args.contains(&"infinity".to_string()));
     }
 
-    #[cfg(unix)]
     #[test]
     fn failed_linux_inhibitor_disables_retries_for_process_lifetime() {
         let mut child = std::process::Command::new("sh")

@@ -188,7 +188,6 @@ async fn test_ensure_browser_ready_noninteractive_without_binary() {
     }
 }
 
-#[cfg(unix)]
 #[test]
 fn ensure_browser_session_fails_fast_when_session_process_exits_immediately() {
     use std::os::unix::fs::PermissionsExt;
@@ -227,7 +226,6 @@ fn ensure_browser_session_fails_fast_when_session_process_exits_immediately() {
     }
 }
 
-#[cfg(unix)]
 #[test]
 fn ensure_browser_session_does_not_pass_unsupported_bind_window_flag() {
     use std::os::unix::fs::PermissionsExt;
@@ -278,7 +276,6 @@ fn ensure_browser_session_does_not_pass_unsupported_bind_window_flag() {
 // Bug B: once ~/.jcode/browser/.setup-complete existed, setup could never
 // reinstall a vanished extension.
 
-#[cfg(unix)]
 fn write_executable(path: &std::path::Path, script: &str) {
     use std::os::unix::fs::PermissionsExt;
     std::fs::write(path, script).expect("write script");
@@ -287,7 +284,6 @@ fn write_executable(path: &std::path::Path, script: &str) {
     std::fs::set_permissions(path, perms).expect("chmod script");
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn hanging_browser_cli_times_out_instead_of_blocking_forever() {
     let temp = tempfile::tempdir().expect("temp dir");
@@ -308,7 +304,6 @@ async fn hanging_browser_cli_times_out_instead_of_blocking_forever() {
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn responsive_browser_cli_still_returns_its_output() {
     let temp = tempfile::tempdir().expect("temp dir");

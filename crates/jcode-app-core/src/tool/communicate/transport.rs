@@ -161,7 +161,6 @@ mod tests {
         assert_eq!(err.to_string(), SERVER_NOT_RUNNING);
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn refused_daemon_socket_has_actionable_error() {
         let temp = tempfile::tempdir().expect("tempdir");

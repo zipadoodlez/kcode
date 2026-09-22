@@ -218,7 +218,6 @@ fn description_tells_models_to_check_status_before_setup() {
     assert!(description.contains("setup only if not ready"));
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn readiness_does_not_trust_a_stale_setup_marker() {
     use std::os::unix::fs::PermissionsExt;

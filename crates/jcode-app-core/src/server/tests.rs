@@ -1062,7 +1062,6 @@ async fn startup_recovery_preserves_headed_session_reload_context_for_later_reco
     Ok(())
 }
 
-#[cfg(unix)]
 #[tokio::test]
 #[allow(
     clippy::await_holding_lock,

@@ -1,6 +1,5 @@
 use super::*;
 
-#[cfg(unix)]
 #[test]
 fn harden_secret_file_permissions_sets_owner_only_modes() {
     use std::os::unix::fs::PermissionsExt;
@@ -57,7 +56,6 @@ fn user_home_path_uses_external_dir_under_jcode_home() {
     }
 }
 
-#[cfg(unix)]
 #[test]
 fn validate_external_auth_file_rejects_symlink() {
     use std::os::unix::fs as unix_fs;
@@ -114,7 +112,6 @@ fn upsert_env_file_value_writes_replaces_and_removes_entries() {
     );
 }
 
-#[cfg(unix)]
 #[test]
 fn write_text_secret_sets_owner_only_modes() {
     use std::os::unix::fs::PermissionsExt;

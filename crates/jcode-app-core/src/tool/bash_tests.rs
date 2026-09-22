@@ -825,7 +825,6 @@ async fn test_background_command_without_timeout_keeps_running_past_default_fore
     let _ = tokio::fs::remove_file(status_file).await;
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn process_group_kill_guard_terminates_descendants() {
     let mut cmd = build_shell_command("sleep 60 & echo $!; wait");

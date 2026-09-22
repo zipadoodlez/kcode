@@ -7,7 +7,6 @@ fn desired_nofile_soft_limit_only_raises_when_possible() {
     assert_eq!(desired_nofile_soft_limit(1024, 4096, 8192), Some(4096));
 }
 
-#[cfg(unix)]
 #[test]
 fn spawn_detached_creates_new_session() {
     use tempfile::NamedTempFile;

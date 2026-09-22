@@ -65,7 +65,6 @@ fn issue_1206_multi_drop_stays_separable_and_idempotent() {
     assert_eq!(app.input_undo_stack, undo);
 }
 
-#[cfg(unix)]
 #[test]
 fn issue_1206_multi_drop_preserves_literal_shell_punctuation() {
     let dir = tempfile::tempdir().unwrap();

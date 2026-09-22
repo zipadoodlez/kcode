@@ -17,7 +17,7 @@
 
 ### Phase 1: Hot-reload Skills
 
-**Changes to `src/skill.rs`:**
+**Changes to `crates/jcode-base/src/skill.rs`:**
 - Add `reload(&mut self)` method to `SkillRegistry`
 - Skills can be reloaded without restarting
 
@@ -26,7 +26,7 @@
 
 ### Phase 2: Dynamic Tool Registry
 
-**Changes to `src/tool/mod.rs`:**
+**Changes to `crates/jcode-app-core/src/tool/mod.rs`:**
 ```rust
 impl Registry {
     /// Register a new tool at runtime
@@ -42,7 +42,7 @@ impl Registry {
 
 ### Phase 3: MCP Client
 
-**New module `src/mcp/mod.rs`:**
+**New module `crates/jcode-base/src/mcp/mod.rs`:**
 - MCP protocol types (JSON-RPC 2.0)
 - MCP client for stdio-based servers
 - MCP tool wrapper (converts MCP tools to our Tool trait)
@@ -110,14 +110,14 @@ MCP uses JSON-RPC 2.0 over stdio:
 
 ## Files to Create/Modify
 
-1. `src/mcp/mod.rs` - MCP module
-2. `src/mcp/protocol.rs` - JSON-RPC types
-3. `src/mcp/client.rs` - MCP client
-4. `src/mcp/manager.rs` - Multi-server manager
-5. `src/mcp/tool.rs` - MCP tool wrapper
-6. `src/tool/mod.rs` - Add dynamic registration
+1. `crates/jcode-base/src/mcp/mod.rs` - MCP module
+2. `crates/jcode-base/src/mcp/protocol.rs` - JSON-RPC types
+3. `crates/jcode-base/src/mcp/client.rs` - MCP client
+4. `crates/jcode-base/src/mcp/manager.rs` - Multi-server manager
+5. `crates/jcode-base/src/mcp/tool.rs` - MCP tool wrapper
+6. `crates/jcode-app-core/src/tool/mod.rs` - Add dynamic registration
 7. `src/tool/mcp_tools.rs` - mcp_connect, mcp_list, etc.
-8. `src/skill.rs` - Add reload()
+8. `crates/jcode-base/src/skill.rs` - Add reload()
 9. `src/tool/reload_skills.rs` - reload_skills tool
 
 ## Order of Implementation

@@ -261,7 +261,6 @@ async fn binary_integration_reload_handoff() -> Result<()> {
 ///
 /// Requires a built release binary at target/release/jcode because the
 /// self-dev server reload path execs into the repo's reload candidate.
-#[cfg(unix)]
 #[tokio::test]
 #[ignore]
 async fn binary_integration_selfdev_reload_reconnects_quickly() -> Result<()> {
@@ -367,7 +366,6 @@ async fn binary_integration_selfdev_reload_reconnects_quickly() -> Result<()> {
 ///
 /// Starts from the test binary, then forces `/client-reload` to re-exec into
 /// the built release candidate while keeping the shared server online.
-#[cfg(unix)]
 #[tokio::test]
 #[ignore]
 async fn binary_integration_selfdev_client_reload_resumes_session() -> Result<()> {
@@ -529,7 +527,6 @@ async fn binary_integration_selfdev_client_reload_resumes_session() -> Result<()
 ///
 /// Starts from an older starter binary so the client reloads into the built
 /// release candidate while the shared server also restarts.
-#[cfg(unix)]
 #[tokio::test]
 #[ignore]
 async fn binary_integration_selfdev_full_reload_resumes_session_quickly() -> Result<()> {

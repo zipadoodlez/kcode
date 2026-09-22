@@ -16,9 +16,7 @@ pub(crate) use jcode::session::{Session, StoredCompactionState};
 pub(crate) use jcode::tool::Registry;
 pub(crate) use std::ffi::OsString;
 pub(crate) use std::io::Read;
-#[cfg(unix)]
 use std::os::fd::FromRawFd;
-#[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 pub(crate) use std::process::{Child, Command, Stdio};
 pub(crate) use std::sync::Arc;
@@ -29,14 +27,7 @@ pub(crate) use tokio::time::timeout;
 static JCODE_HOME_LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
 
 pub(crate) fn short_runtime_dir(name: String) -> std::path::PathBuf {
-    #[cfg(unix)]
-    {
-        std::path::PathBuf::from("/tmp").join(name)
-    }
-    #[cfg(not(unix))]
-    {
-        std::env::temp_dir().join(name)
-    }
+    std::path::PathBuf::from("/tmp").join(name)
 }
 
 fn lock_jcode_home() -> std::sync::MutexGuard<'static, ()> {
@@ -202,7 +193,6 @@ pub(crate) async fn wait_for_debug_socket_ready(path: &std::path::Path) -> Resul
             anyhow::bail!("debug socket never became responsive");
         }
 
-        #[cfg(unix)]
         if !path.exists() {
             tokio::time::sleep(Duration::from_millis(25)).await;
             continue;
@@ -518,14 +508,12 @@ pub(crate) fn kill_child(child: &mut Child) {
     let _ = child.wait();
 }
 
-#[cfg(unix)]
 pub(crate) struct PtyChild {
     pub(crate) child: Child,
     input: std::fs::File,
     output: Arc<Mutex<Vec<u8>>>,
 }
 
-#[cfg(unix)]
 impl PtyChild {
     pub(crate) fn send_input(&mut self, input: &str) -> Result<()> {
         use std::io::Write;
@@ -545,7 +533,6 @@ impl PtyChild {
     }
 }
 
-#[cfg(unix)]
 #[allow(
     clippy::unnecessary_mut_passed,
     reason = "libc::openpty takes a mutable winsize pointer on Apple targets"
@@ -605,7 +592,6 @@ pub(crate) fn spawn_pty_child(mut cmd: Command) -> Result<PtyChild> {
     })
 }
 
-#[cfg(unix)]
 pub(crate) fn set_file_mtime(path: &std::path::Path, when: std::time::SystemTime) -> Result<()> {
     let duration = when
         .duration_since(std::time::UNIX_EPOCH)
@@ -628,7 +614,6 @@ pub(crate) fn set_file_mtime(path: &std::path::Path, when: std::time::SystemTime
     Ok(())
 }
 
-#[cfg(unix)]
 pub(crate) fn current_process_cpu_time() -> Result<Duration> {
     let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
     let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) };
@@ -640,11 +625,6 @@ pub(crate) fn current_process_cpu_time() -> Result<Duration> {
         Duration::from_secs(tv.tv_sec as u64) + Duration::from_micros(tv.tv_usec as u64)
     };
     Ok(to_duration(usage.ru_utime) + to_duration(usage.ru_stime))
-}
-
-#[cfg(not(unix))]
-pub(crate) fn current_process_cpu_time() -> Result<Duration> {
-    Ok(Duration::ZERO)
 }
 
 pub(crate) fn abort_server_and_cleanup<T>(
@@ -730,7 +710,6 @@ pub(crate) async fn wait_for_debug_client_count(
     )
 }
 
-#[cfg(unix)]
 pub(crate) async fn wait_for_selfdev_reload_cycle(
     debug_socket_path: &std::path::Path,
     expected_session_id: &str,
@@ -846,7 +825,6 @@ pub(crate) async fn wait_for_selfdev_reload_cycle(
     )
 }
 
-#[cfg(unix)]
 pub(crate) async fn wait_for_selfdev_client_reload_cycle(
     debug_socket_path: &std::path::Path,
     expected_session_id: &str,

@@ -459,7 +459,6 @@ pub fn ensure_account_credential_permissions() -> anyhow::Result<()> {
     }
     crate::storage::harden_secret_file_permissions(&path);
 
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let mode = std::fs::metadata(&path)?.permissions().mode() & 0o777;

@@ -559,7 +559,7 @@ mod tests {
 
     #[test]
     fn detects_asymmetric_binding_other_direction() {
-        // Add a binding on Linux/Windows but forget macOS -> warn.
+        // Add a binding on Linux but forget macOS -> warn.
         let defaults = &[KeybindingDefault {
             id: "example",
             description: "Example action",

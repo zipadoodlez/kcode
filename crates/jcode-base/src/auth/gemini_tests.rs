@@ -176,7 +176,6 @@ fn imports_cli_oauth_tokens_when_native_tokens_missing() {
     }
 }
 
-#[cfg(unix)]
 #[test]
 fn imports_cli_oauth_tokens_without_changing_external_permissions() {
     use std::os::unix::fs::PermissionsExt;

@@ -575,7 +575,7 @@ Runaway prevention is one cap, not a matrix of limits. A swarm may hold at most
 depth cap and no per-node breadth/fan-out cap**: the spawn tree may nest and fan
 out freely until the swarm reaches 1000 members, at which point further spawns are
 refused with a clear error. This is implemented in `ensure_spawn_coordinator_swarm`
-(`server/comm_session.rs`) by counting live members of the swarm and rejecting the
+(`crates/jcode-app-core/src/server/comm_session.rs`) by counting live members of the swarm and rejecting the
 spawn once the count reaches the cap. The older `MAX_SWARM_SPAWN_DEPTH` depth limit
 is removed.
 

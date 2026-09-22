@@ -81,7 +81,6 @@ fn remove_record_files(path: &std::path::Path) -> Result<()> {
         }
     }
 
-    #[cfg(unix)]
     if let Some(parent) = path.parent()
         && let Ok(directory) = std::fs::File::open(parent)
     {

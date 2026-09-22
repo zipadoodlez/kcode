@@ -700,7 +700,6 @@ fn lock_pending_login(path: &Path) -> Result<std::fs::File> {
     let lock_path = path.with_extension("lock");
     let mut options = std::fs::OpenOptions::new();
     options.create(true).truncate(false).read(true).write(true);
-    #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);

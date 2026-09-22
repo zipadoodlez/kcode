@@ -592,7 +592,7 @@ fn secure_publish(home: &Path, name: &str, bytes: &[u8]) -> Result<(), TransferE
     Ok(())
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::{Value, json};

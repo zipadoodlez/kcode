@@ -475,7 +475,6 @@ async fn registry_execute_enforces_session_tool_policy_after_alias_resolution() 
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn registry_execute_pre_tool_hook_blocks_and_allows() {
     use std::os::unix::fs::PermissionsExt;

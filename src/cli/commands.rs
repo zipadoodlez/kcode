@@ -878,7 +878,6 @@ Re-run with `--force` if you really want to stop the server.";
     if let Some(info) = server_info.as_ref() {
         let pid = info.pid;
         if crate::platform::is_process_running(pid) {
-            #[cfg(unix)]
             {
                 // The daemon spawns detached with setsid(), so it leads its own
                 // process group. Signal the group so any helper children exit too.
@@ -889,18 +888,6 @@ Re-run with `--force` if you really want to stop the server.";
                     }
                     Err(e) => {
                         detail = format!("Failed to signal jcode server (pid {pid}): {e}");
-                    }
-                }
-            }
-            #[cfg(not(unix))]
-            {
-                match crate::platform::signal_detached_process_group(pid, 0) {
-                    Ok(()) => {
-                        signaled_pid = Some(pid);
-                        detail = format!("Terminated jcode server (pid {pid}).");
-                    }
-                    Err(e) => {
-                        detail = format!("Failed to terminate jcode server (pid {pid}): {e}");
                     }
                 }
             }
@@ -921,7 +908,6 @@ Re-run with `--force` if you really want to stop the server.";
     // once if the daemon does not exit within the graceful window.
     if signaled_pid.is_some() || had_listener {
         let deadline = Instant::now() + Duration::from_secs(5);
-        #[cfg(unix)]
         let mut escalated = false;
         loop {
             let listener_gone = !crate::server::has_live_listener(&socket).await;
@@ -935,7 +921,6 @@ Re-run with `--force` if you really want to stop the server.";
             if Instant::now() >= deadline {
                 break;
             }
-            #[cfg(unix)]
             if !escalated
                 && Instant::now() + Duration::from_secs(2) >= deadline
                 && let Some(pid) = signaled_pid

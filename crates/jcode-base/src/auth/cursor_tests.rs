@@ -158,7 +158,6 @@ fn load_api_key_empty_env_falls_through() {
     assert!(key_str.trim().is_empty());
 }
 
-#[cfg(unix)]
 #[test]
 fn load_access_token_from_auth_file_does_not_change_external_permissions() {
     use std::os::unix::fs::PermissionsExt;

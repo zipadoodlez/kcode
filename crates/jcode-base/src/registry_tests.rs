@@ -1,6 +1,5 @@
 use super::*;
 use crate::storage::lock_test_env;
-#[cfg(unix)]
 use crate::transport::Listener;
 use std::ffi::OsString;
 
@@ -65,7 +64,6 @@ fn find_server_by_socket_sync_returns_matching_server() {
     }
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn cleanup_stale_preserves_live_socket_paths() {
     let _guard = lock_test_env();

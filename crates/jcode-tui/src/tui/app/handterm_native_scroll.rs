@@ -294,7 +294,7 @@ fn write_line<T: Serialize>(stream: &mut UnixStream, message: &T) -> Result<()> 
         .context("failed writing native scroll state")
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod bridge_tests {
     use super::*;
     use std::io::{BufRead, BufReader};

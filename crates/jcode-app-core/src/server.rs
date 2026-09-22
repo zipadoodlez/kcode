@@ -611,9 +611,7 @@ pub use self::reload_state::{
 };
 
 pub use self::lifecycle::configure_temporary_server;
-#[cfg(unix)]
 pub use self::socket::spawn_server_notify;
-#[cfg(unix)]
 use self::socket::{acquire_daemon_lock, mark_close_on_exec};
 pub use self::socket::{
     cleanup_socket_pair, connect_socket, debug_socket_path, has_live_listener, is_server_ready,
@@ -1312,7 +1310,6 @@ impl Server {
         });
 
         // Log when we receive SIGTERM for debugging
-        #[cfg(unix)]
         {
             let sigterm_server_name = self.identity.name.clone();
             tokio::spawn(async move {
@@ -2263,7 +2260,6 @@ impl Server {
             std::fs::create_dir_all(parent)?;
         }
 
-        #[cfg(unix)]
         let _daemon_lock = acquire_daemon_lock()?;
 
         if socket_has_live_listener(&self.socket_path).await {
@@ -2280,7 +2276,6 @@ impl Server {
         let main_listener = Listener::bind(&self.socket_path)?;
         let debug_listener = Listener::bind(&self.debug_socket_path)?;
 
-        #[cfg(unix)]
         {
             // Server reload uses exec. Force the published listener fds to close
             // across exec so the replacement daemon can safely rebind them.

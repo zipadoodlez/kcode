@@ -9,7 +9,6 @@ fn restore_env_var(key: &str, previous: Option<OsString>) {
     }
 }
 
-#[cfg(unix)]
 fn write_mock_cursor_agent(dir: &std::path::Path, script_body: &str) -> std::path::PathBuf {
     use std::os::unix::fs::PermissionsExt;
 
@@ -175,7 +174,6 @@ fn full_and_fast_auth_status_match_for_shared_probe_fields() {
     AuthStatus::invalidate_cache();
 }
 
-#[cfg(unix)]
 #[test]
 fn full_and_fast_auth_status_document_cursor_cli_exception() {
     let _lock = crate::storage::lock_test_env();
@@ -668,7 +666,6 @@ fn azure_readiness_distinguishes_credentials_from_deployment_validation() {
     AuthStatus::invalidate_cache();
 }
 
-#[cfg(unix)]
 #[test]
 fn cursor_status_is_available_when_api_key_exists_without_cli() {
     let _lock = crate::storage::lock_test_env();
@@ -697,7 +694,6 @@ fn cursor_status_is_available_when_api_key_exists_without_cli() {
     AuthStatus::invalidate_cache();
 }
 
-#[cfg(unix)]
 #[test]
 fn cursor_status_is_available_for_native_auth_without_cli() {
     let _lock = crate::storage::lock_test_env();
@@ -729,7 +725,6 @@ fn cursor_status_is_available_for_native_auth_without_cli() {
     AuthStatus::invalidate_cache();
 }
 
-#[cfg(unix)]
 #[test]
 fn cursor_status_is_available_for_authenticated_cli_session() {
     let _lock = crate::storage::lock_test_env();

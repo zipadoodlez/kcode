@@ -6,7 +6,7 @@ measured objectively rather than eyeballed.
 ## The default palette is fixed
 
 jcode's built-in palette is hand-tuned and is **not** derived from the harmony
-metric. It stays the default. `default_palette_is_frozen` in `palette.rs` holds a
+metric. It stays the default. `default_palette_is_frozen` in `crates/jcode-tui-style/src/palette.rs` holds a
 redundant copy of every value and fails if any of them change, because the
 generator, scorer, and repair pass all read those constants and it would be easy
 to "improve" one while tuning the tooling. Changing a default changes what every
@@ -101,7 +101,7 @@ users see no change.
 
 ### Is it really *every* color?
 
-That claim is checked rather than asserted. `palette_literals.rs` holds every
+That claim is checked rather than asserted. `crates/jcode-tui-style/src/palette_literals.rs` holds every
 distinct `rgb(...)` literal the TUI crates render (222 of them), and a test
 requires **all** of them to be reachable from some role: an unclaimed literal is
 a color a user cannot change. A second test requires every one of the 22 roles to
@@ -115,7 +115,7 @@ actually uses and requires each to map to a role. `Color::Black` was unreachable
 until that test existed. `Color::Reset` is deliberately never substituted: it is
 how the terminal's own background shows through.
 
-Regenerate `palette_literals.rs` when adding widgets that introduce new shades.
+Regenerate `crates/jcode-tui-style/src/palette_literals.rs` when adding widgets that introduce new shades.
 
 ## Measuring harmony
 
@@ -211,7 +211,7 @@ backgrounds.
 2. If it is a background, say so in `is_background()`; backgrounds are graded on
    different readability criteria than text.
 3. If it must be distinguishable from another role, add the pair to
-   `MUST_DISTINGUISH` in `harmony.rs`. Do not add pairs that good palettes
+   `MUST_DISTINGUISH` in `crates/jcode-tui-style/src/harmony.rs`. Do not add pairs that good palettes
    legitimately make similar (`dim`/`tool` are both low-emphasis grays in nearly
    every real palette).
 4. Add an accessor in `theme.rs` and use it at the call sites.

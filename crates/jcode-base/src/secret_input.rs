@@ -93,6 +93,6 @@ pub fn read_secret_line() -> Result<String> {
 
 // The masking path only runs on a real terminal, so its tests need a pty.
 // Unix-only: openpty/fork have no Windows equivalent here.
-#[cfg(all(test, unix))]
+#[cfg(test)]
 #[path = "secret_input_pty_tests.rs"]
 mod pty_tests;

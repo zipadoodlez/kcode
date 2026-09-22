@@ -266,8 +266,6 @@ fn platform_name() -> Result<&'static str> {
         ("linux", "aarch64") => Ok("linux-aarch64"),
         ("macos", "x86_64") => Ok("macos-x86_64"),
         ("macos", "aarch64") => Ok("macos-aarch64"),
-        ("windows", "x86_64") => Ok("windows-x86_64"),
-        ("windows", "aarch64") => Ok("windows-aarch64"),
         (os, arch) => bail!("Grok Build is not available for {os}-{arch}"),
     }
 }
@@ -344,7 +342,6 @@ pub async fn ensure_cli() -> Result<PathBuf> {
 
     let temporary = destination.with_extension(format!("download-{}", std::process::id()));
     std::fs::write(&temporary, bytes)?;
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(0o700))?;

@@ -295,7 +295,6 @@ fn save_github_token_makes_future_loads_available() -> Result<()> {
     Ok(())
 }
 
-#[cfg(unix)]
 #[test]
 fn load_token_from_json_does_not_change_external_permissions() -> Result<()> {
     use std::os::unix::fs::PermissionsExt;

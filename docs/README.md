@@ -9,13 +9,14 @@ Reference documentation for the jcode codebase.
 - `docs/audits/` — point-in-time audits and reviews. Historical snapshots, not kept up to date.
 - `docs/proposals/` — design proposals not yet committed to.
 - `docs/dev/` — developer-facing process and testing notes.
+- Docs superseded by the rewrite are moved out of the repo to
+  `~/jcode-work/reports/retired-docs/` rather than deleted outright.
 
 ## Key entry points
 
-- Architecture: `SERVER_ARCHITECTURE.md`, `MODULAR_ARCHITECTURE_RFC.md`, `CRATE_OWNERSHIP_BOUNDARIES.md`
+- Architecture: `SERVER_ARCHITECTURE.md`
 - Swarm: `SWARM_ARCHITECTURE.md`, `SWARM_TASK_GRAPH.md`
 - Memory: `MEMORY_ARCHITECTURE.md`, `MEMORY_BUDGET.md`, `MEMORY_INCIDENT_RUNBOOK.md`
-- Refactoring and quality: `REFACTORING.md`, `plans/CODE_QUALITY_10_10_PLAN.md`
 - Providers: `PROVIDER_DOCTOR.md`, `AWS_BEDROCK_PROVIDER.md`
 - Platform: `TERMINAL_CAPABILITIES.md`
 

@@ -537,7 +537,6 @@ fn write_file_atomically(path: &PathBuf, bytes: &[u8], _executable: bool) -> Res
 
     std::fs::write(&tmp_path, bytes)?;
 
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let mode = if _executable { 0o755 } else { 0o644 };
@@ -570,7 +569,6 @@ fn get_platform_asset_name() -> String {
         all(target_os = "linux", target_arch = "aarch64"),
         all(target_os = "macos", target_arch = "aarch64"),
         all(target_os = "macos", target_arch = "x86_64"),
-        all(target_os = "windows", target_arch = "x86_64"),
     )))]
     {
         format!(

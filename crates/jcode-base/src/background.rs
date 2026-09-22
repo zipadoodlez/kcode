@@ -1384,7 +1384,6 @@ impl BackgroundTaskManager {
                 return Ok(false);
             };
 
-            #[cfg(unix)]
             {
                 let _ = crate::platform::signal_detached_process_group(pid, libc::SIGTERM);
                 tokio::time::sleep(_graceful_timeout).await;

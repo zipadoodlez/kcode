@@ -1,6 +1,5 @@
 //! Exercise the public prompt builders with real cwd/HOME resolution, without
 //! changing the parent test process's environment or using provider mocks.
-#![cfg(unix)]
 
 use jcode_base::prompt::{build_system_prompt_full, build_system_prompt_split};
 use std::path::Path;

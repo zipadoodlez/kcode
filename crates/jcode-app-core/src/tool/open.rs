@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashSet;
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -363,7 +363,7 @@ async fn open_target(target: &ResolvedTarget) -> Result<String> {
         return Ok("open".to_string());
     }
 
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         let arg = match target {
             ResolvedTarget::Local { path, .. } => OsString::from(path.as_os_str()),
@@ -393,7 +393,7 @@ async fn reveal_target(path: &Path, kind: LocalTargetKind) -> Result<(String, bo
         return Ok(("open".to_string(), true));
     }
 
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         let to_open = if kind == LocalTargetKind::Directory {
             path.to_path_buf()
@@ -411,7 +411,7 @@ async fn reveal_target(path: &Path, kind: LocalTargetKind) -> Result<(String, bo
     }
 }
 
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 async fn try_unix_openers(arg_sets: Vec<Vec<OsString>>) -> Result<String> {
     let candidates = [("xdg-open", 0usize), ("gio", 1usize)];
     let mut not_found = 0usize;
@@ -481,7 +481,7 @@ struct BrowserFocusContext {
     pre_ids: HashSet<u64>,
 }
 
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 fn capture_browser_windows_before_open() -> Option<BrowserFocusContext> {
     // Only the niri compositor is wired up for explicit window raising today.
     std::env::var_os("NIRI_SOCKET")?;
@@ -500,13 +500,13 @@ fn capture_browser_windows_before_open() -> Option<BrowserFocusContext> {
     Some(BrowserFocusContext { stems, pre_ids })
 }
 
-#[cfg(not(all(unix, not(target_os = "macos"))))]
+#[cfg(target_os = "macos")]
 fn capture_browser_windows_before_open() -> Option<BrowserFocusContext> {
     None
 }
 
 async fn focus_browser_window_after_open(ctx: Option<BrowserFocusContext>) {
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         let Some(ctx) = ctx else {
             return;
@@ -514,13 +514,13 @@ async fn focus_browser_window_after_open(ctx: Option<BrowserFocusContext>) {
         // niri IPC is synchronous subprocess work; keep it off the async runtime.
         let _ = tokio::task::spawn_blocking(move || focus_browser_window_niri(&ctx)).await;
     }
-    #[cfg(not(all(unix, not(target_os = "macos"))))]
+    #[cfg(target_os = "macos")]
     {
         let _ = ctx;
     }
 }
 
-#[cfg(any(test, all(unix, not(target_os = "macos"))))]
+#[cfg(any(test, not(target_os = "macos")))]
 #[derive(Debug, Clone, Deserialize)]
 struct NiriWindow {
     id: u64,
@@ -530,7 +530,7 @@ struct NiriWindow {
     focus_timestamp: Option<NiriTimestamp>,
 }
 
-#[cfg(any(test, all(unix, not(target_os = "macos"))))]
+#[cfg(any(test, not(target_os = "macos")))]
 #[derive(Debug, Clone, Copy, Deserialize)]
 struct NiriTimestamp {
     secs: u64,
@@ -542,7 +542,7 @@ struct NiriTimestamp {
 /// Prefer a window that appeared after the open (a brand new browser window).
 /// Otherwise raise the most recently focused matching window, which is where
 /// browsers add a new tab by default.
-#[cfg(any(test, all(unix, not(target_os = "macos"))))]
+#[cfg(any(test, not(target_os = "macos")))]
 fn select_window_to_focus(
     windows: &[NiriWindow],
     stems: &[String],
@@ -575,7 +575,7 @@ fn select_window_to_focus(
 }
 
 /// Case-insensitive match between a window `app_id` and known browser stems.
-#[cfg(any(test, all(unix, not(target_os = "macos"))))]
+#[cfg(any(test, not(target_os = "macos")))]
 fn app_id_matches(app_id: Option<&str>, stems: &[String]) -> bool {
     let Some(app_id) = app_id else {
         return false;
@@ -592,7 +592,7 @@ fn app_id_matches(app_id: Option<&str>, stems: &[String]) -> bool {
 
 /// Normalize a desktop entry (e.g. `org.mozilla.firefox.desktop`) into the
 /// application id stems a compositor is likely to report.
-#[cfg(any(test, all(unix, not(target_os = "macos"))))]
+#[cfg(any(test, not(target_os = "macos")))]
 fn normalize_desktop_entry_to_stems(entry: &str) -> Vec<String> {
     let entry = entry.trim();
     let stem = entry
@@ -612,7 +612,7 @@ fn normalize_desktop_entry_to_stems(entry: &str) -> Vec<String> {
     stems
 }
 
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 fn browser_app_stems() -> Vec<String> {
     let mut stems: Vec<String> = Vec::new();
     let mut push_unique = |new: Vec<String>| {
@@ -654,7 +654,7 @@ fn browser_app_stems() -> Vec<String> {
     stems
 }
 
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 fn run_capture(program: &str, args: &[&str]) -> Option<String> {
     let output = Command::new(program)
         .args(args)
@@ -669,7 +669,7 @@ fn run_capture(program: &str, args: &[&str]) -> Option<String> {
     if text.is_empty() { None } else { Some(text) }
 }
 
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 fn query_niri_windows() -> Result<Vec<NiriWindow>> {
     let output = Command::new("niri")
         .args(["msg", "-j", "windows"])
@@ -686,7 +686,7 @@ fn query_niri_windows() -> Result<Vec<NiriWindow>> {
     Ok(windows)
 }
 
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 fn focus_browser_window_niri(ctx: &BrowserFocusContext) {
     // The browser may need a moment to create/update its window after the open;
     // retry a few times before giving up.

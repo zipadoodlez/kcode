@@ -123,5 +123,5 @@ Notes:
   credential-pool entries; many of its providers store only env-var *names*, so
   those import nothing unless the env var is set.
 - Other tool-specific importers exist for Claude Code, Codex, Gemini CLI,
-  GitHub Copilot, and Cursor (see `auth/claude.rs`, `auth/codex.rs`,
-  `auth/gemini.rs`, `auth/copilot.rs`, `auth/cursor.rs`).
+  GitHub Copilot, and Cursor (see `crates/jcode-base/src/auth/claude.rs`, `crates/jcode-base/src/auth/codex.rs`,
+  `crates/jcode-base/src/auth/gemini.rs`, `crates/jcode-base/src/auth/copilot.rs`, `crates/jcode-base/src/auth/cursor.rs`).

@@ -194,8 +194,8 @@ fn probe_browser() -> Tri {
     if std::env::var("BROWSER").is_ok_and(|value| !value.trim().is_empty()) {
         return Tri::Yes;
     }
-    if cfg!(target_os = "macos") || cfg!(target_os = "windows") {
-        // `open` / `start` are always present.
+    if cfg!(target_os = "macos") {
+        // `open` is always present.
         return Tri::Yes;
     }
     // On Linux a launcher without a display server cannot show anything.

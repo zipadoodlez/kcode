@@ -1,35 +1,23 @@
-#[cfg(unix)]
 use super::{
     resumed_window_title, should_show_server_spawning, spawn_resume_in_new_terminal,
     spawn_selfdev_in_new_terminal,
 };
-#[cfg(unix)]
 use crate::platform::set_permissions_executable;
-#[cfg(unix)]
 use crate::transport::Listener;
-#[cfg(unix)]
 use std::ffi::OsString;
-#[cfg(unix)]
 use std::fs;
-#[cfg(unix)]
 use std::path::Path;
-#[cfg(unix)]
 use std::sync::Mutex;
-#[cfg(unix)]
 use std::thread;
-#[cfg(unix)]
 use std::time::{Duration, Instant};
 
-#[cfg(unix)]
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
-#[cfg(unix)]
 struct EnvVarGuard {
     key: &'static str,
     prev: Option<OsString>,
 }
 
-#[cfg(unix)]
 impl EnvVarGuard {
     fn set_path(key: &'static str, value: &Path) -> Self {
         let prev = std::env::var_os(key);
@@ -44,7 +32,6 @@ impl EnvVarGuard {
     }
 }
 
-#[cfg(unix)]
 impl Drop for EnvVarGuard {
     fn drop(&mut self) {
         if let Some(prev) = self.prev.take() {
@@ -55,7 +42,6 @@ impl Drop for EnvVarGuard {
     }
 }
 
-#[cfg(unix)]
 fn write_fake_handterm(temp: &tempfile::TempDir, output_path: &Path) {
     let script_path = temp.path().join("handterm");
     let script = format!(
@@ -67,7 +53,6 @@ fn write_fake_handterm(temp: &tempfile::TempDir, output_path: &Path) {
     set_permissions_executable(&script_path).expect("make fake handterm executable");
 }
 
-#[cfg(unix)]
 fn wait_for_lines(path: &Path, min_lines: usize) -> Vec<String> {
     let deadline = Instant::now() + Duration::from_secs(3);
     while Instant::now() < deadline {
@@ -85,7 +70,6 @@ fn wait_for_lines(path: &Path, min_lines: usize) -> Vec<String> {
     );
 }
 
-#[cfg(unix)]
 #[test]
 fn spawn_resume_in_new_terminal_uses_handterm_exec_mode() {
     let _env_lock = ENV_LOCK.lock().expect("env lock");
@@ -125,7 +109,6 @@ fn spawn_resume_in_new_terminal_uses_handterm_exec_mode() {
     assert!(lines[4].contains(exe.to_string_lossy().as_ref()));
 }
 
-#[cfg(unix)]
 #[test]
 fn resumed_window_title_includes_server_name_when_registry_matches_socket() {
     let _guard = crate::storage::lock_test_env();
@@ -161,7 +144,6 @@ fn resumed_window_title_includes_server_name_when_registry_matches_socket() {
     );
 }
 
-#[cfg(unix)]
 #[test]
 fn spawn_selfdev_in_new_terminal_uses_handterm_exec_mode() {
     let _env_lock = ENV_LOCK.lock().expect("env lock");
@@ -202,7 +184,6 @@ fn spawn_selfdev_in_new_terminal_uses_handterm_exec_mode() {
     assert!(lines[4].contains(exe.to_string_lossy().as_ref()));
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn suppresses_stale_server_spawning_phase_when_listener_is_already_live() {
     let _guard = crate::storage::lock_test_env();
@@ -217,7 +198,6 @@ async fn suppresses_stale_server_spawning_phase_when_listener_is_already_live() 
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn keeps_server_spawning_phase_while_listener_is_not_live() {
     let _guard = crate::storage::lock_test_env();

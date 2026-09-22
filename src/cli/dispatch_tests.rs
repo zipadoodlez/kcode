@@ -106,7 +106,6 @@ impl Drop for ReloadTestEnv {
     }
 }
 
-#[cfg(unix)]
 #[test]
 fn spawn_lock_serializes_shared_server_bootstrap() {
     let temp = tempfile::tempdir().expect("tempdir");

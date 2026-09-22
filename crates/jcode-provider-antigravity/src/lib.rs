@@ -125,9 +125,7 @@ pub fn antigravity_version() -> String {
 }
 
 pub fn antigravity_user_agent() -> String {
-    if cfg!(target_os = "windows") {
-        format!("antigravity/{} windows/amd64", antigravity_version())
-    } else if cfg!(target_arch = "aarch64") {
+    if cfg!(target_arch = "aarch64") {
         format!("antigravity/{} darwin/arm64", antigravity_version())
     } else {
         format!("antigravity/{} darwin/amd64", antigravity_version())

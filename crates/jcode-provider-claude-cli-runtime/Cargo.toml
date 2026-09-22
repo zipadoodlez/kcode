@@ -13,8 +13,8 @@ anyhow = "1"
 async-trait = "0.1"
 # default-features = false: the top-level binary decides heavy optional base
 # features (embeddings/bedrock). Runtime crates must not re-enable them via
-# feature unification, or --no-default-features release targets (e.g. Windows
-# ARM64, which cannot build tract-linalg asm) break.
+# feature unification, or --no-default-features release targets that cannot
+# build tract-linalg's asm break.
 jcode-base = { path = "../jcode-base", default-features = false }
 jcode-message-types = { path = "../jcode-message-types" }
 jcode-provider-core = { path = "../jcode-provider-core" }

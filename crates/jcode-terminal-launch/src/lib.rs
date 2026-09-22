@@ -697,7 +697,7 @@ fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Opt
                     &macos_terminal_inner_script(command, cwd),
                 ]);
         }
-        #[cfg(all(unix, not(target_os = "macos")))]
+        #[cfg(not(target_os = "macos"))]
         "ghostty" => {
             cmd.arg(format!("--working-directory={}", cwd.to_string_lossy()))
                 .arg("-e")
@@ -1197,7 +1197,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     fn linux_ghostty_spawn_preserves_cwd_and_resume_command() {
         let command = TerminalCommand::new(
             "/opt/jcode",
@@ -1538,7 +1538,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     fn builtin_terminal_spawn_exports_metadata_env() {
         let command = TerminalCommand::new(
             std::path::PathBuf::from("/usr/local/bin/jcode"),

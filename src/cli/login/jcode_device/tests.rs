@@ -155,7 +155,6 @@ fn approved_key_persistence_is_owner_only_and_clear_is_deterministic() {
     let content = std::fs::read_to_string(&path).expect("read");
     assert!(content.contains("JCODE_API_KEY=jck_live_test"));
 
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(

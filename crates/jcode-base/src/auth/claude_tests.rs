@@ -366,7 +366,6 @@ fn claude_code_credentials_missing_oauth() {
     assert!(file.claude_ai_oauth.is_none());
 }
 
-#[cfg(unix)]
 #[test]
 fn load_claude_code_credentials_does_not_change_external_permissions() {
     use std::os::unix::fs::PermissionsExt;

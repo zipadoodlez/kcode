@@ -4,13 +4,13 @@ Status: Analysis + proposed plan
 
 This document audits the `TuiState` trait (`crates/jcode-tui/src/tui/mod.rs`) and
 proposes a safe, incremental decomposition. It is the Phase 1.5 follow-on to the
-`App` god-object decomposition (see `CLIENT_CORE_PRESENTATION_SPLIT_PLAN.md`).
+`App` god-object decomposition.
 
 ## Current state
 
 - `pub trait TuiState` exposes **114 methods**.
-- Implementors: 2 (`App` in `tui/app/tui_state.rs`, and `TestState` in
-  `tui/ui_tests/mod.rs`).
+- Implementors: 2 (`App` in `crates/jcode-tui/src/tui/app/tui_state.rs`, and `TestState` in
+  `crates/jcode-tui/src/tui/ui_tests/mod.rs`).
 - Consumers: ~95 usages across 29 files, almost all as `&dyn TuiState` (50
   render-function signatures take `app: &dyn TuiState`).
 
@@ -30,11 +30,11 @@ Two structural facts constrain the refactor:
 2. **`&dyn TuiState` does not compose.** Render functions take trait objects.
    Rust has no stable `&dyn (A + B)`, so any consumer that needs methods from
    more than one domain must take a supertrait that re-aggregates them. The two
-   central renderers (`ui.rs`, `ui_viewport.rs`) use methods from nearly every
+   central renderers (`ui.rs`, `crates/jcode-tui/src/tui/ui_viewport.rs`) use methods from nearly every
    domain, so they would keep the full supertrait bound.
 
 Measured: of the ~28 `&dyn TuiState` render modules, only **2** are
-multi-category (`ui.rs`, `ui_viewport.rs`); the other ~26 each use a single
+multi-category (`ui.rs`, `crates/jcode-tui/src/tui/ui_viewport.rs`); the other ~26 each use a single
 domain. So a sub-trait split *does* narrow the declared surface for the majority
 of render modules, but the headline god-interface (driven by the 2 central
 renderers) stays wide via the supertrait.
@@ -140,7 +140,7 @@ Do **not** split all 15 sub-traits at once across 29 files. Recommended order:
    `cargo check -p jcode-tui`.
 3. Extract remaining leaf sub-traits one per commit, narrowing the corresponding
    leaf render module's bound in the same commit.
-4. Keep `ui.rs` and `ui_viewport.rs` on the `TuiState` supertrait throughout.
+4. Keep `ui.rs` and `crates/jcode-tui/src/tui/ui_viewport.rs` on the `TuiState` supertrait throughout.
 
 Each step is behavior-preserving (data accessors only) and compiles
 independently, so it can be merged between other agents' work without a

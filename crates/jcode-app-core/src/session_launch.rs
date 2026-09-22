@@ -190,7 +190,7 @@ pub fn focus_session_window_best_effort_with_env(
     focus_title_best_effort(title);
 }
 
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 fn focus_title_best_effort(title: &str) {
     use std::process::{Command, Stdio};
 

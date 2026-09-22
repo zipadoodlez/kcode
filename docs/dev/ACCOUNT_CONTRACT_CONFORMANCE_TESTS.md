@@ -206,7 +206,7 @@ body preserved (DL-11) rather than being misclassified as pending.
 
 1. Add `tests/fixtures/account-contract/v1/` with the DL/ME vectors above and
    a manifest; port `spawn_scripted_http_server` into a shared test util.
-2. Convert existing `jcode_device/tests.rs` cases to load from the manifest,
+2. Convert existing `src/cli/login/jcode_device/tests.rs` cases to load from the manifest,
    keeping current assertions (no behavior change).
 3. Add the client-side gaps found while writing this spec: SN-03, SN-04,
    SN-06, SN-07, CR-01/02/06, ME-03 cache-preservation.

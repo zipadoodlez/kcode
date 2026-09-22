@@ -24,7 +24,6 @@
 ///
 /// Runs in a forked child because installing a controlling terminal is
 /// process-global and must not leak into the rest of the test binary.
-#[cfg(unix)]
 fn decode_key_event_via_pty(bytes: &[u8]) -> Option<(crossterm::event::KeyCode, u8)> {
     use std::io::{Read, Write};
     use std::os::fd::FromRawFd;
@@ -116,7 +115,6 @@ fn decode_key_event_via_pty(bytes: &[u8]) -> Option<(crossterm::event::KeyCode, 
 }
 
 #[test]
-#[cfg(unix)]
 fn shift_enter_csi_u_sequence_decodes_to_enter_plus_shift() {
     use crossterm::event::{KeyCode, KeyModifiers};
 
@@ -138,7 +136,6 @@ fn shift_enter_csi_u_sequence_decodes_to_enter_plus_shift() {
 }
 
 #[test]
-#[cfg(unix)]
 fn bare_carriage_return_decodes_without_shift() {
     use crossterm::event::{KeyCode, KeyModifiers};
 
