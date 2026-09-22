@@ -1354,9 +1354,8 @@ impl Default for AmbientConfig {
 
 /// Desktop notification configuration for interactive sessions.
 ///
-/// Unlike `[safety]` (ambient-mode ntfy/email/channel notifications), this
-/// section controls lightweight local desktop notifications for the normal
-/// interactive TUI, e.g. "agent finished a long turn".
+/// Local desktop notifications only, e.g. "agent finished a long turn".
+/// Platform integrations (ntfy, email, chat bridges) are not part of core.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct NotificationsConfig {

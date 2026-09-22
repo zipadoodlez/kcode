@@ -1,8 +1,8 @@
 # Durable history response statistics
 
-Harness API minor version 3 adds optional `HistoryMessage.response_stats`, also
-exported as `ResponseStats` by the Rust and TypeScript SDKs. Old history messages
-still deserialize, and absent metrics are omitted from JSON.
+The protocol carries optional `HistoryMessage.response_stats`
+(`jcode_session_types::ResponseStats`). Old history messages still deserialize,
+and absent metrics are omitted from JSON.
 
 Fields:
 
@@ -22,9 +22,8 @@ Real user prompts delimit turns. Tool results, internal reminders, scheduled
 instructions, and automatic continuation prompts do not create new boundaries.
 Totals appear once, on the last assistant message of the turn, and only if that
 message has a rendered row and no pending tool calls. This terminal-message rule
-is an inference from the transcript, not a persisted `done` event. The API bridge
-also suppresses the current turn's footer when the history activity snapshot says
-it is still running. Intermediate assistant rows never receive partial totals.
+is an inference from the transcript, not a persisted `done` event. Intermediate
+assistant rows never receive partial totals.
 
 Each token field is independently unknown if any contributing assistant round
 lacks that field, or its sum overflows `u64`. Unknown is not zero. Entirely unknown

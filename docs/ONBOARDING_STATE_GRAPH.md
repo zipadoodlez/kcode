@@ -1,12 +1,13 @@
-# Robust Onboarding: An Explicit State-Space Graph + Privacy-Preserving Trace Telemetry
+# Robust Onboarding: An Explicit State-Space Graph
 
-Status: partially implemented (steps 1, 2, 5, 6 landed; see §5)
+Status: partially implemented (steps 1, 2, 5 landed; see §5). The trace-telemetry
+half (step 6 and the §3 telemetry design) was cut with `jcode-telemetry-core`
+(decision 3); the state-space graph work is unaffected.
 Owner: onboarding
 Related code: `crates/jcode-tui/src/tui/app/onboarding_flow.rs`,
 `onboarding_flow_control.rs`, `onboarding_graph.rs`, `onboarding_repair.rs`,
 `onboarding_sim.rs`, `crates/jcode-tui/src/tui/app/tests/onboarding_eval.rs`,
-`crates/jcode-base/src/auth/{env_facts,login_diagnostics,refresh_state,status_types}.rs`,
-`crates/jcode-telemetry-core/src/{lib,onboarding_trace}.rs`
+`crates/jcode-base/src/auth/{env_facts,login_diagnostics,refresh_state,status_types}.rs`
 
 ---
 
@@ -169,6 +170,10 @@ that `classify_phase_surface`'s wildcard-free `match` gestures at today, general
 
 ## 3. Telemetry: traces of a graph, not logs of a program
 
+> **Cut (decision 3).** `jcode-telemetry-core` and the trace-emission path were
+> removed entirely. The design below is retained as history; nothing here is
+> implemented or planned. The local, inspectable state machine is what remains.
+
 The question was how to monitor this without touching credentials. The graph makes
 that easy, because **the interesting signal is the shape of the traversal, and the
 shape is a list of small integers.**
@@ -307,11 +312,9 @@ The existing code is in decent shape; this is mostly consolidation.
    data (including the `EnvBlocked`, `LoginFailed`, and `CredRejected` states the
    flow always had but never modelled) and `check_invariants` enforces the §2.4
    properties. Wired into `scripts/check_guardrails.sh`.
-6. **Trace telemetry.** *Landed as a library.*
-   `jcode_telemetry_core::onboarding_trace` records traversals with bucketed
-   timings, a hard step cap, and a closed vocabulary enforced by a test that
-   walks the serialized payload and rejects any free text. Not yet emitted from
-   the live flow: that waits on step 3, which is what produces the edge events.
+6. **Trace telemetry.** *Removed.* `jcode-telemetry-core` (and its
+   `onboarding_trace`) was cut entirely (decision 3). The onboarding graph no
+   longer has a telemetry consumer.
 7. **Method selection from `EnvFacts`.** *Partially landed* via
    `browser_suppressed`; the full table drives only the browser/no-browser
    decision so far, not device-code vs paste-callback.

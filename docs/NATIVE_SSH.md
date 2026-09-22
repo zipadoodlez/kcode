@@ -123,10 +123,10 @@ uses an owned `ssh -T` child to invoke `jcode server stdio` remotely. That comma
 connects to or starts the native daemon, checks its native SSH capability, emits a
 bounded versioned handshake, and transports native JSON frames over stdio.
 
-This is deliberately separate from `jcode api --stdio`, whose harness API is used
-by the SDK and is not wire-compatible with the TUI protocol. The bridge checks the
-actual daemon's capability, not merely the bridge executable's version. An old
-shared daemon is refused rather than silently reloaded or killed.
+This is deliberately separate from the TUI socket protocol: native SSH frames are
+not wire-compatible with it. The client checks the actual daemon's native SSH
+capability, not merely the client executable's version. An old shared daemon is
+refused rather than silently reloaded or killed.
 
 To test or deploy alongside an existing daemon without interrupting it, start a
 matching daemon in a separate `JCODE_RUNTIME_DIR` and point

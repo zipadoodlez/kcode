@@ -1,6 +1,6 @@
 # Per-session edit statistics
 
-Harness API v1.4 adds optional `SessionInfo.edit_stats`:
+Jcode records cumulative edit counters for each session:
 
 ```json
 {"added": 120, "removed": 35, "approximate": false}
@@ -32,21 +32,12 @@ or disk error between them can lose accounting. Concurrent external writes to
 the same file can race the tool's before-content read. Unreadable old text and
 legacy migration are marked approximate. This is not an audit log.
 
-## Existing running daemons and history
+## Legacy history
 
-The Rust SDK exports `SessionEditStats` and
-`enrich_sessions_from_local_edit_stats(&mut [SessionInfo])`. Invoke the helper
-on **fresh local** session-list responses during periodic refreshes. It honors
-nonempty API values. Never apply it to a remote daemon's sessions.
-
-Exact sidecars are available immediately. For older daemons, the helper queues
-one background reader, caches by snapshot/journal size and modification time,
-and returns completed estimates on later refreshes. The queue and cache each
-hold up to 512 sessions. Each legacy snapshot plus journal is capped at 32 MiB.
-Missing, malformed, oversized, and forked legacy records remain unavailable.
-Truncated output, compaction, aliases in old batch headers, and unsupported
-legacy formats may omit edits. Display `approximate: true` as an estimate, not a
-strict lower bound. Old history cannot generally be reconstructed exactly.
-
-A running daemon does not need to be restarted for the SDK's legacy estimates.
-New exact mutation recording requires a daemon running the new implementation.
+When no counter exists yet, the first write seeds a best-effort estimate from the
+session's persisted snapshot plus journal, capped at 32 MiB each. Missing,
+malformed, oversized, and forked legacy records remain unavailable. Truncated
+output, compaction, aliases in old batch headers, and unsupported legacy formats
+may omit edits. `approximate: true` is an estimate, not a strict lower bound; old
+history cannot generally be reconstructed exactly. `SessionEditStats` and the
+recording path live in `jcode-app-core`; there is no session-list or SDK export.

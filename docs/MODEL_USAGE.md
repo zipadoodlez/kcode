@@ -1,9 +1,8 @@
 # Model usage metadata
 
-The shared runtime supplies `ModelRoute.usage`. The public API and Rust SDK expose
-it as `ModelRouteInfo.usage: Option<ModelUsage>` through `get_runtime_info()` and
-pushed `RuntimeInfo` events. The existing `list_models()` return type is unchanged.
-The TypeScript SDK exposes the equivalent optional `usage` field.
+The shared runtime supplies `ModelRoute.usage: Option<ModelUsage>` on each
+`jcode-provider-core::ModelRoute`. Routes travel in the `comm_list_models`
+response and in pushed `model_usage_updated` events.
 
 ```json
 {
@@ -50,7 +49,7 @@ historical request attribution. No transcript scan is performed on picker open.
 
 ## Ranking and freshness
 
-`jcode_sdk::compare_model_usage` and TypeScript `compareModelUsage` compare usage
+The shared `jcode_usage_types::compare_model_usage` comparator orders usage
 best-first by tracked turn count, last-used time, historical selection count,
 and last-selected time. Search relevance and explicit current/favorite policy
 belong ahead of this comparator, followed by a stable model/route tie-breaker.
@@ -59,10 +58,10 @@ The TUI uses the same comparator and keeps its existing current/favorite policy.
 Legacy protocol clients opt into `model_usage_updated` delta events with
 `get_model_catalog.subscribe_usage_updates: true`. The flag defaults to false,
 so old clients that cannot decode new enum variants receive no new event kind.
-New API bridges and TUIs opt in. Each delta carries one route, avoiding a full
-catalog rebuild and the busy Agent lock. The bridge updates its cached catalog
-and publishes `RuntimeInfo`. Monotonic merging prevents late snapshots or
-cross-session events from regressing counts within one tracking epoch.
+New clients opt in. Each delta carries one route, avoiding a full catalog rebuild
+and the busy Agent lock. A client updates its cached catalog from the delta.
+Monotonic merging prevents late snapshots or cross-session events from regressing
+counts within one tracking epoch.
 
 ## Rollout
 

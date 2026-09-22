@@ -131,29 +131,6 @@ Suggested fixture names:
 - `api-key-openrouter`
 - `external-opencode-approved`
 
-## Mobile onboarding simulator
-
-The repo also has a resettable headless mobile simulator with predefined onboarding scenarios.
-
-```bash
-# Start the simulator in the background
-scripts/onboarding_sandbox.sh mobile-start onboarding
-
-# Inspect it
-scripts/onboarding_sandbox.sh mobile-status
-scripts/onboarding_sandbox.sh mobile-state
-scripts/onboarding_sandbox.sh mobile-log
-
-# Reset it back to the scenario start
-scripts/onboarding_sandbox.sh mobile-reset
-```
-
-Supported scenarios today:
-
-- `onboarding`
-- `pairing_ready`
-- `connected_chat`
-
 ## Headless screenshots
 
 Generate the successful import-logins onboarding sequence without launching a
@@ -169,7 +146,7 @@ The generator renders the same `OnboardingFlow` phases and ratatui widget tree
 used by the live application into an offscreen `TestBackend`. It writes SVG
 images and, when `rsvg-convert` is installed, matching PNG files. Every resting
 state in `onboarding_graph.rs` gets a render: the OpenAI login prompt, the
-detected-login summary (plus its choose-mode and telemetry sub-pages), the
+detected-login summary (plus its choose-mode sub-page), the
 import progress card, the recovery and failure screens, the legacy continue
 prompt, and full-app frames for the start-choice picker, the new-session
 suggestions, and the accepted suggested-review turn.

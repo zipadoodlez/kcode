@@ -49,9 +49,9 @@ unreadable, malformed or oversized files clear PDF data and display an error
 fallback on hydration/refresh instead of retaining stale content.
 
 Native connections must opt in with `supports_pdf_panels: true` on `Subscribe`
-to receive PDF format and payloads. The API bridge opts in. Other native clients,
-including older TUIs, receive Markdown projections without `pdf_data`, preserving
-their existing panel decoding and fallback display.
+to receive PDF format and payloads. Other native clients, including older TUIs,
+receive Markdown projections without `pdf_data`, preserving their existing panel
+decoding and fallback display.
 
 PDF limits are **20 MiB per file** and **32 MiB aggregate decoded PDF bytes per
 session**. Spawn/update rejects over-budget files before modifying panel state.

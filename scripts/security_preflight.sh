@@ -99,7 +99,6 @@ audit_ignores=(
   # Documented in docs/SECURITY_DEPENDENCIES.md. These are transitive
   # advisories with tracked remediation paths; keep them visible in the triage
   # doc while preventing unrelated CI/release work from being blocked.
-  --ignore RUSTSEC-2026-0141 # lettre via notify-email, Boring TLS backend not used by jcode
   --ignore RUSTSEC-2026-0099 # rustls-webpki via rustls stack, awaiting upstream upgrade
   --ignore RUSTSEC-2026-0104 # rustls-webpki via rustls stack, awaiting upstream upgrade
   --ignore RUSTSEC-2026-0098 # rustls-webpki via rustls stack, awaiting upstream upgrade

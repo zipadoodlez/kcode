@@ -2,6 +2,14 @@
 
 > **Status:** Design
 > **Updated:** 2026-02-08
+>
+> **Note (2026-09-22):** This remains an unimplemented design. The external
+> notification and messaging integrations it proposes were cut (decisions 9, 11):
+> email/SMTP/IMAP, SMS, webhook, ntfy, desktop notifications, and the Slack/Discord
+> chat bridges are gone, and no `[safety]` config section exists. Any future
+> integration of that kind is a user-written bridge over the socket door, not
+> built-in platform support. The in-band review paths below (the TUI review panel
+> and the `request_permission` tool) are the intended design.
 
 A human-in-the-loop safety layer for unmonitored agent operations. Designed as an independent subsystem that any jcode feature can integrate with. Currently the only consumer is ambient mode, but the system is intentionally decoupled so it can be reused for future features.
 
@@ -228,6 +236,10 @@ When the agent requests permission with `wait: false`:
 ---
 
 ## Notification System
+
+> The external channels below (email, SMS, desktop, webhook) are **not
+> implemented and were cut**; see the note at the top. Only the in-band TUI badge
+> remains in scope.
 
 ### Channels
 
