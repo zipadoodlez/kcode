@@ -1036,7 +1036,6 @@ impl App {
             format!("ERROR: unknown command '{}'. Use 'help' for list.", cmd)
         }
     }
-
 }
 
 /// Attach the live redraw-schedule decision to a `draw-stats` payload.

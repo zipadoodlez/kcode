@@ -8,7 +8,6 @@ use async_trait::async_trait;
 use tokio::sync::mpsc as tokio_mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-
 struct DelayedProvider {
     open_delay: Duration,
     first_event_delay: Duration,

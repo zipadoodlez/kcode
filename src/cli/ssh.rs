@@ -2,7 +2,7 @@
 
 use anyhow::{Result, bail};
 
-use super::args::{Args, Command};
+use super::args::Args;
 use super::provider_init::ProviderChoice;
 
 fn validate(args: &Args) -> Result<()> {
@@ -126,13 +126,7 @@ mod tests {
     fn remote_modes_accept_explicit_remote_ids_without_local_lookup() {
         for argv in [
             vec!["jcode", "--ssh", "dev"],
-            vec![
-                "jcode",
-                "--ssh",
-                "dev",
-                "--resume",
-                "session_remote_123",
-            ],
+            vec!["jcode", "--ssh", "dev", "--resume", "session_remote_123"],
         ] {
             validate(&Args::try_parse_from(argv).unwrap()).unwrap();
         }

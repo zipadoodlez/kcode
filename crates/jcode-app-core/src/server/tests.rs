@@ -13,8 +13,8 @@ use crate::bus::{
 use crate::message::{Message, Role, StreamEvent, ToolDefinition};
 use crate::protocol::{NotificationType, ServerEvent};
 use crate::provider::{EventStream, Provider};
-use crate::tool::Registry;
 use crate::session_recovery::ReloadContext;
+use crate::tool::Registry;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;

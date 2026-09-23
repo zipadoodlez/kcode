@@ -535,10 +535,7 @@ impl Agent {
     /// The registry keeps the implementation available for self-dev sessions,
     /// but regular agents should not spend tool-list context on an internal
     /// development surface.
-    fn apply_selfdev_tool_surface(
-        tools: &mut Vec<ToolDefinition>,
-        is_canary: bool,
-    ) {
+    fn apply_selfdev_tool_surface(tools: &mut Vec<ToolDefinition>, is_canary: bool) {
         // The debug socket is only exposed to canary/self-dev sessions, and
         // `jcode_docs` stays off that surface.
         if is_canary {

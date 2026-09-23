@@ -1548,7 +1548,6 @@ pub struct App {
     // Once-per-idle-period retained-heap trim state (see idle_heap_release.rs).
     idle_heap_release: idle_heap_release::IdleHeapRelease,
     // Binary modification time when client started (for smart reload detection)
-    client_binary_mtime: Option<std::time::SystemTime>,
     // Rate limit state: when rate limit resets (if rate limited)
     rate_limit_reset: Option<Instant>,
     // Message being sent when rate limit hit (to auto-retry in remote mode)

@@ -95,5 +95,4 @@ mod tests {
             assert_eq!(initial_title(&args), "jcode:c:fox");
         });
     }
-
 }

@@ -136,7 +136,9 @@ pub async fn run_tui_client(
             crossterm::terminal::SetTitle(resumed_window_title(session_id))
         );
     } else {
-        crate::process_title::set_client_generic_title(crate::client_mode::client_selfdev_requested());
+        crate::process_title::set_client_generic_title(
+            crate::client_mode::client_selfdev_requested(),
+        );
         let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::SetTitle("jcode"));
     }
     startup_profile::mark("terminal_title");

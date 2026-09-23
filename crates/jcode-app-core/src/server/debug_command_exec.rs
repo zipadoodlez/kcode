@@ -3,7 +3,6 @@
 use super::debug_jobs::{DebugJob, maybe_start_async_debug_job};
 use super::{ServerIdentity, SessionControlHandle, SessionInterruptQueues};
 use crate::agent::Agent;
-use crate::build;
 use crate::mcp::McpConfig;
 use anyhow::Result;
 use jcode_agent_runtime::{InterruptSignal, SoftInterruptSource};

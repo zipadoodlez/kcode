@@ -19,6 +19,12 @@ pub fn binary_name() -> &'static str {
     binary_stem()
 }
 
+/// Path to the release build of the binary inside a repository checkout
+/// (`<repo>/target/release/jcode`). Used by tests to locate the built binary.
+pub fn release_binary_path(repo_dir: &Path) -> PathBuf {
+    repo_dir.join("target").join("release").join(binary_name())
+}
+
 /// Get the jcode repository directory.
 pub fn get_repo_dir() -> Option<PathBuf> {
     if let Ok(path) = std::env::var("JCODE_REPO_DIR") {

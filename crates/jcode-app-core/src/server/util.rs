@@ -65,22 +65,12 @@ pub(crate) async fn get_shared_mcp_pool(
         .clone()
 }
 
-/// The operating system package manager owns installing and updating the
-/// binary, so the server never advertises an in-band update candidate.
-pub(crate) fn server_update_candidate(
-    _is_selfdev_session: bool,
-) -> Option<(PathBuf, &'static str)> {
-    None
-}
-
 /// Resolve the binary a reload should exec into.
 ///
 /// With self-install and update removed there is no channel to swap to, so a
 /// reload is a plain restart in place: re-exec the currently running binary
 /// with fresh process state and socket handoff.
-pub(crate) fn reload_exec_target(
-    _is_selfdev_session: bool,
-) -> Option<(PathBuf, &'static str)> {
+pub(crate) fn reload_exec_target(_is_selfdev_session: bool) -> Option<(PathBuf, &'static str)> {
     let current = std::env::current_exe().ok()?;
     Some((strip_deleted_suffix(current), "current-exe"))
 }

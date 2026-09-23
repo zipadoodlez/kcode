@@ -703,10 +703,6 @@ impl App {
             client_focused: true,
             runtime_memory_log,
             idle_heap_release: Default::default(),
-            client_binary_mtime: std::env::current_exe()
-                .ok()
-                .and_then(|p| std::fs::metadata(&p).ok())
-                .and_then(|m| m.modified().ok()),
             rate_limit_reset: None,
             rate_limit_pending_message: None,
             consecutive_credential_failures: 0,
@@ -1140,10 +1136,6 @@ impl App {
             client_focused: true,
             runtime_memory_log,
             idle_heap_release: Default::default(),
-            client_binary_mtime: std::env::current_exe()
-                .ok()
-                .and_then(|p| std::fs::metadata(&p).ok())
-                .and_then(|m| m.modified().ok()),
             rate_limit_reset: None,
             rate_limit_pending_message: None,
             consecutive_credential_failures: 0,

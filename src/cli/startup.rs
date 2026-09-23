@@ -284,17 +284,13 @@ fn report_main_error(error: &anyhow::Error) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::args::{Args, Command};
+    use crate::cli::args::Args;
     use clap::Parser;
 
     fn parse_args(argv: &[&str]) -> Args {
         Args::parse_from(argv)
     }
 
-    
-    
-    
-    
     #[test]
     fn parses_mcp_tool_exposure_flags() {
         let args = parse_args(&[
@@ -310,9 +306,6 @@ mod tests {
         assert_eq!(args.mcp_tools_token_threshold, Some(4_321));
     }
 
-    
-    
-    
     #[test]
     fn remote_working_dir_validation_requires_absolute_path() {
         assert!(validate_remote_working_dir(Some("/home/agent/project")).is_ok());
@@ -327,8 +320,6 @@ mod tests {
         );
     }
 
-    
-    
     #[test]
     fn external_provider_runtimes_register_and_instantiate() {
         register_external_provider_runtimes();

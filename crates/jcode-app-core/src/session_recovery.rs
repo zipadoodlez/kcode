@@ -12,7 +12,6 @@
 //! its callers are unchanged.
 
 use anyhow::Result;
-use jcode_storage as storage;
 use serde::{Deserialize, Serialize};
 
 pub use crate::protocol::ReloadRecoveryDirective;
@@ -51,16 +50,16 @@ impl ReloadContext {
 
     pub fn path_for_session(session_id: &str) -> Result<std::path::PathBuf> {
         let sanitized = Self::sanitize_session_id(session_id);
-        Ok(storage::jcode_dir()?.join(format!("reload-context-{}.json", sanitized)))
+        Ok(crate::storage::jcode_dir()?.join(format!("reload-context-{}.json", sanitized)))
     }
 
     fn legacy_path() -> Result<std::path::PathBuf> {
-        Ok(storage::jcode_dir()?.join("reload-context.json"))
+        Ok(crate::storage::jcode_dir()?.join("reload-context.json"))
     }
 
     pub fn save(&self) -> Result<()> {
         let path = Self::path_for_session(&self.session_id)?;
-        storage::write_json(&path, self)?;
+        crate::storage::write_json(&path, self)?;
         Ok(())
     }
 
@@ -69,7 +68,7 @@ impl ReloadContext {
         if !legacy.exists() {
             return Ok(None);
         }
-        let ctx: Self = storage::read_json(&legacy)?;
+        let ctx: Self = crate::storage::read_json(&legacy)?;
         let _ = std::fs::remove_file(&legacy);
         Ok(Some(ctx))
     }
@@ -78,7 +77,7 @@ impl ReloadContext {
     pub fn peek_for_session(session_id: &str) -> Result<Option<Self>> {
         let session_path = Self::path_for_session(session_id)?;
         if session_path.exists() {
-            let ctx: Self = storage::read_json(&session_path)?;
+            let ctx: Self = crate::storage::read_json(&session_path)?;
             return Ok(Some(ctx));
         }
 
@@ -87,7 +86,7 @@ impl ReloadContext {
             return Ok(None);
         }
 
-        let ctx: Self = storage::read_json(&legacy)?;
+        let ctx: Self = crate::storage::read_json(&legacy)?;
         if ctx.session_id == session_id {
             Ok(Some(ctx))
         } else {
@@ -99,7 +98,7 @@ impl ReloadContext {
     pub fn load_for_session(session_id: &str) -> Result<Option<Self>> {
         let session_path = Self::path_for_session(session_id)?;
         if session_path.exists() {
-            let ctx: Self = storage::read_json(&session_path)?;
+            let ctx: Self = crate::storage::read_json(&session_path)?;
             let _ = std::fs::remove_file(&session_path);
             return Ok(Some(ctx));
         }
@@ -109,7 +108,7 @@ impl ReloadContext {
             return Ok(None);
         }
 
-        let ctx: Self = storage::read_json(&legacy)?;
+        let ctx: Self = crate::storage::read_json(&legacy)?;
         if ctx.session_id == session_id {
             let _ = std::fs::remove_file(&legacy);
             Ok(Some(ctx))

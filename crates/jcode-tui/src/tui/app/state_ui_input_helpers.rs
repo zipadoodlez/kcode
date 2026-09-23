@@ -171,7 +171,7 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
         "/onboarding-sim",
         "Walk through every first-run onboarding screen (Alt+5 reset, Cmd+5 toggle)",
     ),
-    RegisteredCommand::public("/reload", "Reload into newest available binary"),
+    RegisteredCommand::public("/reload", "Restart the client with the current binary"),
     RegisteredCommand::public("/restart", "Restart with current binary"),
     RegisteredCommand::public("/rebuild", "Background rebuild and auto reload"),
     RegisteredCommand::public("/selfdev", "Open a new self-dev jcode session"),

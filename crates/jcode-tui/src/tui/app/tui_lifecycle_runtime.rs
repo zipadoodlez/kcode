@@ -1,4 +1,5 @@
 use super::*;
+use crate::session_recovery::ReloadContext;
 use crate::tui::connection_type_icon;
 
 impl App {
@@ -642,20 +643,11 @@ pub(super) fn handle_dev_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     if trimmed == "/reload" {
-        if !app.has_newer_binary() {
-            app.push_display_message(DisplayMessage {
-                role: "system".to_string(),
-                content: "No newer binary found. Nothing to reload.\nUse /rebuild to build a new version.".to_string(),
-                tool_calls: vec![],
-                duration_secs: None,
-                title: None,
-                tool_data: None,
-            });
-            return true;
-        }
+        // There is no jcode-managed update channel to reload into (the package
+        // manager owns the binary), so /reload restarts the client in place.
         app.push_display_message(DisplayMessage {
             role: "system".to_string(),
-            content: "Reloading with newer binary...".to_string(),
+            content: "Restarting the client with the current binary...".to_string(),
             tool_calls: vec![],
             duration_secs: None,
             title: None,

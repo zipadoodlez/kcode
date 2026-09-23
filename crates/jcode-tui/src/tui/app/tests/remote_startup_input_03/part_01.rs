@@ -596,69 +596,7 @@ fn test_recover_session_without_tools_preserves_debug_and_canary_flags() {
     let _ = std::fs::remove_file(crate::session::session_path(&app.session.id).unwrap());
 }
 
-#[test]
-fn test_has_newer_binary_detection() {
-    use std::time::{Duration, SystemTime};
 
-    let mut app = create_test_app();
-    let exe = std::env::temp_dir().join(format!("jcode-test-launcher-{}", std::process::id()));
-
-    let mut created = false;
-    if !exe.exists() {
-        if let Some(parent) = exe.parent() {
-            std::fs::create_dir_all(parent).unwrap();
-        }
-        std::fs::write(&exe, "test").unwrap();
-        created = true;
-    }
-
-    app.client_binary_mtime = Some(SystemTime::UNIX_EPOCH);
-    assert!(app.has_newer_binary());
-
-    app.client_binary_mtime = Some(SystemTime::now() + Duration::from_secs(3600));
-    assert!(!app.has_newer_binary());
-
-    if created {
-        let _ = std::fs::remove_file(&exe);
-    }
-}
-
-#[test]
-fn test_reload_requests_exit_when_newer_binary() {
-    use std::time::{Duration, SystemTime};
-
-    let mut app = create_test_app();
-    let exe = std::env::temp_dir().join(format!("jcode-test-launcher-{}", std::process::id()));
-
-    let mut created = false;
-    if !exe.exists() {
-        if let Some(parent) = exe.parent() {
-            std::fs::create_dir_all(parent).unwrap();
-        }
-        std::fs::write(&exe, "test").unwrap();
-        created = true;
-    }
-
-    app.client_binary_mtime = Some(SystemTime::UNIX_EPOCH);
-    app.input = "/reload".to_string();
-    app.submit_input();
-
-    assert!(app.reload_requested.is_some());
-    assert!(app.should_quit);
-
-    // Ensure the "no newer binary" path is exercised too.
-    app.reload_requested = None;
-    app.should_quit = false;
-    app.client_binary_mtime = Some(SystemTime::now() + Duration::from_secs(3600));
-    app.input = "/reload".to_string();
-    app.submit_input();
-    assert!(app.reload_requested.is_none());
-    assert!(!app.should_quit);
-
-    if created {
-        let _ = std::fs::remove_file(&exe);
-    }
-}
 
 #[test]
 fn test_background_update_ready_reloads_immediately_when_idle() {

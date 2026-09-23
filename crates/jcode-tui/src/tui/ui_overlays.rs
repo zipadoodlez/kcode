@@ -390,7 +390,10 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
 
     lines.push(Line::from(Span::styled("  System", section_style)));
     lines.push(Line::from(""));
-    lines.push(help_entry("/reload", "Reload to newer binary if available"));
+    lines.push(help_entry(
+        "/reload",
+        "Restart the client with the current binary",
+    ));
     lines.push(help_entry(
         "/restart",
         "Restart with current binary (no build)",

@@ -13,9 +13,7 @@ use crate::{
     agent, auth, build, provider, provider_catalog, server, session, startup_profile, tui,
 };
 
-use super::{
-    account, acp, commands, debug, login, output, provider_init, terminal, tui_launch,
-};
+use super::{account, acp, commands, debug, login, output, provider_init, terminal, tui_launch};
 use provider_init::ProviderChoice;
 
 #[cfg(any(target_os = "linux", test))]

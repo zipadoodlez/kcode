@@ -167,8 +167,6 @@ fn test_disconnected_key_handler_runs_model_picker_locally() {
 
 #[test]
 fn test_disconnected_key_handler_runs_reload_locally() {
-    use std::time::SystemTime;
-
     let mut app = create_test_app();
     let exe = std::env::temp_dir().join(format!("jcode-test-launcher-{}", std::process::id()));
     let mut created = false;
@@ -180,7 +178,6 @@ fn test_disconnected_key_handler_runs_reload_locally() {
         created = true;
     }
 
-    app.client_binary_mtime = Some(SystemTime::UNIX_EPOCH);
     app.input = "/reload".to_string();
     app.cursor_pos = app.input.len();
 

@@ -212,9 +212,7 @@ impl App {
                 self.background_client_action = None;
                 self.pending_background_client_reload = None;
                 if summary_is_divergence(&error)
-                    || summary_is_divergence(
-                        error.trim_start_matches("Update failed: "),
-                    )
+                    || summary_is_divergence(error.trim_start_matches("Update failed: "))
                 {
                     self.offer_update_merge(action, &error);
                 } else {
@@ -378,9 +376,7 @@ impl App {
                 self.background_client_action = None;
                 self.pending_background_client_reload = None;
                 if summary_is_divergence(&message)
-                    || summary_is_divergence(
-                        message.trim_start_matches("Update failed: "),
-                    )
+                    || summary_is_divergence(message.trim_start_matches("Update failed: "))
                 {
                     self.offer_update_merge(action, &message);
                     return;
@@ -532,10 +528,10 @@ Do not force-push or discard local commits without confirming they are already u
 }
 
 /// Format a download progress percentage for the update status line.
-fn download_progress_bar(downloaded: u64, total: u64) -> String {
-    if total == 0 {
+fn download_progress_bar(downloaded: u64, total: Option<u64>) -> String {
+    let Some(total) = total.filter(|total| *total > 0) else {
         return "…".to_string();
-    }
+    };
     let pct = downloaded.saturating_mul(100) / total;
     format!("{}%", pct.min(100))
 }
@@ -547,5 +543,8 @@ fn summary_is_divergence(error: &str) -> bool {
 
 /// Reduce an update error to one line for the status notice.
 fn summarize_update_error(error: &str) -> String {
-    error.trim_start_matches("Update failed: ").trim().to_string()
+    error
+        .trim_start_matches("Update failed: ")
+        .trim()
+        .to_string()
 }
