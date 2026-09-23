@@ -3,10 +3,14 @@ name: Update weekly stars chart
 env:
   JCODE_CI: "1"
 
+# Disabled on this fork during the rewrite (decision 31): the daily run rewrote
+# the README star chart on a branch that is not publishing. Run manually from the
+# Actions tab, or restore the recorded trigger underneath.
 on:
-  schedule:
-    - cron: "17 3 * * *"
   workflow_dispatch:
+# Original trigger, restore to re-enable:
+#   schedule:
+#     - cron: "17 3 * * *"
 
 permissions:
   contents: write

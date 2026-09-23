@@ -1,10 +1,17 @@
 name: CI
 
+# Disabled on this fork during the rewrite (decision 31,
+# notes/refactor-decisions.md). The work rules batch compilation locally and run
+# the test suite once at the end, so per-push CI only produced noise. The jobs
+# below are unchanged and still runnable: use "Run workflow" in the Actions tab,
+# or restore the original triggers recorded underneath.
 on:
-  push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
+  workflow_dispatch:
+# Original triggers, restore to re-enable:
+#   push:
+#     branches: [main, master]
+#   pull_request:
+#     branches: [main, master]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -380,4 +387,3 @@ jobs:
 
       - name: Check formatting
         run: cargo fmt --all -- --check
-
