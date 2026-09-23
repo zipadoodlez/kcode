@@ -12,7 +12,6 @@ at the SSH layer and will refuse unknown host keys or missing authentication.
 
 ```sh
 jcode --ssh dev --remote-working-dir /srv/jcode
-jcode --ssh dev --remote-working-dir /srv/jcode self-dev
 jcode --ssh dev --resume session_remote_id
 ```
 

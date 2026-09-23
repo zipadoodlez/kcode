@@ -66,8 +66,8 @@ counts within one tracking epoch.
 ## Rollout
 
 A desktop hot reload alone does not update its daemon. Build and validate the
-runtime on an isolated socket first. Publish the validated source build, then
-use `jcode server promote <installed-version>` and `jcode server reload --json`
-at a safe idle window. Do not use `server stop --force` or send kill signals.
-The supported reload checkpoints sessions, but it still signals active
-model generations. Defer activation while any session is processing.
+runtime on an isolated socket first, install it through your OS package manager,
+then `jcode server reload --json` at a safe idle window (jcode no longer promotes
+or installs its own version channels). Do not use `server stop --force` or send
+kill signals. The supported reload checkpoints sessions, but it still signals
+active model generations. Defer activation while any session is processing.
