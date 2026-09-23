@@ -21,3 +21,6 @@ captures/
 /*.avif
 /*.mp4
 /*.png
+
+# graphify knowledge-graph output is derived and lives under ~/jcode-work/graphs/
+graphify-out/
