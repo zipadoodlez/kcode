@@ -20,7 +20,7 @@ import subprocess
 import sys
 import time
 
-JCODE = os.path.expanduser("~/.jcode/builds/current/jcode")
+JCODE = os.path.expanduser("~/.local/bin/jcode")
 
 SGR_FG_RGB = re.compile(rb"38;2;(\d+);(\d+);(\d+)[;m]")
 SGR_FG_256 = re.compile(rb"\x1b\[38;5;(\d+)m")

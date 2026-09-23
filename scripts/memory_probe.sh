@@ -22,7 +22,7 @@
 # Options:
 #   --session <id>    Session to resume (default: session_hog_1783086065415_4ad4ae66cd43dd5b)
 #   --idle-secs <n>   Idle wait before the idle phase (default: 30)
-#   --binary <path>   Client binary (default: ~/.jcode/builds/current/jcode)
+#   --binary <path>   Client binary (default: ~/.local/bin/jcode)
 #   --jcode <path>    jcode CLI used for `jcode debug ...` (default: ~/.local/bin/jcode)
 #   --cwd <path>      Working directory for the tester (default: $HOME)
 #   --skip-trim       Skip the forced-trim phase
@@ -38,7 +38,7 @@ set -euo pipefail
 SESSION_ID="session_hog_1783086065415_4ad4ae66cd43dd5b"
 IDLE_SECS=30
 JCODE_BIN="${JCODE_BIN:-$HOME/.local/bin/jcode}"
-CLIENT_BIN="$HOME/.jcode/builds/current/jcode"
+CLIENT_BIN="$HOME/.local/bin/jcode"
 TESTER_CWD="$HOME"
 SKIP_TRIM=0
 KEEP_TESTER=0

@@ -655,7 +655,7 @@ jobs:
           gh issue list --label "$label" --state open --json number --jq '.[].number' | while read -r issue; do
             [ -n "$issue" ] || continue
             gh issue close "$issue" \
-              --comment "Released in [${GITHUB_REF_NAME}](https://github.com/${repo}/releases/tag/${GITHUB_REF_NAME}). Run \`jcode update\` to get it." \
+              --comment "Released in [${GITHUB_REF_NAME}](https://github.com/${repo}/releases/tag/${GITHUB_REF_NAME}). Upgrade jcode with your OS package manager." \
               --reason completed
             gh issue edit "$issue" --remove-label "$label" || true
           done

@@ -64,7 +64,7 @@ The honest headline is **75/100 coverage-adjusted retention readiness**, not “
 
 The fixture rebuilds the provider registry at every phase, but it deliberately does not treat a fixture provider as proof that production credentials survive a restart. Authentication continuity remains part of the deferred provider-by-OS matrix.
 
-Installation, PATH, upgrade, and uninstall durability are separately exercised by `scripts/setup_friction_eval.sh`. They should remain separate scorecards so a broad install suite cannot drown out conversation continuity failures.
+Installation durability is no longer exercised in this repo: the OS package manager owns installing and updating the binary, so there is no jcode-managed installer to score.
 
 ## Observed counterpart
 

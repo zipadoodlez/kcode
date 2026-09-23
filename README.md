@@ -33,8 +33,8 @@ The most intelligent harness
 </div>
 
 ```bash
-# macOS & Linux
-curl -fsSL https://jcode.sh/install | bash
+# use your OS package manager (Homebrew, pacman, apt, ...); jcode does not
+# install or update itself
 ```
 
 Need Homebrew, source builds, provider setup, or want an agent to set it up for you?
@@ -42,20 +42,11 @@ Need Homebrew, source builds, provider setup, or want an agent to set it up for 
 
 ### Updating
 
-Run `/update` in the TUI to download the latest stable release in the background
-and reload with your session preserved. From a terminal, use `jcode update`, then
-restart the client. Both commands use the same update policy, including for dev builds.
-
-Older or equal release versions are skipped. For a development build, Jcode also
-compares the running binary's Git commit with the release tag. Builds ahead of,
-identical to, or diverged from the release are preserved. If ancestry cannot be
-verified locally or through GitHub, the update stops rather than risking a downgrade.
-The displayed dev patch includes a commit-count offset, so it is not used as a
-release version comparison.
-
-This is the default `features.update_channel = "stable"` behavior. An explicit
-`"main"` channel still opts into source-branch updates. Use `/rebuild` or the
-self-dev build workflow to rebuild your own checkout.
+Updates are owned by your OS package manager, the same as installation. jcode
+does not download, install, or repoint its own binary, so upgrade it the way you
+installed it (for example `brew upgrade jcode`, or your package manager's
+upgrade command) and restart the daemon. `/update`, `/rebuild` and the
+self-dev build workflow are gone.
 
 ---
 
@@ -814,25 +805,24 @@ If you want another agent to set up jcode for you, give it this prompt:
 ```text
 Set up jcode on this machine for me.
 
-1. Detect the operating system, available package managers, and shell environment, then install jcode using the best matching command below instead of referring me somewhere else:
+1. Detect the operating system and available package managers, then install jcode using the best matching command below instead of referring me somewhere else. jcode does not install or update itself: the OS package manager owns the installed binary.
+
+   - Via your OS package manager (preferred):
+     use that package manager's install command
 
    - macOS with Homebrew available:
      brew tap 1jehuang/jcode
      brew install jcode
 
-   - macOS or Linux via install script:
-     curl -fsSL https://jcode.sh/install | bash
-
    - From source if the above paths are not appropriate:
      git clone https://github.com/1jehuang/jcode.git
      cd jcode
      cargo build --release
-     scripts/install_release.sh
+     # then copy target/release/jcode somewhere on your PATH
 
    - For local self-dev / refactor work on Linux x86_64, prefer:
      scripts/dev_cargo.sh build --release -p jcode --bin jcode
      scripts/dev_cargo.sh --print-setup
-     scripts/install_release.sh
 
 2. Verify that `jcode` is on my `PATH`.
 3. Launch `jcode` once in a new terminal window/session to confirm it starts successfully.
@@ -872,16 +862,14 @@ This is intended to be a copy-paste bootstrap prompt for jcode itself or any oth
 
 ```bash
 # macOS & Linux
-curl -fsSL https://jcode.sh/install | bash
+# install with your OS package manager; jcode does not install itself
 ```
 
-On Termux, install the glibc runtime and `patchelf` first so the installer can
-patch the downloaded Linux binary to Termux's glibc dynamic linker and create a
-launcher that avoids Termux's `LD_PRELOAD` shim:
+On Termux, install the glibc runtime and `patchelf` first so the Linux binary can
+run against Termux's glibc dynamic linker and avoid Termux's `LD_PRELOAD` shim:
 
 ```bash
 pkg install glibc patchelf
-curl -fsSL https://jcode.sh/install | bash
 ```
 
 ### macOS via Homebrew
@@ -911,29 +899,20 @@ working local linker setup (`clang + lld`) instead of assuming every machine's
 `mold` configuration is valid, and can print the active linker/cache setup via
 `--print-setup` so slow-path builds are easier to diagnose.
 
-Then symlink to your PATH:
+Then put the built binary on your PATH:
 
 ```bash
-scripts/install_release.sh
+install -Dm755 target/release/jcode ~/.local/bin/jcode
 ```
 
 ### Uninstall
 
-Removes installed binaries and the launcher but keeps your config, auth, and
-sessions so a clean reinstall picks up where you left off:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/uninstall.sh | bash -s -- --yes
-```
-
-For a full wipe of everything including config, auth, sessions, logs, and
-memory (useful for recovering from a broken install):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/uninstall.sh | bash -s -- --purge --yes
-```
-
-Add `--dry-run` to preview what would be removed without deleting anything.
+jcode keeps no version channels or launcher symlinks of its own; the installed
+binary belongs to your package manager. Uninstall it the same way you installed
+it (for example `brew uninstall jcode`, or your OS package manager's remove
+command), or delete the binary you copied onto your PATH. Your config, auth,
+sessions and memory under `~/.jcode` and `~/.config/jcode` are separate and are
+left in place.
 
 ### Platform Support
 
