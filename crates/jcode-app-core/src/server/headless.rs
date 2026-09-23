@@ -75,7 +75,7 @@ pub(super) async fn create_headless_session(
     }
 
     if selfdev_requested {
-        registry.register_selfdev_tools().await;
+        registry.register_debug_tools().await;
     }
 
     registry

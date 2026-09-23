@@ -1641,7 +1641,6 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         || handle_autojudge_command_local(app, trimmed)
         || handle_review_command_local(app, trimmed)
         || handle_judge_command_local(app, trimmed)
-        || handle_selfdev_command(app, trimmed)
     {
         return true;
     }
@@ -2320,101 +2319,6 @@ fn handle_remote_release_command_local(app: &mut App) {
         app.push_display_message(DisplayMessage::system(remote_release_launch_notice(false)));
         super::commands_improve::start_synthetic_user_turn(app, prompt);
     }
-}
-
-fn handle_selfdev_command(app: &mut App, trimmed: &str) -> bool {
-    if !trimmed.starts_with("/selfdev") {
-        return false;
-    }
-
-    let rest = trimmed.strip_prefix("/selfdev").unwrap_or_default().trim();
-    if rest == "status" {
-        match crate::tool::selfdev::selfdev_status_output() {
-            Ok(output) => {
-                app.push_display_message(DisplayMessage::system(output.output));
-                app.set_status_notice("Self-dev status");
-            }
-            Err(e) => app.push_display_message(DisplayMessage::error(format!(
-                "Failed to read self-dev status: {}",
-                e
-            ))),
-        }
-        return true;
-    }
-
-    if rest == "help" {
-        app.push_display_message(DisplayMessage::system(
-            "/selfdev\nSpawn a new self-dev jcode session in a separate terminal.\n\n/selfdev <prompt>\nSpawn a new self-dev session and auto-deliver the prompt to it.\n\n/selfdev status\nShow current self-dev/build status."
-                .to_string(),
-        ));
-        return true;
-    }
-
-    let prompt = if rest.is_empty() || rest == "enter" {
-        None
-    } else if let Some(prompt) = rest.strip_prefix("enter ") {
-        let prompt = prompt.trim();
-        (!prompt.is_empty()).then(|| prompt.to_string())
-    } else {
-        Some(rest.to_string())
-    };
-
-    match crate::tool::selfdev::enter_selfdev_session(
-        Some(&active_session_id(app)),
-        active_working_dir(app).as_deref(),
-    ) {
-        Ok(launch) => {
-            let mut message = if launch.test_mode {
-                format!(
-                    "Created self-dev session {} in {}.\n\nTest mode skipped launching a new terminal.",
-                    launch.session_id,
-                    launch.repo_dir.display()
-                )
-            } else if launch.launched {
-                format!(
-                    "Spawned self-dev session {} in a new terminal.\n\nRepo: {}",
-                    launch.session_id,
-                    launch.repo_dir.display()
-                )
-            } else {
-                format!(
-                    "Created self-dev session {} but could not auto-open a supported terminal.\n\nRun manually:\n{}",
-                    launch.session_id,
-                    launch.command_preview().unwrap_or_else(|| format!(
-                        "jcode --resume {} self-dev",
-                        launch.session_id
-                    ))
-                )
-            };
-
-            if launch.inherited_context {
-                message.push_str("\n\nContext was cloned from the current session.");
-            }
-
-            if let Some(prompt_text) = prompt {
-                if launch.launched && !launch.test_mode {
-                    crate::tool::selfdev::schedule_selfdev_prompt_delivery(
-                        launch.session_id.clone(),
-                        prompt_text,
-                    );
-                    message.push_str("\n\nPrompt delivery queued to the spawned self-dev session.");
-                } else if launch.test_mode {
-                    message.push_str("\n\nPrompt captured but not delivered in test mode.");
-                } else {
-                    message.push_str("\n\nPrompt was not auto-delivered because the self-dev terminal did not launch.");
-                }
-            }
-
-            app.push_display_message(DisplayMessage::system(message));
-            app.set_status_notice("Self-dev");
-        }
-        Err(e) => app.push_display_message(DisplayMessage::error(format!(
-            "Failed to enter self-dev mode: {}",
-            e
-        ))),
-    }
-
-    true
 }
 
 pub(super) fn handle_goals_command(app: &mut App, trimmed: &str) -> bool {

@@ -601,7 +601,7 @@ fn test_has_newer_binary_detection() {
     use std::time::{Duration, SystemTime};
 
     let mut app = create_test_app();
-    let exe = crate::build::launcher_binary_path().unwrap();
+    let exe = std::env::temp_dir().join(format!("jcode-test-launcher-{}", std::process::id()));
 
     let mut created = false;
     if !exe.exists() {
@@ -628,7 +628,7 @@ fn test_reload_requests_exit_when_newer_binary() {
     use std::time::{Duration, SystemTime};
 
     let mut app = create_test_app();
-    let exe = crate::build::launcher_binary_path().unwrap();
+    let exe = std::env::temp_dir().join(format!("jcode-test-launcher-{}", std::process::id()));
 
     let mut created = false;
     if !exe.exists() {
@@ -868,7 +868,7 @@ fn test_startup_update_diverged_offers_merge_without_failure_card() {
 
     app.handle_update_status(UpdateStatus::Checking);
     app.handle_update_status(UpdateStatus::Error(
-        crate::update::GIT_PULL_DIVERGED_SUMMARY.to_string(),
+        "Update diverged: local commits are ahead of upstream".to_string(),
     ));
 
     let message = app
@@ -914,7 +914,7 @@ fn test_startup_update_diverged_offer_clears_on_submit() {
     let mut app = create_test_app();
     app.handle_update_status(UpdateStatus::Error(format!(
         "Update failed: {}",
-        crate::update::GIT_PULL_DIVERGED_SUMMARY
+        "Update diverged: local commits are ahead of upstream"
     )));
     assert!(
         app.pending_merge_offer.is_some(),

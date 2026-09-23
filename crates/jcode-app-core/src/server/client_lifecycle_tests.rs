@@ -1132,7 +1132,7 @@ fn accepted_reload_recovery_continuation_marks_intent_delivered() -> anyhow::Res
         "reload-accepted-continuation",
         session_id,
         super::super::reload_recovery::ReloadRecoveryRole::InterruptedPeer,
-        crate::tool::selfdev::ReloadRecoveryDirective {
+        crate::protocol::ReloadRecoveryDirective {
             reconnect_notice: Some("stored notice".to_string()),
             continuation_message: continuation.to_string(),
         },

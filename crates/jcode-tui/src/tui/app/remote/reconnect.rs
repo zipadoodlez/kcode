@@ -2,7 +2,7 @@ use super::{
     App, DisplayMessage, ProcessingStatus, handle_terminal_event_while_disconnected,
     process_remote_followups,
 };
-use crate::tool::selfdev::ReloadContext;
+use crate::session_recovery::{self, ReloadContext};
 use crate::tui::app::PendingReloadReconnectStatus;
 use crate::tui::backend::{RemoteConnection, RemoteDisconnectReason};
 use anyhow::Result;

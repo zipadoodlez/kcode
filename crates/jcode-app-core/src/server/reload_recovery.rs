@@ -1,4 +1,4 @@
-use crate::tool::selfdev::ReloadRecoveryDirective;
+use crate::protocol::ReloadRecoveryDirective;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

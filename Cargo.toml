@@ -18,7 +18,6 @@ members = [
     "crates/jcode-pdf",
     "crates/jcode-logging",
     "crates/jcode-background-types",
-    "crates/jcode-build-support",
     "crates/jcode-compaction-core",
     "crates/jcode-config-types",
     "crates/jcode-command-risk",
@@ -31,7 +30,6 @@ members = [
     "crates/jcode-productivity-core",
     "crates/jcode-swarm-core",
     "crates/jcode-protocol",
-    "crates/jcode-selfdev-types",
     "crates/jcode-session-types",
     "crates/jcode-storage",
     "crates/jcode-provider-metadata",
@@ -72,7 +70,6 @@ members = [
     "crates/jcode-tui-permissions",
     "crates/jcode-tui-tool-display",
     "crates/jcode-tui-usage-overlay",
-    "crates/jcode-update-core",
     "crates/jcode-terminal-launch",
     "crates/jcode-terminal-image",
     "crates/jcode-tui-workspace",
@@ -163,7 +160,6 @@ jcode-provider-openrouter-runtime = { path = "crates/jcode-provider-openrouter-r
 jcode-provider-anthropic-runtime = { path = "crates/jcode-provider-anthropic-runtime" }
 jcode-provider-openai-runtime = { path = "crates/jcode-provider-openai-runtime" }
 jcode-provider-grok-build-runtime = { path = "crates/jcode-provider-grok-build-runtime" }
-jcode-selfdev-types = { path = "crates/jcode-selfdev-types" }
 
 # Archive extraction (for auto-update)
 tempfile = "3"

@@ -64,7 +64,7 @@ pub(super) fn build_mailto_url(body: &str) -> String {
 }
 
 fn build_channel() -> String {
-    if std::env::var(jcode_selfdev_types::CLIENT_SELFDEV_ENV).is_ok() {
+    if std::env::var(crate::client_mode::CLIENT_SELFDEV_ENV).is_ok() {
         return "selfdev".to_string();
     }
     if jcode_build_meta::is_release_build() {

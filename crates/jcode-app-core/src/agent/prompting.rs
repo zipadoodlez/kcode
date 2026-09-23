@@ -27,8 +27,7 @@ impl Agent {
         serde_json::json!({
             "session_id": self.session.id,
             "working_dir": self.session.working_dir,
-            "mode": if self.is_desktop_selfdev() { "desktop" }
-                else if self.session.is_canary { "cli" } else { "regular" },
+            "mode": if self.session.is_canary { "cli" } else { "regular" },
             "is_canary": self.session.is_canary,
             "system_prompt": {
                 "static": prompt.static_part,

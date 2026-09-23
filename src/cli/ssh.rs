@@ -7,13 +7,8 @@ use super::provider_init::ProviderChoice;
 
 fn validate(args: &Args) -> Result<()> {
     match args.command {
-        None | Some(Command::SelfDev { build: false }) => {}
-        Some(Command::SelfDev { build: true }) => {
-            bail!(
-                "--ssh self-dev --build is not supported: run builds on the remote host, then reconnect"
-            )
-        }
-        _ => bail!("--ssh supports the interactive client and self-dev only"),
+        None => {}
+        _ => bail!("--ssh supports the interactive client only"),
     }
     if args.resume.as_deref().is_some_and(|id| {
         id.is_empty()
@@ -66,11 +61,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     } else {
         crate::env::remove_var("JCODE_SSH_SERVER_SOCKET");
     }
-    if matches!(args.command, Some(Command::SelfDev { .. })) {
-        crate::env::set_var(super::selfdev::CLIENT_SELFDEV_ENV, "1");
-    } else {
-        crate::env::remove_var(super::selfdev::CLIENT_SELFDEV_ENV);
-    }
+    crate::env::remove_var(crate::client_mode::CLIENT_SELFDEV_ENV);
     crate::server::set_socket_path(
         connection
             .socket_path()
@@ -123,9 +114,6 @@ pub(crate) fn resume_hint(session_id: &str) -> Option<String> {
         }
     }
     args.extend(["--resume".to_string(), quote(session_id)]);
-    if super::selfdev::client_selfdev_requested() {
-        args.push("self-dev".to_string());
-    }
     Some(args.join(" "))
 }
 
@@ -144,7 +132,6 @@ mod tests {
                 "dev",
                 "--resume",
                 "session_remote_123",
-                "self-dev",
             ],
         ] {
             validate(&Args::try_parse_from(argv).unwrap()).unwrap();
@@ -155,7 +142,6 @@ mod tests {
     fn remote_modes_reject_local_only_operations_before_connecting() {
         for tail in [
             vec!["--resume"],
-            vec!["self-dev", "--build"],
             vec!["run", "test"],
             vec!["--model", "local-model"],
             vec!["--onboarding-sim"],
@@ -175,7 +161,7 @@ mod tests {
             "JCODE_SSH_BINARY",
             "JCODE_SSH_WORKING_DIR",
             "JCODE_SSH_SERVER_SOCKET",
-            super::super::selfdev::CLIENT_SELFDEV_ENV,
+            crate::client_mode::CLIENT_SELFDEV_ENV,
         ];
         let previous: Vec<_> = names.iter().map(std::env::var_os).collect();
         for name in names {

@@ -7,42 +7,11 @@ pub(super) fn semver() -> &'static str {
 }
 
 /// True when this process is running from the stable release binary path.
-/// Only matches the explicit ~/.jcode/builds/stable/jcode path, NOT
-/// ~/.local/bin/jcode launcher path (which now points to current).
+///
+/// The `~/.jcode/builds/stable/...` channel layout is gone: the package manager
+/// owns installation, so there is no jcode-managed stable channel to detect.
 pub(super) fn is_running_stable_release() -> bool {
-    static IS_STABLE: OnceLock<bool> = OnceLock::new();
-    *IS_STABLE.get_or_init(|| {
-        // Use the raw symlink target (read_link), not canonicalize, to
-        // check whether we're on the stable channel link.
-        let current_exe = match std::env::current_exe().ok() {
-            Some(path) => path,
-            None => return false,
-        };
-
-        // Check if we were launched via the stable symlink
-        if let Ok(stable_path) = crate::build::stable_binary_path() {
-            // Compare the symlink target (not canonical) to distinguish
-            // direct stable-channel execution from launcher/current links.
-            let stable_target =
-                std::fs::read_link(&stable_path).unwrap_or_else(|_| stable_path.clone());
-            let current_target =
-                std::fs::read_link(&current_exe).unwrap_or_else(|_| current_exe.clone());
-            if stable_target == current_target {
-                return true;
-            }
-            // Also check canonical paths for when launched directly
-            if let (Ok(stable_canon), Ok(current_canon)) = (
-                std::fs::canonicalize(&stable_path),
-                std::fs::canonicalize(&current_exe),
-            ) && stable_canon == current_canon
-                && !current_exe.to_string_lossy().contains("target/release")
-            {
-                return true;
-            }
-        }
-
-        false
-    })
+    false
 }
 
 #[cfg(test)]

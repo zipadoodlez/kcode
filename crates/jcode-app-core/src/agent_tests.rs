@@ -8,8 +8,6 @@ use async_trait::async_trait;
 use tokio::sync::mpsc as tokio_mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-#[path = "agent_tests/desktop_selfdev.rs"]
-mod desktop_selfdev;
 
 struct DelayedProvider {
     open_delay: Duration,

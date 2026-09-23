@@ -602,40 +602,10 @@ pub(super) async fn execute_debug_command(
     }
 
     if trimmed == "reload" {
-        let repo_dir = crate::build::get_repo_dir()
-            .ok_or_else(|| anyhow::anyhow!("Could not find jcode repository directory"))?;
-
-        let target_binary = crate::build::find_dev_binary(&repo_dir)
-            .unwrap_or_else(|| build::release_binary_path(&repo_dir));
-        if !target_binary.exists() {
-            return Err(anyhow::anyhow!(format!(
-                "No binary found at {}. Run 'jcode self-dev --build' first, or build with 'scripts/dev_cargo.sh build --profile selfdev -p jcode --bin jcode' and publish current.",
-                target_binary.display()
-            )));
-        }
-
-        let source = crate::build::current_source_state(&repo_dir)?;
-        let hash = source.version_label.clone();
-        let published = crate::build::publish_local_current_build_for_source(&repo_dir, &source)?;
-        crate::build::smoke_test_server_binary(&published.versioned_path)?;
-        crate::build::update_shared_server_symlink(&hash)?;
-        crate::build::update_canary_symlink(&hash)?;
-
-        let mut manifest = crate::build::BuildManifest::load()?;
-        manifest.canary = Some(hash.clone());
-        manifest.canary_status = Some(crate::build::CanaryStatus::Testing);
-        manifest.save()?;
-
-        let jcode_dir = crate::storage::jcode_dir()?;
-        let info_path = jcode_dir.join("reload-info");
-        std::fs::write(&info_path, format!("reload:{}", hash))?;
-
-        let _request_id = super::send_reload_signal(hash.clone(), None, false);
-
-        return Ok(format!(
-            "Reload signal sent for build {}. Server will restart.",
-            hash
-        ));
+        // Self-dev build-and-reload is gone; the package manager owns installed
+        // binaries. This now requests a plain restart of the running server.
+        let _request_id = super::send_reload_signal("manual-reload".to_string(), None, false);
+        return Ok("Reload signal sent. Server will restart.".to_string());
     }
 
     Err(anyhow::anyhow!("Unknown debug command '{}'", trimmed))
@@ -799,7 +769,7 @@ mod tests {
 
         let provider: Arc<dyn Provider> = Arc::new(TestProvider);
         let registry = Registry::new(provider.clone()).await;
-        registry.register_selfdev_tools().await;
+        registry.register_debug_tools().await;
 
         let mut agent = Agent::new(provider, registry);
         agent.set_canary("self-dev");

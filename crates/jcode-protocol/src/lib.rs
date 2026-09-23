@@ -175,7 +175,16 @@ impl AuthChanged {
     }
 }
 
-pub type ReloadRecoverySnapshot = jcode_selfdev_types::ReloadRecoveryDirective;
+/// Server-owned reload recovery intent for a session: an optional reconnect
+/// notice plus the continuation message the client should queue after a reload
+/// or an interruption.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReloadRecoveryDirective {
+    pub reconnect_notice: Option<String>,
+    pub continuation_message: String,
+}
+
+pub type ReloadRecoverySnapshot = ReloadRecoveryDirective;
 
 mod wire;
 pub use wire::TaskGraphNodeSpec;

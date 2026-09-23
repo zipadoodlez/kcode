@@ -1,12 +1,11 @@
 use anyhow::Result;
 use clap::Parser;
-use std::process::Command as ProcessCommand;
 
-use crate::{build, logging, perf, server, startup_profile, storage, update};
+use crate::{logging, perf, server, startup_profile, storage};
 
 use super::{
     args::{Args, Command},
-    dispatch, hot_exec, output, terminal,
+    dispatch, output, terminal,
 };
 
 fn sync_output_style_from_config() {
@@ -117,7 +116,6 @@ pub async fn run() -> Result<()> {
     startup_profile::mark("perf_init");
 
     let args = parse_and_prepare_args(args)?;
-    spawn_background_update_check(&args);
 
     if let Err(e) = dispatch::run_main(args).await {
         report_main_error(&e);
@@ -271,160 +269,6 @@ fn remote_working_dir_is_absolute(path: &str) -> bool {
         && bytes[0].is_ascii_alphabetic()
 }
 
-fn spawn_background_update_check(args: &Args) {
-    let check_updates = should_spawn_background_update_check(args);
-    let auto_update = should_auto_install_update(args);
-
-    if !check_updates {
-        return;
-    }
-
-    if update::is_release_build() {
-        std::thread::spawn(move || {
-            use crate::bus::{Bus, BusEvent, ClientMaintenanceAction, SessionUpdateStatus};
-            match update::check_and_maybe_update(auto_update) {
-                update::UpdateCheckResult::UpdateAvailable {
-                    current, latest, ..
-                } => {
-                    logging::info(&format!("Update available: {} -> {}", current, latest));
-                }
-                update::UpdateCheckResult::UpdateInstalled { version, path } => {
-                    // When an interactive TUI session is running, hand the switch
-                    // to the app's graceful reload path (saves the input line,
-                    // waits for the current turn, resumes the session) instead of
-                    // exec-ing over the live UI, which visibly resets the screen.
-                    if let Some(session_id) = terminal::get_current_session() {
-                        logging::info(&format!(
-                            "Updated to {}. Requesting graceful session reload...",
-                            version
-                        ));
-                        Bus::global().publish(BusEvent::SessionUpdateStatus(
-                            SessionUpdateStatus::ReadyToReload {
-                                session_id,
-                                action: ClientMaintenanceAction::Update,
-                                version,
-                            },
-                        ));
-                        return;
-                    }
-                    logging::info(&format!("Updated to {}. Restarting...", version));
-                    std::thread::sleep(std::time::Duration::from_millis(250));
-                    let args: Vec<String> = std::env::args().skip(1).collect();
-                    let exec_path = build::client_update_candidate(false)
-                        .map(|(p, _)| p)
-                        .unwrap_or(path);
-                    let err = crate::platform::replace_process(
-                        ProcessCommand::new(&exec_path)
-                            .args(&args)
-                            .arg("--no-update"),
-                    );
-                    eprintln!("Failed to exec new binary: {}", err);
-                }
-                update::UpdateCheckResult::Error(e) => {
-                    logging::info(&format!("Update check failed: {}", e));
-                }
-                update::UpdateCheckResult::NoUpdate => {}
-            }
-        });
-    } else {
-        std::thread::spawn(move || {
-            use crate::bus::{Bus, BusEvent, UpdateStatus};
-
-            let start = std::time::Instant::now();
-            Bus::global().publish(BusEvent::UpdateStatus(UpdateStatus::Checking));
-            let status = source_update_check_status(hot_exec::check_for_updates());
-            if matches!(status, UpdateStatus::Available { .. }) {
-                // A checkout with local commits can never fast-forward, so the
-                // pull below would always fail and surface a noisy "Update
-                // diverged. Press Ctrl+Y..." card in every new session.
-                // Developers with local work expect divergence; log it once
-                // and stay quiet in the UI (no Available/Error cards).
-                if hot_exec::local_commits_ahead_of_upstream() == Some(true) {
-                    logging::info(
-                        "Auto-update skipped: local commits are ahead of upstream (diverged). \
-                         Merge or rebase manually when ready.",
-                    );
-                    Bus::global().publish(BusEvent::UpdateStatus(UpdateStatus::UpToDate));
-                } else {
-                    Bus::global().publish(BusEvent::UpdateStatus(status));
-                    if auto_update {
-                        logging::info("Update available - auto-updating...");
-                        Bus::global().publish(BusEvent::UpdateStatus(UpdateStatus::Installing {
-                            version: "latest source".to_string(),
-                        }));
-                        if let Err(e) = hot_exec::run_auto_update() {
-                            Bus::global().publish(BusEvent::UpdateStatus(UpdateStatus::Error(
-                                e.to_string(),
-                            )));
-                            logging::error(&format!(
-                                "Auto-update failed: {}. Continuing with current version.",
-                                e
-                            ));
-                        }
-                    } else {
-                        logging::info(
-                            "Update available! Run `jcode update` or `/reload` to update.",
-                        );
-                    }
-                }
-            } else {
-                if let UpdateStatus::Error(message) = &status {
-                    logging::info(message);
-                }
-                Bus::global().publish(BusEvent::UpdateStatus(status));
-            }
-            logging::info(&format!(
-                "[TIMING] background_update_check: auto_update={}, total={}ms",
-                auto_update,
-                start.elapsed().as_millis()
-            ));
-        });
-    }
-}
-
-fn source_update_check_status(result: Option<bool>) -> crate::bus::UpdateStatus {
-    use crate::bus::UpdateStatus;
-
-    match result {
-        Some(true) => UpdateStatus::Available {
-            current: jcode_build_meta::version().to_string(),
-            latest: "latest source".to_string(),
-        },
-        Some(false) => UpdateStatus::UpToDate,
-        None => UpdateStatus::Error(
-            "Source update check failed: unable to compare the source checkout with its upstream. \
-             The repository or upstream may be unavailable, or git fetch may have failed."
-                .to_string(),
-        ),
-    }
-}
-
-fn should_spawn_background_update_check(args: &Args) -> bool {
-    should_spawn_background_update_check_with_config(
-        args,
-        crate::config::config().features.check_updates,
-    )
-}
-
-fn should_spawn_background_update_check_with_config(args: &Args, check_updates: bool) -> bool {
-    check_updates
-        && args.ssh.is_none()
-        && !args.quiet
-        && !args.no_update
-        && !matches!(
-            args.command,
-            Some(Command::Update)
-                | Some(Command::Serve { .. })
-                | Some(Command::Server { .. })
-                | Some(Command::Acp)
-        )
-        && args.resume.is_none()
-}
-
-fn should_auto_install_update(args: &Args) -> bool {
-    args.auto_update
-}
-
 fn report_main_error(error: &anyhow::Error) {
     let error_str = format!("{:?}", error);
     logging::error(&error_str);
@@ -447,91 +291,10 @@ mod tests {
         Args::parse_from(argv)
     }
 
-    #[test]
-    fn source_update_check_unknown_reports_comparison_error() {
-        let crate::bus::UpdateStatus::Error(message) = source_update_check_status(None) else {
-            panic!("an indeterminate source comparison must report an error");
-        };
-        assert!(message.contains("unable to compare the source checkout with its upstream"));
-        assert!(message.contains("git fetch may have failed"));
-    }
-
-    #[test]
-    fn source_update_check_false_reports_up_to_date() {
-        assert!(matches!(
-            source_update_check_status(Some(false)),
-            crate::bus::UpdateStatus::UpToDate
-        ));
-    }
-
-    #[test]
-    fn source_update_check_true_reports_available() {
-        let crate::bus::UpdateStatus::Available { current, latest } =
-            source_update_check_status(Some(true))
-        else {
-            panic!("a source update must remain available");
-        };
-        assert_eq!(current, jcode_build_meta::version());
-        assert_eq!(latest, "latest source");
-    }
-
-    #[test]
-    fn source_update_check_real_git_upstream_states() {
-        let repo = tempfile::tempdir().expect("temporary source checkout");
-        let git = |args: &[&str]| {
-            let output = ProcessCommand::new("git")
-                .args([
-                    "-c",
-                    "user.name=Update Test",
-                    "-c",
-                    "user.email=update-test@example.invalid",
-                    "-c",
-                    "commit.gpgsign=false",
-                    "-c",
-                    "core.hooksPath=/dev/null",
-                ])
-                .args(args)
-                .current_dir(repo.path())
-                .output()
-                .expect("run git fixture command");
-            assert!(
-                output.status.success(),
-                "git {args:?}: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-        };
-        git(&["init", "-b", "source"]);
-        git(&["commit", "--allow-empty", "-m", "initial"]);
-
-        // A valid checkout without a tracking branch cannot be compared.
-        let result = hot_exec::source_update_available(repo.path());
-        assert_eq!(result, None);
-        assert!(matches!(
-            source_update_check_status(result),
-            crate::bus::UpdateStatus::Error(_)
-        ));
-
-        // Local branches supply tracking controls without fetching or networking.
-        git(&["branch", "upstream"]);
-        git(&["branch", "--set-upstream-to=upstream", "source"]);
-        let result = hot_exec::source_update_available(repo.path());
-        assert_eq!(result, Some(false));
-        assert!(matches!(
-            source_update_check_status(result),
-            crate::bus::UpdateStatus::UpToDate
-        ));
-
-        git(&["checkout", "upstream"]);
-        git(&["commit", "--allow-empty", "-m", "upstream update"]);
-        git(&["checkout", "source"]);
-        let result = hot_exec::source_update_available(repo.path());
-        assert_eq!(result, Some(true));
-        assert!(matches!(
-            source_update_check_status(result),
-            crate::bus::UpdateStatus::Available { .. }
-        ));
-    }
-
+    
+    
+    
+    
     #[test]
     fn parses_mcp_tool_exposure_flags() {
         let args = parse_args(&[
@@ -547,25 +310,9 @@ mod tests {
         assert_eq!(args.mcp_tools_token_threshold, Some(4_321));
     }
 
-    #[test]
-    fn auto_install_allowed_without_live_terminal() {
-        let args = parse_args(&["jcode", "login"]);
-        assert!(should_auto_install_update(&args));
-    }
-
-    #[test]
-    fn auto_install_allowed_with_live_terminal_attached() {
-        let args = parse_args(&["jcode", "login"]);
-        assert!(should_auto_install_update(&args));
-    }
-
-    #[test]
-    fn auto_install_respects_explicit_disable_even_without_terminal() {
-        let mut args = parse_args(&["jcode", "login"]);
-        args.auto_update = false;
-        assert!(!should_auto_install_update(&args));
-    }
-
+    
+    
+    
     #[test]
     fn remote_working_dir_validation_requires_absolute_path() {
         assert!(validate_remote_working_dir(Some("/home/agent/project")).is_ok());
@@ -580,25 +327,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn update_command_still_skips_background_check_before_auto_install_logic() {
-        let args = parse_args(&["jcode", "update"]);
-        assert!(matches!(args.command, Some(Command::Update)));
-        assert!(!should_spawn_background_update_check(&args));
-        assert!(should_auto_install_update(&args));
-    }
-
-    #[test]
-    fn config_can_permanently_disable_background_update_checks() {
-        let args = parse_args(&["jcode", "login"]);
-        assert!(should_spawn_background_update_check_with_config(
-            &args, true
-        ));
-        assert!(!should_spawn_background_update_check_with_config(
-            &args, false
-        ));
-    }
-
+    
+    
     #[test]
     fn external_provider_runtimes_register_and_instantiate() {
         register_external_provider_runtimes();

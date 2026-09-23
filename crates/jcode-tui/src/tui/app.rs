@@ -16,7 +16,7 @@ use crate::provider::Provider;
 use crate::runtime_memory_log::RuntimeMemoryLogController;
 use crate::session::{Session, StoredMessage};
 use crate::skill::SkillRegistry;
-use crate::tool::selfdev::ReloadContext;
+use crate::session_recovery::{self, ReloadContext};
 use crate::tool::{Registry, ToolContext};
 use anyhow::Result;
 use auth::PendingLogin;
@@ -475,7 +475,7 @@ impl RemoteStartupPhase {
 }
 
 pub(super) fn reload_persisted_background_tasks_note(session_id: &str) -> String {
-    crate::tool::selfdev::persisted_background_tasks_note(session_id)
+    crate::session_recovery::persisted_background_tasks_note(session_id)
 }
 
 #[derive(Clone, Default)]
@@ -1251,12 +1251,6 @@ pub struct App {
     swarm_plan_swarm_id: Option<String>,
     // Number of connected clients (remote mode only)
     remote_client_count: Option<usize>,
-    // Build version tracking for auto-migration
-    known_stable_version: Option<String>,
-    // Last time we checked for stable version
-    last_version_check: Option<Instant>,
-    // Pending migration to new stable version
-    pending_migration: Option<String>,
     // Session to resume on connect (remote mode)
     resume_session_id: Option<String>,
     // Exit code to use when quitting (for canary wrapper communication)

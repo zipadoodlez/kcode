@@ -54,7 +54,7 @@ pub use jcode_agent_runtime::{
     SoftInterruptQueue, SoftInterruptSource, StreamError,
 };
 
-const JCODE_NATIVE_TOOLS: &[&str] = &["selfdev", "desktop_selfdev", "communicate"];
+const JCODE_NATIVE_TOOLS: &[&str] = &["communicate"];
 static RECOVERED_TEXT_WRAPPED_TOOL_CALLS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 static JCODE_REPO_SOURCE_STATE: LazyLock<(Option<String>, Option<bool>)> = LazyLock::new(|| {
@@ -922,17 +922,6 @@ impl Agent {
 
     pub fn session_id(&self) -> &str {
         &self.session.id
-    }
-
-    /// Desktop self-development is selected by the session checkout, including
-    /// restored sessions. It must not set the CLI canary/reload flags.
-    pub fn is_desktop_selfdev(&self) -> bool {
-        self.session
-            .working_dir
-            .as_deref()
-            .map(std::path::Path::new)
-            .and_then(jcode_selfdev_types::desktop_repo_root)
-            .is_some()
     }
 
     pub(crate) fn set_working_dir_for_pending_context(&mut self, working_dir: Option<String>) {

@@ -403,11 +403,6 @@ impl App {
                 .map(|value| value.capacity())
                 .unwrap_or(0)
             + self
-                .pending_migration
-                .as_ref()
-                .map(|value| value.capacity())
-                .unwrap_or(0)
-            + self
                 .resume_session_id
                 .as_ref()
                 .map(|value| value.capacity())

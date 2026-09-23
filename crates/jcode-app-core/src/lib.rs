@@ -30,6 +30,7 @@ pub mod ambient_runner;
 pub mod ambient_scheduler;
 pub mod build;
 pub mod catchup;
+pub mod client_mode;
 pub mod external_auth;
 pub mod mission;
 pub mod network_retry;
@@ -41,13 +42,12 @@ pub mod server;
 pub mod server_spawn;
 pub mod session_edit_stats;
 pub mod session_effort;
+pub mod session_recovery;
 pub mod session_launch;
-pub mod session_rebuild;
 pub mod ssh_remote;
 pub mod startup_profile;
 pub mod tool;
 pub mod turn_cancel_registry;
-pub mod update;
 
 use std::sync::Mutex;
 

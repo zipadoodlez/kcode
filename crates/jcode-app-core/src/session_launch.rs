@@ -293,11 +293,9 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
         args.push("--provider".to_string());
         args.push(provider_arg.to_string());
     }
-    args.extend([
-        "--resume".to_string(),
-        session_id.to_string(),
-        "self-dev".to_string(),
-    ]);
+    // The `self-dev` subcommand is gone; a self-dev spawn resumes the session
+    // in a canary/debug context selected by the client-mode environment.
+    args.extend(["--resume".to_string(), session_id.to_string()]);
     let command = crate::terminal_launch::TerminalCommand::new(exe, args)
         .title(selfdev_title.clone())
         .fresh_spawn();

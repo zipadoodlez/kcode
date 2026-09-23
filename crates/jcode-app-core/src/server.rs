@@ -91,7 +91,7 @@ use crate::runtime_memory_log::{
     ServerRuntimeMemorySample, ServerRuntimeMemoryServer, ServerRuntimeMemorySessions,
     ServerRuntimeMemoryTopSession,
 };
-use crate::tool::selfdev::ReloadContext;
+use crate::session_recovery::{self, ReloadContext};
 use crate::transport::Listener;
 use anyhow::Result;
 use jcode_agent_runtime::{InterruptSignal, SoftInterruptSource};
@@ -939,7 +939,7 @@ impl Server {
             let provider = self.provider.fork();
             let registry = crate::tool::Registry::new(provider.clone()).await;
             if session.is_canary {
-                registry.register_selfdev_tools().await;
+                registry.register_debug_tools().await;
             }
             registry
                 .register_mcp_tools_for_dir(

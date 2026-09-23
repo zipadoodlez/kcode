@@ -149,10 +149,7 @@ fn spawn_visible_session_window_with_context(
     provider_key: Option<&str>,
     context: &crate::session_launch::SessionSpawnContext,
 ) -> anyhow::Result<bool> {
-    let exe = crate::build::client_update_candidate(selfdev_requested)
-        .map(|(path, _label)| path)
-        .or_else(|| std::env::current_exe().ok())
-        .unwrap_or_else(|| PathBuf::from("jcode"));
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("jcode"));
     if selfdev_requested {
         crate::session_launch::spawn_selfdev_in_new_terminal_with_context(
             &exe,

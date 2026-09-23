@@ -249,7 +249,7 @@ fn full_frame_status_animation_active_with_policy(
     // These animations are rendered as part of the full status line, not by the
     // spinner-only cell renderer in app/run_shell.rs, so they need the normal
     // active redraw loop while visible.
-    rate_limit_countdown_redraw_active(state) || crate::build::read_build_progress().is_some()
+    rate_limit_countdown_redraw_active(state)
 }
 
 fn primary_status_spinner_fast_path_available_with_policy(
@@ -443,7 +443,6 @@ pub(crate) fn redraw_interval_with_policy_and_animation(
         && !state.copy_selection_edge_autoscroll_active()
         && !state.remote_startup_phase_active()
         && !rate_limit_countdown_redraw_active(state)
-        && crate::build::read_build_progress().is_none()
     {
         return REDRAW_DEEP_IDLE;
     }
@@ -457,7 +456,6 @@ pub(crate) fn redraw_interval_with_policy_and_animation(
         && !state.remote_startup_phase_active()
         && !rate_limit_countdown_redraw_active(state)
         && !cache_cold_countdown_redraw_active(state)
-        && crate::build::read_build_progress().is_none()
         && !swarm_spinner_redraw_active(state)
         && !session_picker_spinner_redraw_active(state)
     {
@@ -596,7 +594,6 @@ fn periodic_redraw_required_inner(state: &dyn TuiState, include_idle_animation: 
         && !state.remote_startup_phase_active()
         && !rate_limit_countdown_redraw_active(state)
         && !cache_cold_countdown_redraw_active(state)
-        && crate::build::read_build_progress().is_none()
         && !swarm_spinner_redraw_active(state)
         && !session_picker_spinner_redraw_active(state)
     {

@@ -55,11 +55,11 @@ pub(crate) struct Args {
     #[arg(long, global = true, requires = "ssh", value_name = "PATH")]
     pub(crate) ssh_server_socket: Option<String>,
 
-    /// Skip the automatic update check
+    /// Accepted for compatibility; ignored (updates are managed by the package manager)
     #[arg(long, global = true)]
     pub(crate) no_update: bool,
 
-    /// Auto-update when new version is available (default: true for release builds)
+    /// Accepted for compatibility; ignored (updates are managed by the package manager)
     #[arg(long, global = true, default_value = "true")]
     pub(crate) auto_update: bool,
 
@@ -266,9 +266,6 @@ pub(crate) enum Command {
     /// Run in simple REPL mode (no TUI)
     Repl,
 
-    /// Update jcode to the latest version
-    Update,
-
     /// Show build/version information in human or JSON form
     Version {
         /// Emit JSON instead of plain text
@@ -281,14 +278,6 @@ pub(crate) enum Command {
         /// Emit JSON instead of plain text
         #[arg(long)]
         json: bool,
-    },
-
-    /// Self-development mode: run as a canary session on the shared server
-    #[command(alias = "selfdev")]
-    SelfDev {
-        /// Build and test a new canary version before launching
-        #[arg(long)]
-        build: bool,
     },
 
     /// Debug socket CLI - interact with running jcode server
@@ -559,19 +548,6 @@ pub(crate) enum ServerCommand {
     /// Internal: hold a lightweight connection open until stdin closes.
     #[command(hide = true)]
     Keepalive,
-
-    /// Pin the shared server channel to an installed version.
-    ///
-    /// Defaults to the active `current` version. This only selects the daemon's
-    /// binary; run `jcode server reload` separately to apply it.
-    Promote {
-        /// Installed version to promote (defaults to the current channel)
-        version: Option<String>,
-
-        /// Emit JSON instead of human-readable text
-        #[arg(long)]
-        json: bool,
-    },
 
     /// Gracefully reload the running background server onto the newest binary.
     ///

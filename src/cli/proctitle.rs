@@ -18,10 +18,8 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::Login { .. }) => "jcode login".to_string(),
         Some(Command::Account { .. }) => "jcode account".to_string(),
         Some(Command::Repl) => "jcode repl".to_string(),
-        Some(Command::Update) => "jcode update".to_string(),
         Some(Command::Version { .. }) => "jcode version".to_string(),
         Some(Command::Usage { .. }) => "jcode usage".to_string(),
-        Some(Command::SelfDev { .. }) => "jcode:selfdev".to_string(),
         Some(Command::Debug { .. }) => "jcode debug".to_string(),
         Some(Command::Auth(_)) => "jcode auth".to_string(),
         Some(Command::Provider(_)) => "jcode provider".to_string(),
@@ -44,13 +42,13 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::Menubar { .. }) => "jcode menubar".to_string(),
         None => {
             if let Some(resume) = args.resume.as_deref().filter(|resume| !resume.is_empty()) {
-                let prefix = if crate::cli::selfdev::client_selfdev_requested() {
+                let prefix = if crate::client_mode::client_selfdev_requested() {
                     "jcode:d:"
                 } else {
                     "jcode:c:"
                 };
                 compact_process_title(prefix, Some(&session_name(resume)))
-            } else if crate::cli::selfdev::client_selfdev_requested() {
+            } else if crate::client_mode::client_selfdev_requested() {
                 "jcode:selfdev".to_string()
             } else {
                 "jcode:client".to_string()
@@ -69,7 +67,7 @@ mod tests {
     use crate::storage::lock_test_env;
     use clap::Parser;
 
-    const SELFDEV_ENV: &str = jcode_selfdev_types::CLIENT_SELFDEV_ENV;
+    const SELFDEV_ENV: &str = crate::client_mode::CLIENT_SELFDEV_ENV;
 
     fn with_selfdev_env_removed<T>(f: impl FnOnce() -> T) -> T {
         let _guard = lock_test_env();
@@ -98,11 +96,4 @@ mod tests {
         });
     }
 
-    #[test]
-    fn initial_title_labels_selfdev_command() {
-        with_selfdev_env_removed(|| {
-            let args = Args::parse_from(["jcode", "self-dev"]);
-            assert_eq!(initial_title(&args), "jcode:selfdev");
-        });
-    }
 }

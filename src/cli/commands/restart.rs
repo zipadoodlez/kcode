@@ -170,10 +170,8 @@ pub fn run_restart_restore_command() -> Result<()> {
 }
 
 fn current_restart_restore_exe() -> Result<PathBuf> {
-    crate::build::client_update_candidate(false)
-        .map(|(path, _)| path)
-        .or_else(|| std::env::current_exe().ok())
-        .ok_or_else(|| anyhow::anyhow!("Could not determine jcode executable for restore"))
+    std::env::current_exe()
+        .map_err(|_| anyhow::anyhow!("Could not determine jcode executable for restore"))
 }
 
 #[derive(Debug, Deserialize)]

@@ -965,7 +965,7 @@ fn test_handle_post_connect_defers_reload_followup_to_server_history_payload() {
     crate::env::set_var("JCODE_HOME", temp_home.path());
 
     let session_id = "session_hidden_reload_followup";
-    crate::tool::selfdev::ReloadContext {
+    crate::session_recovery::ReloadContext {
         task_context: Some("Investigate queued prompt delivery after reload".to_string()),
         version_before: "old-build".to_string(),
         version_after: "new-build".to_string(),
@@ -1021,7 +1021,7 @@ fn test_handle_post_connect_clears_deferred_dispatch_before_reload_followup() {
     crate::env::set_var("JCODE_HOME", temp_home.path());
 
     let session_id = "session_reload_deferred_dispatch";
-    crate::tool::selfdev::ReloadContext {
+    crate::session_recovery::ReloadContext {
         task_context: Some(
             "Verify deferred dispatch does not block reload continuation".to_string(),
         ),

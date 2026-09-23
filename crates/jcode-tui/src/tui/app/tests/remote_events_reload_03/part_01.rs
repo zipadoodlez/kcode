@@ -483,7 +483,7 @@ fn test_finalize_reload_reconnect_mentions_persisted_background_task() {
     let _guard = crate::storage::lock_test_env();
     let mut app = create_test_app();
     let session_id = crate::id::new_id("ses_reload_bg");
-    let reload_ctx = crate::tool::selfdev::ReloadContext {
+    let reload_ctx = crate::session_recovery::ReloadContext {
         task_context: Some("Waiting for cargo build --release".to_string()),
         version_before: "v0.1.100".to_string(),
         version_after: "abc1234".to_string(),
@@ -536,14 +536,14 @@ fn test_finalize_reload_reconnect_is_session_scoped_across_reconnect_order() {
     let session_a = crate::id::new_id("ses_reload_a");
     let session_b = crate::id::new_id("ses_reload_b");
 
-    let ctx_a = crate::tool::selfdev::ReloadContext {
+    let ctx_a = crate::session_recovery::ReloadContext {
         task_context: Some("resume session A".to_string()),
         version_before: "old-a".to_string(),
         version_after: "new-a".to_string(),
         session_id: session_a.clone(),
         timestamp: chrono::Utc::now().to_rfc3339(),
     };
-    let ctx_b = crate::tool::selfdev::ReloadContext {
+    let ctx_b = crate::session_recovery::ReloadContext {
         task_context: Some("resume session B".to_string()),
         version_before: "old-b".to_string(),
         version_after: "new-b".to_string(),
@@ -566,13 +566,13 @@ fn test_finalize_reload_reconnect_is_session_scoped_across_reconnect_order() {
     assert_eq!(app_b.hidden_queued_system_messages.len(), 1);
     assert!(app_b.hidden_queued_system_messages[0].contains("new-b"));
     assert!(
-        crate::tool::selfdev::ReloadContext::peek_for_session(&session_a)
+        crate::session_recovery::peek_for_session(&session_a)
             .expect("peek session a")
             .is_some(),
         "session A context should remain available after session B reconnects first"
     );
     assert!(
-        crate::tool::selfdev::ReloadContext::peek_for_session(&session_b)
+        crate::session_recovery::peek_for_session(&session_b)
             .expect("peek session b")
             .is_none(),
         "session B context should be consumed by its own reconnect"
@@ -591,7 +591,7 @@ fn test_finalize_reload_reconnect_is_session_scoped_across_reconnect_order() {
     assert_eq!(app_a.hidden_queued_system_messages.len(), 1);
     assert!(app_a.hidden_queued_system_messages[0].contains("new-a"));
     assert!(
-        crate::tool::selfdev::ReloadContext::peek_for_session(&session_a)
+        crate::session_recovery::peek_for_session(&session_a)
             .expect("peek session a after consume")
             .is_none(),
         "session A context should be consumed only by session A reconnect"
@@ -606,7 +606,7 @@ fn test_finalize_reload_reconnect_supports_repeated_reload_cycles_for_same_sessi
     for cycle in 0..3 {
         let mut app = create_test_app();
         let version_after = format!("loop-build-{}", cycle);
-        let reload_ctx = crate::tool::selfdev::ReloadContext {
+        let reload_ctx = crate::session_recovery::ReloadContext {
             task_context: Some(format!("reload loop cycle {}", cycle)),
             version_before: format!("loop-prev-{}", cycle),
             version_after: version_after.clone(),
@@ -628,7 +628,7 @@ fn test_finalize_reload_reconnect_supports_repeated_reload_cycles_for_same_sessi
         assert_eq!(app.hidden_queued_system_messages.len(), 1);
         assert!(app.hidden_queued_system_messages[0].contains(&version_after));
         assert!(
-            crate::tool::selfdev::ReloadContext::peek_for_session(&session_id)
+            crate::session_recovery::peek_for_session(&session_id)
                 .expect("peek loop reload context")
                 .is_none(),
             "reload context should be consumed each cycle"

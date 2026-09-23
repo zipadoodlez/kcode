@@ -62,7 +62,6 @@ jcode-schema-dialect = { path = "../jcode-schema-dialect" }
 # NOTE: jcode-app-core does NOT depend on any jcode-tui-* crate. They were
 # unused dead dependency edges here (the TUI declares them itself). Removing
 # them stops a jcode-tui-* edit from cascading a recompile through app-core.
-jcode-update-core = { path = "../jcode-update-core" }
 jcode-terminal-image = { path = "../jcode-terminal-image" }
 
 # Streaming
@@ -77,7 +76,6 @@ unicode-width = "0.2"   # Unicode character display width
 
 # PDF parsing (behind feature flag)
 jcode-pdf = { path = "../jcode-pdf", optional = true }
-jcode-build-support = { path = "../jcode-build-support" }
 jcode-build-meta = { path = "../jcode-build-meta" }
 
 # Foundational layer (provider, auth, config, session, message, memory, ...).
@@ -90,7 +88,6 @@ jcode-message-types = { path = "../jcode-message-types" }
 jcode-overnight-core = { path = "../jcode-overnight-core" }
 jcode-plan = { path = "../jcode-plan" }
 jcode-swarm-core = { path = "../jcode-swarm-core" }
-jcode-selfdev-types = { path = "../jcode-selfdev-types" }
 jcode-session-types = { path = "../jcode-session-types" }
 jcode-task-types = { path = "../jcode-task-types" }
 jcode-tool-core = { path = "../jcode-tool-core" }

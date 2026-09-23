@@ -985,7 +985,7 @@ pub(super) async fn handle_resume_all_sessions(
 
         let reminder = match super::reload_recovery::pending_directive_for_session(&session_id) {
             Ok(Some(directive)) => directive.continuation_message,
-            _ => crate::tool::selfdev::ReloadContext::interrupted_session_continuation_message(),
+            _ => crate::session_recovery::interrupted_session_continuation_message(),
         };
         let display_name = agent_guard
             .session_short_name()

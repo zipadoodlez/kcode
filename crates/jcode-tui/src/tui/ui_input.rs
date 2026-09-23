@@ -796,16 +796,7 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
         String::new()
     };
 
-    let line = if let Some(build_progress) = crate::build::read_build_progress() {
-        let spinner = super::activity_indicator(elapsed, 12.5);
-        Line::from(vec![
-            Span::styled(spinner, Style::default().fg(rgb(255, 193, 7))),
-            Span::styled(
-                format!(" {}", build_progress),
-                Style::default().fg(rgb(255, 193, 7)),
-            ),
-        ])
-    } else if let Some(remaining) = app.rate_limit_remaining() {
+    let line = if let Some(remaining) = app.rate_limit_remaining() {
         let secs = remaining.as_secs();
         let spinner = super::activity_indicator(elapsed, 4.0);
         let time_str = if secs >= 3600 {

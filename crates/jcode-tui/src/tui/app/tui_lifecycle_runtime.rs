@@ -182,34 +182,12 @@ impl App {
         )
     }
 
-    /// Check if the selected reload candidate is newer than startup.
-    /// Candidate selection matches `/reload` so the `cli↑` badge and reload target stay aligned.
+    /// Whether a newer client binary is available to reload into.
+    ///
+    /// Channel-based update candidates are gone (the package manager owns the
+    /// installed binary), so there is never a jcode-managed newer client.
     pub(super) fn has_newer_binary(&self) -> bool {
-        let Some(startup_mtime) = self.client_binary_mtime else {
-            return false;
-        };
-
-        let is_selfdev_session = if self.is_remote {
-            self.remote_is_canary.unwrap_or(self.session.is_canary)
-        } else {
-            self.session.is_canary
-        };
-
-        let Some((candidate, _label)) =
-            crate::build::preferred_reload_candidate(is_selfdev_session)
-        else {
-            return false;
-        };
-
-        // The candidate may be a channel symlink to a release wrapper script;
-        // compare the payload that actually runs (`client_binary_mtime` is the
-        // running payload's mtime). Comparing the wrapper's mtime reported a
-        // phantom "newer client" forever after release installs whose wrapper
-        // was written after the payload, re-execing the client in a loop.
-        std::fs::metadata(crate::build::resolve_binary_payload(&candidate))
-            .ok()
-            .and_then(|m| m.modified().ok())
-            .is_some_and(|mtime| mtime > startup_mtime)
+        false
     }
 
     /// After an in-process server reload (e.g. `self-dev build-reload`), the
@@ -302,7 +280,7 @@ impl App {
 
         // Register self-dev tools if this is a canary session
         if self.session.is_canary {
-            self.registry.register_selfdev_tools().await;
+            self.registry.register_debug_tools().await;
         }
     }
 

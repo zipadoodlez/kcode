@@ -1740,14 +1740,14 @@ pub(crate) fn subscribe_metadata(
         // Never infer a remote project (or self-dev mode) from the laptop cwd.
         return (
             remote_working_dir.map(str::to_string),
-            jcode_selfdev_types::client_selfdev_requested().then_some(true),
+            crate::client_mode::client_selfdev_requested().then_some(true),
         );
     }
     let working_dir = std::env::current_dir().ok();
     resolve_subscribe_metadata(
         working_dir.as_deref(),
         remote_working_dir,
-        jcode_selfdev_types::client_selfdev_requested(),
+        crate::client_mode::client_selfdev_requested(),
     )
 }
 

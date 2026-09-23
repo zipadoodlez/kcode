@@ -604,57 +604,6 @@ pub async fn run_usage_command(emit_json: bool) -> Result<()> {
     report_info::run_usage_command(emit_json).await
 }
 
-/// Explicitly pin the daemon's shared-server channel to an installed build.
-/// Promotion and reload intentionally remain separate operations: updates may
-/// advance a shared server that tracks stable, but must not overwrite a build
-/// the user deliberately promoted here.
-pub fn run_server_promote_command(version: Option<&str>, emit_json: bool) -> Result<()> {
-    #[derive(Serialize)]
-    struct ServerPromoteReport {
-        version: String,
-        previous: Option<String>,
-        binary: String,
-        promoted: bool,
-        detail: String,
-    }
-
-    let version = match version {
-        Some(version) => version.to_string(),
-        None => crate::build::read_current_version()?.ok_or_else(|| {
-            anyhow::anyhow!("No current version is installed; pass an installed VERSION explicitly")
-        })?,
-    };
-    let previous = crate::build::promote_version_to_shared_server(&version)?;
-    let binary = crate::build::version_binary_path(&version)?;
-    let promoted = previous.as_deref() != Some(version.as_str());
-    let detail = if promoted {
-        format!(
-            "shared-server channel {} -> {}. Run `jcode server reload` to apply it to the running daemon.",
-            previous.as_deref().unwrap_or("<unset>"),
-            version
-        )
-    } else {
-        format!(
-            "shared-server channel already points to {}. Run `jcode server reload` if the running daemon has not applied it.",
-            version
-        )
-    };
-    let report = ServerPromoteReport {
-        version,
-        previous,
-        binary: binary.display().to_string(),
-        promoted,
-        detail,
-    };
-
-    if emit_json {
-        println!("{}", serde_json::to_string_pretty(&report)?);
-    } else {
-        println!("{}", report.detail);
-    }
-    Ok(())
-}
-
 /// Gracefully reload the running background server onto the newest binary.
 ///
 /// This is the preferred upgrade path (issue #291): instead of killing the
@@ -725,33 +674,6 @@ pub async fn run_server_reload_command(force: bool, emit_json: bool) -> Result<(
     // sending stateful requests", so `reload` alone always failed (issue #648).
     // `subscribe()` defaults `working_dir` to the current directory.
     client.subscribe().await?;
-
-    // Before asking the (possibly older) daemon to reload, repair a stale
-    // `shared-server` channel from the client side. The running server resolves
-    // its reload target from that channel; if it still points at the server's
-    // own old binary (the "current client, stale server" state, e.g. after a
-    // no-op `/update`), a forced reload would just re-exec the same old binary.
-    // Repointing shared-server -> stable when stable is strictly newer gives the
-    // reload a newer binary to exec into. Never downgrades; preserves a fresher
-    // self-dev pin. Best-effort: a failure here must not block the reload.
-    match crate::build::repair_stale_shared_server_channel() {
-        Ok(crate::build::SharedServerRepair::Repaired {
-            repaired_to,
-            previous,
-        }) => {
-            crate::logging::info(&format!(
-                "server reload: repaired stale shared-server channel {:?} -> {} before reload",
-                previous, repaired_to
-            ));
-        }
-        Ok(crate::build::SharedServerRepair::AlreadyCurrent) => {}
-        Err(err) => {
-            crate::logging::warn(&format!(
-                "server reload: shared-server channel repair failed (continuing): {}",
-                err
-            ));
-        }
-    }
 
     let request_id = client.reload_with_force(force).await?;
 

@@ -109,13 +109,8 @@ pub(super) fn handle_tick(app: &mut App) -> bool {
     needs_redraw |= super::commands::maybe_begin_pending_local_transfer(app);
     needs_redraw |= app.maybe_progress_provider_failover_countdown();
     app.check_debug_command();
-    needs_redraw |= app.check_stable_version();
     needs_redraw |= app.refresh_keybindings_if_config_reloaded();
     needs_redraw |= app.maybe_finish_background_client_reload();
-    if app.pending_migration.is_some() && !app.is_processing {
-        app.execute_migration();
-        needs_redraw = true;
-    }
     if let Some(reset_time) = app.rate_limit_reset
         && std::time::Instant::now() >= reset_time
     {

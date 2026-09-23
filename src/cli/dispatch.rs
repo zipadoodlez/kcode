@@ -14,8 +14,7 @@ use crate::{
 };
 
 use super::{
-    account, acp, commands, debug, hot_exec, login, output, provider_init, selfdev, terminal,
-    tui_launch,
+    account, acp, commands, debug, login, output, provider_init, terminal, tui_launch,
 };
 use provider_init::ProviderChoice;
 
@@ -71,6 +70,10 @@ fn arm_debug_client_parent_death_signal() {}
 
 pub(crate) async fn run_main(mut args: Args) -> Result<()> {
     arm_debug_client_parent_death_signal();
+    // Update checks and installs are owned by the OS package manager now. The
+    // `--no-update`/`--auto-update` flags are accepted for compatibility with
+    // existing scripts and wrappers but have no effect.
+    let _ = (args.no_update, args.auto_update);
     if args.ssh.is_some() {
         // A remote session ID and working directory belong to the remote host.
         // Do not run local resume lookup, provider bootstrap, or self-dev setup.
@@ -215,9 +218,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                 )
                 .await?;
             }
-            ServerCommand::Promote { version, json } => {
-                commands::run_server_promote_command(version.as_deref(), json)?;
-            }
             ServerCommand::Reload { force, json } => {
                 commands::run_server_reload_command(force, json).await?;
             }
@@ -301,17 +301,11 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             let mut agent = agent::Agent::new(provider, registry);
             agent.repl().await?;
         }
-        Some(Command::Update) => {
-            hot_exec::run_update()?;
-        }
         Some(Command::Version { json }) => {
             commands::run_version_command(json)?;
         }
         Some(Command::Usage { json }) => {
             commands::run_usage_command(json).await?;
-        }
-        Some(Command::SelfDev { build }) => {
-            selfdev::run_self_dev(build, args.resume).await?;
         }
         Some(Command::Debug {
             command,
@@ -724,7 +718,7 @@ async fn run_default_command(args: Args) -> Result<()> {
     let cwd = std::env::current_dir()?;
     let in_jcode_repo = build::is_jcode_repo(&cwd);
     startup_profile::mark("is_jcode_repo");
-    let already_in_selfdev = crate::cli::selfdev::client_selfdev_requested();
+    let already_in_selfdev = crate::client_mode::client_selfdev_requested();
 
     if in_jcode_repo && !already_in_selfdev && !args.no_selfdev {
         output::stderr_info("📍 Detected jcode repository - enabling self-dev mode");
@@ -732,7 +726,7 @@ async fn run_default_command(args: Args) -> Result<()> {
         output::stderr_info("   (use --no-selfdev to disable auto-detection)");
         output::stderr_blank_line();
 
-        crate::env::set_var(selfdev::CLIENT_SELFDEV_ENV, "1");
+        crate::env::set_var(crate::client_mode::CLIENT_SELFDEV_ENV, "1");
         crate::cli::proctitle::set_initial_title(&args);
     }
 
@@ -1107,15 +1101,12 @@ async fn spawn_server_with_executable(
 
     startup_profile::mark("server_spawn_start");
     output::stderr_info("Starting server...");
-    let client_requested_selfdev = selfdev::client_selfdev_requested();
+    let client_requested_selfdev = crate::client_mode::client_selfdev_requested();
     let exe = executable
-        .or_else(|| {
-            build::shared_server_update_candidate(client_requested_selfdev).map(|(path, _)| path)
-        })
         .or_else(|| std::env::current_exe().ok())
         .ok_or_else(|| anyhow::anyhow!("Could not determine executable path for server spawn"))?;
     let mut cmd = ProcessCommand::new(&exe);
-    cmd.env_remove(selfdev::CLIENT_SELFDEV_ENV);
+    cmd.env_remove(crate::client_mode::CLIENT_SELFDEV_ENV);
     if client_requested_selfdev {
         cmd.env("JCODE_DEBUG_CONTROL", "1");
     }

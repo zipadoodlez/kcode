@@ -299,7 +299,7 @@ async fn first_party_tool_definitions_require_intent_with_display_only_docs() {
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let registry = Registry::new(provider).await;
     registry.register_ambient_tools().await;
-    registry.register_selfdev_tools().await;
+    registry.register_debug_tools().await;
 
     let defs = registry.definitions(None).await;
     assert!(!defs.is_empty());

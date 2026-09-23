@@ -420,8 +420,9 @@ pub(super) fn run_version_command(emit_json: bool) -> Result<()> {
         update_semver: jcode_build_meta::update_semver().to_string(),
         git_hash: jcode_build_meta::git_hash().to_string(),
         git_tag: jcode_build_meta::git_tag().to_string(),
-        build_time: crate::build::current_binary_build_time_string()
-            .unwrap_or_else(|| "unknown".to_string()),
+        // The binary's own build time was tracked by the removed build
+        // machinery; the version string already carries the release identity.
+        build_time: "unknown".to_string(),
         git_date: jcode_build_meta::git_date().to_string(),
         release_build: jcode_build_meta::is_release_build(),
     };

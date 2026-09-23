@@ -505,7 +505,7 @@ fn history_reload_recovery_does_not_mark_delivered_until_continuation_is_accepte
         "reload-store-owned",
         session_id,
         super::super::reload_recovery::ReloadRecoveryRole::InterruptedPeer,
-        crate::tool::selfdev::ReloadRecoveryDirective {
+        crate::protocol::ReloadRecoveryDirective {
             reconnect_notice: Some("stored notice".to_string()),
             continuation_message: "stored continuation".to_string(),
         },

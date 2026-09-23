@@ -137,20 +137,16 @@ impl App {
         self.pending_background_client_reload = None;
 
         match action {
+            // Self-install/update and self-dev rebuild are gone: the package
+            // manager owns installing and updating the binary, so there is no
+            // in-band maintenance action to run.
             crate::bus::ClientMaintenanceAction::Update => {
-                crate::update::spawn_background_session_update(session_id);
+                let _ = session_id;
+                self.set_status_notice("Updates are managed by your package manager");
             }
             crate::bus::ClientMaintenanceAction::Rebuild => {
-                self.set_status_notice("Starting background rebuild...");
-                self.set_client_maintenance_message(
-                    action,
-                    Self::client_maintenance_card_message(
-                        action,
-                        "starting background rebuild",
-                        "Running in the background. jcode will reload automatically after the rebuild succeeds.",
-                    ),
-                );
-                crate::session_rebuild::spawn_background_session_rebuild(session_id);
+                let _ = session_id;
+                self.set_status_notice("Rebuild is managed by your package manager");
             }
         }
     }
@@ -184,11 +180,7 @@ impl App {
                 total,
             } => {
                 self.background_client_action = Some(action);
-                let progress =
-                    crate::update::format_download_progress_bar(crate::update::DownloadProgress {
-                        downloaded,
-                        total,
-                    });
+                let progress = download_progress_bar(downloaded, total);
                 self.set_status_notice(format!("↑ {} · {}", version, progress));
                 self.remove_client_maintenance_message(action);
             }
@@ -219,15 +211,15 @@ impl App {
             UpdateStatus::Error(error) => {
                 self.background_client_action = None;
                 self.pending_background_client_reload = None;
-                if crate::update::summary_is_divergence(&error)
-                    || crate::update::summary_is_divergence(
+                if summary_is_divergence(&error)
+                    || summary_is_divergence(
                         error.trim_start_matches("Update failed: "),
                     )
                 {
                     self.offer_update_merge(action, &error);
                 } else {
                     // One line only: the full error is already in the log.
-                    let reason = crate::update::summarize_update_error(&error);
+                    let reason = summarize_update_error(&error);
                     self.set_status_notice(format!("Update failed: {reason}"));
                     self.set_client_maintenance_message(
                         action,
@@ -385,8 +377,8 @@ impl App {
                 }
                 self.background_client_action = None;
                 self.pending_background_client_reload = None;
-                if crate::update::summary_is_divergence(&message)
-                    || crate::update::summary_is_divergence(
+                if summary_is_divergence(&message)
+                    || summary_is_divergence(
                         message.trim_start_matches("Update failed: "),
                     )
                 {
@@ -394,7 +386,7 @@ impl App {
                     return;
                 }
                 // One line only: the full error is already in the log.
-                let reason = crate::update::summarize_update_error(&message);
+                let reason = summarize_update_error(&message);
                 self.set_status_notice(format!("{} failed: {reason}", action.title()));
                 self.set_client_maintenance_message(
                     action,
@@ -537,4 +529,23 @@ Do not force-push or discard local commits without confirming they are already u
         let socket = std::env::var("JCODE_SOCKET").ok();
         super::spawn_in_new_terminal(&exe, session_id, &cwd, socket.as_deref())
     }
+}
+
+/// Format a download progress percentage for the update status line.
+fn download_progress_bar(downloaded: u64, total: u64) -> String {
+    if total == 0 {
+        return "…".to_string();
+    }
+    let pct = downloaded.saturating_mul(100) / total;
+    format!("{}%", pct.min(100))
+}
+
+/// Whether an update error reports a divergent checkout.
+fn summary_is_divergence(error: &str) -> bool {
+    error.contains("divergence") || error.contains("diverged")
+}
+
+/// Reduce an update error to one line for the status notice.
+fn summarize_update_error(error: &str) -> String {
+    error.trim_start_matches("Update failed: ").trim().to_string()
 }

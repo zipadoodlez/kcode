@@ -170,7 +170,7 @@ fn test_disconnected_key_handler_runs_reload_locally() {
     use std::time::SystemTime;
 
     let mut app = create_test_app();
-    let exe = crate::build::launcher_binary_path().expect("launcher binary path");
+    let exe = std::env::temp_dir().join(format!("jcode-test-launcher-{}", std::process::id()));
     let mut created = false;
     if !exe.exists() {
         if let Some(parent) = exe.parent() {

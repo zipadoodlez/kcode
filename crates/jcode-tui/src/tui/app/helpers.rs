@@ -185,10 +185,7 @@ pub(super) fn extract_bracketed_system_message(message: &str) -> Option<String> 
 }
 
 pub(super) fn launch_client_executable() -> PathBuf {
-    crate::build::client_update_candidate(jcode_selfdev_types::client_selfdev_requested())
-        .map(|(path, _label)| path)
-        .or_else(|| std::env::current_exe().ok())
-        .unwrap_or_else(|| PathBuf::from("jcode"))
+    std::env::current_exe().unwrap_or_else(|_| PathBuf::from("jcode"))
 }
 
 pub(super) fn partition_queued_messages(
