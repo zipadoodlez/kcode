@@ -1,7 +1,7 @@
 use crate::agent::Agent;
 use crate::server::reload_recovery::ReloadRecoveryRole;
 use crate::server::{SwarmEvent, SwarmEventType, SwarmMember};
-use crate::session_recovery::{self, ReloadContext};
+use crate::session_recovery::ReloadContext;
 use jcode_agent_runtime::InterruptSignal;
 use std::collections::HashMap;
 use std::process::Stdio;

@@ -566,13 +566,13 @@ fn test_finalize_reload_reconnect_is_session_scoped_across_reconnect_order() {
     assert_eq!(app_b.hidden_queued_system_messages.len(), 1);
     assert!(app_b.hidden_queued_system_messages[0].contains("new-b"));
     assert!(
-        crate::session_recovery::peek_for_session(&session_a)
+        crate::session_recovery::ReloadContext::peek_for_session(&session_a)
             .expect("peek session a")
             .is_some(),
         "session A context should remain available after session B reconnects first"
     );
     assert!(
-        crate::session_recovery::peek_for_session(&session_b)
+        crate::session_recovery::ReloadContext::peek_for_session(&session_b)
             .expect("peek session b")
             .is_none(),
         "session B context should be consumed by its own reconnect"
@@ -591,7 +591,7 @@ fn test_finalize_reload_reconnect_is_session_scoped_across_reconnect_order() {
     assert_eq!(app_a.hidden_queued_system_messages.len(), 1);
     assert!(app_a.hidden_queued_system_messages[0].contains("new-a"));
     assert!(
-        crate::session_recovery::peek_for_session(&session_a)
+        crate::session_recovery::ReloadContext::peek_for_session(&session_a)
             .expect("peek session a after consume")
             .is_none(),
         "session A context should be consumed only by session A reconnect"
@@ -628,7 +628,7 @@ fn test_finalize_reload_reconnect_supports_repeated_reload_cycles_for_same_sessi
         assert_eq!(app.hidden_queued_system_messages.len(), 1);
         assert!(app.hidden_queued_system_messages[0].contains(&version_after));
         assert!(
-            crate::session_recovery::peek_for_session(&session_id)
+            crate::session_recovery::ReloadContext::peek_for_session(&session_id)
                 .expect("peek loop reload context")
                 .is_none(),
             "reload context should be consumed each cycle"

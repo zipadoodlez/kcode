@@ -1,5 +1,5 @@
 use super::*;
-use crate::session_recovery::{self, ReloadContext};
+use crate::session_recovery::ReloadContext;
 use crate::tui::TuiState;
 use crate::tui::app as app_mod;
 use crate::tui::app::remote::input_dispatch::restore_pending_startup_prompt_echo;

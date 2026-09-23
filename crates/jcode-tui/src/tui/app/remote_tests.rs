@@ -890,7 +890,7 @@ fn handle_post_connect_dispatches_reload_followup_even_if_history_snapshot_looks
     assert!(app.current_message_id.is_some());
     assert!(app.rate_limit_pending_message.is_some());
 
-    if let Ok(path) = crate::session_recovery::path_for_session(session_id) {
+    if let Ok(path) = crate::session_recovery::ReloadContext::path_for_session(session_id) {
         let _ = std::fs::remove_file(path);
     }
     if let Some(prev_home) = prev_home {

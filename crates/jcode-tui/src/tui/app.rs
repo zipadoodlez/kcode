@@ -16,7 +16,6 @@ use crate::provider::Provider;
 use crate::runtime_memory_log::RuntimeMemoryLogController;
 use crate::session::{Session, StoredMessage};
 use crate::skill::SkillRegistry;
-use crate::session_recovery::{self, ReloadContext};
 use crate::tool::{Registry, ToolContext};
 use anyhow::Result;
 use auth::PendingLogin;
