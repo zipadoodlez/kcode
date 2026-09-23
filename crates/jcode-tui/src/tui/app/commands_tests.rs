@@ -233,30 +233,7 @@ mod colors {
     }
 
     #[test]
-    fn colors_harmony_reports_a_score_and_named_criteria() {
-        let mut app = create_test_app();
-        assert!(dispatch_local_command(&mut app, "/colors harmony"));
-        let output = last_message(&app);
-        assert!(
-            output.contains("/100"),
-            "harmony should report a score: {output}"
-        );
-        for criterion in [
-            "readability",
-            "distinctness",
-            "hue harmony",
-            "chroma coherence",
-            "colorblind safety",
-        ] {
-            assert!(
-                output.contains(criterion),
-                "harmony should report {criterion}: {output}"
-            );
-        }
-    }
-
-    #[test]
-    fn setting_a_role_persists_it_and_reports_the_new_score() {
+    fn setting_a_role_persists_it() {
         with_clean_config(|| {
             let mut app = create_test_app();
             assert!(dispatch_local_command(&mut app, "/colors error #1050f0"));
@@ -264,10 +241,6 @@ mod colors {
             assert!(
                 output.contains("#1050f0"),
                 "should confirm the new value: {output}"
-            );
-            assert!(
-                output.contains("/100"),
-                "should report the resulting harmony: {output}"
             );
 
             let saved = crate::config::Config::load();
@@ -288,40 +261,6 @@ mod colors {
                 crate::config::Config::load().display.colors.is_empty(),
                 "reset should clear the configured colors"
             );
-        });
-    }
-
-    #[test]
-    fn generate_writes_a_complete_palette_and_scores_it() {
-        with_clean_config(|| {
-            let mut app = create_test_app();
-            assert!(dispatch_local_command(&mut app, "/colors generate #8ab4f8"));
-            let output = last_message(&app);
-            assert!(
-                output.contains("/100"),
-                "generate should report the harmony score: {output}"
-            );
-
-            let saved = crate::config::Config::load();
-            assert_eq!(
-                saved.display.colors.len(),
-                jcode_tui_style::ALL_ROLES.len(),
-                "generate should write every role"
-            );
-            for role in jcode_tui_style::ALL_ROLES.iter().copied() {
-                let value = saved
-                    .display
-                    .colors
-                    .get(role.key())
-                    .unwrap_or_else(|| panic!("generate should write {}", role.key()));
-                assert!(
-                    jcode_tui_style::palette::parse_hex(value).is_some(),
-                    "{} should be a valid hex color, got {value}",
-                    role.key()
-                );
-            }
-
-            assert!(dispatch_local_command(&mut app, "/colors reset"));
         });
     }
 

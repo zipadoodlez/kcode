@@ -101,10 +101,10 @@ pub struct DisplayConfig {
     /// adapts jcode's palette for light backgrounds. Default: auto.
     #[serde(default)]
     pub theme: String,
-    /// Per-role color overrides, e.g. `user = "#8ab4f8"`. Any TUI color can be
-    /// configured: the named roles are substituted directly, and ad hoc shades
-    /// used by widgets follow the role they belong to. Run `/colors` to list
-    /// roles and `/colors harmony` to score the result.
+    /// Per-role color overrides, e.g. `user = "#8ab4f8"`. Any TUI color with a
+    /// role can be configured: roles are substituted directly, and ad hoc shades
+    /// used by widgets carry no role and are left alone. Run `/colors` to list
+    /// roles.
     #[serde(default)]
     pub colors: std::collections::BTreeMap<String, String>,
     /// Opt-in active sessions manager: pressing Left arrow on an empty input

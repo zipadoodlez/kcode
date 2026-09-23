@@ -29,13 +29,11 @@ pub fn color_capability() -> ColorCapability {
 
 /// Pin the process-global color capability to truecolor.
 ///
-/// Tests that assert on rendered RGB values (palette topology, harmony
-/// scoring) call this so the frame under test does not depend on the host's
-/// `COLORTERM`/`TERM`: a hosted CI runner detects 256-color and quantizes
-/// every rendered color, which breaks family matching in
-/// `role_for_rendered`. The override stays set for the rest of the process,
-/// which is safe for tests (color capability is not what other tests assert)
-/// and unreachable in production, where nothing calls this.
+/// Tests that assert on rendered RGB values call this so the frame under test
+/// does not depend on the host's `COLORTERM`/`TERM`: a hosted CI runner detects
+/// 256-color and quantizes every rendered color. The override stays set for the
+/// rest of the process, which is safe for tests (color capability is not what
+/// other tests assert) and unreachable in production, where nothing calls this.
 pub fn pin_truecolor_for_tests() {
     CAPABILITY_OVERRIDE.store(1, std::sync::atomic::Ordering::Relaxed);
 }
@@ -149,7 +147,7 @@ pub fn clear_buf(area: Rect, buf: &mut Buffer) {
 /// terminals.
 ///
 /// User color configuration is *not* applied here. It is applied once per
-/// frame at the buffer level (`palette::adapt_buffer_for_palette`) so a color
+/// frame at the buffer level (`theme_mode::adapt_buffer_for_display`) so a color
 /// can never be remapped twice. See `palette` for why that choke point is the
 /// single place colors are substituted.
 #[inline]

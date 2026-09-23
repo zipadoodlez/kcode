@@ -704,14 +704,6 @@ impl App {
                 "/colors"
             };
             let mut suggestions: Vec<(String, &'static str)> = vec![
-                (
-                    format!("{base} harmony"),
-                    "Score the palette and list fixes",
-                ),
-                (
-                    format!("{base} generate #8ab4f8"),
-                    "Build a harmonious palette from one seed color",
-                ),
                 (format!("{base} reset"), "Reset every color to its default"),
                 (format!("{base} export"), "Print the palette as config TOML"),
             ];

@@ -247,14 +247,11 @@ prompt_entry_animation = true
 # Color theme: "auto" (query the terminal background), "dark", or "light".
 # theme = "auto"
 
-# Per-role color overrides. Every color the TUI renders is configurable: the
-# named roles below are substituted directly, and the ad hoc shades individual
-# widgets use follow whichever role they belong to.
+# Per-role color overrides. Every TUI color with a role is configurable: the
+# roles below are substituted directly, and the ad hoc shades individual widgets
+# use carry no role and are left alone.
 #
-# Easiest path: run `/colors generate #8ab4f8` to derive a whole harmonious
-# palette from one color you like, then `/colors harmony` to score it and see
-# exactly what to fix. `/colors` lists every role, and `/colors export` prints
-# this section for you.
+# `/colors` lists every role and `/colors export` prints this section for you.
 #
 # [display.colors]
 # user = "#8ab4f8"
