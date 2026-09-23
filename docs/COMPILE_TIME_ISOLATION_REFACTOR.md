@@ -1,6 +1,9 @@
 # Compile-Time Isolation Refactor
 
-This is the active migration plan for making full-feature debug/selfdev builds faster without removing features from the developer binary.
+> Historical (labelled 2026-09-23): a pre-crate-split refactor record, no longer the
+> active plan. Some commands, scripts and paths it names have since been removed (the
+> self-dev build/install/update machinery, decision 18, and the unix/windows platform
+> sweeps). Left in place as a point-in-time record.
 
 ## Goal
 

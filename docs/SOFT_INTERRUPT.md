@@ -62,7 +62,7 @@ User types message during AI processing
 
 The key constraint is: **we can only inject when not actively streaming from the model provider**. The agent loop has several natural pause points:
 
-### Agent Loop Structure (src/agent.rs)
+### Agent Loop Structure (crates/jcode-app-core/src/agent.rs)
 
 ```rust
 loop {
@@ -173,7 +173,7 @@ AI sees: "All my tools completed, and user added context"
 Add new request type for soft interrupt:
 
 ```rust
-// src/protocol.rs
+// crates/jcode-protocol/src/wire.rs
 #[serde(rename = "soft_interrupt")]
 SoftInterrupt {
     id: u64,
@@ -188,7 +188,7 @@ SoftInterrupt {
 Add soft interrupt queue and check at each injection point:
 
 ```rust
-// src/agent.rs
+// crates/jcode-app-core/src/agent.rs
 pub struct Agent {
     // ... existing fields
     soft_interrupt_queue: Vec<SoftInterruptMessage>,
@@ -295,7 +295,7 @@ loop {
 Update interleave handling to use soft interrupt:
 
 ```rust
-// src/tui/app.rs
+// crates/jcode-tui/src/tui/app.rs
 
 // Instead of:
 //   remote.cancel() → wait → send message
@@ -310,7 +310,7 @@ Update interleave handling to use soft interrupt:
 ### Server Event for Feedback
 
 ```rust
-// src/protocol.rs
+// crates/jcode-protocol/src/wire.rs
 ServerEvent::SoftInterruptInjected {
     content: String,
     point: String,  // "A", "B", "C", or "D"
