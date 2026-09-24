@@ -370,19 +370,32 @@ Findings from a top-to-bottom surface pass. None of these are bugs in the
 "crashes" sense; they are places where the fork's surface has not caught up
 with its intent.
 
+### Fixed
+
+- **`/memory` was dead surface.** Memory was cut, but the command stayed
+  registered and advertised while both handlers (local and remote) only printed
+  a usage error. Command, suggestion branch, argument-accepts entry, handlers,
+  and help entries removed.
+- **The default config template shipped an `[ambient]` section** for a cut
+  feature, and its test still asserted a removed `memory_model` key. Both gone.
+
+### Open
+
 - **Environment variables still use `JCODE_`.** `JCODE_HOME`,
   `JCODE_RUNTIME_DIR`, and the hook vars were never renamed, even though the
-  state dir is `~/.kcode`.
-- **`/memory` is still registered** ("Toggle memory feature") although agent
-  memory was cut. Likely vestigial.
-- **Config carries cut-feature keys**: `[dictation]`, `diagram_mode`,
-  `latex_rendering`, `pin_images` in `[display]`.
+  state dir is `~/.kcode`. Decision needed: rename to `KCODE_*` (with a
+  `JCODE_*` fallback) or document as-is.
+- **Config files carry unknown sections.** The schema has 18 top-level
+  sections; older configs still hold `[dictation]`, `[ambient]`, `[safety]`,
+  `[gateway]`, `[launch_hotkeys]`, and `display.diagram_mode` /
+  `latex_rendering` / `pin_images`. The loader ignores unknown keys silently, so
+  they are harmless but misleading. `~/.kcode/config.toml` was cleaned in place.
+- **Dead command names in the SSH block list**: `/theme`, `/stats`, `/file`,
+  `/open`, `/permission`, `/permissions`, `/new-terminal`, `/debug-fixture` are
+  blocked over SSH but have no handler anywhere, so they do nothing locally
+  either. Remove them (and the SSH assertions that name them) or implement them.
 - **CLI advertises 52 `--provider` values but `provider list` shows 27.** The
   extra values are gateways/aliases with no catalog entry.
-- **Commands handled by dispatch but not registered**, so they are invisible in
-  the palette and help: `/permissions`, `/permission`, `/new-terminal`, `/file`,
-  `/open`, `/stats`, `/theme`, `/debug-fixture`, `/configurable-skill`,
-  `/login-custom-skill`.
 - **`/help <item>` detail is incomplete.** The `/help` overlay itself is
   complete: curated sections plus a `More commands` section that auto-lists
   every remaining registered command. But `/help <item>` has written detail for
