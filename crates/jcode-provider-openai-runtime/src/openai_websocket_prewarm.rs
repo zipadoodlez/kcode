@@ -415,7 +415,7 @@ mod tests {
     }
 
     /// Exercises the production provider against the configured OpenAI account,
-    /// independent of the running Jcode daemon. Uses a few short generations.
+    /// independent of the running Kcode daemon. Uses a few short generations.
     /// Timings are observations, not a statistically valid speedup benchmark.
     #[tokio::test]
     #[ignore = "uses configured OpenAI credentials and real model requests"]

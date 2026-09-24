@@ -608,11 +608,11 @@ impl AuthStatus {
             }
             crate::provider_catalog::LoginProviderTarget::GrokBuild => {
                 if self.grok_build == AuthState::Available {
-                    "Jcode-managed Grok Build backend; subscription login is verified over ACP at request time".to_string()
+                    "Kcode-managed Grok Build backend; subscription login is verified over ACP at request time".to_string()
                 } else if grok_build::cli_available() {
                     "subscription login not configured (backend managed by Jcode)".to_string()
                 } else {
-                    "not configured (Jcode downloads the provider backend during login)".to_string()
+                    "not configured (Kcode downloads the provider backend during login)".to_string()
                 }
             }
             crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
@@ -848,10 +848,10 @@ impl AuthStatus {
                 if state == AuthState::Available {
                     "Grok Build subscription login managed through Jcode".to_string()
                 } else if grok_build::cli_available() {
-                    "Jcode-managed backend provisioned; subscription login not configured"
+                    "Kcode-managed backend provisioned; subscription login not configured"
                         .to_string()
                 } else {
-                    "Jcode-managed Grok Build backend not provisioned".to_string()
+                    "Kcode-managed Grok Build backend not provisioned".to_string()
                 },
                 AuthExpiryConfidence::Unknown,
                 AuthRefreshSupport::ExternalManaged,

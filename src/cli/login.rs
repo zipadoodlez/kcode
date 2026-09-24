@@ -409,7 +409,7 @@ pub async fn run_login_provider(
 }
 
 async fn login_grok_build_flow() -> Result<()> {
-    eprintln!("Preparing the Jcode-managed Grok Build backend...");
+    eprintln!("Preparing the Kcode-managed Grok Build backend...");
     let cli = crate::auth::grok_build::ensure_cli().await?;
     let status = tokio::process::Command::new(&cli)
         .arg("login")

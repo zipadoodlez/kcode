@@ -41,7 +41,7 @@ pub(crate) struct Args {
     #[arg(long, global = true, conflicts_with = "socket", value_name = "HOST")]
     pub(crate) ssh: Option<String>,
 
-    /// Remote Jcode executable name or literal path (requires --ssh)
+    /// Remote Kcode executable name or literal path (requires --ssh)
     #[arg(long, global = true, requires = "ssh", value_name = "PATH")]
     pub(crate) ssh_binary: Option<String>,
 
@@ -157,7 +157,7 @@ pub(crate) enum Command {
         server_name: Option<String>,
     },
 
-    /// Run as an Agent Client Protocol (ACP) adapter backed by the Jcode daemon
+    /// Run as an Agent Client Protocol (ACP) adapter backed by the Kcode daemon
     Acp,
 
     /// Manage the background server daemon (e.g. `kcode server stop`).
@@ -238,7 +238,7 @@ pub(crate) enum Command {
         #[arg(long)]
         api_base: Option<String>,
 
-        /// OpenAI-compatible API key. If omitted, jcode prompts securely when needed.
+        /// OpenAI-compatible API key. If omitted, kcode prompts securely when needed.
         #[arg(long)]
         api_key: Option<String>,
 
@@ -311,12 +311,12 @@ pub(crate) enum Command {
     /// Review and respond to pending ambient permission requests
     Permissions,
 
-    /// Inject externally transcribed text into the active Jcode TUI
+    /// Inject externally transcribed text into the active Kcode TUI
     Transcript {
         /// Transcript text. If omitted, reads from stdin.
         text: Option<String>,
 
-        /// How to apply the transcript inside Jcode
+        /// How to apply the transcript inside Kcode
         #[arg(long, value_enum, default_value = "send")]
         mode: TranscriptModeArg,
 

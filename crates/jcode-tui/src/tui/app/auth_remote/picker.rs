@@ -16,7 +16,7 @@ fn remote_setup_detail(provider: LoginProviderDescriptor, host: &str) -> String 
         )
     } else if matches!(provider.target, LoginProviderTarget::AutoImport) {
         format!(
-            "Remote-host setup required: open Jcode directly on {host} and use /login auto-import to review that host's other-tool logins. This SSH picker cannot perform Auto Import. To copy this computer's Jcode-managed login instead, choose an explicit Import local entry. No local credentials are accessed here."
+            "Remote-host setup required: open Jcode directly on {host} and use /login auto-import to review that host's other-tool logins. This SSH picker cannot perform Auto Import. To copy this computer's Kcode-managed login instead, choose an explicit Import local entry. No local credentials are accessed here."
         )
     } else {
         format!(
@@ -56,7 +56,7 @@ fn import_entry(provider: &'static str, label: &str, host: &str) -> PickerEntry 
             api_method: "confirm copy".into(),
             available: true,
             detail: format!(
-                "Destination: {host}. One-time copy of your selected Jcode-managed {provider} account. Confirmation required. No local credentials read yet. Existing remote logins are never overwritten."
+                "Destination: {host}. One-time copy of your selected Kcode-managed {provider} account. Confirmation required. No local credentials read yet. Existing remote logins are never overwritten."
             ),
             estimated_reference_cost_micros: None,
         },

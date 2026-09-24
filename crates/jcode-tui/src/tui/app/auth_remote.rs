@@ -175,7 +175,7 @@ impl App {
             login.operation = Some(Operation::Import);
             let host = login.target.host().to_string();
             self.push_display_message(DisplayMessage::system(format!(
-                "Import your local {provider} login to {host}?\n\nThis copies usable credentials for your selected active local account, including refresh credentials, giving {host} access to that provider account. Only Jcode-managed OAuth credentials are copied.\n\nBoth machines may refresh the same tokens, causing token refresh conflicts or invalidating the other login. This is a one-time copy with no sync. Existing remote credentials will not be overwritten. No local credentials have been read or exported.\n\nChoose Yes and press Enter to copy automatically. You do not need to paste any credentials. No, Esc, Ctrl+C, or /cancel cancels without reading or copying credentials."
+                "Import your local {provider} login to {host}?\n\nThis copies usable credentials for your selected active local account, including refresh credentials, giving {host} access to that provider account. Only Kcode-managed OAuth credentials are copied.\n\nBoth machines may refresh the same tokens, causing token refresh conflicts or invalidating the other login. This is a one-time copy with no sync. Existing remote credentials will not be overwritten. No local credentials have been read or exported.\n\nChoose Yes and press Enter to copy automatically. You do not need to paste any credentials. No, Esc, Ctrl+C, or /cancel cancels without reading or copying credentials."
             )));
             self.open_ssh_import_decision(false);
         } else {

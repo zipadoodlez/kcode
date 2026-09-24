@@ -1,4 +1,4 @@
-//! Jcode-managed Grok Build backend discovery and provisioning.
+//! Kcode-managed Grok Build backend discovery and provisioning.
 //!
 //! Grok Build currently exposes its subscription runtime through ACP. Jcode
 //! keeps that implementation as a private provider backend, downloading the

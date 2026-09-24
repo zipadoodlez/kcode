@@ -279,7 +279,7 @@ fn test_grok_build_set_route_is_wire_safe() -> Result<()> {
             runtime_key: jcode_provider_core::RuntimeKey::GrokBuild,
             api_method: "grok-build-acp".to_string(),
             provider_label: "Grok Build".to_string(),
-            detail: "Grok Build subscription via Jcode-managed ACP".to_string(),
+            detail: "Grok Build subscription via Kcode-managed ACP".to_string(),
         },
     };
 

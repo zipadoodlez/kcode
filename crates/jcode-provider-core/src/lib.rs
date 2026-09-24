@@ -1693,7 +1693,7 @@ mod tests {
             provider: "Grok Build".to_string(),
             api_method: "grok-build-acp".to_string(),
             available: true,
-            detail: "Grok Build subscription via Jcode-managed ACP".to_string(),
+            detail: "Grok Build subscription via Kcode-managed ACP".to_string(),
             cheapness: None,
             usage: None,
         });
