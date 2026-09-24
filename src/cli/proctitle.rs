@@ -39,7 +39,6 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::ProviderDoctor { .. }) => "jcode provider-doctor".to_string(),
         Some(Command::AuthTest { .. }) => "jcode auth-test".to_string(),
         Some(Command::Restart { .. }) => "jcode restart".to_string(),
-        Some(Command::Menubar { .. }) => "jcode menubar".to_string(),
         None => {
             if let Some(resume) = args.resume.as_deref().filter(|resume| !resume.is_empty()) {
                 let prefix = if crate::client_mode::client_selfdev_requested() {

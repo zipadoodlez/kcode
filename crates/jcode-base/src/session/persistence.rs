@@ -381,7 +381,7 @@ impl Session {
         // the user (or a programmatic caller) adds a real conversation message,
         // the normal first snapshot includes all of the accumulated context.
         //
-        // A caller-chosen `title` (review/judge sessions, menubar sessions) is
+        // A caller-chosen `title` (review/judge sessions) is
         // explicit state just like `custom_title`, so it must persist even
         // before the first visible message (#1144). Otherwise later lookups by
         // id find no file and silently treat the session as missing.

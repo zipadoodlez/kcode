@@ -541,9 +541,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             RestartCommand::Status => commands::run_restart_status_command()?,
             RestartCommand::Clear => commands::run_restart_clear_command()?,
         },
-        Some(Command::Menubar { once, json }) => {
-            commands::run_menubar_command(once, json)?;
-        }
         None => run_default_command(args).await?,
     }
 
@@ -703,10 +700,6 @@ async fn run_default_command(args: Args) -> Result<()> {
     {
         return Ok(());
     }
-
-    // Best-effort: make sure the macOS menu bar session-count indicator is
-    // running so it shows up automatically for every macOS user.
-    commands::ensure_menubar_helper_running();
 
     if args.resume.is_none() {
         terminal::show_crash_resume_hint();

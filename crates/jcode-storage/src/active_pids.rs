@@ -153,7 +153,7 @@ fn process_is_running(pid: u32) -> bool {
 
 /// Live snapshot of how many jcode sessions are running, and how many of those
 /// are actively streaming a model response right now. Used by the menu bar
-/// indicator (`jcode menubar`) and any other presence UI.
+/// and any other presence UI.
 /// These are process-owned session counts, not open-window or connected-client counts.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SessionCounts {

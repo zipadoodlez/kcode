@@ -9,7 +9,6 @@ use crate::{browser, memory, session, storage, tui};
 
 use super::{output::terminal_title, terminal::init_tui_runtime};
 
-mod menubar;
 mod provider_setup;
 mod report_info;
 mod restart;
@@ -23,7 +22,6 @@ pub(crate) use super::auth_test::{
 pub use super::auth_test::{
     run_auth_test_command, run_auth_test_context_audit_command, run_auth_test_coverage_command,
 };
-pub use menubar::{ensure_menubar_helper_running, run_menubar_command};
 pub(crate) use provider_setup::{ProviderAddOptions, run_provider_add_command};
 pub use restart::{
     maybe_run_pending_restart_restore_on_startup, run_restart_clear_command,

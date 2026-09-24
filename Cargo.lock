@@ -2907,7 +2907,6 @@ dependencies = [
  "jcode-provider-grok-build-runtime",
  "jcode-provider-openai-runtime",
  "jcode-provider-openrouter-runtime",
- "jcode-selfdev-types",
  "jcode-tui",
  "jcode-tui-session-picker",
  "jcode-tui-style",
@@ -2956,7 +2955,6 @@ dependencies = [
  "jcode-agent-runtime",
  "jcode-base",
  "jcode-build-meta",
- "jcode-build-support",
  "jcode-command-risk",
  "jcode-core",
  "jcode-import-core",
@@ -2966,13 +2964,11 @@ dependencies = [
  "jcode-plan",
  "jcode-provider-core",
  "jcode-schema-dialect",
- "jcode-selfdev-types",
  "jcode-session-types",
  "jcode-swarm-core",
  "jcode-task-types",
  "jcode-terminal-image",
  "jcode-tool-core",
- "jcode-update-core",
  "libc",
  "open",
  "rand 0.9.3",
@@ -3041,7 +3037,6 @@ dependencies = [
  "jcode-provider-openrouter",
  "jcode-provider-openrouter-runtime",
  "jcode-render-core",
- "jcode-selfdev-types",
  "jcode-session-types",
  "jcode-storage",
  "jcode-task-types",
@@ -3073,20 +3068,6 @@ dependencies = [
 [[package]]
 name = "jcode-build-meta"
 version = "0.1.0"
-
-[[package]]
-name = "jcode-build-support"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "jcode-core",
- "jcode-selfdev-types",
- "jcode-storage",
- "serde",
- "serde_json",
- "tempfile",
-]
 
 [[package]]
 name = "jcode-command-risk"
@@ -3228,7 +3209,6 @@ dependencies = [
  "jcode-message-types",
  "jcode-plan",
  "jcode-provider-core",
- "jcode-selfdev-types",
  "jcode-session-types",
  "rand 0.9.3",
  "serde",
@@ -3617,17 +3597,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jcode-selfdev-types"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "serde",
- "tempfile",
- "toml",
-]
-
-[[package]]
 name = "jcode-session-types"
 version = "0.1.0"
 dependencies = [
@@ -3726,7 +3695,6 @@ dependencies = [
  "jcode-logging",
  "jcode-productivity-core",
  "jcode-provider-core",
- "jcode-selfdev-types",
  "jcode-session-types",
  "jcode-terminal-image",
  "jcode-tui-account-picker",
@@ -3913,15 +3881,6 @@ name = "jcode-tui-workspace"
 version = "0.1.0"
 dependencies = [
  "ratatui",
-]
-
-[[package]]
-name = "jcode-update-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
- "sha2 0.10.9",
 ]
 
 [[package]]
