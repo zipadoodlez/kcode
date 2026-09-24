@@ -97,8 +97,6 @@ mod state_ui_maintenance;
 mod state_ui_messages;
 mod state_ui_runtime;
 mod state_ui_storage;
-mod subscribe_nudge;
-mod support;
 mod swarm_hint;
 mod terminal_liveness;
 mod terminal_setup_command;
@@ -1419,7 +1417,6 @@ pub struct App {
     terminal_setup_hint_shown_this_session: bool,
     // Whether the swarm-config-is-a-prompt hint has been surfaced this session.
     swarm_hint_shown_this_session: bool,
-    subscribe_nudge: subscribe_nudge::SubscribeNudgeState,
     // Inline hotkey feedback: "pressed X → does Y" for rare known chords or
     // "X isn't bound · nearest: ..." for unknown; same slot as learn_hint.
     hotkey_feedback: Option<(String, Instant)>,

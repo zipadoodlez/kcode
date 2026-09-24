@@ -213,56 +213,6 @@ fn test_mask_email_censors_local_part() {
 }
 
 #[test]
-fn test_subscription_command_shows_jcode_status_scaffold() {
-    let _guard = crate::storage::lock_test_env();
-    crate::subscription_catalog::clear_runtime_env();
-    crate::env::remove_var(crate::subscription_catalog::JCODE_API_KEY_ENV);
-    crate::env::remove_var(crate::subscription_catalog::JCODE_API_BASE_ENV);
-
-    let mut app = create_test_app();
-    app.input = "/subscription".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing /subscription response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("Jcode Hosted Model Status"));
-    assert!(msg.content.contains("pay as you go, no subscription fee"));
-    assert!(msg.content.contains("monthly spending limit"));
-    assert!(msg.content.contains("progressively larger tranches"));
-    assert!(msg.content.contains("/login jcode"));
-    assert!(msg.content.contains("Claude Opus 4.8"));
-    assert!(msg.content.contains("GPT-5.5"));
-    assert!(msg.content.contains("Claude Fable 5"));
-    assert!(msg.content.contains("GPT-5.6 Sol"));
-    assert!(!msg.content.contains("$10/mo"));
-    assert!(!msg.content.contains("usable inference budget"));
-    assert!(!msg.content.contains("Claude Fable 5 - claude-fable-5 [Ultra]"));
-}
-
-#[test]
-fn test_subscribe_command_shows_hosted_pitch_and_next_step() {
-    let mut app = create_test_app();
-    app.input = "/subscribe".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing /subscribe response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("Jcode hosted models"));
-    assert!(msg.content.contains("No subscription"));
-    assert!(msg.content.contains("monthly spending limit"));
-    assert!(msg.content.contains("open source"));
-    assert!(msg.content.contains("/login jcode"));
-    assert!(msg.content.contains("/usage"));
-    assert!(msg.content.contains("$20 of usage"));
-}
-
-#[test]
 fn test_usage_report_shows_no_connected_providers_when_results_empty() {
     let mut app = create_test_app();
     app.handle_usage_report(Vec::new());

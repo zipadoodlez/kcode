@@ -239,36 +239,6 @@ fn test_structured_set_route_decodes_as_set_route_not_set_model() -> Result<()> 
     Ok(())
 }
 
-#[test]
-fn test_jcode_subscription_set_route_is_wire_safe() -> Result<()> {
-    let request = Request::SetRoute {
-        id: 8,
-        selection: jcode_provider_core::RouteSelection {
-            model: "gpt-5.5".to_string(),
-            runtime_key: jcode_provider_core::RuntimeKey::JcodeSubscription,
-            api_method: "jcode-subscription".to_string(),
-            provider_label: "Jcode Subscription".to_string(),
-            detail: "jcode subscription routing · managed server-side".to_string(),
-        },
-    };
-
-    let line = serde_json::to_string(&request)?;
-    assert!(line.contains("\"type\":\"set_route\""));
-    assert!(line.contains("\"kind\":\"jcode-subscription\""));
-
-    let decoded = decode_request(&line)?;
-    let Request::SetRoute { id, selection } = decoded else {
-        return Err(anyhow!("expected Jcode SetRoute, got {decoded:?}"));
-    };
-    assert_eq!(id, 8);
-    assert_eq!(selection.model, "gpt-5.5");
-    assert_eq!(
-        selection.runtime_key,
-        jcode_provider_core::RuntimeKey::JcodeSubscription
-    );
-    assert_eq!(selection.routed_model_spec(), "gpt-5.5");
-    Ok(())
-}
 
 #[test]
 fn test_grok_build_set_route_is_wire_safe() -> Result<()> {

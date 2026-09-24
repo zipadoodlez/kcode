@@ -23,7 +23,6 @@ fn lock_env() -> std::sync::MutexGuard<'static, ()> {
 #[test]
 #[allow(deprecated)]
 fn test_provider_choice_arg_values() {
-    assert_eq!(ProviderChoice::Jcode.as_arg_value(), "jcode");
     assert_eq!(ProviderChoice::Claude.as_arg_value(), "claude");
     assert_eq!(ProviderChoice::AnthropicApi.as_arg_value(), "anthropic-api");
     assert_eq!(
@@ -283,59 +282,6 @@ fn test_auto_init_login_selection_preserves_order() {
 }
 
 #[test]
-fn test_init_provider_jcode_delegates_runtime_profile_to_wrapper() {
-    let _guard = lock_env();
-    let _env_guard = crate::storage::lock_test_env();
-    // Sandbox JCODE_HOME: with the real home, persisted auth/credential state
-    // (e.g. a pinned anthropic api-key route) re-pins JCODE_RUNTIME_PROVIDER
-    // during MultiProvider construction and breaks the assertions below.
-    let dir = TempDir::new().expect("temp dir");
-    let saved_home = std::env::var("JCODE_HOME").ok();
-    crate::env::set_var("JCODE_HOME", dir.path());
-    crate::subscription_catalog::clear_runtime_env();
-    crate::env::remove_var("JCODE_OPENROUTER_MODEL");
-    crate::env::remove_var("JCODE_RUNTIME_PROVIDER");
-    crate::env::remove_var("JCODE_ACTIVE_PROVIDER");
-    crate::env::remove_var("JCODE_INITIAL_PROVIDER_EXPLICIT");
-
-    let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
-    let provider = runtime
-        .block_on(init_provider(&ProviderChoice::Jcode, None))
-        .expect("init kcode provider");
-
-    assert_eq!(provider.name(), "Jcode Hosted Models");
-    assert!(crate::subscription_catalog::is_runtime_mode_enabled());
-    assert_eq!(
-        std::env::var("JCODE_OPENROUTER_MODEL").ok().as_deref(),
-        Some(crate::subscription_catalog::default_model().id)
-    );
-    assert_eq!(
-        std::env::var("JCODE_ACTIVE_PROVIDER").ok().as_deref(),
-        Some("openrouter")
-    );
-    assert_eq!(
-        std::env::var("JCODE_RUNTIME_PROVIDER").ok().as_deref(),
-        Some("jcode")
-    );
-    assert_eq!(
-        std::env::var("JCODE_INITIAL_PROVIDER_EXPLICIT")
-            .ok()
-            .as_deref(),
-        Some("1")
-    );
-
-    crate::subscription_catalog::clear_runtime_env();
-    crate::env::remove_var("JCODE_OPENROUTER_MODEL");
-    crate::env::remove_var("JCODE_RUNTIME_PROVIDER");
-    crate::env::remove_var("JCODE_ACTIVE_PROVIDER");
-    crate::env::remove_var("JCODE_INITIAL_PROVIDER_EXPLICIT");
-    match saved_home {
-        Some(home) => crate::env::set_var("JCODE_HOME", home),
-        None => crate::env::remove_var("JCODE_HOME"),
-    }
-}
-
-#[test]
 fn test_openai_compatible_profile_overrides() {
     let _guard = lock_env();
     let keys = [
@@ -489,10 +435,6 @@ fn login_provider_menu_shows_autodetected_auth_and_skip() {
 
 #[test]
 fn choice_for_login_provider_round_trips_core_targets() {
-    assert_eq!(
-        choice_for_login_provider(provider_catalog::JCODE_LOGIN_PROVIDER),
-        Some(ProviderChoice::Jcode)
-    );
     assert_eq!(
         choice_for_login_provider(provider_catalog::OPENROUTER_LOGIN_PROVIDER),
         Some(ProviderChoice::Openrouter)
@@ -796,7 +738,6 @@ async fn init_provider_for_ollama_reapplies_local_compat_runtime_env_after_disab
     .collect();
 
     crate::env::set_var("JCODE_HOME", dir.path());
-    crate::subscription_catalog::apply_runtime_env();
 
     let provider = init_provider_for_validation(&ProviderChoice::Ollama, Some("llama3.2"))
         .await

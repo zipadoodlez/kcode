@@ -73,19 +73,6 @@ pub(crate) fn handle_auth_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    if matches!(
-        trimmed,
-        "/hosted status" | "/subscription" | "/subscription status"
-    ) {
-        app.show_jcode_subscription_status();
-        return true;
-    }
-
-    if trimmed == "/hosted" || trimmed == "/subscribe" {
-        app.show_subscribe_pitch();
-        return true;
-    }
-
     if let Some(parsed) = parse_account_command(trimmed) {
         match parsed {
             Ok(command) => execute_account_command_local(app, command),
@@ -210,9 +197,6 @@ fn parse_account_command(trimmed: &str) -> Option<Result<AccountCommand, String>
             "login" => AccountCommand::Login {
                 provider_id: provider.id.to_string(),
             },
-            "status" if provider.id == "jcode" => AccountCommand::JcodeStatus,
-            "manage" if provider.id == "jcode" => AccountCommand::JcodeManage,
-            "logout" if provider.id == "jcode" => AccountCommand::JcodeLogout,
             "add" => AccountCommand::Add {
                 provider_id: provider.id.to_string(),
                 label: (!value.is_empty()).then(|| value.to_string()),
@@ -392,9 +376,6 @@ pub(crate) fn execute_account_command_local(app: &mut App, command: AccountComma
                 ))),
             }
         }
-        AccountCommand::JcodeStatus => app.show_jcode_subscription_status(),
-        AccountCommand::JcodeManage => app.open_jcode_account_management(),
-        AccountCommand::JcodeLogout => app.start_jcode_account_logout(),
         AccountCommand::Add { provider_id, label } => {
             execute_account_add_local(app, &provider_id, label.as_deref())
         }
@@ -1173,26 +1154,6 @@ mod tests {
         assert!(matches!(
             parse_account_command("/account openai doctor"),
             Some(Ok(AccountCommand::Doctor { provider_id: Some(provider_id) })) if provider_id == "openai"
-        ));
-    }
-
-    #[test]
-    fn parse_native_jcode_account_actions() {
-        assert!(matches!(
-            parse_account_command("/account jcode login"),
-            Some(Ok(AccountCommand::Login { provider_id })) if provider_id == "jcode"
-        ));
-        assert!(matches!(
-            parse_account_command("/account jcode status"),
-            Some(Ok(AccountCommand::JcodeStatus))
-        ));
-        assert!(matches!(
-            parse_account_command("/account jcode manage"),
-            Some(Ok(AccountCommand::JcodeManage))
-        ));
-        assert!(matches!(
-            parse_account_command("/account jcode logout"),
-            Some(Ok(AccountCommand::JcodeLogout))
         ));
     }
 

@@ -3247,11 +3247,6 @@ pub(super) fn handle_config_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    if trimmed == "/subscription" || trimmed == "/subscription status" {
-        app.show_jcode_subscription_status();
-        return true;
-    }
-
     if trimmed == "/config" {
         use crate::config::config;
         app.push_display_message(DisplayMessage {

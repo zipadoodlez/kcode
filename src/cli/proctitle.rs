@@ -16,7 +16,6 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::Connect) => "kcode:client".to_string(),
         Some(Command::Run { .. }) => "kcode run".to_string(),
         Some(Command::Login { .. }) => "kcode login".to_string(),
-        Some(Command::Account { .. }) => "kcode account".to_string(),
         Some(Command::Repl) => "kcode repl".to_string(),
         Some(Command::Version { .. }) => "kcode version".to_string(),
         Some(Command::Usage { .. }) => "kcode usage".to_string(),

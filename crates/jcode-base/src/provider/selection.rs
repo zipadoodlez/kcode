@@ -100,7 +100,6 @@ impl MultiProvider {
             LoginProviderTarget::Gemini => Some("gemini"),
             LoginProviderTarget::Antigravity => Some("antigravity"),
             LoginProviderTarget::AutoImport
-            | LoginProviderTarget::Jcode
             | LoginProviderTarget::Azure
             | LoginProviderTarget::GrokBuild => None,
         }
@@ -167,7 +166,6 @@ impl MultiProvider {
         };
 
         let provider_key = match &api_method_kind {
-            ModelRouteApiMethod::JcodeSubscription => Some("jcode".to_string()),
             ModelRouteApiMethod::GrokBuild => Some("grok-build".to_string()),
             ModelRouteApiMethod::AnthropicApiKey
                 if provider_display == "Anthropic"
@@ -463,7 +461,6 @@ impl MultiProvider {
             .filter(|api_method| !api_method.is_empty())
         {
             match ModelRouteApiMethod::parse(api_method) {
-                ModelRouteApiMethod::JcodeSubscription => return model.to_string(),
                 ModelRouteApiMethod::GrokBuild => {
                     return crate::provider::grok_build_model_spec(model);
                 }

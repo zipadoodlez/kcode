@@ -644,7 +644,6 @@ impl App {
             learn_hint_shown_this_session: false,
             terminal_setup_hint_shown_this_session: false,
             swarm_hint_shown_this_session: false,
-            subscribe_nudge: Default::default(),
             hotkey_feedback: None,
             hotkey_usage: None,
             unknown_hotkey_seen: std::collections::HashMap::new(),
@@ -1049,7 +1048,7 @@ impl App {
             learn_hint_shown_this_session: false,
             terminal_setup_hint_shown_this_session: false,
             swarm_hint_shown_this_session: false,
-            subscribe_nudge: Default::default(),
+
             hotkey_feedback: None,
             hotkey_usage: None,
             unknown_hotkey_seen: std::collections::HashMap::new(),

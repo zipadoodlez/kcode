@@ -237,9 +237,6 @@ pub enum OpenRouterTransportState {
     /// Real OpenRouter BYOK. The provider implementation is both the runtime identity
     /// and the HTTP transport.
     OpenRouterApiKey,
-    /// Jcode subscription access currently reuses the OpenRouter HTTP slot, but is
-    /// not user BYOK/OpenRouter billing.
-    JcodeSubscription,
     /// A direct OpenAI-compatible endpoint that needs a user key, Azure credential,
     /// or provider-profile secret while reusing the OpenRouter-compatible transport.
     DirectApiKey,
@@ -256,10 +253,6 @@ impl OpenRouterTransportState {
         let runtime_provider = runtime_provider
             .map(|value| value.trim().to_ascii_lowercase())
             .filter(|value| !value.is_empty());
-
-        if matches!(runtime_provider.as_deref(), Some("jcode")) {
-            return Self::JcodeSubscription;
-        }
 
         if matches!(runtime_provider.as_deref(), Some("openrouter")) {
             return Self::OpenRouterApiKey;
@@ -294,7 +287,6 @@ impl OpenRouterTransportState {
             "openrouter" | "openrouter-api-key" | "openrouter_byok" | "openrouter-byok" => {
                 Some(Self::OpenRouterApiKey)
             }
-            "jcode" | "jcode-subscription" | "subscription" => Some(Self::JcodeSubscription),
             "direct" | "direct-api-key" | "openai-compatible" | "compatible-api-key" => {
                 Some(Self::DirectApiKey)
             }

@@ -1,5 +1,5 @@
 use super::*;
-use crate::provider::models::{ensure_model_allowed_for_subscription, filtered_display_models};
+use crate::provider::models::filtered_display_models;
 
 fn with_clean_provider_test_env<T>(f: impl FnOnce() -> T) -> T {
     let _guard = crate::storage::lock_test_env();
@@ -10,8 +10,6 @@ fn with_clean_provider_test_env<T>(f: impl FnOnce() -> T) -> T {
     register_test_external_runtimes();
     let temp = tempfile::tempdir().expect("tempdir");
     let prev_home = std::env::var_os("JCODE_HOME");
-    let prev_subscription =
-        std::env::var_os(crate::subscription_catalog::JCODE_SUBSCRIPTION_ACTIVE_ENV);
     let mut profile_env_keys = vec![
         "OPENROUTER_API_KEY",
         "DEEPSEEK_API_KEY",
@@ -55,7 +53,6 @@ fn with_clean_provider_test_env<T>(f: impl FnOnce() -> T) -> T {
     for (key, _) in &saved_profile_env {
         crate::env::remove_var(key);
     }
-    crate::subscription_catalog::clear_runtime_env();
     crate::auth::claude::set_active_account_override(None);
     crate::auth::codex::set_active_account_override(None);
     // The in-memory model catalog services are process-global; earlier tests
@@ -74,14 +71,6 @@ fn with_clean_provider_test_env<T>(f: impl FnOnce() -> T) -> T {
     } else {
         crate::env::remove_var("JCODE_HOME");
     }
-    if let Some(prev_subscription) = prev_subscription {
-        crate::env::set_var(
-            crate::subscription_catalog::JCODE_SUBSCRIPTION_ACTIVE_ENV,
-            prev_subscription,
-        );
-    } else {
-        crate::env::remove_var(crate::subscription_catalog::JCODE_SUBSCRIPTION_ACTIVE_ENV);
-    }
     for (key, value) in saved_profile_env {
         if let Some(value) = value {
             crate::env::set_var(key, value);
@@ -89,7 +78,6 @@ fn with_clean_provider_test_env<T>(f: impl FnOnce() -> T) -> T {
             crate::env::remove_var(key);
         }
     }
-    crate::subscription_catalog::clear_runtime_env();
     result
 }
 
@@ -1144,7 +1132,6 @@ include!("tests/auth_refresh.rs");
 include!("tests/model_resolution.rs");
 include!("tests/issue_534_profile_preservation.rs");
 include!("tests/fallback_failover.rs");
-include!("tests/catalog_subscription.rs");
 
 /// Rendering the route catalog must never schedule network work.
 ///

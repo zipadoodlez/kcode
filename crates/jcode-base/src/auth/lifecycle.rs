@@ -796,14 +796,6 @@ fn route_matches_activation(route: &ModelRoute, activation: &AuthActivationResul
                 crate::provider::ModelRouteApiMethod::CodeAssistOAuth
             );
         }
-        "jcode" => {
-            // Jcode subscription routes deliberately keep their managed public
-            // identity even though the runtime reuses OpenRouter transport code.
-            return matches!(
-                api_method,
-                crate::provider::ModelRouteApiMethod::JcodeSubscription
-            );
-        }
         "grok-build" => {
             return matches!(api_method, crate::provider::ModelRouteApiMethod::GrokBuild);
         }
@@ -901,7 +893,6 @@ fn normalized_login_provider_id(provider_id: &str) -> Option<&'static str> {
             Some("openai-api")
         }
         "openrouter" => Some("openrouter"),
-        "jcode" | "subscription" | "jcode-subscription" => Some("jcode"),
         "grok-build" => Some("grok-build"),
         "bedrock" | "aws-bedrock" | "aws_bedrock" => Some("bedrock"),
         "cursor" => Some("cursor"),
@@ -959,16 +950,6 @@ fn api_key_env_bindings_for_provider(provider_id: &str) -> Vec<(String, String)>
             "OPENROUTER_API_KEY".to_string(),
             "openrouter.env".to_string(),
         )],
-        "jcode" => vec![
-            (
-                crate::subscription_catalog::JCODE_API_KEY_ENV.to_string(),
-                crate::subscription_catalog::JCODE_ENV_FILE.to_string(),
-            ),
-            (
-                crate::subscription_catalog::JCODE_API_BASE_ENV.to_string(),
-                crate::subscription_catalog::JCODE_ENV_FILE.to_string(),
-            ),
-        ],
         "bedrock" => vec![
             (
                 crate::provider::bedrock::API_KEY_ENV.to_string(),
@@ -1158,7 +1139,6 @@ fn direct_provider_activation(provider_id: &str) -> Option<ProviderActivation> {
         "openai" => (RuntimeProviderId::OpenAi, ActiveProvider::OpenAI),
         "openai-api" => (RuntimeProviderId::OpenAiApiKey, ActiveProvider::OpenAI),
         "openrouter" => (RuntimeProviderId::OpenRouter, ActiveProvider::OpenRouter),
-        "jcode" => (RuntimeProviderId::Jcode, ActiveProvider::OpenRouter),
         "bedrock" => (RuntimeProviderId::Bedrock, ActiveProvider::Bedrock),
         "cursor" => (RuntimeProviderId::Cursor, ActiveProvider::Cursor),
         "copilot" => (RuntimeProviderId::Copilot, ActiveProvider::Copilot),
@@ -1189,7 +1169,6 @@ pub fn model_switch_request_for_provider_id(
         Some("openai") => format!("openai-oauth:{}", model),
         Some("openai-api") => format!("openai-api:{}", model),
         Some("openrouter") => format!("openrouter:{}", model),
-        Some("jcode") => model.to_string(),
         Some("grok-build") => crate::provider::grok_build_model_spec(model),
         Some("bedrock") => format!("bedrock:{}", model),
         Some("cursor") => format!("cursor:{}", model),
@@ -1425,7 +1404,6 @@ mod tests {
             ("openai", "openai", "OpenAI"),
             ("openai-key", "openai-api", "OpenAI API"),
             ("openrouter", "openrouter", "OpenRouter"),
-            ("subscription", "jcode", "Jcode Subscription"),
             ("grok-build", "grok-build", "Grok Build"),
             ("bedrock", "bedrock", "AWS Bedrock"),
             ("cursor", "cursor", "Cursor"),
@@ -1502,7 +1480,6 @@ mod tests {
             ("openai", "openai", "openai"),
             ("openai-api", "openai-api", "openai"),
             ("openrouter", "openrouter", "openrouter"),
-            ("jcode", "jcode", "openrouter"),
             ("grok-build", "grok-build", "openrouter"),
             ("bedrock", "bedrock", "bedrock"),
             ("cursor", "cursor", "cursor"),
@@ -1544,9 +1521,6 @@ mod tests {
         let mut covered = Vec::new();
         for provider in crate::provider_catalog::login_providers() {
             let Some((normalized, runtime, active, switch_prefix)) = (match provider.target {
-                crate::provider_catalog::LoginProviderTarget::Jcode => {
-                    Some(("jcode", "jcode", "openrouter", ""))
-                }
                 crate::provider_catalog::LoginProviderTarget::GrokBuild => {
                     Some(("grok-build", "grok-build", "openrouter", "grok-build"))
                 }
@@ -1652,7 +1626,6 @@ mod tests {
             "openai",
             "openai-api",
             "openrouter",
-            "jcode",
             "grok-build",
             "bedrock",
             "cursor",
@@ -1688,7 +1661,6 @@ mod tests {
             ("openai", "openai-oauth:shared-model"),
             ("openai-api", "openai-api:shared-model"),
             ("openrouter", "openrouter:shared-model"),
-            ("jcode", "shared-model"),
             ("azure-openai", "openrouter:shared-model"),
             ("bedrock", "bedrock:shared-model"),
             ("cursor", "cursor:shared-model"),
@@ -1703,44 +1675,6 @@ mod tests {
                 "{provider} auth switch request must route explicitly so duplicate model IDs cannot select the wrong provider"
             );
         }
-    }
-
-    #[test]
-    fn jcode_auth_lifecycle_matches_only_managed_subscription_routes() {
-        let activation = AuthActivationResult {
-            provider_id: Some("jcode".to_string()),
-            provider_label: Some("Jcode Subscription".to_string()),
-            activated_model: Some("gpt-5.5".to_string()),
-            expected_runtime: Some("jcode-subscription".to_string()),
-            expected_catalog_namespace: Some("jcode-subscription".to_string()),
-        };
-        let routes = vec![
-            route("gpt-5.5", "OpenRouter", "openrouter", true),
-            route(
-                "gpt-5.5",
-                "Jcode Subscription",
-                crate::subscription_catalog::JCODE_ROUTE_API_METHOD,
-                true,
-            ),
-        ];
-
-        let report = validate_catalog_invariants(&activation, Some("gpt-5.5"), &routes);
-        assert!(
-            report.ok(),
-            "canonical Jcode route should match: {report:?}"
-        );
-        assert_eq!(report.selectable_provider_routes, 1);
-        assert_eq!(
-            report.route_sample,
-            vec![format!(
-                "`gpt-5.5` via {}",
-                crate::subscription_catalog::JCODE_ROUTE_API_METHOD
-            )]
-        );
-        assert_eq!(
-            activation.model_switch_request("Jcode Subscription", "gpt-5.5"),
-            "gpt-5.5"
-        );
     }
 
     #[test]

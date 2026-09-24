@@ -577,16 +577,6 @@ impl App {
                 }
             }
         }
-        if open_pricing {
-            self.onboarding_import_error = None;
-            let url = crate::subscription_catalog::JCODE_PRICING_URL;
-            if super::helpers::open_path_or_url_detached(url).is_ok() {
-                self.set_status_notice(format!("Opened Jcode pricing: {url}"));
-            } else {
-                self.set_status_notice(format!("Open Jcode pricing: {url}"));
-            }
-            return true;
-        }
         if finished {
             self.onboarding_finish_import_review();
         } else {
@@ -1334,10 +1324,9 @@ impl App {
         use crate::auth::AuthState;
         let status = crate::auth::AuthStatus::check_fast();
         // (display name, provider-key, state)
-        let providers: [(&str, &str, AuthState); 8] = [
+        let providers: [(&str, &str, AuthState); 7] = [
             ("Anthropic (Claude)", "anthropic", status.anthropic.state),
             ("OpenAI", "openai", status.openai),
-            ("Jcode subscription", "jcode", status.jcode),
             ("Gemini", "gemini", status.gemini),
             ("GitHub Copilot", "copilot", status.copilot),
             ("Cursor", "cursor", status.cursor),

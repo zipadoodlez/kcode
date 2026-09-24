@@ -8,7 +8,6 @@ use jcode_provider_core::{ActiveProvider, provider_key};
 /// transport, but its runtime identity is still Azure OpenAI.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuntimeProviderId {
-    Jcode,
     Claude,
     ClaudeApiKey,
     OpenAi,
@@ -28,7 +27,6 @@ pub enum RuntimeProviderId {
 impl RuntimeProviderId {
     pub const fn key(self) -> &'static str {
         match self {
-            Self::Jcode => "jcode",
             Self::Claude => "claude",
             Self::ClaudeApiKey => "claude-api",
             Self::OpenAi => "openai",
@@ -48,7 +46,6 @@ impl RuntimeProviderId {
 
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Jcode => "Jcode Subscription",
             Self::Claude => "Anthropic/Claude",
             Self::ClaudeApiKey => "Anthropic API",
             Self::OpenAi => "OpenAI",
@@ -154,17 +151,9 @@ impl ProviderActivation {
         }
     }
 
-    pub fn jcode_subscription(model: impl Into<String>) -> Self {
-        Self::initial(RuntimeProviderId::Jcode, ActiveProvider::OpenRouter)
-            .with_model_hint("JCODE_OPENROUTER_MODEL", model)
-    }
-
     pub fn apply_env(&self) -> Result<()> {
         crate::env::set_var("JCODE_RUNTIME_PROVIDER", self.runtime_id.key());
         match self.runtime_id {
-            RuntimeProviderId::Jcode => {
-                crate::env::set_var("JCODE_OPENROUTER_TRANSPORT_STATE", "jcode-subscription")
-            }
             RuntimeProviderId::OpenRouter => {
                 crate::env::set_var("JCODE_OPENROUTER_TRANSPORT_STATE", "openrouter-api-key")
             }

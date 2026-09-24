@@ -43,8 +43,7 @@ pub(super) fn route_supports_reasoning_effort(api_method: &str) -> bool {
         // Named OpenAI-compatible profiles expose effort through `/effort`.
         // Expanding them here creates one duplicate picker row per effort.
         Method::OpenAiCompatible { .. } => false,
-        Method::JcodeSubscription
-        | Method::GrokBuild
+        Method::GrokBuild
         | Method::Copilot
         | Method::Cursor
         | Method::Bedrock

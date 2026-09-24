@@ -640,7 +640,6 @@ fn test_top_level_command_suggestions_include_config_and_subscription() {
     assert!(suggestions.iter().any(|(cmd, _)| cmd == "/alignment"));
 
     let suggestions = app.get_suggestions_for("/sub");
-    assert!(suggestions.iter().any(|(cmd, _)| cmd == "/subscription"));
 }
 
 #[test]

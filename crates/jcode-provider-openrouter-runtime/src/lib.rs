@@ -301,9 +301,6 @@ pub enum OpenRouterTransportState {
     /// Real OpenRouter BYOK. The provider implementation is both the runtime identity
     /// and the HTTP transport.
     OpenRouterApiKey,
-    /// Jcode subscription access currently reuses the OpenRouter HTTP slot, but is
-    /// not user BYOK/OpenRouter billing.
-    JcodeSubscription,
     /// A direct OpenAI-compatible endpoint that needs a user key, Azure credential,
     /// or provider-profile secret while reusing the OpenRouter-compatible transport.
     DirectApiKey,
@@ -320,10 +317,6 @@ impl OpenRouterTransportState {
         let runtime_provider = runtime_provider
             .map(|value| value.trim().to_ascii_lowercase())
             .filter(|value| !value.is_empty());
-
-        if matches!(runtime_provider.as_deref(), Some("jcode")) {
-            return Self::JcodeSubscription;
-        }
 
         if matches!(runtime_provider.as_deref(), Some("openrouter")) {
             return Self::OpenRouterApiKey;
@@ -358,7 +351,6 @@ impl OpenRouterTransportState {
             "openrouter" | "openrouter-api-key" | "openrouter_byok" | "openrouter-byok" => {
                 Some(Self::OpenRouterApiKey)
             }
-            "jcode" | "jcode-subscription" | "subscription" => Some(Self::JcodeSubscription),
             "direct" | "direct-api-key" | "openai-compatible" | "compatible-api-key" => {
                 Some(Self::DirectApiKey)
             }
@@ -1292,10 +1284,6 @@ impl OpenRouterProvider {
     /// after a runtime `/model` switch to a different OpenAI-compatible profile
     /// (e.g. NVIDIA NIM) even though `name()` is fixed at `"openrouter"`.
     pub fn runtime_display_name(&self) -> String {
-        if self.is_jcode_subscription_runtime() {
-            return jcode_base::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string();
-        }
-
         // Direct OpenAI-compatible profile (NVIDIA NIM, DeepSeek, Z.AI, ...).
         if let Some(profile_id) = self.profile_id.as_deref() {
             if let Some(profile) = openai_compatible_profile_by_id(profile_id) {
@@ -1335,14 +1323,6 @@ impl OpenRouterProvider {
             return None;
         }
 
-        if self.is_jcode_subscription_runtime() {
-            return Some((
-                jcode_base::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string(),
-                jcode_base::subscription_catalog::JCODE_ROUTE_API_METHOD.to_string(),
-                self.api_base.clone(),
-            ));
-        }
-
         let provider_label = self
             .profile_id
             .as_deref()
@@ -1366,16 +1346,6 @@ impl OpenRouterProvider {
     /// transport slot. Keep that implementation detail out of model-picker
     /// labels: the captured auth label is per-instance and remains stable even
     /// if another provider changes the process environment later.
-    fn is_jcode_subscription_runtime(&self) -> bool {
-        !self.supports_provider_features
-            && self.api_base.trim_end_matches('/')
-                == jcode_base::subscription_catalog::DEFAULT_JCODE_API_BASE.trim_end_matches('/')
-            && self
-                .auth
-                .label()
-                .eq_ignore_ascii_case(jcode_base::subscription_catalog::JCODE_API_KEY_ENV)
-    }
-
     pub fn new_named_openai_compatible(
         profile_name: &str,
         profile: &jcode_base::config::NamedProviderConfig,

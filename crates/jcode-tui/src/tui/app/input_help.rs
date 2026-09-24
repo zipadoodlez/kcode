@@ -164,12 +164,6 @@ impl App {
             "usage" => {
                 "/usage\nFetch and display usage limits for connected providers. This command only reports real connected-provider usage windows and reset times."
             }
-            "subscription" => {
-                "/subscription\nCompatibility alias for /hosted status. Shows hosted-model usage, your monthly spending limit, billing status, and router configuration."
-            }
-            "subscribe" | "hosted" => {
-                "/hosted\nUse Jcode hosted models without a subscription: choose a monthly spending limit, receive milestone warnings without throttling, and pay in progressively larger tranches. Sign in once with /login jcode.\n\n/hosted status\nShow usage and your current spending limit.\n\n/subscribe\nCompatibility alias for /hosted."
-            }
             "version" => "/version\nShow kcode version/build details.",
             "changelog" => "/changelog\nShow recent changes embedded in this build.",
             "quit" => "/quit\nExit kcode.",

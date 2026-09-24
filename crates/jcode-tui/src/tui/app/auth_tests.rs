@@ -149,60 +149,6 @@ fn tui_api_key_logout_clears_saved_key_and_process_env() -> anyhow::Result<()> {
 }
 
 #[test]
-fn tui_jcode_subscription_logout_clears_credentials_and_preserves_api_base() -> anyhow::Result<()> {
-    with_temp_jcode_home(|| {
-        crate::provider_catalog::save_env_value_to_env_file(
-            crate::subscription_catalog::JCODE_API_KEY_ENV,
-            crate::subscription_catalog::JCODE_ENV_FILE,
-            Some("test-jcode-key"),
-        )?;
-        crate::provider_catalog::save_env_value_to_env_file(
-            crate::subscription_catalog::JCODE_API_BASE_ENV,
-            crate::subscription_catalog::JCODE_ENV_FILE,
-            Some("https://subscription.example/v1"),
-        )?;
-        crate::provider_catalog::save_env_value_to_env_file(
-            crate::subscription_catalog::JCODE_ACCOUNT_ID_ENV,
-            crate::subscription_catalog::JCODE_ENV_FILE,
-            Some("acct_test"),
-        )?;
-        crate::provider_catalog::save_env_value_to_env_file(
-            crate::subscription_catalog::JCODE_ACCOUNT_EMAIL_ENV,
-            crate::subscription_catalog::JCODE_ENV_FILE,
-            Some("user@example.com"),
-        )?;
-
-        crate::subscription_catalog::clear_account_credentials()?;
-
-        assert!(std::env::var_os(crate::subscription_catalog::JCODE_API_KEY_ENV).is_none());
-        assert_eq!(
-            std::env::var(crate::subscription_catalog::JCODE_API_BASE_ENV).as_deref(),
-            Ok("https://subscription.example/v1")
-        );
-        assert!(std::env::var_os(crate::subscription_catalog::JCODE_ACCOUNT_ID_ENV).is_none());
-        assert!(std::env::var_os(crate::subscription_catalog::JCODE_ACCOUNT_EMAIL_ENV).is_none());
-        assert!(crate::subscription_catalog::configured_api_key().is_none());
-        for env_key in [
-            crate::subscription_catalog::JCODE_ACCOUNT_ID_ENV,
-            crate::subscription_catalog::JCODE_ACCOUNT_EMAIL_ENV,
-        ] {
-            assert!(
-                crate::provider_catalog::load_env_value_from_env_or_config(
-                    env_key,
-                    crate::subscription_catalog::JCODE_ENV_FILE,
-                )
-                .is_none()
-            );
-        }
-        assert_eq!(
-            crate::subscription_catalog::configured_api_base().as_deref(),
-            Some("https://subscription.example/v1")
-        );
-        Ok(())
-    })
-}
-
-#[test]
 fn tui_openai_compatible_local_key_save_allows_empty_key() -> anyhow::Result<()> {
     with_temp_jcode_home(|| {
         let resolved = save_tui_openai_compatible_key(crate::provider_catalog::OLLAMA_PROFILE, "")?;

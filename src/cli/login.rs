@@ -12,7 +12,6 @@ use crate::provider_catalog::{
 use super::provider_init::{ProviderChoice, login_provider_for_choice, save_named_api_key};
 
 mod existing_key_notice;
-mod jcode_device;
 mod next_step;
 mod scriptable;
 use scriptable::*;
@@ -297,9 +296,6 @@ pub async fn run_login_provider(
                 eprintln!("Imported {} existing auth source(s).", imported);
                 Ok(LoginFlowOutcome::Completed)
             }
-            LoginProviderTarget::Jcode => login_jcode_flow(options.no_browser)
-                .await
-                .map(|_| LoginFlowOutcome::Completed),
             LoginProviderTarget::Claude => login_claude_flow(account_label, options.no_browser)
                 .await
                 .map(|_| LoginFlowOutcome::Completed),
@@ -492,16 +488,6 @@ async fn notify_running_server_auth_changed_best_effort(provider: Option<&str>) 
             );
         }
     }
-}
-
-async fn login_jcode_flow(no_browser: bool) -> Result<()> {
-    eprintln!("Starting jcode subscription sign-in...");
-    let _ = jcode_device::login_jcode_device_flow(no_browser).await?;
-    Ok(())
-}
-
-pub(crate) async fn run_jcode_account_login(no_browser: bool) -> Result<()> {
-    login_jcode_flow(no_browser).await
 }
 
 fn login_openai_api_key_flow() -> Result<()> {

@@ -177,10 +177,6 @@ fn matrix_profiles_have_unique_ids_and_safe_metadata() {
 #[test]
 fn matrix_login_provider_aliases_resolve_to_canonical_ids() {
     assert_eq!(
-        resolve_login_provider("subscription").map(|provider| provider.id),
-        Some("jcode")
-    );
-    assert_eq!(
         resolve_login_provider("anthropic").map(|provider| provider.id),
         Some("claude")
     );
@@ -519,7 +515,7 @@ fn matrix_tui_login_selection_supports_numbers_and_names() {
         Some("anthropic-api")
     );
     assert_eq!(
-        resolve_login_selection("7", &providers).map(|provider| provider.id),
+        resolve_login_selection("6", &providers).map(|provider| provider.id),
         Some("bedrock")
     );
     assert_eq!(
@@ -557,22 +553,18 @@ fn matrix_cli_login_selection_preserves_existing_order() {
     );
     assert_eq!(
         resolve_login_selection("5", &providers).map(|provider| provider.id),
-        Some("jcode")
-    );
-    assert_eq!(
-        resolve_login_selection("6", &providers).map(|provider| provider.id),
         Some("copilot")
     );
     assert_eq!(
-        resolve_login_selection("7", &providers).map(|provider| provider.id),
+        resolve_login_selection("6", &providers).map(|provider| provider.id),
         Some("openrouter")
     );
     assert_eq!(
-        resolve_login_selection("8", &providers).map(|provider| provider.id),
+        resolve_login_selection("7", &providers).map(|provider| provider.id),
         Some("bedrock")
     );
     assert_eq!(
-        resolve_login_selection("9", &providers).map(|provider| provider.id),
+        resolve_login_selection("8", &providers).map(|provider| provider.id),
         Some("azure")
     );
     assert_eq!(

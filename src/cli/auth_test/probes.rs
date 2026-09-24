@@ -6,9 +6,6 @@ fn generic_credential_paths_for_provider(
     };
 
     match provider.target {
-        crate::provider_catalog::LoginProviderTarget::Jcode => {
-            vec![config_dir.join(crate::subscription_catalog::JCODE_ENV_FILE)]
-        }
         crate::provider_catalog::LoginProviderTarget::OpenRouter => {
             vec![config_dir.join("openrouter.env")]
         }

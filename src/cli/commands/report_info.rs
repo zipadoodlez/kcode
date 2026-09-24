@@ -561,7 +561,6 @@ fn usage_provider_report(provider: &crate::usage::ProviderUsage) -> UsageProvide
 
 pub(super) fn list_cli_providers() -> Vec<ProviderListEntry> {
     let choices = [
-        ProviderChoice::Jcode,
         ProviderChoice::Claude,
         ProviderChoice::Openai,
         ProviderChoice::Openrouter,
