@@ -525,7 +525,6 @@ impl App {
         let mut finished = false;
         // Set when the user wants to learn about the hosted Jcode subscription
         // instead of importing one of the detected third-party logins.
-        let mut open_pricing = false;
         {
             let Some(review) = self.onboarding_import_review_mut() else {
                 return false;
@@ -551,7 +550,6 @@ impl App {
                     KeyCode::Char('y') | KeyCode::Char('Y') => finished = true,
                     KeyCode::Enter | KeyCode::Char(' ') => match review.summary_pill {
                         SummaryPill::Continue => finished = true,
-                        SummaryPill::Subscription => open_pricing = true,
                         SummaryPill::ImportLess => review.enter_choose_mode(),
                     },
                     _ => return false,

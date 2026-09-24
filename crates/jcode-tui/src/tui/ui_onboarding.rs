@@ -144,11 +144,6 @@ fn import_summary_pills_line(
     spans.extend(lozenge_pill_spans("Import", focused == Pill::Continue));
     spans.push(Span::raw("   "));
     spans.extend(lozenge_pill_spans(
-        "Jcode subscription",
-        focused == Pill::Subscription,
-    ));
-    spans.push(Span::raw("   "));
-    spans.extend(lozenge_pill_spans(
         "Import less",
         focused == Pill::ImportLess,
     ));

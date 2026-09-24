@@ -1,5 +1,4 @@
 use super::*;
-use crate::provider::models::filtered_display_models;
 
 fn with_clean_provider_test_env<T>(f: impl FnOnce() -> T) -> T {
     let _guard = crate::storage::lock_test_env();

@@ -1,8 +1,6 @@
 // Integration tests for the first-run onboarding flow control logic.
 
-use super::onboarding_flow::{
-    ExternalCli, ImportReview, OnboardingFlow, OnboardingPhase, SummaryPill,
-};
+use super::onboarding_flow::{ExternalCli, OnboardingFlow, OnboardingPhase};
 
 #[derive(Clone)]
 struct QualityFirstOpenAiProvider {
@@ -243,10 +241,10 @@ fn import_review_collects_checked_logins() {
         ExternalAuthReviewCandidate::fixture("Gemini", "Gemini CLI"),
     ])
     .unwrap();
-    // The default is the summary screen with Jcode subscription preselected.
+    // The default is the summary screen with the import action preselected.
     assert!(!review.choosing);
     assert!(!review.continue_focused);
-    assert_eq!(review.summary_pill, crate::tui::app::onboarding_flow::SummaryPill::Subscription);
+    assert_eq!(review.summary_pill, crate::tui::app::onboarding_flow::SummaryPill::Continue);
     assert_eq!(review.total(), 3);
     // All candidates remain pre-checked when the user chooses an import action.
     assert_eq!(review.approved_indices(), vec![0, 1, 2]);

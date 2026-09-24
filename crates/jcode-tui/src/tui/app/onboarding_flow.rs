@@ -89,18 +89,12 @@ pub(crate) struct ImportReview {
 pub(crate) enum SummaryPill {
     /// Import every detected login and move on.
     Continue,
-    /// Skip importing and sign in with a Jcode subscription instead (default).
-    Subscription,
     /// Open the per-login checkbox list to import fewer logins.
     ImportLess,
 }
 
 impl SummaryPill {
-    const ORDER: [SummaryPill; 3] = [
-        SummaryPill::Continue,
-        SummaryPill::Subscription,
-        SummaryPill::ImportLess,
-    ];
+    const ORDER: [SummaryPill; 2] = [SummaryPill::Continue, SummaryPill::ImportLess];
 
     fn index(self) -> usize {
         Self::ORDER.iter().position(|&p| p == self).unwrap_or(0)
@@ -135,7 +129,7 @@ impl ImportReview {
             cursor: 0,
             continue_focused: false,
             choosing: false,
-            summary_pill: SummaryPill::Subscription,
+            summary_pill: SummaryPill::Continue,
             shown_at: Instant::now(),
         })
     }

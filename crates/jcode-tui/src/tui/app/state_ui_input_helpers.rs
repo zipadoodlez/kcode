@@ -1363,9 +1363,6 @@ impl App {
                         choosing: review.choosing,
                         summary_pill: match review.summary_pill {
                             SummaryPill::Continue => crate::tui::ImportSummaryPill::Continue,
-                            SummaryPill::Subscription => {
-                                crate::tui::ImportSummaryPill::Subscription
-                            }
                             SummaryPill::ImportLess => crate::tui::ImportSummaryPill::ImportLess,
                         },
                         checked_count: review.checked_count(),

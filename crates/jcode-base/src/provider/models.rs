@@ -45,11 +45,6 @@ struct PersistedModelCatalogScope {
     observed_at_unix_secs: u64,
 }
 
-#[cfg(test)]
-pub(crate) fn filtered_display_models(models: impl IntoIterator<Item = String>) -> Vec<String> {
-    models.into_iter().collect()
-}
-
 
 /// Dynamic cache of model context window sizes, populated from API at startup.
 static CONTEXT_LIMIT_CACHE: std::sync::LazyLock<RwLock<HashMap<String, usize>>> =
