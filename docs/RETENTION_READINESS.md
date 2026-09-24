@@ -1,6 +1,6 @@
 # Retention readiness
 
-jcode separates two questions that should not share a label:
+kcode separates two questions that should not share a label:
 
 1. **Retention readiness**: deterministic product properties that make returning useful and cheap.
 2. **Observed retention**: whether real, privacy-safe cohorts actually return and complete meaningful work.
@@ -85,7 +85,7 @@ Report at least:
 - return after upgrade
 - authentication-recovery success followed by meaningful work
 
-jcode already records coarse active-day helpers (`active_days_7d` and `active_days_30d`). Those are useful engagement signals, but they are not cohort retention by themselves because they do not anchor the denominator to an activation event or require a meaningful successful outcome.
+kcode already records coarse active-day helpers (`active_days_7d` and `active_days_30d`). Those are useful engagement signals, but they are not cohort retention by themselves because they do not anchor the denominator to an activation event or require a meaningful successful outcome.
 
 ## Calibration loop
 

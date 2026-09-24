@@ -1,6 +1,6 @@
 # Message Voice Guidelines
 
-How jcode talks to the user in system/status messages (TUI notices, CLI
+How kcode talks to the user in system/status messages (TUI notices, CLI
 output, notifications). The goal: speak plainly to the user about what
 happened and what we did for them, not narrate internal mechanics.
 

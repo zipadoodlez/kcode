@@ -4,14 +4,14 @@ Date: 2026-07-24 (Opus 5 general availability)
 Method: live probes against `https://api.anthropic.com/v1/messages` with an
 Anthropic API key, `anthropic-version: 2023-06-01`.
 
-This exists because jcode's Claude capability tables are hand-maintained, and
+This exists because kcode's Claude capability tables are hand-maintained, and
 the live catalog's `max_input_tokens` is known to over-advertise (see
 `anthropic_context_mode`). Each row below is an observed API response, not a
 docs claim.
 
 ## Observed behavior
 
-| Capability | Probe | Result | jcode encoding |
+| Capability | Probe | Result | kcode encoding |
 |---|---|---|---|
 | Model id | `GET /v1/models` | `claude-opus-5`, created 2026-07-24 | `ALL_CLAUDE_MODELS` |
 | Max output | `max_tokens: 128000` | `200` | `anthropic_max_output_tokens` -> `128_000` |
@@ -25,7 +25,7 @@ docs claim.
 
 ## Why the output ceiling mattered
 
-jcode previously sent a flat `max_tokens = 32768` for every Claude model. Opus 5
+kcode previously sent a flat `max_tokens = 32768` for every Claude model. Opus 5
 allows 128K and uses always-on adaptive thinking, so its thinking plus the
 visible tool call routinely exceeded 32K. Turns were truncated mid-tool-call and
 agent runs ended early: the first Opus 5 benchmark cell exited cleanly after
@@ -38,7 +38,7 @@ ids keep the conservative 32K.
 ## Reproducing
 
 ```bash
-set -a; source ~/.config/jcode/anthropic.env; set +a
+set -a; source ~/.config/kcode/anthropic.env; set +a
 
 # Output ceiling.
 for mt in 128000 128001; do

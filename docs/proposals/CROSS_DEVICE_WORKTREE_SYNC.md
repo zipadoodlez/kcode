@@ -4,15 +4,15 @@ Status: Proposed (design only, not implemented)
 
 ## Problem
 
-A user develops jcode (and other repos) on multiple machines, e.g. a MacBook
+A user develops kcode (and other repos) on multiple machines, e.g. a MacBook
 (aarch64-darwin) and a Linux laptop. On a single machine, `selfdev build` +
-reload means every local jcode instance runs the new version, and multiple
+reload means every local kcode instance runs the new version, and multiple
 agents can share one worktree because the server mediates edits and tracks
 conflicts (`FileTouchService`, `file_activity.rs`).
 
 Split across machines, this breaks:
 
-- A `selfdev build` on the Linux laptop does not update the MacBook's jcode,
+- A `selfdev build` on the Linux laptop does not update the MacBook's kcode,
   and vice versa.
 - There is no shared worktree, so changes made on one machine are invisible
   to agents/sessions on the other until manually pushed/pulled.
@@ -39,7 +39,7 @@ single machine.
 git common dir / worktree. These will never match across machines
 (`/Users/jeremy/...` vs `/home/jeremy/...`). Cross-device features must key
 repos by something portable: normalized origin URL, or an explicit repo name
-in config (`[sync] repo_id = "jcode"`), falling back to origin URL hash.
+in config (`[sync] repo_id = "kcode"`), falling back to origin URL hash.
 
 ## Design tensions
 
@@ -62,7 +62,7 @@ HEAD or index:
 ```
 GIT_INDEX_FILE=$tmp git add -A          # tracked + untracked into temp index
 tree=$(GIT_INDEX_FILE=$tmp git write-tree)
-commit=$(git commit-tree $tree -p HEAD -m "jcode sync: <device> <fingerprint>")
+commit=$(git commit-tree $tree -p HEAD -m "kcode sync: <device> <fingerprint>")
 git push origin $commit:refs/jcode/sync/<device>
 ```
 
@@ -111,14 +111,14 @@ Config sketch:
 ```toml
 [sync]
 enabled = true
-repo_id = "jcode"                  # portable repo identity
+repo_id = "kcode"                  # portable repo identity
 peers = ["macbook.tail-net.ts.net:7643"]
 auto_apply = "clean-ff-only"       # off | clean-ff-only | always-notify
 ```
 
 ### Phase A - hub attach (one authoritative worktree when both online)
 
-`jcode attach <host>`: TUI connects to the peer machine's server through the
+`kcode attach <host>`: TUI connects to the peer machine's server through the
 existing gateway WS. Because tools execute server-side, the attached client
 participates fully in that machine's worktree, conflict tracking included.
 
@@ -169,6 +169,6 @@ sync:
    polling only (no new ports), `selfdev status` showing peer parity.
 2. Add gateway `/peer/version-beacon` fast path + TUI notification for the
    blocked case.
-3. Phase A `jcode attach` (WS client transport + pairing + file-read RPC).
+3. Phase A `kcode attach` (WS client transport + pairing + file-read RPC).
 4. Phase C federation, reusing the beacon snapshot machinery and the peer
    link from A.

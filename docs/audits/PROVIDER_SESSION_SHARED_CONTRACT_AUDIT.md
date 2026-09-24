@@ -2,7 +2,7 @@
 
 Status: 2026-04-16 audit note
 
-This document audits the current provider, session, and shared-contract seams in the jcode workspace and recommends the next **realistic** crate moves that improve modularity without creating high-churn dependency cycles.
+This document audits the current provider, session, and shared-contract seams in the kcode workspace and recommends the next **realistic** crate moves that improve modularity without creating high-churn dependency cycles.
 
 It is intentionally conservative. The goal is to identify boundaries that are both:
 

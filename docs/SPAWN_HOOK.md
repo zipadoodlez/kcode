@@ -1,8 +1,8 @@
 # Spawn Hook: External Control of Headed Session Spawns
 
-jcode opens new terminal windows in several flows: swarm agent spawning
+kcode opens new terminal windows in several flows: swarm agent spawning
 (`swarm spawn` with `spawn_mode=visible`), resume-in-new-terminal, self-dev
-sessions, and restart restores. By default jcode detects
+sessions, and restart restores. By default kcode detects
 an installed terminal emulator (kitty, wezterm, alacritty, gnome-terminal, ...)
 and opens a new OS window.
 
@@ -13,7 +13,7 @@ pane, a tab in a wrapper app like herd, a specific monitor/workspace, etc.
 ## Configuration
 
 ```toml
-# ~/.jcode/config.toml
+# ~/.kcode/config.toml
 [terminal]
 spawn_hook = "tmux new-window"
 ```
@@ -30,7 +30,7 @@ Env always wins over the config file.
 
 ## Contract
 
-When a headed spawn happens and a hook is configured, jcode runs:
+When a headed spawn happens and a hook is configured, kcode runs:
 
 ```
 <spawn_hook> <jcode-binary> <args...>
@@ -38,11 +38,11 @@ When a headed spawn happens and a hook is configured, jcode runs:
 
 - The hook command is parsed shell-style (quotes and backslash escapes work),
   but it is executed directly, not through a shell.
-- The jcode binary and its full argument list are appended as extra argv
+- The kcode binary and its full argument list are appended as extra argv
   entries (the familiar `$TERMINAL -e <cmd>` convention).
 - The hook's working directory is the session working directory.
-- The hook process is detached; jcode does not wait for it.
-- If the hook fails to start (binary missing, parse error), jcode logs a
+- The hook process is detached; kcode does not wait for it.
+- If the hook fails to start (binary missing, parse error), kcode logs a
   warning and falls back to its built-in terminal detection.
 
 ### Metadata environment
@@ -52,10 +52,10 @@ The hook (and any terminal spawned by the built-in fallback) receives:
 | Variable | Meaning |
 | --- | --- |
 | `JCODE_SPAWN_KIND` | Why the spawn happened: `swarm-agent`, `resume`, `selfdev`, `restart` |
-| `JCODE_SPAWN_SESSION_ID` | The jcode session the window will run |
+| `JCODE_SPAWN_SESSION_ID` | The kcode session the window will run |
 | `JCODE_SPAWN_TITLE` | Suggested window/tab title (includes session icon + name) |
 | `JCODE_SPAWN_CWD` | Session working directory |
-| `JCODE_SPAWN_PROGRAM` | Path of the jcode binary to execute |
+| `JCODE_SPAWN_PROGRAM` | Path of the kcode binary to execute |
 | `JCODE_SPAWN_COMMAND` | Full command line, shell-escaped, for hooks that take one shell string |
 | `JCODE_SPAWN_SWARM_ID` | (swarm spawns) The swarm the agent joins |
 | `JCODE_SPAWN_COORDINATOR_SESSION_ID` | (swarm spawns) The coordinator session that requested the spawn |
@@ -63,7 +63,7 @@ The hook (and any terminal spawned by the built-in fallback) receives:
 
 ### Client terminal environment (multi-terminal routing)
 
-The jcode server process is long-lived: it captures terminal-identifying env
+The kcode server process is long-lived: it captures terminal-identifying env
 vars (`ZELLIJ_SESSION_NAME`, `TMUX`, `DISPLAY`, `KITTY_WINDOW_ID`, ...) once at
 startup. When you later open a *new* terminal/tmux/zellij session and connect a
 client to the same server, the server's copies are stale, so a spawn hook run by
@@ -86,7 +86,7 @@ the client actually has set are forwarded.
 
 ## Examples
 
-When jcode detects that the requesting client is inside tmux, its built-in
+When kcode detects that the requesting client is inside tmux, its built-in
 launcher automatically opens headed spawns in a right-side pane targeted at the
 requesting `TMUX_PANE`. This covers `/split`, `/fork`, resume-in-new-terminal,
 self-dev, and visible agent spawns. `JCODE_TERMINAL` can explicitly choose a
@@ -101,7 +101,7 @@ spawn_hook = "tmux new-window"
 ```
 
 Use a hook when you want to override the automatic pane behavior. For example,
-`tmux new-window <jcode> --resume ses_x` runs the command in a new window of
+`tmux new-window <kcode> --resume ses_x` runs the command in a new window of
 the current tmux server. To explicitly preserve the right-side pane behavior:
 
 ```toml
@@ -129,7 +129,7 @@ spawn_hook = "~/bin/jcode-spawn-router"
 ```bash
 #!/usr/bin/env bash
 # ~/bin/jcode-spawn-router
-# argv: the jcode command to run ("$@"). Env: JCODE_SPAWN_* metadata.
+# argv: the kcode command to run ("$@"). Env: JCODE_SPAWN_* metadata.
 
 case "$JCODE_SPAWN_KIND" in
   swarm-agent)
@@ -145,7 +145,7 @@ esac
 ```
 
 A hook that exits non-zero after launching nothing will NOT trigger the
-built-in fallback (jcode only falls back when the hook process cannot be
+built-in fallback (kcode only falls back when the hook process cannot be
 started), so a router script should handle its own fallback like the example
 above.
 
@@ -161,15 +161,15 @@ zellij action new-pane -- bash -lc "$JCODE_SPAWN_COMMAND"
 
 ## Programmatic discovery
 
-Programs that wrap jcode (e.g. herd-style session managers) can set
-`JCODE_SPAWN_HOOK` in the environment of the `jcode` server process they
+Programs that wrap kcode (e.g. herd-style session managers) can set
+`JCODE_SPAWN_HOOK` in the environment of the `kcode` server process they
 launch. Every headed spawn the server performs, including swarm agents
 requested by coordinators over the socket protocol, will then route through
 the wrapper's hook.
 
 ## Focus hook
 
-When jcode wants to bring an existing session window to the foreground (e.g.
+When kcode wants to bring an existing session window to the foreground (e.g.
 after launching a self-dev window), it normally does a best-effort
 wmctrl/xdotool title search on X11. That doesn't work under Wayland or inside
 multiplexers, and a wrapper that owns placement should also own focus:
@@ -188,4 +188,4 @@ tmux select-window -t "$(tmux list-windows -F '#{window_id} #{window_name}' \
 ```
 
 Env override: `JCODE_FOCUS_HOOK` (empty value disables a config-file hook).
-If the hook fails to start, jcode falls back to the built-in focus path.
+If the hook fails to start, kcode falls back to the built-in focus path.

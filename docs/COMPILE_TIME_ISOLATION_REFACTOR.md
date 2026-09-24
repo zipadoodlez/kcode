@@ -19,17 +19,17 @@ The workspace already has many crates, but the critical path is dominated by a s
 graph LR
     base["jcode-base\n~100k+ LOC"] --> appcore["jcode-app-core\n~100k LOC"]
     appcore --> tui["jcode-tui\n~100k+ LOC"]
-    tui --> rootlib["jcode lib"]
-    rootlib --> bin["jcode bin"]
+    tui --> rootlib["kcode lib"]
+    rootlib --> bin["kcode bin"]
     small["50+ smaller crates"] -. mostly parallel .-> base
 ```
 
 From the last available Cargo timing report parsed with `scripts/compile_time_probe.sh --skip-build`:
 
 - Cargo timing wall: **16.00s**
-- Known jcode serial stack span: **14.72s**
-- Known jcode serial stack summed unit time: **17.36s**
-- Known jcode serial stack frontend time: **11.99s**
+- Known kcode serial stack span: **14.72s**
+- Known kcode serial stack summed unit time: **17.36s**
+- Known kcode serial stack frontend time: **11.99s**
 
 Slowest units from that timing report:
 
@@ -38,8 +38,8 @@ Slowest units from that timing report:
 | `jcode-app-core` | 4.73s | 3.82s | 0.91s |
 | `jcode-base` | 4.34s | 3.63s | 0.71s |
 | `jcode-tui` | 4.18s | 3.14s | 1.04s |
-| `jcode` bin | 2.34s | n/a | n/a |
-| `jcode` lib | 1.77s | 1.40s | 0.37s |
+| `kcode` bin | 2.34s | n/a | n/a |
+| `kcode` lib | 1.77s | 1.40s | 0.37s |
 
 This means the main bottleneck is rustc front-end serialization in a few mega-crates, not linker choice or third-party cold compile.
 
@@ -65,7 +65,7 @@ Track at least:
 
 1. Full-feature selfdev build wall time.
 2. Cargo timing wall time.
-3. `jcode-base -> jcode-app-core -> jcode-tui -> jcode lib -> jcode bin` stack span.
+3. `jcode-base -> jcode-app-core -> jcode-tui -> kcode lib -> kcode bin` stack span.
 4. Sum of frontend time in the serial stack.
 5. Incremental rebuild after touching representative high-churn files.
 6. Static report drift from `scripts/compile_isolation_report.py`: LOC, inline tests, `async_trait`, and target-state dependency advisories.
@@ -74,7 +74,7 @@ Track at least:
 
 ```mermaid
 graph TD
-    bin["jcode binary\ntiny composition root"] --> cli["jcode-cli"]
+    bin["kcode binary\ntiny composition root"] --> cli["jcode-cli"]
     bin --> tui["jcode-tui"]
     bin --> server["jcode-server"]
     bin --> providers["provider leaf crates"]
@@ -147,7 +147,7 @@ Success criteria:
 
 - Touching common TUI code no longer recompiles app-core/provider/server implementation crates.
 - Touching a provider implementation no longer recompiles TUI or broad base code.
-- Cargo timing shows multiple medium-sized Jcode crates running in parallel instead of one 4-deep mega-crate ladder.
+- Cargo timing shows multiple medium-sized Kcode crates running in parallel instead of one 4-deep mega-crate ladder.
 
 ### Phase 2: kill glob re-export ladders
 
@@ -213,7 +213,7 @@ Before committing a phase:
 scripts/compile_time_probe.sh --skip-build
 scripts/compile_isolation_report.py
 scripts/check_dependency_boundaries.py
-cargo check --profile selfdev -p jcode --bin jcode
+cargo check --profile selfdev -p kcode --bin kcode
 ```
 
 For code-moving phases, also run the relevant targeted tests for the moved domain, plus one full selfdev build through the coordinated selfdev path when practical:

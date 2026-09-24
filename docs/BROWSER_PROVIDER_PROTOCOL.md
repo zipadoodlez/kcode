@@ -1,12 +1,12 @@
 # Browser Provider Protocol
 
 Status: draft
-Owner: jcode
-Audience: jcode core, browser bridge authors, adapter authors
+Owner: kcode
+Audience: kcode core, browser bridge authors, adapter authors
 
 ## Why this exists
 
-jcode should expose a single first-class `browser` tool while remaining compatible with multiple browser automation backends:
+kcode should expose a single first-class `browser` tool while remaining compatible with multiple browser automation backends:
 
 - Firefox Agent Bridge
 - Chrome Agent Bridge
@@ -15,11 +15,11 @@ jcode should expose a single first-class `browser` tool while remaining compatib
 - Safari automation adapters
 - other third-party browser control systems
 
-The protocol in this document defines the **normalized contract** between jcode and a browser provider.
+The protocol in this document defines the **normalized contract** between kcode and a browser provider.
 
 This is intentionally **not** a demand that every bridge speak exactly the same native command language. Instead:
 
-- jcode defines a **core semantic layer** it can rely on
+- kcode defines a **core semantic layer** it can rely on
 - providers declare the capabilities and commands they support
 - providers may expose **provider-specific commands** beyond the core
 - adapters can translate a provider's native model into this protocol
@@ -30,14 +30,14 @@ That gives us both consistency and room for bridge-specific power features.
 
 ## Design goals
 
-1. **One first-class tool in jcode**
+1. **One first-class tool in kcode**
    - The model should use a single `browser` tool.
 
 2. **Multiple provider implementations**
    - Firefox, Chrome, Safari, Edge, WebDriver, and other systems should fit.
 
 3. **Capability negotiation**
-   - jcode should know what each provider can and cannot do.
+   - kcode should know what each provider can and cannot do.
 
 4. **Extensibility without fragmentation**
    - We need a standard core, but providers must have room for browser-specific features.
@@ -61,11 +61,11 @@ That gives us both consistency and room for bridge-specific power features.
 
 ## Terminology
 
-- **browser tool**: the user/model-facing jcode tool.
+- **browser tool**: the user/model-facing kcode tool.
 - **provider**: a backend implementation that satisfies this protocol.
 - **bridge**: an external browser integration such as Firefox Agent Bridge.
 - **adapter**: glue code that translates a bridge's native API into this protocol.
-- **browser session**: the provider's isolated session or attachment scope for a jcode session.
+- **browser session**: the provider's isolated session or attachment scope for a kcode session.
 - **page**: a tab, target, or browsing surface under a session.
 - **element ref**: an opaque provider-issued handle for an actionable element.
 
@@ -123,7 +123,7 @@ This protocol defines **message semantics**, not one required wire format.
 
 Supported implementation styles may include:
 
-- direct Rust trait calls inside jcode
+- direct Rust trait calls inside kcode
 - stdio JSON request/response
 - local socket RPC
 - wrapped remote API
@@ -286,12 +286,12 @@ Suggested enums:
 
 ## Session model
 
-jcode should not care whether a provider uses tabs, contexts, profiles, or remote targets internally.
+kcode should not care whether a provider uses tabs, contexts, profiles, or remote targets internally.
 It only needs a stable handle it can reuse.
 
 ### `session.ensure`
 
-Creates or reuses a browser session for a jcode session.
+Creates or reuses a browser session for a kcode session.
 
 Request:
 
@@ -342,13 +342,13 @@ Examples:
 - `element_ref`
 - `download_id`
 
-jcode must not assume identifier shape or encode browser semantics into them.
+kcode must not assume identifier shape or encode browser semantics into them.
 
 ---
 
 ## Normalized core methods
 
-These are the semantics jcode can rely on.
+These are the semantics kcode can rely on.
 
 ### `page.open`
 
@@ -603,7 +603,7 @@ Every custom method should appear in `provider.describe.capabilities.custom_meth
 - optional `input_schema`
 - optional `output_schema`
 
-### Rule 3: jcode core should only rely on normalized methods by default
+### Rule 3: kcode core should only rely on normalized methods by default
 
 The main `browser` tool should prefer the standard core and optional normalized methods.
 Provider-specific methods should only be used when:
@@ -644,7 +644,7 @@ Concrete callable operations:
 
 ### Features
 
-Semantics or qualities that influence jcode behavior:
+Semantics or qualities that influence kcode behavior:
 
 - `element_refs`
 - `a11y_snapshot`
@@ -782,9 +782,9 @@ A future conformance suite should verify at least:
 
 ---
 
-## Recommended jcode integration policy
+## Recommended kcode integration policy
 
-The jcode `browser` tool should:
+The kcode `browser` tool should:
 
 1. prefer normalized core methods
 2. choose a provider based on user preference, availability, and capability quality

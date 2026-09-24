@@ -116,7 +116,7 @@ These give genuinely off-screen, non-interfering control. Higher setup cost.
 | **Input Monitoring** | reading global input stream (only if we add capture) | Request API exists |
 
 Plan: a `request_permissions` action that calls
-`AXIsProcessTrustedWithOptions(prompt=true)` (adds jcode to the list + shows the
+`AXIsProcessTrustedWithOptions(prompt=true)` (adds kcode to the list + shows the
 dialog) and deep-links to the exact System Settings pane, then polls
 `AXIsProcessTrusted()`. One prompt + one toggle; never zero-touch for Accessibility
 (Apple's anti-malware boundary).
@@ -191,7 +191,7 @@ A first-class `setup` action that:
    first Apple Event), plus install/bundle health.
 2. **Requests** what it can programmatically:
    - `AXIsProcessTrustedWithOptions(prompt=true)` — shows the Accessibility dialog
-     and pre-adds jcode to the list (toggled off).
+     and pre-adds kcode to the list (toggled off).
    - `CGRequestScreenCaptureAccess()` — prompts for Screen Recording.
    - First Apple Event to a target app — triggers its Automation prompt.
 3. **Deep-links** to the exact System Settings pane for anything still missing:
@@ -210,7 +210,7 @@ TCC permissions attach to the **running binary's identity**. A bare dev/cli bina
 changes path/signature across updates, so macOS re-prompts every time. To make a
 grant stick:
 
-- Ship/install jcode as a **signed `.app` bundle with a stable bundle id**
+- Ship/install kcode as a **signed `.app` bundle with a stable bundle id**
   (e.g. `com.jcode.app`) and a Designated Requirement, so the Accessibility /
   Screen Recording grant persists across updates.
 - `setup` should detect "running from an unstable/unsigned path" and offer to

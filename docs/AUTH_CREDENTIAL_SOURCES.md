@@ -15,10 +15,10 @@ paths**, surfaced as **two separate login providers**:
 
 | Concept            | Login provider id | Auth kind | Where the credential lives                                  |
 |--------------------|-------------------|-----------|-------------------------------------------------------------|
-| Claude, OAuth/sub  | `claude`          | OAuth     | `~/.jcode/auth.json` → `anthropic_accounts[].access` (`sk-ant-oat...`) |
-| Claude, API key    | `anthropic-api`   | API key   | `ANTHROPIC_API_KEY` env **or** `~/.config/jcode/anthropic.env`         |
-| OpenAI, OAuth      | `openai`          | OAuth     | `~/.jcode/openai-auth.json` (Codex/ChatGPT login)            |
-| OpenAI, API key    | `openai-api`      | API key   | `OPENAI_API_KEY` env **or** `~/.config/jcode/openai.env`     |
+| Claude, OAuth/sub  | `claude`          | OAuth     | `~/.kcode/auth.json` → `anthropic_accounts[].access` (`sk-ant-oat...`) |
+| Claude, API key    | `anthropic-api`   | API key   | `ANTHROPIC_API_KEY` env **or** `~/.config/kcode/anthropic.env`         |
+| OpenAI, OAuth      | `openai`          | OAuth     | `~/.kcode/openai-auth.json` (Codex/ChatGPT login)            |
+| OpenAI, API key    | `openai-api`      | API key   | `OPENAI_API_KEY` env **or** `~/.config/kcode/openai.env`     |
 
 Key facts that trip people up:
 
@@ -26,10 +26,10 @@ Key facts that trip people up:
   (and refresh tokens `sk-ant-ort01-...`). A direct API key is `sk-ant-api03-...`.
   Grepping for `sk-ant-api` will miss an OAuth-only setup, and vice versa.
 - The **API key is usually in the app config dir, not an env var.** The canonical
-  store is `~/.config/jcode/anthropic.env` (XDG `$XDG_CONFIG_HOME/jcode/anthropic.env`),
-  written by `jcode login --provider anthropic-api`. `printenv ANTHROPIC_API_KEY`
+  store is `~/.config/kcode/anthropic.env` (XDG `$XDG_CONFIG_HOME/jcode/anthropic.env`),
+  written by `kcode login --provider anthropic-api`. `printenv ANTHROPIC_API_KEY`
   returning nothing does **not** mean there is no key.
-- `~/.jcode/auth.json` holds **only OAuth accounts**, never the API key.
+- `~/.kcode/auth.json` holds **only OAuth accounts**, never the API key.
 - `claude` and `anthropic-api` are **different providers** with different
   availability. Having a Claude subscription login (OAuth) does **not** make
   `anthropic-api` usable, and vice versa.
@@ -38,11 +38,11 @@ Key facts that trip people up:
 
 ```sh
 # The honest, normalized answer for every provider:
-jcode auth status --json
+kcode auth status --json
 ```
 
 Each provider entry reports `status`, `auth_kind` ("OAuth" vs "API key"),
-`credential_source` (env var / app config file / jcode-managed file), and the
+`credential_source` (env var / app config file / kcode-managed file), and the
 exact `method`. This is the canonical surface; prefer it over grepping files.
 
 Programmatically, the single source of truth is
@@ -51,7 +51,7 @@ Programmatically, the single source of truth is
 
 ## Selecting a default via config
 
-`~/.jcode/config.toml`:
+`~/.kcode/config.toml`:
 
 ```toml
 [provider]
@@ -64,7 +64,7 @@ anthropic_reasoning_effort = "xhigh"
 - `default_provider = "claude"` uses the OAuth/subscription credential.
 - `default_provider = "anthropic-api"` uses the direct API key. In this mode the
   runtime **does not** fall back to OAuth: if no API key is configured the request
-  fails. Make sure `~/.config/jcode/anthropic.env` (or `ANTHROPIC_API_KEY`) exists.
+  fails. Make sure `~/.config/kcode/anthropic.env` (or `ANTHROPIC_API_KEY`) exists.
 
 The full alias/vocabulary mapping (runtime env, route stable-id, CLI `--provider`,
 model prefix) is centralized in
@@ -73,7 +73,7 @@ strings by hand; go through `AuthRoute`.
 
 ## Why "expired" was misleading: validation cache is not live state
 
-`~/.jcode/auth-validation.json` caches the result of the **last** runtime
+`~/.kcode/auth-validation.json` caches the result of the **last** runtime
 auth-test per provider. It is a historical record, not the current credential
 state. An OAuth token that has since auto-refreshed can still show a days-old
 "validation failed / expired" entry here.
@@ -84,25 +84,25 @@ To avoid presenting stale records as current fact, `format_record_label`
 stale record as "unknown, re-check", never as ground truth. Re-validate with:
 
 ```sh
-jcode auth-test --provider <id>
+kcode auth-test --provider <id>
 ```
 
 ## Quick decision tree for "is provider X authenticated?"
 
-1. Run `jcode auth status --json` and read the entry for the **specific** login
+1. Run `kcode auth status --json` and read the entry for the **specific** login
    provider id (`claude` vs `anthropic-api` are different!).
-2. If you must inspect files: OAuth → `~/.jcode/auth.json` (and external imports);
-   API key → `ANTHROPIC_API_KEY` env or `~/.config/jcode/<provider>.env`.
+2. If you must inspect files: OAuth → `~/.kcode/auth.json` (and external imports);
+   API key → `ANTHROPIC_API_KEY` env or `~/.config/kcode/<provider>.env`.
 3. Ignore `auth-validation.json` verdicts older than 7 days (shown as `stale`);
-   re-run `jcode auth-test` instead.
+   re-run `kcode auth-test` instead.
 
 ## Importing credentials from other agent tools
 
-On a fresh install jcode can **reuse logins left behind by other coding
-agents**, both OAuth tokens and API keys. Detection is consent-gated: jcode
+On a fresh install kcode can **reuse logins left behind by other coding
+agents**, both OAuth tokens and API keys. Detection is consent-gated: kcode
 lists the sources it found and only reads them after you approve each one
 (`crates/jcode-base/src/auth/external.rs`, `unconsented_sources` /
-`trust_external_auth_source`). Nothing is copied into jcode's own stores; the
+`trust_external_auth_source`). Nothing is copied into kcode's own stores; the
 external file is read in place.
 
 Shared `auth.json`-style sources (`ExternalAuthSource`):

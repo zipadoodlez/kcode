@@ -1,17 +1,17 @@
-# Terminal-Bench 2.0 with jcode
+# Terminal-Bench 2.0 with kcode
 
-This document describes the cleanest currently-working path for running jcode on Terminal-Bench 2.0 through Harbor.
+This document describes the cleanest currently-working path for running kcode on Terminal-Bench 2.0 through Harbor.
 
 ## What is in the repo
 
 - `scripts/jcode_harbor_agent.py`
-  - Harbor custom agent adapter for jcode
+  - Harbor custom agent adapter for kcode
 - `scripts/run_terminal_bench_harbor.sh`
-  - helper that wires Harbor to the adapter and a Linux-compatible jcode binary
+  - helper that wires Harbor to the adapter and a Linux-compatible kcode binary
 - `scripts/run_terminal_bench_campaign.py`
   - sequential campaign runner that preserves small batches in a stitchable layout
 - `scripts/build_linux_compat.sh`
-  - builds a Linux jcode artifact against an older glibc baseline for TB-style containers
+  - builds a Linux kcode artifact against an older glibc baseline for TB-style containers
 
 ## Why the compat binary matters
 
@@ -27,7 +27,7 @@ The helper script will build it for you automatically if it is missing.
 
 The current adapter is designed for:
 
-- OpenAI OAuth auth file at `~/.jcode/openai-auth.json`
+- OpenAI OAuth auth file at `~/.kcode/openai-auth.json`
 - `gpt-5.4`
 - high reasoning effort
 - priority service tier
@@ -88,7 +88,7 @@ scripts/run_terminal_bench_harbor.sh \
 ## Useful environment variables
 
 - `JCODE_HARBOR_BINARY`
-  - path to the Linux-compatible jcode binary to upload into the task container
+  - path to the Linux-compatible kcode binary to upload into the task container
 - `JCODE_HARBOR_BINARY_DIR`
   - output directory used when auto-building the compat binary
 - `JCODE_HARBOR_OPENAI_AUTH`
@@ -106,7 +106,7 @@ scripts/run_terminal_bench_harbor.sh \
 
 ## Notes on fairness and state isolation
 
-The adapter gives each trial a fresh in-container jcode home directory under `/tmp/jcode-home`, so memories and auth state are isolated per trial container.
+The adapter gives each trial a fresh in-container kcode home directory under `/tmp/jcode-home`, so memories and auth state are isolated per trial container.
 
 ## Current validation status
 

@@ -4,7 +4,7 @@ If you want to iterate on onboarding repeatedly without touching your real auth 
 
 This repo already supports that isolation:
 
-- `JCODE_HOME` redirects jcode-owned state such as `~/.jcode` into a sandbox directory.
+- `JCODE_HOME` redirects jcode-owned state such as `~/.kcode` into a sandbox directory.
 - `JCODE_HOME` also redirects app config into `JCODE_HOME/config/jcode`.
 - `JCODE_RUNTIME_DIR` redirects sockets and other ephemeral runtime files.
 - External auth trust decisions are stored in the sandbox config, so a fresh sandbox starts with no trusted external auth imports.
@@ -15,7 +15,7 @@ This repo already supports that isolation:
 scripts/onboarding_sandbox.sh fresh
 ```
 
-That gives you a clean jcode launch with isolated state.
+That gives you a clean kcode launch with isolated state.
 
 ## Test with your REAL logins (import them in the sandbox)
 
@@ -32,11 +32,11 @@ scripts/onboarding_sandbox.sh seed-real-logins
 # step has real history to resume:
 scripts/onboarding_sandbox.sh seed-real-logins --with-transcripts
 
-# Or do it all in one shot: reset, seed, and launch jcode
+# Or do it all in one shot: reset, seed, and launch kcode
 scripts/onboarding_sandbox.sh fresh-real --with-transcripts
 ```
 
-How it works: when `JCODE_HOME` is set, jcode resolves every external credential
+How it works: when `JCODE_HOME` is set, kcode resolves every external credential
 and transcript lookup to `$JCODE_HOME/external/<same-relative-path-as-$HOME>`.
 `seed-real-logins` copies your real files there, so detection and import behave
 exactly as they would on a first-run machine that already has those tools
@@ -47,7 +47,7 @@ Once seeded, just launch the sandbox and walk onboarding; it will detect and
 offer to import each real login:
 
 ```bash
-scripts/onboarding_sandbox.sh jcode
+scripts/onboarding_sandbox.sh kcode
 ```
 
 ## Common commands
@@ -61,7 +61,7 @@ scripts/onboarding_sandbox.sh status
 scripts/onboarding_sandbox.sh reset
 scripts/onboarding_sandbox.sh fresh
 
-# Log into a provider without touching your normal jcode config
+# Log into a provider without touching your normal kcode config
 scripts/onboarding_sandbox.sh login openai
 scripts/onboarding_sandbox.sh login claude
 scripts/onboarding_sandbox.sh auth-status
@@ -76,9 +76,9 @@ scripts/onboarding_sandbox.sh auth-status
 # Or load and run one command in the fixture-backed sandbox
 scripts/onboarding_sandbox.sh fixture-run normal-openai -- auth-test --provider openai --no-smoke
 
-# Run arbitrary jcode commands in the sandbox
-scripts/onboarding_sandbox.sh jcode auth status
-scripts/onboarding_sandbox.sh jcode pair
+# Run arbitrary kcode commands in the sandbox
+scripts/onboarding_sandbox.sh kcode auth status
+scripts/onboarding_sandbox.sh kcode pair
 ```
 
 ## Reusable local auth fixtures
@@ -104,7 +104,7 @@ scripts/onboarding_sandbox.sh fixture-save normal-openai
 # Fast repeat loop after that
 scripts/onboarding_sandbox.sh fixture-load normal-openai
 scripts/onboarding_sandbox.sh auth-status
-scripts/onboarding_sandbox.sh jcode auth-test --provider openai
+scripts/onboarding_sandbox.sh kcode auth-test --provider openai
 ```
 
 The lower-level helper can also be used directly:
@@ -155,12 +155,12 @@ suggestions, and the accepted suggested-review turn.
 
 A fresh sandbox means:
 
-- no real jcode config files are reused
+- no real kcode config files are reused
 - no real runtime sockets are reused
 - no previously trusted external auth sources are reused
 - you can blow it away with one `reset`
 
-When using fixtures, the sandbox is still isolated from your normal jcode state,
+When using fixtures, the sandbox is still isolated from your normal kcode state,
 but the loaded fixture may intentionally contain copied auth state from an earlier
 sandbox login.
 

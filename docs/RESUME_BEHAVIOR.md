@@ -21,8 +21,8 @@ Set `session_picker_enter = "new-terminal"` to swap `Enter` and `Ctrl+Enter`.
 
 When resuming in the current terminal:
 
-- Jcode sessions switch the current workspace/client to that session.
-- Importable external sessions are first converted to a Jcode session, then resumed in place.
+- Kcode sessions switch the current workspace/client to that session.
+- Importable external sessions are first converted to a Kcode session, then resumed in place.
 - If multiple sessions are selected, only the first selected target is resumed in place and the UI tells the user this.
 - The picker closes after queueing the in-place resume.
 
@@ -31,7 +31,7 @@ When resuming in the current terminal:
 When opening in a new terminal:
 
 - Each selected target opens in its own terminal when possible.
-- If terminal launch is unavailable, the UI prints manual `jcode --resume <id>` commands.
+- If terminal launch is unavailable, the UI prints manual `kcode --resume <id>` commands.
 - The picker remains open after launching and clears the current multi-selection so more sessions can be opened.
 
 ## Saved sessions

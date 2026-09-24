@@ -7,26 +7,26 @@ record that Shift was held, so `Enter`, `Shift+Enter`, and `Ctrl+Enter` all
 arrive as the same byte. An application cannot tell them apart, no matter how it
 is written.
 
-## How jcode handles it
+## How kcode handles it
 
 The modern fix is the **kitty keyboard protocol**. The app asks the terminal to
 disambiguate, and the terminal then sends `ESC[13;2u` for Shift+Enter
 (keycode 13, modifier 2 = 1 + the shift bit).
 
-jcode requests the protocol at startup (`enable_keyboard_enhancement`) and
+kcode requests the protocol at startup (`enable_keyboard_enhancement`) and
 crossterm decodes the result, so **on a capable terminal Shift+Enter works with
 no setup**: kitty, Ghostty, WezTerm, Alacritty, foot, iTerm2 3.5+, Warp, and
 VS Code 1.109+.
 
-Inside tmux, jcode also requests xterm `modifyOtherKeys` mode 2
+Inside tmux, kcode also requests xterm `modifyOtherKeys` mode 2
 (`ESC[>4;2m`). With `extended-keys on`, tmux needs this application-side opt-in
 before it forwards modified keys. A Kitty protocol request or a terminal mapping
 that sends CSI-u to tmux is not enough: tmux decodes and re-encodes keys for each
-pane. With `extended-keys-format csi-u`, Shift+Enter then reaches jcode as
-`ESC[13;2u`. Jcode reasserts the request when reapplying terminal modes and resets
+pane. With `extended-keys-format csi-u`, Shift+Enter then reaches kcode as
+`ESC[13;2u`. Kcode reasserts the request when reapplying terminal modes and resets
 it with `ESC[>4;0m` on cleanup. `extended-keys always` is not required.
 
-Three situations still break, and jcode handles each explicitly:
+Three situations still break, and kcode handles each explicitly:
 
 | Situation | Fix | Where |
 | --- | --- | --- |
@@ -51,7 +51,7 @@ followed by `CSI c`).
 These work on every terminal because they do not depend on modifier reporting:
 
 - **Trailing backslash then Enter** inserts a newline, matching shell line
-  continuation. The first time you use it, jcode points you at
+  continuation. The first time you use it, kcode points you at
   `/terminal-setup`.
 - **Option/Alt+Enter** works wherever the terminal sends `ESC` + `CR`, which
   includes Terminal.app with "Use Option as Meta Key" enabled.

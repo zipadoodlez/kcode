@@ -33,7 +33,7 @@ response and in pushed `model_usage_updated` events.
 - Missing `usage` means unknown metadata, including older servers. It must not
   be displayed as "never used".
 
-The ledger is stored under `JCODE_HOME` (normally `~/.jcode`) as
+The ledger is stored under `JCODE_HOME` (normally `~/.kcode`) as
 `model-usage-v1.sqlite3`. SQLite serializes concurrent writers. Its primary key
 combines durable session/input-turn ID and route identity, so repeated tool continuations do
 not increase the count. Reads do not create or modify the ledger. Runtime
@@ -67,7 +67,7 @@ counts within one tracking epoch.
 
 A desktop hot reload alone does not update its daemon. Build and validate the
 runtime on an isolated socket first, install it through your OS package manager,
-then `jcode server reload --json` at a safe idle window (jcode no longer promotes
+then `kcode server reload --json` at a safe idle window (kcode no longer promotes
 or installs its own version channels). Do not use `server stop --force` or send
 kill signals. The supported reload checkpoints sessions, but it still signals
 active model generations. Defer activation while any session is processing.

@@ -7,7 +7,7 @@ See also:
 
 ## Overview
 
-jcode uses a **single-server, multi-client** architecture. One server process
+kcode uses a **single-server, multi-client** architecture. One server process
 manages all sessions and state; TUI clients connect over a Unix socket and
 can reconnect transparently after disconnects or server reloads.
 
@@ -15,10 +15,10 @@ can reconnect transparently after disconnects or server reloads.
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              SERVER (🔥 blazing)                              │
 │                                                                             │
-│  jcode serve                                                                │
+│  kcode serve                                                                │
 │  ├── Unix socket:  /run/user/$UID/jcode.sock                                │
 │  ├── Debug socket: /run/user/$UID/jcode-debug.sock                          │
-│  ├── Registry:     ~/.jcode/servers.json                                    │
+│  ├── Registry:     ~/.kcode/servers.json                                    │
 │  ├── Provider (Claude/OpenAI/OpenRouter)                                    │
 │  ├── MCP pool (shared across sessions)                                      │
 │  └── Sessions:                                                              │
@@ -50,7 +50,7 @@ The server gets a random adjective/verb name on startup (e.g., "blazing").
 Each session gets an animal noun (e.g., "fox"). Together they form a natural
 phrase displayed in the UI: "🔥 blazing 🦊 fox".
 
-The server name persists across reloads via the registry (`~/.jcode/servers.json`).
+The server name persists across reloads via the registry (`~/.kcode/servers.json`).
 When the server execs into a new binary on `/reload`, the new process registers
 with a fresh name. Stale entries are cleaned up automatically.
 
@@ -59,7 +59,7 @@ with a fresh name. Stale entries are cleaned up automatically.
 ```
   START                          CONNECT                     RELOAD
   ─────                          ───────                     ──────
-  jcode (first run)              jcode (subsequent)          /reload
+  kcode (first run)              kcode (subsequent)          /reload
        │                              │                          │
        ├─▶ No server? Spawn daemon    ├─▶ Server exists?         ├─▶ Server execs into
        ├─▶ Wait for socket            │   Connect directly       │   new binary (same PID)
@@ -69,17 +69,17 @@ with a fresh name. Stale entries are cleaned up automatically.
 
 ### Server Startup
 
-When you run `jcode`, it checks if a server is already running:
+When you run `kcode`, it checks if a server is already running:
 
 1. **Server exists**: connect directly as a client
-2. **No server**: spawn `jcode serve` as a detached daemon (with `setsid`),
+2. **No server**: spawn `kcode serve` as a detached daemon (with `setsid`),
    wait for the socket, then connect
 
 The server is fully detached from the spawning client via `setsid()`, so killing
 any client never affects the server or other clients.
 
 Long-lived deployments can give the daemon a stable client-visible identity with
-`jcode serve --server-name <name>` or the `JCODE_SERVER_NAME` environment
+`kcode serve --server-name <name>` or the `JCODE_SERVER_NAME` environment
 variable. The optional `JCODE_SERVER_DISPLAY_NAME` environment variable is also
 accepted for service managers that prefer a display-oriented name. CLI input wins
 over environment input. Names are normalized to registry-safe lowercase labels,
@@ -101,7 +101,7 @@ use a separate lifecycle policy.
 
 ### Session Ownership Markers (`active_pids`)
 
-`~/.jcode/active_pids/<session_id>` contains the PID of the process that owns the
+`~/.kcode/active_pids/<session_id>` contains the PID of the process that owns the
 session. In server mode this is the daemon PID, so multiple sessions can share
 the same PID. Despite the directory name, “active” means process ownership, not
 that a terminal window is open, a client is connected, or a model is generating.
@@ -122,7 +122,7 @@ forwarding wrappers for remote daemons can keep the client and server paths
 separate with `--remote-working-dir`:
 
 ```bash
-jcode --socket /tmp/jcode.sock -C /local/checkout --remote-working-dir /remote/checkout
+kcode --socket /tmp/jcode.sock -C /local/checkout --remote-working-dir /remote/checkout
 ```
 
 `-C` must exist on the client. `--remote-working-dir` must be an absolute path
@@ -158,10 +158,10 @@ reload, network issue, etc.):
 
 ## Self-Dev Mode
 
-When running `jcode` inside the jcode repository:
+When running `kcode` inside the kcode repository:
 
 1. Auto-detects the repo and enables self-dev mode
-2. Connects to the normal shared jcode server
+2. Connects to the normal shared kcode server
 3. Marks that session as canary/self-dev via subscribe metadata
 4. Enables selfdev prompt/tooling only for that session
 5. `/reload` still hot-reloads the shared server and clients reconnect
@@ -170,9 +170,9 @@ When running `jcode` inside the jcode repository:
 
 | Scenario | Behavior |
 |----------|----------|
-| First `jcode` run | Spawns server daemon, connects |
-| Subsequent `jcode` | Connects to existing server |
+| First `kcode` run | Spawns server daemon, connects |
+| Subsequent `kcode` | Connects to existing server |
 | Kill a client | Server + other clients unaffected |
 | `/reload` | Server execs new binary, clients reconnect |
 | All clients close | Shared-server idle timeout after 5 min without live headless swarm workers (unless debug control is enabled) |
-| Resume session | `jcode --resume fox` reconnects to existing session |
+| Resume session | `kcode --resume fox` reconnects to existing session |

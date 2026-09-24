@@ -15,12 +15,12 @@ runtime, so Desktop and the TUI use the same controller.
 ## Setup
 
 Check `browser` with `action: "status"` first and run setup only if not ready.
-Connect OpenRouter using `jcode login openrouter`. The controller reads
-`OPENROUTER_API_KEY` or the owner-only `~/.config/jcode/openrouter.env` file,
+Connect OpenRouter using `kcode login openrouter`. The controller reads
+`OPENROUTER_API_KEY` or the owner-only `~/.config/kcode/openrouter.env` file,
 never a different OpenAI-compatible provider's credential.
 
 Jev uses `POST https://openrouter.ai/api/alpha/decisions`, not chat completions.
-Its requests use OpenRouter credits and honor the key's usage cap. Jcode does
+Its requests use OpenRouter credits and honor the key's usage cap. Kcode does
 not buy credits or switch your main coding model.
 
 ## Interface and control boundary
@@ -158,7 +158,7 @@ navigation test. Use `/blocked` for the authentication handback test.
 The reproducible runner owns a local HTTP fixture for the entire test sequence,
 resets its designated disposable tab before each case, and clears that tab on
 exit. It refuses a non-fixture tab. Prepare an `about:blank` disposable tab or
-reuse a prior local Jcode fixture, and use an existing browser session:
+reuse a prior local Kcode fixture, and use an existing browser session:
 
 ```bash
 BROWSER_SESSION=<existing-session-name> \
@@ -200,11 +200,11 @@ Inspect only while other work is active:
 
 ```bash
 SHARED="/run/user/$(id -u)/jcode.sock"
-jcode debug --socket "$SHARED" sessions
-jcode debug --socket "$SHARED" clients:map
-jcode debug --socket "$SHARED" background:tasks
-jcode debug --socket "$SHARED" jobs
-jcode debug --socket "$SHARED" server:info
+kcode debug --socket "$SHARED" sessions
+kcode debug --socket "$SHARED" clients:map
+kcode debug --socket "$SHARED" background:tasks
+kcode debug --socket "$SHARED" jobs
+kcode debug --socket "$SHARED" server:info
 ```
 
 `sessions` exposes `is_processing` and `status`. Defer activation while any
@@ -217,8 +217,8 @@ Only after validation, explicit activation authorization, installation of the
 immutable tested version, and an agreed idle window:
 
 ```bash
-jcode server promote <installed-version> --json
-jcode server reload --json
+kcode server promote <installed-version> --json
+kcode server reload --json
 ```
 
 Promotion selects the daemon binary but does not replace the running process.

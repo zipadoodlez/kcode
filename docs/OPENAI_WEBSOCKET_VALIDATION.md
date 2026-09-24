@@ -3,7 +3,7 @@
 ## Observed application-level benefit
 
 On 2026-09-06 UTC, 20 first-message requests were run through real, isolated
-Jcode daemons using the activated `a495fb059-dirty-40e6123ec268` binary.
+Kcode daemons using the activated `a495fb059-dirty-40e6123ec268` binary.
 Ten used `JCODE_OPENAI_PREWARM=0`, and ten used `JCODE_OPENAI_PREWARM=1`.
 Both conditions used WebSocket v2. This isolates the benefit of **prewarming**,
 not a v1-versus-v2 protocol comparison.

@@ -8,7 +8,7 @@ window/app management, and clipboard — through one `action`-dispatched interfa
 
 This mirrors the existing **`browser`** tool (`crates/jcode-app-core/src/tool/browser.rs`):
 one registered tool, an `action: String` that selects a sub-operation, with optional
-typed params. It gives jcode a closed control loop (*see screen → decide → act*)
+typed params. It gives kcode a closed control loop (*see screen → decide → act*)
 without depending on a browser or external automation tooling.
 
 ## Motivation
@@ -59,7 +59,7 @@ boundary), and it is required for input injection. Best achievable flow, exposed
 the `request_permissions` action:
 
 1. `AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt: true])` — shows the
-   system dialog *and auto-adds jcode to the Accessibility list* (toggled off).
+   system dialog *and auto-adds kcode to the Accessibility list* (toggled off).
 2. Deep-link to the exact pane:
    `open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"`.
 3. Poll `AXIsProcessTrusted()` until granted, then report ready.

@@ -1,6 +1,6 @@
 # Per-session edit statistics
 
-Jcode records cumulative edit counters for each session:
+Kcode records cumulative edit counters for each session:
 
 ```json
 {"added": 120, "removed": 35, "approximate": false}
@@ -21,7 +21,7 @@ mutations already performed still count. Ordinary moves count content changes
 rather than treating an unchanged file as deleted and recreated.
 
 Small counters live at `$JCODE_HOME/sessions/edit-stats/<session-id>.json`
-(default `~/.jcode`). A per-session OS file lock serializes concurrent updates,
+(default `~/.kcode`). A per-session OS file lock serializes concurrent updates,
 and atomic replacement prevents readers from observing partial JSON. Counters
 survive transcript compaction and are separate for agents sharing a worktree.
 The first counter seeds a best-effort estimate from older persisted history.

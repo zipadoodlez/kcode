@@ -116,7 +116,7 @@ pub struct EnvFacts {
     pub tty: Tri,               // interactive stdin/stdout
     pub browser: Tri,           // xdg-open / open / cmd exists and a display exists
     pub loopback_bind: Tri,     // can we bind 127.0.0.1:0 and a fixed callback port
-    pub config_writable: Tri,   // ~/.jcode writable, not read-only FS, not full
+    pub config_writable: Tri,   // ~/.kcode writable, not read-only FS, not full
     pub network: Tri,           // provider host reachable, TLS ok, no captive portal
     pub clock_skew_ok: Tri,     // |now - server Date header| < 5 min (JWT killer)
     pub keyring: Tri,
@@ -147,7 +147,7 @@ These are the payoff. Once the graph is data, you can assert over it:
 
 1. **No dead ends.** Every non-terminal node has ≥1 outgoing edge reachable by a key
    the user can actually press, and that edge is named on screen.
-2. **Every failure node has a recovery edge** that is not "restart jcode".
+2. **Every failure node has a recovery edge** that is not "restart kcode".
 3. **Bounded work.** `max steps-to-ready ≤ N` and `max keystrokes ≤ K` over all paths
    (Tier 1 of `crates/jcode-tui/src/tui/app/tests/onboarding_eval.rs` already counts this; the graph makes it exhaustive
    instead of authored-by-hand).
@@ -236,7 +236,7 @@ closed enum) but is derived by string-matching an error message we do also log.
 6. **k-anonymity on the aggregation side.** Any (env, trace-shape) cohort with fewer
    than k=20 installs is reported only as "rare". Rare-but-fatal shapes still surface
    as a count, without the env vector.
-7. **Local-first and inspectable.** `jcode telemetry show-last-trace` prints the exact
+7. **Local-first and inspectable.** `kcode telemetry show-last-trace` prints the exact
    bytes we would send. `--dry-run` mode writes them to disk and sends nothing. If a
    user can read the whole payload in 20 lines, trust is cheap.
 8. **Cap and drop.** Traces are bounded (say 64 steps); overflow reports

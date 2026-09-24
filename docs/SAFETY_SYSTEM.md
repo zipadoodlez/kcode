@@ -11,7 +11,7 @@
 > built-in platform support. The in-band review paths below (the TUI review panel
 > and the `request_permission` tool) are the intended design.
 
-A human-in-the-loop safety layer for unmonitored agent operations. Designed as an independent subsystem that any jcode feature can integrate with. Currently the only consumer is ambient mode, but the system is intentionally decoupled so it can be reused for future features.
+A human-in-the-loop safety layer for unmonitored agent operations. Designed as an independent subsystem that any kcode feature can integrate with. Its original consumer, ambient mode, was removed from this fork, so today the in-band paths (the TUI review panel and the `request_permission` tool, exercised by the permissions TUI) are the live ones; the subsystem stays decoupled so a future feature can reuse it.
 
 ## Overview
 
@@ -55,7 +55,7 @@ graph TB
 
     subgraph "User Review"
         PH[Phone / Email]
-        CLI[jcode safety review]
+        CLI[kcode safety review]
         TW[TUI Review Panel]
     end
 
@@ -174,7 +174,7 @@ sequenceDiagram
     RQ->>RQ: Store pending request
     RQ->>NF: Dispatch notification
 
-    NF->>US: Email: "jcode ambient wants to create a PR"
+    NF->>US: Email: "kcode ambient wants to create a PR"
     NF->>US: Desktop notification (if available)
 
     Note over AG: Agent decides: wait or move on?
@@ -389,10 +389,10 @@ Budget: 62% remaining today
 
 ### Delivery
 
-- **Always:** Written to `~/.jcode/ambient/transcripts/YYYY-MM-DD-HHMMSS.json`
+- **Always:** Written to `~/.kcode/ambient/transcripts/YYYY-MM-DD-HHMMSS.json`
 - **If email enabled:** Summary sent after each cycle (respecting batch interval)
 - **If TUI open:** Summary shown in ambient info widget
-- **CLI:** `jcode ambient log` to view recent transcripts
+- **CLI:** `kcode ambient log` to view recent transcripts
 
 ---
 
@@ -401,7 +401,7 @@ Budget: 62% remaining today
 ### Storage
 
 ```
-~/.jcode/safety/
+~/.kcode/safety/
 ├── queue.json              # Pending permission requests
 ├── history.json            # Past decisions (for learning patterns)
 └── config.json             # Cached safety configuration
@@ -409,7 +409,7 @@ Budget: 62% remaining today
 
 ### Review Interfaces
 
-**1. TUI (when jcode is open)**
+**1. TUI (when kcode is open)**
 
 A review panel showing pending requests:
 
@@ -429,11 +429,11 @@ A review panel showing pending requests:
 **2. CLI**
 
 ```bash
-jcode safety review           # Interactive review of pending requests
-jcode safety list             # List all pending requests
-jcode safety approve <id>     # Approve a specific request
-jcode safety deny <id>        # Deny a specific request
-jcode safety log              # View decision history
+kcode safety review           # Interactive review of pending requests
+kcode safety list             # List all pending requests
+kcode safety approve <id>     # Approve a specific request
+kcode safety deny <id>        # Deny a specific request
+kcode safety log              # View decision history
 ```
 
 **3. Email / Remote**
@@ -461,7 +461,7 @@ This history could eventually feed into smarter classification — if the user a
 
 ## Integration API
 
-The safety system exposes a simple API for any jcode feature to use:
+The safety system exposes a simple API for any kcode feature to use:
 
 ```rust
 pub struct SafetySystem {
@@ -536,7 +536,7 @@ pub enum Urgency {
 
 ### Phase 3: Review Interfaces
 - [ ] TUI review panel
-- [ ] CLI commands (`jcode safety review/list/approve/deny/log`)
+- [ ] CLI commands (`kcode safety review/list/approve/deny/log`)
 - [ ] Email approve/deny links (relay service)
 
 ### Phase 4: Configuration

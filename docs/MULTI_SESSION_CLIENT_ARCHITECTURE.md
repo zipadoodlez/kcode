@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-This document describes a proposed evolution of jcode's UI architecture from the
+This document describes a proposed evolution of kcode's UI architecture from the
 current **single-session-per-client** model to a **multi-session-capable client**
 model with built-in session workspace management.
 
@@ -17,7 +17,7 @@ See also:
 
 ## Summary
 
-Today, jcode is effectively organized like this:
+Today, kcode is effectively organized like this:
 
 - **Server** owns many sessions.
 - **Each client** usually attaches to one session.
@@ -129,7 +129,7 @@ A client-side interactive or passive view of a session.
 Examples:
 
 - a session shown inside the built-in workspace
-- a independent jcode window attached to one session
+- a independent kcode window attached to one session
 
 A surface is the UI representation of a session in a specific client.
 
@@ -139,7 +139,7 @@ A TUI process that hosts one or many surfaces.
 
 Examples:
 
-- current independent jcode window
+- current independent kcode window
 - future multi-session workspace client
 
 ## Key Design Rule
@@ -493,7 +493,7 @@ This avoids conflicts between text entry and spatial movement.
 ### Pop out to independent window
 
 1. User selects a workspace surface.
-2. Client spawns a independent jcode client attached to the same session.
+2. Client spawns a independent kcode client attached to the same session.
 3. Independent surface becomes the active interactive owner.
 4. Workspace surface is removed or downgraded to passive.
 
@@ -520,7 +520,7 @@ Potential operations:
 - `undock_session(session_id)`
 - `move_session_to_workspace(session_id, position)`
 
-This can initially be provided through existing jcode control channels such as:
+This can initially be provided through existing kcode control channels such as:
 
 - CLI commands
 - the main server protocol
@@ -573,7 +573,7 @@ smooth Niri-like experience.
 ### Phase 4: pop-out support
 
 - Add commands to open a hosted session in a independent client.
-- Preserve current `jcode --resume <session>` workflow.
+- Preserve current `kcode --resume <session>` workflow.
 
 ### Phase 5: dock support
 
@@ -590,7 +590,7 @@ smooth Niri-like experience.
 - Should passive mirrored surfaces exist in v1, or should a session exist in only
   one visible place at a time?
 - Which pieces of side-panel state are session-scoped vs surface-scoped?
-- Should workspace mode be a new command (`jcode workspace`) or a runtime mode of
+- Should workspace mode be a new command (`kcode workspace`) or a runtime mode of
   the normal client?
 - How should dock/undock be exposed: command palette, slash commands, CLI, debug
   socket, or all of the above?
@@ -612,5 +612,5 @@ Adopt the following design direction:
 7. **Prototype with one connection per active surface before attempting protocol
    multiplexing.**
 
-This gives jcode a portable built-in multi-session workspace without sacrificing
+This gives kcode a portable built-in multi-session workspace without sacrificing
 existing workflows or external window-manager interop.

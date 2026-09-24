@@ -1,10 +1,10 @@
 # TUI Colors
 
-Every color the jcode TUI renders is user-configurable.
+Every color the kcode TUI renders is user-configurable.
 
 ## The default palette is fixed
 
-jcode's built-in palette is hand-tuned. It stays the default.
+kcode's built-in palette is hand-tuned. It stays the default.
 `default_palette_is_frozen` in `palette.rs` holds a redundant copy of every value
 and fails if any of them change, because the repair pass reads those constants and
 it would be easy to "improve" one while tuning. Changing a default changes what
@@ -13,7 +13,7 @@ table.
 
 ## Configuring colors
 
-Colors live in `~/.jcode/config.toml`:
+Colors live in `~/.kcode/config.toml`:
 
 ```toml
 [display.colors]
@@ -51,7 +51,7 @@ flowchart TD
     D --> E["Terminal: chosen overrides stay exact"]
 ```
 
-The order matters. The light/dark pass exists because jcode's *built-in* palette
+The order matters. The light/dark pass exists because kcode's *built-in* palette
 is designed for dark terminals. On light terminals it flips luminance, then
 repairs foreground and underline colors to meet a **7:1 enhanced contrast target** on
 their cell's adapted background. Default terminal backgrounds use a conservative

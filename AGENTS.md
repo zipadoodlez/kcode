@@ -3,7 +3,7 @@
 ## Development Workflow
 
 - **Use the user's Git identity** - Create commits with the configured
-  `user.name` and `user.email`. Do not override them with `Jcode`, `Jcode agent`,
+  `user.name` and `user.email`. Do not override them with `Kcode`, `Kcode agent`,
   or a fabricated agent email. Preserve existing contributor attribution when
   integrating work. If no identity is configured, ask rather than inventing one.
 - **Welcome pull requests from everyone** - Review contributions on their merits,
@@ -17,16 +17,16 @@
   unrelated branches or merge a PR without user authorization.
 
 ## Install Notes
-- jcode does not install, update, or repoint itself. The OS package manager owns
-  the installed binary, and there are no `~/.jcode/builds` version channels,
+- kcode does not install, update, or repoint itself. The OS package manager owns
+  the installed binary, and there are no `~/.kcode/builds` version channels,
   launcher symlinks, or self-dev build machinery any more. Older installs may
-  still have a `~/.jcode/builds` tree; it is inert.
-- `~/.local/bin/jcode` is simply whatever binary you or your package manager put
+  still have a `~/.kcode/builds` tree; it is inert.
+- `~/.local/bin/kcode` is simply whatever binary you or your package manager put
   on `PATH`.
 
 ## Verifying a change at runtime
 
-`cargo build` alone proves nothing about behavior. `jcode run` and interactive
+`cargo build` alone proves nothing about behavior. `kcode run` and interactive
 sessions are served by a long-lived daemon that is the installed binary, so a
 freshly built binary is inert until you install it and restart the daemon.
 
@@ -35,7 +35,7 @@ run your build against its own socket:
 
 ```bash
 cargo build --profile selfdev
-./target/selfdev/jcode run --socket /run/user/1000/jcode-mytest.sock '<prompt>'
+./target/selfdev/kcode run --socket /run/user/1000/kcode-mytest.sock '<prompt>'
 ```
 
 Two things that waste time otherwise:

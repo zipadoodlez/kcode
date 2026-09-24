@@ -1,6 +1,6 @@
 # Lifecycle Hooks
 
-jcode can run external commands at well-defined lifecycle points so other
+kcode can run external commands at well-defined lifecycle points so other
 programs can observe or gate agent behavior without forking jcode. Hooks
 complement the [spawn hook](SPAWN_HOOK.md) (which controls *where headed
 sessions appear*); lifecycle hooks tell you *what is happening inside them*.
@@ -8,7 +8,7 @@ sessions appear*); lifecycle hooks tell you *what is happening inside them*.
 ## Configuration
 
 ```toml
-# ~/.jcode/config.toml
+# ~/.kcode/config.toml
 [hooks]
 turn_end      = "~/bin/jcode-turn-notify"     # observer
 session_start = ""                            # observer
@@ -36,7 +36,7 @@ Env overrides (always win; empty value disables a config hook):
 | `JCODE_HOOK_SESSION_ID` | Session the event belongs to |
 | `JCODE_HOOK_CWD` | Session working directory |
 | `JCODE_HOOK_PAYLOAD` | JSON object mirroring all fields (capped at 16 KB) |
-| `JCODE_HOOKS_DISABLED` | Always `1`; suppresses hooks in nested jcode calls (recursion guard) |
+| `JCODE_HOOKS_DISABLED` | Always `1`; suppresses hooks in nested kcode calls (recursion guard) |
 
 ## Observer hooks
 
@@ -80,7 +80,7 @@ success), `JCODE_HOOK_ERROR` (on failure).
 
 Fail-open is deliberate: a broken policy script should degrade to "no policy"
 rather than brick every session. If you need fail-closed semantics, make the
-hook itself robust (it is your trust boundary, not jcode).
+hook itself robust (it is your trust boundary, not kcode).
 
 ### Example policy script
 
@@ -113,8 +113,8 @@ exit 0
 #!/usr/bin/env bash
 # ~/bin/jcode-turn-notify
 if [ "$JCODE_HOOK_STATUS" = ok ]; then icon=✅; else icon=❌; fi
-tmux display-message "jcode $icon ${JCODE_HOOK_SESSION_ID:0:12}" 2>/dev/null
-notify-send "jcode turn $JCODE_HOOK_STATUS" \
+tmux display-message "kcode $icon ${JCODE_HOOK_SESSION_ID:0:12}" 2>/dev/null
+notify-send "kcode turn $JCODE_HOOK_STATUS" \
   "${JCODE_HOOK_LAST_ASSISTANT_TEXT:0:120}" 2>/dev/null
 exit 0
 ```
@@ -144,4 +144,4 @@ post_tool     = "~/bin/jcode-event-log"
 - Hot paths (`pre_tool`/`post_tool`) check whether a hook is configured before
   building any payload, so unconfigured hooks cost ~nothing.
 - The recursion guard (`JCODE_HOOKS_DISABLED=1`) means a hook may safely call
-  `jcode` CLI commands without re-triggering hooks in that nested process.
+  `kcode` CLI commands without re-triggering hooks in that nested process.

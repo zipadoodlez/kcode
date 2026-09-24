@@ -6,13 +6,13 @@ remote **attach**, not workspace or live-process migration.
 
 ## Usage
 
-Install a compatible Jcode binary on both hosts and configure ordinary OpenSSH
+Install a compatible Kcode binary on both hosts and configure ordinary OpenSSH
 key authentication and a verified host key first. Native attach is noninteractive
 at the SSH layer and will refuse unknown host keys or missing authentication.
 
 ```sh
-jcode --ssh dev --remote-working-dir /srv/jcode
-jcode --ssh dev --resume session_remote_id
+kcode --ssh dev --remote-working-dir /srv/jcode
+kcode --ssh dev --resume session_remote_id
 ```
 
 `dev` is an SSH config alias or `user@hostname`. `--ssh-binary /path/to/jcode`
@@ -29,7 +29,7 @@ The six supported OAuth routes authenticate through the SSH bridge. Other rows
 explain how to set up that method directly on the remote host, never starting
 laptop-local authentication or pretending the bridge supports those methods.
 Its destination notice names the SSH host. Provider status is fetched from that
-host with `jcode auth status --json`, never from the laptop's credential stores.
+host with `kcode auth status --json`, never from the laptop's credential stores.
 Unknown or unavailable status is shown as unknown, not as signed out. Only
 provider state and fixed method labels are displayed, not remote account labels,
 credential paths, or raw remote errors.
@@ -54,7 +54,7 @@ callback page cannot be reached. `/cancel` cancels the pending login.
 This remote login surface supports the scriptable OAuth providers OpenAI, Claude,
 Gemini, Antigravity, Google, and Copilot. Google additionally requires its OAuth
 client configuration to be set up on the VM first. Other credential routes still
-require `jcode login` on the host. Native attach never automatically copies local
+require `kcode login` on the host. Native attach never automatically copies local
 provider credentials. AWS credentials, SSH agents, and repository contents are
 never forwarded by this feature.
 
@@ -102,7 +102,7 @@ Important boundaries:
   malformed file. Claude's shared `auth.json` is also refused when it only contains
   other providers. This conservative rule prevents overwriting concurrent changes.
   No `--overwrite` switch exists. Other credential stores are preserved.
-- New credential files use mode 0600 within a 0700 Jcode data directory, with
+- New credential files use mode 0600 within a 0700 Kcode data directory, with
   atomic no-replace publication. Secret transport data is bounded to 64 KiB and
   is not logged or written as a transport file. Import is currently Unix-only.
 - Acknowledged import means **credentials were stored**, not that the provider
@@ -111,14 +111,14 @@ Important boundaries:
 - Once transfer starts, cancellation/disconnection cannot promise rollback.
   Check the remote login state before retrying. There is no automatic retry or sync.
 
-The receiver command `jcode auth import --provider openai --stdin --json` is for
+The receiver command `kcode auth import --provider openai --stdin --json` is for
 the native client, not for pasting tokens into a shell. There is deliberately no
 CLI export command that prints credentials.
 
 ## Protocol and compatibility
 
 The client creates a private local Unix socket adapter. Each native connection
-uses an owned `ssh -T` child to invoke `jcode server stdio` remotely. That command
+uses an owned `ssh -T` child to invoke `kcode server stdio` remotely. That command
 connects to or starts the native daemon, checks its native SSH capability, emits a
 bounded versioned handshake, and transports native JSON frames over stdio.
 
