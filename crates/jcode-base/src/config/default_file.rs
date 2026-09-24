@@ -534,31 +534,6 @@ swarm_max_concurrent_agents = 32
 # JCODE_HOOK_ERROR.
 # post_tool = ""
 
-[ambient]
-# Ambient mode: background agent that maintains your codebase
-# Enable ambient mode (default: false)
-enabled = false
-# Provider override (default: auto-select based on available credentials)
-# provider = "claude"
-# Model override (default: provider's strongest)
-# model = "claude-sonnet-4-20250514"
-# Allow API key usage (default: false, only OAuth to avoid surprise costs)
-allow_api_keys = false
-# Daily token budget when using API keys (optional)
-# api_daily_budget = 100000
-# Minimum interval between cycles in minutes
-min_interval_minutes = 5
-# Maximum interval between cycles in minutes
-max_interval_minutes = 120
-# Pause ambient when user has active session
-pause_on_active_session = true
-# Enable proactive work (new features, refactoring) vs garden-only (lint, format, deps)
-proactive_work = true
-# Branch prefix for proactive work
-work_branch_prefix = "ambient/"
-# Show ambient cycle in a terminal window (default: true)
-# visible = true
-
 [power]
 # Prevent automatic system sleep while any jcode session is actively working.
 # Linux also blocks lid-switch suspend. Windows still respects explicit lid-close
