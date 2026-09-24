@@ -479,9 +479,6 @@ pub struct Config {
     /// Keybinding configuration
     pub keybindings: KeybindingsConfig,
 
-    /// External dictation / speech-to-text integration
-    pub dictation: DictationConfig,
-
     /// Display/UI configuration
     pub display: DisplayConfig,
 
@@ -774,31 +771,6 @@ impl ToolConfig {
 fn normalize_tool_name(name: &str) -> String {
     let trimmed = name.trim().trim_matches('"');
     jcode_tool_core::resolve_tool_name(trimmed).to_string()
-}
-
-/// External dictation / speech-to-text integration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct DictationConfig {
-    /// Shell command to run. Must print the transcript to stdout.
-    pub command: String,
-    /// How to apply the resulting transcript.
-    pub mode: crate::protocol::TranscriptMode,
-    /// Optional in-app hotkey to trigger dictation.
-    pub key: String,
-    /// Maximum time to wait for the command to finish (0 = no timeout).
-    pub timeout_secs: u64,
-}
-
-impl Default for DictationConfig {
-    fn default() -> Self {
-        Self {
-            command: String::new(),
-            mode: crate::protocol::TranscriptMode::Send,
-            key: "off".to_string(),
-            timeout_secs: 90,
-        }
-    }
 }
 
 pub mod change_report;

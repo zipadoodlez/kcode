@@ -91,27 +91,6 @@ impl Config {
             self.keybindings.new_terminal = v;
         }
 
-        // Dictation
-        if let Ok(v) = std::env::var("JCODE_DICTATION_COMMAND") {
-            self.dictation.command = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_DICTATION_MODE")
-            && let Ok(mode) = toml::from_str::<crate::protocol::TranscriptMode>(&format!(
-                "\"{}\"",
-                v.trim().to_ascii_lowercase()
-            ))
-        {
-            self.dictation.mode = mode;
-        }
-        if let Ok(v) = std::env::var("JCODE_DICTATION_KEY") {
-            self.dictation.key = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_DICTATION_TIMEOUT_SECS")
-            && let Ok(parsed) = v.trim().parse::<u64>()
-        {
-            self.dictation.timeout_secs = parsed;
-        }
-
         // Tools
         if let Ok(v) = std::env::var("JCODE_TOOL_PROFILE") {
             self.tools.profile = v;

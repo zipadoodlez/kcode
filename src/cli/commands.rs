@@ -84,16 +84,6 @@ pub async fn run_transcript_command(
     }
 }
 
-pub async fn run_dictate_command(type_output: bool) -> Result<()> {
-    let run = crate::dictation::run_configured().await?;
-
-    if type_output {
-        crate::dictation::type_text(&run.text)
-    } else {
-        run_transcript_command(Some(run.text), run.mode, None).await
-    }
-}
-
 #[derive(Serialize)]
 struct SessionRenameOutput {
     session_id: String,

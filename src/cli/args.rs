@@ -340,13 +340,6 @@ pub(crate) enum Command {
         session: Option<String>,
     },
 
-    /// Run configured dictation: send to last-focused jcode client or type raw text
-    Dictate {
-        /// Type the transcript into the focused app instead of sending to jcode
-        #[arg(long)]
-        r#type: bool,
-    },
-
     /// Browser automation setup and status
     Browser {
         /// Action (setup, status)
@@ -498,7 +491,6 @@ pub(crate) enum Command {
         #[command(subcommand)]
         action: RestartCommand,
     },
-
 }
 
 #[derive(Subcommand, Debug)]

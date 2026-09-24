@@ -2623,23 +2623,6 @@ pub(super) fn active_working_dir(app: &App) -> Option<std::path::PathBuf> {
         .map(std::path::PathBuf::from)
 }
 
-pub(super) fn handle_dictation_command(app: &mut App, trimmed: &str) -> bool {
-    if trimmed == "/dictate" || trimmed == "/dictation" {
-        app.handle_dictation_trigger();
-        return true;
-    }
-
-    if trimmed.starts_with("/dictate ") || trimmed.starts_with("/dictation ") {
-        app.push_display_message(DisplayMessage::error(
-            "Usage: /dictate\nConfigure [dictation] in ~/.jcode/config.toml to customize command, mode, hotkey, and timeout."
-                .to_string(),
-        ));
-        return true;
-    }
-
-    false
-}
-
 fn alignment_label(centered: bool) -> &'static str {
     if centered { "centered" } else { "left-aligned" }
 }

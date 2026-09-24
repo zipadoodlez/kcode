@@ -95,7 +95,6 @@ pub(super) struct RegistryInputs<'a> {
     pub centered: &'a CenteredToggleKeys,
     pub toggles: &'a ToggleKeys,
     pub workspace: &'a WorkspaceNavigationKeys,
-    pub dictation: &'a OptionalBinding,
     pub new_terminal: &'a OptionalBinding,
     pub open_resume: &'a OptionalBinding,
     pub fallback_switch: &'a OptionalBinding,
@@ -159,11 +158,6 @@ pub(super) fn build_registry(inputs: &RegistryInputs<'_>) -> Vec<KnownHotkey> {
         inputs.toggles.swarm_panel_focus.binding().cloned(),
         "swarm_panel_focus",
         "focus the swarm panel",
-    );
-    push(
-        inputs.dictation.binding.clone(),
-        "dictation",
-        "start or stop dictation",
     );
     push(
         inputs.new_terminal.binding.clone(),
@@ -712,7 +706,6 @@ impl App {
             centered: &self.centered_toggle_keys,
             toggles: &self.toggle_keys,
             workspace: &self.workspace_navigation_keys,
-            dictation: &self.dictation_key,
             new_terminal: &self.new_terminal_key,
             open_resume: &self.open_resume_key,
             fallback_switch: &self.fallback_switch_key,
@@ -873,7 +866,6 @@ mod tests {
             up: vec![alt('k')],
             right: vec![alt('l')],
         };
-        let dictation = OptionalBinding::default();
         // Bind the optional chords in the fixture so coverage tests can verify
         // they flow through build_registry when configured.
         let new_terminal = OptionalBinding {
@@ -895,7 +887,6 @@ mod tests {
             centered: &centered,
             toggles: &toggles,
             workspace: &workspace,
-            dictation: &dictation,
             new_terminal: &new_terminal,
             open_resume: &open_resume,
             fallback_switch: &fallback_switch,

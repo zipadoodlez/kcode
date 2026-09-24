@@ -9,7 +9,7 @@
 //! This is pure filesystem state keyed by session ID, used to discover session
 //! ownership (and to map a PID back to one of its sessions). It
 //! lives in the storage crate because it only needs [`jcode_dir`] and is a
-//! low-level concern shared by session management, dictation, and crash
+//! low-level concern shared by session management and crash
 //! recovery, none of which should pull the full `session` module into scope.
 
 use crate::jcode_dir;

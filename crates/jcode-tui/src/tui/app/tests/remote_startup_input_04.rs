@@ -41,30 +41,6 @@ fn test_handle_server_event_transcript_replace_updates_input() {
     );
 }
 
-#[test]
-fn test_local_bus_dictation_completion_applies_transcript() {
-    let mut app = create_test_app();
-    let session_id = app.session.id.clone();
-    app.input = "draft".to_string();
-    app.cursor_pos = app.input.len();
-    app.dictation_in_flight = true;
-    app.dictation_request_id = Some("dictation_123".to_string());
-    app.dictation_target_session_id = Some(session_id.clone());
-
-    crate::tui::app::local::handle_bus_event(
-        &mut app,
-        Ok(crate::bus::BusEvent::DictationCompleted {
-            dictation_id: "dictation_123".to_string(),
-            session_id: Some(session_id),
-            text: " dictated text".to_string(),
-            mode: crate::protocol::TranscriptMode::Append,
-        }),
-    );
-
-    assert_eq!(app.input, "draft dictated text");
-    assert_eq!(app.status_notice(), Some("Transcript appended".to_string()));
-}
-
 /// SwarmStatus snapshots must surface member lifecycle transitions (an agent
 /// finishing) as a status notice, scoped to this session's spawn subtree so a
 /// shared swarm's unrelated agents stay silent. Live member details render from

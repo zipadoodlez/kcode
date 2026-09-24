@@ -63,7 +63,6 @@ mod commands_review;
 mod conversation_state;
 mod copy_selection;
 mod debug;
-mod dictation;
 mod event_wrappers;
 mod handterm_native_scroll;
 pub(crate) mod helpers;
@@ -1349,7 +1348,6 @@ pub struct App {
     /// Running and terminal background tasks shown beneath the pinned todo band.
     background_task_rows: Vec<crate::tui::BackgroundTaskRow>,
     last_side_panel_refresh: Option<Instant>,
-    // Most recently persisted focus target for dictation routing.
     last_client_focus_recorded_at: Option<Instant>,
     last_client_focus_session_id: Option<String>,
     // Most recently focused side panel page, used to restore visibility when toggled off.
@@ -1436,8 +1434,6 @@ pub struct App {
     toggle_keys: super::keybind::ToggleKeys,
     // Keybindings for Niri-style workspace navigation
     workspace_navigation_keys: WorkspaceNavigationKeys,
-    // Optional configured keybinding for external dictation
-    dictation_key: OptionalBinding,
     // Optional configured keybinding for spawning a fresh session in a new terminal
     new_terminal_key: OptionalBinding,
     // Optional configured keybinding for opening the /resume session picker
@@ -1448,14 +1444,6 @@ pub struct App {
     // Polled on idle ticks so config.toml keybinding edits hot-reload
     // without a restart.
     keybindings_config_generation: u64,
-    // Active external dictation session, if one is running
-    dictation_session: Option<dictation::ActiveDictation>,
-    // Whether an external dictation command is currently running
-    dictation_in_flight: bool,
-    // Ownership token for the current dictation request.
-    dictation_request_id: Option<String>,
-    // Session that owned the current dictation request when it was started.
-    dictation_target_session_id: Option<String>,
     // Keep the current chat viewport while typing instead of snapping to bottom.
     typing_scroll_lock: bool,
     // Scroll bookmark: stashed scroll position for quick teleport back

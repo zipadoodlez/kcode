@@ -387,14 +387,6 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    if app.dictation_key_matches(code, modifiers) {
-        if app_mod::commands_dispatch::ssh_local_action_blocked(app, "Local dictation") {
-            return Ok(());
-        }
-        app.handle_dictation_trigger();
-        return Ok(());
-    }
-
     if app.new_terminal_key_matches(code, modifiers) {
         if crate::tui::is_ssh_remote() {
             app.set_status_notice(
@@ -982,10 +974,6 @@ async fn handle_remote_key_internal(
 
                 if trimmed == "/help" || trimmed == "/?" || trimmed == "/commands" {
                     app.help_scroll = Some(0);
-                    return Ok(());
-                }
-
-                if app_mod::commands::handle_dictation_command(app, trimmed) {
                     return Ok(());
                 }
 

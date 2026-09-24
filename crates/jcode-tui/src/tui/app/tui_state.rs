@@ -994,10 +994,6 @@ impl crate::tui::TuiState for App {
         self.remote_startup_phase.is_some()
     }
 
-    fn dictation_key_label(&self) -> Option<String> {
-        self.dictation_key_label().map(|s| s.to_string())
-    }
-
     fn animation_elapsed(&self) -> f32 {
         self.app_started.elapsed().as_secs_f32()
     }

@@ -251,29 +251,6 @@ pub(super) fn handle_bus_event(
             app.handle_session_update_status(status);
             true
         }
-        Ok(BusEvent::DictationCompleted {
-            dictation_id,
-            session_id,
-            text,
-            mode,
-        }) => {
-            if !app.owns_dictation_event(&dictation_id, session_id.as_deref()) {
-                return false;
-            }
-            app.handle_local_dictation_completed(text, mode);
-            true
-        }
-        Ok(BusEvent::DictationFailed {
-            dictation_id,
-            session_id,
-            message,
-        }) => {
-            if !app.owns_dictation_event(&dictation_id, session_id.as_deref()) {
-                return false;
-            }
-            app.handle_dictation_failure(message);
-            true
-        }
         Ok(BusEvent::CompactionFinished) => app.poll_compaction_completion(),
         Ok(BusEvent::SidePanelUpdated(update)) => {
             if update.session_id == app.session.id {

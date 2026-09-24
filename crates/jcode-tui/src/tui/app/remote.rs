@@ -643,32 +643,6 @@ pub(super) async fn handle_bus_event(
             app.handle_session_update_status(status);
             true
         }
-        Ok(BusEvent::DictationCompleted {
-            dictation_id,
-            session_id,
-            text,
-            mode,
-        }) => {
-            if !app.owns_dictation_event(&dictation_id, session_id.as_deref()) {
-                return false;
-            }
-            match remote.send_transcript(text, mode).await {
-                Ok(()) => app.mark_dictation_delivered(),
-                Err(error) => app.handle_dictation_failure(error.to_string()),
-            }
-            true
-        }
-        Ok(BusEvent::DictationFailed {
-            dictation_id,
-            session_id,
-            message,
-        }) => {
-            if !app.owns_dictation_event(&dictation_id, session_id.as_deref()) {
-                return false;
-            }
-            app.handle_dictation_failure(message);
-            true
-        }
         _ => false,
     }
 }

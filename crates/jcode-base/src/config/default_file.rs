@@ -98,25 +98,6 @@ swarm_panel_focus = "alt+n"
 # By default Enter resumes in this terminal; Ctrl+Enter performs the alternate action.
 session_picker_enter = "current-terminal"
 
-[dictation]
-# External speech-to-text command.
-# The command should record/transcribe speech and print the final transcript to stdout.
-# You can include any tool-specific flags here too, for example a grammar target.
-# Examples:
-# command = "~/.local/bin/my-whisper-script"
-# command = "~/.local/bin/my-whisper-script --grammar-target code"
-command = ""
-
-# How to apply the transcript inside jcode: insert|append|replace|send
-mode = "send"
-
-# Optional in-app hotkey to trigger dictation. Set to "off" to disable.
-# Example: "alt+;"
-key = "off"
-
-# Max seconds to wait for the dictation command to finish (0 = no timeout)
-timeout_secs = 90
-
 [display]
 # Diff display mode: "off", "inline" (default), "full-inline", "pinned" (dedicated pane), or "file"
 diff_mode = "inline"

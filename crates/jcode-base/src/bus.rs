@@ -411,19 +411,6 @@ pub enum BusEvent {
     UpdateStatus(UpdateStatus),
     /// Interactive client update status for a specific session
     SessionUpdateStatus(SessionUpdateStatus),
-    /// External dictation command completed with transcript text
-    DictationCompleted {
-        dictation_id: String,
-        session_id: Option<String>,
-        text: String,
-        mode: crate::protocol::TranscriptMode,
-    },
-    /// External dictation command failed
-    DictationFailed {
-        dictation_id: String,
-        session_id: Option<String>,
-        message: String,
-    },
     /// Background compaction task finished (check_and_apply should be called)
     CompactionFinished,
     /// Provider's available models list may have changed

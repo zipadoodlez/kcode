@@ -337,9 +337,6 @@ impl crate::tui::TuiState for TestState {
     fn remote_startup_phase_active(&self) -> bool {
         self.remote_startup_phase_active
     }
-    fn dictation_key_label(&self) -> Option<String> {
-        None
-    }
     fn animation_elapsed(&self) -> f32 {
         self.anim_elapsed
     }

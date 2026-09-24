@@ -30,7 +30,6 @@ pub mod compaction;
 pub mod config;
 pub mod console;
 pub mod copilot_usage;
-pub mod dictation;
 #[cfg(feature = "embeddings")]
 pub mod embedding;
 pub mod embedding_backend;

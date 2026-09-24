@@ -627,8 +627,6 @@ pub trait TuiState {
     }
     /// Whether a transient remote startup phase is active and should keep redraws responsive.
     fn remote_startup_phase_active(&self) -> bool;
-    /// Optional configured keybinding label for external dictation.
-    fn dictation_key_label(&self) -> Option<String>;
     /// Time since app started (for startup animations)
     fn animation_elapsed(&self) -> f32;
     /// Time remaining until rate limit resets (if rate limited)

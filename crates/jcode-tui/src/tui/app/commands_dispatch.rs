@@ -73,8 +73,6 @@ pub(super) fn ssh_unsupported_command(input: &str) -> bool {
             | "/cache"
             | "/initiatives"
             | "/goals"
-            | "/dictate"
-            | "/dictation"
             | "/debug-fixture"
             | "/debug-visual"
             | "/screenshot"
@@ -163,7 +161,6 @@ pub(super) fn dispatch_local_command(app: &mut App, trimmed: &str) -> bool {
         // `/test`, `/mission`, `/goal`, and `/goals` are dispatched inside
         // `handle_session_command`, so they need no separate entries here.
         || super::commands::handle_session_command(app, trimmed)
-        || super::commands::handle_dictation_command(app, trimmed)
         || super::commands::handle_config_command(app, trimmed)
         || super::commands_colors::handle_colors_command(app, trimmed)
         || super::commands::handle_log_command(app, trimmed)

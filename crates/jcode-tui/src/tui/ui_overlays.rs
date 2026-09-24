@@ -228,7 +228,6 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     lines.push(help_entry("/config", "Show active configuration"));
     lines.push(help_entry("/config init", "Create default config file"));
     lines.push(help_entry("/config edit", "Open config in $EDITOR"));
-    lines.push(help_entry("/dictate", "Run configured external dictation"));
     lines.push(help_entry(
         "/git [status]",
         "Show branch and working tree status for the repo",
@@ -603,9 +602,6 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
             &alt("Left / Right"),
             &format!("Move by word in input (also {} / {})", alt("B"), alt("F")),
         ));
-    }
-    if let Some(label) = app.dictation_key_label() {
-        lines.push(key_entry(&label, "Run configured dictation"));
     }
     if let Some(label) = crate::tui::keybind::load_open_resume_key().label {
         lines.push(key_entry(&label, "Open the /resume session picker"));
