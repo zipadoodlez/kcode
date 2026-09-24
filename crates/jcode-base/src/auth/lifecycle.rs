@@ -1445,7 +1445,6 @@ mod tests {
             let is_non_model_auth_surface = matches!(
                 provider.target,
                 crate::provider_catalog::LoginProviderTarget::AutoImport
-                    | crate::provider_catalog::LoginProviderTarget::Google
             );
             let normalized = normalized_auth_provider_id(Some(provider.id));
             if is_non_model_auth_surface {

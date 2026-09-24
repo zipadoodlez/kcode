@@ -247,8 +247,6 @@ For model providers, `auth-test` attempts:
 
 Use `--no-tool-smoke` if you only want the auth/simple-runtime checks.
 
-For Gmail/Google it verifies credential discovery and token refresh, but skips model smoke because it is not a model provider.
-
 ## OpenAI-compatible API-key providers
 
 J-Code also ships first-class provider presets for many OpenAI-compatible APIs.
@@ -358,20 +356,6 @@ Cursor uses jcode's native HTTPS transport. Copilot uses GitHub device-flow auth
   - `JCODE_ANTIGRAVITY_MODEL` (default: `default`)
   - `JCODE_ANTIGRAVITY_PROMPT_FLAG` (default: `-p`)
   - `JCODE_ANTIGRAVITY_MODEL_FLAG` (default: `--model`)
-
-## Google / Gmail OAuth
-
-### Login steps
-1. Run `jcode login --provider google`.
-   - For headless / SSH use: `jcode login --provider google --no-browser`
-   - For scriptable remote flows after credentials are already configured: `jcode login --provider google --print-auth-url`
-2. If Google credentials are not configured yet, jcode first walks you through saving your client ID/client secret or importing the JSON credentials file.
-3. For scriptable Google flows, choose the Gmail scope with `--google-access-tier full|readonly` if you do not want the default full access tier.
-4. Complete the printed flow later with `jcode login --provider google --callback-url '<full callback url or query>'`.
-
-### Notes
-- Google/Gmail scriptable auth requires saved OAuth client credentials first.
-- The callback URL can come from a remote browser session that fails on the loopback redirect. Copy the final URL from the address bar and paste or pass it back to jcode.
 
 ## Scriptable auth state lifecycle
 

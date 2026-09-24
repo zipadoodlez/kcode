@@ -139,7 +139,6 @@ pub enum ProviderChoice {
     )]
     GeminiApi,
     Antigravity,
-    Google,
     Auto,
 }
 
@@ -199,7 +198,6 @@ impl ProviderChoice {
             Self::Gemini => "gemini",
             Self::GeminiApi => "gemini-api",
             Self::Antigravity => "antigravity",
-            Self::Google => "google",
             Self::Auto => "auto",
         }
     }
@@ -414,10 +412,6 @@ const PROVIDER_CHOICE_LOGIN_PROVIDERS: &[(ProviderChoice, LoginProviderDescripto
     (
         ProviderChoice::Antigravity,
         crate::provider_catalog::ANTIGRAVITY_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Google,
-        crate::provider_catalog::GOOGLE_LOGIN_PROVIDER,
     ),
 ];
 
@@ -1275,7 +1269,7 @@ pub fn apply_login_provider_profile_env(provider: LoginProviderDescriptor) {
             // not clear these inherited runtime vars before credential detection.
             crate::env::set_var("JCODE_PROVIDER_PROFILE_ACTIVE", "1");
         }
-        LoginProviderTarget::AutoImport | LoginProviderTarget::Google => {}
+        LoginProviderTarget::AutoImport => {}
         _ => {
             // A later non-compatible login selection must not inherit a stale
             // compatible-provider profile from an earlier bootstrap/login path.
@@ -1378,9 +1372,6 @@ pub async fn login_and_bootstrap_provider(
             clear_initial_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
             Arc::new(jcode_provider_antigravity_runtime::AntigravityProvider::new())
-        }
-        LoginProviderTarget::Google => {
-            anyhow::bail!("Google login cannot be used as a model provider bootstrap");
         }
     };
 
@@ -1663,17 +1654,6 @@ async fn init_provider_with_options(
             clear_initial_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
             Arc::new(jcode_provider_antigravity_runtime::AntigravityProvider::new())
-        }
-        ProviderChoice::Google => {
-            disable_subscription_runtime_mode();
-            init_notice(
-                "Note: Google/Gmail is not a model provider. Using auto-detect for model provider.",
-            );
-            init_notice(
-                "Gmail credentials can be configured with `jcode login google`; the gmail tool is enabled by default in the full tool profile.",
-            );
-            clear_initial_model_provider();
-            Arc::new(provider::MultiProvider::new_fast())
         }
         ProviderChoice::Auto => {
             disable_subscription_runtime_mode_preserving_active_provider_profile();

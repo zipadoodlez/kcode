@@ -9,14 +9,7 @@ use super::{App, DisplayMessage, PendingLogin};
 use command::{Operation, Reply, Target, Task};
 use crossterm::event::{KeyCode, KeyModifiers};
 
-const PROVIDERS: [&str; 6] = [
-    "openai",
-    "claude",
-    "gemini",
-    "antigravity",
-    "google",
-    "copilot",
-];
+const PROVIDERS: [&str; 5] = ["openai", "claude", "gemini", "antigravity", "copilot"];
 
 #[derive(PartialEq, Eq)]
 enum Phase {

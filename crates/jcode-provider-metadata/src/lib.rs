@@ -38,7 +38,6 @@ pub enum LoginProviderTarget {
     Copilot,
     Gemini,
     Antigravity,
-    Google,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,7 +54,6 @@ pub enum LoginProviderAuthStateKey {
     Antigravity,
     Cursor,
     GrokBuild,
-    Google,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -671,10 +669,6 @@ mod tests {
         assert_eq!(
             resolve_login_provider("lm-studio").map(|provider| provider.id),
             Some("lmstudio")
-        );
-        assert_eq!(
-            resolve_login_provider("gmail").map(|provider| provider.id),
-            Some("google")
         );
     }
 

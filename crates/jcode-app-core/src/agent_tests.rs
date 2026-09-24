@@ -974,7 +974,7 @@ async fn new_agent_registers_active_pid_and_clear_swaps_it() {
 }
 
 #[tokio::test]
-async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
+async fn agentgrep_is_exposed_by_default_and_can_be_explicitly_disabled() {
     let _guard = crate::storage::lock_test_env();
     let prev_home = std::env::var_os("JCODE_HOME");
     let prev_tools = std::env::var_os("JCODE_TOOLS");
@@ -995,7 +995,7 @@ async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
     let mut agent = Agent::new(provider, registry);
     let definitions = agent.tool_definitions().await;
     let tool_names = agent.tool_names().await;
-    let tool_name = "gmail";
+    let tool_name = "agentgrep";
 
     assert!(
         tool_names.iter().any(|name| name == "jcode_docs"),
@@ -1018,7 +1018,7 @@ async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
     );
     agent
         .validate_tool_allowed(tool_name)
-        .expect("gmail must be executable by default");
+        .expect("agentgrep must be executable by default");
 
     agent
         .validate_tool_allowed("jcode_docs")
@@ -1095,7 +1095,7 @@ async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
     );
     let err = agent
         .validate_tool_allowed(tool_name)
-        .expect_err("explicitly disabled gmail must not be executable");
+        .expect_err("explicitly disabled agentgrep must not be executable");
     assert!(err.to_string().contains("disabled"));
 
     if let Some(previous) = prev_home {

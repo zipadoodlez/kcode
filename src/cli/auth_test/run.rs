@@ -605,7 +605,6 @@ async fn populate_auth_test_target_report(
         AuthTestTarget::Openai => probe_openai_auth(&mut report).await,
         AuthTestTarget::Gemini => probe_gemini_auth(&mut report).await,
         AuthTestTarget::Antigravity => probe_antigravity_auth(&mut report).await,
-        AuthTestTarget::Google => probe_google_auth(&mut report).await,
         AuthTestTarget::Copilot => probe_copilot_auth(&mut report).await,
         AuthTestTarget::Cursor => probe_cursor_auth(&mut report).await,
     }

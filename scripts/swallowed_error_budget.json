@@ -436,11 +436,6 @@
       "let_underscore": 0,
       "unwrap_or_default": 1
     },
-    "crates/jcode-app-core/src/tool/gmail.rs": {
-      "dot_ok": 0,
-      "let_underscore": 0,
-      "unwrap_or_default": 8
-    },
     "crates/jcode-app-core/src/tool/goal.rs": {
       "dot_ok": 0,
       "let_underscore": 0,
@@ -601,11 +596,6 @@
       "let_underscore": 1,
       "unwrap_or_default": 0
     },
-    "crates/jcode-base/src/auth/google.rs": {
-      "dot_ok": 4,
-      "let_underscore": 0,
-      "unwrap_or_default": 0
-    },
     "crates/jcode-base/src/auth/lifecycle.rs": {
       "dot_ok": 4,
       "let_underscore": 0,
@@ -725,11 +715,6 @@
       "dot_ok": 3,
       "let_underscore": 0,
       "unwrap_or_default": 0
-    },
-    "crates/jcode-base/src/gmail.rs": {
-      "dot_ok": 9,
-      "let_underscore": 1,
-      "unwrap_or_default": 4
     },
     "crates/jcode-base/src/goal.rs": {
       "dot_ok": 1,

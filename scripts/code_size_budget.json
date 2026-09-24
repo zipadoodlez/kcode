@@ -26,7 +26,6 @@
     "crates/jcode-base/src/auth/oauth.rs": 1518,
     "crates/jcode-base/src/background.rs": 1465,
     "crates/jcode-base/src/compaction.rs": 1790,
-    "crates/jcode-base/src/gmail.rs": 1213,
     "crates/jcode-base/src/import.rs": 1495,
     "crates/jcode-base/src/memory.rs": 2065,
     "crates/jcode-base/src/memory_agent.rs": 1901,

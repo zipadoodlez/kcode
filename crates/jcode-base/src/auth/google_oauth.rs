@@ -1,6 +1,6 @@
 //! Shared Google OAuth2 token endpoint helpers.
 //!
-//! Gemini, Antigravity, and Gmail/Google auth all refresh against the same
+//! Gemini and Antigravity auth refresh against the same
 //! `https://oauth2.googleapis.com/token` endpoint with a
 //! `grant_type=refresh_token` form post. This module owns that HTTP exchange
 //! once; provider modules keep only their provider-specific concerns

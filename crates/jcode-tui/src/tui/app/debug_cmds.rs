@@ -334,39 +334,6 @@ impl App {
                 "display_messages": self.display_messages.len(),
             })
             .to_string()
-        } else if cmd == "gmail-draft-fixture" {
-            self.display_messages = vec![
-                DisplayMessage::user("Draft a launch update for the team"),
-                DisplayMessage::tool(
-                    "Draft created successfully.\nDraft ID: draft_visual_123\nTo: team@example.com\nSubject: Launch update\nAttachments: 1"
-                        .to_string(),
-                    crate::message::ToolCall {
-                        id: "debug_gmail_draft_1".to_string(),
-                        name: "gmail".to_string(),
-                        input: serde_json::json!({
-                            "action": "draft",
-                            "to": "team@example.com",
-                            "subject": "Launch update",
-                            "body": "Hi team,\n\nThe launch is ready for final review. Please add any blocking feedback by 3 PM.\n\nChecklist:\n1. Confirm production configuration\n2. Verify the rollout dashboard\n3. Review support coverage\n4. Approve the customer announcement\n5. Confirm the rollback owner\n6. Run the final smoke test\n7. Record launch approval\n8. Notify regional teams\n9. Publish the status update\n10. Monitor the initial rollout\n11. Review early telemetry\n12. Confirm support handoff\n13. Check the incident channel\n14. Validate the public changelog\n15. Archive the launch checklist\n16. Schedule the retrospective\n17. Share the launch summary\n18. Thank the release team\n19. Capture follow-up tasks\n20. Confirm launch completion\n\nFULL DRAFT END\n\nThanks,\nJeremy",
-                            "attachments": ["/tmp/launch-checklist.pdf"],
-                            "intent": "Prepare launch update",
-                        }),
-                        intent: Some("Prepare launch update".to_string()),
-                        thought_signature: None,
-                    },
-                ),
-            ];
-            self.bump_display_messages_version();
-            self.scroll_offset = 0;
-            self.auto_scroll_paused = false;
-            self.input.clear();
-            self.cursor_pos = 0;
-            self.set_status_notice("Debug Gmail draft fixture ready");
-            serde_json::json!({
-                "ok": true,
-                "display_messages": self.display_messages.len(),
-            })
-            .to_string()
         } else if cmd == "picker" || cmd == "picker:state" {
             self.debug_picker_state_json(None)
         } else if cmd == "model-picker" || cmd == "model-picker:live" {

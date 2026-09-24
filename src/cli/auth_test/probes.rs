@@ -228,34 +228,6 @@ async fn probe_antigravity_auth(report: &mut AuthTestProviderReport) {
     }
 }
 
-async fn probe_google_auth(report: &mut AuthTestProviderReport) {
-    let creds_result = crate::auth::google::load_credentials();
-    let tokens_result = crate::auth::google::load_tokens();
-    match (creds_result, tokens_result) {
-        (Ok(creds), Ok(tokens)) => {
-            report.push_step(
-                "credential_probe",
-                true,
-                format!(
-                    "Loaded Google credentials (client_id={}...) and Gmail tokens{}.",
-                    &creds.client_id[..20.min(creds.client_id.len())],
-                    auth_email_suffix(tokens.email.as_deref())
-                ),
-            );
-            match crate::auth::google::get_valid_token().await {
-                Ok(_) => report.push_step(
-                    "refresh_probe",
-                    true,
-                    "Google/Gmail token load/refresh succeeded.".to_string(),
-                ),
-                Err(err) => report.push_step("refresh_probe", false, err.to_string()),
-            }
-        }
-        (Err(err), _) => report.push_step("credential_probe", false, err.to_string()),
-        (_, Err(err)) => report.push_step("credential_probe", false, err.to_string()),
-    }
-}
-
 async fn probe_copilot_auth(report: &mut AuthTestProviderReport) {
     if let Some(token) = push_result_step(
         report,

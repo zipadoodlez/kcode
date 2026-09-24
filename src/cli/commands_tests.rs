@@ -206,7 +206,6 @@ fn configured_auth_test_targets_only_include_configured_supported_providers() {
         },
         openai: AuthState::NotConfigured,
         gemini: AuthState::Available,
-        google: AuthState::Expired,
         copilot: AuthState::Available,
         cursor: AuthState::NotConfigured,
         openrouter: AuthState::Available,
@@ -229,7 +228,6 @@ fn configured_auth_test_targets_only_include_configured_supported_providers() {
     }));
 
     assert!(!targets.contains(&ResolvedAuthTestTarget::Detailed(AuthTestTarget::Openai)));
-    assert!(!targets.contains(&ResolvedAuthTestTarget::Detailed(AuthTestTarget::Google)));
     assert!(!targets.contains(&ResolvedAuthTestTarget::Detailed(AuthTestTarget::Cursor)));
 }
 

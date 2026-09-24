@@ -11,7 +11,6 @@ mod conversation_search;
 mod debug_socket;
 mod edit;
 mod edit_stats;
-mod gmail;
 pub mod inflight;
 mod invalid;
 mod jcode_docs;
@@ -404,7 +403,6 @@ impl Registry {
             Self::insert_tool_timed(&mut m, &mut timings, "memory", memory::MemoryTool::new);
             // Initiative is temporarily unavailable. Keep its implementation and
             // saved data intact so it can be restored without a migration.
-            Self::insert_tool_timed(&mut m, &mut timings, "gmail", gmail::GmailTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "schedule", ambient::ScheduleTool::new);
             let nonzero: Vec<String> = timings
                 .iter()

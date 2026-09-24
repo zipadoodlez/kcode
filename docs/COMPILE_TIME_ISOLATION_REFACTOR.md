@@ -101,7 +101,7 @@ Rules:
 
 - TUI and CLI depend on client API, protocol, view models, and small type crates, not full server/provider/tool implementations.
 - Provider implementations are leaf crates. AWS/Bedrock dependencies live only in the Bedrock provider crate.
-- Tool implementations are leaf crates. Heavy tools like PDF/browser/Gmail/search are isolated behind tool-core interfaces.
+- Tool implementations are leaf crates. Heavy tools like PDF/browser/search are isolated behind tool-core interfaces.
 - Shared bottom crates are small and stable. Avoid putting high-churn behavior in protocol/type crates.
 - Avoid broad `pub use whole_crate::*` compatibility ladders in final architecture.
 

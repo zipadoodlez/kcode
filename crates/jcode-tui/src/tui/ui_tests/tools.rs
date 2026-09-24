@@ -550,115 +550,21 @@ fn test_render_tool_message_batch_all_failed_marks_all_children_failed() {
     );
 }
 
-#[test]
-fn test_tool_summary_gmail_actions() {
-    let search = ToolCall {
-        id: "call_gmail_search".to_string(),
-        name: "gmail".to_string(),
-        input: serde_json::json!({
-            "action": "search",
-            "query": "from:alice subject:invoice",
-            "max_results": 5
-        }),
-        intent: None,
-        thought_signature: None,
-    };
-    let summary = tools_ui::get_tool_summary_with_budget(&search, 50, Some(50));
-    assert!(summary.starts_with("search "), "summary={summary:?}");
-    assert!(summary.contains("from:alice"), "summary={summary:?}");
-
-    let read = ToolCall {
-        id: "call_gmail_read".to_string(),
-        name: "gmail".to_string(),
-        input: serde_json::json!({
-            "action": "read",
-            "message_id": "18f2ab34cd56ef78"
-        }),
-        intent: None,
-        thought_signature: None,
-    };
-    let summary = tools_ui::get_tool_summary_with_budget(&read, 50, Some(50));
-    assert!(summary.starts_with("read "), "summary={summary:?}");
-
-    let send = ToolCall {
-        id: "call_gmail_send".to_string(),
-        name: "gmail".to_string(),
-        input: serde_json::json!({
-            "action": "send",
-            "to": "bob@example.com",
-            "subject": "hello"
-        }),
-        intent: None,
-        thought_signature: None,
-    };
-    let summary = tools_ui::get_tool_summary_with_budget(&send, 50, Some(50));
-    assert!(
-        summary.contains("send") && summary.contains("bob@example.com"),
-        "summary={summary:?}"
-    );
-
-    let bare = ToolCall {
-        id: "call_gmail_labels".to_string(),
-        name: "gmail".to_string(),
-        input: serde_json::json!({ "action": "labels" }),
-        intent: None,
-        thought_signature: None,
-    };
-    let summary = tools_ui::get_tool_summary_with_budget(&bare, 50, Some(50));
-    assert_eq!(summary, "labels");
-}
-
-#[test]
-fn test_tool_activity_detail_prefixes_intent_for_gmail_and_browser() {
-    tools_ui::tests_tool_call_details_override::set(true);
-    let gmail = ToolCall {
-        id: "call_gmail_intent".to_string(),
-        name: "gmail".to_string(),
-        input: serde_json::json!({
-            "action": "search",
-            "query": "is:unread",
-            "intent": "Check unread mail"
-        }),
-        intent: Some("Check unread mail".to_string()),
-        thought_signature: None,
-    };
-    let detail = tools_ui::get_tool_activity_detail(&gmail);
-    assert!(detail.starts_with("Check unread mail"), "detail={detail:?}");
-    assert!(detail.contains("is:unread"), "detail={detail:?}");
-
-    let browser = ToolCall {
-        id: "call_browser_intent".to_string(),
-        name: "browser".to_string(),
-        input: serde_json::json!({
-            "action": "open",
-            "url": "https://example.com",
-            "intent": "Open docs page"
-        }),
-        intent: Some("Open docs page".to_string()),
-        thought_signature: None,
-    };
-    let detail = tools_ui::get_tool_activity_detail(&browser);
-    assert!(detail.starts_with("Open docs page"), "detail={detail:?}");
-    assert!(detail.contains("example.com"), "detail={detail:?}");
-    tools_ui::tests_tool_call_details_override::set(false);
-}
-
 /// By default (tool_call_details off) the activity detail is the intent alone.
 #[test]
 fn test_tool_activity_detail_hides_technical_summary_by_default() {
-    let gmail = ToolCall {
-        id: "call_gmail_intent_only".to_string(),
-        name: "gmail".to_string(),
+    let call = ToolCall {
+        id: "call_intent_only".to_string(),
+        name: "schedule".to_string(),
         input: serde_json::json!({
-            "action": "search",
-            "query": "is:unread",
-            "intent": "Check unread mail"
+            "action": "list",
+            "intent": "Check the CI schedule"
         }),
-        intent: Some("Check unread mail".to_string()),
+        intent: Some("Check the CI schedule".to_string()),
         thought_signature: None,
     };
-    let detail = tools_ui::get_tool_activity_detail(&gmail);
-    assert_eq!(detail, "Check unread mail");
+    let detail = tools_ui::get_tool_activity_detail(&call);
+    assert_eq!(detail, "Check the CI schedule");
 }
 
 #[test]

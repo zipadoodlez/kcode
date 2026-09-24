@@ -208,10 +208,6 @@ fn matrix_login_provider_aliases_resolve_to_canonical_ids() {
         resolve_login_provider("bailian").map(|provider| provider.id),
         Some("alibaba-coding-plan")
     );
-    assert_eq!(
-        resolve_login_provider("gmail").map(|provider| provider.id),
-        Some("google")
-    );
 }
 
 #[test]

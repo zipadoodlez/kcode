@@ -261,8 +261,6 @@ fn assert_auth_status_shared_fields_match(full: &AuthStatus, fast: &AuthStatus) 
     assert_eq!(full.antigravity, fast.antigravity, "antigravity");
     assert_eq!(full.gemini, fast.gemini, "gemini");
     assert_eq!(full.cursor, fast.cursor, "cursor");
-    assert_eq!(full.google, fast.google, "google");
-    assert_eq!(full.google_can_send, fast.google_can_send, "google send");
 }
 
 #[test]

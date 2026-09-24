@@ -295,10 +295,10 @@ bing_market = "en-US"
 profile = "full"
 # Explicit allow-list. When non-empty, only these tools are exposed.
 # enabled = ["bash", "read", "write", "apply_patch", "agentgrep", "ls"]
-# All built-in tools, including gmail, are exposed by the full profile.
+# All built-in tools are exposed by the full profile.
 # Use enabled = ["*"] to explicitly select the unrestricted full toolset.
 # Hide selected tools after applying the profile/allow-list.
-# disabled = ["browser", "gmail", "swarm"]
+# disabled = ["browser", "swarm"]
 # Disable all built-in tools unless enabled is set.
 disable_base_tools = false
 # MCP tool exposure: "eager" sends every server tool definition, "deferred"

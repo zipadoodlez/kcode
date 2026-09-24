@@ -489,10 +489,6 @@ mod tests {
                 "cursor",
                 "Cursor refresh token was rejected; Cursor requested logout/login. Re-run Cursor login, then retry auth-test.",
             ),
-            (
-                "google",
-                "invalid_grant: Token has been expired or revoked.",
-            ),
         ] {
             assert!(
                 error_is_permanent_rejection(message),

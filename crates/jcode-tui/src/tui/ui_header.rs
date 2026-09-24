@@ -595,7 +595,6 @@ fn configured_auth_count(auth: &AuthStatus) -> usize {
         auth.copilot,
         auth.gemini,
         auth.antigravity,
-        auth.google,
     ]
     .into_iter()
     .filter(|state| *state != AuthState::NotConfigured)
@@ -1405,7 +1404,7 @@ mod tests {
     }
 
     #[test]
-    fn configured_auth_count_includes_non_model_auth_surfaces() {
+    fn configured_auth_count_counts_configured_providers() {
         let auth = AuthStatus {
             jcode: AuthState::Available,
             anthropic: ProviderAuth {
@@ -1415,11 +1414,10 @@ mod tests {
                 has_api_key: false,
             },
             azure: AuthState::Available,
-            google: AuthState::Available,
             ..AuthStatus::default()
         };
 
-        assert_eq!(configured_auth_count(&auth), 4);
+        assert_eq!(configured_auth_count(&auth), 3);
     }
 
     #[test]

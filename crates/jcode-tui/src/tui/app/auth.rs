@@ -557,12 +557,6 @@ impl App {
             crate::provider_catalog::LoginProviderTarget::Antigravity => {
                 self.start_antigravity_login()
             }
-            crate::provider_catalog::LoginProviderTarget::Google => {
-                self.push_display_message(DisplayMessage::error(
-                    "Google/Gmail login is only available from the CLI right now. Run jcode login --provider google."
-                        .to_string(),
-                ));
-            }
         }
     }
 

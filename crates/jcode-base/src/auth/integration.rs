@@ -68,17 +68,13 @@ pub fn runtime_id_for_login_provider(
         LoginProviderTarget::Copilot => Some(RuntimeProviderId::Copilot),
         LoginProviderTarget::Gemini => Some(RuntimeProviderId::Gemini),
         LoginProviderTarget::Antigravity => Some(RuntimeProviderId::Antigravity),
-        // Google/Gmail auth is for tool access, not model-runtime routing.
-        LoginProviderTarget::Google => None,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider_catalog::{
-        AZURE_LOGIN_PROVIDER, GOOGLE_LOGIN_PROVIDER, OPENAI_COMPAT_LOGIN_PROVIDER,
-    };
+    use crate::provider_catalog::{AZURE_LOGIN_PROVIDER, OPENAI_COMPAT_LOGIN_PROVIDER};
     use std::collections::HashSet;
 
     #[test]
@@ -111,7 +107,6 @@ mod tests {
             runtime_id_for_login_provider(OPENAI_COMPAT_LOGIN_PROVIDER),
             Some(RuntimeProviderId::OpenAiCompatible)
         );
-        assert_eq!(runtime_id_for_login_provider(GOOGLE_LOGIN_PROVIDER), None);
     }
 
     #[test]
@@ -143,15 +138,11 @@ mod tests {
             if !integration.supports_surface(LoginProviderSurface::AuthStatus) {
                 continue;
             }
-            if matches!(integration.descriptor.target, LoginProviderTarget::Google) {
-                assert_eq!(integration.runtime_id, None);
-            } else {
-                assert!(
-                    integration.runtime_id.is_some(),
-                    "auth status provider {} should have a runtime identity",
-                    integration.id()
-                );
-            }
+            assert!(
+                integration.runtime_id.is_some(),
+                "auth status provider {} should have a runtime identity",
+                integration.id()
+            );
         }
     }
 }
