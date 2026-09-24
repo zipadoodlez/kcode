@@ -120,6 +120,8 @@ fn lozenge_pill_spans(label: &str, filled: bool) -> Vec<Span<'static>> {
 fn yes_no_pill_line(yes_highlighted: bool, align: Alignment) -> Line<'static> {
     let mut spans = Vec::new();
     spans.extend(lozenge_pill_spans("Yes", yes_highlighted));
+    spans.push(Span::raw("   "));
+    spans.extend(lozenge_pill_spans("No", !yes_highlighted));
     Line::from(spans).alignment(align)
 }
 
