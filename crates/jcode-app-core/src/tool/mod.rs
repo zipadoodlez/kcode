@@ -1,5 +1,4 @@
 mod agentgrep;
-pub mod ambient;
 mod apply_patch;
 mod bash;
 mod batch;
@@ -16,13 +15,11 @@ mod invalid;
 mod jcode_docs;
 mod ls;
 pub mod mcp;
-mod memory;
 mod multiedit;
 mod open;
 mod panel;
 mod patch;
 mod read;
-pub(crate) mod serde_coerce;
 mod session_search;
 pub(crate) mod session_search_index;
 mod side_panel;
@@ -400,10 +397,8 @@ impl Registry {
                 "session_search",
                 session_search::SessionSearchTool::new,
             );
-            Self::insert_tool_timed(&mut m, &mut timings, "memory", memory::MemoryTool::new);
             // Initiative is temporarily unavailable. Keep its implementation and
             // saved data intact so it can be restored without a migration.
-            Self::insert_tool_timed(&mut m, &mut timings, "schedule", ambient::ScheduleTool::new);
             let nonzero: Vec<String> = timings
                 .iter()
                 .filter(|(_, ms)| *ms > 0)
@@ -513,20 +508,6 @@ impl Registry {
     pub async fn tool_names(&self) -> Vec<String> {
         let tools = self.tools.read().await;
         tools.keys().cloned().collect()
-    }
-
-    /// Enable test mode for memory tools (isolated storage)
-    /// Called when session is marked as debug
-    pub async fn enable_memory_test_mode(&self) {
-        let mut tools = self.tools.write().await;
-
-        // Replace memory tool with test version
-        tools.insert(
-            "memory".to_string(),
-            Arc::new(memory::MemoryTool::new_test()) as Arc<dyn Tool>,
-        );
-
-        crate::logging::info("Memory test mode enabled - using isolated storage");
     }
 
     /// Resolve tool name aliases.
@@ -1425,27 +1406,6 @@ impl Registry {
         self.register(
             "debug_socket".to_string(),
             Arc::new(debug_socket_tool) as Arc<dyn Tool>,
-        )
-        .await;
-    }
-
-    /// Register ambient-mode tools (only for ambient sessions)
-    pub async fn register_ambient_tools(&self) {
-        self.register(
-            "end_ambient_cycle".to_string(),
-            Arc::new(ambient::EndAmbientCycleTool::new()) as Arc<dyn Tool>,
-        )
-        .await;
-
-        self.register(
-            "schedule_ambient".to_string(),
-            Arc::new(ambient::ScheduleAmbientTool::new()) as Arc<dyn Tool>,
-        )
-        .await;
-
-        self.register(
-            "request_permission".to_string(),
-            Arc::new(ambient::RequestPermissionTool::new()) as Arc<dyn Tool>,
         )
         .await;
     }

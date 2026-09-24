@@ -565,7 +565,7 @@ fn test_system_reminder_is_added_to_system_prompt_not_user_messages() {
         "Your session was interrupted by a server reload. Continue where you left off.".to_string(),
     );
 
-    let split = app.build_system_prompt_split(None);
+    let split = app.build_system_prompt_split();
 
     assert!(split.dynamic_part.contains("# System Reminder"));
     assert!(split.dynamic_part.contains("Continue where you left off."));

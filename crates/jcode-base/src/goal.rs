@@ -91,7 +91,6 @@ pub fn create_goal(input: GoalCreateInput, working_dir: Option<&Path>) -> Result
     goal.progress_percent = input.progress_percent.map(|p| p.min(100));
     goal.updated_at = Utc::now();
     save_goal(&goal, working_dir)?;
-    sync_goal_memory(&goal, working_dir)?;
     Ok(goal)
 }
 
@@ -153,7 +152,6 @@ pub fn update_goal(
     }
     goal.updated_at = Utc::now();
     save_goal(&goal, working_dir)?;
-    sync_goal_memory(&goal, working_dir)?;
     Ok(Some(goal))
 }
 
@@ -615,98 +613,6 @@ fn truncate_title(title: &str, max_chars: usize) -> String {
         let clipped: String = raw.chars().take(max_chars - 1).collect();
         format!("{}…", clipped)
     }
-}
-
-fn sync_goal_memory(goal: &Goal, working_dir: Option<&Path>) -> Result<String> {
-    use crate::memory::{MemoryCategory, MemoryEntry, MemoryManager, TrustLevel};
-
-    let manager = match goal.scope {
-        GoalScope::Project => {
-            MemoryManager::new().with_project_dir(working_dir.ok_or_else(|| {
-                anyhow::anyhow!("working_dir required for project goal memory sync")
-            })?)
-        }
-        GoalScope::Global => MemoryManager::new(),
-    };
-
-    let mut entry = MemoryEntry::new(
-        MemoryCategory::Custom("goal".to_string()),
-        goal_memory_content(goal),
-    )
-    .with_source(format!("goal:{}", goal.id))
-    .with_trust(TrustLevel::High)
-    .with_tags(goal_memory_tags(goal));
-    entry.id = goal_memory_id(goal);
-    entry.updated_at = goal.updated_at;
-    entry.created_at = goal.created_at;
-
-    match goal.scope {
-        GoalScope::Project => manager.upsert_project_memory(entry),
-        GoalScope::Global => manager.upsert_global_memory(entry),
-    }
-}
-
-fn goal_memory_id(goal: &Goal) -> String {
-    format!("goal:{}", goal.id)
-}
-
-fn goal_memory_tags(goal: &Goal) -> Vec<String> {
-    let mut tags = vec![
-        "goal".to_string(),
-        format!("goal:{}", goal.id),
-        format!("goal_status:{}", goal.status.as_str()),
-        format!("goal_scope:{}", goal.scope.as_str()),
-    ];
-    if let Some(current) = goal.current_milestone_id.as_deref() {
-        tags.push(format!("goal_milestone:{}", current));
-    }
-    if !goal.title.trim().is_empty() {
-        tags.extend(
-            goal.title
-                .split(|ch: char| !ch.is_ascii_alphanumeric())
-                .map(|part| part.trim().to_ascii_lowercase())
-                .filter(|part| part.len() >= 4)
-                .take(4)
-                .map(|part| format!("goal_term:{}", part)),
-        );
-    }
-    tags.sort();
-    tags.dedup();
-    tags
-}
-
-fn goal_memory_content(goal: &Goal) -> String {
-    let mut out = format!(
-        "Goal: {}\nStatus: {}\nScope: {}",
-        goal.title,
-        goal.status.as_str(),
-        goal.scope.as_str()
-    );
-    if let Some(progress) = goal.progress_percent {
-        out.push_str(&format!("\nProgress: {}%", progress));
-    }
-    if let Some(milestone) = goal.current_milestone() {
-        out.push_str(&format!("\nCurrent milestone: {}", milestone.title));
-    }
-    if !goal.description.trim().is_empty() {
-        out.push_str(&format!("\nDescription: {}", goal.description.trim()));
-    }
-    if !goal.why.trim().is_empty() {
-        out.push_str(&format!("\nWhy: {}", goal.why.trim()));
-    }
-    if !goal.next_steps.is_empty() {
-        out.push_str("\nNext steps:");
-        for step in goal.next_steps.iter().take(3) {
-            out.push_str(&format!("\n- {}", step));
-        }
-    }
-    if !goal.blockers.is_empty() {
-        out.push_str("\nBlockers:");
-        for blocker in goal.blockers.iter().take(3) {
-            out.push_str(&format!("\n- {}", blocker));
-        }
-    }
-    out
 }
 
 #[cfg(test)]

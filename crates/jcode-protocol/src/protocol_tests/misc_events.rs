@@ -156,7 +156,6 @@ fn test_protocol_enum_roundtrips_cover_wire_names() -> Result<()> {
     }
 
     let feature_toggles = [
-        (FeatureToggle::Memory, "memory"),
         (FeatureToggle::Swarm, "swarm"),
         (FeatureToggle::Autoreview, "autoreview"),
         (FeatureToggle::Autojudge, "autojudge"),

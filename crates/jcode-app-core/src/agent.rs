@@ -245,7 +245,6 @@ pub struct Agent {
     /// tool writes do not mutate the provider's cacheable prefix mid-session.
     agents_md_snapshot: (Option<String>, crate::prompt::ContextInfo),
     /// Whether memory features are enabled for this session
-    memory_enabled: bool,
     /// One-step undo snapshot captured before the most recent rewind.
     rewind_undo_snapshot: Option<RewindUndoSnapshot>,
     /// Channel for tools to request stdin input from the user
@@ -328,7 +327,6 @@ impl Agent {
             mcp_late_register_resolved: false,
             system_prompt_override: None,
             agents_md_snapshot,
-            memory_enabled: crate::config::config().features.memory,
             rewind_undo_snapshot: None,
             stdin_request_tx: None,
             provider_runtime_state: ProviderRuntimeState::observed(initial_provider_model),
@@ -472,7 +470,6 @@ impl Agent {
         }
         agent.restore_reasoning_effort_from_session();
         agent.session.ensure_initial_session_context_message();
-        agent.sync_memory_dedup_state_from_session();
         agent.seed_compaction_from_session();
         agent.log_env_snapshot("attach");
         agent.fire_session_lifecycle_hook("session_start", "attach");
@@ -516,68 +513,6 @@ impl Agent {
             self.session.compaction = state;
             self.persist_session_best_effort("sanitized oversized OpenAI native compaction");
         }
-    }
-
-    fn sync_memory_dedup_state_from_session(&self) {
-        crate::memory::sync_injected_memories(
-            &self.session.id,
-            &self.session.injected_memory_ids(),
-        );
-    }
-
-    fn record_memory_injection_in_session(&mut self, memory: &crate::memory::PendingMemory) {
-        let count = memory.count.max(1);
-        let age_ms = memory.computed_at.elapsed().as_millis() as u64;
-        let summary = if count == 1 {
-            "🧠 auto-recalled 1 memory".to_string()
-        } else {
-            format!("🧠 auto-recalled {} memories", count)
-        };
-        let display_prompt = memory.display_prompt.clone().unwrap_or_else(|| {
-            if memory.prompt.trim().is_empty() {
-                "# Memory\n\n## Notes\n1. (empty injection payload)".to_string()
-            } else {
-                memory.prompt.clone()
-            }
-        });
-
-        self.session.record_memory_injection(
-            summary,
-            display_prompt,
-            count as u32,
-            age_ms,
-            memory.memory_ids.clone(),
-        );
-        if let Err(err) = self.session.save() {
-            logging::warn(&format!(
-                "Failed to persist memory injection for session {}: {}",
-                self.session.id, err
-            ));
-        }
-    }
-
-    fn memory_injection_message(memory: &crate::memory::PendingMemory) -> Message {
-        Message::user(&format!(
-            "<system-reminder>\n{}\n</system-reminder>",
-            memory.prompt
-        ))
-    }
-
-    pub(super) fn prepare_memory_injection_message(
-        &mut self,
-        memory: &crate::memory::PendingMemory,
-    ) -> (Message, bool) {
-        let message = Self::memory_injection_message(memory);
-        let persist = crate::config::config().features.persist_memory_injections;
-        if persist {
-            self.add_message_with_display_role(
-                Role::User,
-                message.content.clone(),
-                Some(StoredDisplayRole::System),
-            );
-            self.persist_session_best_effort("persisted memory injection message");
-        }
-        (message, persist)
     }
 
     fn persist_session_best_effort(&mut self, context: &str) {
@@ -922,14 +857,6 @@ impl Agent {
 
     pub fn session_id(&self) -> &str {
         &self.session.id
-    }
-
-    pub(crate) fn set_working_dir_for_pending_context(&mut self, working_dir: Option<String>) {
-        if working_dir.is_some() {
-            self.session.working_dir = working_dir;
-            self.unlock_tools();
-            self.session.refresh_initial_session_context_message();
-        }
     }
 
     /// Mark this agent session as closed and persist it.

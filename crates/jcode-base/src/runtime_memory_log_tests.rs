@@ -57,10 +57,6 @@ fn append_server_sample_writes_jsonl_under_memory_logs_dir() {
         clients: ServerRuntimeMemoryClients { connected_count: 0 },
         sessions: None,
         background: ServerRuntimeMemoryBackground { task_count: 0 },
-        embeddings: ServerRuntimeMemoryEmbeddings {
-            model_available: false,
-            stats: crate::embedding::stats(),
-        },
     };
 
     let path = append_server_sample(&sample).expect("append server sample");
@@ -175,10 +171,6 @@ fn controller_defers_attribution_until_min_spacing() {
             clients: ServerRuntimeMemoryClients { connected_count: 0 },
             sessions: Some(ServerRuntimeMemorySessions::default()),
             background: ServerRuntimeMemoryBackground { task_count: 0 },
-            embeddings: ServerRuntimeMemoryEmbeddings {
-                model_available: false,
-                stats: crate::embedding::stats(),
-            },
         },
     );
     let process = crate::process_memory::ProcessMemorySnapshot::default();

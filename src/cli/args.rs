@@ -301,17 +301,12 @@ pub(crate) enum Command {
     #[command(subcommand)]
     Provider(ProviderCommand),
 
-    /// Memory management commands
-    #[command(subcommand)]
-    Memory(MemoryCommand),
-
     /// Session management commands
     #[command(subcommand)]
     Session(SessionCommand),
 
     /// Ambient mode management
     #[command(subcommand)]
-    Ambient(AmbientCommand),
 
     /// Review and respond to pending ambient permission requests
     Permissions,
@@ -720,75 +715,6 @@ pub(crate) enum AuthCommand {
         #[arg(long)]
         json: bool,
     },
-}
-
-#[derive(Subcommand, Debug)]
-pub(crate) enum AmbientCommand {
-    /// Show ambient mode status
-    Status,
-    /// Show recent ambient activity log
-    Log,
-    /// Manually trigger an ambient cycle
-    Trigger,
-    /// Stop ambient mode
-    Stop,
-    /// Run an ambient cycle in a visible TUI (internal, spawned by the ambient runner)
-    #[command(hide = true)]
-    RunVisible,
-}
-
-#[derive(Subcommand, Debug)]
-pub(crate) enum MemoryCommand {
-    /// List all stored memories
-    List {
-        /// Filter by scope (project, global, all)
-        #[arg(short, long, default_value = "all")]
-        scope: String,
-
-        /// Filter by tag
-        #[arg(short, long)]
-        tag: Option<String>,
-    },
-
-    /// Search memories by query
-    Search {
-        /// Search query
-        query: String,
-
-        /// Use semantic search (embedding-based) instead of keyword
-        #[arg(short, long)]
-        semantic: bool,
-    },
-
-    /// Export memories to a JSON file
-    Export {
-        /// Output file path
-        output: String,
-
-        /// Export scope (project, global, all)
-        #[arg(short, long, default_value = "all")]
-        scope: String,
-    },
-
-    /// Import memories from a JSON file
-    Import {
-        /// Input file path
-        input: String,
-
-        /// Import scope (project, global)
-        #[arg(short, long, default_value = "project")]
-        scope: String,
-
-        /// Overwrite existing memories with same ID
-        #[arg(long)]
-        overwrite: bool,
-    },
-
-    /// Show memory statistics
-    Stats,
-
-    /// Clear test memory storage (used by debug sessions)
-    ClearTest,
 }
 
 #[cfg(test)]

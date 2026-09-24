@@ -1,5 +1,4 @@
 use anyhow::Result;
-use chrono::Utc;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -19,7 +18,6 @@ pub struct Skill {
     pub allowed_tools: Option<Vec<String>>,
     pub content: String,
     pub path: PathBuf,
-    search_text: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -513,7 +511,6 @@ impl SkillRegistry {
                 .collect(),
             AllowedTools::Sequence(tools) => tools,
         });
-        let search_text = build_skill_search_text(&name, &description, &body);
 
         Ok(Skill {
             name,
@@ -521,7 +518,6 @@ impl SkillRegistry {
             allowed_tools,
             content: body,
             path: path.to_path_buf(),
-            search_text,
         })
     }
 
@@ -918,46 +914,6 @@ impl Skill {
         let file_path = skill_dir.join(filename);
         Ok(std::fs::read_to_string(file_path)?)
     }
-
-    pub fn as_memory_entry(&self) -> crate::memory::MemoryEntry {
-        let now = Utc::now() - chrono::Duration::days(365);
-        let mut entry = crate::memory::MemoryEntry::new(
-            crate::memory::MemoryCategory::Custom("Skills".to_string()),
-            format!(
-                "Use skill `/{} ` when relevant.\n\n{}",
-                self.name,
-                self.get_prompt()
-            ),
-        )
-        .with_id(format!("skill:{}", self.name))
-        .with_tags(vec!["skill".to_string(), self.name.clone()])
-        .with_source("skill_registry")
-        .with_trust(crate::memory::TrustLevel::Medium)
-        .with_timestamps(now, now);
-        // Use the precomputed skill search text rather than the tag-derived one.
-        entry.search_text = self.search_text.clone();
-        entry
-    }
-}
-
-fn build_skill_search_text(name: &str, description: &str, content: &str) -> String {
-    normalize_skill_search_text(&format!("{}\n{}\n{}", name, description, content))
-}
-
-fn normalize_skill_search_text(text: &str) -> String {
-    text.to_lowercase()
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c.is_whitespace() {
-                c
-            } else {
-                ' '
-            }
-        })
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 #[cfg(test)]
@@ -971,7 +927,6 @@ mod tests {
             allowed_tools: None,
             content: content.to_string(),
             path: PathBuf::from(format!("/tmp/{name}/SKILL.md")),
-            search_text: build_skill_search_text(name, description, content),
         }
     }
 
@@ -1128,26 +1083,6 @@ mod tests {
             order_a, order_b,
             "list() ordering must be identical across HashMap instances"
         );
-    }
-
-    #[test]
-    fn skill_as_memory_entry_formats_invocation_and_prompt() {
-        let skill = test_skill(
-            "firefox-browser",
-            "Control Firefox browser sessions and logged-in pages",
-            "Use this skill when you need to open websites, click buttons, or interact with browser pages.",
-        );
-
-        let entry = skill.as_memory_entry();
-
-        assert_eq!(entry.id, "skill:firefox-browser");
-        assert!(matches!(
-            entry.category,
-            crate::memory::MemoryCategory::Custom(ref name) if name == "Skills"
-        ));
-        assert!(entry.content.contains("/firefox-browser"));
-        assert!(entry.content.contains("# Skill: firefox-browser"));
-        assert_eq!(entry.source.as_deref(), Some("skill_registry"));
     }
 
     #[test]

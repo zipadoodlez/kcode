@@ -48,7 +48,6 @@ pub struct ServerRuntimeMemorySample {
     pub process_diagnostics: ServerRuntimeMemoryProcessDiagnostics,
     pub clients: ServerRuntimeMemoryClients,
     pub background: ServerRuntimeMemoryBackground,
-    pub embeddings: ServerRuntimeMemoryEmbeddings,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sessions: Option<ServerRuntimeMemorySessions>,
 }
@@ -200,19 +199,11 @@ pub struct ServerRuntimeMemoryBackground {
     pub task_count: usize,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct ServerRuntimeMemoryEmbeddings {
-    pub model_available: bool,
-    #[serde(flatten)]
-    pub stats: crate::embedding::EmbedderStats,
-}
-
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct ServerRuntimeMemorySessions {
     pub live_count: usize,
     pub sampled_count: usize,
     pub contended_count: usize,
-    pub memory_enabled_session_count: usize,
     pub total_message_count: u64,
     pub total_provider_cache_message_count: u64,
     pub total_json_bytes: u64,
@@ -230,7 +221,6 @@ pub struct ServerRuntimeMemoryTopSession {
     pub session_id: String,
     pub provider: String,
     pub model: String,
-    pub memory_enabled: bool,
     pub message_count: u64,
     pub provider_cache_message_count: u64,
     pub json_bytes: u64,

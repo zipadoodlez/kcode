@@ -298,7 +298,6 @@ fn tool_definitions_auto_inject_required_intent() {
 async fn first_party_tool_definitions_require_intent_with_display_only_docs() {
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let registry = Registry::new(provider).await;
-    registry.register_ambient_tools().await;
     registry.register_debug_tools().await;
 
     let defs = registry.definitions(None).await;
@@ -1049,7 +1048,6 @@ async fn test_request_permission_is_ambient_only() {
         "request_permission should not be available in normal sessions"
     );
 
-    registry.register_ambient_tools().await;
     let defs_after = registry.definitions(None).await;
     assert!(
         defs_after.iter().any(|d| d.name == "request_permission"),
@@ -1080,7 +1078,6 @@ fn closest_tool_names_suggests_near_misses() {
 async fn unknown_tool_error_lists_available_tools_and_suggestions() {
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let registry = Registry::new(provider).await;
-    registry.register_ambient_tools().await;
 
     let ctx = ToolContext {
         session_id: "test-unknown-tool".to_string(),
@@ -1387,7 +1384,6 @@ async fn test_every_tool_advertises_the_large_output_escape_hatch() {
     // failure mode is a new tool nobody remembered to annotate.
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let registry = Registry::new(provider).await;
-    registry.register_ambient_tools().await;
 
     let defs = registry.definitions(None).await;
     assert!(
@@ -1426,7 +1422,6 @@ async fn test_large_output_flag_costs_little_across_the_whole_tool_set() {
     // the total honest: ~20 tokens per tool is acceptable, a paragraph is not.
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let registry = Registry::new(provider).await;
-    registry.register_ambient_tools().await;
     let defs = registry.definitions(None).await;
 
     let property =

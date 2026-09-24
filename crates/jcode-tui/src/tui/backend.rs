@@ -888,14 +888,6 @@ impl RemoteConnection {
         Ok(id)
     }
 
-    /// Trigger immediate memory extraction on the server for the active session.
-    pub async fn trigger_memory_extraction(&mut self) -> Result<()> {
-        let id = self.next_request_id;
-        self.next_request_id += 1;
-        self.send_request(Request::TriggerMemoryExtraction { id })
-            .await
-    }
-
     /// Notify the server that auth credentials changed (e.g., after login)
     pub async fn notify_auth_changed(&mut self) -> Result<()> {
         let id = self.next_request_id;

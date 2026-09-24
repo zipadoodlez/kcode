@@ -4,14 +4,13 @@
 //! Environment variables override config file settings.
 
 pub use jcode_config_types::{
-    AgentsConfig, AmbientConfig, AuthConfig, AutoJudgeConfig, AutoReviewConfig, CompactionConfig,
-    CompactionMode, CrossProviderFailoverMode, DiagramDisplayMode, DiagramPanePosition,
-    DiffDisplayMode, DisplayConfig, FeatureConfig, HookCommands, HooksConfig, KeybindingsConfig,
-    LatexRenderingMode, MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig,
-    NamedProviderModelConfig, NamedProviderType, NativeScrollbarConfig, NotificationsConfig,
-    OverscrollStatusMode, PowerConfig, ProviderConfig, ReasoningDisplayMode,
-    SessionPickerResumeAction, SwarmSpawnMode, SwarmStripLayout, TerminalConfig, UpdateChannel,
-    WebSearchConfig, WebSearchEngine,
+    AgentsConfig, AuthConfig, AutoJudgeConfig, AutoReviewConfig, CompactionConfig, CompactionMode,
+    CrossProviderFailoverMode, DiagramDisplayMode, DiagramPanePosition, DiffDisplayMode,
+    DisplayConfig, FeatureConfig, HookCommands, HooksConfig, KeybindingsConfig, LatexRenderingMode,
+    MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig, NamedProviderModelConfig,
+    NamedProviderType, NativeScrollbarConfig, NotificationsConfig, OverscrollStatusMode,
+    PowerConfig, ProviderConfig, ReasoningDisplayMode, SessionPickerResumeAction, SwarmSpawnMode,
+    SwarmStripLayout, TerminalConfig, UpdateChannel, WebSearchConfig, WebSearchEngine,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -32,13 +31,6 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_ACP_TOOL_PROFILE",
     "JCODE_ACTIVE_SESSIONS_MANAGER",
     "JCODE_EXTERNAL_SESSIONS",
-    "JCODE_AMBIENT_ENABLED",
-    "JCODE_AMBIENT_MAX_INTERVAL",
-    "JCODE_AMBIENT_MIN_INTERVAL",
-    "JCODE_AMBIENT_MODEL",
-    "JCODE_AMBIENT_PROACTIVE",
-    "JCODE_AMBIENT_PROVIDER",
-    "JCODE_AMBIENT_VISIBLE",
     "JCODE_ANIMATION_FPS",
     "JCODE_AUTO_POKE",
     "JCODE_AUTOJUDGE_ENABLED",
@@ -111,15 +103,7 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_KV_CACHE_MISS_NOTICES",
     "JCODE_LATEX_RENDERING",
     "JCODE_MARKDOWN_SPACING",
-    "JCODE_MEMORY_EMBEDDING_BACKEND",
-    "JCODE_MEMORY_EMBEDDING_BASE_URL",
-    "JCODE_MEMORY_EMBEDDING_DIM",
-    "JCODE_MEMORY_EMBEDDING_MODEL",
-    "JCODE_MEMORY_ENABLED",
     "JCODE_ENABLE_MERMAID",
-    "JCODE_MEMORY_MODEL",
-    "JCODE_MEMORY_SIDECAR_ENABLED",
-    "JCODE_PERSIST_MEMORY_INJECTIONS",
     "JCODE_MESSAGE_TIMESTAMPS",
     "JCODE_MODEL",
     "JCODE_MODEL_SWITCH_KEY",
@@ -517,9 +501,6 @@ pub struct Config {
 
     /// Lifecycle hooks (external commands at turn/session/tool boundaries)
     pub hooks: HooksConfig,
-
-    /// Ambient mode configuration
-    pub ambient: AmbientConfig,
 
     /// Desktop notifications for interactive sessions (e.g. turn completion)
     pub notifications: NotificationsConfig,

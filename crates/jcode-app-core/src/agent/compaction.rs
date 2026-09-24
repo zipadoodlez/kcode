@@ -320,25 +320,4 @@ impl Agent {
             manager.push_token_snapshot(observed);
         };
     }
-
-    /// Push an embedding snapshot for the semantic compaction mode.
-    /// Called after each assistant turn with a short text snippet.
-    /// No-op if the embedding model is unavailable or mode is not semantic.
-    pub(super) fn push_embedding_snapshot_if_semantic(&mut self, text: &str) {
-        use crate::config::CompactionMode;
-        let is_semantic = {
-            let compaction = self.registry.compaction();
-            compaction
-                .try_read()
-                .map(|m| m.mode() == CompactionMode::Semantic)
-                .unwrap_or(false)
-        };
-        if !is_semantic {
-            return;
-        }
-        let compaction = self.registry.compaction();
-        if let Ok(mut manager) = compaction.try_write() {
-            manager.push_embedding_snapshot(text);
-        };
-    }
 }

@@ -414,8 +414,6 @@ pub(super) enum PendingReloadReconnectStatus {
     AwaitingHistory { session_id: Option<String> },
 }
 
-const MEMORY_INJECTION_SUPPRESSION_SECS: u64 = 90;
-
 /// Current processing status
 #[derive(Clone, Default, Debug)]
 pub enum ProcessingStatus {
@@ -1253,7 +1251,6 @@ pub struct App {
     // Exit code to use when quitting (for canary wrapper communication)
     requested_exit_code: Option<i32>,
     // Memory feature toggle for this session
-    memory_enabled: bool,
     // Automatic end-of-turn review toggle for this session
     autoreview_enabled: bool,
     // Automatic end-of-turn judge toggle for this session
@@ -1261,7 +1258,6 @@ pub struct App {
     // Last requested `/improve` mode for this session.
     improve_mode: Option<ImproveMode>,
     // Suppress duplicate memory injection messages for near-identical prompts.
-    last_injected_memory_signature: Option<(String, Instant)>,
     // Swarm feature toggle for this session
     swarm_enabled: bool,
     // Debug-only: force the inline swarm gallery active (bypasses spawn-mode
@@ -1557,7 +1553,6 @@ pub struct App {
     // Incremental markdown renderer for streaming text (uses RefCell for interior mutability)
     streaming_md_renderer: RefCell<IncrementalMarkdownRenderer>,
     /// Ambient mode system prompt override (when running as visible ambient cycle)
-    ambient_system_prompt: Option<String>,
     /// Pending login flow: if set, next input is intercepted as OAuth code or API key
     pending_login: Option<PendingLogin>,
     remote_login: Option<auth_remote::RemoteLogin>,

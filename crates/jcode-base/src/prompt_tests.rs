@@ -23,7 +23,6 @@ fn mermaid_prompt_module_follows_capability() {
         &[],
         false,
         None,
-        None,
         PromptCapabilities { mermaid: true },
     );
     assert!(enabled.static_part.contains(MERMAID_PROMPT));
@@ -32,7 +31,6 @@ fn mermaid_prompt_module_follows_capability() {
         None,
         &[],
         false,
-        None,
         None,
         PromptCapabilities { mermaid: false },
     );
@@ -102,8 +100,8 @@ fn full_and_split_prompt_builders_use_the_same_one_line_skill_descriptions() {
     }];
     let expected = build_available_skills_section(&skills).expect("skills section");
 
-    let (full, full_info) = build_system_prompt_full(None, &skills, false, None, None);
-    let (split, split_info) = build_system_prompt_split(None, &skills, false, None, None);
+    let (full, full_info) = build_system_prompt_full(None, &skills, false, None);
+    let (split, split_info) = build_system_prompt_split(None, &skills, false, None);
 
     assert!(full.contains(&expected));
     assert!(split.static_part.contains(&expected));
@@ -207,7 +205,6 @@ fn captured_agents_md_keeps_split_prompt_stable_after_file_write() {
         None,
         &[],
         false,
-        None,
         Some(project_dir.path()),
         snapshot.clone(),
     );
@@ -216,7 +213,6 @@ fn captured_agents_md_keeps_split_prompt_stable_after_file_write() {
         None,
         &[],
         false,
-        None,
         Some(project_dir.path()),
         snapshot,
     );
@@ -236,7 +232,6 @@ fn captured_agents_md_keeps_split_prompt_stable_after_file_write() {
         None,
         &[],
         false,
-        None,
         Some(project_dir.path()),
         fresh_snapshot,
     );
@@ -328,7 +323,7 @@ fn session_datetime_formats_utc_fallback_deterministically() {
 
 #[test]
 fn test_split_prompt_does_not_inject_session_context_per_turn() {
-    let (split, _info) = build_system_prompt_split(None, &[], false, None, None);
+    let (split, _info) = build_system_prompt_split(None, &[], false, None);
     assert!(!split.dynamic_part.contains("# Session Context"));
     assert!(!split.dynamic_part.contains("Time: "));
     assert!(!split.dynamic_part.contains("Timezone: UTC"));
@@ -368,7 +363,7 @@ fn test_prompt_overlay_files_are_loaded_from_project_and_global_jcode_dirs() {
         "expected global prompt overlay content"
     );
 
-    let (prompt, info) = build_system_prompt_full(None, &[], false, None, Some(project_dir.path()));
+    let (prompt, info) = build_system_prompt_full(None, &[], false, Some(project_dir.path()));
     assert!(prompt.contains("project prompt overlay instructions"));
     assert!(prompt.contains("global prompt overlay instructions"));
     assert!(info.prompt_overlay_chars > 0);
@@ -422,13 +417,12 @@ fn test_preferred_tools_files_are_loaded_from_project_and_global_jcode_dirs() {
         "expected global preferred tools content"
     );
 
-    let (prompt, info) = build_system_prompt_full(None, &[], false, None, Some(project_dir.path()));
+    let (prompt, info) = build_system_prompt_full(None, &[], false, Some(project_dir.path()));
     assert!(prompt.contains("project preferred tools instructions"));
     assert!(prompt.contains("global preferred tools instructions"));
     assert!(info.preferred_tools_chars > 0);
 
-    let (split, split_info) =
-        build_system_prompt_split(None, &[], false, None, Some(project_dir.path()));
+    let (split, split_info) = build_system_prompt_split(None, &[], false, Some(project_dir.path()));
     assert!(
         split
             .static_part
@@ -518,7 +512,7 @@ fn test_selfdev_prompt_uses_full_selfdev_instructions() {
 #[test]
 fn test_split_selfdev_prompt_defaults_to_tui_focus_for_repo_root() {
     let repo_dir = std::path::Path::new("/tmp/jcode");
-    let (split, _info) = build_system_prompt_split(None, &[], true, None, Some(repo_dir));
+    let (split, _info) = build_system_prompt_split(None, &[], true, Some(repo_dir));
     assert!(
         split
             .static_part
@@ -542,7 +536,7 @@ fn test_selfdev_prompt_prefers_publish_flow_for_active_builds() {
 #[test]
 fn test_selfdev_prompt_welcomes_outside_contributions() {
     let full = build_system_prompt_with_selfdev(None, &[], true);
-    let (split, _) = build_system_prompt_split(None, &[], true, None, None);
+    let (split, _) = build_system_prompt_split(None, &[], true, None);
 
     for prompt in [&full, &split.static_part] {
         assert!(prompt.contains("Pull requests from everyone are welcome"));
@@ -566,7 +560,7 @@ fn test_selfdev_prompt_template_placeholders_are_resolved() {
 
 #[test]
 fn split_prompt_estimated_tokens_is_positive_when_populated() {
-    let (split, _info) = build_system_prompt_split(None, &[], false, None, None);
+    let (split, _info) = build_system_prompt_split(None, &[], false, None);
     assert!(split.chars() > 0);
     assert!(split.estimated_tokens() > 0);
 }
@@ -655,7 +649,7 @@ fn project_system_prompt_file_replaces_default_base_prompt() {
         "You are a custom agent."
     );
 
-    let (prompt, _info) = build_system_prompt_full(None, &[], false, None, Some(&dir));
+    let (prompt, _info) = build_system_prompt_full(None, &[], false, Some(&dir));
     assert!(prompt.contains("You are a custom agent."));
     assert!(!prompt.contains("Jcode is open source"));
 
@@ -694,8 +688,8 @@ fn prompt_guidance_same_project_and_global_paths_are_loaded_once() {
         std::fs::write(home.join(".jcode/prompt-overlay.md"), overlay).unwrap();
         std::fs::write(home.join(".jcode/preferred-tools.md"), tools).unwrap();
 
-        let (full, full_info) = build_system_prompt_full(None, &[], false, None, Some(home));
-        let (split, split_info) = build_system_prompt_split(None, &[], false, None, Some(home));
+        let (full, full_info) = build_system_prompt_full(None, &[], false, Some(home));
+        let (split, split_info) = build_system_prompt_split(None, &[], false, Some(home));
         for prompt in [&full, &split.static_part] {
             assert_eq!(prompt.matches(overlay.trim()).count(), 1);
             assert_eq!(prompt.matches(tools.trim()).count(), 1);

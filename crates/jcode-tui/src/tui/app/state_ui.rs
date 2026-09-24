@@ -1829,8 +1829,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
         info.push_str(&format!("Terminal: {}\n", terminal_size));
         info.push_str(&format!("CWD: {}\n", cwd));
         info.push_str(&format!(
-            "Features: memory={}, swarm={}\n",
-            if app.memory_enabled { "on" } else { "off" },
+            "Features: swarm={}\n",
             if app.swarm_enabled { "on" } else { "off" }
         ));
 
@@ -2022,8 +2021,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
         context_report.push_str(&format!("- cwd: {}\n", cwd));
         context_report.push_str(&format!("- terminal: {}\n", terminal_size));
         context_report.push_str(&format!(
-            "- features: memory={}, swarm={}\n",
-            if app.memory_enabled { "on" } else { "off" },
+            "- features: swarm={}\n",
             if app.swarm_enabled { "on" } else { "off" }
         ));
         context_report.push_str(&format!(
@@ -2056,7 +2054,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
             context.tool_definition_tokens(),
         ));
         context_report.push_str(&format!(
-            "- system prompt: {} chars\n- session context: {} chars\n- project AGENTS.md: {} ({})\n- global ~/AGENTS.md: {} ({})\n- prompt overlays: {} chars\n- preferred tools: {} chars\n- skills section: {} chars\n- self-dev section: {} chars\n- memory section: {} chars\n- tool definitions: {} chars across {} tools\n- user messages: {} chars across {} messages\n- assistant messages: {} chars across {} messages\n- tool calls: {} chars across {} calls\n- tool results: {} chars across {} results\n",
+            "- system prompt: {} chars\n- session context: {} chars\n- project AGENTS.md: {} ({})\n- global ~/AGENTS.md: {} ({})\n- prompt overlays: {} chars\n- preferred tools: {} chars\n- skills section: {} chars\n- self-dev section: {} chars\n- tool definitions: {} chars across {} tools\n- user messages: {} chars across {} messages\n- assistant messages: {} chars across {} messages\n- tool calls: {} chars across {} calls\n- tool results: {} chars across {} results\n",
             context.system_prompt_chars,
             context.session_context_chars,
             if context.has_project_agents_md { "loaded" } else { "not loaded" },
@@ -2067,7 +2065,6 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
             context.preferred_tools_chars,
             context.skills_chars,
             context.selfdev_chars,
-            context.memory_chars,
             context.tool_defs_chars,
             context.tool_defs_count,
             context.user_messages_chars,

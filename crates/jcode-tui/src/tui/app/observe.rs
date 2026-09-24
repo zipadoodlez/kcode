@@ -118,12 +118,6 @@ impl App {
             // fires once when a 1h+ batch completes with quality gates passed.
             self.note_todo_update_for_subscribe_nudge(&session_id);
         }
-
-        // The schedule tool queues/cancels ambient tasks, which the ambient panel
-        // surfaces (queue count, next wake).
-        if name == "schedule" {
-            super::helpers::invalidate_ambient_info_cache();
-        }
     }
 
     /// Surface private todo quality-gate decisions to the user without exposing

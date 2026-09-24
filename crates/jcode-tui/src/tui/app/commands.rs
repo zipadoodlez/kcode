@@ -1737,7 +1737,6 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
             return true;
         }
         crate::tui::session_picker::invalidate_session_list_cache();
-        app.trigger_save_memory_extraction();
         let name = app.session.display_name().to_string();
         let msg = if let Some(ref lbl) = app.session.save_label {
             format!(
@@ -1818,54 +1817,6 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
             title,
         )));
         app.set_status_notice("Session renamed");
-        return true;
-    }
-
-    if trimmed == "/memory status" {
-        let default_enabled = crate::config::config().features.memory;
-        app.push_display_message(DisplayMessage::system(format!(
-            "Memory feature: {} (config default: {})",
-            if app.memory_enabled {
-                "enabled"
-            } else {
-                "disabled"
-            },
-            if default_enabled {
-                "enabled"
-            } else {
-                "disabled"
-            }
-        )));
-        return true;
-    }
-
-    if trimmed == "/memory" {
-        let new_state = !app.memory_enabled;
-        app.set_memory_feature_enabled(new_state);
-        let label = if new_state { "ON" } else { "OFF" };
-        app.set_status_notice(format!("Memory: {}", label));
-        app.push_display_message(DisplayMessage::system(format!(
-            "Memory feature {} for this session.",
-            if new_state { "enabled" } else { "disabled" }
-        )));
-        return true;
-    }
-
-    if trimmed == "/memory on" {
-        app.set_memory_feature_enabled(true);
-        app.set_status_notice("Memory: ON");
-        app.push_display_message(DisplayMessage::system(
-            "Memory feature enabled for this session.".to_string(),
-        ));
-        return true;
-    }
-
-    if trimmed == "/memory off" {
-        app.set_memory_feature_enabled(false);
-        app.set_status_notice("Memory: OFF");
-        app.push_display_message(DisplayMessage::system(
-            "Memory feature disabled for this session.".to_string(),
-        ));
         return true;
     }
 
@@ -2798,8 +2749,6 @@ fn parse_agents_target(raw: &str) -> Option<crate::tui::AgentModelTarget> {
         "judge" | "judging" | "execution-judge" | "autojudge" => {
             Some(crate::tui::AgentModelTarget::Judge)
         }
-        "memory" | "memories" | "sidecar" => Some(crate::tui::AgentModelTarget::Memory),
-        "ambient" => Some(crate::tui::AgentModelTarget::Ambient),
         _ => None,
     }
 }

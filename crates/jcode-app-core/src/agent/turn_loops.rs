@@ -10,7 +10,7 @@ impl Agent {
     /// the provider is responsible for discarding an incompatible warmup.
     pub(crate) async fn prewarm_provider_idle(&self) {
         let tools = self.tool_definitions_for_debug().await;
-        let split_prompt = self.build_system_prompt_split(None);
+        let split_prompt = self.build_system_prompt_split();
         self.provider
             .prewarm(&tools, &split_prompt.static_part)
             .await;
@@ -83,7 +83,7 @@ impl Agent {
             // compacting the request history. This is the first point where the
             // stable request settings are available.
             let mut tools = self.tool_definitions().await;
-            let mut split_prompt = self.build_system_prompt_split(None);
+            let mut split_prompt = self.build_system_prompt_split();
             self.provider
                 .prewarm(&tools, &split_prompt.static_part)
                 .await;
@@ -106,39 +106,20 @@ impl Agent {
                 // Compaction clears the tool lock, so rebuild the foreground
                 // request metadata rather than relying on the pre-compaction snapshot.
                 tools = self.tool_definitions().await;
-                split_prompt = self.build_system_prompt_split(None);
+                split_prompt = self.build_system_prompt_split();
             }
 
             let messages: std::sync::Arc<[Message]> = messages.into();
-            // Non-blocking memory: uses pending result from last turn, spawns check for next turn
-            let memory_pending =
-                self.build_memory_prompt_nonblocking_shared(std::sync::Arc::clone(&messages), None);
             // Use split prompt for better caching - static content cached, dynamic not
             self.log_prompt_prefix_accounting(&split_prompt, &tools);
 
-            // Check for client-side cache violations before memory injection.
-            // Memory is an ephemeral suffix that changes each turn; tracking it would cause
-            // false-positive violations every turn (prior turn's memory ≠ current history prefix).
             self.record_client_cache_request(&messages);
 
             // The request snapshot now owns everything the provider needs. Drop
             // the session's derived transcript copy before the network wait.
             self.session.release_provider_messages_cache();
 
-            // Inject memory as a user message at the end (preserves cache prefix)
             let mut messages_with_memory: Vec<Message> = messages.iter().cloned().collect();
-            if let Some(memory) = memory_pending.as_ref() {
-                let memory_count = memory.count.max(1);
-                let age_ms = memory.computed_at.elapsed().as_millis() as u64;
-                crate::memory::record_injected_prompt(&memory.prompt, memory_count, age_ms);
-                self.record_memory_injection_in_session(memory);
-                logging::info(&format!(
-                    "Memory injected as message ({} chars)",
-                    memory.prompt.len()
-                ));
-                let (memory_msg, _persisted) = self.prepare_memory_injection_message(memory);
-                messages_with_memory.push(memory_msg);
-            }
             if Self::should_inject_batch_nudge(
                 batch_nudge_pending,
                 tools.iter().any(|tool| tool.name == "batch"),
@@ -203,7 +184,6 @@ impl Agent {
             // copies are no longer needed while the response is consumed.
             drop(stamped);
             drop(messages_with_memory);
-            drop(memory_pending);
             drop(messages);
             drop(split_prompt);
 
@@ -804,7 +784,6 @@ impl Agent {
                 });
                 let message_id =
                     self.add_message_ext(Role::Assistant, content_blocks, None, token_usage);
-                self.push_embedding_snapshot_if_semantic(&text_content);
                 self.session.save()?;
                 self.record_model_turn_usage(&usage_turn_id);
                 Some(message_id)

@@ -8,6 +8,7 @@ use crate::message::{
 };
 pub(super) use cache_support::get_cached_message_lines;
 use cache_support::{centered_wrap_width, left_pad_lines_for_centered_mode};
+use jcode_tui_render::swarm_tiles::split_by_display_width;
 use std::borrow::Cow;
 use unicode_width::UnicodeWidthStr;
 
@@ -3474,51 +3475,6 @@ pub(crate) fn render_tool_message(
             left_pad_lines_for_centered_mode(&mut lines, width);
         }
         return lines;
-    }
-
-    if tools_ui::is_memory_recall_tool(tc) && !msg.content.starts_with("Error:") {
-        let border_style = Style::default().fg(rgb(150, 180, 255));
-        let text_style = Style::default().fg(dim_color());
-
-        let mut entries: Vec<(String, String)> = Vec::new();
-        for line in msg.content.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("- [")
-                && let Some(rest) = trimmed.strip_prefix("- [")
-                && let Some(bracket_end) = rest.find(']')
-            {
-                let cat = rest[..bracket_end].to_string();
-                let content = rest[bracket_end + 1..].trim();
-                let content = if let Some(tag_start) = content.rfind(" [") {
-                    content[..tag_start].trim()
-                } else {
-                    content
-                };
-                entries.push((cat, content.to_string()));
-            }
-        }
-
-        if !entries.is_empty() {
-            let count = entries.len();
-            let tiles = group_into_tiles(entries);
-            let header_text = format!(
-                "🧠 recalled {} memor{} · {}",
-                count,
-                if count == 1 { "y" } else { "ies" },
-                token_badge.label.as_str()
-            );
-            let header = Line::from(Span::styled(header_text, border_style));
-            let total_width = (width.saturating_sub(4) as usize).min(120);
-            let tile_lines =
-                render_memory_tiles(&tiles, total_width, border_style, text_style, Some(header));
-            for line in tile_lines {
-                lines.push(line);
-            }
-            if centered {
-                left_pad_lines_for_centered_mode(&mut lines, width);
-            }
-            return lines;
-        }
     }
 
     let batch_counts = if tc.name == "batch" {

@@ -398,27 +398,6 @@ pub(super) async fn handle_set_feature(
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
 ) {
     match feature {
-        FeatureToggle::Memory => {
-            let mut agent_guard = agent.lock().await;
-            agent_guard.set_memory_enabled(enabled);
-            drop(agent_guard);
-            if !enabled {
-                crate::memory::clear_pending_memory(client_session_id);
-            }
-            crate::runtime_memory_log::emit_event(
-                crate::runtime_memory_log::RuntimeMemoryLogEvent::new(
-                    "memory_feature_toggled",
-                    if enabled {
-                        "memory_feature_enabled"
-                    } else {
-                        "memory_feature_disabled"
-                    },
-                )
-                .with_session_id(client_session_id.to_string())
-                .force_attribution(),
-            );
-            let _ = client_event_tx.send(ServerEvent::Done { id });
-        }
         FeatureToggle::Autoreview => {
             let mut agent_guard = agent.lock().await;
             match agent_guard.set_autoreview_enabled(enabled) {
@@ -615,36 +594,6 @@ pub(super) async fn handle_rename_session(
             ("elapsed_ms", started.elapsed().as_millis().to_string()),
         ],
     );
-}
-
-pub(super) async fn handle_trigger_memory_extraction(
-    id: u64,
-    agent: &Arc<Mutex<Agent>>,
-    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
-) {
-    let extraction = {
-        let agent_guard = agent.lock().await;
-        if !agent_guard.memory_enabled() {
-            None
-        } else {
-            let transcript = agent_guard.build_transcript_for_extraction();
-            if transcript.len() < 200 {
-                None
-            } else {
-                Some((
-                    transcript,
-                    agent_guard.session_id().to_string(),
-                    agent_guard.working_dir().map(|dir| dir.to_string()),
-                ))
-            }
-        }
-    };
-
-    if let Some((transcript, session_id, working_dir)) = extraction {
-        crate::memory_agent::trigger_final_extraction_with_dir(transcript, session_id, working_dir);
-    }
-
-    let _ = client_event_tx.send(ServerEvent::Done { id });
 }
 
 fn clone_split_session(

@@ -71,8 +71,7 @@ impl Fixture {
             session.save().unwrap();
         }
         let id = session.id.clone();
-        let mut agent = Agent::new_with_session(provider, registry, session, None);
-        agent.set_memory_enabled(false);
+        let agent = Agent::new_with_session(provider, registry, session, None);
         let agent = Arc::new(Mutex::new(agent));
         let (events, _) = mpsc::unbounded_channel();
         let members = Arc::new(RwLock::new(HashMap::from([(

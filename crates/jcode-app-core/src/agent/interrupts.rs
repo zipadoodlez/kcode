@@ -259,7 +259,6 @@ impl Agent {
                 "had_violation": self.cache_tracker.had_violation(),
             },
             "features": {
-                "memory_enabled": self.memory_enabled,
             },
             "token_usage": {
                 "input": self.last_usage.input_tokens,
@@ -290,7 +289,6 @@ impl Agent {
                 "pending_alert_text_bytes": pending_alert_text_bytes,
             },
             "agent": {
-                "memory_enabled": self.memory_enabled,
                 "allowed_tools_count": self.allowed_tools.as_ref().map(|tools| tools.len()),
                 "disabled_tools_count": self.disabled_tools.len(),
                 "tool_call_ids": self.tool_call_ids.len(),

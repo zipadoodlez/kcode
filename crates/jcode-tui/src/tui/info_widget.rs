@@ -8,12 +8,6 @@
 use super::color_support::rgb;
 #[path = "info_widget_git.rs"]
 mod git;
-#[path = "info_widget_graph.rs"]
-mod graph;
-#[path = "info_widget_memory_render.rs"]
-mod memory_render;
-#[path = "info_widget_memory_utils.rs"]
-mod memory_utils;
 #[path = "info_widget_model.rs"]
 pub(crate) mod model;
 #[path = "info_widget_swarm_background.rs"]
@@ -30,34 +24,22 @@ mod todos_render;
 mod usage_render;
 use super::info_widget_overview::{InfoPageKind, MAX_TODO_LINES, compute_page_layout};
 use super::workspace_map::VisibleWorkspaceRow;
-use crate::ambient::AmbientStatus;
-pub use crate::memory_types::{
-    InjectedMemoryItem, MemoryActivity, MemoryEvent, MemoryEventKind, MemoryState, PipelineState,
-    StepResult, StepStatus,
-};
 use crate::prompt::ContextInfo;
 use crate::protocol::SwarmMemberStatus;
 use crate::provider::DEFAULT_CONTEXT_LIMIT;
 use crate::todo::TodoItem;
-use memory_render::{render_memory_compact, render_memory_expanded, render_memory_widget};
 use ratatui::{
     prelude::*,
     widgets::{Block, BorderType, Borders, Paragraph},
 };
 use std::collections::HashMap;
-#[cfg(test)]
-use std::collections::HashSet;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use unicode_width::UnicodeWidthStr;
 
 use git::{render_git_compact, render_git_widget};
-pub use graph::{GraphEdge, GraphNode, build_graph_topology, graph_node_score};
-pub(crate) use memory_utils::is_traceworthy_memory_event;
-use memory_utils::{memory_active_summary, memory_last_trace_summary, memory_state_detail};
 use model::{render_model_info, render_model_widget};
 use swarm_background::{render_background_compact, render_background_widget, render_swarm_widget};
-use text::{truncate_smart, truncate_with_ellipsis};
+use text::truncate_smart;
 pub(crate) use tips::occasional_status_tip;
 use tips::{render_tips_widget, tips_widget_height};
 pub(crate) use todos_render::swarm_plan_todos;
@@ -77,8 +59,6 @@ pub enum WidgetKind {
     Todos,
     /// Token/context usage bar
     ContextUsage,
-    /// Memory sidecar activity
-    MemoryActivity,
     /// Subagents/sessions status
     SwarmStatus,
     /// Background work indicator
@@ -93,8 +73,6 @@ pub enum WidgetKind {
     ModelInfo,
     /// Mermaid diagrams
     Diagrams,
-    /// Ambient mode status
-    AmbientMode,
     /// Rotating tips/shortcuts
     Tips,
     /// Git status
@@ -112,13 +90,11 @@ impl WidgetKind {
             WidgetKind::ContextUsage => 4,
             WidgetKind::UsageLimits => 5, // Bumped up - important when near limits
             WidgetKind::KvCache => 6,
-            WidgetKind::MemoryActivity => 7,
             WidgetKind::ModelInfo => 8,
             WidgetKind::Compaction => 9,
             WidgetKind::BackgroundTasks => 10,
             WidgetKind::GitStatus => 11,
             WidgetKind::SwarmStatus => 12, // Session list - lower priority
-            WidgetKind::AmbientMode => 13, // Scheduled agent - lower priority
             WidgetKind::Tips => 14,        // Did you know - lowest
         }
     }
@@ -131,11 +107,9 @@ impl WidgetKind {
             WidgetKind::Overview => Side::Right,
             WidgetKind::Todos => Side::Right,
             WidgetKind::ContextUsage => Side::Right,
-            WidgetKind::MemoryActivity => Side::Right,
             WidgetKind::SwarmStatus => Side::Left,
             WidgetKind::Compaction => Side::Left,
             WidgetKind::BackgroundTasks => Side::Left,
-            WidgetKind::AmbientMode => Side::Left,
             WidgetKind::UsageLimits => Side::Left,
             WidgetKind::KvCache => Side::Left,
             WidgetKind::ModelInfo => Side::Left,
@@ -152,11 +126,9 @@ impl WidgetKind {
             WidgetKind::Overview => 8,
             WidgetKind::Todos => 3,
             WidgetKind::ContextUsage => 2,
-            WidgetKind::MemoryActivity => 3,
             WidgetKind::SwarmStatus => 3,
             WidgetKind::Compaction => 3,
             WidgetKind::BackgroundTasks => 2,
-            WidgetKind::AmbientMode => 3,
             WidgetKind::UsageLimits => 3,
             WidgetKind::KvCache => 3,
             WidgetKind::ModelInfo => 3, // Model + usage bars
@@ -175,13 +147,11 @@ impl WidgetKind {
             WidgetKind::ContextUsage,
             WidgetKind::UsageLimits,
             WidgetKind::KvCache,
-            WidgetKind::MemoryActivity,
             WidgetKind::ModelInfo,
             WidgetKind::Compaction,
             WidgetKind::BackgroundTasks,
             WidgetKind::GitStatus,
             WidgetKind::SwarmStatus,
-            WidgetKind::AmbientMode,
             WidgetKind::Tips,
         ]
     }
@@ -193,11 +163,9 @@ impl WidgetKind {
             WidgetKind::Overview => "overview",
             WidgetKind::Todos => "todos",
             WidgetKind::ContextUsage => "context",
-            WidgetKind::MemoryActivity => "memory",
             WidgetKind::SwarmStatus => "swarm",
             WidgetKind::BackgroundTasks => "background",
             WidgetKind::Compaction => "compaction",
-            WidgetKind::AmbientMode => "ambient",
             WidgetKind::UsageLimits => "usage",
             WidgetKind::KvCache => "kv-cache",
             WidgetKind::ModelInfo => "model",
@@ -286,10 +254,6 @@ pub struct BackgroundInfo {
     pub progress_summary: Option<String>,
     /// Detailed display for the most recent task progress
     pub progress_detail: Option<String>,
-    /// Memory agent status
-    pub memory_agent_active: bool,
-    /// Memory agent turn count
-    pub memory_agent_turns: usize,
 }
 
 /// Which provider the usage info is for
@@ -499,51 +463,6 @@ impl UsageInfo {
     }
 }
 
-/// Memory statistics for the info widget
-#[derive(Debug, Default, Clone)]
-pub struct MemoryInfo {
-    /// Total memory count (project + global)
-    pub total_count: usize,
-    /// Project-specific memory count
-    pub project_count: usize,
-    /// Global memory count
-    pub global_count: usize,
-    /// Count by category
-    pub by_category: HashMap<String, usize>,
-    /// Whether sidecar is available
-    pub sidecar_available: bool,
-    /// Whether the memory feature is disabled for this session.
-    /// When true, stored counts are still shown but recall/extraction are off.
-    pub disabled: bool,
-    /// Selected sidecar model/backend label for memory work
-    pub sidecar_model: Option<String>,
-    /// Current memory activity
-    pub activity: Option<MemoryActivity>,
-    /// Graph topology for visualization (node positions + edges)
-    pub graph_nodes: Vec<GraphNode>,
-    /// Directed edges into graph_nodes
-    pub graph_edges: Vec<GraphEdge>,
-}
-
-impl MemoryInfo {
-    pub(crate) fn should_render(&self) -> bool {
-        !self.disabled && (self.total_count > 0 || self.activity.is_some())
-    }
-
-    pub(crate) fn should_show_activity(&self) -> bool {
-        self.activity.as_ref().is_some_and(|activity| {
-            activity.is_processing()
-                || (matches!(activity.state, MemoryState::Idle)
-                    && activity
-                        .pipeline
-                        .as_ref()
-                        .map(PipelineState::is_complete)
-                        .unwrap_or(false)
-                    && activity.state_since.elapsed() <= Duration::from_secs(5))
-        })
-    }
-}
-
 pub use jcode_tui_mermaid::DiagramInfo;
 
 /// Git repository status for the info widget
@@ -566,22 +485,6 @@ impl GitInfo {
             || self.ahead > 0
             || self.behind > 0
     }
-}
-
-/// Ambient mode status data for the info widget
-#[derive(Debug, Clone)]
-pub struct AmbientWidgetData {
-    pub show_widget: bool,
-    pub status: AmbientStatus,
-    pub queue_count: usize,
-    pub next_queue_preview: Option<String>,
-    pub reminder_count: usize,
-    pub next_reminder_preview: Option<String>,
-    pub last_run_ago: Option<String>,
-    pub last_summary: Option<String>,
-    pub next_wake: Option<String>,
-    pub next_reminder_wake: Option<String>,
-    pub budget_percent: Option<f32>,
 }
 
 const PAGE_SWITCH_SECONDS: u64 = 30;
@@ -615,8 +518,6 @@ pub struct InfoWidgetData {
     /// Current working directory for this session.
     pub working_dir: Option<String>,
     pub client_count: Option<usize>,
-    /// Memory system statistics
-    pub memory_info: Option<MemoryInfo>,
     /// Swarm/subagent status
     pub swarm_info: Option<SwarmInfo>,
     /// Background tasks status
@@ -641,8 +542,6 @@ pub struct InfoWidgetData {
     pub workspace_rows: Vec<VisibleWorkspaceRow>,
     /// Lightweight animation tick for workspace map rendering
     pub workspace_animation_tick: u64,
-    /// Ambient mode status
-    pub ambient_info: Option<AmbientWidgetData>,
     /// Actual API-reported context tokens (from last streaming response)
     /// When available, this is more accurate than the char-based estimate in context_info
     pub observed_context_tokens: Option<u64>,
@@ -667,7 +566,7 @@ pub struct CompactionInfo {
 
 impl InfoWidgetData {
     fn widget_disabled(kind: WidgetKind) -> bool {
-        matches!(kind, WidgetKind::AmbientMode | WidgetKind::Tips)
+        matches!(kind, WidgetKind::Tips)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -675,7 +574,6 @@ impl InfoWidgetData {
             && self.context_info.is_none()
             && self.queue_mode.is_none()
             && self.model.is_none()
-            && self.memory_info.is_none()
             && self.swarm_info.is_none()
             && self.background_info.is_none()
             && self.diagrams.is_empty()
@@ -752,11 +650,6 @@ impl InfoWidgetData {
                         .map(|c| c.total_chars > 0)
                         .unwrap_or(false)
             }
-            WidgetKind::MemoryActivity => self
-                .memory_info
-                .as_ref()
-                .map(MemoryInfo::should_render)
-                .unwrap_or(false),
             WidgetKind::SwarmStatus => self
                 .swarm_info
                 .as_ref()
@@ -768,7 +661,6 @@ impl InfoWidgetData {
                 .map(|b| b.running_count > 0)
                 .unwrap_or(false),
             WidgetKind::Compaction => self.compaction_info.is_some(),
-            WidgetKind::AmbientMode => false,
             WidgetKind::UsageLimits => self
                 .usage_info
                 .as_ref()
@@ -788,22 +680,8 @@ impl InfoWidgetData {
     /// Get list of widget kinds that have data, in priority order
     /// Get effective priority for a widget, accounting for dynamic state.
     /// UsageLimits gets bumped up when usage is high.
-    /// MemoryActivity gets bumped up while memory work is actively processing.
     pub fn effective_priority(&self, kind: WidgetKind) -> u8 {
         match kind {
-            WidgetKind::MemoryActivity => {
-                if self
-                    .memory_info
-                    .as_ref()
-                    .and_then(|info| info.activity.as_ref())
-                    .map(MemoryActivity::is_processing)
-                    .unwrap_or(false)
-                {
-                    0
-                } else {
-                    kind.priority()
-                }
-            }
             WidgetKind::UsageLimits => {
                 let max_pct = self
                     .usage_info
@@ -1092,9 +970,7 @@ pub(crate) fn calculate_widget_height(
             preferred_h.min(max_height.saturating_sub(border_height))
         }
         WidgetKind::Overview => {
-            let mut overview = data.clone();
-            // Keep memory in its own widget so graph rendering stays focused.
-            overview.memory_info = None;
+            let overview = data.clone();
             let inner_h = max_height.saturating_sub(border_height);
             let layout = compute_page_layout(&overview, inner_width, inner_h);
             if layout.max_page_height == 0 {
@@ -1127,17 +1003,6 @@ pub(crate) fn calculate_widget_height(
                 return 0;
             }
             1 // Just the bar
-        }
-        WidgetKind::MemoryActivity => {
-            if data.memory_info.is_none() {
-                return 0;
-            };
-            let lines =
-                render_memory_widget(data, Rect::new(0, 0, width.saturating_sub(2), max_height));
-            if lines.is_empty() {
-                return 0;
-            }
-            lines.len() as u16
         }
         WidgetKind::SwarmStatus => {
             let Some(info) = &data.swarm_info else {
@@ -1173,28 +1038,6 @@ pub(crate) fn calculate_widget_height(
                 return 0;
             }
             2
-        }
-        WidgetKind::AmbientMode => {
-            let Some(info) = &data.ambient_info else {
-                return 0;
-            };
-            if !info.show_widget {
-                return 0;
-            }
-            let mut h = 1u16; // Status line
-            if info.queue_count > 0 || info.reminder_count > 0 {
-                h += 1; // Queue line
-            }
-            if info.last_run_ago.is_some() {
-                h += 1; // Last run line
-            }
-            if info.next_wake.is_some() || info.next_reminder_wake.is_some() {
-                h += 1; // Next wake line
-            }
-            if info.budget_percent.is_some() {
-                h += 1; // Budget bar
-            }
-            h
         }
         WidgetKind::UsageLimits => {
             if let Some(info) = data.usage_info.as_ref() {
@@ -1325,7 +1168,6 @@ fn render_single_widget(frame: &mut Frame, placement: &WidgetPlacement, data: &I
     if placement.kind == WidgetKind::Overview {
         // Check if overview would actually render content before drawing the border
         let mut overview = data.clone();
-        overview.memory_info = None;
         overview.diagrams.clear();
         let layout = compute_page_layout(&overview, inner.width as usize, inner.height);
         if layout.pages.is_empty() || layout.max_page_height == 0 {
@@ -1378,8 +1220,6 @@ fn render_overview_widget(frame: &mut Frame, inner: Rect, data: &InfoWidgetData)
     }
 
     let mut overview = data.clone();
-    // Keep memory graph and diagram visuals in dedicated widgets.
-    overview.memory_info = None;
     overview.diagrams.clear();
 
     let layout = compute_page_layout(&overview, inner.width as usize, inner.height);
@@ -1435,166 +1275,6 @@ fn render_overview_widget(frame: &mut Frame, inner: Rect, data: &InfoWidgetData)
     lines.truncate(inner.height as usize);
     frame.render_widget(Paragraph::new(lines), inner);
 }
-#[cfg(test)]
-#[derive(Debug, Clone)]
-struct MemorySubgraph {
-    nodes: Vec<GraphNode>,
-    _edges: Vec<GraphEdge>,
-}
-#[cfg(test)]
-fn select_contextual_subgraph(
-    info: &MemoryInfo,
-    max_nodes: usize,
-    max_edges: usize,
-) -> Option<MemorySubgraph> {
-    if info.graph_nodes.is_empty() || max_nodes == 0 {
-        return None;
-    }
-    let node_count = info.graph_nodes.len();
-    let center_idx = pick_subgraph_center(info)?;
-    let mut neighbors: Vec<Vec<(usize, usize)>> = vec![Vec::new(); node_count];
-    for (edge_idx, edge) in info.graph_edges.iter().enumerate() {
-        if edge.source >= node_count || edge.target >= node_count {
-            continue;
-        }
-        neighbors[edge.source].push((edge.target, edge_idx));
-        neighbors[edge.target].push((edge.source, edge_idx));
-    }
-    let mut selected = Vec::with_capacity(max_nodes.min(node_count));
-    let mut selected_set: HashSet<usize> = HashSet::new();
-    let mut queue = std::collections::VecDeque::new();
-    selected.push(center_idx);
-    selected_set.insert(center_idx);
-    queue.push_back(center_idx);
-    while let Some(current) = queue.pop_front() {
-        if selected.len() >= max_nodes {
-            break;
-        }
-        let mut ranked = neighbors[current].clone();
-        ranked.sort_by(|(a_idx, a_edge), (b_idx, b_edge)| {
-            edge_kind_priority(&info.graph_edges[*b_edge].kind)
-                .cmp(&edge_kind_priority(&info.graph_edges[*a_edge].kind))
-                .then_with(|| {
-                    graph_node_score(&info.graph_nodes[*b_idx])
-                        .partial_cmp(&graph_node_score(&info.graph_nodes[*a_idx]))
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })
-                .then_with(|| a_idx.cmp(b_idx))
-        });
-        for (next_idx, _) in ranked {
-            if selected.len() >= max_nodes {
-                break;
-            }
-            if selected_set.insert(next_idx) {
-                selected.push(next_idx);
-                queue.push_back(next_idx);
-            }
-        }
-    }
-
-    if selected.len() < max_nodes {
-        let mut remaining: Vec<usize> = (0..node_count)
-            .filter(|idx| !selected_set.contains(idx))
-            .collect();
-        remaining.sort_by(|a, b| {
-            graph_node_score(&info.graph_nodes[*b])
-                .partial_cmp(&graph_node_score(&info.graph_nodes[*a]))
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.cmp(b))
-        });
-        for idx in remaining {
-            if selected.len() >= max_nodes {
-                break;
-            }
-            selected_set.insert(idx);
-            selected.push(idx);
-        }
-    }
-
-    let mut old_to_new = HashMap::new();
-    let mut sub_nodes = Vec::with_capacity(selected.len());
-    for (new_idx, old_idx) in selected.iter().copied().enumerate() {
-        old_to_new.insert(old_idx, new_idx);
-        sub_nodes.push(info.graph_nodes[old_idx].clone());
-    }
-
-    let center_new = old_to_new.get(&center_idx).copied().unwrap_or(0);
-    let mut dedup: HashSet<(usize, usize, String)> = HashSet::new();
-    let mut sub_edges: Vec<GraphEdge> = info
-        .graph_edges
-        .iter()
-        .filter_map(|edge| {
-            let source = *old_to_new.get(&edge.source)?;
-            let target = *old_to_new.get(&edge.target)?;
-            if source == target {
-                return None;
-            }
-            if !dedup.insert((source, target, edge.kind.clone())) {
-                return None;
-            }
-            Some(GraphEdge {
-                source,
-                target,
-                kind: edge.kind.clone(),
-            })
-        })
-        .collect();
-
-    sub_edges.sort_by(|a, b| {
-        let a_center = a.source == center_new || a.target == center_new;
-        let b_center = b.source == center_new || b.target == center_new;
-        b_center
-            .cmp(&a_center)
-            .then_with(|| edge_kind_priority(&b.kind).cmp(&edge_kind_priority(&a.kind)))
-            .then_with(|| a.source.cmp(&b.source))
-            .then_with(|| a.target.cmp(&b.target))
-    });
-    if sub_edges.len() > max_edges {
-        sub_edges.truncate(max_edges);
-    }
-
-    Some(MemorySubgraph {
-        nodes: sub_nodes,
-        _edges: sub_edges,
-    })
-}
-
-#[cfg(test)]
-fn pick_subgraph_center(info: &MemoryInfo) -> Option<usize> {
-    let mut best_idx: Option<usize> = None;
-    let mut best_score: f32 = -1.0;
-
-    for (idx, node) in info.graph_nodes.iter().enumerate() {
-        let mut score = graph_node_score(node);
-        if node.kind == "tag" || node.kind == "cluster" {
-            score -= 0.75;
-        }
-        if !node.is_active {
-            score -= 1.0;
-        }
-        if score > best_score {
-            best_score = score;
-            best_idx = Some(idx);
-        }
-    }
-
-    best_idx
-}
-
-#[cfg(test)]
-fn edge_kind_priority(kind: &str) -> u8 {
-    match kind {
-        "contradicts" => 6,
-        "supersedes" => 5,
-        "derived_from" => 4,
-        "relates_to" => 3,
-        "in_cluster" => 2,
-        "has_tag" => 1,
-        _ => 1,
-    }
-}
-
-/// Render content for a specific widget type
 fn render_widget_content(
     kind: WidgetKind,
     data: &InfoWidgetData,
@@ -1606,11 +1286,9 @@ fn render_widget_content(
         WidgetKind::Overview => Vec::new(), // Handled specially in render_single_widget
         WidgetKind::Todos => render_todos_widget(data, inner),
         WidgetKind::ContextUsage => render_context_widget(data, inner),
-        WidgetKind::MemoryActivity => render_memory_widget(data, inner),
         WidgetKind::SwarmStatus => render_swarm_widget(data, inner),
         WidgetKind::BackgroundTasks => render_background_widget(data, inner),
         WidgetKind::Compaction => render_compaction_widget(data, inner),
-        WidgetKind::AmbientMode => render_ambient_widget(data, inner),
         WidgetKind::UsageLimits => render_usage_widget(data, inner),
         WidgetKind::KvCache => render_kv_cache_widget(data, inner),
         WidgetKind::ModelInfo => render_model_widget(data, inner),
@@ -1832,166 +1510,11 @@ fn render_context_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static
     )]
 }
 
-/// Render ambient mode status widget
-fn render_ambient_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
-    let Some(info) = &data.ambient_info else {
-        return Vec::new();
-    };
-    if !info.show_widget {
-        return Vec::new();
-    }
-
-    let mut lines: Vec<Line> = Vec::new();
-    let dim = rgb(100, 100, 110);
-    let label_color = rgb(140, 140, 150);
-    let max_w = inner.width.saturating_sub(2) as usize;
-
-    // Status line with icon
-    let (icon, status_text, status_color) = match &info.status {
-        AmbientStatus::Idle => ("○", "Idle".to_string(), rgb(120, 120, 130)),
-        AmbientStatus::Running { detail } => {
-            ("●", format!("Running: {}", detail), rgb(100, 200, 100))
-        }
-        AmbientStatus::Scheduled { .. } => {
-            ("◐", "Waiting for next run".to_string(), rgb(140, 180, 255))
-        }
-        AmbientStatus::Paused { reason } => (
-            "⏸",
-            format!(
-                "Paused: {}",
-                truncate_smart(reason, inner.width.saturating_sub(12) as usize)
-            ),
-            rgb(255, 200, 100),
-        ),
-        AmbientStatus::Disabled if info.reminder_count > 0 => (
-            "⏰",
-            "Scheduled tasks active".to_string(),
-            rgb(140, 180, 255),
-        ),
-        AmbientStatus::Disabled => ("○", "Not running".to_string(), dim),
-    };
-
-    lines.push(Line::from(vec![
-        Span::styled(format!("{} ", icon), Style::default().fg(status_color)),
-        Span::styled(
-            truncate_smart(&status_text, inner.width.saturating_sub(3) as usize),
-            Style::default().fg(rgb(180, 180, 190)),
-        ),
-    ]));
-
-    // Scheduled tasks count
-    let queue_count = if matches!(info.status, AmbientStatus::Disabled) && info.reminder_count > 0 {
-        info.reminder_count
-    } else {
-        info.queue_count
-    };
-    let queue_preview = if matches!(info.status, AmbientStatus::Disabled) && info.reminder_count > 0
-    {
-        info.next_reminder_preview.as_ref()
-    } else {
-        info.next_queue_preview.as_ref()
-    };
-
-    if queue_count > 0 {
-        let count_text =
-            if matches!(info.status, AmbientStatus::Disabled) && info.reminder_count > 0 {
-                if queue_count == 1 {
-                    "1 scheduled task".to_string()
-                } else {
-                    format!("{} scheduled tasks", queue_count)
-                }
-            } else if queue_count == 1 {
-                "1 task queued".to_string()
-            } else {
-                format!("{} tasks queued", queue_count)
-            };
-        let mut spans = vec![
-            Span::styled("  ", Style::default()),
-            Span::styled(count_text, Style::default().fg(label_color)),
-        ];
-        if let Some(preview) = queue_preview {
-            spans.push(Span::styled(
-                truncate_smart(&format!(" ({})", preview), max_w.saturating_sub(18)),
-                Style::default().fg(dim),
-            ));
-        }
-        lines.push(Line::from(spans));
-    }
-
-    // Last run
-    if let Some(ref ago) = info.last_run_ago {
-        let mut spans = vec![
-            Span::styled("  ", Style::default()),
-            Span::styled(format!("Ran {}", ago), Style::default().fg(label_color)),
-        ];
-        if let Some(ref summary) = info.last_summary {
-            let remaining = max_w.saturating_sub(6 + ago.len());
-            if remaining > 5 {
-                spans.push(Span::styled(
-                    truncate_smart(&format!(" - {}", summary), remaining),
-                    Style::default().fg(dim),
-                ));
-            }
-        }
-        lines.push(Line::from(spans));
-    }
-
-    // Next scheduled run
-    let next_due = if matches!(info.status, AmbientStatus::Disabled) && info.reminder_count > 0 {
-        info.next_reminder_wake.as_ref()
-    } else {
-        info.next_wake.as_ref()
-    };
-
-    if let Some(next) = next_due {
-        let prefix = if matches!(info.status, AmbientStatus::Disabled) && info.reminder_count > 0 {
-            "Next scheduled task"
-        } else {
-            "Next run"
-        };
-        lines.push(Line::from(vec![
-            Span::styled("  ", Style::default()),
-            Span::styled(
-                format!("{} {}", prefix, next),
-                Style::default().fg(label_color),
-            ),
-        ]));
-    }
-
-    // Budget bar
-    if let Some(budget) = info.budget_percent {
-        let pct = (budget * 100.0).round().clamp(0.0, 100.0) as u8;
-        let bar_width = inner.width.saturating_sub(12).clamp(4, 10) as usize;
-        let filled = ((budget * bar_width as f32).round() as usize).min(bar_width);
-        let empty = bar_width.saturating_sub(filled);
-
-        let bar_color = if pct < 20 {
-            rgb(255, 100, 100)
-        } else if pct <= 50 {
-            rgb(255, 200, 100)
-        } else {
-            rgb(100, 200, 100)
-        };
-
-        lines.push(Line::from(vec![
-            Span::styled("  ", Style::default()),
-            Span::styled("█".repeat(filled), Style::default().fg(bar_color)),
-            Span::styled("░".repeat(empty), Style::default().fg(rgb(50, 50, 60))),
-            Span::styled(format!(" {}%", pct), Style::default().fg(bar_color)),
-        ]));
-    }
-
-    lines
-}
-
 fn render_page(kind: InfoPageKind, data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
     match kind {
         InfoPageKind::CompactOnly => render_sections(data, inner, None),
         InfoPageKind::TodosExpanded => {
             render_sections(data, inner, Some(InfoPageKind::TodosExpanded))
-        }
-        InfoPageKind::MemoryExpanded => {
-            render_sections(data, inner, Some(InfoPageKind::MemoryExpanded))
         }
     }
 }
@@ -2019,17 +1542,6 @@ fn render_sections(
             lines.extend(render_todos_expanded(data, inner));
         } else {
             lines.extend(render_todos_compact(data, inner));
-        }
-    }
-
-    // Memory info
-    if let Some(info) = &data.memory_info
-        && (info.total_count > 0 || info.activity.is_some())
-    {
-        if matches!(focus, Some(InfoPageKind::MemoryExpanded)) {
-            lines.extend(render_memory_expanded(info, inner));
-        } else {
-            lines.extend(render_memory_compact(info, inner.width));
         }
     }
 
@@ -2072,100 +1584,6 @@ fn render_sections(
 #[cfg(test)]
 #[path = "info_widget_tests.rs"]
 mod tests;
-
-fn format_event_for_expanded(
-    event: &MemoryEvent,
-    max_width: usize,
-) -> (&'static str, String, Color) {
-    match &event.kind {
-        MemoryEventKind::EmbeddingComplete { latency_ms, hits } => (
-            "→",
-            truncate_with_ellipsis(&format!("{} hits ({}ms)", hits, latency_ms), max_width),
-            rgb(140, 180, 255),
-        ),
-        MemoryEventKind::SidecarRelevant { memory_preview } => (
-            "✓",
-            truncate_with_ellipsis(memory_preview, max_width),
-            rgb(100, 200, 100),
-        ),
-        MemoryEventKind::MemorySurfaced { memory_preview } => (
-            "★",
-            truncate_with_ellipsis(memory_preview, max_width),
-            rgb(255, 220, 100),
-        ),
-        MemoryEventKind::MemoryInjected {
-            count,
-            prompt_chars,
-            items,
-            ..
-        } => {
-            let plural = if *count == 1 { "memory" } else { "memories" };
-            let detail = items
-                .first()
-                .map(|item| format!(" [{}]", item.section))
-                .unwrap_or_default();
-            (
-                "↳",
-                truncate_with_ellipsis(
-                    &format!("{} {} ({}c){}", count, plural, prompt_chars, detail),
-                    max_width,
-                ),
-                rgb(140, 210, 255),
-            )
-        }
-        MemoryEventKind::MaintenanceComplete { latency_ms } => (
-            "🌿",
-            truncate_with_ellipsis(&format!("maintained ({}ms)", latency_ms), max_width),
-            rgb(120, 220, 180),
-        ),
-        MemoryEventKind::ExtractionStarted { reason } => (
-            "🧠",
-            truncate_with_ellipsis(&format!("extracting: {}", reason), max_width),
-            rgb(200, 150, 255),
-        ),
-        MemoryEventKind::ExtractionComplete { count } => (
-            "✓",
-            truncate_with_ellipsis(&format!("saved {} memories", count), max_width),
-            rgb(100, 200, 100),
-        ),
-        MemoryEventKind::Error { message } => (
-            "!",
-            truncate_with_ellipsis(message, max_width),
-            rgb(255, 100, 100),
-        ),
-        MemoryEventKind::ToolRemembered {
-            content, category, ..
-        } => (
-            "💾",
-            truncate_with_ellipsis(&format!("[{}] {}", category, content), max_width),
-            rgb(100, 200, 100),
-        ),
-        MemoryEventKind::ToolRecalled { query, count } => (
-            "🔍",
-            truncate_with_ellipsis(&format!("{} found for '{}'", count, query), max_width),
-            rgb(140, 180, 255),
-        ),
-        MemoryEventKind::ToolForgot { id } => (
-            "🗑\u{fe0f}",
-            truncate_with_ellipsis(id, max_width),
-            rgb(255, 170, 100),
-        ),
-        MemoryEventKind::ToolTagged { id, tags } => (
-            "🏷\u{fe0f}",
-            truncate_with_ellipsis(&format!("{} +{}", id, tags), max_width),
-            rgb(140, 200, 255),
-        ),
-        MemoryEventKind::ToolLinked { from, to } => (
-            "🔗",
-            truncate_with_ellipsis(&format!("{} → {}", from, to), max_width),
-            rgb(200, 180, 255),
-        ),
-        MemoryEventKind::ToolListed { count } => {
-            ("📋", format!("{} memories", count), rgb(140, 140, 150))
-        }
-        _ => ("·", String::new(), rgb(100, 100, 110)),
-    }
-}
 
 fn render_context_compact(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
     if data.context_info_stale {

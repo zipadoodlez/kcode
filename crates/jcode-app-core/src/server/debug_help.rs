@@ -87,18 +87,6 @@ SWARM COMMANDS (swarm: prefix):
   swarm:notify:<sid> <msg> - Send DM to specific session
   swarm:help               - Full swarm command reference
 
-AMBIENT COMMANDS (ambient: prefix):
-  ambient:status              - Ambient + schedule runner state, counts, next due items
-  ambient:queue               - Scheduled queue contents with target/session metadata
-  ambient:trigger             - Manually trigger an ambient cycle
-  ambient:log                 - Recent transcript summaries
-  ambient:permissions         - List pending permission requests
-  ambient:approve:<id>        - Approve a permission request
-  ambient:deny:<id> [reason]  - Deny a permission request (optional reason)
-  ambient:start               - Start/restart ambient mode
-  ambient:stop                - Stop ambient mode
-  ambient:help                - Ambient command reference
-
 EVENTS COMMANDS (events: prefix):
   events:recent            - Get recent events (default 50)
   events:recent:<N>        - Get recent N events

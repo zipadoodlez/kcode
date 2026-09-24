@@ -21,7 +21,6 @@ mod comm_plan;
 mod comm_session;
 mod comm_sync;
 mod debug;
-mod debug_ambient;
 mod debug_command_exec;
 mod debug_events;
 mod debug_help;
@@ -81,15 +80,13 @@ use self::swarm_persistence::{
 };
 use self::util::get_shared_mcp_pool;
 use crate::agent::Agent;
-use crate::ambient_runner::AmbientRunnerHandle;
 use crate::bus::{Bus, BusEvent};
 use crate::protocol::{NotificationType, ServerEvent};
 use crate::provider::Provider;
 use crate::runtime_memory_log::{
     RuntimeMemoryLogController, RuntimeMemoryLogSampling, RuntimeMemoryLogTrigger,
-    ServerRuntimeMemoryBackground, ServerRuntimeMemoryClients, ServerRuntimeMemoryEmbeddings,
-    ServerRuntimeMemorySample, ServerRuntimeMemoryServer, ServerRuntimeMemorySessions,
-    ServerRuntimeMemoryTopSession,
+    ServerRuntimeMemoryBackground, ServerRuntimeMemoryClients, ServerRuntimeMemorySample,
+    ServerRuntimeMemoryServer, ServerRuntimeMemorySessions, ServerRuntimeMemoryTopSession,
 };
 use crate::session_recovery::ReloadContext;
 use crate::transport::Listener;
@@ -420,8 +417,6 @@ async fn capture_runtime_memory_common_sample(
         crate::process_memory::snapshot_with_source(format!("server:runtime-log:{source}"));
     let connected_count = *client_count.read().await;
     let background_task_count = crate::background::global().list().await.len();
-    let embedder_stats = crate::embedding::stats();
-    let embedding_model_available = crate::embedding::is_model_available();
 
     ServerRuntimeMemorySample {
         schema_version: 2,
@@ -445,10 +440,6 @@ async fn capture_runtime_memory_common_sample(
         sessions: None,
         background: ServerRuntimeMemoryBackground {
             task_count: background_task_count,
-        },
-        embeddings: ServerRuntimeMemoryEmbeddings {
-            model_available: embedding_model_available,
-            stats: embedder_stats,
         },
     }
 }
@@ -497,7 +488,6 @@ async fn capture_runtime_memory_attribution_sample(
     let live_count = sessions_guard.len();
     let mut sampled_count = 0usize;
     let mut contended_count = 0usize;
-    let mut memory_enabled_session_count = 0usize;
     let mut total_message_count = 0u64;
     let mut total_provider_cache_message_count = 0u64;
     let mut total_json_bytes = 0u64;
@@ -517,10 +507,6 @@ async fn capture_runtime_memory_attribution_sample(
 
         sampled_count += 1;
         let profile = agent.session_memory_profile_snapshot();
-        let memory_enabled = agent.memory_enabled();
-        if memory_enabled {
-            memory_enabled_session_count += 1;
-        }
 
         let message_count = profile.message_count as u64;
         let provider_cache_message_count = profile.provider_cache_message_count as u64;
@@ -546,7 +532,6 @@ async fn capture_runtime_memory_attribution_sample(
             session_id: session_id.clone(),
             provider: agent.provider_name(),
             model: agent.provider_model(),
-            memory_enabled,
             message_count,
             provider_cache_message_count,
             json_bytes,
@@ -567,7 +552,6 @@ async fn capture_runtime_memory_attribution_sample(
         live_count,
         sampled_count,
         contended_count,
-        memory_enabled_session_count,
         total_message_count,
         total_provider_cache_message_count,
         total_json_bytes,
@@ -622,7 +606,7 @@ use self::socket::{signal_ready_fd, socket_has_live_listener};
 pub use self::util::ServerIdentity;
 pub(crate) use self::util::server_has_newer_binary;
 use self::util::{
-    debug_control_allowed, embedding_idle_unload_secs, git_common_dir_for, reload_exec_target,
+    debug_control_allowed, git_common_dir_for, reload_exec_target,
     startup_headless_recovery_test_delay, swarm_id_for_dir, swarm_id_for_session,
 };
 
@@ -646,11 +630,6 @@ mod file_activity_tests;
 
 /// Idle timeout for the shared server when no clients are connected (5 minutes)
 const IDLE_TIMEOUT_SECS: u64 = 300;
-
-/// How often to check whether the embedding model can be unloaded. Keep this
-/// comfortably below the default idle threshold so reclamation is prompt and
-/// predictable rather than delayed by another full sampling interval.
-const EMBEDDING_IDLE_CHECK_SECS: u64 = 10;
 
 #[cfg(test)]
 mod idle_monitor_tests {
@@ -720,8 +699,6 @@ pub struct Server {
     event_counter: Arc<std::sync::atomic::AtomicU64>,
     /// Broadcast channel for swarm event subscriptions (debug socket subscribers)
     swarm_event_tx: broadcast::Sender<SwarmEvent>,
-    /// Ambient mode runner handle (None if ambient is disabled)
-    ambient_runner: Option<AmbientRunnerHandle>,
     /// Shared MCP server pool (processes shared across sessions), initialized lazily.
     mcp_pool: Arc<OnceCell<Arc<crate::mcp::SharedMcpPool>>>,
     /// Graceful shutdown signals by session_id (stored outside agent mutex so they
@@ -770,15 +747,6 @@ impl Server {
         };
         crate::process_title::set_server_title(&identity.name);
 
-        // Initialize the background runner even when ambient mode is disabled so
-        // session-targeted scheduled tasks still have a live delivery loop.
-        let ambient_runner = {
-            let safety = Arc::new(crate::safety::SafetySystem::new());
-            let handle = AmbientRunnerHandle::new(safety);
-            crate::tool::ambient::init_schedule_runner(handle.clone());
-            Some(handle)
-        };
-
         let LoadedSwarmRuntimeState {
             plans: restored_swarm_plans,
             coordinators: restored_swarm_coordinators,
@@ -813,7 +781,6 @@ impl Server {
             event_history: Arc::new(RwLock::new(std::collections::VecDeque::new())),
             event_counter: Arc::new(std::sync::atomic::AtomicU64::new(1)),
             swarm_event_tx: broadcast::channel(256).0,
-            ambient_runner,
             mcp_pool: Arc::new(OnceCell::new()),
             shutdown_signals: Arc::new(RwLock::new(HashMap::new())),
             soft_interrupt_queues: Arc::new(RwLock::new(HashMap::new())),
@@ -1243,34 +1210,6 @@ impl Server {
         server_start_time: Instant,
         temporary_server_policy: Option<lifecycle::TemporaryServerPolicy>,
     ) {
-        // Preload the embedding model in background so warm startups get fast
-        // memory recall. On a cold install, skip eager preload because the
-        // first-time model download can make the first spawned client look hung
-        // while the daemon finishes bootstrapping.
-        if crate::embedding::is_model_available() {
-            tokio::task::spawn_blocking(|| {
-                let start = std::time::Instant::now();
-                match crate::embedding::get_embedder() {
-                    Ok(_) => {
-                        crate::logging::info(&format!(
-                            "Embedding model preloaded in {}ms",
-                            start.elapsed().as_millis()
-                        ));
-                    }
-                    Err(e) => {
-                        crate::logging::info(&format!(
-                            "Embedding model preload failed (non-fatal): {}",
-                            e
-                        ));
-                    }
-                }
-            });
-        } else {
-            crate::logging::info(
-                "Embedding model not installed yet; skipping eager preload during server startup",
-            );
-        }
-
         // Warm the lightweight session-search index after daemon startup. This
         // keeps the first agent `session_search` call from paying the cold
         // indexing cost while leaving exhaustive searches available on demand.
@@ -1427,49 +1366,6 @@ impl Server {
         // This watches the same "running" member signal Waybar surfaces as
         // "N streaming" and toggles a best-effort OS power inhibitor accordingly.
         Self::spawn_power_inhibitor(Arc::clone(&self.swarm_state.members));
-
-        // Initialize the memory agent early so it's ready for all sessions
-        if crate::config::config().features.memory {
-            tokio::spawn(async {
-                let _ = crate::memory_agent::init().await;
-            });
-        }
-
-        // Spawn the background ambient/schedule loop.
-        if let Some(ref runner) = self.ambient_runner {
-            let ambient_handle = runner.clone();
-            let ambient_provider = Arc::clone(&self.provider);
-            crate::logging::info("Starting ambient/schedule background loop");
-            tokio::spawn(async move {
-                ambient_handle.run_loop(ambient_provider).await;
-            });
-        }
-
-        // Spawn embedding idle monitor so the model can be unloaded when this
-        // server has been quiet for a while.
-        let embedding_idle_secs = embedding_idle_unload_secs();
-        tokio::spawn(async move {
-            let idle_for = std::time::Duration::from_secs(embedding_idle_secs);
-            let mut interval =
-                tokio::time::interval(std::time::Duration::from_secs(EMBEDDING_IDLE_CHECK_SECS));
-            loop {
-                interval.tick().await;
-                let unloaded = crate::embedding::maybe_unload_if_idle(idle_for);
-                if unloaded {
-                    let stats = crate::embedding::stats();
-                    crate::logging::info(&format!(
-                        "Embedding idle monitor: model unloaded (loads={}, unloads={}, calls={}, avg_ms={})",
-                        stats.load_count,
-                        stats.unload_count,
-                        stats.embed_calls,
-                        stats
-                            .avg_embed_ms
-                            .map(|v| format!("{:.1}", v))
-                            .unwrap_or_else(|| "n/a".to_string())
-                    ));
-                }
-            }
-        });
 
         // Spawn the retained-heap watchdog: glibc keeps freed pages
         // inside arenas, and the event-driven trim hooks (turn completion,

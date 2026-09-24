@@ -47,7 +47,7 @@ impl SkillRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::skill::{Skill, build_skill_search_text};
+    use crate::skill::Skill;
     use std::path::PathBuf;
 
     fn registry(names: &[&str]) -> SkillRegistry {
@@ -61,7 +61,6 @@ mod tests {
                     allowed_tools: None,
                     content: "content".to_string(),
                     path: PathBuf::from(format!("/tmp/{name}/SKILL.md")),
-                    search_text: build_skill_search_text(name, "Test skill", "content"),
                 },
             );
         }

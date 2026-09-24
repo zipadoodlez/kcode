@@ -970,7 +970,6 @@ fn test_save_command_bookmarks_session_with_memory_enabled() {
     crate::env::set_var("JCODE_HOME", temp.path());
 
     let mut app = create_test_app();
-    app.memory_enabled = true;
     app.messages = vec![
         Message::user("u1"),
         Message::assistant_text("a1"),
@@ -1617,16 +1616,16 @@ fn test_goals_show_command_focuses_goal_page() {
 fn test_compact_mode_command_updates_local_session_mode() {
     let mut app = create_test_app();
 
-    app.input = "/compact mode semantic".to_string();
+    app.input = "/compact mode proactive".to_string();
     app.submit_input();
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     let mode = rt.block_on(async { app.registry.compaction().read().await.mode() });
-    assert_eq!(mode, crate::config::CompactionMode::Semantic);
+    assert_eq!(mode, crate::config::CompactionMode::Proactive);
 
     let last = app.display_messages().last().expect("missing response");
     assert_eq!(last.role, "system");
-    assert_eq!(last.content, "✓ Compaction mode → semantic");
+    assert_eq!(last.content, "✓ Compaction mode → proactive");
 }
 
 #[test]

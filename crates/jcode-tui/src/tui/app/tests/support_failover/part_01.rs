@@ -407,7 +407,6 @@ fn clear_persisted_test_ui_state() {
         let _ = std::fs::remove_file(ambient_dir.join("directives.json"));
         let _ = std::fs::remove_file(ambient_dir.join("visible_cycle.json"));
     }
-    crate::tui::app::helpers::clear_ambient_info_cache_for_tests();
     crate::auth::AuthStatus::invalidate_cache();
 }
 
@@ -429,7 +428,6 @@ fn with_temp_jcode_home<T>(f: impl FnOnce() -> T) -> T {
     crate::auth::claude::set_active_account_override(None);
     crate::auth::codex::set_active_account_override(None);
     crate::auth::AuthStatus::invalidate_cache();
-    crate::tui::app::helpers::clear_ambient_info_cache_for_tests();
     if let Some(prev_home) = prev_home {
         crate::env::set_var("JCODE_HOME", prev_home);
     } else {

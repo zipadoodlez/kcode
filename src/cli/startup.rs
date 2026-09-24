@@ -36,13 +36,6 @@ pub async fn run() -> Result<()> {
 
     logging::init();
     startup_profile::mark("logging_init");
-    // Old log pruning now runs on a background thread inside logging::init(),
-    // so it no longer blocks startup. Memory-event logs have a separate,
-    // longer (14-day) retention, so prune them on their own background thread.
-    std::thread::Builder::new()
-        .name("jcode-memlog-cleanup".to_string())
-        .spawn(crate::memory_log::cleanup_old_memory_logs)
-        .ok();
     // Prune stale per-session `.bak` recovery copies (never the transcripts
     // themselves) so the sessions directory does not grow without bound.
     std::thread::Builder::new()
@@ -71,21 +64,6 @@ pub async fn run() -> Result<()> {
     // provider edits do not rebuild the app spine), which means base cannot
     // name their concrete types; this composition root wires them up instead.
     register_external_provider_runtimes();
-
-    // Invert the legacy memory -> skill dependency: memory collects synthetic
-    // entries from registered providers, and skill (the higher layer that
-    // depends on MemoryEntry) registers its registry->memory adapter here.
-    // The shared snapshot holds global skills only; memory retrieval is
-    // process-scoped, so compose the project overlay from the process cwd
-    // (issue #457 keeps session overlays out of the shared registry).
-    crate::memory::register_synthetic_entry_provider(|| {
-        let global = crate::skill::SkillRegistry::shared_snapshot();
-        crate::skill::SkillRegistry::effective_for_working_dir(&global, None)
-            .list()
-            .into_iter()
-            .map(|skill| skill.as_memory_entry())
-            .collect()
-    });
 
     // Invert the legacy server -> tui dependency: the TUI session picker owns
     // the session-list cache and registers its invalidator here, so the server

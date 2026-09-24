@@ -46,31 +46,6 @@
       "let_underscore": 0,
       "unwrap_or_default": 0
     },
-    "crates/jcode-app-core/src/ambient/directives.rs": {
-      "dot_ok": 2,
-      "let_underscore": 1,
-      "unwrap_or_default": 1
-    },
-    "crates/jcode-app-core/src/ambient/manager.rs": {
-      "dot_ok": 0,
-      "let_underscore": 2,
-      "unwrap_or_default": 0
-    },
-    "crates/jcode-app-core/src/ambient/persistence.rs": {
-      "dot_ok": 0,
-      "let_underscore": 6,
-      "unwrap_or_default": 1
-    },
-    "crates/jcode-app-core/src/ambient/runner.rs": {
-      "dot_ok": 0,
-      "let_underscore": 14,
-      "unwrap_or_default": 1
-    },
-    "crates/jcode-app-core/src/ambient/scheduler.rs": {
-      "dot_ok": 0,
-      "let_underscore": 0,
-      "unwrap_or_default": 3
-    },
     "crates/jcode-app-core/src/catchup.rs": {
       "dot_ok": 2,
       "let_underscore": 0,
@@ -204,11 +179,6 @@
     "crates/jcode-app-core/src/server/comm_sync.rs": {
       "dot_ok": 0,
       "let_underscore": 16,
-      "unwrap_or_default": 0
-    },
-    "crates/jcode-app-core/src/server/debug_ambient.rs": {
-      "dot_ok": 0,
-      "let_underscore": 1,
       "unwrap_or_default": 0
     },
     "crates/jcode-app-core/src/server/debug_command_exec.rs": {
@@ -365,11 +335,6 @@
       "dot_ok": 17,
       "let_underscore": 1,
       "unwrap_or_default": 4
-    },
-    "crates/jcode-app-core/src/tool/ambient.rs": {
-      "dot_ok": 4,
-      "let_underscore": 2,
-      "unwrap_or_default": 1
     },
     "crates/jcode-app-core/src/tool/apply_patch.rs": {
       "dot_ok": 0,
@@ -686,11 +651,6 @@
       "let_underscore": 0,
       "unwrap_or_default": 0
     },
-    "crates/jcode-base/src/embedding.rs": {
-      "dot_ok": 2,
-      "let_underscore": 0,
-      "unwrap_or_default": 0
-    },
     "crates/jcode-base/src/gateway.rs": {
       "dot_ok": 5,
       "let_underscore": 1,
@@ -760,41 +720,6 @@
       "dot_ok": 1,
       "let_underscore": 1,
       "unwrap_or_default": 0
-    },
-    "crates/jcode-base/src/memory.rs": {
-      "dot_ok": 1,
-      "let_underscore": 7,
-      "unwrap_or_default": 2
-    },
-    "crates/jcode-base/src/memory/activity.rs": {
-      "dot_ok": 1,
-      "let_underscore": 0,
-      "unwrap_or_default": 1
-    },
-    "crates/jcode-base/src/memory/cache.rs": {
-      "dot_ok": 2,
-      "let_underscore": 0,
-      "unwrap_or_default": 0
-    },
-    "crates/jcode-base/src/memory/pending.rs": {
-      "dot_ok": 2,
-      "let_underscore": 0,
-      "unwrap_or_default": 0
-    },
-    "crates/jcode-base/src/memory_agent.rs": {
-      "dot_ok": 0,
-      "let_underscore": 6,
-      "unwrap_or_default": 3
-    },
-    "crates/jcode-base/src/memory_log.rs": {
-      "dot_ok": 2,
-      "let_underscore": 3,
-      "unwrap_or_default": 0
-    },
-    "crates/jcode-base/src/memory_rerank.rs": {
-      "dot_ok": 2,
-      "let_underscore": 0,
-      "unwrap_or_default": 1
     },
     "crates/jcode-base/src/message.rs": {
       "dot_ok": 2,
@@ -965,11 +890,6 @@
       "dot_ok": 2,
       "let_underscore": 1,
       "unwrap_or_default": 1
-    },
-    "crates/jcode-base/src/sidecar.rs": {
-      "dot_ok": 0,
-      "let_underscore": 0,
-      "unwrap_or_default": 2
     },
     "crates/jcode-base/src/skill.rs": {
       "dot_ok": 3,
@@ -2110,11 +2030,6 @@
       "dot_ok": 0,
       "let_underscore": 1,
       "unwrap_or_default": 0
-    },
-    "src/bin/memory_recall_bench.rs": {
-      "dot_ok": 31,
-      "let_underscore": 5,
-      "unwrap_or_default": 21
     },
     "src/bin/tui_bench.rs": {
       "dot_ok": 0,

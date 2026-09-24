@@ -1,6 +1,6 @@
 use super::Agent;
 use crate::logging;
-use crate::message::{Message, ToolDefinition};
+use crate::message::ToolDefinition;
 
 impl Agent {
     /// Explicitly prepare/freeze the same tool surface used by provider turns.
@@ -15,7 +15,7 @@ impl Agent {
     /// Inspect the next request's static context without inference, prewarming,
     /// or locking a new tool snapshot. Pending memory is deliberately not consumed.
     pub async fn debug_context(&self) -> serde_json::Value {
-        let prompt = self.build_system_prompt_split(None);
+        let prompt = self.build_system_prompt_split();
         let current_tools = self.tool_definitions_for_debug().await;
         let effective_tools = self.locked_tools.as_ref().unwrap_or(&current_tools);
         let locked_tool_names = self.locked_tools.as_ref().map(|tools| {
@@ -55,44 +55,6 @@ impl Agent {
         ));
     }
 
-    pub(super) fn build_memory_prompt_nonblocking_shared(
-        &self,
-        messages: std::sync::Arc<[Message]>,
-        _memory_event_tx: Option<crate::memory::MemoryEventSink>,
-    ) -> Option<crate::memory::PendingMemory> {
-        if !self.memory_enabled {
-            return None;
-        }
-
-        let session_id = &self.session.id;
-
-        let fresh_user_turn = crate::message::ends_with_fresh_user_turn(&messages);
-        let pending = if fresh_user_turn {
-            crate::memory::take_pending_memory(session_id)
-        } else {
-            None
-        };
-
-        // Use the persistent memory-agent pipeline as the single source of truth.
-        // Running both this and the legacy MemoryManager background retrieval path
-        // can prepare overlapping pending prompts for the same turn, which makes
-        // memory injection feel overly aggressive.
-        // Relevance results are consumed only at the start of a fresh user turn.
-        // Enqueuing again after every tool result runs the local embedding model
-        // for each provider continuation without creating an additional injection
-        // opportunity. One update per user turn keeps memory current while avoiding
-        // redundant 512-token inference during tool-heavy agent loops.
-        if fresh_user_turn {
-            crate::memory_agent::update_context_sync_with_dir(
-                session_id,
-                messages,
-                self.session.working_dir.clone(),
-            );
-        }
-
-        pending
-    }
-
     fn append_current_turn_system_reminder(&self, split: &mut crate::prompt::SplitSystemPrompt) {
         let Some(reminder) = self
             .current_turn_system_reminder
@@ -112,10 +74,7 @@ impl Agent {
 
     /// Build split system prompt for better caching
     /// Returns static (cacheable) and dynamic (not cached) parts separately
-    pub(super) fn build_system_prompt_split(
-        &self,
-        memory_prompt: Option<&str>,
-    ) -> crate::prompt::SplitSystemPrompt {
+    pub(super) fn build_system_prompt_split(&self) -> crate::prompt::SplitSystemPrompt {
         if let Some(ref override_prompt) = self.system_prompt_override {
             return crate::prompt::SplitSystemPrompt {
                 static_part: override_prompt.clone(),
@@ -149,7 +108,6 @@ impl Agent {
             skill_prompt.as_deref(),
             &available_skills,
             self.session.is_canary,
-            memory_prompt,
             working_dir.as_deref(),
             self.agents_md_snapshot.clone(),
         );
@@ -161,15 +119,5 @@ impl Agent {
         );
 
         split
-    }
-
-    /// Non-blocking memory prompt - takes pending result and spawns check for next turn
-    #[cfg(test)]
-    pub(super) fn build_memory_prompt_nonblocking(
-        &self,
-        messages: &[Message],
-        _memory_event_tx: Option<crate::memory::MemoryEventSink>,
-    ) -> Option<crate::memory::PendingMemory> {
-        self.build_memory_prompt_nonblocking_shared(messages.to_vec().into(), _memory_event_tx)
     }
 }

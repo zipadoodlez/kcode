@@ -13,8 +13,8 @@
 
 use super::*;
 use crate::tui::info_widget::{
-    BackgroundInfo, CacheHitInfo, CompactionInfo, GitInfo, InfoWidgetData, MemoryInfo, SwarmInfo,
-    UsageInfo, UsageProvider,
+    BackgroundInfo, CacheHitInfo, CompactionInfo, GitInfo, InfoWidgetData, SwarmInfo, UsageInfo,
+    UsageProvider,
 };
 
 fn todo(id: &str, status: &str) -> crate::todo::TodoItem {
@@ -46,10 +46,6 @@ fn contended_data() -> InfoWidgetData {
             ..Default::default()
         }),
         todos: vec![todo("t1", "in_progress"), todo("t2", "pending")],
-        memory_info: Some(MemoryInfo {
-            total_count: 4,
-            ..Default::default()
-        }),
         swarm_info: Some(SwarmInfo {
             session_count: 4,
             subagent_status: Some("running subtask".to_string()),

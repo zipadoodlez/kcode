@@ -750,8 +750,6 @@ impl App {
             }
         }
 
-        self.extract_session_memories().await;
-
         Ok(RunResult {
             reload_session: self.reload_requested.take(),
             rebuild_session: self.rebuild_requested.take(),

@@ -1,7 +1,7 @@
 use super::{
-    AmbientConfig, Config, DiffDisplayMode, DisplayConfig, HookCommands, LatexRenderingMode,
-    McpToolsMode, ProviderConfig, SessionPickerResumeAction, SwarmSpawnMode, ToolConfig,
-    config_env_fingerprint, populate_context_limits_from_config_ref,
+    Config, DiffDisplayMode, DisplayConfig, HookCommands, LatexRenderingMode, McpToolsMode,
+    ProviderConfig, SessionPickerResumeAction, SwarmSpawnMode, ToolConfig, config_env_fingerprint,
+    populate_context_limits_from_config_ref,
 };
 use std::ffi::OsString;
 use std::path::Path;
@@ -539,33 +539,6 @@ fn test_env_override_focus_hook() {
 }
 
 #[test]
-fn test_memory_sidecar_enabled_defaults_true() {
-    // The LLM precision-judge path is the only reliably productive memory mode,
-    // so memory uses it by default. Users opt into the no-LLM hybrid path
-    // explicitly by setting this false.
-    let cfg = Config::default();
-    assert!(cfg.agents.memory_sidecar_enabled);
-}
-
-#[test]
-fn test_env_override_memory_sidecar() {
-    let _guard = crate::storage::lock_test_env();
-    let prev_model = std::env::var_os("JCODE_MEMORY_MODEL");
-    let prev_enabled = std::env::var_os("JCODE_MEMORY_SIDECAR_ENABLED");
-    crate::env::set_var("JCODE_MEMORY_MODEL", "claude-haiku-4");
-    crate::env::set_var("JCODE_MEMORY_SIDECAR_ENABLED", "true");
-
-    let mut cfg = Config::default();
-    cfg.apply_env_overrides();
-
-    assert_eq!(cfg.agents.memory_model.as_deref(), Some("claude-haiku-4"));
-    assert!(cfg.agents.memory_sidecar_enabled);
-
-    restore_env_var("JCODE_MEMORY_MODEL", prev_model);
-    restore_env_var("JCODE_MEMORY_SIDECAR_ENABLED", prev_enabled);
-}
-
-#[test]
 fn tool_config_defaults_to_full_toolset() {
     let config = ToolConfig::default();
     let selection = config.selection();
@@ -945,11 +918,6 @@ fn cached_external_auth_trust_observes_manual_revocation() {
 }
 
 #[test]
-fn test_ambient_visible_defaults_to_true() {
-    assert!(AmbientConfig::default().visible);
-}
-
-#[test]
 fn test_display_auto_server_reload_defaults_to_true() {
     assert!(DisplayConfig::default().auto_server_reload);
 }
@@ -1193,12 +1161,10 @@ fn unknown_update_channel_value_falls_back_to_stable_instead_of_failing_parse() 
     );
 
     // Other settings in the same config must survive the fallback.
-    let cfg: Config = toml::from_str(
-        "[features]\nupdate_channel = \"manual\"\nmemory = false\n\n[display]\ncentered = true\n",
-    )
-    .expect("config with unknown update_channel should parse");
+    let cfg: Config =
+        toml::from_str("[features]\nupdate_channel = \"manual\"\n\n[display]\ncentered = true\n")
+            .expect("config with unknown update_channel should parse");
     assert_eq!(cfg.features.update_channel, super::UpdateChannel::Stable);
-    assert!(!cfg.features.memory);
     assert!(cfg.display.centered);
 }
 

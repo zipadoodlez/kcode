@@ -27,14 +27,6 @@ fn create_and_resume_goal_persists_project_goal() {
         .expect("goal exists");
     assert_eq!(loaded.title, "Ship mobile MVP");
 
-    let manager = crate::memory::MemoryManager::new().with_project_dir(&project);
-    let graph = manager.load_project_graph().expect("load graph");
-    let goal_mem = graph
-        .get_memory(&format!("goal:{}", goal.id))
-        .expect("goal memory mirror");
-    assert!(goal_mem.tags.iter().any(|tag| tag == "goal"));
-    assert!(goal_mem.content.contains("Ship mobile MVP"));
-
     let session_id = "ses_goal_test";
     attach_goal_to_session(session_id, &goal, Some(&project)).expect("attach");
     let resumed = resume_goal(session_id, Some(&project))

@@ -20,8 +20,6 @@ impl App {
             AgentModelTarget::Swarm,
             AgentModelTarget::Review,
             AgentModelTarget::Judge,
-            AgentModelTarget::Memory,
-            AgentModelTarget::Ambient,
         ]
         .into_iter()
         .map(|target| {
@@ -207,15 +205,6 @@ impl App {
         }
 
         if let Some(ref mut picker) = self.inline_interactive_state {
-            if target == AgentModelTarget::Memory {
-                picker.entries.retain(|entry| {
-                    matches!(
-                        crate::provider::provider_for_model(&model_entry_base_name(entry)),
-                        Some("openai" | "claude")
-                    )
-                });
-            }
-
             for entry in &mut picker.entries {
                 let matches_saved = configured.as_deref().map(|saved| {
                     let base = model_entry_base_name(entry);

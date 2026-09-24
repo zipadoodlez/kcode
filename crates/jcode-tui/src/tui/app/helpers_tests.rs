@@ -1,13 +1,10 @@
 use super::{
     build_resume_command, effort_display_label, effort_display_label_with_root,
-    extract_bracketed_system_message, format_countdown_until, gather_ambient_info_inner,
-    inferred_reasoning_efforts, partition_queued_messages, resume_invocation_args,
-    resumed_window_title,
+    extract_bracketed_system_message, inferred_reasoning_efforts, partition_queued_messages,
+    resume_invocation_args, resumed_window_title,
 };
-use crate::ambient::{AmbientManager, Priority, ScheduleRequest, ScheduleTarget};
 use crate::terminal_launch::{detected_resume_terminal, shell_command};
 use crate::tui::session_picker::ResumeTarget;
-use chrono::{Duration as ChronoDuration, Utc};
 
 struct EnvVarGuard {
     key: &'static str,
@@ -358,98 +355,6 @@ fn build_resume_command_uses_imported_jcode_session_for_codex() {
         ]
     );
     assert!(title.contains("Codex"));
-}
-
-#[test]
-fn format_countdown_until_handles_subminute_and_minutes() {
-    let soon = Utc::now() + ChronoDuration::seconds(25);
-    let medium = Utc::now() + ChronoDuration::minutes(2) + ChronoDuration::seconds(15);
-
-    let soon_text = format_countdown_until(soon);
-    let medium_text = format_countdown_until(medium);
-
-    assert!(soon_text.starts_with("in "));
-    assert!(soon_text.ends_with('s'));
-    assert!(medium_text.starts_with("in 2m"));
-}
-
-#[test]
-fn gather_ambient_info_filters_to_session_reminders_when_ambient_disabled() {
-    let _env_lock = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
-
-    let mut manager = AmbientManager::new().expect("ambient manager");
-    let first_due = Utc::now() + ChronoDuration::minutes(5);
-    let second_due = Utc::now() + ChronoDuration::minutes(10);
-
-    manager
-        .schedule(ScheduleRequest {
-            wake_in_minutes: None,
-            wake_at: Some(first_due),
-            context: "ambient context".to_string(),
-            priority: Priority::Normal,
-            target: ScheduleTarget::Ambient,
-            created_by_session: "ambient".to_string(),
-            working_dir: None,
-            task_description: Some("ambient work".to_string()),
-            relevant_files: Vec::new(),
-            git_branch: None,
-            additional_context: None,
-        })
-        .expect("schedule ambient item");
-    manager
-        .schedule(ScheduleRequest {
-            wake_in_minutes: None,
-            wake_at: Some(first_due),
-            context: "first context".to_string(),
-            priority: Priority::Normal,
-            target: ScheduleTarget::Session {
-                session_id: "session_1".to_string(),
-            },
-            created_by_session: "session_1".to_string(),
-            working_dir: None,
-            task_description: Some("first reminder".to_string()),
-            relevant_files: Vec::new(),
-            git_branch: None,
-            additional_context: None,
-        })
-        .expect("schedule first reminder");
-    manager
-        .schedule(ScheduleRequest {
-            wake_in_minutes: None,
-            wake_at: Some(second_due),
-            context: "second context".to_string(),
-            priority: Priority::Normal,
-            target: ScheduleTarget::Session {
-                session_id: "session_1".to_string(),
-            },
-            created_by_session: "session_1".to_string(),
-            working_dir: None,
-            task_description: Some("second reminder".to_string()),
-            relevant_files: Vec::new(),
-            git_branch: None,
-            additional_context: None,
-        })
-        .expect("schedule second reminder");
-
-    // This test exercises queue filtering, not the stale-while-revalidate cache.
-    // Read synchronously while the temporary JCODE_HOME and its files are pinned:
-    // an unrelated in-flight cache refresh can otherwise overwrite the cleared
-    // process-global cache with data loaded under another test's JCODE_HOME.
-    let info = gather_ambient_info_inner(false).expect("ambient info");
-    assert!(info.show_widget);
-    assert_eq!(info.queue_count, 3);
-    assert_eq!(info.reminder_count, 2);
-    assert_eq!(
-        info.next_reminder_preview.as_deref(),
-        Some("first reminder")
-    );
-    assert!(
-        info.next_reminder_wake
-            .as_deref()
-            .is_some_and(|text| text.starts_with("in 4m") || text.starts_with("in 5m"))
-    );
 }
 
 #[test]

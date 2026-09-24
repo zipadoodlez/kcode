@@ -61,8 +61,8 @@ fn public_prompt_builders_deduplicate_home_and_aliases_but_preserve_distinct_fil
 fn prompt_guidance_child() {
     let case = std::env::var("JCODE_PROMPT_ACCEPTANCE_CASE").unwrap();
     let copies = if case == "distinct" { 2 } else { 1 };
-    let (full, full_info) = build_system_prompt_full(None, &[], false, None, None);
-    let (split, split_info) = build_system_prompt_split(None, &[], false, None, None);
+    let (full, full_info) = build_system_prompt_full(None, &[], false, None);
+    let (split, split_info) = build_system_prompt_split(None, &[], false, None);
 
     for prompt in [&full, &split.static_part] {
         for marker in [AGENTS, OVERLAY, TOOLS] {

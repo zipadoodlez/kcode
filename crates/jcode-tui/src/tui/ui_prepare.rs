@@ -1646,34 +1646,6 @@ fn render_message_into(
                 acc.line_copy_offsets.push(prefix_width);
             }
         }
-        "memory" => {
-            let border_style = Style::default().fg(rgb(130, 140, 180));
-            let text_style = Style::default().fg(dim_color());
-            let entries = super::memory_ui::parse_memory_display_entries(&msg.content);
-
-            let count = entries.len();
-            let tiles = group_into_tiles(entries);
-
-            let header_text = if let Some(title) = &msg.title {
-                title.clone()
-            } else if count == 1 {
-                "🧠 1 memory".to_string()
-            } else {
-                format!("🧠 {} memories", count)
-            };
-            let header = Line::from(Span::styled(header_text, border_style)).alignment(align);
-
-            let total_width = if centered {
-                (width.saturating_sub(4) as usize).min(120)
-            } else {
-                width.saturating_sub(2) as usize
-            };
-            let tile_lines =
-                render_memory_tiles(&tiles, total_width, border_style, text_style, Some(header));
-            for line in tile_lines {
-                acc.push_auto(align_if_unset(line, align));
-            }
-        }
         "usage" => {
             let content_width = width.saturating_sub(4);
             let cached =

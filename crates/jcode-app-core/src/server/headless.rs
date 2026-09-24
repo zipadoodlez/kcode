@@ -13,23 +13,6 @@ use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
 
 type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
-
-/// Which memory store a headless session gets.
-///
-/// A bare `bool` here is one typo away from silently reintroducing #729, where
-/// every real swarm worker was forced into throwaway test storage and could
-/// never read what the session that spawned it remembered. Naming the two cases
-/// makes the wrong one hard to pick by accident and obvious in review.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum HeadlessMemoryScope {
-    /// Real project/global memory, scoped to the session's working directory.
-    /// Correct for swarm-spawned workers, which are real user sessions.
-    RealProject,
-    /// Throwaway isolated storage. Only for debug-socket admin sessions, where
-    /// isolation is the entire point.
-    IsolatedTest,
-}
-
 #[expect(
     clippy::too_many_arguments,
     reason = "headless session creation wires provider, global session, swarm state, interrupts, and MCP pool together"
@@ -51,9 +34,7 @@ pub(super) async fn create_headless_session(
     effort_override: Option<String>,
     mcp_pool: Option<Arc<crate::mcp::SharedMcpPool>>,
     report_back_to_session_id: Option<String>,
-    memory_scope: HeadlessMemoryScope,
 ) -> Result<String> {
-    let memory_enabled = crate::config::config().features.memory;
     let swarm_enabled = crate::config::config().features.swarm;
 
     let working_dir = if let Some(path_str) = command.strip_prefix("create_session:") {
@@ -69,10 +50,6 @@ pub(super) async fn create_headless_session(
 
     let provider = provider_template.fork();
     let registry = Registry::new(provider.clone()).await;
-
-    if memory_scope == HeadlessMemoryScope::IsolatedTest {
-        registry.enable_memory_test_mode().await;
-    }
 
     if selfdev_requested {
         registry.register_debug_tools().await;
@@ -96,7 +73,6 @@ pub(super) async fn create_headless_session(
         working_dir_string.as_deref(),
         report_back_to_session_id.clone(),
     );
-    new_agent.set_memory_enabled(memory_enabled);
     // Inline swarm mode renders a live gallery of worker viewports in the
     // coordinator TUI; enable the per-agent output tap so this worker streams a
     // throttled output tail onto the bus.

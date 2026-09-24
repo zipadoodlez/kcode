@@ -223,52 +223,6 @@ pub(super) async fn maybe_handle_server_state_command(
         ));
     }
 
-    if cmd == "memory-judge" || cmd == "memory:judge" || cmd == "server:memory-judge" {
-        // Attribution of no-LLM memory-mode conversions: how often a surfacing
-        // turn ran the LLM judge vs converted (intended opt-out/cadence vs the
-        // degradations we drive to zero). See `memory_judge_metrics`.
-        return Ok(Some(
-            serde_json::to_string_pretty(&jcode_base::memory_judge_metrics::snapshot())
-                .unwrap_or_else(|_| "{}".to_string()),
-        ));
-    }
-
-    if cmd == "embeddings" || cmd == "embeddings:stats" {
-        return Ok(Some(
-            serde_json::to_string_pretty(&crate::embedding::stats())
-                .unwrap_or_else(|_| "{}".to_string()),
-        ));
-    }
-
-    if cmd == "embeddings:load" {
-        let result = crate::embedding::get_embedder();
-        let payload = match result {
-            Ok(_) => serde_json::json!({
-                "status": "loaded",
-                "embeddings": crate::embedding::stats(),
-            }),
-            Err(err) => serde_json::json!({
-                "status": "error",
-                "error": err.to_string(),
-                "embeddings": crate::embedding::stats(),
-            }),
-        };
-        return Ok(Some(
-            serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string()),
-        ));
-    }
-
-    if cmd == "embeddings:unload" {
-        let unloaded = crate::embedding::unload_now();
-        let payload = serde_json::json!({
-            "status": if unloaded { "unloaded" } else { "noop" },
-            "embeddings": crate::embedding::stats(),
-        });
-        return Ok(Some(
-            serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string()),
-        ));
-    }
-
     if cmd == "info" || cmd == "server:info" {
         let uptime_secs = server_start_time.elapsed().as_secs();
         let live_session_ids: HashSet<String> = sessions.read().await.keys().cloned().collect();
@@ -775,10 +729,8 @@ async fn build_server_memory_payload(
 ) -> serde_json::Value {
     let process = crate::process_memory::snapshot_with_source("server:memory");
     let background_tasks = crate::background::global().list().await;
-    let embedder_stats = crate::embedding::stats();
     let (search_index_count, search_index_entries, search_index_bytes) =
         crate::tool::session_search_index::cache_memory_stats();
-    let embedding_model_available = crate::embedding::is_model_available();
 
     let sessions_guard = sessions.read().await;
     let mut locked_session_profiles: Vec<serde_json::Value> = Vec::new();
@@ -1146,20 +1098,6 @@ async fn build_server_memory_payload(
         "background": {
             "task_count": background_task_count,
             "tasks_json_bytes": background_task_json_bytes,
-        },
-        "embeddings": {
-            "model_available": embedding_model_available,
-            "loaded": embedder_stats.loaded,
-            "load_count": embedder_stats.load_count,
-            "unload_count": embedder_stats.unload_count,
-            "embed_calls": embedder_stats.embed_calls,
-            "embed_failures": embedder_stats.embed_failures,
-            "total_embed_ms": embedder_stats.total_embed_ms,
-            "avg_embed_ms": embedder_stats.avg_embed_ms,
-            "idle_secs": embedder_stats.idle_secs,
-            "loaded_secs": embedder_stats.loaded_secs,
-            "cache_hits": embedder_stats.cache_hits,
-            "cache_size": embedder_stats.cache_size,
         },
         "session_search_index": {
             "index_count": search_index_count,

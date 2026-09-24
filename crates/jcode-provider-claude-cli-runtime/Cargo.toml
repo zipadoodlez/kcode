@@ -12,7 +12,7 @@ path = "src/lib.rs"
 anyhow = "1"
 async-trait = "0.1"
 # default-features = false: the top-level binary decides heavy optional base
-# features (embeddings/bedrock). Runtime crates must not re-enable them via
+# features (bedrock). Runtime crates must not re-enable them via
 # feature unification, or --no-default-features release targets that cannot
 # build tract-linalg's asm break.
 jcode-base = { path = "../jcode-base", default-features = false }

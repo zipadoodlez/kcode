@@ -62,11 +62,9 @@ impl Config {
 
 **Features:**
 - Check updates: {}
-- Memory: {}
 - Swarm: {}
 - Auto-poke: {}
 - Message timestamps: {}
-- Persist memory injections: {}
 - KV cache miss notices: {}
 - Update channel: {}
 
@@ -97,22 +95,9 @@ impl Config {
 - Spawn hook: {}
 - Review: {}
 - Judge: {}
-- Memory: {}
-- Memory sidecar: {}
-- Ambient: {}
-
-**Ambient:**
-- Enabled: {}
-- Provider: {}
-- Model: {}
-- Interval: {}-{} minutes
-- Pause on active session: {}
-- Proactive work: {}
-- Work branch prefix: `{}`
-- Visible mode: {}
 
 *Edit the config file or set environment variables to customize.*
-*Environment variables (e.g., `JCODE_SCROLL_UP_KEY`, `JCODE_AMBIENT_ENABLED`) override file settings.*"#,
+*Environment variables (e.g., `JCODE_SCROLL_UP_KEY`, `JCODE_SCROLL_DOWN_KEY`) override file settings.*"#,
             path,
             self.keybindings.scroll_up,
             self.keybindings.scroll_down,
@@ -192,11 +177,9 @@ impl Config {
                 )
             },
             self.features.check_updates,
-            self.features.memory,
             self.features.swarm,
             self.features.auto_poke,
             self.features.message_timestamps,
-            self.features.persist_memory_injections,
             self.features.kv_cache_miss_notices,
             self.features.update_channel,
             if self.tools.profile.trim().is_empty() {
@@ -263,31 +246,6 @@ impl Config {
                 .model
                 .as_deref()
                 .unwrap_or("(inherit current session)"),
-            self.agents
-                .memory_model
-                .as_deref()
-                .unwrap_or("(sidecar auto-select)"),
-            if self.agents.memory_sidecar_enabled {
-                "enabled"
-            } else {
-                "disabled"
-            },
-            self.ambient
-                .model
-                .as_deref()
-                .unwrap_or("(provider default)"),
-            self.ambient.enabled,
-            self.ambient.provider.as_deref().unwrap_or("(auto)"),
-            self.ambient
-                .model
-                .as_deref()
-                .unwrap_or("(provider default)"),
-            self.ambient.min_interval_minutes,
-            self.ambient.max_interval_minutes,
-            self.ambient.pause_on_active_session,
-            self.ambient.proactive_work,
-            self.ambient.work_branch_prefix,
-            self.ambient.visible,
         )
     }
 }

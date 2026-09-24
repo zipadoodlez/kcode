@@ -304,12 +304,6 @@ impl Config {
             }
         }
 
-        // Features
-        if let Ok(v) = std::env::var("JCODE_MEMORY_ENABLED") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.features.memory = parsed;
-            }
-        }
         if let Ok(v) = std::env::var("JCODE_SWARM_ENABLED") {
             if let Some(parsed) = parse_env_bool(&v) {
                 self.features.swarm = parsed;
@@ -333,11 +327,6 @@ impl Config {
         if let Ok(v) = std::env::var("JCODE_MESSAGE_TIMESTAMPS") {
             if let Some(parsed) = parse_env_bool(&v) {
                 self.features.message_timestamps = parsed;
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_PERSIST_MEMORY_INJECTIONS") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.features.persist_memory_injections = parsed;
             }
         }
         if let Ok(v) = std::env::var("JCODE_KV_CACHE_MISS_NOTICES") {
@@ -398,47 +387,6 @@ impl Config {
                 self.agents.swarm_max_concurrent_agents = parsed;
             }
         }
-        if let Ok(v) = std::env::var("JCODE_MEMORY_MODEL") {
-            let trimmed = v.trim();
-            self.agents.memory_model = if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            };
-        }
-        if let Ok(v) = std::env::var("JCODE_MEMORY_SIDECAR_ENABLED") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.agents.memory_sidecar_enabled = parsed;
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_MEMORY_EMBEDDING_BACKEND") {
-            let trimmed = v.trim();
-            if !trimmed.is_empty() {
-                self.agents.memory_embedding_backend = trimmed.to_string();
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_MEMORY_EMBEDDING_MODEL") {
-            let trimmed = v.trim();
-            self.agents.memory_embedding_model = if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            };
-        }
-        if let Ok(v) = std::env::var("JCODE_MEMORY_EMBEDDING_BASE_URL") {
-            let trimmed = v.trim();
-            self.agents.memory_embedding_base_url = if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            };
-        }
-        if let Ok(v) = std::env::var("JCODE_MEMORY_EMBEDDING_DIM") {
-            if let Ok(parsed) = v.trim().parse::<usize>() {
-                self.agents.memory_embedding_dim = Some(parsed);
-            }
-        }
-
         // Terminal spawning
         if let Ok(v) = std::env::var("JCODE_SPAWN_HOOK") {
             let trimmed = v.trim();
@@ -574,40 +522,6 @@ impl Config {
             } else {
                 Some(trimmed.to_string())
             };
-        }
-
-        // Ambient
-        if let Ok(v) = std::env::var("JCODE_AMBIENT_ENABLED") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.ambient.enabled = parsed;
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_AMBIENT_PROVIDER") {
-            self.ambient.provider = Some(v);
-        }
-        if let Ok(v) = std::env::var("JCODE_AMBIENT_MODEL") {
-            self.ambient.model = Some(v);
-        }
-        if let Ok(v) = std::env::var("JCODE_AMBIENT_MIN_INTERVAL") {
-            if let Ok(parsed) = v.trim().parse::<u32>() {
-                self.ambient.min_interval_minutes = parsed;
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_AMBIENT_MAX_INTERVAL") {
-            if let Ok(parsed) = v.trim().parse::<u32>() {
-                self.ambient.max_interval_minutes = parsed;
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_AMBIENT_PROACTIVE") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.ambient.proactive_work = parsed;
-            }
-        }
-
-        if let Ok(v) = std::env::var("JCODE_AMBIENT_VISIBLE") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.ambient.visible = parsed;
-            }
         }
         if let Ok(v) = std::env::var("JCODE_PREVENT_SLEEP_WHILE_STREAMING") {
             if let Some(parsed) = parse_env_bool(&v) {

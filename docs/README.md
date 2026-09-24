@@ -16,7 +16,7 @@ Reference documentation for the jcode codebase.
 
 - Architecture: `SERVER_ARCHITECTURE.md`
 - Swarm: `SWARM_ARCHITECTURE.md`, `SWARM_TASK_GRAPH.md`
-- Memory: `MEMORY_ARCHITECTURE.md`, `MEMORY_BUDGET.md`, `MEMORY_INCIDENT_RUNBOOK.md`
+- Process memory: `PROCESS_MEMORY_BUDGET.md`, `PROCESS_MEMORY_INCIDENT_RUNBOOK.md`
 - Providers: `PROVIDER_DOCTOR.md`, `AWS_BEDROCK_PROVIDER.md`
 - Platform: `TERMINAL_CAPABILITIES.md`
 

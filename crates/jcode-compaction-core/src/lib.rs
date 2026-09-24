@@ -1,6 +1,5 @@
 use jcode_message_types::{ContentBlock, Message, Role};
 use std::collections::HashSet;
-use std::hash::{Hash, Hasher};
 
 /// Default token budget (200k tokens - matches Claude's actual context limit)
 pub const DEFAULT_TOKEN_BUDGET: usize = 200_000;
@@ -66,13 +65,10 @@ pub const SYSTEM_OVERHEAD_TOKENS: usize = 18_000;
 pub const TOKEN_HISTORY_WINDOW: usize = 20;
 
 /// Maximum characters to embed per message (first N chars capture semantic content)
-pub const EMBED_MAX_CHARS_PER_MSG: usize = 512;
 
 /// Rolling window of per-turn embeddings used for topic-shift detection
-pub const EMBEDDING_HISTORY_WINDOW: usize = 10;
 
 /// Per-manager semantic embedding cache capacity.
-pub const SEMANTIC_EMBED_CACHE_CAPACITY: usize = 256;
 
 pub const SUMMARY_PROMPT: &str = r#"Summarize our conversation so you can continue this work later.
 
@@ -209,28 +205,6 @@ pub fn truncate_str_boundary(value: &str, max_bytes: usize) -> &str {
         end -= 1;
     }
     &value[..end]
-}
-
-pub fn mean_embedding(embeddings: &[&Vec<f32>], dim: usize) -> Vec<f32> {
-    let mut mean = vec![0f32; dim];
-    for emb in embeddings {
-        for (i, v) in emb.iter().enumerate() {
-            if i < dim {
-                mean[i] += v;
-            }
-        }
-    }
-    let n = embeddings.len().max(1) as f32;
-    for v in &mut mean {
-        *v /= n;
-    }
-    let norm: f32 = mean.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if norm > 0.0 {
-        for v in &mut mean {
-            *v /= norm;
-        }
-    }
-    mean
 }
 
 /// Find a safe compaction cutoff that does not leave kept tool results without
@@ -397,53 +371,6 @@ pub fn estimate_compaction_tokens_from_chars(total_chars: usize, token_budget: u
         0
     };
     msg_tokens + overhead
-}
-
-pub fn semantic_goal_text(messages: &[Message]) -> String {
-    let mut text = String::new();
-    for msg in messages {
-        for block in &msg.content {
-            match block {
-                ContentBlock::Text {
-                    text: block_text, ..
-                } => push_semantic_excerpt(&mut text, block_text, 200),
-                ContentBlock::ToolResult { content, .. } => {
-                    push_semantic_excerpt(&mut text, content, 100)
-                }
-                _ => {}
-            }
-        }
-    }
-    text
-}
-
-pub fn semantic_message_text(msg: &Message) -> String {
-    let mut text = String::new();
-    for block in &msg.content {
-        if let ContentBlock::Text {
-            text: block_text, ..
-        } = block
-        {
-            push_semantic_excerpt(&mut text, block_text, EMBED_MAX_CHARS_PER_MSG);
-        }
-    }
-    text
-}
-
-pub fn push_semantic_excerpt(target: &mut String, source: &str, max_chars: usize) {
-    if source.is_empty() {
-        return;
-    }
-    if !target.is_empty() {
-        target.push(' ');
-    }
-    target.extend(source.chars().take(max_chars));
-}
-
-pub fn semantic_cache_key(text: &str) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    text.hash(&mut hasher);
-    hasher.finish()
 }
 
 pub fn build_emergency_summary_text(
@@ -791,15 +718,6 @@ mod tests {
     }
 
     #[test]
-    fn mean_embedding_is_normalized() {
-        let a = vec![1.0, 0.0];
-        let b = vec![0.0, 1.0];
-        let mean = mean_embedding(&[&a, &b], 2);
-        let norm = (mean[0] * mean[0] + mean[1] * mean[1]).sqrt();
-        assert!((norm - 1.0).abs() < 0.0001);
-    }
-
-    #[test]
     fn safe_cutoff_keeps_tool_use_with_tool_result() {
         let tool_use = Message {
             role: Role::Assistant,
@@ -876,30 +794,6 @@ mod tests {
             SYSTEM_OVERHEAD_TOKENS + 4 * IMAGE_TOKEN_COST,
             tokens
         );
-    }
-
-    #[test]
-    fn builds_semantic_text_from_relevant_content() {
-        let message = Message {
-            role: Role::User,
-            content: vec![
-                ContentBlock::Text {
-                    text: "hello world".to_string(),
-                    cache_control: None,
-                },
-                ContentBlock::ToolResult {
-                    tool_use_id: "call_1".to_string(),
-                    content: "tool output".to_string(),
-                    is_error: None,
-                },
-            ],
-            timestamp: None,
-            tool_duration_ms: None,
-        };
-
-        assert_eq!(semantic_message_text(&message), "hello world");
-        assert_eq!(semantic_goal_text(&[message]), "hello world tool output");
-        assert_eq!(semantic_cache_key("stable"), semantic_cache_key("stable"));
     }
 
     #[test]

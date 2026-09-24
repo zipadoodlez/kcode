@@ -6,8 +6,8 @@ use std::process::{Command as ProcessCommand, Stdio};
 use std::time::Instant;
 
 use super::args::{
-    AmbientCommand, Args, AuthCommand, Command, MemoryCommand, ModelCommand, ProviderCommand,
-    RestartCommand, ServerCommand, SessionCommand, TranscriptModeArg,
+    Args, AuthCommand, Command, ModelCommand, ProviderCommand, RestartCommand, ServerCommand,
+    SessionCommand, TranscriptModeArg,
 };
 use crate::{
     agent, auth, build, provider, provider_catalog, server, session, startup_profile, tui,
@@ -363,9 +363,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                 })?;
             }
         },
-        Some(Command::Memory(subcmd)) => {
-            commands::run_memory_command(map_memory_subcommand(subcmd))?;
-        }
         Some(Command::Session(subcmd)) => match subcmd {
             SessionCommand::Rename {
                 session,
@@ -374,9 +371,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                 json,
             } => commands::run_session_rename_command(&session, name.as_deref(), clear, json)?,
         },
-        Some(Command::Ambient(subcmd)) => {
-            commands::run_ambient_command(map_ambient_subcommand(subcmd)).await?;
-        }
         Some(Command::Permissions) => {
             tui::permissions::run_permissions()?;
         }
@@ -626,39 +620,6 @@ fn resolve_resume_id(resume_id: &str) -> Result<String> {
             Some(imported_id) => Ok(imported_id),
             None => Err(native_err),
         },
-    }
-}
-
-fn map_memory_subcommand(subcmd: MemoryCommand) -> commands::MemorySubcommand {
-    match subcmd {
-        MemoryCommand::List { scope, tag } => commands::MemorySubcommand::List { scope, tag },
-        MemoryCommand::Search { query, semantic } => {
-            commands::MemorySubcommand::Search { query, semantic }
-        }
-        MemoryCommand::Export { output, scope } => {
-            commands::MemorySubcommand::Export { output, scope }
-        }
-        MemoryCommand::Import {
-            input,
-            scope,
-            overwrite,
-        } => commands::MemorySubcommand::Import {
-            input,
-            scope,
-            overwrite,
-        },
-        MemoryCommand::Stats => commands::MemorySubcommand::Stats,
-        MemoryCommand::ClearTest => commands::MemorySubcommand::ClearTest,
-    }
-}
-
-fn map_ambient_subcommand(subcmd: AmbientCommand) -> commands::AmbientSubcommand {
-    match subcmd {
-        AmbientCommand::Status => commands::AmbientSubcommand::Status,
-        AmbientCommand::Log => commands::AmbientSubcommand::Log,
-        AmbientCommand::Trigger => commands::AmbientSubcommand::Trigger,
-        AmbientCommand::Stop => commands::AmbientSubcommand::Stop,
-        AmbientCommand::RunVisible => commands::AmbientSubcommand::RunVisible,
     }
 }
 

@@ -47,21 +47,8 @@ fn buffer_rows(terminal: &Terminal<TestBackend>) -> Vec<String> {
         .collect()
 }
 
-fn fact_test_state(input: String, scheduled: bool) -> TestState {
+fn fact_test_state(input: String) -> TestState {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".to_string());
-    let ambient_info = scheduled.then(|| info_widget::AmbientWidgetData {
-        show_widget: false,
-        status: crate::ambient::AmbientStatus::Idle,
-        queue_count: 1,
-        next_queue_preview: Some("check the build".to_string()),
-        reminder_count: 1,
-        next_reminder_preview: Some("check the build".to_string()),
-        last_run_ago: None,
-        last_summary: None,
-        next_wake: None,
-        next_reminder_wake: Some("in 4m".to_string()),
-        budget_percent: None,
-    });
     let info_widget_data = info_widget::InfoWidgetData {
         model: Some("gpt-5.6-sol".to_string()),
         reasoning_effort: Some("high".to_string()),
@@ -69,7 +56,6 @@ fn fact_test_state(input: String, scheduled: bool) -> TestState {
         provider_name: Some("openai".to_string()),
         auth_method: info_widget::AuthMethod::OpenAIOAuth,
         observed_context_tokens: Some(74_000),
-        ambient_info,
         ..Default::default()
     };
     TestState {
@@ -115,7 +101,7 @@ fn assert_fact_stack_is_contiguous(rows: &[String]) -> [usize; 4] {
 fn right_fact_stack_uses_transcript_status_notification_and_input_rows_in_order() {
     let _lock = viewport_snapshot_test_lock();
     clear_flicker_frame_history_for_tests();
-    let state = fact_test_state(String::new(), true);
+    let state = fact_test_state(String::new());
     let backend = TestBackend::new(120, 18);
     let mut terminal = Terminal::new(backend).expect("test terminal");
     terminal
@@ -144,7 +130,7 @@ fn right_fact_stack_uses_neutral_gray_except_for_context_usage() {
 
     let _lock = viewport_snapshot_test_lock();
     clear_flicker_frame_history_for_tests();
-    let state = fact_test_state(String::new(), true);
+    let state = fact_test_state(String::new());
     let backend = TestBackend::new(120, 18);
     let mut terminal = Terminal::new(backend).expect("test terminal");
     terminal
@@ -177,7 +163,7 @@ fn right_fact_stack_uses_neutral_gray_except_for_context_usage() {
 fn right_fact_stack_shifts_up_when_scheduled_notification_row_is_absent() {
     let _lock = viewport_snapshot_test_lock();
     clear_flicker_frame_history_for_tests();
-    let mut state = fact_test_state(String::new(), false);
+    let mut state = fact_test_state(String::new());
     state.display_messages = vec![DisplayMessage::assistant("first line\nsecond line")];
     let backend = TestBackend::new(120, 18);
     let mut terminal = Terminal::new(backend).expect("test terminal");
@@ -203,7 +189,7 @@ fn right_fact_stack_leaves_fully_used_input_rows_untouched_and_moves_up() {
     let _lock = viewport_snapshot_test_lock();
     clear_flicker_frame_history_for_tests();
     let input = ["x".repeat(115), "y".repeat(115), "z".repeat(115)].join("\n");
-    let state = fact_test_state(input, true);
+    let state = fact_test_state(input);
     let backend = TestBackend::new(120, 22);
     let mut terminal = Terminal::new(backend).expect("test terminal");
     terminal
@@ -233,7 +219,7 @@ fn right_fact_stack_survives_narrow_widths_without_overwriting_content() {
     let _lock = viewport_snapshot_test_lock();
     for width in (18_u16..=60).chain([80, 120, 160]) {
         clear_flicker_frame_history_for_tests();
-        let state = fact_test_state("typed text".to_string(), width % 2 == 0);
+        let state = fact_test_state("typed text".to_string());
         let backend = TestBackend::new(width, 16);
         let mut terminal = Terminal::new(backend).expect("test terminal");
         terminal
@@ -248,7 +234,7 @@ fn right_fact_stack_survives_narrow_widths_without_overwriting_content() {
 fn right_fact_stack_hides_as_a_unit_when_streaming_chrome_cannot_fit_it() {
     let _lock = viewport_snapshot_test_lock();
     clear_flicker_frame_history_for_tests();
-    let mut state = fact_test_state(String::new(), true);
+    let mut state = fact_test_state(String::new());
     state.status = ProcessingStatus::Streaming;
     state.streaming_text = "live transcript tail".to_string();
     let backend = TestBackend::new(120, 18);

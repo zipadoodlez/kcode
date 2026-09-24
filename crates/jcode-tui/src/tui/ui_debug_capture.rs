@@ -26,11 +26,6 @@ pub(super) fn build_info_widget_summary(data: &info_widget::InfoWidgetData) -> I
     let context_total_chars = data.context_info.as_ref().map(|c| c.total_chars);
     let context_limit = data.context_limit;
 
-    let memory_total = data.memory_info.as_ref().map(|m| m.total_count);
-    let memory_project = data.memory_info.as_ref().map(|m| m.project_count);
-    let memory_global = data.memory_info.as_ref().map(|m| m.global_count);
-    let memory_activity = data.memory_info.as_ref().map(|m| m.activity.is_some());
-
     let swarm_session_count = data.swarm_info.as_ref().map(|s| s.session_count);
     let swarm_member_count = data.swarm_info.as_ref().map(|s| s.members.len());
     let swarm_subagent_status = data
@@ -57,10 +52,6 @@ pub(super) fn build_info_widget_summary(data: &info_widget::InfoWidgetData) -> I
         reasoning_effort: data.reasoning_effort.clone(),
         session_count: data.session_count,
         client_count: data.client_count,
-        memory_total,
-        memory_project,
-        memory_global,
-        memory_activity,
         swarm_session_count,
         swarm_member_count,
         swarm_subagent_status,

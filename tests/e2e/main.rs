@@ -6,7 +6,6 @@
 mod mock_provider;
 mod test_support;
 
-mod ambient;
 mod binary_integration;
 mod burst_spawn;
 mod disconnect;

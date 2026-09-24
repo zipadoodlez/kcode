@@ -30,7 +30,6 @@ impl App {
         match trigger {
             "manual" => "manual",
             "proactive" => "proactive",
-            "semantic" => "semantic",
             "reactive" => "reactive",
             "auto_recovery" => "automatic recovery",
             "hard_compact" => "emergency",
@@ -216,7 +215,6 @@ impl App {
 
     pub(super) fn replace_provider_messages(&mut self, messages: Vec<Message>) {
         self.messages = messages;
-        self.last_injected_memory_signature = None;
         self.reset_tool_output_tracking();
         self.reseed_compaction_from_provider_messages();
         self.note_runtime_memory_event_force("provider_messages_replaced", "provider_view_reset");
@@ -224,7 +222,6 @@ impl App {
 
     pub(super) fn clear_provider_messages(&mut self) {
         self.messages.clear();
-        self.last_injected_memory_signature = None;
         self.reset_tool_output_tracking();
         self.reseed_compaction_from_provider_messages();
         self.note_runtime_memory_event_force("provider_messages_cleared", "provider_view_cleared");
@@ -452,16 +449,6 @@ impl App {
         self.remote_history_recovery_last_attempt = None;
     }
 
-    pub(super) fn set_memory_feature_enabled(&mut self, enabled: bool) {
-        self.memory_enabled = enabled;
-        if !enabled {
-            crate::memory::clear_pending_memory(&self.session.id);
-            crate::memory::clear_activity();
-            crate::memory_agent::reset();
-            self.last_injected_memory_signature = None;
-        }
-    }
-
     pub(super) fn set_autoreview_feature_enabled(&mut self, enabled: bool) {
         self.autoreview_enabled = enabled;
         self.session.autoreview_enabled = Some(enabled);
@@ -470,44 +457,6 @@ impl App {
     pub(super) fn set_autojudge_feature_enabled(&mut self, enabled: bool) {
         self.autojudge_enabled = enabled;
         self.session.autojudge_enabled = Some(enabled);
-    }
-
-    pub(super) fn trigger_save_memory_extraction(&self) {
-        let provider_messages = self.materialized_provider_messages();
-        if self.is_remote || !self.memory_enabled || provider_messages.len() < 4 {
-            return;
-        }
-
-        let transcript = crate::memory_agent::build_transcript_for_extraction(&provider_messages);
-        crate::memory_agent::trigger_final_extraction_with_dir(
-            transcript,
-            self.session.id.clone(),
-            self.session.working_dir.clone(),
-        );
-    }
-
-    pub(super) fn memory_prompt_signature(prompt: &str) -> String {
-        prompt
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .map(str::to_lowercase)
-            .collect::<Vec<String>>()
-            .join("\n")
-    }
-
-    pub(super) fn should_inject_memory_context(&mut self, prompt: &str) -> bool {
-        let signature = Self::memory_prompt_signature(prompt);
-        let now = Instant::now();
-        if let Some((last_signature, last_injected_at)) =
-            self.last_injected_memory_signature.as_ref()
-            && *last_signature == signature
-            && now.duration_since(*last_injected_at).as_secs() < MEMORY_INJECTION_SUPPRESSION_SECS
-        {
-            return false;
-        }
-        self.last_injected_memory_signature = Some((signature, now));
-        true
     }
 
     pub(in crate::tui::app) fn clear_active_experimental_feature_notice(&mut self) {

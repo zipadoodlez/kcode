@@ -1227,7 +1227,6 @@ impl crate::tui::TuiState for App {
             + info.global_agents_md_chars
             + info.skills_chars
             + info.selfdev_chars
-            + info.memory_chars
             + info.prompt_overlay_chars
             + info.preferred_tools_chars
             + info.tool_defs_chars
@@ -1499,8 +1498,6 @@ impl crate::tui::TuiState for App {
                     progress_detail: progress
                         .as_ref()
                         .and_then(|progress| progress.detail.clone()),
-                    memory_agent_active: false,
-                    memory_agent_turns: 0,
                 })
             } else {
                 None
@@ -1605,9 +1602,6 @@ impl crate::tui::TuiState for App {
             session_name,
             working_dir: self.session.working_dir.clone(),
             client_count,
-            // Memory remains available through commands and tools, but no longer
-            // occupies a dedicated info widget.
-            memory_info: None,
             swarm_info,
             background_info,
             usage_info,
@@ -1626,7 +1620,6 @@ impl crate::tui::TuiState for App {
             diagrams,
             workspace_rows,
             workspace_animation_tick,
-            ambient_info: gather_ambient_info(crate::config::config().ambient.enabled),
             observed_context_tokens: self.current_stream_context_tokens(),
             cache_hit_info,
             compaction_info,

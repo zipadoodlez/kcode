@@ -341,7 +341,7 @@ fn test_handle_server_event_compaction_mode_changed_updates_remote_mode() {
     app.handle_server_event(
         crate::protocol::ServerEvent::CompactionModeChanged {
             id: 7,
-            mode: crate::config::CompactionMode::Semantic,
+            mode: crate::config::CompactionMode::Proactive,
             error: None,
         },
         &mut remote,
@@ -349,11 +349,11 @@ fn test_handle_server_event_compaction_mode_changed_updates_remote_mode() {
 
     assert_eq!(
         app.remote_compaction_mode,
-        Some(crate::config::CompactionMode::Semantic)
+        Some(crate::config::CompactionMode::Proactive)
     );
     assert_eq!(
         app.status_notice(),
-        Some("Compaction: semantic".to_string())
+        Some("Compaction: proactive".to_string())
     );
 
     let last = app.display_messages().last().expect("missing response");

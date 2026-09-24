@@ -26,17 +26,3 @@ pub(super) fn truncate_chars(s: &str, max_chars: usize) -> &str {
         None => s,
     }
 }
-
-pub(super) fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
-    if max_chars == 0 {
-        return String::new();
-    }
-    if s.chars().count() <= max_chars {
-        return s.to_string();
-    }
-    if max_chars == 1 {
-        return "…".to_string();
-    }
-    let truncated = truncate_chars(s, max_chars.saturating_sub(1));
-    format!("{}…", truncated)
-}

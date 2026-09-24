@@ -798,7 +798,7 @@ impl App {
         }
 
         if prefix.starts_with("/compact mode ") {
-            let modes = ["reactive", "proactive", "semantic"];
+            let modes = ["reactive", "proactive"];
             let mut suggestions: Vec<(String, &'static str)> = vec![(
                 "/compact mode status".into(),
                 "Show the current compaction mode",

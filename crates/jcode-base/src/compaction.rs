@@ -12,8 +12,6 @@
 //!
 //! - **Reactive** (default): compact when context hits a fixed threshold (80%).
 //! - **Proactive**: compact early based on predicted EWMA token growth rate.
-//! - **Semantic**: compact based on embedding-detected topic shifts and
-//!   relevance scoring. Falls back to proactive if embeddings are unavailable.
 
 use crate::message::{ContentBlock, Message, Role};
 use crate::provider::Provider;
@@ -21,23 +19,21 @@ use crate::provider::openai_request::{
     openai_encrypted_content_fallback_summary, openai_encrypted_content_is_sendable,
 };
 use anyhow::Result;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::task::JoinHandle;
 
 pub use jcode_compaction_core::{
     CHARS_PER_TOKEN, COMPACTION_THRESHOLD, CRITICAL_THRESHOLD, CompactionAction, CompactionEvent,
-    CompactionStats, DEFAULT_TOKEN_BUDGET, EMBED_MAX_CHARS_PER_MSG, EMBEDDING_HISTORY_WINDOW,
-    EMERGENCY_IMAGE_MAX_CHARS, EMERGENCY_TOOL_RESULT_MAX_CHARS, MANUAL_COMPACT_MIN_THRESHOLD,
-    MIN_TURNS_TO_KEEP, PAYLOAD_IMAGE_CHAR_BUDGET, RECENT_TURNS_TO_KEEP,
-    SEMANTIC_EMBED_CACHE_CAPACITY, SUMMARY_PROMPT, SYSTEM_OVERHEAD_TOKENS, Summary,
-    TOKEN_HISTORY_WINDOW, build_compaction_prompt, build_emergency_summary_text,
+    CompactionStats, DEFAULT_TOKEN_BUDGET, EMERGENCY_IMAGE_MAX_CHARS,
+    EMERGENCY_TOOL_RESULT_MAX_CHARS, MANUAL_COMPACT_MIN_THRESHOLD, MIN_TURNS_TO_KEEP,
+    PAYLOAD_IMAGE_CHAR_BUDGET, RECENT_TURNS_TO_KEEP, SUMMARY_PROMPT, SYSTEM_OVERHEAD_TOKENS,
+    Summary, TOKEN_HISTORY_WINDOW, build_compaction_prompt, build_emergency_summary_text,
     compacted_summary_text_block, content_char_count, effective_context_tokens_from_usage,
     emergency_strip_large_images, emergency_truncate_large_payloads, estimate_compaction_tokens,
-    is_request_payload_too_large_error, mean_embedding, message_char_count, safe_compaction_cutoff,
-    semantic_cache_key, semantic_goal_text, semantic_message_text, strip_large_images_in_contents,
-    summary_payload_char_count,
+    is_request_payload_too_large_error, message_char_count, safe_compaction_cutoff,
+    strip_large_images_in_contents, summary_payload_char_count,
 };
 
 const HARD_THRESHOLD_PENDING_WAIT_MS: u64 = 15_000;
@@ -192,20 +188,6 @@ pub struct CompactionManager {
     /// Total turns elapsed since the last successful compaction.
     /// Used as a cooldown anti-signal.
     turns_since_last_compact: usize,
-
-    // ── Semantic mode state ────────────────────────────────────────────────
-    /// Per-turn embedding snapshots for topic-shift detection.
-    /// Each entry is the L2-normalized embedding of the last assistant message
-    /// of that turn (truncated to EMBED_MAX_CHARS_PER_MSG for speed).
-    embedding_history: VecDeque<Vec<f32>>,
-
-    /// Local cache for semantic compaction embeddings keyed by truncated-text hash.
-    /// Stores both successful embeddings and failed lookups (`None`) so repeated
-    /// semantic scans do not redo the same work.
-    semantic_embed_cache: HashMap<u64, (Option<Vec<f32>>, u64)>,
-
-    /// Monotonic recency counter for the semantic embedding cache LRU.
-    semantic_embed_cache_counter: u64,
 }
 
 impl CompactionManager {
@@ -229,9 +211,6 @@ impl CompactionManager {
             compaction_config: cfg,
             token_history: VecDeque::with_capacity(TOKEN_HISTORY_WINDOW + 1),
             turns_since_last_compact: 0,
-            embedding_history: VecDeque::with_capacity(EMBEDDING_HISTORY_WINDOW + 1),
-            semantic_embed_cache: HashMap::with_capacity(SEMANTIC_EMBED_CACHE_CAPACITY),
-            semantic_embed_cache_counter: 0,
         }
     }
 
@@ -350,9 +329,6 @@ impl CompactionManager {
         self.last_compaction = None;
         self.token_history.clear();
         self.turns_since_last_compact = 0;
-        self.embedding_history.clear();
-        self.semantic_embed_cache.clear();
-        self.semantic_embed_cache_counter = 0;
         self.total_turns = total_messages;
         self.compacted_count = state.compacted_count.min(total_messages);
         self.active_chars
@@ -451,7 +427,7 @@ impl CompactionManager {
     ///
     /// Called by the agent after `update_compaction_usage_from_stream`.
     /// Pushes the value into the rolling history window used by the proactive
-    /// and semantic modes. Also increments the cooldown counter.
+    /// mode. Also increments the cooldown counter.
     pub fn push_token_snapshot(&mut self, tokens: u64) {
         self.token_history.push_back(tokens);
         if self.token_history.len() > TOKEN_HISTORY_WINDOW {
@@ -460,22 +436,7 @@ impl CompactionManager {
         self.turns_since_last_compact += 1;
     }
 
-    /// Record an embedding snapshot for the current turn (semantic mode).
-    ///
-    /// `text` should be a short representation of the turn's assistant output
-    /// (first EMBED_MAX_CHARS_PER_MSG chars). Silently skipped if the
-    /// embedding model is unavailable.
-    pub fn push_embedding_snapshot(&mut self, text: &str) {
-        let snippet: String = text.chars().take(EMBED_MAX_CHARS_PER_MSG).collect();
-        if let Some(emb) = self.cached_semantic_embedding(&snippet) {
-            self.embedding_history.push_back(emb);
-            if self.embedding_history.len() > EMBEDDING_HISTORY_WINDOW {
-                self.embedding_history.pop_front();
-            }
-        }
-    }
-
-    // ── Anti-signal guard (shared by proactive + semantic) ──────────────────
+    // ── Anti-signal guard (shared by the proactive paths) ─────────────────────
 
     /// Returns `true` when any anti-signal fires and we should NOT compact
     /// proactively right now.
@@ -567,133 +528,6 @@ impl CompactionManager {
         ));
 
         projected >= threshold
-    }
-
-    // ── Semantic mode trigger ───────────────────────────────────────────────
-
-    /// Returns `true` if the semantic strategy detects a topic shift or
-    /// predicts we should compact now.
-    ///
-    /// Topic-shift detection: compares the mean embedding of the oldest half
-    /// of the history window against the newest half. A low cosine similarity
-    /// between the two clusters indicates a topic boundary was crossed —
-    /// the previous topic is complete and safe to summarize.
-    ///
-    /// Falls back to proactive logic if embeddings are unavailable.
-    fn should_compact_semantic(&self, all_messages: &[Message]) -> bool {
-        if self.anti_signals_block(all_messages) {
-            return false;
-        }
-
-        // Need enough embedding history to split into two halves.
-        let history_len = self.embedding_history.len();
-        if history_len < 4 {
-            // Fall back to proactive trigger.
-            return self.should_compact_proactively(all_messages);
-        }
-
-        let cfg = &self.compaction_config;
-        let half = history_len / 2;
-
-        let old_embeddings: Vec<&Vec<f32>> = self.embedding_history.iter().take(half).collect();
-        let new_embeddings: Vec<&Vec<f32>> = self.embedding_history.iter().skip(half).collect();
-
-        let dim = old_embeddings[0].len();
-
-        // Compute mean embedding for each half.
-        let mean_old = mean_embedding(&old_embeddings, dim);
-        let mean_new = mean_embedding(&new_embeddings, dim);
-
-        let similarity = crate::embedding::cosine_similarity(&mean_old, &mean_new);
-
-        crate::logging::info(&format!(
-            "[compaction/semantic] topic similarity (old vs new half) = {:.3} (threshold={:.2})",
-            similarity, cfg.topic_shift_threshold
-        ));
-
-        if similarity < cfg.topic_shift_threshold {
-            crate::logging::info(
-                "[compaction/semantic] Topic shift detected — triggering proactive compaction",
-            );
-            return true;
-        }
-
-        // No topic shift — still fall back to proactive growth check.
-        self.should_compact_proactively(all_messages)
-    }
-
-    /// Build a relevance-scored keep set for semantic compaction.
-    ///
-    /// Embeds the last `goal_window_turns` messages to represent the current
-    /// goal, then scores all active messages by cosine similarity. Returns the
-    /// cutoff index: messages before the cutoff will be summarized, messages at
-    /// or after are kept verbatim.
-    ///
-    /// Messages above `relevance_keep_threshold` anywhere in the history are
-    /// pulled out of the summarize set. Falls back to the standard recency
-    /// cutoff if embeddings fail.
-    fn semantic_cutoff(&mut self, active: &[Message]) -> usize {
-        let goal_window_turns = self.compaction_config.goal_window_turns;
-        let relevance_keep_threshold = self.compaction_config.relevance_keep_threshold;
-        let standard_cutoff = active.len().saturating_sub(RECENT_TURNS_TO_KEEP);
-        if standard_cutoff == 0 {
-            return 0;
-        }
-
-        // Build goal text from recent turns.
-        let goal_turns = goal_window_turns.min(active.len());
-        let goal_text = semantic_goal_text(&active[active.len() - goal_turns..]);
-
-        if goal_text.is_empty() {
-            return standard_cutoff;
-        }
-
-        let goal_emb = match self.cached_semantic_embedding(&goal_text) {
-            Some(embedding) => embedding,
-            None => return standard_cutoff,
-        };
-
-        // Score each candidate message (those before standard_cutoff).
-        let mut high_relevance_count = 0usize;
-        let mut earliest_high_relevance = standard_cutoff;
-
-        for (idx, msg) in active[..standard_cutoff].iter().enumerate() {
-            let text = semantic_message_text(msg);
-
-            if text.is_empty() {
-                continue;
-            }
-
-            if let Some(embedding) = self.cached_semantic_embedding(&text) {
-                let sim = crate::embedding::cosine_similarity(&goal_emb, &embedding);
-                if sim >= relevance_keep_threshold {
-                    high_relevance_count += 1;
-                    earliest_high_relevance = earliest_high_relevance.min(idx);
-                }
-            }
-        }
-
-        if high_relevance_count == 0 {
-            return standard_cutoff;
-        }
-
-        // Find the latest high-relevance message before standard_cutoff.
-        // We can't have gaps in the summarized range (tool call integrity),
-        // so we move the cutoff up to just before the earliest high-relevance
-        // message in the tail of the compaction range.
-        let adjusted_cutoff = earliest_high_relevance;
-
-        // Ensure we actually compact something meaningful.
-        if adjusted_cutoff < 2 {
-            return standard_cutoff;
-        }
-
-        crate::logging::info(&format!(
-            "[compaction/semantic] relevance scoring: {} high-relevance msgs kept, cutoff {} -> {}",
-            high_relevance_count, standard_cutoff, adjusted_cutoff
-        ));
-
-        adjusted_cutoff
     }
 
     /// Get the active (uncompacted) messages from a full message list.
@@ -872,9 +706,6 @@ impl CompactionManager {
             CompactionMode::Proactive => {
                 active.len() > RECENT_TURNS_TO_KEEP && self.should_compact_proactively(all_messages)
             }
-            CompactionMode::Semantic => {
-                active.len() > RECENT_TURNS_TO_KEEP && self.should_compact_semantic(all_messages)
-            }
         }
     }
 
@@ -890,12 +721,8 @@ impl CompactionManager {
 
         let active = self.active_messages(all_messages);
 
-        // Calculate cutoff within active messages.
-        // Semantic mode uses relevance scoring; other modes use recency.
-        let mut cutoff = match self.mode {
-            crate::config::CompactionMode::Semantic => self.semantic_cutoff(active),
-            _ => active.len().saturating_sub(RECENT_TURNS_TO_KEEP),
-        };
+        // Calculate cutoff within active messages (recency-based).
+        let mut cutoff = active.len().saturating_sub(RECENT_TURNS_TO_KEEP);
         if cutoff == 0 {
             return;
         }
@@ -1280,7 +1107,7 @@ impl CompactionManager {
                     all_messages,
                 });
 
-                // Reset cooldown counter so proactive/semantic modes don't
+                // Reset cooldown counter so proactive mode doesn't
                 // fire again immediately after a successful compaction.
                 self.turns_since_last_compact = 0;
 
@@ -1417,38 +1244,6 @@ impl CompactionManager {
         }
     }
 
-    fn cached_semantic_embedding(&mut self, text: &str) -> Option<Vec<f32>> {
-        let key = semantic_cache_key(text);
-
-        if let Some((cached, recency)) = self.semantic_embed_cache.get_mut(&key) {
-            let counter = self.semantic_embed_cache_counter;
-            self.semantic_embed_cache_counter = counter.wrapping_add(1);
-            *recency = counter;
-            return cached.clone();
-        }
-
-        let embedding = crate::embedding::embed(text).ok();
-        self.insert_semantic_embedding_cache(key, embedding.clone());
-        embedding
-    }
-
-    fn insert_semantic_embedding_cache(&mut self, key: u64, embedding: Option<Vec<f32>>) {
-        if self.semantic_embed_cache.len() >= SEMANTIC_EMBED_CACHE_CAPACITY {
-            let oldest_key = self
-                .semantic_embed_cache
-                .iter()
-                .min_by_key(|(_, (_, recency))| *recency)
-                .map(|(&key, _)| key);
-            if let Some(oldest_key) = oldest_key {
-                self.semantic_embed_cache.remove(&oldest_key);
-            }
-        }
-
-        let counter = self.semantic_embed_cache_counter;
-        self.semantic_embed_cache_counter = counter.wrapping_add(1);
-        self.semantic_embed_cache.insert(key, (embedding, counter));
-    }
-
     /// Poll for compaction completion and return an event if one was applied.
     pub fn poll_compaction_event_with(
         &mut self,
@@ -1514,7 +1309,7 @@ impl CompactionManager {
         }
 
         // This hard compact will advance `compacted_count` and supersede any
-        // in-flight background (reactive/proactive/semantic) compaction. That
+        // in-flight background (reactive/proactive) compaction. That
         // background task summarized messages relative to the *old*
         // `compacted_count`; if it completed afterwards, `check_and_apply_*`
         // would add its stale `pending_cutoff` on top of the already-advanced

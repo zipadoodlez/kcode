@@ -13,7 +13,6 @@ members = [
     "crates/jcode-base",
     "crates/jcode-tui",
     "crates/jcode-build-meta",
-    "crates/jcode-embedding",
     "crates/jcode-import-core",
     "crates/jcode-pdf",
     "crates/jcode-logging",
@@ -23,7 +22,6 @@ members = [
     "crates/jcode-command-risk",
     "crates/jcode-core",
     "crates/jcode-fuzzy",
-    "crates/jcode-memory-types",
     "crates/jcode-message-types",
     "crates/jcode-overnight-core",
     "crates/jcode-plan",
@@ -164,14 +162,9 @@ jcode-provider-grok-build-runtime = { path = "crates/jcode-provider-grok-build-r
 tempfile = "3"
 
 [features]
-# Include local ONNX/tokenizer embeddings in default builds so memory recall,
-# semantic retrieval, and embedding-backed features work out of the box.
 # Use `JCODE_DEV_FEATURE_PROFILE=minimal` for compile-speed probes that need
 # to skip optional default feature stacks.
-default = ["pdf", "embeddings", "bedrock"]
-# Local embeddings and PDF extraction live in jcode-base / jcode-app-core;
-# these features just forward down the stack.
-embeddings = ["jcode-tui/embeddings"]
+default = ["pdf", "bedrock"]
 # Live AWS Bedrock support (the AWS SDK stack) lives in jcode-provider-bedrock;
 # forwards down through jcode-tui -> jcode-app-core -> jcode-base.
 bedrock = ["jcode-tui/bedrock"]
@@ -436,68 +429,6 @@ opt-level = 3
 [profile.selfdev.package.memchr]
 opt-level = 3
 [profile.test.package.memchr]
-opt-level = 3
-
-# The embedding stack (tract ONNX inference + HF tokenizer) runs the MiniLM
-# model for memory recall/maintenance on the shared server. At opt-level 0 a
-# single embed measured ~666 ms (matmul inner loops unoptimized), which keeps
-# the model "busy" long enough that the idle unloader rarely fires and burns
-# CPU on every memory-maintenance pass. These crates are pure compute and
-# change only when the dependency is bumped, so the optimized objects are
-# compiled once and cached across dev/selfdev iterations.
-[profile.dev.package.tract-core]
-opt-level = 3
-[profile.selfdev.package.tract-core]
-opt-level = 3
-[profile.test.package.tract-core]
-opt-level = 3
-[profile.dev.package.tract-linalg]
-opt-level = 3
-[profile.selfdev.package.tract-linalg]
-opt-level = 3
-[profile.test.package.tract-linalg]
-opt-level = 3
-[profile.dev.package.tract-data]
-opt-level = 3
-[profile.selfdev.package.tract-data]
-opt-level = 3
-[profile.test.package.tract-data]
-opt-level = 3
-[profile.dev.package.tract-hir]
-opt-level = 3
-[profile.selfdev.package.tract-hir]
-opt-level = 3
-[profile.test.package.tract-hir]
-opt-level = 3
-[profile.dev.package.tract-onnx]
-opt-level = 3
-[profile.selfdev.package.tract-onnx]
-opt-level = 3
-[profile.test.package.tract-onnx]
-opt-level = 3
-[profile.dev.package.tract-onnx-opl]
-opt-level = 3
-[profile.selfdev.package.tract-onnx-opl]
-opt-level = 3
-[profile.test.package.tract-onnx-opl]
-opt-level = 3
-[profile.dev.package.tract-nnef]
-opt-level = 3
-[profile.selfdev.package.tract-nnef]
-opt-level = 3
-[profile.test.package.tract-nnef]
-opt-level = 3
-[profile.dev.package.ndarray]
-opt-level = 3
-[profile.selfdev.package.ndarray]
-opt-level = 3
-[profile.test.package.ndarray]
-opt-level = 3
-[profile.dev.package.tokenizers]
-opt-level = 3
-[profile.selfdev.package.tokenizers]
-opt-level = 3
-[profile.test.package.tokenizers]
 opt-level = 3
 
 [profile.test]

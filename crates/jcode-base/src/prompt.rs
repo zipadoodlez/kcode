@@ -213,7 +213,7 @@ const SELFDEV_FOCUS_TUI_PROMPT: &str = include_str!("prompt/selfdev_focus_tui.tx
 pub struct SplitSystemPrompt {
     /// Static content that should be cached (instruction files, base prompt, skills)
     pub static_part: String,
-    /// Dynamic turn context that changes per request (memory, active skill, reminders)
+    /// Dynamic turn context that changes per request (active skill, reminders)
     pub dynamic_part: String,
 }
 
@@ -299,8 +299,6 @@ pub struct ContextInfo {
     pub skills_chars: usize,
     /// Self-dev section size (chars)
     pub selfdev_chars: usize,
-    /// Memory section size (chars)
-    pub memory_chars: usize,
     /// Prompt overlay section size (chars)
     pub prompt_overlay_chars: usize,
     /// Preferred tools section size (chars)
@@ -344,7 +342,6 @@ impl ContextInfo {
             + self.global_agents_md_chars
             + self.skills_chars
             + self.selfdev_chars
-            + self.memory_chars
             + self.prompt_overlay_chars
             + self.preferred_tools_chars
             + self.tool_defs_chars
@@ -375,9 +372,6 @@ impl ContextInfo {
         }
         if self.selfdev_chars > 0 {
             parts.push(("dev", self.selfdev_chars, "🛠"));
-        }
-        if self.memory_chars > 0 {
-            parts.push(("mem", self.memory_chars, "🧠"));
         }
         if self.prompt_overlay_chars > 0 {
             parts.push(("overlay", self.prompt_overlay_chars, "🧩"));
@@ -410,23 +404,16 @@ pub fn build_system_prompt_with_context(
     available_skills: &[SkillInfo],
     is_selfdev: bool,
 ) -> (String, ContextInfo) {
-    build_system_prompt_with_context_and_memory(skill_prompt, available_skills, is_selfdev, None)
+    build_system_prompt_with_context_and_memory(skill_prompt, available_skills, is_selfdev)
 }
 
-/// Build the full system prompt with optional memory section and return context info
+/// Build the full system prompt and return context info
 pub fn build_system_prompt_with_context_and_memory(
     skill_prompt: Option<&str>,
     available_skills: &[SkillInfo],
     is_selfdev: bool,
-    memory_prompt: Option<&str>,
 ) -> (String, ContextInfo) {
-    build_system_prompt_full(
-        skill_prompt,
-        available_skills,
-        is_selfdev,
-        memory_prompt,
-        None,
-    )
+    build_system_prompt_full(skill_prompt, available_skills, is_selfdev, None)
 }
 
 /// Build the full system prompt with working directory support for loading context files
@@ -434,14 +421,12 @@ pub fn build_system_prompt_full(
     skill_prompt: Option<&str>,
     available_skills: &[SkillInfo],
     is_selfdev: bool,
-    memory_prompt: Option<&str>,
     working_dir: Option<&Path>,
 ) -> (String, ContextInfo) {
     build_system_prompt_full_with_capabilities(
         skill_prompt,
         available_skills,
         is_selfdev,
-        memory_prompt,
         working_dir,
         PromptCapabilities::current(),
     )
@@ -451,7 +436,6 @@ pub fn build_system_prompt_full_with_capabilities(
     skill_prompt: Option<&str>,
     available_skills: &[SkillInfo],
     is_selfdev: bool,
-    memory_prompt: Option<&str>,
     working_dir: Option<&Path>,
     capabilities: PromptCapabilities,
 ) -> (String, ContextInfo) {
@@ -493,11 +477,6 @@ pub fn build_system_prompt_full_with_capabilities(
         parts.push(content);
     }
 
-    if let Some(memory) = memory_prompt {
-        info.memory_chars = memory.len();
-        parts.push(memory.to_string());
-    }
-
     // Add available skills list
     if let Some(skills_section) = build_available_skills_section(available_skills) {
         info.skills_chars = skills_section.len();
@@ -521,14 +500,12 @@ pub fn build_system_prompt_split(
     skill_prompt: Option<&str>,
     available_skills: &[SkillInfo],
     is_selfdev: bool,
-    memory_prompt: Option<&str>,
     working_dir: Option<&Path>,
 ) -> (SplitSystemPrompt, ContextInfo) {
     build_system_prompt_split_with_capabilities(
         skill_prompt,
         available_skills,
         is_selfdev,
-        memory_prompt,
         working_dir,
         PromptCapabilities::current(),
     )
@@ -538,7 +515,6 @@ pub fn build_system_prompt_split_with_capabilities(
     skill_prompt: Option<&str>,
     available_skills: &[SkillInfo],
     is_selfdev: bool,
-    memory_prompt: Option<&str>,
     working_dir: Option<&Path>,
     capabilities: PromptCapabilities,
 ) -> (SplitSystemPrompt, ContextInfo) {
@@ -547,7 +523,6 @@ pub fn build_system_prompt_split_with_capabilities(
         skill_prompt,
         available_skills,
         is_selfdev,
-        memory_prompt,
         working_dir,
         capabilities,
         agents_md,
@@ -563,7 +538,6 @@ pub fn build_system_prompt_split_with_agents_md(
     skill_prompt: Option<&str>,
     available_skills: &[SkillInfo],
     is_selfdev: bool,
-    memory_prompt: Option<&str>,
     working_dir: Option<&Path>,
     agents_md: (Option<String>, ContextInfo),
 ) -> (SplitSystemPrompt, ContextInfo) {
@@ -571,7 +545,6 @@ pub fn build_system_prompt_split_with_agents_md(
         skill_prompt,
         available_skills,
         is_selfdev,
-        memory_prompt,
         working_dir,
         PromptCapabilities::current(),
         agents_md,
@@ -582,7 +555,6 @@ fn build_system_prompt_split_with_capabilities_and_agents_md(
     skill_prompt: Option<&str>,
     available_skills: &[SkillInfo],
     is_selfdev: bool,
-    memory_prompt: Option<&str>,
     working_dir: Option<&Path>,
     capabilities: PromptCapabilities,
     agents_md: (Option<String>, ContextInfo),
@@ -634,12 +606,6 @@ fn build_system_prompt_split_with_capabilities_and_agents_md(
     }
 
     // === TURN CONTEXT (not cached) ===
-
-    // Memory prompt (changes per conversation)
-    if let Some(memory) = memory_prompt {
-        info.memory_chars = memory.len();
-        dynamic_parts.push(memory.to_string());
-    }
 
     // Active skill prompt (changes per skill invocation)
     if let Some(skill) = skill_prompt {

@@ -1,6 +1,5 @@
 pub mod chrome;
 pub mod layout;
-pub mod memory_tiles;
 pub mod swarm_gallery;
 pub mod swarm_tiles;
 

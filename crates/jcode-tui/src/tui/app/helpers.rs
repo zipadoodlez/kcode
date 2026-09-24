@@ -4,16 +4,12 @@ mod clipboard_helper;
 pub(crate) mod model_names;
 
 use crate::todo::TodoItem;
-use crate::tui::info_widget::{AmbientWidgetData, GitInfo};
+use crate::tui::info_widget::GitInfo;
 use crate::tui::session_picker::ResumeTarget;
 use crossterm::event::{KeyCode, KeyModifiers};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
-
-type AmbientInfoCacheEntry = (std::time::Instant, bool, Option<AmbientWidgetData>, bool);
-
-static AMBIENT_INFO_CACHE: Mutex<Option<AmbientInfoCacheEntry>> = Mutex::new(None);
 
 /// Stale-while-revalidate cache for the git status widget. Module-level so the
 /// app can force a refresh the moment it mutates the repo (commit, shell, file
@@ -95,20 +91,6 @@ pub(crate) fn seed_git_info_cache_for_tests(info: Option<GitInfo>) {
 pub(crate) fn invalidate_todos_cache(session_id: &str) {
     if let Ok(mut cache) = TODOS_CACHE.lock()
         && let Some((ts, _todos, _goals, refreshing)) = cache.get_mut(session_id)
-    {
-        *ts = backdated_now(Duration::from_secs(3600));
-        *refreshing = false;
-    }
-}
-
-/// Force the ambient widget cache to refetch on its next read.
-///
-/// Call this after the app changes ambient state (e.g. the `schedule` tool
-/// queues or cancels a task) so the ambient panel reflects the new queue/next
-/// wake immediately rather than after the 2s TTL.
-pub(crate) fn invalidate_ambient_info_cache() {
-    if let Ok(mut guard) = AMBIENT_INFO_CACHE.lock()
-        && let Some((ts, _enabled, _cached, refreshing)) = guard.as_mut()
     {
         *ts = backdated_now(Duration::from_secs(3600));
         *refreshing = false;
@@ -1183,156 +1165,6 @@ pub(super) fn gather_todos_and_goals_for_session(
         });
     }
     (Vec::new(), Vec::new())
-}
-
-pub(super) fn gather_ambient_info(ambient_enabled: bool) -> Option<AmbientWidgetData> {
-    if crate::tui::is_ssh_remote() {
-        // The cache and queue are laptop-local. The native protocol does not
-        // currently carry remote scheduler state, so leave both widget/footer
-        // absent instead of displaying unrelated local tasks.
-        return None;
-    }
-    use std::time::Instant;
-    const TTL: Duration = Duration::from_secs(2);
-
-    if let Ok(mut guard) = AMBIENT_INFO_CACHE.lock() {
-        if let Some((ts, cached_enabled, cached, refreshing)) = guard.as_mut() {
-            if *cached_enabled == ambient_enabled && ts.elapsed() < TTL {
-                return cached.clone();
-            }
-            if *cached_enabled == ambient_enabled && *refreshing {
-                return cached.clone();
-            }
-            let stale = if *cached_enabled == ambient_enabled {
-                cached.clone()
-            } else {
-                None
-            };
-            *refreshing = true;
-            *cached_enabled = ambient_enabled;
-            std::thread::spawn(move || {
-                let result = gather_ambient_info_inner(ambient_enabled);
-                if let Ok(mut guard) = AMBIENT_INFO_CACHE.lock() {
-                    *guard = Some((Instant::now(), ambient_enabled, result, false));
-                }
-            });
-            return stale;
-        }
-
-        *guard = Some((
-            backdated_now(TTL + Duration::from_secs(1)),
-            ambient_enabled,
-            None,
-            true,
-        ));
-        std::thread::spawn(move || {
-            let result = gather_ambient_info_inner(ambient_enabled);
-            if let Ok(mut guard) = AMBIENT_INFO_CACHE.lock() {
-                *guard = Some((Instant::now(), ambient_enabled, result, false));
-            }
-        });
-    }
-
-    None
-}
-
-fn gather_ambient_info_inner(ambient_enabled: bool) -> Option<AmbientWidgetData> {
-    let state = crate::ambient::AmbientState::load().unwrap_or_default();
-    let manager = crate::ambient::AmbientManager::new().ok();
-    let queue_items: Vec<_> = manager
-        .as_ref()
-        .map(|m| m.queue().items().to_vec())
-        .unwrap_or_default();
-    let queue_count = queue_items.len();
-    let next_queue_item = queue_items.iter().min_by_key(|item| item.scheduled_for);
-    let reminder_items: Vec<_> = queue_items
-        .iter()
-        .filter(|item| item.target.is_direct_delivery())
-        .collect();
-    let reminder_count = reminder_items.len();
-    let next_reminder_item = reminder_items
-        .iter()
-        .min_by_key(|item| item.scheduled_for)
-        .copied();
-
-    if !ambient_enabled && reminder_count == 0 {
-        return None;
-    }
-
-    let last_run_ago = state.last_run.map(|t| {
-        let ago = chrono::Utc::now() - t;
-        if ago.num_hours() > 0 {
-            format!("{}h ago", ago.num_hours())
-        } else {
-            format!("{}m ago", ago.num_minutes().max(0))
-        }
-    });
-    let next_wake = match &state.status {
-        crate::ambient::AmbientStatus::Scheduled { next_wake } => {
-            Some(format_countdown_until(*next_wake))
-        }
-        _ => None,
-    };
-
-    let next_queue_preview = next_queue_item.map(|item| {
-        item.task_description
-            .as_deref()
-            .unwrap_or(&item.context)
-            .to_string()
-    });
-    let next_reminder_preview = next_reminder_item.map(|item| {
-        item.task_description
-            .as_deref()
-            .unwrap_or(&item.context)
-            .to_string()
-    });
-
-    Some(AmbientWidgetData {
-        show_widget: ambient_enabled || reminder_count > 1,
-        status: state.status,
-        queue_count,
-        next_queue_preview,
-        reminder_count,
-        next_reminder_preview,
-        last_run_ago,
-        last_summary: state.last_summary,
-        next_wake,
-        next_reminder_wake: next_reminder_item
-            .map(|item| format_countdown_until(item.scheduled_for)),
-        budget_percent: None,
-    })
-}
-
-#[cfg(test)]
-pub(crate) fn clear_ambient_info_cache_for_tests() {
-    if let Ok(mut guard) = AMBIENT_INFO_CACHE.lock() {
-        *guard = None;
-    }
-}
-
-pub(crate) fn format_countdown_until(target: chrono::DateTime<chrono::Utc>) -> String {
-    let secs = (target - chrono::Utc::now()).num_seconds().max(0);
-    match secs {
-        0..=59 => format!("in {}s", secs),
-        60..=3599 => {
-            let mins = secs / 60;
-            let rem = secs % 60;
-            if rem == 0 {
-                format!("in {}m", mins)
-            } else {
-                format!("in {}m {}s", mins, rem)
-            }
-        }
-        _ => {
-            let hours = secs / 3600;
-            let mins = (secs % 3600) / 60;
-            if mins == 0 {
-                format!("in {}h", hours)
-            } else {
-                format!("in {}h {}m", hours, mins)
-            }
-        }
-    }
 }
 
 #[cfg(not(test))]

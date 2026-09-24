@@ -121,7 +121,7 @@ impl Agent {
             // compacting the request history. This is the first point where the
             // stable request settings are available.
             let mut tools = self.tool_definitions().await;
-            let mut split_prompt = self.build_system_prompt_split(None);
+            let mut split_prompt = self.build_system_prompt_split();
             self.provider
                 .prewarm(&tools, &split_prompt.static_part)
                 .await;
@@ -152,26 +152,13 @@ impl Agent {
                 // Compaction clears the tool lock, so rebuild the foreground
                 // request metadata rather than relying on the pre-compaction snapshot.
                 tools = self.tool_definitions().await;
-                split_prompt = self.build_system_prompt_split(None);
+                split_prompt = self.build_system_prompt_split();
             }
 
             let messages: std::sync::Arc<[Message]> = messages.into();
-            // Non-blocking memory: uses pending result from last turn, spawns check for next turn
-            let memory_pending = self.build_memory_prompt_nonblocking_shared(
-                std::sync::Arc::clone(&messages),
-                Some(std::sync::Arc::new({
-                    let event_tx = event_tx.clone();
-                    move |event| {
-                        let _ = event_tx.send(event);
-                    }
-                })),
-            );
             // Use split prompt for better caching - static content cached, dynamic not
             self.log_prompt_prefix_accounting(&split_prompt, &tools);
 
-            // Check for client-side cache violations before memory injection.
-            // Memory is an ephemeral suffix that changes each turn; tracking it would cause
-            // false-positive violations every turn (prior turn's memory ≠ current history prefix).
             self.record_client_cache_request(&messages);
 
             // `messages` now owns the provider-facing request snapshot. Do not
@@ -179,40 +166,14 @@ impl Agent {
             // wait and response stream.
             self.session.release_provider_messages_cache();
 
-            let mut cache_signature_messages =
-                if crate::config::config().features.message_timestamps {
-                    Message::with_timestamps(&messages)
-                } else {
-                    messages.iter().cloned().collect()
-                };
-            let mut ephemeral_signature_messages = Vec::new();
+            let cache_signature_messages = if crate::config::config().features.message_timestamps {
+                Message::with_timestamps(&messages)
+            } else {
+                messages.iter().cloned().collect()
+            };
+            let ephemeral_signature_messages = Vec::new();
 
-            // Inject memory as a user message at the end (preserves cache prefix)
-            let mut messages_with_memory: Vec<Message> = messages.iter().cloned().collect();
-            if let Some(memory) = memory_pending.as_ref() {
-                let memory_count = memory.count.max(1);
-                let computed_age_ms = memory.computed_at.elapsed().as_millis() as u64;
-                crate::memory::record_injected_prompt(
-                    &memory.prompt,
-                    memory_count,
-                    computed_age_ms,
-                );
-                self.record_memory_injection_in_session(memory);
-                let _ = event_tx.send(ServerEvent::MemoryInjected {
-                    count: memory_count,
-                    prompt: memory.prompt.clone(),
-                    display_prompt: memory.display_prompt.clone(),
-                    prompt_chars: memory.prompt.chars().count(),
-                    computed_age_ms,
-                });
-                let (memory_msg, persisted) = self.prepare_memory_injection_message(memory);
-                if !persisted {
-                    ephemeral_signature_messages.push(memory_msg.clone());
-                } else {
-                    cache_signature_messages.push(memory_msg.clone());
-                }
-                messages_with_memory.push(memory_msg);
-            }
+            let messages_with_memory: Vec<Message> = messages.iter().cloned().collect();
 
             logging::info(&format!(
                 "API call starting: {} messages, {} tools",
@@ -310,7 +271,6 @@ impl Agent {
             // while tokens arrive needlessly multiplies active-session memory.
             drop(stamped);
             drop(messages_with_memory);
-            drop(memory_pending);
             drop(messages);
             drop(split_prompt);
 
@@ -1097,7 +1057,6 @@ impl Agent {
                 });
                 let message_id =
                     self.add_message_ext(Role::Assistant, content_blocks, None, token_usage);
-                self.push_embedding_snapshot_if_semantic(&text_content);
                 self.session.save()?;
                 self.record_model_turn_usage(&usage_turn_id);
                 Some(message_id)

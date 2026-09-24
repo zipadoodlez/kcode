@@ -90,22 +90,6 @@ use ratatui::prelude::Frame;
 use ratatui::text::Line;
 use std::time::Duration;
 
-pub(crate) fn scheduled_notification_text(
-    info: Option<&info_widget::AmbientWidgetData>,
-) -> Option<String> {
-    let info = info?;
-    if info.reminder_count == 0 {
-        return None;
-    }
-    let next = info.next_reminder_wake.as_deref()?;
-    let suffix = if info.reminder_count > 1 {
-        format!(" · {} queued", info.reminder_count)
-    } else {
-        String::new()
-    };
-    Some(format!("⏰ next scheduled task {}{}", next, suffix))
-}
-
 pub(crate) use self::core::DisplayMessageRoleExt;
 pub use jcode_tui_core::{
     CopySelectionPane, CopySelectionPoint, CopySelectionRange, CopySelectionStatus,
@@ -874,10 +858,7 @@ pub trait TuiState {
             return true;
         }
         if !self.is_processing() {
-            let info = self.info_widget_data();
-            if scheduled_notification_text(info.ambient_info.as_ref()).is_some() {
-                return true;
-            }
+            let _ = self.info_widget_data();
             if let Some(cache_info) = self.cache_ttl_status()
                 && (cache_info.is_cold || cache_info.expiring_soon())
             {
@@ -1384,8 +1365,6 @@ pub enum AgentModelTarget {
     Swarm,
     Review,
     Judge,
-    Memory,
-    Ambient,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1861,10 +1840,8 @@ pub fn prewarm_focused_side_panel(
 mod tests {
     use super::{
         CacheTtlInfo, KvCacheProblemKind, connection_type_icon, detect_kv_cache_problem,
-        keyboard_enhancement_flags, resolve_subscribe_metadata, scheduled_notification_text,
+        keyboard_enhancement_flags, resolve_subscribe_metadata,
     };
-    use crate::ambient::AmbientStatus;
-    use crate::tui::info_widget::AmbientWidgetData;
     use crossterm::event::KeyboardEnhancementFlags;
 
     fn warm_cache_ttl() -> CacheTtlInfo {
@@ -2082,28 +2059,6 @@ mod tests {
                 "connection icon for '{connection}' must not need VS16, got {icon:?}"
             );
         }
-    }
-
-    #[test]
-    fn scheduled_notification_text_uses_session_reminder_count_only() {
-        let info = AmbientWidgetData {
-            show_widget: false,
-            status: AmbientStatus::Disabled,
-            queue_count: 88,
-            next_queue_preview: Some("ambient backlog".to_string()),
-            reminder_count: 2,
-            next_reminder_preview: Some("follow up".to_string()),
-            last_run_ago: None,
-            last_summary: None,
-            next_wake: Some("in 0s".to_string()),
-            next_reminder_wake: Some("in 5m".to_string()),
-            budget_percent: None,
-        };
-
-        assert_eq!(
-            scheduled_notification_text(Some(&info)).as_deref(),
-            Some("⏰ next scheduled task in 5m · 2 queued")
-        );
     }
 
     #[test]

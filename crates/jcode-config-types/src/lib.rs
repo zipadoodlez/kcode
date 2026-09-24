@@ -19,8 +19,6 @@ pub enum CompactionMode {
     Reactive,
     /// Compact early based on predicted token growth rate
     Proactive,
-    /// Compact based on semantic topic shifts and relevance scoring
-    Semantic,
 }
 
 impl CompactionMode {
@@ -28,7 +26,6 @@ impl CompactionMode {
         match self {
             Self::Reactive => "reactive",
             Self::Proactive => "proactive",
-            Self::Semantic => "semantic",
         }
     }
 
@@ -36,7 +33,6 @@ impl CompactionMode {
         match input.trim().to_ascii_lowercase().as_str() {
             "reactive" => Some(Self::Reactive),
             "proactive" => Some(Self::Proactive),
-            "semantic" => Some(Self::Semantic),
             _ => None,
         }
     }
@@ -352,7 +348,7 @@ impl CrossProviderFailoverMode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CompactionConfig {
-    /// Compaction mode: reactive (default), proactive, or semantic
+    /// Compaction mode: reactive (default) or proactive
     pub mode: CompactionMode,
 
     /// [proactive] Number of turns to look ahead when projecting token growth
@@ -361,26 +357,17 @@ pub struct CompactionConfig {
     /// [proactive] EWMA alpha for token growth smoothing (0.0-1.0, higher = more recency bias)
     pub ewma_alpha: f32,
 
-    /// [proactive/semantic] Minimum context fill level before any proactive check fires (0.0-1.0)
+    /// [proactive] Minimum context fill level before any proactive check fires (0.0-1.0)
     pub proactive_floor: f32,
 
-    /// [proactive/semantic] Minimum number of token snapshots needed before proactive check
+    /// [proactive] Minimum number of token snapshots needed before proactive check
     pub min_samples: usize,
 
-    /// [proactive/semantic] Number of stable turns (no growth) before suppressing proactive compact
+    /// [proactive] Number of stable turns (no growth) before suppressing proactive compact
     pub stall_window: usize,
 
-    /// [proactive/semantic] Minimum turns between two compactions (cooldown)
+    /// [proactive] Minimum turns between two compactions (cooldown)
     pub min_turns_between_compactions: usize,
-
-    /// [semantic] Cosine similarity threshold below which a topic shift is detected (0.0-1.0)
-    pub topic_shift_threshold: f32,
-
-    /// [semantic] Cosine similarity above which a message is kept verbatim (0.0-1.0)
-    pub relevance_keep_threshold: f32,
-
-    /// [semantic] Number of recent turns to look at for building the "current goal" embedding
-    pub goal_window_turns: usize,
 
     /// Hard cap on the token budget compaction measures against, regardless of
     /// the model's advertised context window. 0 = no cap (use the model window).
@@ -403,9 +390,6 @@ impl Default for CompactionConfig {
             min_samples: 3,
             stall_window: 5,
             min_turns_between_compactions: 10,
-            topic_shift_threshold: 0.45,
-            relevance_keep_threshold: 0.65,
-            goal_window_turns: 5,
             max_context_tokens: 0,
         }
     }
@@ -583,56 +567,6 @@ pub struct AgentsConfig {
     /// as chips on a single row.
     #[serde(default)]
     pub swarm_strip_layout: SwarmStripLayout,
-    /// Optional default model override for the memory sidecar.
-    pub memory_model: Option<String>,
-    /// Whether memory should use the sidecar for relevance/extraction.
-    ///
-    /// Defaults to `true`: the LLM precision-judge path is the only memory mode
-    /// that is reliably productive (injection precision ~1.0), so memory uses it
-    /// by default. Set to `false` only to deliberately opt into the lower-
-    /// precision no-LLM hybrid path. When sidecar mode is on but no LLM backend
-    /// is reachable, the memory runtime goes dormant instead of degrading to the
-    /// no-LLM path.
-    #[serde(default = "default_memory_sidecar_enabled")]
-    pub memory_sidecar_enabled: bool,
-    /// Minimum turns between Mode-2 memory reranks (cadence floor). The
-    /// expensive listwise LLM rerank runs at most once per this many turns;
-    /// skipped turns fall back to hybrid-ordered surfacing. A topic change or
-    /// the first turn always forces a rerank regardless of cadence. 0 or 1 =
-    /// rerank every turn (no gating). Default 3.
-    #[serde(default = "default_memory_rerank_cadence")]
-    pub memory_rerank_cadence: usize,
-    /// Number of independent LLM rerank "judges" to run per fired rerank. Their
-    /// votes are combined and only memories meeting `memory_rerank_min_agree`
-    /// agreement are injected. 1 = single judge (cheapest). 2 = two judges must
-    /// agree, which lifts injection precision to ~1.0 with ~100% clean-rate on
-    /// no-memory turns (offline adjudication), at 2 LLM calls per fired turn.
-    #[serde(default = "default_memory_rerank_votes")]
-    pub memory_rerank_votes: usize,
-    /// Minimum judge agreement (of `memory_rerank_votes`) required to inject a
-    /// memory. Clamped to 1..=votes. Higher = stricter precision, lower recall.
-    #[serde(default = "default_memory_rerank_min_agree")]
-    pub memory_rerank_min_agree: usize,
-    /// Which embedding backend memory dense-retrieval uses: `"local"` (bundled
-    /// all-MiniLM-L6-v2 ONNX, default, no network) or `"openai"` (remote
-    /// OpenAI/openai-compatible `/v1/embeddings`, opt-in, requires an
-    /// `OPENAI_API_KEY`). A keyless `"openai"` setting silently degrades to
-    /// local. Env override: `JCODE_MEMORY_EMBEDDING_BACKEND`.
-    #[serde(default = "default_memory_embedding_backend")]
-    pub memory_embedding_backend: String,
-    /// OpenAI embedding model name when `memory_embedding_backend = "openai"`.
-    /// Unset = `text-embedding-3-small`. Env: `JCODE_MEMORY_EMBEDDING_MODEL`.
-    #[serde(default)]
-    pub memory_embedding_model: Option<String>,
-    /// Optional override for the embeddings API base URL (no trailing slash),
-    /// for OpenAI-compatible gateways. Unset = `https://api.openai.com/v1`.
-    /// Env: `JCODE_MEMORY_EMBEDDING_BASE_URL`.
-    #[serde(default)]
-    pub memory_embedding_base_url: Option<String>,
-    /// Optional override for the remote embedding dimensionality (vector-space
-    /// metadata / sanity checks). Unset = inferred from the model name.
-    #[serde(default)]
-    pub memory_embedding_dim: Option<usize>,
     /// Maximum number of live swarm worker agents in one swarm. This is the RAM
     /// safety budget for both recursive ad hoc spawning and deep-mode `run_plan`
     /// parallelism. Completed/stopped workers do not consume slots. Light mode
@@ -647,26 +581,6 @@ fn default_swarm_max_concurrent_agents() -> usize {
     32
 }
 
-fn default_memory_embedding_backend() -> String {
-    "local".to_string()
-}
-
-fn default_memory_sidecar_enabled() -> bool {
-    true
-}
-
-fn default_memory_rerank_cadence() -> usize {
-    3
-}
-
-fn default_memory_rerank_votes() -> usize {
-    2
-}
-
-fn default_memory_rerank_min_agree() -> usize {
-    2
-}
-
 impl Default for AgentsConfig {
     fn default() -> Self {
         Self {
@@ -677,15 +591,6 @@ impl Default for AgentsConfig {
             swarm_spawn_mode: SwarmSpawnMode::default(),
             swarm_gallery_max_pct: None,
             swarm_strip_layout: SwarmStripLayout::default(),
-            memory_model: None,
-            memory_sidecar_enabled: default_memory_sidecar_enabled(),
-            memory_rerank_cadence: default_memory_rerank_cadence(),
-            memory_rerank_votes: default_memory_rerank_votes(),
-            memory_rerank_min_agree: default_memory_rerank_min_agree(),
-            memory_embedding_backend: default_memory_embedding_backend(),
-            memory_embedding_model: None,
-            memory_embedding_base_url: None,
-            memory_embedding_dim: None,
             swarm_max_concurrent_agents: default_swarm_max_concurrent_agents(),
         }
     }
@@ -1110,8 +1015,6 @@ pub struct FeatureConfig {
     /// Check for and install jcode updates during startup (default: true).
     /// Set this to false for the persistent equivalent of `--no-update`.
     pub check_updates: bool,
-    /// Enable memory retrieval/extraction features (default: true)
-    pub memory: bool,
     /// Enable swarm coordination features (default: true)
     pub swarm: bool,
     /// Enable Mermaid rendering and Mermaid-specific model guidance (default: true)
@@ -1122,9 +1025,6 @@ pub struct FeatureConfig {
     pub auto_poke: bool,
     /// Inject timestamps into user messages and tool results sent to the model (default: true)
     pub message_timestamps: bool,
-    /// Persist auto-recalled memory injections into normal session history instead of sending
-    /// them as request-only ephemeral suffix messages (default: false)
-    pub persist_memory_injections: bool,
     /// Surface an in-chat system message whenever a request misses the KV cache
     /// for a harness-caused (avoidable) reason: the system prompt, tool set, or
     /// message prefix changed without the conversation legitimately growing.
@@ -1140,12 +1040,10 @@ impl Default for FeatureConfig {
     fn default() -> Self {
         Self {
             check_updates: true,
-            memory: true,
             swarm: true,
             mermaid: true,
             auto_poke: true,
             message_timestamps: true,
-            persist_memory_injections: false,
             kv_cache_miss_notices: true,
             update_channel: UpdateChannel::default(),
         }
@@ -1301,52 +1199,6 @@ impl Default for ProviderConfig {
             stream_idle_timeout_secs: 180,
             max_retries: 8,
             retry_backoff_cap_secs: 30,
-        }
-    }
-}
-
-/// Ambient mode configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct AmbientConfig {
-    /// Enable ambient mode (default: false)
-    pub enabled: bool,
-    /// Provider override (default: auto-select)
-    pub provider: Option<String>,
-    /// Model override (default: provider's strongest)
-    pub model: Option<String>,
-    /// Allow API key usage (default: false, only OAuth)
-    pub allow_api_keys: bool,
-    /// Daily token budget when using API keys
-    pub api_daily_budget: Option<u64>,
-    /// Minimum interval between cycles in minutes (default: 5)
-    pub min_interval_minutes: u32,
-    /// Maximum interval between cycles in minutes (default: 120)
-    pub max_interval_minutes: u32,
-    /// Pause ambient when user has active session (default: true)
-    pub pause_on_active_session: bool,
-    /// Enable proactive work vs garden-only (default: true)
-    pub proactive_work: bool,
-    /// Proactive work branch prefix (default: "ambient/")
-    pub work_branch_prefix: String,
-    /// Show ambient cycle in a terminal window (default: true)
-    pub visible: bool,
-}
-
-impl Default for AmbientConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            provider: None,
-            model: None,
-            allow_api_keys: false,
-            api_daily_budget: None,
-            min_interval_minutes: 5,
-            max_interval_minutes: 120,
-            pause_on_active_session: true,
-            proactive_work: true,
-            work_branch_prefix: "ambient/".to_string(),
-            visible: true,
         }
     }
 }

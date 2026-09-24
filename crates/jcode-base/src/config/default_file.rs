@@ -246,8 +246,6 @@ prompt_entry_animation = true
 # Check for and install updates during startup. Set to false for the persistent
 # equivalent of passing --no-update on every invocation.
 check_updates = true
-# Memory: retrieval + extraction sidecar features
-memory = true
 # Swarm: multi-session coordination features
 swarm = true
 # Mermaid: render Mermaid code blocks and tell the model that diagrams are supported
@@ -257,8 +255,6 @@ mermaid = true
 auto_poke = true
 # Inject timestamps into user messages and tool results sent to the model
 message_timestamps = true
-# Persist memory injections into session history instead of sending them as request-only ephemeral context
-persist_memory_injections = false
 # Show an in-chat warning when a request misses the KV cache for a harness-caused
 # (avoidable) reason: system prompt, tool set, or message prefix changed. These
 # should essentially never happen and indicate a prefix-cache bug.
@@ -438,43 +434,6 @@ swarm_max_concurrent_agents = 32
 # Env override: JCODE_SWARM_STRIP_LAYOUT
 # swarm_strip_layout = "vertical"
 #
-# Model for the memory sidecar (relevance/extraction). Unset = sidecar auto-select
-# (OpenAI defaults to gpt-5.6-luna with reasoning effort "none").
-# Env override: JCODE_MEMORY_MODEL
-# memory_model = "gpt-5.6-luna"
-#
-# Whether the memory sidecar (LLM precision judge) handles relevance/extraction.
-# Default true: the LLM precision-judge path is the only reliably productive
-# memory mode. Set false only to opt into the lower-precision no-LLM hybrid path.
-# When this is true but no LLM backend is reachable (logged out), memory goes
-# dormant instead of degrading to the no-LLM path. Env: JCODE_MEMORY_SIDECAR_ENABLED
-# memory_sidecar_enabled = true
-#
-# Minimum turns between Mode-2 memory reranks (cadence floor). The expensive
-# listwise LLM rerank runs at most once per this many turns; skipped turns fall
-# back to hybrid-ordered surfacing. A topic change always forces a rerank. Set 1
-# to rerank every turn. Default 3.
-# memory_rerank_cadence = 3
-#
-# High-precision consensus rerank: run N independent LLM judges per fired rerank
-# and inject only memories that >= memory_rerank_min_agree of them agree on.
-# Default 2 judges / 2 agreement -> injection precision ~1.0 with ~100% clean
-# (zero memory) on no-memory turns, at 2 LLM calls per fired turn. Set votes=1
-# for the cheaper single-judge path (precision ~0.77).
-# memory_rerank_votes = 2
-# memory_rerank_min_agree = 2
-#
-# Embedding backend for memory dense-retrieval. "local" (default) uses the
-# bundled all-MiniLM-L6-v2 ONNX model (no network); "openai" uses a remote
-# OpenAI / OpenAI-compatible /v1/embeddings endpoint (requires OPENAI_API_KEY;
-# silently falls back to local when no key is found). Vectors from different
-# models live in separate spaces and are never compared, so switching is safe.
-# Env override: JCODE_MEMORY_EMBEDDING_BACKEND
-# memory_embedding_backend = "local"
-# memory_embedding_model = "text-embedding-3-small"
-# memory_embedding_base_url = "https://api.openai.com/v1"
-# memory_embedding_dim = 1536
-
 [terminal]
 # Without a hook, clients inside tmux automatically use a right-side pane.
 # Set JCODE_TERMINAL to force a supported terminal emulator instead.

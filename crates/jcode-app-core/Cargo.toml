@@ -15,7 +15,6 @@ name = "jcode_app_core"
 path = "src/lib.rs"
 
 [dependencies]
-# NOTE: local embeddings live in `jcode-base` (embedding); this crate forwards
 # that feature to jcode-base rather than depending on the backing crate directly.
 
 # Async runtime
@@ -47,7 +46,6 @@ urlencoding = "2"        # URL encoding for web search
 uuid = { version = "1", features = ["v4", "v5"] }
 
 # Embeddings (local inference) live in jcode-base; this crate forwards the
-# `embeddings` feature to jcode-base rather than depending on jcode-embedding.
 jcode-import-core = { path = "../jcode-import-core" }
 
 # OAuth
@@ -99,9 +97,7 @@ tempfile = "3"
 agentgrep = { git = "https://github.com/1jehuang/agentgrep.git", tag = "v0.1.6" }
 
 [features]
-default = ["pdf", "embeddings", "bedrock"]
-# local embeddings live in jcode-base (embedding); forward there.
-embeddings = ["jcode-base/embeddings"]
+default = ["pdf", "bedrock"]
 # live AWS Bedrock support lives in jcode-base (provider/bedrock); forward there.
 bedrock = ["jcode-base/bedrock"]
 # Used only by the CentOS 7 portable Linux release build.

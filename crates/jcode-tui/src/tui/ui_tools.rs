@@ -848,17 +848,6 @@ pub(super) fn is_memory_store_tool(tc: &ToolCall) -> bool {
     }
 }
 
-pub(super) fn is_memory_recall_tool(tc: &ToolCall) -> bool {
-    match tc.name.as_str() {
-        "memory" => tc
-            .input
-            .get("action")
-            .and_then(|v| v.as_str())
-            .is_some_and(|a| a == "recall"),
-        _ => false,
-    }
-}
-
 /// Extract a brief summary from a tool call input (file path, command, etc.)
 pub(crate) fn get_tool_summary(tool: &ToolCall) -> String {
     get_tool_summary_with_budget(tool, 50, None)

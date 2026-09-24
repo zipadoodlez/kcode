@@ -1,4 +1,4 @@
-use super::info_widget::{AuthMethod, InfoWidgetData, UsageProvider, is_traceworthy_memory_event};
+use super::info_widget::{AuthMethod, InfoWidgetData, UsageProvider};
 
 pub(crate) const MAX_TODO_LINES: usize = 12;
 
@@ -6,7 +6,6 @@ pub(crate) const MAX_TODO_LINES: usize = 12;
 pub(crate) enum InfoPageKind {
     CompactOnly,
     TodosExpanded,
-    MemoryExpanded,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -43,15 +42,6 @@ pub(crate) fn compute_page_layout(
         candidates.push(InfoPage {
             kind: InfoPageKind::TodosExpanded,
             height: compact_height - todos_compact + todos_expanded,
-        });
-    }
-
-    let memory_compact = compact_memory_height(data);
-    let memory_expanded = expanded_memory_height(data);
-    if memory_expanded > 0 {
-        candidates.push(InfoPage {
-            kind: InfoPageKind::MemoryExpanded,
-            height: compact_height - memory_compact + memory_expanded,
         });
     }
 
@@ -114,15 +104,6 @@ fn compact_context_height(data: &InfoWidgetData) -> u16 {
 
 fn compact_todos_height(data: &InfoWidgetData) -> u16 {
     if data.todos.is_empty() { 0 } else { 2 }
-}
-
-fn compact_memory_height(data: &InfoWidgetData) -> u16 {
-    if let Some(info) = &data.memory_info
-        && info.should_render()
-    {
-        return 1;
-    }
-    0
 }
 
 fn compact_model_height(data: &InfoWidgetData) -> u16 {
@@ -202,7 +183,6 @@ fn compact_overview_height(data: &InfoWidgetData) -> u16 {
     compact_model_height(data)
         + compact_context_height(data)
         + compact_todos_height(data)
-        + compact_memory_height(data)
         + compact_background_height(data)
         + compact_usage_height(data)
         + compact_kv_cache_height(data)
@@ -223,33 +203,10 @@ fn expanded_todos_height(data: &InfoWidgetData) -> u16 {
     height
 }
 
-fn expanded_memory_height(data: &InfoWidgetData) -> u16 {
-    if let Some(info) = &data.memory_info
-        && info.should_render()
-    {
-        let mut height = 1u16;
-        if info.should_show_activity() {
-            height += 1 + 4;
-            if let Some(activity) = &info.activity
-                && activity
-                    .recent_events
-                    .iter()
-                    .any(is_traceworthy_memory_event)
-            {
-                height += 1;
-            }
-        }
-        return height;
-    }
-    0
-}
-
 #[cfg(test)]
 mod tests {
     use super::{InfoPageKind, compute_page_layout};
-    use crate::todo::TodoItem;
-    use crate::tui::info_widget::{InfoWidgetData, MemoryInfo};
-    use std::collections::HashMap;
+    use crate::tui::info_widget::InfoWidgetData;
 
     #[test]
     fn compute_page_layout_falls_back_to_compact_page() {
@@ -264,49 +221,5 @@ mod tests {
         assert_eq!(layout.pages.len(), 1);
         assert_eq!(layout.pages[0].kind, InfoPageKind::CompactOnly);
         assert!(!layout.show_dots);
-    }
-
-    #[test]
-    fn compute_page_layout_keeps_multiple_expanded_pages_when_height_allows() {
-        let data = InfoWidgetData {
-            todos: vec![TodoItem {
-                group: None,
-                content: "ship refactor".to_string(),
-                status: "pending".to_string(),
-                priority: "high".to_string(),
-                id: "todo-1".to_string(),
-                blocked_by: Vec::new(),
-                assigned_to: None,
-                confidence: None,
-                completion_confidence: None,
-                confidence_history: Vec::new(),
-            }],
-            memory_info: Some(MemoryInfo {
-                total_count: 3,
-                project_count: 2,
-                global_count: 1,
-                by_category: HashMap::from([("fact".to_string(), 3usize)]),
-                sidecar_model: Some("openai · gpt-5.3-codex-spark".to_string()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-
-        let layout = compute_page_layout(&data, 40, 8);
-
-        assert!(layout.pages.len() >= 2);
-        assert!(layout.show_dots);
-        assert!(
-            layout
-                .pages
-                .iter()
-                .any(|page| page.kind == InfoPageKind::TodosExpanded)
-        );
-        assert!(
-            layout
-                .pages
-                .iter()
-                .any(|page| page.kind == InfoPageKind::MemoryExpanded)
-        );
     }
 }

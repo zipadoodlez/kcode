@@ -3,12 +3,8 @@ use super::{
     RemoteRunState, auth_provider_hint_for_login_provider, handle_post_connect,
     handle_server_event, process_remote_followups,
 };
-use crate::protocol::{
-    MemoryActivitySnapshot, MemoryPipelineSnapshot, MemoryStateSnapshot, MemoryStepStatusSnapshot,
-    ServerEvent,
-};
+use crate::protocol::ServerEvent;
 use crate::provider::Provider;
-use crate::tui::info_widget::{MemoryState, StepStatus};
 use anyhow::Result;
 use std::sync::Arc;
 
@@ -43,7 +39,6 @@ fn create_test_app() -> crate::tui::app::App {
     // process-wide ambient-info cache that another test may have populated
     // from its own JCODE_HOME (scheduled reminders read as a notification).
     // Reset it so these tests observe only their own state.
-    crate::tui::app::helpers::clear_ambient_info_cache_for_tests();
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     let registry = rt.block_on(crate::tool::Registry::new(provider.clone()));
@@ -898,49 +893,6 @@ fn handle_post_connect_dispatches_reload_followup_even_if_history_snapshot_looks
     } else {
         crate::env::remove_var("JCODE_HOME");
     }
-}
-
-#[test]
-fn handle_server_event_applies_remote_memory_activity_snapshot() {
-    crate::memory::clear_activity();
-
-    let rt = tokio::runtime::Runtime::new().expect("runtime");
-    let _guard = rt.enter();
-    let mut app = create_test_app();
-    app.memory_enabled = true;
-    let mut remote = crate::tui::backend::RemoteConnection::dummy();
-
-    handle_server_event(
-        &mut app,
-        ServerEvent::MemoryActivity {
-            activity: MemoryActivitySnapshot {
-                state: MemoryStateSnapshot::SidecarChecking { count: 3 },
-                state_age_ms: 180,
-                pipeline: Some(MemoryPipelineSnapshot {
-                    search: MemoryStepStatusSnapshot::Done,
-                    search_result: None,
-                    verify: MemoryStepStatusSnapshot::Running,
-                    verify_result: None,
-                    verify_progress: Some((1, 3)),
-                    inject: MemoryStepStatusSnapshot::Pending,
-                    inject_result: None,
-                    maintain: MemoryStepStatusSnapshot::Pending,
-                    maintain_result: None,
-                }),
-            },
-        },
-        &mut remote,
-    );
-
-    let activity = crate::memory::get_activity().expect("memory activity should be populated");
-    assert_eq!(activity.state, MemoryState::SidecarChecking { count: 3 });
-    let pipeline = activity.pipeline.expect("pipeline should be restored");
-    assert_eq!(pipeline.search, StepStatus::Done);
-    assert_eq!(pipeline.verify, StepStatus::Running);
-    assert_eq!(pipeline.verify_progress, Some((1, 3)));
-    assert!(activity.state_since.elapsed().as_millis() >= 100);
-
-    crate::memory::clear_activity();
 }
 
 /// Reproduces the "stuck on loading session…" bug and verifies the watchdog

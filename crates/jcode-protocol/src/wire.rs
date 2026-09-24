@@ -343,10 +343,6 @@ pub enum Request {
     #[serde(rename = "compact")]
     Compact { id: u64 },
 
-    /// Trigger immediate memory extraction for the current session
-    #[serde(rename = "trigger_memory_extraction")]
-    TriggerMemoryExtraction { id: u64 },
-
     /// Notify server that auth credentials changed (e.g., after login)
     #[serde(rename = "notify_auth_changed")]
     NotifyAuthChanged {

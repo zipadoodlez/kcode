@@ -323,11 +323,6 @@ impl App {
                 .map(|value| value.capacity())
                 .unwrap_or(0)
             + self
-                .ambient_system_prompt
-                .as_ref()
-                .map(|value| value.capacity())
-                .unwrap_or(0)
-            + self
                 .last_stream_error
                 .as_ref()
                 .map(|value| value.capacity())

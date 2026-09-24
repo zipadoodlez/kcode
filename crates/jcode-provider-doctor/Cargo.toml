@@ -25,7 +25,7 @@ tokio = { version = "1", features = ["time"] }
 
 # default-features = false: the doctor only needs base's always-on surface
 # (auth, provider runtimes, provider_catalog, live_tests). Feature unification
-# in the root binary re-enables embeddings/bedrock there.
+# in the root binary re-enables bedrock there.
 jcode-base = { path = "../jcode-base", default-features = false }
 jcode-provider-gemini-runtime = { path = "../jcode-provider-gemini-runtime" }
 jcode-provider-anthropic-runtime = { path = "../jcode-provider-anthropic-runtime" }

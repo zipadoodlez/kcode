@@ -584,16 +584,6 @@ pub(super) async fn execute_debug_command(
         return Ok(serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string()));
     }
 
-    if trimmed == "trigger_extraction" {
-        let agent = agent.lock().await;
-        let count = agent.extract_session_memories().await;
-        let payload = serde_json::json!({
-            "extracted": count,
-            "message_count": agent.message_count(),
-        });
-        return Ok(serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string()));
-    }
-
     if trimmed == "available_models" {
         let agent = agent.lock().await;
         let models = agent.available_models_display();

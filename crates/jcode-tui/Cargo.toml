@@ -87,10 +87,9 @@ jcode-terminal-image = { path = "../jcode-terminal-image" }
 jcode-tui-workspace = { path = "../jcode-tui-workspace" }
 
 [features]
-default = ["pdf", "embeddings", "bedrock"]
+default = ["pdf", "bedrock"]
 # Forwarded to app-core (and onward to jcode-base) so the root crate's feature
 # set fully controls the optional stacks.
-embeddings = ["jcode-app-core/embeddings"]
 pdf = ["jcode-app-core/pdf"]
 bedrock = ["jcode-app-core/bedrock"]
 linux-compat-vendored-openssl = ["jcode-app-core/linux-compat-vendored-openssl"]

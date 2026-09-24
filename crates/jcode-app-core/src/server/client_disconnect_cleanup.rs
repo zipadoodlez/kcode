@@ -222,14 +222,7 @@ pub(super) async fn cleanup_client_connection(
                         }
                     }
 
-                    let memory_enabled = agent.memory_enabled();
-                    let transcript = if memory_enabled {
-                        Some(agent.build_transcript_for_extraction())
-                    } else {
-                        None
-                    };
                     let sid = client_session_id.to_string();
-                    let working_dir = agent.working_dir().map(|dir| dir.to_string());
                     drop(agent);
                     let event = match disposition {
                         DisconnectDisposition::Closed => {
@@ -254,13 +247,6 @@ pub(super) async fn cleanup_client_connection(
                     .with_session_id(sid.clone())
                     .force_attribution();
                     crate::runtime_memory_log::emit_event(event);
-                    if let Some(transcript) = transcript {
-                        crate::memory_agent::trigger_final_extraction_with_dir(
-                            transcript,
-                            sid,
-                            working_dir,
-                        );
-                    }
                 }
                 Err(_) => {
                     crate::logging::warn(&format!(

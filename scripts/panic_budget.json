@@ -19,7 +19,6 @@
     "crates/jcode-tui-core/src/stream_buffer.rs": 3,
     "crates/jcode-tui-style/examples/light_bench.rs": 1,
     "crates/jcode-tui/src/tui/session_picker.rs": 2,
-    "src/bin/memory_recall_bench.rs": 14,
     "src/cli/commands/menubar.rs": 1
   },
   "version": 1

@@ -65,8 +65,6 @@ mod inline_ui;
 pub(crate) mod input_ui;
 #[path = "ui_memory_estimates.rs"]
 mod memory_estimates;
-#[path = "ui_memory.rs"]
-mod memory_ui;
 #[path = "ui_messages.rs"]
 mod messages;
 #[path = "ui_onboarding.rs"]
@@ -128,11 +126,6 @@ pub(crate) use header::capitalize;
 use inline_ui::{draw_inline_ui, inline_ui_height};
 pub(crate) use memory_estimates::{debug_memory_profile, debug_side_panel_memory_profile};
 use memory_estimates::{estimate_prepared_chat_frame_bytes, estimate_prepared_messages_bytes};
-#[cfg(test)]
-use memory_ui::{
-    MemoryTileItem, choose_memory_tile_span, parse_memory_display_entries, plan_memory_tile,
-};
-use memory_ui::{group_into_tiles, render_memory_tiles, split_by_display_width};
 use messages::get_cached_message_lines;
 #[cfg_attr(test, allow(unused_imports))]
 pub(crate) use messages::{

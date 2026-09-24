@@ -564,11 +564,9 @@ impl App {
             remote_client_count: None,
             resume_session_id: None,
             requested_exit_code: None,
-            memory_enabled: features.memory,
             autoreview_enabled,
             autojudge_enabled,
             improve_mode,
-            last_injected_memory_signature: None,
             swarm_enabled: features.swarm,
             debug_force_inline_gallery: false,
             swarm_panel_selected: 0,
@@ -705,7 +703,6 @@ impl App {
             reload_info: Vec::new(),
             debug_trace: DebugTrace::new(),
             streaming_md_renderer: RefCell::new(IncrementalMarkdownRenderer::new(None)),
-            ambient_system_prompt: None,
             pending_login: None,
             remote_login: None,
             remote_login_onboarding: Default::default(),
@@ -991,11 +988,9 @@ impl App {
             remote_client_count: None,
             resume_session_id: None,
             requested_exit_code: None,
-            memory_enabled: features.memory,
             autoreview_enabled,
             autojudge_enabled,
             improve_mode,
-            last_injected_memory_signature: None,
             swarm_enabled: features.swarm,
             debug_force_inline_gallery: false,
             swarm_panel_selected: 0,
@@ -1132,7 +1127,6 @@ impl App {
             reload_info: Vec::new(),
             debug_trace: DebugTrace::new(),
             streaming_md_renderer: RefCell::new(IncrementalMarkdownRenderer::new(None)),
-            ambient_system_prompt: None,
             pending_login: None,
             remote_login: None,
             remote_login_onboarding: Default::default(),
@@ -1183,17 +1177,6 @@ impl App {
         app.is_remote = false;
         app.is_replay = false;
         app
-    }
-
-    /// Configure ambient mode: override system prompt and queue an initial message.
-    pub fn set_ambient_mode(&mut self, system_prompt: String, initial_message: String) {
-        self.ambient_system_prompt = Some(system_prompt);
-        crate::tool::ambient::register_ambient_session(self.session.id.clone());
-        self.queued_messages.push(initial_message);
-        self.is_processing = true;
-        self.status = ProcessingStatus::Sending;
-        self.processing_started = Some(Instant::now());
-        self.pending_turn = true;
     }
 
     /// Queue a startup message that should be auto-sent when the TUI starts.

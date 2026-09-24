@@ -99,17 +99,6 @@ async fn wait_for_existing_server_tolerates_delayed_listener() {
     bind_task.await.expect("bind task should complete");
 }
 
-#[test]
-fn server_initializes_schedule_runner_even_when_ambient_disabled() {
-    let provider: Arc<dyn Provider> = Arc::new(TestProvider);
-    let server = Server::new(provider);
-
-    assert!(
-        server.ambient_runner.is_some(),
-        "schedule/session tasks need the runner even when ambient is disabled"
-    );
-}
-
 #[tokio::test]
 async fn debug_accept_loop_responds_to_ping_without_affecting_client_count() {
     let _guard = crate::storage::lock_test_env();
