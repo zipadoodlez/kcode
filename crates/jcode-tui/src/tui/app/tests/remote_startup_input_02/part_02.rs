@@ -102,7 +102,7 @@ fn test_background_task_started_activity_creates_running_row_without_card() {
     let mut app = create_test_app();
     let event = BusEvent::UiActivity(crate::bus::UiActivity::background(
         Some(app.session.id.clone()),
-        "**Background task started** `bgstarted` · `cargo test`\n\nJcode is running this in the background. Progress, checkpoints, and completion will appear here.",
+        "**Background task started** `bgstarted` · `cargo test`\n\nKcode is running this in the background. Progress, checkpoints, and completion will appear here.",
         Some("Background task started · cargo test"),
     ));
 

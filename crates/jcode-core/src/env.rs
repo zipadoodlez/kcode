@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
 
-/// Mutate the process environment for jcode runtime configuration.
+/// Mutate the process environment for kcode runtime configuration.
 ///
 /// Rust 2024 makes environment mutation unsafe because it can race with
 /// concurrent environment access in foreign code. jcode intentionally mutates
@@ -22,7 +22,7 @@ where
     }
 }
 
-/// Remove a process environment variable used by jcode runtime configuration.
+/// Remove a process environment variable used by kcode runtime configuration.
 pub fn remove_var<K>(key: K)
 where
     K: AsRef<OsStr>,

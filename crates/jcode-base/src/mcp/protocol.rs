@@ -188,7 +188,7 @@ pub struct ResourceContent {
 /// MCP server configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct McpServerConfig {
-    /// Command for stdio servers. Empty for HTTP/SSE servers, which jcode does
+    /// Command for stdio servers. Empty for HTTP/SSE servers, which kcode does
     /// not yet support (such entries are skipped at load time).
     #[serde(default)]
     pub command: String,
@@ -205,10 +205,10 @@ pub struct McpServerConfig {
     /// only to recognize and skip non-stdio servers; defaults to stdio.
     #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
     pub transport: Option<String>,
-    /// URL for HTTP/SSE servers (Claude Code compat). Unused by jcode today.
+    /// URL for HTTP/SSE servers (Claude Code compat). Unused by kcode today.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
-    /// Headers for HTTP/SSE servers (Claude Code compat). Unused by jcode today,
+    /// Headers for HTTP/SSE servers (Claude Code compat). Unused by kcode today,
     /// but retained so environment expansion is ready when those transports are.
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub headers: std::collections::HashMap<String, String>,
@@ -402,7 +402,7 @@ impl McpConfig {
     /// Claude Code configuration is intentionally not imported here. It is a
     /// live source read by `load_for_dir`, so persisting it would make deleted
     /// servers survive in jcode's snapshot and would duplicate inline secrets.
-    /// This only runs while ~/.jcode/mcp.json does not exist.
+    /// This only runs while ~/.kcode/mcp.json does not exist.
     fn import_from_codex_once() {
         let jcode_mcp = match crate::storage::jcode_dir() {
             Ok(dir) => dir.join("mcp.json"),
@@ -466,7 +466,7 @@ impl McpConfig {
 
     fn live_claude_log_message(server_count: usize, source: &str) -> String {
         format!(
-            "MCP: Loaded {} server(s) live from Claude Code ({}); source values were not copied into jcode config",
+            "MCP: Loaded {} server(s) live from Claude Code ({}); source values were not copied into kcode config",
             server_count, source
         )
     }
@@ -616,7 +616,7 @@ impl McpConfig {
         let mut merged = Self::default();
         let claude_mcp_enabled = std::env::var_os("JCODE_DISABLE_CLAUDE_MCP").is_none();
 
-        // Load jcode's own global config (~/.jcode/mcp.json)
+        // Load jcode's own global config (~/.kcode/mcp.json)
         if let Ok(jcode_dir) = crate::storage::jcode_dir() {
             let jcode_mcp = jcode_dir.join("mcp.json");
             if jcode_mcp.exists() {
@@ -646,7 +646,7 @@ impl McpConfig {
 
         // Older Claude Code global config is also a live source. Reading it on
         // every load preserves compatibility without copying any inline env
-        // values into ~/.jcode/mcp.json.
+        // values into ~/.kcode/mcp.json.
         if claude_mcp_enabled
             && let Ok(claude_mcp) = crate::storage::user_home_path(".claude/mcp.json")
         {
@@ -694,11 +694,11 @@ impl McpConfig {
         merged
     }
 
-    /// Merge `incoming` over `existing`, except that an entry jcode cannot run
+    /// Merge `incoming` over `existing`, except that an entry kcode cannot run
     /// (HTTP/SSE) never displaces a working stdio entry for the same name.
     ///
     /// Without this, a `type: http` entry in `~/.claude.json` would overwrite a
-    /// working stdio server from `~/.jcode/mcp.json` and then be dropped by the
+    /// working stdio server from `~/.kcode/mcp.json` and then be dropped by the
     /// non-stdio filter, silently losing the server (issue #653).
     fn merge_servers_preferring_runnable(
         existing: &mut std::collections::HashMap<String, McpServerConfig>,

@@ -171,7 +171,7 @@ const RUNTIME_RECOVERY_EXPECTATIONS: &[(&str, bool)] = &[
         "../jcode-provider-openai-runtime/src/openai_provider_impl.rs",
         true,
     ),
-    // Still unhandled. Both forward to upstreams whose rejection texts jcode has
+    // Still unhandled. Both forward to upstreams whose rejection texts kcode has
     // never captured, so there is nothing to write a classifier against yet;
     // inventing patterns would produce a check that cannot fail. Prevention
     // covers them (their wire output is pinned by

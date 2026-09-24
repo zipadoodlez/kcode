@@ -26,7 +26,7 @@ impl JevTransport {
             "openrouter.env",
         )
         .filter(|key| !key.trim().is_empty())
-        .context("Fast browser handoff needs OpenRouter. Connect it with `jcode login openrouter`; direct browser actions remain available.")?;
+        .context("Fast browser handoff needs OpenRouter. Connect it with `kcode login openrouter`; direct browser actions remain available.")?;
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(25))

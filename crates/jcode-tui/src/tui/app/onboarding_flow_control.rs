@@ -754,7 +754,7 @@ impl App {
         // until the async LoginCompleted event advances or fails the flow.
         self.onboarding_import_in_progress = Some(Instant::now());
         // Remember the first approved login's provider so a later failure can
-        // target the agent repair brief at the right `jcode auth-test --provider`.
+        // target the agent repair brief at the right `kcode auth-test --provider`.
         self.onboarding_import_failed_provider = approved
             .first()
             .and_then(|&i| candidates.get(i))
@@ -849,7 +849,7 @@ impl App {
     ///
     /// Resolving the most active Git repository requires a full session-list
     /// scan, which is a cold multi-hundred-millisecond disk walk on machines
-    /// with a large `~/.jcode/sessions` directory. Doing it inline on Enter made
+    /// with a large `~/.kcode/sessions` directory. Doing it inline on Enter made
     /// the suggested repository review action feel laggy, so run it
     /// off-thread as soon as the choice is displayed and have the key handler
     /// consume the cached answer.
@@ -1278,7 +1278,7 @@ impl App {
 
     /// Suggest a concrete `/login <provider>` command the user can actually
     /// complete, instead of the generic `/login`. Preference order:
-    /// 1. A jcode login that exists but expired (they clearly use it).
+    /// 1. A kcode login that exists but expired (they clearly use it).
     /// 2. Credentials detected from another CLI (Codex -> openai, Claude Code
     ///    -> claude, Cursor -> cursor), since that login will succeed instantly.
     ///
@@ -1563,8 +1563,8 @@ impl App {
     /// Prepare the agent-assisted repair brief for the import-failure recovery
     /// screen (triggered by `H`). We detect the coding agent the user used most
     /// recently, build a plain-text brief listing the exact non-interactive
-    /// commands the agent can run (`jcode auth-test --json`, `jcode login
-    /// --api-key-stdin`, `jcode provider add`), copy it to the clipboard, and
+    /// commands the agent can run (`kcode auth-test --json`, `kcode login
+    /// --api-key-stdin`, `kcode provider add`), copy it to the clipboard, and
     /// surface it as a system message so the user can paste it into that agent.
     fn onboarding_prepare_agent_repair_brief(&mut self) {
         use crate::tui::app::onboarding_repair;

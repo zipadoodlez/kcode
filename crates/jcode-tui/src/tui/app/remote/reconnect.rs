@@ -115,7 +115,7 @@ pub(super) fn reconnect_status_message(app: &App, state: &RemoteRunState, detail
             .unwrap_or("pending");
         format!(" · SSH {host} · remote session {id}")
     } else if let Some(name) = &session_name {
-        format!(" · resume: jcode --resume {}", name)
+        format!(" · resume: kcode --resume {}", name)
     } else {
         String::new()
     };
@@ -161,7 +161,7 @@ pub(super) fn reload_wait_status_message(
             .unwrap_or("pending");
         format!(" · SSH {host} · remote session {id}")
     } else if let Some(name) = &session_name {
-        format!(" · resume: jcode --resume {}", name)
+        format!(" · resume: kcode --resume {}", name)
     } else {
         String::new()
     };

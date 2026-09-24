@@ -597,7 +597,7 @@ fn stdio_entry_of_same_transport_still_overrides_by_precedence() {
 #[test]
 fn claude_json_http_entry_does_not_displace_jcode_stdio_server() {
     // The exact configuration from issue #653: `github` is stdio in
-    // ~/.jcode/mcp.json and http in ~/.claude.json. The http entry used to win
+    // ~/.kcode/mcp.json and http in ~/.claude.json. The http entry used to win
     // the merge and then be dropped by the non-stdio filter, so a working
     // server vanished with no indication it had been overwritten.
     let _guard = crate::storage::lock_test_env();
@@ -731,7 +731,7 @@ fn claude_only_config_never_creates_a_jcode_snapshot() {
         assert!(config.servers.contains_key("private"));
         assert!(
             !home.path().join("mcp.json").exists(),
-            "a live Claude source must not be persisted into jcode config"
+            "a live Claude source must not be persisted into kcode config"
         );
     });
 

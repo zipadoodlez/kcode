@@ -87,7 +87,7 @@ fn render_cold_cache_warning_is_always_one_width_bounded_line() {
 fn render_compact_divergence_notice_as_one_line() {
     let saved = crate::tui::markdown::center_code_blocks();
     let notices = [DisplayMessage::system(
-        "Update diverged. Press Ctrl+Y to let a jcode agent merge local and upstream (or run `git pull` / `git rebase` yourself).",
+        "Update diverged. Press Ctrl+Y to let a kcode agent merge local and upstream (or run `git pull` / `git rebase` yourself).",
     )
     .with_title("Update")];
 
@@ -1840,7 +1840,7 @@ fn render_system_message_uses_minimal_inline_style_for_reload_title() {
 #[test]
 fn render_system_message_uses_connection_card_for_reconnect_status() {
     let msg = DisplayMessage::system(
-        "⚡ Connection lost - retrying (attempt 2, 7s) - connection reset by server · resume: jcode --resume koala",
+        "⚡ Connection lost - retrying (attempt 2, 7s) - connection reset by server · resume: kcode --resume koala",
     )
     .with_title("Connection");
 
@@ -1857,7 +1857,7 @@ fn render_system_message_uses_connection_card_for_reconnect_status() {
     );
     assert!(plain.contains("Retrying · attempt 2 · 7s"));
     assert!(plain.contains("connection reset by server"));
-    assert!(plain.contains("jcode --resume koala"));
+    assert!(plain.contains("kcode --resume koala"));
 }
 
 #[test]

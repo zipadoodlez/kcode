@@ -9,7 +9,7 @@ pub(crate) async fn run_login(no_browser: bool) -> Result<()> {
 pub(crate) async fn run_status(json: bool) -> Result<()> {
     let Some(api_key) = crate::subscription_catalog::configured_api_key() else {
         anyhow::bail!(
-            "No Jcode account credential is configured. Run `jcode account login` to sign in."
+            "No Jcode account credential is configured. Run `kcode account login` to sign in."
         );
     };
     let client = crate::provider::shared_http_client();
@@ -41,7 +41,7 @@ pub(crate) async fn run_status(json: bool) -> Result<()> {
             crate::subscription_catalog::clear_account_credentials()
                 .context("The account key is revoked, and local credential cleanup failed")?;
             anyhow::bail!(
-                "The Jcode account key was revoked or expired. Local credentials were cleared. Run `jcode account login` to sign in again."
+                "The Jcode account key was revoked or expired. Local credentials were cleared. Run `kcode account login` to sign in again."
             )
         }
         Err(error) => Err(anyhow::Error::new(error)),

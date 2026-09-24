@@ -45,7 +45,7 @@ fn auth_doctor_positional_provider_wins_over_global_provider() {
     assert_eq!(
         auth_doctor_provider_arg(Some("openai"), &ProviderChoice::Cerebras),
         Some("openai"),
-        "`jcode --provider cerebras auth doctor openai` should diagnose the explicit positional provider"
+        "`kcode --provider cerebras auth doctor openai` should diagnose the explicit positional provider"
     );
 }
 

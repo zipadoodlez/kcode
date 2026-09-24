@@ -484,7 +484,7 @@ fn contextual_lookup(
     }
 }
 
-/// Resolve what a chord does, or `None` when jcode has no binding for it.
+/// Resolve what a chord does, or `None` when kcode has no binding for it.
 pub(super) fn lookup(
     registry: &[KnownHotkey],
     input_empty: bool,

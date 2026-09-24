@@ -72,7 +72,7 @@ pub struct AnthropicAccount {
     pub scopes: Vec<String>,
 }
 
-/// Multi-account jcode auth.json format.
+/// Multi-account kcode auth.json format.
 /// Backwards-compatible: also reads the old single-account `{"anthropic": {...}}` layout.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct JcodeAuthFile {
@@ -295,7 +295,7 @@ pub fn jcode_path() -> Result<PathBuf> {
 
 // ---- Multi-account helpers ----
 
-/// Read the jcode auth file, auto-migrating from legacy format if needed.
+/// Read the kcode auth file, auto-migrating from legacy format if needed.
 pub fn load_auth_file() -> Result<JcodeAuthFile> {
     let path = jcode_path()?;
     if !path.exists() {
@@ -335,7 +335,7 @@ pub fn load_auth_file() -> Result<JcodeAuthFile> {
     Ok(auth)
 }
 
-/// Write the jcode auth file (multi-account format).
+/// Write the kcode auth file (multi-account format).
 pub fn save_auth_file(auth: &JcodeAuthFile) -> Result<()> {
     let auth_path = jcode_path()?;
 
@@ -533,7 +533,7 @@ pub fn is_max_subscription() -> bool {
 }
 
 /// Load credentials for the active Anthropic account.
-/// Falls through Claude Code -> jcode accounts -> OpenCode, preferring non-expired tokens.
+/// Falls through Claude Code -> kcode accounts -> OpenCode, preferring non-expired tokens.
 pub fn load_credentials() -> Result<ClaudeCredentials> {
     let now_ms = chrono::Utc::now().timestamp_millis();
 
@@ -608,7 +608,7 @@ pub fn load_credentials() -> Result<ClaudeCredentials> {
     anyhow::bail!("No Claude OAuth credentials found (checked Claude Code, jcode, OpenCode)")
 }
 
-/// Load credentials for a specific jcode account by label.
+/// Load credentials for a specific kcode account by label.
 pub fn load_credentials_for_account(label: &str) -> Result<ClaudeCredentials> {
     let auth = load_auth_file()?;
     let account = auth
@@ -626,11 +626,11 @@ pub fn load_credentials_for_account(label: &str) -> Result<ClaudeCredentials> {
     })
 }
 
-/// Load credentials from the active jcode account (multi-account aware).
+/// Load credentials from the active kcode account (multi-account aware).
 fn load_jcode_credentials() -> Result<ClaudeCredentials> {
     let auth = load_auth_file()?;
     if auth.anthropic_accounts.is_empty() {
-        anyhow::bail!("No anthropic accounts configured in jcode auth.json");
+        anyhow::bail!("No anthropic accounts configured in kcode auth.json");
     }
 
     let active_label = get_active_account_override()
@@ -642,7 +642,7 @@ fn load_jcode_credentials() -> Result<ClaudeCredentials> {
         .iter()
         .find(|a| a.label == active_label)
         .or_else(|| auth.anthropic_accounts.first())
-        .context("No anthropic accounts in jcode auth.json")?;
+        .context("No anthropic accounts in kcode auth.json")?;
 
     Ok(ClaudeCredentials {
         access_token: account.access.clone(),

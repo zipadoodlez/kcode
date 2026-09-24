@@ -766,7 +766,7 @@ impl Agent {
                         // This is the *provider's* session id (Gemini/Claude
                         // CLI/Grok resume handle). It must never be forwarded
                         // as `ServerEvent::SessionId`: the client treats that
-                        // event as the jcode session id and rebinds
+                        // event as the kcode session id and rebinds
                         // `remote_session_id` to it, so the next reload or
                         // reconnect resumes a session that does not exist and
                         // the user lands in an empty new session while the

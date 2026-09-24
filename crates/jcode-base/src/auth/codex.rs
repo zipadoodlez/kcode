@@ -435,7 +435,7 @@ pub fn upsert_account_from_tokens(
 fn load_jcode_credentials() -> Result<CodexCredentials> {
     let auth = load_auth_file()?;
     if auth.openai_accounts.is_empty() {
-        anyhow::bail!("No OpenAI accounts configured in jcode auth file")
+        anyhow::bail!("No OpenAI accounts configured in kcode auth file")
     }
 
     let active_label = get_active_account_override()
@@ -447,7 +447,7 @@ fn load_jcode_credentials() -> Result<CodexCredentials> {
         .iter()
         .find(|account| account.label == active_label)
         .or_else(|| auth.openai_accounts.first())
-        .context("No OpenAI accounts in jcode auth file")?;
+        .context("No OpenAI accounts in kcode auth file")?;
 
     Ok(credentials_from_account(account))
 }

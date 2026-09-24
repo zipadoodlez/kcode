@@ -131,7 +131,7 @@ fn read_doc(path: &str) -> Result<String> {
             anyhow!("documentation path not found: {path}. Use action=list to see available paths.")
         })?;
     Ok(format!(
-        "Source: `{path}` (bundled with this Jcode build)\n\n{body}"
+        "Source: `{path}` (bundled with this Kcode build)\n\n{body}"
     ))
 }
 
@@ -169,7 +169,7 @@ fn search(query: &str, limit: Option<usize>) -> String {
     matches
         .sort_by_key(|(score, section)| (Reverse(*score), section.path, section.heading.clone()));
     let limit = limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
-    let mut output = format!("Jcode docs results for {query:?} (bundled with this Jcode build):\n");
+    let mut output = format!("Jcode docs results for {query:?} (bundled with this Kcode build):\n");
     for (index, (_, section)) in matches.into_iter().take(limit).enumerate() {
         let excerpt = relevant_excerpt(&section.body, &terms);
         output.push_str(&format!(
@@ -274,7 +274,7 @@ mod tests {
     fn search_finds_relevant_version_matched_documentation() {
         let output = search("How does swarm task graph work?", Some(3));
         assert!(output.contains("docs/SWARM_TASK_GRAPH.md"), "{output}");
-        assert!(output.contains("bundled with this Jcode build"));
+        assert!(output.contains("bundled with this Kcode build"));
     }
 
     #[test]

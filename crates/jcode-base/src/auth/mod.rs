@@ -98,7 +98,7 @@ static AUTH_REFRESH_IN_FLIGHT: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
 /// Per-process cache for command existence lookups.
-/// CLI tools don't get installed/uninstalled while jcode is running, so caching
+/// CLI tools don't get installed/uninstalled while kcode is running, so caching
 /// indefinitely per process is correct and avoids repeated PATH scans.
 static COMMAND_EXISTS_CACHE: std::sync::LazyLock<Mutex<HashMap<String, bool>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -137,7 +137,7 @@ fn browser_unusable_here() -> bool {
 
 /// True when the current process is a Rust test binary (`cargo test` /
 /// `cargo nextest`). Test binaries always run from `target/**/deps/`, a
-/// location no installed or self-dev jcode binary ever runs from.
+/// location no installed or self-dev kcode binary ever runs from.
 ///
 /// Used to keep tests from opening real browser windows (OAuth login pages,
 /// files) on the developer's desktop: many login/onboarding flows are
@@ -731,7 +731,7 @@ impl AuthStatus {
                     config_source(
                         crate::subscription_catalog::JCODE_API_KEY_ENV,
                         crate::subscription_catalog::JCODE_ENV_FILE,
-                        "~/.config/jcode/jcode-subscription.env",
+                        "~/.config/kcode/jcode-subscription.env",
                     ),
                 ]);
                 (
@@ -748,7 +748,7 @@ impl AuthStatus {
                     config_source(
                         "OPENROUTER_API_KEY",
                         "openrouter.env",
-                        "~/.config/jcode/openrouter.env",
+                        "~/.config/kcode/openrouter.env",
                     ),
                     external_api_key_source("OPENROUTER_API_KEY"),
                 ]);
@@ -763,7 +763,7 @@ impl AuthStatus {
             crate::provider_catalog::LoginProviderTarget::OpenAiApiKey => {
                 let (source, detail) = summarize_sources(vec![
                     env_source("OPENAI_API_KEY"),
-                    config_source("OPENAI_API_KEY", "openai.env", "~/.config/jcode/openai.env"),
+                    config_source("OPENAI_API_KEY", "openai.env", "~/.config/kcode/openai.env"),
                     external_api_key_source("OPENAI_API_KEY"),
                 ]);
                 (
@@ -776,8 +776,8 @@ impl AuthStatus {
             }
             crate::provider_catalog::LoginProviderTarget::ClaudeApiKey => {
                 // The Anthropic API key is most commonly stored in the app
-                // config file (`~/.config/jcode/anthropic.env`), *not* an env
-                // var and *not* `~/.jcode/auth.json` (which holds the separate
+                // config file (`~/.config/kcode/anthropic.env`), *not* an env
+                // var and *not* `~/.kcode/auth.json` (which holds the separate
                 // OAuth accounts). List every place it can live so the real
                 // source is always discoverable instead of looking "absent".
                 let (source, detail) = summarize_sources(vec![
@@ -785,7 +785,7 @@ impl AuthStatus {
                     config_source(
                         "ANTHROPIC_API_KEY",
                         "anthropic.env",
-                        "~/.config/jcode/anthropic.env",
+                        "~/.config/kcode/anthropic.env",
                     ),
                     external_api_key_source("ANTHROPIC_API_KEY"),
                 ]);
@@ -804,7 +804,7 @@ impl AuthStatus {
                     config_source(
                         crate::auth::azure::API_KEY_ENV,
                         crate::auth::azure::ENV_FILE,
-                        "~/.config/jcode/azure-openai.env",
+                        "~/.config/kcode/azure-openai.env",
                     ),
                 ]);
                 (
@@ -825,7 +825,7 @@ impl AuthStatus {
                     config_source(
                         crate::provider::bedrock::API_KEY_ENV,
                         crate::provider::bedrock::ENV_FILE,
-                        "~/.config/jcode/bedrock.env",
+                        "~/.config/kcode/bedrock.env",
                     ),
                     env_source("AWS_PROFILE"),
                     env_source("JCODE_BEDROCK_PROFILE"),
@@ -866,7 +866,7 @@ impl AuthStatus {
                 {
                     summarize_sources(vec![
                         env_source(&key_env),
-                        config_source(&key_env, &env_file, format!("~/.config/jcode/{}", env_file)),
+                        config_source(&key_env, &env_file, format!("~/.config/kcode/{}", env_file)),
                         external_api_key_source(&key_env),
                     ])
                 } else {
@@ -877,7 +877,7 @@ impl AuthStatus {
                         config_source(
                             &resolved.api_key_env,
                             &resolved.env_file,
-                            format!("~/.config/jcode/{}", resolved.env_file),
+                            format!("~/.config/kcode/{}", resolved.env_file),
                         ),
                         external_api_key_source(&resolved.api_key_env),
                     ])
@@ -1029,7 +1029,7 @@ fn record_auth_probe_step(
 /// access tokens expire roughly hourly and the provider transparently
 /// refreshes them on the next request, so reporting `Expired` purely because
 /// the cached access token aged out makes a perfectly working provider look
-/// dead in `/login`, the header, onboarding, and `jcode auth status`.
+/// dead in `/login`, the header, onboarding, and `kcode auth status`.
 ///
 /// Only report `Expired` when the refresh token itself is missing or was
 /// already permanently rejected (revoked / `invalid_grant`), which is the case
@@ -1406,7 +1406,7 @@ fn anthropic_oauth_source(status: &AuthStatus) -> Option<(AuthCredentialSource, 
     {
         return Some((
             AuthCredentialSource::JcodeManagedFile,
-            "~/.jcode/auth.json".to_string(),
+            "~/.kcode/auth.json".to_string(),
         ));
     }
     if let Some(source) = crate::auth::claude::preferred_external_auth_source()
@@ -1437,7 +1437,7 @@ fn openai_oauth_source(status: &AuthStatus) -> Option<(AuthCredentialSource, Str
     {
         return Some((
             AuthCredentialSource::JcodeManagedFile,
-            "~/.jcode/openai-auth.json".to_string(),
+            "~/.kcode/openai-auth.json".to_string(),
         ));
     }
     if crate::auth::codex::legacy_auth_allowed() && crate::auth::codex::legacy_auth_source_exists()
@@ -1533,8 +1533,8 @@ fn cursor_source() -> Option<(AuthCredentialSource, String)> {
             format!("trusted Cursor app state ({})", path.display()),
         ));
     }
-    if config_source("CURSOR_API_KEY", "cursor.env", "~/.config/jcode/cursor.env").is_some() {
-        return config_source("CURSOR_API_KEY", "cursor.env", "~/.config/jcode/cursor.env");
+    if config_source("CURSOR_API_KEY", "cursor.env", "~/.config/kcode/cursor.env").is_some() {
+        return config_source("CURSOR_API_KEY", "cursor.env", "~/.config/kcode/cursor.env");
     }
     None
 }

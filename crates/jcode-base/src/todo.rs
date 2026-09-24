@@ -661,7 +661,7 @@ pub fn spike_completed_todos(todos: &[TodoItem]) -> Vec<&TodoItem> {
 
 /// Build the synthetic auto-poke continuation prompt sent when the model
 /// stops with incomplete todos. Kept here so every producer (TUI auto-poke,
-/// `jcode run` auto-poke) and the transcript renderer agree on the exact text.
+/// `kcode run` auto-poke) and the transcript renderer agree on the exact text.
 pub fn build_auto_poke_message(incomplete_count: usize) -> String {
     format!(
         "You have {} incomplete todo{}. Continue working, or update the todo tool.",

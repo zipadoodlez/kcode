@@ -115,7 +115,7 @@ pub async fn reap_stale_socket_if_dead(path: &std::path::Path) -> bool {
     }
 
     crate::logging::warn(&format!(
-        "Reaping stale jcode socket with no live listener at {}",
+        "Reaping stale kcode socket with no live listener at {}",
         path.display()
     ));
     cleanup_socket_pair(path);
@@ -178,7 +178,7 @@ pub(super) fn acquire_daemon_lock() -> Result<DaemonLockGuard> {
     let path = daemon_lock_path();
     try_acquire_daemon_lock(&path)?.ok_or_else(|| {
         anyhow::anyhow!(
-            "Another jcode server process is already running for runtime dir {}",
+            "Another kcode server process is already running for runtime dir {}",
             crate::storage::runtime_dir().display()
         )
     })
@@ -348,7 +348,7 @@ pub(super) fn take_server_start_stderr(child: &mut std::process::Child) -> Strin
 }
 
 pub(super) fn server_start_matches_existing_server(stderr_output: &str) -> bool {
-    stderr_output.contains("Another jcode server process is already running")
+    stderr_output.contains("Another kcode server process is already running")
         || stderr_output.contains("Refusing to replace active server socket")
 }
 
@@ -369,7 +369,7 @@ pub(super) fn format_server_start_error(
 ) -> String {
     if stderr_output.trim().is_empty() {
         format!(
-            "Server exited before signalling ready ({}). Check logs at ~/.jcode/logs/",
+            "Server exited before signalling ready ({}). Check logs at ~/.kcode/logs/",
             status
         )
     } else {

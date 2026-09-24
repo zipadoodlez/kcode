@@ -134,7 +134,7 @@ impl AuthTestTarget {
             Self::Cursor => Ok(vec![
                 dirs::config_dir()
                     .ok_or_else(|| anyhow::anyhow!("No config directory found"))?
-                    .join("jcode")
+                    .join("kcode")
                     .join("cursor.env")
                     .display()
                     .to_string(),
@@ -270,7 +270,7 @@ impl AuthTestSmokeKind {
         match self {
             Self::Provider => "Provider returned AUTH_TEST_OK.",
             Self::Tool => {
-                "Tool-enabled provider request returned AUTH_TEST_OK after one validated real Jcode bash tool call, successful registry execution, and tool-result followup."
+                "Tool-enabled provider request returned AUTH_TEST_OK after one validated real Kcode bash tool call, successful registry execution, and tool-result followup."
             }
         }
     }

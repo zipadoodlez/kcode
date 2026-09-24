@@ -112,7 +112,7 @@ impl AntigravityProvider {
     /// provider-doctor's native Antigravity driver.
     ///
     /// Antigravity authenticates exclusively via the Google OAuth tokens minted
-    /// by `jcode login --provider antigravity`; there is no API-key path. This
+    /// by `kcode login --provider antigravity`; there is no API-key path. This
     /// loads (and refreshes if needed) those tokens through the exact same code
     /// path inference uses, returning only the resolved Google account email so
     /// the doctor can confirm the credential without ever surfacing the token
@@ -492,7 +492,7 @@ impl Provider for AntigravityProvider {
                 Ok(response) => response,
                 Err(err) => {
                     // A tool schema the backend rejects 400s every single turn,
-                    // so the provider is unusable until jcode ships a new
+                    // so the provider is unusable until kcode ships a new
                     // deny-list entry. Instead, learn the rejected construct
                     // from the error, persist it, and retry the same turn
                     // without it. See `jcode-schema-dialect`.

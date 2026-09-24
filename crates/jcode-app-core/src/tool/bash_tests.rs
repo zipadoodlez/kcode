@@ -11,9 +11,9 @@ use tokio::sync::mpsc;
 fn repository_commands_export_a_logged_cargo_function() {
     let repo =
         crate::build::find_repo_in_ancestors(std::path::Path::new(env!("CARGO_MANIFEST_DIR")))
-            .expect("test runs inside the jcode repository");
+            .expect("test runs inside the kcode repository");
     let wrapped = wrap_repo_cargo_commands("cargo test -p demo && echo done", Some(&repo))
-        .expect("jcode repository has dev_cargo.sh");
+        .expect("kcode repository has dev_cargo.sh");
 
     assert!(wrapped.contains("export JCODE_DEV_CARGO_SCRIPT="));
     assert!(wrapped.contains("JCODE_IN_DEV_CARGO=1 \"$JCODE_DEV_CARGO_SCRIPT\" \"$@\""));

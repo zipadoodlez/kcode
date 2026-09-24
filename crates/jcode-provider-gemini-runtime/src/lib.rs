@@ -825,7 +825,7 @@ impl Provider for GeminiProvider {
                 }
                 Err(err) => {
                     // A tool schema `generateContent` rejects 400s every turn,
-                    // so the provider is unusable until jcode ships a new
+                    // so the provider is unusable until kcode ships a new
                     // keyword. Learn the rejected construct from the error,
                     // persist it, and retry this turn without it. See
                     // `jcode-schema-dialect`.

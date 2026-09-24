@@ -37,7 +37,7 @@ pub(crate) struct Args {
     #[arg(long, global = true)]
     pub(crate) remote_working_dir: Option<String>,
 
-    /// Run the UI locally and attach to the persistent Jcode server on this SSH host
+    /// Run the UI locally and attach to the persistent Kcode server on this SSH host
     #[arg(long, global = true, conflicts_with = "socket", value_name = "HOST")]
     pub(crate) ssh: Option<String>,
 
@@ -73,7 +73,7 @@ pub(crate) struct Args {
     #[arg(long, global = true, hide = true)]
     pub(crate) fresh_spawn: bool,
 
-    /// Disable auto-detection of jcode repository and self-dev mode
+    /// Disable auto-detection of kcode repository and self-dev mode
     #[arg(long, global = true)]
     pub(crate) no_selfdev: bool,
 
@@ -160,7 +160,7 @@ pub(crate) enum Command {
     /// Run as an Agent Client Protocol (ACP) adapter backed by the Jcode daemon
     Acp,
 
-    /// Manage the background server daemon (e.g. `jcode server stop`).
+    /// Manage the background server daemon (e.g. `kcode server stop`).
     Server {
         #[command(subcommand)]
         action: ServerCommand,
@@ -185,10 +185,10 @@ pub(crate) enum Command {
 
     /// Login to a provider via OAuth, API key, or local credentials
     Login {
-        /// Provider to log in to. Equivalent to --provider for this command, e.g. `jcode login google`.
+        /// Provider to log in to. Equivalent to --provider for this command, e.g. `kcode login google`.
         // Distinct clap id: the global `--provider` flag also has id "provider";
         // sharing the id makes clap drop the flag inside `login` (so
-        // `jcode login --provider x` errors) and propagate the global default
+        // `kcode login --provider x` errors) and propagate the global default
         // into this positional.
         #[arg(value_enum, id = "login_provider", value_name = "PROVIDER")]
         provider: Option<ProviderChoice>,
@@ -270,7 +270,7 @@ pub(crate) enum Command {
         json: bool,
     },
 
-    /// Debug socket CLI - interact with running jcode server
+    /// Debug socket CLI - interact with running kcode server
     Debug {
         /// Debug command to run (list, start, sessions, create_session, message, tool, state, history, etc.)
         #[arg(default_value = "help")]
@@ -421,7 +421,7 @@ pub(crate) enum Command {
         coverage_limit: usize,
     },
 
-    /// Save or restore the current set of open jcode windows across a system reboot
+    /// Save or restore the current set of open kcode windows across a system reboot
     Restart {
         #[command(subcommand)]
         action: RestartCommand,
@@ -501,7 +501,7 @@ pub(crate) enum ServerCommand {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum RestartCommand {
-    /// Save a reboot snapshot of currently active jcode windows
+    /// Save a reboot snapshot of currently active kcode windows
     Save {
         /// Restore this reboot snapshot automatically the next time plain `jcode` starts
         #[arg(long)]

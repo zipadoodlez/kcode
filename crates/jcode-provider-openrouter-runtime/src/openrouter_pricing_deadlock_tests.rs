@@ -24,7 +24,7 @@ use crate::*;
 #[test]
 fn model_pricing_on_cold_catalog_does_not_deadlock_on_models_cache() {
     let _lock = ENV_LOCK.lock();
-    let temp = tempfile::tempdir().expect("temp jcode home");
+    let temp = tempfile::tempdir().expect("temp kcode home");
     let _home = EnvVarGuard::set("JCODE_HOME", temp.path().to_str().expect("utf8 temp path"));
     let _namespace = EnvVarGuard::remove("JCODE_OPENROUTER_CACHE_NAMESPACE");
     let _key = EnvVarGuard::set("TEST_ISSUE_649_KEY", "test-key");

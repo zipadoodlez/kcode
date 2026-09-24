@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub fn binary_stem() -> &'static str {
-    "jcode"
+    "kcode"
 }
 
 pub fn binary_name() -> &'static str {
@@ -25,7 +25,7 @@ pub fn release_binary_path(repo_dir: &Path) -> PathBuf {
     repo_dir.join("target").join("release").join(binary_name())
 }
 
-/// Get the jcode repository directory.
+/// Get the kcode repository directory.
 pub fn get_repo_dir() -> Option<PathBuf> {
     if let Ok(path) = std::env::var("JCODE_REPO_DIR") {
         let path = PathBuf::from(path);
@@ -72,7 +72,7 @@ pub fn find_repo_in_ancestors(start: &Path) -> Option<PathBuf> {
     None
 }
 
-/// Check if a directory is the jcode repository.
+/// Check if a directory is the kcode repository.
 pub fn is_jcode_repo(dir: &Path) -> bool {
     let cargo_toml = dir.join("Cargo.toml");
     if !cargo_toml.exists() {

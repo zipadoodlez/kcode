@@ -1,6 +1,6 @@
 //! JSON Schema keyword classification.
 //!
-//! Every provider-specific schema rewrite in jcode has to answer the same two
+//! Every provider-specific schema rewrite in kcode has to answer the same two
 //! questions about a key it encounters: *is this a schema keyword or a property
 //! name?* and *does its value contain more schemas?* Getting either wrong is how
 //! a property literally named `uniqueItems` gets stripped, or how a nested
@@ -79,7 +79,7 @@ pub fn keyword_role(key: &str) -> KeywordRole {
 /// constraint or annotation on it.
 ///
 /// A dialect may drop any keyword it does not support, which is the whole point
-/// of the allow-list: a construct jcode has never seen cannot brick a provider.
+/// of the allow-list: a construct kcode has never seen cannot brick a provider.
 /// But dropping one of these would silently change what the tool accepts, so
 /// they are never droppable, and a dialect that omits one is a bug caught by
 /// [`crate::dialect::DialectSpec::validate`].

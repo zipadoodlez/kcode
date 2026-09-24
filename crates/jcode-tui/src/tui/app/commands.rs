@@ -456,14 +456,14 @@ pub(super) fn poll_local_transfer_prepare(app: &mut App) -> bool {
                         }
                         Ok(false) => {
                             app.push_display_message(DisplayMessage::system(format!(
-                                "↗ Transfer session {} created.\n\nNo terminal was opened automatically. Resume manually:\n\n  jcode --resume {}",
+                                "↗ Transfer session {} created.\n\nNo terminal was opened automatically. Resume manually:\n\n  kcode --resume {}",
                                 prepared.session_name, prepared.session_id
                             )));
                             app.set_status_notice("Transfer session created");
                         }
                         Err(error) => {
                             app.push_display_message(DisplayMessage::error(format!(
-                                "Transfer session {} was created but failed to open a window: {}\n\nResume manually: jcode --resume {}",
+                                "Transfer session {} was created but failed to open a window: {}\n\nResume manually: kcode --resume {}",
                                 prepared.session_name, error, prepared.session_id
                             )));
                             app.set_status_notice("Transfer open failed");
@@ -750,7 +750,7 @@ fn handle_subagent_model_command(app: &mut App, trimmed: &str) -> bool {
 
     if app.is_remote {
         app.push_display_message(DisplayMessage::error(
-            "/subagent-model requires a live jcode server connection in remote mode.".to_string(),
+            "/subagent-model requires a live kcode server connection in remote mode.".to_string(),
         ));
         return true;
     }
@@ -796,7 +796,7 @@ fn handle_subagent_command(app: &mut App, trimmed: &str) -> bool {
 
     if app.is_remote {
         app.push_display_message(DisplayMessage::error(
-            "/subagent requires a live jcode server connection in remote mode.".to_string(),
+            "/subagent requires a live kcode server connection in remote mode.".to_string(),
         ));
         return true;
     }
@@ -1000,7 +1000,7 @@ pub(super) fn handle_log_command(app: &mut App, trimmed: &str) -> bool {
     ));
 
     let mut message = format!(
-        "Log mark written: {}\n\nAgents can search ~/.jcode/logs/ for JCODE_LOG_MARK or this marker id.",
+        "Log mark written: {}\n\nAgents can search ~/.kcode/logs/ for JCODE_LOG_MARK or this marker id.",
         marker_id
     );
     if !note.is_empty() {
@@ -1124,7 +1124,7 @@ Enter only the SSH target, meaning the part after ssh:
 You can also enter an SSH config alias like school.
 
 Security model
-  - Jcode stores this host/user target so you can run /ssh {} later.
+  - Kcode stores this host/user target so you can run /ssh {} later.
   - Jcode does not ask for or store your SSH password.
   - If a password is needed, it will be typed into your system ssh prompt, not into Jcode.
 
@@ -1146,7 +1146,7 @@ Start with:
 
   /ssh school
 
-Jcode will ask for the SSH target, then use your system SSH client for authentication. Jcode never stores SSH passwords."
+Kcode will ask for the SSH target, then use your system SSH client for authentication. Jcode never stores SSH passwords."
                     .to_string(),
             ));
         }
@@ -1169,7 +1169,7 @@ Jcode will ask for the SSH target, then use your system SSH client for authentic
                     .to_string(),
             );
             lines.push("".to_string());
-            lines.push("Security: Jcode stores targets only, never SSH passwords.".to_string());
+            lines.push("Security: Kcode stores targets only, never SSH passwords.".to_string());
             app.push_display_message(DisplayMessage::system(lines.join("\n")));
         }
         Err(error) => app.push_display_message(DisplayMessage::error(format!(
@@ -1197,9 +1197,9 @@ Jcode verified that {} is reachable through your system SSH client.
 What this means:
   - Authentication is handled by OpenSSH / your SSH agent.
   - Jcode did not see or store your password.
-  - The SSH connection setup is ready for remote Jcode tools.
+  - The SSH connection setup is ready for remote Kcode tools.
 
-Next implementation step: start the remote Jcode server over this verified SSH connection.",
+Next implementation step: start the remote Kcode server over this verified SSH connection.",
             profile.name, profile.ssh_target
         )));
         app.set_status_notice(format!("SSH {} connected 4/4", profile.name));
@@ -1213,7 +1213,7 @@ Next implementation step: start the remote Jcode server over this verified SSH c
 
 Step 2/4: Opening secure SSH login terminal.
 
-Jcode could not connect without an interactive login, so it opened a separate terminal running your system ssh command.
+Kcode could not connect without an interactive login, so it opened a separate terminal running your system ssh command.
 
 What to expect in that terminal
   1. OpenSSH may ask for your password or two-factor prompt.
@@ -1222,8 +1222,8 @@ What to expect in that terminal
   4. The terminal verifies that socket before closing.
 
 Security model
-  - Jcode cannot read what you type in the SSH terminal.
-  - Jcode stores only the target {}.
+  - Kcode cannot read what you type in the SSH terminal.
+  - Kcode stores only the target {}.
   - Close or disconnect later with /ssh disconnect {}.",
                 profile.name, profile.ssh_target, profile.name
             )));
@@ -1234,15 +1234,15 @@ Security model
 
 Step 2/4: Manual login needed.
 
-Jcode could not open a terminal automatically. Run this command yourself:
+Kcode could not open a terminal automatically. Run this command yourself:
 
   ssh -f -M -S {} -N {}
 
-Type your password into that SSH prompt if asked. Jcode will not see or store it.",
+Type your password into that SSH prompt if asked. Kcode will not see or store it.",
             profile.name,
             crate::ssh_remote::control_socket_path(&profile.name)
                 .map(|p| p.display().to_string())
-                .unwrap_or_else(|_| "~/.jcode/ssh-control/remote.sock".to_string()),
+                .unwrap_or_else(|_| "~/.kcode/ssh-control/remote.sock".to_string()),
             profile.ssh_target
         ))),
         Err(error) => app.push_display_message(DisplayMessage::error(format!(
@@ -1445,7 +1445,7 @@ fn git_command_repo_dir(app: &App) -> Result<PathBuf, String> {
         }
 
         return Err(format!(
-            "Unable to run /git: session working directory {} is not accessible from this jcode client.",
+            "Unable to run /git: session working directory {} is not accessible from this kcode client.",
             path.display()
         ));
     }
@@ -2110,7 +2110,7 @@ pub(super) fn build_remote_release_prompt() -> String {
 pub(super) fn build_triage_prompt(focus: &str) -> String {
     let mut prompt = String::from(
         "Triage the open GitHub issues for the repository in the current working directory, then autonomously fix the ones that are safe to fix. \
-        Hard rules: every public comment, issue reply, or PR description you post MUST end with a clear agent attribution line like '--- *— Jcode agent (automated triage), on behalf of @<repo-owner>*' so it can never be mistaken for the human. \
+        Hard rules: every public comment, issue reply, or PR description you post MUST end with a clear agent attribution line like '--- *— Kcode agent (automated triage), on behalf of @<repo-owner>*' so it can never be mistaken for the human. \
         Never close an issue as wontfix/invalid without user confirmation (closing as completed is fine only after a verified fix). Be brief, friendly, and factual toward reporters. Prefer a branch + PR unless the repo's established norm is committing directly to the default branch. \
         Workflow: (1) Collect: verify gh auth status, identify the repo with gh repo view, list open issues newest-first (gh issue list --state open --limit 50 --json number,title,labels,createdAt,author,comments,body), focus on untriaged ones (no labels or no maintainer/agent comment), and read each candidate fully with gh issue view <n> --comments. \
         (2) Classify each into exactly one bucket and track them in a todo list: auto-fix (clear, reproducible, low-risk, verifiable), needs-info (comment asking for the specific missing details), needs-human (design decisions, breaking changes, security-sensitive, large refactors), duplicate (link the original, do not close without confirmation unless unambiguous), or question/support (answer directly if verifiable against the code or docs). Apply existing labels only (check gh label list first, never invent labels). \

@@ -801,7 +801,7 @@ impl App {
                     .eq_ignore_ascii_case(crate::subscription_catalog::JCODE_ROUTE_API_METHOD)
             });
         if poisoned_by_jcode_subscription {
-            // Version 1 could turn a mixed provider catalog into all-Jcode rows
+            // Version 1 could turn a mixed provider catalog into all-Kcode rows
             // after seeing just one managed subscription route. Rebuild ordinary
             // routes from the names catalog, then append only the current tier's
             // actual subscription entitlements.
@@ -2958,7 +2958,7 @@ impl App {
         };
         let ResumeTarget::JcodeSession { session_id } = resolved else {
             self.push_display_message(DisplayMessage::error(
-                "Claude takeover did not produce a Jcode session.",
+                "Claude takeover did not produce a Kcode session.",
             ));
             return false;
         };
@@ -3040,7 +3040,7 @@ impl App {
         } else if spawned > 0 {
             let manual: Vec<String> = failed
                 .iter()
-                .map(|id| format!("  jcode --resume {}", id))
+                .map(|id| format!("  kcode --resume {}", id))
                 .collect();
             self.push_display_message(DisplayMessage::system(format!(
                 "Restored {} session(s) in new windows. {} failed:\n{}",
@@ -3051,7 +3051,7 @@ impl App {
         } else {
             let manual: Vec<String> = recovered
                 .iter()
-                .map(|id| format!("  jcode --resume {}", id))
+                .map(|id| format!("  kcode --resume {}", id))
                 .collect();
             self.push_display_message(DisplayMessage::system(format!(
                 "No terminal found. Resume manually:\n{}",

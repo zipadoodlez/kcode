@@ -407,7 +407,7 @@ mod tests {
         let _ = std::fs::remove_file(
             dirs::home_dir()
                 .unwrap_or_else(|| std::path::PathBuf::from("."))
-                .join(".jcode")
+                .join(".kcode")
                 .join("cache")
                 .join(format!(
                     "{namespace}_endpoints_deepseek__deepseek-v4-pro-0813.json"

@@ -40,7 +40,7 @@ pub fn stream_idle_timeout_multiplier_for_effort(effort: Option<&str>) -> u32 {
     {
         "high" => 2,
         "xhigh" => 3,
-        // `swarm`/`swarm-deep` are Jcode UI sentinels that resolve to the top
+        // `swarm`/`swarm-deep` are Kcode UI sentinels that resolve to the top
         // wire effort upstream, so budget them like `max`.
         "max" | "swarm" | "swarm-deep" => MAX_STREAM_IDLE_TIMEOUT_MULTIPLIER,
         _ => 1,

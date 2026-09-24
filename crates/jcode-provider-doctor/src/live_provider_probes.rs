@@ -136,7 +136,7 @@ pub async fn fetch_live_openai_compatible_models(
 }
 
 /// Normalize a model id returned by a provider's `/models` endpoint into the
-/// bare id jcode uses for routing and coverage keys.
+/// bare id kcode uses for routing and coverage keys.
 ///
 /// Google's OpenAI-compatible Gemini surface returns ids prefixed with
 /// `models/` (e.g. `models/gemini-2.5-flash`); chat/stream/tool calls accept

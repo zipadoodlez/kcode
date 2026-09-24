@@ -731,14 +731,14 @@ pub(super) fn launch_forked_session_local(
         }
         (false, true) => {
             app.push_display_message(DisplayMessage::system(format!(
-                "↗ New session {} created for the next prompt.\n\nNo terminal was opened automatically. Resume manually:\n\n  jcode --resume {}",
+                "↗ New session {} created for the next prompt.\n\nNo terminal was opened automatically. Resume manually:\n\n  kcode --resume {}",
                 session_name, session_id
             )));
             app.set_status_notice("Prompt session created");
         }
         (false, false) => {
             app.push_display_message(DisplayMessage::system(format!(
-                "✂ Fork → {}\n\nNo terminal was opened automatically. Resume manually:\n\n  jcode --resume {}",
+                "✂ Fork → {}\n\nNo terminal was opened automatically. Resume manually:\n\n  kcode --resume {}",
                 session_name, session_id
             )));
             app.set_status_notice("Forked session created");
@@ -787,7 +787,7 @@ fn launch_review_window_local(
         app.set_status_notice(format!("{} launched", label));
     } else {
         app.push_display_message(DisplayMessage::system(format!(
-            "🔍 {} session {} created.\n\nNo terminal was opened automatically. Resume manually:\n\n  jcode --resume {}",
+            "🔍 {} session {} created.\n\nNo terminal was opened automatically. Resume manually:\n\n  kcode --resume {}",
             label, session_name, session_id
         )));
         app.set_status_notice(format!("{} session created", label));

@@ -126,7 +126,7 @@ fn expires_at_from_access_token_handles_missing_exp_and_garbage() {
 #[test]
 fn legacy_tokens_without_expiry_recover_expires_at_from_jwt() {
     // Reproduces the onboarding bug: the imported Codex token carries no
-    // explicit `expires_at`, so we must derive it from the JWT so jcode can
+    // explicit `expires_at`, so we must derive it from the JWT so kcode can
     // refresh proactively instead of sending a dead token and forcing /login.
     let tokens = LegacyTokens {
         access_token: jwt_with_exp(1_780_000_000),

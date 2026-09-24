@@ -468,7 +468,7 @@ impl Default for NamedProviderConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct AuthConfig {
-    /// External auth source ids that the user has approved jcode to read/use.
+    /// External auth source ids that the user has approved kcode to read/use.
     pub trusted_external_sources: Vec<String>,
     /// Path-bound approvals for external auth sources managed by other tools.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -635,7 +635,7 @@ pub struct TerminalConfig {
     /// External command that takes over headed session spawns (new terminal
     /// windows for swarm agents, resume-in-new-terminal, self-dev, restarts).
     ///
-    /// When set, jcode runs `<spawn_hook> <jcode-binary> <args...>` instead of
+    /// When set, kcode runs `<spawn_hook> <jcode-binary> <args...>` instead of
     /// opening a terminal emulator itself, with `JCODE_SPAWN_*` metadata env
     /// vars describing the spawn (kind, session id, title, cwd, full command).
     /// This lets multiplexers and wrappers (tmux, kitty remote, zellij, herd
@@ -649,7 +649,7 @@ pub struct TerminalConfig {
     pub spawn_hook: Option<String>,
     /// External command used to focus/raise an existing session window.
     ///
-    /// When set, jcode runs the hook (instead of wmctrl/xdotool) whenever it
+    /// When set, kcode runs the hook (instead of wmctrl/xdotool) whenever it
     /// wants to bring a session's window to the foreground, with
     /// `JCODE_FOCUS_SESSION_ID` and `JCODE_FOCUS_TITLE` env vars. Pair this
     /// with `spawn_hook` so wrappers that own placement (tmux, kitty remote,
@@ -663,13 +663,13 @@ pub struct TerminalConfig {
     /// One of: `ghostty`, `iterm2`, `wezterm`, `warp`, `alacritty`, `vscode`,
     /// `terminal` (Apple Terminal). When set, this is the source of truth for
     /// which terminal jcode launches into and is preferred over the legacy
-    /// `~/.jcode/preferred_terminal.json` file.
+    /// `~/.kcode/preferred_terminal.json` file.
     ///
     /// macOS only; ignored on other platforms.
     pub preferred: Option<String>,
 }
 
-/// Lifecycle hooks: external commands jcode runs at well-defined points.
+/// Lifecycle hooks: external commands kcode runs at well-defined points.
 ///
 /// Hook commands are parsed shell-style (quotes work) but executed directly,
 /// with `JCODE_HOOK_*` env vars describing the event (`JCODE_HOOK_EVENT`,
@@ -867,7 +867,7 @@ pub struct KeybindingsConfig {
     /// prompt, esc exits). Active only when `agents.swarm_spawn_mode = "inline"`
     /// and the session manages swarm agents.
     pub swarm_panel_focus: String,
-    /// Spawn a fresh jcode session in a new terminal window (default: unbound).
+    /// Spawn a fresh kcode session in a new terminal window (default: unbound).
     /// Example: "alt+enter".
     pub new_terminal: String,
     /// Open the `/resume` session picker (default: "cmd+b" on macOS, "alt+r"
@@ -1082,7 +1082,7 @@ pub struct ProviderConfig {
     pub preserve_reasoning_context: bool,
     /// How to handle cross-provider failover when the same input would be resent elsewhere.
     pub cross_provider_failover: CrossProviderFailoverMode,
-    /// Whether jcode should automatically try another account on the same provider
+    /// Whether kcode should automatically try another account on the same provider
     /// before falling back to a different provider.
     pub same_provider_account_failover: bool,
     /// Copilot premium request mode: "normal", "one", or "zero"
@@ -1184,7 +1184,7 @@ impl Default for NotificationsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PowerConfig {
-    /// Prevent automatic system sleep while any jcode session is actively
+    /// Prevent automatic system sleep while any kcode session is actively
     /// streaming/processing, and ask logind to block lid-switch suspend. The
     /// display is still allowed to sleep. Default: true.
     ///

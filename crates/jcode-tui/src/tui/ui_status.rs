@@ -8,7 +8,7 @@ pub(super) fn semver() -> &'static str {
 
 /// True when this process is running from the stable release binary path.
 ///
-/// The `~/.jcode/builds/stable/...` channel layout is gone: the package manager
+/// The `~/.kcode/builds/stable/...` channel layout is gone: the package manager
 /// owns installation, so there is no jcode-managed stable channel to detect.
 pub(super) fn is_running_stable_release() -> bool {
     false

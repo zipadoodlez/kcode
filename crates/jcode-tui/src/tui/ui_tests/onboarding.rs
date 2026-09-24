@@ -46,7 +46,7 @@ fn onboarding_welcome_shows_title_and_suggestions() {
     let text = render_onboarding(&state, 80, 30);
 
     assert!(
-        text.contains("Welcome to jcode onboarding"),
+        text.contains("Welcome to kcode onboarding"),
         "welcome title should be rendered:\n{text}"
     );
     assert!(
@@ -80,7 +80,7 @@ fn onboarding_welcome_renders_on_tiny_area_without_panicking() {
     let state = onboarding_state();
     let text = render_onboarding(&state, 20, 5);
     assert!(
-        text.contains("Welcome to jcode"),
+        text.contains("Welcome to kcode"),
         "minimal fallback should still show the title:\n{text}"
     );
 }

@@ -93,13 +93,13 @@ struct SearchInput {
     /// Restrict to sessions updated/messages at or before this RFC3339 timestamp or YYYY-MM-DD date.
     #[serde(default)]
     before: Option<String>,
-    /// Restrict Jcode sessions by saved/bookmarked flag.
+    /// Restrict Kcode sessions by saved/bookmarked flag.
     #[serde(default)]
     saved: Option<bool>,
-    /// Restrict Jcode sessions by debug flag.
+    /// Restrict Kcode sessions by debug flag.
     #[serde(default)]
     debug: Option<bool>,
-    /// Restrict Jcode sessions by canary flag.
+    /// Restrict Kcode sessions by canary flag.
     #[serde(default)]
     canary: Option<bool>,
     /// Restrict source: jcode, claude, codex, pi, opencode, cursor, or all.
@@ -117,7 +117,7 @@ struct SearchInput {
     /// Bound the number of recent sessions scanned per source.
     #[serde(default)]
     max_scan_sessions: Option<i64>,
-    /// Scan every available Jcode session instead of the recent indexed subset.
+    /// Scan every available Kcode session instead of the recent indexed subset.
     #[serde(default)]
     exhaustive: Option<bool>,
 }
@@ -155,7 +155,7 @@ pub fn spawn_recent_index_warmup() {
             Ok(collection.files.len())
         })()
         .unwrap_or_else(|err| {
-            crate::logging::info(&format!("jcode session index warmup skipped: {err}"));
+            crate::logging::info(&format!("kcode session index warmup skipped: {err}"));
             0
         });
 
@@ -357,15 +357,15 @@ impl Tool for SessionSearchTool {
                 },
                 "saved": {
                     "type": "boolean",
-                    "description": "Restrict Jcode sessions by saved/bookmarked flag."
+                    "description": "Restrict Kcode sessions by saved/bookmarked flag."
                 },
                 "debug": {
                     "type": "boolean",
-                    "description": "Restrict Jcode sessions by debug/test flag."
+                    "description": "Restrict Kcode sessions by debug/test flag."
                 },
                 "canary": {
                     "type": "boolean",
-                    "description": "Restrict Jcode sessions by canary flag."
+                    "description": "Restrict Kcode sessions by canary flag."
                 },
                 "source": {
                     "type": "string",
@@ -812,7 +812,7 @@ fn remove_legacy_index() {
     }
 }
 
-/// Build/update the incremental jcode session index and return the candidate
+/// Build/update the incremental kcode session index and return the candidate
 /// subset of `files` that plausibly match `query`.
 fn jcode_index_candidates(
     files: &[SessionFileCandidate],

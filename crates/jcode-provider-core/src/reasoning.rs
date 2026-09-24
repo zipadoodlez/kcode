@@ -1,7 +1,7 @@
 //! Shared reasoning-effort ladders.
 //!
 //! Keep these in provider-core so provider runtimes and UI clients expose the
-//! same ordered values. `swarm` and `swarm-deep` are Jcode UI sentinels rather
+//! same ordered values. `swarm` and `swarm-deep` are Kcode UI sentinels rather
 //! than wire-level provider values, but they belong in the selectable ladder.
 
 /// OpenAI Responses API effort levels, followed by Jcode's swarm modes.

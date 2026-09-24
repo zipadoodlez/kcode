@@ -593,7 +593,7 @@ fn publish_await_started_card(
     Bus::global().publish(BusEvent::UiActivity(UiActivity::background(
         Some(state.session_id.clone()),
         format!(
-            "🐝 **Swarm await started** · watching `{}`\n\nJcode is waiting for these members in the background and will report back when they finish.",
+            "🐝 **Swarm await started** · watching `{}`\n\nKcode is waiting for these members in the background and will report back when they finish.",
             watching
         ),
         Some(format!("Swarm await started · {}", watching)),

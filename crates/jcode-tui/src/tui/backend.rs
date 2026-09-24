@@ -149,7 +149,7 @@ enum LineOutcome {
     Disconnect(RemoteDisconnectReason),
 }
 
-/// Remote connection to jcode server
+/// Remote connection to kcode server
 pub struct RemoteConnection {
     reader: BufReader<crate::transport::ReadHalf>,
     writer: Arc<Mutex<WriteHalf>>,

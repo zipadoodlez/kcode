@@ -1,7 +1,7 @@
 //! Local Copilot usage tracking
 //!
 //! Tracks request counts and token usage locally since GitHub Copilot
-//! doesn't expose a usage API. Data persists to ~/.jcode/copilot_usage.json.
+//! doesn't expose a usage API. Data persists to ~/.kcode/copilot_usage.json.
 
 use chrono::{Datelike, Utc};
 use std::path::PathBuf;
@@ -11,7 +11,7 @@ static TRACKER: Mutex<Option<CopilotUsageTracker>> = Mutex::new(None);
 
 fn usage_path() -> PathBuf {
     crate::storage::jcode_dir()
-        .unwrap_or_else(|_| PathBuf::from(".").join(".jcode"))
+        .unwrap_or_else(|_| PathBuf::from(".").join(".kcode"))
         .join("copilot_usage.json")
 }
 

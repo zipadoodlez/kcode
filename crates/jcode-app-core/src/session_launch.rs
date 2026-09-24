@@ -1,4 +1,4 @@
-//! Launching jcode sessions in new terminal windows.
+//! Launching kcode sessions in new terminal windows.
 //!
 //! These helpers spawn a fresh `jcode` process (resume or self-dev) inside a
 //! new terminal window. They are pure process/terminal orchestration built on

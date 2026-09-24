@@ -261,7 +261,7 @@ impl App {
             Self::client_maintenance_card_message(
                 action,
                 "reloading client",
-                "The new binary is ready, so jcode is switching over now.",
+                "The new binary is ready, so kcode is switching over now.",
             ),
         );
         self.save_input_for_reload(&session_id);
@@ -299,7 +299,7 @@ impl App {
                     Self::client_maintenance_card_message(
                         action,
                         message,
-                        "Still running in the background. jcode will reload automatically when ready.",
+                        "Still running in the background. kcode will reload automatically when ready.",
                     ),
                 );
             }
@@ -393,7 +393,7 @@ impl App {
     }
 
     /// Render a friendly "diverged" update card and arm the merge offer so the
-    /// user can hand the reconciliation to a fresh jcode agent with one key.
+    /// user can hand the reconciliation to a fresh kcode agent with one key.
     ///
     /// This replaces the old generic "Status: failed / Continuing with the
     /// current version." card for the specific (and recoverable) case where the
@@ -413,7 +413,7 @@ impl App {
         // Bypass `client_maintenance_card_message` (which would prepend a
         // "Status:" line) and set the card content directly.
         let content = format!(
-            "Update diverged. Press {} to let a jcode agent merge local and upstream (or run `git pull` / `git rebase` yourself).",
+            "Update diverged. Press {} to let a kcode agent merge local and upstream (or run `git pull` / `git rebase` yourself).",
             key_label
         );
         self.set_client_maintenance_message(action, content);
@@ -438,7 +438,7 @@ impl App {
         self.pending_merge_offer.is_some() && self.fallback_switch_key_matches(code, modifiers)
     }
 
-    /// Accept the armed merge offer: spawn a fresh jcode session pre-loaded with
+    /// Accept the armed merge offer: spawn a fresh kcode session pre-loaded with
     /// a prompt to reconcile the diverged branches. Returns true when an offer
     /// was present and consumed.
     pub(super) fn accept_update_merge_offer(&mut self) -> bool {
@@ -450,7 +450,7 @@ impl App {
             .repo_dir
             .as_ref()
             .map(|p| p.display().to_string())
-            .unwrap_or_else(|| "the jcode repository".to_string());
+            .unwrap_or_else(|| "the kcode repository".to_string());
         let prompt = format!(
             "A jcode self-update could not fast-forward because the local checkout and upstream have diverged.\n\n\
 Repository: {repo}\n\
@@ -471,7 +471,7 @@ Do not force-push or discard local commits without confirming they are already u
         match self.launch_update_merge_agent(prompt, offer.repo_dir.as_deref()) {
             Ok(true) => {
                 self.push_display_message(DisplayMessage::system(
-                    "↗ Spawned a jcode agent to merge the diverged update.",
+                    "↗ Spawned a kcode agent to merge the diverged update.",
                 ));
                 self.set_status_notice("Merge agent launched");
             }
@@ -492,7 +492,7 @@ Do not force-push or discard local commits without confirming they are already u
         true
     }
 
-    /// Spawn a fresh jcode session, in the repo directory when known, with a
+    /// Spawn a fresh kcode session, in the repo directory when known, with a
     /// startup prompt instructing it to merge the diverged update.
     fn launch_update_merge_agent(
         &self,

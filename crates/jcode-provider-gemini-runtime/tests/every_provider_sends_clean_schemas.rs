@@ -113,7 +113,7 @@ fn every_antigravity_route_sends_a_clean_schema_for_the_hostile_tool() {
 
 /// OpenAI still uses its own sanitizer rather than the engine, so this asserts
 /// the *outcome* the class requires: nothing OpenAI rejects goes out, and the
-/// typeless property does not get a `strict` claim jcode cannot honor.
+/// typeless property does not get a `strict` claim kcode cannot honor.
 #[test]
 fn openai_sends_a_clean_schema_and_does_not_overclaim_strict() {
     let built = jcode_provider_openai::request::build_tools(&hostile_tool());

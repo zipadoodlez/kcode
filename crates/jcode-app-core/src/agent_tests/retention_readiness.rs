@@ -1,7 +1,7 @@
 // Deterministic longitudinal synthetic-cohort evaluator for retention readiness.
 //
 // This deliberately does NOT claim to measure human retention. It asks whether
-// jcode has the product properties that make returning likely: a useful first
+// kcode has the product properties that make returning likely: a useful first
 // result, cheap re-entry, preserved context, durable state, recoverable failure,
 // and value that compounds across sessions. Real D1/D7/D30 cohort retention is
 // not measured here and is never synthesized.

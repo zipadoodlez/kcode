@@ -23,7 +23,7 @@ static TOOL_CALL_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 /// Per-provider browser state. A single provider instance serializes turns that
 /// each run in an isolated, temporary browser fork. Provider forks get a fresh
-/// state, so parallel jcode agents do not cross streams.
+/// state, so parallel kcode agents do not cross streams.
 pub(crate) struct ChatGptWebState {
     turn_lock: Mutex<()>,
 }
@@ -99,11 +99,11 @@ impl ChatGptWebState {
         let status = jcode_base::browser::ensure_browser_ready_noninteractive()
             .await
             .context(
-                "ChatGPT web transport needs the Firefox Browser Agent Bridge. Run `jcode browser status`, start Firefox, and log in at chatgpt.com",
+                "ChatGPT web transport needs the Firefox Browser Agent Bridge. Run `kcode browser status`, start Firefox, and log in at chatgpt.com",
             )?;
         if !status.ready {
             anyhow::bail!(
-                "Firefox Browser Agent Bridge is not ready. Run `jcode browser status`, start Firefox, and log in at chatgpt.com"
+                "Firefox Browser Agent Bridge is not ready. Run `kcode browser status`, start Firefox, and log in at chatgpt.com"
             );
         }
 
@@ -277,7 +277,7 @@ return { onboarding: false, model, temporary, signedOut };
 
     if preparation.get("onboarding").and_then(Value::as_bool) == Some(true) {
         anyhow::bail!(
-            "ChatGPT is waiting for a workspace onboarding choice. Open chatgpt.com in Firefox and finish onboarding; jcode will not merge or move your personal chat history automatically"
+            "ChatGPT is waiting for a workspace onboarding choice. Open chatgpt.com in Firefox and finish onboarding; kcode will not merge or move your personal chat history automatically"
         );
     }
     if preparation.get("signedOut").and_then(Value::as_bool) == Some(true) {
@@ -536,7 +536,7 @@ async fn emit_response(
     if let Some(parsed) = parse_tool_call(response)? {
         if !advertised_tools.iter().any(|name| name == &parsed.name) {
             anyhow::bail!(
-                "GPT-5.6 Pro requested unknown jcode tool '{}'; advertised tools were: {}",
+                "GPT-5.6 Pro requested unknown kcode tool '{}'; advertised tools were: {}",
                 parsed.name,
                 advertised_tools.join(", ")
             );
@@ -583,22 +583,22 @@ fn parse_tool_call(response: &str) -> Result<Option<ParsedToolCall>> {
     }
     if !trimmed.starts_with(TOOL_CALL_START) || !trimmed.ends_with(TOOL_CALL_END) {
         anyhow::bail!(
-            "GPT-5.6 Pro mentioned a jcode tool-call envelope without emitting it as the entire response"
+            "GPT-5.6 Pro mentioned a kcode tool-call envelope without emitting it as the entire response"
         );
     }
     let payload_text = &trimmed[TOOL_CALL_START.len()..trimmed.len() - TOOL_CALL_END.len()];
     let payload: Value = serde_json::from_str(payload_text.trim())
-        .context("GPT-5.6 Pro emitted invalid JSON in a jcode tool-call envelope")?;
+        .context("GPT-5.6 Pro emitted invalid JSON in a kcode tool-call envelope")?;
     let name = payload
         .get("name")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|name| !name.is_empty())
-        .ok_or_else(|| anyhow::anyhow!("jcode tool-call envelope is missing a non-empty name"))?
+        .ok_or_else(|| anyhow::anyhow!("kcode tool-call envelope is missing a non-empty name"))?
         .to_string();
     let input = payload.get("input").cloned().unwrap_or_else(|| json!({}));
     if !input.is_object() {
-        anyhow::bail!("jcode tool-call envelope input must be a JSON object");
+        anyhow::bail!("kcode tool-call envelope input must be a JSON object");
     }
     Ok(Some(ParsedToolCall { name, input }))
 }
@@ -618,9 +618,9 @@ fn build_web_prompt(
     system: &str,
 ) -> Result<String> {
     let mut prompt = String::new();
-    prompt.push_str("# Jcode system instructions\n\n");
+    prompt.push_str("# Kcode system instructions\n\n");
     prompt.push_str(system);
-    prompt.push_str("\n\n# Jcode tools available for this turn\n\n");
+    prompt.push_str("\n\n# Kcode tools available for this turn\n\n");
     prompt.push_str(&serde_json::to_string(tools)?);
     prompt.push_str("\n\n# Conversation data\n\n");
     prompt.push_str(
@@ -687,14 +687,14 @@ fn build_web_prompt(
 
 # Mandatory Jcode web-transport protocol
 
-Act as the assistant for the conversation above and obey the Jcode system instructions.
-You do not have native access to Jcode tools in this web transport. When a tool is needed,
+Act as the assistant for the conversation above and obey the Kcode system instructions.
+You do not have native access to Kcode tools in this web transport. When a tool is needed,
 request exactly one tool and stop by emitting this exact envelope with raw JSON and no code fence:
 
 <jcode_tool_call>{"name":"tool_name","input":{"argument":"value"}}</jcode_tool_call>
 
-The name must exactly match one of the advertised Jcode tools. Put every required field,
-including `intent` when its schema requires one, inside `input`. Jcode will execute the tool
+The name must exactly match one of the advertised Kcode tools. Put every required field,
+including `intent` when its schema requires one, inside `input`. Kcode will execute the tool
 and return its result in a later conversation turn. Never claim a tool ran unless its result is
 present above. If no tool is needed, answer normally and do not emit the envelope.
 "#,
@@ -748,7 +748,7 @@ async fn bridge_command(action: &str, params: Value) -> Result<Value> {
     let binary = jcode_base::browser::browser_binary_path();
     if !binary.exists() {
         anyhow::bail!(
-            "Browser bridge binary is not installed. Run `jcode browser setup` once, then log in at chatgpt.com in Firefox"
+            "Browser bridge binary is not installed. Run `kcode browser setup` once, then log in at chatgpt.com in Firefox"
         );
     }
 

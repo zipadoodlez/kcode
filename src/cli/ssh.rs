@@ -44,7 +44,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     validate(&args)?;
     let host = args.ssh.as_deref().expect("SSH dispatch requires a host");
     let binary = args.ssh_binary.as_deref().unwrap_or("jcode");
-    super::output::stderr_info(format!("Connecting local Jcode UI to {host} over SSH..."));
+    super::output::stderr_info(format!("Connecting local Kcode UI to {host} over SSH..."));
     let mut connection = super::ssh_transport::NativeSsh::connect_with_workspace(
         host,
         binary,

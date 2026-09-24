@@ -37,19 +37,19 @@ impl App {
         if matches!(callback_available, Some(false)) {
             if let Some(target) = callback_target {
                 notices.push(format!(
-                    "Local callback target {} is unavailable, so jcode is using manual-safe paste completion instead.",
+                    "Local callback target {} is unavailable, so kcode is using manual-safe paste completion instead.",
                     target
                 ));
             } else {
                 notices.push(
-                    "The local callback listener is unavailable, so jcode is using manual-safe paste completion instead."
+                    "The local callback listener is unavailable, so kcode is using manual-safe paste completion instead."
                         .to_string(),
                 );
             }
         }
         if !notices.is_empty() {
             notices.push(format!(
-                "If login still fails, run jcode auth doctor {} for a guided diagnosis.",
+                "If login still fails, run kcode auth doctor {} for a guided diagnosis.",
                 provider_id
             ));
         }
@@ -120,7 +120,7 @@ impl App {
             message.push_str("\nFetching hosted usage and spending limit...");
         } else {
             message.push_str(
-                "\nLog in with /login jcode to set a spending limit and connect hosted models.",
+                "\nLog in with /login kcode to set a spending limit and connect hosted models.",
             );
         }
 
@@ -236,7 +236,7 @@ impl App {
             message.push('\n');
         }
         message.push_str(
-            "\nUse /login <provider> to authenticate. /login jcode is for curated jcode subscription access; /account opens the provider/account management center, /account <provider> settings shows provider-specific controls, and /auth doctor or /account <provider> doctor shows recovery steps.",
+            "\nUse /login <provider> to authenticate. /login kcode is for curated jcode subscription access; /account opens the provider/account management center, /account <provider> settings shows provider-specific controls, and /auth doctor or /account <provider> doctor shows recovery steps.",
         );
         self.push_display_message(DisplayMessage::system(message));
     }
@@ -623,7 +623,7 @@ impl App {
             let opened = App::open_auth_browser(&device.verification_uri_complete);
             publish(
                 format!(
-                    "Jcode Account Login\n\n{}\n\nApprove the request in the same browser. Jcode is waiting for the single-use exchange.{}",
+                    "Jcode Account Login\n\n{}\n\nApprove the request in the same browser. Kcode is waiting for the single-use exchange.{}",
                     device.verification_uri_complete,
                     if opened {
                         ""
@@ -695,7 +695,7 @@ impl App {
             crate::auth::AuthStatus::invalidate_cache();
             publish(
                 format!(
-                    "Jcode Account Approved\n\nSigned in as {}. The API key is stored with owner-only permissions. Finish setting your monthly spending limit in the browser; Jcode is checking /v1/me...",
+                    "Jcode Account Approved\n\nSigned in as {}. The API key is stored with owner-only permissions. Finish setting your monthly spending limit in the browser; Kcode is checking /v1/me...",
                     approved.email
                 ),
                 "Jcode account: waiting for spending limit",
@@ -1621,7 +1621,7 @@ impl App {
     fn start_azure_login(&mut self) {
         self.push_display_message(DisplayMessage::system(
             "Azure OpenAI Login\n\n\
-             jcode uses Azure OpenAI's /openai/v1 API with either Microsoft Entra ID or an API key.\n\n\
+             kcode uses Azure OpenAI's /openai/v1 API with either Microsoft Entra ID or an API key.\n\n\
              Enter your Azure OpenAI endpoint, for example https://your-resource.openai.azure.com, or type /cancel to abort."
                 .to_string(),
         ));
@@ -1634,7 +1634,7 @@ impl App {
             "Cursor API Key\n\n\
              Get your API key from: https://cursor.com/settings\n\
              (Dashboard > Integrations > User API Keys)\n\n\
-             jcode will save it securely and use the native Cursor HTTPS transport.\n\n\
+             kcode will save it securely and use the native Cursor HTTPS transport.\n\n\
              Paste your API key below, or type /cancel to abort."
                 .to_string(),
         ));
@@ -1750,7 +1750,7 @@ impl App {
         self.set_status_notice("Grok Build: preparing sign-in...");
         self.begin_pending_login(PendingLogin::GrokBuild);
         self.push_display_message(DisplayMessage::system(
-            "Grok Build Login\n\nJcode is preparing the managed provider backend. The xAI sign-in URL and device code will appear here. You do not need to install the Grok CLI.\n\nType /cancel to dismiss this login."
+            "Grok Build Login\n\nKcode is preparing the managed provider backend. The xAI sign-in URL and device code will appear here. You do not need to install the Grok CLI.\n\nType /cancel to dismiss this login."
                 .to_string(),
         ));
 
@@ -1808,7 +1808,7 @@ impl App {
                     Bus::global().publish(BusEvent::LoginCompleted(LoginCompleted {
                         provider: "grok-build".to_string(),
                         success: true,
-                        message: "Grok Build login complete. Jcode is refreshing the provider and model list."
+                        message: "Grok Build login complete. Kcode is refreshing the provider and model list."
                             .to_string(),
                     }));
                 }
@@ -2384,20 +2384,20 @@ impl App {
                         let guidance = if key_name == crate::subscription_catalog::JCODE_API_KEY_ENV
                         {
                             format!(
-                                "Use /login jcode to access curated models via your router. If the model list looks stale, run /refresh-model-list.\nDocs: {}",
+                                "Use /login kcode to access curated models via your router. If the model list looks stale, run /refresh-model-list.\nDocs: {}",
                                 docs_url
                             )
                         } else if let Some(resolved) = resolved_openai_compatible.as_ref() {
                             if resolved.requires_api_key {
-                                "Fetching models now. Jcode will switch to an accessible model returned by the live catalog and show the catalog diff when discovery finishes. If the model list looks stale, run /refresh-model-list.".to_string()
+                                "Fetching models now. Kcode will switch to an accessible model returned by the live catalog and show the catalog diff when discovery finishes. If the model list looks stale, run /refresh-model-list.".to_string()
                             } else {
                                 format!(
-                                    "Local endpoint configured at {}. Fetching models now; Jcode will switch to an accessible model returned by the live catalog and show the catalog diff when discovery finishes. If the model list looks stale, run /refresh-model-list.",
+                                    "Local endpoint configured at {}. Fetching models now; Kcode will switch to an accessible model returned by the live catalog and show the catalog diff when discovery finishes. If the model list looks stale, run /refresh-model-list.",
                                     endpoint.as_deref().unwrap_or(resolved.api_base.as_str()),
                                 )
                             }
                         } else if key_name == crate::provider::bedrock::API_KEY_ENV {
-                            "You can now use /model to switch to Bedrock models. TUI onboarding saved region us-east-2; for a different region, run jcode login --provider bedrock from a terminal.".to_string()
+                            "You can now use /model to switch to Bedrock models. TUI onboarding saved region us-east-2; for a different region, run kcode login --provider bedrock from a terminal.".to_string()
                         } else if key_name == "OPENROUTER_API_KEY" {
                             "You can now use /model to switch to OpenRouter models. If the model list looks stale, run /refresh-model-list.".to_string()
                         } else {
@@ -2620,7 +2620,7 @@ impl App {
                             message: format!(
                                 "Cursor API key saved.\n\n\
                                  Stored at {}.\n\
-                                 jcode will use it with the native Cursor HTTPS transport.",
+                                 kcode will use it with the native Cursor HTTPS transport.",
                                 crate::storage::app_config_dir()
                                     .expect("config directory resolved while saving Cursor API key")
                                     .join("cursor.env")
@@ -2995,7 +2995,7 @@ impl App {
             crate::bus::UiActivity::catalog(
                 Some(self.session.id.clone()),
                 format!(
-                    "{} Model Discovery Started\n\nSaved credentials are active. Jcode is fetching the live model catalog, will only switch to a model returned by that catalog, and will show what changed when discovery finishes.",
+                    "{} Model Discovery Started\n\nSaved credentials are active. Kcode is fetching the live model catalog, will only switch to a model returned by that catalog, and will show what changed when discovery finishes.",
                     provider_label
                 ),
                 Some(format!("{}: fetching models...", provider_label)),
@@ -3152,7 +3152,7 @@ impl App {
                                 crate::bus::UiActivity::catalog(
                                     Some(session_id),
                                     format!(
-                                        "{} Model Discovery Still Updating\n\nSaved credentials are active, but this local refresh pass did not find a selectable {} route yet. Jcode is still processing the auth-change catalog refresh and will switch once provider routes are available. If the model list still looks stale after the auth catalog update, run /refresh-model-list.",
+                                        "{} Model Discovery Still Updating\n\nSaved credentials are active, but this local refresh pass did not find a selectable {} route yet. Kcode is still processing the auth-change catalog refresh and will switch once provider routes are available. If the model list still looks stale after the auth catalog update, run /refresh-model-list.",
                                         provider_label, provider_label
                                     ),
                                     Some(format!(
@@ -3175,7 +3175,7 @@ impl App {
                             crate::bus::UiActivity::catalog(
                                 Some(session_id),
                                 format!(
-                                    "{} Model Discovery Still Updating\n\nSaved credentials are active, but this local refresh pass failed before the server auth-change catalog refresh finished. Jcode is still processing the auth-change catalog refresh and will switch once provider routes are available. If the model list still looks stale after the auth catalog update, run /refresh-model-list.\n\nLocal refresh error: {}",
+                                    "{} Model Discovery Still Updating\n\nSaved credentials are active, but this local refresh pass failed before the server auth-change catalog refresh finished. Kcode is still processing the auth-change catalog refresh and will switch once provider routes are available. If the model list still looks stale after the auth catalog update, run /refresh-model-list.\n\nLocal refresh error: {}",
                                     provider_label, error
                                 ),
                                 Some(format!(

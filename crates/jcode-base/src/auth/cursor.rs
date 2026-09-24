@@ -240,7 +240,7 @@ fn read_vscdb_key(db_path: &PathBuf, key: &str) -> Result<String> {
 
 /// Load Cursor API key. Checks in order:
 /// 1. `CURSOR_API_KEY` env var
-/// 2. Saved key in `~/.config/jcode/cursor.env`
+/// 2. Saved key in `~/.config/kcode/cursor.env`
 pub fn load_api_key() -> Result<String> {
     if let Ok(key) = std::env::var("CURSOR_API_KEY") {
         let trimmed = jcode_provider_env::sanitize_secret_value(&key);
@@ -271,7 +271,7 @@ pub fn load_api_key() -> Result<String> {
     )
 }
 
-/// Save a Cursor API key to `~/.config/jcode/cursor.env`.
+/// Save a Cursor API key to `~/.config/kcode/cursor.env`.
 pub fn save_api_key(key: &str) -> Result<()> {
     let file_path = config_file_path()?;
     crate::storage::upsert_env_file_value(&file_path, "CURSOR_API_KEY", Some(key))?;
@@ -280,7 +280,7 @@ pub fn save_api_key(key: &str) -> Result<()> {
     Ok(())
 }
 
-/// Remove the saved Cursor API key from `~/.config/jcode/cursor.env` and the
+/// Remove the saved Cursor API key from `~/.config/kcode/cursor.env` and the
 /// current process environment.
 pub fn clear_api_key() -> Result<()> {
     let file_path = config_file_path()?;

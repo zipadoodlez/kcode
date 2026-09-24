@@ -265,7 +265,7 @@ fn test_session_context_includes_time_timezone_and_system_info() {
     assert!(context.contains("Timezone: "));
     assert!(context.contains("OS: "));
     assert!(context.contains("Architecture: "));
-    assert!(context.contains("Jcode version: "));
+    assert!(context.contains("Kcode version: "));
     assert!(!context.contains("Working directory: "));
     assert!(!context.contains("Git:"));
 }
@@ -387,7 +387,7 @@ fn test_preferred_tools_files_are_loaded_from_project_and_global_jcode_dirs() {
         "expected project preferred tools content"
     );
     assert!(
-        direct_content.contains("Global Preferred Tools (~/.jcode/preferred-tools.md)"),
+        direct_content.contains("Global Preferred Tools (~/.kcode/preferred-tools.md)"),
         "expected global preferred tools section heading"
     );
     assert!(
@@ -629,7 +629,7 @@ fn project_system_prompt_file_replaces_default_base_prompt() {
 
     let (prompt, _info) = build_system_prompt_full(None, &[], false, Some(&dir));
     assert!(prompt.contains("You are a custom agent."));
-    assert!(!prompt.contains("Jcode is open source"));
+    assert!(!prompt.contains("Kcode is open source"));
 
     // Empty override falls back to the built-in default.
     std::fs::write(jcode_dir.join("system-prompt.md"), "   \n").unwrap();

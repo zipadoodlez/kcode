@@ -1147,7 +1147,7 @@ fn test_tui_openai_compatible_empty_catalog_does_not_switch_to_profile_default()
         "post-login activation must not try the metadata default when the catalog has no selectable route"
     );
     assert!(activity.message.contains("Saved credentials are active"));
-    assert!(activity.message.contains("Jcode is still processing"));
+    assert!(activity.message.contains("Kcode is still processing"));
     assert!(!activity.message.contains("did not switch models"));
     assert!(!activity.message.contains("documented default"));
     assert!(!activity.message.contains("qwen-3-coder-480b"));

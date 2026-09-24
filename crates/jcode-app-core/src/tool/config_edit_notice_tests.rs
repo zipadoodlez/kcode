@@ -1,6 +1,6 @@
 use super::*;
 
-/// Point the process at a temp jcode home and return it with a restore guard.
+/// Point the process at a temp kcode home and return it with a restore guard.
 fn temp_jcode_home() -> (tempfile::TempDir, Option<std::ffi::OsString>) {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let prev = std::env::var_os("JCODE_HOME");

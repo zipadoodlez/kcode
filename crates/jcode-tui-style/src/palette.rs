@@ -14,7 +14,7 @@
 //! a role if it needs to follow `/colors`. An unconfigured palette is
 //! byte-identical to the historical hard-coded look.
 //!
-//! Configuration lives in `~/.jcode/config.toml`:
+//! Configuration lives in `~/.kcode/config.toml`:
 //!
 //! ```toml
 //! [display.colors]
@@ -731,7 +731,7 @@ mod named_colors {
 mod default_palette_is_frozen {
     use super::*;
 
-    /// The exact hand-tuned palette jcode has always shipped.
+    /// The exact hand-tuned palette kcode has always shipped.
     ///
     /// This is a deliberate, redundant copy of [`Role::default_rgb`]. It exists
     /// so the shipped look cannot drift: the repair pass consumes these values,

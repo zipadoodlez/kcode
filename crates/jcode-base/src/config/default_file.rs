@@ -19,11 +19,11 @@ impl Config {
     /// Exposed separately so tests can check that the template we ship actually
     /// parses and documents the options it claims to.
     pub fn default_config_file_contents() -> String {
-        let default_content = r##"# jcode configuration file
-# Location: ~/.jcode/config.toml
+        let default_content = r##"# kcode configuration file
+# Location: ~/.kcode/config.toml
 #
 # Environment variables override these settings.
-# Run `/config` in jcode to see current settings.
+# Run `/config` in kcode to see current settings.
 
 [keybindings]
 # Scroll keys (vim-style by default)
@@ -84,7 +84,7 @@ info_widget_toggle = "alt+i"
 # Active only with agents.swarm_spawn_mode = "inline".
 swarm_panel_focus = "alt+n"
 
-# Spawn a fresh jcode session in a new terminal window, reusing the current
+# Spawn a fresh kcode session in a new terminal window, reusing the current
 # session's working directory.
 # Default: Cmd+Shift+; on macOS, Alt+Shift+; elsewhere. Set "" to disable.
 # Note: some macOS terminals intercept Cmd combos; if so, pick another binding.
@@ -309,9 +309,9 @@ tool_profile = "acp"
 # default_model = "claude-opus-5"
 # Default provider (optional: claude|anthropic-api|openai|openai-api|copilot|openrouter|...)
 # When set, this provider is preferred on startup if available.
-#   claude        = Claude via OAuth/subscription (token in ~/.jcode/auth.json)
+#   claude        = Claude via OAuth/subscription (token in ~/.kcode/auth.json)
 #   anthropic-api = Claude via direct Anthropic API key (ANTHROPIC_API_KEY env
-#                   or ~/.config/jcode/anthropic.env). API-key mode does NOT fall
+#                   or ~/.config/kcode/anthropic.env). API-key mode does NOT fall
 #                   back to OAuth; configure the key first.
 # `claude` and `anthropic-api` are distinct providers with distinct credentials.
 # See docs/AUTH_CREDENTIAL_SOURCES.md for where each credential lives.
@@ -430,14 +430,14 @@ swarm_max_concurrent_agents = 32
 # External command that takes over headed session spawns (swarm agents,
 # resume-in-new-terminal, self-dev windows, restart restores).
 #
-# When set, jcode runs `<spawn_hook> <jcode-binary> <args...>` instead of
+# When set, kcode runs `<spawn_hook> <jcode-binary> <args...>` instead of
 # opening a terminal emulator itself. The hook receives JCODE_SPAWN_* env vars
 # describing the spawn so multiplexers/wrappers can decide where it appears:
 #   JCODE_SPAWN_KIND        - "swarm-agent", "resume", "selfdev", "restart", ...
 #   JCODE_SPAWN_SESSION_ID  - session the window will run
 #   JCODE_SPAWN_TITLE       - suggested window/tab title
 #   JCODE_SPAWN_CWD         - session working directory (also the hook's cwd)
-#   JCODE_SPAWN_PROGRAM     - jcode binary path
+#   JCODE_SPAWN_PROGRAM     - kcode binary path
 #   JCODE_SPAWN_COMMAND     - full shell-escaped command line
 #   JCODE_SPAWN_SWARM_ID / JCODE_SPAWN_COORDINATOR_SESSION_ID (swarm spawns)
 # If the hook fails to start, jcode falls back to built-in terminal detection.
@@ -461,7 +461,7 @@ swarm_max_concurrent_agents = 32
 #
 # macOS only: terminal that in-app session spawns open jcode into. One of:
 # ghostty, iterm2, wezterm, warp, alacritty, vscode, terminal (Apple Terminal).
-# Preferred over the legacy ~/.jcode/preferred_terminal.json file.
+# Preferred over the legacy ~/.kcode/preferred_terminal.json file.
 # preferred = "ghostty"
 
 [notifications]
@@ -486,7 +486,7 @@ swarm_max_concurrent_agents = 32
 # turn_complete_sound = "Glass"
 
 [hooks]
-# Lifecycle hooks: external commands jcode runs at well-defined points so other
+# Lifecycle hooks: external commands kcode runs at well-defined points so other
 # programs can observe or gate agent behavior. Commands are parsed shell-style
 # (quotes work) but executed directly, with JCODE_HOOK_* env vars describing
 # the event:
@@ -535,7 +535,7 @@ swarm_max_concurrent_agents = 32
 # post_tool = ""
 
 [power]
-# Prevent automatic system sleep while any jcode session is actively working.
+# Prevent automatic system sleep while any kcode session is actively working.
 # Linux also blocks lid-switch suspend. Windows still respects explicit lid-close
 # and power-button actions from your active power plan. The display may sleep.
 # The guard is held only for as long as work is in flight. (default: true)

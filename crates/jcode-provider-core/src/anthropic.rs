@@ -51,7 +51,7 @@ impl AnthropicContextMode {
         !matches!(self, AnthropicContextMode::Standard)
     }
 
-    /// Whether jcode should surface a distinct `[1m]` picker alias for this model.
+    /// Whether kcode should surface a distinct `[1m]` picker alias for this model.
     /// Only opt-in models benefit, native-1M models already use 1M by default so
     /// a `[1m]` alias would be a redundant duplicate.
     pub fn exposes_1m_alias(self) -> bool {
@@ -184,7 +184,7 @@ pub fn anthropic_max_output_tokens(model: &str) -> u32 {
         return 64_000;
     }
 
-    // Older/unknown generations keep the conservative 32K jcode has always used.
+    // Older/unknown generations keep the conservative 32K kcode has always used.
     32_768
 }
 

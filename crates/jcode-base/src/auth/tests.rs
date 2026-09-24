@@ -935,7 +935,7 @@ fn browser_suppressed_inside_test_harness_without_env_overrides() {
 /// Antigravity/Gemini access tokens live about an hour and are refreshed
 /// transparently on the next request. Reporting `Expired` just because the
 /// cached access token aged out made a fully working provider render as broken
-/// in `/login`, the header, onboarding, and `jcode auth status`, which is what
+/// in `/login`, the header, onboarding, and `kcode auth status`, which is what
 /// the "antigravity is not working" reports actually were. Only a missing or
 /// permanently rejected refresh token means the user must log in again.
 #[test]

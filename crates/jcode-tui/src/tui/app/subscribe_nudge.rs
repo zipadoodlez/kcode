@@ -10,7 +10,7 @@
 //!   - At most once per week across all sessions (persisted timestamp), and
 //!     at most once per session.
 //!   - Never while onboarding is active, never for users who already hold
-//!     jcode account credentials, never in replay/test runtimes.
+//!     kcode account credentials, never in replay/test runtimes.
 //!
 //! `/subscribe` remains a compatibility alias for the hosted-model pitch.
 
@@ -129,7 +129,7 @@ fn format_elapsed(elapsed: Duration) -> String {
 /// The goodwill message for a completed long task.
 fn long_task_message(elapsed: Duration) -> String {
     format!(
-        "✦ jcode just worked {} for you. {}",
+        "✦ kcode just worked {} for you. {}",
         format_elapsed(elapsed),
         SUPPORT_NUDGE_NOTICE
     )
@@ -191,7 +191,7 @@ impl App {
         if self.onboarding_flow_active() {
             return false;
         }
-        // Never pitch existing jcode account holders.
+        // Never pitch existing kcode account holders.
         if crate::subscription_catalog::has_credentials() {
             return false;
         }
@@ -251,7 +251,7 @@ impl App {
     /// Render the `/subscribe` pitch into the transcript.
     pub(super) fn show_subscribe_pitch(&mut self) {
         self.push_display_message(DisplayMessage::system(subscribe_pitch_markdown()));
-        self.set_status_notice("Hosted models: /login jcode to start");
+        self.set_status_notice("Hosted models: /login kcode to start");
     }
 }
 
@@ -330,7 +330,7 @@ mod tests {
         let message = long_task_message(Duration::from_secs(60 * 83));
         assert_eq!(
             message,
-            "✦ jcode just worked 1h 23m for you. Try Jcode hosted models: /hosted"
+            "✦ kcode just worked 1h 23m for you. Try Jcode hosted models: /hosted"
         );
         assert!(long_task_message(Duration::from_secs(3600)).contains("worked 1h for you"));
         assert!(long_task_message(Duration::from_secs(59 * 60)).contains("worked 59m for you"));

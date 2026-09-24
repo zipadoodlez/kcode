@@ -4,11 +4,11 @@ use jcode_provider_openrouter::stream::OpenRouterStream;
 fn local_endpoint_troubleshooting_hint(api_base: &str, model: &str) -> &'static str {
     let lower = api_base.to_ascii_lowercase();
     if lower.contains("localhost:11434") || lower.contains("127.0.0.1:11434") {
-        return "Ollama hint: make sure `ollama serve` is running, the model is installed with `ollama pull <model>`, and run jcode with an installed model, for example `jcode --provider ollama --model llama3.2 run 'hello'`. If replies ignore earlier turns, Ollama is truncating the prompt to its serving context: restart it with a larger window, e.g. `OLLAMA_CONTEXT_LENGTH=65536 ollama serve`.";
+        return "Ollama hint: make sure `ollama serve` is running, the model is installed with `ollama pull <model>`, and run kcode with an installed model, for example `kcode --provider ollama --model llama3.2 run 'hello'`. If replies ignore earlier turns, Ollama is truncating the prompt to its serving context: restart it with a larger window, e.g. `OLLAMA_CONTEXT_LENGTH=65536 ollama serve`.";
     }
 
     if lower.contains("localhost:1234") || lower.contains("127.0.0.1:1234") {
-        return "LM Studio hint: start the Local Server in LM Studio, load a chat model, and run jcode with the exact model id shown by LM Studio's /v1/models endpoint.";
+        return "LM Studio hint: start the Local Server in LM Studio, load a chat model, and run kcode with the exact model id shown by LM Studio's /v1/models endpoint.";
     }
 
     if lower.contains("localhost") || lower.contains("127.0.0.1") || lower.contains("[::1]") {

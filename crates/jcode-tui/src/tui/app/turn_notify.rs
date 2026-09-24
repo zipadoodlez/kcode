@@ -197,7 +197,7 @@ fn load_session_todos(session_id: &str) -> Vec<TodoItem> {
 /// Build the compact notification. Kept free of `App` for testability.
 ///
 /// Layout (macOS):
-///   title:    jcode · <session> · done in <dur>
+///   title:    kcode · <session> · done in <dur>
 ///   subtitle: <todo progress, e.g. "3/5 todos · 1 blocked">
 ///   body:     names the work — "✓ <just done> · → <in progress>" or a
 ///             blocker ("⊘ <todo> needs <dep>"), falling back to the
@@ -208,7 +208,7 @@ pub(super) fn build_turn_notification(
     todos: &[TodoItem],
     last_assistant_text: Option<&str>,
 ) -> TurnNotification {
-    let mut title = String::from("jcode");
+    let mut title = String::from("kcode");
     if let Some(name) = session_name {
         title.push_str(" · ");
         title.push_str(name);
@@ -423,7 +423,7 @@ mod tests {
     #[test]
     fn title_includes_session_and_compact_duration() {
         let n = build_turn_notification(Some("fox"), 754.0, &[], Some("All done."));
-        assert_eq!(n.title, "jcode · fox · done in 12m 34s");
+        assert_eq!(n.title, "kcode · fox · done in 12m 34s");
         assert_eq!(n.subtitle, None);
         assert_eq!(n.body, "All done.");
     }
@@ -435,7 +435,7 @@ mod tests {
             todo_named("handle reconnect", "in_progress", &[]),
         ];
         let n = build_turn_notification(None, 200.0, &todos, Some("Fixed the parser bug."));
-        assert_eq!(n.title, "jcode · done in 3m 20s");
+        assert_eq!(n.title, "kcode · done in 3m 20s");
         assert_eq!(n.subtitle.as_deref(), Some("1/2 todos"));
         // Names actual todo work, not the prose snippet.
         assert_eq!(n.body, "✓ wire up parser · → handle reconnect");
@@ -496,7 +496,7 @@ mod tests {
     #[test]
     fn empty_inputs_fall_back_to_minimal_body() {
         let n = build_turn_notification(None, 65.0, &[], None);
-        assert_eq!(n.title, "jcode · done in 1m 5s");
+        assert_eq!(n.title, "kcode · done in 1m 5s");
         assert_eq!(n.subtitle, None);
         assert_eq!(n.body, "Turn finished");
     }
@@ -519,13 +519,13 @@ mod tests {
     #[test]
     fn kitty_notification_is_one_completed_clickable_message() {
         let n = TurnNotification {
-            title: "jcode · fox".to_string(),
+            title: "kcode · fox".to_string(),
             subtitle: Some("2/3 todos".to_string()),
             body: "Finished parser".to_string(),
         };
         assert_eq!(
             kitty_notification_sequence(&n, "session:fox/123"),
-            "\x1b]99;i=jcode-turn-sessionfox123:d=0:e=1:p=title;amNvZGUgwrcgZm94\x1b\\\x1b]99;i=jcode-turn-sessionfox123:d=1:e=1:p=body:a=focus;Mi8zIHRvZG9zCkZpbmlzaGVkIHBhcnNlcg==\x1b\\"
+            "\x1b]99;i=jcode-turn-sessionfox123:d=0:e=1:p=title;a2NvZGUgwrcgZm94\x1b\\\x1b]99;i=jcode-turn-sessionfox123:d=1:e=1:p=body:a=focus;Mi8zIHRvZG9zCkZpbmlzaGVkIHBhcnNlcg==\x1b\\"
         );
     }
 

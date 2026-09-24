@@ -1,7 +1,7 @@
 //! Tell the agent (and through it, the user) what a config.toml edit did.
 //!
-//! When a user asks jcode to change a setting, the agent writes
-//! `~/.jcode/config.toml` and then has to guess whether the change took
+//! When a user asks kcode to change a setting, the agent writes
+//! `~/.kcode/config.toml` and then has to guess whether the change took
 //! effect. That guess is where the confusion comes from. Instead, every file
 //! write that lands on the active config file appends an explicit report:
 //! which keys changed, and whether each one is live in running sessions or
@@ -23,8 +23,8 @@ fn comparable(path: &Path) -> std::path::PathBuf {
 
 /// Whether `path` is the config file the running process actually reads.
 ///
-/// Compares resolved paths so `~/.jcode/config.toml`, a relative path, and a
-/// symlinked jcode home all resolve to the same file.
+/// Compares resolved paths so `~/.kcode/config.toml`, a relative path, and a
+/// symlinked kcode home all resolve to the same file.
 fn is_active_config_file(path: &Path) -> bool {
     let Some(config_path) = crate::config::Config::path() else {
         return false;
@@ -50,7 +50,7 @@ pub fn config_edit_notice(path: &Path, before: &str, after: &str) -> Option<Stri
     // in the file quietly stopped applying. Surface it instead.
     if let Err(error) = crate::config::Config::load_strict() {
         return Some(format!(
-            "\n\nWARNING: {} no longer parses as TOML, so jcode is falling back to \
+            "\n\nWARNING: {} no longer parses as TOML, so kcode is falling back to \
              default settings and every setting in this file is being ignored. \
              Fix the syntax error: {error}",
             path.display()

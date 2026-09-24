@@ -1,4 +1,4 @@
-//! Tell the user when `jcode login` found a credential they already saved.
+//! Tell the user when `kcode login` found a credential they already saved.
 //!
 //! Split out of `login.rs` so the notice can carry its rationale and tests
 //! without growing an already-oversized file.

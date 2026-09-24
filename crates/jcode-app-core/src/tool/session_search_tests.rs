@@ -183,7 +183,7 @@ fn timestamped_session_collection_respects_recent_limit_without_mtime_stat() {
 }
 
 #[test]
-#[ignore = "local performance benchmark over the real ~/.jcode session corpus"]
+#[ignore = "local performance benchmark over the real ~/.kcode session corpus"]
 fn bench_real_session_search_corpus() {
     if std::env::var("JCODE_SESSION_SEARCH_BENCH_REAL")
         .ok()
@@ -578,7 +578,7 @@ fn external_codex_sessions_are_searchable_without_jcode_session_dir() {
             .collect::<Vec<_>>()
             .join("\n");
         std::fs::write(codex_dir.join("codex-test.jsonl"), body).expect("write codex jsonl");
-        std::fs::remove_dir_all(home.join("sessions")).expect("remove jcode sessions dir");
+        std::fs::remove_dir_all(home.join("sessions")).expect("remove kcode sessions dir");
 
         let mut options = SearchOptions::for_test("current-session");
         options.source_filter = Some("codex".to_string());
@@ -639,7 +639,7 @@ fn external_cursor_sessions_are_searchable_without_jcode_session_dir() {
             .join("\n");
         std::fs::write(cursor_dir.join(format!("{session_id}.jsonl")), body)
             .expect("write cursor jsonl");
-        std::fs::remove_dir_all(home.join("sessions")).expect("remove jcode sessions dir");
+        std::fs::remove_dir_all(home.join("sessions")).expect("remove kcode sessions dir");
 
         let mut options = SearchOptions::for_test("current-session");
         options.source_filter = Some("cursor".to_string());

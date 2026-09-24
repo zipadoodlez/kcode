@@ -1,6 +1,6 @@
 //! Shared-server lifecycle hooks usable from lower layers.
 //!
-//! The actual "spawn a shared jcode server" logic lives in the CLI command
+//! The actual "spawn a shared kcode server" logic lives in the CLI command
 //! layer (`cli::dispatch::spawn_server`) because it depends on CLI types like
 //! `ProviderChoice` and on argument-driven bootstrap. Lower layers such as the
 //! TUI reconnect loop still need to (a) check whether a shared server is

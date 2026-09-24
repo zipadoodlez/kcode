@@ -747,7 +747,7 @@ fn message_text(message: &Message) -> String {
 
 fn cached_login_hint(prefix: &str) -> String {
     format!(
-        "{prefix}. Grok Build uses subscription login, not XAI_API_KEY. Run `jcode login --provider grok-build` and retry"
+        "{prefix}. Grok Build uses subscription login, not XAI_API_KEY. Run `kcode login --provider grok-build` and retry"
     )
 }
 

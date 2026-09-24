@@ -95,7 +95,7 @@ pub fn build_coordinator_prompt(
         .as_deref()
         .unwrap_or("Continue the current session's highest-value work, prioritizing verified, low-risk progress.");
     format!(
-        r#"You are the Overnight Coordinator for Jcode run `{run_id}`.
+        r#"You are the Overnight Coordinator for Kcode run `{run_id}`.
 
 The user expects to be away until approximately `{target_wake_at}`. This is a target wake/report time, not a hard stop. By that time, the run must be handoff-ready and the review page must explain what happened. You may continue past the target only to finish a bounded, safe, verifiable chunk. The default soft post-wake grace window ends at `{post_wake_grace_until}`.
 
@@ -154,7 +154,7 @@ pub fn build_visible_current_session_prompt(manifest: &OvernightManifest) -> Str
         .as_deref()
         .unwrap_or("Continue the current session's highest-value work, prioritizing verified, low-risk progress.");
     format!(
-        r#"You are now the visible Overnight Coordinator for Jcode run `{run_id}`.
+        r#"You are now the visible Overnight Coordinator for Kcode run `{run_id}`.
 
 The user expects this current session to become the overnight session. Keep all work visible here: your normal tool calls, any spawned/swarm helper agents, their reports, and validation should be observable from this session like a normal interactive run.
 

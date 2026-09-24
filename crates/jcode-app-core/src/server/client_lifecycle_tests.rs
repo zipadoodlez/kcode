@@ -436,7 +436,7 @@ impl IsolatedRuntimeDir {
 
 impl IsolatedReloadRecoveryEnv {
     fn new() -> Self {
-        let home = tempfile::TempDir::new().expect("jcode home");
+        let home = tempfile::TempDir::new().expect("kcode home");
         let runtime = tempfile::TempDir::new().expect("runtime dir");
         let prev_home = std::env::var_os("JCODE_HOME");
         let prev_runtime = std::env::var_os("JCODE_RUNTIME_DIR");

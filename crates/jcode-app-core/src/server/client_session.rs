@@ -969,7 +969,7 @@ pub(super) async fn handle_reload(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
 ) {
-    // A non-forced reload (e.g. `jcode server reload`) is a graceful upgrade
+    // A non-forced reload (e.g. `kcode server reload`) is a graceful upgrade
     // request: only reload when this server is provably running older code than
     // an available reload candidate. This keeps us from downgrading a newer
     // server (such as a self-dev daemon next to an older release client) and
@@ -981,7 +981,7 @@ pub(super) async fn handle_reload(
             client_session_id
         ));
         // Tell the requester this was a deliberate no-op (not a silent success)
-        // so callers like `jcode server reload` can report "already up to date"
+        // so callers like `kcode server reload` can report "already up to date"
         // distinctly from an actual reload.
         let _ = client_event_tx.send(ServerEvent::ReloadProgress {
             step: "skip".to_string(),

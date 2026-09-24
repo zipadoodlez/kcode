@@ -166,7 +166,7 @@ pub fn load_env_value_from_env_or_config(env_key: &str, file_name: &str) -> Opti
     load_env_value_from_config_file(env_key, file_name)
 }
 
-/// Load a value only from the saved env file under the jcode config dir,
+/// Load a value only from the saved env file under the kcode config dir,
 /// ignoring the process environment.
 ///
 /// [`load_env_value_from_env_or_config`] prefers the process env var, which is

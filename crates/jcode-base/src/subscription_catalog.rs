@@ -411,7 +411,7 @@ pub fn persist_account_credentials(
 ) -> anyhow::Result<()> {
     let api_key = api_key.trim();
     if api_key.is_empty() {
-        anyhow::bail!("refusing to persist an empty jcode account API key");
+        anyhow::bail!("refusing to persist an empty kcode account API key");
     }
 
     for (key, value) in [
@@ -464,7 +464,7 @@ pub fn ensure_account_credential_permissions() -> anyhow::Result<()> {
         let mode = std::fs::metadata(&path)?.permissions().mode() & 0o777;
         if mode & 0o077 != 0 {
             anyhow::bail!(
-                "jcode account credential file has unsafe permissions {:03o}; expected owner-only access",
+                "kcode account credential file has unsafe permissions {:03o}; expected owner-only access",
                 mode
             );
         }

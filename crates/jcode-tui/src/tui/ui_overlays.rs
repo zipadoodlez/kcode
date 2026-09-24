@@ -412,7 +412,7 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         "/debug-visual",
         "Enable visual debugging for TUI issues",
     ));
-    lines.push(help_entry("/quit", "Exit jcode"));
+    lines.push(help_entry("/quit", "Exit kcode"));
 
     // The sections above are hand-curated for ordering, but they drift as
     // commands are added. Anything registered and not already shown gets listed
@@ -608,7 +608,7 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     if let Some(label) = crate::tui::keybind::load_new_terminal_key().label {
         lines.push(key_entry(
             &label,
-            "Spawn new jcode session in a new terminal",
+            "Spawn new kcode session in a new terminal",
         ));
     }
 
@@ -656,7 +656,7 @@ pub(super) fn draw_model_status_overlay(
     let mut lines: Vec<Line<'static>> = Vec::new();
     lines.push(Line::from(Span::styled("  Model Status", title_style)));
     lines.push(Line::from(Span::styled(
-        "  Live verification evidence for provider/model behavior in jcode",
+        "  Live verification evidence for provider/model behavior in kcode",
         dim_style,
     )));
     lines.push(Line::from(""));
@@ -694,7 +694,7 @@ pub(super) fn draw_model_status_overlay(
 
 fn model_status_line_style(raw: &str, default: Style) -> Style {
     // Reuse the same semantic classification the CLI uses so the TUI overlay
-    // and `jcode provider-test-coverage` stay color-consistent.
+    // and `kcode provider-test-coverage` stay color-consistent.
     use crate::live_tests::CoverageLineStyle;
     match crate::live_tests::classify_provider_test_coverage_line(raw) {
         CoverageLineStyle::Title => Style::default()

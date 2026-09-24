@@ -389,7 +389,7 @@ impl McpClient {
     }
 }
 
-/// Secrets that an MCP child must not receive merely because jcode has them.
+/// Secrets that an MCP child must not receive merely because kcode has them.
 ///
 /// This intentionally applies only to inherited values. A server can still be
 /// given any of these names through `McpServerConfig::env`.

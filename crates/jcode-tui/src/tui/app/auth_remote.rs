@@ -157,7 +157,7 @@ impl App {
                     .to_string();
                 self.finish_ssh_login_ui();
                 self.push_display_message(DisplayMessage::system(format!(
-                    "{} setup on {host}\n\nThis login method is not yet supported by the native SSH login bridge. Run jcode login on that host and choose {}. No login was started on this computer and no local credentials were accessed.",
+                    "{} setup on {host}\n\nThis login method is not yet supported by the native SSH login bridge. Run kcode login on that host and choose {}. No login was started on this computer and no local credentials were accessed.",
                     descriptor.display_name, descriptor.display_name
                 )));
             }

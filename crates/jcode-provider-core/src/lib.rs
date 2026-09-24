@@ -405,12 +405,12 @@ pub trait Provider: Send + Sync {
         String::new()
     }
 
-    /// Returns true if jcode should use its own compaction for this provider.
+    /// Returns true if kcode should use its own compaction for this provider.
     fn supports_compaction(&self) -> bool {
         false
     }
 
-    /// Returns true if jcode should proactively run its own summary-based compaction.
+    /// Returns true if kcode should proactively run its own summary-based compaction.
     fn uses_jcode_compaction(&self) -> bool {
         self.supports_compaction()
     }

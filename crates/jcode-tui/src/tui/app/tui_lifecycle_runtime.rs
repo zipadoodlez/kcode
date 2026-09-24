@@ -66,7 +66,7 @@ impl App {
                 .unwrap_or("connecting");
             let _ = crossterm::execute!(
                 std::io::stdout(),
-                crossterm::terminal::SetTitle(format!("jcode SSH {host} {session}"))
+                crossterm::terminal::SetTitle(format!("kcode SSH {host} {session}"))
             );
             return;
         }
@@ -100,15 +100,15 @@ impl App {
         } else {
             self.session.is_canary
         };
-        let server_name = self.remote_server_short_name.as_deref().unwrap_or("jcode");
+        let server_name = self.remote_server_short_name.as_deref().unwrap_or("kcode");
         let icon = connection_type_icon(self.connection_type.as_deref()).unwrap_or(session_icon);
         let session_label = crate::process_title::terminal_session_label(&session_name, None);
-        let fallback_label = if server_name.eq_ignore_ascii_case("jcode") {
-            format!("jcode {session_label}")
+        let fallback_label = if server_name.eq_ignore_ascii_case("kcode") {
+            format!("kcode {session_label}")
         } else {
-            format!("jcode/{} {session_label}", server_name.to_lowercase())
+            format!("kcode/{} {session_label}", server_name.to_lowercase())
         };
-        if server_name.eq_ignore_ascii_case("jcode") {
+        if server_name.eq_ignore_ascii_case("kcode") {
             crate::process_title::set_client_display_title(&session_name, is_canary);
         } else {
             crate::process_title::set_client_remote_display_title(
@@ -142,7 +142,7 @@ impl App {
     /// (`pending_reload_session_id`), then the resume target the client was
     /// launched with. Only when none of those is known do we fabricate a fresh
     /// `ses_*` id. Fabricating eagerly is what caused issue #328: the re-exec
-    /// would `jcode --resume <bogus-id>` and crash with "No session found
+    /// would `kcode --resume <bogus-id>` and crash with "No session found
     /// matching ..." after an auto-update, because the version-mismatch defer
     /// path returns before `remote_session_id` is ever assigned.
     pub(super) fn reload_handoff_session_id(&self) -> String {

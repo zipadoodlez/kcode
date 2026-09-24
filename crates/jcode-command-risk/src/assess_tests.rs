@@ -36,7 +36,7 @@ fn issue_922_heredoc_payload_does_not_trip_the_gate() {
 
 #[test]
 fn the_issue_604_command_is_blocked_outright() {
-    // The reported incident: "jcode just deleted everything in my ~".
+    // The reported incident: "kcode just deleted everything in my ~".
     for command in [
         "rm -rf ~",
         "rm -rf $HOME",
@@ -425,7 +425,7 @@ fn ordinary_wrapped_commands_still_run_immediately() {
 
 #[test]
 fn read_only_find_with_stderr_redirect_is_safe() {
-    let command = "find ~/.jcode -maxdepth 3 -type f \\
+    let command = "find ~/.kcode -maxdepth 3 -type f \\
                    \\( -name '*.log' -o -name '*events*' \\) \\
                    -printf '%T@ %p\\n' 2>/dev/null | sort -nr | head -20";
     let assessment = assess(command, &ctx());

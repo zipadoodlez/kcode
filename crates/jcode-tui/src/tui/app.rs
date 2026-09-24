@@ -41,7 +41,7 @@ use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AppRuntimeMode {
-    /// Normal product TUI. The client renders state owned by the jcode server.
+    /// Normal product TUI. The client renders state owned by the kcode server.
     RemoteClient,
     /// Deterministic playback of recorded session/server events. Never calls live providers.
     Replay,
@@ -366,11 +366,11 @@ struct FallbackResendPayload {
     raw_input: Option<String>,
 }
 
-/// An interactive "let a jcode agent merge the diverged update for you" offer.
+/// An interactive "let a kcode agent merge the diverged update for you" offer.
 ///
 /// Surfaced when an update fails because the local checkout and upstream have
 /// diverged (a fast-forward pull is impossible). Accepting it spawns a fresh
-/// jcode session, pre-loaded with a prompt to reconcile the branches, instead of
+/// kcode session, pre-loaded with a prompt to reconcile the branches, instead of
 /// silently giving up and continuing on the old version.
 #[derive(Debug, Clone)]
 struct PendingMergeOffer {
@@ -976,7 +976,7 @@ pub struct App {
     // Remote sessions: the failed turn payload staged by an accepted fallback
     // offer, dispatched once the server confirms the route switch.
     pending_fallback_resend: Option<FallbackResendPayload>,
-    // Interactive "spawn a jcode agent to merge the diverged update" offer shown
+    // Interactive "spawn a kcode agent to merge the diverged update" offer shown
     // after an update fails because the local checkout and upstream diverged.
     // Accepted with the same key as the fallback offer.
     pending_merge_offer: Option<PendingMergeOffer>,
@@ -1108,7 +1108,7 @@ pub struct App {
     /// the recovery screen (opens the picker) or onboarding advances.
     onboarding_import_error: Option<String>,
     /// The provider id we were importing/validating when onboarding failed, used
-    /// to target the agent repair brief (`jcode auth-test --provider X`). `None`
+    /// to target the agent repair brief (`kcode auth-test --provider X`). `None`
     /// when unknown.
     onboarding_import_failed_provider: Option<String>,
     /// Pending first-run model-validation request for the new-session screen.

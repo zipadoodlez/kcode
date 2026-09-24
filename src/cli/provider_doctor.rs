@@ -1,4 +1,4 @@
-//! `jcode provider-doctor` command: a user-facing strict provider/model diagnostic.
+//! `kcode provider-doctor` command: a user-facing strict provider/model diagnostic.
 
 use std::io::IsTerminal;
 
@@ -48,7 +48,7 @@ pub async fn run_provider_doctor_command(
         crate::provider_catalog::openai_compatible_profile_by_id(provider).with_context(|| {
             format!(
                 "`{provider}` is not a known OpenAI-compatible provider. \
-                 Run `jcode provider-test-coverage` to see provider ids, or check your spelling."
+                 Run `kcode provider-test-coverage` to see provider ids, or check your spelling."
             )
         })?;
     let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
@@ -62,7 +62,7 @@ pub async fn run_provider_doctor_command(
         .with_context(|| {
             format!(
                 "no API key found for `{provider}` (looked in env `{}` and `{}`). \
-                 Run `jcode login --provider {provider}`, or use `--tier offline` to check wiring only.",
+                 Run `kcode login --provider {provider}`, or use `--tier offline` to check wiring only.",
                 resolved.api_key_env, resolved.env_file
             )
         })?;
@@ -176,7 +176,7 @@ fn next_step_hint(checkpoint: &str) -> String {
     use crate::live_tests::checkpoints as cp;
     let hint = match checkpoint {
         cp::AUTH_CREDENTIAL_LOADED => {
-            "  Next: run `jcode login --provider <provider>` to store a working credential."
+            "  Next: run `kcode login --provider <provider>` to store a working credential."
         }
         cp::MODEL_CATALOG_LIVE_ENDPOINT => {
             "  Next: the live /models call failed. Check the key, network, and provider status."

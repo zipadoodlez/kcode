@@ -1,6 +1,6 @@
 const LINUX_PROCESS_TITLE_LIMIT: usize = 15;
 #[cfg(target_os = "linux")]
-const KILLALL_PROCESS_NAME: &str = "jcode";
+const KILLALL_PROCESS_NAME: &str = "kcode";
 
 pub fn compact_process_title(prefix: &str, name: Option<&str>) -> String {
     let mut title = prefix.to_string();
@@ -69,7 +69,7 @@ pub fn terminal_display_title_for_id(session_id: &str) -> Option<String> {
 }
 
 /// Build the deliberately minimal terminal window title. The emoji already
-/// identifies the session/connection, so do not repeat `jcode` or the memorable
+/// identifies the session/connection, so do not repeat `kcode` or the memorable
 /// animal name in window chrome.
 pub fn terminal_window_title(
     icon: &str,
@@ -117,14 +117,14 @@ fn set_killall_process_name() {
 }
 
 pub fn set_server_title(server_name: &str) {
-    set_title(compact_process_title("jcode:s:", Some(server_name)));
+    set_title(compact_process_title("kcode:s:", Some(server_name)));
 }
 
 pub fn set_client_generic_title(is_selfdev: bool) {
     let prefix = if is_selfdev {
-        "jcode:selfdev"
+        "kcode:selfdev"
     } else {
-        "jcode:client"
+        "kcode:client"
     };
     set_title(compact_process_title(prefix, None));
 }
@@ -134,16 +134,16 @@ pub fn set_client_session_title(session_id: &str, is_selfdev: bool) {
 }
 
 pub fn set_client_display_title(session_name: &str, is_selfdev: bool) {
-    let prefix = if is_selfdev { "jcode:d:" } else { "jcode:c:" };
+    let prefix = if is_selfdev { "kcode:d:" } else { "kcode:c:" };
     set_title(compact_process_title(prefix, Some(session_name)));
 }
 
 pub fn set_client_remote_display_title(server_name: &str, session_name: &str, is_selfdev: bool) {
-    if server_name.is_empty() || server_name.eq_ignore_ascii_case("jcode") {
+    if server_name.is_empty() || server_name.eq_ignore_ascii_case("kcode") {
         set_client_display_title(session_name, is_selfdev);
         return;
     }
-    let prefix = if is_selfdev { "jcode:d:" } else { "jcode:c:" };
+    let prefix = if is_selfdev { "kcode:d:" } else { "kcode:c:" };
     set_title(format!("{prefix}{server_name}/{session_name}"));
 }
 
@@ -168,20 +168,20 @@ mod tests {
             terminal_window_title(
                 "🐙",
                 Some("resume window title"),
-                Some("jcode Octopus"),
+                Some("kcode Octopus"),
                 false
             ),
             "🐙 resume window title"
         );
         assert_eq!(
-            terminal_window_title("🐙", None, Some("jcode Octopus"), false),
-            "🐙 jcode Octopus"
+            terminal_window_title("🐙", None, Some("kcode Octopus"), false),
+            "🐙 kcode Octopus"
         );
         assert_eq!(
             terminal_window_title(
                 "🐙",
                 Some("resume window title"),
-                Some("jcode Octopus"),
+                Some("kcode Octopus"),
                 true
             ),
             "🐙 resume window title [self-dev]"

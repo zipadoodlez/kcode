@@ -69,7 +69,7 @@ impl App {
         lines.extend(format_account_table(&headers, &rows));
         lines.push(String::new());
         lines.push("## ChatGPT OAuth API-equivalent usage".to_string());
-        lines.push("Today is since local midnight. Lifetime is recorded Jcode usage, not your subscription bill or all ChatGPT activity.".to_string());
+        lines.push("Today is since local midnight. Lifetime is recorded Kcode usage, not your subscription bill or all ChatGPT activity.".to_string());
         for account in &accounts {
             lines.push(String::new());
             lines.push(format!(

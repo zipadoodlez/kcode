@@ -70,7 +70,7 @@ pub fn method_detail() -> String {
 pub fn apply_runtime_env() -> Result<()> {
     let endpoint = load_endpoint().ok_or_else(|| {
         anyhow::anyhow!(
-            "{} not found in environment or ~/.config/jcode/{}",
+            "{} not found in environment or ~/.config/kcode/{}",
             ENDPOINT_ENV,
             ENV_FILE
         )

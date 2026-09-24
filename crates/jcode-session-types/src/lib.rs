@@ -3,7 +3,7 @@ use jcode_message_types::{ContentBlock, Message, Role, ToolCall};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-/// Identifies a session to resume, across the agent backends jcode can import
+/// Identifies a session to resume, across the agent backends kcode can import
 /// from. This is pure data (only ids/paths) with no UI dependency; it lives in
 /// `jcode-session-types` so the foundation/import layer can match on it without
 /// depending on any `jcode-tui-*` crate. The session-picker UI re-exports it.
@@ -759,7 +759,7 @@ pub fn format_session_search_results(
     ));
 
     output.push_str(&format!(
-        "_Scanned: {} Jcode sessions ({} candidates), {} external sessions{}{}._\n\n",
+        "_Scanned: {} Kcode sessions ({} candidates), {} external sessions{}{}._\n\n",
         report.scanned_jcode_sessions,
         report.candidate_jcode_sessions,
         report.scanned_external_sessions,

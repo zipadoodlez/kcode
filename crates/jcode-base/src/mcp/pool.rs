@@ -1,7 +1,7 @@
 //! Shared MCP Server Pool
 //!
 //! Manages a global pool of MCP server processes that are shared across
-//! all jcode sessions. Instead of each session spawning its own set of
+//! all kcode sessions. Instead of each session spawning its own set of
 //! MCP servers (N sessions × M servers = N×M processes), sessions share
 //! a single pool (M processes total).
 //!

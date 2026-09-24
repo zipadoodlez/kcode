@@ -165,7 +165,7 @@ pub(super) struct ProviderStatus {
 fn parse_status(value: &serde_json::Value) -> Result<Reply, &'static str> {
     let rows = value["providers"]
         .as_array()
-        .ok_or("Invalid remote auth status. Update Jcode on the remote host.")?;
+        .ok_or("Invalid remote auth status. Update Kcode on the remote host.")?;
     let mut providers = Vec::new();
     for row in rows {
         let Some(descriptor) = row["id"].as_str().and_then(|id| {
@@ -178,7 +178,7 @@ fn parse_status(value: &serde_json::Value) -> Result<Reply, &'static str> {
             // Fixed errors must not echo remote IDs or private method details.
             if row["status"].as_str() != Some("not_configured") {
                 return Err(
-                    "Unrecognized remote auth provider status. Update Jcode on this computer.",
+                    "Unrecognized remote auth provider status. Update Kcode on this computer.",
                 );
             }
             continue;
@@ -215,7 +215,7 @@ fn parse_status(value: &serde_json::Value) -> Result<Reply, &'static str> {
 fn parse_reply(bytes: &[u8], operation: Operation, provider: &str) -> Result<Reply, &'static str> {
     // Deliberately do not deserialize/format remote error messages or arbitrary JSON.
     let value: serde_json::Value = serde_json::from_slice(bytes)
-        .map_err(|_| "Invalid remote login response. Update Jcode on the remote host.")?;
+        .map_err(|_| "Invalid remote login response. Update Kcode on the remote host.")?;
     if operation == Operation::Status {
         return parse_status(&value);
     }
@@ -264,7 +264,7 @@ fn parse_reply(bytes: &[u8], operation: Operation, provider: &str) -> Result<Rep
                 user_code,
             })
         }
-        _ => Err("Unexpected remote login response. Update Jcode on the remote host."),
+        _ => Err("Unexpected remote login response. Update Kcode on the remote host."),
     }
 }
 
@@ -345,16 +345,16 @@ async fn execute(
             }
             if operation == Operation::Status {
                 return Err(
-                    "Could not read remote auth status. Check remote Jcode version and SSH access.",
+                    "Could not read remote auth status. Check remote Kcode version and SSH access.",
                 );
             }
             if operation == Operation::Import {
                 return Err(
-                    "Remote credential import was rejected or SSH failed. Existing remote credentials are never overwritten. Check remote Jcode version and SSH access.",
+                    "Remote credential import was rejected or SSH failed. Existing remote credentials are never overwritten. Check remote Kcode version and SSH access.",
                 );
             }
             return Err(
-                "Remote login was rejected or SSH failed. Check the callback, remote Jcode version, and SSH access, then retry.",
+                "Remote login was rejected or SSH failed. Check the callback, remote Kcode version, and SSH access, then retry.",
             );
         }
         reply
@@ -602,7 +602,7 @@ mod tests {
                 .unwrap();
             assert_eq!(
                 error,
-                "Unrecognized remote auth provider status. Update Jcode on this computer."
+                "Unrecognized remote auth provider status. Update Kcode on this computer."
             );
             assert!(!error.contains("must-not-surface"));
             assert!(!error.contains("private"));

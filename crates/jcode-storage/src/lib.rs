@@ -64,7 +64,7 @@ pub fn jcode_dir() -> Result<PathBuf> {
 }
 
 /// Whether `JCODE_HOME` redirects this process away from the user's real
-/// `~/.jcode` directory.
+/// `~/.kcode` directory.
 ///
 /// Sandboxed runs must not consult machine-global resources, such as the macOS
 /// Keychain, that cannot be redirected beneath `JCODE_HOME`.
@@ -92,10 +92,10 @@ pub fn logs_dir() -> Result<PathBuf> {
 /// `/run/user/<uid>` on Linux) that is wiped on reboot, so it must only hold
 /// sockets and truly ephemeral state. State that has to outlive a reboot,
 /// such as swarm plans and member records, belongs here instead: it resolves
-/// to `~/.jcode/state` (respecting `JCODE_HOME`).
+/// to `~/.kcode/state` (respecting `JCODE_HOME`).
 ///
 /// When `JCODE_RUNTIME_DIR` is set (tests and sandboxed temp servers), it
-/// takes precedence so isolated runs never touch the real jcode home.
+/// takes precedence so isolated runs never touch the real kcode home.
 pub fn durable_state_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("JCODE_RUNTIME_DIR") {
         return PathBuf::from(dir).join("durable-state");
@@ -109,7 +109,7 @@ pub fn durable_state_dir() -> PathBuf {
 /// Resolve jcode's app-owned config directory.
 ///
 /// Default location is the platform config dir + `jcode` (for example
-/// `~/.config/jcode` on Linux). When `JCODE_HOME` is set, sandbox this under
+/// `~/.config/kcode` on Linux). When `JCODE_HOME` is set, sandbox this under
 /// `$JCODE_HOME/config/jcode` so self-dev/tests do not leak into the user's
 /// real config directory.
 pub fn app_config_dir() -> Result<PathBuf> {

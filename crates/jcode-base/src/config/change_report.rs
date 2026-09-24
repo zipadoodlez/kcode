@@ -1,6 +1,6 @@
 //! Reporting for config file changes: what changed, and whether it is live.
 //!
-//! Editing `~/.jcode/config.toml` (by hand, via `/config`, or by an agent
+//! Editing `~/.kcode/config.toml` (by hand, via `/config`, or by an agent
 //! writing the file) is only useful if you can tell whether the running
 //! process actually picked the change up. Most of the config is re-read
 //! through the reloadable [`crate::config::config`] cache and takes effect
@@ -136,7 +136,7 @@ pub fn summarize_changes(changes: &[ConfigChange]) -> String {
         .collect();
     if restart.is_empty() {
         out.push_str(
-            "All changes are live in running jcode sessions; no restart needed.\
+            "All changes are live in running kcode sessions; no restart needed.\
              \nKeybinding edits apply to the next keystroke.",
         );
     } else {

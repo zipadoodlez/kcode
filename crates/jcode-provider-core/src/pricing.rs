@@ -143,7 +143,7 @@ pub fn anthropic_oauth_pricing(model: &str, subscription: Option<&str>) -> Route
 ///
 /// Standard tier, short-context prices. GPT-5.4+/5.5 bill a higher tier for
 /// requests over ~272k input tokens; per-call estimates here use the standard
-/// tier since jcode cannot see the per-request tier split.
+/// tier since kcode cannot see the per-request tier split.
 pub fn openai_api_pricing(model: &str) -> Option<RouteCheapnessEstimate> {
     openai_api_pricing_with_tier(model, None)
 }
@@ -267,7 +267,7 @@ pub fn copilot_pricing(model: &str, zero_premium_mode: bool) -> RouteCheapnessEs
         Some(included_requests),
         estimated_reference,
         Some(if zero_premium_mode {
-            "Copilot zero-premium mode: jcode will send requests as agent/non-premium when possible"
+            "Copilot zero-premium mode: kcode will send requests as agent/non-premium when possible"
                 .to_string()
         } else if likely_premium_model {
             "Copilot premium-request estimate using Pro+/premium pricing".to_string()

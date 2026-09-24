@@ -76,7 +76,7 @@ pub fn find_profile(name: &str) -> Result<Option<SshRemoteProfile>> {
         return Ok(None);
     };
     // Older MVP builds could save a pasted command like `ssh user@host`. Normalize on load so
-    // users do not have to manually repair ~/.jcode/ssh_remotes.json.
+    // users do not have to manually repair ~/.kcode/ssh_remotes.json.
     profile.ssh_target = normalize_ssh_target(&profile.ssh_target)?;
     Ok(Some(profile))
 }
@@ -186,11 +186,11 @@ printf '%s\n' ''
 printf '%s\n' 'What is happening:'
 printf '%s\n' '  - This terminal is running OpenSSH, not a Jcode password form.'
 printf '%s\n' '  - If a password or two-factor prompt appears, type it here.'
-printf '%s\n' '  - Jcode cannot read or store what you type in this terminal.'
+printf '%s\n' '  - Kcode cannot read or store what you type in this terminal.'
 printf '%s\n' ''
 printf '%s\n' 'After authentication:'
 printf '%s\n' '  - SSH will create a temporary background control socket.'
-printf '%s\n' '  - Jcode will verify that socket before this terminal closes.'
+printf '%s\n' '  - Kcode will verify that socket before this terminal closes.'
 printf '%s\n' '  - If anything fails, this terminal stays open with the reason.'
 printf '%s\n' ''
 ssh -f -M -S {socket} -N {target}
@@ -223,12 +223,12 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
 done
 
 printf '%s\n' ''
-printf '%s\n' 'Step 3/4 failed: Jcode could not verify the background control socket.'
+printf '%s\n' 'Step 3/4 failed: Kcode could not verify the background control socket.'
 printf '%s\n' ''
 printf '%s\n' 'What this means:'
 printf '%s\n' '  - SSH login may have succeeded, but multiplexing did not stay available.'
 printf '%s\n' '  - The server may disallow SSH ControlMaster, or the connection closed immediately.'
-printf '%s\n' '  - Jcode is keeping this terminal open so you can read the reason.'
+printf '%s\n' '  - Kcode is keeping this terminal open so you can read the reason.'
 printf '%s' 'Press Enter to close this terminal... '
 read _
 exit 1
@@ -304,6 +304,6 @@ mod tests {
         assert!(script.contains("ssh -S"));
         assert!(script.contains("-O check"));
         assert!(script.contains("Press Enter to close this terminal"));
-        assert!(script.contains("Jcode cannot read or store"));
+        assert!(script.contains("Kcode cannot read or store"));
     }
 }

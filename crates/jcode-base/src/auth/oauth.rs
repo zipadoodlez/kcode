@@ -87,7 +87,7 @@ fn ensure_claude_inference_scope(scopes: &[String], action: &str) -> Result<()> 
     }
 
     anyhow::bail!(
-        "Claude OAuth {} returned a token without the required user:inference scope (scopes: {}). Re-run `jcode login --provider claude` so jcode opens the Claude.ai OAuth flow, or import/use a fresh Claude Code login.",
+        "Claude OAuth {} returned a token without the required user:inference scope (scopes: {}). Re-run `kcode login --provider claude` so jcode opens the Claude.ai OAuth flow, or import/use a fresh Claude Code login.",
         action,
         scopes.join(" ")
     )
@@ -625,7 +625,7 @@ pub fn parse_callback_input_with_state(input: &str) -> Result<(String, String)> 
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| {
             anyhow::anyhow!(
-                "Please paste the full callback URL or query string so jcode can verify the login state."
+                "Please paste the full callback URL or query string so kcode can verify the login state."
             )
         })?;
     Ok((code, state))
@@ -692,7 +692,7 @@ async fn exchange_claude_code_at_url(
         let text = resp.text().await?;
         if status == reqwest::StatusCode::FORBIDDEN && looks_like_cloudflare_challenge(&text) {
             anyhow::bail!(
-                "Token exchange was blocked by Cloudflare before Anthropic returned OAuth tokens. jcode now matches Claude Code's JSON token exchange, but this network/IP is still being challenged. Switch VPN exit IP or network, then retry with `jcode login --provider claude --no-browser` and paste the callback URL."
+                "Token exchange was blocked by Cloudflare before Anthropic returned OAuth tokens. jcode now matches Claude Code's JSON token exchange, but this network/IP is still being challenged. Switch VPN exit IP or network, then retry with `kcode login --provider claude --no-browser` and paste the callback URL."
             );
         }
         anyhow::bail!("Token exchange failed (HTTP {}): {}", status, text);
@@ -1157,7 +1157,7 @@ pub fn save_openai_tokens_for_account(tokens: &OAuthTokens, label: &str) -> Resu
 pub async fn refresh_openai_tokens(refresh_token: &str) -> Result<OAuthTokens> {
     match crate::auth::codex::active_account_label() {
         Some(label) => refresh_openai_tokens_for_account(refresh_token, &label).await,
-        // External token (not stored in jcode auth): nothing on disk to
+        // External token (not stored in kcode auth): nothing on disk to
         // coordinate against, refresh directly.
         None => refresh_openai_tokens_inner(refresh_token, None).await,
     }
@@ -1195,7 +1195,7 @@ pub async fn refresh_openai_tokens_for_account(
     crate::auth::refresh_state::ensure_refresh_allowed(
         "openai",
         refresh_token,
-        "Run `jcode login --provider openai` to mint a fresh token.",
+        "Run `kcode login --provider openai` to mint a fresh token.",
     )?;
     crate::auth::refresh_coordinator::single_flight(
         format!("openai:{label}"),
@@ -1268,7 +1268,7 @@ async fn refresh_openai_tokens_inner(
             save_openai_tokens_for_account(&oauth_tokens, label)?;
         } else {
             crate::logging::info(
-                "Refreshed OpenAI/Codex tokens from an external source without storing them in jcode auth",
+                "Refreshed OpenAI/Codex tokens from an external source without storing them in kcode auth",
             );
         }
         Ok(oauth_tokens)

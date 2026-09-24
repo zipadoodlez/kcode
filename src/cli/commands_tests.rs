@@ -437,7 +437,7 @@ fn run_auto_poke_treats_cancelled_spelling_variants_as_finished() {
     }
 }
 
-/// Headless `jcode run` is what the benchmarks and scripted use go through, so
+/// Headless `kcode run` is what the benchmarks and scripted use go through, so
 /// the deferred quality review must reach that path too, not only the TUI.
 #[test]
 fn run_auto_poke_delivers_the_deferred_gate_digest_before_confidence() {

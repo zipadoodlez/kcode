@@ -138,7 +138,7 @@ async fn config_toml_models_survive_a_real_catalog_fetch() {
         }"#,
     );
 
-    // Exactly the shape a user writes in ~/.jcode/config.toml.
+    // Exactly the shape a user writes in ~/.kcode/config.toml.
     let toml_src = format!(
         r#"
 base_url = "{api_base}"
@@ -187,7 +187,7 @@ context_window = 128000
 #[test]
 fn named_profiles_keep_distinct_disk_cache_namespaces() {
     let _lock = ENV_LOCK.lock();
-    let temp = tempfile::tempdir().expect("temp jcode home");
+    let temp = tempfile::tempdir().expect("temp kcode home");
     let _home = EnvVarGuard::set("JCODE_HOME", temp.path().to_str().expect("utf8 temp path"));
     let _namespace = EnvVarGuard::remove("JCODE_OPENROUTER_CACHE_NAMESPACE");
     let _key = EnvVarGuard::set("TEST_NS_KEY", "test-key");

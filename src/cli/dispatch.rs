@@ -540,7 +540,7 @@ fn resolve_resume_arg(args: &mut Args) -> Result<()> {
                     ResumeResolutionFailureAction::Exit => {
                         eprintln!("Error: {}", e);
                         if !output::quiet_enabled() {
-                            eprintln!("\nUse `jcode --resume` to list available sessions.");
+                            eprintln!("\nUse `kcode --resume` to list available sessions.");
                         }
                         std::process::exit(1);
                     }
@@ -625,7 +625,7 @@ async fn run_default_command(args: Args) -> Result<()> {
     let already_in_selfdev = crate::client_mode::client_selfdev_requested();
 
     if in_jcode_repo && !already_in_selfdev && !args.no_selfdev {
-        output::stderr_info("📍 Detected jcode repository - enabling self-dev mode");
+        output::stderr_info("📍 Detected kcode repository - enabling self-dev mode");
         output::stderr_info("   Using shared server with self-dev session mode");
         output::stderr_info("   (use --no-selfdev to disable auto-detection)");
         output::stderr_blank_line();
@@ -690,7 +690,7 @@ async fn run_default_command(args: Args) -> Result<()> {
         // socket that has no live listener AND whose daemon lock is free, so it
         // can never disturb a running server.
         if server::reap_stale_socket_if_dead(&server::socket_path()).await {
-            output::stderr_info("Removed a stale jcode socket from a previous server.");
+            output::stderr_info("Removed a stale kcode socket from a previous server.");
         }
 
         maybe_prompt_server_bootstrap_login(&args.provider).await?;

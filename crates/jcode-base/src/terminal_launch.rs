@@ -23,7 +23,7 @@ pub fn configured_spawn_hook() -> Option<String> {
 /// Spawn `command` in a new terminal window/pane.
 ///
 /// When a spawn hook is configured (`[terminal] spawn_hook` / `JCODE_SPAWN_HOOK`),
-/// the hook takes over the spawn: jcode runs `<hook> <program> <args...>` with
+/// the hook takes over the spawn: kcode runs `<hook> <program> <args...>` with
 /// `JCODE_SPAWN_*` metadata env vars so external programs (tmux, kitty remote,
 /// herd, window managers) control where and how the session appears. If the
 /// hook cannot be started, jcode falls back to its built-in terminal detection.
@@ -108,7 +108,7 @@ mod tests {
             .expect("chmod hook");
 
         let command = TerminalCommand::new(
-            "/usr/local/bin/jcode",
+            "/usr/local/bin/kcode",
             vec!["--resume".to_string(), "ses_hooked".to_string()],
         )
         .kind("swarm-agent")
@@ -130,7 +130,7 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         assert_eq!(
-            recorded, "swarm-agent|ses_hooked|swarm-7|/usr/local/bin/jcode --resume ses_hooked",
+            recorded, "swarm-agent|ses_hooked|swarm-7|/usr/local/bin/kcode --resume ses_hooked",
             "hook should receive metadata env and the jcode command as argv"
         );
     }
@@ -146,7 +146,7 @@ mod tests {
             .expect("chmod hook");
 
         let command = TerminalCommand::new(
-            "/usr/local/bin/jcode",
+            "/usr/local/bin/kcode",
             vec!["--resume".to_string(), "ses_fallback".to_string()],
         )
         .kind("swarm-agent")

@@ -1913,7 +1913,7 @@ impl App {
             .unwrap_or(false)
     }
 
-    /// Spawn a brand-new jcode session in a new terminal window.
+    /// Spawn a brand-new kcode session in a new terminal window.
     pub(crate) fn handle_new_terminal_hotkey(&mut self) {
         if super::commands_dispatch::ssh_local_action_blocked(self, "Opening a sibling terminal") {
             return;
@@ -3004,7 +3004,7 @@ impl App {
             return Ok(());
         }
 
-        // Accept an armed "merge the diverged update" offer: spawn a jcode agent
+        // Accept an armed "merge the diverged update" offer: spawn a kcode agent
         // to reconcile the branches. Shares the fallback-switch accept key.
         if self.merge_offer_key_matches(code, modifiers) {
             self.accept_update_merge_offer();
@@ -3745,7 +3745,7 @@ impl App {
 
             if self.is_remote {
                 self.push_display_message(DisplayMessage::system(
-                    "Input-line ! shell commands are only available in a local jcode TUI session.",
+                    "Input-line ! shell commands are only available in a local kcode TUI session.",
                 ));
                 self.set_status_notice("Local shell unavailable in remote mode");
                 return;
@@ -3815,7 +3815,7 @@ impl App {
                             skill_name, install
                         ),
                         None => format!(
-                            "Skill /{} is endorsed but not installed (source: {}). Install it into ~/.jcode/skills/{}/SKILL.md.",
+                            "Skill /{} is endorsed but not installed (source: {}). Install it into ~/.kcode/skills/{}/SKILL.md.",
                             skill_name, endorsed.source, skill_name
                         ),
                     });

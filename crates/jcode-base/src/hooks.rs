@@ -1,6 +1,6 @@
 //! User-configurable lifecycle hooks.
 //!
-//! Hooks are external commands that jcode runs at well-defined lifecycle
+//! Hooks are external commands that kcode runs at well-defined lifecycle
 //! points so other programs can observe or gate agent behavior without
 //! forking jcode. They are configured in `[hooks]` in config.toml (or
 //! `JCODE_HOOK_*` env vars) and follow the same command-line conventions as
@@ -19,7 +19,7 @@
 //!   (other exit codes, timeout, spawn failure) fails open with a warning.
 //!
 //! Hook processes get `JCODE_HOOKS_DISABLED=1` in their environment so a
-//! hook that itself invokes jcode does not recursively trigger hooks.
+//! hook that itself invokes kcode does not recursively trigger hooks.
 
 use std::path::PathBuf;
 

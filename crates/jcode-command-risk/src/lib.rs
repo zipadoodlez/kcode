@@ -2,7 +2,7 @@
 //!
 //! # Why this exists
 //!
-//! jcode executes `bash` tool calls with no gate of its own: the only check in
+//! kcode executes `bash` tool calls with no gate of its own: the only check in
 //! `ToolRegistry::execute` is an opt-in external `pre_tool` hook, which is off
 //! by default. A model that decides to run `rm -rf ~` is obeyed immediately.
 //! That is issue #604, where a user lost their home directory.

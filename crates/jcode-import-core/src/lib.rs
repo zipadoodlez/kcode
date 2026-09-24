@@ -1500,8 +1500,8 @@ mod tests {
         );
         assert_eq!(claude_title_candidate("   "), None);
         assert_eq!(
-            claude_title_candidate("can you fix my jcode server version?"),
-            Some("can you fix my jcode server version?".into())
+            claude_title_candidate("can you fix my kcode server version?"),
+            Some("can you fix my kcode server version?".into())
         );
     }
 

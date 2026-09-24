@@ -213,7 +213,7 @@ pub fn load_github_token() -> Result<String> {
 
     anyhow::bail!(
         "GitHub Copilot token not found. \
-         Set COPILOT_GITHUB_TOKEN/GH_TOKEN/GITHUB_TOKEN, run `jcode login --provider copilot`, \
+         Set COPILOT_GITHUB_TOKEN/GH_TOKEN/GITHUB_TOKEN, run `kcode login --provider copilot`, \
          or set JCODE_COPILOT_ALLOW_GH_AUTH_TOKEN=1 to explicitly reuse `gh auth token`."
     )
 }

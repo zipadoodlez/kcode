@@ -1492,7 +1492,7 @@ mod tests {
     #[test]
     fn direct_login_provider_activation_sets_runtime_identity_and_active_provider() {
         // Sandbox JCODE_HOME so activation's env-file credential sync (#453)
-        // cannot read the developer's real ~/.config/jcode/*.env files and
+        // cannot read the developer's real ~/.config/kcode/*.env files and
         // leak keys into this process during the matrix run.
         let _sandbox = crate::auth::test_sandbox::AuthTestSandbox::new().expect("sandbox");
 

@@ -875,10 +875,10 @@ fn remove_prepared_takeover_session(session_id: &str) {
 /// Explicitly hand a currently-running Claude Code session over to Jcode.
 ///
 /// This is deliberately separate from normal resume. It first imports the
-/// current transcript into a fresh durable Jcode session, then gracefully stops
+/// current transcript into a fresh durable Kcode session, then gracefully stops
 /// the exact PID guarded by Claude's process-start token. After Claude exits we
 /// refresh the prepared snapshot once to capture any final transcript flush.
-/// A stop failure rolls back the staged Jcode session and leaves ordinary
+/// A stop failure rolls back the staged Kcode session and leaves ordinary
 /// resume behavior unchanged.
 pub fn take_over_live_claude_session(
     target: &jcode_session_types::ResumeTarget,
@@ -902,7 +902,7 @@ fn take_over_live_claude_session_with_timeout(
 
     let live = crate::claude_live::find_live_claude_session(session_id)?
         .ok_or_else(|| anyhow::anyhow!("Claude Code session {session_id} is no longer live"))?;
-    // Use a normal memorable Jcode session ID so the handed-off conversation
+    // Use a normal memorable Kcode session ID so the handed-off conversation
     // remains visible and resumable later. Imported-prefixed IDs are hidden from
     // the native session list because their external source row represents them.
     let takeover_id = Session::create(None, None).id;
@@ -931,7 +931,7 @@ fn take_over_live_claude_session_with_timeout(
     if stop_outcome == crate::claude_live::StopLiveClaudeOutcome::ExitUnconfirmed {
         crate::session_list_cache::invalidate();
         anyhow::bail!(
-            "Claude Code process {} was asked to exit, but its exit was not confirmed; prepared Jcode session {} was preserved and can be resumed",
+            "Claude Code process {} was asked to exit, but its exit was not confirmed; prepared Kcode session {} was preserved and can be resumed",
             live.pid,
             takeover_id
         );
@@ -959,7 +959,7 @@ fn take_over_live_claude_session_with_timeout(
         crate::session_list_cache::invalidate();
         return Err(err).with_context(|| {
             format!(
-                "Claude Code exited, but its final transcript could not be refreshed; prepared Jcode session {takeover_id} was preserved"
+                "Claude Code exited, but its final transcript could not be refreshed; prepared Kcode session {takeover_id} was preserved"
             )
         });
     }

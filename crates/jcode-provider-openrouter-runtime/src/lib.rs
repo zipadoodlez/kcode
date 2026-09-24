@@ -1792,7 +1792,7 @@ impl OpenRouterProvider {
                     .map(|dir| dir.join(&resolved.env_file).display().to_string())
                     .unwrap_or_else(|_| resolved.env_file.clone());
                 anyhow::bail!(
-                    "{} credentials not available. {} not found in environment or {}. Run `jcode login --provider {}` first.",
+                    "{} credentials not available. {} not found in environment or {}. Run `kcode login --provider {}` first.",
                     resolved.display_name,
                     resolved.api_key_env,
                     path,
@@ -2467,7 +2467,7 @@ impl OpenRouterProvider {
                         })
                     } else {
                         anyhow::bail!(
-                            "Azure OpenAI is configured for Entra ID, but Azure settings are incomplete. Run `jcode login --provider azure`."
+                            "Azure OpenAI is configured for Entra ID, but Azure settings are incomplete. Run `kcode login --provider azure`."
                         )
                     }
                 }

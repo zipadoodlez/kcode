@@ -301,7 +301,7 @@ fn test_init_provider_jcode_delegates_runtime_profile_to_wrapper() {
     let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
     let provider = runtime
         .block_on(init_provider(&ProviderChoice::Jcode, None))
-        .expect("init jcode provider");
+        .expect("init kcode provider");
 
     assert_eq!(provider.name(), "Jcode Hosted Models");
     assert!(crate::subscription_catalog::is_runtime_mode_enabled());

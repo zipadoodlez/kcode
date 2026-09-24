@@ -354,7 +354,7 @@ fn cache_path_for_namespace(namespace: &str) -> PathBuf {
 
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join(".jcode")
+        .join(".kcode")
         .join("cache")
         .join(format!("{}_models.json", namespace))
 }
@@ -552,7 +552,7 @@ fn endpoints_cache_path(model: &str) -> PathBuf {
     let namespace = configured_cache_namespace();
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join(".jcode")
+        .join(".kcode")
         .join("cache")
         .join(format!("{}_endpoints_{}.json", namespace, safe_name))
 }

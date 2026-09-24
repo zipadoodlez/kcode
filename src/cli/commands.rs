@@ -159,7 +159,7 @@ pub async fn run_browser(action: &str) -> Result<()> {
                 println!("\nBuilt-in browser tool is ready.");
             } else if status.responding && !status.compatible {
                 println!(
-                    "\nThe browser bridge is connected, but the installed Firefox extension is out of date for this jcode build. Run `jcode browser setup` to repair or update it."
+                    "\nThe browser bridge is connected, but the installed Firefox extension is out of date for this kcode build. Run `kcode browser setup` to repair or update it."
                 );
             } else if status.binary_installed && !browser::is_firefox_running() {
                 println!(
@@ -167,10 +167,10 @@ pub async fn run_browser(action: &str) -> Result<()> {
                 );
             } else if status.binary_installed {
                 println!(
-                    "\nFirefox is running, but the bridge is not responding. Check that the Browser Agent Bridge extension is enabled in the running profile. Run `jcode browser setup` only to repair the install."
+                    "\nFirefox is running, but the bridge is not responding. Check that the Browser Agent Bridge extension is enabled in the running profile. Run `kcode browser setup` only to repair the install."
                 );
             } else {
-                println!("\nRun `jcode browser setup` to install or repair it.");
+                println!("\nRun `kcode browser setup` to install or repair it.");
             }
         }
         other => {
@@ -292,15 +292,15 @@ pub async fn run_server_reload_command(force: bool, emit_json: bool) -> Result<(
     };
 
     // No server? Nothing to reload. This is a success so an installer can call
-    // `jcode server reload` unconditionally after swapping the binary.
+    // `kcode server reload` unconditionally after swapping the binary.
     if !crate::server::has_live_listener(&socket).await {
         // Reap a stale socket left by a crashed daemon so the next launch binds
         // cleanly instead of wedging in a connect-retry loop.
         let reaped = crate::server::reap_stale_socket_if_dead(&socket).await;
         let detail = if reaped {
-            "No running jcode server found; cleared a stale socket.".to_string()
+            "No running kcode server found; cleared a stale socket.".to_string()
         } else {
-            "No running jcode server found; nothing to reload.".to_string()
+            "No running kcode server found; nothing to reload.".to_string()
         };
         return emit(ServerReloadReport {
             socket: socket.display().to_string(),
@@ -363,7 +363,7 @@ pub async fn run_server_reload_command(force: bool, emit_json: bool) -> Result<(
             reloaded: false,
             already_current: true,
             handoff_ready: true,
-            detail: "jcode server is already running the newest binary; no reload needed."
+            detail: "kcode server is already running the newest binary; no reload needed."
                 .to_string(),
         });
     }
@@ -376,9 +376,9 @@ pub async fn run_server_reload_command(force: bool, emit_json: bool) -> Result<(
     );
 
     let detail = if handoff_ready {
-        "jcode server reloaded onto the newest binary.".to_string()
+        "kcode server reloaded onto the newest binary.".to_string()
     } else {
-        "jcode server reload requested; the new server is still coming up.".to_string()
+        "kcode server reload requested; the new server is still coming up.".to_string()
     };
 
     emit(ServerReloadReport {
@@ -407,8 +407,8 @@ pub async fn run_server_stop_command(force: bool, emit_json: bool) -> Result<()>
     use std::time::{Duration, Instant};
 
     if !force {
-        let msg = "`jcode server stop` terminates the daemon and drops any live headless/swarm sessions. \
-Prefer `jcode server reload` to pick up an upgrade gracefully. \
+        let msg = "`kcode server stop` terminates the daemon and drops any live headless/swarm sessions. \
+Prefer `kcode server reload` to pick up an upgrade gracefully. \
 Re-run with `--force` if you really want to stop the server.";
         if emit_json {
             println!(
@@ -452,15 +452,15 @@ Re-run with `--force` if you really want to stop the server.";
                 match crate::platform::signal_detached_process_group(pid, libc::SIGTERM) {
                     Ok(()) => {
                         signaled_pid = Some(pid);
-                        detail = format!("Sent SIGTERM to jcode server (pid {pid}).");
+                        detail = format!("Sent SIGTERM to kcode server (pid {pid}).");
                     }
                     Err(e) => {
-                        detail = format!("Failed to signal jcode server (pid {pid}): {e}");
+                        detail = format!("Failed to signal kcode server (pid {pid}): {e}");
                     }
                 }
             }
         } else {
-            detail = format!("Registered jcode server (pid {pid}) is not running.");
+            detail = format!("Registered kcode server (pid {pid}) is not running.");
         }
     } else if had_listener {
         // A listener answers but no registry entry maps to it. We deliberately
@@ -469,7 +469,7 @@ Re-run with `--force` if you really want to stop the server.";
         // registry entry.)
         detail = "Found a live server socket with no registry entry.".to_string();
     } else {
-        detail = "No running jcode server found.".to_string();
+        detail = "No running kcode server found.".to_string();
     }
 
     // Wait for the listener to disappear after signalling. Escalate to SIGKILL
@@ -522,16 +522,16 @@ Re-run with `--force` if you really want to stop the server.";
             println!("{detail}");
         }
         if stopped && signaled_pid.is_some() {
-            println!("jcode server stopped.");
+            println!("kcode server stopped.");
         } else if stopped && !had_listener && signaled_pid.is_none() {
             // Nothing was running; this is still a success for an installer.
         } else if !stopped {
             println!(
-                "jcode server did not exit cleanly; it may still be shutting down. Re-run if needed."
+                "kcode server did not exit cleanly; it may still be shutting down. Re-run if needed."
             );
         }
         if reaped {
-            println!("Cleared a stale jcode socket.");
+            println!("Cleared a stale kcode socket.");
         }
     }
 
@@ -552,7 +552,7 @@ pub async fn run_single_message_command(
         super::provider_init::init_provider_for_validation(choice, model).await?
     };
     let registry = crate::tool::Registry::new(provider.clone()).await;
-    // Load MCP servers from ~/.jcode/mcp.json so headless `jcode run` has the
+    // Load MCP servers from ~/.kcode/mcp.json so headless `kcode run` has the
     // same `mcp__*` tools as interactive/server sessions. This is non-blocking:
     // `register_mcp_tools` advertises cached tool schemas synchronously (so the
     // first locked tool snapshot already contains MCP tools, for zero
@@ -563,9 +563,9 @@ pub async fn run_single_message_command(
         registry.register_mcp_tools(None, None, None).await;
         // Cold-cache gap: when a configured MCP server has no cached schema yet
         // (first ever use, or reconfigured), advertise-early registers nothing
-        // for it, and a single-turn `jcode run` locks its tool snapshot before
+        // for it, and a single-turn `kcode run` locks its tool snapshot before
         // the background connection finishes, so the model would never see those
-        // tools. Long-lived sessions recover on a later turn, but `jcode run`
+        // tools. Long-lived sessions recover on a later turn, but `kcode run`
         // has no later turn. So, only when the cache is cold for some configured
         // server, briefly wait for the first connection to register tools before
         // the agent runs. Warm runs skip this entirely and stay instant. (#390)
@@ -608,7 +608,7 @@ async fn run_single_message_with_agent(
     .await;
 
     // `Agent::new` and session restore both register this process as the active
-    // owner. Unlike the interactive lifecycle, `jcode run` has no later quit
+    // owner. Unlike the interactive lifecycle, `kcode run` has no later quit
     // path to close the session. Finalize after output has been emitted, while
     // returning the original command result unchanged. This prevents a normal
     // one-shot exit from looking like a stale-PID crash on the next startup
@@ -627,7 +627,7 @@ fn run_command_auto_poke_enabled() -> bool {
         .unwrap_or_else(|| crate::config::config().features.auto_poke)
 }
 
-/// Whether headless `jcode run` should load MCP servers from `~/.jcode/mcp.json`.
+/// Whether headless `kcode run` should load MCP servers from `~/.kcode/mcp.json`.
 /// Enabled by default; set `JCODE_RUN_MCP=0` (or `false`/`off`/`no`) to skip MCP
 /// registration for latency-sensitive scripting. (#390)
 fn run_command_mcp_enabled() -> bool {
@@ -640,7 +640,7 @@ fn run_command_mcp_enabled() -> bool {
         .unwrap_or(true)
 }
 
-/// Max time `jcode run` waits for cold-cache MCP servers to register their
+/// Max time `kcode run` waits for cold-cache MCP servers to register their
 /// tools before running the single turn. Override with `JCODE_RUN_MCP_WAIT_MS`
 /// (0 disables the wait).
 fn run_command_mcp_cold_wait() -> std::time::Duration {
@@ -669,7 +669,7 @@ fn cold_cache_mcp_servers() -> Vec<String> {
         .collect()
 }
 
-/// Bridge the cold-cache gap for `jcode run`: if any configured MCP server has
+/// Bridge the cold-cache gap for `kcode run`: if any configured MCP server has
 /// no cached schema, briefly poll the registry until its `mcp__*` tools appear
 /// (or the budget elapses) so the single turn's locked tool snapshot includes
 /// them. Warm caches return immediately because `cold_cache_mcp_servers` is
@@ -684,7 +684,7 @@ async fn wait_for_cold_cache_mcp_tools(registry: &crate::tool::Registry) {
         return;
     }
     crate::logging::info(&format!(
-        "jcode run: waiting up to {}ms for cold-cache MCP server(s) to register tools: {}",
+        "kcode run: waiting up to {}ms for cold-cache MCP server(s) to register tools: {}",
         budget.as_millis(),
         cold_servers.join(", ")
     ));
@@ -697,13 +697,13 @@ async fn wait_for_cold_cache_mcp_tools(registry: &crate::tool::Registry) {
         });
         if covered {
             crate::logging::info(
-                "jcode run: cold-cache MCP server(s) registered tools; proceeding",
+                "kcode run: cold-cache MCP server(s) registered tools; proceeding",
             );
             return;
         }
         if std::time::Instant::now() >= deadline {
             crate::logging::warn(
-                "jcode run: timed out waiting for cold-cache MCP server(s); \
+                "kcode run: timed out waiting for cold-cache MCP server(s); \
                  their tools may be missing from this run",
             );
             return;

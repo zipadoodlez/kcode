@@ -23,7 +23,7 @@ impl App {
     }
 
     fn failover_config_hint() -> &'static str {
-        "To turn this off, set [provider].cross_provider_failover = \"manual\" in ~/.jcode/config.toml or export JCODE_CROSS_PROVIDER_FAILOVER=manual."
+        "To turn this off, set [provider].cross_provider_failover = \"manual\" in ~/.kcode/config.toml or export JCODE_CROSS_PROVIDER_FAILOVER=manual."
     }
 
     /// Shared post-switch bookkeeping for every local model/provider switch
@@ -153,7 +153,7 @@ impl App {
                     deadline: Instant::now() + Duration::from_secs(3),
                 });
                 self.push_display_message(DisplayMessage::system(format!(
-                    "⚠ {} became unavailable - jcode will switch to {} in 3 seconds unless you cancel.\n\nReason: {}\n\nRetrying would send {}. Press Esc to cancel.\n\n{}",
+                    "⚠ {} became unavailable - kcode will switch to {} in 3 seconds unless you cancel.\n\nReason: {}\n\nRetrying would send {}. Press Esc to cancel.\n\n{}",
                     prompt.from_label,
                     prompt.to_label,
                     prompt.reason,

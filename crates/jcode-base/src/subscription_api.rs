@@ -391,7 +391,7 @@ pub async fn fetch_subscription_me_with(
 /// Fetch account status using the configured local credential.
 pub async fn fetch_subscription_me() -> Result<SubscriptionMe> {
     let api_key = subscription_catalog::configured_api_key()
-        .context("no Jcode account credential configured (run `jcode account login`)")?;
+        .context("no Jcode account credential configured (run `kcode account login`)")?;
     fetch_subscription_me_with(
         &crate::provider::shared_http_client(),
         &configured_api_base(),

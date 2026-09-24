@@ -5,7 +5,7 @@
 //! unauthenticated / new user, or `/onboarding-preview`).
 //!
 //! Layout, top to bottom, vertically centered in the chat area:
-//!   1. "Welcome to jcode onboarding" title.
+//!   1. "Welcome to kcode onboarding" title.
 //!   2. The login / getting-started prompt with suggestions.
 
 use super::dim_color;
@@ -286,7 +286,7 @@ fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'
 /// Welcome title line, rendered above the phase body.
 fn welcome_title_line() -> Line<'static> {
     Line::from(Span::styled(
-        "Welcome to jcode onboarding",
+        "Welcome to kcode onboarding",
         Style::default()
             .fg(welcome_accent())
             .add_modifier(Modifier::BOLD),

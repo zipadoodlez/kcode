@@ -322,7 +322,7 @@ pub const KEYBINDING_DEFAULTS: &[KeybindingDefault] = &[
     },
     KeybindingDefault {
         id: "new_terminal",
-        description: "Spawn a fresh jcode session in a new terminal window",
+        description: "Spawn a fresh kcode session in a new terminal window",
         // Companion to the system-wide launch hotkey (Cmd+; / Alt+;): the
         // shifted variant spawns a new session from inside jcode, reusing the
         // current session's working directory. Note: many macOS terminals

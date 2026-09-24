@@ -11,7 +11,7 @@ pub struct TerminalCommand {
     /// What this spawn is for (e.g. "resume", "selfdev", "swarm-agent").
     /// Exported as `JCODE_SPAWN_KIND` to spawn hooks and spawned terminals.
     pub kind: Option<String>,
-    /// The jcode session this terminal will run, when known.
+    /// The kcode session this terminal will run, when known.
     /// Exported as `JCODE_SPAWN_SESSION_ID`.
     pub session_id: Option<String>,
     /// Extra metadata env entries (e.g. `JCODE_SPAWN_SWARM_ID`) exported to
@@ -77,7 +77,7 @@ impl TerminalCommand {
 /// Terminal/window-manager environment variables that identify *which*
 /// terminal, multiplexer, or display a client is attached to.
 ///
-/// The jcode server process is long-lived and captures these at *its* startup,
+/// The kcode server process is long-lived and captures these at *its* startup,
 /// so once a client connects from a different terminal/tmux/zellij session the
 /// server's copies are stale. Spawn and focus hooks executed by the server then
 /// target the wrong terminal (see issue #405). To fix this, clients snapshot
@@ -520,10 +520,10 @@ pub fn expand_home(program: &str) -> PathBuf {
 ///
 /// - `JCODE_SPAWN_KIND`: why this spawn happened ("resume", "selfdev",
 ///   "swarm-agent", ...), when known.
-/// - `JCODE_SPAWN_SESSION_ID`: the jcode session the window will run.
+/// - `JCODE_SPAWN_SESSION_ID`: the kcode session the window will run.
 /// - `JCODE_SPAWN_TITLE`: the suggested window/tab title.
 /// - `JCODE_SPAWN_CWD`: the working directory for the session.
-/// - `JCODE_SPAWN_PROGRAM`: path of the jcode binary to execute.
+/// - `JCODE_SPAWN_PROGRAM`: path of the kcode binary to execute.
 /// - `JCODE_SPAWN_COMMAND`: the full command line, shell-escaped, for hooks
 ///   (like tmux) that take a single shell-command string.
 ///

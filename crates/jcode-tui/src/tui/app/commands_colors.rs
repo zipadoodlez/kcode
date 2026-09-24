@@ -1,7 +1,7 @@
 //! `/colors`: inspect and configure the TUI color palette.
 //!
 //! Every color the TUI renders is configurable through `[display.colors]` in
-//! `~/.jcode/config.toml`. This command is the interactive front end for that:
+//! `~/.kcode/config.toml`. This command is the interactive front end for that:
 //! it lists the roles with their current values, sets them, and resets them.
 
 use super::{App, DisplayMessage};
@@ -145,7 +145,7 @@ fn reset_colors(app: &mut App, role_key: Option<&str>) {
 /// Mutate `[display.colors]`, save, and reinstall the live palette.
 ///
 /// Reload-then-patch-then-save (rather than serializing cached state) so a
-/// concurrent config edit by another jcode session is not clobbered.
+/// concurrent config edit by another kcode session is not clobbered.
 fn persist(
     mutate: impl FnOnce(&mut std::collections::BTreeMap<String, String>),
 ) -> anyhow::Result<()> {

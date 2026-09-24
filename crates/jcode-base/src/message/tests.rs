@@ -552,7 +552,7 @@ fn format_background_task_notification_markdown_highlights_failure_reason() -> R
     let rendered = format_background_task_notification_markdown(&BackgroundTaskCompleted {
         task_id: "build123".to_string(),
         tool_name: "selfdev-build".to_string(),
-        display_name: Some("Build jcode".to_string()),
+        display_name: Some("Build kcode".to_string()),
         session_id: "session".to_string(),
         status: BackgroundTaskStatus::Failed,
         exit_code: Some(101),

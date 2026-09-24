@@ -276,7 +276,7 @@ impl Client {
 
     /// Request a graceful, conditional reload: when `force` is false the server
     /// only reloads if it has a strictly-newer reload candidate binary. Used by
-    /// `jcode server reload` so an upgrade is picked up without risking a
+    /// `kcode server reload` so an upgrade is picked up without risking a
     /// downgrade. Returns the request id so callers can correlate events.
     pub async fn reload_with_force(&mut self, force: bool) -> Result<u64> {
         let id = self.next_id;

@@ -1,7 +1,7 @@
 //! Interactive, animated demo of the inline swarm gallery.
 //!
 //! This runs as a real full-screen terminal app so you can *see* the inline
-//! gallery the way it looks live in the jcode TUI, without touching any running
+//! gallery the way it looks live in the kcode TUI, without touching any running
 //! agents. It simulates a handful of mock swarm workers that stream output,
 //! change status, and finish over time, rendering them through the exact same
 //! `render_swarm_gallery` layout the real TUI uses.
@@ -274,7 +274,7 @@ fn draw(f: &mut Frame, workers: &[MockWorker], max_pct: usize, paused: bool) {
         )]),
         Line::from(""),
         Line::from(vec![Span::styled(
-            "  The band above is the same renderer the jcode TUI shows above your chat",
+            "  The band above is the same renderer the kcode TUI shows above your chat",
             Style::default().fg(Color::Rgb(150, 150, 160)),
         )]),
         Line::from(vec![Span::styled(

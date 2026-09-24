@@ -139,7 +139,7 @@ fn test_replace_latest_tool_display_message_removes_background_lifecycle_card() 
     assert!(app.replace_latest_tool_display_message(
         "tool-bg",
         Some("bash".to_string()),
-        "**Background task started** `bg123` · `cargo test`\n\nJcode is running this in the background."
+        "**Background task started** `bg123` · `cargo test`\n\nKcode is running this in the background."
             .to_string(),
     ));
 

@@ -39,7 +39,7 @@ pub enum Applied {
     Manual { message: String },
 }
 
-/// A terminal whose Shift+Enter behavior jcode can configure.
+/// A terminal whose Shift+Enter behavior kcode can configure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SetupTarget {
     /// macOS Terminal.app: remap Shift+Enter to the CSI u sequence.
@@ -92,7 +92,7 @@ pub const APPLE_TERMINAL_SHIFT_RETURN_KEY: &str = "$\\015";
 /// The tmux settings that make a capable outer terminal's modified keys reach
 /// the inner application.
 ///
-/// `extended-keys on` only forwards when the app asks (jcode does), which is
+/// `extended-keys on` only forwards when the app asks (kcode does), which is
 /// safer than `always` for other panes. `extended-keys-format csi-u` picks the
 /// encoding crossterm understands, and `terminal-features` is required for tmux
 /// to request extended keys from the outer terminal in the first place.

@@ -444,9 +444,9 @@ mod tests {
 
         record_permanent_rejection("openai", dead, "your session has ended")
             .expect("record rejection");
-        let err = ensure_refresh_allowed("openai", dead, "Run `jcode login`.")
+        let err = ensure_refresh_allowed("openai", dead, "Run `kcode login`.")
             .expect_err("a rejected token must not be refreshed again");
-        assert!(err.to_string().contains("Run `jcode login`."));
+        assert!(err.to_string().contains("Run `kcode login`."));
         assert!(ensure_refresh_allowed("openai", "new-token", "hint").is_ok());
     }
 

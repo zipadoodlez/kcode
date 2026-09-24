@@ -978,7 +978,7 @@ impl AnthropicProvider {
             && !oauth::claude_scopes_have_inference(&fresh_creds.scopes)
         {
             anyhow::bail!(
-                "Claude OAuth credentials are missing the required user:inference scope (scopes: {}). Run `jcode login --provider claude` to mint a fresh Claude.ai OAuth token, or import/use a fresh Claude Code login.",
+                "Claude OAuth credentials are missing the required user:inference scope (scopes: {}). Run `kcode login --provider claude` to mint a fresh Claude.ai OAuth token, or import/use a fresh Claude Code login.",
                 fresh_creds.scopes.join(" ")
             );
         }
@@ -996,7 +996,7 @@ impl AnthropicProvider {
                 &fresh_creds.refresh_token,
             ) {
                 anyhow::bail!(
-                    "Claude OAuth refresh token was previously rejected by Anthropic and cannot be refreshed. Run `jcode login --provider claude` to mint a fresh token."
+                    "Claude OAuth refresh token was previously rejected by Anthropic and cannot be refreshed. Run `kcode login --provider claude` to mint a fresh token."
                 );
             }
 
@@ -1040,7 +1040,7 @@ impl AnthropicProvider {
 
         if fresh_creds.expires_at <= now {
             anyhow::bail!(
-                "Claude OAuth token is expired and no usable refresh token is available. Run `jcode login --provider claude` to refresh OAuth credentials"
+                "Claude OAuth token is expired and no usable refresh token is available. Run `kcode login --provider claude` to refresh OAuth credentials"
             );
         }
 
@@ -1767,7 +1767,7 @@ async fn run_stream_with_retries(
                         Err(refresh_err) => {
                             let _ = tx
                                 .send(Err(anyhow::anyhow!(
-                                    "{}\n\nAutomatic Claude OAuth refresh failed: {}\nRun `jcode login --provider claude` (preferred) or `claude`, then retry.",
+                                    "{}\n\nAutomatic Claude OAuth refresh failed: {}\nRun `kcode login --provider claude` (preferred) or `claude`, then retry.",
                                     e,
                                     refresh_err
                                 )))
@@ -1901,7 +1901,7 @@ async fn run_stream_with_retries(
                 if is_oauth && is_oauth_auth_error(&error_str) {
                     let _ = tx
                         .send(Err(anyhow::anyhow!(
-                            "{}\n\nClaude OAuth authentication failed. Run `jcode login --provider claude` (preferred) or `claude`, then retry.",
+                            "{}\n\nClaude OAuth authentication failed. Run `kcode login --provider claude` (preferred) or `claude`, then retry.",
                             e
                         )))
                         .await;

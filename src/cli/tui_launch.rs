@@ -113,7 +113,7 @@ pub async fn run_tui_client(
         );
         let _ = crossterm::execute!(
             std::io::stdout(),
-            crossterm::terminal::SetTitle(format!("jcode SSH {host} {label}"))
+            crossterm::terminal::SetTitle(format!("kcode SSH {host} {label}"))
         );
     } else if let Some(ref session_id) = resume_session {
         let session_name = id::extract_session_name(session_id)
@@ -139,7 +139,7 @@ pub async fn run_tui_client(
         crate::process_title::set_client_generic_title(
             crate::client_mode::client_selfdev_requested(),
         );
-        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::SetTitle("jcode"));
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::SetTitle("kcode"));
     }
     startup_profile::mark("terminal_title");
 
@@ -332,7 +332,7 @@ pub fn list_sessions() -> Result<()> {
             let jcode_tui_session_picker::ResumeTarget::JcodeSession { session_id } =
                 &resolved_target
             else {
-                anyhow::bail!("Claude takeover did not produce a Jcode session");
+                anyhow::bail!("Claude takeover did not produce a Kcode session");
             };
             let exe = std::env::current_exe()?;
             let mut session_cwd = std::env::current_dir()?;
@@ -519,7 +519,7 @@ pub fn list_sessions() -> Result<()> {
                             );
                             warned_no_terminal = true;
                         }
-                        eprintln!("  jcode --resume {}", session_id);
+                        eprintln!("  kcode --resume {}", session_id);
                     }
                     Err(e) => {
                         eprintln!("Failed to spawn session {}: {}", session_id, e);

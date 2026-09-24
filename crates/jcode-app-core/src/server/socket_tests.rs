@@ -190,7 +190,7 @@ async fn reap_stale_socket_spares_socket_when_lock_is_held() {
 #[test]
 fn existing_server_start_errors_are_detected() {
     assert!(server_start_matches_existing_server(
-        "Error: Another jcode server process is already running for runtime dir /run/user/1000"
+        "Error: Another kcode server process is already running for runtime dir /run/user/1000"
     ));
     assert!(server_start_matches_existing_server(
         "Error: Refusing to replace active server socket at /run/user/1000/jcode.sock"

@@ -1574,7 +1574,7 @@ fn build_skills_report(app: &App) -> String {
         skills.sort_by(|a, b| a.name.cmp(&b.name));
         if skills.is_empty() {
             out.push_str(
-                "- none loaded\n  Add skills under ~/.jcode/skills/<name>/SKILL.md or ./.jcode/skills/<name>/SKILL.md\n",
+                "- none loaded\n  Add skills under ~/.kcode/skills/<name>/SKILL.md or ./.jcode/skills/<name>/SKILL.md\n",
             );
         } else {
             for skill in skills {
@@ -1602,7 +1602,7 @@ fn build_skills_report(app: &App) -> String {
                 .map(|s| s.name.clone())
                 .collect()
         };
-    out.push_str("\nEndorsed skills (recommended by jcode)\n");
+    out.push_str("\nEndorsed skills (recommended by kcode)\n");
     // Group by category, preserving first-seen category order.
     let mut category_order: Vec<&str> = Vec::new();
     for endorsed in crate::skill::endorsed_skills() {
@@ -1671,7 +1671,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
         } else {
             ""
         };
-        let mut content = format!("jcode client: {}{}", version, is_canary);
+        let mut content = format!("kcode client: {}{}", version, is_canary);
         if app.is_remote {
             content.push_str("\nmode: remote/shared-server");
             let server_label = match (&app.remote_server_icon, &app.remote_server_short_name) {

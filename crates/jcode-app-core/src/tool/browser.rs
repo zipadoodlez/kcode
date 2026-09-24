@@ -498,7 +498,7 @@ async fn ensure_firefox_ready() -> Result<Option<String>> {
     }
 
     let mut message = String::from(
-        "Browser automation is not ready yet. Use the browser tool with action='status' to confirm current state. Only run action='setup' or `jcode browser setup` for first-time install or repair when the bridge is not already ready.\n",
+        "Browser automation is not ready yet. Use the browser tool with action='status' to confirm current state. Only run action='setup' or `kcode browser setup` for first-time install or repair when the bridge is not already ready.\n",
     );
     if !status.binary_installed {
         message.push_str("Browser bridge binary is not installed yet.\n");

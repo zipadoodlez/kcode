@@ -111,7 +111,7 @@ impl BackgroundTaskManager {
         Bus::global().publish(BusEvent::UiActivity(crate::bus::UiActivity::background(
             Some(session_id.to_string()),
             format!(
-                "**Background task started** `{}` · `{}`\n\nJcode is running this in the background. Progress, checkpoints, and completion will appear here.",
+                "**Background task started** `{}` · `{}`\n\nKcode is running this in the background. Progress, checkpoints, and completion will appear here.",
                 task_id, safe_label
             ),
             Some(format!("Background task started · {}", label)),

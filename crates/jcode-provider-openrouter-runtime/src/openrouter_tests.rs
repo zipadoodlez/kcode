@@ -3461,7 +3461,7 @@ fn named_profile_model_reasoning_overrides_capability_and_default_effort() {
 /// stripped before the model id reaches the upstream API. Without this, a
 /// resumed/new TUI session sends e.g. `cline:cline-pass/qwen3.7-max` verbatim
 /// and the gateway rejects it with 404 model_not_found, even though headless
-/// `jcode run` (which binds profile_id in-process) works fine.
+/// `kcode run` (which binds profile_id in-process) works fine.
 #[test]
 fn user_named_profile_prefix_is_stripped_even_without_profile_id() {
     let _lock = ENV_LOCK.lock();

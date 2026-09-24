@@ -274,7 +274,7 @@ impl SshConnection {
     async fn connect(options: &SshOptions) -> Result<Self> {
         Self::spawn(options.command(), STARTUP_TIMEOUT)
             .await
-            .with_context(|| format!("connecting native Jcode on {}", options.host))
+            .with_context(|| format!("connecting native Kcode on {}", options.host))
     }
 
     async fn spawn(command: Command, deadline: Duration) -> Result<Self> {
@@ -361,7 +361,7 @@ impl SshConnection {
             .map(|bytes| String::from_utf8_lossy(&bytes).trim().to_owned())
             .unwrap_or_default();
         format!(
-            "Native SSH connection closed. Verify SSH credentials/known_hosts and remote `jcode server stdio` support. {stderr}"
+            "Native SSH connection closed. Verify SSH credentials/known_hosts and remote `kcode server stdio` support. {stderr}"
         )
     }
 
@@ -435,7 +435,7 @@ async fn verify_daemon_protocol<R: AsyncBufRead + Unpin, W: AsyncWrite + Unpin>(
         let pong: serde_json::Value = serde_json::from_slice(&frame)?;
         if pong["type"] != "pong" || pong["id"].as_u64() != Some(0)
             || pong["native_ssh_protocol"].as_u64() != Some(u64::from(PROTOCOL)) {
-            bail!("remote daemon does not support native SSH protocol {PROTOCOL}; update/reload the remote Jcode server or select a matching daemon socket");
+            bail!("remote daemon does not support native SSH protocol {PROTOCOL}; update/reload the remote Kcode server or select a matching daemon socket");
         }
         Ok::<_, anyhow::Error>(())
     }).await.context("remote daemon native SSH capability handshake timed out")??;

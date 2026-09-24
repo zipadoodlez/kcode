@@ -1671,7 +1671,7 @@ pub(super) fn crashed_sessions_from_all_sessions(
     })
 }
 
-/// Parse a single jcode session snapshot (+ journal) into a [`SessionInfo`],
+/// Parse a single kcode session snapshot (+ journal) into a [`SessionInfo`],
 /// returning `None` for empty/imported sessions or read/parse errors. Pulled out
 /// of `load_sessions` so the summary pass can run across a scoped thread pool.
 fn parse_jcode_session_info(
@@ -1812,7 +1812,7 @@ pub fn load_sessions() -> Result<Vec<SessionInfo>> {
     let (mut sessions, external_sessions) = std::thread::scope(|scope| {
         // One handle for all five external scans (they fan out internally), so
         // the opt-out is a single branch and external work still overlaps the
-        // jcode session parsing below.
+        // kcode session parsing below.
         let external_handle =
             scope.spawn(move || load_external_sessions(want_external, scan_limit));
 
@@ -1830,7 +1830,7 @@ pub fn load_sessions() -> Result<Vec<SessionInfo>> {
         // burst of self-dev or swarm workers consume the entire recency budget and
         // crowd out ordinary sessions. Keep a separate bounded debug budget so the
         // test-session toggle still has useful recent entries without making the
-        // default list appear to jump from a handful of Jcode rows straight to old
+        // default list appear to jump from a handful of Kcode rows straight to old
         // external transcripts.
         let mut visible_session_count = 0usize;
         let mut debug_session_count = 0usize;

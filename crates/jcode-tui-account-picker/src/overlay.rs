@@ -912,7 +912,7 @@ mod tests {
                     ),
                     (
                         "Estimate".into(),
-                        "Not your subscription bill. Recorded Jcode usage only.".into(),
+                        "Not your subscription bill. Recorded Kcode usage only.".into(),
                     ),
                 ]),
             ],
