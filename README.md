@@ -99,7 +99,6 @@ Top-level `kcode <command>`:
 | `run` | Run a single message and exit (`--json` for machine output) |
 | `login` | Log in to a provider via OAuth, API key, or local credentials |
 | `logout` | (via `/logout`) log out of a provider |
-| `account` | Jcode account: `login`, `status`, `manage`, `logout` |
 | `repl` | Simple REPL mode (no TUI) |
 | `version` | Build/version info, human or `--json` |
 | `usage` | Usage limits for connected providers |
@@ -132,7 +131,6 @@ Slash commands inside the TUI. The registry lives in
 | `/hotkeys` | Hotkeys with personal usage counts |
 | `/version`, `/changelog`, `/info` | Version, recent changes, session/token info |
 | `/log` | Mark the current location in the logs |
-| `/support` | Email support with diagnostics prefilled |
 
 **Model and provider**
 
@@ -217,8 +215,7 @@ Slash commands inside the TUI. The registry lives in
 | | |
 |---|---|
 | `/auth`, `/login`, `/logout` | Auth status; log in; log out |
-| `/account`, `/accounts` | Combined account picker |
-| `/subscription`, `/subscribe` | Jcode subscription status / pitch |
+| `/account`, `/accounts` | Combined account picker (Claude/OpenAI multi-account) |
 
 **Lifecycle**
 
@@ -239,11 +236,10 @@ commands `/z`, `/zz`, `/zzz`, `/zstatus`.
 
 ### Providers
 
-`kcode provider list` reports 27 canonical providers:
+`kcode provider list` reports 26 canonical providers:
 
 | id | provider | auth |
 |---|---|---|
-| `jcode` | Jcode Subscription | curated subscription models |
 | `claude` | Anthropic/Claude | Claude Pro or Max |
 | `openai` | OpenAI | ChatGPT Plus or Pro |
 | `openrouter` | OpenRouter | API key, 200+ models |
@@ -378,6 +374,15 @@ with its intent.
   and help entries removed.
 - **The default config template shipped an `[ambient]` section** for a cut
   feature, and its test still asserted a removed `memory_model` key. Both gone.
+- **The whole jcode.sh account / subscription / hosted-model surface was
+  removed** (commit `59af6e1b`, 64 files). It was upstream's service, not
+  something this fork hosts: `kcode account login/status/manage/logout`, the
+  `jcode` provider, `/subscription`, `/subscribe`, `/hosted`, `/support`, the
+  hosted-model nudge, and the `subscription_api` / `subscription_catalog` /
+  `account_login` / `provider/jcode` modules. The login-import summary no
+  longer offers a subscription pill. Consequence: no route to Jcode's hosted
+  models; `/account` and `/accounts` remain as the multi-account picker for
+  Claude/OpenAI.
 
 ### Open
 
@@ -403,8 +408,6 @@ with its intent.
   compact `/help list`. Planned (deferred): keep `/help` curated, add
   `/help list` listing all commands several per line, and let `/help <item>`
   fall back to the registered one-line description.
-- **jcode-account commands in a fork**: `/subscribe`, `/subscription`,
-  `/account`, `/support` point at jcode's own account and support surface.
 - **Packaging does not exist yet** (`packaging/arch/PKGBUILD`); the README
   previously recommended an unmanaged `install -Dm755` into `~/.local/bin`.
 
