@@ -40,37 +40,28 @@ or to *upstream*, not to this binary.
 | `[lib] name = "jcode"` | 1 | internal; renaming forces `use jcode::` churn everywhere for no visible gain |
 | imported-session paths (claude/codex import) | — | they encode upstream paths on purpose |
 
-## Phase 2 - user-visible paths and branding (the real work)
+## Phase 2 - user-visible paths and branding (DONE)
 
-This is not cosmetic. The state dir moved to `~/.kcode`, but code and messages
-still say `~/.jcode`, so instructions point at paths that **do not exist**.
-Concrete example: logs are written to `~/.kcode/logs/jcode-2026-09-24.log`.
+Landed in commit `e5dae250`, 223 files.
 
-Order by user impact:
+- `~/.jcode` -> `~/.kcode` and `~/.config/jcode` -> `~/.config/kcode` in
+  user-facing strings and docs (104 + 18).
+- Home-based `.join(".jcode")` fallbacks that recreated a stray `~/.jcode`
+  (copilot machine id, schema quirks, catalog caches, changelog marker) now
+  use `.kcode`.
+- Logs are written as `kcode-YYYY-MM-DD.log`; rotation still sweeps legacy
+  `jcode-*.log` / `jcode-desktop-*.log` (decision 3: keep sweeping).
+- Process titles, window titles, `/quit` and `/help` labels, CLI help and
+  error strings, and `binary_stem()` (`target/release/kcode`).
+- Project-local `./.jcode/` kept for compatibility (decision 1).
 
-1. **Log filenames** - `crates/jcode-logging/src/lib.rs` (write site, the
-   `find_latest` path, rotation/`cleanup` prefix match, 3 test fixtures).
-   Change `jcode-` prefix to `kcode-`. Rotation must keep matching old
-   `jcode-*.log` files for one deprecation window, or users never see their
-   old logs cleaned up.
-2. **User-facing path strings** - ~57 files, 119 occurrences:
-   `~/.jcode/skills`, `~/.jcode/mcp.json`, `~/.jcode/swarm-prompt.md`,
-   `~/.jcode/plans`, `~/.jcode/todos`, `~/.jcode/state`, `~/.jcode/logs`,
-   `~/.jcode/config.toml`, `~/.config/jcode`. Highest-value files:
-   `tool/skill.rs`, `tool/mcp.rs`, `tool/communicate.rs`,
-   `tool/config_edit_notice.rs`, `server/socket.rs`,
-   `server/swarm_persistence.rs`, `config/default_file.rs`, `cli/debug.rs`.
-3. **CLI help and error strings** - 307 occurrences of the binary being named
-   `jcode` in `--help`, usage errors and banners (`src/cli/*.rs`,
-   `crates/jcode-tui/src/tui/app/input_help.rs`).
-4. **Process titles** - `crates/jcode-base/src/process_title.rs` and
-   `src/cli/proctitle.rs`: `jcode`, `jcode:s:`, `jcode:d:`, `jcode:selfdev`,
-   `jcode:client`.
-5. **TUI strings** - "Spawn new jcode session", `/log` help claiming
-   `~/.jcode/logs/jcode-*.log`, swarm-prompt help naming `./.jcode/`.
+Not done, deliberately: the `jcode` SSH remote binary default
+(`args.ssh_binary.unwrap_or("jcode")`). Changing it would break SSH into hosts
+that have jcode installed; leave it and let `--ssh-binary` decide.
 
-Gate: no user-visible string says `jcode` where it means this binary; a user
-can follow the `/log`, `/skills` and MCP messages and land on real paths.
+Verification: no new test failures. `jcode-base` 19 vs 19, `jcode-app-core`
+24 vs 24, `jcode-tui` 31 vs 34, `jcode-logging` and the CLI binary suite pass.
+The residual failures are the pre-existing flaky set.
 
 ## Phase 3 - env var prefix (decision, not yet worth it)
 
@@ -99,14 +90,14 @@ tree is itself the goal.
 
 ## Open decisions
 
-1. **Project-local dir**: `./.jcode/skills`, `./.jcode/mcp.json`,
-   `./.jcode/swarm-prompt.md`. Rename to `./.kcode/` (consistent, breaks
-   reading existing jcode project config) or keep (compatible with jcode
-   projects, slightly inconsistent)?
-2. **Env var prefix**: keep `JCODE_*` or rename with fallback?
-3. **Log rotation**: match old `jcode-*.log` forever, or only for a window?
+1. **Project-local dir**: kept `./.jcode/` for compatibility with existing
+   jcode projects. Revisit if the inconsistency starts hurting.
+2. **Env var prefix**: kept `JCODE_*` (Phase 3, unchanged).
+3. **Log rotation**: still sweeps legacy `jcode-*.log`.
 
 ## Already done in this pass
 
 - Removed the dead `/memory` command surface (see README "Status").
 - Dropped the stale `[ambient]` section from the default config template.
+- Migrated user-visible paths, log filenames, process titles and branding
+  (Phase 2 above).
