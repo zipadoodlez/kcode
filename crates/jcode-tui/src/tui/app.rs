@@ -83,7 +83,6 @@ mod onboarding_flow_control;
 pub(crate) mod onboarding_graph;
 mod onboarding_repair;
 mod onboarding_sim;
-mod productivity;
 mod prompt_history;
 mod remote;
 mod remote_notifications;
@@ -1628,8 +1627,6 @@ pub struct App {
     usage_overlay: Option<RefCell<super::usage_overlay::UsageOverlay>>,
     /// Whether a usage refresh request is currently in flight.
     usage_report_refreshing: bool,
-    /// Whether a `/productivity` report generation is currently in flight.
-    productivity_refreshing: bool,
     /// Last time the passive overnight progress card polled its run files.
     last_overnight_card_refresh: Option<Instant>,
     /// Per-client Niri-style workspace navigation state. Previously a process

@@ -149,11 +149,6 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     RegisteredCommand::public("/changelog", "Show recent changes in this build"),
     RegisteredCommand::public("/info", "Show session info and tokens"),
     RegisteredCommand::public("/usage", "Show connected provider usage limits"),
-    RegisteredCommand::public(
-        "/productivity",
-        "Generate a shareable usage report + dashboard image",
-    ),
-    RegisteredCommand::public("/wrapped", "Alias for /productivity"),
     RegisteredCommand::public("/support", "Email support with diagnostics prefilled"),
     RegisteredCommand::public("/subscription", "Show jcode subscription status"),
     RegisteredCommand::public("/subscribe", "Why and how to subscribe to jcode"),

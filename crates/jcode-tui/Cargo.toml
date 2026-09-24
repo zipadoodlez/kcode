@@ -84,7 +84,6 @@ jcode-tui-permissions = { path = "../jcode-tui-permissions" }
 jcode-tui-tool-display = { path = "../jcode-tui-tool-display" }
 jcode-tui-usage-overlay = { path = "../jcode-tui-usage-overlay" }
 jcode-terminal-image = { path = "../jcode-terminal-image" }
-jcode-productivity-core = { path = "../jcode-productivity-core" }
 jcode-tui-workspace = { path = "../jcode-tui-workspace" }
 
 [features]

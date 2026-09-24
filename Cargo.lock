@@ -3133,21 +3133,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jcode-productivity-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "jcode-storage",
- "rayon",
- "resvg 0.46.0",
- "serde",
- "serde_json",
- "tempfile",
- "usvg 0.46.0",
-]
-
-[[package]]
 name = "jcode-protocol"
 version = "0.1.0"
 dependencies = [
@@ -3640,7 +3625,6 @@ dependencies = [
  "jcode-core",
  "jcode-fuzzy",
  "jcode-logging",
- "jcode-productivity-core",
  "jcode-provider-core",
  "jcode-session-types",
  "jcode-terminal-image",
