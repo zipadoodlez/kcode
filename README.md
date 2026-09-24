@@ -383,7 +383,13 @@ with its intent.
   the palette and help: `/permissions`, `/permission`, `/new-terminal`, `/file`,
   `/open`, `/stats`, `/theme`, `/debug-fixture`, `/configurable-skill`,
   `/login-custom-skill`.
-- **`/help` overlay covers only 16 commands** while 118 are registered.
+- **`/help <item>` detail is incomplete.** The `/help` overlay itself is
+  complete: curated sections plus a `More commands` section that auto-lists
+  every remaining registered command. But `/help <item>` has written detail for
+  only 70 of the 118; the rest answer `Unknown command`, and there is no
+  compact `/help list`. Planned (deferred): keep `/help` curated, add
+  `/help list` listing all commands several per line, and let `/help <item>`
+  fall back to the registered one-line description.
 - **jcode-account commands in a fork**: `/subscribe`, `/subscription`,
   `/account`, `/support` point at jcode's own account and support surface.
 - **Packaging does not exist yet** (`packaging/arch/PKGBUILD`); the README
