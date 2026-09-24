@@ -8,7 +8,7 @@ pub fn socket_path() -> PathBuf {
     if let Ok(custom) = std::env::var("JCODE_SOCKET") {
         return PathBuf::from(custom);
     }
-    crate::storage::runtime_dir().join("jcode.sock")
+    crate::storage::runtime_dir().join("kcode.sock")
 }
 
 /// Debug socket path for testing/introspection
@@ -18,7 +18,7 @@ pub fn debug_socket_path() -> PathBuf {
     let filename = main_path
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or("jcode.sock");
+        .unwrap_or("kcode.sock");
     let debug_filename = filename.replace(".sock", "-debug.sock");
     main_path.with_file_name(debug_filename)
 }
@@ -56,7 +56,7 @@ pub async fn connect_socket(path: &std::path::Path) -> Result<Stream> {
         Ok(stream) => Ok(stream),
         Err(err) if err.kind() == std::io::ErrorKind::ConnectionRefused && path.exists() => {
             Err(anyhow::Error::new(err).context(format!(
-                "Socket exists but refused the connection at {}. Retry, or remove it after confirming no jcode server is running.",
+                "Socket exists but refused the connection at {}. Retry, or remove it after confirming no kcode server is running.",
                 path.display()
             )))
         }
@@ -135,7 +135,7 @@ pub async fn has_live_listener(path: &std::path::Path) -> bool {
 }
 
 pub(super) fn daemon_lock_path() -> PathBuf {
-    crate::storage::runtime_dir().join("jcode-daemon.lock")
+    crate::storage::runtime_dir().join("kcode-daemon.lock")
 }
 
 pub(super) struct DaemonLockGuard {

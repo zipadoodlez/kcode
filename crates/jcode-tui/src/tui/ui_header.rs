@@ -576,9 +576,9 @@ fn semver_minor() -> String {
 
 #[cfg(test)]
 fn version_display_candidates() -> Vec<String> {
-    let full = format!("jcode {}", semver());
-    let core = format!("jcode {}", semver_core());
-    let minor = format!("jcode {}", semver_minor());
+    let full = format!("kcode {}", semver());
+    let core = format!("kcode {}", semver_core());
+    let minor = format!("kcode {}", semver_minor());
     let shortest = semver_minor();
     vec![full, core, minor, shortest]
 }

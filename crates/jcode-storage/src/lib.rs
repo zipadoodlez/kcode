@@ -40,7 +40,7 @@ pub fn runtime_dir() -> PathBuf {
 }
 
 fn fallback_runtime_dir() -> PathBuf {
-    std::env::temp_dir().join(format!("jcode-{}", runtime_user_discriminator()))
+    std::env::temp_dir().join(format!("kcode-{}", runtime_user_discriminator()))
 }
 
 fn runtime_user_discriminator() -> String {
@@ -60,7 +60,7 @@ pub fn jcode_dir() -> Result<PathBuf> {
     }
 
     let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("No home directory"))?;
-    Ok(home.join(".jcode"))
+    Ok(home.join(".kcode"))
 }
 
 /// Whether `JCODE_HOME` redirects this process away from the user's real
@@ -72,7 +72,7 @@ pub fn running_with_sandboxed_home() -> bool {
     let Some(configured) = std::env::var_os("JCODE_HOME").map(PathBuf::from) else {
         return false;
     };
-    let Some(default) = dirs::home_dir().map(|home| home.join(".jcode")) else {
+    let Some(default) = dirs::home_dir().map(|home| home.join(".kcode")) else {
         return true;
     };
 
@@ -114,12 +114,12 @@ pub fn durable_state_dir() -> PathBuf {
 /// real config directory.
 pub fn app_config_dir() -> Result<PathBuf> {
     if let Ok(path) = std::env::var("JCODE_HOME") {
-        return Ok(PathBuf::from(path).join("config").join("jcode"));
+        return Ok(PathBuf::from(path).join("config").join("kcode"));
     }
 
     let config_dir =
         dirs::config_dir().ok_or_else(|| anyhow::anyhow!("No config directory found"))?;
-    Ok(config_dir.join("jcode"))
+    Ok(config_dir.join("kcode"))
 }
 
 /// Resolve a path under the user's home directory, but sandbox it under
@@ -151,9 +151,9 @@ pub fn user_home_path(relative: impl AsRef<Path>) -> Result<PathBuf> {
 pub fn harden_user_config_permissions() {
     {
         if let Some(config_dir) = dirs::config_dir() {
-            let jcode_config_dir = config_dir.join("jcode");
-            if jcode_config_dir.exists() {
-                let _ = jcode_core::fs::set_directory_permissions_owner_only(&jcode_config_dir);
+            let kcode_config_dir = config_dir.join("kcode");
+            if kcode_config_dir.exists() {
+                let _ = jcode_core::fs::set_directory_permissions_owner_only(&kcode_config_dir);
             }
         }
 

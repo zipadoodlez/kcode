@@ -23,7 +23,7 @@ pub async fn run_client() -> Result<()> {
         anyhow::bail!("Failed to ping server");
     }
 
-    println!("Connected to J-Code server");
+    println!("Connected to Kcode server");
     println!("Type your message, or 'quit' to exit.\n");
 
     loop {

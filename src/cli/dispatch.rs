@@ -205,7 +205,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                         })
                     );
                 } else {
-                    println!("Jcode server is running.");
+                    println!("Kcode server is running.");
                 }
             }
             ServerCommand::Keepalive => {

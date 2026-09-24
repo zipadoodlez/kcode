@@ -10,40 +10,40 @@ use crate::process_title::{compact_process_title, session_name, set_title};
 
 pub(crate) fn initial_title(args: &Args) -> String {
     match &args.command {
-        Some(Command::Serve { .. }) => "jcode:server".to_string(),
-        Some(Command::Acp) => "jcode acp".to_string(),
-        Some(Command::Server { .. }) => "jcode server".to_string(),
-        Some(Command::Connect) => "jcode:client".to_string(),
-        Some(Command::Run { .. }) => "jcode run".to_string(),
-        Some(Command::Login { .. }) => "jcode login".to_string(),
-        Some(Command::Account { .. }) => "jcode account".to_string(),
-        Some(Command::Repl) => "jcode repl".to_string(),
-        Some(Command::Version { .. }) => "jcode version".to_string(),
-        Some(Command::Usage { .. }) => "jcode usage".to_string(),
-        Some(Command::Debug { .. }) => "jcode debug".to_string(),
-        Some(Command::Auth(_)) => "jcode auth".to_string(),
-        Some(Command::Provider(_)) => "jcode provider".to_string(),
-        Some(Command::Session(_)) => "jcode session".to_string(),
-        Some(Command::Permissions) => "jcode permissions".to_string(),
-        Some(Command::Transcript { .. }) => "jcode transcript".to_string(),
-        Some(Command::Browser { .. }) => "jcode browser".to_string(),
-        Some(Command::Model(_)) => "jcode model".to_string(),
-        Some(Command::ProviderTestCoverage { .. }) => "jcode provider-test-coverage".to_string(),
-        Some(Command::ProviderDoctor { .. }) => "jcode provider-doctor".to_string(),
-        Some(Command::AuthTest { .. }) => "jcode auth-test".to_string(),
-        Some(Command::Restart { .. }) => "jcode restart".to_string(),
+        Some(Command::Serve { .. }) => "kcode:server".to_string(),
+        Some(Command::Acp) => "kcode acp".to_string(),
+        Some(Command::Server { .. }) => "kcode server".to_string(),
+        Some(Command::Connect) => "kcode:client".to_string(),
+        Some(Command::Run { .. }) => "kcode run".to_string(),
+        Some(Command::Login { .. }) => "kcode login".to_string(),
+        Some(Command::Account { .. }) => "kcode account".to_string(),
+        Some(Command::Repl) => "kcode repl".to_string(),
+        Some(Command::Version { .. }) => "kcode version".to_string(),
+        Some(Command::Usage { .. }) => "kcode usage".to_string(),
+        Some(Command::Debug { .. }) => "kcode debug".to_string(),
+        Some(Command::Auth(_)) => "kcode auth".to_string(),
+        Some(Command::Provider(_)) => "kcode provider".to_string(),
+        Some(Command::Session(_)) => "kcode session".to_string(),
+        Some(Command::Permissions) => "kcode permissions".to_string(),
+        Some(Command::Transcript { .. }) => "kcode transcript".to_string(),
+        Some(Command::Browser { .. }) => "kcode browser".to_string(),
+        Some(Command::Model(_)) => "kcode model".to_string(),
+        Some(Command::ProviderTestCoverage { .. }) => "kcode provider-test-coverage".to_string(),
+        Some(Command::ProviderDoctor { .. }) => "kcode provider-doctor".to_string(),
+        Some(Command::AuthTest { .. }) => "kcode auth-test".to_string(),
+        Some(Command::Restart { .. }) => "kcode restart".to_string(),
         None => {
             if let Some(resume) = args.resume.as_deref().filter(|resume| !resume.is_empty()) {
                 let prefix = if crate::client_mode::client_selfdev_requested() {
-                    "jcode:d:"
+                    "kcode:d:"
                 } else {
-                    "jcode:c:"
+                    "kcode:c:"
                 };
                 compact_process_title(prefix, Some(&session_name(resume)))
             } else if crate::client_mode::client_selfdev_requested() {
-                "jcode:selfdev".to_string()
+                "kcode:selfdev".to_string()
             } else {
-                "jcode:client".to_string()
+                "kcode:client".to_string()
             }
         }
     }
@@ -75,16 +75,16 @@ mod tests {
     #[test]
     fn initial_title_labels_server() {
         with_selfdev_env_removed(|| {
-            let args = Args::parse_from(["jcode", "serve"]);
-            assert_eq!(initial_title(&args), "jcode:server");
+            let args = Args::parse_from(["kcode", "serve"]);
+            assert_eq!(initial_title(&args), "kcode:server");
         });
     }
 
     #[test]
     fn initial_title_labels_resume_client_with_short_name() {
         with_selfdev_env_removed(|| {
-            let args = Args::parse_from(["jcode", "--resume", "session_fox_123"]);
-            assert_eq!(initial_title(&args), "jcode:c:fox");
+            let args = Args::parse_from(["kcode", "--resume", "session_fox_123"]);
+            assert_eq!(initial_title(&args), "kcode:c:fox");
         });
     }
 }

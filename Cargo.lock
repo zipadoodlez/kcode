@@ -2517,52 +2517,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
-name = "jcode"
-version = "0.85.0"
-dependencies = [
- "anyhow",
- "async-stream",
- "async-trait",
- "block2",
- "chrono",
- "clap",
- "crossterm",
- "dirs",
- "futures",
- "global-hotkey",
- "jcode-build-meta",
- "jcode-provider-anthropic-runtime",
- "jcode-provider-antigravity-runtime",
- "jcode-provider-claude-cli-runtime",
- "jcode-provider-copilot-runtime",
- "jcode-provider-core",
- "jcode-provider-cursor-runtime",
- "jcode-provider-doctor",
- "jcode-provider-gemini-runtime",
- "jcode-provider-grok-build-runtime",
- "jcode-provider-openai-runtime",
- "jcode-provider-openrouter-runtime",
- "jcode-tui",
- "jcode-tui-session-picker",
- "jcode-tui-style",
- "libc",
- "objc2",
- "objc2-app-kit",
- "objc2-foundation",
- "objc2-user-notifications",
- "open",
- "ratatui",
- "reqwest 0.12.28",
- "rustls",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-stream",
- "toml",
-]
-
-[[package]]
 name = "jcode-agent-runtime"
 version = "0.1.0"
 dependencies = [
@@ -3542,6 +3496,52 @@ dependencies = [
  "hashbrown 0.16.1",
  "portable-atomic",
  "thiserror 2.0.19",
+]
+
+[[package]]
+name = "kcode"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "async-trait",
+ "block2",
+ "chrono",
+ "clap",
+ "crossterm",
+ "dirs",
+ "futures",
+ "global-hotkey",
+ "jcode-build-meta",
+ "jcode-provider-anthropic-runtime",
+ "jcode-provider-antigravity-runtime",
+ "jcode-provider-claude-cli-runtime",
+ "jcode-provider-copilot-runtime",
+ "jcode-provider-core",
+ "jcode-provider-cursor-runtime",
+ "jcode-provider-doctor",
+ "jcode-provider-gemini-runtime",
+ "jcode-provider-grok-build-runtime",
+ "jcode-provider-openai-runtime",
+ "jcode-provider-openrouter-runtime",
+ "jcode-tui",
+ "jcode-tui-session-picker",
+ "jcode-tui-style",
+ "libc",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "objc2-user-notifications",
+ "open",
+ "ratatui",
+ "reqwest 0.12.28",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
+ "toml",
 ]
 
 [[package]]

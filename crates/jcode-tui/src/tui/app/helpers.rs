@@ -771,7 +771,7 @@ fn resumed_window_title(session_id: &str) -> String {
     {
         format!("jcode/{} {}", server_info.name, session_label)
     } else {
-        format!("jcode {}", session_label)
+        format!("kcode {}", session_label)
     };
     crate::process_title::terminal_window_title(
         icon,
