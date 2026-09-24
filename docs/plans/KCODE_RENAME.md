@@ -1,7 +1,7 @@
 # Renaming jcode to kcode
 
-Status: in progress. Phase 1 is the product; phases 2 and 3 are optional and
-probably YAGNI. See "What we deliberately skip" at the bottom.
+Status: Phase 1 done and verified (commit `1d6ebbdf0`). Phases 2 and 3 are
+optional and probably YAGNI. See "What we deliberately skip" at the bottom.
 
 The point of the name change is not cosmetics. It is that a binary called
 `jcode` claims `~/.jcode` and the shared runtime dir by default, so it refuses
@@ -48,12 +48,18 @@ Files:
 - Branding strings: `tui_launch.rs`, `turn_execution.rs`, `session_launch.rs`,
   `ui_header.rs`, `app/helpers.rs`.
 
-Gate:
+Gate (met):
 
-1. `cargo check --workspace` clean.
-2. Build, run, confirm `~/.kcode` and `kcode.sock` are created.
-3. Confirm it starts with **no env vars and no `--no-selfdev` hack** while the
-   real jcode daemon is still running.
+1. `cargo check --workspace --all-targets` clean.
+2. `kcode run` works with no env vars and no flags; creates `~/.kcode` and
+   `kcode.sock`.
+3. Coexists with the running jcode daemon: `kcode.sock` and `jcode.sock`
+   side by side in the same runtime dir, neither disturbs the other.
+
+One-time migration done: `config.toml` plus small state (`skills`, `plans`,
+`todos`, `memory`, keymap/mcp/setup files) and `~/.config/jcode` were copied
+to `~/.kcode` / `~/.config/kcode`. The heavy `scratch`, `builds`, `cache`,
+`logs`, `models` and `sessions` trees were not copied.
 
 ## Phase 2 - env var prefix (optional)
 
