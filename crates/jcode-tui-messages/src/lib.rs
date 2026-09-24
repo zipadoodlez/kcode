@@ -14,8 +14,8 @@ pub use message::{
     transcript_preview_lines, truncate_transcript_preview,
 };
 pub use prepared::{
-    CopyTarget, EditToolRange, ImageRegion, ImageRegionRender, MessageBoundary, PreparedChatFrame,
-    PreparedMessages, PreparedSection, PreparedSectionKind,
+    CopyTarget, EditToolRange, MessageBoundary, PreparedChatFrame, PreparedMessages,
+    PreparedSection, PreparedSectionKind,
 };
 pub use swarm_collapse::{
     CollapsibleSwarmContent, encode_collapsible_swarm_content, parse_collapsible_swarm_content,

@@ -589,7 +589,6 @@ pub(super) fn note_body_cache_hit(kind: CacheEntryKind, prepared: &PreparedMessa
         stats.body_last_prepared_bytes = estimate_prepared_messages_bytes(prepared);
         stats.body_last_wrapped_lines = prepared.wrapped_lines.len();
         stats.body_last_copy_targets = prepared.copy_targets.len();
-        stats.body_last_image_regions = prepared.image_regions.len();
     });
 }
 
@@ -622,7 +621,6 @@ pub(super) fn note_body_built(
         stats.body_last_prepared_bytes = estimate_prepared_messages_bytes(prepared);
         stats.body_last_wrapped_lines = prepared.wrapped_lines.len();
         stats.body_last_copy_targets = prepared.copy_targets.len();
-        stats.body_last_image_regions = prepared.image_regions.len();
     });
 }
 

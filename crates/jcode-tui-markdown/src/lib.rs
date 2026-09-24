@@ -10,35 +10,20 @@ use syntect::highlighting::{Style as SynStyle, ThemeSet};
 use syntect::parsing::SyntaxSet;
 use unicode_width::UnicodeWidthStr;
 
-#[cfg(feature = "mermaid-renderer")]
-use jcode_tui_mermaid as mermaid;
-
-#[cfg(not(feature = "mermaid-renderer"))]
-#[path = "markdown_mermaid_fallback.rs"]
-mod mermaid;
-
 #[path = "markdown_types.rs"]
 mod types;
 
-pub use types::{
-    CopyTargetKind, DiagramDisplayMode, LatexRenderingMode, MarkdownSpacingMode, RawCopyTarget,
-};
+pub use types::{CopyTargetKind, MarkdownSpacingMode, RawCopyTarget};
 
 #[derive(Debug, Clone, Copy)]
 pub struct MarkdownConfigSnapshot {
-    pub diagram_mode: DiagramDisplayMode,
     pub markdown_spacing: MarkdownSpacingMode,
-    pub mermaid_enabled: bool,
-    pub latex_rendering: LatexRenderingMode,
 }
 
 impl Default for MarkdownConfigSnapshot {
     fn default() -> Self {
         Self {
-            diagram_mode: DiagramDisplayMode::default(),
             markdown_spacing: MarkdownSpacingMode::default(),
-            mermaid_enabled: true,
-            latex_rendering: LatexRenderingMode::default(),
         }
     }
 }
@@ -75,14 +60,6 @@ pub fn set_memory_snapshot_hook(hook: fn() -> ProcessMemorySnapshot) {
     }
 }
 
-pub fn set_latex_log_hook(hook: fn(&str)) {
-    latex_image::set_log_hook(hook);
-}
-
-pub use latex_image::{
-    HandtermNativeLatex, encode_handterm_latex_apc, handterm_native_latex_for_hash,
-};
-
 pub(crate) fn config_snapshot() -> MarkdownConfigSnapshot {
     CONFIG_SNAPSHOT_HOOK
         .lock()
@@ -104,19 +81,9 @@ mod wrap;
 
 #[cfg(test)]
 pub(crate) use context::with_markdown_spacing_mode_override;
-pub use context::{
-    center_code_blocks, get_diagram_mode_override, mermaid_rendering_enabled,
-    set_center_code_blocks, set_diagram_mode_override, with_center_code_blocks,
-    with_deferred_mermaid_render_context, with_diagram_mode_scope, with_mermaid_rendering_override,
-};
-use context::{
-    deferred_mermaid_render_context_enabled, effective_diagram_mode,
-    effective_markdown_spacing_mode, streaming_render_context_enabled,
-    with_streaming_render_context,
-};
+pub use context::{center_code_blocks, set_center_code_blocks, with_center_code_blocks};
+use context::{effective_markdown_spacing_mode, with_streaming_render_context};
 
-#[path = "markdown_latex_image.rs"]
-mod latex_image;
 #[path = "markdown_render_full.rs"]
 mod render_full;
 #[path = "markdown_render_lazy.rs"]
@@ -156,11 +123,6 @@ use render_support::{
     render_table_aligned,
 };
 
-fn should_render_mermaid_block(lang: Option<&str>) -> bool {
-    mermaid_rendering_enabled()
-        && lang.map(mermaid::is_mermaid_lang).unwrap_or(false)
-        && mermaid::native_image_protocol_available()
-}
 pub use render_support::{highlight_file_lines, highlight_line, render_table_with_width};
 
 // Syntax highlighting resources (loaded once)
@@ -181,7 +143,6 @@ pub struct MarkdownDebugStats {
     pub last_lines: Option<usize>,
     pub last_headings: usize,
     pub last_code_blocks: usize,
-    pub last_mermaid_blocks: usize,
     pub last_tables: usize,
     pub last_list_items: usize,
     pub last_blockquotes: usize,
@@ -406,16 +367,7 @@ fn normalize_block_separators(lines: &mut Vec<Line<'static>>) {
             }
             normalized.push(Line::default());
         } else {
-            preserve_blanks =
-                if let Some((_, rows, _)) = mermaid::parse_inline_image_placeholder(&line) {
-                    rows.saturating_sub(1) as usize
-                } else if mermaid::parse_image_placeholder(&line).is_some() {
-                    // Crop-style markers (video export) do not encode their
-                    // height; keep every directly following blank fill line.
-                    usize::MAX
-                } else {
-                    0
-                };
+            preserve_blanks = 0;
             normalized.push(line);
         }
         previous_blank = is_blank;
@@ -544,52 +496,6 @@ struct CenteredStructuredBlockState {
     ranges: Vec<std::ops::Range<usize>>,
 }
 
-fn mermaid_should_register_active() -> bool {
-    !matches!(effective_diagram_mode(), DiagramDisplayMode::None)
-}
-
-fn mermaid_sidebar_placeholder(text: &str) -> Line<'static> {
-    Line::from(Span::styled(
-        text.to_string(),
-        Style::default().fg(md_dim_color()),
-    ))
-    .left_aligned()
-}
-
-/// Placeholder text emitted while a deferred mermaid render runs in the
-/// background. Cache layers above the markdown renderer use
-/// [`line_is_mermaid_pending_placeholder`] to detect prepared content that
-/// must be re-rendered once the background render completes (the deferred
-/// render epoch advances).
-pub const MERMAID_PENDING_PLACEHOLDER_TEXT: &str = "↻ rendering mermaid diagram...";
-
-/// Placeholder emitted while a deferred LaTeX image render runs in the
-/// background. Shares the pending-detection prefix with the mermaid
-/// placeholder so the same cache-invalidation path covers both.
-pub const MATH_PENDING_PLACEHOLDER_TEXT: &str = "↻ rendering math...";
-
-/// Prefix used to recognize the pending placeholder even when a narrow width
-/// wraps its tail onto a following line.
-const MERMAID_PENDING_MATCH_PREFIX: &str = "↻ rendering";
-
-/// True when `line` is a deferred-render pending placeholder (mermaid or
-/// math). Tolerates leading/trailing padding spans added by centered display
-/// modes and the truncated tail produced when a narrow width wraps it.
-///
-/// Matches on the line's joined text rather than a single span: the wrapping
-/// pass splits a line into one span per word, so a per-span test silently
-/// stops recognizing placeholders once content reaches the wrapper. That made
-/// prepared bodies miss their staleness stamp, leaving "rendering..." on
-/// screen permanently because no cache layer knew to rebuild.
-pub fn line_is_mermaid_pending_placeholder(line: &Line<'_>) -> bool {
-    let joined: String = line
-        .spans
-        .iter()
-        .map(|span| span.content.as_ref())
-        .collect::<String>();
-    joined.trim().starts_with(MERMAID_PENDING_MATCH_PREFIX)
-}
-
 fn apply_inline_decorations(mut style: Style, strike: bool, in_link: bool) -> Style {
     if strike {
         style = style.crossed_out();
@@ -632,24 +538,9 @@ fn fill_blockquote_separators(lines: &mut [Line<'static>], depth: usize) {
     let Some(last_content) = lines.iter().rposition(|line| !line_is_blank(line)) else {
         return;
     };
-    let mut image_rows = 0usize;
     for line in &mut lines[..=last_content] {
         if line_is_blank(line) {
-            if image_rows > 0 {
-                image_rows -= 1;
-            } else {
-                *line = with_blockquote_prefix(Line::default(), depth);
-            }
-        } else {
-            // Image placeholder fill rows are reserved for the image renderer,
-            // not paragraph spacing. Keep their blank-run geometry intact.
-            image_rows = if let Some((_, rows, _)) = mermaid::parse_inline_image_placeholder(line) {
-                rows.saturating_sub(1) as usize
-            } else if mermaid::parse_image_placeholder(line).is_some() {
-                usize::MAX
-            } else {
-                0
-            };
+            *line = with_blockquote_prefix(Line::default(), depth);
         }
     }
 }
@@ -990,32 +881,8 @@ fn count_unescaped_double_dollar(line: &str) -> usize {
     count
 }
 
-fn math_inline_span(math: &str) -> Span<'static> {
-    Span::styled(
-        jcode_render_core::render_inline_latex(math),
-        Style::default().fg(math_inline_fg()),
-    )
-}
-
 fn raw_math_inline_span(math: &str) -> Span<'static> {
     Span::styled(format!("${math}$"), Style::default().fg(math_inline_fg()))
-}
-
-fn math_display_lines(math: &str) -> Vec<Line<'static>> {
-    let mut out = Vec::new();
-    let dim = Style::default().fg(md_dim_color());
-    out.push(Line::from(Span::styled("┌─ math ", dim)).left_aligned());
-    for line in jcode_render_core::render_display_latex(math) {
-        out.push(
-            Line::from(vec![
-                Span::styled("│ ", dim),
-                Span::styled(line, Style::default().fg(math_fg())),
-            ])
-            .left_aligned(),
-        );
-    }
-    out.push(Line::from(Span::styled("└─", dim)).left_aligned());
-    out
 }
 
 fn raw_math_display_lines(math: &str) -> Vec<Line<'static>> {
@@ -1040,25 +907,6 @@ fn raw_math_display_lines(math: &str) -> Vec<Line<'static>> {
     out
 }
 
-fn latex_image_lines(
-    math: &str,
-    display: bool,
-    max_width: Option<usize>,
-) -> Option<Vec<Line<'static>>> {
-    if let Some(lines) = latex_image::render_handterm_native_latex(math, display, max_width) {
-        return Some(lines);
-    }
-    match latex_image::render_latex_image(math, display, max_width) {
-        latex_image::LatexImageOutcome::Ready(lines) => Some(lines),
-        latex_image::LatexImageOutcome::Pending => Some(vec![mermaid_sidebar_placeholder(
-            MATH_PENDING_PLACEHOLDER_TEXT,
-        )]),
-        latex_image::LatexImageOutcome::Failed(error) => {
-            latex_image::report_error(&error);
-            None
-        }
-    }
-}
 fn table_color() -> Color {
     rgb(150, 150, 150)
 }

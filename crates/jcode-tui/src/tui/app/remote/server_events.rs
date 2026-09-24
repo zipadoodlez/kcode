@@ -374,32 +374,13 @@ fn should_skip_identical_history_payload(
             .is_some_and(|entry| entry.session_id == session_id && entry.fingerprint == fingerprint)
 }
 
-/// True when the incoming rendered-image set is (cheaply) identical to the
-/// already-retained set: same count and, per image, same data length plus
-/// equal cheap metadata. Image data is compared by length only so duplicate
-/// multi-megabyte base64 payloads are never traversed byte-by-byte.
-fn history_images_match_retained(
-    incoming: &[crate::session::RenderedImage],
-    retained: &[crate::session::RenderedImage],
-) -> bool {
-    incoming.len() == retained.len()
-        && incoming.iter().zip(retained.iter()).all(|(a, b)| {
-            a.data.len() == b.data.len()
-                && a.media_type == b.media_type
-                && a.label == b.label
-                && a.source == b.source
-                && a.anchor == b.anchor
-        })
-}
-
 #[cfg(test)]
 mod history_dedup_tests {
     use super::{
-        AppliedHistoryFingerprint, history_images_match_retained, history_payload_fingerprint,
+        AppliedHistoryFingerprint, history_payload_fingerprint,
         should_skip_identical_history_payload,
     };
     use crate::protocol::HistoryMessage;
-    use crate::session::{RenderedImage, RenderedImageSource};
 
     fn message(role: &str, content: &str) -> HistoryMessage {
         HistoryMessage {
@@ -408,17 +389,6 @@ mod history_dedup_tests {
             content: content.to_string(),
             tool_calls: None,
             tool_data: None,
-        }
-    }
-
-    fn image(data: &str) -> RenderedImage {
-        RenderedImage {
-            history_message_index: None,
-            media_type: "image/png".to_string(),
-            data: data.to_string(),
-            label: None,
-            source: RenderedImageSource::UserInput,
-            anchor: None,
         }
     }
 
@@ -516,26 +486,6 @@ mod history_dedup_tests {
         assert!(!should_skip_identical_history_payload(
             false, false, None, "ses_a", 42
         ));
-    }
-
-    #[test]
-    fn images_match_retained_compares_count_and_lengths() {
-        let retained = vec![image("aaaa"), image("bbbbbb")];
-        let same = vec![image("aaaa"), image("bbbbbb")];
-        assert!(history_images_match_retained(&same, &retained));
-        // Length-only comparison: equal lengths count as identical.
-        let same_len = vec![image("cccc"), image("dddddd")];
-        assert!(history_images_match_retained(&same_len, &retained));
-
-        assert!(!history_images_match_retained(&[], &retained));
-        let fewer = vec![image("aaaa")];
-        assert!(!history_images_match_retained(&fewer, &retained));
-        let diff_len = vec![image("aaaa"), image("bbbbb")];
-        assert!(!history_images_match_retained(&diff_len, &retained));
-        let mut diff_meta = vec![image("aaaa"), image("bbbbbb")];
-        diff_meta[0].media_type = "image/jpeg".to_string();
-        assert!(!history_images_match_retained(&diff_meta, &retained));
-        assert!(history_images_match_retained(&[], &[]));
     }
 }
 
@@ -1160,7 +1110,6 @@ pub(in crate::tui::app) fn handle_server_event(
                     let duration = app.display_turn_duration_secs();
                     app.push_turn_footer(duration);
                 }
-                crate::tui::mermaid::clear_streaming_preview_diagram();
                 app.is_processing = false;
                 app.status = ProcessingStatus::Idle;
                 app.stream_message_ended = false;
@@ -1298,7 +1247,6 @@ pub(in crate::tui::app) fn handle_server_event(
             app.status = ProcessingStatus::Idle;
             app.stream_message_ended = false;
             let recovered_local = recover_local_interleave_to_queue(app, "request error");
-            crate::tui::mermaid::clear_streaming_preview_diagram();
             app.thought_line_inserted = false;
             app.thinking_prefix_emitted = false;
             app.thinking_buffer.clear();
@@ -1642,8 +1590,6 @@ pub(in crate::tui::app) fn handle_server_event(
                 }
                 app.remote_total_tokens = None;
                 app.remote_token_usage_totals = None;
-                app.remote_side_pane_images.clear();
-                app.invalidate_side_pane_images_signature();
                 app.remote_swarm_members.clear();
                 app.swarm_plan_items.clear();
                 app.swarm_plan_version = None;
@@ -1683,21 +1629,7 @@ pub(in crate::tui::app) fn handle_server_event(
             app.remote_service_tier = service_tier;
             app.remote_compaction_mode = Some(compaction_mode);
             app.set_side_panel_snapshot(side_panel);
-            if history_images_match_retained(&images, &app.remote_side_pane_images) {
-                // The already-retained image set is identical (count + per-image
-                // byte length + metadata). Drop the incoming copy immediately so
-                // two full base64 payloads are never alive side by side.
-                if !images.is_empty() {
-                    crate::logging::info(&format!(
-                        "History images identical to retained set ({} images); dropping incoming copy",
-                        images.len()
-                    ));
-                }
-                drop(images);
-            } else {
-                app.remote_side_pane_images = images;
-                app.invalidate_side_pane_images_signature();
-            }
+            drop(images);
             if catalog_outcome.catalog_changed {
                 app.persist_remote_model_catalog_cache();
             }
@@ -1868,8 +1800,7 @@ pub(in crate::tui::app) fn handle_server_event(
                         // frame re-registers the preview
                         // (markdown_render_full.rs set_streaming_preview_diagram).
                         if !session_changed {
-                            crate::tui::mermaid::clear_streaming_preview_diagram();
-                            // A rewind (or rewind-undo) re-apply can race a
+                                        // A rewind (or rewind-undo) re-apply can race a
                             // stale `Done` from the just-finished turn: the
                             // History payload is written directly to the
                             // socket by handle_get_history while the Done is
@@ -2078,21 +2009,8 @@ pub(in crate::tui::app) fn handle_server_event(
                 ));
                 return false;
             }
-            if images.is_empty() {
-                return false;
-            }
-            // Append the freshly-produced images so the inline transcript
-            // updates immediately, without waiting for the next full History
-            // reload. A later History payload replaces this list wholesale.
-            let added = images.len();
-            app.append_live_inline_images(images);
-            crate::logging::info(&format!(
-                "SidePaneImages: appended {} live inline image(s) (total={}) session={}",
-                added,
-                app.remote_side_pane_images.len(),
-                session_id
-            ));
-            true
+            drop(images);
+            false
         }
         ServerEvent::SidePanelState { snapshot } => {
             app.set_side_panel_snapshot(snapshot);

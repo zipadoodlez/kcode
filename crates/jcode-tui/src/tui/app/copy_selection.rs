@@ -10,7 +10,6 @@ impl App {
         self.copy_selection_dragging = false;
         self.copy_selection_pending_anchor = None;
         self.diff_pane_focus = false;
-        self.diagram_focus = false;
     }
 
     pub(super) fn exit_copy_selection_mode(&mut self) {

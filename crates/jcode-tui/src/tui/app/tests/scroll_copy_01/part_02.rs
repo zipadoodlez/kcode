@@ -323,18 +323,6 @@ fn test_remote_escape_interrupt_disables_auto_poke_while_processing() {
 }
 
 #[test]
-fn test_remote_ctrl_digit_side_panel_preset() {
-    let mut app = create_test_app();
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let _guard = rt.enter();
-    let mut remote = crate::tui::backend::RemoteConnection::dummy();
-
-    rt.block_on(app.handle_remote_key(KeyCode::Char('4'), KeyModifiers::CONTROL, &mut remote))
-        .unwrap();
-    assert_eq!(app.diagram_pane_ratio_target, 100);
-}
-
-#[test]
 fn test_remote_prompt_jump_ctrl_digit_is_recency_rank() {
     let _render_lock = scroll_render_test_lock();
     let (mut app, mut terminal) = create_scroll_test_app(100, 30, 1, 20);
@@ -465,8 +453,6 @@ fn test_remote_copy_badge_shortcut_supported() {
 fn test_ctrl_l_puts_prompt_indicator_at_top_of_screen() {
     let _render_lock = scroll_render_test_lock();
     let mut app = create_test_app();
-    app.diagram_mode = crate::config::DiagramDisplayMode::None;
-    app.diagram_pane_enabled = false;
     let mut messages = Vec::new();
     for prompt in 0..4 {
         messages.push(DisplayMessage::user(format!("prompt number {prompt}")));

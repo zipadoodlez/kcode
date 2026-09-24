@@ -114,7 +114,6 @@ fn append_client_sample_writes_jsonl_under_memory_logs_dir() {
         ui_render: None,
         side_panel_render: None,
         markdown: None,
-        mermaid: None,
         visual_debug: None,
     };
 

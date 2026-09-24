@@ -8,10 +8,6 @@ struct MouseScrollTraceState {
     auto_scroll_paused: bool,
     diff_offset: usize,
     diff_auto_scroll: bool,
-    diagram_focus: bool,
-    diagram_x: i32,
-    diagram_y: i32,
-    diagram_zoom: u8,
     help_scroll: Option<usize>,
     changelog_scroll: Option<usize>,
 }
@@ -23,10 +19,6 @@ impl MouseScrollTraceState {
             auto_scroll_paused: app.auto_scroll_paused,
             diff_offset: app.diff_pane_scroll,
             diff_auto_scroll: app.diff_pane_auto_scroll,
-            diagram_focus: app.diagram_focus,
-            diagram_x: app.diagram_scroll_x,
-            diagram_y: app.diagram_scroll_y,
-            diagram_zoom: app.diagram_zoom,
             help_scroll: app.help_scroll,
             changelog_scroll: app.changelog_scroll,
         }
@@ -34,15 +26,11 @@ impl MouseScrollTraceState {
 
     fn summary(&self) -> String {
         format!(
-            "chat={} auto={} diff={} diff_auto={} diagram_focus={} diagram=({},{} @ {}%) help={:?} changelog={:?}",
+            "chat={} auto={} diff={} diff_auto={} help={:?} changelog={:?}",
             self.chat_offset,
             self.auto_scroll_paused,
             self.diff_offset,
             self.diff_auto_scroll,
-            self.diagram_focus,
-            self.diagram_x,
-            self.diagram_y,
-            self.diagram_zoom,
             self.help_scroll,
             self.changelog_scroll,
         )
@@ -101,12 +89,6 @@ impl App {
         let over_messages = layout.as_ref().is_some_and(|layout| {
             super::super::layout_utils::point_in_rect(mouse.column, mouse.row, layout.messages_area)
         });
-        let over_diagram = layout
-            .as_ref()
-            .and_then(|layout| layout.diagram_area)
-            .is_some_and(|area| {
-                super::super::layout_utils::point_in_rect(mouse.column, mouse.row, area)
-            });
         let over_diff = layout
             .as_ref()
             .and_then(|layout| layout.diff_pane_area)
@@ -125,7 +107,6 @@ impl App {
                 ("scroll_only", scroll_only.to_string()),
                 ("changed", changed.to_string()),
                 ("over_messages", over_messages.to_string()),
-                ("over_diagram", over_diagram.to_string()),
                 ("over_diff", over_diff.to_string()),
                 (
                     "side_panel_visible",
@@ -135,87 +116,6 @@ impl App {
                 ("after", after.summary()),
             ],
         );
-    }
-
-    fn current_visible_diagram_hash(&self) -> Option<u64> {
-        if self.diagram_mode != crate::config::DiagramDisplayMode::Pinned
-            || !self.diagram_pane_enabled
-        {
-            return None;
-        }
-        if self.side_panel.focused_page().is_some()
-            && self.diagram_pane_position == crate::config::DiagramPanePosition::Side
-        {
-            return None;
-        }
-        let diagrams = crate::tui::mermaid::get_active_diagrams();
-        diagrams
-            .get(self.diagram_index.min(diagrams.len().saturating_sub(1)))
-            .map(|diagram| diagram.hash)
-    }
-
-    pub(super) fn reset_diagram_view_to_fit(&mut self) {
-        self.diagram_scroll_x = 0;
-        self.diagram_scroll_y = 0;
-        self.diagram_zoom = 100;
-    }
-
-    pub(super) fn sync_diagram_fit_context(&mut self) {
-        let current_hash = self.current_visible_diagram_hash();
-        if current_hash != self.last_visible_diagram_hash {
-            self.reset_diagram_view_to_fit();
-            self.last_visible_diagram_hash = current_hash;
-        }
-    }
-
-    pub(super) fn handle_diagram_geometry_change(&mut self) {
-        self.reset_diagram_view_to_fit();
-        if self.side_panel.focused_page().is_some() {
-            self.diff_pane_scroll_x = 0;
-        }
-        crate::tui::mermaid::clear_image_state();
-        crate::tui::clear_side_panel_render_caches();
-        self.last_visible_diagram_hash = self.current_visible_diagram_hash();
-    }
-
-    /// If a left-click landed on an inline image's `expand` badge or on the
-    /// rendered image itself, cycle that image's size and return `true`.
-    /// Returns `false` (so the click can fall through to link/selection
-    /// handling) when neither was hit.
-    pub(super) fn try_cycle_image_expand_at(&mut self, column: u16, row: u16) -> bool {
-        let centered = self.centered;
-        let Some(image_id) = super::super::ui::inline_image_expand_target_from_screen(column, row)
-            .or_else(|| {
-                super::super::ui::inline_image_body_target_from_screen(column, row, centered)
-            })
-        else {
-            return false;
-        };
-        let level = self.cycle_image_expand(image_id);
-        let size = match level {
-            crate::tui::ui::inline_image_ui::ImageExpandLevel::Fit => "fit",
-            crate::tui::ui::inline_image_ui::ImageExpandLevel::Large => "large",
-            crate::tui::ui::inline_image_ui::ImageExpandLevel::Full => "full",
-        };
-        crate::tui::mermaid::set_mermaid_inline_expand_level(image_id, level as u8);
-        if let Some(source) = crate::tui::mermaid::mermaid_source_for_hash(image_id) {
-            let copied = super::helpers::copy_to_clipboard(&source);
-            self.set_status_notice(if copied {
-                format!("Image size: {size} · Mermaid code copied")
-            } else {
-                format!("Image size: {size} · Could not copy Mermaid code")
-            });
-        } else if let Some((media_type, data)) =
-            super::super::ui::inline_image_ui::payload_for_copy(image_id)
-        {
-            let copied = super::helpers::copy_image_to_clipboard(&media_type, &data);
-            self.set_status_notice(if copied {
-                format!("Image size: {size} · Image copied")
-            } else {
-                format!("Image size: {size} · Could not copy image")
-            });
-        }
-        true
     }
 
     /// If a left-click landed on a swarm notification's `▸ expand` /
@@ -439,57 +339,6 @@ impl App {
         message_lines.saturating_add(wrapped_text_lines(&self.streaming.streaming_text, width))
     }
 
-    pub(super) fn diagram_available(&self) -> bool {
-        self.diagram_mode == crate::config::DiagramDisplayMode::Pinned
-            && self.diagram_pane_enabled
-            && !crate::tui::mermaid::get_active_diagrams().is_empty()
-    }
-
-    pub(super) fn normalize_diagram_state(&mut self) {
-        if self.diagram_mode != crate::config::DiagramDisplayMode::Pinned {
-            self.diagram_focus = false;
-            self.diagram_index = 0;
-            self.diagram_scroll_x = 0;
-            self.diagram_scroll_y = 0;
-            self.last_visible_diagram_hash = None;
-            return;
-        }
-        if !self.diagram_pane_enabled {
-            self.diagram_focus = false;
-        }
-
-        let diagram_count = crate::tui::mermaid::get_active_diagrams().len();
-        if diagram_count == 0 {
-            self.diagram_focus = false;
-            self.diagram_index = 0;
-            self.diagram_scroll_x = 0;
-            self.diagram_scroll_y = 0;
-            self.last_visible_diagram_hash = None;
-            return;
-        }
-
-        if self.diagram_index >= diagram_count {
-            self.diagram_index = 0;
-            self.diagram_scroll_x = 0;
-            self.diagram_scroll_y = 0;
-        }
-
-        self.last_visible_diagram_hash = self.current_visible_diagram_hash();
-    }
-
-    pub(super) fn set_diagram_focus(&mut self, focus: bool) {
-        if self.diagram_focus == focus {
-            return;
-        }
-        self.diagram_focus = focus;
-        self.diff_pane_focus = false;
-        if focus {
-            self.set_status_notice("Focus: diagram (hjkl pan, [/] zoom, +/- resize)");
-        } else {
-            self.set_status_notice("Focus: chat");
-        }
-    }
-
     pub(super) fn diff_pane_visible(&self) -> bool {
         self.diff_mode.has_side_pane() || self.side_panel.focused_page().is_some()
     }
@@ -499,7 +348,6 @@ impl App {
             return;
         }
         self.diff_pane_focus = focus;
-        self.diagram_focus = false;
         if focus {
             if self.side_panel.focused_page_id.as_deref()
                 == Some(super::split_view::SPLIT_VIEW_PAGE_ID)
@@ -524,35 +372,6 @@ impl App {
             .diff_pane_scroll_x
             .saturating_add(dx)
             .clamp(-4096, 4096);
-    }
-
-    pub(super) fn close_panel_image_preview(&mut self) {
-        self.panel_image_preview = None;
-        crate::tui::mermaid::clear_image_state();
-    }
-
-    pub(super) fn adjust_side_panel_image_zoom(&mut self, delta_percent: i16) {
-        let current = self.side_panel_image_zoom_percent as i16;
-        let next = current.saturating_add(delta_percent).clamp(25, 250) as u8;
-        if next == self.side_panel_image_zoom_percent {
-            return;
-        }
-        self.side_panel_image_zoom_percent = next;
-        self.diff_pane_scroll_x = 0;
-        crate::tui::clear_side_panel_render_caches();
-        crate::tui::mermaid::clear_image_state();
-        self.set_status_notice(format!("Side image zoom: {}%", next));
-    }
-
-    pub(super) fn reset_side_panel_image_zoom(&mut self) {
-        if self.side_panel_image_zoom_percent == 100 {
-            return;
-        }
-        self.side_panel_image_zoom_percent = 100;
-        self.diff_pane_scroll_x = 0;
-        crate::tui::clear_side_panel_render_caches();
-        crate::tui::mermaid::clear_image_state();
-        self.set_status_notice("Side image zoom: fit".to_string());
     }
 
     pub(super) fn handle_diff_pane_focus_key(
@@ -600,15 +419,6 @@ impl App {
             KeyCode::Char('l') | KeyCode::Right if self.side_panel.focused_page().is_some() => {
                 self.pan_diff_pane_x(4);
             }
-            KeyCode::Char('+') | KeyCode::Char('=') if self.side_panel.focused_page().is_some() => {
-                self.adjust_side_panel_image_zoom(10);
-            }
-            KeyCode::Char('-') if self.side_panel.focused_page().is_some() => {
-                self.adjust_side_panel_image_zoom(-10);
-            }
-            KeyCode::Char('0') if self.side_panel.focused_page().is_some() => {
-                self.reset_side_panel_image_zoom();
-            }
             KeyCode::Esc => {
                 self.set_diff_pane_focus(false);
             }
@@ -645,41 +455,12 @@ impl App {
         crate::tui::clear_side_panel_render_caches();
     }
 
-    fn side_pane_has_visual_images(&self) -> bool {
-        if self.side_panel_user_hidden {
-            return false;
-        }
-        self.side_pane_has_visual_images_ignoring_user_hidden()
-    }
-
-    fn side_pane_has_visual_images_ignoring_user_hidden(&self) -> bool {
-        // Images now render inline in the transcript flow, not in the side
-        // panel, so they no longer drive the side-panel visibility heuristics.
-        false
-    }
-
-    pub(super) fn update_pinned_images_auto_hide(&mut self) -> bool {
-        // Images render inline in the transcript now, so there is no longer a
-        // pinned-image side panel to auto-reveal or auto-hide.
-        self.pinned_images_auto_hide_deadline = None;
-        self.pinned_images_seen_count = 0;
-        false
-    }
-
     fn side_pane_line_scroll_amount(&self) -> usize {
-        if self.side_pane_has_visual_images() {
-            1
-        } else {
-            3
-        }
+        3
     }
 
     fn side_pane_page_scroll_amount(&self) -> usize {
-        if self.side_pane_has_visual_images() {
-            8
-        } else {
-            20
-        }
+        20
     }
 
     /// Scroll the shared right side pane by `delta` lines (negative = up).
@@ -827,172 +608,70 @@ impl App {
         }
     }
 
-    pub(super) fn cycle_diagram(&mut self, direction: i32) {
-        let diagrams = crate::tui::mermaid::get_active_diagrams();
-        let count = diagrams.len();
-        if count == 0 {
-            return;
-        }
-        let current = self.diagram_index.min(count - 1);
-        let next = if direction < 0 {
-            if current == 0 { count - 1 } else { current - 1 }
-        } else if current + 1 >= count {
-            0
-        } else {
-            current + 1
-        };
-        self.diagram_index = next;
-        self.reset_diagram_view_to_fit();
-        self.last_visible_diagram_hash = diagrams.get(next).map(|diagram| diagram.hash);
-        self.set_status_notice(format!("Diagram {}/{}", next + 1, count));
+    pub(super) const SIDE_PANE_ANIM_DURATION: f32 = 0.15;
+
+    fn side_pane_ratio_limits(&self) -> (u8, u8) {
+        (25, 100)
     }
 
-    pub(super) fn pan_diagram(&mut self, dx: i32, dy: i32) {
-        self.diagram_scroll_x = (self.diagram_scroll_x + dx).max(0);
-        self.diagram_scroll_y = (self.diagram_scroll_y + dy).max(0);
-    }
-
-    pub(super) const DIAGRAM_PANE_ANIM_DURATION: f32 = 0.15;
-
-    fn diagram_pane_ratio_limits(&self) -> (u8, u8) {
-        match self.diagram_pane_position {
-            crate::config::DiagramPanePosition::Side => (25, 100),
-            crate::config::DiagramPanePosition::Top => (20, 100),
-        }
-    }
-
-    fn set_diagram_pane_ratio(&mut self, next: i16, animate: bool, announce: bool) {
-        let (min_ratio, max_ratio) = self.diagram_pane_ratio_limits();
+    fn set_side_pane_ratio(&mut self, next: i16, animate: bool, announce: bool) {
+        let (min_ratio, max_ratio) = self.side_pane_ratio_limits();
         let next = next.clamp(min_ratio as i16, max_ratio as i16) as u8;
-        let current_target = self.diagram_pane_ratio_target;
+        let current_target = self.side_pane_ratio_target;
         if next == current_target {
             if !animate {
-                self.diagram_pane_ratio = next;
-                self.diagram_pane_ratio_from = next;
-                self.diagram_pane_anim_start = None;
+                self.side_pane_ratio = next;
+                self.side_pane_ratio_from = next;
+                self.side_pane_anim_start = None;
             }
             return;
         }
 
         if animate {
-            self.diagram_pane_ratio_from = self.animated_diagram_pane_ratio();
-            self.diagram_pane_ratio_target = next;
-            self.diagram_pane_anim_start = Some(Instant::now());
+            self.side_pane_ratio_from = self.animated_side_pane_ratio();
+            self.side_pane_ratio_target = next;
+            self.side_pane_anim_start = Some(Instant::now());
         } else {
-            self.diagram_pane_ratio = next;
-            self.diagram_pane_ratio_from = next;
-            self.diagram_pane_ratio_target = next;
-            self.diagram_pane_anim_start = None;
+            self.side_pane_ratio = next;
+            self.side_pane_ratio_from = next;
+            self.side_pane_ratio_target = next;
+            self.side_pane_anim_start = None;
         }
 
-        self.handle_diagram_geometry_change();
-
         if announce {
-            self.set_status_notice(format!("Diagram pane: {}%", next));
+            self.set_status_notice(format!("Side pane: {}%", next));
         }
     }
 
-    pub(super) fn animated_diagram_pane_ratio(&self) -> u8 {
-        let Some(start) = self.diagram_pane_anim_start else {
-            return self.diagram_pane_ratio_target;
+    pub(super) fn animated_side_pane_ratio(&self) -> u8 {
+        let Some(start) = self.side_pane_anim_start else {
+            return self.side_pane_ratio_target;
         };
         let elapsed = start.elapsed().as_secs_f32();
-        let t = (elapsed / Self::DIAGRAM_PANE_ANIM_DURATION).clamp(0.0, 1.0);
+        let t = (elapsed / Self::SIDE_PANE_ANIM_DURATION).clamp(0.0, 1.0);
         let t = t * t * (3.0 - 2.0 * t);
-        let from = self.diagram_pane_ratio_from as f32;
-        let to = self.diagram_pane_ratio_target as f32;
+        let from = self.side_pane_ratio_from as f32;
+        let to = self.side_pane_ratio_target as f32;
         (from + (to - from) * t).round() as u8
     }
 
-    pub(super) fn adjust_diagram_pane_ratio(&mut self, delta: i8) {
-        let next = self.diagram_pane_ratio_target as i16 + delta as i16;
-        self.diagram_pane_ratio_user_adjusted = true;
-        self.set_diagram_pane_ratio(next, true, true);
-    }
-
-    pub(super) fn set_diagram_pane_ratio_immediate(&mut self, next: u8) {
-        self.diagram_pane_ratio_user_adjusted = true;
-        self.set_diagram_pane_ratio(next as i16, false, false);
+    pub(super) fn set_side_pane_ratio_immediate(&mut self, next: u8) {
+        self.side_pane_ratio_user_adjusted = true;
+        self.set_side_pane_ratio(next as i16, false, false);
     }
 
     pub(super) fn set_side_panel_ratio_preset(&mut self, next: u8) {
-        self.set_diagram_pane_ratio(next as i16, false, false);
-        self.set_status_notice(format!("Side panel: {}%", self.diagram_pane_ratio_target));
-    }
-
-    /// Toggle whether inline transcript images render expanded or as
-    /// collapsed label stubs. Persisted so the choice survives restarts and
-    /// session resumes.
-    pub(super) fn toggle_inline_images(&mut self) {
-        self.inline_images_visible = !self.inline_images_visible;
-        super::ui_prefs::save_inline_images_visible(self.inline_images_visible);
-        self.set_status_notice(if self.inline_images_visible {
-            "Inline images: ON".to_string()
-        } else {
-            let alt = jcode_tui_core::keybind::alt_chord("Shift+I");
-            format!("Inline images: hidden ({alt} to show)")
-        });
-    }
-
-    /// Toggle the per-image inline expand level (Fit <-> Large) for
-    /// `image_id`. Bumps `expanded_images_version` so the body/full-prep
-    /// caches rebuild with the new placeholder geometry. Returns the new level.
-    pub(super) fn cycle_image_expand(
-        &mut self,
-        image_id: u64,
-    ) -> crate::tui::ui::inline_image_ui::ImageExpandLevel {
-        use crate::tui::ui::inline_image_ui::ImageExpandLevel;
-        let current = self
-            .expanded_images
-            .get(&image_id)
-            .copied()
-            .unwrap_or_default();
-        let next = ImageExpandLevel::from_index(
-            crate::tui::mermaid::next_distinct_mermaid_inline_level(image_id, current as u8),
-        );
-        if matches!(next, ImageExpandLevel::Fit) {
-            self.expanded_images.remove(&image_id);
-        } else {
-            self.expanded_images.insert(image_id, next);
-        }
-        self.expanded_images_version = self.expanded_images_version.wrapping_add(1);
-        let status = match next {
-            ImageExpandLevel::Fit => "Image size: fit",
-            ImageExpandLevel::Large => "Image size: large",
-            ImageExpandLevel::Full => "Image size: full",
-        };
-        self.set_status_notice(status);
-        next
+        self.set_side_pane_ratio(next as i16, false, false);
+        self.set_status_notice(format!("Side panel: {}%", self.side_pane_ratio_target));
     }
 
     pub(super) fn toggle_side_panel(&mut self) {
         if self.side_panel_user_hidden {
             self.side_panel_user_hidden = false;
             self.side_panel_explicit_hidden = false;
-            self.pinned_images_auto_hide_deadline = None;
-            if self.side_panel.pages.is_empty() {
-                if self.side_pane_has_visual_images_ignoring_user_hidden() {
-                    self.sync_diagram_fit_context();
-                    self.set_status_notice("Image side panel: ON");
-                } else {
-                    self.toggle_diagram_pane();
-                }
-                return;
-            }
-        }
-
-        if self.side_pane_has_visual_images() {
-            self.side_panel_user_hidden = true;
-            self.side_panel_explicit_hidden = true;
-            self.pinned_images_auto_hide_deadline = None;
-            self.set_diff_pane_focus(false);
-            self.sync_diagram_fit_context();
-            self.set_status_notice("Image side panel: OFF");
-            return;
         }
 
         if self.side_panel.pages.is_empty() {
-            self.toggle_diagram_pane();
             return;
         }
 
@@ -1004,7 +683,6 @@ impl App {
             if !self.diff_pane_visible() {
                 self.set_diff_pane_focus(false);
             }
-            self.sync_diagram_fit_context();
             self.set_status_notice("Side panel: OFF");
             return;
         }
@@ -1017,7 +695,6 @@ impl App {
             .or_else(|| self.side_panel.pages.first().map(|page| page.id.clone()));
 
         let Some(restore_id) = restore_id else {
-            self.toggle_diagram_pane();
             return;
         };
 
@@ -1025,135 +702,12 @@ impl App {
         self.last_side_panel_focus_id = Some(restore_id);
         self.side_panel_user_hidden = false;
         self.side_panel_explicit_hidden = false;
-        self.sync_diagram_fit_context();
         let status = self
             .side_panel
             .focused_page()
             .map(|page| format!("Side panel: {}", page.title))
             .unwrap_or_else(|| "Side panel: ON".to_string());
         self.set_status_notice(status);
-    }
-
-    pub(super) fn adjust_diagram_zoom(&mut self, delta: i8) {
-        let next = (self.diagram_zoom as i16 + delta as i16).clamp(50, 200) as u8;
-        if next != self.diagram_zoom {
-            self.diagram_zoom = next;
-            self.set_status_notice(format!("Diagram zoom: {}%", next));
-        }
-    }
-
-    pub(super) fn toggle_diagram_pane(&mut self) {
-        if self.diagram_mode != crate::config::DiagramDisplayMode::Pinned {
-            self.diagram_mode = crate::config::DiagramDisplayMode::Pinned;
-        }
-        super::super::markdown::set_diagram_mode_override(Some(self.diagram_mode));
-        self.diagram_pane_enabled = !self.diagram_pane_enabled;
-        if !self.diagram_pane_enabled {
-            self.diagram_focus = false;
-        }
-        let status = if self.diagram_pane_enabled {
-            "Diagram pane: ON"
-        } else {
-            "Diagram pane: OFF"
-        };
-        self.set_status_notice(status);
-    }
-
-    pub(super) fn toggle_diagram_pane_position(&mut self) {
-        use crate::config::DiagramPanePosition;
-        self.diagram_pane_position = match self.diagram_pane_position {
-            DiagramPanePosition::Side => DiagramPanePosition::Top,
-            DiagramPanePosition::Top => DiagramPanePosition::Side,
-        };
-        let (min_ratio, max_ratio) = self.diagram_pane_ratio_limits();
-        self.diagram_pane_ratio_target = self.diagram_pane_ratio_target.clamp(min_ratio, max_ratio);
-        self.diagram_pane_ratio = self.diagram_pane_ratio_target;
-        self.diagram_pane_ratio_from = self.diagram_pane_ratio_target;
-        self.diagram_pane_anim_start = None;
-        self.handle_diagram_geometry_change();
-        let label = match self.diagram_pane_position {
-            DiagramPanePosition::Side => "side",
-            DiagramPanePosition::Top => "top",
-        };
-        self.set_status_notice(format!("Diagram pane: {}", label));
-    }
-
-    pub(super) fn pop_out_diagram(&mut self) {
-        let diagrams = super::super::mermaid::get_active_diagrams();
-        let total = diagrams.len();
-        if total == 0 {
-            self.set_status_notice("No diagrams to open");
-            return;
-        }
-        let index = self.diagram_index.min(total - 1);
-        let diagram = &diagrams[index];
-        if let Some(path) = super::super::mermaid::get_cached_path(diagram.hash) {
-            if path.exists() {
-                match super::helpers::open_path_or_url_detached(&path) {
-                    Ok(_) => self.set_status_notice(format!(
-                        "Opened diagram {}/{} in viewer",
-                        index + 1,
-                        total
-                    )),
-                    Err(e) => self.set_status_notice(format!("Failed to open: {}", e)),
-                }
-            } else {
-                self.set_status_notice("Diagram image not found on disk");
-            }
-        } else {
-            self.set_status_notice("Diagram not cached");
-        }
-    }
-
-    pub(super) fn handle_diagram_ctrl_key(
-        &mut self,
-        code: KeyCode,
-        diagram_available: bool,
-    ) -> bool {
-        if diagram_available {
-            match code {
-                KeyCode::Left => {
-                    if !self.diagram_focus {
-                        return false;
-                    }
-                    self.cycle_diagram(-1);
-                    return true;
-                }
-                KeyCode::Right => {
-                    if !self.diagram_focus {
-                        return false;
-                    }
-                    self.cycle_diagram(1);
-                    return true;
-                }
-                KeyCode::Char('h') => {
-                    if !self.diagram_focus {
-                        return false;
-                    }
-                    self.set_diagram_focus(false);
-                    return true;
-                }
-                KeyCode::Char('l') => {
-                    self.set_diagram_focus(true);
-                    return true;
-                }
-                _ => {}
-            }
-        }
-        if self.diff_pane_visible() {
-            match code {
-                KeyCode::Char('l') => {
-                    self.set_diff_pane_focus(true);
-                    return true;
-                }
-                KeyCode::Char('h') => {
-                    self.set_diff_pane_focus(false);
-                    return true;
-                }
-                _ => {}
-            }
-        }
-        false
     }
 
     pub(super) fn ctrl_prompt_rank(code: &KeyCode, modifiers: KeyModifiers) -> Option<usize> {
@@ -1188,35 +742,6 @@ impl App {
         }
     }
 
-    pub(super) fn handle_diagram_focus_key(
-        &mut self,
-        code: KeyCode,
-        modifiers: KeyModifiers,
-        diagram_available: bool,
-    ) -> bool {
-        if !diagram_available || !self.diagram_focus || modifiers.contains(KeyModifiers::CONTROL) {
-            return false;
-        }
-
-        match code {
-            KeyCode::Char('h') | KeyCode::Left => self.pan_diagram(-4, 0),
-            KeyCode::Char('l') | KeyCode::Right => self.pan_diagram(4, 0),
-            KeyCode::Char('k') | KeyCode::Up => self.pan_diagram(0, -3),
-            KeyCode::Char('j') | KeyCode::Down => self.pan_diagram(0, 3),
-            KeyCode::Char('+') | KeyCode::Char('=') => self.adjust_diagram_pane_ratio(5),
-            KeyCode::Char('-') | KeyCode::Char('_') => self.adjust_diagram_pane_ratio(-5),
-            KeyCode::Char(']') => self.adjust_diagram_zoom(10),
-            KeyCode::Char('[') => self.adjust_diagram_zoom(-10),
-            KeyCode::Char('o') => self.pop_out_diagram(),
-            KeyCode::Esc => {
-                self.set_diagram_focus(false);
-            }
-            _ => {}
-        }
-
-        true
-    }
-
     /// Returns true if this was a scroll-only event (safe to defer redraw during streaming)
     pub(super) fn handle_mouse_event(&mut self, mouse: MouseEvent) -> bool {
         let trace_scroll = tui_mouse_scroll_trace_enabled() && is_mouse_scroll_kind(mouse.kind);
@@ -1234,13 +759,6 @@ impl App {
                 }
                 return scroll_only;
             }};
-        }
-
-        if self.panel_image_preview.is_some() {
-            if matches!(mouse.kind, MouseEventKind::Up(MouseButton::Left)) {
-                self.close_panel_image_preview();
-            }
-            finish_mouse_event!(false, "panel_image_preview");
         }
 
         if self.changelog_scroll.is_some() {
@@ -1330,64 +848,41 @@ impl App {
             picker_cell.borrow_mut().handle_overlay_mouse(mouse);
             finish_mouse_event!(false, "account_picker_overlay");
         }
-        self.normalize_diagram_state();
-        let diagram_available = self.diagram_available();
         let layout = super::super::ui::last_layout_snapshot();
-        let mut over_diagram = false;
         let mut over_diff_pane = false;
-        let mut on_diagram_border = false;
+        let mut on_side_pane_border = false;
         let mut input_area: Option<Rect> = None;
         let mut current_messages_area: Option<Rect> = None;
-        let mut current_diagram_area: Option<Rect> = None;
+        let mut current_side_pane_area: Option<Rect> = None;
         let mut terminal_width: u16 = 0;
         let mut terminal_height: u16 = 0;
         if let Some(layout) = layout {
             current_messages_area = Some(layout.messages_area);
-            current_diagram_area = layout.diagram_area;
+            current_side_pane_area = layout.diff_pane_area;
             input_area = layout.input_area;
             terminal_width =
-                layout.messages_area.width + layout.diagram_area.map(|a| a.width).unwrap_or(0);
+                layout.messages_area.width + layout.diff_pane_area.map(|a| a.width).unwrap_or(0);
             terminal_height =
-                layout.messages_area.height + layout.diagram_area.map(|a| a.height).unwrap_or(0);
-            if let Some(diagram_area) = layout.diagram_area {
-                over_diagram = super::super::layout_utils::point_in_rect(
+                layout.messages_area.height + layout.diff_pane_area.map(|a| a.height).unwrap_or(0);
+            if let Some(pane_area) = layout.diff_pane_area {
+                over_diff_pane = super::super::layout_utils::point_in_rect(
                     mouse.column,
                     mouse.row,
-                    diagram_area,
+                    pane_area,
                 );
-                let is_side = matches!(
-                    self.diagram_pane_position,
-                    crate::config::DiagramPanePosition::Side
-                );
-                if is_side {
-                    let border_x = diagram_area.x;
-                    on_diagram_border = mouse.column >= border_x.saturating_sub(1)
-                        && mouse.column <= border_x.saturating_add(1);
-                } else {
-                    let border_y = diagram_area.y.saturating_add(diagram_area.height);
-                    on_diagram_border = mouse.row >= border_y.saturating_sub(1)
-                        && mouse.row <= border_y.saturating_add(1);
-                }
+                let border_x = pane_area.x;
+                on_side_pane_border = mouse.column >= border_x.saturating_sub(1)
+                    && mouse.column <= border_x.saturating_add(1);
             }
-            if let Some(diff_area) = layout.diff_pane_area {
-                over_diff_pane =
-                    super::super::layout_utils::point_in_rect(mouse.column, mouse.row, diff_area);
-            }
-            if diagram_available && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
-                if on_diagram_border {
-                    self.diagram_pane_dragging = true;
-                } else if over_diagram {
-                    self.set_diagram_focus(true);
-                } else {
-                    self.set_diagram_focus(false);
-                }
+            if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) && on_side_pane_border
+            {
+                self.side_pane_dragging = true;
             }
         }
 
         let clicked_main_chat = matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
             && !over_diff_pane
-            && !over_diagram
-            && !on_diagram_border;
+            && !on_side_pane_border;
         if clicked_main_chat {
             self.set_diff_pane_focus(false);
         }
@@ -1432,24 +927,21 @@ impl App {
             finish_mouse_event!(false, "input_cursor_click");
         }
 
-        if self.diagram_pane_dragging {
+        if self.side_pane_dragging {
             match mouse.kind {
                 MouseEventKind::Drag(MouseButton::Left) => {
-                    if diagram_available {
-                        self.diagram_pane_anim_start = None;
-                        let is_side = matches!(
-                            self.diagram_pane_position,
-                            crate::config::DiagramPanePosition::Side
-                        );
+                    {
+                        self.side_pane_anim_start = None;
+                        let is_side = true;
                         let new_ratio = if is_side {
                             if let (Some(messages_area), Some(diagram_area)) =
-                                (current_messages_area, current_diagram_area)
+                                (current_messages_area, current_side_pane_area)
                             {
                                 let right_edge = diagram_area.x.saturating_add(diagram_area.width);
                                 let total_width = right_edge.saturating_sub(messages_area.x);
                                 let desired_width = right_edge.saturating_sub(mouse.column);
                                 if desired_width == diagram_area.width || total_width == 0 {
-                                    self.diagram_pane_ratio_target
+                                    self.side_pane_ratio_target
                                 } else {
                                     ((desired_width as u32 * 100) / total_width as u32) as u8
                                 }
@@ -1457,58 +949,26 @@ impl App {
                                 ((terminal_width.saturating_sub(mouse.column)) as u32 * 100
                                     / terminal_width as u32) as u8
                             } else {
-                                self.diagram_pane_ratio_target
+                                self.side_pane_ratio_target
                             }
                         } else if !is_side && terminal_height > 0 {
                             (mouse.row as u32 * 100 / terminal_height as u32) as u8
                         } else {
-                            self.diagram_pane_ratio_target
+                            self.side_pane_ratio_target
                         };
-                        self.set_diagram_pane_ratio_immediate(new_ratio);
+                        self.set_side_pane_ratio_immediate(new_ratio);
                     }
                 }
                 MouseEventKind::Up(MouseButton::Left) => {
-                    self.diagram_pane_dragging = false;
+                    self.side_pane_dragging = false;
                 }
                 _ => {}
             }
-            finish_mouse_event!(false, "diagram_dragging");
+            finish_mouse_event!(false, "side_pane_dragging");
         }
 
         let mut handled_scroll = false;
         let mut immediate_redraw = false;
-        if diagram_available
-            && over_diagram
-            && matches!(
-                mouse.kind,
-                MouseEventKind::ScrollUp
-                    | MouseEventKind::ScrollDown
-                    | MouseEventKind::ScrollLeft
-                    | MouseEventKind::ScrollRight
-            )
-        {
-            if mouse.modifiers.contains(KeyModifiers::CONTROL) {
-                match mouse.kind {
-                    MouseEventKind::ScrollUp => self.adjust_diagram_zoom(10),
-                    MouseEventKind::ScrollDown => self.adjust_diagram_zoom(-10),
-                    _ => {}
-                }
-                self.set_diagram_focus(true);
-                handled_scroll = true;
-            } else {
-                // Wheel input belongs to the pane under the pointer, even while
-                // keyboard focus stays in chat. Do not fall through at pan limits.
-                match mouse.kind {
-                    MouseEventKind::ScrollUp => self.pan_diagram(0, -1),
-                    MouseEventKind::ScrollDown => self.pan_diagram(0, 1),
-                    MouseEventKind::ScrollLeft => self.pan_diagram(-1, 0),
-                    MouseEventKind::ScrollRight => self.pan_diagram(1, 0),
-                    _ => {}
-                }
-                handled_scroll = true;
-            }
-        }
-
         if !handled_scroll
             && over_diff_pane
             && self.diff_pane_visible()
@@ -1524,13 +984,7 @@ impl App {
             // in chat while inspecting pinned content. But when the side panel is visible, redraw
             // immediately so scroll/pan feels responsive instead of waiting for the next tick.
             let side_panel_visible = self.side_panel.focused_page().is_some();
-            if side_panel_visible && mouse.modifiers.contains(KeyModifiers::CONTROL) {
-                match mouse.kind {
-                    MouseEventKind::ScrollUp => self.adjust_side_panel_image_zoom(10),
-                    MouseEventKind::ScrollDown => self.adjust_side_panel_image_zoom(-10),
-                    _ => {}
-                }
-            } else {
+            {
                 match mouse.kind {
                     MouseEventKind::ScrollUp => {
                         self.scroll_wheel(MouseScrollTarget::SidePane, -1);
@@ -1553,21 +1007,6 @@ impl App {
 
         if handled_scroll {
             finish_mouse_event!(!immediate_redraw, "hovered_pane_scroll");
-        }
-
-        if matches!(mouse.kind, MouseEventKind::Up(MouseButton::Left))
-            && let Some(hash) =
-                crate::tui::ui::panel_image_preview::image_at(mouse.column, mouse.row)
-        {
-            self.panel_image_preview = Some(hash);
-            crate::tui::mermaid::clear_image_state();
-            finish_mouse_event!(false, "open_panel_image_preview");
-        }
-
-        if matches!(mouse.kind, MouseEventKind::Up(MouseButton::Left))
-            && self.try_cycle_image_expand_at(mouse.column, mouse.row)
-        {
-            finish_mouse_event!(false, "cycle_image_expand");
         }
 
         if matches!(mouse.kind, MouseEventKind::Up(MouseButton::Left))

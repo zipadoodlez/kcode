@@ -31,38 +31,8 @@ pub fn load_base_system_prompt(working_dir: Option<&Path>) -> String {
     DEFAULT_SYSTEM_PROMPT.to_string()
 }
 
-/// Prompt guidance for the optional Mermaid rendering capability.
-pub const MERMAID_PROMPT: &str = "# Mermaid\n\nRender fenced `mermaid` blocks inline.";
-
-/// Harness capabilities that conditionally contribute prompt modules.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PromptCapabilities {
-    pub mermaid: bool,
-}
-
-impl Default for PromptCapabilities {
-    fn default() -> Self {
-        Self { mermaid: true }
-    }
-}
-
-impl PromptCapabilities {
-    fn current() -> Self {
-        Self {
-            mermaid: crate::config::config().features.mermaid,
-        }
-    }
-}
-
-fn base_system_prompt_parts(
-    capabilities: PromptCapabilities,
-    working_dir: Option<&Path>,
-) -> Vec<String> {
-    let mut parts = vec![load_base_system_prompt(working_dir)];
-    if capabilities.mermaid {
-        parts.push(MERMAID_PROMPT.to_string());
-    }
-    parts
+fn base_system_prompt_parts(working_dir: Option<&Path>) -> Vec<String> {
+    vec![load_base_system_prompt(working_dir)]
 }
 
 /// Built-in default swarm prompt: model-routing guidance for spawned swarm
@@ -423,23 +393,7 @@ pub fn build_system_prompt_full(
     is_selfdev: bool,
     working_dir: Option<&Path>,
 ) -> (String, ContextInfo) {
-    build_system_prompt_full_with_capabilities(
-        skill_prompt,
-        available_skills,
-        is_selfdev,
-        working_dir,
-        PromptCapabilities::current(),
-    )
-}
-
-pub fn build_system_prompt_full_with_capabilities(
-    skill_prompt: Option<&str>,
-    available_skills: &[SkillInfo],
-    is_selfdev: bool,
-    working_dir: Option<&Path>,
-    capabilities: PromptCapabilities,
-) -> (String, ContextInfo) {
-    let mut parts = base_system_prompt_parts(capabilities, working_dir);
+    let mut parts = base_system_prompt_parts(working_dir);
     let mut info = ContextInfo {
         system_prompt_chars: parts.join("\n\n").len(),
         ..Default::default()
@@ -502,29 +456,12 @@ pub fn build_system_prompt_split(
     is_selfdev: bool,
     working_dir: Option<&Path>,
 ) -> (SplitSystemPrompt, ContextInfo) {
-    build_system_prompt_split_with_capabilities(
-        skill_prompt,
-        available_skills,
-        is_selfdev,
-        working_dir,
-        PromptCapabilities::current(),
-    )
-}
-
-pub fn build_system_prompt_split_with_capabilities(
-    skill_prompt: Option<&str>,
-    available_skills: &[SkillInfo],
-    is_selfdev: bool,
-    working_dir: Option<&Path>,
-    capabilities: PromptCapabilities,
-) -> (SplitSystemPrompt, ContextInfo) {
     let agents_md = load_agents_md_files_from_dir(working_dir);
-    build_system_prompt_split_with_capabilities_and_agents_md(
+    build_system_prompt_split_with_agents_md(
         skill_prompt,
         available_skills,
         is_selfdev,
         working_dir,
-        capabilities,
         agents_md,
     )
 }
@@ -541,25 +478,7 @@ pub fn build_system_prompt_split_with_agents_md(
     working_dir: Option<&Path>,
     agents_md: (Option<String>, ContextInfo),
 ) -> (SplitSystemPrompt, ContextInfo) {
-    build_system_prompt_split_with_capabilities_and_agents_md(
-        skill_prompt,
-        available_skills,
-        is_selfdev,
-        working_dir,
-        PromptCapabilities::current(),
-        agents_md,
-    )
-}
-
-fn build_system_prompt_split_with_capabilities_and_agents_md(
-    skill_prompt: Option<&str>,
-    available_skills: &[SkillInfo],
-    is_selfdev: bool,
-    working_dir: Option<&Path>,
-    capabilities: PromptCapabilities,
-    agents_md: (Option<String>, ContextInfo),
-) -> (SplitSystemPrompt, ContextInfo) {
-    let mut static_parts = base_system_prompt_parts(capabilities, working_dir);
+    let mut static_parts = base_system_prompt_parts(working_dir);
     let mut dynamic_parts = Vec::new();
     let mut info = ContextInfo {
         system_prompt_chars: static_parts.join("\n\n").len(),

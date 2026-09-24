@@ -2308,38 +2308,8 @@ pub(super) fn is_scroll_only_key(app: &App, code: KeyCode, modifiers: KeyModifie
         }
     }
 
-    let diagram_available = app.diagram_available();
-    if diagram_available && app.diagram_focus && !modifiers.contains(KeyModifiers::CONTROL) {
-        match code {
-            KeyCode::Char('h')
-            | KeyCode::Left
-            | KeyCode::Char('l')
-            | KeyCode::Right
-            | KeyCode::Char('k')
-            | KeyCode::Up
-            | KeyCode::Char('j')
-            | KeyCode::Down
-            | KeyCode::Char('+')
-            | KeyCode::Char('=')
-            | KeyCode::Char('-')
-            | KeyCode::Char('_')
-            | KeyCode::Char(']')
-            | KeyCode::Char('[')
-            | KeyCode::Char('o')
-            | KeyCode::Esc => return true,
-            _ => {}
-        }
-    }
 
     if modifiers.contains(KeyModifiers::CONTROL) {
-        if diagram_available {
-            match code {
-                KeyCode::Left | KeyCode::Right | KeyCode::Char('h') | KeyCode::Char('l') => {
-                    return true;
-                }
-                _ => {}
-            }
-        }
         if app.diff_pane_visible() {
             match code {
                 KeyCode::Char('h') | KeyCode::Char('l') => return true,
@@ -2391,10 +2361,6 @@ pub(super) fn handle_pre_control_shortcuts(
 
     if app.toggle_keys.side_panel.matches(code, modifiers) {
         app.toggle_side_panel();
-        return true;
-    }
-    if app.toggle_keys.diagram_pane.matches(code, modifiers) {
-        app.toggle_diagram_pane_position();
         return true;
     }
     if app.toggle_keys.typing_scroll_lock.matches(code, modifiers) {
@@ -2472,11 +2438,6 @@ pub(super) fn handle_pre_control_shortcuts(
         return true;
     }
 
-    app.normalize_diagram_state();
-    let diagram_available = app.diagram_available();
-    if app.handle_diagram_focus_key(code, modifiers, diagram_available) {
-        return true;
-    }
     if app.handle_diff_pane_focus_key(code, modifiers) {
         return true;
     }
@@ -2525,10 +2486,6 @@ pub(super) fn handle_visible_copy_shortcut(
         return true;
     }
 
-    if handle_inline_image_toggle_shortcut(app, c) {
-        return true;
-    }
-
     if let Some(target) = crate::tui::ui::recent_flicker_copy_target_for_key(c)
         .or_else(|| crate::tui::ui::visible_copy_target_for_key(c))
     {
@@ -2558,22 +2515,6 @@ fn visible_copy_shortcut_key(code: KeyCode, modifiers: KeyModifiers) -> Option<c
     };
 
     modifiers.contains(KeyModifiers::ALT).then_some(c)
-}
-
-/// Alt+Shift+I toggles inline transcript images between expanded and
-/// collapsed label stubs. Only active when the transcript actually has
-/// inline images, so the chord stays inert otherwise.
-fn handle_inline_image_toggle_shortcut(app: &mut App, key: char) -> bool {
-    if !key.eq_ignore_ascii_case(&'i') {
-        return false;
-    }
-    use crate::tui::TuiState as _;
-    if app.side_pane_images_signature().0 == 0 {
-        return false;
-    }
-    app.record_copy_badge_key_press('i');
-    app.toggle_inline_images();
-    true
 }
 
 pub(super) fn handle_expand_edit_badge_shortcut(app: &mut App, key: char) -> bool {
@@ -2695,11 +2636,7 @@ pub(super) fn handle_modal_key(
 
 pub(super) fn handle_scroll_overlay_key(app: &mut App, code: KeyCode) -> Result<bool> {
     // This overlay seam is shared by local/replay and live remote clients.
-    if app.panel_image_preview.is_some() {
-        if matches!(code, KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q')) {
-            app.close_panel_image_preview();
-        }
-    } else if app.changelog_scroll.is_some() {
+    if app.changelog_scroll.is_some() {
         app.handle_changelog_key(code)?;
     } else if app.help_scroll.is_some() {
         app.handle_help_key(code)?;
@@ -2712,15 +2649,7 @@ pub(super) fn handle_scroll_overlay_key(app: &mut App, code: KeyCode) -> Result<
     Ok(true)
 }
 
-pub(super) fn handle_global_control_shortcuts(
-    app: &mut App,
-    code: KeyCode,
-    diagram_available: bool,
-) -> bool {
-    if app.handle_diagram_ctrl_key(code, diagram_available) {
-        return true;
-    }
-
+pub(super) fn handle_global_control_shortcuts(app: &mut App, code: KeyCode) -> bool {
     match code {
         KeyCode::Char('d') if try_ctrl_d_forward_delete(app) => true,
         KeyCode::Char('c') | KeyCode::Char('d') => {
@@ -3095,9 +3024,6 @@ impl App {
             return Ok(());
         }
 
-        self.normalize_diagram_state();
-        let diagram_available = self.diagram_available();
-
         // Ctrl / Alt(Option) / Cmd(Super) + Up all recall queued/pending messages
         // for editing and then walk prompt history. We accept any of the three
         // single modifiers so the gesture works regardless of which one a given
@@ -3120,7 +3046,7 @@ impl App {
 
         // Handle ctrl combos regardless of processing state
         if modifiers.contains(KeyModifiers::CONTROL)
-            && handle_global_control_shortcuts(self, code, diagram_available)
+            && handle_global_control_shortcuts(self, code)
         {
             return Ok(());
         }
@@ -3220,7 +3146,6 @@ impl App {
     fn commit_resize_redraw(&mut self, now: std::time::Instant) -> bool {
         self.last_resize_redraw = Some(now);
         self.resize_redraw_pending = false;
-        self.handle_diagram_geometry_change();
         true
     }
 
@@ -3612,7 +3537,6 @@ impl App {
         self.reasoning_block_start = None;
         self.refresh_split_view_if_needed();
         self.streaming_md_renderer.borrow_mut().reset();
-        crate::tui::mermaid::clear_streaming_preview_diagram();
     }
 
     /// Reset provider-reported usage that belongs to a transcript being fully
@@ -3678,7 +3602,6 @@ impl App {
         self.reasoning_block_start = None;
         self.refresh_split_view_if_needed();
         self.streaming_md_renderer.borrow_mut().reset();
-        crate::tui::mermaid::clear_streaming_preview_diagram();
         content
     }
 
@@ -3703,8 +3626,7 @@ impl App {
             // `replace_streaming_text` (remote TextReplace, debug snapshot
             // restore); `take_streaming_text` and `clear_streaming_render_state`
             // both clear it themselves.
-            crate::tui::mermaid::clear_streaming_preview_diagram();
-            return false;
+                return false;
         }
 
         // `take_streaming_text` also clears the streaming mermaid preview

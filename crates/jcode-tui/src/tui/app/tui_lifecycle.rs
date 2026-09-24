@@ -555,8 +555,6 @@ impl App {
             tool_output_scan_index: 0,
             remote_session_id: None,
             remote_sessions: Vec::new(),
-            remote_side_pane_images: Vec::new(),
-            side_pane_images_signature_cache: std::cell::Cell::new(None),
             remote_swarm_members: Vec::new(),
             swarm_plan_items: Vec::new(),
             swarm_plan_version: None,
@@ -574,25 +572,14 @@ impl App {
             swarm_panel_full_page: false,
             diff_mode: display.diff_mode,
             centered: display.centered,
-            diagram_mode: display.diagram_mode,
-            diagram_focus: false,
-            diagram_index: 0,
-            diagram_scroll_x: 0,
-            diagram_scroll_y: 0,
-            diagram_pane_ratio: 40,
-            diagram_pane_ratio_from: 40,
-            diagram_pane_ratio_target: 40,
-            diagram_pane_ratio_user_adjusted: false,
-            diagram_pane_anim_start: None,
-            diagram_pane_enabled: true,
-            diagram_pane_position: crate::config::DiagramPanePosition::default(),
-            diagram_zoom: 100,
-            last_visible_diagram_hash: None,
-            diagram_pane_dragging: false,
+            side_pane_ratio: 40,
+            side_pane_ratio_from: 40,
+            side_pane_ratio_target: 40,
+            side_pane_ratio_user_adjusted: false,
+            side_pane_anim_start: None,
+            side_pane_dragging: false,
             diff_pane_scroll: 0,
             diff_pane_scroll_x: 0,
-            side_panel_image_zoom_percent: 100,
-            panel_image_preview: None,
             diff_pane_focus: false,
             diff_pane_auto_scroll: true,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
@@ -620,12 +607,6 @@ impl App {
             last_side_panel_focus_id: None,
             side_panel_user_hidden: false,
             side_panel_explicit_hidden: false,
-            pin_images: display.pin_images,
-            inline_images_visible: super::ui_prefs::inline_images_visible(),
-            expanded_images: std::collections::HashMap::new(),
-            expanded_images_version: 0,
-            pinned_images_auto_hide_deadline: None,
-            pinned_images_seen_count: 0,
             chat_native_scrollbar: display.native_scrollbars.chat,
             side_panel_native_scrollbar: display.native_scrollbars.side_panel,
             inline_view_state: None,
@@ -979,8 +960,6 @@ impl App {
             tool_output_scan_index: 0,
             remote_session_id: None,
             remote_sessions: Vec::new(),
-            remote_side_pane_images: Vec::new(),
-            side_pane_images_signature_cache: std::cell::Cell::new(None),
             remote_swarm_members: Vec::new(),
             swarm_plan_items: Vec::new(),
             swarm_plan_version: None,
@@ -998,25 +977,14 @@ impl App {
             swarm_panel_full_page: false,
             diff_mode: display.diff_mode,
             centered: display.centered,
-            diagram_mode: display.diagram_mode,
-            diagram_focus: false,
-            diagram_index: 0,
-            diagram_scroll_x: 0,
-            diagram_scroll_y: 0,
-            diagram_pane_ratio: 40,
-            diagram_pane_ratio_from: 40,
-            diagram_pane_ratio_target: 40,
-            diagram_pane_ratio_user_adjusted: false,
-            diagram_pane_anim_start: None,
-            diagram_pane_enabled: true,
-            diagram_pane_position: crate::config::DiagramPanePosition::default(),
-            diagram_zoom: 100,
-            last_visible_diagram_hash: None,
-            diagram_pane_dragging: false,
+            side_pane_ratio: 40,
+            side_pane_ratio_from: 40,
+            side_pane_ratio_target: 40,
+            side_pane_ratio_user_adjusted: false,
+            side_pane_anim_start: None,
+            side_pane_dragging: false,
             diff_pane_scroll: 0,
             diff_pane_scroll_x: 0,
-            side_panel_image_zoom_percent: 100,
-            panel_image_preview: None,
             diff_pane_focus: false,
             diff_pane_auto_scroll: true,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
@@ -1044,12 +1012,6 @@ impl App {
             last_side_panel_focus_id: None,
             side_panel_user_hidden: false,
             side_panel_explicit_hidden: false,
-            pin_images: display.pin_images,
-            inline_images_visible: super::ui_prefs::inline_images_visible(),
-            expanded_images: std::collections::HashMap::new(),
-            expanded_images_version: 0,
-            pinned_images_auto_hide_deadline: None,
-            pinned_images_seen_count: 0,
             chat_native_scrollbar: display.native_scrollbars.chat,
             side_panel_native_scrollbar: display.native_scrollbars.side_panel,
             inline_view_state: None,
@@ -1201,13 +1163,11 @@ impl App {
         // Narrow scope so render intermediates (rendered messages, display
         // message buffers) drop before we strip and retain the session.
         {
-            let (rendered_messages, rendered_images) =
+            let (rendered_messages, _rendered_images) =
                 crate::session::render_messages_and_images(&session);
             let display_messages =
                 jcode_tui_messages::display_messages_from_rendered_messages(rendered_messages);
             self.replace_display_messages(display_messages);
-            self.remote_side_pane_images = rendered_images;
-            self.invalidate_side_pane_images_signature();
         }
         let render_ms = render_start.elapsed().as_millis();
 
@@ -1240,16 +1200,14 @@ impl App {
         }
         self.follow_chat_bottom();
         crate::logging::info(&format!(
-            "Remote startup fast restore: session={}, display_messages={}, images={}, load={}ms, render={}ms, images_render={}ms, total={}ms",
+            "Remote startup fast restore: session={}, display_messages={}, load={}ms, render={}ms, total={}ms",
             session_id,
             self.display_messages.len(),
-            self.remote_side_pane_images.len(),
             load_start
                 .elapsed()
                 .as_millis()
                 .saturating_sub(render_ms + image_ms),
             render_ms,
-            image_ms,
             load_start.elapsed().as_millis()
         ));
     }

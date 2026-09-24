@@ -5,8 +5,8 @@
 
 pub use jcode_config_types::{
     AgentsConfig, AuthConfig, AutoJudgeConfig, AutoReviewConfig, CompactionConfig, CompactionMode,
-    CrossProviderFailoverMode, DiagramDisplayMode, DiagramPanePosition, DiffDisplayMode,
-    DisplayConfig, FeatureConfig, HookCommands, HooksConfig, KeybindingsConfig, LatexRenderingMode,
+    CrossProviderFailoverMode, DiffDisplayMode,
+    DisplayConfig, FeatureConfig, HookCommands, HooksConfig, KeybindingsConfig,
     MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig, NamedProviderModelConfig,
     NamedProviderType, NativeScrollbarConfig, NotificationsConfig, OverscrollStatusMode,
     PowerConfig, ProviderConfig, ReasoningDisplayMode, SessionPickerResumeAction, SwarmSpawnMode,
@@ -101,7 +101,6 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_JADE_RELAY_TOKEN_ID",
     "JCODE_JADE_RELAY_USER_ID",
     "JCODE_KV_CACHE_MISS_NOTICES",
-    "JCODE_LATEX_RENDERING",
     "JCODE_MARKDOWN_SPACING",
     "JCODE_ENABLE_MERMAID",
     "JCODE_MESSAGE_TIMESTAMPS",
@@ -121,7 +120,6 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_ANTHROPIC_REASONING_EFFORT",
     "JCODE_PRESERVE_REASONING_CONTEXT",
     "JCODE_PERFORMANCE",
-    "JCODE_PIN_IMAGES",
     "JCODE_PIN_TODOS",
     "JCODE_PREVENT_SLEEP_WHILE_STREAMING",
     "JCODE_PROVIDER",

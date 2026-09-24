@@ -518,10 +518,6 @@ async fn handle_remote_key_internal(
     }
     let macos_option_shortcut =
         crate::tui::keybind::shortcut_char_for_macos_option_key(code, modifiers);
-    if app.toggle_keys.diagram_pane.matches(code, modifiers) {
-        app.toggle_diagram_pane_position();
-        return Ok(());
-    }
     if let Some(direction) = app.model_switch_keys.direction_for(code, modifiers) {
         app.record_keybinding_fast(crate::tui::app::shortcut_hints::LearnableAction::ModelSwitch);
         remote.cycle_model(direction).await?;
@@ -555,11 +551,6 @@ async fn handle_remote_key_internal(
     if app.centered_toggle_keys.matches(code, modifiers) {
         app.record_keybinding_fast(crate::tui::app::shortcut_hints::LearnableAction::Alignment);
         app.toggle_centered_mode();
-        return Ok(());
-    }
-    app.normalize_diagram_state();
-    let diagram_available = app.diagram_available();
-    if app.handle_diagram_focus_key(code, modifiers, diagram_available) {
         return Ok(());
     }
     if app.handle_diff_pane_focus_key(code, modifiers) {
@@ -711,9 +702,6 @@ async fn handle_remote_key_internal(
     }
 
     if modifiers.contains(KeyModifiers::CONTROL) {
-        if app.handle_diagram_ctrl_key(code, diagram_available) {
-            return Ok(());
-        }
         match code {
             KeyCode::Char('b') => {
                 if matches!(app.status, ProcessingStatus::RunningTool(_)) {
@@ -1649,13 +1637,9 @@ async fn handle_remote_key_internal(
                     app.queued_messages.clear();
                     app.pasted_contents.clear();
                     app.pending_images.clear();
-                    app.clear_inline_image_state();
-                    app.clear_streaming_render_state();
+                                app.clear_streaming_render_state();
                     app.clear_live_usage_state();
                     // Full transcript discard: diagrams and side panel pages
-                    // are both orphaned (same rationale as
-                    // reset_current_session; side panel is #605).
-                    crate::tui::mermaid::clear_active_diagrams();
                     app.swarm_plan_items.clear();
                     app.swarm_plan_version = None;
                     app.swarm_plan_swarm_id = None;

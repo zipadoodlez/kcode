@@ -13,7 +13,6 @@ impl App {
     fn memory_profile_value(&self, include_history: bool) -> serde_json::Value {
         let process = crate::process_memory::snapshot_with_source("client:memory");
         let markdown = crate::tui::markdown::debug_memory_profile();
-        let mermaid = crate::tui::mermaid::debug_memory_profile();
         let visual_debug = crate::tui::visual_debug::debug_memory_profile();
         let ui_render = crate::tui::ui::debug_memory_profile();
         let side_panel_render = crate::tui::ui::debug_side_panel_memory_profile();
@@ -63,8 +62,6 @@ impl App {
             .iter()
             .map(crate::process_memory::estimate_json_bytes)
             .sum();
-        let remote_side_pane_images_bytes =
-            estimate_rendered_images_bytes(&self.remote_side_pane_images);
         let remote_model_options_json_bytes: usize = self
             .remote_model_options
             .iter()
@@ -80,7 +77,6 @@ impl App {
             "process": process,
             "session": self.session.debug_memory_profile(),
             "markdown": markdown,
-            "mermaid": mermaid,
             "visual_debug": visual_debug,
             "ui_render": ui_render,
             "side_panel_render": side_panel_render,
@@ -139,10 +135,7 @@ impl App {
                     "pending_images_count": self.pending_images.len(),
                     "pending_images_bytes": estimate_pending_images_bytes(&self.pending_images),
                 },
-                "images_and_views": {
-                    "remote_side_pane_images_count": self.remote_side_pane_images.len(),
-                    "remote_side_pane_images_bytes": remote_side_pane_images_bytes,
-                },
+                "images_and_views": {},
                 "remote_state": {
                     "available_entries_count": self.remote_available_entries.len(),
                     "available_entries_bytes": estimate_string_vec_bytes(&self.remote_available_entries),
@@ -251,8 +244,6 @@ impl App {
             crate::process_memory::estimate_json_bytes(&self.remote_swarm_members);
         let swarm_plan_items_json_bytes =
             crate::process_memory::estimate_json_bytes(&self.swarm_plan_items);
-        let remote_side_pane_images_bytes =
-            estimate_rendered_images_bytes(&self.remote_side_pane_images);
         let session_picker = self
             .session_picker_overlay
             .as_ref()
@@ -418,7 +409,6 @@ impl App {
             "remote_sessions_bytes": remote_sessions_bytes,
             "remote_swarm_members_json_bytes": remote_swarm_members_json_bytes,
             "swarm_plan_items_json_bytes": swarm_plan_items_json_bytes,
-            "remote_side_pane_images_bytes": remote_side_pane_images_bytes,
             "debug_trace_events_bytes": debug_trace_events_bytes,
             "string_state_bytes": string_state_bytes,
             "session_picker_bytes": nested_usize(&session_picker, &["total_estimate_bytes"]),
@@ -469,8 +459,6 @@ impl App {
                 "swarm_plan_items_json_bytes": swarm_plan_items_json_bytes,
             },
             "images_and_views": {
-                "remote_side_pane_images_count": self.remote_side_pane_images.len(),
-                "remote_side_pane_images_bytes": remote_side_pane_images_bytes,
                 "observe_page_markdown_bytes": self.observe_page_markdown.capacity(),
                 "split_view_markdown_bytes": self.split_view_markdown.capacity(),
             },
@@ -597,17 +585,6 @@ fn build_debug_summary(payload: &serde_json::Value) -> serde_json::Value {
         (
             "markdown_cache_estimate_bytes".to_string(),
             nested_usize(payload, &["markdown", "highlight_cache_estimate_bytes"]),
-        ),
-        (
-            "mermaid_working_set_estimate_bytes".to_string(),
-            nested_usize(payload, &["mermaid", "mermaid_working_set_estimate_bytes"]),
-        ),
-        (
-            "mermaid_render_cache_metadata_estimate_bytes".to_string(),
-            nested_usize(
-                payload,
-                &["mermaid", "render_cache_metadata_estimate_bytes"],
-            ),
         ),
         (
             "visual_debug_frame_estimate_bytes".to_string(),
@@ -783,21 +760,6 @@ fn estimate_pending_catchup_resume_bytes(value: &PendingCatchupResume) -> usize 
             .as_ref()
             .map(|text| text.capacity())
             .unwrap_or(0)
-}
-
-fn estimate_rendered_images_bytes(images: &[crate::session::RenderedImage]) -> usize {
-    images
-        .iter()
-        .map(|image| {
-            image.media_type.capacity()
-                + image.data.capacity()
-                + image
-                    .label
-                    .as_ref()
-                    .map(|label| label.capacity())
-                    .unwrap_or(0)
-        })
-        .sum()
 }
 
 fn nested_usize(value: &serde_json::Value, path: &[&str]) -> usize {

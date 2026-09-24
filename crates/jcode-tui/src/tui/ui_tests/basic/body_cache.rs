@@ -4,13 +4,7 @@ fn test_body_cache_state_keeps_multiple_width_entries() {
         width: 40,
         diff_mode: crate::config::DiffDisplayMode::Off,
         messages_version: 1,
-        diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
-        mermaid_aspect_bucket: None,
-        pin_images: true,
-        inline_images_visible: true,
-        images_signature: (0, 0),
-        expanded_images_version: 0,
         swarm_members_signature: 0,
     };
     let key_b = BodyCacheKey {
@@ -28,11 +22,9 @@ fn test_body_cache_state_keeps_multiple_width_entries() {
         wrapped_user_prompt_starts: Vec::new(),
         wrapped_user_prompt_ends: Vec::new(),
         user_prompt_texts: Vec::new(),
-        image_regions: Vec::new(),
         edit_tool_ranges: Vec::new(),
         copy_targets: Vec::new(),
         message_boundaries: Vec::new(),
-        mermaid_pending_epoch: None,
     });
     let prepared_b = Arc::new(PreparedMessages {
         wrapped_lines: vec![Line::from("b")],
@@ -44,11 +36,9 @@ fn test_body_cache_state_keeps_multiple_width_entries() {
         wrapped_user_prompt_starts: Vec::new(),
         wrapped_user_prompt_ends: Vec::new(),
         user_prompt_texts: Vec::new(),
-        image_regions: Vec::new(),
         edit_tool_ranges: Vec::new(),
         copy_targets: Vec::new(),
         message_boundaries: Vec::new(),
-        mermaid_pending_epoch: None,
     });
 
     let mut cache = BodyCacheState::default();
@@ -68,35 +58,6 @@ fn test_body_cache_state_keeps_multiple_width_entries() {
 }
 
 #[test]
-fn test_body_cache_state_does_not_reuse_a_different_mermaid_aspect_profile() {
-    let key = BodyCacheKey {
-        width: 80,
-        diff_mode: crate::config::DiffDisplayMode::Off,
-        messages_version: 1,
-        diagram_mode: crate::config::DiagramDisplayMode::None,
-        centered: false,
-        mermaid_aspect_bucket: Some(1500),
-        pin_images: true,
-        inline_images_visible: true,
-        images_signature: (0, 0),
-        expanded_images_version: 0,
-        swarm_members_signature: 0,
-    };
-    let resized_key = BodyCacheKey {
-        messages_version: 2,
-        mermaid_aspect_bucket: Some(2500),
-        ..key.clone()
-    };
-    let prepared = make_prepared_messages_with_content_bytes(128, "mermaid-profile-");
-
-    let mut cache = BodyCacheState::default();
-    cache.insert(key, prepared, 1, 0);
-
-    assert!(cache.get_exact(&resized_key).is_none());
-    assert!(cache.best_incremental_base(&resized_key, 2).is_none());
-}
-
-#[test]
 fn test_body_cache_state_evicts_oldest_entries() {
     let mut cache = BodyCacheState::default();
 
@@ -105,13 +66,7 @@ fn test_body_cache_state_evicts_oldest_entries() {
             width: 40 + idx as u16,
             diff_mode: crate::config::DiffDisplayMode::Off,
             messages_version: 1,
-            diagram_mode: crate::config::DiagramDisplayMode::Pinned,
             centered: false,
-            mermaid_aspect_bucket: None,
-            pin_images: true,
-        inline_images_visible: true,
-            images_signature: (0, 0),
-        expanded_images_version: 0,
         swarm_members_signature: 0,
         };
         let prepared = Arc::new(PreparedMessages {
@@ -124,11 +79,9 @@ fn test_body_cache_state_evicts_oldest_entries() {
             wrapped_user_prompt_starts: Vec::new(),
             wrapped_user_prompt_ends: Vec::new(),
             user_prompt_texts: Vec::new(),
-            image_regions: Vec::new(),
             edit_tool_ranges: Vec::new(),
             copy_targets: Vec::new(),
         message_boundaries: Vec::new(),
-        mermaid_pending_epoch: None,
         });
         cache.insert(key, prepared, idx, 0);
     }
@@ -146,13 +99,7 @@ fn test_body_cache_state_accepts_large_single_entry_within_total_budget() {
         width: 120,
         diff_mode: crate::config::DiffDisplayMode::Off,
         messages_version: 99,
-        diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
-        mermaid_aspect_bucket: None,
-        pin_images: true,
-        inline_images_visible: true,
-        images_signature: (0, 0),
-        expanded_images_version: 0,
         swarm_members_signature: 0,
     };
     let prepared = make_prepared_messages_with_content_bytes(3 * 1024 * 1024, "body-large-");
@@ -175,13 +122,7 @@ fn test_body_cache_state_retains_oversized_hot_entry() {
         width: 140,
         diff_mode: crate::config::DiffDisplayMode::Off,
         messages_version: 120,
-        diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
-        mermaid_aspect_bucket: None,
-        pin_images: true,
-        inline_images_visible: true,
-        images_signature: (0, 0),
-        expanded_images_version: 0,
         swarm_members_signature: 0,
     };
     let prepared = make_oversized_prepared_messages("body-oversized-");
@@ -205,13 +146,7 @@ fn test_body_cache_state_keeps_two_oversized_width_entries_hot() {
         width: 140,
         diff_mode: crate::config::DiffDisplayMode::Off,
         messages_version: 120,
-        diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
-        mermaid_aspect_bucket: None,
-        pin_images: true,
-        inline_images_visible: true,
-        images_signature: (0, 0),
-        expanded_images_version: 0,
         swarm_members_signature: 0,
     };
     let key_b = BodyCacheKey {
@@ -242,13 +177,7 @@ fn test_body_cache_state_uses_oversized_hot_entry_as_incremental_base() {
         width: 140,
         diff_mode: crate::config::DiffDisplayMode::Off,
         messages_version: 120,
-        diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
-        mermaid_aspect_bucket: None,
-        pin_images: true,
-        inline_images_visible: true,
-        images_signature: (0, 0),
-        expanded_images_version: 0,
         swarm_members_signature: 0,
     };
     let prepared = make_oversized_prepared_messages("body-oversized-base-");
@@ -269,114 +198,6 @@ fn test_body_cache_state_uses_oversized_hot_entry_as_incremental_base() {
         .expect("expected oversized hot entry to remain eligible as incremental base");
     assert!(Arc::ptr_eq(&base.0, &prepared));
     assert_eq!(base.1, 120);
-}
-
-/// Regression: a deferred mermaid render completing does not change the
-/// transcript (`messages_version` stays put), so the staleness must be carried
-/// by the prepared body itself. A base whose pending placeholder became stale
-/// (epoch advanced) must be cut at the owning message and re-rendered, not
-/// reused verbatim, or the placeholder sticks on screen forever.
-#[test]
-fn test_build_body_from_base_rerenders_stale_mermaid_pending_tail() {
-    let width = 80;
-    let state = TestState {
-        display_messages: vec![
-            DisplayMessage::user("draw me a diagram"),
-            DisplayMessage::assistant("Sure!"),
-        ],
-        messages_version: 1,
-        ..Default::default()
-    };
-
-    let mut base = super::prepare::prepare_body(&state, width, false);
-    assert!(
-        base.mermaid_pending_epoch.is_none(),
-        "plain text body must not carry a pending stamp"
-    );
-
-    // Simulate a body whose assistant message baked in the deferred
-    // placeholder at epoch E, where the live epoch has since moved past E.
-    let placeholder_line_idx = base.message_boundaries[0].wrapped_len;
-    base.wrapped_lines.insert(
-        placeholder_line_idx,
-        Line::from(markdown::MERMAID_PENDING_PLACEHOLDER_TEXT),
-    );
-    Arc::make_mut(&mut base.wrapped_plain_lines).insert(
-        placeholder_line_idx,
-        markdown::MERMAID_PENDING_PLACEHOLDER_TEXT.to_string(),
-    );
-    Arc::make_mut(&mut base.wrapped_copy_offsets).insert(placeholder_line_idx, 0);
-    Arc::make_mut(&mut base.wrapped_line_map).insert(
-        placeholder_line_idx,
-        WrappedLineMap {
-            raw_line: 0,
-            start_col: 0,
-            end_col: 0,
-        },
-    );
-    for boundary in &mut base.message_boundaries[1..] {
-        boundary.wrapped_len += 1;
-    }
-    let live_epoch = crate::tui::mermaid::deferred_render_epoch();
-    base.mermaid_pending_epoch = Some(live_epoch.wrapping_sub(1));
-
-    let (rebuilt, path) = super::prepare::build_body_from_base(
-        &state,
-        width,
-        Arc::new(base),
-        state.display_messages.len(),
-        0,
-        state.display_messages.len(),
-    );
-
-    assert!(
-        !rebuilt
-            .wrapped_lines
-            .iter()
-            .any(markdown::line_is_mermaid_pending_placeholder),
-        "stale pending placeholder must be re-rendered away (path: {path})"
-    );
-    assert!(
-        rebuilt.mermaid_pending_epoch.is_none()
-            || rebuilt.mermaid_pending_epoch == Some(crate::tui::mermaid::deferred_render_epoch()),
-        "rebuilt body must not keep a stale pending stamp"
-    );
-}
-
-/// A base with a *current* pending stamp (epoch unchanged: the background
-/// render is still running) is still reusable as-is; rebuilding early would
-/// just churn frames without new information.
-#[test]
-fn test_build_body_from_base_keeps_current_mermaid_pending_base() {
-    let width = 80;
-    let state = TestState {
-        display_messages: vec![
-            DisplayMessage::user("draw me a diagram"),
-            DisplayMessage::assistant("Sure!"),
-        ],
-        messages_version: 1,
-        ..Default::default()
-    };
-
-    let mut base = super::prepare::prepare_body(&state, width, false);
-    base.mermaid_pending_epoch = Some(crate::tui::mermaid::deferred_render_epoch());
-    let base = Arc::new(base);
-    let base_ptr = Arc::as_ptr(&base) as usize;
-
-    let (rebuilt, path) = super::prepare::build_body_from_base(
-        &state,
-        width,
-        base,
-        state.display_messages.len(),
-        0,
-        state.display_messages.len(),
-    );
-
-    assert_eq!(
-        Arc::as_ptr(&rebuilt) as usize,
-        base_ptr,
-        "current-epoch pending base should be reused exactly (path: {path})"
-    );
 }
 
 #[test]
@@ -479,17 +300,12 @@ fn test_full_prep_cache_state_keeps_multiple_width_entries() {
         height: 20,
         diff_mode: crate::config::DiffDisplayMode::Off,
         messages_version: 1,
-        diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
-        mermaid_aspect_bucket: None,
         is_processing: false,
         streaming_text_len: 0,
         streaming_text_hash: 0,
         batch_progress_hash: 0,
-    inline_images_signature: (0, 0),
-        expanded_images_version: 0,
         swarm_members_signature: 0,
-    inline_images_visible: true,
     };
     let key_b = FullPrepCacheKey {
         width: 39,
@@ -506,11 +322,9 @@ fn test_full_prep_cache_state_keeps_multiple_width_entries() {
         wrapped_user_prompt_starts: Vec::new(),
         wrapped_user_prompt_ends: Vec::new(),
         user_prompt_texts: Vec::new(),
-        image_regions: Vec::new(),
         edit_tool_ranges: Vec::new(),
         copy_targets: Vec::new(),
         message_boundaries: Vec::new(),
-        mermaid_pending_epoch: None,
     }));
     let prepared_b = make_prepared_chat_frame(Arc::new(PreparedMessages {
         wrapped_lines: vec![Line::from("b")],
@@ -522,11 +336,9 @@ fn test_full_prep_cache_state_keeps_multiple_width_entries() {
         wrapped_user_prompt_starts: Vec::new(),
         wrapped_user_prompt_ends: Vec::new(),
         user_prompt_texts: Vec::new(),
-        image_regions: Vec::new(),
         edit_tool_ranges: Vec::new(),
         copy_targets: Vec::new(),
         message_boundaries: Vec::new(),
-        mermaid_pending_epoch: None,
     }));
 
     let mut cache = FullPrepCacheState::default();
@@ -546,37 +358,6 @@ fn test_full_prep_cache_state_keeps_multiple_width_entries() {
 }
 
 #[test]
-fn test_full_prep_cache_state_does_not_reuse_a_different_mermaid_aspect_profile() {
-    let key = FullPrepCacheKey {
-        width: 80,
-        height: 30,
-        diff_mode: crate::config::DiffDisplayMode::Off,
-        messages_version: 1,
-        diagram_mode: crate::config::DiagramDisplayMode::None,
-        centered: false,
-        mermaid_aspect_bucket: Some(1500),
-        is_processing: false,
-        streaming_text_len: 0,
-        streaming_text_hash: 0,
-        batch_progress_hash: 0,
-        inline_images_signature: (0, 0),
-        inline_images_visible: true,
-        expanded_images_version: 0,
-        swarm_members_signature: 0,
-    };
-    let resized_key = FullPrepCacheKey {
-        mermaid_aspect_bucket: Some(2500),
-        ..key.clone()
-    };
-    let prepared = make_prepared_chat_frame_with_content_bytes(128, "mermaid-profile-");
-
-    let mut cache = FullPrepCacheState::default();
-    cache.insert(key, prepared);
-
-    assert!(cache.get_exact(&resized_key).is_none());
-}
-
-#[test]
 fn test_full_prep_cache_state_evicts_oldest_entries() {
     let mut cache = FullPrepCacheState::default();
 
@@ -586,17 +367,12 @@ fn test_full_prep_cache_state_evicts_oldest_entries() {
             height: 20,
             diff_mode: crate::config::DiffDisplayMode::Off,
             messages_version: 1,
-            diagram_mode: crate::config::DiagramDisplayMode::Pinned,
             centered: false,
-            mermaid_aspect_bucket: None,
             is_processing: false,
             streaming_text_len: 0,
             streaming_text_hash: 0,
             batch_progress_hash: 0,
-        inline_images_signature: (0, 0),
-        expanded_images_version: 0,
         swarm_members_signature: 0,
-        inline_images_visible: true,
         };
         let prepared = make_prepared_chat_frame(Arc::new(PreparedMessages {
             wrapped_lines: vec![Line::from(format!("{idx}"))],
@@ -608,11 +384,9 @@ fn test_full_prep_cache_state_evicts_oldest_entries() {
             wrapped_user_prompt_starts: Vec::new(),
             wrapped_user_prompt_ends: Vec::new(),
             user_prompt_texts: Vec::new(),
-            image_regions: Vec::new(),
             edit_tool_ranges: Vec::new(),
             copy_targets: Vec::new(),
         message_boundaries: Vec::new(),
-        mermaid_pending_epoch: None,
         }));
         cache.insert(key, prepared);
     }
@@ -631,17 +405,12 @@ fn test_full_prep_cache_state_accepts_large_single_entry_within_total_budget() {
         height: 40,
         diff_mode: crate::config::DiffDisplayMode::Off,
         messages_version: 99,
-        diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
-        mermaid_aspect_bucket: None,
         is_processing: false,
         streaming_text_len: 0,
         streaming_text_hash: 0,
         batch_progress_hash: 0,
-    inline_images_signature: (0, 0),
-        expanded_images_version: 0,
         swarm_members_signature: 0,
-    inline_images_visible: true,
     };
     let prepared = make_prepared_chat_frame_with_content_bytes(3 * 1024 * 1024, "full-large-");
 
@@ -663,17 +432,12 @@ fn test_full_prep_cache_state_retains_oversized_hot_entry() {
         height: 42,
         diff_mode: crate::config::DiffDisplayMode::Off,
         messages_version: 120,
-        diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
-        mermaid_aspect_bucket: None,
         is_processing: true,
         streaming_text_len: 4096,
         streaming_text_hash: 12345,
         batch_progress_hash: 0,
-    inline_images_signature: (0, 0),
-        expanded_images_version: 0,
         swarm_members_signature: 0,
-    inline_images_visible: true,
     };
     let prepared = make_oversized_prepared_chat_frame("full-oversized-");
 
@@ -697,17 +461,12 @@ fn test_full_prep_cache_state_keeps_two_oversized_width_entries_hot() {
         height: 42,
         diff_mode: crate::config::DiffDisplayMode::Off,
         messages_version: 120,
-        diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
-        mermaid_aspect_bucket: None,
         is_processing: true,
         streaming_text_len: 4096,
         streaming_text_hash: 12345,
         batch_progress_hash: 0,
-    inline_images_signature: (0, 0),
-        expanded_images_version: 0,
         swarm_members_signature: 0,
-    inline_images_visible: true,
     };
     let key_b = FullPrepCacheKey {
         width: 139,
@@ -759,147 +518,6 @@ fn read_tool_call(tool_id: &str) -> crate::message::ToolCall {
     }
 }
 
-#[test]
-fn test_prepare_body_anchors_tool_image_after_tool_message() {
-    let state = TestState {
-        display_messages: vec![
-            DisplayMessage::user("read the screenshot"),
-            DisplayMessage::tool("read shot.png", read_tool_call("tool-img-1")),
-            DisplayMessage::assistant("that is a screenshot"),
-        ],
-        messages_version: 1,
-        side_pane_images: vec![anchored_tool_image("tool-img-1")],
-        pin_images: true,
-        inline_images_visible: true,
-        ..Default::default()
-    };
-
-    let prepared = super::prepare::prepare_body(&state, 80, false);
-    assert_eq!(
-        prepared.image_regions.len(),
-        1,
-        "anchored image should produce exactly one Fit region in the body"
-    );
-    let region = &prepared.image_regions[0];
-    assert_eq!(region.render, jcode_tui_messages::ImageRegionRender::Fit);
-    assert!(region.width > 2);
-
-    // The region must sit between the tool message and the assistant reply.
-    let plain = &prepared.wrapped_plain_lines;
-    let assistant_line = plain
-        .iter()
-        .position(|line| line.contains("that is a screenshot"))
-        .expect("assistant reply should render");
-    assert!(
-        region.abs_line_idx < assistant_line,
-        "image region (line {}) should render before the assistant reply (line {})",
-        region.abs_line_idx,
-        assistant_line
-    );
-    let label_line = plain
-        .iter()
-        .position(|line| line.contains("shot.png") && line.contains("1×1"))
-        .expect("image label line should render");
-    assert!(
-        label_line < region.abs_line_idx,
-        "label should sit directly above the image region"
-    );
-}
-
-#[test]
-fn test_prepare_body_incremental_anchors_image_on_new_tool_message() {
-    let base_state = TestState {
-        display_messages: vec![DisplayMessage::user("read the screenshot")],
-        messages_version: 1,
-        pin_images: true,
-        inline_images_visible: true,
-        ..Default::default()
-    };
-    let grown_state = TestState {
-        display_messages: vec![
-            DisplayMessage::user("read the screenshot"),
-            DisplayMessage::tool("read shot.png", read_tool_call("tool-img-2")),
-        ],
-        messages_version: 2,
-        side_pane_images: vec![anchored_tool_image("tool-img-2")],
-        pin_images: true,
-        inline_images_visible: true,
-        ..Default::default()
-    };
-
-    let prepared = Arc::new(super::prepare::prepare_body(&base_state, 80, false));
-    assert!(prepared.image_regions.is_empty());
-    let incremented = super::prepare::prepare_body_incremental(&grown_state, 80, prepared, 1);
-    assert_eq!(
-        incremented.image_regions.len(),
-        1,
-        "incremental append should inject the anchored image region"
-    );
-    assert_eq!(
-        incremented.image_regions[0].render,
-        jcode_tui_messages::ImageRegionRender::Fit
-    );
-
-    // Incremental output must match a full rebuild.
-    let full = super::prepare::prepare_body(&grown_state, 80, false);
-    assert_eq!(full.image_regions.len(), 1);
-    assert_eq!(
-        full.image_regions[0].abs_line_idx,
-        incremented.image_regions[0].abs_line_idx
-    );
-}
-
-#[test]
-fn test_prepare_body_skips_anchored_images_when_pin_images_off() {
-    let state = TestState {
-        display_messages: vec![
-            DisplayMessage::user("read the screenshot"),
-            DisplayMessage::tool("read shot.png", read_tool_call("tool-img-3")),
-        ],
-        messages_version: 1,
-        side_pane_images: vec![anchored_tool_image("tool-img-3")],
-        pin_images: false,
-        inline_images_visible: true,
-        ..Default::default()
-    };
-
-    let prepared = super::prepare::prepare_body(&state, 80, false);
-    assert!(
-        prepared.image_regions.is_empty(),
-        "hidden images must not inject regions into the body"
-    );
-}
-
-#[test]
-fn test_prepare_body_collapses_anchored_images_when_inline_images_hidden() {
-    let state = TestState {
-        display_messages: vec![
-            DisplayMessage::user("read the screenshot"),
-            DisplayMessage::tool("read shot.png", read_tool_call("tool-img-4")),
-        ],
-        messages_version: 1,
-        side_pane_images: vec![anchored_tool_image("tool-img-4")],
-        pin_images: true,
-        inline_images_visible: false,
-        ..Default::default()
-    };
-
-    let prepared = super::prepare::prepare_body(&state, 80, false);
-    assert!(
-        prepared.image_regions.is_empty(),
-        "collapsed images must not emit drawable regions"
-    );
-    let text = prepared.wrapped_plain_lines.join("\n");
-    assert!(
-        text.contains("shot.png"),
-        "label stub should remain visible: {text:?}"
-    );
-    assert!(
-        text.contains("show image"),
-        "show badge should render on the stub: {text:?}"
-    );
-}
-
 /// Assert two prepared bodies are byte-for-byte equivalent across every
 /// observable array. Used to prove prefix-reuse output matches a fresh full
 /// build.
@@ -938,18 +556,6 @@ fn assert_prepared_equivalent(a: &PreparedMessages, b: &PreparedMessages, ctx: &
     let a_map: Vec<usize> = a.wrapped_line_map.iter().map(|m| m.raw_line).collect();
     let b_map: Vec<usize> = b.wrapped_line_map.iter().map(|m| m.raw_line).collect();
     assert_eq!(a_map, b_map, "{ctx}: wrapped_line_map raw_line differ");
-    assert_eq!(
-        a.image_regions.len(),
-        b.image_regions.len(),
-        "{ctx}: image_regions count differ"
-    );
-    for (x, y) in a.image_regions.iter().zip(b.image_regions.iter()) {
-        assert_eq!(
-            x.abs_line_idx, y.abs_line_idx,
-            "{ctx}: image_region abs_line_idx differ"
-        );
-        assert_eq!(x.end_line, y.end_line, "{ctx}: image_region end_line differ");
-    }
     assert_eq!(
         a.edit_tool_ranges.len(),
         b.edit_tool_ranges.len(),
@@ -1096,79 +702,3 @@ fn test_prefix_reuse_truncation_matches_full_build() {
     assert_prepared_equivalent(&reuse, &full, "truncation");
 }
 
-/// Regression for #735 at the TUI layer.
-///
-/// `prepare_body` runs on the draw path, the same thread that services
-/// keystrokes and interrupts. When display math rendered synchronously, a
-/// stalled TeX toolchain (the reporter's `latex` was regenerating its format
-/// files) blocked this call for the per-command timeout on every uncached
-/// formula. The user-visible result was a client that could not act on Esc:
-/// the server cancelled the turn in milliseconds while the TUI sat
-/// unresponsive, so "Interrupting" lingered and then vanished.
-///
-/// Two things must hold: preparing a transcript full of uncached formulas
-/// stays fast even when the toolchain never returns, and the resulting body
-/// carries the pending stamp, without which the placeholder would never be
-/// replaced by the finished image.
-#[test]
-fn test_prepare_body_with_math_never_blocks_on_a_stalled_tex_toolchain() {
-    use std::io::Write as _;
-    use std::os::unix::fs::PermissionsExt as _;
-
-    let dir = tempfile::tempdir().unwrap();
-    let stub = dir.path().join("hanging-tex");
-    let mut file = std::fs::File::create(&stub).unwrap();
-    file.write_all(b"#!/bin/sh\nsleep 120\nexit 1\n").unwrap();
-    drop(file);
-    std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
-    // SAFETY: read only by the render and worker threads spawned below.
-    unsafe {
-        std::env::set_var("JCODE_LATEX_COMMAND", &stub);
-        std::env::set_var("JCODE_DVIPNG_COMMAND", &stub);
-        std::env::set_var("JCODE_PDFLATEX_COMMAND", &stub);
-        std::env::set_var("JCODE_PDFTOCAIRO_COMMAND", &stub);
-    }
-
-    // Unique formulas so no previously cached artifact short-circuits this.
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let math: String = (0..8)
-        .map(|i| format!("$$w_{{{nonce}_{i}}} = \\frac{{{i}}}{{\\sqrt{{2}}}}$$\n\n"))
-        .collect();
-    let state = TestState {
-        display_messages: vec![
-            DisplayMessage::user("derive it"),
-            DisplayMessage::assistant(&math),
-        ],
-        messages_version: 1,
-        ..Default::default()
-    };
-
-    // Image mode only engages when the terminal advertises graphics, as the
-    // reporter's terminal did; a test process otherwise skips the LaTeX path.
-    let started = std::time::Instant::now();
-    let prepared = crate::tui::mermaid::with_image_protocol_override(Some(true), || {
-        super::prepare::prepare_body(&state, 90, false)
-    });
-    let elapsed = started.elapsed();
-
-    assert!(
-        elapsed < Duration::from_secs(3),
-        "prepare_body blocked the draw path for {elapsed:?} with a stalled TeX toolchain; \
-         keystrokes and interrupts cannot be serviced while it does (#735)"
-    );
-    assert!(
-        prepared.mermaid_pending_epoch.is_some(),
-        "deferred formulas must stamp the prepared body, or the completed render \
-         never invalidates the cache and the placeholder stays on screen forever"
-    );
-
-    unsafe {
-        std::env::remove_var("JCODE_LATEX_COMMAND");
-        std::env::remove_var("JCODE_DVIPNG_COMMAND");
-        std::env::remove_var("JCODE_PDFLATEX_COMMAND");
-        std::env::remove_var("JCODE_PDFTOCAIRO_COMMAND");
-    }
-}

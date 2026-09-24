@@ -8,10 +8,6 @@ impl App {
         Self::new_for_replay_with_title(session, true)
     }
 
-    pub(crate) fn new_for_replay_silent(session: crate::session::Session) -> Self {
-        Self::new_for_replay_with_title(session, false)
-    }
-
     fn new_for_replay_with_title(session: crate::session::Session, set_title: bool) -> Self {
         let provider: Arc<dyn Provider> =
             Arc::new(InertRuntimeProvider::new(AppRuntimeMode::Replay));

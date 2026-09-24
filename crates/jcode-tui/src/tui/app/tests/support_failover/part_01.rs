@@ -271,53 +271,6 @@ fn remote_add_provider_message_retains_remote_provider_copy() {
     assert_eq!(app.messages.len(), before + 1);
 }
 
-#[test]
-fn debug_memory_profile_includes_app_owned_summary_for_large_client_state() {
-    let mut app = create_test_app();
-    app.remote_side_pane_images
-        .push(crate::session::RenderedImage {
-            history_message_index: None,
-            media_type: "image/png".to_string(),
-            data: "x".repeat(32 * 1024),
-            label: Some("preview.png".to_string()),
-            source: crate::session::RenderedImageSource::UserInput,
-            anchor: None,
-        });
-    app.observe_page_markdown = "# observe\n".repeat(256);
-    app.input_undo_stack.push(("draft ".repeat(256), 12));
-
-    let profile = app.debug_memory_profile();
-    let app_owned = &profile["app_owned"];
-    let summary = &profile["summary"];
-
-    assert!(app_owned.is_object());
-    assert!(summary.is_object());
-    assert!(
-        app_owned["images_and_views"]["remote_side_pane_images_bytes"]
-            .as_u64()
-            .unwrap_or(0)
-            >= 32 * 1024
-    );
-    assert!(
-        app_owned["input_history"]["undo_stack_bytes"]
-            .as_u64()
-            .unwrap_or(0)
-            > 0
-    );
-    assert!(
-        summary["total_app_owned_estimate_bytes"]
-            .as_u64()
-            .unwrap_or(0)
-            > 0
-    );
-    assert!(
-        !summary["top_buckets"]
-            .as_array()
-            .unwrap_or(&Vec::new())
-            .is_empty()
-    );
-}
-
 fn test_side_panel_snapshot(page_id: &str, title: &str) -> crate::side_panel::SidePanelSnapshot {
     crate::side_panel::SidePanelSnapshot {
         focus_revision: 0,

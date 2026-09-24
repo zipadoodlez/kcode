@@ -3,36 +3,6 @@ use jcode_tui_markdown::CopyTargetKind;
 use ratatui::text::Line;
 use std::sync::Arc;
 
-/// Pre-computed image region from line scanning.
-#[derive(Clone, Copy)]
-pub struct ImageRegion {
-    /// Absolute line index in wrapped_lines.
-    pub abs_line_idx: usize,
-    /// Absolute exclusive end line of the image placeholder region.
-    pub end_line: usize,
-    /// Hash of the mermaid content for cache lookup.
-    pub hash: u64,
-    /// Total height of the image placeholder in lines.
-    pub height: u16,
-    /// Estimated rendered width in cells, including the left border. `0` means
-    /// unknown; consumers should treat the rows as fully occupied.
-    pub width: u16,
-    /// How the image should be fit into its region when drawn.
-    pub render: ImageRegionRender,
-}
-
-/// Strategy for fitting an image into its placeholder region at draw time.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum ImageRegionRender {
-    /// Crop into the pre-estimated region height. Used for Mermaid diagrams,
-    /// whose placeholder height already matches their rendered aspect ratio.
-    #[default]
-    Crop,
-    /// Scale-to-fit (preserve aspect, fit width and height). Used for inline
-    /// raster images so resizes and font-metric mismatches never slice them.
-    Fit,
-}
-
 #[derive(Clone, Debug)]
 pub struct CopyTarget {
     pub kind: CopyTargetKind,
@@ -87,8 +57,6 @@ pub struct PreparedMessages {
     /// Flattened user prompt text in display order, used by prompt preview without
     /// scanning display_messages on every frame.
     pub user_prompt_texts: Vec<String>,
-    /// Pre-scanned image regions computed once, not every frame.
-    pub image_regions: Vec<ImageRegion>,
     /// Line ranges for edit tool messages.
     pub edit_tool_ranges: Vec<EditToolRange>,
     pub copy_targets: Vec<CopyTarget>,
@@ -97,15 +65,6 @@ pub struct PreparedMessages {
     /// synthetic/test prepared bodies); prefix reuse simply degrades to a full
     /// rebuild in that case.
     pub message_boundaries: Vec<MessageBoundary>,
-    /// Deferred-mermaid staleness stamp: `Some(epoch)` when `wrapped_lines`
-    /// bakes in at least one "rendering mermaid diagram..." placeholder for a
-    /// diagram still rendering in the background, where `epoch` is the
-    /// deferred-render epoch observed *before* the markdown was rendered.
-    /// Cache layers treat the prepared content as stale once the live epoch
-    /// advances past this value and re-render the pending tail so the
-    /// completed diagram replaces its placeholder. `None` when no pending
-    /// placeholder is present.
-    pub mermaid_pending_epoch: Option<u64>,
 }
 
 #[derive(Clone)]
@@ -125,8 +84,6 @@ pub enum PreparedSectionKind {
     /// `current` reasoning-display mode.
     Reasoning,
     Streaming,
-    /// Inline images rendered in the transcript flow (below the body).
-    InlineImages,
 }
 
 #[derive(Clone)]
@@ -138,7 +95,6 @@ pub struct PreparedChatFrame {
     pub wrapped_user_prompt_starts: Vec<usize>,
     pub wrapped_user_prompt_ends: Vec<usize>,
     pub user_prompt_texts: Vec<String>,
-    pub image_regions: Vec<ImageRegion>,
     pub edit_tool_ranges: Vec<EditToolRange>,
     pub copy_targets: Vec<CopyTarget>,
 }
@@ -146,16 +102,6 @@ pub struct PreparedChatFrame {
 impl PreparedChatFrame {
     pub fn from_single(prepared: Arc<PreparedMessages>) -> Self {
         Self::from_sections(vec![(PreparedSectionKind::Body, prepared)])
-    }
-
-    /// Earliest deferred-mermaid pending stamp across all sections, if any
-    /// section still bakes in a "rendering mermaid diagram..." placeholder.
-    /// See [`PreparedMessages::mermaid_pending_epoch`].
-    pub fn mermaid_pending_epoch(&self) -> Option<u64> {
-        self.sections
-            .iter()
-            .filter_map(|section| section.prepared.mermaid_pending_epoch)
-            .min()
     }
 
     pub fn from_sections(sections: Vec<(PreparedSectionKind, Arc<PreparedMessages>)>) -> Self {
@@ -166,14 +112,12 @@ impl PreparedChatFrame {
         let mut wrapped_user_prompt_starts = Vec::new();
         let mut wrapped_user_prompt_ends = Vec::new();
         let mut user_prompt_texts = Vec::new();
-        let mut image_regions = Vec::new();
         let mut edit_tool_ranges = Vec::new();
         let mut copy_targets = Vec::new();
 
         for (kind, prepared) in sections {
             if prepared.wrapped_lines.is_empty()
                 && prepared.raw_plain_lines.is_empty()
-                && prepared.image_regions.is_empty()
                 && prepared.edit_tool_ranges.is_empty()
                 && prepared.copy_targets.is_empty()
             {
@@ -199,14 +143,6 @@ impl PreparedChatFrame {
                     .map(|idx| idx + line_start),
             );
             user_prompt_texts.extend(prepared.user_prompt_texts.iter().cloned());
-            image_regions.extend(prepared.image_regions.iter().map(|region| ImageRegion {
-                abs_line_idx: region.abs_line_idx + line_start,
-                end_line: region.end_line + line_start,
-                hash: region.hash,
-                height: region.height,
-                width: region.width,
-                render: region.render,
-            }));
             edit_tool_ranges.extend(prepared.edit_tool_ranges.iter().map(|range| EditToolRange {
                 edit_index: range.edit_index,
                 msg_index: range.msg_index,
@@ -240,7 +176,6 @@ impl PreparedChatFrame {
             wrapped_user_prompt_starts,
             wrapped_user_prompt_ends,
             user_prompt_texts,
-            image_regions,
             edit_tool_ranges,
             copy_targets,
         }

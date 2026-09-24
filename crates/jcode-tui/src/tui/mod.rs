@@ -35,7 +35,6 @@ pub(crate) mod fuzzy;
 // `jcode-terminal-image` crate (shared with the `read` tool). Re-exported here
 // so existing `crate::tui::image` / `crate::tui::image_metadata` paths keep working.
 pub use jcode_terminal_image::display as image;
-use jcode_terminal_image::metadata as image_metadata;
 pub mod info_widget;
 mod info_widget_layout;
 mod info_widget_overview;
@@ -46,7 +45,6 @@ mod layout_utils;
 pub mod login_picker;
 pub mod markdown;
 mod memory_profile;
-pub mod mermaid;
 pub mod permissions {
     pub use jcode_tui_permissions::*;
 }
@@ -332,43 +330,6 @@ mod terminal_mode_tests {
     }
 }
 
-/// Hash a rendered image's transcript anchor into `hasher`. Shared by the
-/// default and `App` implementations of `side_pane_images_signature` so both
-/// stay in lockstep.
-pub(crate) fn hash_rendered_image_anchor(
-    anchor: Option<&crate::session::RenderedImageAnchor>,
-    hasher: &mut impl std::hash::Hasher,
-) {
-    use std::hash::Hash;
-    match anchor {
-        None => 0u8.hash(hasher),
-        Some(crate::session::RenderedImageAnchor::ToolCall { id }) => {
-            1u8.hash(hasher);
-            id.hash(hasher);
-        }
-        Some(crate::session::RenderedImageAnchor::UserPrompt { ordinal }) => {
-            2u8.hash(hasher);
-            ordinal.hash(hasher);
-        }
-    }
-}
-
-/// Hash every field that affects inline image rendering. The production App
-/// memoizes this signature until its image set changes, so exact payload hashing
-/// happens on image updates rather than during scrolling. Correctness matters
-/// here: sampling can miss a same-length change and reuse a stale prepared frame.
-pub(crate) fn hash_rendered_image_signature_fields(
-    image: &crate::session::RenderedImage,
-    hasher: &mut impl std::hash::Hasher,
-) {
-    use std::hash::Hash;
-
-    image.media_type.hash(hasher);
-    image.data.hash(hasher);
-    image.label.hash(hasher);
-    hash_rendered_image_anchor(image.anchor.as_ref(), hasher);
-}
-
 /// Trait for TUI state consumed by the shared renderer.
 ///
 /// This is a wide (114-method) presentation interface: the read-only surface the
@@ -387,21 +348,6 @@ pub trait TuiState {
         0
     }
     fn has_display_edit_tool_messages(&self) -> bool;
-    fn side_pane_images(&self) -> Vec<crate::session::RenderedImage>;
-    /// Cheap signature of the current inline-image set: `(count, content_hash)`.
-    /// Used by the prepared-frame cache so the inline image section invalidates
-    /// when images are added/removed without cloning the payloads every frame.
-    /// The default implementation derives it from `side_pane_images`; overrides
-    /// can provide a cheaper path.
-    fn side_pane_images_signature(&self) -> (usize, u64) {
-        use std::hash::Hasher;
-        let images = self.side_pane_images();
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        for image in &images {
-            hash_rendered_image_signature_fields(image, &mut hasher);
-        }
-        (images.len(), hasher.finish())
-    }
     /// Version counter for display_messages (monotonic, increments on mutation)
     fn display_messages_version(&self) -> u64;
     fn streaming_text(&self) -> &str;
@@ -701,65 +647,20 @@ pub trait TuiState {
     fn auth_status(&self) -> crate::auth::AuthStatus;
     /// Update cost calculation based on token usage (for API-key providers)
     fn update_cost(&mut self);
-    /// Diagram display mode (none/margin/pinned)
-    // ---- Diagram pane ----
-    fn diagram_mode(&self) -> crate::config::DiagramDisplayMode;
-    /// Whether the diagram pane is focused (pinned mode)
-    fn diagram_focus(&self) -> bool;
-    /// Selected diagram index (pinned mode, most-recent = 0)
-    fn diagram_index(&self) -> usize;
-    /// Diagram scroll offsets in cells (x, y) when focused
-    fn diagram_scroll(&self) -> (i32, i32);
-    /// Diagram pane width ratio percentage
-    fn diagram_pane_ratio(&self) -> u8;
+    /// Right side-pane width ratio percentage
+    fn side_pane_ratio(&self) -> u8;
     /// Whether the user has manually resized the diagram/side pane width.
-    fn diagram_pane_ratio_user_adjusted(&self) -> bool;
-    /// Whether the diagram pane ratio is currently animating
-    fn diagram_pane_animating(&self) -> bool;
-    /// Whether the pinned diagram pane is visible
-    fn diagram_pane_enabled(&self) -> bool;
-    /// Position of pinned diagram pane (side or top)
-    fn diagram_pane_position(&self) -> crate::config::DiagramPanePosition;
-    /// Diagram zoom percentage (100 = normal)
-    fn diagram_zoom(&self) -> u8;
+    fn side_pane_ratio_user_adjusted(&self) -> bool;
     /// Scroll offset for pinned diff pane (line index)
     // ---- Diff pane ----
     fn diff_pane_scroll(&self) -> usize;
     /// Horizontal pan offset for the shared right pane (side-panel diagrams)
     fn diff_pane_scroll_x(&self) -> i32;
-    /// Zoom percentage for image widgets rendered inside the side panel.
-    fn side_panel_image_zoom_percent(&self) -> u8;
-    /// Image shown in the dismissible full-screen panel preview.
-    fn panel_image_preview(&self) -> Option<u64> {
-        None
-    }
     /// Whether the pinned diff pane is focused
     fn diff_pane_focus(&self) -> bool;
     /// Session-scoped side panel state managed by the side_panel tool
     // ---- Side panel ----
     fn side_panel(&self) -> &crate::side_panel::SidePanelSnapshot;
-    /// Whether to pin read images to a side pane
-    fn pin_images(&self) -> bool;
-    /// Whether inline transcript images render expanded. When false, each
-    /// image collapses to a one-line label stub with a `show image` badge.
-    /// Persisted across restarts/resume via UI preferences.
-    fn inline_images_visible(&self) -> bool {
-        true
-    }
-    /// Per-image inline expand level for `image_id` (Fit when never expanded).
-    /// Cycled by clicking the per-image `expand` badge.
-    fn image_expand_level(&self, _image_id: u64) -> ImageExpandLevel {
-        ImageExpandLevel::Fit
-    }
-    /// Monotonic counter bumped whenever any image's expand level changes, so
-    /// prepared-frame caches that embed anchored image geometry invalidate.
-    fn expanded_images_version(&self) -> u64 {
-        0
-    }
-    /// Remaining seconds before the pinned image side pane auto-hides.
-    fn pinned_images_auto_hide_remaining_secs(&self) -> Option<u64> {
-        None
-    }
     /// Whether to show a native terminal scrollbar for the chat viewport
     fn chat_native_scrollbar(&self) -> bool;
     /// Whether to show a native terminal scrollbar for the side panel
@@ -1757,12 +1658,7 @@ pub fn render_frame(frame: &mut Frame<'_>, state: &dyn TuiState) {
     ui::draw(frame, state);
 }
 
-pub use ui::inline_image_ui::ImageExpandLevel;
-pub use ui::{
-    PinnedDiagramLiveDebugSnapshot, PinnedDiagramProbeRect, SidePanelDebugStats,
-    SidePanelMermaidProbe, SidePanelMermaidProbeRect, debug_probe_pinned_diagram,
-    debug_probe_side_panel_mermaid,
-};
+pub use ui::SidePanelDebugStats;
 
 pub fn display_messages_from_session(session: &crate::session::Session) -> Vec<DisplayMessage> {
     let mut messages = jcode_tui_messages::display_messages_from_rendered_messages(
@@ -1798,20 +1694,8 @@ pub fn side_panel_debug_json() -> Option<serde_json::Value> {
     ui::side_panel_debug_json()
 }
 
-pub fn pinned_diagram_debug_json() -> Option<serde_json::Value> {
-    ui::pinned_diagram_debug_json()
-}
-
-pub(crate) fn clear_side_panel_debug_snapshot() {
-    ui::clear_side_panel_debug_snapshot();
-}
-
 pub fn reset_side_panel_debug_stats() {
     ui::reset_side_panel_debug_stats();
-}
-
-pub fn reset_pinned_diagram_debug_snapshot() {
-    ui::reset_pinned_diagram_debug_snapshot();
 }
 
 pub fn clear_side_panel_render_caches() {
@@ -1823,17 +1707,9 @@ pub fn prewarm_focused_side_panel(
     terminal_width: u16,
     terminal_height: u16,
     ratio_percent: u8,
-    has_protocol: bool,
     centered: bool,
 ) -> bool {
-    ui::prewarm_focused_side_panel(
-        snapshot,
-        terminal_width,
-        terminal_height,
-        ratio_percent,
-        has_protocol,
-        centered,
-    )
+    ui::prewarm_focused_side_panel(snapshot, terminal_width, terminal_height, ratio_percent, centered)
 }
 
 #[cfg(test)]

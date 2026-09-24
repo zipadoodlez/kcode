@@ -654,7 +654,6 @@ fn gc_dissolves_stale_traces_only_when_provably_offscreen() {
             ratatui::layout::Rect::new(0, 0, 80, viewport_h),
             None,
             None,
-            None,
         );
 
         // Transcript hasn't grown enough yet: 25 - 10 = 15 <= 20 + 2 margin.
@@ -695,7 +694,6 @@ fn gc_never_runs_while_user_scrolled_up() {
 
         crate::tui::ui::record_layout_snapshot(
             ratatui::layout::Rect::new(0, 0, 80, 20),
-            None,
             None,
             None,
         );
@@ -842,7 +840,6 @@ fn gc_keeps_single_trace_indefinitely() {
 
         crate::tui::ui::record_layout_snapshot(
             ratatui::layout::Rect::new(0, 0, 80, 20),
-            None,
             None,
             None,
         );

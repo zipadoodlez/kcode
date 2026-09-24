@@ -85,7 +85,6 @@ mod onboarding_sim;
 mod prompt_history;
 mod remote;
 mod remote_notifications;
-mod replay;
 pub(crate) mod run_shell;
 mod runtime_memory;
 mod shortcut_hints;
@@ -1234,10 +1233,8 @@ pub struct App {
     remote_session_id: Option<String>,
     // All sessions on the server (remote mode only)
     remote_sessions: Vec<String>,
-    remote_side_pane_images: Vec<crate::session::RenderedImage>,
     /// Cached image-set signature. Text-only transcript changes must not
     /// invalidate this because rebuilding it materializes every image payload.
-    side_pane_images_signature_cache: std::cell::Cell<Option<(usize, u64)>>,
     // Swarm member status snapshots (remote mode only)
     remote_swarm_members: Vec<crate::protocol::SwarmMemberStatus>,
     // Latest swarm plan snapshot (local or remote server event stream)
@@ -1273,41 +1270,20 @@ pub struct App {
     diff_mode: crate::config::DiffDisplayMode,
     // Center all content (from config)
     pub(crate) centered: bool,
-    // Diagram display mode (from config)
-    diagram_mode: crate::config::DiagramDisplayMode,
-    // Whether the pinned diagram pane has focus
-    diagram_focus: bool,
-    // Selected diagram index in pinned mode (most recent = 0)
-    diagram_index: usize,
-    // Diagram scroll offsets in cells (only used when focused)
-    diagram_scroll_x: i32,
-    diagram_scroll_y: i32,
     // Diagram pane width ratio (percentage)
-    diagram_pane_ratio: u8,
+    side_pane_ratio: u8,
     // Animation state for smooth pane ratio transitions
-    diagram_pane_ratio_from: u8,
-    diagram_pane_ratio_target: u8,
-    diagram_pane_anim_start: Option<Instant>,
+    side_pane_ratio_from: u8,
+    side_pane_ratio_target: u8,
+    side_pane_anim_start: Option<Instant>,
     // Set once the user manually resizes the pane (drag or +/- keys), so the
     // adaptive image-width default stops overriding their explicit choice.
-    diagram_pane_ratio_user_adjusted: bool,
-    // Whether the pinned diagram pane is visible
-    diagram_pane_enabled: bool,
-    // Position of pinned diagram pane (side or top)
-    diagram_pane_position: crate::config::DiagramPanePosition,
-    // Diagram zoom percentage (100 = normal)
-    diagram_zoom: u8,
-    // Last diagram hash that was actually visible in the pinned pane.
-    // Used to detect identity/layout changes that should reset back to fit.
-    last_visible_diagram_hash: Option<u64>,
+    side_pane_ratio_user_adjusted: bool,
     // Whether the user is dragging the diagram pane border
-    diagram_pane_dragging: bool,
+    side_pane_dragging: bool,
     // Scroll offset for pinned diff pane
     diff_pane_scroll: usize,
     diff_pane_scroll_x: i32,
-    side_panel_image_zoom_percent: u8,
-    // Full-screen preview of a clicked panel image. Panel scroll/focus stay intact.
-    panel_image_preview: Option<u64>,
     diff_pane_focus: bool,
     diff_pane_auto_scroll: bool,
     side_panel: crate::side_panel::SidePanelSnapshot,
@@ -1356,22 +1332,6 @@ pub struct App {
     // repopulation (such as after a server reload/reconnect) does not re-reveal
     // a panel the user deliberately closed.
     side_panel_explicit_hidden: bool,
-    // Pin read images to side pane
-    pin_images: bool,
-    // Inline transcript images render expanded (true) or as collapsed label
-    // stubs (false). Toggled with Alt+Shift+I; persisted in UI preferences so
-    // it survives restarts and session resumes.
-    inline_images_visible: bool,
-    // Per-image inline expand level (Fit/Large), keyed by image id. Cycled
-    // by clicking the `expand` badge under an image. Absent ids are `Fit`.
-    // `expanded_images_version` bumps on every change so the body/full prep
-    // caches (which embed anchored images) invalidate exactly like the
-    // `inline_images_visible` toggle does.
-    expanded_images: std::collections::HashMap<u64, super::ui::inline_image_ui::ImageExpandLevel>,
-    expanded_images_version: u64,
-    // Auto-hide deadline for the pinned image side pane only.
-    pinned_images_auto_hide_deadline: Option<Instant>,
-    pinned_images_seen_count: usize,
     // Show a native terminal scrollbar in the chat viewport.
     chat_native_scrollbar: bool,
     // Show a native terminal scrollbar in the side panel.

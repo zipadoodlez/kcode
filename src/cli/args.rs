@@ -332,56 +332,6 @@ pub(crate) enum Command {
         action: String,
     },
 
-    /// Replay a saved session in the TUI
-    Replay {
-        /// Session ID, name, or path to session JSON file
-        session: String,
-
-        /// Replay related swarm sessions together in a synchronized multi-pane view
-        #[arg(long)]
-        swarm: bool,
-
-        /// Export timeline as JSON instead of playing
-        #[arg(long)]
-        export: bool,
-
-        /// Playback speed multiplier (default: 1.0)
-        #[arg(long, default_value = "1.0")]
-        speed: f64,
-
-        /// Path to an edited timeline JSON file (overrides session timing)
-        #[arg(long)]
-        timeline: Option<String>,
-
-        /// Auto-edit timeline: compress tool call wait times and gaps between prompts
-        #[arg(long)]
-        auto_edit: bool,
-
-        /// Export as video file (auto-generates name if no path given)
-        #[arg(long, default_missing_value = "auto", num_args = 0..=1)]
-        video: Option<String>,
-
-        /// Video width in columns (default: 120)
-        #[arg(long, default_value = "120")]
-        cols: u16,
-
-        /// Video height in rows (default: 40)
-        #[arg(long, default_value = "40")]
-        rows: u16,
-
-        /// Video frames per second (default: 60)
-        #[arg(long, default_value = "60")]
-        fps: u32,
-
-        /// Force centered layout (overrides config)
-        #[arg(long, conflicts_with = "no_centered")]
-        centered: bool,
-
-        /// Force left-aligned (non-centered) layout (overrides config)
-        #[arg(long, conflicts_with = "centered")]
-        no_centered: bool,
-    },
-
     /// Model management commands
     #[command(subcommand)]
     Model(ModelCommand),

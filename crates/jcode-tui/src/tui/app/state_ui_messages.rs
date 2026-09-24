@@ -560,11 +560,6 @@ impl App {
     /// which merely snaps to the bottom of the chat.
     pub(super) fn clear_view_keep_context(&mut self) {
         self.clear_display_messages();
-        // The rendered transcript is gone, so every entry in the
-        // process-global ACTIVE_DIAGRAMS registry is orphaned (same rationale
-        // as reset_current_session; partial-retention paths like /rewind must
-        // NOT do this).
-        crate::tui::mermaid::clear_active_diagrams();
         self.scroll_offset = 0;
         self.auto_scroll_paused = false;
         self.set_status_notice("View cleared (context kept)");
@@ -573,7 +568,7 @@ impl App {
     pub(super) fn apply_compacted_history_window(
         &mut self,
         mut messages: Vec<DisplayMessage>,
-        images: Vec<crate::session::RenderedImage>,
+        _images: Vec<crate::session::RenderedImage>,
         total_messages: usize,
         visible_messages: usize,
         remaining_messages: usize,
@@ -581,8 +576,6 @@ impl App {
     ) {
         compact_display_messages_for_storage(&mut messages);
         self.display_messages = messages;
-        self.remote_side_pane_images = images;
-        self.invalidate_side_pane_images_signature();
         self.compacted_history_lazy = CompactedHistoryLazyState {
             total_messages,
             visible_messages,

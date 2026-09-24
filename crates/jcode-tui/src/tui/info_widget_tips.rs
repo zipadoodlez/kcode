@@ -10,7 +10,7 @@ struct Tip {
 }
 
 fn all_tips() -> Vec<Tip> {
-    let mut tips = vec![
+    let tips = vec![
         "Ctrl+J / Ctrl+K to jump between user prompts (Cmd+J / Cmd+K on macOS terminals that forward Command)",
         "Ctrl+Shift+J / Ctrl+Shift+K to scroll the chat down and up one line",
         "Ctrl+G to bookmark your scroll position - press again to teleport back",
@@ -22,9 +22,6 @@ fn all_tips() -> Vec<Tip> {
         "Most terminals can be configured to copy text on highlight - no Ctrl+C needed. Check your terminal's settings for 'copy on select'",
         "Alt+G (or /diff) cycles diff mode: Off, Inline, Pinned, File. Shift+Tab cycles favorited models. Pinned shows all diffs in a side pane. File shows the full file with changes highlighted, synced to your scroll position",
     ];
-    if crate::config::config().features.mermaid {
-        tips.insert(3, "```mermaid code blocks render as diagrams");
-    }
     // Mac keyboards label this modifier ⌥, not Alt, so rewrite hints there.
     let alt = jcode_tui_core::keybind::alt_label();
     tips.into_iter()

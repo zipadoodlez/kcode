@@ -29,16 +29,8 @@ fn create_scroll_test_app(
     diagrams: usize,
     padding: usize,
 ) -> (App, ratatui::Terminal<ratatui::backend::TestBackend>) {
-    crate::tui::mermaid::clear_active_diagrams();
-    crate::tui::mermaid::clear_streaming_preview_diagram();
 
     let mut app = create_test_app();
-    if diagrams == 0 {
-        // Process-global diagrams can be registered by sibling tests after the
-        // clear above. Keep text-only geometry deterministic at the App level.
-        app.diagram_mode = crate::config::DiagramDisplayMode::None;
-        app.diagram_pane_enabled = false;
-    }
     let content = App::build_scroll_test_content(diagrams, padding, None);
     app.display_messages = vec![
         DisplayMessage {
@@ -329,8 +321,6 @@ fn render_and_snap(
 fn test_blockquote_paragraph_border_is_continuous_in_terminal_cells() {
     let _lock = scroll_render_test_lock();
     let (mut app, mut terminal) = create_blockquote_copy_test_app();
-    app.diagram_mode = crate::config::DiagramDisplayMode::None;
-    app.diagram_pane_enabled = false;
     app.display_messages[1].content =
         "Draft only:\n\n> Hello,\n>\n> A quoted paragraph.\n>\n> Thanks,\n> Someone\n\nOutside the quote."
             .to_string();
@@ -911,42 +901,6 @@ fn test_local_alt_m_hidden_side_panel_stays_hidden_across_snapshot_update() {
 }
 
 #[test]
-fn test_local_alt_m_falls_back_to_diagram_pane_when_side_panel_is_empty() {
-    let mut app = create_test_app();
-    app.side_panel = crate::side_panel::SidePanelSnapshot::default();
-    app.diagram_pane_enabled = true;
-
-    app.handle_key(KeyCode::Char('m'), KeyModifiers::ALT)
-        .unwrap();
-
-    assert!(!app.diagram_pane_enabled);
-    assert_eq!(app.status_notice(), Some("Diagram pane: OFF".to_string()));
-}
-
-#[test]
-fn test_images_do_not_drive_side_panel_visibility() {
-    // Images now render inline in the transcript flow, so they must not flip the
-    // side panel on, arm an auto-hide timer, or otherwise behave like the old
-    // pinned-image side pane.
-    let mut app = create_test_app();
-    app.is_remote = true;
-    app.side_panel = crate::side_panel::SidePanelSnapshot::default();
-    app.remote_side_pane_images.push(crate::session::RenderedImage {
-        history_message_index: None,
-        media_type: "image/png".to_string(),
-        data: "image-data".to_string(),
-        label: Some("preview.png".to_string()),
-        source: crate::session::RenderedImageSource::UserInput,
-        anchor: None,
-    });
-
-    // Auto-hide bookkeeping is now a no-op for images.
-    assert!(!app.update_pinned_images_auto_hide());
-    assert!(app.pinned_images_auto_hide_deadline.is_none());
-    assert!(!app.side_panel_user_hidden);
-}
-
-#[test]
 fn test_remote_alt_m_toggles_side_panel_visibility() {
     let mut app = create_test_app();
     app.side_panel = test_side_panel_snapshot("plan", "Plan");
@@ -1179,27 +1133,6 @@ fn test_prompt_jump_ctrl_esc_fallback_on_macos() {
     app.handle_key(KeyCode::Esc, KeyModifiers::CONTROL).unwrap();
     assert!(app.auto_scroll_paused);
     assert!(app.scroll_offset > 0);
-}
-
-#[test]
-fn test_ctrl_digit_side_panel_preset_in_app() {
-    let mut app = create_test_app();
-
-    app.handle_key(KeyCode::Char('1'), KeyModifiers::CONTROL)
-        .unwrap();
-    assert_eq!(app.diagram_pane_ratio_target, 25);
-
-    app.handle_key(KeyCode::Char('2'), KeyModifiers::CONTROL)
-        .unwrap();
-    assert_eq!(app.diagram_pane_ratio_target, 50);
-
-    app.handle_key(KeyCode::Char('3'), KeyModifiers::CONTROL)
-        .unwrap();
-    assert_eq!(app.diagram_pane_ratio_target, 75);
-
-    app.handle_key(KeyCode::Char('4'), KeyModifiers::CONTROL)
-        .unwrap();
-    assert_eq!(app.diagram_pane_ratio_target, 100);
 }
 
 #[test]

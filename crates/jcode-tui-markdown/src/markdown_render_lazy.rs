@@ -5,15 +5,12 @@ pub fn render_markdown_lazy(
     max_width: Option<usize>,
     visible_range: std::ops::Range<usize>,
 ) -> Vec<Line<'static>> {
-    let text = jcode_render_core::normalize_latex_math(text);
     let text = escape_currency_dollars(&text);
     let text = preserve_line_oriented_softbreaks(&text);
     let text = text.as_str();
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut current_spans: Vec<Span<'static>> = Vec::new();
-    let deferred_mermaid_mode = deferred_mermaid_render_context_enabled();
     let spacing_mode = effective_markdown_spacing_mode();
-    let latex_mode = config_snapshot().latex_rendering;
     let mut centered_blocks = CenteredStructuredBlockState::default();
 
     // Style stack for nested formatting
@@ -384,39 +381,7 @@ pub fn render_markdown_lazy(
                 code_block_content.clear();
             }
             Event::End(TagEnd::CodeBlock) => {
-                let is_mermaid = should_render_mermaid_block(code_block_lang.as_deref());
-
-                if is_mermaid {
-                    let terminal_width = max_width.and_then(|w| u16::try_from(w).ok());
-                    let result = if deferred_mermaid_mode {
-                        mermaid::render_mermaid_deferred_with_registration(
-                            &code_block_content,
-                            terminal_width,
-                            mermaid_should_register_active(),
-                        )
-                    } else if mermaid_should_register_active() {
-                        Some(mermaid::render_mermaid_sized(
-                            &code_block_content,
-                            terminal_width,
-                        ))
-                    } else {
-                        Some(mermaid::render_mermaid_untracked(
-                            &code_block_content,
-                            terminal_width,
-                        ))
-                    };
-                    match result {
-                        Some(other) => {
-                            let mermaid_lines = mermaid::result_to_lines(other, max_width);
-                            lines.extend(mermaid_lines);
-                        }
-                        None => {
-                            lines.push(mermaid_sidebar_placeholder(
-                                MERMAID_PENDING_PLACEHOLDER_TEXT,
-                            ));
-                        }
-                    }
-                } else {
+                {
                     // Calculate the line range this code block will occupy
                     let code_line_count = code_block_content.lines().count();
                     let block_range =
@@ -512,12 +477,7 @@ pub fn render_markdown_lazy(
                     continue;
                 }
                 if in_table {
-                    match latex_mode {
-                        LatexRenderingMode::None => current_cell.push_str(&format!("${math}$")),
-                        LatexRenderingMode::Unicode | LatexRenderingMode::Image => {
-                            current_cell.push_str(&jcode_render_core::render_inline_latex(&math));
-                        }
-                    }
+                    current_cell.push_str(&format!("${math}$"));
                 } else {
                     ensure_blockquote_prefix(&mut current_spans, blockquote_depth);
                     // Inline math must stay inline with the surrounding
@@ -525,12 +485,7 @@ pub fn render_markdown_lazy(
                     // Image mode use the Unicode span. Standalone `$...$`
                     // lines are already promoted to display math during
                     // preprocessing and take the image path there.
-                    match latex_mode {
-                        LatexRenderingMode::None => current_spans.push(raw_math_inline_span(&math)),
-                        LatexRenderingMode::Unicode | LatexRenderingMode::Image => {
-                            current_spans.push(math_inline_span(&math));
-                        }
-                    }
+                    current_spans.push(raw_math_inline_span(&math));
                 }
             }
 
@@ -552,29 +507,10 @@ pub fn render_markdown_lazy(
                     ),
                 );
                 if in_table {
-                    match latex_mode {
-                        LatexRenderingMode::None => current_cell.push_str(&format!("$${math}$$")),
-                        LatexRenderingMode::Unicode | LatexRenderingMode::Image => {
-                            current_cell.push_str(&jcode_render_core::render_inline_latex(&math));
-                        }
-                    }
+                    current_cell.push_str(&format!("$${math}$$"));
                 } else {
                     let block_start = lines.len();
-                    let rendered = match latex_mode {
-                        LatexRenderingMode::None => raw_math_display_lines(&math),
-                        LatexRenderingMode::Unicode => math_display_lines(&math),
-                        LatexRenderingMode::Image
-                            if blockquote_depth == 0
-                                && !in_definition_list
-                                && !in_footnote_definition =>
-                        {
-                            // Strip Markdown container indentation before the
-                            // graphical renderer sees the TeX source.
-                            latex_image_lines(math.trim(), true, max_width)
-                                .unwrap_or_else(|| math_display_lines(&math))
-                        }
-                        LatexRenderingMode::Image => math_display_lines(&math),
-                    };
+                    let rendered = raw_math_display_lines(&math);
                     for line in rendered {
                         lines.push(with_blockquote_prefix(line, blockquote_depth));
                     }

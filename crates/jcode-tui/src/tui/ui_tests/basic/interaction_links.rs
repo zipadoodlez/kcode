@@ -98,7 +98,6 @@ fn test_active_file_diff_context_resolves_visible_edit() {
         wrapped_user_prompt_starts: Vec::new(),
         wrapped_user_prompt_ends: Vec::new(),
         user_prompt_texts: Vec::new(),
-        image_regions: Vec::new(),
         edit_tool_ranges: vec![
             EditToolRange {
                 edit_index: 0,
@@ -119,7 +118,6 @@ fn test_active_file_diff_context_resolves_visible_edit() {
         ],
         copy_targets: Vec::new(),
         message_boundaries: Vec::new(),
-        mermaid_pending_epoch: None,
     };
 
     let prepared = PreparedChatFrame::from_single(Arc::new(prepared));

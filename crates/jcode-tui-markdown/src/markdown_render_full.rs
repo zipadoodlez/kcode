@@ -19,20 +19,12 @@ pub fn thread_render_count() -> u64 {
 
 pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<Line<'static>> {
     let render_start = Instant::now();
-    let text = jcode_render_core::normalize_latex_math(text);
     let text = escape_currency_dollars(&text);
     let text = preserve_line_oriented_softbreaks(&text);
     let text = text.as_str();
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut current_spans: Vec<Span<'static>> = Vec::new();
-    let streaming_mode = streaming_render_context_enabled();
-    let deferred_mermaid_mode = deferred_mermaid_render_context_enabled();
     let spacing_mode = effective_markdown_spacing_mode();
-    let configured_latex_mode = config_snapshot().latex_rendering;
-    // Image rendering is deferred to a background worker (see #735), so it is
-    // safe to keep in streaming mode: an uncached formula emits a lightweight
-    // pending placeholder and upgrades once the worker finishes.
-    let latex_mode = configured_latex_mode;
 
     // Style stack for nested formatting
     let mut bold = false;
@@ -84,7 +76,6 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
     // Debug counters
     let mut dbg_headings = 0usize;
     let mut dbg_code_blocks = 0usize;
-    let mut dbg_mermaid_blocks = 0usize;
     let mut dbg_tables = 0usize;
     let mut dbg_list_items = 0usize;
     let mut dbg_blockquotes = 0usize;
@@ -414,61 +405,7 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
                 code_block_content.clear();
             }
             Event::End(TagEnd::CodeBlock) => {
-                // Check if this is a mermaid diagram
-                let is_mermaid = should_render_mermaid_block(code_block_lang.as_deref());
-
-                if is_mermaid {
-                    dbg_mermaid_blocks += 1;
-                    // Render mermaid diagram.
-                    // In streaming mode this updates only the ephemeral preview entry.
-                    let terminal_width = max_width.and_then(|w| u16::try_from(w).ok());
-                    let result = if streaming_mode {
-                        mermaid::render_mermaid_deferred_with_stream_scope(
-                            &code_block_content,
-                            terminal_width,
-                            dbg_mermaid_blocks as u64,
-                        )
-                    } else if deferred_mermaid_mode {
-                        mermaid::render_mermaid_deferred_with_registration(
-                            &code_block_content,
-                            terminal_width,
-                            mermaid_should_register_active(),
-                        )
-                    } else if !mermaid_should_register_active() {
-                        Some(mermaid::render_mermaid_untracked(
-                            &code_block_content,
-                            terminal_width,
-                        ))
-                    } else {
-                        Some(mermaid::render_mermaid_sized(
-                            &code_block_content,
-                            terminal_width,
-                        ))
-                    };
-                    match result {
-                        Some(result) => {
-                            if streaming_mode
-                                && let mermaid::RenderResult::Image {
-                                    hash,
-                                    width,
-                                    height,
-                                    ..
-                                } = &result
-                            {
-                                mermaid::set_streaming_preview_diagram(
-                                    *hash, *width, *height, None,
-                                );
-                            }
-                            let mermaid_lines = mermaid::result_to_lines(result, max_width);
-                            lines.extend(mermaid_lines);
-                        }
-                        None => {
-                            lines.push(mermaid_sidebar_placeholder(
-                                MERMAID_PENDING_PLACEHOLDER_TEXT,
-                            ));
-                        }
-                    }
-                } else {
+                {
                     // Render code block with syntax highlighting (cached)
                     let highlighted =
                         highlight_code_cached(&code_block_content, code_block_lang.as_deref());
@@ -539,12 +476,7 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
                     continue;
                 }
                 if in_table {
-                    match latex_mode {
-                        LatexRenderingMode::None => current_cell.push_str(&format!("${math}$")),
-                        LatexRenderingMode::Unicode | LatexRenderingMode::Image => {
-                            current_cell.push_str(&jcode_render_core::render_inline_latex(&math));
-                        }
-                    }
+                    current_cell.push_str(&format!("${math}$"));
                 } else {
                     ensure_blockquote_prefix(&mut current_spans, blockquote_depth);
                     // Inline math must stay inline with the surrounding
@@ -552,12 +484,7 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
                     // Image mode use the Unicode span. Standalone `$...$`
                     // lines are already promoted to display math during
                     // preprocessing and take the image path there.
-                    match latex_mode {
-                        LatexRenderingMode::None => current_spans.push(raw_math_inline_span(&math)),
-                        LatexRenderingMode::Unicode | LatexRenderingMode::Image => {
-                            current_spans.push(math_inline_span(&math));
-                        }
-                    }
+                    current_spans.push(raw_math_inline_span(&math));
                 }
             }
 
@@ -579,32 +506,10 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
                     ),
                 );
                 if in_table {
-                    match latex_mode {
-                        LatexRenderingMode::None => current_cell.push_str(&format!("$${math}$$")),
-                        LatexRenderingMode::Unicode | LatexRenderingMode::Image => {
-                            current_cell.push_str(&jcode_render_core::render_inline_latex(&math));
-                        }
-                    }
+                    current_cell.push_str(&format!("$${math}$$"));
                 } else {
                     let block_start = lines.len();
-                    let rendered = match latex_mode {
-                        LatexRenderingMode::None => raw_math_display_lines(&math),
-                        LatexRenderingMode::Unicode => math_display_lines(&math),
-                        LatexRenderingMode::Image
-                            if blockquote_depth == 0
-                                && !in_definition_list
-                                && !in_footnote_definition =>
-                        {
-                            // pulldown-cmark preserves the indentation used to
-                            // nest display math inside a list item. That
-                            // whitespace is Markdown structure, not TeX source,
-                            // and can make native/image renderers reject an
-                            // otherwise valid expression.
-                            latex_image_lines(math.trim(), true, max_width)
-                                .unwrap_or_else(|| math_display_lines(&math))
-                        }
-                        LatexRenderingMode::Image => math_display_lines(&math),
-                    };
+                    let rendered = raw_math_display_lines(&math);
                     for line in rendered {
                         lines.push(with_blockquote_prefix(line, blockquote_depth));
                     }
@@ -977,24 +882,7 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
     // Handle incomplete code block (streaming case)
     // If we're still inside a code block, render what we have so far
     if in_code_block && !code_block_content.is_empty() {
-        let is_mermaid = should_render_mermaid_block(code_block_lang.as_deref());
-
-        if is_mermaid {
-            // For mermaid, show "rendering..." placeholder while streaming
-            let dim = Style::default().fg(md_dim_color());
-            lines.push(Line::from(Span::styled("┌─ mermaid (streaming...) ", dim)));
-            // Show first few lines of the diagram source
-            for source_line in code_block_content.lines().take(5) {
-                lines.push(Line::from(vec![
-                    Span::styled("│ ", dim),
-                    Span::styled(source_line.to_string(), Style::default().fg(code_fg())),
-                ]));
-            }
-            if code_block_content.lines().count() > 5 {
-                lines.push(Line::from(Span::styled("│ ...", dim)));
-            }
-            lines.push(Line::from(Span::styled("└─", dim)));
-        } else {
+        {
             // Regular code block - render what we have
             let lang_str = code_block_lang.as_deref().unwrap_or("");
             let header = format!(
@@ -1059,7 +947,6 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
         state.stats.last_lines = Some(lines.len());
         state.stats.last_headings = dbg_headings;
         state.stats.last_code_blocks = dbg_code_blocks;
-        state.stats.last_mermaid_blocks = dbg_mermaid_blocks;
         state.stats.last_tables = dbg_tables;
         state.stats.last_list_items = dbg_list_items;
         state.stats.last_blockquotes = dbg_blockquotes;

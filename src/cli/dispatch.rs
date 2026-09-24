@@ -384,42 +384,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         Some(Command::Browser { action }) => {
             commands::run_browser(&action).await?;
         }
-        Some(Command::Replay {
-            session,
-            swarm,
-            export,
-            speed,
-            timeline,
-            auto_edit,
-            video,
-            cols,
-            rows,
-            fps,
-            centered,
-            no_centered,
-        }) => {
-            let centered_override = if centered {
-                Some(true)
-            } else if no_centered {
-                Some(false)
-            } else {
-                None
-            };
-            tui_launch::run_replay_command(
-                &session,
-                swarm,
-                export,
-                auto_edit,
-                speed,
-                timeline.as_deref(),
-                video.as_deref(),
-                cols,
-                rows,
-                fps,
-                centered_override,
-            )
-            .await?;
-        }
         Some(Command::Model(subcmd)) => match subcmd {
             ModelCommand::List { json, verbose } => {
                 commands::run_model_command(&args.provider, args.model.as_deref(), json, verbose)

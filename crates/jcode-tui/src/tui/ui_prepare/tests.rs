@@ -124,7 +124,6 @@ fn matching_suffix_len_detects_prepended_history() {
         wrapped_user_prompt_starts: Vec::new(),
         wrapped_user_prompt_ends: Vec::new(),
         user_prompt_texts: Vec::new(),
-        image_regions: Vec::new(),
         edit_tool_ranges: Vec::new(),
         copy_targets: Vec::new(),
         message_boundaries: old
@@ -136,7 +135,6 @@ fn matching_suffix_len_detects_prepended_history() {
                 user_prompt_len: 0,
             })
             .collect(),
-        mermaid_pending_epoch: None,
     };
 
     // New transcript: two older-history messages prepended, tail unchanged.

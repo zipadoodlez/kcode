@@ -1,26 +1,10 @@
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize)]
-pub enum DiagramDisplayMode {
-    #[default]
-    None,
-    Margin,
-    Pinned,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize)]
 pub enum MarkdownSpacingMode {
     #[default]
     Compact,
     Document,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum LatexRenderingMode {
-    None,
-    Unicode,
-    #[default]
-    Image,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -34,9 +34,6 @@ impl App {
         if images.is_empty() {
             return false;
         }
-        self.remote_side_pane_images.extend(images);
-        self.invalidate_side_pane_images_signature();
-        self.update_pinned_images_auto_hide();
         true
     }
 
@@ -177,22 +174,8 @@ impl App {
         self.bump_display_messages_version_no_stats();
     }
 
-    /// Drop the cached inline-image signature so the next prepared frame
-    /// recomputes it. Needed when the image set changes without a
-    /// display-messages mutation (e.g. a live SidePaneImages event).
-    pub(super) fn invalidate_side_pane_images_signature(&mut self) {
-        self.side_pane_images_signature_cache.set(None);
-    }
-
     /// Drop rendered inline images and every cache keyed by their contents.
     /// Use this when the entire transcript is discarded.
-    pub(crate) fn clear_inline_image_state(&mut self) {
-        self.remote_side_pane_images.clear();
-        self.invalidate_side_pane_images_signature();
-        self.expanded_images.clear();
-        self.expanded_images_version = self.expanded_images_version.wrapping_add(1);
-    }
-
     /// Bump the display-messages version without rescanning the transcript to
     /// recompute counters. Callers that have already maintained the cached
     /// counters incrementally (e.g. a single append) use this to stay O(1).
@@ -681,7 +664,6 @@ impl App {
         if focused_changed {
             self.diff_pane_scroll = 0;
             self.diff_pane_scroll_x = 0;
-            self.side_panel_image_zoom_percent = 100;
             self.diff_pane_auto_scroll = true;
         }
         if focused_changed {
@@ -696,7 +678,6 @@ impl App {
                 _ => {}
             }
         }
-        self.sync_diagram_fit_context();
         self.prewarm_focused_side_panel();
     }
 
@@ -797,13 +778,11 @@ impl App {
         let Ok((terminal_width, terminal_height)) = crossterm::terminal::size() else {
             return;
         };
-        let has_protocol = crate::tui::mermaid::protocol_type().is_some();
         let _ = crate::tui::prewarm_focused_side_panel(
             &self.side_panel,
             terminal_width,
             terminal_height,
-            self.diagram_pane_ratio,
-            has_protocol,
+            self.side_pane_ratio,
             self.centered,
         );
     }

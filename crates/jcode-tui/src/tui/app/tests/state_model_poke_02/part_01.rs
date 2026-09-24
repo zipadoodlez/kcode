@@ -1,31 +1,4 @@
 #[test]
-fn test_side_diagram_uses_left_splitter_instead_of_rounded_box() {
-    let _lock = scroll_render_test_lock();
-    let mut app = create_test_app();
-    app.diagram_mode = crate::config::DiagramDisplayMode::Pinned;
-    app.diagram_pane_enabled = true;
-    app.diagram_pane_position = crate::config::DiagramPanePosition::Side;
-
-    crate::tui::mermaid::clear_active_diagrams();
-    crate::tui::mermaid::register_active_diagram(0x444, 900, 450, Some("side".to_string()));
-
-    let backend = ratatui::backend::TestBackend::new(120, 40);
-    let mut terminal = ratatui::Terminal::new(backend).expect("failed to create terminal");
-    let text = render_and_snap(&app, &mut terminal);
-
-    let diagram_area = crate::tui::ui::last_layout_snapshot()
-        .and_then(|layout| layout.diagram_area)
-        .expect("expected side diagram area after render");
-    let buf = terminal.backend().buffer();
-
-    assert_eq!(buf[(diagram_area.x, diagram_area.y)].symbol(), "│");
-    assert_eq!(buf[(diagram_area.x, diagram_area.y + 1)].symbol(), "│");
-    assert!(text.contains("pinned 1/1"), "rendered text: {text}");
-
-    crate::tui::mermaid::clear_active_diagrams();
-}
-
-#[test]
 fn test_tool_side_panel_focus_supports_horizontal_pan_keys() {
     let mut app = create_test_app();
     app.diff_mode = crate::config::DiffDisplayMode::Inline;
@@ -44,7 +17,7 @@ fn test_tool_side_panel_focus_supports_horizontal_pan_keys() {
         }],
     };
 
-    assert!(app.handle_diagram_ctrl_key(KeyCode::Char('l'), false));
+    app.diff_pane_focus = true;
     assert!(app.diff_pane_focus);
 
     app.handle_key(KeyCode::Right, KeyModifiers::empty())
@@ -55,43 +28,6 @@ fn test_tool_side_panel_focus_supports_horizontal_pan_keys() {
     app.handle_key(KeyCode::Left, KeyModifiers::empty())
         .unwrap();
     assert_eq!(app.diff_pane_scroll_x, 0);
-}
-
-#[test]
-fn test_tool_side_panel_focus_supports_image_zoom_keys() {
-    let mut app = create_test_app();
-    app.diff_mode = crate::config::DiffDisplayMode::Inline;
-    app.side_panel = crate::side_panel::SidePanelSnapshot {
-        focus_revision: 0,
-        focused_page_id: Some("plan".to_string()),
-        pages: vec![crate::side_panel::SidePanelPage {
-            id: "plan".to_string(),
-            title: "Plan".to_string(),
-            file_path: "".to_string(),
-            format: crate::side_panel::SidePanelPageFormat::Markdown,
-            pdf_data: None,
-            source: crate::side_panel::SidePanelPageSource::Managed,
-            content: "hello".to_string(),
-            updated_at_ms: 1,
-        }],
-    };
-
-    assert!(app.handle_diagram_ctrl_key(KeyCode::Char('l'), false));
-    assert!(app.diff_pane_focus);
-
-    app.handle_key(KeyCode::Char('+'), KeyModifiers::empty())
-        .unwrap();
-    assert_eq!(app.side_panel_image_zoom_percent, 110);
-
-    app.handle_key(KeyCode::Char('-'), KeyModifiers::empty())
-        .unwrap();
-    assert_eq!(app.side_panel_image_zoom_percent, 100);
-
-    app.handle_key(KeyCode::Char('+'), KeyModifiers::empty())
-        .unwrap();
-    app.handle_key(KeyCode::Char('0'), KeyModifiers::empty())
-        .unwrap();
-    assert_eq!(app.side_panel_image_zoom_percent, 100);
 }
 
 #[test]
@@ -117,7 +53,6 @@ fn test_mouse_horizontal_scroll_over_tool_side_panel_pans_without_focus_change()
 
     crate::tui::ui::record_layout_snapshot(
         Rect::new(0, 0, 40, 20),
-        None,
         Some(Rect::new(40, 0, 20, 20)),
         None,
     );
@@ -138,56 +73,12 @@ fn test_mouse_horizontal_scroll_over_tool_side_panel_pans_without_focus_change()
 }
 
 #[test]
-fn test_ctrl_mouse_scroll_over_tool_side_panel_zooms_images() {
-    let mut app = create_test_app();
-    app.diff_mode = crate::config::DiffDisplayMode::Inline;
-    app.side_panel_image_zoom_percent = 100;
-    app.diff_pane_focus = false;
-    app.side_panel = crate::side_panel::SidePanelSnapshot {
-        focus_revision: 0,
-        focused_page_id: Some("plan".to_string()),
-        pages: vec![crate::side_panel::SidePanelPage {
-            id: "plan".to_string(),
-            title: "Plan".to_string(),
-            file_path: "".to_string(),
-            format: crate::side_panel::SidePanelPageFormat::Markdown,
-            pdf_data: None,
-            source: crate::side_panel::SidePanelPageSource::Managed,
-            content: "hello".to_string(),
-            updated_at_ms: 1,
-        }],
-    };
-
-    crate::tui::ui::record_layout_snapshot(
-        Rect::new(0, 0, 40, 20),
-        None,
-        Some(Rect::new(40, 0, 20, 20)),
-        None,
-    );
-
-    let scroll_only = app.handle_mouse_event(MouseEvent {
-        kind: MouseEventKind::ScrollUp,
-        column: 45,
-        row: 5,
-        modifiers: KeyModifiers::CONTROL,
-    });
-
-    assert!(
-        !scroll_only,
-        "side-panel image zoom should request an immediate redraw"
-    );
-    assert_eq!(app.side_panel_image_zoom_percent, 110);
-    assert!(!app.diff_pane_focus);
-}
-
-#[test]
 fn test_mouse_scroll_events_are_classified_as_scroll_only() {
     let mut app = create_test_app();
     app.diff_mode = crate::config::DiffDisplayMode::File;
 
     crate::tui::ui::record_layout_snapshot(
         Rect::new(0, 0, 40, 20),
-        None,
         Some(Rect::new(40, 0, 20, 20)),
         None,
     );
@@ -226,7 +117,7 @@ fn test_handterm_native_scroll_command_updates_chat_offset() {
     terminal
         .draw(|f| crate::tui::ui::draw(f, &app))
         .expect("draw failed");
-    crate::tui::ui::record_layout_snapshot(Rect::new(0, 0, 50, 12), None, None, None);
+    crate::tui::ui::record_layout_snapshot(Rect::new(0, 0, 50, 12), None, None);
     assert!(
         crate::tui::ui::last_max_scroll() > 7,
         "scroll test content should exceed the viewport"
@@ -373,199 +264,6 @@ fn test_mouse_scroll_changelog_overlay_updates_changelog_scroll() {
     assert_eq!(app.changelog_scroll, Some(3));
 }
 
-#[test]
-fn test_mouse_scroll_over_diagram_pans_hovered_pane_without_changing_focus() {
-    let _render_lock = scroll_render_test_lock();
-    let (mut app, mut terminal) = create_scroll_test_app(120, 30, 0, 80);
-    app.diagram_mode = crate::config::DiagramDisplayMode::Pinned;
-    app.diagram_pane_enabled = true;
-    app.diagram_pane_position = crate::config::DiagramPanePosition::Side;
-    app.diagram_pane_ratio = 40;
-    app.diagram_pane_ratio_from = 40;
-    app.diagram_pane_ratio_target = 40;
-    app.diagram_pane_anim_start = None;
-    app.diagram_focus = false;
-
-    crate::tui::mermaid::clear_active_diagrams();
-    crate::tui::mermaid::register_active_diagram(0x444, 900, 450, None);
-    let _ = render_and_snap(&app, &mut terminal);
-    let max_scroll = crate::tui::ui::last_max_scroll();
-    assert!(max_scroll > 2, "expected scrollable chat content");
-    for (position, messages_area, diagram_area) in [
-        (
-            crate::config::DiagramPanePosition::Side,
-            Rect::new(0, 0, 80, 30),
-            Rect::new(80, 0, 40, 30),
-        ),
-        (
-            crate::config::DiagramPanePosition::Top,
-            Rect::new(0, 12, 120, 18),
-            Rect::new(0, 0, 120, 12),
-        ),
-    ] {
-        app.diagram_pane_position = position;
-        crate::tui::ui::record_layout_snapshot(messages_area, Some(diagram_area), None, None);
-        for focused in [false, true] {
-            for (column, row) in [
-                (diagram_area.x, diagram_area.y),
-                (diagram_area.x + 10, diagram_area.y + 5),
-                (diagram_area.right() - 1, diagram_area.bottom() - 1),
-            ] {
-                for (kind, expected) in [
-                    (MouseEventKind::ScrollUp, (5, 4)),
-                    (MouseEventKind::ScrollDown, (5, 6)),
-                    (MouseEventKind::ScrollLeft, (4, 5)),
-                    (MouseEventKind::ScrollRight, (6, 5)),
-                ] {
-                    app.diagram_focus = focused;
-                    app.diagram_scroll_x = 5;
-                    app.diagram_scroll_y = 5;
-
-                    let scroll_only = app.handle_mouse_event(MouseEvent {
-                        kind,
-                        column,
-                        row,
-                        modifiers: KeyModifiers::empty(),
-                    });
-
-                    assert!(scroll_only, "diagram wheel should be scroll-only");
-                    assert_eq!((app.diagram_scroll_x, app.diagram_scroll_y), expected);
-                    assert_eq!(app.diagram_focus, focused, "hover must not steal focus");
-                    assert!(
-                        !app.auto_scroll_paused,
-                        "hover must not pause chat auto-scroll"
-                    );
-                    assert_eq!(app.scroll_offset, 0, "hover must not scroll chat");
-                    assert_eq!(app.diagram_pane_ratio, 40);
-                    assert_eq!(app.diagram_pane_ratio_from, 40);
-                    assert_eq!(app.diagram_pane_ratio_target, 40);
-                    assert!(app.diagram_pane_anim_start.is_none());
-                }
-            }
-        }
-    }
-
-    crate::tui::mermaid::clear_active_diagrams();
-}
-
-#[test]
-fn test_mouse_scroll_over_chat_ignores_diagram_keyboard_focus() {
-    let _render_lock = scroll_render_test_lock();
-    let (mut app, mut terminal) = create_scroll_test_app(120, 30, 0, 80);
-    app.diagram_mode = crate::config::DiagramDisplayMode::Pinned;
-    app.diagram_pane_enabled = true;
-    app.diagram_pane_position = crate::config::DiagramPanePosition::Side;
-    app.diagram_focus = true;
-
-    crate::tui::mermaid::register_active_diagram(0x447, 900, 450, None);
-    let _ = render_and_snap(&app, &mut terminal);
-    assert!(crate::tui::ui::last_max_scroll() > 2);
-    crate::tui::ui::record_layout_snapshot(
-        Rect::new(0, 0, 80, 30),
-        Some(Rect::new(80, 0, 40, 30)),
-        None,
-        None,
-    );
-    app.diagram_scroll_x = 5;
-    app.diagram_scroll_y = 5;
-
-    app.handle_mouse_event(MouseEvent {
-        kind: MouseEventKind::ScrollUp,
-        column: 79,
-        row: 10,
-        modifiers: KeyModifiers::empty(),
-    });
-
-    assert!(app.auto_scroll_paused);
-    assert_ne!(app.scroll_offset, 0);
-    assert_eq!((app.diagram_scroll_x, app.diagram_scroll_y), (5, 5));
-    assert!(app.diagram_focus, "wheel must not change keyboard focus");
-
-    crate::tui::mermaid::clear_active_diagrams();
-}
-
-#[test]
-fn test_mouse_scroll_over_diagram_at_top_does_not_scroll_chat() {
-    let _render_lock = scroll_render_test_lock();
-    let mut app = create_test_app();
-    app.diagram_mode = crate::config::DiagramDisplayMode::Pinned;
-    app.diagram_pane_enabled = true;
-    app.diagram_pane_position = crate::config::DiagramPanePosition::Side;
-    app.diagram_focus = true;
-    app.diagram_scroll_y = 0;
-
-    crate::tui::mermaid::clear_active_diagrams();
-    crate::tui::mermaid::register_active_diagram(0x446, 900, 450, None);
-    crate::tui::ui::record_layout_snapshot(
-        Rect::new(0, 0, 80, 30),
-        Some(Rect::new(80, 0, 40, 30)),
-        None,
-        None,
-    );
-
-    for focused in [false, true] {
-        app.diagram_focus = focused;
-        let scroll_only = app.handle_mouse_event(MouseEvent {
-            kind: MouseEventKind::ScrollUp,
-            column: 90,
-            row: 10,
-            modifiers: KeyModifiers::empty(),
-        });
-
-        assert!(
-            scroll_only,
-            "hovered diagram owns wheel events even at its limit"
-        );
-        assert_eq!(app.diagram_scroll_y, 0);
-        assert_eq!(app.diagram_focus, focused);
-    }
-
-    crate::tui::mermaid::clear_active_diagrams();
-}
-
-#[test]
-fn test_dragging_diagram_border_resizes_immediately_without_animation() {
-    let mut app = create_test_app();
-    app.diagram_mode = crate::config::DiagramDisplayMode::Pinned;
-    app.diagram_pane_enabled = true;
-    app.diagram_pane_position = crate::config::DiagramPanePosition::Side;
-    app.diagram_pane_ratio = 40;
-    app.diagram_pane_ratio_from = 40;
-    app.diagram_pane_ratio_target = 40;
-    app.diagram_pane_anim_start = Some(Instant::now());
-    app.diagram_pane_dragging = false;
-
-    crate::tui::mermaid::clear_active_diagrams();
-    crate::tui::mermaid::register_active_diagram(0x445, 900, 450, None);
-    crate::tui::ui::record_layout_snapshot(
-        Rect::new(0, 0, 80, 30),
-        Some(Rect::new(80, 0, 40, 30)),
-        None,
-        None,
-    );
-
-    app.handle_mouse_event(MouseEvent {
-        kind: MouseEventKind::Down(MouseButton::Left),
-        column: 80,
-        row: 10,
-        modifiers: KeyModifiers::empty(),
-    });
-    assert!(app.diagram_pane_dragging);
-
-    app.handle_mouse_event(MouseEvent {
-        kind: MouseEventKind::Drag(MouseButton::Left),
-        column: 72,
-        row: 10,
-        modifiers: KeyModifiers::empty(),
-    });
-
-    assert_eq!(app.diagram_pane_ratio, 40);
-    assert_eq!(app.diagram_pane_ratio_from, 40);
-    assert_eq!(app.diagram_pane_ratio_target, 40);
-    assert!(app.diagram_pane_anim_start.is_none());
-
-    crate::tui::mermaid::clear_active_diagrams();
-}
 
 #[test]
 fn test_is_scroll_only_key_detects_navigation_inputs() {
@@ -1445,140 +1143,3 @@ fn test_agent_model_picker_inherit_row_uses_provider_default_when_inherited_mode
     });
 }
 
-#[test]
-fn test_panel_image_preview_click_render_dismiss_and_restore() {
-    let _lock = scroll_render_test_lock();
-    struct ResetImageMode;
-    impl Drop for ResetImageMode {
-        fn drop(&mut self) {
-            crate::tui::mermaid::set_video_export_mode(false);
-        }
-    }
-    crate::tui::mermaid::set_video_export_mode(true);
-    let _reset = ResetImageMode;
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("preview.png");
-    ::image::RgbaImage::from_pixel(800, 400, ::image::Rgba([0, 80, 255, 255]))
-        .save(&path)
-        .unwrap();
-    let mut app = create_test_app();
-    app.diff_mode = crate::config::DiffDisplayMode::Inline;
-    app.side_panel = crate::side_panel::SidePanelSnapshot {
-        focus_revision: 0,
-        focused_page_id: Some("preview".into()),
-        pages: vec![crate::side_panel::SidePanelPage {
-            id: "preview".into(),
-            title: "Preview fixture".into(),
-            file_path: "".into(),
-            format: crate::side_panel::SidePanelPageFormat::Markdown,
-            pdf_data: None,
-            source: crate::side_panel::SidePanelPageSource::Managed,
-            content: format!(
-                "# Preview fixture\n\n![Image]({})\n\nAfter image",
-                path.display()
-            ),
-            updated_at_ms: 1,
-        }],
-    };
-    app.input = "keep my draft".into();
-    app.cursor_pos = app.input.len();
-    app.diff_pane_auto_scroll = false;
-    app.diff_pane_scroll = 2;
-    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 40)).unwrap();
-    let text = render_and_snap(&app, &mut terminal);
-    assert!(text.contains("Preview fixture"), "{text}");
-    let (x, y, hash) = (0..40)
-        .find_map(|y| {
-            (0..120).find_map(|x| {
-                crate::tui::ui::panel_image_preview::image_at(x, y).map(|hash| (x, y, hash))
-            })
-        })
-        .expect("rendered image should have a click target");
-    let mouse = |kind, column, row| MouseEvent {
-        kind,
-        column,
-        row,
-        modifiers: KeyModifiers::empty(),
-    };
-    // Click targets exclude the text header and chat.
-    assert_eq!(crate::tui::ui::panel_image_preview::image_at(0, 0), None);
-    // Dragging across image placeholder rows remains a selection, not a click.
-    app.handle_mouse_event(mouse(MouseEventKind::Down(MouseButton::Left), x, y));
-    app.handle_mouse_event(mouse(MouseEventKind::Drag(MouseButton::Left), x, y + 1));
-    app.handle_mouse_event(mouse(MouseEventKind::Up(MouseButton::Left), x, y + 1));
-    assert_eq!(app.panel_image_preview, None);
-    app.handle_mouse_event(mouse(MouseEventKind::Down(MouseButton::Left), x, y));
-    assert_eq!(app.panel_image_preview, None, "open on release, not press");
-    app.handle_mouse_event(mouse(MouseEventKind::Drag(MouseButton::Left), x, y));
-    app.handle_mouse_event(mouse(MouseEventKind::Up(MouseButton::Left), x, y));
-    assert_eq!(app.panel_image_preview, Some(hash));
-    let text = render_and_snap(&app, &mut terminal);
-    assert!(text.contains("Image preview"), "{text}");
-    assert!(text.contains("Click or Esc to close"), "{text}");
-    assert!(
-        !text.contains("Preview fixture"),
-        "preview replaces the split layout"
-    );
-    assert_eq!(crate::tui::ui::panel_image_preview::image_at(x, y), None);
-    // Modal input must not edit the prompt or scroll the panel behind it.
-    app.handle_key(KeyCode::Char('x'), KeyModifiers::empty())
-        .unwrap();
-    app.handle_mouse_event(mouse(MouseEventKind::ScrollDown, x, y));
-    assert_eq!(app.input, "keep my draft");
-    assert_eq!(app.diff_pane_scroll, 2);
-    app.handle_key(KeyCode::Esc, KeyModifiers::empty()).unwrap();
-    assert_eq!(app.panel_image_preview, None);
-    assert_eq!(app.diff_pane_scroll, 2);
-    let text = render_and_snap(&app, &mut terminal);
-    assert!(text.contains("Preview fixture"));
-    // Reopening and clicking anywhere closes without clicking through.
-    app.handle_mouse_event(mouse(MouseEventKind::Down(MouseButton::Left), x, y));
-    app.handle_mouse_event(mouse(MouseEventKind::Up(MouseButton::Left), x, y));
-    assert_eq!(app.panel_image_preview, Some(hash));
-    app.handle_mouse_event(mouse(MouseEventKind::Down(MouseButton::Left), 0, 0));
-    assert_eq!(app.panel_image_preview, Some(hash));
-    app.handle_mouse_event(mouse(MouseEventKind::Up(MouseButton::Left), 0, 0));
-    assert_eq!(app.panel_image_preview, None);
-    assert_eq!(app.input, "keep my draft");
-    // Hiding the panel must remove its old clickable regions.
-    app.side_panel = Default::default();
-    render_and_snap(&app, &mut terminal);
-    assert_eq!(crate::tui::ui::panel_image_preview::image_at(x, y), None);
-}
-
-#[test]
-fn test_panel_image_preview_missing_image_and_tiny_terminal_are_dismissible() {
-    let _lock = scroll_render_test_lock();
-    let mut app = create_test_app();
-    app.panel_image_preview = Some(u64::MAX - 123);
-    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(90, 15)).unwrap();
-    assert!(render_and_snap(&app, &mut terminal).contains("Image is no longer available"));
-    let mut tiny = ratatui::Terminal::new(ratatui::backend::TestBackend::new(1, 1)).unwrap();
-    render_and_snap(&app, &mut tiny);
-    app.handle_key(KeyCode::Enter, KeyModifiers::empty())
-        .unwrap();
-    assert_eq!(app.panel_image_preview, None);
-}
-
-#[test]
-fn test_panel_image_preview_remote_keys_and_session_reset() {
-    let mut app = create_test_app();
-    app.input = "unsent draft".into();
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let _guard = rt.enter();
-    let mut remote = crate::tui::backend::RemoteConnection::dummy();
-    for close_key in [KeyCode::Esc, KeyCode::Enter, KeyCode::Char('q')] {
-        app.panel_image_preview = Some(42);
-        rt.block_on(app.handle_remote_key(KeyCode::Char('x'), KeyModifiers::empty(), &mut remote))
-            .unwrap();
-        assert_eq!(app.input, "unsent draft");
-        assert_eq!(app.panel_image_preview, Some(42));
-        rt.block_on(app.handle_remote_key(close_key, KeyModifiers::empty(), &mut remote))
-            .unwrap();
-        assert_eq!(app.panel_image_preview, None);
-        assert_eq!(app.input, "unsent draft");
-    }
-    app.panel_image_preview = Some(42);
-    crate::tui::app::commands_review::clear_side_panel_for_new_session(&mut app);
-    assert_eq!(app.panel_image_preview, None);
-}

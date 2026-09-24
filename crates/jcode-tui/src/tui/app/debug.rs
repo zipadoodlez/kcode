@@ -10,71 +10,6 @@ fn percentile_ms(samples_ms: &[f64], percentile: f64) -> f64 {
     samples_ms[rank.min(samples_ms.len() - 1)]
 }
 
-fn summarize_mermaid_ui_bench(
-    samples: &[MermaidUiBenchSample],
-    protocol_supported: bool,
-    protocol: Option<String>,
-) -> MermaidUiBenchSummary {
-    let mut elapsed_ms = 0.0;
-    let mut first_worker_render_frame = None;
-    let mut first_protocol_render_frame = None;
-    let mut first_deferred_idle_frame = None;
-    let mut pending_frames = 0usize;
-    let mut protocol_render_frames = 0usize;
-    let mut protocol_rebuild_frames = 0usize;
-    let mut saw_pending = false;
-    let mut time_to_first_worker_render_ms = None;
-    let mut time_to_first_protocol_render_ms = None;
-    let mut time_to_deferred_idle_ms = None;
-
-    for sample in samples {
-        elapsed_ms += sample.frame_ms;
-        if sample.deferred_pending_after > 0 {
-            saw_pending = true;
-            pending_frames += 1;
-        }
-        if first_worker_render_frame.is_none() && sample.deferred_worker_renders > 0 {
-            first_worker_render_frame = Some(sample.frame);
-            time_to_first_worker_render_ms = Some(elapsed_ms);
-        }
-        let protocol_rendered = sample.image_state_hits > 0
-            || sample.image_state_misses > 0
-            || sample.fit_state_reuse_hits > 0
-            || sample.fit_protocol_rebuilds > 0
-            || sample.viewport_state_reuse_hits > 0
-            || sample.viewport_protocol_rebuilds > 0;
-        if protocol_rendered {
-            protocol_render_frames += 1;
-            if first_protocol_render_frame.is_none() {
-                first_protocol_render_frame = Some(sample.frame);
-                time_to_first_protocol_render_ms = Some(elapsed_ms);
-            }
-        }
-        if sample.fit_protocol_rebuilds > 0 || sample.viewport_protocol_rebuilds > 0 {
-            protocol_rebuild_frames += 1;
-        }
-        if saw_pending && first_deferred_idle_frame.is_none() && sample.deferred_pending_after == 0
-        {
-            first_deferred_idle_frame = Some(sample.frame);
-            time_to_deferred_idle_ms = Some(elapsed_ms);
-        }
-    }
-
-    MermaidUiBenchSummary {
-        protocol_supported,
-        protocol,
-        pending_frames,
-        protocol_render_frames,
-        protocol_rebuild_frames,
-        first_worker_render_frame,
-        first_protocol_render_frame,
-        first_deferred_idle_frame,
-        time_to_first_worker_render_ms,
-        time_to_first_protocol_render_ms,
-        time_to_deferred_idle_ms,
-    }
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct DebugSnapshot {
     state: serde_json::Value,
@@ -161,47 +96,6 @@ fn estimate_pending_images_bytes(values: &[(String, String)]) -> usize {
         .sum()
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub(super) struct ScrollTestConfig {
-    width: Option<u16>,
-    height: Option<u16>,
-    step: Option<usize>,
-    max_steps: Option<usize>,
-    padding: Option<usize>,
-    diagrams: Option<usize>,
-    include_frames: Option<bool>,
-    include_paused: Option<bool>,
-    diagram: Option<String>,
-    diagram_mode: Option<crate::config::DiagramDisplayMode>,
-    expect_inline: Option<bool>,
-    expect_pane: Option<bool>,
-    expect_widget: Option<bool>,
-    require_no_anomalies: Option<bool>,
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct ScrollTestExpectations {
-    expect_inline: bool,
-    expect_pane: bool,
-    expect_widget: bool,
-    require_no_anomalies: bool,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub(super) struct ScrollSuiteConfig {
-    widths: Option<Vec<u16>>,
-    heights: Option<Vec<u16>>,
-    diagram_modes: Option<Vec<crate::config::DiagramDisplayMode>>,
-    diagrams: Option<usize>,
-    step: Option<usize>,
-    max_steps: Option<usize>,
-    padding: Option<usize>,
-    include_frames: Option<bool>,
-    include_paused: Option<bool>,
-    diagram: Option<String>,
-    require_no_anomalies: Option<bool>,
-}
-
 #[derive(Debug, Clone, Default, Deserialize)]
 pub(super) struct WidgetStabilityConfig {
     width: Option<u16>,
@@ -218,21 +112,8 @@ pub(super) struct SidePanelLatencyConfig {
     iterations: Option<usize>,
     warmup_iterations: Option<usize>,
     padding: Option<usize>,
-    diagrams: Option<usize>,
+    sections: Option<usize>,
     include_samples: Option<bool>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub(super) struct MermaidUiBenchConfig {
-    width: Option<u16>,
-    height: Option<u16>,
-    frames: Option<usize>,
-    warmup_frames: Option<usize>,
-    padding: Option<usize>,
-    diagrams: Option<usize>,
-    include_samples: Option<bool>,
-    keep_mermaid_cache: Option<bool>,
-    sleep_between_frames_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -247,39 +128,6 @@ pub(super) struct SidePanelLatencySample {
     frame_id_before: Option<u64>,
     frame_id_after: Option<u64>,
     scroll_changed: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub(super) struct MermaidUiBenchSample {
-    frame: usize,
-    frame_ms: f64,
-    render_ms: Option<f32>,
-    image_regions: usize,
-    deferred_pending_after: usize,
-    deferred_enqueued: u64,
-    deferred_deduped: u64,
-    deferred_worker_renders: u64,
-    image_state_hits: u64,
-    image_state_misses: u64,
-    fit_state_reuse_hits: u64,
-    fit_protocol_rebuilds: u64,
-    viewport_state_reuse_hits: u64,
-    viewport_protocol_rebuilds: u64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub(super) struct MermaidUiBenchSummary {
-    protocol_supported: bool,
-    protocol: Option<String>,
-    pending_frames: usize,
-    protocol_render_frames: usize,
-    protocol_rebuild_frames: usize,
-    first_worker_render_frame: Option<usize>,
-    first_protocol_render_frame: Option<usize>,
-    first_deferred_idle_frame: Option<usize>,
-    time_to_first_worker_render_ms: Option<f64>,
-    time_to_first_protocol_render_ms: Option<f64>,
-    time_to_deferred_idle_ms: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -457,7 +305,6 @@ pub(super) struct ScrollTestState {
     diff_mode: crate::config::DiffDisplayMode,
     diff_pane_scroll: usize,
     diff_pane_scroll_x: i32,
-    side_panel_image_zoom_percent: u8,
     diff_pane_focus: bool,
     diff_pane_auto_scroll: bool,
     is_processing: bool,
@@ -470,18 +317,6 @@ pub(super) struct ScrollTestState {
     status: ProcessingStatus,
     processing_started: Option<Instant>,
     status_notice: Option<(String, Instant)>,
-    diagram_mode: crate::config::DiagramDisplayMode,
-    diagram_focus: bool,
-    diagram_index: usize,
-    diagram_scroll_x: i32,
-    diagram_scroll_y: i32,
-    diagram_pane_ratio: u8,
-    diagram_pane_ratio_from: u8,
-    diagram_pane_ratio_target: u8,
-    diagram_pane_anim_start: Option<Instant>,
-    diagram_pane_enabled: bool,
-    diagram_pane_position: crate::config::DiagramPanePosition,
-    diagram_zoom: u8,
 }
 
 impl ScrollTestState {
@@ -495,7 +330,6 @@ impl ScrollTestState {
             diff_mode: app.diff_mode,
             diff_pane_scroll: app.diff_pane_scroll,
             diff_pane_scroll_x: app.diff_pane_scroll_x,
-            side_panel_image_zoom_percent: app.side_panel_image_zoom_percent,
             diff_pane_focus: app.diff_pane_focus,
             diff_pane_auto_scroll: app.diff_pane_auto_scroll,
             is_processing: app.is_processing,
@@ -508,18 +342,6 @@ impl ScrollTestState {
             status: app.status.clone(),
             processing_started: app.processing_started,
             status_notice: app.status_notice.clone(),
-            diagram_mode: app.diagram_mode,
-            diagram_focus: app.diagram_focus,
-            diagram_index: app.diagram_index,
-            diagram_scroll_x: app.diagram_scroll_x,
-            diagram_scroll_y: app.diagram_scroll_y,
-            diagram_pane_ratio: app.diagram_pane_ratio,
-            diagram_pane_ratio_from: app.diagram_pane_ratio_from,
-            diagram_pane_ratio_target: app.diagram_pane_ratio_target,
-            diagram_pane_anim_start: app.diagram_pane_anim_start,
-            diagram_pane_enabled: app.diagram_pane_enabled,
-            diagram_pane_position: app.diagram_pane_position,
-            diagram_zoom: app.diagram_zoom,
         }
     }
 
@@ -532,7 +354,6 @@ impl ScrollTestState {
         app.diff_mode = self.diff_mode;
         app.diff_pane_scroll = self.diff_pane_scroll;
         app.diff_pane_scroll_x = self.diff_pane_scroll_x;
-        app.side_panel_image_zoom_percent = self.side_panel_image_zoom_percent;
         app.diff_pane_focus = self.diff_pane_focus;
         app.diff_pane_auto_scroll = self.diff_pane_auto_scroll;
         app.is_processing = self.is_processing;
@@ -545,18 +366,6 @@ impl ScrollTestState {
         app.status = self.status;
         app.processing_started = self.processing_started;
         app.status_notice = self.status_notice;
-        app.diagram_mode = self.diagram_mode;
-        app.diagram_focus = self.diagram_focus;
-        app.diagram_index = self.diagram_index;
-        app.diagram_scroll_x = self.diagram_scroll_x;
-        app.diagram_scroll_y = self.diagram_scroll_y;
-        app.diagram_pane_ratio = self.diagram_pane_ratio;
-        app.diagram_pane_ratio_from = self.diagram_pane_ratio_from;
-        app.diagram_pane_ratio_target = self.diagram_pane_ratio_target;
-        app.diagram_pane_anim_start = self.diagram_pane_anim_start;
-        app.diagram_pane_enabled = self.diagram_pane_enabled;
-        app.diagram_pane_position = self.diagram_pane_position;
-        app.diagram_zoom = self.diagram_zoom;
     }
 }
 

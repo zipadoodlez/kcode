@@ -1753,32 +1753,7 @@ impl SessionPicker {
                         assistant_width,
                         crate::config::DiffDisplayMode::Off,
                     );
-                    let mut skip_mermaid_blank = false;
-
                     for line in md_lines {
-                        if super::mermaid::parse_image_placeholder(&line).is_some()
-                            || super::mermaid::parse_inline_image_placeholder(&line).is_some()
-                        {
-                            lines.push(
-                                Line::from(vec![Span::styled(
-                                    "[mermaid diagram]",
-                                    Style::default().fg(dim_color),
-                                )])
-                                .alignment(align),
-                            );
-                            skip_mermaid_blank = true;
-                            rendered_messages += 1;
-                            continue;
-                        }
-
-                        if skip_mermaid_blank
-                            && line.spans.len() == 1
-                            && line.spans[0].content.trim().is_empty()
-                        {
-                            continue;
-                        }
-
-                        skip_mermaid_blank = false;
                         lines.push(super::ui::align_if_unset(line, align));
                         rendered_messages += 1;
                     }
@@ -2351,8 +2326,6 @@ impl SessionPicker {
                 };
                 anyhow::anyhow!("failed to initialize session picker terminal: {}", msg)
             })?;
-        // Initialize mermaid image picker (fast default, optional probe via env)
-        super::mermaid::init_picker();
         let perf_policy = crate::perf::tui_policy();
         let keyboard_enhanced = if perf_policy.enable_keyboard_enhancement {
             super::enable_keyboard_enhancement()
@@ -2407,7 +2380,6 @@ impl SessionPicker {
             super::disable_keyboard_enhancement();
         }
         jcode_tui_style::restore_terminal_quietly();
-        super::mermaid::clear_image_state();
 
         result
     }

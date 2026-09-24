@@ -106,7 +106,6 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
     needs_redraw |= app.maybe_push_idle_cold_cache_warning();
     needs_redraw |= app.progress_copy_selection_edge_autoscroll();
     needs_redraw |= app.update_chat_overscroll();
-    needs_redraw |= app.update_pinned_images_auto_hide();
     // Dissolve stale (off-screen) reasoning traces with zero visible motion.
     needs_redraw |= app.gc_offscreen_reasoning_traces();
     needs_redraw |= dispatch_compacted_history_load(app, remote).await;
@@ -1751,20 +1750,11 @@ async fn handle_debug_command(app: &mut App, cmd: &str, remote: &mut RemoteConne
             "model": app.remote_provider_model.as_deref().unwrap_or(app.provider.name()),
             "connection_type": app.connection_type.clone(),
             "remote_transport": app.remote_transport.clone(),
-            "diagram_mode": format!("{:?}", app.diagram_mode),
-            "diagram_focus": app.diagram_focus,
-            "diagram_index": app.diagram_index,
-            "diagram_scroll": [app.diagram_scroll_x, app.diagram_scroll_y],
-            "diagram_pane_ratio": app.diagram_pane_ratio_target,
-            "diagram_pane_enabled": app.diagram_pane_enabled,
-            "diagram_pane_position": format!("{:?}", app.diagram_pane_position),
-            "diagram_zoom": app.diagram_zoom,
-            "diagram_count": crate::tui::mermaid::get_active_diagrams().len(),
+            "side_pane_ratio": app.side_pane_ratio_target,
             "remote": true,
             "server_version": app.remote_server_version.clone(),
             "server_has_update": app.remote_server_has_update,
             "version": jcode_build_meta::version(),
-            "diagram_mode": format!("{:?}", app.diagram_mode),
         })
         .to_string();
     }

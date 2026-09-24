@@ -551,44 +551,6 @@ impl crate::tui::TuiState for App {
         self.display_edit_tool_message_count > 0
     }
 
-    fn side_pane_images(&self) -> Vec<crate::session::RenderedImage> {
-        if self.is_remote {
-            self.remote_side_pane_images.clone()
-        } else {
-            // Native generated images are available before their visual-context
-            // blocks are persisted to the session. Prefer those live, anchored
-            // copies and merge in the remaining persisted images.
-            let mut images = self.remote_side_pane_images.clone();
-            for image in crate::session::render_images(&self.session) {
-                let already_present = images.iter().any(|existing| {
-                    existing.media_type == image.media_type && existing.data == image.data
-                });
-                if !already_present {
-                    images.push(image);
-                }
-            }
-            images
-        }
-    }
-
-    fn side_pane_images_signature(&self) -> (usize, u64) {
-        // Recomputing the signature walks (and in local mode re-renders) every
-        // image payload. Cache it until an image mutation explicitly invalidates
-        // it; ordinary text/tool transcript updates do not change the image set.
-        if let Some(signature) = self.side_pane_images_signature_cache.get() {
-            return signature;
-        }
-        use std::hash::Hasher;
-        let images = self.side_pane_images();
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        for image in &images {
-            crate::tui::hash_rendered_image_signature_fields(image, &mut hasher);
-        }
-        let signature = (images.len(), hasher.finish());
-        self.side_pane_images_signature_cache.set(Some(signature));
-        signature
-    }
-
     fn display_messages_version(&self) -> u64 {
         self.display_messages_version
     }
@@ -1544,13 +1506,6 @@ impl crate::tui::TuiState for App {
                 }
             });
 
-        // Get active mermaid diagrams - only for margin mode (pinned mode uses dedicated pane)
-        let diagrams = if self.diagram_mode == crate::config::DiagramDisplayMode::Margin {
-            crate::tui::mermaid::get_active_diagrams()
-        } else {
-            Vec::new()
-        };
-
         let workspace_rows = if self.workspace_client.is_enabled() {
             let session_id = if self.is_remote {
                 self.remote_session_id.as_deref()
@@ -1617,7 +1572,6 @@ impl crate::tui::TuiState for App {
             auth_method,
             upstream_provider: self.upstream_provider.clone(),
             connection_type: self.connection_type.clone(),
-            diagrams,
             workspace_rows,
             workspace_animation_tick,
             observed_context_tokens: self.current_stream_context_tokens(),
@@ -1684,10 +1638,6 @@ impl crate::tui::TuiState for App {
         // the widget's auth line can never disagree.
         let route = self.widget_route_info(None);
         self.dual_credential_active(route, provider)
-    }
-
-    fn diagram_mode(&self) -> crate::config::DiagramDisplayMode {
-        self.diagram_mode
     }
 
     fn inline_swarm_gallery_active(&self) -> bool {
@@ -1783,93 +1733,25 @@ impl crate::tui::TuiState for App {
         self.swarm_panel_full_page && self.inline_swarm_gallery_active()
     }
 
-    fn diagram_focus(&self) -> bool {
-        self.diagram_focus
+    fn side_pane_ratio(&self) -> u8 {
+        self.animated_side_pane_ratio()
     }
 
-    fn diagram_index(&self) -> usize {
-        self.diagram_index
+    fn side_pane_ratio_user_adjusted(&self) -> bool {
+        self.side_pane_ratio_user_adjusted
     }
 
-    fn diagram_scroll(&self) -> (i32, i32) {
-        (self.diagram_scroll_x, self.diagram_scroll_y)
-    }
-
-    fn diagram_pane_ratio(&self) -> u8 {
-        self.animated_diagram_pane_ratio()
-    }
-
-    fn diagram_pane_ratio_user_adjusted(&self) -> bool {
-        self.diagram_pane_ratio_user_adjusted
-    }
-
-    fn diagram_pane_animating(&self) -> bool {
-        self.diagram_pane_anim_start
-            .map(|s| s.elapsed().as_secs_f32() < Self::DIAGRAM_PANE_ANIM_DURATION)
-            .unwrap_or(false)
-    }
-
-    fn diagram_pane_enabled(&self) -> bool {
-        self.diagram_pane_enabled
-    }
-
-    fn diagram_pane_position(&self) -> crate::config::DiagramPanePosition {
-        self.diagram_pane_position
-    }
-
-    fn diagram_zoom(&self) -> u8 {
-        self.diagram_zoom
-    }
     fn diff_pane_scroll(&self) -> usize {
         self.diff_pane_scroll
     }
     fn diff_pane_scroll_x(&self) -> i32 {
         self.diff_pane_scroll_x
     }
-    fn side_panel_image_zoom_percent(&self) -> u8 {
-        self.side_panel_image_zoom_percent
-    }
-    fn panel_image_preview(&self) -> Option<u64> {
-        self.panel_image_preview
-    }
     fn diff_pane_focus(&self) -> bool {
         self.diff_pane_focus
     }
     fn side_panel(&self) -> &crate::side_panel::SidePanelSnapshot {
         &self.side_panel
-    }
-    fn pin_images(&self) -> bool {
-        self.pin_images && !self.side_panel_user_hidden
-    }
-
-    fn inline_images_visible(&self) -> bool {
-        self.inline_images_visible
-    }
-    fn image_expand_level(
-        &self,
-        image_id: u64,
-    ) -> crate::tui::ui::inline_image_ui::ImageExpandLevel {
-        self.expanded_images
-            .get(&image_id)
-            .copied()
-            .unwrap_or_default()
-    }
-    fn expanded_images_version(&self) -> u64 {
-        self.expanded_images_version
-    }
-    fn pinned_images_auto_hide_remaining_secs(&self) -> Option<u64> {
-        if self.side_panel_user_hidden
-            || self.side_panel.focused_page().is_some()
-            || self.diff_mode.is_file()
-        {
-            return None;
-        }
-        self.pinned_images_auto_hide_deadline.map(|deadline| {
-            deadline
-                .saturating_duration_since(std::time::Instant::now())
-                .as_secs()
-                .saturating_add(1)
-        })
     }
     fn chat_native_scrollbar(&self) -> bool {
         self.chat_native_scrollbar

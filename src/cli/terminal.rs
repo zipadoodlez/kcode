@@ -345,9 +345,7 @@ pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)>
         crate::tui::theme_detect::init_theme_mode();
     }
     let terminal = init_tui_terminal(inherited_terminal)?;
-    crate::tui::mermaid::install_jcode_mermaid_hooks();
     crate::tui::markdown::install_jcode_markdown_hooks();
-    crate::tui::mermaid::init_picker();
 
     let perf_policy = crate::perf::tui_policy();
     // These private handoff values apply only to this exec boundary. Avoid
@@ -429,14 +427,6 @@ fn cleanup_tui_runtime(state: &TuiRuntimeState, restore_terminal: bool) {
         state.keyboard_enhanced,
         state.focus_change,
     ));
-    crate::tui::mermaid::clear_image_state();
-    let image_cleanup = crate::tui::mermaid::take_terminal_image_cleanup_payload();
-    if !image_cleanup.is_empty() {
-        use std::io::Write as _;
-        let mut stdout = std::io::stdout().lock();
-        let _ = stdout.write_all(image_cleanup.as_bytes());
-        let _ = stdout.flush();
-    }
 
     if restore_terminal {
         let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);

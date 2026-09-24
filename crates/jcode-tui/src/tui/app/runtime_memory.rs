@@ -209,7 +209,6 @@ impl App {
             ui_render: None,
             side_panel_render: None,
             markdown: None,
-            mermaid: None,
             visual_debug: None,
         }
     }
@@ -229,7 +228,6 @@ impl App {
         let ui_render = profile.get("ui_render").cloned();
         let side_panel_render = profile.get("side_panel_render").cloned();
         let markdown = profile.get("markdown").cloned();
-        let mermaid = profile.get("mermaid").cloned();
         let visual_debug = profile.get("visual_debug").cloned();
         let totals = client_runtime_totals_from_profile(&profile);
 
@@ -250,7 +248,6 @@ impl App {
             ui_render,
             side_panel_render,
             markdown,
-            mermaid,
             visual_debug,
         }
     }
@@ -349,15 +346,6 @@ fn client_runtime_totals_from_profile(
     );
     let side_panel_render_total_estimate_bytes =
         nested_u64(profile, &["side_panel_render", "total_estimate_bytes"]);
-    let mermaid_working_set_estimate_bytes =
-        nested_u64(profile, &["mermaid", "mermaid_working_set_estimate_bytes"]);
-    let mermaid_cache_metadata_estimate_bytes = nested_u64(
-        profile,
-        &["mermaid", "render_cache_metadata_estimate_bytes"],
-    ) + nested_u64(
-        profile,
-        &["mermaid", "image_state_protocol_min_estimate_bytes"],
-    );
     let visual_debug_frame_estimate_bytes =
         nested_u64(profile, &["visual_debug", "frame_json_estimate_bytes"]);
 
@@ -476,8 +464,6 @@ fn client_runtime_totals_from_profile(
         side_panel_pinned_cache_estimate_bytes,
         side_panel_markdown_cache_estimate_bytes,
         side_panel_render_cache_estimate_bytes,
-        mermaid_working_set_estimate_bytes,
-        mermaid_cache_metadata_estimate_bytes,
         visual_debug_frame_estimate_bytes,
         total_attributed_bytes: 0,
     };
@@ -499,7 +485,6 @@ fn client_runtime_totals_from_profile(
         + totals.markdown_cache_estimate_bytes
         + totals.ui_render_total_estimate_bytes
         + totals.side_panel_render_total_estimate_bytes
-        + totals.mermaid_working_set_estimate_bytes
         + totals.visual_debug_frame_estimate_bytes;
     totals
 }
@@ -554,12 +539,6 @@ mod tests {
                 },
                 "total_estimate_bytes": 159,
             },
-            "mermaid": {
-                "render_cache_metadata_estimate_bytes": 100,
-                "image_state_protocol_min_estimate_bytes": 200,
-                "source_cache_decoded_estimate_bytes": 300,
-                "mermaid_working_set_estimate_bytes": 600,
-            },
         });
 
         let totals = client_runtime_totals_from_profile(&profile);
@@ -573,8 +552,6 @@ mod tests {
         assert_eq!(totals.side_panel_markdown_cache_estimate_bytes, 53);
         assert_eq!(totals.side_panel_render_cache_estimate_bytes, 64);
         assert_eq!(totals.side_panel_render_total_estimate_bytes, 159);
-        assert_eq!(totals.mermaid_working_set_estimate_bytes, 600);
-        assert_eq!(totals.mermaid_cache_metadata_estimate_bytes, 300);
-        assert_eq!(totals.total_attributed_bytes, 4096 + 60 + 159 + 600);
+        assert_eq!(totals.total_attributed_bytes, 4096 + 60 + 159);
     }
 }

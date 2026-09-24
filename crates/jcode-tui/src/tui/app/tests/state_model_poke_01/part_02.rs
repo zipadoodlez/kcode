@@ -22,7 +22,6 @@ fn test_mouse_scroll_over_tool_side_panel_keeps_typing_in_chat() {
 
     crate::tui::ui::record_layout_snapshot(
         Rect::new(0, 0, 40, 20),
-        None,
         Some(Rect::new(40, 0, 20, 20)),
         None,
     );
@@ -121,7 +120,6 @@ fn test_tool_side_panel_uses_shared_right_pane_keyboard_focus() {
     };
 
     assert!(app.diff_pane_visible());
-    assert!(app.handle_diagram_ctrl_key(KeyCode::Char('l'), false));
     assert!(app.diff_pane_focus);
 
     // Cycle the diff display mode via its configured chord (Alt+G by

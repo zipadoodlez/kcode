@@ -1,7 +1,7 @@
 //! `[display]` section of the config: TUI/CLI presentation settings.
 
 use crate::{
-    DiagramDisplayMode, DiffDisplayMode, LatexRenderingMode, MarkdownSpacingMode,
+    DiffDisplayMode, MarkdownSpacingMode,
     NativeScrollbarConfig, OverscrollStatusMode, ReasoningDisplayMode, default_true,
 };
 use serde::{Deserialize, Serialize};
@@ -37,19 +37,9 @@ pub struct DisplayConfig {
         deserialize_with = "crate::serde_lenient::lenient_optional_enum"
     )]
     pub(crate) reasoning_display: Option<ReasoningDisplayMode>,
-    /// How to display mermaid diagrams (none/margin/pinned, default: none).
-    /// `none` still renders diagrams inline in the transcript via the inline
-    /// image pipeline; `margin`/`pinned` add dedicated widget placements.
-    #[serde(deserialize_with = "crate::serde_lenient::lenient_enum")]
-    pub diagram_mode: DiagramDisplayMode,
     /// Markdown block spacing style (compact/document, default: compact)
     #[serde(deserialize_with = "crate::serde_lenient::lenient_enum")]
     pub markdown_spacing: MarkdownSpacingMode,
-    /// LaTeX rendering style (none/unicode/image, default: image)
-    #[serde(deserialize_with = "crate::serde_lenient::lenient_enum")]
-    pub latex_rendering: LatexRenderingMode,
-    /// Pin read images to side pane (default: true)
-    pub pin_images: bool,
     /// Pin the full session todo list to the top of the chat transcript while
     /// it scrolls, like the sticky previous-prompt preview (default: true)
     #[serde(default = "default_true")]
@@ -132,7 +122,6 @@ impl Default for DisplayConfig {
         Self {
             diff_mode: DiffDisplayMode::default(),
             show_diffs: None,
-            pin_images: true,
             pin_todos: true,
             queue_mode: false,
             auto_server_reload: true,
@@ -142,9 +131,7 @@ impl Default for DisplayConfig {
             centered: false,
             show_thinking: true,
             reasoning_display: Some(ReasoningDisplayMode::Full),
-            diagram_mode: DiagramDisplayMode::default(),
             markdown_spacing: MarkdownSpacingMode::default(),
-            latex_rendering: LatexRenderingMode::default(),
             idle_animation: false,
             prompt_entry_animation: true,
             disabled_animations: Vec::new(),

@@ -197,15 +197,6 @@ impl App {
                 "queued_messages": self.queued_messages.len(),
                 "provider_session_id": self.provider_session_id,
                 "model": self.provider.name(),
-                "diagram_mode": format!("{:?}", self.diagram_mode),
-                "diagram_focus": self.diagram_focus,
-                "diagram_index": self.diagram_index,
-                "diagram_scroll": [self.diagram_scroll_x, self.diagram_scroll_y],
-                "diagram_pane_ratio": self.diagram_pane_ratio_target,
-                "diagram_pane_enabled": self.diagram_pane_enabled,
-                "diagram_pane_position": format!("{:?}", self.diagram_pane_position),
-                "diagram_zoom": self.diagram_zoom,
-                "diagram_count": crate::tui::mermaid::get_active_diagrams().len(),
                 "version": jcode_build_meta::version(),
             })
             .to_string()
@@ -261,31 +252,6 @@ impl App {
                 "OK: mouse {kind} at {col},{row} (status: {:?})",
                 self.status_notice.as_ref().map(|(text, _)| text.as_str())
             )
-        } else if cmd.starts_with("image-click-target:") {
-            // Probe the inline-image expand badge hit-test at screen coords.
-            let raw = cmd.strip_prefix("image-click-target:").unwrap_or("");
-            let (col, row) = match raw.split_once(',').and_then(|(c, r)| {
-                Some((c.trim().parse::<u16>().ok()?, r.trim().parse::<u16>().ok()?))
-            }) {
-                Some(pair) => pair,
-                None => return "image-click-target error: expected <col>,<row>".to_string(),
-            };
-            let image_id = crate::tui::ui::inline_image_expand_target_from_screen(col, row);
-            let body_id =
-                crate::tui::ui::inline_image_body_target_from_screen(col, row, self.centered);
-            let link = crate::tui::ui::link_target_from_screen(col, row);
-            serde_json::json!({
-                "col": col,
-                "row": row,
-                "image_expand_target": image_id,
-                "image_body_target": body_id,
-                "link_target": link,
-            })
-            .to_string()
-        } else if cmd == "image-regions" {
-            // Dump the current chat snapshot's inline-image regions and label
-            // lines so a driver can compute real badge click coordinates.
-            crate::tui::ui::debug_chat_image_regions_json()
         } else if cmd == "expand-badge-fixture" {
             let old_string = (0..24)
                 .map(|idx| format!("old fixture line {idx}\n"))
@@ -634,12 +600,6 @@ impl App {
                     .unwrap_or_else(|_| "null".to_string()),
                 None => "theme: no frames captured".to_string(),
             }
-        } else if cmd == "mermaid:stats" {
-            let stats = crate::tui::mermaid::debug_stats();
-            serde_json::to_string_pretty(&stats).unwrap_or_else(|_| "{}".to_string())
-        } else if cmd == "mermaid:memory" {
-            let profile = crate::tui::mermaid::debug_memory_profile();
-            serde_json::to_string_pretty(&profile).unwrap_or_else(|_| "{}".to_string())
         } else if cmd == "memory" {
             serde_json::to_string_pretty(&self.debug_memory_profile())
                 .unwrap_or_else(|_| "{}".to_string())
@@ -679,71 +639,11 @@ impl App {
             let limit = raw_limit.parse::<usize>().unwrap_or(32);
             let payload = crate::tui::ui::debug_flicker_frame_history(limit);
             serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string())
-        } else if cmd == "mermaid:memory-bench" {
-            let result = crate::tui::mermaid::debug_memory_benchmark(40);
-            serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string())
-        } else if cmd == "mermaid:flicker-bench" {
-            let result = crate::tui::mermaid::debug_flicker_benchmark(24);
-            serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string())
-        } else if cmd == "image-scroll-bench" || cmd.starts_with("image-scroll-bench ") {
-            // Headless inline-image scroll benchmark. Usage:
-            //   image-scroll-bench [images] [frames] [visible_per_frame]
-            // Defaults model a screenshot-heavy transcript scrolled slowly.
-            let raw = cmd.strip_prefix("image-scroll-bench").unwrap_or("").trim();
-            let mut parts = raw.split_whitespace();
-            let images = parts.next().and_then(|v| v.parse().ok()).unwrap_or(60usize);
-            let frames = parts
-                .next()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(600usize);
-            let visible = parts.next().and_then(|v| v.parse().ok()).unwrap_or(3usize);
-            let result = crate::tui::mermaid::debug_image_scroll_benchmark(images, frames, visible);
-            serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string())
-        } else if cmd.starts_with("mermaid:flicker-bench ") {
-            let raw_steps = cmd
-                .strip_prefix("mermaid:flicker-bench ")
-                .unwrap_or("")
-                .trim();
-            let steps = match raw_steps.parse::<usize>() {
-                Ok(v) => v,
-                Err(_) => return "Invalid steps (expected integer)".to_string(),
-            };
-            let result = crate::tui::mermaid::debug_flicker_benchmark(steps);
-            serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string())
-        } else if cmd == "mermaid:ui-bench" || cmd.starts_with("mermaid:ui-bench:") {
-            let raw = cmd.strip_prefix("mermaid:ui-bench:");
-            self.run_mermaid_ui_bench(raw)
-        } else if cmd.starts_with("mermaid:memory-bench ") {
-            let raw_iterations = cmd
-                .strip_prefix("mermaid:memory-bench ")
-                .unwrap_or("")
-                .trim();
-            let iterations = match raw_iterations.parse::<usize>() {
-                Ok(v) => v,
-                Err(_) => return "Invalid iterations (expected integer)".to_string(),
-            };
-            let result = crate::tui::mermaid::debug_memory_benchmark(iterations);
-            serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string())
-        } else if cmd == "mermaid:cache" {
-            let entries = crate::tui::mermaid::debug_cache();
-            serde_json::to_string_pretty(&entries).unwrap_or_else(|_| "[]".to_string())
-        } else if cmd == "mermaid:evict" || cmd == "mermaid:clear-cache" {
-            match crate::tui::mermaid::clear_cache() {
-                Ok(_) => "mermaid: cache cleared".to_string(),
-                Err(e) => format!("mermaid: cache clear failed: {}", e),
-            }
         } else if cmd == "markdown:stats" {
             let stats = crate::tui::markdown::debug_stats();
             serde_json::to_string_pretty(&stats).unwrap_or_else(|_| "{}".to_string())
         } else if cmd == "side-panel:stats" || cmd == "side-panel:debug" {
             crate::tui::side_panel_debug_json()
-                .and_then(|value| serde_json::to_string_pretty(&value).ok())
-                .unwrap_or_else(|| "null".to_string())
-        } else if cmd == "diagram-pane:stats"
-            || cmd == "diagram-pane:debug"
-            || cmd == "pinned-diagram:stats"
-        {
-            crate::tui::pinned_diagram_debug_json()
                 .and_then(|value| serde_json::to_string_pretty(&value).ok())
                 .unwrap_or_else(|| "null".to_string())
         } else if cmd == "markdown:memory" {
@@ -781,12 +681,6 @@ impl App {
                 tool_data: None,
             });
             format!("OK: injected {} message ({} chars)", role, content.len())
-        } else if cmd == "scroll-test" || cmd.starts_with("scroll-test:") {
-            let raw = cmd.strip_prefix("scroll-test:");
-            self.run_scroll_test(raw)
-        } else if cmd == "scroll-suite" || cmd.starts_with("scroll-suite:") {
-            let raw = cmd.strip_prefix("scroll-suite:");
-            self.run_scroll_suite(raw)
         } else if cmd == "widget-stability" || cmd.starts_with("widget-stability:") {
             let raw = cmd.strip_prefix("widget-stability:");
             self.run_widget_stability(raw)
@@ -957,12 +851,6 @@ impl App {
                  - render-order - dump render order list\n\
                  - anomalies - dump visual debug anomalies\n\
                  - theme - dump current palette snapshot\n\
-                 - mermaid:stats - dump mermaid debug stats\n\
-                 - mermaid:memory - dump mermaid memory profile\n\
-                 - mermaid:flicker-bench [n] - benchmark viewport protocol churn / flicker risk\n\
-                 - mermaid:ui-bench[:<json>] - benchmark live mermaid UI render path\n\
-                 - mermaid:cache - list mermaid cache entries\n\
-                 - mermaid:evict - clear mermaid cache\n\
                  - markdown:stats - dump markdown debug stats\n\
                  - markdown:memory - dump markdown cache memory estimate\n\
                  - memory - dump aggregate client memory profile\n\
@@ -974,14 +862,10 @@ impl App {
                  - wait - check if processing\n\
                  - wait:<ms> - block until idle or timeout\n\
                  - scroll:<up|down|top|bottom> - control scroll\n\
-                 - scroll-test[:<json>] - run offscreen scroll+diagram test\n\
-                 - scroll-suite[:<json>] - run scroll+diagram test suite\n\
                  - widget-stability[:<json>] - quantify info-widget movement while scrolling current transcript\n\
                  - side-panel-latency[:<json>] - benchmark headless side-panel input->frame latency\n\
                  - keys:<keyspec> - inject key events (e.g. keys:ctrl+r)\n\
                  - mouse:<kind>:<col>,<row> - inject mouse events (down|up|drag|click|jitter-click)\n\
-                 - image-click-target:<col>,<row> - probe inline-image badge / link hit-test\n\
-                 - image-regions - dump chat snapshot image regions + badge screen coords\n\
                  - input - get current input buffer\n\
                  - set_input:<text> - set input buffer\n\
                  - submit - submit current input\n\

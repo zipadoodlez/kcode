@@ -73,7 +73,6 @@ jcode-provider-core = { path = "../jcode-provider-core" }
 jcode-tui-markdown = { path = "../jcode-tui-markdown" }
 jcode-tui-messages = { path = "../jcode-tui-messages" }
 jcode-tui-core = { path = "../jcode-tui-core" }
-jcode-tui-mermaid = { path = "../jcode-tui-mermaid" }
 jcode-tui-account-picker = { path = "../jcode-tui-account-picker" }
 jcode-tui-render = { path = "../jcode-tui-render" }
 jcode-tui-visual-debug = { path = "../jcode-tui-visual-debug" }
@@ -93,7 +92,6 @@ default = ["pdf", "bedrock"]
 pdf = ["jcode-app-core/pdf"]
 bedrock = ["jcode-app-core/bedrock"]
 linux-compat-vendored-openssl = ["jcode-app-core/linux-compat-vendored-openssl"]
-mmdr-size-api = ["jcode-tui-mermaid/mmdr-size-api"]
 # Forwards the application core's `test-support` feature (and onward to
 # jcode-base) so downstream crates' test targets can reach the whole stack's
 # test helpers. Never enabled in normal (non-test) builds.

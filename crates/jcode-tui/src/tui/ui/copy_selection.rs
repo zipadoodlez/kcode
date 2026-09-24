@@ -303,7 +303,6 @@ mod tests {
             wrapped_user_prompt_starts: Vec::new(),
             wrapped_user_prompt_ends: Vec::new(),
             user_prompt_texts: Vec::new(),
-            image_regions: Vec::new(),
             edit_tool_ranges: Vec::new(),
             copy_targets: vec![CopyTarget {
                 kind: CopyTargetKind::Math { display: true },
@@ -313,7 +312,6 @@ mod tests {
                 badge_line: 1,
             }],
             message_boundaries: Vec::new(),
-            mermaid_pending_epoch: None,
         };
         CopyViewportSnapshot {
             pane: crate::tui::CopySelectionPane::Chat,

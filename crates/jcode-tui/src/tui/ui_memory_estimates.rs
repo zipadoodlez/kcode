@@ -6,7 +6,7 @@ use super::TEST_VISIBLE_COPY_TARGETS;
 #[cfg(not(test))]
 use super::visible_copy_targets_state;
 use super::{
-    CopyTarget, CopyTargetKind, EditToolRange, ImageRegion, PreparedChatFrame, PreparedMessages,
+    CopyTarget, CopyTargetKind, EditToolRange, PreparedChatFrame, PreparedMessages,
     PreparedSection, VisibleCopyTarget, WrappedLineMap, body_cache, full_prep_cache, pinned_ui,
 };
 
@@ -73,10 +73,6 @@ fn estimate_string_vec_bytes(values: &Vec<String>) -> usize {
         + values.capacity() * std::mem::size_of::<String>()
 }
 
-fn estimate_image_regions_bytes(values: &Vec<ImageRegion>) -> usize {
-    values.capacity() * std::mem::size_of::<ImageRegion>()
-}
-
 fn estimate_usize_vec_bytes(values: &Vec<usize>) -> usize {
     values.capacity() * std::mem::size_of::<usize>()
 }
@@ -91,7 +87,6 @@ pub(super) fn estimate_prepared_messages_bytes(prepared: &PreparedMessages) -> u
         + estimate_usize_vec_bytes(&prepared.wrapped_user_prompt_starts)
         + estimate_usize_vec_bytes(&prepared.wrapped_user_prompt_ends)
         + estimate_string_vec_bytes(&prepared.user_prompt_texts)
-        + estimate_image_regions_bytes(&prepared.image_regions)
         + estimate_edit_tool_ranges_bytes(&prepared.edit_tool_ranges)
         + estimate_copy_targets_bytes(&prepared.copy_targets)
 }
@@ -111,7 +106,6 @@ pub(super) fn estimate_prepared_chat_frame_bytes(prepared: &PreparedChatFrame) -
         + estimate_usize_vec_bytes(&prepared.wrapped_user_prompt_starts)
         + estimate_usize_vec_bytes(&prepared.wrapped_user_prompt_ends)
         + estimate_string_vec_bytes(&prepared.user_prompt_texts)
-        + estimate_image_regions_bytes(&prepared.image_regions)
         + estimate_edit_tool_ranges_bytes(&prepared.edit_tool_ranges)
         + estimate_copy_targets_bytes(&prepared.copy_targets)
 }

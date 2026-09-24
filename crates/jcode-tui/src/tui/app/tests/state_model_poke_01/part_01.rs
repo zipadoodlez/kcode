@@ -626,34 +626,6 @@ fn test_handle_key_backspace() {
     assert_eq!(app.cursor_pos(), 1);
 }
 
-#[test]
-fn test_diagram_focus_toggle_and_pan() {
-    let _render_lock = scroll_render_test_lock();
-    let mut app = create_test_app();
-    app.diagram_mode = crate::config::DiagramDisplayMode::Pinned;
-    crate::tui::mermaid::clear_active_diagrams();
-    crate::tui::mermaid::register_active_diagram(0x1, 100, 80, None);
-    crate::tui::mermaid::register_active_diagram(0x2, 120, 90, None);
-
-    // Ctrl+L focuses diagram when available
-    app.handle_key(KeyCode::Char('l'), KeyModifiers::CONTROL)
-        .unwrap();
-    assert!(app.diagram_focus);
-
-    // Pan should update scroll offsets and not type into input
-    app.handle_key(KeyCode::Char('j'), KeyModifiers::empty())
-        .unwrap();
-    assert_eq!(app.diagram_scroll_y, 3);
-    assert!(app.input.is_empty());
-
-    // Ctrl+H returns focus to chat
-    app.handle_key(KeyCode::Char('h'), KeyModifiers::CONTROL)
-        .unwrap();
-    assert!(!app.diagram_focus);
-
-    crate::tui::mermaid::clear_active_diagrams();
-}
-
 /// Ctrl+L is a terminal-style clear: a viewport-height blank spacer pushes
 /// the transcript up into scrollback and the view snaps to the bottom, so
 /// the screen looks empty while nothing is deleted. Provider context, the
@@ -696,7 +668,6 @@ fn test_ctrl_l_terminal_clear_adds_spacer_and_keeps_everything() {
     assert_eq!(app.session.messages.len(), session_messages_before);
     assert_eq!(app.input(), "draft message", "input draft must survive");
     assert_eq!(app.queued_messages.len(), 1, "queue must survive");
-    assert!(!app.diagram_focus);
     assert!(!app.diff_pane_focus);
 
     // A second Ctrl+L on the already-clear screen must not stack another
@@ -799,133 +770,6 @@ fn test_cls_command_clears_view_but_keeps_context() {
 }
 
 #[test]
-fn test_diagram_cycle_ctrl_arrows() {
-    let _render_lock = scroll_render_test_lock();
-    let mut app = create_test_app();
-    app.diagram_mode = crate::config::DiagramDisplayMode::Pinned;
-    app.diagram_focus = true;
-    crate::tui::mermaid::clear_active_diagrams();
-    crate::tui::mermaid::register_active_diagram(0x1, 100, 80, None);
-    crate::tui::mermaid::register_active_diagram(0x2, 120, 90, None);
-    crate::tui::mermaid::register_active_diagram(0x3, 140, 100, None);
-
-    assert_eq!(app.diagram_index, 0);
-    app.handle_key(KeyCode::Right, KeyModifiers::CONTROL)
-        .unwrap();
-    assert_eq!(app.diagram_index, 1);
-    app.handle_key(KeyCode::Right, KeyModifiers::CONTROL)
-        .unwrap();
-    assert_eq!(app.diagram_index, 2);
-    app.handle_key(KeyCode::Right, KeyModifiers::CONTROL)
-        .unwrap();
-    assert_eq!(app.diagram_index, 0);
-    app.handle_key(KeyCode::Left, KeyModifiers::CONTROL)
-        .unwrap();
-    assert_eq!(app.diagram_index, 2);
-
-    crate::tui::mermaid::clear_active_diagrams();
-}
-
-#[test]
-fn test_cycle_diagram_resets_view_to_fit() {
-    let _render_lock = scroll_render_test_lock();
-    let mut app = create_test_app();
-    app.diagram_mode = crate::config::DiagramDisplayMode::Pinned;
-    app.diagram_pane_enabled = true;
-    app.diagram_focus = true;
-    app.diagram_zoom = 140;
-    app.diagram_scroll_x = 12;
-    app.diagram_scroll_y = 7;
-
-    crate::tui::mermaid::clear_active_diagrams();
-    crate::tui::mermaid::register_active_diagram(0x1, 100, 80, None);
-    crate::tui::mermaid::register_active_diagram(0x2, 120, 90, None);
-
-    app.cycle_diagram(1);
-
-    assert_eq!(app.diagram_index, 1);
-    assert_eq!(app.diagram_zoom, 100);
-    assert_eq!(app.diagram_scroll_x, 0);
-    assert_eq!(app.diagram_scroll_y, 0);
-
-    crate::tui::mermaid::clear_active_diagrams();
-}
-
-#[test]
-fn test_resize_resets_diagram_and_side_panel_diagram_view_to_fit() {
-    let mut app = create_test_app();
-    app.diagram_mode = crate::config::DiagramDisplayMode::Pinned;
-    app.diagram_pane_enabled = true;
-    app.diagram_zoom = 130;
-    app.diagram_scroll_x = 9;
-    app.diagram_scroll_y = 4;
-    app.side_panel = crate::side_panel::SidePanelSnapshot {
-        focus_revision: 0,
-        focused_page_id: Some("plan".to_string()),
-        pages: vec![crate::side_panel::SidePanelPage {
-            id: "plan".to_string(),
-            title: "Plan".to_string(),
-            file_path: "".to_string(),
-            format: crate::side_panel::SidePanelPageFormat::Markdown,
-            pdf_data: None,
-            source: crate::side_panel::SidePanelPageSource::Managed,
-            content: "```mermaid\nflowchart LR\nA-->B\n```".to_string(),
-            updated_at_ms: 1,
-        }],
-    };
-    app.diff_pane_scroll_x = 17;
-
-    assert!(app.should_redraw_after_resize());
-    assert_eq!(app.diagram_zoom, 100);
-    assert_eq!(app.diagram_scroll_x, 0);
-    assert_eq!(app.diagram_scroll_y, 0);
-    assert_eq!(app.diff_pane_scroll_x, 0);
-}
-
-#[test]
-fn test_side_panel_visibility_change_resets_diagram_fit_context() {
-    let _render_lock = scroll_render_test_lock();
-    let mut app = create_test_app();
-    app.diagram_mode = crate::config::DiagramDisplayMode::Pinned;
-    app.diagram_pane_enabled = true;
-    app.diagram_pane_position = crate::config::DiagramPanePosition::Side;
-
-    crate::tui::mermaid::clear_active_diagrams();
-    crate::tui::mermaid::register_active_diagram(0xabc, 900, 450, None);
-
-    app.normalize_diagram_state();
-    assert_eq!(app.last_visible_diagram_hash, Some(0xabc));
-
-    app.diagram_zoom = 150;
-    app.diagram_scroll_x = 8;
-    app.diagram_scroll_y = 3;
-    app.set_side_panel_snapshot(crate::side_panel::SidePanelSnapshot {
-        focus_revision: 0,
-        focused_page_id: Some("side".to_string()),
-        pages: vec![crate::side_panel::SidePanelPage {
-            id: "side".to_string(),
-            title: "Side".to_string(),
-            file_path: "".to_string(),
-            format: crate::side_panel::SidePanelPageFormat::Markdown,
-            pdf_data: None,
-            source: crate::side_panel::SidePanelPageSource::Managed,
-            content: "hello".to_string(),
-            updated_at_ms: 1,
-        }],
-    });
-
-    assert_eq!(app.diagram_zoom, 100);
-    assert_eq!(app.diagram_scroll_x, 0);
-    assert_eq!(app.diagram_scroll_y, 0);
-    assert_eq!(app.last_visible_diagram_hash, None);
-
-    app.set_side_panel_snapshot(crate::side_panel::SidePanelSnapshot::default());
-    assert_eq!(app.last_visible_diagram_hash, Some(0xabc));
-
-    crate::tui::mermaid::clear_active_diagrams();
-}
-
-#[test]
 fn test_goal_side_panel_focus_updates_status_notice() {
     let mut app = create_test_app();
 
@@ -1010,180 +854,6 @@ fn test_side_panel_same_page_update_preserves_scroll_position() {
 }
 
 #[test]
-fn test_pinned_side_diagram_layout_allocates_right_pane() {
-    let _render_lock = scroll_render_test_lock();
-    let mut app = create_test_app();
-    app.diagram_mode = crate::config::DiagramDisplayMode::Pinned;
-    app.diagram_pane_enabled = true;
-    app.diagram_pane_position = crate::config::DiagramPanePosition::Side;
-    app.diagram_pane_ratio = 40;
-
-    crate::tui::mermaid::clear_active_diagrams();
-    crate::tui::mermaid::register_active_diagram(0x111, 900, 450, Some("side".to_string()));
-
-    crate::tui::visual_debug::enable();
-    let backend = ratatui::backend::TestBackend::new(120, 40);
-    let mut terminal = ratatui::Terminal::new(backend).expect("failed to create terminal");
-    terminal
-        .draw(|f| crate::tui::ui::draw(f, &app))
-        .expect("draw failed");
-
-    let frame = crate::tui::visual_debug::latest_frame().expect("frame capture");
-    let diagram = frame.layout.diagram_area.expect("diagram area");
-    let messages = frame.layout.messages_area.expect("messages area");
-
-    assert!(
-        diagram.width >= 24,
-        "diagram pane too narrow: {}",
-        diagram.width
-    );
-    assert_eq!(diagram.height, 40);
-    assert_eq!(diagram.x, messages.x + messages.width);
-    assert_eq!(diagram.y, 0);
-    assert!(
-        diagram.width < 120,
-        "diagram should not consume full terminal width"
-    );
-    assert!(
-        frame
-            .render_order
-            .iter()
-            .any(|s| s == "draw_pinned_diagram")
-    );
-
-    crate::tui::visual_debug::disable();
-    crate::tui::mermaid::clear_active_diagrams();
-}
-
-#[test]
-fn test_pinned_top_diagram_layout_allocates_top_pane() {
-    let _render_lock = scroll_render_test_lock();
-    let mut app = create_test_app();
-    app.diagram_mode = crate::config::DiagramDisplayMode::Pinned;
-    app.diagram_pane_enabled = true;
-    app.diagram_pane_position = crate::config::DiagramPanePosition::Top;
-    app.diagram_pane_ratio = 35;
-
-    crate::tui::mermaid::clear_active_diagrams();
-    crate::tui::mermaid::register_active_diagram(0x222, 500, 900, Some("top".to_string()));
-
-    crate::tui::visual_debug::enable();
-    let backend = ratatui::backend::TestBackend::new(120, 40);
-    let mut terminal = ratatui::Terminal::new(backend).expect("failed to create terminal");
-    terminal
-        .draw(|f| crate::tui::ui::draw(f, &app))
-        .expect("draw failed");
-
-    let frame = crate::tui::visual_debug::latest_frame().expect("frame capture");
-    let diagram = frame.layout.diagram_area.expect("diagram area");
-    let messages = frame.layout.messages_area.expect("messages area");
-
-    assert_eq!(diagram.x, 0);
-    assert_eq!(diagram.width, 120);
-    assert!(
-        diagram.height >= 6,
-        "diagram pane too short: {}",
-        diagram.height
-    );
-    assert_eq!(messages.y, diagram.y + diagram.height);
-    assert!(
-        frame
-            .render_order
-            .iter()
-            .any(|s| s == "draw_pinned_diagram")
-    );
-
-    crate::tui::visual_debug::disable();
-    crate::tui::mermaid::clear_active_diagrams();
-}
-
-#[test]
-fn test_pinned_diagram_not_shown_when_terminal_too_narrow() {
-    let _render_lock = scroll_render_test_lock();
-    let mut app = create_test_app();
-    app.diagram_mode = crate::config::DiagramDisplayMode::Pinned;
-    app.diagram_pane_enabled = true;
-    app.diagram_pane_position = crate::config::DiagramPanePosition::Side;
-
-    crate::tui::mermaid::clear_active_diagrams();
-    crate::tui::mermaid::register_active_diagram(0x333, 900, 450, None);
-
-    crate::tui::visual_debug::enable();
-    let backend = ratatui::backend::TestBackend::new(30, 20);
-    let mut terminal = ratatui::Terminal::new(backend).expect("failed to create terminal");
-    terminal
-        .draw(|f| crate::tui::ui::draw(f, &app))
-        .expect("draw failed");
-
-    let frame = crate::tui::visual_debug::latest_frame().expect("frame capture");
-    assert!(
-        frame.layout.diagram_area.is_none(),
-        "diagram pane should be suppressed on narrow terminal"
-    );
-    assert!(
-        !frame
-            .render_order
-            .iter()
-            .any(|s| s == "draw_pinned_diagram")
-    );
-
-    crate::tui::visual_debug::disable();
-    crate::tui::mermaid::clear_active_diagrams();
-}
-
-#[test]
-fn test_pinned_tall_diagram_does_not_crush_transcript() {
-    // Regression: a very tall diagram (portrait aspect) must not make the
-    // pinned side pane balloon past the configured ratio and crush the
-    // transcript. The pane is capped at `diagram_pane_ratio`; the diagram
-    // scales down to fit instead of eating the chat column. The transcript
-    // still renders the diagram inline, so a wide chat area keeps it visible.
-    let _render_lock = scroll_render_test_lock();
-    let mut app = create_test_app();
-    app.diagram_mode = crate::config::DiagramDisplayMode::Pinned;
-    app.diagram_pane_enabled = true;
-    app.diagram_pane_position = crate::config::DiagramPanePosition::Side;
-    app.diagram_pane_ratio = 40;
-
-    crate::tui::mermaid::clear_active_diagrams();
-    // Tall portrait diagram like the flowchart that triggered the bug.
-    crate::tui::mermaid::register_active_diagram(0x444, 1320, 1800, Some("tall".to_string()));
-
-    crate::tui::visual_debug::enable();
-    let backend = ratatui::backend::TestBackend::new(120, 40);
-    let mut terminal = ratatui::Terminal::new(backend).expect("failed to create terminal");
-    terminal
-        .draw(|f| crate::tui::ui::draw(f, &app))
-        .expect("draw failed");
-
-    let frame = crate::tui::visual_debug::latest_frame().expect("frame capture");
-    let diagram = frame.layout.diagram_area.expect("diagram area");
-    let messages = frame.layout.messages_area.expect("messages area");
-
-    // Pane must not exceed the configured ratio (40% of 120 = 48).
-    assert!(
-        diagram.width <= 48,
-        "pinned pane exceeded configured ratio: width={} (ratio cap=48)",
-        diagram.width
-    );
-    // The transcript keeps the majority of the width so the inline diagram
-    // and text stay readable.
-    assert!(
-        messages.width >= 72,
-        "transcript crushed by pinned pane: messages width={}",
-        messages.width
-    );
-    assert_eq!(
-        diagram.width + messages.width,
-        120,
-        "chat + diagram widths should tile the full terminal"
-    );
-
-    crate::tui::visual_debug::disable();
-    crate::tui::mermaid::clear_active_diagrams();
-}
-
-#[test]
 fn test_workspace_info_widget_appears_in_visual_debug_frame_when_enabled() {
     let _render_lock = scroll_render_test_lock();
 
@@ -1252,7 +922,6 @@ fn test_mouse_scroll_over_diff_pane_scrolls_side_panel_without_changing_focus() 
 
     crate::tui::ui::record_layout_snapshot(
         Rect::new(0, 0, 40, 20),
-        None,
         Some(Rect::new(40, 0, 20, 20)),
         None,
     );
@@ -1279,7 +948,6 @@ fn test_mouse_scroll_animation_preserves_side_pane_scroll_sensitivity() {
 
     crate::tui::ui::record_layout_snapshot(
         Rect::new(0, 0, 40, 20),
-        None,
         Some(Rect::new(40, 0, 20, 20)),
         None,
     );
@@ -1331,7 +999,6 @@ fn test_mouse_scroll_over_tool_side_panel_scrolls_shared_right_pane_without_chan
 
     crate::tui::ui::record_layout_snapshot(
         Rect::new(0, 0, 40, 20),
-        None,
         Some(Rect::new(40, 0, 20, 20)),
         None,
     );

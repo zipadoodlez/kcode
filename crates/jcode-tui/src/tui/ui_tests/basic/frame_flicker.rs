@@ -271,11 +271,9 @@ fn make_prepared_messages_with_content_bytes(bytes: usize, marker: &str) -> Arc<
         wrapped_user_prompt_starts: Vec::new(),
         wrapped_user_prompt_ends: Vec::new(),
         user_prompt_texts: Vec::new(),
-        image_regions: Vec::new(),
         edit_tool_ranges: Vec::new(),
         copy_targets: Vec::new(),
         message_boundaries: Vec::new(),
-        mermaid_pending_epoch: None,
     })
 }
 

@@ -153,11 +153,6 @@ impl Config {
                 DiffDisplayMode::Off
             };
         }
-        if let Ok(v) = std::env::var("JCODE_PIN_IMAGES")
-            && let Some(parsed) = parse_env_bool(&v)
-        {
-            self.display.pin_images = parsed;
-        }
         if let Ok(v) = std::env::var("JCODE_PIN_TODOS")
             && let Some(parsed) = parse_env_bool(&v)
         {
@@ -288,11 +283,6 @@ impl Config {
                 self.display.tool_call_details = parsed;
             }
         }
-        if let Ok(v) = std::env::var("JCODE_LATEX_RENDERING")
-            && let Some(mode) = LatexRenderingMode::parse(&v)
-        {
-            self.display.latex_rendering = mode;
-        }
         if let Ok(v) = std::env::var("JCODE_CHAT_NATIVE_SCROLLBAR") {
             if let Some(parsed) = parse_env_bool(&v) {
                 self.display.native_scrollbars.chat = parsed;
@@ -307,11 +297,6 @@ impl Config {
         if let Ok(v) = std::env::var("JCODE_SWARM_ENABLED") {
             if let Some(parsed) = parse_env_bool(&v) {
                 self.features.swarm = parsed;
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_ENABLE_MERMAID") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.features.mermaid = parsed;
             }
         }
         if let Ok(v) = std::env::var("JCODE_CHECK_UPDATES") {

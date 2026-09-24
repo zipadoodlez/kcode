@@ -477,30 +477,6 @@ fn test_copy_badge_truncation_marks_cut_content_with_ellipsis() {
 }
 
 #[test]
-fn test_estimate_pinned_diagram_pane_width_scales_to_height() {
-    let diagram = info_widget::DiagramInfo {
-        hash: 1,
-        width: 800,
-        height: 600,
-        label: None,
-    };
-    let width = estimate_pinned_diagram_pane_width_with_font(&diagram, 20, 24, Some((8, 16)));
-    assert_eq!(width, 50);
-}
-
-#[test]
-fn test_estimate_pinned_diagram_pane_width_respects_minimum() {
-    let diagram = info_widget::DiagramInfo {
-        hash: 2,
-        width: 120,
-        height: 120,
-        label: None,
-    };
-    let width = estimate_pinned_diagram_pane_width_with_font(&diagram, 10, 24, Some((8, 16)));
-    assert_eq!(width, 24);
-}
-
-#[test]
 fn test_idle_donut_reserved_height_absorbs_composer_growth() {
     // No donut: nothing reserved regardless of composer size.
     assert_eq!(idle_donut_reserved_height(false, 1), 0);

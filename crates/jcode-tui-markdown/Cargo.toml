@@ -6,7 +6,6 @@ publish = false
 
 [dependencies]
 jcode-render-core = { path = "../jcode-render-core" }
-jcode-tui-mermaid = { path = "../jcode-tui-mermaid", optional = true }
 jcode-tui-workspace = { path = "../jcode-tui-workspace" }
 dirs = "5"
 image = { version = "0.25", default-features = false, features = ["png"] }
@@ -21,5 +20,3 @@ tempfile = "3"
 wait-timeout = "0.2"
 
 [features]
-default = ["mermaid-renderer"]
-mermaid-renderer = ["dep:jcode-tui-mermaid"]

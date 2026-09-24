@@ -149,32 +149,6 @@ impl OverscrollStatusMode {
     }
 }
 
-/// How to display mermaid diagrams.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum DiagramDisplayMode {
-    /// Don't show diagrams in dedicated widgets (only inline in messages).
-    ///
-    /// `inline`/`off` are accepted spellings: diagrams still render inline in
-    /// the transcript in this mode, and users reasonably write `"inline"`
-    /// (issue #689).
-    #[default]
-    #[serde(alias = "inline", alias = "off")]
-    None,
-    /// Show diagrams in info widget margins (opportunistic, if space available).
-    Margin,
-    /// Show diagrams in a dedicated pinned pane (forces space allocation).
-    Pinned,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum DiagramPanePosition {
-    #[default]
-    Side,
-    Top,
-}
-
 /// How much vertical spacing to use when rendering markdown blocks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -184,38 +158,6 @@ pub enum MarkdownSpacingMode {
     Compact,
     /// Document-style spacing between top-level blocks.
     Document,
-}
-
-/// How LaTeX math is rendered in terminal markdown.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum LatexRenderingMode {
-    /// Preserve the original LaTeX source and delimiters.
-    None,
-    /// Convert supported notation to terminal-friendly Unicode text.
-    Unicode,
-    /// Typeset formulas to PNG and display them with the terminal image protocol.
-    #[default]
-    Image,
-}
-
-impl LatexRenderingMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::None => "none",
-            Self::Unicode => "unicode",
-            Self::Image => "image",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "none" | "raw" | "off" => Some(Self::None),
-            "unicode" | "terminal" | "text" => Some(Self::Unicode),
-            "image" | "images" | "png" => Some(Self::Image),
-            _ => None,
-        }
-    }
 }
 
 impl MarkdownSpacingMode {
@@ -1017,8 +959,6 @@ pub struct FeatureConfig {
     pub check_updates: bool,
     /// Enable swarm coordination features (default: true)
     pub swarm: bool,
-    /// Enable Mermaid rendering and Mermaid-specific model guidance (default: true)
-    pub mermaid: bool,
     /// Default state of auto-poke (automatic follow-up when the model stops with
     /// incomplete todos). `/poke on` / `/poke off` still override this per session
     /// (default: true)
@@ -1041,7 +981,6 @@ impl Default for FeatureConfig {
         Self {
             check_updates: true,
             swarm: true,
-            mermaid: true,
             auto_poke: true,
             message_timestamps: true,
             kv_cache_miss_notices: true,

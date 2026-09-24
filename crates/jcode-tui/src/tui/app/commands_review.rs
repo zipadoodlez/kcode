@@ -273,7 +273,6 @@ fn apply_judge_visible_context_if_needed(session: &mut Session, title_override: 
 /// else ever tells the client to drop the old session's pages. Shared by both
 /// `/clear` implementations so they cannot drift apart again.
 pub(crate) fn clear_side_panel_for_new_session(app: &mut App) {
-    app.close_panel_image_preview();
     app.apply_side_panel_snapshot(crate::side_panel::SidePanelSnapshot::default());
     app.last_side_panel_focus_id = None;
     app.diff_pane_scroll = 0;
@@ -285,28 +284,14 @@ pub(super) fn reset_current_session(app: &mut App) {
     let _ = app.session.save();
     app.clear_provider_messages();
     app.clear_display_messages();
-    // A streaming mermaid preview (STREAMING_PREVIEW_DIAGRAM) belongs to the
-    // transcript being discarded; clear it with the rest of the streaming
-    // render state so it cannot outlive the reset (remote /clear at
-    // remote/key_handling.rs does the same).
     app.clear_streaming_render_state();
     app.clear_live_usage_state();
-    // The WHOLE transcript is discarded, so every entry in the process-global
-    // ACTIVE_DIAGRAMS registry is now orphaned; drop them so the pinned pane
-    // and the Margin info widget (which draws get_active_diagrams()[0])
-    // cannot keep showing a diagram from the old transcript. Only
-    // full-discard paths may do this: partial-retention paths (/rewind,
-    // Ctrl+R recovery) deliberately keep the registry because body-cache
-    // prefix reuse means retained messages do not re-render/re-register
-    // (see the comments at the /rewind handlers in commands.rs).
-    crate::tui::mermaid::clear_active_diagrams();
     app.swarm_plan_items.clear();
     app.swarm_plan_version = None;
     app.swarm_plan_swarm_id = None;
     app.queued_messages.clear();
     app.pasted_contents.clear();
     app.pending_images.clear();
-    app.clear_inline_image_state();
     app.active_skill = None;
     app.improve_mode = None;
     let mut session = Session::create(None, None);

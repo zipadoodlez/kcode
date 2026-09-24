@@ -105,9 +105,6 @@ diff_mode = "inline"
 # Center all content by default (default: false)
 centered = false
 
-# Pin read images to a side pane (default: true)
-pin_images = true
-
 # Pin the full session todo list to the top of the chat transcript while it
 # scrolls, like the sticky previous-prompt preview (default: false)
 # pin_todos = true
@@ -148,11 +145,6 @@ reasoning_display = "full"
 
 # Markdown spacing style: "compact" (chat/TUI) or "document" (docs-like)
 # markdown_spacing = "compact"
-
-# LaTeX rendering: "none" (show source), "unicode" (terminal text), or "image" (typeset PNG, default).
-# Image mode uses `latex` + `dvipng`, or `pdflatex` + `pdftocairo` as a fallback.
-# When neither toolchain is available, formulas fall back to Unicode.
-latex_rendering = "image"
 
 # Show idle animation before first prompt (default: false)
 idle_animation = false
@@ -248,8 +240,6 @@ prompt_entry_animation = true
 check_updates = true
 # Swarm: multi-session coordination features
 swarm = true
-# Mermaid: render Mermaid code blocks and tell the model that diagrams are supported
-mermaid = true
 # Auto-poke: automatically nudge the model to continue when it stops with
 # incomplete todos. /poke on and /poke off still override this per session.
 auto_poke = true

@@ -31,34 +31,7 @@ fn test_h1_h2_headings_render_bold_and_underlined() {
     );
 }
 
-#[test]
-fn test_latex_none_mode_helpers_preserve_source_and_delimiters() {
-    assert_eq!(
-        line_to_string(&Line::from(raw_math_inline_span(r"x^2 + \alpha"))),
-        "$x^2 + \\alpha$"
-    );
-    let display: Vec<String> = raw_math_display_lines(r"\frac{x}{y}")
-        .iter()
-        .map(line_to_string)
-        .collect();
-    assert_eq!(display[1], "│ $$");
-    assert_eq!(display[2], "│ \\frac{x}{y}");
-    assert_eq!(display[3], "│ $$");
-}
 
-#[test]
-fn test_latex_unicode_mode_helpers_convert_supported_notation() {
-    assert_eq!(
-        line_to_string(&Line::from(math_inline_span(r"x^2 + \alpha"))),
-        "x² + α"
-    );
-    let display: Vec<String> = math_display_lines(r"\frac{x+1}{y}")
-        .iter()
-        .map(line_to_string)
-        .collect();
-    assert!(display.iter().any(|line| line.contains("x+1")));
-    assert!(display.iter().any(|line| line.contains('─')));
-}
 
 #[test]
 fn test_code_block() {
@@ -66,36 +39,7 @@ fn test_code_block() {
     assert!(!lines.is_empty());
 }
 
-#[test]
-fn test_common_latex_containers_render_as_terminal_math() {
-    let cases = [
-        r"Inline \(\alpha_2 + x^2\).",
-        r"\[\frac{x+1}{y}\]",
-        "```math\n\\frac{x+1}{y}\n```",
-        "```latex\n\\begin{bmatrix}a & b \\\\ c & d\\end{bmatrix}\n```",
-        r"\begin{align*}x &= 1 \\ y &= 2\end{align*}",
-    ];
 
-    for markdown in cases {
-        let full = lines_to_string(&render_markdown_with_width(markdown, Some(80)));
-        let lazy = lines_to_string(&render_markdown_lazy(markdown, Some(80), 0..100));
-        assert_eq!(lazy, full, "{markdown}");
-        assert!(!full.contains("\\frac"), "{markdown}: {full}");
-        assert!(!full.contains("\\begin"), "{markdown}: {full}");
-        if !markdown.starts_with("Inline") {
-            assert!(full.contains("┌─ math"), "{markdown}: {full}");
-        }
-    }
-}
-
-#[test]
-fn test_latex_syntax_inside_generic_code_remains_literal() {
-    let markdown = "Inline `\\(x^2\\)`\n\n```rust\nlet formula = r\"\\[x^2\\]\";\n```";
-    let rendered = lines_to_string(&render_markdown(markdown));
-    assert!(rendered.contains("\\(x^2\\)"), "{rendered}");
-    assert!(rendered.contains("\\[x^2\\]"), "{rendered}");
-    assert!(!rendered.contains("┌─ math"), "{rendered}");
-}
 
 #[test]
 fn test_extract_copy_targets_from_rendered_lines_for_code_block() {
@@ -416,118 +360,11 @@ fn test_table_cjk_alignment() {
     );
 }
 
-#[test]
-fn test_mermaid_block_detection() {
-    // Without a native image protocol, Mermaid fences stay useful as readable
-    // source code instead of becoming a half-block image or a text stub.
-    let md = "```mermaid\nflowchart LR\n    A --> B\n```";
-    let lines = with_mermaid_rendering_override(Some(true), || {
-        mermaid::with_image_protocol_override(Some(false), || render_markdown(md))
-    });
-    let text: String = lines
-        .iter()
-        .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
-        .collect();
 
-    assert!(
-        text.contains("mermaid"),
-        "Expected code block header: {text}"
-    );
-    assert!(
-        text.contains("flowchart LR"),
-        "Expected raw Mermaid source: {text}"
-    );
-    assert!(
-        lines.iter().all(|line| {
-            mermaid::parse_image_placeholder(line).is_none()
-                && mermaid::parse_inline_image_placeholder(line).is_none()
-        }),
-        "Unsupported terminals must not receive a Mermaid image placeholder: {text}"
-    );
-}
 
-#[cfg(feature = "mermaid-renderer")]
-#[test]
-fn lazy_mermaid_without_native_protocol_also_renders_source() {
-    let md = "```mermaid\nflowchart TD\n    Start --> Finish\n```";
-    let lines = with_mermaid_rendering_override(Some(true), || {
-        mermaid::with_image_protocol_override(Some(false), || {
-            render_markdown_lazy(md, Some(80), 0..usize::MAX)
-        })
-    });
-    let text = lines_to_string(&lines);
 
-    assert!(text.contains("┌─ mermaid"), "missing source header: {text}");
-    assert!(text.contains("Start --> Finish"), "missing source: {text}");
-    assert!(lines.iter().all(|line| {
-        mermaid::parse_image_placeholder(line).is_none()
-            && mermaid::parse_inline_image_placeholder(line).is_none()
-    }));
-}
 
-#[test]
-fn streaming_mermaid_without_native_protocol_keeps_source_visible() {
-    let md = "```mermaid\nflowchart TD\n    Stream --> Source\n```";
-    let lines = with_mermaid_rendering_override(Some(true), || {
-        mermaid::with_image_protocol_override(Some(false), || {
-            with_streaming_render_context(|| render_markdown_with_width(md, Some(80)))
-        })
-    });
-    let text = lines_to_string(&lines);
 
-    assert!(text.contains("┌─ mermaid"), "missing source header: {text}");
-    assert!(text.contains("Stream --> Source"), "missing source: {text}");
-    assert!(!text.contains("rendering mermaid diagram"), "{text}");
-    assert!(lines.iter().all(|line| {
-        mermaid::parse_image_placeholder(line).is_none()
-            && mermaid::parse_inline_image_placeholder(line).is_none()
-    }));
-}
-
-#[cfg(feature = "mermaid-renderer")]
-#[test]
-fn mermaid_gate_accepts_native_protocol_and_rejects_halfblock_fallback() {
-    with_mermaid_rendering_override(Some(true), || {
-        mermaid::with_image_protocol_override(Some(false), || {
-            assert!(!should_render_mermaid_block(Some("mermaid")));
-        });
-        mermaid::with_image_protocol_override(Some(true), || {
-            assert!(should_render_mermaid_block(Some("mermaid")));
-        });
-    });
-}
-
-#[test]
-fn test_mixed_code_and_mermaid() {
-    // Mixed content should render both correctly
-    let md = "```rust\nfn main() {}\n```\n\n```mermaid\nflowchart TD\n    A\n```\n\n```python\nprint('hi')\n```";
-    let lines = render_markdown(md);
-
-    // Should have output for all blocks
-    assert!(
-        lines.len() >= 3,
-        "Expected multiple lines for mixed content"
-    );
-}
-
-#[cfg(feature = "mermaid-renderer")]
-#[test]
-fn test_mermaid_renders_inline_even_in_pinned_diagram_mode() {
-    // Regression: pinned/margin diagram modes must not replace the inline
-    // diagram with a "see sidebar" text stub. The transcript always renders
-    // the diagram (or its placeholder) inline; pinned mode only *adds* the
-    // dedicated pane.
-    let md = "```mermaid\nflowchart LR\n    A --> B\n```";
-    set_diagram_mode_override(Some(DiagramDisplayMode::Pinned));
-    let lines = render_markdown(md);
-    set_diagram_mode_override(None);
-    let text = lines_to_string(&lines);
-
-    assert!(
-        !text.contains("sidebar"),
-        "Pinned mode must not emit a sidebar-only stub in the transcript: {text}"
-    );
-}
 
 #[test]
 fn test_inline_math_render() {
@@ -562,11 +399,6 @@ fn test_display_math_renders_fraction_and_matrix_layouts() {
     assert!(matrix.contains("⎣ c  d ⎦"), "{matrix}");
 }
 
-#[test]
-fn test_unknown_latex_command_remains_visible() {
-    let rendered = lines_to_string(&render_markdown(r"Value: $\custom{x}$"));
-    assert!(rendered.contains(r"\customx"), "{rendered}");
-}
 
 #[test]
 fn test_inline_math_renders_inside_table_cells() {

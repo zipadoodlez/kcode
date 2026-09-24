@@ -54,7 +54,6 @@ members = [
     "crates/jcode-tui-messages",
     "crates/jcode-usage-types",
     "crates/jcode-tui-core",
-    "crates/jcode-tui-mermaid",
     "crates/jcode-task-types",
     "crates/jcode-transport",
     "crates/jcode-tool-core",
@@ -171,7 +170,6 @@ bedrock = ["jcode-tui/bedrock"]
 # Internal release feature: build a supported OpenSSL inside the CentOS 7
 # compatibility image while preserving the glibc 2.17 runtime baseline.
 linux-compat-vendored-openssl = ["jcode-tui/linux-compat-vendored-openssl"]
-mmdr-size-api = ["jcode-tui/mmdr-size-api"]
 pdf = ["jcode-tui/pdf"]
 
 

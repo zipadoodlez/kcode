@@ -3131,18 +3131,7 @@ fn render_compact_plan_graph(title: &str, content: &str, width: u16) -> Option<V
             Style::default().fg(rgb(150, 150, 160)),
         ),
     ])];
-    let mut fill_rows = 0usize;
     for mut line in markdown::render_markdown_with_width(content.trim(), Some(body_width)) {
-        if let Some((_, rows, _)) = mermaid::parse_inline_image_placeholder(&line) {
-            fill_rows = rows.saturating_sub(1) as usize;
-            lines.push(line);
-            continue;
-        }
-        if fill_rows > 0 {
-            fill_rows -= 1;
-            lines.push(line);
-            continue;
-        }
         let mut spans = vec![Span::raw("   ")];
         spans.append(&mut line.spans);
         lines.push(Line::from(spans));
@@ -3267,51 +3256,17 @@ pub(crate) fn render_swarm_message(
     };
 
     if !content.is_empty() {
-        // Mermaid/image placeholders must survive untouched: the marker has to
-        // stay the first non-empty span (no rail prefix) and the blank fill
-        // rows after it reserve the image's height, so they are exempt from
-        // the blank-line cleanup below.
-        let mut placeholder_fill_rows = 0usize;
-        let placeholder_exempt: Vec<bool> = body_lines
-            .iter()
-            .map(|line| {
-                if let Some((_, rows, _)) = mermaid::parse_inline_image_placeholder(line) {
-                    placeholder_fill_rows = rows.saturating_sub(1) as usize;
-                    true
-                } else if placeholder_fill_rows > 0 {
-                    placeholder_fill_rows -= 1;
-                    true
-                } else {
-                    false
-                }
-            })
-            .collect();
-        let mut keep = placeholder_exempt.iter();
         body_lines.retain(|line| {
-            *keep.next().unwrap_or(&false)
-                || line
-                    .spans
-                    .iter()
-                    .any(|span| !span.content.trim().is_empty())
+            line.spans
+                .iter()
+                .any(|span| !span.content.trim().is_empty())
         });
         if body_lines.is_empty() {
             body_lines.push(Line::from(Span::styled(content.to_string(), body_style)));
         }
     }
 
-    let mut placeholder_fill_rows = 0usize;
     for line in body_lines {
-        // Placeholder lines bypass the rail/color pass entirely.
-        if let Some((_, rows, _)) = mermaid::parse_inline_image_placeholder(&line) {
-            placeholder_fill_rows = rows.saturating_sub(1) as usize;
-            lines.push(line);
-            continue;
-        }
-        if placeholder_fill_rows > 0 {
-            placeholder_fill_rows -= 1;
-            lines.push(line);
-            continue;
-        }
         let mut line = line;
         if line.spans.is_empty() {
             line.spans.push(Span::styled(String::new(), body_style));
@@ -3327,18 +3282,7 @@ pub(crate) fn render_swarm_message(
     }
 
     let mut wrapped_lines = Vec::new();
-    let mut wrap_fill_rows = 0usize;
     for line in lines {
-        if let Some((_, rows, _)) = mermaid::parse_inline_image_placeholder(&line) {
-            wrap_fill_rows = rows.saturating_sub(1) as usize;
-            wrapped_lines.push(line);
-            continue;
-        }
-        if wrap_fill_rows > 0 {
-            wrap_fill_rows -= 1;
-            wrapped_lines.push(line);
-            continue;
-        }
         wrapped_lines.extend(markdown::wrap_line(line, block_wrap_width));
     }
 

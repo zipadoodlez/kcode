@@ -17,7 +17,7 @@ use super::ui_diff::{
     diff_del_color, generate_diff_lines_from_tool_input, tint_span_with_diff_color,
 };
 use super::visual_debug::{
-    self, FrameCaptureBuilder, ImageRegionCapture, InfoWidgetCapture, MarginsCapture,
+    self, FrameCaptureBuilder, InfoWidgetCapture, MarginsCapture,
     MessageCapture, RenderTimingCapture,
 };
 use super::{DisplayMessage, DisplayMessageRoleExt, ProcessingStatus, TuiState};
@@ -47,16 +47,12 @@ mod box_utils;
 mod changelog;
 #[path = "ui_debug_capture.rs"]
 mod debug_capture;
-#[path = "ui_diagram_pane.rs"]
-mod diagram_pane;
 #[path = "ui_file_diff.rs"]
 mod file_diff_ui;
 #[path = "ui_frame_metrics.rs"]
 mod frame_metrics;
 #[path = "ui_header.rs"]
 pub(crate) mod header;
-#[path = "ui_inline_image.rs"]
-pub(crate) mod inline_image_ui;
 #[path = "ui_inline_interactive.rs"]
 mod inline_interactive_ui;
 #[path = "ui_inline.rs"]
@@ -72,8 +68,6 @@ mod onboarding;
 mod output_style;
 #[path = "ui_overlays.rs"]
 mod overlays;
-#[path = "ui_panel_image_preview.rs"]
-pub(crate) mod panel_image_preview;
 #[path = "ui_pinned.rs"]
 mod pinned_ui;
 #[path = "ui_prepare.rs"]
@@ -88,7 +82,6 @@ pub(crate) mod tools_ui;
 mod transitions;
 #[path = "ui_viewport.rs"]
 pub(crate) mod viewport;
-use crate::tui::mermaid;
 #[cfg(test)]
 pub(crate) use box_utils::truncate_line_to_width;
 use box_utils::{
@@ -102,20 +95,6 @@ use debug_capture::{
     build_info_widget_summary, capture_widget_placements, rect_within_bounds, rects_overlap,
     widget_overlaps_content,
 };
-pub use diagram_pane::{
-    PinnedDiagramLiveDebugSnapshot, PinnedDiagramProbeRect, debug_probe_pinned_diagram,
-};
-#[cfg(test)]
-use diagram_pane::{
-    debug_probe_pinned_diagram_with_font, div_ceil_u32,
-    estimate_pinned_diagram_pane_width_with_font, is_diagram_poor_fit,
-    vcenter_fitted_image_with_font,
-};
-use diagram_pane::{
-    draw_pinned_diagram, estimate_pinned_diagram_pane_height, estimate_pinned_diagram_pane_width,
-    pinned_diagram_preferred_aspect_ratio,
-};
-pub(crate) use diagram_pane::{pinned_diagram_debug_json, reset_pinned_diagram_debug_snapshot};
 use file_diff_ui::active_file_diff_context;
 use file_diff_ui::draw_file_diff_view;
 #[cfg(test)]
@@ -134,13 +113,10 @@ pub(crate) use messages::{
     render_swarm_message, render_system_message, render_tool_message, render_usage_message,
 };
 pub(crate) use output_style::adapt_buffer_for_emoji_preference;
-pub use pinned_ui::{
-    SidePanelDebugStats, SidePanelMermaidProbe, SidePanelMermaidProbeRect,
-    debug_probe_side_panel_mermaid,
-};
+pub use pinned_ui::SidePanelDebugStats;
 pub(crate) use pinned_ui::{
-    clear_side_panel_debug_snapshot, clear_side_panel_render_caches, prewarm_focused_side_panel,
-    reset_side_panel_debug_stats, side_panel_debug_json, side_panel_debug_stats,
+    clear_side_panel_render_caches, prewarm_focused_side_panel, reset_side_panel_debug_stats,
+    side_panel_debug_json, side_panel_debug_stats,
 };
 use pinned_ui::{
     collect_pinned_diffs_cached, draw_pinned_content_cached, draw_side_panel_markdown,
@@ -564,7 +540,7 @@ use theme_support::{
 
 pub(crate) use jcode_tui_markdown::{CopyTargetKind, RawCopyTarget};
 pub(crate) use jcode_tui_messages::{
-    CopyTarget, EditToolRange, ImageRegion, MessageBoundary, PreparedChatFrame, PreparedMessages,
+    CopyTarget, EditToolRange, MessageBoundary, PreparedChatFrame, PreparedMessages,
     PreparedSection, PreparedSectionKind, WrappedLineMap,
 };
 
@@ -963,24 +939,18 @@ struct BodyCacheKey {
     width: u16,
     diff_mode: crate::config::DiffDisplayMode,
     messages_version: u64,
-    diagram_mode: crate::config::DiagramDisplayMode,
     centered: bool,
     /// Mermaid render geometry depends on the scoped transcript/pane aspect
     /// profile as well as width. A vertical terminal resize can change this
     /// bucket without changing `width`, so it must invalidate the prepared body.
-    mermaid_aspect_bucket: Option<u16>,
     /// Whether inline images render at all (Alt+M hides them).
-    pin_images: bool,
     /// Whether inline images render expanded or as collapsed label stubs
     /// (Alt+Shift+I toggles; persisted).
-    inline_images_visible: bool,
     /// Signature of the inline image set; anchored images render inside the
     /// body, so the body must rebuild when images arrive or change.
-    images_signature: (usize, u64),
     /// Monotonic per-image expand-level version. Anchored images embed their
     /// expand-level geometry into the body, so a level change must rebuild the
     /// body exactly like an image-set change does.
-    expanded_images_version: u64,
     /// Live swarm-member data renders beneath the tool call that spawned each
     /// member, so status/todo/tool-intent updates must invalidate the body.
     swarm_members_signature: u64,
@@ -1055,16 +1025,10 @@ impl BodyCacheState {
                 entry.msg_count > 0
                     && entry.key.width == key.width
                     && entry.key.diff_mode == key.diff_mode
-                    && entry.key.diagram_mode == key.diagram_mode
                     && entry.key.centered == key.centered
-                    && entry.key.mermaid_aspect_bucket == key.mermaid_aspect_bucket
                     // Anchored inline images render inside the body, and a
                     // late-arriving image may target an already-prepared
                     // message; only reuse bases built with the same image set.
-                    && entry.key.pin_images == key.pin_images
-                    && entry.key.inline_images_visible == key.inline_images_visible
-                    && entry.key.images_signature == key.images_signature
-                    && entry.key.expanded_images_version == key.expanded_images_version
                     && entry.key.swarm_members_signature == key.swarm_members_signature
             })
             .max_by_key(|entry| entry.msg_count)
@@ -1076,16 +1040,10 @@ impl BodyCacheState {
                 entry.msg_count > 0
                     && entry.key.width == key.width
                     && entry.key.diff_mode == key.diff_mode
-                    && entry.key.diagram_mode == key.diagram_mode
                     && entry.key.centered == key.centered
-                    && entry.key.mermaid_aspect_bucket == key.mermaid_aspect_bucket
                     // Anchored inline images render inside the body, and a
                     // late-arriving image may target an already-prepared
                     // message; only reuse bases built with the same image set.
-                    && entry.key.pin_images == key.pin_images
-                    && entry.key.inline_images_visible == key.inline_images_visible
-                    && entry.key.images_signature == key.images_signature
-                    && entry.key.expanded_images_version == key.expanded_images_version
                     && entry.key.swarm_members_signature == key.swarm_members_signature
             })
             .max_by_key(|entry| entry.msg_count)
@@ -1116,16 +1074,10 @@ impl BodyCacheState {
                 entry.msg_count > 0
                     && entry.key.width == key.width
                     && entry.key.diff_mode == key.diff_mode
-                    && entry.key.diagram_mode == key.diagram_mode
                     && entry.key.centered == key.centered
-                    && entry.key.mermaid_aspect_bucket == key.mermaid_aspect_bucket
                     // Anchored inline images render inside the body, and a
                     // late-arriving image may target an already-prepared
                     // message; only reuse bases built with the same image set.
-                    && entry.key.pin_images == key.pin_images
-                    && entry.key.inline_images_visible == key.inline_images_visible
-                    && entry.key.images_signature == key.images_signature
-                    && entry.key.expanded_images_version == key.expanded_images_version
                     && entry.key.swarm_members_signature == key.swarm_members_signature
             })
             .max_by_key(|(_, entry)| entry.msg_count)
@@ -1138,16 +1090,10 @@ impl BodyCacheState {
                 entry.msg_count > 0
                     && entry.key.width == key.width
                     && entry.key.diff_mode == key.diff_mode
-                    && entry.key.diagram_mode == key.diagram_mode
                     && entry.key.centered == key.centered
-                    && entry.key.mermaid_aspect_bucket == key.mermaid_aspect_bucket
                     // Anchored inline images render inside the body, and a
                     // late-arriving image may target an already-prepared
                     // message; only reuse bases built with the same image set.
-                    && entry.key.pin_images == key.pin_images
-                    && entry.key.inline_images_visible == key.inline_images_visible
-                    && entry.key.images_signature == key.images_signature
-                    && entry.key.expanded_images_version == key.expanded_images_version
                     && entry.key.swarm_members_signature == key.swarm_members_signature
             })
             .max_by_key(|(_, entry)| entry.msg_count)
@@ -1239,21 +1185,16 @@ struct FullPrepCacheKey {
     height: u16,
     diff_mode: crate::config::DiffDisplayMode,
     messages_version: u64,
-    diagram_mode: crate::config::DiagramDisplayMode,
     centered: bool,
     /// The scoped Mermaid profile can also change when pane geometry changes
     /// while the transcript rectangle stays the same.
-    mermaid_aspect_bucket: Option<u16>,
     is_processing: bool,
     streaming_text_len: usize,
     streaming_text_hash: u64,
     batch_progress_hash: u64,
-    inline_images_signature: (usize, u64),
     /// Whether inline images render expanded or as collapsed label stubs.
-    inline_images_visible: bool,
     /// Per-image expand-level version; anchored image geometry is embedded in
     /// the prepared frame, so a level change must invalidate it.
-    expanded_images_version: u64,
     /// Signature of live swarm member cards embedded beneath spawn tool calls.
     swarm_members_signature: u64,
 }
@@ -1407,7 +1348,7 @@ use frame_metrics::{
     note_body_cache_lookup, note_body_cache_miss, note_body_incremental_reuse, note_body_request,
     note_chat_layout, note_full_prep_built, note_full_prep_cache_hit, note_full_prep_cache_lookup,
     note_full_prep_cache_miss, note_full_prep_phase_metrics, note_full_prep_request,
-    note_prep_aspect, note_prep_overflow, note_prep_prepare_at, note_prep_restage,
+    note_prep_overflow, note_prep_prepare_at,
     note_viewport_metrics, reset_frame_perf_stats, viewport_stability_hash,
 };
 pub(crate) use frame_metrics::{
@@ -1432,7 +1373,6 @@ pub(crate) use frame_metrics::{
 #[derive(Clone, Copy, Debug)]
 pub struct LayoutSnapshot {
     pub messages_area: Rect,
-    pub diagram_area: Option<Rect>,
     pub diff_pane_area: Option<Rect>,
     pub input_area: Option<Rect>,
 }
@@ -1447,7 +1387,6 @@ fn last_layout_state() -> &'static Mutex<Option<LayoutSnapshot>> {
 
 pub fn record_layout_snapshot(
     messages_area: Rect,
-    diagram_area: Option<Rect>,
     diff_pane_area: Option<Rect>,
     input_area: Option<Rect>,
 ) {
@@ -1456,7 +1395,6 @@ pub fn record_layout_snapshot(
         TEST_LAST_LAYOUT.with(|snapshot| {
             *snapshot.borrow_mut() = Some(LayoutSnapshot {
                 messages_area,
-                diagram_area,
                 diff_pane_area,
                 input_area,
             });
@@ -1468,7 +1406,6 @@ pub fn record_layout_snapshot(
         if let Ok(mut snapshot) = last_layout_state().lock() {
             *snapshot = Some(LayoutSnapshot {
                 messages_area,
-                diagram_area,
                 diff_pane_area,
                 input_area,
             });
@@ -1685,24 +1622,6 @@ impl CopyViewportSnapshot {
         }
     }
 
-    /// If `abs_line` is the label line of a visible inline-image region, return
-    /// that image's id. The label line sits exactly one wrapped line above the
-    /// region's first placeholder line (see `anchored_image_lines`), so we map a
-    /// click on the label row back to the image it annotates.
-    fn inline_image_id_for_label_line(&self, abs_line: usize) -> Option<u64> {
-        let prepared = match &self.data {
-            CopyViewportData::ChatFrame { prepared } => prepared,
-            CopyViewportData::Dense { .. } => return None,
-        };
-        prepared
-            .image_regions
-            .iter()
-            .find(|region| {
-                region.render == jcode_tui_messages::ImageRegionRender::Fit
-                    && region.abs_line_idx == abs_line + 1
-            })
-            .map(|region| region.hash)
-    }
 }
 
 #[derive(Clone, Default)]
@@ -2511,16 +2430,6 @@ pub(crate) fn link_target_from_screen(column: u16, row: u16) -> Option<String> {
     link_target_from_snapshot(&snapshot, point)
 }
 
-/// If a screen click landed on an inline-image label line, return the image
-/// id so the caller can cycle that image's size. The label line is short and
-/// single purpose (there is no visible expand badge anymore), so the whole
-/// line acts as the click target alongside the image body itself.
-pub(crate) fn inline_image_expand_target_from_screen(column: u16, row: u16) -> Option<u64> {
-    let point = copy_point_from_screen(column, row)?;
-    let snapshot = copy_snapshot_for_pane(point.pane)?;
-    snapshot.inline_image_id_for_label_line(point.abs_line)
-}
-
 /// If a screen click landed on a collapsed/expanded swarm notification's
 /// `▸ expand` / `▾ collapse` badge, return the transcript message index so the
 /// caller can toggle that notification. Only clicks on the trailing badge
@@ -2554,114 +2463,13 @@ pub(crate) fn swarm_expand_target_from_screen(column: u16, row: u16) -> Option<u
     prepared.message_index_at_line(point.abs_line)
 }
 
-/// If a screen click landed on the rendered body of an inline image (its
-/// placeholder rows), return the image id so the caller can cycle that image's
-/// size. Together with the label-line hit-test this makes the whole picture
-/// clickable.
-/// The hit-region is bounded by the image's rendered width (`region.width`,
-/// which includes the 2-cell left border), shifted right when `centered` mode
-/// horizontally centers the drawn pixels, so clicks in empty space beside a
-/// narrow image stay inert.
-pub(crate) fn inline_image_body_target_from_screen(
-    column: u16,
-    row: u16,
-    centered: bool,
-) -> Option<u64> {
-    let point = copy_point_from_screen(column, row)?;
-    let snapshot = copy_snapshot_for_pane(point.pane)?;
-    let prepared = match &snapshot.data {
-        CopyViewportData::ChatFrame { prepared } => prepared,
-        CopyViewportData::Dense { .. } => return None,
-    };
-    let region = prepared.image_regions.iter().find(|region| {
-        region.render == jcode_tui_messages::ImageRegionRender::Fit
-            && point.abs_line >= region.abs_line_idx
-            && point.abs_line < region.end_line
-    })?;
-    let area = snapshot.content_area;
-    let rel_col = column.saturating_sub(area.x);
-    // `width == 0` means unknown; treat the rows as fully occupied then.
-    let width = if region.width == 0 {
-        area.width
-    } else {
-        region.width.min(area.width)
-    };
-    // Centered mode draws the border at the left edge but centers the image
-    // pixels; accept the full band from the border through the image's right
-    // edge so both the border and the picture are clickable.
-    let right_edge = if centered {
-        let offset = area.width.saturating_sub(width) / 2;
-        offset.saturating_add(width)
-    } else {
-        width
-    };
-    (rel_col < right_edge).then_some(region.hash)
-}
-
-/// Debug dump of the live chat snapshot's inline-image regions plus the screen
-/// coordinates of each visible label line (the click target that cycles the
-/// image size), so external drivers (debug socket) can compute real click
-/// targets against the running TUI.
-pub(crate) fn debug_chat_image_regions_json() -> String {
-    let Some(snapshot) = copy_snapshot_for_pane(crate::tui::CopySelectionPane::Chat) else {
-        return "{\"error\":\"no chat snapshot\"}".to_string();
-    };
-    let prepared = match &snapshot.data {
-        CopyViewportData::ChatFrame { prepared } => prepared.clone(),
-        CopyViewportData::Dense { .. } => {
-            return "{\"error\":\"dense snapshot (no image regions)\"}".to_string();
-        }
-    };
-    let area = snapshot.content_area;
-    let regions: Vec<serde_json::Value> = prepared
-        .image_regions
-        .iter()
-        .map(|region| {
-            let label_line = region.abs_line_idx.saturating_sub(1);
-            let label_text = snapshot.wrapped_plain_line(label_line).unwrap_or("");
-            let label_visible = label_line >= snapshot.scroll && label_line < snapshot.visible_end;
-            // The whole label line is clickable now; report its first cell as
-            // the badge coordinate so existing drivers keep working.
-            let badge_screen = label_visible.then(|| {
-                let rel_row = label_line - snapshot.scroll;
-                let left_margin = snapshot.left_margins.get(rel_row).copied().unwrap_or(0);
-                serde_json::json!({
-                    "col": area.x as usize + left_margin as usize,
-                    "row": area.y as usize + rel_row,
-                })
-            });
-            serde_json::json!({
-                "hash": region.hash,
-                "render": format!("{:?}", region.render),
-                "abs_line_idx": region.abs_line_idx,
-                "end_line": region.end_line,
-                "rows": region.height,
-                "cols": region.width,
-                "label_line": label_line,
-                "label_text": label_text,
-                "label_visible": label_visible,
-                "badge_screen": badge_screen,
-            })
-        })
-        .collect();
-    serde_json::to_string_pretty(&serde_json::json!({
-        "scroll": snapshot.scroll,
-        "visible_end": snapshot.visible_end,
-        "content_area": {
-            "x": area.x, "y": area.y, "width": area.width, "height": area.height,
-        },
-        "image_regions": regions,
-    }))
-    .unwrap_or_else(|_| "{}".to_string())
-}
-
 pub fn draw(frame: &mut Frame, app: &dyn TuiState) {
     record_idle_animation_area(None);
     // Suggestions are read many times while composing one frame. Bump the
     // epoch here so the memo is scoped to exactly this frame.
     app.advance_command_suggestions_epoch();
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::tui::markdown::with_deferred_mermaid_render_context(|| draw_inner(frame, app))
+        draw_inner(frame, app)
     })) {
         Ok(()) => {}
         Err(payload) => render_recovered_panic_frame(frame, &payload),
@@ -2675,10 +2483,8 @@ pub fn draw(frame: &mut Frame, app: &dyn TuiState) {
     // Cache eviction/clearing can outlive the last visible image. Carry Kitty
     // deletion commands on any completed frame so terminal-side pixel storage
     // is reclaimed even when no image widget renders again.
-    crate::tui::mermaid::render_pending_terminal_image_cleanup(frame.buffer_mut());
 }
 fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
-    panel_image_preview::clear_regions();
     let area = frame.area().intersection(*frame.buffer_mut().area());
     if area.width == 0 || area.height == 0 {
         return;
@@ -2693,22 +2499,10 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // Clear full frame to prevent stale cells from prior layouts.
     // This is critical on macOS terminals where ratatui's diff-based updates
     // can leave outdated content when layout dimensions change between frames
-    // (e.g., diagram pane toggling, streaming text clearing, tool calls finishing).
+    // (e.g., side pane toggling, streaming text clearing, tool calls finishing).
     // Uses Color::Reset (terminal default bg) so text selection highlighting works
     // natively in all terminal emulators.
     clear_area(frame, area);
-
-    if let Some(hash) = app.panel_image_preview() {
-        panel_image_preview::draw_preview(frame, area, hash);
-        finalize_frame_metrics(
-            app,
-            total_start,
-            Duration::ZERO,
-            total_start.elapsed(),
-            None,
-        );
-        return;
-    }
 
     if let Some(scroll) = app.changelog_scroll() {
         overlays::draw_changelog_overlay(frame, area, scroll, app);
@@ -2793,23 +2587,11 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     };
     let swarm_page_active = app.swarm_panel_full_page();
 
-    // Check diagram display mode and get active diagrams early so we can
-    // determine the horizontal split before computing input width etc.
-    let diagram_mode = app.diagram_mode();
-    let diagrams = super::mermaid::get_active_diagrams();
-    let diagram_count = diagrams.len();
-    let selected_index = if diagram_count > 0 {
-        app.diagram_index().min(diagram_count - 1)
-    } else {
-        0
-    };
-    let pane_enabled = app.diagram_pane_enabled();
-    let pane_position = app.diagram_pane_position();
     let has_side_panel_content = !swarm_page_active && app.side_panel().focused_page().is_some();
     let diff_mode = app.diff_mode();
     let collect_diffs = diff_mode.is_pinned();
-    // Images now render inline in the transcript, so the side panel only handles
-    // pinned file diffs. `pin_images` no longer feeds the side-panel surface.
+    // The side panel only handles pinned file diffs; inline images render in the
+    // transcript instead.
     let has_pinned_content = if collect_diffs && !swarm_page_active {
         collect_pinned_diffs_cached(app.display_messages(), app.display_messages_version())
     } else {
@@ -2819,114 +2601,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         !swarm_page_active && diff_mode.is_file() && app.has_display_edit_tool_messages();
     let has_right_side_pane_content =
         has_side_panel_content || has_pinned_content || has_file_diff_edits;
-    // The side panel is itself a single right-hand auxiliary surface and can render
-    // visual content such as Mermaid diagrams inline. Pinned image/file-diff content
-    // also uses that same right-hand surface. Do not also open the global pinned
-    // diagram pane while any right-hand side pane is visible, otherwise combinations
-    // like pinned images + Mermaid can produce chat + side pane + diagram triple-split
-    // layouts.
-    let suppress_side_diagram = has_right_side_pane_content;
-    let pinned_diagram = if !swarm_page_active
-        && diagram_mode == crate::config::DiagramDisplayMode::Pinned
-        && pane_enabled
-        && !suppress_side_diagram
-    {
-        diagrams.get(selected_index).cloned()
-    } else {
-        None
-    };
-    let diagram_focus = app.diagram_focus();
-    let (diagram_scroll_x, diagram_scroll_y) = app.diagram_scroll();
-
-    // Compute layout depending on pane position (Side = right column, Top = above chat).
-    let (chat_area, diagram_area) = if let Some(diagram) = pinned_diagram.as_ref() {
-        match pane_position {
-            crate::config::DiagramPanePosition::Side => {
-                const MIN_DIAGRAM_WIDTH: u16 = 24;
-                const MIN_CHAT_WIDTH: u16 = 20;
-                let max_diagram = area.width.saturating_sub(MIN_CHAT_WIDTH);
-                if max_diagram >= MIN_DIAGRAM_WIDTH {
-                    let ratio = app.diagram_pane_ratio().clamp(25, 100) as u32;
-                    let ratio_target = ((area.width as u32 * ratio) / 100) as u16;
-                    let needed =
-                        estimate_pinned_diagram_pane_width(diagram, area.height, MIN_DIAGRAM_WIDTH);
-                    // The configured ratio is the upper bound for the pane so the
-                    // transcript (which still renders the diagram inline) is never
-                    // crushed. Shrink below the ratio when a diagram is narrow
-                    // enough to need less, but do not grow past it: a large/tall
-                    // diagram just scales down to fit the pane instead of eating
-                    // the chat column.
-                    let diagram_width = ratio_target
-                        .min(needed.max(MIN_DIAGRAM_WIDTH))
-                        .max(MIN_DIAGRAM_WIDTH)
-                        .min(max_diagram);
-                    let chat_width = area.width.saturating_sub(diagram_width);
-                    if diagram_width > 0 && chat_width > 0 {
-                        let chat = Rect {
-                            x: area.x,
-                            y: area.y,
-                            width: chat_width,
-                            height: area.height,
-                        };
-                        let diag = Rect {
-                            x: area.x + chat_width,
-                            y: area.y,
-                            width: diagram_width,
-                            height: area.height,
-                        };
-                        (chat, Some(diag))
-                    } else {
-                        (area, None)
-                    }
-                } else {
-                    (area, None)
-                }
-            }
-            crate::config::DiagramPanePosition::Top => {
-                const MIN_DIAGRAM_HEIGHT: u16 = 6;
-                const MIN_CHAT_HEIGHT: u16 = 8;
-                let max_diagram = area.height.saturating_sub(MIN_CHAT_HEIGHT);
-                if max_diagram >= MIN_DIAGRAM_HEIGHT {
-                    let ratio = app.diagram_pane_ratio().clamp(20, 100) as u32;
-                    let ratio_target = ((area.height as u32 * ratio) / 100) as u16;
-                    let needed = estimate_pinned_diagram_pane_height(
-                        diagram,
-                        area.width,
-                        MIN_DIAGRAM_HEIGHT,
-                    );
-                    // Cap the pane at the configured ratio so the transcript keeps
-                    // its rows; shrink below it when the diagram is short. A tall
-                    // diagram scales down to fit rather than swallowing the chat.
-                    let diagram_height = ratio_target
-                        .min(needed.max(MIN_DIAGRAM_HEIGHT))
-                        .max(MIN_DIAGRAM_HEIGHT)
-                        .min(max_diagram);
-                    let chat_height = area.height.saturating_sub(diagram_height);
-                    if diagram_height > 0 && chat_height > 0 {
-                        let diag = Rect {
-                            x: area.x,
-                            y: area.y,
-                            width: area.width,
-                            height: diagram_height,
-                        };
-                        let chat = Rect {
-                            x: area.x,
-                            y: area.y + diagram_height,
-                            width: area.width,
-                            height: chat_height,
-                        };
-                        (chat, Some(diag))
-                    } else {
-                        (area, None)
-                    }
-                } else {
-                    (area, None)
-                }
-            }
-        }
-    } else {
-        (area, None)
-    };
+    let chat_area = area;
 
     let needs_side_pane = has_right_side_pane_content;
 
@@ -2941,8 +2616,8 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         let image_dominant_pane =
             has_pinned_content && !has_file_diff_edits && !has_side_panel_content;
         const ADAPTIVE_IMAGE_RATIO: u32 = 55;
-        let base_ratio = app.diagram_pane_ratio().clamp(25, 100) as u32;
-        let effective_ratio = if image_dominant_pane && !app.diagram_pane_ratio_user_adjusted() {
+        let base_ratio = app.side_pane_ratio().clamp(25, 100) as u32;
+        let effective_ratio = if image_dominant_pane && !app.side_pane_ratio_user_adjusted() {
             base_ratio.max(ADAPTIVE_IMAGE_RATIO)
         } else {
             base_ratio
@@ -3044,26 +2719,9 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let chat_left_inset = left_aligned_content_inset(chat_area.width, app.centered_mode());
     let wide_prepare_width = chat_area.width.saturating_sub(chat_left_inset);
     let narrow_prepare_width = wide_prepare_width.saturating_sub(1);
-    let pinned_mermaid_aspect_ratio =
-        diagram_area.and_then(|area| pinned_diagram_preferred_aspect_ratio(area, pane_position));
-    let aspect_start = Instant::now();
-    // Aspect-ratio goal for transcript mermaid renders (deferred and
-    // synchronous): the pinned pane's aspect wins when the pane is open so
-    // inline and pane share one cached PNG; otherwise a terminal-friendly
-    // inline goal keeps diagrams within a readable-height budget. Best-effort:
-    // falls back to None (today's 4:3 sizing) when font geometry is unknown.
-    let transcript_mermaid_aspect_ratio = mermaid::transcript_preferred_aspect_ratio(
-        pinned_mermaid_aspect_ratio,
-        wide_prepare_width,
-        chat_area.height,
-    );
-    note_prep_aspect(aspect_start.elapsed());
     let prepare_at = |width: u16| {
         let started = Instant::now();
-        let prepared =
-            mermaid::with_preferred_aspect_ratio(transcript_mermaid_aspect_ratio, || {
-                prepare::prepare_messages(app, width, chat_area.height)
-            });
+        let prepared = prepare::prepare_messages(app, width, chat_area.height);
         note_prep_prepare_at(started.elapsed());
         prepared
     };
@@ -3180,17 +2838,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         }
     };
     set_last_chat_scrollbar_visible(chat_scrollbar_visible);
-    if let Some(ref mut capture) = debug_capture {
-        capture.image_regions = prepared
-            .image_regions
-            .iter()
-            .map(|region| ImageRegionCapture {
-                hash: format!("{:016x}", region.hash),
-                abs_line_idx: region.abs_line_idx,
-                height: region.height,
-            })
-            .collect();
-    }
     let prep_elapsed = prep_start.elapsed();
     let content_height = prepared.total_wrapped_lines().max(1) as u16;
 
@@ -3280,16 +2927,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         capture.state.streaming_text_len = app.streaming_text().len();
         capture.state.has_suggestions = !app.command_suggestions().is_empty();
         capture.state.status = format!("{:?}", app.status());
-        capture.state.diagram_mode = Some(format!("{:?}", diagram_mode));
-        capture.state.diagram_focus = diagram_focus;
-        capture.state.diagram_index = selected_index;
-        capture.state.diagram_count = diagram_count;
-        capture.state.diagram_scroll_x = diagram_scroll_x;
-        capture.state.diagram_scroll_y = diagram_scroll_y;
-        capture.state.diagram_pane_ratio = app.diagram_pane_ratio();
-        capture.state.diagram_pane_enabled = app.diagram_pane_enabled();
-        capture.state.diagram_pane_position = Some(format!("{:?}", app.diagram_pane_position()));
-        capture.state.diagram_zoom = app.diagram_zoom();
 
         // Capture rendered content
         // Queued messages
@@ -3340,9 +2977,8 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
 
     if let Some(ref mut capture) = debug_capture {
         capture.layout.messages_area = Some(messages_area.into());
-        capture.layout.diagram_area = diagram_area.map(|r| r.into());
     }
-    record_layout_snapshot(messages_area, diagram_area, diff_pane_area, Some(chunks[7]));
+    record_layout_snapshot(messages_area, diff_pane_area, Some(chunks[7]));
 
     let margins = if onboarding_welcome {
         onboarding::draw_onboarding_welcome(frame, app, messages_area);
@@ -3393,28 +3029,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         )
     };
 
-    crate::tui::reset_pinned_diagram_debug_snapshot();
-    // Render pinned diagram if we have one
-    if let (Some(diagram_info), Some(area)) = (&pinned_diagram, diagram_area) {
-        if let Some(ref mut capture) = debug_capture {
-            capture.render_order.push("draw_pinned_diagram".to_string());
-        }
-        draw_pinned_diagram(
-            frame,
-            diagram_info,
-            area,
-            selected_index,
-            diagram_count,
-            diagram_focus,
-            diagram_scroll_x,
-            diagram_scroll_y,
-            app.diagram_zoom(),
-            pane_position,
-            app.diagram_pane_animating(),
-        );
-    }
-
-    crate::tui::clear_side_panel_debug_snapshot();
     if let Some(diff_area) = diff_pane_area {
         if has_side_panel_content {
             if let Some(ref mut capture) = debug_capture {
@@ -3548,14 +3162,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
                         placement.kind, placement.rect
                     ));
                 }
-                if let Some(diagram_area) = diagram_area
-                    && rects_overlap(placement.rect, diagram_area)
-                {
-                    capture.anomaly(format!(
-                        "Info widget {:?} overlaps diagram area",
-                        placement.kind
-                    ));
-                }
             }
             for i in 0..placements.len() {
                 for j in (i + 1)..placements.len() {
@@ -3658,7 +3264,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
 
         let mut capture = capture;
         capture.render_timing = Some(render_timing);
-        capture.mermaid = crate::tui::mermaid::debug_stats_json();
         capture.side_panel = crate::tui::side_panel_debug_json();
         capture.markdown = crate::tui::markdown::debug_stats_json();
         capture.theme = overlays::debug_palette_json();

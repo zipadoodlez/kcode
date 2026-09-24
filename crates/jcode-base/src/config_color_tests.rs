@@ -108,7 +108,6 @@ fn reported_display_config_survives_a_real_config_file_round_trip() {
             "idle_animation = true\n",
             "show_thinking = true\n",
             "reasoning_display = \"current\"\n",
-            "diagram_mode = \"inline\"\n",
         ),
     )
     .expect("write user config");
@@ -122,12 +121,6 @@ fn reported_display_config_survives_a_real_config_file_round_trip() {
         loaded.display.reasoning_display(),
         jcode_config_types::ReasoningDisplayMode::Current
     );
-    // "inline" is the inline-only mode: no dedicated diagram widget.
-    assert_eq!(
-        loaded.display.diagram_mode,
-        jcode_config_types::DiagramDisplayMode::None
-    );
-
     // The summary the user reads must agree, or the setting looks ignored.
     let summary = loaded.display_string();
     assert!(
@@ -138,7 +131,7 @@ fn reported_display_config_survives_a_real_config_file_round_trip() {
     // A genuinely unknown value degrades only itself.
     std::fs::write(
         &path,
-        "[display]\ncentered = true\nidle_animation = true\ndiagram_mode = \"nonsense\"\n",
+        "[display]\ncentered = true\nidle_animation = true\nreasoning_display = \"nonsense\"\n",
     )
     .expect("write user config");
     Config::invalidate_cache();
@@ -146,10 +139,6 @@ fn reported_display_config_survives_a_real_config_file_round_trip() {
     assert!(
         loaded.display.centered && loaded.display.idle_animation,
         "one unknown enum value must not discard the rest of the file"
-    );
-    assert_eq!(
-        loaded.display.diagram_mode,
-        jcode_config_types::DiagramDisplayMode::default()
     );
 
     match prev_home {

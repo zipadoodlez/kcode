@@ -1,5 +1,5 @@
 use super::{
-    Config, DiffDisplayMode, DisplayConfig, HookCommands, LatexRenderingMode, McpToolsMode,
+    Config, DiffDisplayMode, DisplayConfig, HookCommands, McpToolsMode,
     ProviderConfig, SessionPickerResumeAction, SwarmSpawnMode, ToolConfig, config_env_fingerprint,
     populate_context_limits_from_config_ref,
 };
@@ -161,28 +161,6 @@ fn swarm_max_concurrent_agents_defaults_to_safe_live_worker_budget() {
 }
 
 #[test]
-fn mermaid_feature_defaults_on_and_parses_false() {
-    assert!(Config::default().features.mermaid);
-
-    let cfg: Config =
-        toml::from_str("[features]\nmermaid = false\n").expect("features.mermaid should parse");
-    assert!(!cfg.features.mermaid);
-}
-
-#[test]
-fn mermaid_environment_override_uses_standard_boolean_values() {
-    let _guard = crate::storage::lock_test_env();
-    let previous = std::env::var_os("JCODE_ENABLE_MERMAID");
-    crate::env::set_var("JCODE_ENABLE_MERMAID", "off");
-
-    let mut cfg = Config::default();
-    cfg.apply_env_overrides();
-    assert!(!cfg.features.mermaid);
-
-    restore_env_var("JCODE_ENABLE_MERMAID", previous);
-}
-
-#[test]
 fn auto_poke_feature_defaults_on_and_parses_false() {
     assert!(Config::default().features.auto_poke);
 
@@ -222,41 +200,6 @@ fn auto_poke_environment_override_uses_standard_boolean_values() {
     restore_env_var("JCODE_AUTO_POKE", previous);
 }
 
-#[test]
-fn latex_rendering_defaults_to_image_and_parses_all_modes() {
-    assert_eq!(
-        Config::default().display.latex_rendering,
-        LatexRenderingMode::Image
-    );
-    for (value, expected) in [
-        ("none", LatexRenderingMode::None),
-        ("unicode", LatexRenderingMode::Unicode),
-        ("image", LatexRenderingMode::Image),
-    ] {
-        let cfg: Config = toml::from_str(&format!("[display]\nlatex_rendering = \"{value}\"\n"))
-            .expect("latex rendering mode should parse");
-        assert_eq!(cfg.display.latex_rendering, expected);
-        assert_eq!(LatexRenderingMode::parse(expected.as_str()), Some(expected));
-    }
-    // An unknown mode degrades to the default instead of failing the whole
-    // config parse, which used to silently discard every other setting in
-    // config.toml (issue #689).
-    let cfg: Config = toml::from_str("[display]\ncentered = true\nlatex_rendering = \"canvas\"\n")
-        .expect("an unknown latex mode must not invalidate the config");
-    assert_eq!(cfg.display.latex_rendering, LatexRenderingMode::Image);
-    assert!(cfg.display.centered, "unrelated settings must survive");
-}
-
-#[test]
-fn latex_rendering_environment_override_accepts_aliases() {
-    let _guard = crate::storage::lock_test_env();
-    let previous = std::env::var_os("JCODE_LATEX_RENDERING");
-    crate::env::set_var("JCODE_LATEX_RENDERING", "png");
-    let mut cfg = Config::default();
-    cfg.apply_env_overrides();
-    assert_eq!(cfg.display.latex_rendering, LatexRenderingMode::Image);
-    restore_env_var("JCODE_LATEX_RENDERING", previous);
-}
 
 #[test]
 fn swarm_max_concurrent_agents_parses_and_allows_zero_for_unbounded() {
