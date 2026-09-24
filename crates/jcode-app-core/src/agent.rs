@@ -244,7 +244,6 @@ pub struct Agent {
     /// AGENTS.md is session bootstrap input. Keep the captured text stable so
     /// tool writes do not mutate the provider's cacheable prefix mid-session.
     agents_md_snapshot: (Option<String>, crate::prompt::ContextInfo),
-    /// Whether memory features are enabled for this session
     /// One-step undo snapshot captured before the most recent rewind.
     rewind_undo_snapshot: Option<RewindUndoSnapshot>,
     /// Channel for tools to request stdin input from the user

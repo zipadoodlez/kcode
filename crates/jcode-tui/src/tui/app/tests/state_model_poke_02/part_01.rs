@@ -849,12 +849,6 @@ fn test_nested_command_suggestions_filter_partial_suffixes() {
         Some("/compact mode semantic")
     );
 
-    let suggestions = app.get_suggestions_for("/memory st");
-    assert_eq!(
-        suggestions.first().map(|(cmd, _)| cmd.as_str()),
-        Some("/memory status")
-    );
-
     let suggestions = app.get_suggestions_for("/improve st");
     assert!(
         suggestions.iter().any(|(cmd, _)| cmd == "/improve status"),

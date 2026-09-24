@@ -1623,13 +1623,6 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
-                if trimmed.starts_with("/memory ") {
-                    app.push_display_message(DisplayMessage::error(
-                        "Usage: /memory [on|off|status]".to_string(),
-                    ));
-                    return Ok(());
-                }
-
                 if trimmed == "/clear" {
                     remote.clear().await?;
                     app.clear_provider_messages();

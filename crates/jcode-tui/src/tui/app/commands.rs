@@ -1820,13 +1820,6 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    if trimmed.starts_with("/memory ") {
-        app.push_display_message(DisplayMessage::error(
-            "Usage: /memory [on|off|status]".to_string(),
-        ));
-        return true;
-    }
-
     if handle_test_command(app, trimmed) {
         return true;
     }

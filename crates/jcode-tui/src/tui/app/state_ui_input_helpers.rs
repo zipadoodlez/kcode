@@ -129,7 +129,6 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     RegisteredCommand::public("/refactor", "Run a safe refactor loop"),
     RegisteredCommand::public("/compact", "Compact context"),
     RegisteredCommand::public("/fix", "Recover when the model cannot continue"),
-    RegisteredCommand::public("/memory", "Toggle memory feature"),
     RegisteredCommand::public("/test", "Verify a claim/current changes with layered tests"),
     RegisteredCommand::public(
         "/initiatives",
@@ -903,17 +902,6 @@ impl App {
             return self.rank_suggestions(input, suggestions);
         }
 
-        if prefix.starts_with("/memory ") {
-            return self.rank_suggestions(
-                input,
-                vec![
-                    ("/memory on".into(), "Enable memory for this session"),
-                    ("/memory off".into(), "Disable memory for this session"),
-                    ("/memory status".into(), "Show memory feature status"),
-                ],
-            );
-        }
-
         if prefix.starts_with("/improve ") {
             return self.rank_suggestions(
                 input,
@@ -1636,7 +1624,6 @@ impl App {
                 | "/usage"
                 | "/subscription"
                 | "/poke"
-                | "/memory"
                 | "/test"
                 | "/initiatives"
                 | "/initiatives show"
