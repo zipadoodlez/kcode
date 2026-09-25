@@ -19,6 +19,7 @@ git has the history.
 | idea | the problem |
 |---|---|
 | compile-time isolation | build and link time; the workspace recompiles far more than it should. The old `COMPILE_TIME_ISOLATION_REFACTOR.md` was a historical record naming removed machinery, so it was deleted - the idea stays here |
+| the axis kcode owns | as a subtraction fork on MIT code, kcode has no moat on anything inherited; only what it *adds* is ownable, and today that is nothing. Leading candidate: verifiability plus package-manager ownership - reproducible builds, no self-modification, no telemetry, permission-gated by default, every performance claim shipped with a runnable script and raw artifacts in-repo |
 
 ## Open items in the code, no plan
 
@@ -31,6 +32,25 @@ git has the history.
 | `/help <item>` coverage | written detail for 70 of 114 registered commands; the other 44 answer `Unknown command`, and there is no `/help list` |
 | packaging | `packaging/arch/PKGBUILD` does not exist, and the README install section points at it |
 | unknown config sections | the loader silently ignores unknown top-level sections, so older config files keep dead keys with no warning |
+| ambient residue | `what-was-removed.md` says ambient is gone, but `safety.rs:86` still has `AmbientTranscript` and `save_transcript()` writes to `~/.kcode/ambient/`, `dispatch.rs:366` still routes `Command::Permissions`, `args.rs:303` leaves a dangling `#[command(subcommand)]` and ambient doc comment on `Permissions` (which has no subcommands), and `README.md:109` still documents it. Four-way disagreement; decide keep-and-document or delete |
+| `[dictation]` in README | `README.md:297` lists the section; the feature is gone, leaving four dead env names in `config.rs:59-62` |
+
+## Repo hygiene, no plan
+
+| item | state |
+|---|---|
+| CI is upstream's | `discord-release.yml`, `update-star-history.yml`, `require-issue.yml`, `freebsd-smoke.yml` describe jcode, not this fork. Prune to kcode-shaped workflows |
+| dead config | `Cargo.lock` is committed (correct for a binary) but still listed in `.gitignore:3`; `.gitignore` also names paths absent here (`/.jcode/generated-images/`, `/telemetry-worker/backups/`, `graphify-out/`, `captures/`, `ios_simulator_screenshot.png`) |
+| `scripts/` | ~90 inherited files, no README; several are explicitly jcode-specific. Classify keep/delete/broken or delete |
+| budget baselines | the six budget files (`panic_budget.json`, `swallowed_error_budget.json`, `code_size_budget.json`, `warning_budget.txt`, `wildcard_reexport_budget.json`, `test_size_budget.json`) carry jcode's numbers; re-baseline or they are meaningless or block work |
+| fork policy | rebase lane vs hard divergence is undecided, and it blocks crate names, the env prefix and the provider cut. `README.md` states "does not track upstream", but nothing follows from it |
+| licensing | no `license` field on the root `Cargo.toml` or any of the 63 members; add `license = "MIT"`, ship the LICENSE inside the package (the PKGBUILD), and generate a `THIRD_PARTY_NOTICES` from `Cargo.lock` |
+
+## Provider layer
+
+| item | state |
+|---|---|
+| provider cut | 20 `jcode-provider-*` crates, 61k lines, for roughly three wire formats (OpenAI-compatible, Anthropic, Gemini). ~19k cut candidates (`cursor-runtime`, `copilot*`, `antigravity*`, `grok-build-runtime`, `claude-cli-runtime`, `bedrock`, `provider-doctor`, `provider-metadata`/catalog); realistic target ~12-18k. Caution: the 46.8k non-test lines are accumulated production bugfixes - delete as they bite, do not rewrite blind |
 
 ## Hook surface gaps
 
