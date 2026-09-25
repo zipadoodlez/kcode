@@ -29,8 +29,7 @@ impl App {
         event_stream: &mut EventStream,
         mut bus_receiver: Option<&mut tokio::sync::broadcast::Receiver<crate::bus::BusEvent>>,
     ) -> Result<()> {
-        let eager_stream_redraw = !crate::perf::tui_policy().enable_decorative_animations;
-        let mut redraw_period = crate::tui::redraw_interval(self);
+        let mut redraw_period = crate::tui::tick_period(self);
         let mut redraw_interval = super::run_shell::redraw_timer(redraw_period);
         let mut frame_renderer = super::run_shell::FrameRenderer::default();
 
@@ -39,7 +38,7 @@ impl App {
             // missing progress beats mean a real hang, not an idle client.
             let _turn_work = crate::logging::watchdog::begin_work("turn.request");
             crate::logging::watchdog::set_detail("provider request");
-            let desired_redraw = crate::tui::redraw_interval(self);
+            let desired_redraw = crate::tui::tick_period(self);
             if desired_redraw != redraw_period {
                 redraw_period = desired_redraw;
                 redraw_interval = super::run_shell::redraw_timer(redraw_period);
@@ -225,7 +224,7 @@ impl App {
 
             // Stream with input handling
             loop {
-                let desired_redraw = crate::tui::redraw_interval(self);
+                let desired_redraw = crate::tui::tick_period(self);
                 if desired_redraw != redraw_period {
                     redraw_period = desired_redraw;
                     redraw_interval = super::run_shell::redraw_timer(redraw_period);
@@ -459,9 +458,6 @@ impl App {
                                                     text: chunk
                                                 });
                                             }
-                                            if eager_stream_redraw {
-                                                frame_renderer.draw_full(self, terminal)?;
-                                            }
                                         }
                                     }
                                     StreamEvent::ToolUseStart { id, name } => {
@@ -494,9 +490,6 @@ impl App {
                                             input: serde_json::Value::Null,
                                             intent: None, thought_signature: None, });
                                         current_tool_input.clear();
-                                        if eager_stream_redraw {
-                                            frame_renderer.draw_full(self, terminal)?;
-                                        }
                                     }
                                     StreamEvent::ToolInputDelta(delta) => {
                                         self.broadcast_debug(crate::tui::backend::DebugEvent::ToolInput {
@@ -546,9 +539,6 @@ impl App {
 
                                             tool_calls.push(tool);
                                             current_tool_input.clear();
-                                            if eager_stream_redraw {
-                                                frame_renderer.draw_full(self, terminal)?;
-                                            }
                                         }
                                     }
                                     StreamEvent::ToolUseSignature(signature) => {
@@ -621,23 +611,14 @@ impl App {
                                             }
                                             ProcessingStatus::Connecting(phase)
                                         };
-                                        if eager_stream_redraw {
-                                            frame_renderer.draw_full(self, terminal)?;
-                                        }
                                     }
                                     StreamEvent::StatusDetail { detail } => {
                                         self.status_detail = Some(detail);
-                                        if eager_stream_redraw {
-                                            frame_renderer.draw_full(self, terminal)?;
-                                        }
                                     }
                                     StreamEvent::MessageEnd { .. } => {
                                         self.pause_streaming_tps(true);
                                         self.stream_message_ended = true;
                                         saw_message_end = true;
-                                        if eager_stream_redraw {
-                                            frame_renderer.draw_full(self, terminal)?;
-                                        }
                                     }
                                     StreamEvent::RetryRollback { attempt, max } => {
                                         // Transient transport fault mid-stream; the provider is
@@ -671,9 +652,6 @@ impl App {
                                                 max,
                                             },
                                         );
-                                        if eager_stream_redraw {
-                                            frame_renderer.draw_full(self, terminal)?;
-                                        }
                                     }
                                     StreamEvent::SessionId(sid) => {
                                         self.provider_session_id = Some(sid);
@@ -716,9 +694,6 @@ impl App {
                                         // Always show Thinking in status bar
                                         self.status = ProcessingStatus::Thinking(start);
                                         self.broadcast_debug(crate::tui::backend::DebugEvent::ThinkingStart);
-                                        if eager_stream_redraw {
-                                            frame_renderer.draw_full(self, terminal)?;
-                                        }
                                     }
                                     StreamEvent::ThinkingSignatureDelta(signature) => {
                                         if store_reasoning_content {
@@ -755,9 +730,6 @@ impl App {
                                         // When reasoning text is hidden, the status flip to
                                         // "thinking…" is the only visible signal, so repaint
                                         // promptly on the first delta.
-                                        if entered_thinking && eager_stream_redraw {
-                                            frame_renderer.draw_full(self, terminal)?;
-                                        }
                                     }
                                     StreamEvent::ThinkingEnd => {
                                         self.pause_streaming_tps(true);
@@ -909,9 +881,6 @@ impl App {
                                             }
                                         }
                                         self.status = ProcessingStatus::Streaming;
-                                        if eager_stream_redraw {
-                                            frame_renderer.draw_full(self, terminal)?;
-                                        }
                                     }
                                     StreamEvent::NativeToolCall {
                                         request_id,

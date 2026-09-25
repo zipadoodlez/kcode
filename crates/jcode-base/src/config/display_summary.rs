@@ -46,8 +46,6 @@ impl Config {
 - Compact notifications: {}
 - Chat native scrollbar: {}
 - Side panel native scrollbar: {}
-- Performance tier: {}
-- Animation FPS: {}
 - Redraw FPS: {}
 - Copy badge Alt label: {}
 - Show agentgrep output: {}
@@ -129,12 +127,6 @@ impl Config {
             self.display.compact_notifications,
             self.display.native_scrollbars.chat,
             self.display.native_scrollbars.side_panel,
-            if self.display.performance.is_empty() {
-                "auto"
-            } else {
-                &self.display.performance
-            },
-            self.display.animation_fps,
             self.display.redraw_fps,
             if self.display.copy_badge_alt_label.trim().is_empty() {
                 "auto"

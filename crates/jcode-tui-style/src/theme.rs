@@ -90,12 +90,6 @@ pub const LIVENESS_INDICATOR_FPS: f32 = 1.5;
 /// Frame rate for the low-cost single-cell circular spinner when decorative
 /// animations are disabled. Unlike the full-line indicators above, this spinner
 /// is patched by the cheap one-cell fast path between full redraws, so it can
-/// animate at a smooth, responsive cadence (well above ~1 Hz) while still
-/// staying very light on resources. Keep this in sync with the spinner-only
-/// tick interval in the TUI run loop (`STATUS_SPINNER_ONLY_INTERVAL`, 80ms) so
-/// each tick lands on exactly one new frame.
-pub const LIVENESS_SPINNER_FPS: f32 = 12.5;
-
 pub fn spinner_frame_index(elapsed: f32, fps: f32) -> usize {
     ((elapsed * fps) as usize) % SPINNER_FRAMES.len()
 }
@@ -113,27 +107,12 @@ pub fn is_activity_indicator_frame(symbol: &str) -> bool {
     SPINNER_FRAMES.contains(&symbol)
 }
 
-pub fn activity_indicator_frame_index(
-    elapsed: f32,
-    fps: f32,
-    enable_decorative_animations: bool,
-) -> usize {
-    if enable_decorative_animations {
-        spinner_frame_index(elapsed, fps)
-    } else {
-        // Keep ticking at the smooth liveness rate instead of freezing on a
-        // single frame. The single-cell fast path repaints this cheaply, so it
-        // can animate well above ~1 Hz without a full-frame redraw.
-        spinner_frame_index(elapsed, LIVENESS_SPINNER_FPS)
-    }
+pub fn activity_indicator_frame_index(elapsed: f32, fps: f32) -> usize {
+    spinner_frame_index(elapsed, fps)
 }
 
-pub fn activity_indicator(
-    elapsed: f32,
-    fps: f32,
-    enable_decorative_animations: bool,
-) -> &'static str {
-    SPINNER_FRAMES[activity_indicator_frame_index(elapsed, fps, enable_decorative_animations)]
+pub fn activity_indicator(elapsed: f32, fps: f32) -> &'static str {
+    SPINNER_FRAMES[activity_indicator_frame_index(elapsed, fps)]
 }
 
 #[cfg(test)]
@@ -159,37 +138,4 @@ mod tests {
         assert_eq!(spinner_frame(1.0, fps), "⠋");
     }
 
-    #[test]
-    fn activity_indicator_still_advances_without_decorative_animations() {
-        // With decorative animations disabled the single-cell spinner must keep
-        // ticking instead of freezing on one frame.
-        let first = activity_indicator(0.0, 12.5, false);
-        let later = activity_indicator(1.0, 12.5, false);
-        assert!(SPINNER_FRAMES.contains(&first));
-        assert_ne!(
-            first, later,
-            "liveness spinner should advance within one second"
-        );
-    }
-
-    #[test]
-    fn liveness_spinner_advances_smoothly_within_a_few_frames() {
-        // The single-cell fast path patches one status cell per 80ms tick, so the
-        // non-decorative liveness spinner should advance well faster than ~1 Hz
-        // (it should not still read as frozen between consecutive fast-path ticks).
-        let frame_at = |elapsed: f32| activity_indicator(elapsed, 12.5, false);
-        // One 80ms fast-path tick should already move to the next frame.
-        assert_ne!(
-            frame_at(0.0),
-            frame_at(0.08),
-            "liveness spinner should advance every fast-path tick (80ms)"
-        );
-        // It must be meaningfully faster than the old ~1.5 Hz cadence.
-        const {
-            assert!(
-                LIVENESS_SPINNER_FPS >= 8.0,
-                "liveness spinner should animate at a smooth, responsive rate"
-            );
-        }
-    }
 }

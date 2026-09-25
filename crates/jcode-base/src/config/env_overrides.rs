@@ -231,17 +231,6 @@ impl Config {
                 self.display.external_sessions = parsed;
             }
         }
-        if let Ok(v) = std::env::var("JCODE_PERFORMANCE") {
-            let trimmed = v.trim().to_lowercase();
-            if matches!(trimmed.as_str(), "auto" | "full" | "reduced" | "minimal") {
-                self.display.performance = trimmed;
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_ANIMATION_FPS") {
-            if let Ok(fps) = v.trim().parse::<u32>() {
-                self.display.animation_fps = fps.clamp(1, 120);
-            }
-        }
         if let Ok(v) = std::env::var("JCODE_REDRAW_FPS") {
             if let Ok(fps) = v.trim().parse::<u32>() {
                 self.display.redraw_fps = fps.clamp(1, 120);

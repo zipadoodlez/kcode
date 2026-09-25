@@ -903,20 +903,11 @@ fn attach_redraw_schedule_debug(payload: &mut serde_json::Value, app: &App) {
     map.insert(
         "redraw_schedule".to_string(),
         serde_json::json!({
-            "interval_ms": crate::tui::redraw_interval(app).as_millis() as u64,
-            "animation_fps": policy.animation_fps,
+            "interval_ms": crate::tui::tick_period(app).as_millis() as u64,
             "redraw_fps": policy.redraw_fps,
-            "tier": format!("{:?}", policy.tier),
-            "decorative_animations": policy.enable_decorative_animations,
+            "wants_fast_tick": crate::tui::wants_fast_tick(app),
             "client_focused": crate::tui::TuiState::client_focused(app),
             "periodic_redraw_required": crate::tui::periodic_redraw_required(app),
-            // Unlike `idle_animation.last_full_frame_reason`, which is gone,
-            // this is evaluated against current state, so an expired notice
-            // cannot masquerade as the thing pinning the loop at a fast
-            // cadence. Diagnosing the fresh-spawn lag needed exactly this
-            // distinction, and the field had been dropped while the function
-            // it calls stayed behind as dead code.
-            "current_full_frame_reason": crate::tui::current_full_frame_redraw_reason(app),
             // Latency the user actually feels: key read -> frame flushed. Reported
             // here because render/flush timings only cover work inside a draw and
             // say nothing about a keystroke waiting for one to start.

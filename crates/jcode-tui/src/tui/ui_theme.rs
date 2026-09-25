@@ -5,17 +5,9 @@ pub(super) use jcode_tui_style::theme::{
 };
 
 pub(super) fn activity_indicator_frame_index(elapsed: f32, fps: f32) -> usize {
-    jcode_tui_style::theme::activity_indicator_frame_index(
-        elapsed,
-        fps,
-        crate::perf::tui_policy().enable_decorative_animations,
-    )
+    jcode_tui_style::theme::activity_indicator_frame_index(elapsed, fps)
 }
 
 pub(super) fn activity_indicator(elapsed: f32, fps: f32) -> &'static str {
-    jcode_tui_style::theme::activity_indicator(
-        elapsed,
-        fps,
-        crate::perf::tui_policy().enable_decorative_animations,
-    )
+    jcode_tui_style::theme::activity_indicator(elapsed, fps)
 }

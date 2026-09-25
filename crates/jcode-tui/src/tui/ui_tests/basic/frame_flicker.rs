@@ -12,8 +12,8 @@ fn test_redraw_interval_uses_low_frequency_during_remote_startup_phase() {
         ..Default::default()
     };
 
-    let idle_interval = crate::tui::redraw_interval(&idle);
-    let startup_interval = crate::tui::redraw_interval(&startup);
+    let idle_interval = crate::tui::tick_period(&idle);
+    let startup_interval = crate::tui::tick_period(&startup);
 
     assert_eq!(idle_interval, crate::tui::REDRAW_DEEP_IDLE);
     assert_eq!(startup_interval, crate::tui::REDRAW_REMOTE_STARTUP);
@@ -55,7 +55,7 @@ fn test_cold_cache_warning_keeps_redrawing_at_deep_idle() {
         "a cold prompt cache must keep driving redraws so the warning appears at deep idle"
     );
     assert_ne!(
-        crate::tui::redraw_interval(&cold),
+        crate::tui::tick_period(&cold),
         crate::tui::REDRAW_DEEP_IDLE,
         "a cold cache should bump the redraw interval above the deep-idle cadence"
     );
@@ -165,10 +165,14 @@ fn test_active_swarm_spinner_keeps_redrawing_at_deep_idle() {
             crate::tui::periodic_redraw_required(&animating),
             "an {status} swarm agent must keep driving redraws at deep idle"
         );
-        assert_eq!(
-            crate::tui::redraw_interval(&animating),
-            crate::tui::REDRAW_SWARM_SPINNER,
-            "an {status} swarm agent should repaint at the spinner cadence"
+        assert!(
+            crate::tui::wants_fast_tick(&animating),
+            "an {status} swarm agent must want a fast tick at deep idle"
+        );
+        assert_ne!(
+            crate::tui::tick_period(&animating),
+            crate::tui::REDRAW_DEEP_IDLE,
+            "an {status} swarm agent should not stay on the deep-idle cadence"
         );
     }
 
@@ -186,7 +190,7 @@ fn test_active_swarm_spinner_keeps_redrawing_at_deep_idle() {
             "a {status} swarm agent renders a static glyph and should stay deep-idle"
         );
         assert_eq!(
-            crate::tui::redraw_interval(&settled),
+            crate::tui::tick_period(&settled),
             crate::tui::REDRAW_DEEP_IDLE,
             "a {status} swarm agent should not bump the redraw cadence"
         );

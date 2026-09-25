@@ -46,11 +46,7 @@ pub struct DisplayConfig {
     pub pin_todos: bool,
     /// Wrap long lines in the pinned diff pane (default: true)
     pub diff_line_wrap: bool,
-    /// Performance tier override: auto/full/reduced/minimal (default: auto)
-    pub performance: String,
-    /// FPS for animations (startup, idle donut): 1-120 (default: 60)
-    pub animation_fps: u32,
-    /// FPS for active redraw (processing, streaming): 1-120 (default: 30)
+    /// FPS for active redraw (processing, streaming): 1-120 (default: 60)
     pub redraw_fps: u32,
     /// Show a truncated preview of the previous prompt at the top when it scrolls out of view (default: true)
     pub prompt_preview: bool,
@@ -127,8 +123,6 @@ impl Default for DisplayConfig {
             reasoning_display: Some(ReasoningDisplayMode::Full),
             markdown_spacing: MarkdownSpacingMode::default(),
             diff_line_wrap: true,
-            performance: String::new(),
-            animation_fps: 60,
             redraw_fps: 60,
             prompt_preview: true,
             compact_notifications: false,

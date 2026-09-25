@@ -643,9 +643,6 @@ fn build_persistent_header_with_auth(
     if client_update {
         status_items.push("cli↑");
     }
-    if let Some(badge) = crate::perf::profile().tier.badge() {
-        status_items.push(badge);
-    }
 
     // Labeled versions for the `server:` / `client:` lines. Lots of users run
     // mismatched client/server binaries, so both lines carry their own version

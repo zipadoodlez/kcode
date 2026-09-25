@@ -1,17 +1,6 @@
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
-/// Pin the performance tier before reading any redraw policy.
-///
-/// `redraw_interval` and `periodic_redraw_required` consult `perf::tui_policy()`,
-/// and the auto-detected tier depends on host load: under a parallel cargo build
-/// the host can look Reduced/Minimal. `pin_full_profile_for_tests` is
-/// first-initialization-wins, so a test that reads the policy without pinning
-/// inherits whatever another test happened to establish.
-fn pin_full_tier() {
-    crate::perf::pin_full_profile_for_tests();
-}
-
 fn render_full(state: &TestState, width: u16, height: u16) -> Terminal<TestBackend> {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test terminal");
     terminal
@@ -67,7 +56,6 @@ fn first_prompt_preserves_welcome_header_spacing() {
 #[test]
 fn first_prompt_stays_visible_with_widgets_during_processing_at_47x51() {
     let _lock = viewport_snapshot_test_lock();
-    pin_full_tier();
     const PROMPT: &str = "PROMPT_SENTINEL";
     const WIDGET: &str = "WIDGET_SENTINEL";
 

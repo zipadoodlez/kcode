@@ -970,8 +970,11 @@ fn test_copy_selection_drag_to_top_edge_auto_scrolls_chat() {
         crate::tui::periodic_redraw_required(&app),
         "periodic redraw must be required while edge autoscroll is armed"
     );
-    let policy = crate::perf::tui_policy();
-    let interval = crate::tui::redraw_interval_with_policy(&app, &policy);
+    assert!(
+        crate::tui::wants_fast_tick(&app),
+        "a held edge autoscroll must want a fast tick"
+    );
+    let interval = crate::tui::tick_period(&app);
     assert!(
         interval <= crate::tui::REDRAW_IDLE,
         "redraw interval should stay fast during edge autoscroll, got {interval:?}"

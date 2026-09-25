@@ -197,7 +197,7 @@ impl App {
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> Result<RunResult> {
         super::terminal_liveness::capture_initial_tty();
         let mut event_stream = EventStream::new();
-        let mut redraw_period = crate::tui::redraw_interval(&self);
+        let mut redraw_period = crate::tui::tick_period(&self);
         let mut redraw_interval = redraw_timer(redraw_period);
         let mut frame_renderer = FrameRenderer::default();
         let mut needs_redraw = true;
@@ -212,7 +212,7 @@ impl App {
 
         loop {
             self.sync_sleep_guard();
-            let desired_redraw = crate::tui::redraw_interval(&self);
+            let desired_redraw = crate::tui::tick_period(&self);
             if desired_redraw != redraw_period {
                 redraw_period = desired_redraw;
                 redraw_interval = redraw_timer(redraw_period);
@@ -316,7 +316,7 @@ impl App {
         }
         super::terminal_liveness::capture_initial_tty();
         let mut event_stream = EventStream::new();
-        let mut redraw_period = crate::tui::redraw_interval(&self);
+        let mut redraw_period = crate::tui::tick_period(&self);
         let mut redraw_interval = redraw_timer(redraw_period);
         let mut frame_renderer = FrameRenderer::default();
         let mut needs_redraw = true;
@@ -403,7 +403,7 @@ impl App {
             // Main event loop
             loop {
                 self.sync_sleep_guard();
-                let desired_redraw = crate::tui::redraw_interval(&self);
+                let desired_redraw = crate::tui::tick_period(&self);
                 if desired_redraw != redraw_period {
                     redraw_period = desired_redraw;
                     redraw_interval = redraw_timer(redraw_period);

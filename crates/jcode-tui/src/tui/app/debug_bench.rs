@@ -189,7 +189,7 @@ impl App {
                 });
                 if scroll_only {
                     scroll_only_count += 1;
-                    std::thread::sleep(crate::tui::redraw_interval(self));
+                    std::thread::sleep(crate::tui::tick_period(self));
                 }
                 terminal
                     .draw(|f| crate::tui::ui::draw(f, self))

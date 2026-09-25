@@ -1,8 +1,8 @@
-// Redraw-cadence policy: which app states justify repainting at animation
-// speed, and which must not.
+// Redraw-cadence policy: which app states justify a fast tick, and which must
+// not.
 //
 // This exists because of a real, user-visible bug: a transient status notice
-// (e.g. "Swarm plan synced ...") put the whole client on the animation cadence.
+// (e.g. "Swarm plan synced ...") put the whole client on the fast cadence.
 // At 60fps that is ~180 full frames per notice, each re-deriving the transcript,
 // header, status line, and composer into essentially identical cells. Keystrokes
 // landed behind one of those frames, so a freshly spawned session felt laggy,
@@ -14,7 +14,6 @@
 /// A state whose only "live" element is a piece of static text chrome.
 fn static_chrome_state(notice: Option<&str>) -> TestState {
     TestState {
-        // A started conversation, so this measures text chrome alone.
         display_messages: vec![DisplayMessage {
             role: "user".to_string(),
             content: "a real prompt".to_string(),
@@ -30,65 +29,39 @@ fn static_chrome_state(notice: Option<&str>) -> TestState {
     }
 }
 
-fn full_tier_policy() -> crate::perf::TuiPerfPolicy {
-    // Build from the real policy so a new field cannot silently drift, then pin
-    // the parts these assertions depend on. The host's load average must not
-    // decide whether this test passes.
-    crate::perf::TuiPerfPolicy {
-        tier: crate::perf::PerformanceTier::Full,
-        enable_decorative_animations: true,
-        animation_fps: 60,
-        redraw_fps: 60,
-        ..crate::perf::tui_policy()
-    }
+fn fast_interval() -> Duration {
+    let fps = crate::perf::tui_policy().redraw_fps.max(1);
+    Duration::from_millis(1000 / u64::from(fps))
 }
 
-/// The regression gate: a status notice must not pull the redraw loop to
-/// animation cadence.
+/// The regression gate: a status notice must not want a fast tick.
 #[test]
-fn a_status_notice_does_not_force_animation_cadence() {
-    let policy = full_tier_policy();
-    let animation_interval = Duration::from_millis(1000 / u64::from(policy.animation_fps.max(1)));
-
-    let quiet = crate::tui::redraw_interval_with_policy(&static_chrome_state(None), &policy);
-    let with_notice = crate::tui::redraw_interval_with_policy(
-        &static_chrome_state(Some("Swarm plan synced (v55, 98 items)")),
-        &policy,
-    );
-
+fn a_status_notice_does_not_force_a_fast_tick() {
+    let with_notice = static_chrome_state(Some("Swarm plan synced (v55, 98 items)"));
     assert!(
-        with_notice > animation_interval,
-        "a static notice must not repaint at animation cadence \
-         (got {with_notice:?}, animation is {animation_interval:?})"
+        !crate::tui::wants_fast_tick(&with_notice),
+        "a static notice must not want the fast cadence"
+    );
+    assert_eq!(
+        crate::tui::tick_period(&with_notice),
+        crate::tui::REDRAW_IDLE,
+        "a notice must tick at the slow cadence"
     );
     assert!(
-        with_notice <= Duration::from_millis(250),
-        "the notice still has to retire promptly (got {with_notice:?})"
-    );
-    // A notice may legitimately tick a little faster than deep idle, but it must
-    // not be dramatically more expensive than the same screen without it.
-    assert!(
-        with_notice >= quiet / 4,
-        "a notice must not cost many times the quiet cadence \
-         (notice {with_notice:?} vs quiet {quiet:?})"
+        crate::tui::REDRAW_IDLE > fast_interval(),
+        "the slow cadence must be slower than the fast one"
     );
 }
 
 /// The fix must not slow down states that genuinely animate: streaming output
-/// still needs the fast cadence even though a notice may be on screen too.
+/// still wants the fast tick even though a notice may be on screen too.
 #[test]
-fn streaming_output_keeps_the_fast_cadence_even_with_a_notice() {
-    let policy = full_tier_policy();
-    let fast_interval = Duration::from_millis(1000 / u64::from(policy.redraw_fps.max(1)));
-
+fn streaming_output_keeps_the_fast_tick_even_with_a_notice() {
     let mut state = static_chrome_state(Some("Swarm plan synced"));
     state.streaming_text = "partial assistant answer".to_string();
 
-    assert_eq!(
-        crate::tui::redraw_interval_with_policy(&state, &policy),
-        fast_interval,
-        "streaming must still repaint at the fast cadence"
-    );
+    assert!(crate::tui::wants_fast_tick(&state));
+    assert_eq!(crate::tui::tick_period(&state), fast_interval());
 }
 
 /// `periodic_redraw_required` decides whether a tick draws at all. A notice must
@@ -101,7 +74,6 @@ fn a_status_notice_still_requires_periodic_frames() {
         "a visible notice must still be repainted so it can appear and expire"
     );
 }
-
 
 /// The post-onboarding notice screen: the transcript holds only system
 /// notices ("Here are a few things you can try", the login summary), the user
@@ -132,12 +104,9 @@ fn just_touched_notice_screen() -> TestState {
 
 #[test]
 fn a_recent_keystroke_keeps_the_notice_screen_out_of_deep_idle() {
-    crate::perf::pin_full_profile_for_tests();
-    let policy = full_tier_policy();
-
     let state = just_touched_notice_screen();
     assert_eq!(
-        crate::tui::redraw_interval_with_policy(&state, &policy),
+        crate::tui::tick_period(&state),
         crate::tui::REDRAW_IDLE,
         "a notice screen the user just touched must not be parked at deep idle"
     );
@@ -148,14 +117,11 @@ fn a_recent_keystroke_keeps_the_notice_screen_out_of_deep_idle() {
 /// interaction, not about disabling deep idle for notice screens.
 #[test]
 fn a_notice_screen_left_alone_still_reaches_deep_idle() {
-    crate::perf::pin_full_profile_for_tests();
-    let policy = full_tier_policy();
-
     let mut state = just_touched_notice_screen();
     state.time_since_user_interaction =
         Some(crate::tui::REDRAW_DEEP_IDLE_AFTER + Duration::from_secs(1));
     assert_eq!(
-        crate::tui::redraw_interval_with_policy(&state, &policy),
+        crate::tui::tick_period(&state),
         crate::tui::REDRAW_DEEP_IDLE,
         "a dormant notice screen must tick at the deep-idle crawl"
     );
