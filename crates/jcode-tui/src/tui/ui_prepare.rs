@@ -1,6 +1,6 @@
 use super::*;
 use crate::tui::ui::{self, WrappedLineMap};
-use jcode_tui_style::theme::{ai_text, error_color, user_color, warning_color};
+use jcode_tui_style::theme::{accent_color, ai_text, error_color, user_color, warning_color};
 
 /// Auxiliary render data for an assistant message that is otherwise recomputed
 /// by re-parsing markdown on every body rebuild. Building the body misses its
@@ -1094,8 +1094,6 @@ struct BodyRenderCtx<'a> {
     /// Number rendered next to the first user prompt = global prompt count +
     /// number of prompts hidden by compaction.
     prompt_number_offset: usize,
-    total_prompts: usize,
-    pending_count: usize,
     messages: &'a [DisplayMessage],
     swarm_members: Vec<crate::protocol::SwarmMemberStatus>,
 }
@@ -1200,8 +1198,7 @@ fn render_message_into(
         "user" => {
             acc.prompt_num += 1;
             acc.user_prompt_texts.push(msg.content.clone());
-            let distance = ctx.total_prompts + ctx.pending_count + 1 - acc.prompt_num;
-            let num_color = rainbow_prompt_color(distance);
+            let num_color = accent_color();
             let displayed_prompt_num = acc.prompt_num + ctx.prompt_number_offset;
             push_user_prompt_lines(
                 &mut acc.lines,
@@ -1516,8 +1513,6 @@ pub(super) fn prepare_body_incremental(
         width,
         centered,
         prompt_number_offset: app.compacted_hidden_user_prompts(),
-        total_prompts: app.display_user_message_count(),
-        pending_count: input_ui::pending_prompt_count(app),
         messages,
         swarm_members: app.swarm_members_for_transcript(),
     };
@@ -1800,8 +1795,6 @@ pub(super) fn prepare_body_prepended(
         width,
         centered,
         prompt_number_offset: app.compacted_hidden_user_prompts(),
-        total_prompts: app.display_user_message_count(),
-        pending_count: input_ui::pending_prompt_count(app),
         messages,
         swarm_members: app.swarm_members_for_transcript(),
     };
@@ -2020,8 +2013,6 @@ pub(super) fn prepare_body(
         width,
         centered,
         prompt_number_offset: app.compacted_hidden_user_prompts(),
-        total_prompts: app.display_user_message_count(),
-        pending_count: input_ui::pending_prompt_count(app),
         // Images anchored to transcript messages render inline right after the
         // message that produced them (tool result or user prompt).
         messages,

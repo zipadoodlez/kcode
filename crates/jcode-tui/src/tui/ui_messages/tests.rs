@@ -1,4 +1,5 @@
 use super::*;
+use crate::tui::color_support::rgb;
 
 fn extract_line_text(line: &Line<'_>) -> String {
     line.spans

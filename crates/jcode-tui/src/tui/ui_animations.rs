@@ -130,12 +130,11 @@ pub(crate) fn last_idle_animation_area() -> Option<Rect> {
 
 /// Repaint just the idle-animation rows of an already-rendered frame buffer.
 ///
-/// The surrounding cells were already theme/emoji adapted when the full frame
-/// was drawn, so adaptation is applied to the freshly written animation cells
-/// only: `adapt_buffer_for_theme` inverts colors on light terminals and is not
-/// idempotent, so re-running it over the reused buffer would flip everything
-/// back. The animation writes plain box/shade glyphs and a foreground color, so
-/// per-cell foreground adaptation is the complete equivalent here.
+/// The surrounding cells were already palette-adapted when the full frame was
+/// drawn, so adaptation is applied to the freshly written animation cells only:
+/// re-running the palette pass over the reused buffer would be wasted work. The
+/// animation writes plain box/shade glyphs and a foreground color, so per-cell
+/// foreground adaptation is the complete equivalent here.
 pub(crate) fn render_idle_animation_into(buf: &mut Buffer, area: Rect, elapsed: f32) {
     let area = area.intersection(*buf.area());
     // A full frame clears the whole surface before drawing, so the animation
@@ -151,7 +150,7 @@ pub(crate) fn render_idle_animation_into(buf: &mut Buffer, area: Rect, elapsed: 
     for y in area.top()..area.bottom() {
         for x in area.left()..area.right() {
             let cell = &mut buf[(x, y)];
-            cell.fg = jcode_tui_style::adapt_foreground_for_display(cell.fg, cell.bg);
+            cell.fg = jcode_tui_style::adapt_foreground_for_display(cell.fg);
         }
     }
 }

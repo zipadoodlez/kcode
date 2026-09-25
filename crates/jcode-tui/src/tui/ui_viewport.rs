@@ -584,9 +584,6 @@ pub(super) fn draw_messages(
     clear_area(frame, area);
 
     if let Some(anim) = active_prompt_anim {
-        let t = (now_ms.saturating_sub(anim.start_ms) as f32 / PROMPT_ENTRY_ANIMATION_MS as f32)
-            .clamp(0.0, 1.0);
-
         let prompt_idx = lower_bound(wrapped_user_prompt_starts, anim.line_idx);
         if prompt_idx < wrapped_user_prompt_starts.len()
             && wrapped_user_prompt_starts[prompt_idx] == anim.line_idx
@@ -599,29 +596,14 @@ pub(super) fn draw_messages(
             for abs_idx in anim.line_idx.max(scroll)..prompt_end.min(visible_end) {
                 let rel_idx = abs_idx - scroll;
                 if let Some(line) = visible_lines.get_mut(rel_idx) {
-                    let line_width = line.width().max(1) as f32;
-                    let mut consumed = 0usize;
+                    // ponytail: the prompt-entry color animation went with the
+                    // derived colors, so this is a no-op until the animation
+                    // and its state/timer are deleted too (tracked in wip.md).
                     for span in &mut line.spans {
                         if !span.content.is_empty() {
-                            let base_fg = match span.style.fg {
-                                Some(c) => c,
-                                None => user_text(),
-                            };
-                            let base_bg = span.style.bg.unwrap_or(user_bg());
-                            let span_width = span.content.as_ref().width();
-                            let span_center = if span_width == 0 {
-                                consumed as f32 / line_width
-                            } else {
-                                (consumed as f32 + span_width as f32 * 0.5) / line_width
-                            }
-                            .clamp(0.0, 1.0);
-
-                            let pulsed_fg = prompt_entry_color(base_fg, t);
-                            let shimmer_fg = prompt_entry_shimmer_color(pulsed_fg, span_center, t);
-                            let spotlight_bg = prompt_entry_bg_color(base_bg, t);
-
-                            span.style = span.style.fg(shimmer_fg).bg(spotlight_bg);
-                            consumed += span_width;
+                            let base_fg = span.style.fg.unwrap_or_else(user_text);
+                            let base_bg = span.style.bg.unwrap_or_else(user_bg);
+                            span.style = span.style.fg(base_fg).bg(base_bg);
                         }
                     }
                 }

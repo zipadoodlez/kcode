@@ -2317,8 +2317,8 @@ impl SessionPicker {
                 "session picker requires an interactive terminal (stdin/stdout must be a TTY)"
             );
         }
-        // Detect light/dark terminal background before raw mode (OSC 11 query).
-        super::theme_detect::init_theme_mode();
+        // Install the configured palette before entering raw mode.
+        super::palette_init::init_palette();
         let mut terminal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(ratatui::init))
             .map_err(|payload| {
                 let msg = if let Some(s) = payload.downcast_ref::<&str>() {

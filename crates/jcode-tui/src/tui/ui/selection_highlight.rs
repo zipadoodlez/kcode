@@ -4,20 +4,13 @@
 //! viewport, side pane, file-diff pane, full-screen overlays, and the prompt
 //! composer) so the selection style stays visually identical across the UI.
 
-use super::{accent_color, blend_color};
-use jcode_tui_style::theme::user_bg;
+use jcode_tui_style::theme::selection_bg_color;
 use ratatui::prelude::*;
 
-pub(crate) fn selection_bg_for(base_bg: Option<Color>) -> Color {
-    let fallback = user_bg();
-    // A selection is an active interaction, not passive decoration. Use a
-    // deliberately strong fill so it remains obvious over syntax highlighting,
-    // diff backgrounds, and dim assistant text.
-    blend_color(base_bg.unwrap_or(fallback), accent_color(), 0.58)
-}
-
-pub(crate) fn selection_fg_for(base_fg: Option<Color>) -> Option<Color> {
-    base_fg.map(|fg| blend_color(fg, Color::White, 0.32))
+pub(crate) fn selection_bg_for() -> Color {
+    // A selection is an active interaction, not passive decoration: it gets the
+    // dedicated role rather than a blend of the accent into the row background.
+    selection_bg_color()
 }
 
 /// Apply a copy-selection highlight to a single display line between
@@ -49,10 +42,7 @@ pub(crate) fn highlight_line_selection(
     };
 
     for span in &line.spans {
-        let mut selected_style = span.style.bg(selection_bg_for(span.style.bg));
-        if let Some(fg) = selection_fg_for(span.style.fg) {
-            selected_style = selected_style.fg(fg);
-        }
+        let selected_style = span.style.bg(selection_bg_for());
         for ch in span.content.chars() {
             let width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
             let selected = if width == 0 {

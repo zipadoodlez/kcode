@@ -62,31 +62,6 @@ fn test_prompt_entry_animation_expires_after_window() {
 }
 
 #[test]
-fn test_prompt_entry_bg_color_pulses_then_fades() {
-    let base = user_bg();
-    let early = prompt_entry_bg_color(base, 0.15);
-    let peak = prompt_entry_bg_color(base, 0.45);
-    let late = prompt_entry_bg_color(base, 0.95);
-
-    assert_ne!(early, base);
-    assert_ne!(peak, base);
-    assert_ne!(late, peak);
-}
-
-#[test]
-fn test_prompt_entry_shimmer_color_moves_across_positions() {
-    let base = user_text();
-    let left_early = prompt_entry_shimmer_color(base, 0.1, 0.1);
-    let right_early = prompt_entry_shimmer_color(base, 0.9, 0.1);
-    let left_late = prompt_entry_shimmer_color(base, 0.1, 0.8);
-    let right_late = prompt_entry_shimmer_color(base, 0.9, 0.8);
-
-    assert_ne!(left_early, right_early);
-    assert_ne!(left_late, right_late);
-    assert_ne!(left_early, left_late);
-}
-
-#[test]
 fn test_active_file_diff_context_resolves_visible_edit() {
     let prepared = PreparedMessages {
         wrapped_lines: vec![Line::from("a"); 20],

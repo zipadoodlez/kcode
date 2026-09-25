@@ -152,7 +152,7 @@ fn persist(
     let mut config = crate::config::Config::load();
     mutate(&mut config.display.colors);
     config.save()?;
-    crate::tui::theme_detect::init_palette();
+    crate::tui::palette_init::init_palette();
     Ok(())
 }
 

@@ -217,8 +217,8 @@ prompt_entry_animation = true
 # Empty = auto ("⌥" on macOS, "Alt" elsewhere). Examples: "Option", "Alt", "⌥".
 # copy_badge_alt_label = ""
 
-# Color theme: "auto" (query the terminal background), "dark", or "light".
-# theme = "auto"
+# Color theme: "dark" (default) or "light".
+# theme = "dark"
 
 # Per-role color overrides. Every TUI color with a role is configurable: the
 # roles below are substituted directly, and the ad hoc shades individual widgets

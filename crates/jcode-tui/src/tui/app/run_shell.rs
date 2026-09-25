@@ -621,10 +621,9 @@ fn render_status_spinner_into_buffer_mut(buffer: &mut Buffer, area: Rect, symbol
         symbol,
         1,
         // The spinner cell is patched outside the full-frame draw, so apply
-        // light-theme adaptation here explicitly (no-op on dark themes).
+        // palette adaptation here explicitly.
         Style::default().fg(jcode_tui_style::adapt_foreground_for_display(
             jcode_tui_style::theme::ai_color(),
-            ratatui::style::Color::Reset,
         )),
     );
 }

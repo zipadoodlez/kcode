@@ -1,8 +1,8 @@
 //! `[display]` section of the config: TUI/CLI presentation settings.
 
 use crate::{
-    DiffDisplayMode, MarkdownSpacingMode,
-    NativeScrollbarConfig, OverscrollStatusMode, ReasoningDisplayMode, default_true,
+    DiffDisplayMode, MarkdownSpacingMode, NativeScrollbarConfig, OverscrollStatusMode,
+    ReasoningDisplayMode, default_true,
 };
 use serde::{Deserialize, Serialize};
 
@@ -86,7 +86,7 @@ pub struct DisplayConfig {
     /// configured shortcut (default: true). Set false to disable all such hints.
     #[serde(default = "default_true")]
     pub keybinding_hints: bool,
-    /// Color theme: "auto" (detect terminal background), "dark", or "light".
+    /// Color theme: "dark" (default) or "light" (the baked light palette).
     /// Auto queries the terminal's background color (OSC 11) at startup and
     /// adapts jcode's palette for light backgrounds. Default: auto.
     #[serde(default)]

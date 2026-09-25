@@ -62,13 +62,13 @@ mod remote_diff;
 /// `mousescroll` default (`ver:3`). Shared so the standalone session picker's
 /// preview scroll stays in step with the in-app overlays.
 pub(crate) const WHEEL_LINES: i16 = 3;
+pub mod palette_init;
 pub mod screenshot;
 pub(crate) mod session_facts;
 pub mod session_picker;
 mod stream_buffer;
 pub mod terminal_setup;
 pub mod test_harness;
-pub mod theme_detect;
 mod ui;
 mod ui_diff;
 pub mod usage_overlay;

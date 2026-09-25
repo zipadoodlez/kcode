@@ -4,7 +4,7 @@ use super::tools_ui::{get_tool_activity_detail, summarize_batch_running_tools_co
 use super::visual_debug::{self, FrameCaptureBuilder};
 use super::{
     ProcessingStatus, TuiState, accent_color, ai_color, asap_color, dim_color, pending_color,
-    queued_color, rainbow_prompt_color, user_color,
+    queued_color, user_color,
 };
 use crate::message::ConnectionPhase;
 use crate::tui::app;
@@ -528,15 +528,13 @@ pub(super) fn draw_queued(frame: &mut Frame, app: &dyn TuiState, area: Rect, sta
         items.push((QueuedMsgType::Queued, msg.as_str()));
     }
 
-    let pending_count = items.len();
     let lines: Vec<Line> = items
         .iter()
         .take(3)
         .enumerate()
         .map(|(i, (msg_type, msg))| {
             let normalized_msg = normalize_repaint_sensitive_notice_text(msg);
-            let distance = pending_count.saturating_sub(i);
-            let num_color = rainbow_prompt_color(distance);
+            let num_color = accent_color();
             let (indicator, indicator_color, msg_color, dim) = match msg_type {
                 QueuedMsgType::Pending => ("↻", pending_color(), pending_color(), false),
                 QueuedMsgType::Interleave => ("⚡", asap_color(), asap_color(), false),
@@ -3078,7 +3076,7 @@ pub(crate) fn wrap_input_text<'a>(
         }
 
         if idx == 0 {
-            let num_color = rainbow_prompt_color(0);
+            let num_color = accent_color();
             lines.push(Line::from(vec![
                 Span::styled(num_str.to_string(), Style::default().fg(num_color)),
                 Span::styled(prompt_char.to_string(), Style::default().fg(caret_color)),

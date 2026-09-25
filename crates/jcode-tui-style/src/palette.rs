@@ -7,7 +7,7 @@
 //! 2. Hundreds of ad hoc `rgb(r, g, b)` literals scattered across widgets.
 //!
 //! Both funnel through this module. Once per frame,
-//! [`crate::theme_mode::adapt_buffer_for_display`] rewrites any buffer color
+//! [`crate::display::adapt_buffer_for_display`] rewrites any buffer color
 //! that is exactly a role's default onto that role's configured color, and maps
 //! ratatui's named colors to the role they conventionally stand for. Ad hoc
 //! `rgb(...)` literals carry no role, so they are not configurable: give a shade
@@ -177,6 +177,41 @@ impl Role {
     pub const fn is_background(self) -> bool {
         matches!(self, Role::UserBg | Role::SelectionBg)
     }
+
+    /// Baked light-terminal default.
+    ///
+    /// Generated once by the code that used to flip and contrast-repair the
+    /// dark palette per frame on a light terminal. That transform is gone: a
+    /// light terminal is now this palette, selected up front. Each value is the
+    /// transform's output for the role on a `#e0e0e0` surface (backgrounds take
+    /// the flip only, foregrounds the flip plus the 7:1 contrast repair).
+    /// Regenerating needs the original math, which lives in git history.
+    pub const fn light_rgb(self) -> (u8, u8, u8) {
+        match self {
+            Role::User => (7, 49, 117),
+            Role::Ai => (36, 80, 38),
+            Role::Tool => (71, 71, 71),
+            Role::FileLink => (0, 20, 75),
+            Role::Dim => (71, 71, 71),
+            Role::Accent => (47, 0, 116),
+            Role::System => (85, 0, 50),
+            Role::Queued => (91, 68, 0),
+            Role::Asap => (0, 76, 111),
+            Role::Pending => (71, 71, 71),
+            Role::UserText => (0, 0, 10),
+            Role::UserBg => (205, 210, 220),
+            Role::AiText => (40, 40, 35),
+            Role::HeaderIcon => (17, 78, 92),
+            Role::HeaderName => (20, 40, 65),
+            Role::HeaderSession => (0, 0, 0),
+            Role::Success => (29, 81, 29),
+            Role::Warning => (99, 64, 0),
+            Role::Error => (148, 0, 0),
+            Role::Info => (0, 40, 115),
+            Role::Border => (70, 70, 78),
+            Role::SelectionBg => (175, 175, 195),
+        }
+    }
 }
 
 /// A complete set of role colors.
@@ -216,6 +251,18 @@ fn index_of(role: Role) -> usize {
 }
 
 impl Palette {
+    /// The baked light-terminal palette: every role replaced by [`Role::light_rgb`].
+    ///
+    /// Every entry counts as configured, so the display pass repaints the whole
+    /// UI from the dark defaults this palette replaces.
+    pub fn light() -> Self {
+        let mut palette = Self::default();
+        for role in ALL_ROLES.iter().copied() {
+            palette.set(role, role.light_rgb());
+        }
+        palette
+    }
+
     /// RGB for `role`.
     pub fn rgb(&self, role: Role) -> (u8, u8, u8) {
         self.entries[index_of(role)]
@@ -251,7 +298,16 @@ impl Palette {
     where
         I: IntoIterator<Item = (&'a str, &'a str)>,
     {
-        let mut palette = Self::default();
+        Self::from_pairs_over(Self::default(), pairs)
+    }
+
+    /// [`Self::from_pairs`] layered over `base`, so a preset (such as
+    /// [`Self::light`]) can be the starting point for user overrides.
+    pub fn from_pairs_over<'a, I>(base: Self, pairs: I) -> (Self, Vec<String>)
+    where
+        I: IntoIterator<Item = (&'a str, &'a str)>,
+    {
+        let mut palette = base;
         let mut errors = Vec::new();
         for (key, value) in pairs {
             match (Role::from_key(key), parse_hex(value)) {
@@ -333,8 +389,7 @@ pub(crate) fn configured_palette() -> Option<Palette> {
     HAS_OVERRIDES.load(Ordering::Relaxed).then(palette)
 }
 
-/// Resolve an override from the original, native-palette color, before light
-/// contrast repair can collapse two distinct muted roles to the same ink.
+/// Resolve an override from the original, native-palette color.
 ///
 /// A color is attributed only when it *is* a role's default (or a named color
 /// with a role), so an override can never recolor a color some other role
@@ -363,7 +418,7 @@ pub(crate) fn configured_native_color(palette: &Palette, color: Color) -> Option
 ///
 /// This deliberately returns the role's *default* color, not the configured
 /// one: substitution happens once per frame in
-/// [`crate::theme_mode::adapt_buffer_for_display`]. Returning the configured
+/// [`crate::display::adapt_buffer_for_display`]. Returning the configured
 /// color here would let
 /// the same cell be remapped twice (once by the accessor, once by the buffer
 /// pass), which compounds the hue/lightness offsets.
@@ -482,188 +537,6 @@ mod tests {
         assert_eq!(palette.rgb(Role::Accent), (255, 0, 0));
         assert_eq!(palette.rgb(Role::Ai), Role::Ai.default_rgb());
         assert_eq!(errors.len(), 2);
-    }
-}
-
-#[cfg(test)]
-mod buffer_tests {
-    use super::*;
-    use crate::theme_mode::{ThemeMode, adapt_buffer_for_display};
-    use ratatui::buffer::Buffer;
-    use ratatui::layout::Rect;
-
-    // The active palette and theme mode are process-global; the crate-level
-    // lock serializes every test that touches them.
-    use crate::STYLE_TEST_LOCK as TEST_LOCK;
-
-    /// Install `palette` for the duration of `body`, always restoring the
-    /// default so a failure cannot leak state into another test.
-    fn with_palette(palette: Palette, body: impl FnOnce()) {
-        struct Restore;
-        impl Drop for Restore {
-            fn drop(&mut self) {
-                set_palette(Palette::default());
-            }
-        }
-        let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let _restore = Restore;
-        set_palette(palette);
-        body();
-    }
-
-    fn buffer_with(colors: &[Color]) -> Buffer {
-        let mut buf = Buffer::empty(Rect::new(0, 0, colors.len() as u16, 1));
-        for (cell, color) in buf.content.iter_mut().zip(colors) {
-            cell.fg = *color;
-        }
-        buf
-    }
-
-    // The default palette must render byte-identically to the historical
-    // hard-coded look. This is the regression that would silently recolor
-    // every existing user's terminal.
-    #[test]
-    fn default_palette_leaves_the_frame_untouched() {
-        with_palette(Palette::default(), || {
-            crate::theme_mode::set_theme_mode(ThemeMode::Dark);
-            let original = buffer_with(&[
-                Color::Rgb(255, 200, 100),
-                Color::White,
-                Color::Indexed(42),
-                Color::Reset,
-            ]);
-            let mut adapted = original.clone();
-            adapt_buffer_for_display(&mut adapted);
-            assert_eq!(adapted, original);
-        });
-    }
-
-    #[test]
-    fn configured_role_recolors_role_cells_and_named_colors_only() {
-        let mut palette = Palette::default();
-        palette.set(Role::Error, (10, 80, 240));
-        with_palette(palette, || {
-            crate::theme_mode::set_theme_mode(ThemeMode::Dark);
-            let mut buf = buffer_with(&[
-                role_color(Role::Error), // the role's own output
-                Color::Red,              // the named stand-in for error
-                Color::Rgb(40, 200, 90), // unrelated green, no role
-                Color::Reset,
-            ]);
-            adapt_buffer_for_display(&mut buf);
-
-            assert_eq!(buf.content[0].fg, crate::color::rgb(10, 80, 240));
-            assert_eq!(buf.content[1].fg, crate::color::rgb(10, 80, 240));
-            assert_eq!(
-                buf.content[2].fg,
-                crate::color::rgb(40, 200, 90),
-                "an untagged literal must not follow any role"
-            );
-            assert_eq!(buf.content[3].fg, Color::Reset, "Reset must be preserved");
-        });
-    }
-
-    // Applying the pass twice must be a no-op beyond the first, otherwise a
-    // double-render path would compound shifts.
-    #[test]
-    fn palette_substitution_is_idempotent() {
-        let mut palette = Palette::default();
-        palette.set(Role::Warning, (90, 220, 130));
-        with_palette(palette, || {
-            crate::theme_mode::set_theme_mode(ThemeMode::Dark);
-            let mut once = buffer_with(&[role_color(Role::Warning)]);
-            adapt_buffer_for_display(&mut once);
-            let mut twice = once.clone();
-            adapt_buffer_for_display(&mut twice);
-            assert_eq!(
-                once, twice,
-                "a second palette pass must not shift colors again"
-            );
-        });
-    }
-}
-
-#[cfg(test)]
-mod light_theme_interaction {
-    use super::*;
-    use crate::theme_mode::{ThemeMode, adapt_buffer_for_display};
-    use ratatui::buffer::Buffer;
-    use ratatui::layout::Rect;
-
-    /// A user on a light terminal who configures a dark, readable color must get
-    /// that color, not its inverse.
-    ///
-    /// The light adapter exists because jcode's *built-in* palette is designed
-    /// for dark backgrounds, so it flips luminance to make that palette work on
-    /// light terminals. A color the user chose explicitly is already the color
-    /// they want, so flipping it turns a readable dark red into an unreadable
-    /// pale one. This is the ordering bug that pipeline is prone to, so pin the
-    /// behavior.
-    #[test]
-    fn configured_colors_survive_the_light_theme_pass() {
-        let _lock = crate::STYLE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        struct Restore;
-        impl Drop for Restore {
-            fn drop(&mut self) {
-                set_palette(Palette::default());
-                crate::theme_mode::set_theme_mode(ThemeMode::Dark);
-            }
-        }
-        let _restore = Restore;
-        // The buffer pass reads the global theme mode, so set it to the mode
-        // being exercised.
-        crate::theme_mode::set_theme_mode(ThemeMode::Light);
-
-        // A dark red: exactly what a user would pick for errors on white.
-        let chosen = (171, 60, 58);
-        let mut palette = Palette::default();
-        palette.set(Role::Error, chosen);
-        set_palette(palette);
-
-        let mut buf = Buffer::empty(Rect::new(0, 0, 1, 1));
-        buf.content[0].fg = Color::Rgb(255, 100, 100); // the error default
-        // The actual display pipeline attributes overrides before contrast repair.
-        adapt_buffer_for_display(&mut buf);
-
-        let rendered = match buf.content[0].fg {
-            Color::Rgb(r, g, b) => (r, g, b),
-            Color::Indexed(index) => crate::color::indexed_to_rgb(index),
-            other => panic!("expected a concrete color, got {other:?}"),
-        };
-        assert_eq!(
-            rendered, chosen,
-            "the user's configured color must reach the terminal unmodified"
-        );
-
-        // These three native grays all need contrast repair. Matching after
-        // clamping loses their identities and sends all three to Tool's color.
-        let roles = [
-            (Role::Tool, (171, 60, 58)),
-            (Role::Dim, (20, 80, 100)),
-            (Role::Pending, (125, 64, 110)),
-        ];
-        let mut palette = Palette::default();
-        for (role, chosen) in roles {
-            palette.set(role, chosen);
-        }
-        palette.set(Role::UserBg, (232, 235, 238));
-        set_palette(palette);
-        for background in [Color::Reset, role_color(Role::UserBg)] {
-            let mut buf = Buffer::empty(Rect::new(0, 0, 3, 1));
-            for (cell, (role, _)) in buf.content.iter_mut().zip(roles) {
-                cell.fg = role_color(role);
-                cell.bg = background;
-            }
-            adapt_buffer_for_display(&mut buf);
-            for (cell, (_, (r, g, b))) in buf.content.iter().zip(roles) {
-                assert_eq!(cell.fg, crate::color::rgb(r, g, b));
-                if background != Color::Reset {
-                    assert_eq!(cell.bg, crate::color::rgb(232, 235, 238));
-                }
-            }
-        }
     }
 }
 

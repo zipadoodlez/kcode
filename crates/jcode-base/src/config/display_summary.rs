@@ -154,7 +154,7 @@ impl Config {
             self.display.show_agentgrep_output,
             self.display.tool_call_details,
             if self.display.theme.trim().is_empty() {
-                "auto"
+                "dark"
             } else {
                 self.display.theme.trim()
             },

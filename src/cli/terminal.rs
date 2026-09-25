@@ -11,7 +11,6 @@ pub struct TuiRuntimeState {
 }
 
 const INHERITED_MODES_ENV: &str = "JCODE_TUI_INHERITED_MODES";
-const INHERITED_THEME_ENV: &str = "JCODE_TUI_INHERITED_THEME";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct InheritedTerminalModes {
@@ -325,7 +324,6 @@ fn init_tui_terminal(inherited_terminal: bool) -> Result<ratatui::DefaultTermina
 
 pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)> {
     let is_resuming = std::env::var_os("JCODE_RESUMING").is_some();
-    let inherited_theme = std::env::var(INHERITED_THEME_ENV).ok();
     let inherited_modes_raw = std::env::var(INHERITED_MODES_ENV).ok();
     let inherited_modes = inherited_modes_raw
         .as_deref()
@@ -336,14 +334,9 @@ pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)>
     // new process still took the resume path, leaving it on the primary screen
     // without mouse capture.
     let inherited_terminal = has_terminal_exec_handoff(is_resuming, inherited_modes);
-    if inherited_terminal {
-        // OSC terminal queries are unsafe here because the previous process
-        // deliberately exec'd without leaving raw mode or the alternate screen.
-        crate::tui::theme_detect::init_theme_mode_for_resume(inherited_theme.as_deref());
-    } else {
-        // The OSC 11 query needs the cooked terminal and must happen before init.
-        crate::tui::theme_detect::init_theme_mode();
-    }
+    // The palette comes from configuration, not from a terminal query, so it
+    // is safe to install before or after entering raw mode.
+    crate::tui::palette_init::init_palette();
     let terminal = init_tui_terminal(inherited_terminal)?;
     crate::tui::markdown::install_jcode_markdown_hooks();
 
@@ -351,7 +344,6 @@ pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)>
     // These private handoff values apply only to this exec boundary. Avoid
     // leaking them into tools or unrelated child jcode processes.
     crate::env::remove_var(INHERITED_MODES_ENV);
-    crate::env::remove_var(INHERITED_THEME_ENV);
 
     let fallback_modes = InheritedTerminalModes {
         mouse_capture: perf_policy.enable_mouse_capture,
@@ -466,14 +458,11 @@ fn export_tui_exec_handoff(state: &TuiRuntimeState) {
         focus_change: state.focus_change,
     };
     crate::env::set_var(INHERITED_MODES_ENV, modes.encode());
-    let theme = crate::tui::theme_detect::current_theme_label();
-    crate::env::set_var(INHERITED_THEME_ENV, theme);
     crate::logging::info(&format!(
-        "EVENT event=TUI_TERMINAL_MODES phase=exec_handoff pid={} raw_mode={} modes={} theme={}",
+        "EVENT event=TUI_TERMINAL_MODES phase=exec_handoff pid={} raw_mode={} modes={}",
         std::process::id(),
         crossterm::terminal::is_raw_mode_enabled().unwrap_or(false),
         modes.encode(),
-        theme,
     ));
 }
 
