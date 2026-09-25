@@ -314,7 +314,7 @@ tool_profile = "acp"
 #                   or ~/.config/kcode/anthropic.env). API-key mode does NOT fall
 #                   back to OAuth; configure the key first.
 # `claude` and `anthropic-api` are distinct providers with distinct credentials.
-# See docs/AUTH_CREDENTIAL_SOURCES.md for where each credential lives.
+# See docs/user/auth.md for where each credential lives.
 # default_provider = "copilot"
 # OpenAI reasoning effort (none|minimal|low|medium|high|xhigh|max)
 openai_reasoning_effort = "low"

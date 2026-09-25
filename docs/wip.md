@@ -47,14 +47,17 @@ Found while writing `user/hooks.md`.
 
 The rebuild is in progress:
 
-- **Done**: `README.md` (index), `what-was-removed.md`,
+- **Done**: `README.md` (index), `what-was-removed.md`, `message-voice.md`,
   `plans/limited-palette.md`, `user/hooks.md` (folded `HOOKS.md` +
-  `SPAWN_HOOK.md`, 338 lines -> 276, and documents `turn_start` for the first
-  time).
+  `SPAWN_HOOK.md`), `user/auth.md` (from `AUTH_CREDENTIAL_SOURCES.md`).
 - **Not written**: the rest of what the index promises under `user/` and
   `internals/`.
 - **Pending**: 35 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
   awaiting rewrite into the new set or deletion.
+- **Code references docs that move**: `tui/app/input/newline.rs` names
+  `docs/SHIFT_ENTER.md` and `tui/mod.rs` names
+  `docs/TUISTATE_TRAIT_DECOMPOSITION.md`. Update both when those docs are
+  rewritten (`docs/user/tui.md`, `plans/tuistate-decomposition.md`).
 - **Carry forward**: `internals/rendering.md` must re-state the markdown parity
   policy from the deleted `RENDER_PARITY_ACCEPTANCE_CRITERIA.md` - four levels
   (L1 content, L2 line-structure, L3 wrapped layout at widths 20/40/80, L4 style
