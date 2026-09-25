@@ -197,7 +197,7 @@ Slash commands inside the TUI. The registry lives in
 
 | | |
 |---|---|
-| `/colors` | List, configure, and score every TUI color |
+| `/colors` | List and configure palette slots and color roles |
 | `/alignment` | Default text alignment |
 | `/thinking-display` | Show/hide model thinking (off/full/current) |
 | `/tool-call-details` | Dimmed technical details on tool rows |

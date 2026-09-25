@@ -36,21 +36,28 @@ Two consequences:
 
 ### Configuring colors
 
+Two layers. `[display.palette]` is sixteen base16 slots; a published base16
+theme pasted here recolors the roles mapped to each slot. `[display.colors]`
+overrides individual roles on top.
+
 ```toml
 # ~/.kcode/config.toml
+[display.palette]
+base05 = "#f5f5ff"   # fg      -> user_text, ai_text, header_name
+base08 = "#ff6464"   # red     -> error
+base0d = "#8ab4f8"   # blue    -> user, file_link, header_session
+
 [display.colors]
-user = "#8ab4f8"
-ai = "#81c784"
-accent = "#ba8bff"
-error = "#ff6464"
+ai = "#81c784"       # role override, beats the slot
 ```
 
 | command | effect |
 |---|---|
-| `/colors` | list every configurable role |
+| `/colors` | list every slot and role, with the roles sharing each slot |
+| `/colors <slot> <#rrggbb>` | set one slot (e.g. `base08` or `red`) |
 | `/colors <role> <#rrggbb>` | set one role (saved to config) |
-| `/colors export` | print the palette as config TOML |
-| `/colors reset [role]` | reset one role, or all |
+| `/colors export` | print both sections as config TOML |
+| `/colors reset [key]` | reset one slot/role, or all |
 
 Changes apply immediately; no restart.
 
@@ -59,8 +66,10 @@ Changes apply immediately; no restart.
 1. Add the variant to `Role` in `crates/jcode-tui-style/src/palette.rs`, list it
    in `ALL_ROLES`, and give it a `key()` and a `default_rgb()` equal to today's
    hard-coded value.
-2. If it is a background, say so in `is_background()`.
-3. Add an accessor in `theme.rs` and use it at the call sites.
+2. Name an existing slot in `default_slot_for`, so the role follows base16
+   themes. Adding a *slot* changes the theme contract, so prefer an existing one.
+3. If it is a background, say so in `is_background()`.
+4. Add an accessor in `theme.rs` and use it at the call sites.
 
 `ALL_ROLES` drives the `/colors` listing, completions, and export.
 

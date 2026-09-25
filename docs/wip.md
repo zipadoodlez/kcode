@@ -10,9 +10,6 @@ git has the history.
 
 | plan | state | what's left |
 |---|---|---|
-| [plans/limited-palette.md](plans/limited-palette.md) | phase 3 of 5 done (literals collapsed onto the 22 roles; light mode baked into a static palette; light/derived-color machinery deleted) | next: add `[display.palette]` (16 slots) and `/colors` slot editing. Default look is allowed to change |
-| [plans/2026-09-26-simplification-sweep.md](plans/2026-09-26-simplification-sweep.md) | in progress: 0/7, next is **s3** (then s4, r2, r3, p5, a1, v1 last). Work on `main` | start at the Handoff section in that doc: what is verified, what is committed-but-unbuilt, the exact commands and failure baseline |
-| [plans/redraw-simplification.md](plans/redraw-simplification.md) | proposal, nothing started | replace the cadence predicate chain + draw gate + tier matrix with a `Live` set (`min(interval)`), then decide the idle donut, drop `PerformanceTier`, and collapse to one draw path. Aim is maintenance cost per new time-dependent element, not speed |
 | [plans/tuistate-decomposition.md](plans/tuistate-decomposition.md) | analysis only, nothing extracted | refresh the 114-method categorization to the current 156, then extract leaf sub-traits one per commit starting with a single-file consumer, keeping `ui.rs` and `ui_viewport.rs` on the supertrait |
 | [plans/browser-provider-protocol.md](plans/browser-provider-protocol.md) | draft spec, no implementation | tighten the core method set and the normalized `page.snapshot` format before building any adapter |
 
