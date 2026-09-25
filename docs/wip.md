@@ -62,7 +62,8 @@ The rebuild is in progress:
   `TERMINAL_CAPABILITIES.md`), `internals/architecture.md` (folded
   `SERVER_ARCHITECTURE.md` + `MULTI_SESSION_CLIENT_ARCHITECTURE.md` +
   `HERDR.md` + `PANELS.md`), `internals/swarm.md` (folded
-  `SWARM_ARCHITECTURE.md` + `SWARM_TASK_GRAPH.md`).
+  `SWARM_ARCHITECTURE.md` + `SWARM_TASK_GRAPH.md`), `internals/soft-interrupt.md`
+  (from `SOFT_INTERRUPT.md`).
 - **Dropped as unshipped/speculative** (git has it): the protocol-multiplexing
   phases and open questions from `MULTI_SESSION_CLIENT_ARCHITECTURE.md` (the
   client split and workspace map shipped, so only the prose survived into
@@ -77,7 +78,7 @@ The rebuild is in progress:
   `openai_docs_reference_current_callback_uri` was repointed from
   `OAUTH.md`/`README.md` to `docs/user/providers.md` (it had been failing, since
   README never carried the callback URI).
-- **Pending**: 14 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
+- **Pending**: 13 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
   awaiting rewrite into the new set or deletion.
 - **Code references docs that move**: `tui/mod.rs` names
   `docs/TUISTATE_TRAIT_DECOMPOSITION.md`; update it when
