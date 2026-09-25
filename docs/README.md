@@ -26,6 +26,7 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 
 - Install and first run: `user/install.md`
 - Command surface: `user/cli.md`, `user/tui.md`
+- Hooks and terminal routing: `user/hooks.md`
 - Architecture: `internals/architecture.md`
 - Swarm: `internals/swarm.md`
 - Providers and auth: `user/providers.md`, `user/auth.md`

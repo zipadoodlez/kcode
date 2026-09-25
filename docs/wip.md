@@ -31,13 +31,29 @@ git has the history.
 | packaging | `packaging/arch/PKGBUILD` does not exist, and the README install section points at it |
 | unknown config sections | the loader silently ignores unknown top-level sections, so older config files keep dead keys with no warning |
 
+## Hook surface gaps
+
+Found while writing `user/hooks.md`.
+
+| gap | detail |
+|---|---|
+| `turn_start` `SOURCE` | only `chat` is ever emitted; the schema advertises `chat`/`resume`/`ambient`, and `ambient` belongs to a removed mode. Narrow the contract or wire the resume path |
+| `session_start` schema comment | stale: says `create`/`resume`; the code emits `create`, `attach`, `resume` |
+| hooks are unobservable | no `/hooks` command, no listing of configured hooks, no dry-run. A typo in a command string looks identical to a hook that runs and does nothing |
+| blocked calls are invisible | `pre_tool` stderr goes to the model; nothing tells the user their policy blocked a call |
+| hook failures | logged and dropped, with no user-visible signal |
+
 ## This doc set
 
 The rebuild is in progress:
 
-- **Done**: `README.md` (index), `what-was-removed.md`, `plans/limited-palette.md`.
-- **Not written**: everything the index promises under `user/` and `internals/`.
-- **Pending**: 40 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
+- **Done**: `README.md` (index), `what-was-removed.md`,
+  `plans/limited-palette.md`, `user/hooks.md` (folded `HOOKS.md` +
+  `SPAWN_HOOK.md`, 338 lines -> 276, and documents `turn_start` for the first
+  time).
+- **Not written**: the rest of what the index promises under `user/` and
+  `internals/`.
+- **Pending**: 38 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
   awaiting rewrite into the new set or deletion.
 
 ## Plans that look finished
