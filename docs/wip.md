@@ -58,7 +58,10 @@ The rebuild is in progress:
 - **Code references docs that move**: `tui/app/input/newline.rs` names
   `docs/SHIFT_ENTER.md` and `tui/mod.rs` names
   `docs/TUISTATE_TRAIT_DECOMPOSITION.md`. Update both when those docs are
-  rewritten (`docs/user/tui.md`, `plans/tuistate-decomposition.md`).
+  rewritten (`docs/user/tui.md`, `plans/tuistate-decomposition.md`). The
+  `jcode_docs` test `search_finds_relevant_version_matched_documentation` also
+  hardcodes `docs/SWARM_TASK_GRAPH.md`; repoint it when `internals/swarm.md`
+  lands.
 - **Carry forward**: `internals/rendering.md` must re-state the markdown parity
   policy from the deleted `RENDER_PARITY_ACCEPTANCE_CRITERIA.md` - four levels
   (L1 content, L2 line-structure, L3 wrapped layout at widths 20/40/80, L4 style
