@@ -11,14 +11,14 @@ git has the history.
 | plan | state | what's left |
 |---|---|---|
 | [plans/limited-palette.md](plans/limited-palette.md) | phase 1 of 4 done (ratchet guard ported, 697 literals / 30 files) | add `[display.palette]` (16 slots) and role→slot defaults, `/colors` edits slots; then collapse the 697 literals family by family until `BASELINE` is empty |
+| [plans/tuistate-decomposition.md](plans/tuistate-decomposition.md) | analysis only, nothing extracted | refresh the 114-method categorization to the current 156, then extract leaf sub-traits one per commit starting with a single-file consumer, keeping `ui.rs` and `ui_viewport.rs` on the supertrait |
+| [plans/browser-provider-protocol.md](plans/browser-provider-protocol.md) | draft spec, no implementation | tighten the core method set and the normalized `page.snapshot` format before building any adapter |
 
 ## Committed ideas, no plan doc yet
 
 | idea | the problem |
 |---|---|
-| compile-time isolation | build and link time; the workspace recompiles far more than it should |
-| `TuiState` decomposition | `TuiState` is now **156 methods**, up from the 114 the old doc measured |
-| onboarding invariants | onboarding state invariants are enforced by review, not CI |
+| compile-time isolation | build and link time; the workspace recompiles far more than it should. The old `COMPILE_TIME_ISOLATION_REFACTOR.md` was a historical record naming removed machinery, so it was deleted - the idea stays here |
 
 ## Open items in the code, no plan
 
@@ -46,55 +46,11 @@ Found while writing `user/hooks.md`.
 
 ## This doc set
 
-The rebuild is in progress:
+The rebuild is complete: `user/` (7), `internals/` (9), `dev/` (4), `plans/` (3),
+plus `README.md`, `what-was-removed.md`, and this file at the root. Notes that
+outlive it:
 
-- **Done**: `README.md` (index), `what-was-removed.md`, `message-voice.md`,
-  `plans/limited-palette.md`, `user/hooks.md` (folded `HOOKS.md` +
-  `SPAWN_HOOK.md`), `user/auth.md` (from `AUTH_CREDENTIAL_SOURCES.md`),
-  `user/ssh.md` (from `NATIVE_SSH.md`), `user/providers.md` (folded
-  `AWS_BEDROCK_PROVIDER.md` + `CONIFER_PROVIDER.md` + `PROVIDER_DOCTOR.md`),
-  `internals/usage.md` (folded `MODEL_USAGE.md` +
-  `CHATGPT_API_EQUIVALENT_USAGE.md`), `user/tui.md` (folded `SHIFT_ENTER.md` +
-  `RESUME_BEHAVIOR.md`), `user/cli.md` (from `WRAPPERS.md`), `user/config.md`
-  (from `SYSTEM_PROMPT_CONFIG.md`), `internals/memory.md` (folded
-  `PROCESS_MEMORY_BUDGET.md` + `PROCESS_MEMORY_INCIDENT_RUNBOOK.md`),
-  `internals/rendering.md` (folded `TUI_COLOR_CONFIGURATION.md` +
-  `TERMINAL_CAPABILITIES.md`), `internals/architecture.md` (folded
-  `SERVER_ARCHITECTURE.md` + `MULTI_SESSION_CLIENT_ARCHITECTURE.md` +
-  `HERDR.md` + `PANELS.md`), `internals/swarm.md` (folded
-  `SWARM_ARCHITECTURE.md` + `SWARM_TASK_GRAPH.md`), `internals/soft-interrupt.md`
-  (from `SOFT_INTERRUPT.md`), `internals/websocket.md` (folded
-  `OPENAI_WEBSOCKET.md` + `OPENAI_WEBSOCKET_VALIDATION.md`; the validation report
-  is a dated experiment, so only the transport behavior carried over).
-  `internals/usage.md` also absorbed `HISTORY_RESPONSE_STATS.md` and
-  `SESSION_EDIT_STATS.md` (retitled "Usage and statistics"), `internals/browser.md`
-  (from `BROWSER_FAST_AGENT.md`). `BROWSER_PROVIDER_PROTOCOL.md` was a draft spec
-  with no implementation, so it moved to `plans/browser-provider-protocol.md`.
-- **Dropped as unshipped/speculative** (git has it): the protocol-multiplexing
-  phases and open questions from `MULTI_SESSION_CLIENT_ARCHITECTURE.md` (the
-  client split and workspace map shipped, so only the prose survived into
-  `internals/architecture.md`), and the upstream Herdr TODO list.
-- **Not written**: the rest of what the index promises under `user/` and
-  `internals/`.
-- **Install stays in the root README**: no `user/install.md`. The `## Install`
-  section there is already embedded in the corpus, and a second copy would drift
-  (and would only repeat that packaging is unfinished).
-- **Repo-root doc folded**: `OAUTH.md` (per-provider login and troubleshooting)
-  is now `user/providers.md` + `user/auth.md`.
-  `openai_docs_reference_current_callback_uri` was repointed from
-  `OAUTH.md`/`README.md` to `docs/user/providers.md` (it had been failing, since
-  README never carried the callback URI).
-- **Pending**: 7 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
-  awaiting rewrite into the new set or deletion.
-- **Code references docs that move**: `tui/mod.rs` names
-  `docs/TUISTATE_TRAIT_DECOMPOSITION.md`; update it when
-  `plans/tuistate-decomposition.md` lands.
-
-## Plans that look finished
-
-These appear to describe shipped code. Confirm, then delete them - a plan for
-finished work is drift.
-
-- `plans/MCP_SKILLS_PLAN.md` - MCP client and skill hot-reload both exist.
-- `plans/OPENAI_COMPATIBLE_PROFILE_RUNTIME_PLAN.md` - named OpenAI-compatible
-  profiles exist in the config types and provider code.
+- **Install** stays in the root `README.md`; there is no `user/install.md`.
+- The repo-root `OAUTH.md` is folded into `user/providers.md` + `user/auth.md`.
+- **Dropped as unshipped/speculative** (git has it): the multi-session
+  protocol-multiplexing phases and open questions, and Herdr's upstream TODO list.

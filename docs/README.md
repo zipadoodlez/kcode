@@ -38,5 +38,7 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 - Rendering: `internals/rendering.md`
 - Server memory: `internals/memory.md`
 - Usage and statistics: `internals/usage.md`
+- Contributor process: `dev/testing.md`, `dev/benchmarking.md`, `dev/dependencies.md`
+- Message voice (user-facing strings): `dev/message-voice.md`
 - What the fork removed: `what-was-removed.md`
 - What is still in flight: `wip.md`

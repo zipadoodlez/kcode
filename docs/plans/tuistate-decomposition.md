@@ -8,7 +8,9 @@ proposes a safe, incremental decomposition. It is the Phase 1.5 follow-on to the
 
 ## Current state
 
-- `pub trait TuiState` exposes **114 methods**.
+- `pub trait TuiState` exposes **156 methods** (the per-method categorization
+  below was written when it was 114; refresh the categorization before extracting
+  a sub-trait).
 - Implementors: 2 (`App` in `crates/jcode-tui/src/tui/app/tui_state.rs`, and `TestState` in
   `crates/jcode-tui/src/tui/ui_tests/mod.rs`).
 - Consumers: ~95 usages across 29 files, almost all as `&dyn TuiState` (50
