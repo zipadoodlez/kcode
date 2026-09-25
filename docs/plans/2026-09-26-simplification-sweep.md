@@ -7,8 +7,8 @@ Source: the session working list, promoted here so it survives the session.
 
 Where things stand, so a fresh session can continue without the transcript.
 
-- **Branch:** `palette/roles-collapse`, 11 commits ahead of `main`, tree clean.
-  Work here; `main` is untouched.
+- **Branch:** `main`. The working branch was fast-forwarded into it and deleted, so
+  there is nothing to remember. Tree clean.
 - **Landed and verified:** palette phase 2 (all 697 literals through roles; guard
   `BASELINE` empty and zero-tolerance), the follow-up pass that imports role
   accessors instead of qualifying every call, 8 test expectations updated, docs.
