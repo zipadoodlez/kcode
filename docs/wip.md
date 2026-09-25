@@ -55,10 +55,6 @@ The rebuild is in progress:
   `internals/`.
 - **Pending**: 33 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
   awaiting rewrite into the new set or deletion.
-- **Embedded-docs gap**: `crates/jcode-app-core/build.rs` embeds only top-level
-  `docs/*.md` into the binary doc corpus, so anything under `user/`,
-  `internals/`, or `plans/` is invisible to the bundled-docs tool. Decide whether
-  to make it recurse (keeping `plans/` excluded) or accept the gap.
 - **Code references docs that move**: `tui/app/input/newline.rs` names
   `docs/SHIFT_ENTER.md` and `tui/mod.rs` names
   `docs/TUISTATE_TRAIT_DECOMPOSITION.md`. Update both when those docs are
