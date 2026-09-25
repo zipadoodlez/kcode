@@ -139,7 +139,7 @@ fn right_fact_stack_uses_neutral_gray_except_for_context_usage() {
 
     let rows = buffer_rows(&terminal);
     let buffer = terminal.backend().buffer();
-    let neutral = Color::Rgb(140, 140, 150);
+    let neutral = Color::Rgb(140, 140, 140);
     for needle in ["OpenAI · OAuth", "GPT-5.6 Sol high", "~/jcode"] {
         let y = row_containing(&rows, needle);
         let byte_x = rows[y].find(needle).expect("fact text start");

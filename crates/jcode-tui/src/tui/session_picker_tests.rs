@@ -2419,7 +2419,7 @@ fn test_current_dir_highlight_marks_matching_sessions() {
 
     // The marker and directory line should be styled with the same-dir accent
     // green so the highlight is visually distinct, not just present as text.
-    let same_dir_color = rgb(120, 200, 140);
+    let same_dir_color = rgb(129, 199, 132);
     let marker_styled_green = rows.iter().any(|line| {
         line.spans
             .iter()

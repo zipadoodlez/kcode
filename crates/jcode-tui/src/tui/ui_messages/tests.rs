@@ -2089,7 +2089,7 @@ fn render_tool_message_shows_token_badge() {
         .find(|span| span.content.contains("1.9k tok"))
         .expect("missing token badge");
 
-    assert_eq!(badge_span.style.fg, Some(rgb(118, 118, 118)));
+    assert_eq!(badge_span.style.fg, Some(rgb(120, 120, 120)));
 }
 
 #[test]
@@ -2224,7 +2224,7 @@ fn render_tool_message_colors_high_token_badge() {
         .find(|span| span.content.contains("12k tok"))
         .expect("missing token badge");
 
-    assert_eq!(badge_span.style.fg, Some(rgb(224, 118, 118)));
+    assert_eq!(badge_span.style.fg, Some(rgb(255, 100, 100)));
 }
 
 #[test]
