@@ -56,6 +56,11 @@ The rebuild is in progress:
   `CHATGPT_API_EQUIVALENT_USAGE.md`).
 - **Not written**: the rest of what the index promises under `user/` and
   `internals/`.
+- **Repo-root doc folded**: `OAUTH.md` (per-provider login and troubleshooting)
+  is now `user/providers.md` + `user/auth.md`.
+  `openai_docs_reference_current_callback_uri` was repointed from
+  `OAUTH.md`/`README.md` to `docs/user/providers.md` (it had been failing, since
+  README never carried the callback URI).
 - **Pending**: 28 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
   awaiting rewrite into the new set or deletion.
 - **Code references docs that move**: `tui/app/input/newline.rs` names

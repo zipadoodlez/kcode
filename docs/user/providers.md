@@ -26,6 +26,70 @@ because aliases and gateways resolve to the same backends without their own
 catalog row. When a name is rejected, `provider list` is the authority on what
 works, not the flag's help text.
 
+## Logging in
+
+Every provider shares the same login shape:
+
+```sh
+kcode login --provider <id>
+kcode login --provider <id> --no-browser        # headless / SSH
+kcode login --provider <id> --print-auth-url    # scriptable: print a URL, finish later
+```
+
+Finish a printed flow with `--callback-url` (OpenAI, Claude, Antigravity) or
+`--auth-code` (Claude, Gemini); the GitHub device flow (Copilot) resumes with
+`--complete`. `--cancel --flow-id <id>` cancels one pending flow without touching
+saved credentials. Native OAuth tokens land under `~/.kcode`:
+
+| provider | command | credential |
+|---|---|---|
+| Claude (`claude`) | `kcode login --provider claude` | `~/.kcode/auth.json` |
+| OpenAI (`openai`) | `kcode login --provider openai` | `~/.kcode/openai-auth.json` |
+| Gemini (`gemini`) | `kcode login --provider gemini` | `~/.kcode/gemini_oauth.json` |
+| Antigravity (`antigravity`) | `kcode login --provider antigravity` | `~/.kcode/antigravity_oauth.json` |
+
+OpenAI's browser login listens on `http://localhost:1455/auth/callback` by
+default and falls back to pasting the callback URL when the port is taken.
+API-key providers (`anthropic-api`, `openai-api`, `bedrock`, `azure`, `cursor`,
+`fireworks`, `novita`, `minimax`, `cerebras`, `groq`, `openrouter`, …) instead
+store the key in `~/.config/kcode/<provider>.env`. If a trusted OpenCode/pi auth
+file already holds a matching key, kcode reuses it after consent. See
+[auth.md](auth.md) for the full credential model.
+
+### Azure OpenAI
+
+`kcode login --provider azure` asks for the endpoint
+(`https://your-resource.openai.azure.com`), a deployment/model name, and an auth
+mode: **Microsoft Entra ID** (recommended) or **API key**. Settings go to
+`~/.config/kcode/azure-openai.env` (`AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_MODEL`,
+`AZURE_OPENAI_USE_ENTRA`, plus `AZURE_OPENAI_API_KEY` in key mode). Entra mode
+resolves `DefaultAzureCredential` (run `az login` if it fails); key mode sends the
+credential in the `api-key` header. Model catalog fetching is off for Azure, so
+set the model explicitly.
+
+### Experimental CLI providers
+
+- `cursor` - native HTTPS; model override `JCODE_CURSOR_MODEL`.
+- `copilot` - GitHub device flow; model override `JCODE_COPILOT_MODEL`.
+- `antigravity` - native Google OAuth, no Antigravity install needed; model
+  override `JCODE_ANTIGRAVITY_MODEL`.
+
+### OpenAI endpoint override
+
+For API-key use you can retarget the Responses API base with
+`JCODE_OPENAI_API_BASE`, `OPENAI_BASE_URL`, or `OPENAI_API_BASE` (first set wins;
+an absolute `http(s)://` base ending in the API version). kcode appends
+`/responses` and derives the WebSocket and `/models` endpoints from it. The
+override is ignored in ChatGPT/Codex OAuth mode, and a malformed value is logged
+and ignored.
+
+### Verifying a login
+
+`kcode --provider <id> auth-test` runs credential discovery, a refresh probe, a
+smoke prompt expecting `AUTH_TEST_OK`, then a tool-enabled smoke. Add
+`--no-tool-smoke` to stop after the probes, or `kcode auth-test --all-configured`
+to check every configured provider.
+
 ## OpenAI-compatible providers and custom gateways
 
 Anything speaking the OpenAI API can be added as a named profile:

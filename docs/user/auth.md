@@ -29,7 +29,11 @@ source of confusion.
 
 Other providers follow the same shape: `~/.config/kcode/<provider>.env` for API
 keys (`openrouter.env`, `gemini.env`, `cursor.env`, `azure-openai.env`,
-`cerebras.env`, …), and `~/.kcode/auth.json` for OAuth accounts.
+`cerebras.env`, …), and `~/.kcode/auth.json` for OAuth accounts. Native OAuth
+tokens live under `~/.kcode`: `auth.json` (Claude accounts),
+`openai-auth.json` (OpenAI), and `gemini_oauth.json` / `antigravity_oauth.json`
+for those providers. Which command logs in to which provider is in
+[providers.md](providers.md).
 
 Three traps worth internalising:
 
