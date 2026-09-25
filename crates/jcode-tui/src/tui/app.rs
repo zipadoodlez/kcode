@@ -1134,6 +1134,10 @@ pub struct App {
     /// keep auto-scrolling on every tick (browser-style) until the drag leaves the
     /// edge or ends. Stores the pane and whether to scroll upward.
     copy_selection_edge_autoscroll: Option<(crate::tui::CopySelectionPane, bool, u16)>,
+    /// Last time the tick path advanced the drag edge autoscroll. The redraw
+    /// loop now runs at the fast tick while a drag is held, so the scroll step
+    /// is throttled to the legacy 60ms period to keep its rate unchanged.
+    copy_selection_autoscroll_last: Option<Instant>,
     // Debug socket broadcast channel (if enabled)
     debug_tx: Option<tokio::sync::broadcast::Sender<super::backend::DebugEvent>>,
     // Remote provider info (set when running in remote mode)
@@ -1270,10 +1274,6 @@ pub struct App {
     pub(crate) centered: bool,
     // Diagram pane width ratio (percentage)
     side_pane_ratio: u8,
-    // Animation state for smooth pane ratio transitions
-    side_pane_ratio_from: u8,
-    side_pane_ratio_target: u8,
-    side_pane_anim_start: Option<Instant>,
     // Set once the user manually resizes the pane (drag or +/- keys), so the
     // adaptive image-width default stops overriding their explicit choice.
     side_pane_ratio_user_adjusted: bool,
@@ -1530,22 +1530,8 @@ pub struct App {
     /// Time of the last mouse-wheel notch, used only to scale how many lines a
     /// fast flick scrolls. No queue: each notch lands immediately.
     last_wheel: Option<Instant>,
-    /// When the user overscrolls past the bottom of the transcript, an extra
-    /// status line is revealed below the input. This records the last time an
-    /// overscroll tick was received; the line dwells for a fixed window after
-    /// the last tick, then rebounds away. `None` means the line is hidden.
-    chat_overscroll_last: Option<Instant>,
-    /// Timestamp of the most recent downward chat scroll intent. Segments
-    /// wheel/key motion into "gestures": a pause longer than
-    /// `OVERSCROLL_GESTURE_GAP` starts a new gesture.
-    chat_scroll_down_last: Option<Instant>,
-    /// Whether the current downward scroll gesture began while the transcript
-    /// was already pinned to the bottom. Only such gestures reveal the elastic
-    /// overscroll line, so momentum from a scroll that merely carries the view
-    /// into the bottom does not trigger it.
-    chat_scroll_gesture_from_bottom: bool,
-    /// When to show the overscroll status line: off, always on, or the elastic
-    /// overscroll reveal (default). From `display.overscroll_status` config.
+    /// Whether the status line below the input is shown. From
+    /// `display.overscroll_status` config (off/on).
     overscroll_status_mode: crate::config::OverscrollStatusMode,
     /// Scroll offset for changelog overlay (None = not visible)
     changelog_scroll: Option<usize>,

@@ -396,21 +396,9 @@ pub trait TuiState {
     fn pending_history_anchor_lines_from_bottom(&self) -> Option<usize> {
         None
     }
-    /// Whether the elastic overscroll status line (revealed by scrolling past
-    /// the bottom of the transcript) is currently shown.
+    /// Whether the status line below the input is shown (config-pinned on).
     fn chat_overscroll_active(&self) -> bool {
         false
-    }
-    /// Whether the overscroll status line is pinned permanently visible by
-    /// config (`display.overscroll_status = "on"`). A pinned line is part of
-    /// the stable layout, unlike the transient elastic reveal.
-    fn chat_overscroll_pinned(&self) -> bool {
-        false
-    }
-    /// Seconds remaining in the overscroll dwell window, used to render the
-    /// `(overscroll x.x)` countdown. `None` when not shown.
-    fn chat_overscroll_remaining(&self) -> Option<f32> {
-        None
     }
     /// Whether a mouse drag-selection is currently held at the top/bottom edge of
     /// a pane and should keep auto-scrolling on every tick (browser-style). When

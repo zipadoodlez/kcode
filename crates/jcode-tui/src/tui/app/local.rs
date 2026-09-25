@@ -76,8 +76,7 @@ pub(super) fn handle_tick(app: &mut App) -> bool {
     // Surface the cold-cache transcript warning the moment the TTL expires
     // while idle, not only when the next request starts.
     needs_redraw |= app.maybe_push_idle_cold_cache_warning();
-    needs_redraw |= app.progress_copy_selection_edge_autoscroll();
-    needs_redraw |= app.update_chat_overscroll();
+    needs_redraw |= app.tick_copy_selection_edge_autoscroll();
     // Dissolve stale (off-screen) reasoning traces with zero visible motion.
     needs_redraw |= app.gc_offscreen_reasoning_traces();
     // Adopt the resolved scroll position once a frame containing newly loaded

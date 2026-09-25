@@ -461,6 +461,26 @@ impl App {
     /// Drive browser-style continuous edge auto-scroll while a mouse drag is
     /// held at the top/bottom edge of a pane. Called once per UI tick; returns
     /// true if it scrolled (so the caller can request a redraw).
+    ///
+    /// Throttled to the legacy 60ms period: the redraw loop now runs at the
+    /// fast tick while a drag is held, so without this the drag would scroll
+    /// ~4x faster (and reintroduce the runaway rate the proximity tiers fixed).
+    pub(super) fn tick_copy_selection_edge_autoscroll(&mut self) -> bool {
+        if self.copy_selection_edge_autoscroll.is_none() {
+            return false;
+        }
+        const COPY_AUTOSCROLL_PERIOD: std::time::Duration =
+            std::time::Duration::from_millis(60);
+        let now = std::time::Instant::now();
+        if let Some(last) = self.copy_selection_autoscroll_last
+            && now.saturating_duration_since(last) < COPY_AUTOSCROLL_PERIOD
+        {
+            return false;
+        }
+        self.copy_selection_autoscroll_last = Some(now);
+        self.progress_copy_selection_edge_autoscroll()
+    }
+
     pub(super) fn progress_copy_selection_edge_autoscroll(&mut self) -> bool {
         let Some((pane, upward, speed)) = self.copy_selection_edge_autoscroll else {
             return false;
@@ -492,9 +512,10 @@ impl App {
     }
 
     /// Scroll the pane's edge a few lines, via the same per-line primitive the
-    /// wheel uses. The drag's rate is the tick cadence (`REDRAW_COPY_AUTOSCROLL`
-    /// in `redraw_schedule`), so it must not go through `scroll_wheel`,
-    /// which scales a whole wheel notch by flick velocity.
+    /// wheel uses. The drag's rate is the tick throttle
+    /// (`COPY_AUTOSCROLL_PERIOD` in `tick_copy_selection_edge_autoscroll`), so it
+    /// must not go through `scroll_wheel`, which scales a whole wheel notch by
+    /// flick velocity.
     fn step_copy_selection_scroll(
         &mut self,
         pane: crate::tui::CopySelectionPane,
@@ -593,6 +614,7 @@ impl App {
                     );
                     if !same_direction {
                         self.step_copy_selection_scroll(pane, upward, 1);
+                        self.copy_selection_autoscroll_last = None;
                     }
                     self.copy_selection_edge_autoscroll = Some((pane, upward, speed));
                     return Some(false);

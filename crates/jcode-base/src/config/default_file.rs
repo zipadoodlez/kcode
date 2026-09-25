@@ -184,11 +184,10 @@ idle_animation = false
 # (default: true). Set false to list only jcode's own sessions.
 # external_sessions = true
 
-# Overscroll status line (model/provider/context info below the input):
-#   "overscroll" - elastic reveal when scrolling past the bottom (default)
-#   "on"         - always visible
-#   "off"        - never shown
-# overscroll_status = "overscroll"
+# Status line (model/provider/context info below the input):
+#   "off" - never shown; the compact facts stack is used (default)
+#   "on"  - always visible
+# overscroll_status = "off"
 
 # Disable specific animation variants by name.
 # Examples: ["donut"] or ["donut", "orbit_rings"]

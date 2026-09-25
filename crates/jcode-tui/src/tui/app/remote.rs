@@ -104,8 +104,7 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
     // Surface the cold-cache transcript warning the moment the TTL expires
     // while idle, not only when the next request starts.
     needs_redraw |= app.maybe_push_idle_cold_cache_warning();
-    needs_redraw |= app.progress_copy_selection_edge_autoscroll();
-    needs_redraw |= app.update_chat_overscroll();
+    needs_redraw |= app.tick_copy_selection_edge_autoscroll();
     // Dissolve stale (off-screen) reasoning traces with zero visible motion.
     needs_redraw |= app.gc_offscreen_reasoning_traces();
     needs_redraw |= dispatch_compacted_history_load(app, remote).await;
@@ -1750,7 +1749,7 @@ async fn handle_debug_command(app: &mut App, cmd: &str, remote: &mut RemoteConne
             "model": app.remote_provider_model.as_deref().unwrap_or(app.provider.name()),
             "connection_type": app.connection_type.clone(),
             "remote_transport": app.remote_transport.clone(),
-            "side_pane_ratio": app.side_pane_ratio_target,
+            "side_pane_ratio": app.side_pane_ratio,
             "remote": true,
             "server_version": app.remote_server_version.clone(),
             "server_has_update": app.remote_server_has_update,

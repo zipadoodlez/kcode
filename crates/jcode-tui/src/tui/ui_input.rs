@@ -1926,11 +1926,8 @@ pub(super) fn draw_notification(frame: &mut Frame, app: &dyn TuiState, area: Rec
     frame.render_widget(Paragraph::new(aligned_line), area);
 }
 
-/// Draw the elastic overscroll status line, revealed below the input when the
-/// user scrolls past the bottom of the transcript. Shows model, provider,
-/// access method, reasoning level, and context usage percentage, with a live
-/// `(overscroll x.x)` countdown pinned to the right so users can see the line
-/// is temporary and rebounds away on its own.
+/// Draw the status line below the input when enabled by config. Shows model,
+/// provider, access method, reasoning level, and context usage percentage.
 pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area: Rect) {
     if area.height == 0 || area.width == 0 {
         return;
@@ -1938,15 +1935,6 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
     let data = app.info_widget_data();
 
     let sep = || Span::styled(" · ", Style::default().fg(border_color()));
-
-    // The countdown is the priority affordance: it explains the line exists and
-    // is going away. Build it first so it always gets space on the right edge.
-    let countdown: Option<Span> = app.chat_overscroll_remaining().map(|secs| {
-        Span::styled(
-            format!("(overscroll {:.1})", secs.max(0.0)),
-            Style::default().fg(pending_color()).italic(),
-        )
-    });
 
     let mut spans: Vec<Span> = Vec::new();
 
@@ -2031,62 +2019,16 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
     }
 
     let total_width = area.width as usize;
-
-    // No countdown active: just render the info line (centered or not) as before.
-    let Some(countdown) = countdown else {
-        if spans.is_empty() {
-            return;
-        }
-        let line = Line::from(overscroll_truncate_spans(spans, total_width));
-        let aligned_line = if app.centered_mode() {
-            line.alignment(Alignment::Center)
-        } else {
-            line
-        };
-        frame.render_widget(Paragraph::new(aligned_line), area);
-        return;
-    };
-
-    let countdown_width = countdown.content.chars().count();
-
-    // Tight width: if there is not even room for the countdown plus a single
-    // space of breathing room, drop the info entirely and just show the
-    // countdown (truncated as a last resort). The affordance survives.
-    if total_width <= countdown_width + 1 {
-        let countdown_line = Line::from(overscroll_truncate_spans(vec![countdown], total_width))
-            .alignment(Alignment::Right);
-        frame.render_widget(Paragraph::new(countdown_line), area);
+    if spans.is_empty() {
         return;
     }
-
-    // Reserve the countdown on the right; the info line gets the rest and is
-    // truncated to fit so the two never collide.
-    let gap = 1u16;
-    let right_w = countdown_width as u16;
-    let left_w = area.width.saturating_sub(right_w);
-    let left_area = Rect {
-        width: left_w.saturating_sub(gap),
-        ..area
+    let line = Line::from(overscroll_truncate_spans(spans, total_width));
+    let aligned_line = if app.centered_mode() {
+        line.alignment(Alignment::Center)
+    } else {
+        line
     };
-    let right_area = Rect {
-        x: area.x + left_w,
-        width: right_w,
-        ..area
-    };
-
-    if !spans.is_empty() {
-        let avail = left_area.width as usize;
-        let info_line = Line::from(overscroll_truncate_spans(spans, avail));
-        let info_line = if app.centered_mode() {
-            info_line.alignment(Alignment::Center)
-        } else {
-            info_line
-        };
-        frame.render_widget(Paragraph::new(info_line), left_area);
-    }
-
-    let countdown_line = Line::from(vec![countdown]).alignment(Alignment::Right);
-    frame.render_widget(Paragraph::new(countdown_line), right_area);
+    frame.render_widget(Paragraph::new(aligned_line), area);
 }
 
 /// Truncate a list of spans to at most `max_width` display columns, appending a

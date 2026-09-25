@@ -109,9 +109,9 @@ pub struct DisplayConfig {
     pub external_sessions: bool,
     /// Usage percentage wording: "left" (default) or "used".
     pub usage_display: String,
-    /// When to show the overscroll status line below the input
-    /// (off/on/overscroll, default: overscroll). "overscroll" is the elastic
-    /// reveal when scrolling past the bottom, "on" keeps it always visible.
+    /// Whether to show the status line below the input (off/on, default: off).
+    /// "off" falls back to the compact facts stack, "on" keeps it always
+    /// visible. The old elastic-reveal mode was removed with the animations.
     #[serde(default, deserialize_with = "crate::serde_lenient::lenient_enum")]
     pub overscroll_status: OverscrollStatusMode,
 }

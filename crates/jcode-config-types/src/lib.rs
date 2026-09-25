@@ -125,18 +125,16 @@ impl DiffDisplayMode {
     }
 }
 
-/// When to show the overscroll status line (model/provider/context info below
-/// the input).
+/// Whether to show the status line (model/provider/context info below the
+/// input). The old elastic-reveal mode was removed with the scroll animations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum OverscrollStatusMode {
-    /// Never show the status line.
+    /// Never show the status line (default; the compact facts stack is used).
+    #[default]
     Off,
     /// Always show the status line below the input.
     On,
-    /// Elastic reveal: show it briefly when scrolling past the bottom (default).
-    #[default]
-    Overscroll,
 }
 
 impl OverscrollStatusMode {
@@ -144,7 +142,6 @@ impl OverscrollStatusMode {
         match self {
             Self::Off => "off",
             Self::On => "on",
-            Self::Overscroll => "overscroll",
         }
     }
 }

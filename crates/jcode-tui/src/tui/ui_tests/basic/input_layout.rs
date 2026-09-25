@@ -77,7 +77,6 @@ fn first_prompt_stays_visible_with_widgets_during_processing_at_47x51() {
             state.input.clear();
             state.display_messages.push(DisplayMessage::user(PROMPT));
             state.messages_version += 1;
-            request_tail_follow_snap();
             let mut saw_widget = false;
 
             for (phase, status, stream) in [

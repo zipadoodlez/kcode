@@ -616,17 +616,6 @@ impl crate::tui::TuiState for App {
         self.chat_overscroll_active()
     }
 
-    fn chat_overscroll_pinned(&self) -> bool {
-        matches!(
-            self.overscroll_status_mode,
-            crate::config::OverscrollStatusMode::On
-        )
-    }
-
-    fn chat_overscroll_remaining(&self) -> Option<f32> {
-        self.chat_overscroll_remaining()
-    }
-
     fn copy_selection_edge_autoscroll_active(&self) -> bool {
         self.copy_selection_edge_autoscroll.is_some() && self.copy_selection_dragging
     }
@@ -1734,7 +1723,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn side_pane_ratio(&self) -> u8 {
-        self.animated_side_pane_ratio()
+        self.side_pane_ratio
     }
 
     fn side_pane_ratio_user_adjusted(&self) -> bool {

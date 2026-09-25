@@ -17,12 +17,6 @@ pub(crate) const REDRAW_IDLE: Duration = Duration::from_millis(250);
 pub(crate) const REDRAW_DEEP_IDLE: Duration = Duration::from_millis(5000);
 pub(crate) const REDRAW_REMOTE_STARTUP: Duration = Duration::from_millis(1000);
 pub(crate) const REDRAW_PASSIVE_LIVENESS: Duration = Duration::from_millis(1000);
-/// Tick cadence while a drag-held edge autoscroll runs. The autoscroll advances
-/// 1-3 lines per tick (scaled by how close the drag is to the edge), so pacing
-/// the tick here rather than at `redraw_fps` makes the speed a property of the
-/// gesture instead of the display refresh rate. At 60ms this is ~17 lines/s at
-/// the slow end and ~50 lines/s right on the edge.
-pub(crate) const REDRAW_COPY_AUTOSCROLL: Duration = Duration::from_millis(60);
 pub(crate) const REDRAW_DEEP_IDLE_AFTER: Duration = Duration::from_secs(30);
 
 /// Whether this session has been left alone long enough to be treated as
@@ -164,11 +158,9 @@ static LAST_FULL_FRAME_REDRAW_REASON: std::sync::atomic::AtomicUsize =
 const FULL_FRAME_REDRAW_REASONS: &[&str] = &[
     "processing",
     "streaming",
-    "tail_catchup",
     "status_notice",
     "learn_hint",
     "copy_autoscroll",
-    "chat_overscroll",
     "notification",
     "rate_limit_countdown",
     "remote_startup",
@@ -397,40 +389,10 @@ pub(crate) fn redraw_interval_with_policy_and_animation(
     policy: &crate::perf::TuiPerfPolicy,
     animation_on_screen: bool,
 ) -> Duration {
-    let animation_interval = fps_to_duration(policy.animation_fps);
     let fast_interval = fps_to_duration(policy.redraw_fps);
 
     // A retained/collapsing reasoning trace used to need animation cadence here;
-    // anchored traces are static transcript messages now. The tail-follow
-    // catch-up slide still needs smooth frames and must skip the deep-idle
-    // short-circuits below.
-    if ui::tail_catchup_active() {
-        return match policy.tier {
-            crate::perf::PerformanceTier::Minimal => fast_interval,
-            _ => animation_interval,
-        };
-    }
-
-    // The elastic overscroll line shows a live `(overscroll x.x)` countdown that
-    // depletes over ~1.5s. Without a dedicated branch it falls through to the
-    // 250ms idle cadence and ticks in coarse, steppy jumps. Drive it at the
-    // smooth animation cadence so the countdown reads as continuous. A line
-    // pinned on by config has no countdown (`remaining` is None) and must not
-    // pin the redraw loop at animation cadence forever.
-    if state.chat_overscroll_remaining().is_some() {
-        return match policy.tier {
-            crate::perf::PerformanceTier::Minimal => fast_interval,
-            _ => animation_interval,
-        };
-    }
-
-    // A drag held at a pane edge scrolls one line per tick, so cap the tick at
-    // the scroll period: speed follows the gesture, not the refresh rate. This
-    // precedes the live-output branches so a drag stays on this cadence even
-    // while the transcript streams.
-    if state.copy_selection_edge_autoscroll_active() {
-        return REDRAW_COPY_AUTOSCROLL;
-    }
+    // anchored traces are static transcript messages now.
 
     // While the terminal is backgrounded (FocusLost), an idle session has nothing
     // worth a fast tick: decorative animations are paused and the run loop only
@@ -519,6 +481,7 @@ pub(crate) fn redraw_interval_with_policy_and_animation(
 
     if state.is_processing()
         || !state.streaming_text().is_empty()
+        || state.copy_selection_edge_autoscroll_active()
         || rate_limit_countdown_redraw_active(state)
     {
         return match policy.tier {
@@ -589,8 +552,6 @@ fn periodic_redraw_required_inner(state: &dyn TuiState, include_idle_animation: 
         && !state.is_processing()
         && state.streaming_text().is_empty()
         && !state.copy_selection_edge_autoscroll_active()
-        // Only the elastic countdown needs ticks; a config-pinned line is static.
-        && state.chat_overscroll_remaining().is_none()
         && !state.remote_startup_phase_active()
         && !rate_limit_countdown_redraw_active(state)
         && !cache_cold_countdown_redraw_active(state)
@@ -643,9 +604,6 @@ fn live_activity_redraw_reason(state: &dyn TuiState) -> Option<&'static str> {
     if !state.streaming_text().is_empty() {
         return Some("streaming");
     }
-    if ui::tail_catchup_active() {
-        return Some("tail_catchup");
-    }
     if state.status_notice().is_some() {
         return Some("status_notice");
     }
@@ -654,9 +612,6 @@ fn live_activity_redraw_reason(state: &dyn TuiState) -> Option<&'static str> {
     }
     if state.copy_selection_edge_autoscroll_active() {
         return Some("copy_autoscroll");
-    }
-    if state.chat_overscroll_remaining().is_some() {
-        return Some("chat_overscroll");
     }
     if state.has_notification() {
         return Some("notification");
@@ -690,11 +645,9 @@ mod tests {
         for reason in [
             "processing",
             "streaming",
-            "tail_catchup",
             "status_notice",
             "learn_hint",
             "copy_autoscroll",
-            "chat_overscroll",
             "notification",
             "rate_limit_countdown",
             "remote_startup",

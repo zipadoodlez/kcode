@@ -175,19 +175,6 @@ static LAST_CHAT_VIEWPORT_HEIGHT: AtomicUsize = AtomicUsize::new(0);
 /// handlers adopt this so manual scrolling resumes from the on-screen position.
 #[cfg(not(test))]
 static LAST_RESOLVED_CHAT_SCROLL: AtomicUsize = AtomicUsize::new(0);
-/// Whether the tail-follow viewport is mid catch-up slide (a large content
-/// append is being scrolled into view over several frames instead of jumping).
-/// Drives the redraw loop so the slide completes promptly.
-#[cfg(not(test))]
-static TAIL_CATCHUP_ACTIVE: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-/// Set by explicit user actions that resume bottom-follow (typing, End,
-/// submitting a prompt). The next renderer pass consumes this request and snaps
-/// directly to the tail instead of mistaking the large offset change for a
-/// newly-appended content block that should use catch-up animation.
-#[cfg(not(test))]
-static TAIL_FOLLOW_SNAP_PENDING: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
 /// Wrapped line indices where each user prompt starts (updated each render frame).
 /// Used by prompt-jump keybindings (Ctrl+5..9, Ctrl+[/]) for accurate positioning.
 #[cfg(not(test))]
@@ -203,8 +190,6 @@ thread_local! {
     static TEST_LAST_TOTAL_WRAPPED_LINES: Cell<usize> = const { Cell::new(0) };
     static TEST_LAST_CHAT_VIEWPORT_HEIGHT: Cell<usize> = const { Cell::new(0) };
     static TEST_LAST_RESOLVED_CHAT_SCROLL: Cell<usize> = const { Cell::new(0) };
-    static TEST_TAIL_CATCHUP_ACTIVE: Cell<bool> = const { Cell::new(false) };
-    static TEST_TAIL_FOLLOW_SNAP_PENDING: Cell<bool> = const { Cell::new(false) };
     static TEST_LAST_USER_PROMPT_POSITIONS: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
     static TEST_LAST_LAYOUT: RefCell<Option<LayoutSnapshot>> = const { RefCell::new(None) };
     static TEST_LAST_STATUS_AREA: RefCell<Option<Rect>> = const { RefCell::new(None) };
@@ -450,59 +435,6 @@ pub(crate) fn set_last_resolved_chat_scroll(value: usize) {
     #[cfg(not(test))]
     {
         LAST_RESOLVED_CHAT_SCROLL.store(value, Ordering::Relaxed);
-    }
-}
-
-/// Whether the tail-follow viewport is still sliding toward the bottom after a
-/// large append. The redraw loop keeps animation cadence while this is set.
-pub(crate) fn tail_catchup_active() -> bool {
-    #[cfg(test)]
-    {
-        return TEST_TAIL_CATCHUP_ACTIVE.with(Cell::get);
-    }
-    #[cfg(not(test))]
-    {
-        TAIL_CATCHUP_ACTIVE.load(Ordering::Relaxed)
-    }
-}
-
-pub(crate) fn set_tail_catchup_active(active: bool) {
-    #[cfg(test)]
-    {
-        TEST_TAIL_CATCHUP_ACTIVE.with(|cell| cell.set(active));
-        return;
-    }
-    #[cfg(not(test))]
-    {
-        TAIL_CATCHUP_ACTIVE.store(active, Ordering::Relaxed);
-    }
-}
-
-/// Request that the next tail-follow render land at the exact bottom.
-///
-/// This is reserved for explicit navigation or composer actions. Automatic
-/// transcript growth does not set it, so large committed blocks still use the
-/// bounded catch-up animation.
-pub(crate) fn request_tail_follow_snap() {
-    #[cfg(test)]
-    {
-        TEST_TAIL_FOLLOW_SNAP_PENDING.with(|cell| cell.set(true));
-        return;
-    }
-    #[cfg(not(test))]
-    {
-        TAIL_FOLLOW_SNAP_PENDING.store(true, Ordering::Relaxed);
-    }
-}
-
-pub(crate) fn take_tail_follow_snap_request() -> bool {
-    #[cfg(test)]
-    {
-        return TEST_TAIL_FOLLOW_SNAP_PENDING.with(|cell| cell.replace(false));
-    }
-    #[cfg(not(test))]
-    {
-        TAIL_FOLLOW_SNAP_PENDING.swap(false, Ordering::Relaxed)
     }
 }
 
@@ -1319,7 +1251,6 @@ fn clear_test_render_state_locked() {
     set_last_diff_pane_max_scroll(0);
     set_last_total_wrapped_lines(0);
     set_last_resolved_chat_scroll(0);
-    TEST_TAIL_FOLLOW_SNAP_PENDING.with(|cell| cell.set(false));
     update_user_prompt_positions(&[]);
     // Flicker events recorded by sibling tests add a "⚠ flicker detected"
     // notification line to subsequent renders, shifting every layout-sensitive
@@ -2571,26 +2502,10 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         + overscroll_height
         + donut_height; // status + queued + swarm strip + notification + inline UI + gap + input + overscroll + donut
     let available_height = chat_area.height;
-    // Overflow decisions (native scrollbar, and thus the wrap width) must not
-    // depend on the transient overscroll row. Otherwise revealing the line at
-    // the fits/overflows boundary flips the scrollbar on, re-wraps the whole
-    // transcript one column narrower, and the extra wrapped lines keep the
-    // scrollbar latched after the rebound: the screen visibly re-wraps twice
-    // per overscroll and can settle in a different state than it started
-    // (flicker). The packed/scrolling choice below still accounts for the real
-    // row so the elastic reveal remains a clean one-row slide.
-    //
-    // When the line is pinned permanently visible by config it is part of the
-    // stable layout, not a transient reveal, so it does count here.
-    let stable_fixed_height = if app.chat_overscroll_pinned() {
-        fixed_height
-    } else {
-        fixed_height - overscroll_height
-    };
     let overflows = |prepared: &PreparedChatFrame| {
         let started = Instant::now();
         let result =
-            (prepared.total_wrapped_lines().max(1) as u16) + stable_fixed_height > available_height;
+            (prepared.total_wrapped_lines().max(1) as u16) + fixed_height > available_height;
         note_prep_overflow(started.elapsed());
         result
     };

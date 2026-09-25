@@ -59,19 +59,6 @@ impl App {
     /// single fixed `mousescroll`). It exists so deliberate notches stay precise
     /// while fast flicks cover more ground; retune the thresholds if it feels off.
     const WHEEL_LINES_MAX: i16 = 10;
-    /// How long the overscroll status line stays revealed after the last
-    /// downward overscroll tick before it rebounds away. Long enough that the
-    /// depleting countdown indicator is perceivable and the line reads as a
-    /// temporary, pull-to-reveal panel.
-    const OVERSCROLL_DWELL: std::time::Duration = std::time::Duration::from_millis(1500);
-    /// Maximum pause between downward scroll ticks for them to count as the
-    /// same continuous gesture. Overscroll only reveals when a gesture *began*
-    /// at the bottom of the transcript, so momentum from a scroll that merely
-    /// carries the view into the bottom does not pop the elastic line. Wheel
-    /// momentum drains a few lines per redraw tick, so this must comfortably
-    /// exceed the idle redraw cadence to avoid splitting one physical flick.
-    pub(super) const OVERSCROLL_GESTURE_GAP: std::time::Duration =
-        std::time::Duration::from_millis(500);
 
     fn log_mouse_scroll_trace(
         &self,
@@ -608,61 +595,23 @@ impl App {
         }
     }
 
-    pub(super) const SIDE_PANE_ANIM_DURATION: f32 = 0.15;
-
     fn side_pane_ratio_limits(&self) -> (u8, u8) {
         (25, 100)
     }
 
-    fn set_side_pane_ratio(&mut self, next: i16, animate: bool, announce: bool) {
+    fn set_side_pane_ratio(&mut self, next: i16) {
         let (min_ratio, max_ratio) = self.side_pane_ratio_limits();
-        let next = next.clamp(min_ratio as i16, max_ratio as i16) as u8;
-        let current_target = self.side_pane_ratio_target;
-        if next == current_target {
-            if !animate {
-                self.side_pane_ratio = next;
-                self.side_pane_ratio_from = next;
-                self.side_pane_anim_start = None;
-            }
-            return;
-        }
-
-        if animate {
-            self.side_pane_ratio_from = self.animated_side_pane_ratio();
-            self.side_pane_ratio_target = next;
-            self.side_pane_anim_start = Some(Instant::now());
-        } else {
-            self.side_pane_ratio = next;
-            self.side_pane_ratio_from = next;
-            self.side_pane_ratio_target = next;
-            self.side_pane_anim_start = None;
-        }
-
-        if announce {
-            self.set_status_notice(format!("Side pane: {}%", next));
-        }
-    }
-
-    pub(super) fn animated_side_pane_ratio(&self) -> u8 {
-        let Some(start) = self.side_pane_anim_start else {
-            return self.side_pane_ratio_target;
-        };
-        let elapsed = start.elapsed().as_secs_f32();
-        let t = (elapsed / Self::SIDE_PANE_ANIM_DURATION).clamp(0.0, 1.0);
-        let t = t * t * (3.0 - 2.0 * t);
-        let from = self.side_pane_ratio_from as f32;
-        let to = self.side_pane_ratio_target as f32;
-        (from + (to - from) * t).round() as u8
+        self.side_pane_ratio = next.clamp(min_ratio as i16, max_ratio as i16) as u8;
     }
 
     pub(super) fn set_side_pane_ratio_immediate(&mut self, next: u8) {
         self.side_pane_ratio_user_adjusted = true;
-        self.set_side_pane_ratio(next as i16, false, false);
+        self.set_side_pane_ratio(next as i16);
     }
 
     pub(super) fn set_side_panel_ratio_preset(&mut self, next: u8) {
-        self.set_side_pane_ratio(next as i16, false, false);
-        self.set_status_notice(format!("Side panel: {}%", self.side_pane_ratio_target));
+        self.set_side_pane_ratio(next as i16);
+        self.set_status_notice(format!("Side panel: {}%", self.side_pane_ratio));
     }
 
     pub(super) fn toggle_side_panel(&mut self) {
@@ -927,7 +876,6 @@ impl App {
         if self.side_pane_dragging {
             match mouse.kind {
                 MouseEventKind::Drag(MouseButton::Left) => {
-                    self.side_pane_anim_start = None;
                     let is_side = true;
                     let new_ratio = if is_side {
                         if let (Some(messages_area), Some(diagram_area)) =
@@ -937,7 +885,7 @@ impl App {
                             let total_width = right_edge.saturating_sub(messages_area.x);
                             let desired_width = right_edge.saturating_sub(mouse.column);
                             if desired_width == diagram_area.width || total_width == 0 {
-                                self.side_pane_ratio_target
+                                self.side_pane_ratio
                             } else {
                                 ((desired_width as u32 * 100) / total_width as u32) as u8
                             }
@@ -945,12 +893,12 @@ impl App {
                             ((terminal_width.saturating_sub(mouse.column)) as u32 * 100
                                 / terminal_width as u32) as u8
                         } else {
-                            self.side_pane_ratio_target
+                            self.side_pane_ratio
                         }
                     } else if !is_side && terminal_height > 0 {
                         (mouse.row as u32 * 100 / terminal_height as u32) as u8
                     } else {
-                        self.side_pane_ratio_target
+                        self.side_pane_ratio
                     };
                     self.set_side_pane_ratio_immediate(new_ratio);
                 }
@@ -1067,11 +1015,6 @@ impl App {
             self.bump_display_messages_version();
             self.request_full_repaint();
         }
-        // and ends the current downward gesture, so a subsequent scroll down
-        // starts a fresh gesture evaluated from wherever the view is then.
-        self.chat_overscroll_last = None;
-        self.chat_scroll_down_last = None;
-        self.chat_scroll_gesture_from_bottom = false;
         // While older compacted history is still settling on screen, the renderer
         // is anchored to a distance-from-bottom rather than `scroll_offset`. Keep
         // scrolling continuous by moving the anchor itself instead of a stale
@@ -1139,27 +1082,11 @@ impl App {
     /// `false`, so the mouse-wheel queue does not accumulate phantom scroll
     /// that would later have to be undone before scrolling up moves the view.
     pub(super) fn scroll_down(&mut self, amount: usize) -> bool {
-        // Segment downward motion into gestures: a pause longer than
-        // `OVERSCROLL_GESTURE_GAP` starts a new gesture. Record whether this
-        // gesture began while already pinned to the bottom; only such gestures
-        // may reveal the elastic overscroll line below.
-        let now = Instant::now();
-        let new_gesture = self
-            .chat_scroll_down_last
-            .map(|last| now.saturating_duration_since(last) > Self::OVERSCROLL_GESTURE_GAP)
-            .unwrap_or(true);
-        self.chat_scroll_down_last = Some(now);
-        if new_gesture {
-            self.chat_scroll_gesture_from_bottom = self.chat_pinned_to_bottom();
-        }
         // Mirror `scroll_up`: while an older-history prepend is still settling,
         // the renderer is anchored to distance-from-bottom, so move the anchor
         // toward the bottom instead of a stale `scroll_offset`.
         if let Some(mut anchor) = self.pending_history_anchor {
             if anchor.lines_from_bottom == 0 {
-                if self.chat_scroll_gesture_from_bottom {
-                    self.register_chat_overscroll();
-                }
                 return false;
             }
             anchor.lines_from_bottom = anchor.lines_from_bottom.saturating_sub(amount);
@@ -1169,13 +1096,7 @@ impl App {
             return true;
         }
         if !self.auto_scroll_paused {
-            // Already pinned to the bottom: a further downward scroll is an
-            // "overscroll". Only reveal the elastic status line when the whole
-            // gesture started here at the bottom; momentum left over from a
-            // scroll that just arrived at the bottom is swallowed silently.
-            if self.chat_scroll_gesture_from_bottom {
-                self.register_chat_overscroll();
-            }
+            // Already pinned to the bottom: a further downward scroll is a no-op.
             return false;
         }
         let before = self.scroll_offset;
@@ -1211,78 +1132,18 @@ impl App {
         changed
     }
 
-    /// Whether the chat viewport is currently pinned to (following) the
-    /// bottom of the transcript.
-    fn chat_pinned_to_bottom(&self) -> bool {
-        if let Some(anchor) = self.pending_history_anchor {
-            anchor.lines_from_bottom == 0
-        } else {
-            !self.auto_scroll_paused
-        }
-    }
-
     pub(super) fn follow_chat_bottom(&mut self) {
         self.pending_history_anchor = None;
         self.scroll_offset = 0;
         self.auto_scroll_paused = false;
-        super::super::ui::request_tail_follow_snap();
     }
 
-    /// Record an overscroll tick (downward scroll while already pinned to the
-    /// bottom). Reveals the elastic status line below the input and (re)starts
-    /// the dwell window after which it rebounds away. Only meaningful in the
-    /// `overscroll` mode; `off` never shows the line and `on` always does.
-    pub(super) fn register_chat_overscroll(&mut self) {
-        if matches!(
-            self.overscroll_status_mode,
-            crate::config::OverscrollStatusMode::Overscroll
-        ) {
-            self.chat_overscroll_last = Some(Instant::now());
-        }
-    }
-
-    /// Whether the overscroll status line is currently revealed.
+    /// Whether the status line below the input is shown (config-pinned on).
     pub(super) fn chat_overscroll_active(&self) -> bool {
-        match self.overscroll_status_mode {
-            crate::config::OverscrollStatusMode::Off => false,
-            crate::config::OverscrollStatusMode::On => true,
-            crate::config::OverscrollStatusMode::Overscroll => self
-                .chat_overscroll_last
-                .map(|t| t.elapsed() < Self::OVERSCROLL_DWELL)
-                .unwrap_or(false),
-        }
-    }
-
-    /// Seconds remaining in the overscroll dwell window before the line
-    /// rebounds away. Returns `None` when the overscroll line is not currently
-    /// shown. Drives the visible `(overscroll x.x)` countdown so users can see
-    /// the line is temporary. Always `None` when the line is pinned on or off
-    /// by config (no countdown to show).
-    pub(super) fn chat_overscroll_remaining(&self) -> Option<f32> {
-        if !matches!(
+        matches!(
             self.overscroll_status_mode,
-            crate::config::OverscrollStatusMode::Overscroll
-        ) {
-            return None;
-        }
-        let last = self.chat_overscroll_last?;
-        let elapsed = last.elapsed();
-        if elapsed >= Self::OVERSCROLL_DWELL {
-            return None;
-        }
-        Some(Self::OVERSCROLL_DWELL.saturating_sub(elapsed).as_secs_f32())
-    }
-
-    /// Drive the overscroll dwell timer. Returns `true` when the revealed state
-    /// changed (so the caller can request a redraw). Called every tick.
-    pub(super) fn update_chat_overscroll(&mut self) -> bool {
-        if let Some(t) = self.chat_overscroll_last
-            && t.elapsed() >= Self::OVERSCROLL_DWELL
-        {
-            self.chat_overscroll_last = None;
-            return true;
-        }
-        false
+            crate::config::OverscrollStatusMode::On
+        )
     }
 
     pub(super) fn debug_scroll_up(&mut self, amount: usize) {
