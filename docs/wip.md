@@ -10,7 +10,7 @@ git has the history.
 
 | plan | state | what's left |
 |---|---|---|
-| [plans/limited-palette.md](plans/limited-palette.md) | phase 1 of 5 done (ratchet guard ported, 697 literals / 30 files) | collapse the 697 literals onto the 22 roles until `BASELINE` is empty; then bake light mode into a static theme and delete the light/derived-color machinery; then add `[display.palette]` (16 slots) and `/colors` slot editing. Default look is allowed to change |
+| [plans/limited-palette.md](plans/limited-palette.md) | phase 2 of 5 done (all 697 literals collapsed onto the 22 roles; guard `BASELINE` empty and zero-tolerance) | next: bake light mode into a static theme and delete the light/derived-color machinery; then add `[display.palette]` (16 slots) and `/colors` slot editing. Default look is allowed to change |
 | [plans/tuistate-decomposition.md](plans/tuistate-decomposition.md) | analysis only, nothing extracted | refresh the 114-method categorization to the current 156, then extract leaf sub-traits one per commit starting with a single-file consumer, keeping `ui.rs` and `ui_viewport.rs` on the supertrait |
 | [plans/browser-provider-protocol.md](plans/browser-provider-protocol.md) | draft spec, no implementation | tighten the core method set and the normalized `page.snapshot` format before building any adapter |
 

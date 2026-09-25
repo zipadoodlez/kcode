@@ -105,6 +105,12 @@ Each phase lowers `BASELINE`; the guard is the acceptance test.
    Each literal becomes its nearest role's accessor; a literal with no distinct
    purpose is deleted, not recolored. Done when `BASELINE` is empty and every
    rendered color is a role default.
+
+   ✅ Done. 697 literals across 30 files resolved through roles (nearest role in
+   chroma-weighted Oklab, 11 hand pins where the metric filed a hue-bearing
+   color under a gray role). `BASELINE` is empty and the guard is
+   zero-tolerance. `jcode-tui-markdown` and `jcode-tui-workspace` gained the
+   `jcode-tui-style` dependency they had no route to before.
 3. **Bake light, delete the machinery.** Freeze the light theme from the current
    transform, then delete the light math, `theme_detect.rs`/OSC-11, the
    `display.theme` config and `JCODE_THEME`, `palette_literals.rs`, and the
