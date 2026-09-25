@@ -1,119 +1,107 @@
 # Redraw and perf simplification
 
 Status: proposal
-Problem: four overlapping mechanisms decide when the TUI paints. Adding one
-time-dependent element means editing all four, and every new element multiplies
-the matrix.
+Problem: four mechanisms decide cadence and painting, and one of them (the tick)
+is also the app's housekeeping pump. Adding one time-dependent element means
+editing all four.
 
 ## The problem, measured
 
-What exists today, and what a single new time-dependent element must touch:
+`handle_tick` (`app/local.rs`) runs ~20 jobs: drains `stream_buffer`, refreshes
+todos/pinned/side-panel, polls the model and session pickers, prunes background
+tasks, expires notices, progresses the overscroll countdown. That is the app's
+clock, not a repaint scheduler, and it must run even when nothing is on screen.
+So the tick stays. What does *not* deserve to exist is everything layered on top
+of it:
 
-| mechanism | code | cost per new element |
+| mechanism | code | per new element |
 |---|---|---|
-| cadence chain | `redraw_interval_with_policy_and_animation` (10 branches), `redraw_interval_with_policy`, `redraw_interval` | 1-2 new branches, ordered correctly |
-| draw gate | `periodic_redraw_required`, `_excluding_idle_animation`, `_inner`, `live_activity_redraw_reason` + the reason table | 1-2 new terms in a ten-term chain, plus a reason name |
-| tier matrix | `PerformanceTier` (3) x 9 policy fields x auto-score inputs (load, memory, SSH, WSL, terminal) | new arms in every `match`, new synthetic profile |
-| second draw path | animation-only partial repaint, `idle_animation_only_available` | must decide whether the element is eligible |
+| cadence chain | `redraw_interval_with_policy_and_animation` (10 branches), `redraw_interval_with_policy`, `redraw_interval` | 1-2 new branches, correctly ordered |
+| draw gate | `periodic_redraw_required`, `_excluding_idle_animation`, `_inner`, `live_activity_redraw_reason` + named-reason table | 1-2 new terms in a ten-term chain, plus a reason name |
+| tier matrix | `PerformanceTier` (3) x 9 policy fields x auto-score inputs (load, memory, SSH, WSL, terminal) | new arms in every `match`, a new synthetic profile |
+| second timer + second draw path | `status_spinner_interval` select arm, animation-only partial repaint, `idle_animation_only_available` | decide eligibility for both |
 
-So roughly five files and a test-name table per widget. The named-reason table
-exists only to debug that chain, which is the signal: if the policy needs names
-to be readable, it has too many predicates.
+The named-reason table exists only so the chain can be debugged. That is the
+signal: if the policy needs names to be readable, it has too many predicates.
 
 ## Target
 
-One rule. A state that changes without input registers a `Live` element. The
-scheduler takes the minimum interval over the live set and draws iff the set is
-non-empty.
+The floor: **one timer, one bool, two constants, one draw path.**
 
 ```rust
-enum Live {
-    Streaming,            // tokens arriving
-    Spinner,              // swarm / picker glyphs, 12.5fps off the wall clock
-    Countdown(Instant),   // overscroll, rate-limit reset, cache-cold window
-    Notice(Instant),      // toasts retiring
-    Decoration,           // only if the idle donut survives phase 2
-}
+// The only cadence question. True when something visible is mid-motion or
+// mid-arrival: processing/streaming, a spinner, a live countdown, a retiring
+// notice, a held drag. Everything else is served by events and housekeeping.
+fn wants_fast_tick(&self) -> bool;
 
-impl Live {
-    fn interval(self, now: Instant) -> Duration { /* what this element needs */ }
+loop {
+    let period = if self.wants_fast_tick() { FAST } else { SLOW };
+    // one timer; sleep on input/bus events otherwise
+    on tick:  housekeeping(); if dirty { draw() }
+    on event: apply();        if dirty { draw() }
 }
-
-// the whole policy:
-let tick = live.iter().map(|l| l.interval(now)).min().unwrap_or(IDLE);
-let draw = !live.is_empty();
 ```
 
-Every element owns its own cadence where the element is defined, which is also
-where the person adding it is already looking. Adding one is one arm and one
-registration.
+No `Live` enum, no `min(interval)` over per-element cadences, no reason table.
+A per-element cadence is only worth adding when one specific element visibly
+stutters, and at that point the fix is one constant next to that element, not a
+scheduler feature.
+
+The drag case shows the shape: instead of a dedicated 60ms tick, let a fixed
+tick advance a variable number of lines. Speed then follows the gesture by
+construction rather than by a special-case interval.
 
 ## Phases
 
-Each phase ships on its own and is verifiable alone. Deletion-first throughout.
+Two, not four. The first buys most of the second.
 
-1. **Live set, no behavior change.** Move each existing predicate verbatim into
-   a `Live` variant whose `interval()` returns exactly today's cadence. Replace
-   the cadence chain in `redraw_interval*`. Delete `live_activity_redraw_reason`
-   and the duplicate `periodic_redraw_required*` pair, keeping one gate that is
-   just `!live.is_empty()`.
-   Done when the existing redraw-cadence tests pass unchanged and `draw-stats`
-   reports the same intervals per state.
+1. **Delete the decoration and its two escape hatches.** The idle donut is now
+   the only animation; it is what `animation_fps`, the partial-repaint path, the
+   spinner-only select arm, and name-based `disabled_animations` exist to serve.
+   Delete it (a two-glyph cycle on the existing `SPINNER_FRAMES` if idle motion
+   is wanted), then delete the partial repaint, the second timer, `jcode-tui-anim`
+   (930 lines, used by nothing else), and the `opt-level = 3` overrides.
+   One product decision, everything else falls out.
+   Done when there is one timer and one draw site.
 
-2. **Decide the donut.** It is now the only animation, and it carries a 930-line
-   `jcode-tui-anim` crate used by nothing else, an `opt-level = 3` override in
-   every profile, `disabled_animations` by name, and the partial-repaint path.
-   Default: delete the scene and fall back to a two-frame glyph cycle on the
-   spare `SPINNER_FRAMES` (already in `jcode-tui-style`). Alternative: keep it as
-   a single `Live::Decoration` at a fixed low rate.
-   Done when either `Live::Decoration` does not exist, or it is the only place
-   the animation cadence is mentioned.
+2. **Collapse cadence to the rule above.** Replace both chains with
+   `wants_fast_tick()` plus `FAST`/`SLOW`, keeping the tick's housekeeping intact.
+   Then delete `PerformanceTier` and its auto-scoring (replace with the two
+   constants and the existing `fps` knob), keeping only the real compatibility
+   fixes: WSL/Windows Terminal focus and keyboard protocols, and the macOS
+   glyph-safe redraw cap. `display.performance` and `JCODE_PERF_TIER` go; the
+   loader already ignores unknown keys.
+   Done when `redraw_interval` is gone, `perf.rs` has no tier enum, and the
+   housekeeping tick still runs.
 
-3. **Tiers out.** `PerformanceTier` + auto-scoring exists to cap FPS and gate
-   one decoration, and it makes behavior machine-dependent and untestable except
-   as a matrix. Replace with plain policy fields: `fps`, `idle_fps`. Keep the
-   real compatibility decisions, just not as a tier: WSL/Windows Terminal
-   focus/keyboard tweaks, and the macOS glyph-safe redraw cap. `display.performance`
-   and `JCODE_PERF_TIER` go; the loader already ignores unknown keys.
-   Done when `perf.rs` has no tier enum and no load/memory scoring.
-
-4. **One draw path.** Delete the animation-only partial repaint and
-   `idle_animation_only_available`, keeping one path. This is gated on a
-   measurement: the point of the second path was that a full frame re-renders
-   the transcript, and the body cache is the real fix. Keep the fast path only if
-   `draw-stats` frame time on an idle animated screen is materially worse
-   without it.
-   Done when there is one draw site or a recorded reason the second one stays.
-
-## Order and risk
-
-Phases 1 and 3 are independent. Phase 2 gates 4 (no decoration, no partial
-path). Phase 1 is the only one touching the render loop, and it is a pure
-refactor with the existing cadence tests as the net.
+Phase 1 is a deletion with no behavior to preserve beyond the donut itself.
+Phase 2 changes cadence, so it lands after 1 with the existing cadence tests as
+the net.
 
 ## What is deliberately kept
 
-- The `tokio::select!` loop over input / spinner / timer / bus. It blocks
-  instead of spinning, and that part is right.
-- `fps` and `idle_fps` as config, and a single env override. Real terminals need
-  tuning, and a knob is cheaper than a tier.
-- The body cache. It is what makes "just draw a frame" affordable.
-- The deep-idle crawl, just as one element's interval rather than a predicate
-  every branch repeats.
+- The tick. It is the housekeeping pump (`stream_buffer` is drained there), and
+  `handle_tick`'s twenty jobs are a separate, larger cleanup than this plan.
+- The `tokio::select!` loop. It blocks on input/bus/timer instead of spinning.
+- `fps` as config and one env override. Real terminals need tuning; that is the
+  knob a minimal model cannot replace.
+- The body cache, which is what makes "just draw a frame" affordable.
 
 ## Success criteria
 
-- Adding a time-dependent element touches one file, one enum arm, one test.
-- `redraw_interval` is `min` over the live set. No predicate chain, no named
-  reason table.
+- One timer, one draw path.
+- `wants_fast_tick()` is the only cadence question. No `redraw_interval*`, no
+  named reasons, no deep-idle predicate repeated in every branch.
 - No `PerformanceTier`.
-- One draw path.
-- `jcode-tui-anim` deleted or justified by more than decoration.
+- `jcode-tui-anim` deleted.
+- Adding a time-dependent element touches the element and at most one arm of
+  `wants_fast_tick`.
 
 ## Non-goals
 
-- **Not** touching input handling or the select loop's sources.
-- **Not** adding configuration. Phase 3 removes a key; nothing is added.
-- **Not** revisiting color. That is `limited-palette.md` and is already done.
-- **Not** a rewrite. Every phase is a deletion or a move, on top of current
-  behavior, with existing tests as the acceptance net.
+- **Not** making the tick event-driven. Draining `stream_buffer` on the tick is
+  load-bearing; moving it to a wake signal is a separate change with its own
+  risk, only worth it if the idle tick shows up in a profile.
+- **Not** rewriting `handle_tick`'s twenty jobs.
+- **Not** adding configuration. Phase 2 removes a key.
+- **Not** touching input handling, or color (`limited-palette.md`).
