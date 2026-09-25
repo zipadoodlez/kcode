@@ -27,10 +27,10 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 - Install and first run: `user/install.md`
 - Command surface: `user/cli.md`, `user/tui.md`
 - Hooks and terminal routing: `user/hooks.md`
-- Credentials and providers: `user/auth.md`
+- Providers and credentials: `user/providers.md`, `user/auth.md`
 - Remote attach over SSH: `user/ssh.md`
 - Architecture: `internals/architecture.md`
 - Swarm: `internals/swarm.md`
-- Providers and auth: `user/providers.md`, `user/auth.md`
+- Usage accounting: `internals/usage.md`
 - What the fork removed: `what-was-removed.md`
 - What is still in flight: `wip.md`

@@ -25,7 +25,7 @@ fn conifer_static_fallback_preserves_catalog_except_unverified_together_alias() 
 #[test]
 fn conifer_context_limits_match_public_catalog_snapshot() {
     // Exact observations from /v1/catalog, 2026-09-16. Source/hash and refresh
-    // policy are documented in docs/CONIFER_PROVIDER.md (issue #1274).
+    // policy are documented in docs/user/providers.md (issue #1274).
     let expected = [
         ("grok-4.6", 500_000),
         ("grok-4.5", 500_000),

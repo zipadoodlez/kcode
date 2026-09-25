@@ -50,10 +50,13 @@ The rebuild is in progress:
 - **Done**: `README.md` (index), `what-was-removed.md`, `message-voice.md`,
   `plans/limited-palette.md`, `user/hooks.md` (folded `HOOKS.md` +
   `SPAWN_HOOK.md`), `user/auth.md` (from `AUTH_CREDENTIAL_SOURCES.md`),
-  `user/ssh.md` (from `NATIVE_SSH.md`).
+  `user/ssh.md` (from `NATIVE_SSH.md`), `user/providers.md` (folded
+  `AWS_BEDROCK_PROVIDER.md` + `CONIFER_PROVIDER.md` + `PROVIDER_DOCTOR.md`),
+  `internals/usage.md` (folded `MODEL_USAGE.md` +
+  `CHATGPT_API_EQUIVALENT_USAGE.md`).
 - **Not written**: the rest of what the index promises under `user/` and
   `internals/`.
-- **Pending**: 33 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
+- **Pending**: 28 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
   awaiting rewrite into the new set or deletion.
 - **Code references docs that move**: `tui/app/input/newline.rs` names
   `docs/SHIFT_ENTER.md` and `tui/mod.rs` names

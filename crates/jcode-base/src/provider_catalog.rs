@@ -473,7 +473,7 @@ pub fn openai_compatible_profile_static_models(profile: OpenAiCompatibleProfile)
             // `nemotron-3-ultra-together` is absent from Conifer's public
             // catalog (2026-09-16). Do not advertise an unverified route or
             // borrow DeepInfra's limit. Explicit selection and live discovery
-            // remain supported. See docs/CONIFER_PROVIDER.md and issue #1274.
+            // remain supported. See docs/user/providers.md and issue #1274.
             push("nemotron-3-super-120b");
             push("nemotron-3.5-lightning");
             push("mistral-large-latest");
@@ -699,7 +699,7 @@ pub fn openai_compatible_profile_context_limit(profile_id: &str, model: &str) ->
 /// Exact route-specific observations from https://api.conifer.build/v1/catalog
 /// on 2026-09-16. These fill gaps in the shared family classifier, not global
 /// model guarantees. Live/disk catalog metadata takes precedence at runtime,
-/// including for mutable `*-latest` aliases. See docs/CONIFER_PROVIDER.md.
+/// including for mutable `*-latest` aliases. See docs/user/providers.md.
 fn conifer_context_limit(model: &str) -> Option<usize> {
     Some(match model {
         "grok-4.6" | "grok-4.5" => 500_000,

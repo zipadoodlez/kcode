@@ -2141,7 +2141,7 @@ pub fn format_strict_live_provider_model_coverage_summary(
     out.push_str(
         "    kcode provider-doctor <provider> --tier offline # wiring only, no key/spend\n",
     );
-    out.push_str("  See docs/PROVIDER_DOCTOR.md for the full guide.\n");
+    out.push_str("  See docs/user/providers.md for the full guide.\n");
     out.push_str(&format!("\nLedger: {}\n", summary.coverage_source));
 
     out
