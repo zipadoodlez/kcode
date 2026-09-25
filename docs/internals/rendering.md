@@ -7,26 +7,23 @@ compatibility, and the markdown parity contract.
 
 The built-in palette is hand-tuned and fixed. `default_palette_is_frozen` in
 `crates/jcode-tui-style/src/palette.rs` holds a redundant copy of every value and
-fails if one changes, because the repair pass reads those constants. Changing a
-default changes what every user sees on launch, so it must be a deliberate edit.
+fails if one changes. Changing a default changes what every user sees on launch,
+so it must be a deliberate edit.
 
-The TUI has no single palette: ~22 named semantic roles (`ALL_ROLES`), roughly
-250 ad hoc `rgb(...)` literals in widgets, and ratatui's named colors. Editing
-every call site would be permanently fragile, so substitution happens at the one
-point every color passes through, the rendered frame buffer. `adapt_buffer_for_display`
-(`crates/jcode-tui-style/src/theme_mode.rs`) runs in this order:
+Every color the TUI paints is one of ~22 named semantic roles (`ALL_ROLES`);
+widgets name a role, never an rgb value, and a CI guard
+(`crates/jcode-tui/tests/no_new_raw_rgb_literals.rs`) keeps it that way. Editing
+every call site to retheme would be fragile, so substitution happens at the one
+point every color passes through, the rendered frame buffer.
+`adapt_buffer_for_display` (`crates/jcode-tui-style/src/display.rs`) has one job:
+replace any buffer color equal to a role's default with that role's configured
+color. An unconfigured palette is a byte-identical no-op, guarded by tests.
 
-1. Attribute configured roles to their overrides.
-2. Adapt the colors left unconfigured for light/dark and surface contrast.
-3. Contrast-repair foreground and underline to a 7:1 target
-   (`TARGET_TEXT_CONTRAST`) on the cell's adapted background, including 256-color
-   quantization.
-
-The order matters. Overrides are matched against the original native colors
-*before* contrast repair; otherwise distinct muted grays converge and the `tool`,
-`dim`, and `pending` overrides become indistinguishable. A configured color is
-used exactly as given, even a deliberately low-contrast one. An unconfigured
-palette is a byte-identical no-op, guarded by tests.
+The theme is configuration, not detection. `display.theme` (or the `JCODE_THEME`
+env override) selects `dark` (the default) or `light`; `light` installs the baked
+light palette (`Role::light_rgb`), which was generated once from the removed
+light terminal transform. There is no terminal background query. `light`
+entries count as configured, so the display pass repaints the whole UI.
 
 Two consequences:
 
@@ -35,12 +32,7 @@ Two consequences:
   remap a cell twice and compound the offsets.
 - **Only role-tagged colors are configurable.** A buffer color equal to a role's
   default is replaced by that role's override, and ratatui named colors map to the
-  role they conventionally stand for. An ad hoc `rgb(...)` literal has no role, so
-  recoloring a role leaves it alone: give a shade a role if it should follow
-  `/colors`. `Color::Reset` is never substituted.
-
-`palette_literals.rs` is the corpus for the light-contrast tests, not a
-configurability claim; regenerate it when adding widgets with new shades.
+  role they conventionally stand for. `Color::Reset` is never substituted.
 
 ### Configuring colors
 

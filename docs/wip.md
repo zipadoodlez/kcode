@@ -10,7 +10,7 @@ git has the history.
 
 | plan | state | what's left |
 |---|---|---|
-| [plans/limited-palette.md](plans/limited-palette.md) | phase 2 of 5 done (all 697 literals collapsed onto the 22 roles; guard `BASELINE` empty and zero-tolerance) | next: bake light mode into a static theme and delete the light/derived-color machinery; then add `[display.palette]` (16 slots) and `/colors` slot editing. Default look is allowed to change |
+| [plans/limited-palette.md](plans/limited-palette.md) | phase 3 of 5 done (literals collapsed onto the 22 roles; light mode baked into a static palette; light/derived-color machinery deleted) | next: add `[display.palette]` (16 slots) and `/colors` slot editing. Default look is allowed to change |
 | [plans/tuistate-decomposition.md](plans/tuistate-decomposition.md) | analysis only, nothing extracted | refresh the 114-method categorization to the current 156, then extract leaf sub-traits one per commit starting with a single-file consumer, keeping `ui.rs` and `ui_viewport.rs` on the supertrait |
 | [plans/browser-provider-protocol.md](plans/browser-provider-protocol.md) | draft spec, no implementation | tighten the core method set and the normalized `page.snapshot` format before building any adapter |
 
@@ -36,6 +36,7 @@ git has the history.
 | irrelevant tests | the suite still covers removed features and carries many brittle pixel/color assertions. Collapse or delete rather than keep maintaining them |
 | ambient residue | `what-was-removed.md` says ambient is gone, but `safety.rs:86` still has `AmbientTranscript` and `save_transcript()` writes to `~/.kcode/ambient/`, `dispatch.rs:366` still routes `Command::Permissions`, `args.rs:303` leaves a dangling `#[command(subcommand)]` and ambient doc comment on `Permissions` (which has no subcommands), and `README.md:109` still documents it. Four-way disagreement; decide keep-and-document or delete |
 | `[dictation]` in README | `README.md:297` lists the section; the feature is gone, leaving four dead env names in `config.rs:59-62` |
+| prompt-entry animation | its color helpers were deleted with the derived colors, so `update_prompt_entry_animation` and the 450ms repaint window are now a no-op (the render loop in `ui_viewport.rs` is marked). Delete the animation, its state, the `display.prompt_entry_animation` config and perf-tier hook |
 
 ## Repo hygiene, no plan
 
