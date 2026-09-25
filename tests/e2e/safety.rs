@@ -77,33 +77,6 @@ fn test_safety_permission_flow() {
     assert_eq!(safety.pending_requests().len(), baseline);
 }
 
-/// Test safety system: transcript saving
-#[test]
-fn test_safety_transcript() {
-    use jcode::safety::{AmbientTranscript, SafetySystem, TranscriptStatus};
-
-    let safety = SafetySystem::new();
-
-    let transcript = AmbientTranscript {
-        session_id: "test_ambient_001".to_string(),
-        started_at: chrono::Utc::now(),
-        ended_at: Some(chrono::Utc::now()),
-        status: TranscriptStatus::Complete,
-        provider: "mock".to_string(),
-        model: "mock-model".to_string(),
-        actions: vec![],
-        pending_permissions: 0,
-        summary: Some("Test cycle completed".to_string()),
-        compactions: 0,
-        memories_modified: 3,
-        conversation: None,
-    };
-
-    // Should not panic
-    let result = safety.save_transcript(&transcript);
-    assert!(result.is_ok());
-}
-
 /// Test safety system: summary generation
 #[test]
 fn test_safety_summary_generation() {

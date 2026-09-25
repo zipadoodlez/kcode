@@ -28,6 +28,19 @@ The jcode.sh account, subscription and hosted-model surface:
   `support` modules
 - the "Jcode subscription" pill in the login-import summary
 
+## Ambient leftovers, removed later
+
+The fork cut ambient mode but left its CLI and transcript types behind. Now
+gone as well:
+
+- `kcode permissions` and the `jcode-tui-permissions` crate. With ambient mode
+  removed, nothing ever enqueued a permission request, so the review TUI was
+  unreachable.
+- The dangling `#[command(subcommand)]` and ambient doc comment on the
+  `Permissions` variant, which had no subcommands.
+- `AmbientTranscript` and `SafetySystem::save_transcript` in `jcode-base` (zero
+  callers).
+
 ## Deliberately kept
 
 - `/account` and `/accounts` - the multi-account picker for Claude and OpenAI.

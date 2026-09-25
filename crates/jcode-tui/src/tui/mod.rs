@@ -45,9 +45,6 @@ mod layout_utils;
 pub mod login_picker;
 pub mod markdown;
 mod memory_profile;
-pub mod permissions {
-    pub use jcode_tui_permissions::*;
-}
 mod redraw_schedule;
 #[allow(unused_imports)]
 pub(crate) use redraw_schedule::{

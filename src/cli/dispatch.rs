@@ -10,7 +10,7 @@ use super::args::{
     SessionCommand, TranscriptModeArg,
 };
 use crate::{
-    agent, auth, build, provider, provider_catalog, server, session, startup_profile, tui,
+    agent, auth, build, provider, provider_catalog, server, session, startup_profile,
 };
 
 use super::{acp, commands, debug, login, output, provider_init, terminal, tui_launch};
@@ -360,9 +360,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                 json,
             } => commands::run_session_rename_command(&session, name.as_deref(), clear, json)?,
         },
-        Some(Command::Permissions) => {
-            tui::permissions::run_permissions()?;
-        }
         Some(Command::Transcript {
             text,
             mode,

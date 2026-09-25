@@ -299,12 +299,6 @@ pub(crate) enum Command {
     #[command(subcommand)]
     Session(SessionCommand),
 
-    /// Ambient mode management
-    #[command(subcommand)]
-
-    /// Review and respond to pending ambient permission requests
-    Permissions,
-
     /// Inject externally transcribed text into the active Kcode TUI
     Transcript {
         /// Transcript text. If omitted, reads from stdin.

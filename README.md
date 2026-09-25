@@ -106,7 +106,6 @@ Top-level `kcode <command>`:
 | `model` | Model management: `list` |
 | `browser` | Browser automation setup and status |
 | `transcript` | Inject externally transcribed text into the active TUI |
-| `permissions` | Ambient-mode permission requests |
 | `restart` | Save/restore the set of open windows across a reboot |
 | `provider-test-coverage` | Live verification coverage summary |
 | `provider-doctor` | Walk end-to-end checkpoints to diagnose a broken provider/model |

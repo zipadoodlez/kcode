@@ -61,7 +61,7 @@ pub struct Decision {
 }
 
 // ---------------------------------------------------------------------------
-// Action log / transcript
+// Action log
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,34 +72,6 @@ pub struct ActionLog {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
     pub timestamp: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TranscriptStatus {
-    Complete,
-    Interrupted,
-    Incomplete,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AmbientTranscript {
-    pub session_id: String,
-    pub started_at: DateTime<Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ended_at: Option<DateTime<Utc>>,
-    pub status: TranscriptStatus,
-    pub provider: String,
-    pub model: String,
-    pub actions: Vec<ActionLog>,
-    pub pending_permissions: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub summary: Option<String>,
-    pub compactions: u32,
-    pub memories_modified: u32,
-    /// Full conversation transcript (markdown) for email notifications
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub conversation: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -303,15 +275,6 @@ impl SafetySystem {
         lines.join("\n")
     }
 
-    /// Persist a transcript to ~/.kcode/ambient/transcripts/{timestamp}.json
-    pub fn save_transcript(&self, transcript: &AmbientTranscript) -> Result<()> {
-        let dir = storage::jcode_dir()?.join("ambient").join("transcripts");
-        storage::ensure_dir(&dir)?;
-
-        let filename = transcript.started_at.format("%Y-%m-%d-%H%M%S").to_string();
-        let path = dir.join(format!("{}.json", filename));
-        storage::write_json(&path, transcript)
-    }
 }
 
 impl Default for SafetySystem {
