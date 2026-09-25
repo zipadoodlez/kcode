@@ -26,6 +26,7 @@ git has the history.
 |---|---|
 | `JCODE_*` env vars | the state dir is `~/.kcode` but the env prefix was never renamed. Decide: rename with a `JCODE_*` fallback, or document as-is |
 | dead SSH-block commands | `/theme`, `/stats`, `/file`, `/open`, `/permission`, `/permissions`, `/new-terminal`, `/debug-fixture` are blocked over SSH but have no handler anywhere, so they do nothing locally either |
+| `client:mermaid:*` debug help | `server/debug_help.rs` still lists ~9 mermaid/image debug commands after the mermaid removal. Some (`mermaid:ui-bench`) have a tester handler, so this needs verifying, not a blind delete |
 | `-p` vs `provider list` | `-p` accepts 52 provider choices; `provider list` prints 26. The extras are aliases and gateways with no catalog entry |
 | `/help <item>` coverage | written detail for 70 of 114 registered commands; the other 44 answer `Unknown command`, and there is no `/help list` |
 | packaging | `packaging/arch/PKGBUILD` does not exist, and the README install section points at it |
@@ -55,7 +56,8 @@ The rebuild is in progress:
   `internals/usage.md` (folded `MODEL_USAGE.md` +
   `CHATGPT_API_EQUIVALENT_USAGE.md`), `user/tui.md` (folded `SHIFT_ENTER.md` +
   `RESUME_BEHAVIOR.md`), `user/cli.md` (from `WRAPPERS.md`), `user/config.md`
-  (from `SYSTEM_PROMPT_CONFIG.md`).
+  (from `SYSTEM_PROMPT_CONFIG.md`), `internals/memory.md` (folded
+  `PROCESS_MEMORY_BUDGET.md` + `PROCESS_MEMORY_INCIDENT_RUNBOOK.md`).
 - **Not written**: the rest of what the index promises under `user/` and
   `internals/`.
 - **Install stays in the root README**: no `user/install.md`. The `## Install`
@@ -66,16 +68,13 @@ The rebuild is in progress:
   `openai_docs_reference_current_callback_uri` was repointed from
   `OAUTH.md`/`README.md` to `docs/user/providers.md` (it had been failing, since
   README never carried the callback URI).
-- **Pending**: 24 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
+- **Pending**: 22 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
   awaiting rewrite into the new set or deletion.
 - **Code references docs that move**: `tui/mod.rs` names
   `docs/TUISTATE_TRAIT_DECOMPOSITION.md`; update it when
   `plans/tuistate-decomposition.md` lands. The `jcode_docs` test
   `search_finds_relevant_version_matched_documentation` hardcodes
   `docs/SWARM_TASK_GRAPH.md`; repoint it when `internals/swarm.md` lands.
-  `server/debug_server_state.rs` emits
-  `docs/PROCESS_MEMORY_INCIDENT_RUNBOOK.md` in the incident report; repoint it
-  when `internals/memory.md` lands.
 - **Carry forward**: `internals/rendering.md` must re-state the markdown parity
   policy from the deleted `RENDER_PARITY_ACCEPTANCE_CRITERIA.md` - four levels
   (L1 content, L2 line-structure, L3 wrapped layout at widths 20/40/80, L4 style

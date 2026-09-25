@@ -32,6 +32,7 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 - Remote attach over SSH: `user/ssh.md`
 - Architecture: `internals/architecture.md`
 - Swarm: `internals/swarm.md`
+- Server memory: `internals/memory.md`
 - Usage accounting: `internals/usage.md`
 - What the fork removed: `what-was-removed.md`
 - What is still in flight: `wip.md`
