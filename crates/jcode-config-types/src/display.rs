@@ -46,8 +46,6 @@ pub struct DisplayConfig {
     pub pin_todos: bool,
     /// Show idle animation before first prompt (default: false)
     pub idle_animation: bool,
-    /// Briefly animate user prompt line when it enters viewport (default: true)
-    pub prompt_entry_animation: bool,
     /// Disable specific animation variants by name (e.g. ["donut", "orbit_rings"])
     pub disabled_animations: Vec<String>,
     /// Wrap long lines in the pinned diff pane (default: true)
@@ -133,7 +131,6 @@ impl Default for DisplayConfig {
             reasoning_display: Some(ReasoningDisplayMode::Full),
             markdown_spacing: MarkdownSpacingMode::default(),
             idle_animation: false,
-            prompt_entry_animation: true,
             disabled_animations: Vec::new(),
             diff_line_wrap: true,
             performance: String::new(),

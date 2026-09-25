@@ -466,12 +466,6 @@ impl crate::tui::TuiState for TestState {
     }
 }
 
-fn reset_prompt_viewport_state_for_test() {
-    TEST_PROMPT_VIEWPORT_STATE.with(|state| {
-        *state.borrow_mut() = PromptViewportState::default();
-    });
-}
-
 #[path = "basic.rs"]
 mod basic;
 #[path = "inline_picker.rs"]

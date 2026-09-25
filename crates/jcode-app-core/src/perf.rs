@@ -31,10 +31,6 @@ impl PerformanceTier {
     pub fn idle_animation_enabled(self) -> bool {
         matches!(self, Self::Full)
     }
-
-    pub fn prompt_entry_animation_enabled(self) -> bool {
-        !matches!(self, Self::Minimal)
-    }
 }
 
 impl std::fmt::Display for PerformanceTier {
@@ -712,15 +708,12 @@ mod tests {
     fn test_animation_gates() {
         assert!(PerformanceTier::Full.animations_enabled());
         assert!(PerformanceTier::Full.idle_animation_enabled());
-        assert!(PerformanceTier::Full.prompt_entry_animation_enabled());
 
         assert!(PerformanceTier::Reduced.animations_enabled());
         assert!(!PerformanceTier::Reduced.idle_animation_enabled());
-        assert!(PerformanceTier::Reduced.prompt_entry_animation_enabled());
 
         assert!(!PerformanceTier::Minimal.animations_enabled());
         assert!(!PerformanceTier::Minimal.idle_animation_enabled());
-        assert!(!PerformanceTier::Minimal.prompt_entry_animation_enabled());
     }
 
     #[test]

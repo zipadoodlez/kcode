@@ -557,23 +557,6 @@ pub(super) fn draw_messages(
         visible_batch_progress_hash,
     });
 
-    let now_ms = app.now_millis();
-    let policy = crate::perf::tui_policy();
-    let prompt_anim_enabled = crate::config::config().display.prompt_entry_animation
-        && policy.enable_decorative_animations
-        && policy.tier.prompt_entry_animation_enabled();
-    if prompt_anim_enabled {
-        update_prompt_entry_animation(wrapped_user_prompt_starts, scroll, visible_end, now_ms);
-    } else {
-        record_prompt_viewport(scroll, visible_end);
-    }
-
-    let active_prompt_anim = if prompt_anim_enabled {
-        active_prompt_entry_animation(now_ms)
-    } else {
-        None
-    };
-
     if visible_lines.len() < visible_height {
         visible_lines.extend(std::iter::repeat_n(
             Line::from(""),
@@ -582,34 +565,6 @@ pub(super) fn draw_messages(
     }
 
     clear_area(frame, area);
-
-    if let Some(anim) = active_prompt_anim {
-        let prompt_idx = lower_bound(wrapped_user_prompt_starts, anim.line_idx);
-        if prompt_idx < wrapped_user_prompt_starts.len()
-            && wrapped_user_prompt_starts[prompt_idx] == anim.line_idx
-        {
-            let prompt_end = wrapped_user_prompt_ends
-                .get(prompt_idx)
-                .copied()
-                .unwrap_or(anim.line_idx + 1);
-
-            for abs_idx in anim.line_idx.max(scroll)..prompt_end.min(visible_end) {
-                let rel_idx = abs_idx - scroll;
-                if let Some(line) = visible_lines.get_mut(rel_idx) {
-                    // ponytail: the prompt-entry color animation went with the
-                    // derived colors, so this is a no-op until the animation
-                    // and its state/timer are deleted too (tracked in wip.md).
-                    for span in &mut line.spans {
-                        if !span.content.is_empty() {
-                            let base_fg = span.style.fg.unwrap_or_else(user_text);
-                            let base_bg = span.style.bg.unwrap_or_else(user_bg);
-                            span.style = span.style.fg(base_fg).bg(base_bg);
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     if let Some(active) = &active_file_context {
         let highlight_style = Style::default().fg(file_link_color()).bold();

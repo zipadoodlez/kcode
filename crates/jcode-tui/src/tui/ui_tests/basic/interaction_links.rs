@@ -34,34 +34,6 @@ fn test_link_target_from_screen_returns_none_without_url() {
 }
 
 #[test]
-fn test_prompt_entry_animation_detects_newly_visible_prompt_line() {
-    reset_prompt_viewport_state_for_test();
-
-    // First frame initializes viewport history and should not animate.
-    update_prompt_entry_animation(&[5, 20], 0, 10, 1000);
-    assert!(active_prompt_entry_animation(1000).is_none());
-
-    // Scrolling down brings line 20 into view and should trigger animation.
-    update_prompt_entry_animation(&[5, 20], 15, 25, 1100);
-    let anim = active_prompt_entry_animation(1100).expect("expected active prompt animation");
-    assert_eq!(anim.line_idx, 20);
-}
-
-#[test]
-fn test_prompt_entry_animation_expires_after_window() {
-    reset_prompt_viewport_state_for_test();
-
-    update_prompt_entry_animation(&[5, 20], 0, 10, 2000);
-    update_prompt_entry_animation(&[5, 20], 15, 25, 2100);
-
-    assert!(active_prompt_entry_animation(2100).is_some());
-    assert!(
-        active_prompt_entry_animation(2100 + PROMPT_ENTRY_ANIMATION_MS + 1).is_none(),
-        "animation should expire after configured duration"
-    );
-}
-
-#[test]
 fn test_active_file_diff_context_resolves_visible_edit() {
     let prepared = PreparedMessages {
         wrapped_lines: vec![Line::from("a"); 20],

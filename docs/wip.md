@@ -36,7 +36,6 @@ git has the history.
 | irrelevant tests | the suite still covers removed features and carries many brittle pixel/color assertions. Collapse or delete rather than keep maintaining them |
 | ambient residue | `what-was-removed.md` says ambient is gone, but `safety.rs:86` still has `AmbientTranscript` and `save_transcript()` writes to `~/.kcode/ambient/`, `dispatch.rs:366` still routes `Command::Permissions`, `args.rs:303` leaves a dangling `#[command(subcommand)]` and ambient doc comment on `Permissions` (which has no subcommands), and `README.md:109` still documents it. Four-way disagreement; decide keep-and-document or delete |
 | `[dictation]` in README | `README.md:297` lists the section; the feature is gone, leaving four dead env names in `config.rs:59-62` |
-| prompt-entry animation | its color helpers were deleted with the derived colors, so `update_prompt_entry_animation` and the 450ms repaint window are now a no-op (the render loop in `ui_viewport.rs` is marked). Delete the animation, its state, the `display.prompt_entry_animation` config and perf-tier hook |
 
 ## Repo hygiene, no plan
 

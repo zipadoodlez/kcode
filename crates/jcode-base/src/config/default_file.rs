@@ -149,9 +149,6 @@ reasoning_display = "full"
 # Show idle animation before first prompt (default: false)
 idle_animation = false
 
-# Briefly animate a user prompt line when it enters the viewport (default: true)
-prompt_entry_animation = true
-
 # Render swarm/file-activity notifications in a compact single-line form
 # instead of the full multi-line card with diff preview (default: false)
 # compact_notifications = false

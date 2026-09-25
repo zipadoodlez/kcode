@@ -121,9 +121,9 @@ Each phase lowers `BASELINE`; the guard is the acceptance test.
    runtime mode. That is the only way left to reach the light palette once
    detection is gone. The baked values live in `Role::light_rgb`; `theme_mode.rs`
    became `display.rs` (palette application only); `theme_detect.rs` became
-   `palette_init.rs` (no terminal query). The prompt-entry animation's color
-   helpers are gone, but its state and 450ms timer are still wired up as a no-op
-   (tracked in wip.md).
+   `palette_init.rs` (no terminal query). The prompt-entry animation was then
+   deleted outright, along with `display.prompt_entry_animation` and the
+   `JCODE_PROMPT_ENTRY_ANIMATION` override.
 4. **Add the 16-slot layer.** `[display.palette]` with the 16 slots, the
    role->slot default table, and `/colors` editing slots (showing which roles
    share one). Done when a base16 theme pasted into config repaints the TUI.
