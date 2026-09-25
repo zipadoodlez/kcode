@@ -263,11 +263,31 @@ mod tests {
     fn corpus_includes_current_docs_but_not_plans() {
         assert!(JCODE_DOCS.iter().any(|(path, _)| *path == "README.md"));
         assert!(JCODE_DOCS.iter().any(|(path, _)| *path == "docs/README.md"));
+        // Recursion reaches subdirectories (see build.rs).
+        assert!(
+            JCODE_DOCS
+                .iter()
+                .any(|(path, _)| path.starts_with("docs/user/"))
+        );
         assert!(
             !JCODE_DOCS
                 .iter()
                 .any(|(path, _)| path.starts_with("docs/plans/"))
         );
+    }
+
+    #[test]
+    fn every_bundled_doc_has_a_heading_title() {
+        // `list` shows the first `# ` line as the title, so a doc without one is
+        // an untitled entry.
+        for (path, body) in JCODE_DOCS {
+            if path.starts_with("docs/") {
+                assert!(
+                    body.lines().any(|line| line.strip_prefix("# ").is_some()),
+                    "{path} has no `# ` title"
+                );
+            }
+        }
     }
 
     #[test]
