@@ -1,6 +1,9 @@
 use super::text::{truncate_chars, truncate_smart};
 use super::{AuthMethod, InfoWidgetData};
-use crate::tui::color_support::rgb;
+use jcode_tui_style::theme::{
+    accent_color, ai_color, border_color, dim_color, header_icon_color, header_name_color,
+    info_color, pending_color, system_message_color, user_color, warning_color,
+};
 use ratatui::prelude::*;
 
 pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
@@ -14,10 +17,10 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
     let max_len = inner.width.saturating_sub(2) as usize;
 
     let mut spans = vec![
-        Span::styled("⚡ ", Style::default().fg(jcode_tui_style::theme::info_color())),
+        Span::styled("⚡ ", Style::default().fg(info_color())),
         Span::styled(
             truncate_smart(&short_name, max_len.saturating_sub(2)),
-            Style::default().fg(jcode_tui_style::theme::system_message_color()).bold(),
+            Style::default().fg(system_message_color()).bold(),
         ),
     ];
 
@@ -46,7 +49,7 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
             let detail = truncate_smart(&parts.join(" · "), max_len.saturating_sub(2));
             lines.push(Line::from(vec![Span::styled(
                 detail,
-                Style::default().fg(jcode_tui_style::theme::pending_color()),
+                Style::default().fg(pending_color()),
             )]));
         }
     }
@@ -60,10 +63,10 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
     {
         let display = home_relative_dir(dir);
         let mut dir_spans = vec![
-            Span::styled(" ", Style::default().fg(jcode_tui_style::theme::info_color())),
+            Span::styled(" ", Style::default().fg(info_color())),
             Span::styled(
                 truncate_smart(&display, max_len.saturating_sub(2)),
-                Style::default().fg(jcode_tui_style::theme::pending_color()),
+                Style::default().fg(pending_color()),
             ),
         ];
         if let Some(branch) = data
@@ -74,7 +77,7 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         {
             dir_spans.push(Span::styled(
                 format!("  {}", truncate_chars(branch, 24)),
-                Style::default().fg(jcode_tui_style::theme::pending_color()),
+                Style::default().fg(pending_color()),
             ));
         }
         lines.push(Line::from(dir_spans));
@@ -87,22 +90,16 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         .filter(|s| !s.is_empty())
     {
         let mut provider_spans = vec![
-            Span::styled("☁ ", Style::default().fg(jcode_tui_style::theme::info_color())),
-            Span::styled(
-                provider.to_lowercase(),
-                Style::default().fg(jcode_tui_style::theme::info_color()),
-            ),
+            Span::styled("☁ ", Style::default().fg(info_color())),
+            Span::styled(provider.to_lowercase(), Style::default().fg(info_color())),
         ];
         if let Some(upstream) = data.upstream_provider.as_deref().map(str::trim)
             && !upstream.is_empty()
         {
-            provider_spans.push(Span::styled(
-                " -> ",
-                Style::default().fg(jcode_tui_style::theme::border_color()),
-            ));
+            provider_spans.push(Span::styled(" -> ", Style::default().fg(border_color())));
             provider_spans.push(Span::styled(
                 upstream.to_string(),
-                Style::default().fg(jcode_tui_style::theme::warning_color()),
+                Style::default().fg(warning_color()),
             ));
         }
         lines.push(Line::from(provider_spans));
@@ -115,39 +112,36 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         .filter(|s| !s.is_empty())
     {
         lines.push(Line::from(vec![
-            Span::styled("↔ ", Style::default().fg(jcode_tui_style::theme::info_color())),
-            Span::styled(
-                connection.to_lowercase(),
-                Style::default().fg(jcode_tui_style::theme::info_color()),
-            ),
+            Span::styled("↔ ", Style::default().fg(info_color())),
+            Span::styled(connection.to_lowercase(), Style::default().fg(info_color())),
         ]));
     }
 
     if data.auth_method != AuthMethod::Unknown {
         let (icon, label, color) = match data.auth_method {
-            AuthMethod::ApiKey => ("🔑", "API Key", jcode_tui_style::theme::header_name_color()),
-            AuthMethod::AnthropicOAuth => ("🔐", "OAuth", jcode_tui_style::theme::warning_color()),
-            AuthMethod::AnthropicApiKey => ("🔑", "API Key", jcode_tui_style::theme::header_name_color()),
-            AuthMethod::OpenAIOAuth => ("🔐", "OAuth", jcode_tui_style::theme::header_icon_color()),
-            AuthMethod::OpenAIApiKey => ("🔑", "API Key", jcode_tui_style::theme::header_name_color()),
-            AuthMethod::OpenRouterApiKey => ("🔑", "API Key", jcode_tui_style::theme::info_color()),
-            AuthMethod::OpenCodeApiKey => ("🔑", "API Key", jcode_tui_style::theme::info_color()),
-            AuthMethod::CopilotOAuth => ("🔐", "OAuth", jcode_tui_style::theme::ai_color()),
-            AuthMethod::GeminiOAuth => ("🔐", "OAuth", jcode_tui_style::theme::user_color()),
+            AuthMethod::ApiKey => ("🔑", "API Key", header_name_color()),
+            AuthMethod::AnthropicOAuth => ("🔐", "OAuth", warning_color()),
+            AuthMethod::AnthropicApiKey => ("🔑", "API Key", header_name_color()),
+            AuthMethod::OpenAIOAuth => ("🔐", "OAuth", header_icon_color()),
+            AuthMethod::OpenAIApiKey => ("🔑", "API Key", header_name_color()),
+            AuthMethod::OpenRouterApiKey => ("🔑", "API Key", info_color()),
+            AuthMethod::OpenCodeApiKey => ("🔑", "API Key", info_color()),
+            AuthMethod::CopilotOAuth => ("🔐", "OAuth", ai_color()),
+            AuthMethod::GeminiOAuth => ("🔐", "OAuth", user_color()),
             AuthMethod::Unknown => unreachable!(),
         };
 
         if let Some(ref upstream) = data.upstream_provider {
             lines.push(Line::from(vec![
                 Span::styled(format!("{} ", icon), Style::default().fg(color)),
-                Span::styled(label, Style::default().fg(jcode_tui_style::theme::pending_color())),
-                Span::styled(" via ", Style::default().fg(jcode_tui_style::theme::border_color())),
-                Span::styled(upstream.clone(), Style::default().fg(jcode_tui_style::theme::warning_color())),
+                Span::styled(label, Style::default().fg(pending_color())),
+                Span::styled(" via ", Style::default().fg(border_color())),
+                Span::styled(upstream.clone(), Style::default().fg(warning_color())),
             ]));
         } else {
             lines.push(Line::from(vec![
                 Span::styled(format!("{} ", icon), Style::default().fg(color)),
-                Span::styled(label, Style::default().fg(jcode_tui_style::theme::pending_color())),
+                Span::styled(label, Style::default().fg(pending_color())),
             ]));
         }
     }
@@ -157,10 +151,10 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         && tps > 0.1
     {
         lines.push(Line::from(vec![
-            Span::styled("⏱ ", Style::default().fg(jcode_tui_style::theme::info_color())),
+            Span::styled("⏱ ", Style::default().fg(info_color())),
             Span::styled(
                 format!("{:.1} t/s", tps),
-                Style::default().fg(jcode_tui_style::theme::pending_color()),
+                Style::default().fg(pending_color()),
             ),
         ]));
     }
@@ -185,7 +179,7 @@ pub(super) fn render_model_info(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
         } else {
             short_name
         },
-        Style::default().fg(jcode_tui_style::theme::header_name_color()).bold(),
+        Style::default().fg(header_name_color()).bold(),
     )];
 
     append_model_runtime_metadata(&mut spans, data);
@@ -197,7 +191,10 @@ pub(super) fn render_model_info(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
             format!("native {}", mode)
         };
         spans.push(Span::styled(" ", Style::default()));
-        spans.push(Span::styled(label, Style::default().fg(jcode_tui_style::theme::header_icon_color())));
+        spans.push(Span::styled(
+            label,
+            Style::default().fg(header_icon_color()),
+        ));
     }
 
     let mut lines = vec![Line::from(spans)];
@@ -221,29 +218,29 @@ pub(super) fn render_model_info(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
         {
             detail_spans.push(Span::styled(
                 provider.to_lowercase(),
-                Style::default().fg(jcode_tui_style::theme::info_color()),
+                Style::default().fg(info_color()),
             ));
         }
 
         if has_auth {
             let (icon, label, _color) = match data.auth_method {
-                AuthMethod::ApiKey => ("🔑", "API Key", jcode_tui_style::theme::header_name_color()),
-                AuthMethod::AnthropicOAuth => ("🔐", "OAuth", jcode_tui_style::theme::warning_color()),
-                AuthMethod::AnthropicApiKey => ("🔑", "API Key", jcode_tui_style::theme::header_name_color()),
-                AuthMethod::OpenAIOAuth => ("🔐", "OAuth", jcode_tui_style::theme::header_icon_color()),
-                AuthMethod::OpenAIApiKey => ("🔑", "API Key", jcode_tui_style::theme::header_name_color()),
-                AuthMethod::OpenRouterApiKey => ("🔑", "API Key", jcode_tui_style::theme::info_color()),
-                AuthMethod::OpenCodeApiKey => ("🔑", "API Key", jcode_tui_style::theme::info_color()),
-                AuthMethod::CopilotOAuth => ("🔐", "OAuth", jcode_tui_style::theme::ai_color()),
-                AuthMethod::GeminiOAuth => ("🔐", "OAuth", jcode_tui_style::theme::user_color()),
+                AuthMethod::ApiKey => ("🔑", "API Key", header_name_color()),
+                AuthMethod::AnthropicOAuth => ("🔐", "OAuth", warning_color()),
+                AuthMethod::AnthropicApiKey => ("🔑", "API Key", header_name_color()),
+                AuthMethod::OpenAIOAuth => ("🔐", "OAuth", header_icon_color()),
+                AuthMethod::OpenAIApiKey => ("🔑", "API Key", header_name_color()),
+                AuthMethod::OpenRouterApiKey => ("🔑", "API Key", info_color()),
+                AuthMethod::OpenCodeApiKey => ("🔑", "API Key", info_color()),
+                AuthMethod::CopilotOAuth => ("🔐", "OAuth", ai_color()),
+                AuthMethod::GeminiOAuth => ("🔐", "OAuth", user_color()),
                 AuthMethod::Unknown => unreachable!(),
             };
             if !detail_spans.is_empty() {
-                detail_spans.push(Span::styled(" · ", Style::default().fg(jcode_tui_style::theme::dim_color())));
+                detail_spans.push(Span::styled(" · ", Style::default().fg(dim_color())));
             }
             detail_spans.push(Span::styled(
                 format!("{} {}", icon, label),
-                Style::default().fg(jcode_tui_style::theme::pending_color()),
+                Style::default().fg(pending_color()),
             ));
         }
 
@@ -273,7 +270,7 @@ pub(super) fn render_model_info(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
             let detail = truncate_smart(&parts.join(" · "), max_len.saturating_sub(2));
             lines.push(Line::from(vec![Span::styled(
                 detail,
-                Style::default().fg(jcode_tui_style::theme::pending_color()),
+                Style::default().fg(pending_color()),
             )]));
         }
     }
@@ -290,7 +287,7 @@ fn append_model_runtime_metadata(spans: &mut Vec<Span<'static>>, data: &InfoWidg
         spans.push(Span::styled(" ", Style::default()));
         spans.push(Span::styled(
             format!("({effort})"),
-            Style::default().fg(jcode_tui_style::theme::warning_color()),
+            Style::default().fg(warning_color()),
         ));
     }
 
@@ -302,7 +299,7 @@ fn append_model_runtime_metadata(spans: &mut Vec<Span<'static>>, data: &InfoWidg
         spans.push(Span::styled(" ", Style::default()));
         spans.push(Span::styled(
             format!("[{tier}]"),
-            Style::default().fg(jcode_tui_style::theme::accent_color()).bold(),
+            Style::default().fg(accent_color()).bold(),
         ));
     }
 }

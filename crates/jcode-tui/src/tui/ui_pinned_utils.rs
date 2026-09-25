@@ -35,4 +35,3 @@ pub(super) fn estimate_side_panel_pane_area(
         .min(max_diff);
     Some(Rect::new(0, 0, diff_width, terminal_height))
 }
-

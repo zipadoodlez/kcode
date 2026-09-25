@@ -1,5 +1,8 @@
 use super::{InfoWidgetData, UsageInfo, UsageProvider};
-use crate::tui::color_support::rgb;
+use jcode_tui_style::theme::{
+    error_color, header_name_color, info_color, pending_color, success_color, user_bg,
+    warning_color,
+};
 use ratatui::prelude::*;
 use unicode_width::UnicodeWidthStr;
 
@@ -19,16 +22,16 @@ pub(super) fn render_usage_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
                     format_tokens(info.input_tokens),
                     format_tokens(info.output_tokens)
                 ),
-                Style::default().fg(jcode_tui_style::theme::pending_color()),
+                Style::default().fg(pending_color()),
             )])]
         }
         UsageProvider::CostBased => {
             vec![
                 Line::from(vec![
-                    Span::styled("💰 ", Style::default().fg(jcode_tui_style::theme::info_color())),
+                    Span::styled("💰 ", Style::default().fg(info_color())),
                     Span::styled(
                         format!("${:.4}", info.total_cost),
-                        Style::default().fg(jcode_tui_style::theme::header_name_color()).bold(),
+                        Style::default().fg(header_name_color()).bold(),
                     ),
                 ]),
                 Line::from(vec![Span::styled(
@@ -37,7 +40,7 @@ pub(super) fn render_usage_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
                         format_tokens(info.input_tokens),
                         format_tokens(info.output_tokens)
                     ),
-                    Style::default().fg(jcode_tui_style::theme::pending_color()),
+                    Style::default().fg(pending_color()),
                 )]),
             ]
         }
@@ -62,7 +65,7 @@ pub(super) fn render_usage_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
                 lines.push(Line::from(vec![Span::styled(
                     format!("{} limits", label),
                     Style::default()
-                        .fg(jcode_tui_style::theme::pending_color())
+                        .fg(pending_color())
                         .add_modifier(ratatui::style::Modifier::DIM),
                 )]));
             }
@@ -124,7 +127,7 @@ pub(super) fn render_usage_compact(
                 format_tokens(info.input_tokens),
                 format_tokens(info.output_tokens)
             ),
-            Style::default().fg(jcode_tui_style::theme::pending_color()),
+            Style::default().fg(pending_color()),
         )])];
     }
 
@@ -147,7 +150,7 @@ pub(super) fn render_usage_compact(
         lines.push(Line::from(vec![Span::styled(
             format!("{} limits", label),
             Style::default()
-                .fg(jcode_tui_style::theme::pending_color())
+                .fg(pending_color())
                 .add_modifier(ratatui::style::Modifier::DIM),
         )]));
     }
@@ -199,11 +202,11 @@ fn render_labeled_bar(
     usage_display_used: bool,
 ) -> Line<'static> {
     let color = if left_pct <= 20 {
-        jcode_tui_style::theme::error_color()
+        error_color()
     } else if left_pct <= 50 {
-        jcode_tui_style::theme::warning_color()
+        warning_color()
     } else {
-        jcode_tui_style::theme::success_color()
+        success_color()
     };
 
     const LABEL_WIDTH: usize = 7;
@@ -249,9 +252,9 @@ fn render_labeled_bar(
     let padded_label = format!("{visible_label:<label_width$}");
 
     Line::from(vec![
-        Span::styled(padded_label, Style::default().fg(jcode_tui_style::theme::pending_color())),
+        Span::styled(padded_label, Style::default().fg(pending_color())),
         Span::styled(bar_filled, Style::default().fg(color)),
-        Span::styled(bar_empty, Style::default().fg(jcode_tui_style::theme::user_bg())),
+        Span::styled(bar_empty, Style::default().fg(user_bg())),
         Span::styled(suffix, Style::default().fg(color)),
     ])
 }
@@ -306,7 +309,7 @@ mod tests {
 
         assert!(line_text(&left).contains("15% left"));
         assert!(line_text(&used).contains("85% used"));
-        assert_eq!(left.spans[1].style.fg, Some(jcode_tui_style::theme::error_color()));
+        assert_eq!(left.spans[1].style.fg, Some(error_color()));
         assert_eq!(used.spans[1].style.fg, left.spans[1].style.fg);
     }
 
@@ -363,11 +366,11 @@ pub(super) fn render_usage_pill(
         .clamp(0.0, 100.0) as u8;
     let left_pct = 100u8.saturating_sub(used_pct);
     let used_color = if left_pct <= 20 {
-        jcode_tui_style::theme::error_color()
+        error_color()
     } else if left_pct <= 50 {
-        jcode_tui_style::theme::warning_color()
+        warning_color()
     } else {
-        jcode_tui_style::theme::success_color()
+        success_color()
     };
 
     let empty_cells = bar_width.saturating_sub(used_cells);
@@ -379,7 +382,7 @@ pub(super) fn render_usage_pill(
     if empty_cells > 0 {
         spans.push(Span::styled(
             "▱".repeat(empty_cells),
-            Style::default().fg(jcode_tui_style::theme::user_bg()),
+            Style::default().fg(user_bg()),
         ));
     }
     Line::from(spans)
@@ -401,11 +404,11 @@ pub(super) fn render_context_usage_line(
         .clamp(0.0, 100.0) as u8;
     let left_pct = 100u8.saturating_sub(used_pct);
     let token_color = if left_pct <= 20 {
-        jcode_tui_style::theme::error_color()
+        error_color()
     } else if left_pct <= 50 {
-        jcode_tui_style::theme::warning_color()
+        warning_color()
     } else {
-        jcode_tui_style::theme::success_color()
+        success_color()
     };
 
     let label_width = UnicodeWidthStr::width(label);
@@ -414,7 +417,7 @@ pub(super) fn render_context_usage_line(
     let bar_width = width.saturating_sub((label_width + 1 + tokens_width + 1) as u16);
 
     let mut spans = vec![
-        Span::styled(format!("{label} "), Style::default().fg(jcode_tui_style::theme::pending_color())),
+        Span::styled(format!("{label} "), Style::default().fg(pending_color())),
         Span::styled(
             format!("{tokens} "),
             Style::default().fg(token_color).bold(),

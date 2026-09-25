@@ -13,6 +13,7 @@ use crate::import::repo_ranking::{self, SessionLocation};
 use crate::tui::session_picker::{SessionPicker, load_sessions};
 use chrono::Utc;
 use crossterm::event::KeyCode;
+use jcode_tui_style::theme::accent_color;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -819,7 +820,7 @@ impl App {
     fn onboarding_start_choice_banner_lines() -> Vec<ratatui::text::Line<'static>> {
         use ratatui::style::{Color, Modifier, Style};
         use ratatui::text::{Line, Span};
-        let accent = jcode_tui_style::theme::accent_color();
+        let accent = accent_color();
         vec![
             Line::from(vec![Span::styled(
                 "Welcome to jcode 🎉",

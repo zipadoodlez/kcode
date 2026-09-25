@@ -1,4 +1,5 @@
 use super::*;
+use jcode_tui_style::theme::file_link_color;
 mod ui_pinned_table;
 use ui_pinned_table::is_rendered_table_line;
 
@@ -89,7 +90,6 @@ struct SidePanelRenderCacheState {
     entries: HashMap<SidePanelRenderKey, PinnedRenderedCache>,
     order: VecDeque<SidePanelRenderKey>,
 }
-
 
 /// Side-panel render cache statistics, surfaced by the debug socket and the
 /// visual-debug capture.
@@ -618,7 +618,7 @@ pub(super) fn draw_pinned_content_cached(
     title_parts.push(Span::styled(
         "Pinned",
         Style::default()
-            .fg(jcode_tui_style::theme::file_link_color())
+            .fg(file_link_color())
             .add_modifier(ratatui::style::Modifier::BOLD),
     ));
     title_parts.push(Span::styled(" ", Style::default().fg(dim_color())));
@@ -690,7 +690,7 @@ pub(super) fn draw_pinned_content_cached(
                         Span::styled(
                             short_path,
                             Style::default()
-                                .fg(jcode_tui_style::theme::file_link_color())
+                                .fg(file_link_color())
                                 .add_modifier(ratatui::style::Modifier::BOLD),
                         ),
                         Span::styled(" (", Style::default().fg(dim_color())),
@@ -802,7 +802,6 @@ pub(super) fn draw_pinned_content_cached(
         Paragraph::new(visible_lines)
     };
     frame.render_widget(paragraph, inner);
-
 }
 
 pub(super) fn draw_side_panel_markdown(
@@ -842,7 +841,7 @@ pub(super) fn draw_side_panel_markdown(
     title_parts.push(Span::styled(
         page.title.clone(),
         Style::default()
-            .fg(jcode_tui_style::theme::file_link_color())
+            .fg(file_link_color())
             .add_modifier(ratatui::style::Modifier::BOLD),
     ));
     title_parts.push(Span::styled(
@@ -973,12 +972,8 @@ fn render_side_panel_markdown_cached(
         debug.stats.render_cache_misses += 1;
     });
 
-    let rendered_markdown = render_side_panel_markdown_lines_cached(
-        page,
-        content_signature,
-        inner.width,
-        centered,
-    );
+    let rendered_markdown =
+        render_side_panel_markdown_lines_cached(page, content_signature, inner.width, centered);
 
     let align = if centered {
         Alignment::Center

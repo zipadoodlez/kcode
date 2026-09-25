@@ -1802,7 +1802,7 @@ pub(in crate::tui::app) fn handle_server_event(
                         // frame re-registers the preview
                         // (markdown_render_full.rs set_streaming_preview_diagram).
                         if !session_changed {
-                                        // A rewind (or rewind-undo) re-apply can race a
+                            // A rewind (or rewind-undo) re-apply can race a
                             // stale `Done` from the just-finished turn: the
                             // History payload is written directly to the
                             // socket by handle_get_history while the Done is

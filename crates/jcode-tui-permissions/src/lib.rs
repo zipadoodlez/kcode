@@ -3,7 +3,10 @@ use chrono::Utc;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use jcode_base::safety::{self, PermissionRequest, Urgency};
 use jcode_core::util::truncate_str;
-use jcode_tui_style::rgb;
+use jcode_tui_style::theme::{
+    border_color, dim_color, error_color, header_name_color, info_color, pending_color,
+    selection_bg_color, success_color, tool_color, user_bg, warning_color,
+};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -124,7 +127,7 @@ impl PermissionsApp {
             )
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(jcode_tui_style::theme::dim_color()));
+            .border_style(Style::default().fg(dim_color()));
         let inner = outer.inner(area);
         frame.render_widget(outer, area);
 
@@ -155,9 +158,9 @@ impl PermissionsApp {
             let cursor = if is_selected { "❯" } else { " " };
 
             let (urgency_icon, urgency_color) = match req.urgency {
-                Urgency::High => ("●", jcode_tui_style::theme::error_color()),
-                Urgency::Normal => ("●", jcode_tui_style::theme::warning_color()),
-                Urgency::Low => ("○", jcode_tui_style::theme::tool_color()),
+                Urgency::High => ("●", error_color()),
+                Urgency::Normal => ("●", warning_color()),
+                Urgency::Low => ("○", tool_color()),
             };
 
             let age = format_age(now - req.created_at);
@@ -167,13 +170,13 @@ impl PermissionsApp {
                     .fg(Color::White)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(jcode_tui_style::theme::header_name_color())
+                Style::default().fg(header_name_color())
             };
 
             let desc_style = if is_selected {
-                Style::default().fg(jcode_tui_style::theme::pending_color())
+                Style::default().fg(pending_color())
             } else {
-                Style::default().fg(jcode_tui_style::theme::tool_color())
+                Style::default().fg(tool_color())
             };
 
             let urgency_label = match req.urgency {
@@ -193,9 +196,9 @@ impl PermissionsApp {
                 Span::styled(
                     format!(" {} ", cursor),
                     Style::default().fg(if is_selected {
-                        jcode_tui_style::theme::info_color()
+                        info_color()
                     } else {
-                        jcode_tui_style::theme::selection_bg_color()
+                        selection_bg_color()
                     }),
                 ),
                 Span::styled(
@@ -204,7 +207,7 @@ impl PermissionsApp {
                 ),
                 Span::styled(action_text, action_style),
                 Span::raw(padding),
-                Span::styled(format!("{} ", age), Style::default().fg(jcode_tui_style::theme::border_color())),
+                Span::styled(format!("{} ", age), Style::default().fg(border_color())),
             ]));
 
             let desc_text = truncate(&req.description, area.width.saturating_sub(8) as usize);
@@ -233,7 +236,7 @@ impl PermissionsApp {
 
     fn render_separator(&self, frame: &mut Frame, area: Rect) {
         let sep = "─".repeat(area.width as usize);
-        let line = Line::from(Span::styled(sep, Style::default().fg(jcode_tui_style::theme::selection_bg_color())));
+        let line = Line::from(Span::styled(sep, Style::default().fg(selection_bg_color())));
         frame.render_widget(Paragraph::new(vec![line]), area);
     }
 
@@ -245,9 +248,9 @@ impl PermissionsApp {
         let mut lines: Vec<Line<'static>> = Vec::new();
 
         let label_style = Style::default()
-            .fg(jcode_tui_style::theme::info_color())
+            .fg(info_color())
             .add_modifier(Modifier::BOLD);
-        let value_style = Style::default().fg(jcode_tui_style::theme::header_name_color());
+        let value_style = Style::default().fg(header_name_color());
         let review = extract_permission_review(req);
 
         push_wrapped_field(
@@ -363,23 +366,23 @@ impl PermissionsApp {
 
         lines.push(Line::from(vec![
             Span::styled(" ID: ", label_style),
-            Span::styled(req.id.clone(), Style::default().fg(jcode_tui_style::theme::border_color())),
+            Span::styled(req.id.clone(), Style::default().fg(border_color())),
         ]));
 
         lines.push(Line::from(vec![
             Span::styled(" Created: ", label_style),
             Span::styled(
                 req.created_at.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
-                Style::default().fg(jcode_tui_style::theme::border_color()),
+                Style::default().fg(border_color()),
             ),
         ]));
 
         if req.wait {
             lines.push(Line::from(vec![
-                Span::styled(" ⏳ ", Style::default().fg(jcode_tui_style::theme::warning_color())),
+                Span::styled(" ⏳ ", Style::default().fg(warning_color())),
                 Span::styled(
                     "Agent is waiting for this decision",
-                    Style::default().fg(jcode_tui_style::theme::warning_color()),
+                    Style::default().fg(warning_color()),
                 ),
             ]));
         }
@@ -390,7 +393,7 @@ impl PermissionsApp {
                 Span::styled(
                     " Deny reason: ",
                     Style::default()
-                        .fg(jcode_tui_style::theme::error_color())
+                        .fg(error_color())
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(format!("{}▌", deny_text), Style::default().fg(Color::White)),
@@ -422,12 +425,9 @@ impl PermissionsApp {
                 let mut s = vec![
                     Span::styled(
                         format!(" {} ", key),
-                        Style::default().fg(jcode_tui_style::theme::user_bg()).bg(jcode_tui_style::theme::info_color()),
+                        Style::default().fg(user_bg()).bg(info_color()),
                     ),
-                    Span::styled(
-                        format!(" {} ", desc),
-                        Style::default().fg(jcode_tui_style::theme::pending_color()),
-                    ),
+                    Span::styled(format!(" {} ", desc), Style::default().fg(pending_color())),
                 ];
                 if i < help_items.len() - 1 {
                     s.push(Span::raw("  "));
@@ -449,7 +449,7 @@ impl PermissionsApp {
             )
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(jcode_tui_style::theme::dim_color()));
+            .border_style(Style::default().fg(dim_color()));
         let inner = outer.inner(area);
         frame.render_widget(outer, area);
 
@@ -457,12 +457,12 @@ impl PermissionsApp {
             Line::raw(""),
             Line::from(Span::styled(
                 "  No pending permission requests.",
-                Style::default().fg(jcode_tui_style::theme::tool_color()),
+                Style::default().fg(tool_color()),
             )),
             Line::raw(""),
             Line::from(Span::styled(
                 "  Press q to quit.",
-                Style::default().fg(jcode_tui_style::theme::dim_color()),
+                Style::default().fg(dim_color()),
             )),
         ];
         frame.render_widget(Paragraph::new(lines), inner);
@@ -478,7 +478,7 @@ impl PermissionsApp {
             )
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(jcode_tui_style::theme::dim_color()));
+            .border_style(Style::default().fg(dim_color()));
         let inner = outer.inner(area);
         frame.render_widget(outer, area);
 
@@ -487,20 +487,20 @@ impl PermissionsApp {
         if self.approved_count > 0 {
             lines.push(Line::from(vec![Span::styled(
                 format!("  ✓ {} approved", self.approved_count),
-                Style::default().fg(jcode_tui_style::theme::success_color()),
+                Style::default().fg(success_color()),
             )]));
         }
         if self.denied_count > 0 {
             lines.push(Line::from(vec![Span::styled(
                 format!("  ✗ {} denied", self.denied_count),
-                Style::default().fg(jcode_tui_style::theme::error_color()),
+                Style::default().fg(error_color()),
             )]));
         }
 
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
             "  Done! Press any key to exit.",
-            Style::default().fg(jcode_tui_style::theme::pending_color()),
+            Style::default().fg(pending_color()),
         )));
 
         frame.render_widget(Paragraph::new(lines), inner);

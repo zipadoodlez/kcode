@@ -13,10 +13,14 @@ use crate::tui::detect_kv_cache_problem;
 use crate::tui::info_widget::occasional_status_tip;
 use crate::tui::layout_utils;
 use crate::tui::session_facts;
+use jcode_tui_style::theme::{
+    border_color, error_color, file_link_color, header_icon_color, header_name_color,
+    header_session_color, info_color, success_color, system_message_color, user_bg,
+};
 use ratatui::{prelude::*, style::Modifier, widgets::Paragraph};
 
 fn shell_mode_color() -> Color {
-    jcode_tui_style::theme::ai_color()
+    ai_color()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -141,7 +145,7 @@ pub(super) fn draw_prompt_history_search_overlay(
 
     let accent = Style::default().fg(jcode_tui_style::theme::warning_color());
     let dim = Style::default().fg(dim_color());
-    let normal = Style::default().fg(jcode_tui_style::theme::header_icon_color());
+    let normal = Style::default().fg(header_icon_color());
 
     let mut lines: Vec<Line<'static>> = Vec::new();
     lines.push(Line::from(vec![
@@ -296,7 +300,7 @@ fn command_suggestion_lines(
             let command_style = if is_selected {
                 Style::default().fg(jcode_tui_style::theme::warning_color())
             } else {
-                Style::default().fg(jcode_tui_style::theme::header_icon_color())
+                Style::default().fg(header_icon_color())
             };
             let mut spans = highlight(cmd, command_style);
             spans.push(Span::styled(format!("  {}", desc), description_style));
@@ -379,7 +383,7 @@ pub(crate) fn brighten_command_color(color: Option<Color>) -> Color {
             let lift = |c: u8| -> u8 { c.saturating_add((255 - c) / 2) };
             rgb(lift(r), lift(g), lift(b))
         }
-        _ => jcode_tui_style::theme::header_session_color(),
+        _ => header_session_color(),
     }
 }
 
@@ -811,13 +815,13 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
             format!("{}s", secs)
         };
         Line::from(vec![
-            Span::styled(spinner, Style::default().fg(jcode_tui_style::theme::queued_color())),
+            Span::styled(spinner, Style::default().fg(queued_color())),
             Span::styled(
                 format!(
                     " Rate limited. Auto-retry in {}...{}",
                     time_str, queued_suffix
                 ),
-                Style::default().fg(jcode_tui_style::theme::queued_color()),
+                Style::default().fg(queued_color()),
             ),
         ])
     } else if app.is_processing() {
@@ -850,15 +854,15 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
                     .connection_phase_elapsed()
                     .map_or(elapsed, |d| d.as_secs_f32());
                 let label_color = match phase {
-                    crate::message::ConnectionPhase::Retrying { .. } => jcode_tui_style::theme::queued_color(),
+                    crate::message::ConnectionPhase::Retrying { .. } => queued_color(),
                     crate::message::ConnectionPhase::Authenticating if phase_elapsed > 10.0 => {
-                        jcode_tui_style::theme::queued_color()
+                        queued_color()
                     }
                     crate::message::ConnectionPhase::Connecting if phase_elapsed > 10.0 => {
-                        jcode_tui_style::theme::queued_color()
+                        queued_color()
                     }
                     crate::message::ConnectionPhase::SendingRequest if phase_elapsed > 10.0 => {
-                        jcode_tui_style::theme::queued_color()
+                        queued_color()
                     }
                     _ => dim_color(),
                 };
@@ -919,14 +923,14 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
             }
             ProcessingStatus::WaitingForNetwork { listener } => {
                 let mut spans = vec![
-                    Span::styled("↻ ", Style::default().fg(jcode_tui_style::theme::queued_color())),
+                    Span::styled("↻ ", Style::default().fg(queued_color())),
                     Span::styled(
                         format!(
                             "network disconnected, waiting to retry · {} · {}",
                             listener,
                             format_elapsed(elapsed)
                         ),
-                        Style::default().fg(jcode_tui_style::theme::queued_color()),
+                        Style::default().fg(queued_color()),
                     ),
                 ];
                 push_queued_suffix(&mut spans, &queued_suffix);
@@ -973,7 +977,7 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
                 if let Some(notice) = experimental_notice {
                     spans.push(Span::styled(
                         format!(" · ⚠ {}", notice),
-                        Style::default().fg(jcode_tui_style::theme::queued_color()).bold(),
+                        Style::default().fg(queued_color()).bold(),
                     ));
                 }
 
@@ -1005,13 +1009,13 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
                     };
                     spans.push(Span::styled(
                         format!(" · ⚠ {} cache miss", miss_str),
-                        Style::default().fg(jcode_tui_style::theme::queued_color()),
+                        Style::default().fg(queued_color()),
                     ));
                 }
 
                 spans.push(Span::styled(
                     format!(" · {} bg", jcode_tui_core::keybind::alt_chord("B")),
-                    Style::default().fg(jcode_tui_style::theme::border_color()),
+                    Style::default().fg(border_color()),
                 ));
 
                 push_queued_suffix(&mut spans, &queued_suffix);
@@ -1034,9 +1038,9 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
                 .unwrap_or(1_000_000);
             let warning_color =
                 if total >= severe_token_threshold || app.session_compaction_count() >= 3 {
-                    jcode_tui_style::theme::error_color()
+                    error_color()
                 } else {
-                    jcode_tui_style::theme::queued_color()
+                    queued_color()
                 };
             Line::from(vec![
                 Span::styled("⚠ ", Style::default().fg(warning_color)),
@@ -1112,7 +1116,7 @@ fn streaming_status_spans(
     spans.push(Span::styled(
         format!(" {}", status_text),
         Style::default().fg(if has_warning {
-            jcode_tui_style::theme::queued_color()
+            queued_color()
         } else {
             dim_color()
         }),
@@ -1124,6 +1128,7 @@ fn streaming_status_spans(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jcode_tui_style::theme::tool_color;
     use ratatui::style::Modifier;
 
     #[test]
@@ -1419,7 +1424,7 @@ mod tests {
     #[test]
     fn batch_progress_spans_use_batch_chroma_for_initial_count() {
         let mut spans = Vec::new();
-        let anim_color = jcode_tui_style::theme::user_bg();
+        let anim_color = user_bg();
 
         append_batch_progress_spans(&mut spans, anim_color, None, Some(3));
 
@@ -1435,7 +1440,7 @@ mod tests {
 
         append_batch_progress_spans(
             &mut spans,
-            jcode_tui_style::theme::tool_color(),
+            tool_color(),
             Some(crate::bus::BatchProgress {
                 session_id: "s".to_string(),
                 tool_call_id: "tc".to_string(),
@@ -1459,7 +1464,7 @@ mod tests {
 
         append_batch_progress_spans(
             &mut spans,
-            jcode_tui_style::theme::tool_color(),
+            tool_color(),
             Some(crate::bus::BatchProgress {
                 session_id: "s".to_string(),
                 tool_call_id: "tc".to_string(),
@@ -1482,7 +1487,7 @@ mod tests {
 
         append_batch_progress_spans(
             &mut spans,
-            jcode_tui_style::theme::tool_color(),
+            tool_color(),
             Some(crate::bus::BatchProgress {
                 session_id: "s".to_string(),
                 tool_call_id: "tc".to_string(),
@@ -1512,7 +1517,7 @@ mod tests {
 
         append_batch_progress_spans(
             &mut spans,
-            jcode_tui_style::theme::tool_color(),
+            tool_color(),
             Some(crate::bus::BatchProgress {
                 session_id: "s".to_string(),
                 tool_call_id: "tc".to_string(),
@@ -1701,7 +1706,7 @@ mod tests {
 
     #[test]
     fn shell_mode_color_is_distinct() {
-        assert_eq!(shell_mode_color(), jcode_tui_style::theme::ai_color());
+        assert_eq!(shell_mode_color(), ai_color());
     }
 
     #[test]
@@ -1751,7 +1756,10 @@ pub(super) fn build_notification_spans(app: &dyn TuiState) -> Vec<Span<'static>>
         } else {
             format!("{} selection · drag to copy", pane_label)
         };
-        spans.push(Span::styled(label, Style::default().fg(jcode_tui_style::theme::header_icon_color())));
+        spans.push(Span::styled(
+            label,
+            Style::default().fg(header_icon_color()),
+        ));
     }
 
     if let Some(flicker_notice) = super::recent_flicker_ui_notice() {
@@ -1777,12 +1785,12 @@ pub(super) fn build_notification_spans(app: &dyn TuiState) -> Vec<Span<'static>>
         push_sep(&mut spans);
         spans.push(Span::styled(
             flicker_notice.summary,
-            Style::default().fg(jcode_tui_style::theme::queued_color()),
+            Style::default().fg(queued_color()),
         ));
         push_sep(&mut spans);
         spans.push(Span::styled(
             flicker_notice.hint,
-            Style::default().fg(jcode_tui_style::theme::info_color()),
+            Style::default().fg(info_color()),
         ));
         spans.push(Span::raw(" "));
         if let Some(success) = copy_badge_ui.feedback_for_key(key, copy_badge_now) {
@@ -1825,7 +1833,7 @@ pub(super) fn build_notification_spans(app: &dyn TuiState) -> Vec<Span<'static>>
         push_sep(&mut spans);
         spans.push(Span::styled(
             normalize_repaint_sensitive_notice_text(&hint),
-            Style::default().fg(jcode_tui_style::theme::accent_color()).bold(),
+            Style::default().fg(accent_color()).bold(),
         ));
     }
 
@@ -1835,7 +1843,7 @@ pub(super) fn build_notification_spans(app: &dyn TuiState) -> Vec<Span<'static>>
         push_sep(&mut spans);
         spans.push(Span::styled(
             normalize_repaint_sensitive_notice_text(&feedback),
-            Style::default().fg(jcode_tui_style::theme::header_icon_color()),
+            Style::default().fg(header_icon_color()),
         ));
     }
 
@@ -1857,7 +1865,7 @@ pub(super) fn build_notification_spans(app: &dyn TuiState) -> Vec<Span<'static>>
                 push_sep(&mut spans);
                 spans.push(Span::styled(
                     format!("🧊 cache cold{}", tokens_str),
-                    Style::default().fg(jcode_tui_style::theme::info_color()),
+                    Style::default().fg(info_color()),
                 ));
                 // Small gray "how long ago it went cold" hint, e.g. `1h 1m`.
                 spans.push(Span::styled(
@@ -1889,7 +1897,7 @@ pub(super) fn build_notification_spans(app: &dyn TuiState) -> Vec<Span<'static>>
                 push_sep(&mut spans);
                 spans.push(Span::styled(
                     format!("⏳ cache {}{}", time_str, tokens_str),
-                    Style::default().fg(jcode_tui_style::theme::queued_color()),
+                    Style::default().fg(queued_color()),
                 ));
             }
         }
@@ -1899,7 +1907,7 @@ pub(super) fn build_notification_spans(app: &dyn TuiState) -> Vec<Span<'static>>
         push_sep(&mut spans);
         spans.push(Span::styled(
             "📋 stash",
-            Style::default().fg(jcode_tui_style::theme::queued_color()),
+            Style::default().fg(queued_color()),
         ));
     }
 
@@ -1931,14 +1939,14 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
     }
     let data = app.info_widget_data();
 
-    let sep = || Span::styled(" · ", Style::default().fg(jcode_tui_style::theme::border_color()));
+    let sep = || Span::styled(" · ", Style::default().fg(border_color()));
 
     // The countdown is the priority affordance: it explains the line exists and
     // is going away. Build it first so it always gets space on the right edge.
     let countdown: Option<Span> = app.chat_overscroll_remaining().map(|secs| {
         Span::styled(
             format!("(overscroll {:.1})", secs.max(0.0)),
-            Style::default().fg(jcode_tui_style::theme::pending_color()).italic(),
+            Style::default().fg(pending_color()).italic(),
         )
     });
 
@@ -1953,7 +1961,7 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
     if !model.is_empty() && !overscroll_is_placeholder(&model) {
         spans.push(Span::styled(
             session_facts::pretty_model(&model),
-            Style::default().fg(jcode_tui_style::theme::system_message_color()).bold(),
+            Style::default().fg(system_message_color()).bold(),
         ));
         // Reasoning level shown inline next to the model, e.g. " high".
         if let Some(effort) = data
@@ -1963,7 +1971,7 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         {
             spans.push(Span::styled(
                 format!(" {}", effort),
-                Style::default().fg(jcode_tui_style::theme::pending_color()),
+                Style::default().fg(pending_color()),
             ));
         }
     }
@@ -1980,7 +1988,7 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         }
         spans.push(Span::styled(
             overscroll_provider_display(&provider),
-            Style::default().fg(jcode_tui_style::theme::info_color()),
+            Style::default().fg(info_color()),
         ));
     }
 
@@ -2003,7 +2011,7 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
                 overscroll_format_tokens(used),
                 overscroll_format_tokens(limit)
             ),
-            Style::default().fg(jcode_tui_style::theme::pending_color()),
+            Style::default().fg(pending_color()),
         ));
         spans.extend(overscroll_context_bar(used, limit, 10));
     }
@@ -2014,12 +2022,12 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         if !spans.is_empty() {
             spans.push(sep());
         }
-        spans.push(Span::styled(" ", Style::default().fg(jcode_tui_style::theme::info_color())));
-        spans.push(Span::styled(dir, Style::default().fg(jcode_tui_style::theme::pending_color())));
+        spans.push(Span::styled(" ", Style::default().fg(info_color())));
+        spans.push(Span::styled(dir, Style::default().fg(pending_color())));
         if let Some(branch) = overscroll_git_branch(&data) {
             spans.push(Span::styled(
                 format!("  {branch}"),
-                Style::default().fg(jcode_tui_style::theme::pending_color()),
+                Style::default().fg(pending_color()),
             ));
         }
     }
@@ -2124,7 +2132,7 @@ fn overscroll_truncate_spans(spans: Vec<Span<'static>>, max_width: usize) -> Vec
         }
         break;
     }
-    out.push(Span::styled("…", Style::default().fg(jcode_tui_style::theme::border_color())));
+    out.push(Span::styled("…", Style::default().fg(border_color())));
     out
 }
 
@@ -2193,15 +2201,15 @@ fn overscroll_auth_label(
     match method {
         AuthMethod::Unknown => None,
         AuthMethod::ApiKey | AuthMethod::AnthropicApiKey | AuthMethod::OpenAIApiKey => {
-            Some(("API key", jcode_tui_style::theme::header_name_color()))
+            Some(("API key", header_name_color()))
         }
         AuthMethod::OpenRouterApiKey | AuthMethod::OpenCodeApiKey => {
-            Some(("API key", jcode_tui_style::theme::info_color()))
+            Some(("API key", info_color()))
         }
         AuthMethod::AnthropicOAuth => Some(("OAuth", jcode_tui_style::theme::warning_color())),
-        AuthMethod::OpenAIOAuth => Some(("OAuth", jcode_tui_style::theme::header_icon_color())),
-        AuthMethod::CopilotOAuth => Some(("OAuth", jcode_tui_style::theme::ai_color())),
-        AuthMethod::GeminiOAuth => Some(("OAuth", jcode_tui_style::theme::user_color())),
+        AuthMethod::OpenAIOAuth => Some(("OAuth", header_icon_color())),
+        AuthMethod::CopilotOAuth => Some(("OAuth", ai_color())),
+        AuthMethod::GeminiOAuth => Some(("OAuth", user_color())),
     }
 }
 
@@ -2265,13 +2273,13 @@ fn overscroll_context_bar(used: usize, limit: usize, cells: usize) -> Vec<Span<'
     // Match the info widget usage bar palette (based on remaining context).
     let left_pct = 100u16.saturating_sub(pct);
     let fill_color = if left_pct <= 20 {
-        jcode_tui_style::theme::error_color()
+        error_color()
     } else if left_pct <= 50 {
         jcode_tui_style::theme::warning_color()
     } else {
-        jcode_tui_style::theme::success_color()
+        success_color()
     };
-    let track_color = jcode_tui_style::theme::user_bg();
+    let track_color = user_bg();
 
     let mut spans = Vec::with_capacity(cells + 2);
     // Slim segmented pill (▰ filled / ▱ empty) reads thinner than full blocks.
@@ -2296,7 +2304,7 @@ const RIGHT_FACT_PAD: u16 = 1;
 const RIGHT_FACT_TRANSCRIPT_ROWS: u16 = 4;
 
 fn right_fact_neutral_style() -> Style {
-    Style::default().fg(jcode_tui_style::theme::pending_color())
+    Style::default().fg(pending_color())
 }
 
 #[derive(Clone)]
@@ -2646,7 +2654,7 @@ pub(super) fn draw_input(
         hint_line = Some(hint.trim().to_string());
         lines.push(Line::from(Span::styled(
             hint,
-            Style::default().fg(jcode_tui_style::theme::asap_color()),
+            Style::default().fg(asap_color()),
         )));
     } else if app.is_processing() && !input_text.is_empty() {
         hint_shown = true;
@@ -3100,17 +3108,17 @@ fn send_mode_indicator(app: &dyn TuiState) -> (&'static str, Color) {
     if mode.is_shell() {
         ("$", shell_mode_color())
     } else if app.next_prompt_new_session_armed() {
-        ("↗", jcode_tui_style::theme::asap_color())
+        ("↗", asap_color())
     } else if app.queue_mode() {
         ("⏳", queued_color())
     } else if let Some(ref conn) = app.connection_type() {
         let lower = conn.to_lowercase();
         if lower.contains("websocket") {
-            ("󰌘", jcode_tui_style::theme::header_icon_color())
+            ("󰌘", header_icon_color())
         } else if lower.contains("subprocess") || lower.contains("cli") {
-            ("󰆍", jcode_tui_style::theme::file_link_color())
+            ("󰆍", file_link_color())
         } else {
-            ("󰖟", jcode_tui_style::theme::info_color())
+            ("󰖟", info_color())
         }
     } else {
         ("", asap_color())

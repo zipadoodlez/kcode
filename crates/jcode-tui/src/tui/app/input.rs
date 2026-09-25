@@ -2308,7 +2308,6 @@ pub(super) fn is_scroll_only_key(app: &App, code: KeyCode, modifiers: KeyModifie
         }
     }
 
-
     if modifiers.contains(KeyModifiers::CONTROL) {
         if app.diff_pane_visible() {
             match code {
@@ -3045,8 +3044,7 @@ impl App {
         }
 
         // Handle ctrl combos regardless of processing state
-        if modifiers.contains(KeyModifiers::CONTROL)
-            && handle_global_control_shortcuts(self, code)
+        if modifiers.contains(KeyModifiers::CONTROL) && handle_global_control_shortcuts(self, code)
         {
             return Ok(());
         }
@@ -3626,7 +3624,7 @@ impl App {
             // `replace_streaming_text` (remote TextReplace, debug snapshot
             // restore); `take_streaming_text` and `clear_streaming_render_state`
             // both clear it themselves.
-                return false;
+            return false;
         }
 
         // `take_streaming_text` also clears the streaming mermaid preview

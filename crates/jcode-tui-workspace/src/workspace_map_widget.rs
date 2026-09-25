@@ -1,5 +1,8 @@
-use crate::color_support::rgb;
 use crate::workspace_map::{VisibleWorkspaceRow, WorkspaceSessionVisualState};
+use jcode_tui_style::theme::{
+    ai_color, asap_color, border_color, error_color, header_name_color, pending_color, user_color,
+    warning_color,
+};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -148,51 +151,51 @@ fn tile_color(
         WorkspaceSessionVisualState::Running => {
             if focused {
                 if tick.is_multiple_of(2) {
-                    jcode_tui_style::theme::header_name_color()
+                    header_name_color()
                 } else {
-                    jcode_tui_style::theme::user_color()
+                    user_color()
                 }
             } else if tick.is_multiple_of(2) {
-                jcode_tui_style::theme::asap_color()
+                asap_color()
             } else {
-                jcode_tui_style::theme::user_color()
+                user_color()
             }
         }
         WorkspaceSessionVisualState::Error => {
             if focused {
-                jcode_tui_style::theme::error_color()
+                error_color()
             } else {
-                jcode_tui_style::theme::error_color()
+                error_color()
             }
         }
         WorkspaceSessionVisualState::Waiting => {
             if focused {
-                jcode_tui_style::theme::warning_color()
+                warning_color()
             } else {
-                jcode_tui_style::theme::warning_color()
+                warning_color()
             }
         }
         WorkspaceSessionVisualState::Completed => {
             if focused {
-                jcode_tui_style::theme::ai_color()
+                ai_color()
             } else {
-                jcode_tui_style::theme::ai_color()
+                ai_color()
             }
         }
         WorkspaceSessionVisualState::Detached => {
             if focused {
-                jcode_tui_style::theme::header_name_color()
+                header_name_color()
             } else {
-                jcode_tui_style::theme::pending_color()
+                pending_color()
             }
         }
         WorkspaceSessionVisualState::Idle => {
             if focused {
-                jcode_tui_style::theme::header_name_color()
+                header_name_color()
             } else if current_workspace {
-                jcode_tui_style::theme::pending_color()
+                pending_color()
             } else {
-                jcode_tui_style::theme::border_color()
+                border_color()
             }
         }
     }

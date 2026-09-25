@@ -865,11 +865,8 @@ impl App {
             terminal_height =
                 layout.messages_area.height + layout.diff_pane_area.map(|a| a.height).unwrap_or(0);
             if let Some(pane_area) = layout.diff_pane_area {
-                over_diff_pane = super::super::layout_utils::point_in_rect(
-                    mouse.column,
-                    mouse.row,
-                    pane_area,
-                );
+                over_diff_pane =
+                    super::super::layout_utils::point_in_rect(mouse.column, mouse.row, pane_area);
                 let border_x = pane_area.x;
                 on_side_pane_border = mouse.column >= border_x.saturating_sub(1)
                     && mouse.column <= border_x.saturating_add(1);
@@ -930,34 +927,32 @@ impl App {
         if self.side_pane_dragging {
             match mouse.kind {
                 MouseEventKind::Drag(MouseButton::Left) => {
-                    {
-                        self.side_pane_anim_start = None;
-                        let is_side = true;
-                        let new_ratio = if is_side {
-                            if let (Some(messages_area), Some(diagram_area)) =
-                                (current_messages_area, current_side_pane_area)
-                            {
-                                let right_edge = diagram_area.x.saturating_add(diagram_area.width);
-                                let total_width = right_edge.saturating_sub(messages_area.x);
-                                let desired_width = right_edge.saturating_sub(mouse.column);
-                                if desired_width == diagram_area.width || total_width == 0 {
-                                    self.side_pane_ratio_target
-                                } else {
-                                    ((desired_width as u32 * 100) / total_width as u32) as u8
-                                }
-                            } else if terminal_width > 0 {
-                                ((terminal_width.saturating_sub(mouse.column)) as u32 * 100
-                                    / terminal_width as u32) as u8
-                            } else {
+                    self.side_pane_anim_start = None;
+                    let is_side = true;
+                    let new_ratio = if is_side {
+                        if let (Some(messages_area), Some(diagram_area)) =
+                            (current_messages_area, current_side_pane_area)
+                        {
+                            let right_edge = diagram_area.x.saturating_add(diagram_area.width);
+                            let total_width = right_edge.saturating_sub(messages_area.x);
+                            let desired_width = right_edge.saturating_sub(mouse.column);
+                            if desired_width == diagram_area.width || total_width == 0 {
                                 self.side_pane_ratio_target
+                            } else {
+                                ((desired_width as u32 * 100) / total_width as u32) as u8
                             }
-                        } else if !is_side && terminal_height > 0 {
-                            (mouse.row as u32 * 100 / terminal_height as u32) as u8
+                        } else if terminal_width > 0 {
+                            ((terminal_width.saturating_sub(mouse.column)) as u32 * 100
+                                / terminal_width as u32) as u8
                         } else {
                             self.side_pane_ratio_target
-                        };
-                        self.set_side_pane_ratio_immediate(new_ratio);
-                    }
+                        }
+                    } else if !is_side && terminal_height > 0 {
+                        (mouse.row as u32 * 100 / terminal_height as u32) as u8
+                    } else {
+                        self.side_pane_ratio_target
+                    };
+                    self.set_side_pane_ratio_immediate(new_ratio);
                 }
                 MouseEventKind::Up(MouseButton::Left) => {
                     self.side_pane_dragging = false;

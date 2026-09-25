@@ -10,14 +10,16 @@
 
 use super::dim_color;
 use crate::tui::TuiState;
-use crate::tui::color_support::rgb;
+use jcode_tui_style::theme::{
+    ai_color, ai_text, pending_color, selection_bg_color, user_bg, user_color, warning_color,
+};
 use ratatui::{prelude::*, widgets::Paragraph};
 
 const GAP: u16 = 1;
 
 /// Accent color for the welcome title.
 fn welcome_accent() -> Color {
-    jcode_tui_style::theme::user_color()
+    user_color()
 }
 
 /// Append the universal "Esc to skip" hint shown on every guided onboarding
@@ -88,9 +90,9 @@ fn lozenge_pill_spans(label: &str, filled: bool) -> Vec<Span<'static>> {
     // with no bold. The BOLD-vs-not contrast is a non-color attribute, so the
     // selection survives on monochrome terminals (Tier 10 color-independence).
     let (fill, text_fg, bold) = if filled {
-        (welcome_accent(), jcode_tui_style::theme::user_bg(), true)
+        (welcome_accent(), user_bg(), true)
     } else {
-        (jcode_tui_style::theme::selection_bg_color(), jcode_tui_style::theme::pending_color(), false)
+        (selection_bg_color(), pending_color(), false)
     };
 
     let cap = Style::default().fg(fill);
@@ -154,19 +156,14 @@ fn import_summary_pills_line(
 /// dim checkmarked row per detected login. No cursor, no columns - the user is
 /// just being shown what we found before they hit Continue.
 fn import_summary_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'static>> {
-    let check_style = Style::default()
-        .fg(jcode_tui_style::theme::ai_color())
-        .add_modifier(Modifier::BOLD);
+    let check_style = Style::default().fg(ai_color()).add_modifier(Modifier::BOLD);
     prompt
         .rows
         .iter()
         .map(|row| {
             Line::from(vec![
                 Span::styled("✓ ", check_style),
-                Span::styled(
-                    row.provider_summary.clone(),
-                    Style::default().fg(jcode_tui_style::theme::ai_text()),
-                ),
+                Span::styled(row.provider_summary.clone(), Style::default().fg(ai_text())),
                 Span::styled(
                     format!(" ({})", row.source_name),
                     Style::default().fg(dim_color()),
@@ -214,7 +211,7 @@ fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'
         format!("{}{}{}", " ".repeat(left), s, " ".repeat(right))
     };
 
-    let yes_color = jcode_tui_style::theme::ai_color();
+    let yes_color = ai_color();
     let filled = Style::default().fg(yes_color).add_modifier(Modifier::BOLD);
     let empty = Style::default().fg(dim_color());
     let header_style = Style::default()
@@ -240,7 +237,7 @@ fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'
         let cursor_marker = if is_cursor { "> " } else { "  " };
         let cursor_style = Style::default().fg(welcome_accent());
         let label_style = if row.checked {
-            Style::default().fg(jcode_tui_style::theme::ai_text())
+            Style::default().fg(ai_text())
         } else {
             Style::default().fg(dim_color())
         };
@@ -344,7 +341,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                         Line::from(Span::styled(
                             "We couldn't import those logins.",
                             Style::default()
-                                .fg(jcode_tui_style::theme::warning_color())
+                                .fg(warning_color())
                                 .add_modifier(Modifier::BOLD),
                         ))
                         .alignment(align),
@@ -536,7 +533,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                         format!("[{}] ", i + 1),
                         Style::default().fg(welcome_accent()),
                     ),
-                    Span::styled(label.clone(), Style::default().fg(jcode_tui_style::theme::ai_text())),
+                    Span::styled(label.clone(), Style::default().fg(ai_text())),
                 ]
             };
             lines.push(Line::from(spans).alignment(align));

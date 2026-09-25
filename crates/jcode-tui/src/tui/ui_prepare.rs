@@ -1,5 +1,6 @@
 use super::*;
 use crate::tui::ui::{self, WrappedLineMap};
+use jcode_tui_style::theme::{ai_text, error_color, user_color, warning_color};
 
 /// Auxiliary render data for an assistant message that is otherwise recomputed
 /// by re-parsing markdown on every body rebuild. Building the body misses its
@@ -467,7 +468,7 @@ fn prepare_active_batch_progress(
     };
 
     let centered = app.centered_mode();
-    let accent = jcode_tui_style::theme::warning_color();
+    let accent = warning_color();
     let spinner = super::activity_indicator(app.animation_elapsed(), 12.5);
     let block_width = if centered {
         super::centered_content_block_width(width, 96)
@@ -512,7 +513,7 @@ fn prepare_active_batch_progress(
                 hidden_completed += 1;
                 continue;
             }
-            crate::bus::BatchSubcallState::Failed => ("✗", jcode_tui_style::theme::error_color()),
+            crate::bus::BatchSubcallState::Failed => ("✗", error_color()),
         };
 
         lines.push(tools_ui::render_batch_subcall_line(
@@ -645,7 +646,6 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
     let body_prepared = prepare_body_cached(app, width);
     let body_ms = body_start.elapsed().as_secs_f64() * 1000.0;
 
-
     let batch_start = Instant::now();
     let has_batch_progress = active_batch_progress(app).is_some();
     let batch_prefix_blank = has_batch_progress && !body_prepared.wrapped_lines.is_empty();
@@ -702,7 +702,7 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
                         Span::styled(
                             format!("{}{} ", pad, label),
                             Style::default()
-                                .fg(jcode_tui_style::theme::user_color())
+                                .fg(user_color())
                                 .add_modifier(Modifier::BOLD),
                         ),
                         Span::styled(
@@ -714,9 +714,9 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
                     vec![
                         Span::styled(
                             format!("{}[{}] ", pad, i + 1),
-                            Style::default().fg(jcode_tui_style::theme::user_color()),
+                            Style::default().fg(user_color()),
                         ),
-                        Span::styled(label.clone(), Style::default().fg(jcode_tui_style::theme::ai_text())),
+                        Span::styled(label.clone(), Style::default().fg(ai_text())),
                     ]
                 };
                 wrapped_lines.push(Line::from(spans).alignment(suggestion_align));
@@ -760,10 +760,10 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
             wrapped_user_prompt_starts: Vec::new(),
             wrapped_user_prompt_ends: Vec::new(),
             user_prompt_texts: Vec::new(),
-                edit_tool_ranges: Vec::new(),
+            edit_tool_ranges: Vec::new(),
             copy_targets: Vec::new(),
             message_boundaries: Vec::new(),
-            });
+        });
         let frame = PreparedChatFrame::from_single(prepared);
         super::note_full_prep_phase_metrics(super::FullPrepPhaseMetrics {
             header_ms,
@@ -796,10 +796,10 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
             wrapped_user_prompt_starts: Vec::new(),
             wrapped_user_prompt_ends: Vec::new(),
             user_prompt_texts: Vec::new(),
-                edit_tool_ranges: Vec::new(),
+            edit_tool_ranges: Vec::new(),
             copy_targets: Vec::new(),
             message_boundaries: Vec::new(),
-            })
+        })
     } else {
         header_prepared
     };
@@ -1677,7 +1677,6 @@ pub(super) fn truncate_prepared_to_boundary(prepared: &mut PreparedMessages, kee
         .edit_tool_ranges
         .retain(|r| r.start_line < wrapped_len);
     prepared.copy_targets.retain(|t| t.start_line < wrapped_len);
-
 }
 
 /// Longest message prefix length `k` such that `base.message_boundaries[..k]`

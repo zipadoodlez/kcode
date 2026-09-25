@@ -1,3 +1,7 @@
+use jcode_tui_style::theme::{
+    ai_text, border_color, header_name_color, pending_color, user_bg, user_color, user_text,
+    warning_color,
+};
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use ratatui::prelude::*;
 use serde::Serialize;
@@ -437,10 +441,10 @@ const MATH_FOREGROUND: (u8, u8, u8) = (255, 255, 255);
 const MATH_INLINE_FOREGROUND: (u8, u8, u8) = (255, 255, 255);
 
 fn code_bg() -> Color {
-    jcode_tui_style::theme::user_bg()
+    user_bg()
 }
 fn code_fg() -> Color {
-    jcode_tui_style::theme::header_name_color()
+    header_name_color()
 }
 fn math_fg() -> Color {
     rgb(MATH_FOREGROUND.0, MATH_FOREGROUND.1, MATH_FOREGROUND.2)
@@ -453,31 +457,31 @@ fn math_inline_fg() -> Color {
     )
 }
 fn link_fg() -> Color {
-    jcode_tui_style::theme::user_color()
+    user_color()
 }
 fn html_fg() -> Color {
-    jcode_tui_style::theme::pending_color()
+    pending_color()
 }
 fn text_color() -> Color {
-    jcode_tui_style::theme::ai_text()
+    ai_text()
 }
 fn bold_color() -> Color {
-    jcode_tui_style::theme::user_text()
+    user_text()
 }
 fn heading_h1_color() -> Color {
-    jcode_tui_style::theme::warning_color()
+    warning_color()
 }
 fn heading_h2_color() -> Color {
-    jcode_tui_style::theme::warning_color()
+    warning_color()
 }
 fn heading_h3_color() -> Color {
-    jcode_tui_style::theme::warning_color()
+    warning_color()
 }
 fn heading_color() -> Color {
-    jcode_tui_style::theme::warning_color()
+    warning_color()
 }
 fn md_dim_color() -> Color {
-    jcode_tui_style::theme::border_color()
+    border_color()
 }
 const RULE_LEN: usize = 24;
 
@@ -908,7 +912,7 @@ fn raw_math_display_lines(math: &str) -> Vec<Line<'static>> {
 }
 
 fn table_color() -> Color {
-    jcode_tui_style::theme::pending_color()
+    pending_color()
 }
 
 /// Render markdown text to styled ratatui Lines

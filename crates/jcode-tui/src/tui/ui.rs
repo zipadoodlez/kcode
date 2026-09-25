@@ -17,8 +17,8 @@ use super::ui_diff::{
     diff_del_color, generate_diff_lines_from_tool_input, tint_span_with_diff_color,
 };
 use super::visual_debug::{
-    self, FrameCaptureBuilder, InfoWidgetCapture, MarginsCapture,
-    MessageCapture, RenderTimingCapture,
+    self, FrameCaptureBuilder, InfoWidgetCapture, MarginsCapture, MessageCapture,
+    RenderTimingCapture,
 };
 use super::{DisplayMessage, DisplayMessageRoleExt, ProcessingStatus, TuiState};
 use crate::message::ToolCall;
@@ -1348,8 +1348,8 @@ use frame_metrics::{
     note_body_cache_lookup, note_body_cache_miss, note_body_incremental_reuse, note_body_request,
     note_chat_layout, note_full_prep_built, note_full_prep_cache_hit, note_full_prep_cache_lookup,
     note_full_prep_cache_miss, note_full_prep_phase_metrics, note_full_prep_request,
-    note_prep_overflow, note_prep_prepare_at,
-    note_viewport_metrics, reset_frame_perf_stats, viewport_stability_hash,
+    note_prep_overflow, note_prep_prepare_at, note_viewport_metrics, reset_frame_perf_stats,
+    viewport_stability_hash,
 };
 pub(crate) use frame_metrics::{
     DrawCallAttribution, FrameInputAttribution, frame_input_attribution_snapshot,
@@ -1621,7 +1621,6 @@ impl CopyViewportSnapshot {
             CopyViewportData::ChatFrame { prepared } => prepared.wrapped_line_map(abs_line),
         }
     }
-
 }
 
 #[derive(Clone, Default)]
@@ -2468,9 +2467,7 @@ pub fn draw(frame: &mut Frame, app: &dyn TuiState) {
     // Suggestions are read many times while composing one frame. Bump the
     // epoch here so the memo is scoped to exactly this frame.
     app.advance_command_suggestions_epoch();
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        draw_inner(frame, app)
-    })) {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| draw_inner(frame, app))) {
         Ok(()) => {}
         Err(payload) => render_recovered_panic_frame(frame, &payload),
     }
@@ -3337,9 +3334,9 @@ pub(crate) fn render_native_scrollbar(
     };
 
     let thumb_color = if focused {
-        jcode_tui_style::theme::header_name_color()
+        header_name_color()
     } else {
-        jcode_tui_style::theme::pending_color()
+        pending_color()
     };
 
     let mut lines = Vec::with_capacity(track_height);

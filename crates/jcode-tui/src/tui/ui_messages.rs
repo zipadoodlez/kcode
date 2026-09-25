@@ -1,4 +1,9 @@
 use super::*;
+use jcode_tui_style::theme::{
+    accent_color, ai_color, ai_text, dim_color, error_color, file_link_color, header_icon_color,
+    header_name_color, header_session_color, info_color, pending_color, selection_bg_color,
+    success_color, tool_color, user_color, user_text, warning_color,
+};
 #[path = "ui_messages_cache.rs"]
 mod cache_support;
 use crate::message::{
@@ -217,7 +222,7 @@ fn render_assistant_segments(
 
 /// Render the inner markdown of a ```plan block as a bordered plan card.
 fn render_plan_card(body: &str, width: u16) -> Vec<Line<'static>> {
-    let border_style = Style::default().fg(jcode_tui_style::theme::accent_color());
+    let border_style = Style::default().fg(accent_color());
     let max_box_width = (width.saturating_sub(4) as usize).clamp(28, 100);
     let inner_width = max_box_width.saturating_sub(4).max(8);
 
@@ -686,7 +691,7 @@ pub(crate) fn render_usage_message(
     width: u16,
     _diff_mode: crate::config::DiffDisplayMode,
 ) -> Vec<Line<'static>> {
-    let border_style = Style::default().fg(jcode_tui_style::theme::user_color());
+    let border_style = Style::default().fg(user_color());
     let title = msg.title.as_deref().unwrap_or("Usage");
     let inner_width = width.saturating_sub(8).max(24) as usize;
     let content_width = inner_width.min(96);
@@ -701,9 +706,9 @@ pub(crate) fn render_usage_message(
         let (text, style) = if let Some(rest) = raw_line.strip_prefix("! ") {
             (rest, Style::default().fg(Color::Red))
         } else if let Some(rest) = raw_line.strip_prefix("~ ") {
-            (rest, Style::default().fg(jcode_tui_style::theme::warning_color()))
+            (rest, Style::default().fg(warning_color()))
         } else if let Some(rest) = raw_line.strip_prefix("+ ") {
-            (rest, Style::default().fg(jcode_tui_style::theme::ai_color()))
+            (rest, Style::default().fg(ai_color()))
         } else if let Some(rest) = raw_line.strip_prefix("# ") {
             (rest, Style::default().fg(Color::White).bold())
         } else {
@@ -747,30 +752,12 @@ pub(crate) fn render_overnight_message(
 
     let centered = markdown::center_code_blocks();
     let (icon, border_color, status_color, text_color) = match card.status.as_str() {
-        "completed" => (
-            "✓",
-            jcode_tui_style::theme::ai_color(),
-            jcode_tui_style::theme::ai_color(),
-            jcode_tui_style::theme::ai_text(),
-        ),
-        "failed" => (
-            "✗",
-            jcode_tui_style::theme::error_color(),
-            jcode_tui_style::theme::error_color(),
-            jcode_tui_style::theme::ai_text(),
-        ),
-        "cancel requested" | "cancelling" => (
-            "◌",
-            jcode_tui_style::theme::warning_color(),
-            jcode_tui_style::theme::warning_color(),
-            jcode_tui_style::theme::warning_color(),
-        ),
-        _ => (
-            "◌",
-            jcode_tui_style::theme::accent_color(),
-            jcode_tui_style::theme::file_link_color(),
-            jcode_tui_style::theme::user_text(),
-        ),
+        "completed" => ("✓", ai_color(), ai_color(), ai_text()),
+        "failed" => ("✗", error_color(), error_color(), ai_text()),
+        "cancel requested" | "cancelling" => {
+            ("◌", warning_color(), warning_color(), warning_color())
+        }
+        _ => ("◌", accent_color(), file_link_color(), user_text()),
     };
     let border_style = Style::default().fg(border_color);
     let status_style = Style::default().fg(status_color).bold();
@@ -778,7 +765,7 @@ pub(crate) fn render_overnight_message(
     let label_style = Style::default().fg(dim_color());
     let dim_style = Style::default().fg(dim_color()).dim();
     let filled_style = Style::default().fg(status_color);
-    let empty_style = Style::default().fg(jcode_tui_style::theme::selection_bg_color());
+    let empty_style = Style::default().fg(selection_bg_color());
 
     let max_box_width = if centered {
         (width.saturating_sub(4) as usize).min(120)
@@ -924,31 +911,31 @@ enum TodoCardPayload {
 // semantic palette here: cool colors describe structure/state, while amber is
 // reserved for priority and blocked work.
 fn todo_group_color() -> Color {
-    jcode_tui_style::theme::file_link_color()
+    file_link_color()
 }
 
 fn todo_label_color() -> Color {
-    jcode_tui_style::theme::pending_color()
+    pending_color()
 }
 
 fn todo_meta_color() -> Color {
-    jcode_tui_style::theme::pending_color()
+    pending_color()
 }
 
 fn todo_score_color() -> Color {
-    jcode_tui_style::theme::ai_color()
+    ai_color()
 }
 
 fn todo_warning_color() -> Color {
-    jcode_tui_style::theme::warning_color()
+    warning_color()
 }
 
 fn todo_failure_color() -> Color {
-    jcode_tui_style::theme::error_color()
+    error_color()
 }
 
 fn todo_confidence_color() -> Color {
-    jcode_tui_style::theme::info_color()
+    info_color()
 }
 
 impl TodoCardPayload {
@@ -1355,13 +1342,16 @@ fn push_todo_status_pips<'a>(
     };
 
     for _ in 0..done_pips {
-        spans.push(Span::styled("●", Style::default().fg(jcode_tui_style::theme::success_color())));
+        spans.push(Span::styled("●", Style::default().fg(success_color())));
     }
     for _ in 0..active_pips {
         spans.push(Span::styled("●", Style::default().fg(asap_color())));
     }
     for _ in 0..open_pips {
-        spans.push(Span::styled("○", Style::default().fg(jcode_tui_style::theme::border_color())));
+        spans.push(Span::styled(
+            "○",
+            Style::default().fg(jcode_tui_style::theme::border_color()),
+        ));
     }
 }
 
@@ -1978,20 +1968,20 @@ fn render_todo_card_item_line(
 ) -> Line<'static> {
     let blocked = !todo.blocked_by.is_empty() && todo.status != "completed";
     let (glyph, glyph_color) = if blocked {
-        ("⊳", jcode_tui_style::theme::warning_color())
+        ("⊳", warning_color())
     } else {
         match todo.status.as_str() {
-            "completed" => ("✓", jcode_tui_style::theme::ai_color()),
+            "completed" => ("✓", ai_color()),
             "in_progress" => ("●", asap_color()),
-            "cancelled" => ("✗", jcode_tui_style::theme::error_color()),
-            _ => ("○", jcode_tui_style::theme::pending_color()),
+            "cancelled" => ("✗", error_color()),
+            _ => ("○", pending_color()),
         }
     };
     let text_color = match todo.status.as_str() {
-        "completed" => jcode_tui_style::theme::pending_color(),
-        "cancelled" => jcode_tui_style::theme::pending_color(),
-        "in_progress" => jcode_tui_style::theme::user_text(),
-        _ => jcode_tui_style::theme::header_name_color(),
+        "completed" => pending_color(),
+        "cancelled" => pending_color(),
+        "in_progress" => user_text(),
+        _ => header_name_color(),
     };
     let mut spans = vec![
         Span::raw("  "),
@@ -2215,11 +2205,11 @@ fn render_scheduled_session_message(
     .max(20);
     let inner_width = max_box_width.saturating_sub(4).max(1);
 
-    let border_style = Style::default().fg(jcode_tui_style::theme::info_color());
-    let status_style = Style::default().fg(jcode_tui_style::theme::header_name_color()).bold();
+    let border_style = Style::default().fg(info_color());
+    let status_style = Style::default().fg(header_name_color()).bold();
     let label_style = Style::default().fg(dim_color());
-    let body_style = Style::default().fg(jcode_tui_style::theme::user_text());
-    let meta_style = Style::default().fg(jcode_tui_style::theme::file_link_color());
+    let body_style = Style::default().fg(user_text());
+    let meta_style = Style::default().fg(file_link_color());
 
     let mut box_content = vec![Line::from(Span::styled(
         "This scheduled task is now active in this session.",
@@ -2359,11 +2349,11 @@ fn render_scheduled_tool_message(msg: &DisplayMessage, width: u16) -> Option<Vec
     .max(20);
     let inner_width = max_box_width.saturating_sub(4).max(1);
 
-    let border_style = Style::default().fg(jcode_tui_style::theme::info_color());
-    let status_style = Style::default().fg(jcode_tui_style::theme::header_name_color()).bold();
+    let border_style = Style::default().fg(info_color());
+    let status_style = Style::default().fg(header_name_color()).bold();
     let label_style = Style::default().fg(dim_color());
-    let body_style = Style::default().fg(jcode_tui_style::theme::user_text());
-    let meta_style = Style::default().fg(jcode_tui_style::theme::file_link_color());
+    let body_style = Style::default().fg(user_text());
+    let meta_style = Style::default().fg(file_link_color());
 
     let mut box_content = vec![Line::from(Span::styled(
         format!("Will run {}.", parsed.when),
@@ -2482,8 +2472,8 @@ fn render_connection_system_message(msg: &DisplayMessage, width: u16) -> Vec<Lin
         if let Some((status_line, detail, hint)) = parse_connection_retry_message(content) {
             (
                 width_stable_system_title("⚡ reconnecting", "reconnecting"),
-                jcode_tui_style::theme::warning_color(),
-                jcode_tui_style::theme::warning_color(),
+                warning_color(),
+                warning_color(),
                 status_line,
                 Some(detail),
                 hint,
@@ -2492,8 +2482,8 @@ fn render_connection_system_message(msg: &DisplayMessage, width: u16) -> Vec<Lin
         {
             (
                 width_stable_system_title("⚡ waiting for reload", "waiting for reload"),
-                jcode_tui_style::theme::info_color(),
-                jcode_tui_style::theme::header_name_color(),
+                info_color(),
+                header_name_color(),
                 status_line,
                 Some(detail),
                 hint,
@@ -2501,8 +2491,8 @@ fn render_connection_system_message(msg: &DisplayMessage, width: u16) -> Vec<Lin
         } else if content.starts_with("⏳ Starting server") {
             (
                 width_stable_system_title("⏳ starting server", "starting server"),
-                jcode_tui_style::theme::warning_color(),
-                jcode_tui_style::theme::warning_color(),
+                warning_color(),
+                warning_color(),
                 "Starting shared server".to_string(),
                 None,
                 None,
@@ -2525,8 +2515,8 @@ fn render_connection_system_message(msg: &DisplayMessage, width: u16) -> Vec<Lin
     let border_style = Style::default().fg(border_color);
     let status_style = Style::default().fg(status_color).bold();
     let label_style = Style::default().fg(dim_color());
-    let body_style = Style::default().fg(jcode_tui_style::theme::user_text());
-    let hint_style = Style::default().fg(jcode_tui_style::theme::file_link_color());
+    let body_style = Style::default().fg(user_text());
+    let hint_style = Style::default().fg(file_link_color());
     let mut box_content = vec![Line::from(Span::styled(status_line, status_style))];
 
     if let Some(detail) = detail.filter(|detail| !detail.is_empty()) {
@@ -2598,9 +2588,9 @@ pub(crate) fn render_background_task_message(
             } else {
                 format!("✓ bg {} completed · {}", task_label, parsed.task_id)
             },
-            jcode_tui_style::theme::success_color(),
-            jcode_tui_style::theme::ai_color(),
-            jcode_tui_style::theme::ai_text(),
+            success_color(),
+            ai_color(),
+            ai_text(),
         )
     } else if parsed.status.starts_with('✗') {
         (
@@ -2609,9 +2599,9 @@ pub(crate) fn render_background_task_message(
             } else {
                 format!("✗ bg {} failed · {}", task_label, parsed.task_id)
             },
-            jcode_tui_style::theme::error_color(),
-            jcode_tui_style::theme::error_color(),
-            jcode_tui_style::theme::ai_text(),
+            error_color(),
+            error_color(),
+            ai_text(),
         )
     } else {
         (
@@ -2620,9 +2610,9 @@ pub(crate) fn render_background_task_message(
             } else {
                 format!("◌ bg {} running · {}", task_label, parsed.task_id)
             },
-            jcode_tui_style::theme::warning_color(),
-            jcode_tui_style::theme::warning_color(),
-            jcode_tui_style::theme::warning_color(),
+            warning_color(),
+            warning_color(),
+            warning_color(),
         )
     };
 
@@ -2732,7 +2722,7 @@ fn render_compact_swarm_background_progress(
     let text = fraction
         .map(|fraction| format!("● {label} · {fraction}"))
         .unwrap_or_else(|| format!("● {label}"));
-    render_compact_swarm_operation_line(&text, width, jcode_tui_style::theme::warning_color())
+    render_compact_swarm_operation_line(&text, width, warning_color())
 }
 
 fn render_compact_swarm_background_completion(
@@ -2744,20 +2734,14 @@ fn render_compact_swarm_background_completion(
         parsed.display_name.as_deref(),
     ));
     let (text, color) = if parsed.status.starts_with('✓') {
-        (
-            format!("✓ {label} · {}", parsed.duration),
-            jcode_tui_style::theme::ai_color(),
-        )
+        (format!("✓ {label} · {}", parsed.duration), ai_color())
     } else if parsed.status.starts_with('✗') {
         (
             format!("✗ {label} · failed after {}", parsed.duration),
-            jcode_tui_style::theme::error_color(),
+            error_color(),
         )
     } else {
-        (
-            format!("● {label} · {}", parsed.duration),
-            jcode_tui_style::theme::warning_color(),
-        )
+        (format!("● {label} · {}", parsed.duration), warning_color())
     };
     render_compact_swarm_operation_line(&text, width, color)
 }
@@ -2765,7 +2749,7 @@ fn render_compact_swarm_background_completion(
 fn render_compact_swarm_operation_line(text: &str, width: u16, color: Color) -> Vec<Line<'static>> {
     let mut lines = vec![super::truncate_line_with_ellipsis_to_width(
         &Line::from(vec![
-            Span::styled("🐝 ", Style::default().fg(jcode_tui_style::theme::warning_color())),
+            Span::styled("🐝 ", Style::default().fg(warning_color())),
             Span::styled(text.to_string(), Style::default().fg(color)),
         ]),
         width.max(1) as usize,
@@ -2841,12 +2825,12 @@ fn render_background_task_progress_message(
     width: u16,
 ) -> Vec<Line<'static>> {
     let centered = markdown::center_code_blocks();
-    let border_color = jcode_tui_style::theme::warning_color();
+    let border_color = warning_color();
     let border_style = Style::default().fg(border_color);
     let label_style = Style::default().fg(dim_color());
-    let text_style = Style::default().fg(jcode_tui_style::theme::warning_color());
-    let filled_style = Style::default().fg(jcode_tui_style::theme::warning_color());
-    let empty_style = Style::default().fg(jcode_tui_style::theme::dim_color());
+    let text_style = Style::default().fg(warning_color());
+    let filled_style = Style::default().fg(warning_color());
+    let empty_style = Style::default().fg(dim_color());
 
     let max_box_width = if centered {
         (width.saturating_sub(4) as usize).min(120)
@@ -2897,12 +2881,12 @@ fn render_background_task_progress_message(
 
 fn swarm_notification_style(title: Option<&str>) -> (&'static str, Color, Color) {
     match title.unwrap_or_default() {
-        t if t.starts_with("DM from ") => ("✉", jcode_tui_style::theme::info_color(), jcode_tui_style::theme::user_text()),
-        t if t.starts_with('#') => ("#", jcode_tui_style::theme::header_icon_color(), jcode_tui_style::theme::user_text()),
-        t if t.starts_with("Broadcast") => ("📣", jcode_tui_style::theme::warning_color(), jcode_tui_style::theme::header_session_color()),
-        t if t.starts_with("Shared context") => ("🧠", jcode_tui_style::theme::ai_color(), jcode_tui_style::theme::header_session_color()),
-        t if t.starts_with("File activity") => ("⚠", jcode_tui_style::theme::warning_color(), jcode_tui_style::theme::ai_text()),
-        t if t.starts_with("Task") => ("⚑", jcode_tui_style::theme::user_color(), jcode_tui_style::theme::user_text()),
+        t if t.starts_with("DM from ") => ("✉", info_color(), user_text()),
+        t if t.starts_with('#') => ("#", header_icon_color(), user_text()),
+        t if t.starts_with("Broadcast") => ("📣", warning_color(), header_session_color()),
+        t if t.starts_with("Shared context") => ("🧠", ai_color(), header_session_color()),
+        t if t.starts_with("File activity") => ("⚠", warning_color(), ai_text()),
+        t if t.starts_with("Task") => ("⚑", user_color(), user_text()),
         // U+2261 IDENTICAL TO, not U+2630 TRIGRAM FOR HEAVEN: the trigram
         // changed from narrow to wide in Unicode 16, so terminals with newer
         // width tables (kitty >= 0.40) render it 2 cells wide while
@@ -2910,8 +2894,8 @@ fn swarm_notification_style(title: Option<&str>) -> (&'static str, Color, Color)
         // disagreement shears every row it appears on (issue seen 2026-07-02:
         // info-widget borders pushed off-screen). Stick to glyphs whose width
         // is stable across Unicode versions.
-        t if t.starts_with("Plan") => ("≡", jcode_tui_style::theme::accent_color(), jcode_tui_style::theme::user_text()),
-        _ => ("◦", jcode_tui_style::theme::pending_color(), jcode_tui_style::theme::ai_text()),
+        t if t.starts_with("Plan") => ("≡", accent_color(), user_text()),
+        _ => ("◦", pending_color(), ai_text()),
     }
 }
 
@@ -2981,31 +2965,37 @@ struct CompactSwarmNotification<'a> {
 fn compact_swarm_notification(title: &str) -> Option<CompactSwarmNotification<'_>> {
     let (sender, marker, marker_before_icon, text_color, file_activity) =
         if let Some(sender) = title.strip_prefix("DM from ") {
-            (sender, String::new(), false, jcode_tui_style::theme::user_text(), false)
+            (sender, String::new(), false, user_text(), false)
         } else if let Some(sender) = title.strip_prefix("Task · ") {
-            (sender, String::new(), false, jcode_tui_style::theme::user_text(), false)
+            (sender, String::new(), false, user_text(), false)
         } else if let Some((channel, sender)) = title
             .strip_prefix('#')
             .and_then(|rest| rest.rsplit_once(" · "))
         {
+            (sender, format!("#{channel} · "), false, user_text(), false)
+        } else if let Some(sender) = title.strip_prefix("Broadcast · ") {
             (
                 sender,
-                format!("#{channel} · "),
+                "📣 ".to_string(),
                 false,
-                jcode_tui_style::theme::user_text(),
+                header_session_color(),
                 false,
             )
-        } else if let Some(sender) = title.strip_prefix("Broadcast · ") {
-            (sender, "📣 ".to_string(), false, jcode_tui_style::theme::header_session_color(), false)
         } else if let Some(sender) = title.strip_prefix("Shared context · ") {
-            (sender, "🧠 ".to_string(), false, jcode_tui_style::theme::header_session_color(), false)
+            (
+                sender,
+                "🧠 ".to_string(),
+                false,
+                header_session_color(),
+                false,
+            )
         } else if let Some(sender) = title.strip_prefix("File activity · ") {
-            (sender, "✎ ".to_string(), false, jcode_tui_style::theme::ai_text(), true)
+            (sender, "✎ ".to_string(), false, ai_text(), true)
         } else if let Some(sender) = title.strip_prefix("File conflict · ") {
-            (sender, "⚠ ".to_string(), true, jcode_tui_style::theme::warning_color(), true)
+            (sender, "⚠ ".to_string(), true, warning_color(), true)
         } else {
             let sender = title.strip_prefix("Swarm · ")?;
-            (sender, String::new(), false, jcode_tui_style::theme::ai_text(), false)
+            (sender, String::new(), false, ai_text(), false)
         };
     let sender = sender.trim();
     (!sender.is_empty()).then_some(CompactSwarmNotification {
@@ -3050,7 +3040,7 @@ fn render_compact_agent_notification(
         body
     };
     let text_color = notification.text_color;
-    let icon_style = Style::default().fg(jcode_tui_style::theme::warning_color());
+    let icon_style = Style::default().fg(warning_color());
     let body_style = Style::default().fg(text_color);
     let max_width = width.max(1) as usize;
     let body_width = max_width.saturating_sub(3).max(1);
@@ -3107,11 +3097,8 @@ fn render_compact_swarm_await(
         return None;
     }
     let mut lines = vec![Line::from(vec![
-        Span::styled("🐝 ", Style::default().fg(jcode_tui_style::theme::warning_color())),
-        Span::styled(
-            content.trim().to_string(),
-            Style::default().fg(jcode_tui_style::theme::ai_text()),
-        ),
+        Span::styled("🐝 ", Style::default().fg(warning_color())),
+        Span::styled(content.trim().to_string(), Style::default().fg(ai_text())),
     ])];
     if markdown::center_code_blocks() {
         left_pad_lines_for_centered_mode(&mut lines, width);
@@ -3124,11 +3111,11 @@ fn render_compact_plan_graph(title: &str, content: &str, width: u16) -> Option<V
     let centered = markdown::center_code_blocks();
     let body_width = width.saturating_sub(3).max(1) as usize;
     let mut lines = vec![Line::from(vec![
-        Span::styled("🐝 ", Style::default().fg(jcode_tui_style::theme::warning_color())),
-        Span::styled("Plan", Style::default().fg(jcode_tui_style::theme::accent_color()).bold()),
+        Span::styled("🐝 ", Style::default().fg(warning_color())),
+        Span::styled("Plan", Style::default().fg(accent_color()).bold()),
         Span::styled(
             format!(" · {version}"),
-            Style::default().fg(jcode_tui_style::theme::pending_color()),
+            Style::default().fg(pending_color()),
         ),
     ])];
     for mut line in markdown::render_markdown_with_width(content.trim(), Some(body_width)) {
@@ -3150,11 +3137,11 @@ fn render_compact_plan_update(
     title.strip_prefix("Plan · ")?;
     let mut lines = vec![super::truncate_line_with_ellipsis_to_width(
         &Line::from(vec![
-            Span::styled("🐝 ", Style::default().fg(jcode_tui_style::theme::warning_color())),
-            Span::styled("Plan", Style::default().fg(jcode_tui_style::theme::accent_color()).bold()),
+            Span::styled("🐝 ", Style::default().fg(warning_color())),
+            Span::styled("Plan", Style::default().fg(accent_color()).bold()),
             Span::styled(
                 format!(" · {}", content.trim()),
-                Style::default().fg(jcode_tui_style::theme::ai_text()),
+                Style::default().fg(ai_text()),
             ),
         ]),
         width.max(1) as usize,
@@ -3396,7 +3383,7 @@ pub(crate) fn render_tool_message(
             .or_else(|| tc.input.get("tag").and_then(|v| v.as_str()))
             .unwrap_or("fact");
         let title = format!("🧠 saved ({}) · {}", category, token_badge.label.as_str());
-        let border_style = Style::default().fg(jcode_tui_style::theme::warning_color());
+        let border_style = Style::default().fg(warning_color());
         let text_style = Style::default().fg(dim_color());
         let max_box = (width.saturating_sub(4) as usize).min(72);
         let inner_width = max_box.saturating_sub(4);
@@ -3436,11 +3423,11 @@ pub(crate) fn render_tool_message(
         .unwrap_or(false);
 
     let (icon, icon_color) = if is_partial_batch {
-        ("⚠", jcode_tui_style::theme::warning_color())
+        ("⚠", warning_color())
     } else if is_error {
-        ("✗", jcode_tui_style::theme::error_color())
+        ("✗", error_color())
     } else {
-        ("✓", jcode_tui_style::theme::success_color())
+        ("✓", success_color())
     };
 
     let is_edit_tool = tools_ui::is_edit_tool_name(&tc.name);
@@ -3654,9 +3641,9 @@ pub(crate) fn render_tool_message(
                 })
             });
             let (sub_icon, sub_icon_color) = if sub_errored {
-                ("✗", jcode_tui_style::theme::error_color())
+                ("✗", error_color())
             } else {
-                ("✓", jcode_tui_style::theme::success_color())
+                ("✓", success_color())
             };
 
             lines.push(tools_ui::render_batch_subcall_line(
@@ -3867,9 +3854,9 @@ struct ToolOutputTokenBadge {
 fn tool_output_token_badge(content: &str) -> ToolOutputTokenBadge {
     let tokens = crate::util::estimate_tokens(content);
     let color = match crate::util::approx_tool_output_token_severity(tokens) {
-        crate::util::ApproxTokenSeverity::Normal => jcode_tui_style::theme::tool_color(),
-        crate::util::ApproxTokenSeverity::Warning => jcode_tui_style::theme::warning_color(),
-        crate::util::ApproxTokenSeverity::Danger => jcode_tui_style::theme::error_color(),
+        crate::util::ApproxTokenSeverity::Normal => tool_color(),
+        crate::util::ApproxTokenSeverity::Warning => warning_color(),
+        crate::util::ApproxTokenSeverity::Danger => error_color(),
     };
     ToolOutputTokenBadge {
         label: crate::util::format_approx_token_count(tokens),

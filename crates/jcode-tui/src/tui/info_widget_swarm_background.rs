@@ -1,6 +1,9 @@
 use super::{BackgroundInfo, InfoWidgetData, SwarmInfo, truncate_smart};
 use crate::protocol::SwarmMemberStatus;
-use crate::tui::color_support::rgb;
+use jcode_tui_style::theme::{
+    accent_color, ai_color, border_color, error_color, header_name_color, pending_color,
+    success_color, tool_color, warning_color,
+};
 use ratatui::prelude::*;
 
 pub(super) fn render_swarm_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
@@ -25,10 +28,10 @@ pub(super) fn render_swarm_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         && let Some(status) = &info.subagent_status
     {
         lines.push(Line::from(vec![
-            Span::styled("▶ ", Style::default().fg(jcode_tui_style::theme::warning_color())),
+            Span::styled("▶ ", Style::default().fg(warning_color())),
             Span::styled(
                 truncate_smart(status, inner.width.saturating_sub(4) as usize),
-                Style::default().fg(jcode_tui_style::theme::header_name_color()),
+                Style::default().fg(header_name_color()),
             ),
         ]));
     }
@@ -69,15 +72,15 @@ fn swarm_member_label(member: &SwarmMemberStatus) -> String {
 
 fn swarm_status_style(status: &str) -> (Color, &'static str) {
     match status {
-        "spawned" => (jcode_tui_style::theme::pending_color(), "○"),
-        "ready" => (jcode_tui_style::theme::ai_color(), "●"),
-        "running" => (jcode_tui_style::theme::warning_color(), "▶"),
-        "blocked" => (jcode_tui_style::theme::warning_color(), "⏸"),
-        "failed" => (jcode_tui_style::theme::error_color(), "✗"),
-        "completed" => (jcode_tui_style::theme::success_color(), "✓"),
-        "stopped" => (jcode_tui_style::theme::pending_color(), "■"),
-        "crashed" => (jcode_tui_style::theme::error_color(), "!"),
-        _ => (jcode_tui_style::theme::pending_color(), "·"),
+        "spawned" => (pending_color(), "○"),
+        "ready" => (ai_color(), "●"),
+        "running" => (warning_color(), "▶"),
+        "blocked" => (warning_color(), "⏸"),
+        "failed" => (error_color(), "✗"),
+        "completed" => (success_color(), "✓"),
+        "stopped" => (pending_color(), "■"),
+        "crashed" => (error_color(), "!"),
+        _ => (pending_color(), "·"),
     }
 }
 
@@ -100,30 +103,30 @@ fn swarm_member_line(member: &SwarmMemberStatus, max_width: usize) -> Line<'stat
     Line::from(vec![
         Span::styled(
             role_prefix.to_string(),
-            Style::default().fg(jcode_tui_style::theme::warning_color()),
+            Style::default().fg(warning_color()),
         ),
         Span::styled(format!("{} ", icon), Style::default().fg(color)),
-        Span::styled(line_text, Style::default().fg(jcode_tui_style::theme::pending_color())),
+        Span::styled(line_text, Style::default().fg(pending_color())),
     ])
 }
 
 fn render_swarm_stats_line(info: &SwarmInfo) -> Line<'static> {
     let mut stats_parts: Vec<Span> =
-        vec![Span::styled("🐝 ", Style::default().fg(jcode_tui_style::theme::warning_color()))];
+        vec![Span::styled("🐝 ", Style::default().fg(warning_color()))];
 
     if info.session_count > 0 {
         stats_parts.push(Span::styled(
             format!("{}s", info.session_count),
-            Style::default().fg(jcode_tui_style::theme::pending_color()),
+            Style::default().fg(pending_color()),
         ));
     }
     if let Some(clients) = info.client_count {
         if info.session_count > 0 {
-            stats_parts.push(Span::styled(" · ", Style::default().fg(jcode_tui_style::theme::border_color())));
+            stats_parts.push(Span::styled(" · ", Style::default().fg(border_color())));
         }
         stats_parts.push(Span::styled(
             format!("{}c", clients),
-            Style::default().fg(jcode_tui_style::theme::pending_color()),
+            Style::default().fg(pending_color()),
         ));
     }
 
@@ -132,10 +135,10 @@ fn render_swarm_stats_line(info: &SwarmInfo) -> Line<'static> {
 
 fn render_swarm_name_line(name: &str, max_name_len: usize) -> Line<'static> {
     Line::from(vec![
-        Span::styled("  · ", Style::default().fg(jcode_tui_style::theme::border_color())),
+        Span::styled("  · ", Style::default().fg(border_color())),
         Span::styled(
             truncate_smart(name, max_name_len),
-            Style::default().fg(jcode_tui_style::theme::pending_color()),
+            Style::default().fg(pending_color()),
         ),
     ])
 }
@@ -145,8 +148,8 @@ fn render_background_lines(info: &BackgroundInfo, width: usize) -> Vec<Line<'sta
         return Vec::new();
     };
     let mut lines = vec![Line::from(vec![
-        Span::styled("⏳ ", Style::default().fg(jcode_tui_style::theme::accent_color())),
-        Span::styled(summary, Style::default().fg(jcode_tui_style::theme::pending_color())),
+        Span::styled("⏳ ", Style::default().fg(accent_color())),
+        Span::styled(summary, Style::default().fg(pending_color())),
     ])];
 
     let row_width = width.saturating_sub(4).max(12);
@@ -162,18 +165,18 @@ fn render_background_lines(info: &BackgroundInfo, width: usize) -> Vec<Line<'sta
             truncate_smart(task, row_width)
         };
         lines.push(Line::from(vec![
-            Span::styled("  • ", Style::default().fg(jcode_tui_style::theme::tool_color())),
-            Span::styled(row_text, Style::default().fg(jcode_tui_style::theme::header_name_color())),
+            Span::styled("  • ", Style::default().fg(tool_color())),
+            Span::styled(row_text, Style::default().fg(header_name_color())),
         ]));
     }
 
     let hidden = info.running_tasks.len().saturating_sub(3);
     if hidden > 0 {
         lines.push(Line::from(vec![
-            Span::styled("   ", Style::default().fg(jcode_tui_style::theme::border_color())),
+            Span::styled("   ", Style::default().fg(border_color())),
             Span::styled(
                 format!("+{} more", hidden),
-                Style::default().fg(jcode_tui_style::theme::pending_color()),
+                Style::default().fg(pending_color()),
             ),
         ]));
     }

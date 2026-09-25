@@ -1,4 +1,5 @@
 use super::*;
+use jcode_tui_style::theme::{border_color, header_name_color, user_bg};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
@@ -74,8 +75,8 @@ fn draw_inline_view(
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(jcode_tui_style::theme::border_color()))
-        .style(Style::default().bg(jcode_tui_style::theme::user_bg()));
+        .border_style(Style::default().fg(border_color()))
+        .style(Style::default().bg(user_bg()));
     frame.render_widget(block.clone(), render_area);
 
     let inner = block.inner(render_area);
@@ -99,7 +100,7 @@ fn draw_inline_view(
     for line in &view.lines {
         lines.push(Line::from(Span::styled(
             line.clone(),
-            Style::default().fg(jcode_tui_style::theme::header_name_color()),
+            Style::default().fg(header_name_color()),
         )));
     }
 

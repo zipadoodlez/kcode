@@ -1,6 +1,7 @@
 use crate::message::ToolCall;
+use jcode_tui_style::theme::{error_color, warning_color};
 
-use super::{dim_color, rgb, tool_color, truncate_line_preserving_suffix_to_width};
+use super::{dim_color, tool_color, truncate_line_preserving_suffix_to_width};
 use ratatui::prelude::*;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -1499,9 +1500,9 @@ pub(super) fn render_batch_subcall_line(
     let token_badge = output_content.map(|content| {
         let tokens = crate::util::estimate_tokens(content);
         let color = match crate::util::approx_tool_output_token_severity(tokens) {
-            crate::util::ApproxTokenSeverity::Normal => jcode_tui_style::theme::tool_color(),
-            crate::util::ApproxTokenSeverity::Warning => jcode_tui_style::theme::warning_color(),
-            crate::util::ApproxTokenSeverity::Danger => jcode_tui_style::theme::error_color(),
+            crate::util::ApproxTokenSeverity::Normal => tool_color(),
+            crate::util::ApproxTokenSeverity::Warning => warning_color(),
+            crate::util::ApproxTokenSeverity::Danger => error_color(),
         };
         (crate::util::format_approx_token_count(tokens), color)
     });

@@ -4,11 +4,12 @@
 //! viewport, side pane, file-diff pane, full-screen overlays, and the prompt
 //! composer) so the selection style stays visually identical across the UI.
 
-use super::{accent_color, blend_color, rgb};
+use super::{accent_color, blend_color};
+use jcode_tui_style::theme::user_bg;
 use ratatui::prelude::*;
 
 pub(crate) fn selection_bg_for(base_bg: Option<Color>) -> Color {
-    let fallback = jcode_tui_style::theme::user_bg();
+    let fallback = user_bg();
     // A selection is an active interaction, not passive decoration. Use a
     // deliberately strong fill so it remains obvious over syntax highlighting,
     // diff backgrounds, and dim assistant text.

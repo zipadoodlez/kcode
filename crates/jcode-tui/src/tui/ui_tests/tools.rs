@@ -1,4 +1,5 @@
 use super::*;
+use jcode_tui_style::theme::{error_color, success_color, tool_color, warning_color};
 
 #[test]
 fn test_summarize_apply_patch_input_ignores_begin_marker() {
@@ -61,11 +62,11 @@ fn test_patch_headers_preserve_line_counts_and_token_severity() {
             thought_signature: None,
         };
         for (tokens, color) in [
-            (0, jcode_tui_style::theme::tool_color()),
-            (3_999, jcode_tui_style::theme::tool_color()),
-            (4_000, jcode_tui_style::theme::warning_color()),
-            (11_999, jcode_tui_style::theme::warning_color()),
-            (12_000, jcode_tui_style::theme::error_color()),
+            (0, tool_color()),
+            (3_999, tool_color()),
+            (4_000, warning_color()),
+            (11_999, warning_color()),
+            (12_000, error_color()),
         ] {
             let output = "x".repeat(tokens * crate::util::APPROX_CHARS_PER_TOKEN);
             let msg = DisplayMessage {
@@ -113,9 +114,9 @@ fn test_token_badges_survive_full_terminal_draw() {
     for centered_mode in [false, true] {
         for width in [60, 120] {
             for (tokens, color) in [
-                (1_900, jcode_tui_style::theme::tool_color()),
-                (4_000, jcode_tui_style::theme::warning_color()),
-                (12_000, jcode_tui_style::theme::error_color()),
+                (1_900, tool_color()),
+                (4_000, warning_color()),
+                (12_000, error_color()),
             ] {
                 for batch in [false, true] {
                     let output = "x".repeat(tokens * crate::util::APPROX_CHARS_PER_TOKEN);
@@ -773,7 +774,7 @@ fn test_render_batch_subcall_line_keeps_full_bash_summary_when_row_fits() {
     };
 
     let line =
-        tools_ui::render_batch_subcall_line(&tool, "✓", jcode_tui_style::theme::success_color(), 32, Some(160), None);
+        tools_ui::render_batch_subcall_line(&tool, "✓", success_color(), 32, Some(160), None);
     let rendered = extract_line_text(&line);
 
     assert!(
@@ -796,7 +797,7 @@ fn test_render_batch_subcall_line_shows_model_provided_intent() {
     };
 
     let line =
-        tools_ui::render_batch_subcall_line(&tool, "✓", jcode_tui_style::theme::success_color(), 50, Some(120), None);
+        tools_ui::render_batch_subcall_line(&tool, "✓", success_color(), 50, Some(120), None);
     let rendered = extract_line_text(&line);
 
     assert!(
@@ -820,7 +821,7 @@ fn test_render_batch_subcall_line_hides_technical_detail_by_default() {
     };
 
     let line =
-        tools_ui::render_batch_subcall_line(&tool, "✓", jcode_tui_style::theme::success_color(), 50, Some(120), None);
+        tools_ui::render_batch_subcall_line(&tool, "✓", success_color(), 50, Some(120), None);
     let rendered = extract_line_text(&line);
 
     assert!(
@@ -867,7 +868,7 @@ fn test_render_batch_subcall_line_shows_first_subcall_token_badge() {
     let line = tools_ui::render_batch_subcall_line(
         &tool,
         "✓",
-        jcode_tui_style::theme::success_color(),
+        success_color(),
         50,
         Some(120),
         Some("query: pending_soft_interrupt\nmatches: 1 in 1 files\n"),

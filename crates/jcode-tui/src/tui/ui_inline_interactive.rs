@@ -1,4 +1,9 @@
 use super::*;
+use jcode_tui_style::theme::{
+    accent_color, ai_color, border_color, dim_color, error_color, header_icon_color,
+    header_name_color, info_color, selection_bg_color, system_message_color, tool_color, user_bg,
+    user_color, warning_color,
+};
 use ratatui::widgets::{Block, BorderType, Borders};
 use unicode_width::UnicodeWidthStr;
 
@@ -388,9 +393,9 @@ pub(super) fn model_suggestion_lines(
         let unavailable = route.is_some_and(|r| !r.available);
         let limited = route.is_some_and(|r| route_detail_is_limited(&r.detail));
         let style = if row == selected {
-            Style::default().fg(jcode_tui_style::theme::warning_color())
+            Style::default().fg(warning_color())
         } else {
-            Style::default().fg(jcode_tui_style::theme::header_icon_color())
+            Style::default().fg(header_icon_color())
         };
         let mut spans = vec![Span::styled(
             format!(
@@ -539,7 +544,7 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 truncate_display(hint, area.width.saturating_sub(1) as usize),
-                Style::default().fg(jcode_tui_style::theme::dim_color()).italic(),
+                Style::default().fg(dim_color()).italic(),
             ))),
             hint_area,
         );
@@ -554,8 +559,8 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(jcode_tui_style::theme::border_color()))
-        .style(Style::default().bg(jcode_tui_style::theme::user_bg()));
+        .border_style(Style::default().fg(border_color()))
+        .style(Style::default().bg(user_bg()));
     frame.render_widget(block.clone(), render_area);
 
     let inner = block.inner(render_area);
@@ -653,17 +658,17 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
     if is_preview {
         header_spans.push(Span::styled(
             picker.preview_submit_hint(),
-            Style::default().fg(jcode_tui_style::theme::selection_bg_color()).italic(),
+            Style::default().fg(selection_bg_color()).italic(),
         ));
     } else {
         header_spans.push(Span::styled(
             picker.active_submit_hint(),
-            Style::default().fg(jcode_tui_style::theme::selection_bg_color()),
+            Style::default().fg(selection_bg_color()),
         ));
         if picker.shows_default_shortcut_hint() {
             header_spans.push(Span::styled(
                 "  Ctrl-O=set default",
-                Style::default().fg(jcode_tui_style::theme::selection_bg_color()).italic(),
+                Style::default().fg(selection_bg_color()).italic(),
             ));
         }
     }
@@ -688,7 +693,7 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
         lines.push(Line::from(Span::styled(
             format!(" {}", truncate_display(notice.as_str(), notice_width)),
             if *warning {
-                Style::default().fg(jcode_tui_style::theme::warning_color()).italic()
+                Style::default().fg(warning_color()).italic()
             } else {
                 Style::default().fg(dim_color()).italic()
             },
@@ -737,7 +742,7 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
         spans.push(Span::styled(
             format!(" {} ", marker),
             if unavailable {
-                Style::default().fg(jcode_tui_style::theme::error_color()).bold()
+                Style::default().fg(error_color()).bold()
             } else if is_row_selected {
                 Style::default().fg(Color::White).bold()
             } else {
@@ -747,32 +752,35 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
         let display_name = picker_entry_display_name(entry);
         let account_action_color = match &entry.action {
             crate::tui::PickerAction::Account(crate::tui::AccountPickerAction::Add { .. }) => {
-                Some(jcode_tui_style::theme::ai_color())
+                Some(ai_color())
             }
             crate::tui::PickerAction::Account(crate::tui::AccountPickerAction::Replace {
                 ..
-            }) => Some(jcode_tui_style::theme::warning_color()),
+            }) => Some(warning_color()),
             crate::tui::PickerAction::Account(crate::tui::AccountPickerAction::OpenCenter {
                 ..
-            }) => Some(jcode_tui_style::theme::user_color()),
+            }) => Some(user_color()),
             _ => None,
         };
         let primary_style = if unavailable {
-            Style::default().fg(jcode_tui_style::theme::dim_color())
+            Style::default().fg(dim_color())
         } else if is_row_selected && col == 0 {
-            Style::default().fg(Color::White).bg(jcode_tui_style::theme::selection_bg_color()).bold()
+            Style::default()
+                .fg(Color::White)
+                .bg(selection_bg_color())
+                .bold()
         } else if let Some(color) = account_action_color {
             Style::default().fg(color).bold()
         } else if entry.is_current {
             Style::default().fg(accent_color())
         } else if entry.is_favorite {
-            Style::default().fg(jcode_tui_style::theme::system_message_color()).bold()
+            Style::default().fg(system_message_color()).bold()
         } else if entry.recommended {
-            Style::default().fg(jcode_tui_style::theme::warning_color())
+            Style::default().fg(warning_color())
         } else if entry.old {
-            Style::default().fg(jcode_tui_style::theme::tool_color())
+            Style::default().fg(tool_color())
         } else {
-            Style::default().fg(jcode_tui_style::theme::header_name_color())
+            Style::default().fg(header_name_color())
         };
 
         if is_account_picker {
@@ -820,9 +828,12 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
             };
 
             let state_style = if unavailable {
-                Style::default().fg(jcode_tui_style::theme::dim_color())
+                Style::default().fg(dim_color())
             } else if is_row_selected {
-                Style::default().fg(Color::White).bg(jcode_tui_style::theme::selection_bg_color()).bold()
+                Style::default()
+                    .fg(Color::White)
+                    .bg(selection_bg_color())
+                    .bold()
             } else if entry.is_current {
                 Style::default().fg(accent_color()).bold()
             } else if let Some(color) = account_action_color {
@@ -840,7 +851,7 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
                 spans.push(Span::styled(
                     format!("  {}", truncate_display(detail_text.as_str(), detail_width)),
                     if unavailable {
-                        Style::default().fg(jcode_tui_style::theme::error_color()).italic()
+                        Style::default().fg(error_color()).italic()
                     } else {
                         Style::default().fg(dim_color())
                     },
@@ -910,11 +921,14 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
         let pw = provider_width.saturating_sub(1);
         let provider_display = format!(" {}", pad_left_display(provider_label.as_str(), pw));
         let provider_style = if unavailable {
-            Style::default().fg(jcode_tui_style::theme::dim_color())
+            Style::default().fg(dim_color())
         } else if is_row_selected && col == 1 {
-            Style::default().fg(Color::White).bg(jcode_tui_style::theme::selection_bg_color()).bold()
+            Style::default()
+                .fg(Color::White)
+                .bg(selection_bg_color())
+                .bold()
         } else {
-            Style::default().fg(jcode_tui_style::theme::info_color())
+            Style::default().fg(info_color())
         };
 
         let via_raw = route
@@ -923,13 +937,16 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
         let vw = via_width.saturating_sub(1);
         let via_display = format!(" {}", pad_left_display(via_raw.as_str(), vw));
         let via_style = if unavailable {
-            Style::default().fg(jcode_tui_style::theme::dim_color())
+            Style::default().fg(dim_color())
         } else if is_row_selected && col == 2 {
-            Style::default().fg(Color::White).bg(jcode_tui_style::theme::selection_bg_color()).bold()
+            Style::default()
+                .fg(Color::White)
+                .bg(selection_bg_color())
+                .bold()
         } else if is_usage_picker {
-            Style::default().fg(jcode_tui_style::theme::accent_color())
+            Style::default().fg(accent_color())
         } else {
-            Style::default().fg(jcode_tui_style::theme::warning_color())
+            Style::default().fg(warning_color())
         };
 
         if is_preview && !is_account_picker {
@@ -949,7 +966,7 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
             spans.push(Span::styled(
                 format!("  {}", truncate_display(detail_text.as_str(), detail_width)),
                 if unavailable {
-                    Style::default().fg(jcode_tui_style::theme::error_color()).italic()
+                    Style::default().fg(error_color()).italic()
                 } else {
                     Style::default().fg(dim_color())
                 },

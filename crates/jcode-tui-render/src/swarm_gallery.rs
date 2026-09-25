@@ -7,24 +7,26 @@
 //! [`GalleryMember`] and call [`render_gallery`], so the demo renders identical
 //! output to production and the two cannot drift.
 
+use jcode_tui_style::theme::{
+    ai_color, border_color, dim_color, error_color, header_name_color, info_color, pending_color,
+    selection_bg_color, success_color, tool_color, user_color, user_text, warning_color,
+};
 use ratatui::prelude::*;
-
-use jcode_tui_style::color::rgb;
 
 use crate::swarm_tiles::{SwarmGalleryConfig, SwarmTile, render_swarm_gallery};
 
 /// Accent color for a member lifecycle status.
 pub fn status_accent(status: &str) -> Color {
     match status {
-        "spawned" => jcode_tui_style::theme::pending_color(),
-        "ready" => jcode_tui_style::theme::ai_color(),
-        "running" | "streaming" => jcode_tui_style::theme::warning_color(),
-        "thinking" => jcode_tui_style::theme::info_color(),
-        "blocked" | "waiting_network" => jcode_tui_style::theme::warning_color(),
-        "failed" | "crashed" => jcode_tui_style::theme::error_color(),
-        "completed" | "done" => jcode_tui_style::theme::success_color(),
-        "stopped" => jcode_tui_style::theme::pending_color(),
-        _ => jcode_tui_style::theme::pending_color(),
+        "spawned" => pending_color(),
+        "ready" => ai_color(),
+        "running" | "streaming" => warning_color(),
+        "thinking" => info_color(),
+        "blocked" | "waiting_network" => warning_color(),
+        "failed" | "crashed" => error_color(),
+        "completed" | "done" => success_color(),
+        "stopped" => pending_color(),
+        _ => pending_color(),
     }
 }
 
@@ -174,7 +176,7 @@ fn status_rank(status: &str) -> u8 {
 /// The header line shown above the gallery grid.
 pub fn gallery_header(total: usize, active: usize) -> Line<'static> {
     Line::from(vec![
-        Span::styled("🐝 ", Style::default().fg(jcode_tui_style::theme::warning_color())),
+        Span::styled("🐝 ", Style::default().fg(warning_color())),
         Span::styled(
             format!(
                 "{} agent{}{}",
@@ -186,7 +188,7 @@ pub fn gallery_header(total: usize, active: usize) -> Line<'static> {
                     String::new()
                 }
             ),
-            Style::default().fg(jcode_tui_style::theme::pending_color()),
+            Style::default().fg(pending_color()),
         ),
     ])
 }
@@ -346,7 +348,7 @@ pub fn render_swarm_chat_cards(members: &[GalleryMember], width: usize) -> Vec<L
         }
 
         let mut header = vec![
-            Span::styled(lead.clone(), Style::default().fg(jcode_tui_style::theme::warning_color())),
+            Span::styled(lead.clone(), Style::default().fg(warning_color())),
             Span::styled(
                 label.clone(),
                 Style::default().fg(accent).add_modifier(Modifier::BOLD),
@@ -354,7 +356,7 @@ pub fn render_swarm_chat_cards(members: &[GalleryMember], width: usize) -> Vec<L
         ];
         let consumed = disp_w(&lead) + disp_w(&label);
         if consumed + disp_w(&tail) <= width {
-            header.push(Span::styled(tail, Style::default().fg(jcode_tui_style::theme::pending_color())));
+            header.push(Span::styled(tail, Style::default().fg(pending_color())));
         }
         out.push(Line::from(header));
     }
@@ -418,7 +420,7 @@ pub fn render_swarm_live_card(
     }
 
     let mut header = vec![
-        Span::styled(lead.clone(), Style::default().fg(jcode_tui_style::theme::warning_color())),
+        Span::styled(lead.clone(), Style::default().fg(warning_color())),
         Span::styled(
             label.clone(),
             Style::default().fg(accent).add_modifier(Modifier::BOLD),
@@ -426,7 +428,7 @@ pub fn render_swarm_live_card(
     ];
     let consumed = disp_w(&lead) + disp_w(&label);
     if consumed + disp_w(&tail) <= width {
-        header.push(Span::styled(tail, Style::default().fg(jcode_tui_style::theme::pending_color())));
+        header.push(Span::styled(tail, Style::default().fg(pending_color())));
     }
 
     let mut out = vec![Line::from(header)];
@@ -577,9 +579,9 @@ pub fn render_swarm_strip(
 
     // ---- Leading "🐝 swarm" label ----
     let lead: Vec<Span<'static>> = vec![
-        Span::styled("🐝 ", Style::default().fg(jcode_tui_style::theme::warning_color())),
-        Span::styled("swarm", Style::default().fg(jcode_tui_style::theme::pending_color())),
-        Span::styled("  · ", Style::default().fg(jcode_tui_style::theme::dim_color())),
+        Span::styled("🐝 ", Style::default().fg(warning_color())),
+        Span::styled("swarm", Style::default().fg(pending_color())),
+        Span::styled("  · ", Style::default().fg(dim_color())),
     ];
     let lead_w: usize = lead.iter().map(|s| disp_w(&s.content)).sum();
 
@@ -741,13 +743,13 @@ pub fn render_swarm_strip(
                 task_used += 1 + disp_w(&label);
                 spans.push(Span::styled(
                     format!("·{label}"),
-                    Style::default().fg(jcode_tui_style::theme::pending_color()),
+                    Style::default().fg(pending_color()),
                 ));
             }
             if let Some(todo) = &chip.todo {
                 spans.push(Span::styled(
                     format!(" {todo}"),
-                    Style::default().fg(jcode_tui_style::theme::pending_color()),
+                    Style::default().fg(pending_color()),
                 ));
             }
         }
@@ -755,7 +757,7 @@ pub fn render_swarm_strip(
         if hidden > 0 {
             spans.push(Span::styled(
                 format!(" +{hidden}"),
-                Style::default().fg(jcode_tui_style::theme::pending_color()),
+                Style::default().fg(pending_color()),
             ));
         }
         used = chips_used + task_used;
@@ -770,19 +772,19 @@ pub fn render_swarm_strip(
             spans.push(Span::styled(
                 tally,
                 Style::default().fg(if active > 0 {
-                    jcode_tui_style::theme::warning_color()
+                    warning_color()
                 } else {
-                    jcode_tui_style::theme::tool_color()
+                    tool_color()
                 }),
             ));
             if show_hint && let Some(hint) = hint_text {
                 spans.push(Span::styled(
                     hint_sep.to_string(),
-                    Style::default().fg(jcode_tui_style::theme::dim_color()),
+                    Style::default().fg(dim_color()),
                 ));
                 spans.push(Span::styled(
                     hint.to_string(),
-                    Style::default().fg(jcode_tui_style::theme::info_color()),
+                    Style::default().fg(info_color()),
                 ));
             }
         }
@@ -819,7 +821,7 @@ pub fn render_swarm_strip(
                 let body = truncate_label(&detail, width.saturating_sub(prefix_w));
                 out.push(Line::from(vec![
                     Span::styled(prefix, Style::default().fg(status_accent(&m.status))),
-                    Span::styled(body, Style::default().fg(jcode_tui_style::theme::header_name_color())),
+                    Span::styled(body, Style::default().fg(header_name_color())),
                 ]));
             }
         }
@@ -828,16 +830,16 @@ pub fn render_swarm_strip(
             let mut hint_spans: Vec<Span<'static>> = vec![Span::raw("   ")];
             for (i, h) in hints.iter().enumerate() {
                 if i > 0 {
-                    hint_spans.push(Span::styled(" · ", Style::default().fg(jcode_tui_style::theme::dim_color())));
+                    hint_spans.push(Span::styled(" · ", Style::default().fg(dim_color())));
                 }
                 hint_spans.push(Span::styled(
                     h.key.clone(),
-                    Style::default().fg(jcode_tui_style::theme::user_color()),
+                    Style::default().fg(user_color()),
                 ));
                 hint_spans.push(Span::raw(" "));
                 hint_spans.push(Span::styled(
                     h.label.clone(),
-                    Style::default().fg(jcode_tui_style::theme::tool_color()),
+                    Style::default().fg(tool_color()),
                 ));
             }
             // Trim to width.
@@ -950,7 +952,7 @@ pub fn render_swarm_strip_vertical(
         if first {
             spans.push(Span::styled(
                 LEAD.to_string(),
-                Style::default().fg(jcode_tui_style::theme::warning_color()),
+                Style::default().fg(warning_color()),
             ));
         } else {
             spans.push(Span::raw(INDENT));
@@ -1005,7 +1007,7 @@ pub fn render_swarm_strip_vertical(
             let consumed = lead_w + disp_w(&left);
             if consumed + gap + disp_w(&tail) <= width {
                 spans.push(Span::raw(" ".repeat(width - consumed - disp_w(&tail))));
-                spans.push(Span::styled(tail, Style::default().fg(jcode_tui_style::theme::pending_color())));
+                spans.push(Span::styled(tail, Style::default().fg(pending_color())));
             }
             if is_sel {
                 selected_row_at = Some(out.len());
@@ -1044,7 +1046,7 @@ pub fn render_swarm_strip_vertical(
                 used += disp_w(" · ") + disp_w(&label);
                 spans.push(Span::styled(
                     format!(" · {label}"),
-                    Style::default().fg(jcode_tui_style::theme::pending_color()),
+                    Style::default().fg(pending_color()),
                 ));
             }
         }
@@ -1054,7 +1056,7 @@ pub fn render_swarm_strip_vertical(
             used += todo_w;
             spans.push(Span::styled(
                 format!(" {todo}"),
-                Style::default().fg(jcode_tui_style::theme::pending_color()),
+                Style::default().fg(pending_color()),
             ));
         }
 
@@ -1067,19 +1069,19 @@ pub fn render_swarm_strip_vertical(
                 spans.push(Span::styled(
                     tally.clone(),
                     Style::default().fg(if active > 0 {
-                        jcode_tui_style::theme::warning_color()
+                        warning_color()
                     } else {
-                        jcode_tui_style::theme::tool_color()
+                        tool_color()
                     }),
                 ));
                 if show_hint && let Some(hint) = hint_text {
                     spans.push(Span::styled(
                         hint_sep.to_string(),
-                        Style::default().fg(jcode_tui_style::theme::dim_color()),
+                        Style::default().fg(dim_color()),
                     ));
                     spans.push(Span::styled(
                         hint.to_string(),
-                        Style::default().fg(jcode_tui_style::theme::info_color()),
+                        Style::default().fg(info_color()),
                     ));
                 }
             }
@@ -1095,7 +1097,7 @@ pub fn render_swarm_strip_vertical(
             Span::raw(INDENT),
             Span::styled(
                 format!("+{hidden} more"),
-                Style::default().fg(jcode_tui_style::theme::pending_color()),
+                Style::default().fg(pending_color()),
             ),
         ]));
     }
@@ -1121,16 +1123,16 @@ pub fn render_swarm_strip_vertical(
             let mut hint_spans: Vec<Span<'static>> = vec![Span::raw(INDENT)];
             for (i, h) in hints.iter().enumerate() {
                 if i > 0 {
-                    hint_spans.push(Span::styled(" · ", Style::default().fg(jcode_tui_style::theme::dim_color())));
+                    hint_spans.push(Span::styled(" · ", Style::default().fg(dim_color())));
                 }
                 hint_spans.push(Span::styled(
                     h.key.clone(),
-                    Style::default().fg(jcode_tui_style::theme::user_color()),
+                    Style::default().fg(user_color()),
                 ));
                 hint_spans.push(Span::raw(" "));
                 hint_spans.push(Span::styled(
                     h.label.clone(),
-                    Style::default().fg(jcode_tui_style::theme::tool_color()),
+                    Style::default().fg(tool_color()),
                 ));
             }
             out.push(Line::from(hint_spans));
@@ -1229,17 +1231,17 @@ pub fn render_swarm_dock(
     if hidden > 0 {
         out.push(Line::from(Span::styled(
             format!("  +{hidden} more"),
-            Style::default().fg(jcode_tui_style::theme::pending_color()),
+            Style::default().fg(pending_color()),
         )));
     }
 
     if focused {
         out.push(Line::from(vec![
-            Span::styled("  j/k", Style::default().fg(jcode_tui_style::theme::user_color())),
-            Span::styled(" · ", Style::default().fg(jcode_tui_style::theme::dim_color())),
-            Span::styled("enter", Style::default().fg(jcode_tui_style::theme::user_color())),
-            Span::styled(" · ", Style::default().fg(jcode_tui_style::theme::dim_color())),
-            Span::styled("esc", Style::default().fg(jcode_tui_style::theme::user_color())),
+            Span::styled("  j/k", Style::default().fg(user_color())),
+            Span::styled(" · ", Style::default().fg(dim_color())),
+            Span::styled("enter", Style::default().fg(user_color())),
+            Span::styled(" · ", Style::default().fg(dim_color())),
+            Span::styled("esc", Style::default().fg(user_color())),
         ]));
     }
 
@@ -1288,15 +1290,15 @@ pub fn render_swarm_compact(
         })
         .count();
 
-    let sep_style = Style::default().fg(jcode_tui_style::theme::dim_color());
+    let sep_style = Style::default().fg(dim_color());
     let mut spans: Vec<Span<'static>> = vec![
-        Span::styled("🐝 ", Style::default().fg(jcode_tui_style::theme::warning_color())),
+        Span::styled("🐝 ", Style::default().fg(warning_color())),
         Span::styled(
             format!("{active}/{} agents", members.len()),
             Style::default().fg(if active > 0 {
-                jcode_tui_style::theme::warning_color()
+                warning_color()
             } else {
-                jcode_tui_style::theme::tool_color()
+                tool_color()
             }),
         ),
     ];
@@ -1306,14 +1308,14 @@ pub fn render_swarm_compact(
         if used + 3 + disp_w(&text) <= width {
             used += 3 + disp_w(&text);
             spans.push(Span::styled(" · ", sep_style));
-            spans.push(Span::styled(text, Style::default().fg(jcode_tui_style::theme::pending_color())));
+            spans.push(Span::styled(text, Style::default().fg(pending_color())));
         }
     }
     if attention > 0 {
         let text = format!("⚠{attention}");
         if used + 3 + disp_w(&text) <= width {
             spans.push(Span::styled(" · ", sep_style));
-            spans.push(Span::styled(text, Style::default().fg(jcode_tui_style::theme::warning_color())));
+            spans.push(Span::styled(text, Style::default().fg(warning_color())));
         }
     }
     let mut out = vec![Line::from(spans)];
@@ -1357,19 +1359,19 @@ fn plan_progress_bar(done: u32, running: u32, total: u32, width: usize) -> Line<
     if done_w > 0 {
         spans.push(Span::styled(
             CELL.repeat(done_w),
-            Style::default().fg(jcode_tui_style::theme::success_color()),
+            Style::default().fg(success_color()),
         ));
     }
     if running_w > 0 {
         spans.push(Span::styled(
             CELL.repeat(running_w),
-            Style::default().fg(jcode_tui_style::theme::warning_color()),
+            Style::default().fg(warning_color()),
         ));
     }
     if empty_w > 0 {
         spans.push(Span::styled(
             CELL.repeat(empty_w),
-            Style::default().fg(jcode_tui_style::theme::selection_bg_color()),
+            Style::default().fg(selection_bg_color()),
         ));
     }
     Line::from(spans)
@@ -1384,15 +1386,15 @@ fn dock_header(
     plan: Option<(u32, u32)>,
     width: usize,
 ) -> Line<'static> {
-    let sep_style = Style::default().fg(jcode_tui_style::theme::dim_color());
+    let sep_style = Style::default().fg(dim_color());
     let mut spans: Vec<Span<'static>> = vec![
-        Span::styled("🐝 ", Style::default().fg(jcode_tui_style::theme::warning_color())),
+        Span::styled("🐝 ", Style::default().fg(warning_color())),
         Span::styled(
             format!("{active}/{total} active"),
             Style::default().fg(if active > 0 {
-                jcode_tui_style::theme::warning_color()
+                warning_color()
             } else {
-                jcode_tui_style::theme::tool_color()
+                tool_color()
             }),
         ),
     ];
@@ -1402,14 +1404,14 @@ fn dock_header(
         if used + 3 + disp_w(&text) <= width {
             used += 3 + disp_w(&text);
             spans.push(Span::styled(" · ", sep_style));
-            spans.push(Span::styled(text, Style::default().fg(jcode_tui_style::theme::pending_color())));
+            spans.push(Span::styled(text, Style::default().fg(pending_color())));
         }
     }
     if attention > 0 {
         let text = format!("⚠{attention}");
         if used + 3 + disp_w(&text) <= width {
             spans.push(Span::styled(" · ", sep_style));
-            spans.push(Span::styled(text, Style::default().fg(jcode_tui_style::theme::warning_color())));
+            spans.push(Span::styled(text, Style::default().fg(warning_color())));
         }
     }
     Line::from(spans)
@@ -1440,16 +1442,16 @@ fn dock_row(
         .max(1);
 
     let mut label_style = Style::default().fg(if selected {
-        jcode_tui_style::theme::user_text()
+        user_text()
     } else {
-        jcode_tui_style::theme::pending_color()
+        pending_color()
     });
     if selected && focused {
         label_style = label_style.add_modifier(Modifier::BOLD);
     }
     let mut spans = vec![Span::styled(
         marker.to_string(),
-        Style::default().fg(if selected { accent } else { jcode_tui_style::theme::border_color() }),
+        Style::default().fg(if selected { accent } else { border_color() }),
     )];
     if !glyph.is_empty() {
         spans.push(Span::styled(glyph, Style::default().fg(accent)));
@@ -1461,7 +1463,7 @@ fn dock_row(
         Style::default().fg(accent),
     ));
     if let Some(todo) = todo {
-        spans.push(Span::styled(todo, Style::default().fg(jcode_tui_style::theme::pending_color())));
+        spans.push(Span::styled(todo, Style::default().fg(pending_color())));
     }
     Line::from(spans)
 }
@@ -1481,10 +1483,10 @@ fn dock_tail_lines(member: &GalleryMember, width: usize, rows: usize) -> Vec<Lin
         .rev()
         .map(|l| {
             Line::from(vec![
-                Span::styled("  │ ", Style::default().fg(jcode_tui_style::theme::dim_color())),
+                Span::styled("  │ ", Style::default().fg(dim_color())),
                 Span::styled(
                     truncate_label(l, text_budget),
-                    Style::default().fg(jcode_tui_style::theme::pending_color()),
+                    Style::default().fg(pending_color()),
                 ),
             ])
         })
@@ -1545,7 +1547,7 @@ fn render_hovered_detail(
     budget: usize,
 ) -> Vec<Line<'static>> {
     let accent = status_accent(&m.status);
-    let dim = jcode_tui_style::theme::tool_color();
+    let dim = tool_color();
     const GUTTER: &str = "   ";
 
     // The age hint the adapter appends ('·'-prefixed meta) moves into the header.
@@ -1592,9 +1594,9 @@ fn hovered_detail_body(
     budget: usize,
     show_member_rail: bool,
 ) -> Vec<Line<'static>> {
-    let dim = jcode_tui_style::theme::tool_color();
-    let text_fg = jcode_tui_style::theme::header_name_color();
-    let gutter_fg = jcode_tui_style::theme::dim_color();
+    let dim = tool_color();
+    let text_fg = header_name_color();
+    let gutter_fg = dim_color();
     const GUTTER: &str = "   ";
     const BAR: &str = "│   ";
 
@@ -1634,13 +1636,13 @@ fn hovered_detail_body(
                 break;
             }
             let (glyph, glyph_fg, emph) = match todo.status.as_str() {
-                "completed" => ("✓".to_string(), jcode_tui_style::theme::success_color(), false),
+                "completed" => ("✓".to_string(), success_color(), false),
                 "in_progress" => (
                     spinner_frame
                         .map(|frame| status_glyph("running", frame))
                         .unwrap_or("●")
                         .to_string(),
-                    jcode_tui_style::theme::warning_color(),
+                    warning_color(),
                     true,
                 ),
                 _ => ("○".to_string(), dim, false),
@@ -1683,10 +1685,10 @@ fn hovered_detail_body(
                             spinner_frame
                                 .map(|frame| status_glyph("running", frame))
                                 .unwrap_or("●"),
-                            jcode_tui_style::theme::warning_color(),
+                            warning_color(),
                         ),
-                        "error" => ("✗", jcode_tui_style::theme::error_color()),
-                        _ => ("✓", jcode_tui_style::theme::success_color()),
+                        "error" => ("✗", error_color()),
+                        _ => ("✓", success_color()),
                     };
                     let branch = if tool_idx + 1 == tool_count {
                         "└─"
@@ -1714,7 +1716,7 @@ fn hovered_detail_body(
                         Span::styled(format!("{tool_glyph} "), Style::default().fg(fg)),
                         Span::styled(
                             truncate_label(&label, nested_budget),
-                            Style::default().fg(jcode_tui_style::theme::pending_color()),
+                            Style::default().fg(pending_color()),
                         ),
                     ]));
                 }
@@ -1769,7 +1771,7 @@ fn hovered_detail_body(
 }
 fn panel_header(total: usize, active: usize, focused: bool) -> Line<'static> {
     let mut spans = vec![
-        Span::styled("🐝 ", Style::default().fg(jcode_tui_style::theme::warning_color())),
+        Span::styled("🐝 ", Style::default().fg(warning_color())),
         Span::styled(
             format!(
                 "{} agent{}{}",
@@ -1781,13 +1783,13 @@ fn panel_header(total: usize, active: usize, focused: bool) -> Line<'static> {
                     String::new()
                 }
             ),
-            Style::default().fg(jcode_tui_style::theme::pending_color()),
+            Style::default().fg(pending_color()),
         ),
     ];
     if focused {
         spans.push(Span::styled(
             "  (j/k select · o pop out · esc)",
-            Style::default().fg(jcode_tui_style::theme::border_color()),
+            Style::default().fg(border_color()),
         ));
     }
     Line::from(spans)
@@ -1865,16 +1867,16 @@ fn list_row(member: &GalleryMember, selected: bool, focused: bool, width: usize)
     let label_w = disp_w(&label);
 
     let label_style = if selected {
-        Style::default().fg(jcode_tui_style::theme::user_text())
+        Style::default().fg(user_text())
     } else {
-        Style::default().fg(jcode_tui_style::theme::pending_color())
+        Style::default().fg(pending_color())
     };
     let marker_style = if selected && focused {
         Style::default().fg(accent)
     } else if selected {
-        Style::default().fg(jcode_tui_style::theme::pending_color())
+        Style::default().fg(pending_color())
     } else {
-        Style::default().fg(jcode_tui_style::theme::border_color())
+        Style::default().fg(border_color())
     };
 
     // Compute filler so the badge/age right-align.
@@ -1892,7 +1894,7 @@ fn list_row(member: &GalleryMember, selected: bool, focused: bool, width: usize)
     if let Some(age) = age {
         spans.push(Span::styled(
             format!(" {age}"),
-            Style::default().fg(jcode_tui_style::theme::border_color()),
+            Style::default().fg(border_color()),
         ));
     }
     Line::from(spans)
@@ -2935,8 +2937,8 @@ mod tests {
         for span in &bar.spans {
             assert!(span.content.chars().all(|c| c == '▁'), "got: {bar_text:?}");
         }
-        assert_eq!(bar.spans[0].style.fg, Some(jcode_tui_style::theme::success_color()));
-        assert_eq!(bar.spans[1].style.fg, Some(jcode_tui_style::theme::warning_color()));
+        assert_eq!(bar.spans[0].style.fg, Some(success_color()));
+        assert_eq!(bar.spans[1].style.fg, Some(warning_color()));
     }
 
     #[test]

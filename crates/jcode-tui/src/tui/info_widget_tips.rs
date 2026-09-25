@@ -1,4 +1,5 @@
 use super::*;
+use jcode_tui_style::theme::{header_name_color, pending_color, warning_color};
 
 const TIP_CYCLE_SECONDS: u64 = 15;
 const STATUS_TIP_PERIOD_SECONDS: u64 = 90;
@@ -114,11 +115,11 @@ pub(super) fn render_tips_widget(inner: Rect) -> Vec<Line<'static>> {
 
     let mut lines: Vec<Line<'static>> = Vec::new();
     lines.push(Line::from(vec![
-        Span::styled("💡 ", Style::default().fg(jcode_tui_style::theme::warning_color())),
+        Span::styled("💡 ", Style::default().fg(warning_color())),
         Span::styled(
             "Did you know?",
             Style::default()
-                .fg(jcode_tui_style::theme::header_name_color())
+                .fg(header_name_color())
                 .add_modifier(Modifier::BOLD),
         ),
     ]));
@@ -126,7 +127,7 @@ pub(super) fn render_tips_widget(inner: Rect) -> Vec<Line<'static>> {
     for line_text in wrapped {
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(line_text, Style::default().fg(jcode_tui_style::theme::pending_color())),
+            Span::styled(line_text, Style::default().fg(pending_color())),
         ]));
     }
 

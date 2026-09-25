@@ -1707,7 +1707,13 @@ pub fn prewarm_focused_side_panel(
     ratio_percent: u8,
     centered: bool,
 ) -> bool {
-    ui::prewarm_focused_side_panel(snapshot, terminal_width, terminal_height, ratio_percent, centered)
+    ui::prewarm_focused_side_panel(
+        snapshot,
+        terminal_width,
+        terminal_height,
+        ratio_percent,
+        centered,
+    )
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-use jcode_tui_workspace::color_support::rgb;
+use jcode_tui_style::theme::ai_color;
 use ratatui::prelude::*;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -551,7 +551,7 @@ pub fn progress_line(label: &str, progress: f32, width: usize) -> Line<'static> 
     Line::from(vec![
         Span::styled(label.to_string(), Style::default().dim()),
         Span::raw(" "),
-        Span::styled(bar, Style::default().fg(jcode_tui_style::theme::ai_color())),
+        Span::styled(bar, Style::default().fg(ai_color())),
         Span::styled(format!(" {}%", pct), Style::default().dim()),
     ])
 }

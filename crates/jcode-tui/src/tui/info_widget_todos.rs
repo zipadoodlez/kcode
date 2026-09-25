@@ -1,4 +1,8 @@
 use super::*;
+use jcode_tui_style::theme::{
+    border_color, dim_color, error_color, header_name_color, pending_color, success_color,
+    tool_color, warning_color,
+};
 
 /// Below this many todos we always render an exact 1:1 pip per todo,
 /// even if the panel is a bit narrow, so small lists are never normalized.
@@ -89,10 +93,10 @@ fn aggregate_todo_confidence<'a>(
 fn confidence_style(state: Option<crate::todo::ConfidenceState>) -> Style {
     use crate::todo::ConfidenceState;
     let color = match state {
-        Some(ConfidenceState::Validated | ConfidenceState::Verified) => jcode_tui_style::theme::success_color(),
-        Some(ConfidenceState::Plausible) => jcode_tui_style::theme::warning_color(),
-        Some(ConfidenceState::Speculative) => jcode_tui_style::theme::error_color(),
-        None => jcode_tui_style::theme::border_color(),
+        Some(ConfidenceState::Validated | ConfidenceState::Verified) => success_color(),
+        Some(ConfidenceState::Plausible) => warning_color(),
+        Some(ConfidenceState::Speculative) => error_color(),
+        None => border_color(),
     };
     Style::default().fg(color)
 }
@@ -126,11 +130,11 @@ fn goal_for_group<'a>(
 fn loop_style(state: crate::todo::FeedbackLoopState) -> Style {
     use crate::todo::FeedbackLoopState;
     let color = if state >= FeedbackLoopState::Closed {
-        jcode_tui_style::theme::success_color()
+        success_color()
     } else if state >= FeedbackLoopState::Strong {
-        jcode_tui_style::theme::warning_color()
+        warning_color()
     } else {
-        jcode_tui_style::theme::error_color()
+        error_color()
     };
     Style::default().fg(color)
 }
@@ -144,11 +148,8 @@ fn push_goal_loop_suffix(spans: &mut Vec<Span<'static>>, goal: &crate::todo::Tod
     {
         return;
     }
-    spans.push(Span::styled(" · ", Style::default().fg(jcode_tui_style::theme::dim_color())));
-    spans.push(Span::styled(
-        "loop ",
-        Style::default().fg(jcode_tui_style::theme::pending_color()),
-    ));
+    spans.push(Span::styled(" · ", Style::default().fg(dim_color())));
+    spans.push(Span::styled("loop ", Style::default().fg(pending_color())));
     let mut separator = false;
     if let Some(state) = goal.closed_feedback_loop {
         spans.push(Span::styled(state.as_str().to_string(), loop_style(state)));
@@ -163,11 +164,11 @@ fn push_goal_loop_suffix(spans: &mut Vec<Span<'static>>, goal: &crate::todo::Tod
     .flatten()
     {
         if separator {
-            spans.push(Span::styled("/", Style::default().fg(jcode_tui_style::theme::dim_color())));
+            spans.push(Span::styled("/", Style::default().fg(dim_color())));
         }
         spans.push(Span::styled(
             value.to_string(),
-            Style::default().fg(jcode_tui_style::theme::pending_color()),
+            Style::default().fg(pending_color()),
         ));
         separator = true;
     }
@@ -198,7 +199,7 @@ fn todo_confidence_suffix_width(todo: &crate::todo::TodoItem) -> u16 {
 
 fn push_todo_confidence_suffix(spans: &mut Vec<Span<'static>>, todo: &crate::todo::TodoItem) {
     let score = todo_display_confidence(todo);
-    spans.push(Span::styled(" · ", Style::default().fg(jcode_tui_style::theme::dim_color())));
+    spans.push(Span::styled(" · ", Style::default().fg(dim_color())));
     spans.push(Span::styled(
         confidence_label(score),
         confidence_style(score),
@@ -217,9 +218,9 @@ fn push_todo_pips(spans: &mut Vec<Span<'static>>, data: &InfoWidgetData, width_p
         return;
     }
 
-    let done_color = jcode_tui_style::theme::success_color();
-    let active_color = jcode_tui_style::theme::warning_color();
-    let open_color = jcode_tui_style::theme::border_color();
+    let done_color = success_color();
+    let active_color = warning_color();
+    let open_color = border_color();
 
     let completed = data
         .todos
@@ -298,10 +299,10 @@ fn push_aggregate_confidence_suffix(
     let Some(score) = score else {
         return;
     };
-    spans.push(Span::styled(" · ", Style::default().fg(jcode_tui_style::theme::border_color())));
+    spans.push(Span::styled(" · ", Style::default().fg(border_color())));
     spans.push(Span::styled(
         "confidence ",
-        Style::default().fg(jcode_tui_style::theme::pending_color()),
+        Style::default().fg(pending_color()),
     ));
     spans.push(Span::styled(
         confidence_label(Some(score)),
@@ -377,13 +378,13 @@ fn push_group_header(
         .max(4) as usize;
     let highlight = items.iter().any(|t| t.status == "in_progress");
     let name_style = if highlight {
-        Style::default().fg(jcode_tui_style::theme::warning_color()).bold()
+        Style::default().fg(warning_color()).bold()
     } else {
-        Style::default().fg(jcode_tui_style::theme::header_name_color()).bold()
+        Style::default().fg(header_name_color()).bold()
     };
     let mut spans = vec![
         Span::styled(truncate_smart(name, max_name), name_style),
-        Span::styled(counter, Style::default().fg(jcode_tui_style::theme::tool_color())),
+        Span::styled(counter, Style::default().fg(tool_color())),
     ];
     push_aggregate_confidence_suffix(&mut spans, confidence);
     if let Some(goal) = goal {
@@ -404,23 +405,23 @@ fn push_todo_item_line(
 ) {
     let is_blocked = !todo.blocked_by.is_empty();
     let (icon, status_color) = if is_blocked && todo.status != "completed" {
-        ("⊳", jcode_tui_style::theme::warning_color())
+        ("⊳", warning_color())
     } else {
         match todo.status.as_str() {
-            "completed" => ("✓", jcode_tui_style::theme::success_color()),
-            "in_progress" => ("▶", jcode_tui_style::theme::warning_color()),
-            "cancelled" => ("✗", jcode_tui_style::theme::error_color()),
-            _ => ("○", jcode_tui_style::theme::tool_color()),
+            "completed" => ("✓", success_color()),
+            "in_progress" => ("▶", warning_color()),
+            "cancelled" => ("✗", error_color()),
+            _ => ("○", tool_color()),
         }
     };
 
     let priority_marker = if show_priority_marker {
         match todo.priority.as_str() {
-            "high" => ("!", jcode_tui_style::theme::error_color()),
-            _ => ("", jcode_tui_style::theme::tool_color()),
+            "high" => ("!", error_color()),
+            _ => ("", tool_color()),
         }
     } else {
-        ("", jcode_tui_style::theme::tool_color())
+        ("", tool_color())
     };
 
     let suffix = if is_blocked && todo.status != "completed" {
@@ -438,13 +439,13 @@ fn push_todo_item_line(
     let content = truncate_smart(&todo.content, max_len);
 
     let text_color = if todo.status == "completed" {
-        jcode_tui_style::theme::border_color()
+        border_color()
     } else if is_blocked {
-        jcode_tui_style::theme::tool_color()
+        tool_color()
     } else if todo.status == "in_progress" {
-        jcode_tui_style::theme::header_name_color()
+        header_name_color()
     } else {
-        jcode_tui_style::theme::pending_color()
+        pending_color()
     };
 
     let mut spans = Vec::new();
@@ -466,7 +467,7 @@ fn push_todo_item_line(
     if !suffix.is_empty() {
         spans.push(Span::styled(
             suffix.to_string(),
-            Style::default().fg(jcode_tui_style::theme::border_color()),
+            Style::default().fg(border_color()),
         ));
     }
     lines.push(Line::from(spans));
@@ -535,11 +536,11 @@ pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
     let mut header = vec![
         Span::styled(
             format!("{} ", todos_widget_label(data)),
-            Style::default().fg(jcode_tui_style::theme::header_name_color()).bold(),
+            Style::default().fg(header_name_color()).bold(),
         ),
         Span::styled(
             format!("{}/{}", completed, total),
-            Style::default().fg(jcode_tui_style::theme::pending_color()),
+            Style::default().fg(pending_color()),
         ),
     ];
     let pip_budget = (inner.width.saturating_sub(12) / 2).clamp(0, 10) as usize;
@@ -558,7 +559,7 @@ pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         if total > shown {
             lines.push(Line::from(vec![Span::styled(
                 format!("  +{} more", total - shown),
-                Style::default().fg(jcode_tui_style::theme::border_color()),
+                Style::default().fg(border_color()),
             )]));
         }
         return lines;
@@ -586,7 +587,7 @@ pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         let remaining = data.todos.len() - shown;
         lines.push(Line::from(vec![Span::styled(
             format!("  +{} more", remaining),
-            Style::default().fg(jcode_tui_style::theme::border_color()),
+            Style::default().fg(border_color()),
         )]));
     }
 
@@ -616,11 +617,11 @@ pub(super) fn render_todos_expanded(data: &InfoWidgetData, inner: Rect) -> Vec<L
     let mut header = vec![
         Span::styled(
             format!("{} ", todos_widget_label(data)),
-            Style::default().fg(jcode_tui_style::theme::header_name_color()).bold(),
+            Style::default().fg(header_name_color()).bold(),
         ),
         Span::styled(
             format!("{}/{}", completed, total),
-            Style::default().fg(jcode_tui_style::theme::pending_color()),
+            Style::default().fg(pending_color()),
         ),
     ];
     let pip_budget = (inner.width.saturating_sub(12) / 2).clamp(0, 14) as usize;
@@ -638,7 +639,7 @@ pub(super) fn render_todos_expanded(data: &InfoWidgetData, inner: Rect) -> Vec<L
         if total > shown {
             lines.push(Line::from(vec![Span::styled(
                 format!("  +{} more", total - shown),
-                Style::default().fg(jcode_tui_style::theme::border_color()),
+                Style::default().fg(border_color()),
             )]));
         }
         return lines;
@@ -678,7 +679,7 @@ pub(super) fn render_todos_expanded(data: &InfoWidgetData, inner: Rect) -> Vec<L
         };
         lines.push(Line::from(vec![Span::styled(
             desc,
-            Style::default().fg(jcode_tui_style::theme::border_color()),
+            Style::default().fg(border_color()),
         )]));
     }
 
@@ -703,17 +704,17 @@ pub(super) fn render_todos_compact(data: &InfoWidgetData, _inner: Rect) -> Vec<L
     let mut summary = vec![
         Span::styled(
             format!("{} total", total),
-            Style::default().fg(jcode_tui_style::theme::pending_color()),
+            Style::default().fg(pending_color()),
         ),
-        Span::styled(" · ", Style::default().fg(jcode_tui_style::theme::border_color())),
+        Span::styled(" · ", Style::default().fg(border_color())),
         Span::styled(
             format!("{} active", in_progress),
-            Style::default().fg(jcode_tui_style::theme::warning_color()),
+            Style::default().fg(warning_color()),
         ),
-        Span::styled(" · ", Style::default().fg(jcode_tui_style::theme::border_color())),
+        Span::styled(" · ", Style::default().fg(border_color())),
         Span::styled(
             format!("{} open", pending),
-            Style::default().fg(jcode_tui_style::theme::pending_color()),
+            Style::default().fg(pending_color()),
         ),
     ];
     push_aggregate_confidence_suffix(&mut summary, aggregate_todo_confidence(&data.todos));
@@ -724,7 +725,7 @@ pub(super) fn render_todos_compact(data: &InfoWidgetData, _inner: Rect) -> Vec<L
     vec![
         Line::from(vec![Span::styled(
             todos_widget_label(data),
-            Style::default().fg(jcode_tui_style::theme::header_name_color()).bold(),
+            Style::default().fg(header_name_color()).bold(),
         )]),
         Line::from(summary),
     ]

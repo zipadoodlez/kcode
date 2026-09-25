@@ -1,4 +1,5 @@
 use super::*;
+use jcode_tui_style::theme::file_link_color;
 
 use super::selection_highlight::highlight_line_selection;
 
@@ -535,7 +536,7 @@ pub(super) fn draw_file_diff_view(
         Span::styled(
             short_path,
             Style::default()
-                .fg(jcode_tui_style::theme::file_link_color())
+                .fg(file_link_color())
                 .add_modifier(ratatui::style::Modifier::BOLD),
         ),
     ];

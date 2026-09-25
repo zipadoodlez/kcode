@@ -1,10 +1,11 @@
 use super::{
     accent_color, ai_color, ai_text, asap_color, clear_area, dim_color, get_grouped_changelog,
     header_icon_color, header_name_color, header_session_color, pending_color, queued_color,
-    record_chat_overlay_copy_snapshot, rgb, tool_color, user_bg, user_color, user_text,
+    record_chat_overlay_copy_snapshot, tool_color, user_bg, user_color, user_text,
 };
 use crate::tui::TuiState;
 use crate::tui::info_widget::WidgetPlacement;
+use jcode_tui_style::theme::{error_color, warning_color};
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Paragraph},
@@ -57,14 +58,14 @@ pub(super) fn draw_changelog_overlay(
             lines.push(Line::from(Span::styled(
                 heading,
                 Style::default()
-                    .fg(jcode_tui_style::theme::header_name_color())
+                    .fg(header_name_color())
                     .add_modifier(Modifier::BOLD),
             )));
             lines.push(Line::from(""));
             for entry in &group.entries {
                 lines.push(Line::from(vec![
                     Span::styled("    • ", Style::default().fg(dim_color())),
-                    Span::styled(entry.clone(), Style::default().fg(jcode_tui_style::theme::pending_color())),
+                    Span::styled(entry.clone(), Style::default().fg(pending_color())),
                 ]));
             }
             lines.push(Line::from(""));
@@ -80,7 +81,7 @@ pub(super) fn draw_changelog_overlay(
         .title(Span::styled(
             title,
             Style::default()
-                .fg(jcode_tui_style::theme::header_name_color())
+                .fg(header_name_color())
                 .add_modifier(Modifier::BOLD),
         ))
         .title_bottom(Line::from(Span::styled(
@@ -149,10 +150,10 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     let section_style = Style::default()
         .fg(accent_color())
         .add_modifier(Modifier::BOLD);
-    let cmd_style = Style::default().fg(jcode_tui_style::theme::user_text());
-    let desc_style = Style::default().fg(jcode_tui_style::theme::pending_color());
-    let key_style = Style::default().fg(jcode_tui_style::theme::warning_color());
-    let sep_style = Style::default().fg(jcode_tui_style::theme::user_bg());
+    let cmd_style = Style::default().fg(user_text());
+    let desc_style = Style::default().fg(pending_color());
+    let key_style = Style::default().fg(warning_color());
+    let sep_style = Style::default().fg(user_bg());
 
     let mut lines: Vec<Line<'static>> = Vec::new();
 
@@ -610,7 +611,7 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         .title(Span::styled(
             title,
             Style::default()
-                .fg(jcode_tui_style::theme::header_name_color())
+                .fg(header_name_color())
                 .add_modifier(Modifier::BOLD),
         ))
         .title_bottom(Line::from(Span::styled(
@@ -638,7 +639,7 @@ pub(super) fn draw_model_status_overlay(
     let title_style = Style::default()
         .fg(accent_color())
         .add_modifier(Modifier::BOLD);
-    let text_style = Style::default().fg(jcode_tui_style::theme::ai_text());
+    let text_style = Style::default().fg(ai_text());
     let dim_style = Style::default().fg(dim_color());
 
     let mut lines: Vec<Line<'static>> = Vec::new();
@@ -688,9 +689,9 @@ fn model_status_line_style(raw: &str, default: Style) -> Style {
         CoverageLineStyle::Title => Style::default()
             .fg(accent_color())
             .add_modifier(Modifier::BOLD),
-        CoverageLineStyle::Pass => Style::default().fg(jcode_tui_style::theme::ai_color()),
-        CoverageLineStyle::Fail => Style::default().fg(jcode_tui_style::theme::error_color()),
-        CoverageLineStyle::Warn => Style::default().fg(jcode_tui_style::theme::warning_color()),
+        CoverageLineStyle::Pass => Style::default().fg(ai_color()),
+        CoverageLineStyle::Fail => Style::default().fg(error_color()),
+        CoverageLineStyle::Warn => Style::default().fg(warning_color()),
         CoverageLineStyle::Dim => Style::default().fg(dim_color()),
         CoverageLineStyle::Plain => default,
     }

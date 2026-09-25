@@ -219,7 +219,6 @@ impl App {
             Err(err) => errors.push(format!("OpenAI: {}", err)),
         }
 
-
         Self::clear_api_key_logout_summary(
             &mut summary,
             &mut errors,
