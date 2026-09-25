@@ -1,8 +1,8 @@
-# Usage accounting
+# Usage and statistics
 
-kcode keeps two independent local ledgers. Neither is billing: one ranks models
-by how you actually use them, the other estimates what ChatGPT OAuth usage would
-have cost at API rates.
+kcode records several things locally, none of them billing: a route-usage ledger
+that ranks models by how you actually use them, a ChatGPT OAuth cost estimate,
+per-turn response statistics, and per-session edit counters.
 
 ## Route usage ledger
 
@@ -75,3 +75,51 @@ change.
 The terminal account details and the desktop view expose the same today and
 lifetime summaries, and `kcode usage --json` includes them under the matching
 provider report's `extra_info`, so clients need not read the ledger directly.
+
+## History response stats
+
+`HistoryMessage.response_stats` (`jcode_session_types::ResponseStats`) carries
+optional per-turn metrics; old history still deserializes and absent metrics are
+omitted from JSON.
+
+| field | meaning |
+|---|---|
+| `duration_secs` | whole-turn wall-clock, including tools. **Currently absent in restored history**: stored assistant messages do not persist it, and timestamps are not used to invent it. |
+| `input_tokens`, `output_tokens` | sums of persisted provider-call usage. Raw provider counts, not normalized: OpenAI folds cache reads into input, Anthropic reports them separately. |
+| `cache_read_tokens`, `cache_creation_tokens` | sums of the persisted cache-input counters. Do not blindly add them to input. |
+
+Aggregation runs over the whole stored transcript, including tool-only rounds and
+history hidden by compaction. Real user prompts delimit turns; tool results,
+reminders, and automatic continuations do not. Totals appear once, on the last
+assistant message of the turn, and only if that row is rendered with no pending
+tool calls: this is inferred from the transcript, not a persisted `done` event.
+
+Each field is independently unknown if any contributing round lacks it or the sum
+overflows `u64`; unknown is not zero. These are per-turn provider-call totals, not
+unique context size, session usage, or tokens per second. The same context can be
+counted again in each tool round, and per-call provider identity is not stored.
+
+## Session edit stats
+
+Cumulative changed-line counters per session:
+
+```json
+{"added": 120, "removed": 35, "approximate": false}
+```
+
+These are **cumulative changed lines**, not a net worktree diff: re-editing a line
+counts again. Built-in `write`, `edit`, `multiedit`, `patch`, and `apply_patch`
+mutations count (including successful subcalls inside `batch`); shell commands,
+MCP tools, and external editors do not. No repository git state is consulted.
+Failed or proposed edits add nothing, no-op edits add zero, and a partially
+successful multi-file tool still counts the mutations it performed.
+
+Counters live at `$JCODE_HOME/sessions/edit-stats/<session-id>.json` (default
+`~/.kcode`), serialized by a per-session file lock with atomic replacement. They
+survive compaction and are separate per agent even when agents share a worktree.
+When no counter exists, the first write seeds a best-effort estimate from older
+persisted history (capped at 32 MiB per snapshot/journal), marked
+`approximate: true`; forked legacy history is not attributed to the child. This is
+not an audit log: mutation and persistence are not one transaction, so a crash
+between them can lose accounting.
+

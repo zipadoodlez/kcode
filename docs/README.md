@@ -36,6 +36,6 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 - Soft interrupt: `internals/soft-interrupt.md`
 - Rendering: `internals/rendering.md`
 - Server memory: `internals/memory.md`
-- Usage accounting: `internals/usage.md`
+- Usage and statistics: `internals/usage.md`
 - What the fork removed: `what-was-removed.md`
 - What is still in flight: `wip.md`
