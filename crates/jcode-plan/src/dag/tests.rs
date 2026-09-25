@@ -1,5 +1,5 @@
 //! Invariant tests for the task-DAG engine, including a full simulator run that
-//! reproduces the worked example in `docs/SWARM_TASK_GRAPH.md` section 9.
+//! reproduces the DAG engine mechanics in `docs/internals/swarm.md`.
 
 use super::sim::{self, WorkerAction};
 use super::*;

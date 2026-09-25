@@ -1,6 +1,6 @@
 //! Task-DAG engine model.
 //!
-//! This is the DAG-first reframe of swarm described in `docs/SWARM_TASK_GRAPH.md`.
+//! This is the DAG-first reframe of swarm described in `docs/internals/swarm.md`.
 //! The graph is the primary object: nodes are tasks, edges are dependencies, and
 //! agents are fungible workers that execute, decompose (composite nodes), and
 //! verify (gate nodes) those tasks.

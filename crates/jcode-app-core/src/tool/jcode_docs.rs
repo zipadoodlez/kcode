@@ -293,7 +293,7 @@ mod tests {
     #[test]
     fn search_finds_relevant_version_matched_documentation() {
         let output = search("How does swarm task graph work?", Some(3));
-        assert!(output.contains("docs/SWARM_TASK_GRAPH.md"), "{output}");
+        assert!(output.contains("docs/internals/swarm.md"), "{output}");
         assert!(output.contains("bundled with this Kcode build"));
     }
 
