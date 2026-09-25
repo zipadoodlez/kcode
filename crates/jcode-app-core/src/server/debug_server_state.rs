@@ -596,7 +596,7 @@ async fn build_server_memory_incident_payload(
         },
         "next_actions": actions,
         "safety": "Preserve active work. Stop the producer first, then clean only sessions confirmed disposable by their owning coordinator.",
-        "runbook": "docs/MEMORY_INCIDENT_RUNBOOK.md",
+        "runbook": "docs/PROCESS_MEMORY_INCIDENT_RUNBOOK.md",
     })
 }
 

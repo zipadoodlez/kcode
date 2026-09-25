@@ -73,6 +73,9 @@ The rebuild is in progress:
   `plans/tuistate-decomposition.md` lands. The `jcode_docs` test
   `search_finds_relevant_version_matched_documentation` hardcodes
   `docs/SWARM_TASK_GRAPH.md`; repoint it when `internals/swarm.md` lands.
+  `server/debug_server_state.rs` emits
+  `docs/PROCESS_MEMORY_INCIDENT_RUNBOOK.md` in the incident report; repoint it
+  when `internals/memory.md` lands.
 - **Carry forward**: `internals/rendering.md` must re-state the markdown parity
   policy from the deleted `RENDER_PARITY_ACCEPTANCE_CRITERIA.md` - four levels
   (L1 content, L2 line-structure, L3 wrapped layout at widths 20/40/80, L4 style
