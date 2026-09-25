@@ -59,6 +59,23 @@ literals  0               outside jcode-tui-style
 22 roles over 16 slots is not a squeeze - roles share slots by default, exactly
 as Dracula maps ~12 token classes onto 7 hues. Proposed default mapping:
 
+### Slots are fixed, roles are open-ended
+
+The asymmetry is the whole design:
+
+- **Adding a role is cheap and expected.** Name it, assign it a slot, done.
+  Roles will keep growing (diff line states, tool progress, per-provider
+  accents) and that is fine - 22 is where we start, not where we stop.
+- **Adding a slot is expensive and deliberate.** It changes the theme contract,
+  invalidates every existing theme's mapping, and drops base16 portability.
+  It should need a written reason, not a code review.
+
+The rule for a new role: **it must name an existing slot.** If it seems to need
+its own color, that usually means an old literal was a near-duplicate - assign
+it the nearest slot and delete the shade.
+
+Initial role -> slot mapping:
+
 | slot | base16 | roles that default to it |
 |---|---|---|
 | `bg` | base00 | - |
@@ -90,8 +107,11 @@ changes, and an unconfigured palette stays byte-identical to today.
 
 Each phase lowers `BASELINE`; the guard is the acceptance test.
 
-1. **Port the ratchet.** Bring the guard to kcode with the 699/31-file baseline.
-   Done when adding a literal fails CI and the suite is otherwise green.
+1. **Port the ratchet.** ✅ Done
+   (`crates/jcode-tui/tests/no_new_raw_rgb_literals.rs`). kcode's baseline is
+   **697 literals across 30 files** - lower than jcode's 802 because the fork
+   removed mermaid and the memory widgets. Verified: lowering one entry fails
+   with `(+1)`; adding a literal in a file absent from `BASELINE` fails too.
 2. **Add the slot layer.** `[display.palette]` with the 16 slots, the role->slot
    default table, and `/colors` editing slots (showing which roles share one).
    Done when a base16 theme pasted into config repaints every role.
