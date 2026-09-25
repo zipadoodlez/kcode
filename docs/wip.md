@@ -53,8 +53,13 @@ The rebuild is in progress:
   time).
 - **Not written**: the rest of what the index promises under `user/` and
   `internals/`.
-- **Pending**: 38 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
+- **Pending**: 35 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
   awaiting rewrite into the new set or deletion.
+- **Carry forward**: `internals/rendering.md` must re-state the markdown parity
+  policy from the deleted `RENDER_PARITY_ACCEPTANCE_CRITERIA.md` - four levels
+  (L1 content, L2 line-structure, L3 wrapped layout at widths 20/40/80, L4 style
+  invariants), zero-tolerance, statistical bounds by the rule of three, harness
+  at `crates/jcode-tui-markdown/src/render_core_adapter_tests.rs`.
 
 ## Plans that look finished
 
