@@ -280,6 +280,6 @@ mod tests {
     #[test]
     fn exact_document_can_be_read() {
         let output = read_doc("docs/README.md").unwrap();
-        assert!(output.contains("# jcode Docs"));
+        assert!(output.contains("# kcode docs"));
     }
 }

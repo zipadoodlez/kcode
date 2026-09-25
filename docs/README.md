@@ -28,6 +28,7 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 - Command surface: `user/cli.md`, `user/tui.md`
 - Hooks and terminal routing: `user/hooks.md`
 - Credentials and providers: `user/auth.md`
+- Remote attach over SSH: `user/ssh.md`
 - Architecture: `internals/architecture.md`
 - Swarm: `internals/swarm.md`
 - Providers and auth: `user/providers.md`, `user/auth.md`
