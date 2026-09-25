@@ -54,15 +54,19 @@ The rebuild is in progress:
   `AWS_BEDROCK_PROVIDER.md` + `CONIFER_PROVIDER.md` + `PROVIDER_DOCTOR.md`),
   `internals/usage.md` (folded `MODEL_USAGE.md` +
   `CHATGPT_API_EQUIVALENT_USAGE.md`), `user/tui.md` (folded `SHIFT_ENTER.md` +
-  `RESUME_BEHAVIOR.md`).
+  `RESUME_BEHAVIOR.md`), `user/cli.md` (from `WRAPPERS.md`), `user/config.md`
+  (from `SYSTEM_PROMPT_CONFIG.md`).
 - **Not written**: the rest of what the index promises under `user/` and
   `internals/`.
+- **Install stays in the root README**: no `user/install.md`. The `## Install`
+  section there is already embedded in the corpus, and a second copy would drift
+  (and would only repeat that packaging is unfinished).
 - **Repo-root doc folded**: `OAUTH.md` (per-provider login and troubleshooting)
   is now `user/providers.md` + `user/auth.md`.
   `openai_docs_reference_current_callback_uri` was repointed from
   `OAUTH.md`/`README.md` to `docs/user/providers.md` (it had been failing, since
   README never carried the callback URI).
-- **Pending**: 26 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
+- **Pending**: 24 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
   awaiting rewrite into the new set or deletion.
 - **Code references docs that move**: `tui/mod.rs` names
   `docs/TUISTATE_TRAIT_DECOMPOSITION.md`; update it when

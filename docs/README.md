@@ -24,8 +24,9 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 
 ## Entry points
 
-- Install and first run: `user/install.md`
+- Install: [`../README.md`](../README.md) (`## Install`; packaging is not written yet)
 - Command surface: `user/cli.md`, `user/tui.md`
+- Configuration and system prompt: `user/config.md`
 - Hooks and terminal routing: `user/hooks.md`
 - Providers and credentials: `user/providers.md`, `user/auth.md`
 - Remote attach over SSH: `user/ssh.md`
