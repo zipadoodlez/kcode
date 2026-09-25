@@ -57,7 +57,9 @@ The rebuild is in progress:
   `CHATGPT_API_EQUIVALENT_USAGE.md`), `user/tui.md` (folded `SHIFT_ENTER.md` +
   `RESUME_BEHAVIOR.md`), `user/cli.md` (from `WRAPPERS.md`), `user/config.md`
   (from `SYSTEM_PROMPT_CONFIG.md`), `internals/memory.md` (folded
-  `PROCESS_MEMORY_BUDGET.md` + `PROCESS_MEMORY_INCIDENT_RUNBOOK.md`).
+  `PROCESS_MEMORY_BUDGET.md` + `PROCESS_MEMORY_INCIDENT_RUNBOOK.md`),
+  `internals/rendering.md` (folded `TUI_COLOR_CONFIGURATION.md` +
+  `TERMINAL_CAPABILITIES.md`).
 - **Not written**: the rest of what the index promises under `user/` and
   `internals/`.
 - **Install stays in the root README**: no `user/install.md`. The `## Install`
@@ -68,18 +70,13 @@ The rebuild is in progress:
   `openai_docs_reference_current_callback_uri` was repointed from
   `OAUTH.md`/`README.md` to `docs/user/providers.md` (it had been failing, since
   README never carried the callback URI).
-- **Pending**: 22 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
+- **Pending**: 20 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
   awaiting rewrite into the new set or deletion.
 - **Code references docs that move**: `tui/mod.rs` names
   `docs/TUISTATE_TRAIT_DECOMPOSITION.md`; update it when
   `plans/tuistate-decomposition.md` lands. The `jcode_docs` test
   `search_finds_relevant_version_matched_documentation` hardcodes
   `docs/SWARM_TASK_GRAPH.md`; repoint it when `internals/swarm.md` lands.
-- **Carry forward**: `internals/rendering.md` must re-state the markdown parity
-  policy from the deleted `RENDER_PARITY_ACCEPTANCE_CRITERIA.md` - four levels
-  (L1 content, L2 line-structure, L3 wrapped layout at widths 20/40/80, L4 style
-  invariants), zero-tolerance, statistical bounds by the rule of three, harness
-  at `crates/jcode-tui-markdown/src/render_core_adapter_tests.rs`.
 
 ## Plans that look finished
 
