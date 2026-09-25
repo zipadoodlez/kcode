@@ -357,56 +357,11 @@ sessions, tasks, hooks, and the provider catalog.
 
 ---
 
-## Status and known gaps
+## Status
 
-Findings from a top-to-bottom surface pass. None of these are bugs in the
-"crashes" sense; they are places where the fork's surface has not caught up
-with its intent.
-
-### Fixed
-
-- **`/memory` was dead surface.** Memory was cut, but the command stayed
-  registered and advertised while both handlers (local and remote) only printed
-  a usage error. Command, suggestion branch, argument-accepts entry, handlers,
-  and help entries removed.
-- **The default config template shipped an `[ambient]` section** for a cut
-  feature, and its test still asserted a removed `memory_model` key. Both gone.
-- **The whole jcode.sh account / subscription / hosted-model surface was
-  removed** (commit `59af6e1b`, 64 files). It was upstream's service, not
-  something this fork hosts: `kcode account login/status/manage/logout`, the
-  `jcode` provider, `/subscription`, `/subscribe`, `/hosted`, `/support`, the
-  hosted-model nudge, and the `subscription_api` / `subscription_catalog` /
-  `account_login` / `provider/jcode` modules. The login-import summary no
-  longer offers a subscription pill. Consequence: no route to Jcode's hosted
-  models; `/account` and `/accounts` remain as the multi-account picker for
-  Claude/OpenAI.
-
-### Open
-
-- **Environment variables still use `JCODE_`.** `JCODE_HOME`,
-  `JCODE_RUNTIME_DIR`, and the hook vars were never renamed, even though the
-  state dir is `~/.kcode`. Decision needed: rename to `KCODE_*` (with a
-  `JCODE_*` fallback) or document as-is.
-- **Config files carry unknown sections.** The schema has 18 top-level
-  sections; older configs still hold `[dictation]`, `[ambient]`, `[safety]`,
-  `[gateway]`, `[launch_hotkeys]`, and `display.diagram_mode` /
-  `latex_rendering` / `pin_images`. The loader ignores unknown keys silently, so
-  they are harmless but misleading. `~/.kcode/config.toml` was cleaned in place.
-- **Dead command names in the SSH block list**: `/theme`, `/stats`, `/file`,
-  `/open`, `/permission`, `/permissions`, `/new-terminal`, `/debug-fixture` are
-  blocked over SSH but have no handler anywhere, so they do nothing locally
-  either. Remove them (and the SSH assertions that name them) or implement them.
-- **CLI advertises 52 `--provider` values but `provider list` shows 27.** The
-  extra values are gateways/aliases with no catalog entry.
-- **`/help <item>` detail is incomplete.** The `/help` overlay itself is
-  complete: curated sections plus a `More commands` section that auto-lists
-  every remaining registered command. But `/help <item>` has written detail for
-  only 70 of the 114; the rest answer `Unknown command`, and there is no
-  compact `/help list`. Planned (deferred): keep `/help` curated, add
-  `/help list` listing all commands several per line, and let `/help <item>`
-  fall back to the registered one-line description.
-- **Packaging does not exist yet** (`packaging/arch/PKGBUILD`); the README
-  previously recommended an unmanaged `install -Dm755` into `~/.local/bin`.
+Known gaps and work in progress are tracked in **[docs/wip.md](docs/wip.md)**:
+plans in flight, committed ideas that have no doc yet, and open items in the
+code. That is the single list; this README does not duplicate it.
 
 ---
 

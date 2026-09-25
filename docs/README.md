@@ -30,3 +30,4 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 - Swarm: `internals/swarm.md`
 - Providers and auth: `user/providers.md`, `user/auth.md`
 - What the fork removed: `what-was-removed.md`
+- What is still in flight: `wip.md`
