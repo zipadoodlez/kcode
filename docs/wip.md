@@ -53,7 +53,8 @@ The rebuild is in progress:
   `user/ssh.md` (from `NATIVE_SSH.md`), `user/providers.md` (folded
   `AWS_BEDROCK_PROVIDER.md` + `CONIFER_PROVIDER.md` + `PROVIDER_DOCTOR.md`),
   `internals/usage.md` (folded `MODEL_USAGE.md` +
-  `CHATGPT_API_EQUIVALENT_USAGE.md`).
+  `CHATGPT_API_EQUIVALENT_USAGE.md`), `user/tui.md` (folded `SHIFT_ENTER.md` +
+  `RESUME_BEHAVIOR.md`).
 - **Not written**: the rest of what the index promises under `user/` and
   `internals/`.
 - **Repo-root doc folded**: `OAUTH.md` (per-provider login and troubleshooting)
@@ -61,15 +62,13 @@ The rebuild is in progress:
   `openai_docs_reference_current_callback_uri` was repointed from
   `OAUTH.md`/`README.md` to `docs/user/providers.md` (it had been failing, since
   README never carried the callback URI).
-- **Pending**: 28 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
+- **Pending**: 26 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
   awaiting rewrite into the new set or deletion.
-- **Code references docs that move**: `tui/app/input/newline.rs` names
-  `docs/SHIFT_ENTER.md` and `tui/mod.rs` names
-  `docs/TUISTATE_TRAIT_DECOMPOSITION.md`. Update both when those docs are
-  rewritten (`docs/user/tui.md`, `plans/tuistate-decomposition.md`). The
-  `jcode_docs` test `search_finds_relevant_version_matched_documentation` also
-  hardcodes `docs/SWARM_TASK_GRAPH.md`; repoint it when `internals/swarm.md`
-  lands.
+- **Code references docs that move**: `tui/mod.rs` names
+  `docs/TUISTATE_TRAIT_DECOMPOSITION.md`; update it when
+  `plans/tuistate-decomposition.md` lands. The `jcode_docs` test
+  `search_finds_relevant_version_matched_documentation` hardcodes
+  `docs/SWARM_TASK_GRAPH.md`; repoint it when `internals/swarm.md` lands.
 - **Carry forward**: `internals/rendering.md` must re-state the markdown parity
   policy from the deleted `RENDER_PARITY_ACCEPTANCE_CRITERIA.md` - four levels
   (L1 content, L2 line-structure, L3 wrapped layout at widths 20/40/80, L4 style

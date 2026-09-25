@@ -5,7 +5,7 @@
 //! the same byte (`0x0d`). Most modern terminals support it and jcode requests
 //! it at startup, so Shift+Enter works out of the box there. `/terminal-setup`
 //! fixes the cases that need configuration (tmux, WezTerm) and explains the ones
-//! that cannot be fixed (Terminal.app). See `docs/SHIFT_ENTER.md`.
+//! that cannot be fixed (Terminal.app). See `docs/user/tui.md`.
 //!
 //! Option/Alt+Enter arrives as `ESC` + `CR`, which does not need the protocol,
 //! so it works on more terminals but depends on the Option-as-Meta setting.
