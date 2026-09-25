@@ -10,12 +10,9 @@ Terminal TUI · multi-provider · agentic tools · swarm coordination
 
 kcode is jcode with a large amount of surface area removed. Same TUI, same
 multi-model support, same tools, minus the parts this fork does not want to
-carry. Roughly **241,000 lines across 1,079 files** were cut: mermaid/diagram
-rendering, inline images, LaTeX, session replay, agent memory and ambient mode,
-Gmail/Google login, dictation, the productivity dashboard, the macOS computer-use
-tool, the menubar app, the client installer, the iOS app, the telemetry worker,
-and the TypeScript SDK. The exact record is in
-[docs/plans/KCODE_CUT_MANIFEST.md](docs/plans/KCODE_CUT_MANIFEST.md).
+carry. Roughly **241,000 lines across 1,079 files** of diagram rendering,
+memory, ambient mode, hosted models and platform clients were cut; see
+[what-was-removed.md](docs/what-was-removed.md) for the full record.
 
 kcode has its own repository and history and does **not** track upstream jcode
 commits. It inherits jcode's provider support and auth flows, which are the main
