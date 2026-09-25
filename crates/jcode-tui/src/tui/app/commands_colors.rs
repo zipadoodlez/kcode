@@ -1,16 +1,23 @@
 //! `/colors`: inspect and configure the TUI color palette.
 //!
-//! Every color the TUI renders is configurable through `[display.colors]` in
-//! `~/.kcode/config.toml`. This command is the interactive front end for that:
-//! it lists the roles with their current values, sets them, and resets them.
+//! Two layers in `~/.kcode/config.toml`:
+//!
+//! - `[display.palette]` - 16 base16 slots (`base00`..`base0f`, or the friendly
+//!   names `bg`..`brown`). A published base16 theme pasted here recolors most of
+//!   the UI at once.
+//! - `[display.colors]` - per-role overrides, layered on top of the slots.
+//!
+//! This command is the interactive front end for both.
 
 use super::{App, DisplayMessage};
-use jcode_tui_style::palette::{ALL_ROLES, Palette, Role, parse_hex, to_hex};
+use jcode_tui_style::palette::{
+    ALL_ROLES, ALL_SLOTS, Palette, Role, Slot, default_slot_for, parse_hex, to_hex,
+};
 
 const USAGE: &str = "Usage:\n  \
-    /colors                       List every configurable color role\n  \
-    /colors <role> <#rrggbb>      Set a role's color (saved to config)\n  \
-    /colors reset [role]          Reset one role, or all of them\n  \
+    /colors                       List slots and color roles\n  \
+    /colors <key> <#rrggbb>       Set a slot (base00..base0f) or role (saved to config)\n  \
+    /colors reset [key]           Reset one key, or everything\n  \
     /colors export                Print the palette as config TOML";
 
 pub(super) fn handle_colors_command(app: &mut App, trimmed: &str) -> bool {
@@ -31,20 +38,32 @@ pub(super) fn handle_colors_command(app: &mut App, trimmed: &str) -> bool {
         None | Some("list") => list_colors(app),
         Some("export") => export_colors(app),
         Some("reset") => reset_colors(app, words.next()),
-        Some(role) => match words.next() {
-            Some(value) => set_color(app, role, value),
+        Some(key) => match words.next() {
+            Some(value) => set_color(app, key, value),
             None => app.push_display_message(DisplayMessage::error(format!(
-                "Missing color value for '{role}'.\n\n{USAGE}"
+                "Missing color value for '{key}'.\n\n{USAGE}"
             ))),
         },
     }
     true
 }
 
+/// The palette the TUI is currently rendering: slots then role overrides.
 fn configured_palette() -> Palette {
-    let configured = &crate::config::config().display.colors;
-    Palette::from_pairs(
-        configured
+    let config = crate::config::config();
+    let (palette, _) = Palette::from_slot_pairs_over(
+        Palette::default(),
+        config
+            .display
+            .palette
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str())),
+    );
+    Palette::from_pairs_over(
+        palette,
+        config
+            .display
+            .colors
             .iter()
             .map(|(key, value)| (key.as_str(), value.as_str())),
     )
@@ -53,7 +72,29 @@ fn configured_palette() -> Palette {
 
 fn list_colors(app: &mut App) {
     let palette = configured_palette();
-    let mut lines = vec!["Configurable TUI colors (`/colors <role> <#rrggbb>`):".to_string()];
+    let mut lines = vec!["base16 palette slots (`/colors <slot> <#rrggbb>`):".to_string()];
+    for slot in ALL_SLOTS.iter().copied() {
+        let roles: Vec<&str> = ALL_ROLES
+            .iter()
+            .copied()
+            .filter(|role| default_slot_for(*role) == slot)
+            .map(Role::key)
+            .collect();
+        let shared = if roles.is_empty() {
+            "(unused by default)".to_string()
+        } else {
+            roles.join(", ")
+        };
+        lines.push(format!(
+            "  {:<10} {:<8} {}  -> {}",
+            slot.key(),
+            slot.base16_key(),
+            to_hex(palette.slot_rgb(slot)),
+            shared
+        ));
+    }
+    lines.push(String::new());
+    lines.push("Color roles (`/colors <role> <#rrggbb>`):".to_string());
     for role in ALL_ROLES.iter().copied() {
         let rgb = palette.rgb(role);
         let marker = if palette.is_overridden(role) {
@@ -74,41 +115,59 @@ fn list_colors(app: &mut App) {
 
 fn export_colors(app: &mut App) {
     let palette = configured_palette();
-    let mut lines = vec!["[display.colors]".to_string()];
+    let mut lines = vec!["[display.palette]".to_string()];
+    for slot in ALL_SLOTS.iter().copied() {
+        lines.push(format!("{} = \"{}\"", slot.key(), to_hex(palette.slot_rgb(slot))));
+    }
+    lines.push(String::new());
+    lines.push("[display.colors]".to_string());
     for role in ALL_ROLES.iter().copied() {
-        lines.push(format!(
-            "{} = \"{}\"",
-            role.key(),
-            to_hex(palette.rgb(role))
-        ));
+        lines.push(format!("{} = \"{}\"", role.key(), to_hex(palette.rgb(role))));
     }
     app.push_display_message(DisplayMessage::system(lines.join("\n")));
 }
 
-fn set_color(app: &mut App, role_key: &str, value: &str) {
-    let Some(role) = Role::from_key(role_key) else {
-        app.push_display_message(DisplayMessage::error(format!(
-            "Unknown color role '{role_key}'. Run /colors to list them."
-        )));
-        return;
-    };
+fn set_color(app: &mut App, key: &str, value: &str) {
     let Some(rgb) = parse_hex(value) else {
         app.push_display_message(DisplayMessage::error(format!(
             "Invalid color '{value}'. Expected a hex color like #8ab4f8."
         )));
         return;
     };
+    let value = to_hex(rgb);
 
-    match persist(|colors| {
-        colors.insert(role.key().to_string(), to_hex(rgb));
-    }) {
-        Ok(()) => {
-            app.push_display_message(DisplayMessage::system(format!(
-                "Set {} to {}.",
-                role.key(),
+    if let Some(slot) = Slot::from_key(key) {
+        match persist(|_, slots| {
+            slots.insert(slot.key().to_string(), value.clone());
+        }) {
+            Ok(()) => app.push_display_message(DisplayMessage::system(format!(
+                "Set slot {} ({}) to {}.",
+                slot.key(),
+                slot.base16_key(),
                 to_hex(rgb)
-            )));
+            ))),
+            Err(error) => app.push_display_message(DisplayMessage::error(format!(
+                "Failed to save {}: {error}",
+                slot.key()
+            ))),
         }
+        return;
+    }
+
+    let Some(role) = Role::from_key(key) else {
+        app.push_display_message(DisplayMessage::error(format!(
+            "Unknown color slot or role '{key}'. Run /colors to list them."
+        )));
+        return;
+    };
+    match persist(|colors, _| {
+        colors.insert(role.key().to_string(), value.clone());
+    }) {
+        Ok(()) => app.push_display_message(DisplayMessage::system(format!(
+            "Set {} to {}.",
+            role.key(),
+            to_hex(rgb)
+        ))),
         Err(error) => app.push_display_message(DisplayMessage::error(format!(
             "Failed to save {}: {error}",
             role.key()
@@ -116,41 +175,45 @@ fn set_color(app: &mut App, role_key: &str, value: &str) {
     }
 }
 
-fn reset_colors(app: &mut App, role_key: Option<&str>) {
-    let result = match role_key {
-        Some(key) => {
-            let Some(role) = Role::from_key(key) else {
-                app.push_display_message(DisplayMessage::error(format!(
-                    "Unknown color role '{key}'. Run /colors to list them."
-                )));
-                return;
-            };
-            persist(|colors| {
+fn reset_colors(app: &mut App, key: Option<&str>) {
+    let remove = |colors: &mut std::collections::BTreeMap<String, String>,
+                  slots: &mut std::collections::BTreeMap<String, String>| {
+        if let Some(key) = key {
+            if let Some(slot) = Slot::from_key(key) {
+                slots.remove(slot.key());
+            } else if let Some(role) = Role::from_key(key) {
                 colors.remove(role.key());
-            })
-            .map(|()| format!("Reset {} to its default.", role.key()))
+            }
+        } else {
+            colors.clear();
+            slots.clear();
         }
-        None => persist(|colors| colors.clear())
-            .map(|()| "Reset every color to its default.".to_string()),
     };
-
-    match result {
-        Ok(message) => app.push_display_message(DisplayMessage::system(message)),
+    let message = match key {
+        Some(key) => format!("Reset {key} to its default."),
+        None => "Reset every color to its default.".to_string(),
+    };
+    match persist(|colors, slots| remove(colors, slots)) {
+        Ok(()) => app.push_display_message(DisplayMessage::system(message)),
         Err(error) => {
             app.push_display_message(DisplayMessage::error(format!("Failed to reset: {error}")))
         }
     }
 }
 
-/// Mutate `[display.colors]`, save, and reinstall the live palette.
+/// Mutate `[display.colors]` and `[display.palette]`, save, and reinstall the
+/// live palette.
 ///
 /// Reload-then-patch-then-save (rather than serializing cached state) so a
 /// concurrent config edit by another kcode session is not clobbered.
 fn persist(
-    mutate: impl FnOnce(&mut std::collections::BTreeMap<String, String>),
+    mutate: impl FnOnce(
+        &mut std::collections::BTreeMap<String, String>,
+        &mut std::collections::BTreeMap<String, String>,
+    ),
 ) -> anyhow::Result<()> {
     let mut config = crate::config::Config::load();
-    mutate(&mut config.display.colors);
+    mutate(&mut config.display.colors, &mut config.display.palette);
     config.save()?;
     crate::tui::palette_init::init_palette();
     Ok(())
@@ -166,6 +229,8 @@ mod tests {
         assert!(!"/colorscheme".starts_with("/colors "));
         assert!(Role::from_key("user").is_some());
         assert!(Role::from_key("not-a-role").is_none());
+        assert_eq!(Slot::from_key("base05"), Some(Slot::Fg));
+        assert_eq!(Slot::from_key("blue"), Some(Slot::Blue));
     }
 
     #[test]

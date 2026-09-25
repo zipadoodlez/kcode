@@ -5,7 +5,9 @@ pub mod theme;
 
 pub use color::{ColorCapability, clear_buf, color_capability, has_truecolor, indexed_to_rgb, rgb};
 pub use display::{adapt_buffer_for_display, adapt_foreground_for_display};
-pub use palette::{ALL_ROLES, Palette, Role, palette, role_color, set_palette};
+pub use palette::{
+    ALL_ROLES, ALL_SLOTS, Palette, Role, Slot, default_slot_for, palette, role_color, set_palette,
+};
 
 /// The active palette is process-global. One lock serializes every test that
 /// reads or mutates it, wherever the test lives.

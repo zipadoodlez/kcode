@@ -106,6 +106,167 @@ pub const ALL_ROLES: &[Role] = &[
     Role::SelectionBg,
 ];
 
+/// A base16-shaped palette slot.
+///
+/// Sixteen values, like a published base16 theme. Roles default to slots per
+/// [`default_slot_for`], so pasting a theme's sixteen hex values recolors most
+/// of the UI at once. A role can still be overridden individually through
+/// `[display.colors]`, which layers on top of the slots.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Slot {
+    /// base00 - unused by default (no background role).
+    Bg,
+    /// base01 - user message panel background.
+    BgAlt,
+    /// base02 - selected row background.
+    BgSelection,
+    /// base03 - borders and rules, low-emphasis text.
+    Comment,
+    /// base04 - dim foreground (system/queued facts).
+    FgDim,
+    /// base05 - primary foreground text.
+    Fg,
+    /// base06 - unused by default.
+    FgBright,
+    /// base07 - unused by default.
+    BgBright,
+    /// base08 - errors.
+    Red,
+    /// base09 - ASAP indicator.
+    Orange,
+    /// base0A - warnings and pending.
+    Yellow,
+    /// base0B - success and assistant.
+    Green,
+    /// base0C - info and tool labels.
+    Cyan,
+    /// base0D - user, file links, session id.
+    Blue,
+    /// base0E - accent and header icon.
+    Purple,
+    /// base0F - unused by default.
+    Brown,
+}
+
+/// All slots in base16 order.
+pub const ALL_SLOTS: &[Slot] = &[
+    Slot::Bg,
+    Slot::BgAlt,
+    Slot::BgSelection,
+    Slot::Comment,
+    Slot::FgDim,
+    Slot::Fg,
+    Slot::FgBright,
+    Slot::BgBright,
+    Slot::Red,
+    Slot::Orange,
+    Slot::Yellow,
+    Slot::Green,
+    Slot::Cyan,
+    Slot::Blue,
+    Slot::Purple,
+    Slot::Brown,
+];
+
+const SLOT_BASE16_KEYS: [&str; 16] = [
+    "base00", "base01", "base02", "base03", "base04", "base05", "base06", "base07", "base08",
+    "base09", "base0a", "base0b", "base0c", "base0d", "base0e", "base0f",
+];
+
+const SLOT_NAMES: [&str; 16] = [
+    "bg", "bg_alt", "bg_selection", "comment", "fg_dim", "fg", "fg_bright", "bg_bright", "red",
+    "orange", "yellow", "green", "cyan", "blue", "purple", "brown",
+];
+
+impl Slot {
+    /// Index into [`ALL_SLOTS`] / the key tables.
+    pub const fn index(self) -> usize {
+        match self {
+            Slot::Bg => 0,
+            Slot::BgAlt => 1,
+            Slot::BgSelection => 2,
+            Slot::Comment => 3,
+            Slot::FgDim => 4,
+            Slot::Fg => 5,
+            Slot::FgBright => 6,
+            Slot::BgBright => 7,
+            Slot::Red => 8,
+            Slot::Orange => 9,
+            Slot::Yellow => 10,
+            Slot::Green => 11,
+            Slot::Cyan => 12,
+            Slot::Blue => 13,
+            Slot::Purple => 14,
+            Slot::Brown => 15,
+        }
+    }
+
+    /// Canonical `[display.palette]` key (`bg`..`brown`).
+    pub const fn key(self) -> &'static str {
+        SLOT_NAMES[self.index()]
+    }
+
+    /// The base16 name (`base00`..`base0f`), also accepted in config.
+    pub const fn base16_key(self) -> &'static str {
+        SLOT_BASE16_KEYS[self.index()]
+    }
+
+    /// Look up a slot by its friendly name or base16 name.
+    pub fn from_key(key: &str) -> Option<Slot> {
+        let normalized = key.trim().to_ascii_lowercase().replace(['-', ' '], "_");
+        if let Some(index) = SLOT_NAMES.iter().position(|name| *name == normalized) {
+            return Some(ALL_SLOTS[index]);
+        }
+        SLOT_BASE16_KEYS
+            .iter()
+            .position(|name| *name == normalized)
+            .map(|index| ALL_SLOTS[index])
+    }
+
+    /// Built-in default color, taken from the role this slot primarily feeds.
+    pub const fn default_rgb(self) -> (u8, u8, u8) {
+        match self {
+            Slot::Bg => (24, 24, 30),
+            Slot::BgAlt => Role::UserBg.default_rgb(),
+            Slot::BgSelection => Role::SelectionBg.default_rgb(),
+            Slot::Comment => Role::Border.default_rgb(),
+            Slot::FgDim => Role::Pending.default_rgb(),
+            Slot::Fg => Role::UserText.default_rgb(),
+            Slot::FgBright => (255, 255, 255),
+            Slot::BgBright => (70, 70, 78),
+            Slot::Red => Role::Error.default_rgb(),
+            Slot::Orange => Role::Queued.default_rgb(),
+            Slot::Yellow => Role::Warning.default_rgb(),
+            Slot::Green => Role::Success.default_rgb(),
+            Slot::Cyan => Role::Info.default_rgb(),
+            Slot::Blue => Role::User.default_rgb(),
+            Slot::Purple => Role::Accent.default_rgb(),
+            Slot::Brown => (140, 90, 60),
+        }
+    }
+}
+
+/// The slot each role defaults to.
+///
+/// Adding a role means naming an existing slot (adding a slot changes the theme
+/// contract and drops base16 portability).
+pub const fn default_slot_for(role: Role) -> Slot {
+    match role {
+        Role::UserBg => Slot::BgAlt,
+        Role::SelectionBg => Slot::BgSelection,
+        Role::Dim | Role::Border => Slot::Comment,
+        Role::System | Role::Queued => Slot::FgDim,
+        Role::UserText | Role::AiText | Role::HeaderName => Slot::Fg,
+        Role::Error => Slot::Red,
+        Role::Asap => Slot::Orange,
+        Role::Warning | Role::Pending => Slot::Yellow,
+        Role::Success | Role::Ai => Slot::Green,
+        Role::Info | Role::Tool => Slot::Cyan,
+        Role::User | Role::FileLink | Role::HeaderSession => Slot::Blue,
+        Role::Accent | Role::HeaderIcon => Slot::Purple,
+    }
+}
+
 impl Role {
     /// Stable config key (also the `/colors` name).
     pub const fn key(self) -> &'static str {
@@ -289,6 +450,49 @@ impl Palette {
     /// Whether any role is overridden (fast path guard for remapping).
     pub fn has_overrides(&self) -> bool {
         self.overridden.iter().any(|flag| *flag)
+    }
+
+    /// Apply a base16 slot: every role that defaults to `slot` takes `rgb`.
+    ///
+    /// Roles are marked overridden so the display pass remaps them. A role set
+    /// explicitly through `[display.colors]` afterwards wins.
+    pub fn apply_slot(&mut self, slot: Slot, rgb: (u8, u8, u8)) {
+        for role in ALL_ROLES.iter().copied() {
+            if default_slot_for(role) == slot {
+                self.set(role, rgb);
+            }
+        }
+    }
+
+    /// RGB for `slot` in this palette: the first overridden role that maps to
+    /// it, else the slot default.
+    pub fn slot_rgb(&self, slot: Slot) -> (u8, u8, u8) {
+        for role in ALL_ROLES.iter().copied() {
+            if default_slot_for(role) == slot && self.is_overridden(role) {
+                return self.rgb(role);
+            }
+        }
+        slot.default_rgb()
+    }
+
+    /// Build a palette from `slot = "#rrggbb"` pairs layered over `base`.
+    pub fn from_slot_pairs_over<'a, I>(base: Self, pairs: I) -> (Self, Vec<String>)
+    where
+        I: IntoIterator<Item = (&'a str, &'a str)>,
+    {
+        let mut palette = base;
+        let mut errors = Vec::new();
+        for (key, value) in pairs {
+            match (Slot::from_key(key), parse_hex(value)) {
+                (Some(slot), Some(rgb)) => palette.apply_slot(slot, rgb),
+                (None, _) => errors.push(format!("unknown palette slot '{key}'")),
+                (Some(slot), None) => errors.push(format!(
+                    "invalid color '{value}' for '{}' (expected #rrggbb)",
+                    slot.key()
+                )),
+            }
+        }
+        (palette, errors)
     }
 
     /// Build a palette from `key = "#rrggbb"` pairs, returning per-entry
@@ -688,5 +892,28 @@ mod default_palette_is_frozen {
         for (role, expected) in HAND_TUNED.iter().copied() {
             assert_eq!(role.default_rgb(), expected, "{}", role.key());
         }
+    }
+
+    /// A published base16 theme pasted into `[display.palette]` must recolor the
+    /// roles mapped to each slot, and a per-role override must still win.
+    #[test]
+    fn base16_slots_recolor_their_roles() {
+        let (slotted, errors) = Palette::from_slot_pairs_over(
+            Palette::default(),
+            [("base08", "#ff0000"), ("blue", "#0000ff")],
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+        // `base08` (red) feeds Error; `blue` (base0D) feeds User and FileLink.
+        assert_eq!(slotted.rgb(Role::Error), (255, 0, 0));
+        assert_eq!(slotted.rgb(Role::User), (0, 0, 255));
+        assert_eq!(slotted.rgb(Role::FileLink), (0, 0, 255));
+        // A slot the theme does not set keeps the built-in default.
+        assert_eq!(slotted.rgb(Role::Success), Role::Success.default_rgb());
+        assert_eq!(slotted.slot_rgb(Slot::Blue), (0, 0, 255));
+
+        // A per-role override layers on top of the slot.
+        let (palette, errors) = Palette::from_pairs_over(slotted, [("error", "#00ff00")]);
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(palette.rgb(Role::Error), (0, 255, 0));
     }
 }

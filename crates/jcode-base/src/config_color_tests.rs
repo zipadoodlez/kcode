@@ -6,6 +6,45 @@
 
 use super::Config;
 
+/// A base16 theme pasted into `[display.palette]` must load from a real file,
+/// alongside per-role overrides.
+#[test]
+fn configured_palette_slots_load_from_a_real_config_file() {
+    let _guard = crate::storage::lock_test_env();
+    let prev_home = std::env::var_os("JCODE_HOME");
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    crate::env::set_var("JCODE_HOME", dir.path());
+    Config::invalidate_cache();
+
+    let path = Config::create_default_config_file().expect("create default config file");
+    std::fs::write(
+        &path,
+        "[display.palette]\nbase08 = \"#1050f0\"\nblue = \"#ffaa00\"\n\n[display.colors]\nerror = \"#00ff00\"\n",
+    )
+    .expect("write user config");
+    Config::invalidate_cache();
+
+    let loaded = crate::config::config();
+    assert_eq!(
+        loaded.display.palette.get("base08").map(String::as_str),
+        Some("#1050f0"),
+        "a base16 slot must load"
+    );
+    assert_eq!(loaded.display.palette.get("blue").map(String::as_str), Some("#ffaa00"));
+    assert_eq!(loaded.display.palette.len(), 2);
+    assert_eq!(
+        loaded.display.colors.get("error").map(String::as_str),
+        Some("#00ff00"),
+        "role overrides still load next to slots"
+    );
+
+    if let Some(prev) = prev_home {
+        crate::env::set_var("JCODE_HOME", prev);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+}
+
 /// The color config a user actually writes must survive a real file round trip.
 ///
 /// The template tests check the string we ship; this checks the whole path a
@@ -28,8 +67,8 @@ fn configured_colors_survive_a_real_config_file_round_trip() {
         "the generated config should document how to configure colors"
     );
     assert!(
-        generated.contains("/colors generate"),
-        "the generated config should point at the palette generator"
+        generated.contains("/colors export"),
+        "the generated config should point at the palette export"
     );
 
     // A user setting colors by hand, alongside an unrelated existing setting.

@@ -52,6 +52,7 @@ impl Config {
 - Tool call details: {}
 - Theme: {}
 - Custom colors: {}
+- Palette slots: {}
 
 **Features:**
 - Check updates: {}
@@ -153,6 +154,11 @@ impl Config {
                         .collect::<Vec<_>>()
                         .join(", ")
                 )
+            },
+            if self.display.palette.is_empty() {
+                "default".to_string()
+            } else {
+                format!("{} slot(s)", self.display.palette.len())
             },
             self.features.check_updates,
             self.features.swarm,

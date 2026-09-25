@@ -197,6 +197,31 @@ reasoning_display = "full"
 # Color theme: "dark" (default) or "light".
 # theme = "dark"
 
+# base16 palette slots. A published base16 theme pasted here recolors the whole
+# TUI: roles default to these slots. `base00`..`base0f` are the standard names;
+# the friendly names (bg, red, blue, ...) work too.
+#
+# `/colors` lists the slots and which roles share each one, and
+# `/colors export` prints both sections for you.
+#
+# [display.palette]
+# base00 = "#1e1e2e"   # bg (unused by default)
+# base01 = "#232035"   # bg_alt        -> user_bg
+# base02 = "#3c3c50"   # bg_selection  -> selection_bg
+# base03 = "#646478"   # comment       -> dim, border
+# base04 = "#8c8c8c"   # fg_dim        -> system, queued
+# base05 = "#f5f5ff"   # fg            -> user_text, ai_text, header_name
+# base06 = "#ffffff"   # fg_bright (unused by default)
+# base07 = "#464650"   # bg_bright (unused by default)
+# base08 = "#ff6464"   # red           -> error
+# base09 = "#ffc107"   # orange        -> asap
+# base0a = "#ffc864"   # yellow        -> warning, pending
+# base0b = "#64c864"   # green         -> success, ai
+# base0c = "#8cb4ff"   # cyan          -> info, tool
+# base0d = "#8ab4f8"   # blue          -> user, file_link, header_session
+# base0e = "#ba8bff"   # purple        -> accent, header_icon
+# base0f = "#8c5a3c"   # brown (unused by default)
+
 # Per-role color overrides. Every TUI color with a role is configurable: the
 # roles below are substituted directly, and the ad hoc shades individual widgets
 # use carry no role and are left alone.
@@ -605,6 +630,41 @@ mod tests {
                 "colors should default to empty"
             );
             assert_eq!(value.len(), 7, "{role} example should be #rrggbb: {value}");
+        }
+    }
+
+    /// The same for the base16 palette example: uncommenting it must parse and
+    /// fill all sixteen slots.
+    #[test]
+    fn documented_palette_example_is_valid_when_uncommented() {
+        let template = Config::default_config_file_contents();
+        assert!(
+            template.contains("[display.palette]"),
+            "the template should show how to configure palette slots"
+        );
+        let start = template
+            .find("# [display.palette]")
+            .expect("template documents a palette section");
+        let example: String = template[start..]
+            .lines()
+            .take_while(|line| line.starts_with("# ") || line == &"#")
+            .map(|line| {
+                format!(
+                    "{}\n",
+                    line.trim_start_matches("# ").trim_start_matches('#')
+                )
+            })
+            .collect();
+
+        let parsed: Config = toml::from_str(&example).expect("uncommented example must parse");
+        assert_eq!(
+            parsed.display.palette.len(),
+            16,
+            "the example should set all sixteen slots, got {:?}",
+            parsed.display.palette
+        );
+        for (slot, value) in &parsed.display.palette {
+            assert_eq!(value.len(), 7, "{slot} example should be #rrggbb: {value}");
         }
     }
 }

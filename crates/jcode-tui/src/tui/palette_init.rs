@@ -7,8 +7,9 @@
 //! 3. Fallback: dark.
 //!
 //! "light" installs the baked light palette ([`Palette::light`]); "dark" the
-//! built-in one. `[display.colors]` then layers on top, so a user can pick the
-//! light preset and still tweak individual roles. There is no terminal
+//! built-in one. `[display.palette]` (16 base16 slots) then layers on top, and
+//! `[display.colors]` (per-role) layers on top of that, so a base16 theme can be
+//! pasted in and individual roles still tweaked. There is no terminal
 //! background query: a light terminal is a palette, not a per-frame transform.
 
 use jcode_tui_style::Palette;
@@ -20,9 +21,17 @@ pub fn init_palette() {
         "light" => Palette::light(),
         _ => Palette::default(),
     };
+    let slots = &crate::config::config().display.palette;
+    let (palette, slot_errors) = Palette::from_slot_pairs_over(
+        base,
+        slots.iter().map(|(key, value)| (key.as_str(), value.as_str())),
+    );
+    for error in slot_errors {
+        crate::logging::warn(&format!("display.palette: {error}"));
+    }
     let configured = &crate::config::config().display.colors;
     let (palette, errors) = Palette::from_pairs_over(
-        base,
+        palette,
         configured
             .iter()
             .map(|(key, value)| (key.as_str(), value.as_str())),

@@ -48,6 +48,9 @@ pub struct DisplayConfig {
     pub diff_line_wrap: bool,
     /// FPS for active redraw (processing, streaming): 1-120 (default: 60)
     pub redraw_fps: u32,
+    /// base16 palette slots (`[display.palette]`), e.g. `base05 = "#e0e0e0"`.
+    /// Roles default to slots, so a pasted base16 theme recolors the whole TUI.
+    pub palette: std::collections::BTreeMap<String, String>,
     /// Show a truncated preview of the previous prompt at the top when it scrolls out of view (default: true)
     pub prompt_preview: bool,
     /// Render swarm/file-activity notifications in a compact single-line form
@@ -124,6 +127,7 @@ impl Default for DisplayConfig {
             markdown_spacing: MarkdownSpacingMode::default(),
             diff_line_wrap: true,
             redraw_fps: 60,
+            palette: std::collections::BTreeMap::new(),
             prompt_preview: true,
             compact_notifications: false,
             copy_badge_alt_label: String::new(),

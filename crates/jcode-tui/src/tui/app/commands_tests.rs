@@ -233,6 +233,36 @@ mod colors {
     }
 
     #[test]
+    fn setting_a_palette_slot_persists_it() {
+        with_clean_config(|| {
+            let mut app = create_test_app();
+            assert!(dispatch_local_command(&mut app, "/colors base08 #1050f0"));
+
+            let saved = crate::config::Config::load();
+            assert_eq!(
+                saved.display.palette.get("red").map(String::as_str),
+                Some("#1050f0"),
+                "the slot should be saved under its canonical name"
+            );
+
+            // The role mapped to base08 (error) follows without a restart.
+            assert_eq!(
+                jcode_tui_style::palette().rgb(jcode_tui_style::Role::Error),
+                (0x10, 0x50, 0xf0),
+                "the running palette should pick the slot up immediately"
+            );
+
+            // A role override on top of the slot wins.
+            assert!(dispatch_local_command(&mut app, "/colors error #00ff00"));
+            assert_eq!(
+                jcode_tui_style::palette().rgb(jcode_tui_style::Role::Error),
+                (0x00, 0xff, 0x00),
+                "a per-role override must beat the slot"
+            );
+        });
+    }
+
+    #[test]
     fn setting_a_role_persists_it() {
         with_clean_config(|| {
             let mut app = create_test_app();
@@ -269,9 +299,8 @@ mod colors {
         with_clean_config(|| {
             let mut app = create_test_app();
             for (input, expected) in [
-                ("/colors bogus-role #ffffff", "Unknown color role"),
+                ("/colors bogus-role #ffffff", "Unknown color slot or role"),
                 ("/colors error not-a-color", "Invalid color"),
-                ("/colors generate nope", "Invalid seed color"),
                 ("/colors error", "Missing color value"),
             ] {
                 assert!(dispatch_local_command(&mut app, input), "{input}");
