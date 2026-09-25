@@ -91,23 +91,15 @@ fn client_focus_defaults_to_true() {
 }
 
 #[test]
-fn idle_donut_pauses_while_unfocused() {
+fn focus_changes_request_a_differential_redraw() {
     let mut app = create_test_app();
 
-    // Whether the donut runs while focused depends on the machine's perf tier
-    // and `display.idle_animation` config, so we do not assert the focused case
-    // absolutely. We only assert the invariant that matters for the swarm CPU
-    // regression: it must never run while the terminal is unfocused.
     let redraw = app.set_client_focused(false);
     assert!(
         !redraw,
         "losing focus should not request an immediate redraw"
     );
     assert!(!app.client_focused());
-    assert!(
-        !crate::tui::idle_donut_active(&app),
-        "idle animation must pause while the terminal is unfocused"
-    );
 
     // Regaining focus requests a differential redraw so the window catches up
     // without clearing and retransmitting every terminal cell.
@@ -124,9 +116,8 @@ fn idle_donut_pauses_while_unfocused() {
 #[test]
 fn unfocused_redraw_warranted_tracks_live_activity() {
     let mut app = create_test_app();
-    // `unfocused_redraw_warranted` is only consulted while unfocused, and the
-    // decorative donut is force-disabled when unfocused, so evaluate it in that
-    // state to mirror the run loop.
+    // `unfocused_redraw_warranted` is only consulted while unfocused, so
+    // evaluate it in that state to mirror the run loop.
     app.set_client_focused(false);
 
     // Idle empty session: no live output to paint while unfocused.

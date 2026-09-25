@@ -58,7 +58,6 @@ members = [
     "crates/jcode-transport",
     "crates/jcode-tool-core",
     "crates/jcode-tui-account-picker",
-    "crates/jcode-tui-anim",
     "crates/jcode-tui-render",
     "crates/jcode-tui-visual-debug",
     "crates/jcode-tui-session-picker",
@@ -234,25 +233,9 @@ incremental = true
 [profile.dev.package."*"]
 opt-level = 0
 
-# Keep the idle-animation math kernels fully optimized even in debug-style
-# builds. This crate is pure, dependency-free numeric code (the trig-heavy 3D
-# samplers that otherwise dominate idle CPU). Pinning it to opt-level = 3 here
-# means the optimized object is compiled once and reused across iterative
-# dev/selfdev rebuilds, since it only recompiles when the animation code itself
-# changes. The "*" glob above sets the default for dependencies; these explicit
-# package entries take precedence for this one crate in each profile.
-[profile.dev.package."jcode-tui-anim"]
-opt-level = 3
-
-[profile.selfdev.package."jcode-tui-anim"]
-opt-level = 3
-
-[profile.test.package."jcode-tui-anim"]
-opt-level = 3
-
 # The fuzzy matcher runs a char-level DP over every picker entry on every
-# keystroke (e.g. /model search across hundreds of routes). Like the anim
-# kernels above, it is small, pure, dependency-free code that rarely changes,
+# keystroke (e.g. /model search across hundreds of routes). It is small, pure,
+# dependency-free code that rarely changes,
 # so keeping it fully optimized in dev/selfdev builds costs one compile and
 # removes visible input lag in unoptimized builds.
 [profile.dev.package."jcode-fuzzy"]
@@ -276,7 +259,7 @@ opt-level = 3
 # full frame to ~12ms p50 / 21ms p95, which reads as input-line lag while
 # streaming saturates the redraw loop. These are stable third-party crates
 # that almost never recompile, so pinning them is a one-time compile cost
-# (same rationale as jcode-tui-anim above).
+# (same rationale as jcode-fuzzy above).
 [profile.dev.package.ratatui]
 opt-level = 3
 [profile.selfdev.package.ratatui]
@@ -348,7 +331,7 @@ opt-level = 3
 # production release build was smooth. These are stable third-party crates that
 # almost never recompile, so pinning them to opt-level = 3 costs a one-time
 # compile and is then reused across every iterative jcode rebuild (same rationale
-# as jcode-tui-anim above). It does NOT slow down recompiles of jcode's own
+# as jcode-fuzzy above). It does NOT slow down recompiles of jcode's own
 # crates.
 [profile.dev.package.rustybuzz]
 opt-level = 3

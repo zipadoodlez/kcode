@@ -105,7 +105,6 @@ fn reported_display_config_survives_a_real_config_file_round_trip() {
         concat!(
             "[display]\n",
             "centered = true\n",
-            "idle_animation = true\n",
             "show_thinking = true\n",
             "reasoning_display = \"current\"\n",
         ),
@@ -115,7 +114,6 @@ fn reported_display_config_survives_a_real_config_file_round_trip() {
 
     let loaded = crate::config::config();
     assert!(loaded.display.centered, "centered must apply");
-    assert!(loaded.display.idle_animation, "idle_animation must apply");
     assert!(loaded.display.show_thinking, "show_thinking must apply");
     assert_eq!(
         loaded.display.reasoning_display(),
@@ -131,13 +129,13 @@ fn reported_display_config_survives_a_real_config_file_round_trip() {
     // A genuinely unknown value degrades only itself.
     std::fs::write(
         &path,
-        "[display]\ncentered = true\nidle_animation = true\nreasoning_display = \"nonsense\"\n",
+        "[display]\ncentered = true\nreasoning_display = \"nonsense\"\n",
     )
     .expect("write user config");
     Config::invalidate_cache();
     let loaded = crate::config::config();
     assert!(
-        loaded.display.centered && loaded.display.idle_animation,
+        loaded.display.centered,
         "one unknown enum value must not discard the rest of the file"
     );
 

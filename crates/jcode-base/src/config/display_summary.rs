@@ -43,11 +43,9 @@ impl Config {
 - Mouse capture: {}
 - Debug socket: {}
 - Emoji: {}
-- Idle animation: {}
 - Compact notifications: {}
 - Chat native scrollbar: {}
 - Side panel native scrollbar: {}
-- Disabled animations: {}
 - Performance tier: {}
 - Animation FPS: {}
 - Redraw FPS: {}
@@ -128,15 +126,9 @@ impl Config {
             self.display.mouse_capture,
             self.display.debug_socket,
             self.display.emoji,
-            self.display.idle_animation,
             self.display.compact_notifications,
             self.display.native_scrollbars.chat,
             self.display.native_scrollbars.side_panel,
-            if self.display.disabled_animations.is_empty() {
-                "(none)".to_string()
-            } else {
-                self.display.disabled_animations.join(", ")
-            },
             if self.display.performance.is_empty() {
                 "auto"
             } else {

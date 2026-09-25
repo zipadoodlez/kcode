@@ -146,9 +146,6 @@ reasoning_display = "full"
 # Markdown spacing style: "compact" (chat/TUI) or "document" (docs-like)
 # markdown_spacing = "compact"
 
-# Show idle animation before first prompt (default: false)
-idle_animation = false
-
 # Render swarm/file-activity notifications in a compact single-line form
 # instead of the full multi-line card with diff preview (default: false)
 # compact_notifications = false
@@ -188,11 +185,6 @@ idle_animation = false
 #   "off" - never shown; the compact facts stack is used (default)
 #   "on"  - always visible
 # overscroll_status = "off"
-
-# Disable specific animation variants by name.
-# Examples: ["donut"] or ["donut", "orbit_rings"]
-# Legacy aliases such as "three_rings" and "gyroscope" are still accepted.
-# disabled_animations = []
 
 # Performance tier: auto/full/reduced/minimal (default: auto)
 # auto = detect system load, memory, terminal type, SSH, and apply extra caps for WSL/Windows Terminal

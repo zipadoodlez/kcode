@@ -34,13 +34,6 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 #[cfg(test)]
 use unicode_width::UnicodeWidthStr;
-#[path = "ui_animations.rs"]
-mod animations;
-pub(crate) use animations::{
-    idle_animation_debug_json, idle_donut_reserved_height, last_idle_animation_area,
-    note_idle_animation_fast_path_blocked, note_idle_animation_full_repaint,
-    note_idle_animation_partial_repaint, record_idle_animation_area, render_idle_animation_into,
-};
 #[path = "ui_box.rs"]
 mod box_utils;
 #[path = "ui_changelog.rs"]
@@ -2201,7 +2194,6 @@ pub(crate) fn swarm_expand_target_from_screen(column: u16, row: u16) -> Option<u
 }
 
 pub fn draw(frame: &mut Frame, app: &dyn TuiState) {
-    record_idle_animation_area(None);
     // Suggestions are read many times while composing one frame. Bump the
     // epoch here so the memo is scoped to exactly this frame.
     app.advance_command_suggestions_epoch();
@@ -2486,8 +2478,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         return;
     }
 
-    let show_donut = !onboarding_welcome && super::idle_donut_active(app);
-    let donut_height: u16 = idle_donut_reserved_height(show_donut, input_height);
     let notification_height: u16 = if app.has_notification() { 1 } else { 0 };
     // Elastic overscroll status line revealed when the user scrolls past the
     // bottom of the transcript. Rendered directly below the input line.
@@ -2499,8 +2489,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         + inline_block_height
         + inline_ui_gap_height
         + input_height
-        + overscroll_height
-        + donut_height; // status + queued + swarm strip + notification + inline UI + gap + input + overscroll + donut
+        + overscroll_height; // status + queued + swarm strip + notification + inline UI + gap + input + overscroll
     let available_height = chat_area.height;
     let overflows = |prepared: &PreparedChatFrame| {
         let started = Instant::now();
@@ -2597,7 +2586,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
                 Constraint::Length(inline_ui_gap_height), // 6 Inline UI/input spacing
                 Constraint::Length(input_height),  // 7 Input
                 Constraint::Length(overscroll_height), // 8 Overscroll status line
-                Constraint::Length(donut_height),  // 9 Donut animation
             ]
         } else {
             vec![
@@ -2610,7 +2598,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
                 Constraint::Length(inline_ui_gap_height), // 6 Inline UI/input spacing
                 Constraint::Length(input_height),         // 7 Input
                 Constraint::Length(overscroll_height),    // 8 Overscroll status line
-                Constraint::Length(donut_height),         // 9 Donut animation
             ]
         })
         .split(chat_area);
@@ -2834,9 +2821,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         input_ui::draw_overscroll_status(frame, app, chunks[8]);
     }
 
-    if donut_height > 0 {
-        animations::draw_idle_animation(frame, app, chunks[9]);
-    }
     let chrome_elapsed = chrome_start.elapsed();
 
     // Draw info widget overlays (skip during idle animation - they look out of place)
@@ -2848,7 +2832,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let widget_bounds = messages_area;
     if app.info_widget_overlays_enabled()
         && !widget_data.is_empty()
-        && !show_donut
         && !swarm_page_active
     {
         if let Some(ref mut capture) = debug_capture {
@@ -2900,7 +2883,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
 
         // Optional visual overlay for placements
     } else {
-        // The widget pass did not run (idle donut takeover or no widget data),
+        // The widget pass did not run (no widget data),
         // so nothing from the previous frame is on screen anymore. Clear the
         // remembered placements/anchors so consumers of last-frame state (the
         // swarm strip stand-down, idle fallback facts) do not keep reacting to

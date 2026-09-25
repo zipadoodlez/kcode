@@ -1,4 +1,3 @@
-use super::idle_animation_repaint::{copy_cells_in, idle_animation_partial_repaint_allowed};
 use super::*;
 
 fn report_reload_interaction_gap() {
@@ -18,14 +17,8 @@ fn report_reload_interaction_gap() {
         gap_ms
     ));
 }
-use crate::tui::TuiState;
-use crossterm::cursor::{RestorePosition, SavePosition};
 use crossterm::terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate};
-use ratatui::{buffer::Buffer, layout::Rect, style::Style};
-use std::io::Write;
-
-const STATUS_SPINNER_FPS: f32 = 12.5;
-pub(super) const STATUS_SPINNER_ONLY_INTERVAL: Duration = Duration::from_millis(80);
+use ratatui::buffer::Buffer;
 
 pub(super) fn redraw_timer(period: Duration) -> tokio::time::Interval {
     let mut interval = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
@@ -34,110 +27,6 @@ pub(super) fn redraw_timer(period: Duration) -> tokio::time::Interval {
     // redundant full renders and can lock the UI into a slow-frame loop.
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     interval
-}
-
-pub(super) fn status_spinner_interval() -> tokio::time::Interval {
-    status_spinner_interval_after(STATUS_SPINNER_ONLY_INTERVAL)
-}
-
-pub(super) fn reset_status_spinner_interval(interval: &mut tokio::time::Interval, app: &App) {
-    *interval = status_spinner_interval_after(status_spinner_delay_until_next_frame(
-        status_spinner_elapsed(app),
-    ));
-}
-
-fn status_spinner_interval_after(delay: Duration) -> tokio::time::Interval {
-    let mut interval = tokio::time::interval_at(
-        tokio::time::Instant::now() + delay,
-        STATUS_SPINNER_ONLY_INTERVAL,
-    );
-    // The spinner is visual liveness, not simulated time. If terminal/input work delays a tick,
-    // skip the missed frames instead of bursting them later.
-    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    interval
-}
-
-fn status_spinner_elapsed(app: &App) -> f32 {
-    status_spinner_elapsed_for_sources(app.elapsed().map(|duration| duration.as_secs_f32()))
-}
-
-fn status_spinner_elapsed_for_sources(turn_elapsed: Option<f32>) -> f32 {
-    turn_elapsed.unwrap_or(0.0).max(0.0)
-}
-
-fn status_spinner_delay_until_next_frame(elapsed: f32) -> Duration {
-    if !elapsed.is_finite() {
-        return STATUS_SPINNER_ONLY_INTERVAL;
-    }
-
-    let frame_secs = STATUS_SPINNER_ONLY_INTERVAL.as_secs_f64();
-    let elapsed_secs = f64::from(elapsed.max(0.0));
-    let into_frame = elapsed_secs % frame_secs;
-    let remaining = if into_frame <= f64::EPSILON {
-        frame_secs
-    } else {
-        frame_secs - into_frame
-    };
-
-    Duration::from_secs_f64(remaining.max(0.001))
-}
-
-pub(super) fn status_spinner_only_symbol(app: &App) -> Option<&'static str> {
-    let policy = crate::perf::tui_policy();
-    // The single-cell spinner fast path is intentionally available even when
-    // decorative animations are disabled (Minimal tier, SSH, WSL, etc.). It
-    // patches exactly one status cell between full redraws, so it stays very
-    // cheap while keeping the "thinking/connecting/streaming" spinner feeling
-    // responsive instead of choppy at the ~1 Hz passive-liveness redraw rate.
-    // When decorative animations are off it advances at the smooth liveness
-    // rate; otherwise it uses the full-rate spinner clock.
-    if !app.is_processing
-        || !app.streaming.streaming_text.is_empty()
-        || app.centered_mode()
-        || app.remote_startup_phase_active()
-    {
-        return None;
-    }
-
-    // Slash suggestions are a late overlay and can cover the recorded status
-    // row. Do not let the out-of-band one-cell redraw write through them. Check
-    // the cheap prefix first so normal spinner ticks never rebuild suggestions.
-    if slash_command_palette_may_be_visible(&app.input, || !app.command_suggestions().is_empty()) {
-        return None;
-    }
-
-    if status_uses_primary_spinner(&app.status) {
-        Some(jcode_tui_style::theme::activity_indicator(
-            status_spinner_elapsed(app),
-            STATUS_SPINNER_FPS,
-            policy.enable_decorative_animations,
-        ))
-    } else {
-        None
-    }
-}
-
-fn is_slash_command_input(input: &str) -> bool {
-    input.trim_start().starts_with('/')
-}
-
-/// Whether the floating command-suggestion palette may be on screen for the
-/// current composer contents.
-///
-/// The palette is a late overlay (`draw_command_suggestions_overlay`) that
-/// floats over the rows directly below the composer without reserving layout
-/// height. Partial-repaint fast paths reuse or patch cells from the previous
-/// full frame, so they must stand down while the palette is (possibly) up:
-/// the one-cell spinner would write through it, and the animation-only repaint
-/// resets and redraws the exact rows it floats over on a fresh idle screen.
-///
-/// `has_suggestions` is lazy so hot paths can check the cheap input prefix
-/// first and skip building the suggestion list entirely.
-pub(crate) fn slash_command_palette_may_be_visible(
-    input: &str,
-    has_suggestions: impl FnOnce() -> bool,
-) -> bool {
-    is_slash_command_input(input) && has_suggestions()
 }
 
 /// Statuses whose full status line starts with the primary green circular spinner.
@@ -220,245 +109,15 @@ pub(crate) fn invalidate_previous_terminal_buffer<B: ratatui::backend::Backend>(
     terminal.swap_buffers();
 }
 
-/// State the animation-only fast path consults before it may run, snapshotted
-/// so the decision itself is a pure function (see
-/// [`idle_animation_fast_path_blocked_reason`]).
-struct IdleAnimationFastPathInputs {
-    has_previous_frame: bool,
-    animation_active: bool,
-    has_animation_area: bool,
-    force_full_redraw: bool,
-    force_full_repaint: bool,
-    composer_changed: bool,
-    command_palette_visible: bool,
-}
-
-/// Why the animation-only partial repaint must not run, or `None` when it may.
-///
-/// Pure so the precedence and each individual guard are directly testable;
-/// `idle_animation_only_available` feeds it live state and reports the reason
-/// to `draw-stats`.
-fn idle_animation_fast_path_blocked_reason(
-    inputs: &IdleAnimationFastPathInputs,
-) -> Option<&'static str> {
-    if !inputs.has_previous_frame {
-        Some("no_previous_frame")
-    } else if !inputs.animation_active {
-        Some("animation_inactive")
-    } else if !inputs.has_animation_area {
-        Some("no_animation_area")
-    } else if inputs.force_full_redraw {
-        Some("force_full_redraw")
-    } else if inputs.force_full_repaint {
-        Some("force_full_repaint")
-    } else if inputs.composer_changed {
-        // The user typed (or edited) since the last full frame. This path
-        // reuses that frame outside the animation rows, so it physically
-        // cannot show the new input line; taking it would consume the redraw
-        // the keystroke requested and defer the glyph to a later full frame.
-        Some("input_changed")
-    } else if inputs.command_palette_visible {
-        // The command palette floats over the rows directly below the
-        // composer, which on a fresh idle screen are the animation rows.
-        // This path resets and redraws exactly those rows, so it would erase
-        // the palette milliseconds after every chrome full frame painted it:
-        // pressing `/` in a fresh session made the menu blink in and out at
-        // the chrome full-frame cadence. Stand down until the palette closes.
-        Some("command_palette_visible")
-    } else {
-        None
-    }
-}
-
 #[derive(Default)]
-pub(super) struct StatusSpinnerRenderer {
+pub(super) struct FrameRenderer {
     last_frame: Option<Buffer>,
-    last_full_frame_at: Option<Instant>,
-    /// Animated rectangle whose surrounding cells are currently seeded into
-    /// ratatui's working buffer.
-    ///
-    /// The animation-only repaint used to `clone_from` the whole previous frame
-    /// every tick just to re-render one rectangle over it: ~920k cell copies a
-    /// second at 60fps on a 160x48 terminal, to update ~2200 cells. Once the
-    /// working buffer has been seeded for a given rectangle, everything outside it
-    /// is already correct (this path is the only writer between full frames), so
-    /// later work can copy just those rows while that seed remains live. Cleared
-    /// by [`Self::invalidate`] and after every buffer swap, because ratatui resets
-    /// the next working buffer as part of the swap.
-    seeded_animation_area: Option<Rect>,
-    /// Composer contents as of the last full frame.
-    ///
-    /// The animation-only path reuses that frame for everything except the
-    /// decorative rows, so it cannot show a newer input line. Without this it
-    /// would "satisfy" the redraw a keystroke asked for while omitting the
-    /// character, which then waited for a later full frame. Measured against a
-    /// live client: typing echoed to the terminal in ~7ms but only reached the
-    /// screen ~500ms later; with the guard the same keystroke paints in ~6ms.
-    last_full_frame_input: String,
 }
 
-impl StatusSpinnerRenderer {
-    pub(super) fn spinner_only_available(&self, app: &App) -> bool {
-        status_spinner_only_symbol(app).is_some()
-    }
-
+impl FrameRenderer {
     pub(super) fn invalidate(&mut self) {
         self.last_frame = None;
-        self.last_full_frame_at = None;
-        // Nothing is known to be seeded any more, so the next animation-only
-        // repaint must do one full seed before it may copy just the animated
-        // rows again.
-        self.seeded_animation_area = None;
-        self.last_full_frame_input.clear();
     }
-
-    /// Present an animation frame and forget its working-buffer seed.
-    ///
-    /// `Terminal::swap_buffers` resets the buffer that the next tick will draw
-    /// into, so cells outside the animation area are no longer seeded there.
-    fn swap_after_animation_frame<B: ratatui::backend::Backend>(
-        &mut self,
-        terminal: &mut ratatui::Terminal<B>,
-    ) {
-        terminal.swap_buffers();
-        self.seeded_animation_area = None;
-    }
-
-    /// Whether the decorative idle-animation rows can be repainted on their own,
-    /// reusing the rest of the previous frame.
-    ///
-    /// Available only when the previous full frame actually drew the animation
-    /// and nothing else in the app needs a repaint this tick. On an idle screen
-    /// the animation is the sole moving element, so a full render at animation
-    /// FPS re-derives the transcript, header, status, and composer into
-    /// byte-identical cells. That was measured at a ~50ms median per tick on an
-    /// 8-core laptop, which is what made the animation visibly lag.
-    /// Whether the composer differs from what the last full frame drew.
-    ///
-    /// The animation-only repaint reuses that frame everywhere except the
-    /// decorative rows, so it cannot display a newer input line.
-    fn composer_changed_since_last_full_frame(&self, input: &str) -> bool {
-        input != self.last_full_frame_input
-    }
-
-    pub(super) fn idle_animation_only_available(&self, app: &App) -> bool {
-        let blocked = idle_animation_fast_path_blocked_reason(&IdleAnimationFastPathInputs {
-            has_previous_frame: self.last_frame.is_some(),
-            animation_active: crate::tui::idle_donut_active(app),
-            has_animation_area: crate::tui::ui::last_idle_animation_area().is_some(),
-            force_full_redraw: app.force_full_redraw,
-            force_full_repaint: app.force_full_repaint,
-            composer_changed: self.composer_changed_since_last_full_frame(&app.input),
-            command_palette_visible: slash_command_palette_may_be_visible(&app.input, || {
-                !app.command_suggestions().is_empty()
-            }),
-        });
-        if let Some(reason) = blocked {
-            crate::tui::ui::note_idle_animation_fast_path_blocked(reason);
-            return false;
-        }
-
-        let allowed = idle_animation_partial_repaint_allowed(
-            crate::tui::periodic_redraw_required_excluding_idle_animation(app),
-            self.last_full_frame_at.map(|at| at.elapsed()),
-        );
-        if !allowed {
-            crate::tui::ui::note_idle_animation_fast_path_blocked("chrome_full_frame_due");
-        }
-        allowed
-    }
-
-    /// Repaint just the idle-animation rows over the previous frame.
-    ///
-    /// Returns `false` when the fast path cannot be used, in which case the
-    /// caller must fall back to a full redraw.
-    ///
-    /// "Cheap" here is relative to a full render, but this used to be far more
-    /// expensive than it needed to be: it cloned the entire screen buffer twice
-    /// per frame (`clone_from` to seed the working buffer, then `clone` to keep a
-    /// copy) even though only `area` changes. At 60fps on a 160x48 terminal that
-    /// is ~920k cell copies a second to update ~2200 cells. Measured on a real
-    /// session, the animation cost 0.257 CPU cores over an idle client and nearly
-    /// doubled keystroke latency (p50 6.6ms vs 3.5ms). Now only the animated rows
-    /// are touched, in both buffers.
-    pub(super) fn draw_idle_animation_only(
-        &mut self,
-        app: &App,
-        terminal: &mut DefaultTerminal,
-    ) -> Result<bool> {
-        let Some(previous_frame) = self.last_frame.as_ref() else {
-            return Ok(false);
-        };
-        let Some(area) = crate::tui::ui::last_idle_animation_area() else {
-            return Ok(false);
-        };
-        // The terminal may have been resized since that frame was captured.
-        if !previous_frame.area.contains((area.x, area.y).into())
-            || area.right() > previous_frame.area.right()
-            || area.bottom() > previous_frame.area.bottom()
-        {
-            return Ok(false);
-        }
-
-        {
-            let current_buffer = terminal.current_buffer_mut();
-            if current_buffer.area != previous_frame.area {
-                return Ok(false);
-            }
-            // Seed the working buffer from the last known frame. Only the
-            // animated rows can differ once this path owns the screen (it is the
-            // only writer between full frames), so a live seed can reuse just
-            // those rows. `swap_buffers` resets the next working buffer, and the
-            // presentation hook below invalidates the seed at that boundary.
-            if self.seeded_animation_area == Some(area) {
-                copy_cells_in(previous_frame, current_buffer, area);
-            } else {
-                current_buffer.clone_from(previous_frame);
-                self.seeded_animation_area = Some(area);
-            }
-            crate::tui::ui::render_idle_animation_into(
-                current_buffer,
-                area,
-                crate::tui::TuiState::animation_elapsed(app),
-            );
-        }
-
-        // Same protocol as the one-cell spinner fast path: keep ratatui's
-        // virtual buffers authoritative, flush the diff inside a synchronized
-        // update, and preserve the user's cursor position.
-        crossterm::queue!(
-            terminal.backend_mut(),
-            BeginSynchronizedUpdate,
-            SavePosition
-        )?;
-        terminal.flush()?;
-        crossterm::queue!(
-            terminal.backend_mut(),
-            RestorePosition,
-            EndSynchronizedUpdate
-        )?;
-        self.swap_after_animation_frame(terminal);
-        terminal.backend_mut().flush()?;
-        // Keep the remembered frame current without cloning the whole screen: it
-        // already matches everywhere except the rows just re-rendered. Re-render
-        // the animation into those rows directly (deterministic for a given
-        // elapsed time, and far cheaper than copying 7680 cells) so
-        // `self.last_frame` stays byte-identical to what the terminal now shows.
-        if let Some(last) = self.last_frame.as_mut() {
-            crate::tui::ui::render_idle_animation_into(
-                last,
-                area,
-                crate::tui::TuiState::animation_elapsed(app),
-            );
-        }
-        // Without this the animation-only path was invisible in `draw-stats`:
-        // `partial_repaints` stayed at 0 while this path served ~60 repaints a
-        // second, which reads as "the cheap path never runs" and sends anyone
-        // debugging redraw cost down the wrong branch.
-        crate::tui::ui::note_idle_animation_partial_repaint();
-        Ok(true)
-    }
-
     pub(super) fn draw_full(
         &mut self,
         app: &mut App,
@@ -523,109 +182,13 @@ impl StatusSpinnerRenderer {
             force_full_redraw,
             input: crate::tui::ui::frame_input_attribution_snapshot(),
         });
-        if crate::tui::ui::last_idle_animation_area().is_some() {
-            crate::tui::ui::note_idle_animation_full_repaint();
-        }
         self.last_frame = Some(completed_buffer);
-        self.last_full_frame_at = Some(Instant::now());
-        // A full frame rewrote the whole surface, so ratatui's working buffer no
-        // longer matches `last_frame` outside the animated rows. Force the next
-        // animation-only repaint to re-seed before it trusts that again.
-        self.seeded_animation_area = None;
-        // This frame drew the composer as it is now, so the animation-only path
-        // may reuse it again until the input changes.
-        if self.last_full_frame_input != app.input {
-            self.last_full_frame_input.clear();
-            self.last_full_frame_input.push_str(&app.input);
-        }
         // Close the key-to-paint clock here rather than at render time: the user
         // sees the keystroke when the frame reaches the terminal, so anything
         // before the flush would understate the latency they feel.
         crate::tui::ui::note_frame_painted();
         Ok(())
     }
-
-    pub(super) fn draw_status_spinner_only(
-        &mut self,
-        app: &App,
-        terminal: &mut DefaultTerminal,
-    ) -> Result<bool> {
-        let status_symbol = status_spinner_only_symbol(app);
-        if status_symbol.is_none() {
-            return Ok(false);
-        }
-        let Some(previous_frame) = self.last_frame.as_ref() else {
-            return Ok(false);
-        };
-        let status_area = crate::tui::ui::last_status_area();
-        let status_patchable = status_symbol
-            .zip(status_area)
-            .is_some_and(|(symbol, area)| {
-                render_status_spinner_into_buffer(previous_frame, area, symbol)
-            });
-        if !status_patchable {
-            return Ok(false);
-        }
-
-        let next_frame = {
-            let current_buffer = terminal.current_buffer_mut();
-            current_buffer.clone_from(previous_frame);
-            if let Some((symbol, area)) = status_symbol.zip(status_area)
-                && status_patchable
-            {
-                render_status_spinner_into_buffer_mut(current_buffer, area, symbol);
-            }
-            current_buffer.clone()
-        };
-
-        // Keep ratatui's virtual buffers authoritative while preserving the user's cursor position.
-        // The only terminal mutation outside ratatui here is cursor save/restore; cell contents still
-        // go through Terminal::flush so the next full-frame diff remains synchronized. Wrap the
-        // single-cell update in a synchronized update so it applies atomically (see issue #282).
-        crossterm::queue!(
-            terminal.backend_mut(),
-            BeginSynchronizedUpdate,
-            SavePosition
-        )?;
-        terminal.flush()?;
-        crossterm::queue!(
-            terminal.backend_mut(),
-            RestorePosition,
-            EndSynchronizedUpdate
-        )?;
-        terminal.swap_buffers();
-        terminal.backend_mut().flush()?;
-        self.last_frame = Some(next_frame);
-        // This path `clone_from`s the whole previous frame and patches one cell,
-        // so the animation-only repaint's "everything outside the animated rows
-        // is already seeded" assumption no longer holds. Make it re-seed once.
-        self.seeded_animation_area = None;
-        crate::tui::ui::note_idle_animation_partial_repaint();
-        Ok(true)
-    }
-}
-
-fn render_status_spinner_into_buffer(buffer: &Buffer, area: Rect, symbol: &str) -> bool {
-    area.width > 0
-        && area.height > 0
-        && buffer
-            .cell((area.x, area.y))
-            .is_some_and(|cell| jcode_tui_style::theme::is_activity_indicator_frame(cell.symbol()))
-        && !symbol.is_empty()
-}
-
-fn render_status_spinner_into_buffer_mut(buffer: &mut Buffer, area: Rect, symbol: &str) {
-    buffer.set_stringn(
-        area.x,
-        area.y,
-        symbol,
-        1,
-        // The spinner cell is patched outside the full-frame draw, so apply
-        // palette adaptation here explicitly.
-        Style::default().fg(jcode_tui_style::adapt_foreground_for_display(
-            jcode_tui_style::theme::ai_color(),
-        )),
-    );
 }
 
 impl App {
@@ -636,8 +199,7 @@ impl App {
         let mut event_stream = EventStream::new();
         let mut redraw_period = crate::tui::redraw_interval(&self);
         let mut redraw_interval = redraw_timer(redraw_period);
-        let mut status_spinner_interval = status_spinner_interval();
-        let mut status_spinner_renderer = StatusSpinnerRenderer::default();
+        let mut frame_renderer = FrameRenderer::default();
         let mut needs_redraw = true;
         let mut first_frame_reported = false;
         let mut handterm_native_scroll =
@@ -657,26 +219,15 @@ impl App {
             }
 
             if needs_redraw {
-                // On an idle animated screen, repaint just the animation rows
-                // when nothing else is due. This is the single draw site, so
-                // gating here covers every redraw source (ticks, input, bus
-                // events), not just the animation tick.
-                if status_spinner_renderer.idle_animation_only_available(&self)
-                    && status_spinner_renderer.draw_idle_animation_only(&self, &mut terminal)?
-                {
-                    needs_redraw = false;
-                } else {
-                    status_spinner_renderer.draw_full(&mut self, &mut terminal)?;
-                    if !first_frame_reported {
-                        first_frame_reported = true;
-                        report_reload_interaction_gap();
-                    }
-                    reset_status_spinner_interval(&mut status_spinner_interval, &self);
-                    if let Some(native) = handterm_native_scroll.as_mut() {
-                        native.sync_from_app(&self);
-                    }
-                    needs_redraw = false;
+                frame_renderer.draw_full(&mut self, &mut terminal)?;
+                if !first_frame_reported {
+                    first_frame_reported = true;
+                    report_reload_interaction_gap();
                 }
+                if let Some(native) = handterm_native_scroll.as_mut() {
+                    native.sync_from_app(&self);
+                }
+                needs_redraw = false;
             }
 
             if self.should_quit {
@@ -717,11 +268,6 @@ impl App {
                             self.should_quit = true;
                         } else {
                             tokio::time::sleep(redraw_period).await;
-                        }
-                    }
-                    _ = status_spinner_interval.tick(), if status_spinner_renderer.spinner_only_available(&self) => {
-                        if !status_spinner_renderer.draw_status_spinner_only(&self, &mut terminal)? {
-                            needs_redraw = true;
                         }
                     }
                     _ = redraw_interval.tick() => {
@@ -772,8 +318,7 @@ impl App {
         let mut event_stream = EventStream::new();
         let mut redraw_period = crate::tui::redraw_interval(&self);
         let mut redraw_interval = redraw_timer(redraw_period);
-        let mut status_spinner_interval = status_spinner_interval();
-        let mut status_spinner_renderer = StatusSpinnerRenderer::default();
+        let mut frame_renderer = FrameRenderer::default();
         let mut needs_redraw = true;
         let mut first_frame_reported = false;
         // While unfocused and idle, redraws are throttled to this interval so a
@@ -795,7 +340,7 @@ impl App {
                 }
             }
             if needs_redraw {
-                status_spinner_renderer.draw_full(&mut self, &mut terminal)?;
+                frame_renderer.draw_full(&mut self, &mut terminal)?;
                 if !first_frame_reported {
                     first_frame_reported = true;
                     report_reload_interaction_gap();
@@ -813,7 +358,6 @@ impl App {
                         crate::startup_profile::report_to_log();
                     }
                 }
-                reset_status_spinner_interval(&mut status_spinner_interval, &self);
                 needs_redraw = false;
             }
 
@@ -833,7 +377,7 @@ impl App {
                 remote::ConnectOutcome::Retry => continue,
                 remote::ConnectOutcome::Quit => break 'outer,
             };
-            status_spinner_renderer.invalidate();
+            frame_renderer.invalidate();
 
             match remote::handle_post_connect(
                 &mut self,
@@ -847,7 +391,7 @@ impl App {
                 remote::PostConnectOutcome::Ready => {}
                 remote::PostConnectOutcome::Quit => break 'outer,
             }
-            status_spinner_renderer.invalidate();
+            frame_renderer.invalidate();
             needs_redraw = true;
 
             let mut bus_receiver_remote = Bus::global().subscribe();
@@ -881,23 +425,13 @@ impl App {
                             .map(|t| t.elapsed() >= UNFOCUSED_IDLE_REDRAW_MIN_INTERVAL)
                             .unwrap_or(true);
                     if allow_redraw {
-                        // Idle animated screen: repaint only the animation rows
-                        // when nothing else is due (see the local loop).
-                        if status_spinner_renderer.idle_animation_only_available(&self)
-                            && status_spinner_renderer
-                                .draw_idle_animation_only(&self, &mut terminal)?
-                        {
-                            needs_redraw = false;
-                        } else {
-                            status_spinner_renderer.draw_full(&mut self, &mut terminal)?;
-                            reset_status_spinner_interval(&mut status_spinner_interval, &self);
-                            if let Some(native) = handterm_native_scroll.as_mut() {
-                                native.sync_from_app(&self);
-                            }
-                            last_unfocused_draw =
-                                (!self.client_focused()).then(std::time::Instant::now);
-                            needs_redraw = false;
+                        frame_renderer.draw_full(&mut self, &mut terminal)?;
+                        if let Some(native) = handterm_native_scroll.as_mut() {
+                            native.sync_from_app(&self);
                         }
+                        last_unfocused_draw =
+                            (!self.client_focused()).then(std::time::Instant::now);
+                        needs_redraw = false;
                     }
                     // When unfocused and throttled, leave needs_redraw set so the
                     // pending update is coalesced into the next allowed frame.
@@ -936,11 +470,6 @@ impl App {
                             self.should_quit = true;
                         } else {
                             tokio::time::sleep(redraw_period).await;
-                        }
-                    }
-                    _ = status_spinner_interval.tick(), if status_spinner_renderer.spinner_only_available(&self) => {
-                        if !status_spinner_renderer.draw_status_spinner_only(&self, &mut terminal)? {
-                            needs_redraw = true;
                         }
                     }
                     _ = redraw_interval.tick() => {
@@ -1000,67 +529,7 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-
-    /// The regression that made the animation lag: an idle screen almost always
-    /// has some slow-moving chrome up (notification line, status notice, cache
-    /// countdown). If that chrome wins every tick, the animation runs at full
-    /// frame cost. It must instead get a full frame only at its own cadence,
-    /// with the animation frames in between served cheaply.
-    /// The animation-only path reuses the previous full frame for everything
-    /// outside the decorative rows, so it can never show a newer input line. It
-    /// must therefore refuse to run while the composer differs from what the last
-    /// full frame drew.
-    ///
-    /// Without this, a keystroke's redraw request was "satisfied" by an animation
-    /// frame that did not contain the character, and the glyph waited for a later
-    /// full frame. Measured against a live client, typing echoed to the terminal
-    /// in ~7ms but only reached the screen ~500ms later; with the guard the same
-    /// keystroke paints in ~6ms.
-    ///
-    /// Every existing test missed this because they render single frames and
-    /// compare pixels: the partial frame is *correct*, it is simply the wrong
-    /// frame to have drawn, which is only visible across frames over time.
-    #[test]
-    fn the_animation_only_path_refuses_to_run_when_the_composer_changed() {
-        // Pretend a full frame drew an empty composer.
-        // Struct update so a new renderer field cannot break this test.
-        let renderer = StatusSpinnerRenderer {
-            last_frame: Some(Buffer::empty(Rect::new(0, 0, 10, 3))),
-            ..Default::default()
-        };
-
-        // Same input: the guard must not object (other predicates may still
-        // block, which is why this asserts the reason rather than the outcome).
-        assert!(
-            !renderer.composer_changed_since_last_full_frame(""),
-            "an unchanged composer must not block the cheap path"
-        );
-
-        // A keystroke landed. The path cannot render it, so it must be blocked.
-        assert!(
-            renderer.composer_changed_since_last_full_frame("/"),
-            "a typed character must force a full frame"
-        );
-    }
-
-    /// Invalidation must clear the remembered input too. A stale value would let
-    /// the animation-only path run against a frame that no longer exists.
-    #[test]
-    fn invalidating_the_renderer_forgets_the_drawn_composer() {
-        let mut renderer = StatusSpinnerRenderer {
-            last_full_frame_input: "draft".to_string(),
-            ..Default::default()
-        };
-        renderer.invalidate();
-        assert!(
-            renderer.composer_changed_since_last_full_frame("draft"),
-            "after invalidation nothing is known to be drawn, so any composer \
-             contents must force a full frame"
-        );
-    }
-
     use super::*;
-    use ratatui::style::Color;
 
     #[tokio::test]
     async fn redraw_timer_waits_one_period_and_skips_missed_ticks() {
@@ -1077,43 +546,6 @@ mod tests {
         );
     }
 
-    fn assert_duration_close(actual: Duration, expected: Duration) {
-        let actual_ms = actual.as_millis() as i128;
-        let expected_ms = expected.as_millis() as i128;
-        assert!(
-            (actual_ms - expected_ms).abs() <= 1,
-            "expected {actual:?} to be within 1ms of {expected:?}"
-        );
-    }
-
-    #[test]
-    fn status_spinner_fast_path_uses_status_elapsed_clock() {
-        let full_status_elapsed = 0.0;
-        let app_lifetime_elapsed = 0.24;
-
-        let full_status_symbol = jcode_tui_style::theme::activity_indicator(
-            full_status_elapsed,
-            STATUS_SPINNER_FPS,
-            true,
-        );
-        let old_app_lifetime_symbol = jcode_tui_style::theme::activity_indicator(
-            app_lifetime_elapsed,
-            STATUS_SPINNER_FPS,
-            true,
-        );
-        let fast_path_symbol = jcode_tui_style::theme::activity_indicator(
-            status_spinner_elapsed_for_sources(Some(full_status_elapsed)),
-            STATUS_SPINNER_FPS,
-            true,
-        );
-
-        assert_ne!(
-            old_app_lifetime_symbol, full_status_symbol,
-            "the app lifetime clock can be on a different spinner frame than the status clock"
-        );
-        assert_eq!(fast_path_symbol, full_status_symbol);
-    }
-
     #[test]
     fn primary_spinner_statuses_are_explicit() {
         assert!(status_uses_primary_spinner(&ProcessingStatus::Sending));
@@ -1127,182 +559,5 @@ mod tests {
                 listener: "network".to_string(),
             }
         ));
-    }
-
-    #[test]
-    fn slash_command_palette_suspends_spinner_fast_path() {
-        assert!(is_slash_command_input("/"));
-        assert!(is_slash_command_input("  /help"));
-        assert!(!is_slash_command_input("normal prompt"));
-    }
-
-    /// The palette predicate must short-circuit on the input prefix so hot
-    /// paths never build the suggestion list for ordinary prompts.
-    #[test]
-    fn palette_visibility_checks_the_cheap_prefix_before_building_suggestions() {
-        let mut suggestions_built = false;
-        assert!(!slash_command_palette_may_be_visible("hello", || {
-            suggestions_built = true;
-            true
-        }));
-        assert!(
-            !suggestions_built,
-            "non-slash input must not pay for the suggestion list"
-        );
-
-        assert!(slash_command_palette_may_be_visible("/", || true));
-        assert!(!slash_command_palette_may_be_visible("/", || false));
-    }
-
-    /// The bug this pins: on a fresh idle screen (donut spinning), pressing `/`
-    /// opens the command palette, which floats over the animation rows. Full
-    /// frames painted the palette, then the very next animation-only repaint
-    /// reset those rows and erased it, so the menu blinked in and out at the
-    /// chrome full-frame cadence (~4 Hz), captured frame-by-frame from a live
-    /// tester PTY. While the palette may be visible, animation ticks must take
-    /// the full-frame path, which re-renders the overlay.
-    #[test]
-    fn the_animation_only_path_refuses_to_run_while_the_command_palette_is_up() {
-        let clean_idle_frame = IdleAnimationFastPathInputs {
-            has_previous_frame: true,
-            animation_active: true,
-            has_animation_area: true,
-            force_full_redraw: false,
-            force_full_repaint: false,
-            composer_changed: false,
-            command_palette_visible: false,
-        };
-        assert_eq!(
-            idle_animation_fast_path_blocked_reason(&clean_idle_frame),
-            None,
-            "a clean idle frame must keep the cheap path available"
-        );
-
-        let palette_open = IdleAnimationFastPathInputs {
-            command_palette_visible: true,
-            ..clean_idle_frame
-        };
-        assert_eq!(
-            idle_animation_fast_path_blocked_reason(&palette_open),
-            Some("command_palette_visible"),
-            "an open palette must force full frames so the overlay survives"
-        );
-
-        // A keystroke that both changes the composer and opens the palette
-        // reports the keystroke: it is the more urgent of the two reasons.
-        let typing_into_palette = IdleAnimationFastPathInputs {
-            composer_changed: true,
-            command_palette_visible: true,
-            ..clean_idle_frame
-        };
-        assert_eq!(
-            idle_animation_fast_path_blocked_reason(&typing_into_palette),
-            Some("input_changed"),
-        );
-    }
-
-    #[test]
-    fn status_spinner_reset_targets_next_frame_boundary() {
-        assert_duration_close(
-            status_spinner_delay_until_next_frame(0.0),
-            STATUS_SPINNER_ONLY_INTERVAL,
-        );
-        assert_duration_close(
-            status_spinner_delay_until_next_frame(0.040),
-            Duration::from_millis(40),
-        );
-        assert_duration_close(
-            status_spinner_delay_until_next_frame(1.0),
-            Duration::from_millis(40),
-        );
-        assert_duration_close(
-            status_spinner_delay_until_next_frame(f32::NAN),
-            STATUS_SPINNER_ONLY_INTERVAL,
-        );
-    }
-
-    #[test]
-    fn status_spinner_partial_mutates_only_status_cell() {
-        let area = Rect::new(0, 0, 8, 2);
-        let mut buffer = Buffer::empty(area);
-        buffer.set_string(0, 0, "abcdefgh", Style::default().fg(Color::White));
-        buffer.set_string(0, 1, "ABCDEFGH", Style::default().fg(Color::Blue));
-        buffer
-            .cell_mut((2, 1))
-            .expect("status cell")
-            .set_symbol("⠋");
-        let before = buffer.clone();
-
-        let status_area = Rect::new(2, 1, 6, 1);
-        assert!(render_status_spinner_into_buffer(&buffer, status_area, "⠙"));
-        render_status_spinner_into_buffer_mut(&mut buffer, status_area, "⠙");
-
-        for y in 0..2 {
-            for x in 0..8 {
-                if (x, y) == (2, 1) {
-                    assert_eq!(buffer.cell((x, y)).unwrap().symbol(), "⠙");
-                    assert_eq!(
-                        buffer.cell((x, y)).unwrap().fg,
-                        jcode_tui_style::theme::ai_color()
-                    );
-                } else {
-                    assert_eq!(buffer.cell((x, y)), before.cell((x, y)));
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn status_spinner_partial_does_not_overwrite_slash_palette_cell() {
-        let area = Rect::new(0, 0, 12, 1);
-        let mut buffer = Buffer::empty(area);
-        buffer.set_string(0, 0, "/help  show help", Style::default().fg(Color::Yellow));
-
-        assert!(
-            !render_status_spinner_into_buffer(&buffer, area, "⠙"),
-            "late overlays own the status cell until the next full frame"
-        );
-    }
-
-    #[test]
-    fn presented_animation_frame_requires_reseeding() {
-        let animation_area = Rect::new(0, 1, 10, 2);
-        let mut renderer = StatusSpinnerRenderer {
-            seeded_animation_area: Some(animation_area),
-            ..Default::default()
-        };
-        let backend = ratatui::backend::TestBackend::new(10, 3);
-        let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
-
-        renderer.swap_after_animation_frame(&mut terminal);
-
-        assert_eq!(renderer.seeded_animation_area, None);
-    }
-
-    #[test]
-    fn idle_animation_repaint_preserves_cells_outside_animation_after_swap() {
-        let area = Rect::new(0, 0, 20, 4);
-        let animation_area = Rect::new(0, 3, 20, 1);
-        let mut previous_frame = Buffer::empty(area);
-        previous_frame.set_string(0, 0, "transcript", Style::default());
-        previous_frame.set_string(0, 2, "> composer", Style::default());
-        let mut renderer = StatusSpinnerRenderer::default();
-        let backend = ratatui::backend::TestBackend::new(area.width, area.height);
-        let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
-
-        for _ in 0..3 {
-            let working = terminal.current_buffer_mut();
-            if renderer.seeded_animation_area == Some(animation_area) {
-                copy_cells_in(&previous_frame, working, animation_area);
-            } else {
-                working.clone_from(&previous_frame);
-                renderer.seeded_animation_area = Some(animation_area);
-            }
-
-            assert_eq!(working[(0, 0)].symbol(), "t");
-            assert_eq!(working[(0, 2)].symbol(), ">");
-
-            renderer.swap_after_animation_frame(&mut terminal);
-        }
     }
 }

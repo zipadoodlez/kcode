@@ -1,3 +1,25 @@
+use ratatui::Terminal;
+use ratatui::backend::TestBackend;
+
+/// Pin the performance tier before reading any redraw policy.
+///
+/// `redraw_interval` and `periodic_redraw_required` consult `perf::tui_policy()`,
+/// and the auto-detected tier depends on host load: under a parallel cargo build
+/// the host can look Reduced/Minimal. `pin_full_profile_for_tests` is
+/// first-initialization-wins, so a test that reads the policy without pinning
+/// inherits whatever another test happened to establish.
+fn pin_full_tier() {
+    crate::perf::pin_full_profile_for_tests();
+}
+
+fn render_full(state: &TestState, width: u16, height: u16) -> Terminal<TestBackend> {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test terminal");
+    terminal
+        .draw(|frame| crate::tui::ui::draw(frame, state))
+        .expect("full frame");
+    terminal
+}
+
 #[test]
 fn first_prompt_preserves_welcome_header_spacing() {
     let _lock = viewport_snapshot_test_lock();
@@ -475,19 +497,3 @@ fn test_copy_badge_truncation_marks_cut_content_with_ellipsis() {
     assert_eq!(fits_text, "short");
 }
 
-#[test]
-fn test_idle_donut_reserved_height_absorbs_composer_growth() {
-    // No donut: nothing reserved regardless of composer size.
-    assert_eq!(idle_donut_reserved_height(false, 1), 0);
-    assert_eq!(idle_donut_reserved_height(false, 9), 0);
-
-    // Resting composer (1 row input, no hints): full donut reservation.
-    assert_eq!(idle_donut_reserved_height(true, 1), 14);
-
-    // Slash menu open (1 input row + 8 suggestion rows = 9): the extra 8 rows
-    // come out of the donut so the transcript above does not shift.
-    assert_eq!(idle_donut_reserved_height(true, 9), 6);
-
-    // Pathologically tall composer: reservation bottoms out at zero.
-    assert_eq!(idle_donut_reserved_height(true, 40), 0);
-}

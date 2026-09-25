@@ -52,14 +52,12 @@ mod tests {
         let display = parse(
             r#"{
                 "centered": true,
-                "idle_animation": true,
                 "show_thinking": true,
                 "diff_mode": "totally-bogus"
             }"#,
         );
 
         assert!(display.centered, "unrelated settings must survive");
-        assert!(display.idle_animation);
         assert!(display.show_thinking);
         assert_eq!(display.diff_mode, DiffDisplayMode::default());
     }

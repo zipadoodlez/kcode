@@ -44,10 +44,6 @@ pub struct DisplayConfig {
     /// it scrolls, like the sticky previous-prompt preview (default: true)
     #[serde(default = "default_true")]
     pub pin_todos: bool,
-    /// Show idle animation before first prompt (default: false)
-    pub idle_animation: bool,
-    /// Disable specific animation variants by name (e.g. ["donut", "orbit_rings"])
-    pub disabled_animations: Vec<String>,
     /// Wrap long lines in the pinned diff pane (default: true)
     pub diff_line_wrap: bool,
     /// Performance tier override: auto/full/reduced/minimal (default: auto)
@@ -130,8 +126,6 @@ impl Default for DisplayConfig {
             show_thinking: true,
             reasoning_display: Some(ReasoningDisplayMode::Full),
             markdown_spacing: MarkdownSpacingMode::default(),
-            idle_animation: false,
-            disabled_animations: Vec::new(),
             diff_line_wrap: true,
             performance: String::new(),
             animation_fps: 60,

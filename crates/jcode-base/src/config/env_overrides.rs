@@ -221,14 +221,6 @@ impl Config {
                 _ => {}
             }
         }
-        if let Ok(v) = std::env::var("JCODE_IDLE_ANIMATION") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.display.idle_animation = parsed;
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_DISABLED_ANIMATIONS") {
-            self.display.disabled_animations = parse_env_list(&v);
-        }
         if let Ok(v) = std::env::var("JCODE_ACTIVE_SESSIONS_MANAGER") {
             if let Some(parsed) = parse_env_bool(&v) {
                 self.display.active_sessions_manager = parsed;

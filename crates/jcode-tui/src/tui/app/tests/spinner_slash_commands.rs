@@ -1,5 +1,5 @@
 #[test]
-fn slash_palette_remains_navigable_while_streaming_spinner_is_active() {
+fn slash_palette_remains_navigable_while_a_turn_is_streaming() {
     let mut app = create_test_app();
     app.is_processing = true;
     app.status = ProcessingStatus::Streaming;
@@ -9,10 +9,6 @@ fn slash_palette_remains_navigable_while_streaming_spinner_is_active() {
 
     let suggestions = app.command_suggestions();
     assert!(suggestions.len() > 1, "slash palette should be open");
-    assert!(
-        super::run_shell::status_spinner_only_symbol(&app).is_none(),
-        "the one-cell spinner fast path must yield to the slash palette overlay"
-    );
 
     app.handle_key(KeyCode::Down, KeyModifiers::empty())
         .expect("navigate slash suggestions");

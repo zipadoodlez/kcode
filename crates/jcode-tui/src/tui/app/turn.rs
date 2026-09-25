@@ -32,8 +32,7 @@ impl App {
         let eager_stream_redraw = !crate::perf::tui_policy().enable_decorative_animations;
         let mut redraw_period = crate::tui::redraw_interval(self);
         let mut redraw_interval = super::run_shell::redraw_timer(redraw_period);
-        let mut status_spinner_interval = super::run_shell::status_spinner_interval();
-        let mut status_spinner_renderer = super::run_shell::StatusSpinnerRenderer::default();
+        let mut frame_renderer = super::run_shell::FrameRenderer::default();
 
         'turn_loop: loop {
             // Mark the turn as in-flight work: from here until the turn ends,
@@ -47,8 +46,7 @@ impl App {
             }
 
             self.status = ProcessingStatus::Sending;
-            status_spinner_renderer.draw_full(self, terminal)?;
-            super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
+            frame_renderer.draw_full(self, terminal)?;
             self.flush_pending_session_save();
 
             let repaired = self.repair_missing_tool_outputs();
@@ -133,45 +131,34 @@ impl App {
                                         return Ok(());
                                     }
                                     if !scroll_only {
-                                        status_spinner_renderer.draw_full(self, terminal)?;
-                                        super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
+                                        frame_renderer.draw_full(self, terminal)?;
                                     }
                                 }
                             }
                             Some(Ok(Event::Paste(text))) => {
                                 self.handle_paste(text);
-                                status_spinner_renderer.draw_full(self, terminal)?;
-                                super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
+                                frame_renderer.draw_full(self, terminal)?;
                             }
                             Some(Ok(Event::Mouse(mouse))) => {
                                 if !matches!(mouse.kind, MouseEventKind::Moved) {
                                     let scroll_only = self.handle_mouse_event(mouse);
                                     if !scroll_only {
-                                        status_spinner_renderer.draw_full(self, terminal)?;
-                                        super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
+                                        frame_renderer.draw_full(self, terminal)?;
                                     }
                                 }
                             }
                             Some(Ok(Event::Resize(_, _))) => {
                                 if self.should_redraw_after_resize() {
-                                    status_spinner_renderer.draw_full(self, terminal)?;
-                                    super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
+                                    frame_renderer.draw_full(self, terminal)?;
                                 }
                             }
                             _ => {}
                         }
                     }
                     // Redraw periodically
-                    _ = status_spinner_interval.tick(), if status_spinner_renderer.spinner_only_available(self) => {
-                        if !status_spinner_renderer.draw_status_spinner_only(self, terminal)? {
-                            status_spinner_renderer.draw_full(self, terminal)?;
-                            super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
-                        }
-                    }
                     _ = redraw_interval.tick() => {
                         let _ = self.flush_pending_resize_redraw();
-                        status_spinner_renderer.draw_full(self, terminal)?;
-                        super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
+                        frame_renderer.draw_full(self, terminal)?;
                     }
                     bus_event = async {
                         match bus_receiver.as_mut() {
@@ -180,8 +167,7 @@ impl App {
                         }
                     } => {
                         if super::local::handle_bus_event(self, bus_event) {
-                            status_spinner_renderer.draw_full(self, terminal)?;
-                            super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
+                            frame_renderer.draw_full(self, terminal)?;
                         }
                     }
                     // Poll API call
@@ -198,8 +184,7 @@ impl App {
                                     self.status = ProcessingStatus::WaitingForNetwork {
                                         listener: plan.listener_summary.clone(),
                                     };
-                                    status_spinner_renderer.draw_full(self, terminal)?;
-                                    super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
+                                    frame_renderer.draw_full(self, terminal)?;
                                     crate::network_retry::wait_until_probably_online().await;
                                     self.push_display_message(DisplayMessage::system(
                                         "Network connectivity looks restored; retrying request.".to_string(),
@@ -246,17 +231,6 @@ impl App {
                     redraw_interval = super::run_shell::redraw_timer(redraw_period);
                 }
                 tokio::select! {
-                    // Cheap single-cell spinner refresh between full redraws. This
-                    // keeps the thinking/connecting spinner feeling responsive
-                    // (especially in low-resource tiers where full redraws run at
-                    // the ~1 Hz passive-liveness rate) by patching just the status
-                    // cell. Only active while there is no streaming text to reveal.
-                    _ = status_spinner_interval.tick(), if status_spinner_renderer.spinner_only_available(self) => {
-                        if !status_spinner_renderer.draw_status_spinner_only(self, terminal)? {
-                            status_spinner_renderer.draw_full(self, terminal)?;
-                            super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
-                        }
-                    }
                     // Redraw periodically
                     _ = redraw_interval.tick() => {
                         let _ = self.flush_pending_resize_redraw();
@@ -264,8 +238,7 @@ impl App {
                         self.apply_stream_ops(ops);
                         // Poll for background compaction completion during streaming
                         self.poll_compaction_completion();
-                        status_spinner_renderer.draw_full(self, terminal)?;
-                        super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
+                        frame_renderer.draw_full(self, terminal)?;
                     }
                     bus_event = async {
                         match bus_receiver.as_mut() {
@@ -274,7 +247,7 @@ impl App {
                         }
                     } => {
                         if super::local::handle_bus_event(self, bus_event) {
-                            status_spinner_renderer.draw_full(self, terminal)?;
+                            frame_renderer.draw_full(self, terminal)?;
                         }
                     }
                     // Handle keyboard input
@@ -427,25 +400,25 @@ impl App {
                                     }
 
                                     if !scroll_only {
-                                        status_spinner_renderer.draw_full(self, terminal)?;
+                                        frame_renderer.draw_full(self, terminal)?;
                                     }
                                 }
                             }
                             Some(Ok(Event::Paste(text))) => {
                                 self.handle_paste(text);
-                                status_spinner_renderer.draw_full(self, terminal)?;
+                                frame_renderer.draw_full(self, terminal)?;
                             }
                             Some(Ok(Event::Mouse(mouse))) => {
                                 if !matches!(mouse.kind, MouseEventKind::Moved) {
                                     let scroll_only = self.handle_mouse_event(mouse);
                                     if !scroll_only {
-                                        status_spinner_renderer.draw_full(self, terminal)?;
+                                        frame_renderer.draw_full(self, terminal)?;
                                     }
                                 }
                             }
                             Some(Ok(Event::Resize(_, _))) => {
                                 if self.should_redraw_after_resize() {
-                                    status_spinner_renderer.draw_full(self, terminal)?;
+                                    frame_renderer.draw_full(self, terminal)?;
                                 }
                             }
                             _ => {}
@@ -487,7 +460,7 @@ impl App {
                                                 });
                                             }
                                             if eager_stream_redraw {
-                                                status_spinner_renderer.draw_full(self, terminal)?;
+                                                frame_renderer.draw_full(self, terminal)?;
                                             }
                                         }
                                     }
@@ -522,7 +495,7 @@ impl App {
                                             intent: None, thought_signature: None, });
                                         current_tool_input.clear();
                                         if eager_stream_redraw {
-                                            status_spinner_renderer.draw_full(self, terminal)?;
+                                            frame_renderer.draw_full(self, terminal)?;
                                         }
                                     }
                                     StreamEvent::ToolInputDelta(delta) => {
@@ -574,7 +547,7 @@ impl App {
                                             tool_calls.push(tool);
                                             current_tool_input.clear();
                                             if eager_stream_redraw {
-                                                status_spinner_renderer.draw_full(self, terminal)?;
+                                                frame_renderer.draw_full(self, terminal)?;
                                             }
                                         }
                                     }
@@ -649,13 +622,13 @@ impl App {
                                             ProcessingStatus::Connecting(phase)
                                         };
                                         if eager_stream_redraw {
-                                            status_spinner_renderer.draw_full(self, terminal)?;
+                                            frame_renderer.draw_full(self, terminal)?;
                                         }
                                     }
                                     StreamEvent::StatusDetail { detail } => {
                                         self.status_detail = Some(detail);
                                         if eager_stream_redraw {
-                                            status_spinner_renderer.draw_full(self, terminal)?;
+                                            frame_renderer.draw_full(self, terminal)?;
                                         }
                                     }
                                     StreamEvent::MessageEnd { .. } => {
@@ -663,7 +636,7 @@ impl App {
                                         self.stream_message_ended = true;
                                         saw_message_end = true;
                                         if eager_stream_redraw {
-                                            status_spinner_renderer.draw_full(self, terminal)?;
+                                            frame_renderer.draw_full(self, terminal)?;
                                         }
                                     }
                                     StreamEvent::RetryRollback { attempt, max } => {
@@ -699,7 +672,7 @@ impl App {
                                             },
                                         );
                                         if eager_stream_redraw {
-                                            status_spinner_renderer.draw_full(self, terminal)?;
+                                            frame_renderer.draw_full(self, terminal)?;
                                         }
                                     }
                                     StreamEvent::SessionId(sid) => {
@@ -725,7 +698,7 @@ impl App {
                                             self.status = ProcessingStatus::WaitingForNetwork {
                                                 listener: plan.listener_summary.clone(),
                                             };
-                                            status_spinner_renderer.draw_full(self, terminal)?;
+                                            frame_renderer.draw_full(self, terminal)?;
                                             crate::network_retry::wait_until_probably_online().await;
                                             self.push_display_message(DisplayMessage::system(
                                                 "Network connectivity looks restored; retrying request.".to_string(),
@@ -744,7 +717,7 @@ impl App {
                                         self.status = ProcessingStatus::Thinking(start);
                                         self.broadcast_debug(crate::tui::backend::DebugEvent::ThinkingStart);
                                         if eager_stream_redraw {
-                                            status_spinner_renderer.draw_full(self, terminal)?;
+                                            frame_renderer.draw_full(self, terminal)?;
                                         }
                                     }
                                     StreamEvent::ThinkingSignatureDelta(signature) => {
@@ -783,7 +756,7 @@ impl App {
                                         // "thinking…" is the only visible signal, so repaint
                                         // promptly on the first delta.
                                         if entered_thinking && eager_stream_redraw {
-                                            status_spinner_renderer.draw_full(self, terminal)?;
+                                            frame_renderer.draw_full(self, terminal)?;
                                         }
                                     }
                                     StreamEvent::ThinkingEnd => {
@@ -937,7 +910,7 @@ impl App {
                                         }
                                         self.status = ProcessingStatus::Streaming;
                                         if eager_stream_redraw {
-                                            status_spinner_renderer.draw_full(self, terminal)?;
+                                            frame_renderer.draw_full(self, terminal)?;
                                         }
                                     }
                                     StreamEvent::NativeToolCall {
@@ -992,7 +965,7 @@ impl App {
                                     self.status = ProcessingStatus::WaitingForNetwork {
                                         listener: plan.listener_summary.clone(),
                                     };
-                                    status_spinner_renderer.draw_full(self, terminal)?;
+                                    frame_renderer.draw_full(self, terminal)?;
                                     crate::network_retry::wait_until_probably_online().await;
                                     self.push_display_message(DisplayMessage::system(
                                         "Network connectivity looks restored; retrying request.".to_string(),
@@ -1016,7 +989,7 @@ impl App {
                                     self.status = ProcessingStatus::WaitingForNetwork {
                                         listener: plan.listener_summary.clone(),
                                     };
-                                    status_spinner_renderer.draw_full(self, terminal)?;
+                                    frame_renderer.draw_full(self, terminal)?;
                                     crate::network_retry::wait_until_probably_online().await;
                                     self.push_display_message(DisplayMessage::system(
                                         "Network connectivity looks restored; retrying request.".to_string(),
@@ -1158,7 +1131,7 @@ impl App {
             for tc in tool_calls {
                 self.status = ProcessingStatus::RunningTool(tc.name.clone());
                 self.observe_tool_call(&tc);
-                status_spinner_renderer.draw_full(self, terminal)?;
+                frame_renderer.draw_full(self, terminal)?;
 
                 let message_id = assistant_message_id
                     .clone()
@@ -1300,25 +1273,25 @@ impl App {
                                         }
 
                                         if !scroll_only {
-                                            status_spinner_renderer.draw_full(self, terminal)?;
+                                            frame_renderer.draw_full(self, terminal)?;
                                         }
                                     }
                                 }
                                 Some(Ok(Event::Paste(text))) => {
                                     self.handle_paste(text);
-                                    status_spinner_renderer.draw_full(self, terminal)?;
+                                    frame_renderer.draw_full(self, terminal)?;
                                 }
                                 Some(Ok(Event::Mouse(mouse))) => {
                                     if !matches!(mouse.kind, MouseEventKind::Moved) {
                                         let scroll_only = self.handle_mouse_event(mouse);
                                         if !scroll_only {
-                                            status_spinner_renderer.draw_full(self, terminal)?;
+                                            frame_renderer.draw_full(self, terminal)?;
                                         }
                                     }
                                 }
                                 Some(Ok(Event::Resize(_, _))) => {
                                     if self.should_redraw_after_resize() {
-                                        status_spinner_renderer.draw_full(self, terminal)?;
+                                        frame_renderer.draw_full(self, terminal)?;
                                     }
                                 }
                                 _ => {}
@@ -1356,13 +1329,13 @@ impl App {
                                 }
                             }
                             if needs_redraw {
-                                status_spinner_renderer.draw_full(self, terminal)?;
+                                frame_renderer.draw_full(self, terminal)?;
                             }
                         }
                         // Redraw periodically
                         _ = redraw_interval.tick() => {
                             let _ = self.flush_pending_resize_redraw();
-                            status_spinner_renderer.draw_full(self, terminal)?;
+                            frame_renderer.draw_full(self, terminal)?;
                         }
                         // Poll tool execution
                         result = &mut tool_future => {
