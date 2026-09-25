@@ -3304,6 +3304,7 @@ dependencies = [
  "dirs",
  "image",
  "jcode-render-core",
+ "jcode-tui-style",
  "jcode-tui-workspace",
  "mdwright-latex",
  "pulldown-cmark",
@@ -3405,6 +3406,7 @@ dependencies = [
 name = "jcode-tui-workspace"
 version = "0.1.0"
 dependencies = [
+ "jcode-tui-style",
  "ratatui",
 ]
 

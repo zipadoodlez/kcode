@@ -819,7 +819,7 @@ impl App {
     fn onboarding_start_choice_banner_lines() -> Vec<ratatui::text::Line<'static>> {
         use ratatui::style::{Color, Modifier, Style};
         use ratatui::text::{Line, Span};
-        let accent = crate::tui::color_support::rgb(186, 139, 255);
+        let accent = jcode_tui_style::theme::accent_color();
         vec![
             Line::from(vec![Span::styled(
                 "Welcome to jcode 🎉",

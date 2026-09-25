@@ -1,12 +1,10 @@
-//! Guard: no *new* raw `rgb(r, g, b)` literals outside the palette module.
+//! Guard: no raw `rgb(r, g, b)` literals outside the palette module.
 //!
 //! Requested in the #1397 migration plan (maintainer ruling, step 5): a raw
-//! literal carries no role, so it can never follow `/colors <role>`. Once every
-//! rendered color is a role or a role-derived shade, new literals must not creep
-//! back in. The migration is incremental, so this is a ratchet: `BASELINE`
-//! records the literals that still exist today and the test fails only when one
-//! is *added*. Lower or delete entries as families move to roles, and this
-//! becomes the hard zero-tolerance guard once `BASELINE` is empty.
+//! literal carries no role, so it can never follow `/colors <role>`. The role
+//! migration is complete, so `BASELINE` is empty and this is now a
+//! zero-tolerance guard: any raw numeric literal outside the palette module
+//! fails, and a new one must not creep back in.
 //!
 //! Scope: TUI-rendering crates, excluding `jcode-tui-style` (the palette module,
 //! where role defaults legitimately live as raw values) and test-only files
@@ -17,40 +15,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// Raw `rgb(r, g, b)` literal counts that exist today, per file, relative to
-/// `crates/`. To regenerate after migrating a family: remove or lower the
-/// matching entries. A brand-new entry means a raw literal was introduced.
-const BASELINE: &[(&str, usize)] = &[
-    ("jcode-tui-markdown/src/lib.rs", 12),
-    ("jcode-tui-markdown/src/markdown_wrap.rs", 1),
-    ("jcode-tui-permissions/src/lib.rs", 28),
-    ("jcode-tui-render/src/swarm_gallery.rs", 88),
-    ("jcode-tui-workspace/src/workspace_map_widget.rs", 15),
-    ("jcode-tui/src/tui/app/onboarding_flow_control.rs", 1),
-    ("jcode-tui/src/tui/info_widget.rs", 29),
-    ("jcode-tui/src/tui/info_widget_git.rs", 16),
-    ("jcode-tui/src/tui/info_widget_model.rs", 44),
-    ("jcode-tui/src/tui/info_widget_swarm_background.rs", 25),
-    ("jcode-tui/src/tui/info_widget_tips.rs", 3),
-    ("jcode-tui/src/tui/info_widget_todos.rs", 47),
-    ("jcode-tui/src/tui/info_widget_usage.rs", 21),
-    ("jcode-tui/src/tui/session_picker.rs", 38),
-    ("jcode-tui/src/tui/session_picker/render.rs", 54),
-    ("jcode-tui/src/tui/ui.rs", 2),
-    ("jcode-tui/src/tui/ui/selection_highlight.rs", 1),
-    ("jcode-tui/src/tui/ui_file_diff.rs", 1),
-    ("jcode-tui/src/tui/ui_header.rs", 5),
-    ("jcode-tui/src/tui/ui_inline.rs", 3),
-    ("jcode-tui/src/tui/ui_inline_interactive.rs", 30),
-    ("jcode-tui/src/tui/ui_input.rs", 62),
-    ("jcode-tui/src/tui/ui_messages.rs", 110),
-    ("jcode-tui/src/tui/ui_onboarding.rs", 10),
-    ("jcode-tui/src/tui/ui_overlays.rs", 12),
-    ("jcode-tui/src/tui/ui_pinned.rs", 3),
-    ("jcode-tui/src/tui/ui_prepare.rs", 5),
-    ("jcode-tui/src/tui/ui_tests/tools.rs", 12),
-    ("jcode-tui/src/tui/ui_todo_changes.rs", 16),
-    ("jcode-tui/src/tui/ui_tools.rs", 3),
-];
+/// `crates/`. Empty: the role migration is complete, so the guard is
+/// zero-tolerance. A new entry means a raw literal was introduced.
+const BASELINE: &[(&str, usize)] = &[];
 
 // ponytail: line-based, so a literal whose digits wrap to the next line is not
 // counted (there is one such site today). Consistent with how BASELINE was

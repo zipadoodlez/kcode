@@ -535,7 +535,7 @@ pub(super) fn draw_file_diff_view(
         Span::styled(
             short_path,
             Style::default()
-                .fg(rgb(180, 200, 255))
+                .fg(jcode_tui_style::theme::file_link_color())
                 .add_modifier(ratatui::style::Modifier::BOLD),
         ),
     ];

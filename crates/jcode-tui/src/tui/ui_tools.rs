@@ -1499,9 +1499,9 @@ pub(super) fn render_batch_subcall_line(
     let token_badge = output_content.map(|content| {
         let tokens = crate::util::estimate_tokens(content);
         let color = match crate::util::approx_tool_output_token_severity(tokens) {
-            crate::util::ApproxTokenSeverity::Normal => rgb(118, 118, 118),
-            crate::util::ApproxTokenSeverity::Warning => rgb(214, 184, 92),
-            crate::util::ApproxTokenSeverity::Danger => rgb(224, 118, 118),
+            crate::util::ApproxTokenSeverity::Normal => jcode_tui_style::theme::tool_color(),
+            crate::util::ApproxTokenSeverity::Warning => jcode_tui_style::theme::warning_color(),
+            crate::util::ApproxTokenSeverity::Danger => jcode_tui_style::theme::error_color(),
         };
         (crate::util::format_approx_token_count(tokens), color)
     });

@@ -1128,12 +1128,12 @@ fn render_single_widget(frame: &mut Frame, placement: &WidgetPlacement, data: &I
     let mut block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(rgb(70, 70, 80)).dim());
+        .border_style(Style::default().fg(jcode_tui_style::theme::dim_color()).dim());
 
     if placement.kind == WidgetKind::WorkspaceMap {
         block = block.title(Span::styled(
             " Workspace ",
-            Style::default().fg(rgb(120, 120, 130)).dim(),
+            Style::default().fg(jcode_tui_style::theme::tool_color()).dim(),
         ));
     }
 
@@ -1219,9 +1219,9 @@ fn render_overview_widget(frame: &mut Frame, inner: Rect, data: &InfoWidgetData)
         let mut dots: Vec<Span<'static>> = Vec::new();
         for i in 0..layout.pages.len() {
             if i == page_index {
-                dots.push(Span::styled("● ", Style::default().fg(rgb(170, 170, 180))));
+                dots.push(Span::styled("● ", Style::default().fg(jcode_tui_style::theme::pending_color())));
             } else {
-                dots.push(Span::styled("○ ", Style::default().fg(rgb(100, 100, 110))));
+                dots.push(Span::styled("○ ", Style::default().fg(jcode_tui_style::theme::border_color())));
             }
         }
         if !dots.is_empty() {
@@ -1258,11 +1258,11 @@ fn render_compaction_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'sta
         return Vec::new();
     };
     let title_color = if info.is_compacting {
-        rgb(255, 220, 140)
+        jcode_tui_style::theme::warning_color()
     } else {
-        rgb(110, 210, 140)
+        jcode_tui_style::theme::ai_color()
     };
-    let label_color = rgb(140, 140, 150);
+    let label_color = jcode_tui_style::theme::pending_color();
     let status = if info.is_compacting {
         "compacting"
     } else {
@@ -1285,7 +1285,7 @@ fn render_compaction_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'sta
         ]),
         Line::from(Span::styled(
             truncate_smart(&detail, inner.width as usize),
-            Style::default().fg(rgb(180, 180, 190)),
+            Style::default().fg(jcode_tui_style::theme::header_name_color()),
         )),
     ]
 }
@@ -1298,13 +1298,13 @@ fn render_kv_cache_widget(data: &InfoWidgetData, _inner: Rect) -> Vec<Line<'stat
 
     lines.push(Line::from(vec![Span::styled(
         "miss attribution",
-        Style::default().fg(rgb(140, 140, 150)).bold(),
+        Style::default().fg(jcode_tui_style::theme::pending_color()).bold(),
     )]));
 
     if cache.miss_attributions.is_empty() {
         lines.push(Line::from(vec![Span::styled(
             "none",
-            Style::default().fg(rgb(110, 210, 140)),
+            Style::default().fg(jcode_tui_style::theme::ai_color()),
         )]));
         return lines;
     }
@@ -1316,22 +1316,22 @@ fn render_kv_cache_widget(data: &InfoWidgetData, _inner: Rect) -> Vec<Line<'stat
         .sum();
     lines.push(Line::from(vec![Span::styled(
         format!("{} missed total", compact_token_count(total_missed)),
-        Style::default().fg(rgb(180, 180, 190)),
+        Style::default().fg(jcode_tui_style::theme::header_name_color()),
     )]));
 
     for sample in cache.miss_attributions.iter().take(5) {
         lines.push(Line::from(vec![
             Span::styled(
                 format_cache_turn_label(sample.turn_number, sample.call_index),
-                Style::default().fg(rgb(140, 180, 255)).bold(),
+                Style::default().fg(jcode_tui_style::theme::info_color()).bold(),
             ),
             Span::styled(
                 format!(" {} miss ", compact_token_count(sample.missed_tokens)),
-                Style::default().fg(rgb(255, 200, 100)),
+                Style::default().fg(jcode_tui_style::theme::warning_color()),
             ),
             Span::styled(
                 format!("({})", sample.reason),
-                Style::default().fg(rgb(140, 140, 150)),
+                Style::default().fg(jcode_tui_style::theme::pending_color()),
             ),
         ]));
     }
@@ -1339,7 +1339,7 @@ fn render_kv_cache_widget(data: &InfoWidgetData, _inner: Rect) -> Vec<Line<'stat
     if cache.miss_attributions.len() > 5 {
         lines.push(Line::from(vec![Span::styled(
             format!("… {} more", cache.miss_attributions.len() - 5),
-            Style::default().fg(rgb(100, 100, 110)),
+            Style::default().fg(jcode_tui_style::theme::border_color()),
         )]));
     }
 
@@ -1363,13 +1363,13 @@ fn render_kv_cache_summary_line(cache: &CacheHitInfo) -> Line<'static> {
 
     let mut spans = vec![Span::styled(
         "KV cache: ",
-        Style::default().fg(rgb(180, 180, 190)).bold(),
+        Style::default().fg(jcode_tui_style::theme::header_name_color()).bold(),
     )];
 
     if let Some(warm_pct) = warm_pct {
         spans.push(Span::styled(
             "yield ",
-            Style::default().fg(rgb(140, 140, 150)),
+            Style::default().fg(jcode_tui_style::theme::pending_color()),
         ));
         spans.push(Span::styled(
             format!("{}%", warm_pct),
@@ -1383,10 +1383,10 @@ fn render_kv_cache_summary_line(cache: &CacheHitInfo) -> Line<'static> {
     }
 
     if let Some(last_pct) = last_pct {
-        spans.push(Span::styled(" · ", Style::default().fg(rgb(80, 80, 90))));
+        spans.push(Span::styled(" · ", Style::default().fg(jcode_tui_style::theme::dim_color())));
         spans.push(Span::styled(
             "last ",
-            Style::default().fg(rgb(140, 140, 150)),
+            Style::default().fg(jcode_tui_style::theme::pending_color()),
         ));
         spans.push(Span::styled(
             format!("{}%", last_pct),
@@ -1394,10 +1394,10 @@ fn render_kv_cache_summary_line(cache: &CacheHitInfo) -> Line<'static> {
         ));
     }
 
-    spans.push(Span::styled(" · ", Style::default().fg(rgb(80, 80, 90))));
+    spans.push(Span::styled(" · ", Style::default().fg(jcode_tui_style::theme::dim_color())));
     spans.push(Span::styled(
         "session ",
-        Style::default().fg(rgb(140, 140, 150)),
+        Style::default().fg(jcode_tui_style::theme::pending_color()),
     ));
     spans.push(Span::styled(
         format!("{}%", lifetime_pct),
@@ -1413,10 +1413,10 @@ fn ratio_pct(ratio: f32) -> u8 {
 
 fn kv_cache_optimal_color(pct: u8) -> Color {
     match pct {
-        0..=24 => rgb(255, 110, 110),
-        25..=59 => rgb(255, 200, 100),
-        60..=84 => rgb(140, 180, 255),
-        _ => rgb(110, 210, 140),
+        0..=24 => jcode_tui_style::theme::error_color(),
+        25..=59 => jcode_tui_style::theme::warning_color(),
+        60..=84 => jcode_tui_style::theme::info_color(),
+        _ => jcode_tui_style::theme::ai_color(),
     }
 }
 
@@ -1442,8 +1442,8 @@ fn compact_token_count(tokens: u64) -> String {
 fn render_context_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
     if data.context_info_stale {
         return vec![Line::from(vec![
-            Span::styled("Context ", Style::default().fg(rgb(140, 140, 150))),
-            Span::styled("updating...", Style::default().fg(rgb(220, 180, 80))),
+            Span::styled("Context ", Style::default().fg(jcode_tui_style::theme::pending_color())),
+            Span::styled("updating...", Style::default().fg(jcode_tui_style::theme::warning_color())),
         ])];
     }
     let Some(info) = &data.context_info else {
@@ -1544,8 +1544,8 @@ mod tests;
 fn render_context_compact(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
     if data.context_info_stale {
         return vec![Line::from(vec![
-            Span::styled("Context ", Style::default().fg(rgb(140, 140, 150))),
-            Span::styled("updating...", Style::default().fg(rgb(220, 180, 80))),
+            Span::styled("Context ", Style::default().fg(jcode_tui_style::theme::pending_color())),
+            Span::styled("updating...", Style::default().fg(jcode_tui_style::theme::warning_color())),
         ])];
     }
     let Some(info) = &data.context_info else {

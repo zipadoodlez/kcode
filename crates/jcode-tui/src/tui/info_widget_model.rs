@@ -14,10 +14,10 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
     let max_len = inner.width.saturating_sub(2) as usize;
 
     let mut spans = vec![
-        Span::styled("⚡ ", Style::default().fg(rgb(140, 180, 255))),
+        Span::styled("⚡ ", Style::default().fg(jcode_tui_style::theme::info_color())),
         Span::styled(
             truncate_smart(&short_name, max_len.saturating_sub(2)),
-            Style::default().fg(rgb(255, 150, 200)).bold(),
+            Style::default().fg(jcode_tui_style::theme::system_message_color()).bold(),
         ),
     ];
 
@@ -46,7 +46,7 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
             let detail = truncate_smart(&parts.join(" · "), max_len.saturating_sub(2));
             lines.push(Line::from(vec![Span::styled(
                 detail,
-                Style::default().fg(rgb(140, 140, 150)),
+                Style::default().fg(jcode_tui_style::theme::pending_color()),
             )]));
         }
     }
@@ -60,10 +60,10 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
     {
         let display = home_relative_dir(dir);
         let mut dir_spans = vec![
-            Span::styled(" ", Style::default().fg(rgb(140, 180, 255))),
+            Span::styled(" ", Style::default().fg(jcode_tui_style::theme::info_color())),
             Span::styled(
                 truncate_smart(&display, max_len.saturating_sub(2)),
-                Style::default().fg(rgb(140, 140, 150)),
+                Style::default().fg(jcode_tui_style::theme::pending_color()),
             ),
         ];
         if let Some(branch) = data
@@ -74,7 +74,7 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         {
             dir_spans.push(Span::styled(
                 format!("  {}", truncate_chars(branch, 24)),
-                Style::default().fg(rgb(150, 170, 140)),
+                Style::default().fg(jcode_tui_style::theme::pending_color()),
             ));
         }
         lines.push(Line::from(dir_spans));
@@ -87,10 +87,10 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         .filter(|s| !s.is_empty())
     {
         let mut provider_spans = vec![
-            Span::styled("☁ ", Style::default().fg(rgb(140, 180, 255))),
+            Span::styled("☁ ", Style::default().fg(jcode_tui_style::theme::info_color())),
             Span::styled(
                 provider.to_lowercase(),
-                Style::default().fg(rgb(140, 180, 255)),
+                Style::default().fg(jcode_tui_style::theme::info_color()),
             ),
         ];
         if let Some(upstream) = data.upstream_provider.as_deref().map(str::trim)
@@ -98,11 +98,11 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         {
             provider_spans.push(Span::styled(
                 " -> ",
-                Style::default().fg(rgb(100, 100, 110)),
+                Style::default().fg(jcode_tui_style::theme::border_color()),
             ));
             provider_spans.push(Span::styled(
                 upstream.to_string(),
-                Style::default().fg(rgb(220, 190, 120)),
+                Style::default().fg(jcode_tui_style::theme::warning_color()),
             ));
         }
         lines.push(Line::from(provider_spans));
@@ -115,39 +115,39 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         .filter(|s| !s.is_empty())
     {
         lines.push(Line::from(vec![
-            Span::styled("↔ ", Style::default().fg(rgb(140, 180, 255))),
+            Span::styled("↔ ", Style::default().fg(jcode_tui_style::theme::info_color())),
             Span::styled(
                 connection.to_lowercase(),
-                Style::default().fg(rgb(140, 180, 255)),
+                Style::default().fg(jcode_tui_style::theme::info_color()),
             ),
         ]));
     }
 
     if data.auth_method != AuthMethod::Unknown {
         let (icon, label, color) = match data.auth_method {
-            AuthMethod::ApiKey => ("🔑", "API Key", rgb(180, 180, 190)),
-            AuthMethod::AnthropicOAuth => ("🔐", "OAuth", rgb(255, 160, 100)),
-            AuthMethod::AnthropicApiKey => ("🔑", "API Key", rgb(180, 180, 190)),
-            AuthMethod::OpenAIOAuth => ("🔐", "OAuth", rgb(100, 200, 180)),
-            AuthMethod::OpenAIApiKey => ("🔑", "API Key", rgb(180, 180, 190)),
-            AuthMethod::OpenRouterApiKey => ("🔑", "API Key", rgb(140, 180, 255)),
-            AuthMethod::OpenCodeApiKey => ("🔑", "API Key", rgb(140, 180, 255)),
-            AuthMethod::CopilotOAuth => ("🔐", "OAuth", rgb(110, 200, 140)),
-            AuthMethod::GeminiOAuth => ("🔐", "OAuth", rgb(120, 190, 255)),
+            AuthMethod::ApiKey => ("🔑", "API Key", jcode_tui_style::theme::header_name_color()),
+            AuthMethod::AnthropicOAuth => ("🔐", "OAuth", jcode_tui_style::theme::warning_color()),
+            AuthMethod::AnthropicApiKey => ("🔑", "API Key", jcode_tui_style::theme::header_name_color()),
+            AuthMethod::OpenAIOAuth => ("🔐", "OAuth", jcode_tui_style::theme::header_icon_color()),
+            AuthMethod::OpenAIApiKey => ("🔑", "API Key", jcode_tui_style::theme::header_name_color()),
+            AuthMethod::OpenRouterApiKey => ("🔑", "API Key", jcode_tui_style::theme::info_color()),
+            AuthMethod::OpenCodeApiKey => ("🔑", "API Key", jcode_tui_style::theme::info_color()),
+            AuthMethod::CopilotOAuth => ("🔐", "OAuth", jcode_tui_style::theme::ai_color()),
+            AuthMethod::GeminiOAuth => ("🔐", "OAuth", jcode_tui_style::theme::user_color()),
             AuthMethod::Unknown => unreachable!(),
         };
 
         if let Some(ref upstream) = data.upstream_provider {
             lines.push(Line::from(vec![
                 Span::styled(format!("{} ", icon), Style::default().fg(color)),
-                Span::styled(label, Style::default().fg(rgb(140, 140, 150))),
-                Span::styled(" via ", Style::default().fg(rgb(100, 100, 110))),
-                Span::styled(upstream.clone(), Style::default().fg(rgb(200, 180, 100))),
+                Span::styled(label, Style::default().fg(jcode_tui_style::theme::pending_color())),
+                Span::styled(" via ", Style::default().fg(jcode_tui_style::theme::border_color())),
+                Span::styled(upstream.clone(), Style::default().fg(jcode_tui_style::theme::warning_color())),
             ]));
         } else {
             lines.push(Line::from(vec![
                 Span::styled(format!("{} ", icon), Style::default().fg(color)),
-                Span::styled(label, Style::default().fg(rgb(140, 140, 150))),
+                Span::styled(label, Style::default().fg(jcode_tui_style::theme::pending_color())),
             ]));
         }
     }
@@ -157,10 +157,10 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         && tps > 0.1
     {
         lines.push(Line::from(vec![
-            Span::styled("⏱ ", Style::default().fg(rgb(140, 180, 255))),
+            Span::styled("⏱ ", Style::default().fg(jcode_tui_style::theme::info_color())),
             Span::styled(
                 format!("{:.1} t/s", tps),
-                Style::default().fg(rgb(140, 140, 150)),
+                Style::default().fg(jcode_tui_style::theme::pending_color()),
             ),
         ]));
     }
@@ -185,7 +185,7 @@ pub(super) fn render_model_info(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
         } else {
             short_name
         },
-        Style::default().fg(rgb(180, 180, 190)).bold(),
+        Style::default().fg(jcode_tui_style::theme::header_name_color()).bold(),
     )];
 
     append_model_runtime_metadata(&mut spans, data);
@@ -197,7 +197,7 @@ pub(super) fn render_model_info(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
             format!("native {}", mode)
         };
         spans.push(Span::styled(" ", Style::default()));
-        spans.push(Span::styled(label, Style::default().fg(rgb(120, 210, 230))));
+        spans.push(Span::styled(label, Style::default().fg(jcode_tui_style::theme::header_icon_color())));
     }
 
     let mut lines = vec![Line::from(spans)];
@@ -221,29 +221,29 @@ pub(super) fn render_model_info(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
         {
             detail_spans.push(Span::styled(
                 provider.to_lowercase(),
-                Style::default().fg(rgb(140, 180, 255)),
+                Style::default().fg(jcode_tui_style::theme::info_color()),
             ));
         }
 
         if has_auth {
             let (icon, label, _color) = match data.auth_method {
-                AuthMethod::ApiKey => ("🔑", "API Key", rgb(180, 180, 190)),
-                AuthMethod::AnthropicOAuth => ("🔐", "OAuth", rgb(255, 160, 100)),
-                AuthMethod::AnthropicApiKey => ("🔑", "API Key", rgb(180, 180, 190)),
-                AuthMethod::OpenAIOAuth => ("🔐", "OAuth", rgb(100, 200, 180)),
-                AuthMethod::OpenAIApiKey => ("🔑", "API Key", rgb(180, 180, 190)),
-                AuthMethod::OpenRouterApiKey => ("🔑", "API Key", rgb(140, 180, 255)),
-                AuthMethod::OpenCodeApiKey => ("🔑", "API Key", rgb(140, 180, 255)),
-                AuthMethod::CopilotOAuth => ("🔐", "OAuth", rgb(110, 200, 140)),
-                AuthMethod::GeminiOAuth => ("🔐", "OAuth", rgb(120, 190, 255)),
+                AuthMethod::ApiKey => ("🔑", "API Key", jcode_tui_style::theme::header_name_color()),
+                AuthMethod::AnthropicOAuth => ("🔐", "OAuth", jcode_tui_style::theme::warning_color()),
+                AuthMethod::AnthropicApiKey => ("🔑", "API Key", jcode_tui_style::theme::header_name_color()),
+                AuthMethod::OpenAIOAuth => ("🔐", "OAuth", jcode_tui_style::theme::header_icon_color()),
+                AuthMethod::OpenAIApiKey => ("🔑", "API Key", jcode_tui_style::theme::header_name_color()),
+                AuthMethod::OpenRouterApiKey => ("🔑", "API Key", jcode_tui_style::theme::info_color()),
+                AuthMethod::OpenCodeApiKey => ("🔑", "API Key", jcode_tui_style::theme::info_color()),
+                AuthMethod::CopilotOAuth => ("🔐", "OAuth", jcode_tui_style::theme::ai_color()),
+                AuthMethod::GeminiOAuth => ("🔐", "OAuth", jcode_tui_style::theme::user_color()),
                 AuthMethod::Unknown => unreachable!(),
             };
             if !detail_spans.is_empty() {
-                detail_spans.push(Span::styled(" · ", Style::default().fg(rgb(80, 80, 90))));
+                detail_spans.push(Span::styled(" · ", Style::default().fg(jcode_tui_style::theme::dim_color())));
             }
             detail_spans.push(Span::styled(
                 format!("{} {}", icon, label),
-                Style::default().fg(rgb(140, 140, 150)),
+                Style::default().fg(jcode_tui_style::theme::pending_color()),
             ));
         }
 
@@ -273,7 +273,7 @@ pub(super) fn render_model_info(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
             let detail = truncate_smart(&parts.join(" · "), max_len.saturating_sub(2));
             lines.push(Line::from(vec![Span::styled(
                 detail,
-                Style::default().fg(rgb(140, 140, 150)),
+                Style::default().fg(jcode_tui_style::theme::pending_color()),
             )]));
         }
     }
@@ -290,7 +290,7 @@ fn append_model_runtime_metadata(spans: &mut Vec<Span<'static>>, data: &InfoWidg
         spans.push(Span::styled(" ", Style::default()));
         spans.push(Span::styled(
             format!("({effort})"),
-            Style::default().fg(rgb(255, 200, 100)),
+            Style::default().fg(jcode_tui_style::theme::warning_color()),
         ));
     }
 
@@ -302,7 +302,7 @@ fn append_model_runtime_metadata(spans: &mut Vec<Span<'static>>, data: &InfoWidg
         spans.push(Span::styled(" ", Style::default()));
         spans.push(Span::styled(
             format!("[{tier}]"),
-            Style::default().fg(rgb(200, 140, 255)).bold(),
+            Style::default().fg(jcode_tui_style::theme::accent_color()).bold(),
         ));
     }
 }

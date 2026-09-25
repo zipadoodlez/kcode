@@ -618,7 +618,7 @@ pub(super) fn draw_pinned_content_cached(
     title_parts.push(Span::styled(
         "Pinned",
         Style::default()
-            .fg(rgb(180, 200, 255))
+            .fg(jcode_tui_style::theme::file_link_color())
             .add_modifier(ratatui::style::Modifier::BOLD),
     ));
     title_parts.push(Span::styled(" ", Style::default().fg(dim_color())));
@@ -690,7 +690,7 @@ pub(super) fn draw_pinned_content_cached(
                         Span::styled(
                             short_path,
                             Style::default()
-                                .fg(rgb(180, 200, 255))
+                                .fg(jcode_tui_style::theme::file_link_color())
                                 .add_modifier(ratatui::style::Modifier::BOLD),
                         ),
                         Span::styled(" (", Style::default().fg(dim_color())),
@@ -842,7 +842,7 @@ pub(super) fn draw_side_panel_markdown(
     title_parts.push(Span::styled(
         page.title.clone(),
         Style::default()
-            .fg(rgb(180, 200, 255))
+            .fg(jcode_tui_style::theme::file_link_color())
             .add_modifier(ratatui::style::Modifier::BOLD),
     ));
     title_parts.push(Span::styled(

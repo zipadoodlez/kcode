@@ -114,11 +114,11 @@ pub(super) fn render_tips_widget(inner: Rect) -> Vec<Line<'static>> {
 
     let mut lines: Vec<Line<'static>> = Vec::new();
     lines.push(Line::from(vec![
-        Span::styled("💡 ", Style::default().fg(rgb(255, 210, 80))),
+        Span::styled("💡 ", Style::default().fg(jcode_tui_style::theme::warning_color())),
         Span::styled(
             "Did you know?",
             Style::default()
-                .fg(rgb(200, 200, 210))
+                .fg(jcode_tui_style::theme::header_name_color())
                 .add_modifier(Modifier::BOLD),
         ),
     ]));
@@ -126,7 +126,7 @@ pub(super) fn render_tips_widget(inner: Rect) -> Vec<Line<'static>> {
     for line_text in wrapped {
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(line_text, Style::default().fg(rgb(160, 160, 175))),
+            Span::styled(line_text, Style::default().fg(jcode_tui_style::theme::pending_color())),
         ]));
     }
 

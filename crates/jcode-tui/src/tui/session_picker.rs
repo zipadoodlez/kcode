@@ -1297,9 +1297,9 @@ impl SessionPicker {
 
     fn render_preview(&mut self, frame: &mut Frame, area: Rect) {
         let empty_border_color = if self.focus == PaneFocus::Preview {
-            rgb(130, 130, 160)
+            jcode_tui_style::theme::border_color()
         } else {
-            rgb(50, 50, 50)
+            jcode_tui_style::theme::user_bg()
         };
 
         if let Some(message) = self.loading_message.as_deref() {
@@ -1310,7 +1310,7 @@ impl SessionPicker {
                 .border_style(Style::default().fg(empty_border_color));
             let body = vec![
                 Line::from(vec![
-                    Span::styled("⏳ ", Style::default().fg(rgb(255, 200, 100))),
+                    Span::styled("⏳ ", Style::default().fg(jcode_tui_style::theme::warning_color())),
                     Span::styled(
                         message.to_string(),
                         Style::default()
@@ -1353,9 +1353,9 @@ impl SessionPicker {
         // Draw the bordered block first so we know the inner rect (which drives
         // wrapping width and the scrollbar decision) before building content.
         let preview_border_color = if self.focus == PaneFocus::Preview {
-            rgb(130, 130, 160)
+            jcode_tui_style::theme::border_color()
         } else {
-            rgb(70, 70, 70)
+            jcode_tui_style::theme::dim_color()
         };
         let block = Block::default()
             .borders(Borders::ALL)
@@ -1464,8 +1464,8 @@ impl SessionPicker {
         // prompt, pin a dimmed `N› …` line at the top of the content area, just
         // like the main TUI's `prompt_preview`.
         if scroll > 0 {
-            let user_color: Color = rgb(138, 180, 248);
-            let user_text: Color = rgb(245, 245, 255);
+            let user_color: Color = jcode_tui_style::theme::user_color();
+            let user_text: Color = jcode_tui_style::theme::user_text();
             self.render_preview_prompt_header(
                 frame,
                 content_area,
@@ -1555,11 +1555,11 @@ impl SessionPicker {
         align: Alignment,
         diff_mode: crate::config::DiffDisplayMode,
     ) -> PreviewRenderCache {
-        let user_color: Color = rgb(138, 180, 248);
-        let user_text: Color = rgb(245, 245, 255);
-        let dim_color: Color = rgb(80, 80, 80);
-        let header_icon_color: Color = rgb(120, 210, 230);
-        let header_session_color: Color = rgb(255, 255, 255);
+        let user_color: Color = jcode_tui_style::theme::user_color();
+        let user_text: Color = jcode_tui_style::theme::user_text();
+        let dim_color: Color = jcode_tui_style::theme::dim_color();
+        let header_icon_color: Color = jcode_tui_style::theme::header_icon_color();
+        let header_session_color: Color = jcode_tui_style::theme::header_session_color();
 
         let preview_inner_width = area.width.saturating_sub(2);
         let assistant_width = preview_inner_width.saturating_sub(2);
@@ -1616,7 +1616,7 @@ impl SessionPicker {
             lines.push(
                 Line::from(vec![Span::styled(
                     saved_label,
-                    Style::default().fg(rgb(255, 180, 100)),
+                    Style::default().fg(jcode_tui_style::theme::warning_color()),
                 )])
                 .alignment(align),
             );
@@ -1635,25 +1635,25 @@ impl SessionPicker {
 
         // Status line with details
         let (status_icon, status_text, status_color) = match &session.status {
-            SessionStatus::Active => ("▶", "Active".to_string(), rgb(100, 200, 100)),
+            SessionStatus::Active => ("▶", "Active".to_string(), jcode_tui_style::theme::success_color()),
             SessionStatus::Closed => ("✓", "Closed normally".to_string(), Color::DarkGray),
             SessionStatus::Crashed { message } => {
                 let text = match message {
                     Some(msg) => format!("Crashed: {}", safe_truncate(msg, 80)),
                     None => "Crashed".to_string(),
                 };
-                ("💥", text, rgb(220, 100, 100))
+                ("💥", text, jcode_tui_style::theme::error_color())
             }
-            SessionStatus::Reloaded => ("🔄", "Reloaded".to_string(), rgb(138, 180, 248)),
+            SessionStatus::Reloaded => ("🔄", "Reloaded".to_string(), jcode_tui_style::theme::user_color()),
             SessionStatus::Compacted => (
                 "📦",
                 "Compacted (context too large)".to_string(),
-                rgb(255, 193, 7),
+                jcode_tui_style::theme::queued_color(),
             ),
-            SessionStatus::RateLimited => ("⏳", "Rate limited".to_string(), rgb(186, 139, 255)),
+            SessionStatus::RateLimited => ("⏳", "Rate limited".to_string(), jcode_tui_style::theme::accent_color()),
             SessionStatus::Error { message } => {
                 let text = format!("Error: {}", safe_truncate(message, 40));
-                ("❌", text, rgb(220, 100, 100))
+                ("❌", text, jcode_tui_style::theme::error_color())
             }
         };
         lines.push(
@@ -1672,7 +1672,7 @@ impl SessionPicker {
                 Line::from(vec![Span::styled(
                     "Included in batch restore",
                     Style::default()
-                        .fg(rgb(255, 140, 140))
+                        .fg(jcode_tui_style::theme::error_color())
                         .add_modifier(Modifier::BOLD),
                 )])
                 .alignment(align),
@@ -1684,7 +1684,7 @@ impl SessionPicker {
                 Line::from(vec![Span::styled(
                     "✓ Selected for multi-resume",
                     Style::default()
-                        .fg(rgb(140, 220, 160))
+                        .fg(jcode_tui_style::theme::ai_color())
                         .add_modifier(Modifier::BOLD),
                 )])
                 .alignment(align),
@@ -1695,7 +1695,7 @@ impl SessionPicker {
         lines.push(
             Line::from(vec![Span::styled(
                 "─".repeat(area.width.saturating_sub(4) as usize),
-                Style::default().fg(rgb(60, 60, 60)),
+                Style::default().fg(jcode_tui_style::theme::selection_bg_color()),
             )])
             .alignment(align),
         );
@@ -1821,7 +1821,7 @@ impl SessionPicker {
                             Span::styled("🧠 ", Style::default()),
                             Span::styled(
                                 msg.content.clone(),
-                                Style::default().fg(rgb(140, 210, 255)),
+                                Style::default().fg(jcode_tui_style::theme::asap_color()),
                             ),
                         ])
                         .alignment(align),
@@ -2010,8 +2010,8 @@ impl SessionPicker {
             return;
         }
         let dim_style = Style::default().dim();
-        let dim_num = rgb(80, 80, 80);
-        let user_bg = rgb(30, 34, 42);
+        let dim_num = jcode_tui_style::theme::dim_color();
+        let user_bg = jcode_tui_style::theme::user_bg();
 
         let text_chars: Vec<char> = text_flat.chars().collect();
         let is_long = text_chars.len() > content_width;
@@ -2070,7 +2070,7 @@ impl SessionPicker {
         if area.height == 0 {
             return;
         }
-        let accent = rgb(186, 139, 255);
+        let accent = jcode_tui_style::theme::accent_color();
         let inner = area.inner(Margin {
             horizontal: 2,
             vertical: 1,
@@ -2113,14 +2113,14 @@ impl SessionPicker {
                 (
                     Style::default().fg(accent),
                     Style::default()
-                        .fg(rgb(20, 24, 32))
+                        .fg(jcode_tui_style::theme::user_bg())
                         .bg(accent)
                         .add_modifier(Modifier::BOLD),
                 )
             } else {
                 (
-                    Style::default().fg(rgb(58, 62, 70)),
-                    Style::default().fg(rgb(170, 174, 182)).bg(rgb(58, 62, 70)),
+                    Style::default().fg(jcode_tui_style::theme::selection_bg_color()),
+                    Style::default().fg(jcode_tui_style::theme::pending_color()).bg(jcode_tui_style::theme::selection_bg_color()),
                 )
             };
             Line::from(vec![
@@ -2217,22 +2217,22 @@ impl SessionPicker {
 
             let cursor_char = if self.search_active { "▎" } else { "" };
             let search_line = Line::from(vec![
-                Span::styled(" 🔍 ", Style::default().fg(rgb(186, 139, 255))),
+                Span::styled(" 🔍 ", Style::default().fg(jcode_tui_style::theme::accent_color())),
                 Span::styled(
                     &self.search_query,
                     Style::default()
                         .fg(Color::White)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(cursor_char, Style::default().fg(rgb(186, 139, 255))),
+                Span::styled(cursor_char, Style::default().fg(jcode_tui_style::theme::accent_color())),
                 if self.search_active {
-                    Span::styled("  Esc to clear", Style::default().fg(rgb(60, 60, 60)))
+                    Span::styled("  Esc to clear", Style::default().fg(jcode_tui_style::theme::selection_bg_color()))
                 } else {
-                    Span::styled("  / to edit", Style::default().fg(rgb(60, 60, 60)))
+                    Span::styled("  / to edit", Style::default().fg(jcode_tui_style::theme::selection_bg_color()))
                 },
             ]);
             let search_widget =
-                Paragraph::new(search_line).style(Style::default().bg(rgb(25, 25, 30)));
+                Paragraph::new(search_line).style(Style::default().bg(jcode_tui_style::theme::user_bg()));
             frame.render_widget(search_widget, search_area);
         }
 
@@ -2285,12 +2285,12 @@ impl SessionPicker {
             Line::from(""),
             Line::from(Span::styled(
                 "Kcode will prepare the transcript first, then ask Claude to exit.",
-                Style::default().fg(rgb(190, 190, 200)),
+                Style::default().fg(jcode_tui_style::theme::header_name_color()),
             )),
             Line::from(Span::styled(
                 "Enter/Y confirm · Esc/N cancel",
                 Style::default()
-                    .fg(rgb(255, 193, 7))
+                    .fg(jcode_tui_style::theme::queued_color())
                     .add_modifier(Modifier::BOLD),
             )),
         ];
@@ -2300,7 +2300,7 @@ impl SessionPicker {
                     .title(" Explicit Claude takeover ")
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(rgb(255, 193, 7))),
+                    .border_style(Style::default().fg(jcode_tui_style::theme::queued_color())),
             )
             .wrap(ratatui::widgets::Wrap { trim: false });
         frame.render_widget(modal, area);

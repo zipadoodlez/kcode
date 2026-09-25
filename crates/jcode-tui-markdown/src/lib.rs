@@ -437,10 +437,10 @@ const MATH_FOREGROUND: (u8, u8, u8) = (255, 255, 255);
 const MATH_INLINE_FOREGROUND: (u8, u8, u8) = (255, 255, 255);
 
 fn code_bg() -> Color {
-    rgb(45, 45, 45)
+    jcode_tui_style::theme::user_bg()
 }
 fn code_fg() -> Color {
-    rgb(180, 180, 180)
+    jcode_tui_style::theme::header_name_color()
 }
 fn math_fg() -> Color {
     rgb(MATH_FOREGROUND.0, MATH_FOREGROUND.1, MATH_FOREGROUND.2)
@@ -453,31 +453,31 @@ fn math_inline_fg() -> Color {
     )
 }
 fn link_fg() -> Color {
-    rgb(120, 180, 240)
+    jcode_tui_style::theme::user_color()
 }
 fn html_fg() -> Color {
-    rgb(140, 140, 150)
+    jcode_tui_style::theme::pending_color()
 }
 fn text_color() -> Color {
-    rgb(200, 200, 195)
+    jcode_tui_style::theme::ai_text()
 }
 fn bold_color() -> Color {
-    rgb(240, 240, 235)
+    jcode_tui_style::theme::user_text()
 }
 fn heading_h1_color() -> Color {
-    rgb(255, 215, 100)
+    jcode_tui_style::theme::warning_color()
 }
 fn heading_h2_color() -> Color {
-    rgb(240, 190, 90)
+    jcode_tui_style::theme::warning_color()
 }
 fn heading_h3_color() -> Color {
-    rgb(220, 170, 80)
+    jcode_tui_style::theme::warning_color()
 }
 fn heading_color() -> Color {
-    rgb(200, 155, 75)
+    jcode_tui_style::theme::warning_color()
 }
 fn md_dim_color() -> Color {
-    rgb(100, 100, 100)
+    jcode_tui_style::theme::border_color()
 }
 const RULE_LEN: usize = 24;
 
@@ -908,7 +908,7 @@ fn raw_math_display_lines(math: &str) -> Vec<Line<'static>> {
 }
 
 fn table_color() -> Color {
-    rgb(150, 150, 150)
+    jcode_tui_style::theme::pending_color()
 }
 
 /// Render markdown text to styled ratatui Lines

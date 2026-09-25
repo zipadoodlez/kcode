@@ -8,7 +8,7 @@ use super::{accent_color, blend_color, rgb};
 use ratatui::prelude::*;
 
 pub(crate) fn selection_bg_for(base_bg: Option<Color>) -> Color {
-    let fallback = rgb(32, 38, 48);
+    let fallback = jcode_tui_style::theme::user_bg();
     // A selection is an active interaction, not passive decoration. Use a
     // deliberately strong fill so it remains obvious over syntax highlighting,
     // diff backgrounds, and dim assistant text.

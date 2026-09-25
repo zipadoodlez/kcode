@@ -271,9 +271,9 @@ fn claude_version_segment(raw: &str, family: &str) -> Option<String> {
 
 fn auth_dot_color(state: AuthState) -> Color {
     match state {
-        AuthState::Available => rgb(100, 200, 100),
-        AuthState::Expired => rgb(255, 200, 100),
-        AuthState::NotConfigured => rgb(80, 80, 80),
+        AuthState::Available => jcode_tui_style::theme::success_color(),
+        AuthState::Expired => jcode_tui_style::theme::warning_color(),
+        AuthState::NotConfigured => jcode_tui_style::theme::dim_color(),
     }
 }
 
@@ -666,7 +666,7 @@ fn build_persistent_header_with_auth(
                 if compact_version_label(server) == compact_version_label(client)
         );
     let version_style = if version_mismatch {
-        Style::default().fg(rgb(255, 200, 100))
+        Style::default().fg(jcode_tui_style::theme::warning_color())
     } else {
         Style::default().fg(dim_color())
     };
@@ -791,7 +791,7 @@ fn build_persistent_header_with_auth(
         nice_model.clone(),
         // Match the info widget's model accent (pink, bold) instead of plain
         // white so the model reads as a distinct, styled element.
-        Style::default().fg(rgb(255, 150, 200)).bold(),
+        Style::default().fg(jcode_tui_style::theme::system_message_color()).bold(),
     ));
     if let Some(upstream) = upstream.as_deref() {
         let suffix = format!(" via {}", upstream);

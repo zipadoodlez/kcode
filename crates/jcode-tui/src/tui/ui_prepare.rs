@@ -467,7 +467,7 @@ fn prepare_active_batch_progress(
     };
 
     let centered = app.centered_mode();
-    let accent = rgb(255, 193, 94);
+    let accent = jcode_tui_style::theme::warning_color();
     let spinner = super::activity_indicator(app.animation_elapsed(), 12.5);
     let block_width = if centered {
         super::centered_content_block_width(width, 96)
@@ -512,7 +512,7 @@ fn prepare_active_batch_progress(
                 hidden_completed += 1;
                 continue;
             }
-            crate::bus::BatchSubcallState::Failed => ("✗", rgb(220, 100, 100)),
+            crate::bus::BatchSubcallState::Failed => ("✗", jcode_tui_style::theme::error_color()),
         };
 
         lines.push(tools_ui::render_batch_subcall_line(
@@ -702,7 +702,7 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
                         Span::styled(
                             format!("{}{} ", pad, label),
                             Style::default()
-                                .fg(rgb(138, 180, 248))
+                                .fg(jcode_tui_style::theme::user_color())
                                 .add_modifier(Modifier::BOLD),
                         ),
                         Span::styled(
@@ -714,9 +714,9 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
                     vec![
                         Span::styled(
                             format!("{}[{}] ", pad, i + 1),
-                            Style::default().fg(rgb(138, 180, 248)),
+                            Style::default().fg(jcode_tui_style::theme::user_color()),
                         ),
-                        Span::styled(label.clone(), Style::default().fg(rgb(200, 200, 200))),
+                        Span::styled(label.clone(), Style::default().fg(jcode_tui_style::theme::ai_text())),
                     ]
                 };
                 wrapped_lines.push(Line::from(spans).alignment(suggestion_align));

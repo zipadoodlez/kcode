@@ -148,51 +148,51 @@ fn tile_color(
         WorkspaceSessionVisualState::Running => {
             if focused {
                 if tick.is_multiple_of(2) {
-                    rgb(180, 220, 255)
+                    jcode_tui_style::theme::header_name_color()
                 } else {
-                    rgb(130, 170, 220)
+                    jcode_tui_style::theme::user_color()
                 }
             } else if tick.is_multiple_of(2) {
-                rgb(140, 200, 255)
+                jcode_tui_style::theme::asap_color()
             } else {
-                rgb(90, 140, 190)
+                jcode_tui_style::theme::user_color()
             }
         }
         WorkspaceSessionVisualState::Error => {
             if focused {
-                rgb(255, 160, 160)
+                jcode_tui_style::theme::error_color()
             } else {
-                rgb(255, 120, 120)
+                jcode_tui_style::theme::error_color()
             }
         }
         WorkspaceSessionVisualState::Waiting => {
             if focused {
-                rgb(255, 225, 150)
+                jcode_tui_style::theme::warning_color()
             } else {
-                rgb(255, 210, 120)
+                jcode_tui_style::theme::warning_color()
             }
         }
         WorkspaceSessionVisualState::Completed => {
             if focused {
-                rgb(160, 240, 180)
+                jcode_tui_style::theme::ai_color()
             } else {
-                rgb(120, 220, 140)
+                jcode_tui_style::theme::ai_color()
             }
         }
         WorkspaceSessionVisualState::Detached => {
             if focused {
-                rgb(200, 200, 215)
+                jcode_tui_style::theme::header_name_color()
             } else {
-                rgb(170, 170, 190)
+                jcode_tui_style::theme::pending_color()
             }
         }
         WorkspaceSessionVisualState::Idle => {
             if focused {
-                rgb(220, 220, 240)
+                jcode_tui_style::theme::header_name_color()
             } else if current_workspace {
-                rgb(150, 150, 165)
+                jcode_tui_style::theme::pending_color()
             } else {
-                rgb(95, 95, 110)
+                jcode_tui_style::theme::border_color()
             }
         }
     }

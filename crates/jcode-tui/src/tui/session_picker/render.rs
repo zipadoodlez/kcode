@@ -30,7 +30,7 @@ impl SessionPicker {
             Span::styled("     ", Style::default()),
             Span::styled(
                 format!("reason: {}", reason_display),
-                Style::default().fg(rgb(220, 120, 120)),
+                Style::default().fg(jcode_tui_style::theme::error_color()),
             ),
         ]))
     }
@@ -138,7 +138,7 @@ impl SessionPicker {
             return vec![Span::styled(text.to_string(), base)];
         }
 
-        let highlight = base.fg(rgb(255, 214, 90)).add_modifier(Modifier::BOLD);
+        let highlight = base.fg(jcode_tui_style::theme::warning_color()).add_modifier(Modifier::BOLD);
         let mut spans: Vec<Span<'static>> = Vec::new();
         let mut idx = 0;
         while idx < chars.len() {
@@ -179,22 +179,22 @@ impl SessionPicker {
         is_selected: bool,
         spinner_frame: usize,
     ) -> Vec<Line<'static>> {
-        let dim: Color = rgb(100, 100, 100);
-        let dimmer: Color = rgb(70, 70, 70);
-        let user_clr: Color = rgb(138, 180, 248);
-        let accent: Color = rgb(186, 139, 255);
-        let batch_restore: Color = rgb(255, 140, 140);
+        let dim: Color = jcode_tui_style::theme::border_color();
+        let dimmer: Color = jcode_tui_style::theme::dim_color();
+        let user_clr: Color = jcode_tui_style::theme::user_color();
+        let accent: Color = jcode_tui_style::theme::accent_color();
+        let batch_restore: Color = jcode_tui_style::theme::error_color();
 
         let created_ago = format_time_ago(session.created_at);
         let in_batch_restore = self.crashed_session_ids.contains(&session.id);
         let is_marked = self.selected_session_ids.contains(&session.id);
         let same_dir = self.session_in_current_dir(session);
-        let same_dir_clr: Color = rgb(120, 200, 140);
+        let same_dir_clr: Color = jcode_tui_style::theme::ai_color();
         let highlight_tokens = self.active_highlight_tokens();
 
         let name_style = if is_selected {
             Style::default()
-                .fg(rgb(140, 220, 160))
+                .fg(jcode_tui_style::theme::ai_color())
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::White)
@@ -206,10 +206,10 @@ impl SessionPicker {
         let selection_marker = if is_marked { "● " } else { "○ " };
         let selection_style = if is_marked {
             Style::default()
-                .fg(rgb(140, 220, 160))
+                .fg(jcode_tui_style::theme::ai_color())
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(rgb(90, 90, 90))
+            Style::default().fg(jcode_tui_style::theme::dim_color())
         };
 
         let time_ago = format_time_ago(session.last_message_time);
@@ -220,7 +220,7 @@ impl SessionPicker {
         let is_current = self.session_is_current(session);
         let live_badge = if self.session_is_live(session) {
             if session.source == SessionSource::ClaudeCode {
-                Some(("●", rgb(120, 210, 255), "live Claude".to_string()))
+                Some(("●", jcode_tui_style::theme::asap_color(), "live Claude".to_string()))
             } else if self.session_is_streaming(session) {
                 let label = match self.session_streaming_duration(session) {
                     Some(elapsed) => format!("working {}", format_short_duration(elapsed)),
@@ -229,11 +229,11 @@ impl SessionPicker {
                 Some((
                     jcode_tui_render::swarm_gallery::STRIP_SPINNER_FRAMES[spinner_frame
                         % jcode_tui_render::swarm_gallery::STRIP_SPINNER_FRAMES.len()],
-                    rgb(255, 193, 7),
+                    jcode_tui_style::theme::queued_color(),
                     label,
                 ))
             } else {
-                Some(("●", rgb(100, 220, 130), "ready".to_string()))
+                Some(("●", jcode_tui_style::theme::success_color(), "ready".to_string()))
             }
         } else {
             None
@@ -241,18 +241,18 @@ impl SessionPicker {
         let (status_icon, status_color, time_label) = match live_badge {
             Some(badge) => badge,
             None => match &session.status {
-                SessionStatus::Active => ("▶", rgb(100, 200, 100), "active".to_string()),
+                SessionStatus::Active => ("▶", jcode_tui_style::theme::success_color(), "active".to_string()),
                 SessionStatus::Closed => ("✓", dim, format!("closed {}", time_ago)),
                 SessionStatus::Crashed { .. } => {
-                    ("💥", rgb(220, 100, 100), format!("crashed {}", time_ago))
+                    ("💥", jcode_tui_style::theme::error_color(), format!("crashed {}", time_ago))
                 }
                 SessionStatus::Reloaded => ("🔄", user_clr, format!("reloaded {}", time_ago)),
                 SessionStatus::Compacted => {
-                    ("📦", rgb(255, 193, 7), format!("compacted {}", time_ago))
+                    ("📦", jcode_tui_style::theme::queued_color(), format!("compacted {}", time_ago))
                 }
                 SessionStatus::RateLimited => ("⏳", accent, format!("rate-limited {}", time_ago)),
                 SessionStatus::Error { .. } => {
-                    ("❌", rgb(220, 100, 100), format!("errored {}", time_ago))
+                    ("❌", jcode_tui_style::theme::error_color(), format!("errored {}", time_ago))
                 }
             },
         };
@@ -262,7 +262,7 @@ impl SessionPicker {
             Span::styled(selection_marker, selection_style),
             Span::styled(
                 format!("{} ", session.icon),
-                Style::default().fg(rgb(110, 210, 255)),
+                Style::default().fg(jcode_tui_style::theme::asap_color()),
             ),
         ];
         line1_spans.extend(Self::highlight_spans(
@@ -271,9 +271,9 @@ impl SessionPicker {
             name_style,
         ));
         line1_spans.extend([
-            Span::styled(canary_marker, Style::default().fg(rgb(255, 193, 7))),
-            Span::styled(debug_marker, Style::default().fg(rgb(180, 180, 180))),
-            Span::styled(saved_marker, Style::default().fg(rgb(255, 180, 100))),
+            Span::styled(canary_marker, Style::default().fg(jcode_tui_style::theme::queued_color())),
+            Span::styled(debug_marker, Style::default().fg(jcode_tui_style::theme::header_name_color())),
+            Span::styled(saved_marker, Style::default().fg(jcode_tui_style::theme::warning_color())),
             Span::styled(
                 format!(" {}", status_icon),
                 Style::default().fg(status_color),
@@ -281,7 +281,7 @@ impl SessionPicker {
             Span::styled(format!("  {}", time_label), Style::default().fg(dim)),
         ]);
         if let Some(ref label) = session.save_label {
-            let label_style = Style::default().fg(rgb(255, 200, 140));
+            let label_style = Style::default().fg(jcode_tui_style::theme::warning_color());
             line1_spans.push(Span::styled("  \"".to_string(), label_style));
             line1_spans.extend(Self::highlight_spans(label, &highlight_tokens, label_style));
             line1_spans.push(Span::styled("\"".to_string(), label_style));
@@ -290,7 +290,7 @@ impl SessionPicker {
             line1_spans.push(Span::styled(
                 format!("  {}", source_badge),
                 Style::default()
-                    .fg(rgb(120, 210, 255))
+                    .fg(jcode_tui_style::theme::asap_color())
                     .add_modifier(Modifier::BOLD),
             ));
         }
@@ -306,7 +306,7 @@ impl SessionPicker {
             line1_spans.push(Span::styled(
                 "  ◀ current",
                 Style::default()
-                    .fg(rgb(110, 210, 255))
+                    .fg(jcode_tui_style::theme::asap_color())
                     .add_modifier(Modifier::BOLD),
             ));
         }
@@ -346,7 +346,7 @@ impl SessionPicker {
                 Span::styled(" · ", Style::default().fg(dimmer)),
                 Span::styled(
                     format!("{}", session.assistant_message_count),
-                    Style::default().fg(rgb(129, 199, 132)),
+                    Style::default().fg(jcode_tui_style::theme::ai_color()),
                 ),
                 Span::styled(" assistant", Style::default().fg(dimmer)),
                 Span::styled(" · ", Style::default().fg(dimmer)),
@@ -407,7 +407,7 @@ impl SessionPicker {
             prompt_spans.extend(Self::highlight_spans(
                 &prompt_display,
                 &highlight_tokens,
-                Style::default().fg(rgb(180, 180, 220)),
+                Style::default().fg(jcode_tui_style::theme::file_link_color()),
             ));
             rows.push(Line::from(prompt_spans));
         }
@@ -426,7 +426,7 @@ impl SessionPicker {
         is_selected: bool,
         spinner_frame: usize,
     ) -> ListItem<'static> {
-        let batch_row_bg: Color = rgb(36, 18, 18);
+        let batch_row_bg: Color = jcode_tui_style::theme::user_bg();
         let in_batch_restore = self.crashed_session_ids.contains(&session.id);
         let rows = self.render_session_item_lines_at_frame(session, is_selected, spinner_frame);
         let mut item = ListItem::new(rows);
@@ -437,8 +437,8 @@ impl SessionPicker {
     }
 
     pub(super) fn render_session_list(&mut self, frame: &mut Frame, area: Rect) {
-        let server_color: Color = rgb(255, 200, 100);
-        let dim: Color = rgb(100, 100, 100);
+        let server_color: Color = jcode_tui_style::theme::warning_color();
+        let dim: Color = jcode_tui_style::theme::border_color();
         let spinner_frame = Self::running_spinner_frame();
         let spinner = jcode_tui_render::swarm_gallery::STRIP_SPINNER_FRAMES
             [spinner_frame % jcode_tui_render::swarm_gallery::STRIP_SPINNER_FRAMES.len()];
@@ -446,11 +446,11 @@ impl SessionPicker {
         let items: Vec<ListItem> = if let Some(message) = self.loading_message.as_deref() {
             vec![
                 ListItem::new(Line::from(vec![
-                    Span::styled("  ⏳ ", Style::default().fg(rgb(255, 200, 100))),
+                    Span::styled("  ⏳ ", Style::default().fg(jcode_tui_style::theme::warning_color())),
                     Span::styled(
                         message.to_string(),
                         Style::default()
-                            .fg(rgb(220, 220, 220))
+                            .fg(jcode_tui_style::theme::ai_text())
                             .add_modifier(Modifier::BOLD),
                     ),
                 ])),
@@ -466,7 +466,7 @@ impl SessionPicker {
                 ListItem::new(Line::from(vec![Span::styled(
                     "  No other active sessions",
                     Style::default()
-                        .fg(rgb(220, 220, 220))
+                        .fg(jcode_tui_style::theme::ai_text())
                         .add_modifier(Modifier::BOLD),
                 )])),
                 ListItem::new(Line::from(vec![Span::styled(
@@ -521,7 +521,7 @@ impl SessionPicker {
                             ListItem::new(vec![line1])
                         }
                         PickerItem::SavedHeader { session_count } => {
-                            let saved_color: Color = rgb(255, 180, 100);
+                            let saved_color: Color = jcode_tui_style::theme::warning_color();
                             let line1 = Line::from(vec![
                                 Span::styled("📌 ", Style::default().fg(saved_color)),
                                 Span::styled(
@@ -559,7 +559,7 @@ impl SessionPicker {
             title_parts.push(Span::styled(
                 " loading sessions ",
                 Style::default()
-                    .fg(rgb(255, 200, 100))
+                    .fg(jcode_tui_style::theme::warning_color())
                     .add_modifier(Modifier::BOLD),
             ));
         } else if self.filter_mode == jcode_tui_session_picker::SessionFilterMode::Active {
@@ -578,59 +578,59 @@ impl SessionPicker {
             title_parts.push(Span::styled(
                 format!(" {} active ", working + ready),
                 Style::default()
-                    .fg(rgb(200, 200, 200))
+                    .fg(jcode_tui_style::theme::ai_text())
                     .add_modifier(Modifier::BOLD),
             ));
             title_parts.push(Span::styled(
                 format!("{}{} working", spinner, working),
-                Style::default().fg(rgb(255, 193, 7)),
+                Style::default().fg(jcode_tui_style::theme::queued_color()),
             ));
-            title_parts.push(Span::styled(" · ", Style::default().fg(rgb(80, 80, 80))));
+            title_parts.push(Span::styled(" · ", Style::default().fg(jcode_tui_style::theme::dim_color())));
             title_parts.push(Span::styled(
                 format!("●{} ready", ready),
-                Style::default().fg(rgb(100, 220, 130)),
+                Style::default().fg(jcode_tui_style::theme::success_color()),
             ));
         } else {
             title_parts.push(Span::styled(
                 format!(" {} ", self.visible_sessions.len()),
                 Style::default()
-                    .fg(rgb(200, 200, 200))
+                    .fg(jcode_tui_style::theme::ai_text())
                     .add_modifier(Modifier::BOLD),
             ));
             title_parts.push(Span::styled(
                 "sessions",
-                Style::default().fg(rgb(120, 120, 120)),
+                Style::default().fg(jcode_tui_style::theme::tool_color()),
             ));
         }
 
         let filter_label = self.filter_mode.label().unwrap_or("all");
         title_parts.push(Span::styled(
             format!("  {}", filter_label),
-            Style::default().fg(rgb(255, 180, 100)),
+            Style::default().fg(jcode_tui_style::theme::warning_color()),
         ));
         title_parts.push(Span::styled(
             " (s/S filter)",
-            Style::default().fg(rgb(80, 80, 80)),
+            Style::default().fg(jcode_tui_style::theme::dim_color()),
         ));
 
         if self.hidden_test_count > 0 {
             title_parts.push(Span::styled(
                 format!(" (+{} hidden)", self.hidden_test_count),
-                Style::default().fg(rgb(80, 80, 80)),
+                Style::default().fg(jcode_tui_style::theme::dim_color()),
             ));
         }
 
         if !self.search_query.is_empty() {
             title_parts.push(Span::styled(
                 format!("  🔍 \"{}\"", self.search_query),
-                Style::default().fg(rgb(186, 139, 255)),
+                Style::default().fg(jcode_tui_style::theme::accent_color()),
             ));
         }
 
         if self.selection_count() > 0 {
             title_parts.push(Span::styled(
                 format!("  ✓ {} selected", self.selection_count()),
-                Style::default().fg(rgb(140, 220, 160)),
+                Style::default().fg(jcode_tui_style::theme::ai_color()),
             ));
         }
 
@@ -654,8 +654,8 @@ impl SessionPicker {
             help = format!(" T take over live Claude ·{}", help);
         }
 
-        let border_dim: Color = rgb(70, 70, 70);
-        let border_focus: Color = rgb(130, 130, 160);
+        let border_dim: Color = jcode_tui_style::theme::dim_color();
+        let border_focus: Color = jcode_tui_style::theme::border_color();
         let border_color = if self.focus == PaneFocus::Sessions {
             border_focus
         } else {
@@ -681,17 +681,17 @@ impl SessionPicker {
                     .title(Line::from(title_parts))
                     .title_bottom(Line::from(Span::styled(
                         help,
-                        Style::default().fg(rgb(80, 80, 80)),
+                        Style::default().fg(jcode_tui_style::theme::dim_color()),
                     )))
                     .border_style(Style::default().fg(border_color)),
             )
             .highlight_style(if self.onboarding_start_new_highlighted() {
                 // Focus is on the onboarding "Start a new session" row; dim the
                 // list selection so only one row reads as active.
-                Style::default().fg(rgb(150, 150, 160))
+                Style::default().fg(jcode_tui_style::theme::pending_color())
             } else {
                 Style::default()
-                    .bg(rgb(40, 44, 52))
+                    .bg(jcode_tui_style::theme::user_bg())
                     .add_modifier(Modifier::BOLD)
             });
 
@@ -738,12 +738,12 @@ impl SessionPicker {
         let names = info.display_names.join(", ");
         let body = vec![
             Line::from(vec![
-                Span::styled("💥 ", Style::default().fg(rgb(255, 140, 140))),
+                Span::styled("💥 ", Style::default().fg(jcode_tui_style::theme::error_color())),
                 Span::styled(names, Style::default().fg(Color::White)),
             ]),
             Line::from(vec![Span::styled(
                 "Press R (or B) to restore only this guessed recent group.",
-                Style::default().fg(rgb(180, 180, 180)),
+                Style::default().fg(jcode_tui_style::theme::header_name_color()),
             )]),
         ];
 
@@ -753,7 +753,7 @@ impl SessionPicker {
                     .title(title)
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(rgb(255, 140, 140))),
+                    .border_style(Style::default().fg(jcode_tui_style::theme::error_color())),
             )
             .wrap(Wrap { trim: false });
         frame.render_widget(block, area);

@@ -158,33 +158,33 @@ fn compute_diff(prev: Option<&[TodoItem]>, next: &[TodoItem]) -> TodoDiff {
 
 fn status_icon(status: &str, blocked: bool) -> (&'static str, Color) {
     if blocked && status != "completed" {
-        return ("⊳", rgb(180, 140, 100));
+        return ("⊳", jcode_tui_style::theme::warning_color());
     }
     match status {
-        "completed" => ("✓", rgb(100, 180, 100)),
-        "in_progress" => ("▶", rgb(255, 200, 100)),
-        "cancelled" => ("✗", rgb(150, 90, 90)),
-        _ => ("○", rgb(120, 120, 130)),
+        "completed" => ("✓", jcode_tui_style::theme::success_color()),
+        "in_progress" => ("▶", jcode_tui_style::theme::warning_color()),
+        "cancelled" => ("✗", jcode_tui_style::theme::error_color()),
+        _ => ("○", jcode_tui_style::theme::tool_color()),
     }
 }
 
 /// Leading marker (glyph + color) and the text color used for a change line.
 fn change_marker(kind: &TodoChangeKind) -> (&'static str, Color, Color) {
     match kind {
-        TodoChangeKind::Added => ("+", rgb(100, 180, 100), rgb(190, 200, 195)),
-        TodoChangeKind::Removed => ("-", rgb(200, 110, 100), rgb(120, 120, 125)),
+        TodoChangeKind::Added => ("+", jcode_tui_style::theme::success_color(), jcode_tui_style::theme::ai_text()),
+        TodoChangeKind::Removed => ("-", jcode_tui_style::theme::error_color(), jcode_tui_style::theme::tool_color()),
         TodoChangeKind::StatusChanged { to, blocked } => {
             let (icon, color) = status_icon(to, *blocked);
             let text = if to == "completed" || to == "cancelled" {
-                rgb(120, 120, 130)
+                jcode_tui_style::theme::tool_color()
             } else {
-                rgb(190, 195, 205)
+                jcode_tui_style::theme::header_name_color()
             };
             (icon, color, text)
         }
         TodoChangeKind::ContentEdited { status, blocked } => {
             let (icon, _) = status_icon(status, *blocked);
-            (icon, rgb(150, 150, 160), rgb(180, 185, 195))
+            (icon, jcode_tui_style::theme::pending_color(), jcode_tui_style::theme::header_name_color())
         }
     }
 }
@@ -222,14 +222,14 @@ fn summary_text(diff: &TodoDiff) -> String {
 fn progress_span(diff: &TodoDiff) -> Span<'static> {
     Span::styled(
         format!("  ({}/{})", diff.completed, diff.total),
-        Style::default().fg(rgb(120, 120, 135)),
+        Style::default().fg(jcode_tui_style::theme::tool_color()),
     )
 }
 
 fn header_line(diff: &TodoDiff, width: u16) -> Line<'static> {
     let spans = vec![
         Span::styled("  ↳ ", Style::default().fg(dim_color())),
-        Span::styled(summary_text(diff), Style::default().fg(rgb(150, 155, 170))),
+        Span::styled(summary_text(diff), Style::default().fg(jcode_tui_style::theme::pending_color())),
         progress_span(diff),
     ];
     super::truncate_line_with_ellipsis_to_width(&Line::from(spans), width as usize)
@@ -290,7 +290,7 @@ pub(super) fn render_todo_change_lines(
                 Span::raw(indent.to_string()),
                 Span::styled(
                     format!("+{} more", remaining),
-                    Style::default().fg(rgb(110, 110, 120)),
+                    Style::default().fg(jcode_tui_style::theme::border_color()),
                 ),
             ]),
             width as usize,

@@ -3337,9 +3337,9 @@ pub(crate) fn render_native_scrollbar(
     };
 
     let thumb_color = if focused {
-        rgb(188, 208, 240)
+        jcode_tui_style::theme::header_name_color()
     } else {
-        rgb(136, 148, 172)
+        jcode_tui_style::theme::pending_color()
     };
 
     let mut lines = Vec::with_capacity(track_height);

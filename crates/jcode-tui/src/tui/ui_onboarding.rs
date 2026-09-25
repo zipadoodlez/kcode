@@ -17,7 +17,7 @@ const GAP: u16 = 1;
 
 /// Accent color for the welcome title.
 fn welcome_accent() -> Color {
-    rgb(138, 180, 248)
+    jcode_tui_style::theme::user_color()
 }
 
 /// Append the universal "Esc to skip" hint shown on every guided onboarding
@@ -88,9 +88,9 @@ fn lozenge_pill_spans(label: &str, filled: bool) -> Vec<Span<'static>> {
     // with no bold. The BOLD-vs-not contrast is a non-color attribute, so the
     // selection survives on monochrome terminals (Tier 10 color-independence).
     let (fill, text_fg, bold) = if filled {
-        (welcome_accent(), rgb(20, 24, 32), true)
+        (welcome_accent(), jcode_tui_style::theme::user_bg(), true)
     } else {
-        (rgb(58, 62, 70), rgb(170, 174, 182), false)
+        (jcode_tui_style::theme::selection_bg_color(), jcode_tui_style::theme::pending_color(), false)
     };
 
     let cap = Style::default().fg(fill);
@@ -155,7 +155,7 @@ fn import_summary_pills_line(
 /// just being shown what we found before they hit Continue.
 fn import_summary_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'static>> {
     let check_style = Style::default()
-        .fg(rgb(126, 211, 159))
+        .fg(jcode_tui_style::theme::ai_color())
         .add_modifier(Modifier::BOLD);
     prompt
         .rows
@@ -165,7 +165,7 @@ fn import_summary_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'sta
                 Span::styled("✓ ", check_style),
                 Span::styled(
                     row.provider_summary.clone(),
-                    Style::default().fg(rgb(210, 210, 210)),
+                    Style::default().fg(jcode_tui_style::theme::ai_text()),
                 ),
                 Span::styled(
                     format!(" ({})", row.source_name),
@@ -214,7 +214,7 @@ fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'
         format!("{}{}{}", " ".repeat(left), s, " ".repeat(right))
     };
 
-    let yes_color = rgb(126, 211, 159);
+    let yes_color = jcode_tui_style::theme::ai_color();
     let filled = Style::default().fg(yes_color).add_modifier(Modifier::BOLD);
     let empty = Style::default().fg(dim_color());
     let header_style = Style::default()
@@ -240,7 +240,7 @@ fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'
         let cursor_marker = if is_cursor { "> " } else { "  " };
         let cursor_style = Style::default().fg(welcome_accent());
         let label_style = if row.checked {
-            Style::default().fg(rgb(210, 210, 210))
+            Style::default().fg(jcode_tui_style::theme::ai_text())
         } else {
             Style::default().fg(dim_color())
         };
@@ -344,7 +344,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                         Line::from(Span::styled(
                             "We couldn't import those logins.",
                             Style::default()
-                                .fg(rgb(240, 180, 120))
+                                .fg(jcode_tui_style::theme::warning_color())
                                 .add_modifier(Modifier::BOLD),
                         ))
                         .alignment(align),
@@ -536,7 +536,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                         format!("[{}] ", i + 1),
                         Style::default().fg(welcome_accent()),
                     ),
-                    Span::styled(label.clone(), Style::default().fg(rgb(200, 200, 200))),
+                    Span::styled(label.clone(), Style::default().fg(jcode_tui_style::theme::ai_text())),
                 ]
             };
             lines.push(Line::from(spans).alignment(align));

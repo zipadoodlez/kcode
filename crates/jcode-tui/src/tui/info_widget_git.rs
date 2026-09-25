@@ -15,7 +15,7 @@ pub(super) fn render_git_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
     let mut lines: Vec<Line> = Vec::new();
 
     let mut parts: Vec<Span> = Vec::new();
-    parts.push(Span::styled(" ", Style::default().fg(rgb(240, 160, 60))));
+    parts.push(Span::styled(" ", Style::default().fg(jcode_tui_style::theme::warning_color())));
 
     let mut stats_len = 0usize;
     if info.ahead > 0 {
@@ -39,38 +39,38 @@ pub(super) fn render_git_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
     parts.push(Span::styled(
         branch_display,
         Style::default()
-            .fg(rgb(200, 200, 210))
+            .fg(jcode_tui_style::theme::header_name_color())
             .add_modifier(Modifier::BOLD),
     ));
 
     if info.modified > 0 {
         parts.push(Span::styled(
             format!(" ~{}", info.modified),
-            Style::default().fg(rgb(240, 200, 80)),
+            Style::default().fg(jcode_tui_style::theme::warning_color()),
         ));
     }
     if info.staged > 0 {
         parts.push(Span::styled(
             format!(" +{}", info.staged),
-            Style::default().fg(rgb(100, 200, 100)),
+            Style::default().fg(jcode_tui_style::theme::success_color()),
         ));
     }
     if info.untracked > 0 {
         parts.push(Span::styled(
             format!(" ?{}", info.untracked),
-            Style::default().fg(rgb(140, 140, 150)),
+            Style::default().fg(jcode_tui_style::theme::pending_color()),
         ));
     }
     if info.ahead > 0 {
         parts.push(Span::styled(
             format!(" ↑{}", info.ahead),
-            Style::default().fg(rgb(100, 200, 100)),
+            Style::default().fg(jcode_tui_style::theme::success_color()),
         ));
     }
     if info.behind > 0 {
         parts.push(Span::styled(
             format!(" ↓{}", info.behind),
-            Style::default().fg(rgb(255, 140, 100)),
+            Style::default().fg(jcode_tui_style::theme::error_color()),
         ));
     }
 
@@ -81,7 +81,7 @@ pub(super) fn render_git_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
         let display = truncate_smart(file, w.saturating_sub(4));
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(display, Style::default().fg(rgb(140, 140, 155))),
+            Span::styled(display, Style::default().fg(jcode_tui_style::theme::pending_color())),
         ]));
     }
     if info.dirty_files.len() > max_files {
@@ -89,7 +89,7 @@ pub(super) fn render_git_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
             Span::raw("  "),
             Span::styled(
                 format!("+{} more", info.dirty_files.len() - max_files),
-                Style::default().fg(rgb(100, 100, 115)),
+                Style::default().fg(jcode_tui_style::theme::border_color()),
             ),
         ]));
     }
@@ -102,40 +102,40 @@ pub(super) fn render_git_compact(info: &GitInfo, width: u16) -> Vec<Line<'static
     let mut parts: Vec<Span> = Vec::new();
 
     let branch_display = truncate_smart(&info.branch, w.saturating_sub(12).max(6));
-    parts.push(Span::styled(" ", Style::default().fg(rgb(240, 160, 60))));
+    parts.push(Span::styled(" ", Style::default().fg(jcode_tui_style::theme::warning_color())));
     parts.push(Span::styled(
         branch_display,
-        Style::default().fg(rgb(160, 160, 170)),
+        Style::default().fg(jcode_tui_style::theme::pending_color()),
     ));
 
     if info.ahead > 0 {
         parts.push(Span::styled(
             format!(" ↑{}", info.ahead),
-            Style::default().fg(rgb(100, 200, 100)),
+            Style::default().fg(jcode_tui_style::theme::success_color()),
         ));
     }
     if info.behind > 0 {
         parts.push(Span::styled(
             format!(" ↓{}", info.behind),
-            Style::default().fg(rgb(255, 140, 100)),
+            Style::default().fg(jcode_tui_style::theme::error_color()),
         ));
     }
     if info.modified > 0 {
         parts.push(Span::styled(
             format!(" ~{}", info.modified),
-            Style::default().fg(rgb(240, 200, 80)),
+            Style::default().fg(jcode_tui_style::theme::warning_color()),
         ));
     }
     if info.staged > 0 {
         parts.push(Span::styled(
             format!(" +{}", info.staged),
-            Style::default().fg(rgb(100, 200, 100)),
+            Style::default().fg(jcode_tui_style::theme::success_color()),
         ));
     }
     if info.untracked > 0 {
         parts.push(Span::styled(
             format!(" ?{}", info.untracked),
-            Style::default().fg(rgb(140, 140, 150)),
+            Style::default().fg(jcode_tui_style::theme::pending_color()),
         ));
     }
 
