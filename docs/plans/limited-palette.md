@@ -1,7 +1,7 @@
 # A limited palette for the TUI
 
 Status: proposal
-Problem: kcode has **222 distinct colors and 699 hardcoded `rgb()` sites**
+Problem: kcode ships **222 distinct colors and 699 hardcoded `rgb()` sites**
 across 31 files. A conventional theme has 16.
 
 ## The problem, measured
@@ -32,49 +32,95 @@ rgb(255,193,7)    vs  rgb(255,200,100)      # two ambers
 Top offenders: `ui_messages.rs` (110), `swarm_gallery.rs` (88), `ui_input.rs`
 (62), `session_picker/render.rs` (54), `info_widget_todos.rs` (47).
 
-## Prior art
+## The target
 
-This is the continuation of **upstream issue #1397** ("colors without a role
-stop being configurable"). Step 5 of that plan is already written and lives on
-the `guard/no-raw-rgb-literals` branch: a CI ratchet
-(`crates/jcode-tui/tests/no_new_raw_rgb_literals.rs`) with a `BASELINE` of
-per-file literal counts. It fails when a literal is *added* and does not care
-about the existing ones, so migration can be incremental and the ratchet
-tightens as families move to roles. That guard does not exist in kcode yet.
+Every color the TUI renders belongs to one small, curated set, reached through a
+role name. Nothing is computed, blended, or adapted at runtime.
+
+- **Now: 22 roles.** Code names a role; each role has exactly one color.
+- **Later: 16 slots** (base16-shaped). Roles share slots; a theme is 16 hex
+  values, so any published base16 theme can be pasted in.
+- **Removed outright:** light-mode color math, derived and animated colors,
+  shades. A shade either becomes the role it belongs to, or it is deleted.
+
+There is no `harmony` module in kcode (the scorer only ever existed on the jcode
+branch), so there is nothing to remove on that front. "Harmonious" here is a
+property of the chosen palette, not a runtime tool.
+
+## Why the light-mode machinery can go
+
+`jcode-tui-style/src/theme_mode.rs` (615 lines) paints nothing. It exists to
+repair a dark-tuned palette for a light background: a hue-preserving luminance
+flip, then a 7:1 contrast repair against an assumed `#e0e0e0` surface
+(`theme_mode.rs:110-112`), plus OSC-11 background detection at startup and a
+prewarm thread.
+
+Its own header states the tradeoff: "Rather than maintaining a second hand-tuned
+palette for light terminals, we adapt colors at a single choke point."
+
+Once the palette is 22 curated values, a second palette is cheap. So generate it
+**once**: run the existing transform over the 22 role colors, freeze the result,
+store it as the light theme, and delete the transform. Light mode becomes data,
+not code. The role set already labels surfaces vs text (`UserBg`,
+`SelectionBg`, `Border` against `UserText`, `AiText`, …), so the bake is
+mechanical.
+
+One consequence to accept: the runtime repair adapts to the *actual* terminal
+background, so freezing it assumes a fixed light surface and retires OSC-11
+detection. That is the trade.
+
+The same argument retires derived colors: `theme.rs`'s `rainbow_prompt_color`,
+`prompt_entry_color`, `prompt_entry_shimmer_color`, `blend_color`,
+`animated_tool_color` and the `jcode-tui-anim` machinery exist to vary a color
+over time, which is exactly the complexity this plan removes.
 
 ## Target model
 
-Three layers, each with one job:
-
 ```
-palette   16 slots        a theme is 16 hex values (base16-shaped, so any
-                          published base16 theme can be pasted in)
-roles     22 semantic     User, Ai, Tool, Dim, Success, Warning, … each
-                          defaults to a slot; code never names a color
+roles     22 semantic     User, Ai, Tool, Dim, Success, Warning, … each has one
+                          color; code never names an rgb value
+slots     16 (step 4)     a theme is 16 hex values (base16-shaped); roles share
+                          slots by default
 config    two keys        [display.palette] is the theme;
                           [display.colors] is a role->slot override
 literals  0               outside jcode-tui-style
 ```
 
-22 roles over 16 slots is not a squeeze - roles share slots by default, exactly
-as Dracula maps ~12 token classes onto 7 hues. Proposed default mapping:
+The mechanism already exists. Once per frame,
+`theme_mode::adapt_buffer_for_display` rewrites any buffer color that equals a
+role's default onto that role's configured color. So a literal that is *given* a
+role becomes themeable with no widget changes, and `role_color()` deliberately
+returns the *default* so nothing is remapped twice.
 
-### Slots are fixed, roles are open-ended
+## Migration
 
-The asymmetry is the whole design:
+Each phase lowers `BASELINE`; the guard is the acceptance test.
 
-- **Adding a role is cheap and expected.** Name it, assign it a slot, done.
-  Roles will keep growing (diff line states, tool progress, per-provider
-  accents) and that is fine - 22 is where we start, not where we stop.
-- **Adding a slot is expensive and deliberate.** It changes the theme contract,
-  invalidates every existing theme's mapping, and drops base16 portability.
-  It should need a written reason, not a code review.
+1. **Port the ratchet.** ✅ Done
+   (`crates/jcode-tui/tests/no_new_raw_rgb_literals.rs`). kcode's baseline is
+   **697 literals across 30 files**, lower than jcode's 802 because the fork
+   removed mermaid and the memory widgets.
+2. **Collapse literals onto the 22 roles**, largest first: `ui_messages`,
+   `swarm_gallery`, `ui_input`, `session_picker`, the `info_widget_*` group.
+   Each literal becomes its nearest role's accessor; a literal with no distinct
+   purpose is deleted, not recolored. Done when `BASELINE` is empty and every
+   rendered color is a role default.
+3. **Bake light, delete the machinery.** Freeze the light theme from the current
+   transform, then delete the light math, `theme_detect.rs`/OSC-11, the
+   `display.theme` config and `JCODE_THEME`, `palette_literals.rs`, and the
+   derived-color helpers in `theme.rs`.
+4. **Add the 16-slot layer.** `[display.palette]` with the 16 slots, the
+   role->slot default table, and `/colors` editing slots (showing which roles
+   share one). Done when a base16 theme pasted into config repaints the TUI.
+5. **Delete the empty `BASELINE`.** The guard becomes zero-tolerance: no new
+   literal can ever land.
 
-The rule for a new role: **it must name an existing slot.** If it seems to need
-its own color, that usually means an old literal was a near-duplicate - assign
-it the nearest slot and delete the shade.
+### Provisional role -> slot mapping (step 4)
 
-Initial role -> slot mapping:
+Roles will keep growing (diff line states, tool progress, per-provider accents);
+22 is where the role list starts, not where it stops. Adding a *slot* is
+expensive - it changes the theme contract and drops base16 portability - so a new
+role must name an existing slot.
 
 | slot | base16 | roles that default to it |
 |---|---|---|
@@ -98,39 +144,23 @@ Initial role -> slot mapping:
 `brown`, `fg_bright` and `bg_bright` start unclaimed: slots exist for themes to
 fill, not because every role needs its own color.
 
-The mechanism already exists: `adapt_buffer_for_display` rewrites any buffer
-color that equals a role's default onto that role's configured color once per
-frame. So a literal that is *given* a role becomes themeable with no widget
-changes, and an unconfigured palette stays byte-identical to today.
+## Open decisions
 
-## Migration
-
-Each phase lowers `BASELINE`; the guard is the acceptance test.
-
-1. **Port the ratchet.** ✅ Done
-   (`crates/jcode-tui/tests/no_new_raw_rgb_literals.rs`). kcode's baseline is
-   **697 literals across 30 files** - lower than jcode's 802 because the fork
-   removed mermaid and the memory widgets. Verified: lowering one entry fails
-   with `(+1)`; adding a literal in a file absent from `BASELINE` fails too.
-2. **Add the slot layer.** `[display.palette]` with the 16 slots, the role->slot
-   default table, and `/colors` editing slots (showing which roles share one).
-   Done when a base16 theme pasted into config repaints every role.
-3. **Collapse duplicate families**, largest first - `ui_messages`,
-   `swarm_gallery`, `ui_input`, `session_picker`, the `info_widget_*` group.
-   Done when those files reach zero and their colors are ≤ the slots they use.
-4. **Sweep the remainder**, then delete the empty `BASELINE`. The guard becomes
-   zero-tolerance: no new literal can ever land.
-
-Phase 3 is the real work and it is mechanical: most sites are a near-duplicate
-of a slot, so the change is "pick the slot, delete the shade".
+- **The 16 values and the role -> slot table** (step 4). This is the design step,
+  the only place taste matters. Everything before it is mechanical.
+- **Whether light ships as a selectable theme or is dropped.** Baking it costs
+  one table; dropping it costs the light-terminal look.
 
 ## Success criteria
 
 - `BASELINE` is empty and the guard is zero-tolerance.
-- 222 distinct colors collapse to 16 defaults.
+- No raw `rgb(...)` outside `jcode-tui-style`.
+- No `ThemeMode`, no runtime contrast math, no derived or animated colors.
+- Every rendered color is a role default (step 2), then a slot (step 4).
 - A published base16 theme pasted into `config.toml` repaints the whole TUI,
   including tool rows, diffs, swarm gallery and info widgets.
-- Default rendering is unchanged (existing golden/render tests still pass).
+- **Default rendering is not required to be unchanged.** Collapsing 222 colors
+  onto 22 roles, then 16 slots, necessarily changes the look.
 
 ## Non-goals
 
@@ -139,5 +169,6 @@ of a slot, so the change is "pick the slot, delete the shade".
   base16 theme portability.
 - **Not** making every widget independently themeable. Roles are the control
   surface; slots are the palette.
-- **Not** changing the default look. The migration is a refactor of how colors
-  are *named*, not of what they are.
+- **Not** preserving the current default look. Reversed from the original plan,
+  which required byte-identical defaults; that was incompatible with the palette
+  collapse and with removing the light-mode repair.
