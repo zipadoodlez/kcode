@@ -59,7 +59,13 @@ The rebuild is in progress:
   (from `SYSTEM_PROMPT_CONFIG.md`), `internals/memory.md` (folded
   `PROCESS_MEMORY_BUDGET.md` + `PROCESS_MEMORY_INCIDENT_RUNBOOK.md`),
   `internals/rendering.md` (folded `TUI_COLOR_CONFIGURATION.md` +
-  `TERMINAL_CAPABILITIES.md`).
+  `TERMINAL_CAPABILITIES.md`), `internals/architecture.md` (folded
+  `SERVER_ARCHITECTURE.md` + `MULTI_SESSION_CLIENT_ARCHITECTURE.md` +
+  `HERDR.md` + `PANELS.md`).
+- **Dropped as unshipped/speculative** (git has it): the protocol-multiplexing
+  phases and open questions from `MULTI_SESSION_CLIENT_ARCHITECTURE.md` (the
+  client split and workspace map shipped, so only the prose survived into
+  `internals/architecture.md`), and the upstream Herdr TODO list.
 - **Not written**: the rest of what the index promises under `user/` and
   `internals/`.
 - **Install stays in the root README**: no `user/install.md`. The `## Install`
@@ -70,7 +76,7 @@ The rebuild is in progress:
   `openai_docs_reference_current_callback_uri` was repointed from
   `OAUTH.md`/`README.md` to `docs/user/providers.md` (it had been failing, since
   README never carried the callback URI).
-- **Pending**: 20 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
+- **Pending**: 16 legacy docs still sit at the `docs/` root in `SCREAMING_CASE`,
   awaiting rewrite into the new set or deletion.
 - **Code references docs that move**: `tui/mod.rs` names
   `docs/TUISTATE_TRAIT_DECOMPOSITION.md`; update it when
