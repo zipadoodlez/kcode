@@ -282,7 +282,6 @@ pub(super) fn draw_messages(
     };
     let wrapped_user_indices = &prepared.wrapped_user_indices;
     let wrapped_user_prompt_starts = &prepared.wrapped_user_prompt_starts;
-    let wrapped_user_prompt_ends = &prepared.wrapped_user_prompt_ends;
     let user_prompt_texts = &prepared.user_prompt_texts;
 
     let total_lines = prepared.total_wrapped_lines();

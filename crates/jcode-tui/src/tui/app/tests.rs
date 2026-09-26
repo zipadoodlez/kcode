@@ -1604,45 +1604,4 @@ fn oversized_pasted_submit_is_rejected_and_preserves_input() {
     );
 }
 
-fn seed_stale_clear_usage(app: &mut App) {
-    app.streaming.streaming_input_tokens = 40_000;
-    app.streaming.streaming_output_tokens = 2_000;
-    app.streaming.streaming_cache_read_tokens = Some(30_000);
-    app.streaming.streaming_cache_creation_tokens = Some(5_000);
-    app.streaming.streaming_context_stale = true;
-    app.streaming.streaming_usage_call_reset_pending = true;
-    app.kv_cache.current_api_usage_recorded = true;
-}
-
-fn assert_clear_usage_reset(app: &App) {
-    assert_eq!(app.current_stream_context_tokens(), None);
-    assert_eq!(app.streaming.streaming_input_tokens, 0);
-    assert_eq!(app.streaming.streaming_output_tokens, 0);
-    assert_eq!(app.streaming.streaming_cache_read_tokens, None);
-    assert_eq!(app.streaming.streaming_cache_creation_tokens, None);
-    assert!(!app.streaming.streaming_context_stale);
-    assert!(!app.streaming.streaming_usage_call_reset_pending);
-    assert!(!app.kv_cache.current_api_usage_recorded);
-}
-
-fn seed_stale_clear_swarm_plan(app: &mut App) {
-    app.swarm_plan_items = vec![crate::plan::PlanItem {
-        content: "old session task".to_string(),
-        status: "queued".to_string(),
-        priority: "high".to_string(),
-        id: "old-task".to_string(),
-        subsystem: None,
-        file_scope: Vec::new(),
-        blocked_by: Vec::new(),
-        assigned_to: None,
-    }];
-    app.swarm_plan_version = Some(19);
-    app.swarm_plan_swarm_id = Some("old-swarm".to_string());
-}
-
-fn assert_clear_swarm_plan_reset(app: &App) {
-    assert!(app.swarm_plan_items.is_empty());
-    assert_eq!(app.swarm_plan_version, None);
-    assert_eq!(app.swarm_plan_swarm_id, None);
-}
 include!("tests/kv_cache_provider_identity.rs");

@@ -152,7 +152,6 @@ struct TestState {
     onboarding_preview: bool,
     suggestions: Vec<(String, String)>,
     compacted_hidden_user_prompts: usize,
-    side_pane_images: Vec<crate::session::RenderedImage>,
     chat_overscroll_active: bool,
     cache_ttl_status: Option<crate::tui::CacheTtlInfo>,
     status_notice: Option<String>,

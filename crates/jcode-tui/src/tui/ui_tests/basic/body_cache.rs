@@ -490,34 +490,6 @@ fn test_full_prep_cache_state_keeps_two_oversized_width_entries_hot() {
     assert_eq!(cache.oversized_entries.len(), 2);
 }
 
-/// 1x1 transparent PNG used to exercise the real inline-image header parse.
-const BODY_ANCHOR_TINY_PNG_B64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-
-fn anchored_tool_image(tool_id: &str) -> crate::session::RenderedImage {
-    crate::session::RenderedImage {
-        history_message_index: None,
-        media_type: "image/png".to_string(),
-        data: BODY_ANCHOR_TINY_PNG_B64.to_string(),
-        label: Some("shot.png".to_string()),
-        source: crate::session::RenderedImageSource::ToolResult {
-            tool_name: "read".to_string(),
-        },
-        anchor: Some(crate::session::RenderedImageAnchor::ToolCall {
-            id: tool_id.to_string(),
-        }),
-    }
-}
-
-fn read_tool_call(tool_id: &str) -> crate::message::ToolCall {
-    crate::message::ToolCall {
-        id: tool_id.to_string(),
-        name: "read".to_string(),
-        input: serde_json::json!({"file_path": "shot.png"}),
-        intent: None,
-        thought_signature: None,
-    }
-}
-
 /// Assert two prepared bodies are byte-for-byte equivalent across every
 /// observable array. Used to prove prefix-reuse output matches a fresh full
 /// build.

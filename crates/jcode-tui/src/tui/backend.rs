@@ -215,12 +215,6 @@ pub(crate) trait RemoteEventState {
     fn mark_history_loaded(&mut self);
 }
 
-#[derive(Default)]
-pub(crate) struct ReplayRemoteState {
-    tool_diff: RemoteDiffTracker,
-    call_output_tokens_seen: u64,
-}
-
 impl RemoteConnection {
     /// Connect to the server
     pub async fn connect() -> Result<Self> {
@@ -1344,48 +1338,6 @@ impl RemoteEventState for RemoteConnection {
     fn mark_history_loaded(&mut self) {
         Self::mark_history_loaded(self);
     }
-}
-
-impl RemoteEventState for ReplayRemoteState {
-    fn handle_tool_start(&mut self, id: &str, name: &str) {
-        self.tool_diff.handle_tool_start(id, name);
-    }
-
-    fn handle_tool_input(&mut self, delta: &str) {
-        self.tool_diff.handle_tool_input(delta);
-    }
-
-    fn get_current_tool_input(&self) -> serde_json::Value {
-        self.tool_diff.current_tool_input_json()
-    }
-
-    fn handle_tool_exec(&mut self, id: &str, name: &str) {
-        self.tool_diff.handle_tool_exec(id, name);
-    }
-
-    fn handle_tool_done(&mut self, id: &str, name: &str, output: &str) -> String {
-        self.tool_diff.finish_tool(id, name, output)
-    }
-
-    fn clear_pending(&mut self) {
-        self.tool_diff.clear();
-    }
-
-    fn call_output_tokens_seen(&mut self) -> &mut u64 {
-        &mut self.call_output_tokens_seen
-    }
-
-    fn reset_call_output_tokens_seen(&mut self) {
-        self.call_output_tokens_seen = 0;
-    }
-
-    fn set_session_id(&mut self, _id: String) {}
-
-    fn has_loaded_history(&self) -> bool {
-        true
-    }
-
-    fn mark_history_loaded(&mut self) {}
 }
 
 #[cfg(test)]

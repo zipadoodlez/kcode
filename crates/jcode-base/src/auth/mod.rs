@@ -28,11 +28,6 @@ mod types;
 pub mod validation;
 
 pub(crate) use commands::command_exists;
-#[cfg(test)]
-pub(crate) use commands::{
-    command_candidates, contains_path_separator, dedup_preserve_order, has_extension,
-    is_wsl2_windows_path,
-};
 
 pub use status_types::{
     AuthCredentialSource, AuthExpiryConfidence, AuthReadinessLevel, AuthRefreshSupport, AuthState,

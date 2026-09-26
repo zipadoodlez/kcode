@@ -601,11 +601,6 @@ impl MultiProvider {
         entry
     }
 
-    #[cfg(test)]
-    fn same_provider_account_candidates(provider: ActiveProvider) -> Vec<String> {
-        account_failover::same_provider_account_candidates(provider)
-    }
-
     async fn complete_with_failover(
         &self,
         messages: &[Message],

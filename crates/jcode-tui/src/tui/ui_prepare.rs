@@ -1019,7 +1019,7 @@ pub(super) fn build_body_from_base(
     app: &dyn TuiState,
     width: u16,
     mut prev: Arc<PreparedMessages>,
-    mut prev_count: usize,
+    prev_count: usize,
     prev_prompt_offset: usize,
     msg_count: usize,
 ) -> (Arc<PreparedMessages>, &'static str) {
