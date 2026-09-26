@@ -34,7 +34,7 @@ as the reference for those groups.
 
 | item | state |
 |---|---|
-| `JCODE_*` env vars | the state dir is `~/.kcode` but the env prefix was never renamed. Decide: rename with a `JCODE_*` fallback, or document as-is |
+| `JCODE_*` env vars | the state dir is `~/.kcode` but the env prefix was never renamed, and the runtime dir is still `<runtime_dir>/jcode/` (`registry.rs` joins `"jcode"` and `JCODE_RUNTIME_DIR` names it; `internals/architecture.md` documents it). Decide once: rename with a `JCODE_*` fallback, or document as-is |
 | dead SSH-block commands | `/theme`, `/stats`, `/file`, `/open`, `/permission`, `/permissions`, `/new-terminal`, `/debug-fixture` are blocked over SSH but have no handler anywhere, so they do nothing locally either |
 | `-p` vs `provider list` | `-p` accepts 52 provider choices; `provider list` prints 26. The extras are aliases and gateways with no catalog entry |
 | `/help <item>` coverage | written detail for 70 of 114 registered commands; the other 44 answer `Unknown command`, and there is no `/help list` |
