@@ -1,6 +1,9 @@
 # TuiState Trait Decomposition Plan
 
-Status: Analysis + proposed plan
+Status: absorbed. The sub-trait split proposed here is not being done. See
+[codebase-reduction.md](codebase-reduction.md) tier 2: the same end state comes
+from grouping `App`'s loose fields, which removes `TuiState` instead of
+re-cutting it. This file is kept only as the reference for those field groups.
 
 This document audits the `TuiState` trait (`crates/jcode-tui/src/tui/mod.rs`) and
 proposes a safe, incremental decomposition. It is the Phase 1.5 follow-on to the

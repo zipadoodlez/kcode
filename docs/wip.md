@@ -10,14 +10,18 @@ git has the history.
 
 | plan | state | what's left |
 |---|---|---|
-| [plans/tui-render-ownership.md](plans/tui-render-ownership.md) | proposal, nothing implemented | step 1: move the `OnceLock<Mutex<..>>` render-state globals out of `tui/ui.rs` into an owned `ViewState`. Steps 2-5 make this a state-ownership and testability win; step 6 (file reorder) is optional |
+| [plans/codebase-reduction.md](plans/codebase-reduction.md) | proposal, nothing implemented | tier 0 (delete: provider cut, hygiene, dead files) is the entry point; tier 1 (test strategy) is the one justified rewrite and the only thing that pulls in render-state ownership |
 | [plans/browser-provider-protocol.md](plans/browser-provider-protocol.md) | draft spec, no implementation | tighten the core method set and the normalized `page.snapshot` format before building any adapter |
 
-Superseded: [plans/tuistate-decomposition.md](plans/tuistate-decomposition.md).
-The sub-trait split is dropped - the same goal (a render module proves what it
-reads) is reached by owning the render state, without 15 traits to maintain, and
-rooted in the 111 render-path statics rather than in the 122-method trait. The
-file stays for the method categorization until the ownership work lands.
+Withdrawn: `plans/tui-render-ownership.md` (git history at `ce83f61a`). Its goal
+still lands, as a consequence of tier 1 rather than as a standalone project: it
+had no symptom behind it on its own, and its intermediate state was worse than
+its start, which made finishing mandatory and therefore starting unsafe.
+
+[plans/tuistate-decomposition.md](plans/tuistate-decomposition.md) is also
+absorbed by tier 2 (group `App`'s fields). Its method categorization matches the
+section comments already in `crates/jcode-tui/src/tui/mod.rs`, so it stays only
+as the reference for those groups.
 
 ## Committed ideas, no plan doc yet
 
@@ -72,7 +76,7 @@ Found while writing `user/hooks.md`.
 
 ## This doc set
 
-The rebuild is complete: `user/` (7), `internals/` (9), `dev/` (4), `plans/` (4),
+The rebuild is complete: `user/` (7), `internals/` (9), `dev/` (4), `plans/` (3),
 plus `README.md`, `what-was-removed.md`, and this file at the root. Notes that
 outlive it:
 
