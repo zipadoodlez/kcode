@@ -351,8 +351,8 @@ installed jcode.
 | `jcode-storage`, `jcode-core` | 2.9 k | paths, fs, storage primitives |
 
 Plus focused crates for compaction, command risk, import, logging, fuzzy
-matching, permissions, usage overlays, workspace, animations, images, swarm,
-sessions, tasks, hooks, and the provider catalog.
+matching, usage overlays, workspace, terminal images, swarm, sessions, tasks,
+hooks, and the provider catalog.
 
 ---
 
