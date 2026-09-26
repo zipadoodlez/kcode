@@ -293,7 +293,7 @@ smart search), `open`, `bg`
 ### Configuration
 
 Main config: `~/.kcode/config.toml`. Sections include `[server]`,
-`[keybindings]`, `[dictation]`, `[display]`, plus provider, agent, hook,
+`[keybindings]`, `[display]`, plus provider, agent, hook,
 compaction, terminal, auto-review, and auto-judge configuration
 (`crates/jcode-config-types/src/lib.rs`).
 

@@ -1,7 +1,5 @@
 use super::DisplayMessageRoleExt;
-use super::keybind::{
-    CenteredToggleKeys, ModelSwitchKeys, OptionalBinding, ScrollKeys, WorkspaceNavigationKeys,
-};
+use super::keybind::Keybinds;
 use super::markdown::IncrementalMarkdownRenderer;
 use super::stream_buffer::StreamBuffer;
 use crate::bus::{Bus, BusEvent, LoginCompleted, ToolEvent, ToolStatus};
@@ -1375,24 +1373,8 @@ pub struct App {
     pending_startup_prompt_echo: Option<String>,
     // Pending account switch from inline picker (for remote mode async processing)
     pending_account_picker_action: Option<crate::tui::AccountPickerAction>,
-    // Keybindings for model switching
-    model_switch_keys: ModelSwitchKeys,
-    // Keybindings for effort switching
-    effort_switch_keys: super::keybind::EffortSwitchKeys,
-    // Keybindings for scrolling
-    scroll_keys: ScrollKeys,
-    // Keybinding for centered-mode toggle
-    centered_toggle_keys: CenteredToggleKeys,
-    // Configurable pane / mode toggle keybindings
-    toggle_keys: super::keybind::ToggleKeys,
-    // Keybindings for Niri-style workspace navigation
-    workspace_navigation_keys: WorkspaceNavigationKeys,
-    // Optional configured keybinding for spawning a fresh session in a new terminal
-    new_terminal_key: OptionalBinding,
-    // Optional configured keybinding for opening the /resume session picker
-    open_resume_key: OptionalBinding,
-    // Optional configured keybinding for accepting the post-error fallback offer
-    fallback_switch_key: OptionalBinding,
+    // Config-derived keybindings, loaded and hot-reloaded as one snapshot.
+    keybinds: Keybinds,
     // Config reload generation the keybinding snapshot above was parsed at.
     // Polled on idle ticks so config.toml keybinding edits hot-reload
     // without a restart.

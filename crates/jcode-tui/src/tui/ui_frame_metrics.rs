@@ -24,12 +24,6 @@ pub(crate) struct FramePerfStats {
     pub full_prep_last_prepared_bytes: usize,
     pub full_prep_last_total_wrapped_lines: usize,
     pub full_prep_last_section_count: usize,
-    /// Wall time inside the `prepare_ms` span spent in `restage_requested_payloads`
-    /// (image restaging), which runs before any cache lookup.
-    pub prep_restage_ms: f64,
-    /// Wall time computing the transcript mermaid aspect ratio, which probes
-    /// terminal font geometry.
-    pub prep_aspect_ms: f64,
     /// Total wall time in `prepare_at()` calls, including cache hits. The
     /// difference between this and `full_prep_build_ms` is cache-lookup and
     /// clone overhead.
@@ -508,14 +502,6 @@ pub(super) fn note_full_prep_request() {
 
 pub(super) fn note_full_prep_cache_lookup(elapsed: Duration) {
     with_frame_perf_stats_mut(|stats| stats.full_prep_cache_lookup_ms += duration_ms(elapsed));
-}
-
-pub(super) fn note_prep_restage(elapsed: Duration) {
-    with_frame_perf_stats_mut(|stats| stats.prep_restage_ms += duration_ms(elapsed));
-}
-
-pub(super) fn note_prep_aspect(elapsed: Duration) {
-    with_frame_perf_stats_mut(|stats| stats.prep_aspect_ms += duration_ms(elapsed));
 }
 
 pub(super) fn note_prep_prepare_at(elapsed: Duration) {

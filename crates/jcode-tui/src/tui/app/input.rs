@@ -1884,7 +1884,7 @@ impl App {
 
     /// Whether the configured `keybindings.new_terminal` chord matches this key.
     pub(crate) fn new_terminal_key_matches(&self, code: KeyCode, modifiers: KeyModifiers) -> bool {
-        self.new_terminal_key
+        self.keybinds.new_terminal_key
             .binding
             .as_ref()
             .map(|binding| binding.matches(code, modifiers))
@@ -1893,7 +1893,7 @@ impl App {
 
     /// Whether the configured `keybindings.open_resume` chord matches this key.
     pub(crate) fn open_resume_key_matches(&self, code: KeyCode, modifiers: KeyModifiers) -> bool {
-        self.open_resume_key
+        self.keybinds.open_resume_key
             .binding
             .as_ref()
             .map(|binding| binding.matches(code, modifiers))
@@ -1906,7 +1906,7 @@ impl App {
         code: KeyCode,
         modifiers: KeyModifiers,
     ) -> bool {
-        self.fallback_switch_key
+        self.keybinds.fallback_switch_key
             .binding
             .as_ref()
             .map(|binding| binding.matches(code, modifiers))
@@ -2223,7 +2223,7 @@ pub(super) fn handle_navigation_shortcuts(
     code: KeyCode,
     modifiers: KeyModifiers,
 ) -> bool {
-    if let Some(amount) = app.scroll_keys.scroll_amount(code, modifiers) {
+    if let Some(amount) = app.keybinds.scroll_keys.scroll_amount(code, modifiers) {
         if amount < 0 {
             app.scroll_up((-amount) as usize);
         } else {
@@ -2232,7 +2232,7 @@ pub(super) fn handle_navigation_shortcuts(
         return true;
     }
 
-    if let Some(dir) = app.scroll_keys.prompt_jump(code, modifiers) {
+    if let Some(dir) = app.keybinds.scroll_keys.prompt_jump(code, modifiers) {
         if dir < 0 {
             app.scroll_to_prev_prompt();
         } else {
@@ -2251,12 +2251,12 @@ pub(super) fn handle_navigation_shortcuts(
         return true;
     }
 
-    if app.scroll_keys.is_bookmark(code, modifiers) {
+    if app.keybinds.scroll_keys.is_bookmark(code, modifiers) {
         app.toggle_scroll_bookmark();
         return true;
     }
 
-    if app.toggle_keys.diff_mode_cycle.matches(code, modifiers) {
+    if app.keybinds.toggle_keys.diff_mode_cycle.matches(code, modifiers) {
         app.diff_mode = app.diff_mode.cycle();
         if !app.diff_pane_visible() {
             app.diff_pane_focus = false;
@@ -2274,11 +2274,11 @@ pub(super) fn is_scroll_only_key(app: &App, code: KeyCode, modifiers: KeyModifie
     let mut modifiers = modifiers;
     ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers);
 
-    if app.scroll_keys.scroll_amount(code, modifiers).is_some()
-        || app.scroll_keys.prompt_jump(code, modifiers).is_some()
+    if app.keybinds.scroll_keys.scroll_amount(code, modifiers).is_some()
+        || app.keybinds.scroll_keys.prompt_jump(code, modifiers).is_some()
         || App::ctrl_side_panel_ratio_preset(&code, modifiers).is_some()
         || App::ctrl_prompt_rank(&code, modifiers).is_some()
-        || app.scroll_keys.is_bookmark(code, modifiers)
+        || app.keybinds.scroll_keys.is_bookmark(code, modifiers)
         || (modifiers.contains(KeyModifiers::ALT)
             && matches!(code, KeyCode::Char(c) if c.eq_ignore_ascii_case(&'g')))
     {
@@ -2345,11 +2345,11 @@ pub(super) fn handle_pre_control_shortcuts(
 
     let macos_option_shortcut =
         crate::tui::keybind::shortcut_char_for_macos_option_key(code, modifiers);
-    if app.toggle_keys.auto_poke.matches(code, modifiers) {
+    if app.keybinds.toggle_keys.auto_poke.matches(code, modifiers) {
         super::commands::toggle_auto_poke_hotkey_local(app);
         return true;
     }
-    if app.toggle_keys.copy_selection.matches(code, modifiers) {
+    if app.keybinds.toggle_keys.copy_selection.matches(code, modifiers) {
         app.toggle_copy_selection_mode();
         return true;
     }
@@ -2358,15 +2358,15 @@ pub(super) fn handle_pre_control_shortcuts(
         return true;
     }
 
-    if app.toggle_keys.side_panel.matches(code, modifiers) {
+    if app.keybinds.toggle_keys.side_panel.matches(code, modifiers) {
         app.toggle_side_panel();
         return true;
     }
-    if app.toggle_keys.typing_scroll_lock.matches(code, modifiers) {
+    if app.keybinds.toggle_keys.typing_scroll_lock.matches(code, modifiers) {
         app.toggle_typing_scroll_lock();
         return true;
     }
-    if app.toggle_keys.info_widget.matches(code, modifiers) {
+    if app.keybinds.toggle_keys.info_widget.matches(code, modifiers) {
         crate::tui::info_widget::toggle_enabled();
         let status = if crate::tui::info_widget::is_enabled() {
             "Info widget: ON"
@@ -2376,14 +2376,14 @@ pub(super) fn handle_pre_control_shortcuts(
         app.set_status_notice(status);
         return true;
     }
-    if app.toggle_keys.todo_card.matches(code, modifiers) {
+    if app.keybinds.toggle_keys.todo_card.matches(code, modifiers) {
         app.toggle_todo_card();
         return true;
     }
     // Swarm views: Alt+N cycles chat → inline controls → full live page → chat.
     // Selection/open/prompt controls stay available in both active views, while
     // plain typing continues to flow to the chat input.
-    if app.toggle_keys.swarm_panel_focus.matches(code, modifiers) {
+    if app.keybinds.toggle_keys.swarm_panel_focus.matches(code, modifiers) {
         match app.cycle_swarm_panel_view() {
             super::tui_state::SwarmPanelView::Chat => {
                 app.set_status_notice("Swarm view closed");
@@ -2412,12 +2412,12 @@ pub(super) fn handle_pre_control_shortcuts(
         app.open_session_picker();
         return true;
     }
-    if let Some(direction) = app.model_switch_keys.direction_for(code, modifiers) {
+    if let Some(direction) = app.keybinds.model_switch_keys.direction_for(code, modifiers) {
         app.record_keybinding_fast(super::shortcut_hints::LearnableAction::ModelSwitch);
         app.cycle_model(direction);
         return true;
     }
-    if let Some(direction) = app.effort_switch_keys.direction_for(code, modifiers) {
+    if let Some(direction) = app.keybinds.effort_switch_keys.direction_for(code, modifiers) {
         app.record_keybinding_fast(super::shortcut_hints::LearnableAction::EffortCycle);
         app.cycle_effort(direction);
         return true;
@@ -2425,13 +2425,14 @@ pub(super) fn handle_pre_control_shortcuts(
     if cfg!(target_os = "macos")
         && !matches!(app.status, ProcessingStatus::RunningTool(_))
         && let Some(direction) = app
+            .keybinds
             .effort_switch_keys
             .macos_option_arrow_escape_direction_for(code, modifiers)
     {
         app.cycle_effort(direction);
         return true;
     }
-    if app.centered_toggle_keys.matches(code, modifiers) {
+    if app.keybinds.centered_toggle_keys.matches(code, modifiers) {
         app.record_keybinding_fast(super::shortcut_hints::LearnableAction::Alignment);
         app.toggle_centered_mode();
         return true;

@@ -1,26 +1,14 @@
 /target
-Cargo.lock
 __pycache__/
-ios_simulator_screenshot.png
-/.wrangler/
 /tmp/
 # Local onboarding sandbox + auth fixtures. May contain REAL OAuth tokens copied
 # from $HOME (see scripts/onboarding_sandbox.sh seed-real-logins). Never commit.
 /.tmp/
 /.jcode/generated-images/
-/telemetry-worker/backups/
-target-ttest/
-target-ttest*/
-
-# Local capture artefacts are not committed baselines.
-captures/
 
 # Stray experiment/debug artifacts at the repo root. Real assets live under
-# assets/, docs/, ios/, and tests/ and are committed explicitly.
+# assets/, docs/, and tests/ and are committed explicitly.
 /*.log
 /*.avif
 /*.mp4
 /*.png
-
-# graphify knowledge-graph output is derived and lives under ~/jcode-work/graphs/
-graphify-out/

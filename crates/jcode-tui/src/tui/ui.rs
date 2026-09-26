@@ -71,8 +71,6 @@ mod smoothness;
 mod todo_changes;
 #[path = "ui_tools.rs"]
 pub(crate) mod tools_ui;
-#[path = "ui_transitions.rs"]
-mod transitions;
 #[path = "ui_viewport.rs"]
 pub(crate) mod viewport;
 #[cfg(test)]
@@ -114,10 +112,6 @@ pub(crate) use pinned_ui::{
 use pinned_ui::{
     collect_pinned_diffs_cached, draw_pinned_content_cached, draw_side_panel_markdown,
 };
-#[cfg(test)]
-use transitions::extract_line_text;
-#[cfg(test)]
-use transitions::inline_ui_gap_height;
 #[cfg(test)]
 use viewport::compute_visible_margins;
 use viewport::draw_messages;

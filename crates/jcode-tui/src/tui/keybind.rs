@@ -744,3 +744,36 @@ mod tests {
         }
     }
 }
+
+/// Every config-derived keybinding, loaded as one unit.
+///
+/// The loaders above read `config.toml`. Grouping them keeps the loader list
+/// written once, instead of repeated at each construction and config-reload
+/// site.
+pub struct Keybinds {
+    pub model_switch_keys: ModelSwitchKeys,
+    pub effort_switch_keys: EffortSwitchKeys,
+    pub scroll_keys: ScrollKeys,
+    pub centered_toggle_keys: CenteredToggleKeys,
+    pub toggle_keys: ToggleKeys,
+    pub workspace_navigation_keys: WorkspaceNavigationKeys,
+    pub new_terminal_key: OptionalBinding,
+    pub open_resume_key: OptionalBinding,
+    pub fallback_switch_key: OptionalBinding,
+}
+
+impl Keybinds {
+    pub fn load() -> Self {
+        Self {
+            model_switch_keys: load_model_switch_keys(),
+            effort_switch_keys: load_effort_switch_keys(),
+            scroll_keys: load_scroll_keys(),
+            centered_toggle_keys: load_centered_toggle_key(),
+            toggle_keys: load_toggle_keys(),
+            workspace_navigation_keys: load_workspace_navigation_keys(),
+            new_terminal_key: load_new_terminal_key(),
+            open_resume_key: load_open_resume_key(),
+            fallback_switch_key: load_fallback_switch_key(),
+        }
+    }
+}

@@ -113,18 +113,7 @@ CLIENT COMMANDS (client: prefix):
   client:render-order      - Get render order list
   client:anomalies         - Get latest visual debug anomalies
   client:theme             - Get palette snapshot
-  client:mermaid:stats     - Get mermaid render/cache stats
-  client:mermaid:memory    - Mermaid memory profile (RSS + cache estimates)
-  client:mermaid:memory-bench [n] - Synthetic Mermaid memory benchmark
-  client:mermaid:flicker-bench [n] - Benchmark viewport protocol churn / flicker risk
   client:image-scroll-bench [imgs] [frames] [visible] - Benchmark inline-image scroll latency (stat syscalls + fit-state rebuilds)
-  client:mermaid:ui-bench[:<j>] - Benchmark live Mermaid UI render path
-  client:mermaid:cache     - List mermaid cache entries
-  client:mermaid:state     - Get image state (resize modes)
-  client:mermaid:test      - Render test diagram
-  client:mermaid:scroll    - Run scroll simulation test
-  client:mermaid:render <c> - Render arbitrary mermaid
-  client:mermaid:evict     - Clear mermaid cache
   client:markdown:stats    - Get markdown render stats
   client:markdown:memory   - Markdown highlight cache memory estimate
   client:memory            - Aggregate client memory profile
@@ -143,8 +132,8 @@ CLIENT COMMANDS (client: prefix):
   client:scroll-test[:<j>] - Run offscreen scroll+diagram test
   client:scroll-suite[:<j>] - Run scroll+diagram test suite
   client:side-panel-latency[:<j>] - Benchmark headless side-panel input->frame latency
-  client:side-panel:stats  - Current side-panel debug snapshot, including live Mermaid utilization
-  client:diagram-pane:stats - Current pinned diagram pane snapshot, including live Mermaid utilization
+  client:side-panel:stats  - Current side-panel debug snapshot
+  client:diagram-pane:stats - Current pinned diagram pane snapshot
   client:wait              - Check if processing
   client:history           - Get display messages
   client:help              - Client command help
@@ -159,7 +148,6 @@ TESTER COMMANDS (tester: prefix):
   tester:<id>:scroll-test  - Run offscreen scroll+diagram test
   tester:<id>:scroll-suite - Run scroll+diagram test suite
   tester:<id>:side-panel-latency - Benchmark headless side-panel input->frame latency
-  tester:<id>:mermaid-ui-bench - Benchmark live Mermaid UI render path
   tester:<id>:stop         - Stop tester
 
 Examples:

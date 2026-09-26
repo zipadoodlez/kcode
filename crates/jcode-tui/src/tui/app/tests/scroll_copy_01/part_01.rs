@@ -206,22 +206,22 @@ fn create_tool_failed_output_copy_test_app()
 /// Get the configured scroll up key binding (code, modifiers).
 fn scroll_up_key(app: &App) -> (KeyCode, KeyModifiers) {
     (
-        app.scroll_keys.up.code.clone(),
-        app.scroll_keys.up.modifiers,
+        app.keybinds.scroll_keys.up.code.clone(),
+        app.keybinds.scroll_keys.up.modifiers,
     )
 }
 
 /// Get the configured scroll down key binding (code, modifiers).
 fn scroll_down_key(app: &App) -> (KeyCode, KeyModifiers) {
     (
-        app.scroll_keys.down.code.clone(),
-        app.scroll_keys.down.modifiers,
+        app.keybinds.scroll_keys.down.code.clone(),
+        app.keybinds.scroll_keys.down.modifiers,
     )
 }
 
 /// Get the configured scroll up fallback key, or primary scroll up key.
 fn scroll_up_fallback_key(app: &App) -> (KeyCode, KeyModifiers) {
-    app.scroll_keys
+    app.keybinds.scroll_keys
         .up_fallback
         .as_ref()
         .map(|binding| (binding.code.clone(), binding.modifiers))
@@ -230,7 +230,7 @@ fn scroll_up_fallback_key(app: &App) -> (KeyCode, KeyModifiers) {
 
 /// Get the configured scroll down fallback key, or primary scroll down key.
 fn scroll_down_fallback_key(app: &App) -> (KeyCode, KeyModifiers) {
-    app.scroll_keys
+    app.keybinds.scroll_keys
         .down_fallback
         .as_ref()
         .map(|binding| (binding.code.clone(), binding.modifiers))
@@ -240,8 +240,8 @@ fn scroll_down_fallback_key(app: &App) -> (KeyCode, KeyModifiers) {
 /// Get the configured prompt-up key binding (code, modifiers).
 fn prompt_up_key(app: &App) -> (KeyCode, KeyModifiers) {
     (
-        app.scroll_keys.prompt_up.code.clone(),
-        app.scroll_keys.prompt_up.modifiers,
+        app.keybinds.scroll_keys.prompt_up.code.clone(),
+        app.keybinds.scroll_keys.prompt_up.modifiers,
     )
 }
 

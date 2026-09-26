@@ -19,7 +19,7 @@ fn keybinding_edit_applies_to_the_next_key_press() {
 
     let mut app = create_test_app();
     assert!(
-        app.scroll_keys
+        app.keybinds.scroll_keys
             .is_bookmark(KeyCode::Char('g'), KeyModifiers::CONTROL),
         "initial config should bind the bookmark key to Ctrl+G"
     );
@@ -41,12 +41,12 @@ fn keybinding_edit_applies_to_the_next_key_press() {
         .expect("handle key press");
 
     assert!(
-        app.scroll_keys
+        app.keybinds.scroll_keys
             .is_bookmark(KeyCode::Char('y'), KeyModifiers::CONTROL),
         "edited config should rebind the bookmark key to Ctrl+Y without a restart"
     );
     assert!(
-        !app.scroll_keys
+        !app.keybinds.scroll_keys
             .is_bookmark(KeyCode::Char('g'), KeyModifiers::CONTROL),
         "the old Ctrl+G bookmark binding should no longer match"
     );

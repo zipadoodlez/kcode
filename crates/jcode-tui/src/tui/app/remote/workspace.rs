@@ -14,7 +14,7 @@ pub(super) async fn handle_workspace_navigation_key(
         return Ok(false);
     }
 
-    let Some(direction) = app.workspace_navigation_keys.direction_for(code, modifiers) else {
+    let Some(direction) = app.keybinds.workspace_navigation_keys.direction_for(code, modifiers) else {
         return Ok(false);
     };
 

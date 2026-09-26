@@ -102,15 +102,7 @@ impl App {
             return false;
         }
         self.keybindings_config_generation = generation;
-        self.model_switch_keys = keybind::load_model_switch_keys();
-        self.effort_switch_keys = keybind::load_effort_switch_keys();
-        self.centered_toggle_keys = keybind::load_centered_toggle_key();
-        self.toggle_keys = keybind::load_toggle_keys();
-        self.workspace_navigation_keys = keybind::load_workspace_navigation_keys();
-        self.new_terminal_key = keybind::load_new_terminal_key();
-        self.open_resume_key = keybind::load_open_resume_key();
-        self.fallback_switch_key = keybind::load_fallback_switch_key();
-        self.scroll_keys = keybind::load_scroll_keys();
+        self.keybinds = keybind::Keybinds::load();
         crate::logging::info("KEYBINDINGS: reloaded from config change");
         // Confirm the pickup to the user. Without this, an edit that is
         // already live is indistinguishable from one that silently did
@@ -623,15 +615,7 @@ impl App {
             pending_prompt_before_history: None,
             pending_startup_prompt_echo: None,
             pending_account_picker_action: None,
-            model_switch_keys: keybind::load_model_switch_keys(),
-            effort_switch_keys: keybind::load_effort_switch_keys(),
-            centered_toggle_keys: keybind::load_centered_toggle_key(),
-            toggle_keys: keybind::load_toggle_keys(),
-            workspace_navigation_keys: keybind::load_workspace_navigation_keys(),
-            new_terminal_key: keybind::load_new_terminal_key(),
-            open_resume_key: keybind::load_open_resume_key(),
-            fallback_switch_key: keybind::load_fallback_switch_key(),
-            scroll_keys: keybind::load_scroll_keys(),
+            keybinds: keybind::Keybinds::load(),
             keybindings_config_generation: crate::config::config_reload_generation(),
             scroll_bookmark: None,
             typing_scroll_lock: false,
@@ -1022,15 +1006,7 @@ impl App {
             pending_prompt_before_history: None,
             pending_startup_prompt_echo: None,
             pending_account_picker_action: None,
-            model_switch_keys: keybind::load_model_switch_keys(),
-            effort_switch_keys: keybind::load_effort_switch_keys(),
-            centered_toggle_keys: keybind::load_centered_toggle_key(),
-            toggle_keys: keybind::load_toggle_keys(),
-            workspace_navigation_keys: keybind::load_workspace_navigation_keys(),
-            new_terminal_key: keybind::load_new_terminal_key(),
-            open_resume_key: keybind::load_open_resume_key(),
-            fallback_switch_key: keybind::load_fallback_switch_key(),
-            scroll_keys: keybind::load_scroll_keys(),
+            keybinds: keybind::Keybinds::load(),
             keybindings_config_generation: crate::config::config_reload_generation(),
             scroll_bookmark: None,
             typing_scroll_lock: false,

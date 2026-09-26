@@ -700,15 +700,15 @@ impl App {
 
     fn hotkey_registry(&self, remote: bool) -> Vec<KnownHotkey> {
         build_registry(&RegistryInputs {
-            model_switch: &self.model_switch_keys,
-            effort: &self.effort_switch_keys,
-            scroll: &self.scroll_keys,
-            centered: &self.centered_toggle_keys,
-            toggles: &self.toggle_keys,
-            workspace: &self.workspace_navigation_keys,
-            new_terminal: &self.new_terminal_key,
-            open_resume: &self.open_resume_key,
-            fallback_switch: &self.fallback_switch_key,
+            model_switch: &self.keybinds.model_switch_keys,
+            effort: &self.keybinds.effort_switch_keys,
+            scroll: &self.keybinds.scroll_keys,
+            centered: &self.keybinds.centered_toggle_keys,
+            toggles: &self.keybinds.toggle_keys,
+            workspace: &self.keybinds.workspace_navigation_keys,
+            new_terminal: &self.keybinds.new_terminal_key,
+            open_resume: &self.keybinds.open_resume_key,
+            fallback_switch: &self.keybinds.fallback_switch_key,
             remote,
         })
     }

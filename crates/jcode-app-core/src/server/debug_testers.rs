@@ -265,10 +265,6 @@ async fn execute_tester_subcommand(
             Some(raw) => format!("side-panel-latency:{}", raw),
             None => "side-panel-latency".to_string(),
         },
-        "mermaid-ui-bench" => match arg {
-            Some(raw) => format!("mermaid:ui-bench:{}", raw),
-            None => "mermaid:ui-bench".to_string(),
-        },
         "stop" => {
             if let Some(pid) = tester.get("pid").and_then(|v| v.as_u64()) {
                 let _ = std::process::Command::new("kill")

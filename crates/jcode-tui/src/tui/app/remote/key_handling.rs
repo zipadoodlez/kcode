@@ -436,7 +436,7 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    if app.toggle_keys.auto_poke.matches(code, modifiers) {
+    if app.keybinds.toggle_keys.auto_poke.matches(code, modifiers) {
         if app.auto_poke_incomplete_todos {
             let cleared = app_mod::commands::disable_auto_poke(app);
             app.set_status_notice("Poke: OFF");
@@ -472,17 +472,17 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    if app.toggle_keys.copy_selection.matches(code, modifiers) {
+    if app.keybinds.toggle_keys.copy_selection.matches(code, modifiers) {
         app.toggle_copy_selection_mode();
         return Ok(());
     }
 
-    if app.toggle_keys.side_panel.matches(code, modifiers) {
+    if app.keybinds.toggle_keys.side_panel.matches(code, modifiers) {
         app.toggle_side_panel();
         return Ok(());
     }
 
-    if app.toggle_keys.info_widget.matches(code, modifiers) {
+    if app.keybinds.toggle_keys.info_widget.matches(code, modifiers) {
         crate::tui::info_widget::toggle_enabled();
         let status = if crate::tui::info_widget::is_enabled() {
             "Info widget: ON"
@@ -496,7 +496,7 @@ async fn handle_remote_key_internal(
     // Swarm views: Alt+N cycles chat → inline controls → full live page → chat.
     // Selection/open/prompt controls stay available in both active views, while
     // plain typing continues to flow to the chat input.
-    if app.toggle_keys.swarm_panel_focus.matches(code, modifiers) {
+    if app.keybinds.toggle_keys.swarm_panel_focus.matches(code, modifiers) {
         match app.cycle_swarm_panel_view() {
             app_mod::tui_state::SwarmPanelView::Chat => {
                 app.set_status_notice("Swarm view closed");
@@ -518,12 +518,12 @@ async fn handle_remote_key_internal(
     }
     let macos_option_shortcut =
         crate::tui::keybind::shortcut_char_for_macos_option_key(code, modifiers);
-    if let Some(direction) = app.model_switch_keys.direction_for(code, modifiers) {
+    if let Some(direction) = app.keybinds.model_switch_keys.direction_for(code, modifiers) {
         app.record_keybinding_fast(crate::tui::app::shortcut_hints::LearnableAction::ModelSwitch);
         remote.cycle_model(direction).await?;
         return Ok(());
     }
-    if let Some(direction) = app.effort_switch_keys.direction_for(code, modifiers) {
+    if let Some(direction) = app.keybinds.effort_switch_keys.direction_for(code, modifiers) {
         app.record_keybinding_fast(crate::tui::app::shortcut_hints::LearnableAction::EffortCycle);
         apply_remote_effort_direction(app, remote, direction).await?;
         return Ok(());
@@ -531,24 +531,25 @@ async fn handle_remote_key_internal(
     if cfg!(target_os = "macos")
         && !matches!(app.status, ProcessingStatus::RunningTool(_))
         && let Some(direction) = app
+            .keybinds
             .effort_switch_keys
             .macos_option_arrow_escape_direction_for(code, modifiers)
     {
         apply_remote_effort_direction(app, remote, direction).await?;
         return Ok(());
     }
-    if app.toggle_keys.typing_scroll_lock.matches(code, modifiers) {
+    if app.keybinds.toggle_keys.typing_scroll_lock.matches(code, modifiers) {
         app.toggle_typing_scroll_lock();
         return Ok(());
     }
-    if app.toggle_keys.todo_card.matches(code, modifiers) {
+    if app.keybinds.toggle_keys.todo_card.matches(code, modifiers) {
         if app_mod::commands_dispatch::ssh_local_action_blocked(app, "Local todo view") {
             return Ok(());
         }
         app.toggle_todo_card();
         return Ok(());
     }
-    if app.centered_toggle_keys.matches(code, modifiers) {
+    if app.keybinds.centered_toggle_keys.matches(code, modifiers) {
         app.record_keybinding_fast(crate::tui::app::shortcut_hints::LearnableAction::Alignment);
         app.toggle_centered_mode();
         return Ok(());
@@ -642,7 +643,7 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    if let Some(amount) = app.scroll_keys.scroll_amount(code, modifiers) {
+    if let Some(amount) = app.keybinds.scroll_keys.scroll_amount(code, modifiers) {
         if amount < 0 {
             app.scroll_up((-amount) as usize);
         } else {
@@ -651,7 +652,7 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    if let Some(dir) = app.scroll_keys.prompt_jump(code, modifiers) {
+    if let Some(dir) = app.keybinds.scroll_keys.prompt_jump(code, modifiers) {
         if dir < 0 {
             app.scroll_to_prev_prompt();
         } else {
@@ -670,13 +671,13 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    if app.centered_toggle_keys.matches(code, modifiers) {
+    if app.keybinds.centered_toggle_keys.matches(code, modifiers) {
         app.record_keybinding_fast(crate::tui::app::shortcut_hints::LearnableAction::Alignment);
         app.toggle_centered_mode();
         return Ok(());
     }
 
-    if app.scroll_keys.is_bookmark(code, modifiers) {
+    if app.keybinds.scroll_keys.is_bookmark(code, modifiers) {
         app.toggle_scroll_bookmark();
         return Ok(());
     }
@@ -686,7 +687,7 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    if app.toggle_keys.diff_mode_cycle.matches(code, modifiers) {
+    if app.keybinds.toggle_keys.diff_mode_cycle.matches(code, modifiers) {
         app.diff_mode = app.diff_mode.cycle();
         if !app.diff_pane_visible() {
             app.diff_pane_focus = false;

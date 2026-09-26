@@ -1978,29 +1978,6 @@ fn test_debug_command_side_panel_latency_bench_reports_immediate_redraw() {
 }
 
 #[test]
-fn test_debug_command_mermaid_flicker_bench_returns_json() {
-    let mut app = create_test_app();
-    let result = app.handle_debug_command("mermaid:flicker-bench 8");
-    let value: serde_json::Value =
-        serde_json::from_str(&result).expect("flicker bench should return JSON");
-
-    assert_eq!(value["steps"].as_u64(), Some(8));
-    assert!(
-        value
-            .get("protocol_supported")
-            .and_then(|v| v.as_bool())
-            .is_some(),
-        "expected protocol_supported bool in result: {}",
-        result
-    );
-    assert!(
-        value.get("deltas").is_some(),
-        "expected delta counters: {}",
-        result
-    );
-}
-
-#[test]
 fn test_remote_transcript_send_uses_remote_submission_path() {
     let mut app = create_test_app();
     app.is_remote = true;

@@ -2,6 +2,18 @@ use super::*;
 use crate::tui::session_picker;
 use crate::tui::ui::tools_ui;
 
+pub(crate) fn extract_line_text(line: &ratatui::text::Line<'_>) -> String {
+    line.spans.iter().map(|s| s.content.as_ref()).collect()
+}
+
+pub(crate) fn inline_ui_gap_height(app: &dyn crate::tui::TuiState) -> u16 {
+    if app.inline_ui_state().is_some() {
+        1
+    } else {
+        0
+    }
+}
+
 /// Delegates to the single shared render-state lock so viewport-snapshot tests
 /// serialize against every other rendering test, not just each other (#593).
 fn viewport_snapshot_test_lock() -> crate::tui::ui::RenderStateTestGuard {
