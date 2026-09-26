@@ -36,14 +36,12 @@ as the reference for those groups.
 |---|---|
 | `JCODE_*` env vars | the state dir is `~/.kcode` but the env prefix was never renamed. Decide: rename with a `JCODE_*` fallback, or document as-is |
 | dead SSH-block commands | `/theme`, `/stats`, `/file`, `/open`, `/permission`, `/permissions`, `/new-terminal`, `/debug-fixture` are blocked over SSH but have no handler anywhere, so they do nothing locally either |
-| `client:mermaid:*` debug help | `server/debug_help.rs` still lists ~9 mermaid/image debug commands after the mermaid removal. Some (`mermaid:ui-bench`) have a tester handler, so this needs verifying, not a blind delete |
 | `-p` vs `provider list` | `-p` accepts 52 provider choices; `provider list` prints 26. The extras are aliases and gateways with no catalog entry |
 | `/help <item>` coverage | written detail for 70 of 114 registered commands; the other 44 answer `Unknown command`, and there is no `/help list` |
 | packaging | `packaging/arch/PKGBUILD` does not exist, and the README install section points at it |
 | unknown config sections | the loader silently ignores unknown top-level sections, so older config files keep dead keys with no warning |
-| pre-existing test failures | on `main`, `jcode-tui --lib` has 31 failing tests, the math/LaTeX suite 15 (`fuzz_*`, `test_*_math_*`), and `test_lock_order` 1. They are environmental/order-flaky, not regressions. Treat them as the baseline so a change is not diffed against a clean tree every time |
+| pre-existing test failures | measured on this tree: `jcode-tui --lib` 30, `jcode-base --lib` 15, math/LaTeX 15, `test_lock_order` 1. They are environmental (clock-dependent strings, pixel/geometry assertions, and tests still expecting `jcode` paths now under `kcode`), not regressions. The `jcode-tui` count was 31 before the mermaid debug test was deleted with its command. Treat these as the baseline so a change is not diffed against a clean tree every time |
 | irrelevant tests | the suite still covers removed features and carries many brittle pixel/color assertions. Collapse or delete rather than keep maintaining them |
-| `[dictation]` in README | `README.md:297` lists the section; the feature is gone, leaving four dead env names in `config.rs:59-62` |
 
 ## Repo hygiene, no plan
 
