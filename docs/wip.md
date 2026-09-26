@@ -10,7 +10,7 @@ git has the history.
 
 | plan | state | what's left |
 |---|---|---|
-| [plans/codebase-reduction.md](plans/codebase-reduction.md) | proposal, nothing implemented | tier 0 (delete: provider cut, hygiene, dead files) is the entry point; tier 1 (test strategy) is the one justified rewrite and the only thing that pulls in render-state ownership |
+| [plans/codebase-reduction.md](plans/codebase-reduction.md) | proposal, nothing implemented | tier 0 (delete: provider cut, hygiene, dead files, dead local TUI loop) is the entry point; tier 1 (test strategy) is the one justified rewrite and the only thing that pulls in render-state ownership; tiers 3-6 are the re-cores (protocol dispatch, command surface, provider identity, swarm/comm) the 2026-09 structural audit added |
 | [plans/browser-provider-protocol.md](plans/browser-provider-protocol.md) | draft spec, no implementation | tighten the core method set and the normalized `page.snapshot` format before building any adapter |
 
 Withdrawn: `plans/tui-render-ownership.md` (git history at `ce83f61a`). Its goal
@@ -27,7 +27,7 @@ as the reference for those groups.
 
 | idea | the problem |
 |---|---|
-| compile-time isolation | build and link time; the workspace recompiles far more than it should. The old `COMPILE_TIME_ISOLATION_REFACTOR.md` was a historical record naming removed machinery, so it was deleted - the idea stays here |
+| compile-time isolation | build and link time; the workspace recompiles far more than it should. The old `COMPILE_TIME_ISOLATION_REFACTOR.md` was a historical record naming removed machinery, so it was deleted - the idea stays here. It is the same spine as reduction tier 8: the `pub use jcode_*::*` chain is what makes every edit rebuild the whole workspace |
 | the axis kcode owns | as a subtraction fork on MIT code, kcode has no moat on anything inherited; only what it *adds* is ownable, and today that is nothing. Leading candidate: verifiability plus package-manager ownership - reproducible builds, no self-modification, no telemetry, permission-gated by default, every performance claim shipped with a runnable script and raw artifacts in-repo |
 
 ## Open items in the code, no plan
@@ -35,9 +35,9 @@ as the reference for those groups.
 | item | state |
 |---|---|
 | `JCODE_*` env vars | the state dir is `~/.kcode` but the env prefix was never renamed, and the runtime dir is still `<runtime_dir>/jcode/` (`registry.rs` joins `"jcode"` and `JCODE_RUNTIME_DIR` names it; `internals/architecture.md` documents it). Decide once: rename with a `JCODE_*` fallback, or document as-is |
-| dead SSH-block commands | `/theme`, `/stats`, `/file`, `/open`, `/permission`, `/permissions`, `/new-terminal`, `/debug-fixture` are blocked over SSH but have no handler anywhere, so they do nothing locally either |
+| dead SSH-block commands | `/theme`, `/stats`, `/file`, `/open`, `/permission`, `/permissions`, `/new-terminal`, `/debug-fixture` are blocked over SSH but have no handler anywhere, so they do nothing locally either. Root cause is the command string table being matched in four places; reduction tier 4 fixes the class |
 | `-p` vs `provider list` | `-p` accepts 52 provider choices; `provider list` prints 26. The extras are aliases and gateways with no catalog entry |
-| `/help <item>` coverage | written detail for 70 of 114 registered commands; the other 44 answer `Unknown command`, and there is no `/help list` |
+| `/help <item>` coverage | written detail for 70 of 114 registered commands; the other 44 answer `Unknown command`, and there is no `/help list`. Falls out of reduction tier 4: help text becomes a column of the command table |
 | packaging | `packaging/arch/PKGBUILD` does not exist, and the README install section points at it |
 | unknown config sections | the loader silently ignores unknown top-level sections, so older config files keep dead keys with no warning |
 | pre-existing test failures | measured on this tree: `jcode-tui --lib` 30, `jcode-base --lib` 15, math/LaTeX 15, `test_lock_order` 1. They are environmental (clock-dependent strings, pixel/geometry assertions, and tests still expecting `jcode` paths now under `kcode`), not regressions. The `jcode-tui` count was 31 before the mermaid debug test was deleted with its command. Treat these as the baseline so a change is not diffed against a clean tree every time |
@@ -53,6 +53,7 @@ as the reference for those groups.
 | budget baselines | the six budget files (`panic_budget.json`, `swallowed_error_budget.json`, `code_size_budget.json`, `warning_budget.txt`, `wildcard_reexport_budget.json`, `test_size_budget.json`) carry jcode's numbers; re-baseline or they are meaningless or block work |
 | fork policy | rebase lane vs hard divergence is undecided, and it blocks crate names, the env prefix and the provider cut. `README.md` states "does not track upstream", but nothing follows from it |
 | licensing | no `license` field on the root `Cargo.toml` or any of the 63 members; add `license = "MIT"`, ship the LICENSE inside the package (the PKGBUILD), and generate a `THIRD_PARTY_NOTICES` from `Cargo.lock` |
+| dangling doc reference | `scripts/check_wildcard_reexport_budget.py` points at `docs/CRATE_OWNERSHIP_BOUNDARIES.md`, which does not exist (and SCREAMING_CASE violates the `docs/README.md` kebab-case convention). Fold it into reduction tier 8 or delete the reference |
 
 ## Provider layer
 
