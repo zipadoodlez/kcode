@@ -10,8 +10,14 @@ git has the history.
 
 | plan | state | what's left |
 |---|---|---|
-| [plans/tuistate-decomposition.md](plans/tuistate-decomposition.md) | analysis only, nothing extracted | refresh the 114-method categorization to the current 156, then extract leaf sub-traits one per commit starting with a single-file consumer, keeping `ui.rs` and `ui_viewport.rs` on the supertrait |
+| [plans/tui-render-ownership.md](plans/tui-render-ownership.md) | proposal, nothing implemented | step 1: move the `OnceLock<Mutex<..>>` render-state globals out of `tui/ui.rs` into an owned `ViewState`. Steps 2-5 make this a state-ownership and testability win; step 6 (file reorder) is optional |
 | [plans/browser-provider-protocol.md](plans/browser-provider-protocol.md) | draft spec, no implementation | tighten the core method set and the normalized `page.snapshot` format before building any adapter |
+
+Superseded: [plans/tuistate-decomposition.md](plans/tuistate-decomposition.md).
+The sub-trait split is dropped - the same goal (a render module proves what it
+reads) is reached by owning the render state, without 15 traits to maintain, and
+rooted in the 111 render-path statics rather than in the 122-method trait. The
+file stays for the method categorization until the ownership work lands.
 
 ## Committed ideas, no plan doc yet
 
@@ -66,7 +72,7 @@ Found while writing `user/hooks.md`.
 
 ## This doc set
 
-The rebuild is complete: `user/` (7), `internals/` (9), `dev/` (4), `plans/` (3),
+The rebuild is complete: `user/` (7), `internals/` (9), `dev/` (4), `plans/` (4),
 plus `README.md`, `what-was-removed.md`, and this file at the root. Notes that
 outlive it:
 
