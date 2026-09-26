@@ -51,9 +51,8 @@ No design, no migration, nothing to half-finish. Highest return per hour.
   2681, anthropic 1641, bedrock 1981 lines), so each deletion needs evidence.
 - **Repo hygiene** already listed in `wip.md`: upstream CI workflows, dead
   config, `scripts/`, budget baselines, missing `packaging/arch/PKGBUILD`.
-- **Dead TUI files**: `ui_transitions.rs` (18 lines, 100% `#[cfg(test)]`), the
-  three one-helper `ui_pinned_*` files, and any module with no `#[path]`/`mod`
-  declaration.
+- **Dead TUI files**: the three one-helper `ui_pinned_*` files, and any module
+  with no `#[path]`/`mod` declaration. (`ui_transitions.rs` is already deleted.)
 
 ## Tier 1 - rewrite the test strategy
 

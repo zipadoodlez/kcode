@@ -5,6 +5,10 @@ Status: absorbed. The sub-trait split proposed here is not being done. See
 from grouping `App`'s loose fields, which removes `TuiState` instead of
 re-cutting it. This file is kept only as the reference for those field groups.
 
+The categorization below predates the fork's cuts and is unverified against the
+current trait: `side_pane_images` and `dictation_key_label` are already gone.
+Re-check `crates/jcode-tui/src/tui/mod.rs` before using any of it.
+
 This document audits the `TuiState` trait (`crates/jcode-tui/src/tui/mod.rs`) and
 proposes a safe, incremental decomposition. It is the Phase 1.5 follow-on to the
 `App` god-object decomposition.
