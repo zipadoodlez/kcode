@@ -150,9 +150,11 @@ Staged, each lands whole.
     `side_pane_*`/`diff_pane_*` fields remain.
   - Shared side-panel decoration. **Landed.** The three mirror pages (todos,
     observe, split view) plus catchup each carried a private copy of the same
-    two algorithms. They are now `App::decorate_side_panel_with_page` and
-    `App::snapshot_without_page` in `state_ui.rs`; the per-page content
-    builders stay local. Net -61 lines, no per-caller flags.
+    two algorithms. They are now `App::decorate_side_panel_with_page`,
+    `App::snapshot_without_page`, and `App::apply_mirror_page` (the
+    enable/disable dance the three setters shared) in `state_ui.rs`; the
+    per-page cache refresh and content builders stay local. No per-caller
+    flags.
   - Stage 6: overlay/picker state (14 fields, 174 sites): session, model,
     account, and login pickers, one sub-struct each.
   - Stage 7: stream/status (26 fields, 414 sites).

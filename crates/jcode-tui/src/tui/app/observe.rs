@@ -41,21 +41,16 @@ impl App {
 
     pub(super) fn set_observe_mode_enabled(&mut self, enabled: bool, focus: bool) {
         self.observe.enabled = enabled;
-        let mut snapshot = self.snapshot_without_page(OBSERVE_PAGE_ID);
-        if enabled {
+        let page = if enabled {
             if self.observe.page_markdown.trim().is_empty() {
                 self.observe.page_markdown = observe_placeholder_markdown();
                 self.observe.page_updated_at_ms = now_ms();
             }
-            snapshot = self.decorate_side_panel_with_page(snapshot, self.observe.page(), focus);
-        } else if snapshot.focused_page_id.is_none() {
-            snapshot.focused_page_id = self
-                .last_side_panel_focus_id
-                .clone()
-                .filter(|id| snapshot.pages.iter().any(|page| page.id == *id))
-                .or_else(|| snapshot.pages.first().map(|page| page.id.clone()));
-        }
-        self.apply_side_panel_snapshot(snapshot);
+            Some(self.observe.page())
+        } else {
+            None
+        };
+        self.apply_mirror_page(OBSERVE_PAGE_ID, page, focus);
     }
 
     pub(super) fn observe_tool_call(&mut self, tool_call: &ToolCall) {

@@ -722,6 +722,29 @@ impl App {
         snapshot
     }
 
+    /// Show or hide a mirror page in the side panel. `Some(page)` decorates it
+    /// in and focuses it; `None` removes it and falls back to the last known
+    /// focus. Callers own their page's cache refresh and content first, so the
+    /// snapshot dance is written once.
+    pub(super) fn apply_mirror_page(
+        &mut self,
+        page_id: &str,
+        page: Option<crate::side_panel::SidePanelPage>,
+        focus: bool,
+    ) {
+        let mut snapshot = self.snapshot_without_page(page_id);
+        if let Some(page) = page {
+            snapshot = self.decorate_side_panel_with_page(snapshot, page, focus);
+        } else if snapshot.focused_page_id.is_none() {
+            snapshot.focused_page_id = self
+                .last_side_panel_focus_id
+                .clone()
+                .filter(|id| snapshot.pages.iter().any(|page| page.id == *id))
+                .or_else(|| snapshot.pages.first().map(|page| page.id.clone()));
+        }
+        self.apply_side_panel_snapshot(snapshot);
+    }
+
     pub(super) fn refresh_side_panel_linked_content_if_due(&mut self) -> bool {
         if crate::tui::is_ssh_remote() {
             // Linked paths in server snapshots belong to the remote filesystem.

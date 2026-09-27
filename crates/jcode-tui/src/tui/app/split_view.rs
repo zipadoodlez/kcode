@@ -50,23 +50,14 @@ impl SplitView {
 impl App {
     pub(super) fn set_split_view_enabled(&mut self, enabled: bool, focus: bool) {
         self.split_view.enabled = enabled;
-        if enabled {
+        let page = if enabled {
             self.refresh_split_view_cache(true);
+            Some(self.split_view.page())
         } else {
             self.split_view.clear_cache();
-        }
-
-        let mut snapshot = self.snapshot_without_page(SPLIT_VIEW_PAGE_ID);
-        if enabled {
-            snapshot = self.decorate_side_panel_with_page(snapshot, self.split_view.page(), focus);
-        } else if snapshot.focused_page_id.is_none() {
-            snapshot.focused_page_id = self
-                .last_side_panel_focus_id
-                .clone()
-                .filter(|id| snapshot.pages.iter().any(|page| page.id == *id))
-                .or_else(|| snapshot.pages.first().map(|page| page.id.clone()));
-        }
-        self.apply_side_panel_snapshot(snapshot);
+            None
+        };
+        self.apply_mirror_page(SPLIT_VIEW_PAGE_ID, page, focus);
     }
 
     pub(super) fn refresh_split_view_if_needed(&mut self) {
