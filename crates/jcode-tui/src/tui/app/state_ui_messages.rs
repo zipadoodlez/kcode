@@ -2,85 +2,17 @@ use super::state_ui_storage::{
     compact_display_message_tool_data, compact_display_messages_for_storage,
 };
 use super::*;
-use crate::overnight::OvernightRunStatus;
-use std::time::{Duration, Instant};
 
 const COMPACTED_HISTORY_CHUNK_MESSAGES: usize = 64;
 const COMPACTED_HISTORY_LOAD_SCROLL_THRESHOLD: usize = 2;
 const COMPACTED_HISTORY_MARKER_PREFIX: &str = "Earlier conversation compacted - ";
-const OVERNIGHT_CARD_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
 
-fn display_message_from_stored_message(
-    message: &crate::session::StoredMessage,
-) -> Option<DisplayMessage> {
-    let text = stored_message_visible_text(message);
-    if text.trim().is_empty() {
-        return None;
-    }
-    if is_background_task_lifecycle_message(&text) {
-        return None;
-    }
-    match message.display_role {
-        Some(crate::session::StoredDisplayRole::System) => Some(DisplayMessage::system(text)),
-        Some(crate::session::StoredDisplayRole::BackgroundTask) => None,
-        None => match message.role {
-            Role::User => {
-                if crate::session::is_scheduled_task_message(message) {
-                    return Some(DisplayMessage::system(text));
-                }
-                // Synthetic auto-poke continuations are persisted as user
-                // turns for the model but must not display as user prompts.
-                if crate::todo::is_auto_poke_message(&text) {
-                    // Gate continuations are written for the model; the user
-                    // only needs to know the check happened.
-                    match crate::todo::auto_poke_display_summary(&text) {
-                        Some(summary) => Some(DisplayMessage::system(summary.to_string())),
-                        None => Some(DisplayMessage::system(text)),
-                    }
-                } else {
-                    Some(DisplayMessage::user(text))
-                }
-            }
-            Role::Assistant => Some(DisplayMessage::assistant(text)),
-        },
-    }
-}
-
-fn is_background_task_lifecycle_message(content: &str) -> bool {
+pub(super) fn is_background_task_lifecycle_message(content: &str) -> bool {
     let content = content.trim_start();
     content.starts_with("**Background task**")
         || content.starts_with("**Background task started**")
         || content.starts_with("**Background task progress**")
         || content.starts_with("**Background task stalled**")
-}
-
-fn stored_message_visible_text(message: &crate::session::StoredMessage) -> String {
-    let mut parts = Vec::new();
-    for block in &message.content {
-        match block {
-            ContentBlock::Text { text, .. }
-            | ContentBlock::Reasoning { text }
-            | ContentBlock::ReasoningTrace { text } => {
-                if !text.trim().is_empty() {
-                    parts.push(text.trim().to_string());
-                }
-            }
-            ContentBlock::AnthropicThinking { .. } | ContentBlock::OpenAIReasoning { .. } => {}
-            ContentBlock::ToolUse { name, input, .. } => {
-                parts.push(format!("[tool:{} {}]", name, input));
-            }
-            ContentBlock::ToolResult { content, .. } => {
-                if !content.trim().is_empty() {
-                    parts.push(content.trim().to_string());
-                }
-            }
-            ContentBlock::Image { media_type, .. } => {
-                parts.push(format!("[image:{}]", media_type));
-            }
-            ContentBlock::OpenAICompaction { .. } => {}
-        }
-    }
-    parts.join("\n\n")
 }
 
 impl App {
@@ -187,88 +119,6 @@ impl App {
         }
 
         self.replace_display_message_title_and_content(idx, title, content)
-    }
-
-    pub(super) fn upsert_overnight_display_card(
-        &mut self,
-        manifest: &crate::overnight::OvernightManifest,
-    ) -> bool {
-        let Ok(content) = crate::overnight::format_progress_card_content(manifest) else {
-            return false;
-        };
-        let title = Some("Overnight".to_string());
-        let idx = self.transcript.messages().iter().rposition(|message| {
-            message.role == "overnight"
-                && serde_json::from_str::<crate::overnight::OvernightProgressCard>(&message.content)
-                    .is_ok_and(|card| card.run_id == manifest.run_id)
-        });
-        if let Some(idx) = idx {
-            self.replace_display_message_title_and_content(idx, title, content)
-        } else {
-            self.push_display_message(DisplayMessage::overnight(content));
-            true
-        }
-    }
-
-    pub(super) fn maybe_refresh_overnight_display_card(&mut self) -> bool {
-        if crate::tui::is_ssh_remote() {
-            return false;
-        }
-        let now = Instant::now();
-        if self
-            .last_overnight_card_refresh
-            .is_some_and(|last| now.duration_since(last) < OVERNIGHT_CARD_REFRESH_INTERVAL)
-        {
-            return false;
-        }
-        self.last_overnight_card_refresh = Some(now);
-
-        let has_card = self
-            .transcript
-            .messages()
-            .iter()
-            .any(|message| message.role == "overnight");
-        let Ok(Some(manifest)) = crate::overnight::latest_manifest() else {
-            return false;
-        };
-        let active = matches!(
-            manifest.status,
-            OvernightRunStatus::Running | OvernightRunStatus::CancelRequested
-        );
-        if !has_card && !active {
-            return false;
-        }
-        let card_changed = self.upsert_overnight_display_card(&manifest);
-        let transcript_changed = self.maybe_tail_overnight_current_session_transcript(&manifest);
-        card_changed || transcript_changed
-    }
-
-    fn maybe_tail_overnight_current_session_transcript(
-        &mut self,
-        manifest: &crate::overnight::OvernightManifest,
-    ) -> bool {
-        if manifest.coordinator_session_id != self.session.id {
-            return false;
-        }
-        let Ok(latest_session) = crate::session::Session::load(&self.session.id) else {
-            return false;
-        };
-        if latest_session.messages.len() <= self.session.messages.len() {
-            return false;
-        }
-
-        let appended: Vec<DisplayMessage> = latest_session.messages[self.session.messages.len()..]
-            .iter()
-            .filter_map(display_message_from_stored_message)
-            .collect();
-        self.session = latest_session;
-        if appended.is_empty() {
-            return false;
-        }
-        for message in appended {
-            self.push_display_message(message);
-        }
-        true
     }
 
     pub(super) fn remove_display_message(&mut self, idx: usize) -> Option<DisplayMessage> {

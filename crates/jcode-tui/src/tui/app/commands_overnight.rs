@@ -1,3 +1,4 @@
+use super::overnight_card::upsert_card;
 use super::{
     App, DisplayMessage, OvernightAutoPokeFingerprint, OvernightAutoPokeState, ProcessingStatus,
 };
@@ -46,7 +47,7 @@ pub(super) fn handle_overnight_command(app: &mut App, trimmed: &str) -> bool {
                 Ok(launch) => {
                     let manifest = launch.manifest;
                     app.enable_overnight_auto_poke(&manifest);
-                    app.upsert_overnight_display_card(&manifest);
+                    upsert_card(app, &manifest);
                     if let Some(prompt) = launch.initial_prompt {
                         if !app.is_remote_client() {
                             app.provider = visible_provider;
@@ -153,7 +154,7 @@ fn overnight_provider_for_app(app: &mut App) -> Arc<dyn Provider> {
 fn show_overnight_status(app: &mut App) {
     match crate::overnight::latest_manifest() {
         Ok(Some(manifest)) => {
-            if !app.upsert_overnight_display_card(&manifest) {
+            if !upsert_card(app, &manifest) {
                 app.push_display_message(DisplayMessage::system(
                     crate::overnight::format_status_markdown(&manifest),
                 ));
@@ -227,7 +228,7 @@ fn cancel_overnight(app: &mut App) {
     match crate::overnight::cancel_latest_run() {
         Ok(manifest) => {
             app.overnight_auto_poke = None;
-            if !app.upsert_overnight_display_card(&manifest) {
+            if !upsert_card(app, &manifest) {
                 app.push_display_message(DisplayMessage::system(format!(
                     "Cancellation requested for overnight run {}. The coordinator will stop after the current turn reaches a safe boundary.",
                     manifest.run_id,
@@ -263,7 +264,7 @@ impl App {
 
         match crate::overnight::cancel_latest_run() {
             Ok(manifest) => {
-                let _ = self.upsert_overnight_display_card(&manifest);
+                let _ = upsert_card(self, &manifest);
                 self.push_display_message(DisplayMessage::system(format!(
                     "🌙 Overnight run {} cancelled by interrupt.",
                     manifest.run_id

@@ -337,6 +337,26 @@ Staged, each lands whole.
       `cargo test -p jcode-tui --lib -- --test-threads=1` identical to the
       baseline (1966 passed, the same 27 pre-existing failures), check, clippy,
       fmt, and `check_app_shape.py` all green.
+      **10c landed (overnight card writer).** `app/overnight_card.rs` holds
+      `OvernightCard` (the poll throttle: `last_refresh` private, one
+      `begin_refresh` op) plus the card operations. The writer touches the
+      transcript and the session, not just its own field, so the operations are
+      free functions over `&mut App` (`refresh_if_due`, `upsert_card`) instead
+      of a new `impl App` block; a new `impl App` file would have bumped
+      `impl_app_blocks` 57 -> 58, which the ratchet forbids. The free-function
+      shape also matches the sibling `commands_overnight.rs`. The
+      session-to-display conversion (`display_message_from_stored_message`,
+      `stored_message_visible_text`) moved with the tail that was its only
+      caller; `is_background_task_lifecycle_message` stayed in
+      `state_ui_messages.rs` as `pub(super)` because the transcript ops and the
+      card writer both need it. `state_ui_messages.rs` 690 -> 540 lines.
+      Ratchet flat on the field swap: `app_fields` 228 (one `overnight_card`
+      field in, one `last_overnight_card_refresh` out), `impl_app_blocks` 57,
+      `super_glob_imports` 124 (imports explicit, not `use super::*`). Verified
+      as 10b: identical lib suite, check, clippy, fmt, shape green; the three
+      red gate items are the pre-existing recorded ones (local.rs was already
+      at 6 at HEAD, and neither new file appears in the panic/swallowed
+      reports).
   - Stage 11: revisit `TuiState`. It is a 122-method trait with two impls, and
     `TestState` (39 fields, 83 sites, 13 files) exists so render tests avoid
     constructing an `App`. Deleting it is a trade, decided last, once `App` is

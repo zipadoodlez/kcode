@@ -81,6 +81,7 @@ mod onboarding_flow_control;
 pub(crate) mod onboarding_graph;
 mod onboarding_repair;
 mod onboarding_sim;
+mod overnight_card;
 mod prompt_history;
 mod reasoning;
 mod redraw;
@@ -1365,8 +1366,8 @@ pub struct App {
     account_picker: auth::AccountPickerState,
     /// Usage overlay and whether a usage refresh request is in flight.
     usage: super::usage_overlay::UsageOverlayState,
-    /// Last time the passive overnight progress card polled its run files.
-    last_overnight_card_refresh: Option<Instant>,
+    /// Passive overnight progress card: its transcript row and poll throttle.
+    overnight_card: overnight_card::OvernightCard,
     /// Per-client Niri-style workspace navigation state. Previously a process
     /// global; now owned per App instance.
     workspace_client: super::workspace_client::WorkspaceClientState,

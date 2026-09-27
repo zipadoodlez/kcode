@@ -607,7 +607,7 @@ impl App {
             login_picker_overlay: None,
             account_picker: Default::default(),
             usage: Default::default(),
-            last_overnight_card_refresh: None,
+            overnight_card: Default::default(),
             workspace_client: crate::tui::workspace_client::WorkspaceClientState::default(),
             prompt_history: Default::default(),
         };
@@ -917,7 +917,7 @@ impl App {
             login_picker_overlay: None,
             account_picker: Default::default(),
             usage: Default::default(),
-            last_overnight_card_refresh: None,
+            overnight_card: Default::default(),
             workspace_client: crate::tui::workspace_client::WorkspaceClientState::default(),
             prompt_history: Default::default(),
         };
