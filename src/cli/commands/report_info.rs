@@ -559,63 +559,36 @@ fn usage_provider_report(provider: &crate::usage::ProviderUsage) -> UsageProvide
     }
 }
 
+/// The provider ids `-p` accepts, which is the login-provider registry plus
+/// `Auto`. Derived from the registry so the printed list cannot drift from the
+/// accepted set again.
 pub(super) fn list_cli_providers() -> Vec<ProviderListEntry> {
-    let choices = [
-        ProviderChoice::Claude,
-        ProviderChoice::Openai,
-        ProviderChoice::Openrouter,
-        ProviderChoice::Azure,
-        ProviderChoice::Opencode,
-        ProviderChoice::OpencodeGo,
-        ProviderChoice::Zai,
-        ProviderChoice::Kimi,
-        ProviderChoice::Conifer,
-        ProviderChoice::Groq,
-        ProviderChoice::Mistral,
-        ProviderChoice::Perplexity,
-        ProviderChoice::TogetherAi,
-        ProviderChoice::Deepinfra,
-        ProviderChoice::Novita,
-        ProviderChoice::Xai,
-        ProviderChoice::GrokBuild,
-        ProviderChoice::Chutes,
-        ProviderChoice::Cerebras,
-        ProviderChoice::AlibabaCodingPlan,
-        ProviderChoice::OpenaiCompatible,
-        ProviderChoice::Cursor,
-        ProviderChoice::Copilot,
-        ProviderChoice::Gemini,
-        ProviderChoice::Antigravity,
-        ProviderChoice::Auto,
-    ];
+    let registered =
+        provider_init::login_provider_choice_mappings()
+            .iter()
+            .map(|(choice, provider)| ProviderListEntry {
+                id: choice.as_arg_value().to_string(),
+                display_name: provider.display_name.to_string(),
+                auth_kind: Some(provider.auth_kind.label().to_string()),
+                recommended: provider.recommended,
+                aliases: provider
+                    .aliases
+                    .iter()
+                    .map(|alias| (*alias).to_string())
+                    .collect(),
+                detail: Some(provider.menu_detail.to_string()),
+            });
 
-    choices
-        .into_iter()
-        .map(|choice| {
-            if let Some(provider) = provider_init::login_provider_for_choice(&choice) {
-                ProviderListEntry {
-                    id: choice.as_arg_value().to_string(),
-                    display_name: provider.display_name.to_string(),
-                    auth_kind: Some(provider.auth_kind.label().to_string()),
-                    recommended: provider.recommended,
-                    aliases: provider
-                        .aliases
-                        .iter()
-                        .map(|alias| (*alias).to_string())
-                        .collect(),
-                    detail: Some(provider.menu_detail.to_string()),
-                }
-            } else {
-                ProviderListEntry {
-                    id: choice.as_arg_value().to_string(),
-                    display_name: "Auto-detect".to_string(),
-                    auth_kind: None,
-                    recommended: false,
-                    aliases: Vec::new(),
-                    detail: Some("Use the best configured provider automatically".to_string()),
-                }
-            }
-        })
+    // `Auto` is the one accepted value with no registry descriptor.
+    registered
+        .chain(std::iter::once(ProviderListEntry {
+            id: ProviderChoice::Auto.as_arg_value().to_string(),
+            display_name: "Auto-detect".to_string(),
+            auth_kind: None,
+            recommended: false,
+            aliases: Vec::new(),
+            detail: Some("Use the best configured provider automatically".to_string()),
+        }))
         .collect()
 }
 
@@ -642,6 +615,33 @@ mod tests {
         assert_eq!(novita.auth_kind.as_deref(), Some("API key"));
         assert_eq!(novita.detail.as_deref(), Some("Pay-as-you-go API key"));
         assert!(novita.aliases.iter().any(|alias| alias == "novita.ai"));
+    }
+
+    /// The point of deriving the list from the registry: what `provider list`
+    /// prints is exactly what `-p` accepts. This catches both halves of the old
+    /// drift, providers missing from the list and ids that disagree with the
+    /// clap value (for example `togetherai` printed while only `together-ai`
+    /// parsed).
+    #[test]
+    fn provider_list_ids_match_the_accepted_cli_values() {
+        use clap::ValueEnum;
+
+        let printed: std::collections::BTreeSet<String> = list_cli_providers()
+            .into_iter()
+            .map(|provider| provider.id)
+            .collect();
+        let accepted: std::collections::BTreeSet<String> = ProviderChoice::value_variants()
+            .iter()
+            .map(|choice| {
+                choice
+                    .to_possible_value()
+                    .expect("every ProviderChoice variant has a CLI value")
+                    .get_name()
+                    .to_string()
+            })
+            .collect();
+
+        assert_eq!(printed, accepted);
     }
 
     fn provider_status<'a>(

@@ -57,7 +57,7 @@ pub enum ProviderChoice {
         alias = "moonshot-coding"
     )]
     Kimi,
-    #[value(alias = "302.ai")]
+    #[value(name = "302ai", alias = "302.ai", alias = "ai302")]
     Ai302,
     Baseten,
     #[value(alias = "conifer-api")]
@@ -69,9 +69,9 @@ pub enum ProviderChoice {
     #[value(alias = "fpt-ai", alias = "fptcloud", alias = "fpt-cloud")]
     Fpt,
     Firmware,
-    #[value(alias = "hugging-face", alias = "hf")]
+    #[value(name = "huggingface", alias = "hugging-face", alias = "hf")]
     HuggingFace,
-    #[value(alias = "moonshot")]
+    #[value(name = "moonshotai", alias = "moonshot", alias = "moonshot-ai")]
     MoonshotAi,
     Nebius,
     Scaleway,
@@ -81,7 +81,7 @@ pub enum ProviderChoice {
     Mistral,
     #[value(alias = "pplx")]
     Perplexity,
-    #[value(alias = "together", alias = "together-ai")]
+    #[value(name = "togetherai", alias = "together", alias = "together-ai")]
     TogetherAi,
     #[value(alias = "deep-infra")]
     Deepinfra,

@@ -141,8 +141,8 @@ before the shape is settled is churn.
   - `PROVIDER_CHOICE_LOGIN_PROVIDERS`: 51 hand-written pairs.
   - `LOGIN_PROVIDERS: [LoginProviderDescriptor; 52]` plus 52 constants:
     `provider-metadata/src/catalog.rs`, 1,284 lines.
-  - `list_cli_providers()`: a hand-typed 26-element array,
-    `src/cli/commands/report_info.rs:562`.
+  - `list_cli_providers()`: **was** a hand-typed 26-element array; now derived
+    from `PROVIDER_CHOICE_LOGIN_PROVIDERS` plus `Auto` (B1, landed 2026-09-28).
   - `LoginProviderTarget` (14) and `RuntimeProviderId` (14) have identical
     membership, and `crates/jcode-base/src/auth/integration.rs:54-69` is a
     14-arm 1:1 conversion between them (`Azure -> AzureOpenAi`,
@@ -152,6 +152,18 @@ before the shape is settled is churn.
     the deprecated `claude-subprocess`, which deliberately points at the
     `claude` descriptor. So the pairing table is *derivable*, i.e. it is pure
     duplication rather than a distinct vocabulary.
+  - **The `-p` value was a fourth spelling, and it disagreed for four
+    providers.** clap derives each value from the variant name, and implicit
+    kebab-case is not `as_arg_value()`: `Ai302` parsed as `ai302` not `302ai`,
+    `HuggingFace` as `hugging-face` not `huggingface`, `MoonshotAi` as
+    `moonshot-ai` not `moonshotai`, `TogetherAi` as `together-ai` not
+    `togetherai`. The `alias` attributes are the tell: `HuggingFace` carried
+    `alias = "hugging-face"` and `TogetherAi` `alias = "together-ai"`, i.e. the
+    author believed the kebab spelling was the alias while clap silently made
+    it the primary. So `provider list` printed `togetherai` while only
+    `together-ai` parsed. Fixed in B1 by pinning `#[value(name = ..)]` to
+    `as_arg_value()` and keeping the old spellings as aliases. Flagged here
+    because B5 is where the fourth spelling stops existing at all.
 
   **The duplication already shipped a bug.** 26 of the 52 values `-p` accepts
   are not printed by `kcode provider list`: `anthropic-api`, `openai-api`,
@@ -182,10 +194,20 @@ before the shape is settled is churn.
   Order, each lands whole; the first three delete code rather than move it.
   `--` marks the verification.
 
-  - B1: **`provider list` derives from the registry.** Delete the 26-entry
-    array, iterate the pairing table with `Auto` as the one explicit
-    non-registry entry. Fixes all 26 gaps in one edit. `--` new test: printed id
-    set equals the accepted `-p` value set.
+  - B1: **Landed 2026-09-28. `provider list` derives from the registry.** The
+    26-entry `ProviderChoice` array is gone; the list iterates
+    `login_provider_choice_mappings()` with `Auto` as the one explicit
+    non-registry entry, so it prints 52 ids instead of 26. Verifying the
+    invariant surfaced the fourth-spelling bug above, so the four divergent
+    variants also got `#[value(name = ..)]` pinned to `as_arg_value()`, with the
+    old spellings kept as aliases so nothing that parsed before stopped
+    parsing. `--` new `provider_list_ids_match_the_accepted_cli_values`
+    compares the printed id set against `ProviderChoice::value_variants()` /
+    `to_possible_value()`; it fails without the name fix (exactly the four ids)
+    and passes with it. A companion alias test pins both spellings for all
+    four. Runtime: `provider list` prints 52, the 26 formerly-missing ids are
+    present, and all four providers parse under both spellings. Not covered:
+    the `orcarouter` direction is still red and belongs to B2.
   - B2: **Delete the pairing table.** `login_provider_for_choice(c)` becomes
     `resolve_login_provider(c.as_arg_value())` (verified: it matches `id` then
     aliases over `LOGIN_PROVIDERS`, one descriptor per constant). Two special
@@ -206,7 +228,9 @@ before the shape is settled is churn.
     Then `-p` accepts exactly what `provider list` prints, by construction.
     About 250 `ProviderChoice::` sites in 16 files, 49 of them in
     `provider_init_tests.rs`. Last and alone, gated on the provider-doctor
-    suite: it is the only stage that changes a user-visible CLI surface.
+    suite. B1 already added names and aliases additively; B5 is the stage that
+    *removes* the variant set and rebuilds the parser, so it is the one that can
+    drop an accepted value by accident.
 
   Not doing, with reasons: not merging `ActiveProvider` (execution slot, so
   merging gives one enum doing three jobs), not merging `ModelRouteApiMethod`

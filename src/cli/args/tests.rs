@@ -130,6 +130,29 @@ fn test_provider_choice_aliases_parse() {
     assert_eq!(args.provider, ProviderChoice::Comtegra);
 }
 
+/// Four providers used to expose clap's implicit kebab case as the `-p` value
+/// while `as_arg_value()` (and the registry id) said otherwise, so `provider
+/// list` printed an id that did not parse. The canonical spelling must parse,
+/// and the spelling that used to work must keep working as an alias.
+#[test]
+fn provider_choice_value_names_match_as_arg_value_and_keep_old_spellings() {
+    for (canonical, previous, expected) in [
+        ("302ai", "ai302", ProviderChoice::Ai302),
+        ("huggingface", "hugging-face", ProviderChoice::HuggingFace),
+        ("moonshotai", "moonshot-ai", ProviderChoice::MoonshotAi),
+        ("togetherai", "together-ai", ProviderChoice::TogetherAi),
+    ] {
+        assert_eq!(expected.as_arg_value(), canonical);
+        for spelling in [canonical, previous] {
+            let args = Args::try_parse_from(["jcode", "--provider", spelling]).unwrap();
+            assert_eq!(
+                args.provider, expected,
+                "`-p {spelling}` should select {expected:?}"
+            );
+        }
+    }
+}
+
 #[test]
 fn serve_server_name_option_parses() {
     let args =
