@@ -135,14 +135,16 @@ before the shape is settled is churn.
   **What is duplicated is the catalog, five times over, plus one identity enum
   stated twice.** Measured by reading each table:
 
-  - `ProviderChoice` and its `#[value(alias = ..)]` attributes: 52 variants,
+  - `ProviderChoice` and its `#[value(alias = ..)]` attributes: 53 variants,
     `src/cli/provider_init.rs`.
-  - `ProviderChoice::as_arg_value()`: 52 arms.
-  - `PROVIDER_CHOICE_LOGIN_PROVIDERS`: 51 hand-written pairs.
+  - `ProviderChoice::as_arg_value()`: 53 arms.
+  - `PROVIDER_CHOICE_LOGIN_PROVIDERS`: **deleted** (B2, landed 2026-09-28). 51
+    hand-written pairs that restated what the descriptor ids already say.
   - `LOGIN_PROVIDERS: [LoginProviderDescriptor; 52]` plus 52 constants:
     `provider-metadata/src/catalog.rs`, 1,284 lines.
-  - `list_cli_providers()`: **was** a hand-typed 26-element array; now derived
-    from `PROVIDER_CHOICE_LOGIN_PROVIDERS` plus `Auto` (B1, landed 2026-09-28).
+  - `list_cli_providers()`: **was** a hand-typed 26-element array; now every
+    `ProviderChoice` resolved through the registry by `as_arg_value()`, plus
+    `Auto` (B1 + B2, landed 2026-09-28).
   - `LoginProviderTarget` (14) and `RuntimeProviderId` (14) have identical
     membership, and `crates/jcode-base/src/auth/integration.rs:54-69` is a
     14-arm 1:1 conversion between them (`Azure -> AzureOpenAi`,
@@ -165,24 +167,24 @@ before the shape is settled is churn.
     `as_arg_value()` and keeping the old spellings as aliases. Flagged here
     because B5 is where the fourth spelling stops existing at all.
 
-  **The duplication already shipped a bug.** 26 of the 52 values `-p` accepts
-  are not printed by `kcode provider list`: `anthropic-api`, `openai-api`,
-  `bedrock`, `gemini-api`, `celeris`, `huggingface`, `minimax`, `nvidia-nim`,
-  `ollama`, `lmstudio` and 16 more, while the unknown-provider error tells the
-  user to consult that list. The class is live, not historical: `9d9d2259`
-  ("Add Celeris provider support", 7 files, 59 lines) wrote one provider in
-  five places and updated all of them except `list_cli_providers`.
+  **The duplication already shipped a bug, now fixed.** 26 of the 52 values `-p`
+  accepted were not printed by `kcode provider list`: `anthropic-api`,
+  `openai-api`, `bedrock`, `gemini-api`, `celeris`, `huggingface`, `minimax`,
+  `nvidia-nim`, `ollama`, `lmstudio` and 16 more, while the unknown-provider
+  error told the user to consult that list. The class was live, not historical:
+  `9d9d2259` ("Add Celeris provider support", 7 files, 59 lines) wrote one
+  provider in five places and updated all of them except `list_cli_providers`.
+  B1 made the list a view of the mapping, so all 26 gaps closed in one edit.
 
-  The drift also runs the other way, and it is already **red on this tree**:
+  The drift ran the other way too, and it was **red on this tree** until B2:
   `cli::provider_init::tests::login_provider_choice_table_round_trips_catalog_providers`
-  (`provider_init_tests.rs:513`) asserts that every catalog id appears in the
-  CLI choice table, and fails because `orcarouter` exists in
-  `LOGIN_PROVIDERS` but has no `-p` value at all. (The other unpaired
-  descriptor is `auto-import`, which the test exempts.) So one provider in the
-  registry is unreachable from the CLI, and the two directions of the same
-  round trip are checked by two tables that disagree. B2 must preserve the
-  "catalog entry with no CLI choice" case as `None`, which a search by
-  `as_arg_value()` does naturally.
+  (`provider_init_tests.rs:513`) asserted that every catalog id appears in the
+  CLI choice table, and failed because `orcarouter` sat in `LOGIN_PROVIDERS` with
+  `order` set on all five surfaces (so it was offered in the login menus) but had
+  no `-p` value at all. The other unpaired descriptor, `auto-import`, is
+  correctly exempt: its target is `AutoImport`, not a provider you select. Both
+  this test and `auth_integration_registry_matches_cli_choice_runtime_wiring`
+  are green as of B2.
 
   **Target.** One registry entry per provider, in `provider-metadata` where the
   descriptors already live and already have the right fields (`id`,
@@ -195,28 +197,41 @@ before the shape is settled is churn.
   `--` marks the verification.
 
   - B1: **Landed 2026-09-28. `provider list` derives from the registry.** The
-    26-entry `ProviderChoice` array is gone; the list iterates
-    `login_provider_choice_mappings()` with `Auto` as the one explicit
-    non-registry entry, so it prints 52 ids instead of 26. Verifying the
-    invariant surfaced the fourth-spelling bug above, so the four divergent
-    variants also got `#[value(name = ..)]` pinned to `as_arg_value()`, with the
-    old spellings kept as aliases so nothing that parsed before stopped
-    parsing. `--` new `provider_list_ids_match_the_accepted_cli_values`
-    compares the printed id set against `ProviderChoice::value_variants()` /
-    `to_possible_value()`; it fails without the name fix (exactly the four ids)
-    and passes with it. A companion alias test pins both spellings for all
-    four. Runtime: `provider list` prints 52, the 26 formerly-missing ids are
-    present, and all four providers parse under both spellings. Not covered:
-    the `orcarouter` direction is still red and belongs to B2.
-  - B2: **Delete the pairing table.** `login_provider_for_choice(c)` becomes
-    `resolve_login_provider(c.as_arg_value())` (verified: it matches `id` then
-    aliases over `LOGIN_PROVIDERS`, one descriptor per constant). Two special
-    cases stay explicit: `Auto` has no descriptor, and the deprecated
-    `claude-subprocess` resolves to `claude`. Deletes ~200 lines and the second
-    list, which is where this drift class dies.
+    26-entry `ProviderChoice` array is gone, so the list printed 52 ids instead
+    of 26. Verifying the invariant surfaced the fourth-spelling bug above, so
+    the four divergent variants also got `#[value(name = ..)]` pinned to
+    `as_arg_value()`, with the old spellings kept as aliases so nothing that
+    parsed before stopped parsing. `--` new
+    `provider_list_ids_match_the_accepted_cli_values` compares the printed id set
+    against `ProviderChoice::value_variants()` / `to_possible_value()`; it fails
+    without the name fix (exactly the four ids) and passes with it. A companion
+    alias test pins both spellings for all four.
+  - B2: **Landed 2026-09-28. The pairing table is deleted.** 205 lines gone (the
+    const, its accessor, and the two scans). `login_provider_for_choice(c)` is
+    now `resolve_login_provider(c.as_arg_value())` with one explicit branch for
+    the deprecated `claude-subprocess`, and `choice_for_login_provider(p)` finds
+    the choice whose `as_arg_value()` equals `p.id` over `value_variants()`. The
+    `!matches!(choice, ClaudeSubprocess)` filter disappeared with it, because
+    `claude-subprocess` is not a descriptor id. Precondition verified before
+    deleting, not assumed: for 50 of the 51 rows the registry lookup returned
+    exactly the paired descriptor, and the 51st was the documented
+    `claude-subprocess` case, so there were no alias collisions. The round-trip
+    test now iterates `value_variants()` and asserts each choice resolves to a
+    descriptor with the same id.
+
+    B2 also fixed the defect it exposed: **`ProviderChoice::OrcaRouter` added**
+    (arg value `orcarouter`, alias `orca-router`), because `orcarouter` was a
+    registry provider offered on every login surface with no way to select it.
+    `provider list` prints 53 ids, all 53 parse, and both red round-trip tests
+    are green. Adding a provider is now enum variant + `as_arg_value()` arm +
+    the profile-backed arm in `init_provider_with_options` + descriptor (four
+    places, three of them in one file); B3 removes the profile-backed list and
+    B5 the enum.
   - B3: **Collapse the 38-variant arm** in `init_provider_with_options` (the
     "is profile-backed" list) onto the predicate that already exists one screen
-    away, `profile_for_choice` (`provider_init.rs:417`).
+    away, `profile_for_choice` (`provider_init.rs:207`). B2 had to append
+    `OrcaRouter` to that list to compile; B3 deletes the list so the next
+    provider does not need the arm at all.
   - B4: **One identity enum.** Delete `RuntimeProviderId`'s 14-arm bridge.
     Preferred shape: keep `ProviderActivation` free of the profile payload and
     give the descriptor a `runtime_key()` accessor. `--` read
@@ -247,9 +262,10 @@ before the shape is settled is churn.
   path. If it is "active first, then a canonical order", the ~80-line table
   collapses to two lines.
 
-  Done when: adding a provider is 1 file plus a registry line (today it is 6
-  files and ~55 lines), the `-p` accepted set equals the `provider list`
-  printed set, and no pairing table exists.
+  Done when: adding a provider is 1 file plus a registry line (today it is enum
+  variant + `as_arg_value()` arm + descriptor, down from 6 files and ~55 lines),
+  the `-p` accepted set equals the `provider list` printed set (true since B1),
+  and no pairing table exists (true since B2).
 - [ ] Provider cleanup keeps every provider reachable. No provider is deleted
   (maintainer decision 2026-09-27): every cut candidate backs a user-selectable
   provider (`ProviderChoice` exposes Cursor, Copilot, Antigravity, GrokBuild,

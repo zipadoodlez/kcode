@@ -1,4 +1,5 @@
 use anyhow::Result;
+use clap::ValueEnum;
 use std::io::{self, Write};
 use std::sync::Arc;
 
@@ -8,7 +9,7 @@ use crate::provider::Provider;
 use crate::provider_catalog::{
     LoginProviderDescriptor, LoginProviderTarget, OpenAiCompatibleProfile,
     apply_openai_compatible_profile_env, force_apply_openai_compatible_profile_env,
-    is_safe_env_file_name, is_safe_env_key_name, resolve_login_selection,
+    is_safe_env_file_name, is_safe_env_key_name, resolve_login_provider, resolve_login_selection,
     resolve_openai_compatible_profile,
 };
 use crate::tool;
@@ -39,6 +40,8 @@ pub enum ProviderChoice {
     )]
     OpenaiApi,
     Openrouter,
+    #[value(name = "orcarouter", alias = "orca-router")]
+    OrcaRouter,
     #[value(alias = "aws-bedrock", alias = "aws_bedrock")]
     Bedrock,
     #[value(alias = "azure-openai", alias = "aoai")]
@@ -151,6 +154,7 @@ impl ProviderChoice {
             Self::Openai => "openai",
             Self::OpenaiApi => "openai-api",
             Self::Openrouter => "openrouter",
+            Self::OrcaRouter => "orcarouter",
             Self::Bedrock => "bedrock",
             Self::Azure => "azure",
             Self::Opencode => "opencode",
@@ -201,218 +205,6 @@ impl ProviderChoice {
     }
 }
 
-#[allow(deprecated)]
-const PROVIDER_CHOICE_LOGIN_PROVIDERS: &[(ProviderChoice, LoginProviderDescriptor)] = &[
-    (
-        ProviderChoice::Claude,
-        crate::provider_catalog::CLAUDE_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::AnthropicApi,
-        crate::provider_catalog::ANTHROPIC_API_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::ClaudeSubprocess,
-        crate::provider_catalog::CLAUDE_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Openai,
-        crate::provider_catalog::OPENAI_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::OpenaiApi,
-        crate::provider_catalog::OPENAI_API_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Openrouter,
-        crate::provider_catalog::OPENROUTER_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Bedrock,
-        crate::provider_catalog::BEDROCK_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Azure,
-        crate::provider_catalog::AZURE_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Opencode,
-        crate::provider_catalog::OPENCODE_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::OpencodeGo,
-        crate::provider_catalog::OPENCODE_GO_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Zai,
-        crate::provider_catalog::ZAI_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Kimi,
-        crate::provider_catalog::KIMI_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Ai302,
-        crate::provider_catalog::AI302_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Baseten,
-        crate::provider_catalog::BASETEN_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Conifer,
-        crate::provider_catalog::CONIFER_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Cortecs,
-        crate::provider_catalog::CORTECS_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Comtegra,
-        crate::provider_catalog::COMTEGRA_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Deepseek,
-        crate::provider_catalog::DEEPSEEK_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Fpt,
-        crate::provider_catalog::FPT_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Firmware,
-        crate::provider_catalog::FIRMWARE_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::HuggingFace,
-        crate::provider_catalog::HUGGING_FACE_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::MoonshotAi,
-        crate::provider_catalog::MOONSHOT_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Nebius,
-        crate::provider_catalog::NEBIUS_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Scaleway,
-        crate::provider_catalog::SCALEWAY_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Stackit,
-        crate::provider_catalog::STACKIT_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Groq,
-        crate::provider_catalog::GROQ_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Mistral,
-        crate::provider_catalog::MISTRAL_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Perplexity,
-        crate::provider_catalog::PERPLEXITY_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::TogetherAi,
-        crate::provider_catalog::TOGETHER_AI_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Deepinfra,
-        crate::provider_catalog::DEEPINFRA_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Fireworks,
-        crate::provider_catalog::FIREWORKS_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Novita,
-        crate::provider_catalog::NOVITA_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Minimax,
-        crate::provider_catalog::MINIMAX_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Xai,
-        crate::provider_catalog::XAI_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::GrokBuild,
-        crate::provider_catalog::GROK_BUILD_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::NvidiaNim,
-        crate::provider_catalog::NVIDIA_NIM_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::XiaomiMimo,
-        crate::provider_catalog::XIAOMI_MIMO_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::MetaMuse,
-        crate::provider_catalog::META_MUSE_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Celeris,
-        crate::provider_catalog::CELERIS_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Lmstudio,
-        crate::provider_catalog::LMSTUDIO_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Ollama,
-        crate::provider_catalog::OLLAMA_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Chutes,
-        crate::provider_catalog::CHUTES_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Cerebras,
-        crate::provider_catalog::CEREBRAS_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Belvedir,
-        crate::provider_catalog::BELVEDIR_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::AlibabaCodingPlan,
-        crate::provider_catalog::ALIBABA_CODING_PLAN_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::OpenaiCompatible,
-        crate::provider_catalog::OPENAI_COMPAT_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Cursor,
-        crate::provider_catalog::CURSOR_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Copilot,
-        crate::provider_catalog::COPILOT_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Gemini,
-        crate::provider_catalog::GEMINI_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::GeminiApi,
-        crate::provider_catalog::GEMINI_API_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Antigravity,
-        crate::provider_catalog::ANTIGRAVITY_LOGIN_PROVIDER,
-    ),
-];
-
-pub fn login_provider_choice_mappings() -> &'static [(ProviderChoice, LoginProviderDescriptor)] {
-    PROVIDER_CHOICE_LOGIN_PROVIDERS
-}
-
 pub fn profile_for_choice(choice: &ProviderChoice) -> Option<OpenAiCompatibleProfile> {
     match login_provider_for_choice(choice)?.target {
         LoginProviderTarget::OpenAiCompatible(profile) => Some(profile),
@@ -420,22 +212,26 @@ pub fn profile_for_choice(choice: &ProviderChoice) -> Option<OpenAiCompatiblePro
     }
 }
 
+/// The registry descriptor for a CLI choice, by the choice's own arg value.
+///
+/// `claude-subprocess` is the one choice the registry does not carry: it is a
+/// deprecated alias that deliberately resolves to the `claude` descriptor.
 #[allow(deprecated)]
 pub fn login_provider_for_choice(choice: &ProviderChoice) -> Option<LoginProviderDescriptor> {
-    PROVIDER_CHOICE_LOGIN_PROVIDERS
-        .iter()
-        .find(|(candidate, _)| candidate == choice)
-        .map(|(_, provider)| *provider)
+    if matches!(choice, ProviderChoice::ClaudeSubprocess) {
+        return Some(crate::provider_catalog::CLAUDE_LOGIN_PROVIDER);
+    }
+    resolve_login_provider(choice.as_arg_value())
 }
 
-#[allow(deprecated)]
+/// The CLI choice that selects a registry descriptor, by descriptor id.
+///
+/// Registry entries with no `-p` value (for example `auto-import`) have none.
 pub fn choice_for_login_provider(provider: LoginProviderDescriptor) -> Option<ProviderChoice> {
-    PROVIDER_CHOICE_LOGIN_PROVIDERS
+    ProviderChoice::value_variants()
         .iter()
-        .find(|(choice, candidate)| {
-            candidate.id == provider.id && !matches!(choice, ProviderChoice::ClaudeSubprocess)
-        })
-        .map(|(choice, _)| *choice)
+        .copied()
+        .find(|choice| choice.as_arg_value() == provider.id)
 }
 
 pub fn prompt_login_provider_selection(
@@ -1504,6 +1300,7 @@ async fn init_provider_with_options(
         }
         ProviderChoice::Opencode
         | ProviderChoice::OpencodeGo
+        | ProviderChoice::OrcaRouter
         | ProviderChoice::Zai
         | ProviderChoice::Ai302
         | ProviderChoice::Baseten

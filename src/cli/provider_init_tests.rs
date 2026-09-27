@@ -473,28 +473,43 @@ fn choice_for_login_provider_round_trips_openai_compatible_profiles() {
     );
 }
 
+#[allow(deprecated)]
 #[test]
 fn login_provider_choice_table_round_trips_catalog_providers() {
     let mut seen_choices = HashSet::new();
-    let mut reverse_mapped_provider_ids = HashSet::new();
 
-    for (choice, provider) in login_provider_choice_mappings() {
+    for choice in ProviderChoice::value_variants() {
         assert!(
             seen_choices.insert(choice.as_arg_value()),
-            "duplicate provider choice mapping for {}",
+            "duplicate provider choice arg value for {}",
             choice.as_arg_value()
         );
-        assert_eq!(
-            login_provider_for_choice(choice).map(|candidate| candidate.id),
-            Some(provider.id),
-            "choice {} should resolve to {}",
-            choice.as_arg_value(),
-            provider.id
-        );
 
-        if reverse_mapped_provider_ids.insert(provider.id) {
+        let resolved = login_provider_for_choice(choice);
+        if matches!(choice, ProviderChoice::Auto) {
+            assert_eq!(resolved, None, "`auto` is not a registry provider");
+            continue;
+        }
+
+        let provider = resolved.unwrap_or_else(|| {
+            panic!(
+                "choice {} has no registry descriptor",
+                choice.as_arg_value()
+            )
+        });
+        if matches!(choice, ProviderChoice::ClaudeSubprocess) {
+            // Deprecated duplicate: deliberately resolves to the claude descriptor,
+            // so the reverse lookup returns the non-deprecated choice instead.
+            assert_eq!(provider.id, "claude");
+        } else {
             assert_eq!(
-                choice_for_login_provider(*provider),
+                provider.id,
+                choice.as_arg_value(),
+                "choice {} should resolve to a descriptor with the same id",
+                choice.as_arg_value()
+            );
+            assert_eq!(
+                choice_for_login_provider(provider),
                 Some(*choice),
                 "provider {} should reverse-map to {}",
                 provider.id,
@@ -511,7 +526,7 @@ fn login_provider_choice_table_round_trips_catalog_providers() {
             assert_eq!(choice_for_login_provider(*provider), None);
         } else {
             assert!(
-                reverse_mapped_provider_ids.contains(provider.id),
+                choice_for_login_provider(*provider).is_some(),
                 "provider {} is in the catalog but not the CLI choice table",
                 provider.id
             );

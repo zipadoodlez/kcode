@@ -1,4 +1,5 @@
 use anyhow::Result;
+use clap::ValueEnum;
 use serde::Serialize;
 use std::time::Duration;
 
@@ -559,25 +560,28 @@ fn usage_provider_report(provider: &crate::usage::ProviderUsage) -> UsageProvide
     }
 }
 
-/// The provider ids `-p` accepts, which is the login-provider registry plus
-/// `Auto`. Derived from the registry so the printed list cannot drift from the
-/// accepted set again.
+/// The provider ids `-p` accepts, which is every `ProviderChoice` resolved
+/// through the registry, plus `Auto`. Derived from the registry so the printed
+/// list cannot drift from the accepted set again.
 pub(super) fn list_cli_providers() -> Vec<ProviderListEntry> {
-    let registered =
-        provider_init::login_provider_choice_mappings()
-            .iter()
-            .map(|(choice, provider)| ProviderListEntry {
-                id: choice.as_arg_value().to_string(),
-                display_name: provider.display_name.to_string(),
-                auth_kind: Some(provider.auth_kind.label().to_string()),
-                recommended: provider.recommended,
-                aliases: provider
-                    .aliases
-                    .iter()
-                    .map(|alias| (*alias).to_string())
-                    .collect(),
-                detail: Some(provider.menu_detail.to_string()),
-            });
+    let registered = ProviderChoice::value_variants()
+        .iter()
+        .copied()
+        .filter_map(|choice| {
+            provider_init::login_provider_for_choice(&choice).map(|provider| (choice, provider))
+        })
+        .map(|(choice, provider)| ProviderListEntry {
+            id: choice.as_arg_value().to_string(),
+            display_name: provider.display_name.to_string(),
+            auth_kind: Some(provider.auth_kind.label().to_string()),
+            recommended: provider.recommended,
+            aliases: provider
+                .aliases
+                .iter()
+                .map(|alias| (*alias).to_string())
+                .collect(),
+            detail: Some(provider.menu_detail.to_string()),
+        });
 
     // `Auto` is the one accepted value with no registry descriptor.
     registered
