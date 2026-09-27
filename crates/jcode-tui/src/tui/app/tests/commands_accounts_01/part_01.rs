@@ -1462,8 +1462,8 @@ fn test_splitview_does_not_build_cache_while_disabled() {
 
     app.bump_display_messages_version();
 
-    assert!(!app.split_view_enabled());
-    assert!(app.split_view_markdown.is_empty());
+    assert!(!app.split_view.enabled());
+    assert!(app.split_view.markdown.is_empty());
 }
 
 #[test]
@@ -1476,11 +1476,11 @@ fn test_splitview_disable_clears_cached_markdown() {
     app.bump_display_messages_version();
     app.set_split_view_enabled(true, true);
 
-    assert!(!app.split_view_markdown.is_empty());
+    assert!(!app.split_view.markdown.is_empty());
 
     app.set_split_view_enabled(false, false);
 
-    assert!(app.split_view_markdown.is_empty());
+    assert!(app.split_view.markdown.is_empty());
 }
 
 #[test]

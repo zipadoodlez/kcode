@@ -6,22 +6,62 @@ use std::hash::{Hash, Hasher};
 pub(super) const SPLIT_VIEW_PAGE_ID: &str = "split_view";
 const SPLIT_VIEW_TITLE: &str = "Split View";
 
-impl App {
-    pub(super) fn split_view_enabled(&self) -> bool {
-        self.split_view_enabled
+/// State behind the split-view side-panel page: a live mirror of the current
+/// chat. One home, so the refresh and page logic reads one struct.
+#[derive(Default)]
+pub(super) struct SplitView {
+    pub(super) enabled: bool,
+    pub(super) markdown: String,
+    pub(super) updated_at_ms: u64,
+    /// `display_messages_version` the markdown was rendered from.
+    pub(super) rendered_display_version: u64,
+    /// Hash of the streaming text the markdown was rendered from.
+    pub(super) rendered_streaming_hash: u64,
+}
+
+impl SplitView {
+    pub(super) fn enabled(&self) -> bool {
+        self.enabled
     }
 
+    fn clear_cache(&mut self) {
+        self.markdown.clear();
+        self.markdown.shrink_to_fit();
+        self.updated_at_ms = now_ms();
+        self.rendered_display_version = 0;
+        self.rendered_streaming_hash = 0;
+    }
+
+    pub(super) fn page(&self) -> SidePanelPage {
+        SidePanelPage {
+            id: SPLIT_VIEW_PAGE_ID.to_string(),
+            title: SPLIT_VIEW_TITLE.to_string(),
+            file_path: "split://chat-mirror".to_string(),
+            format: SidePanelPageFormat::Markdown,
+            pdf_data: None,
+            source: SidePanelPageSource::Ephemeral,
+            content: if self.markdown.trim().is_empty() {
+                split_view_placeholder_markdown()
+            } else {
+                self.markdown.clone()
+            },
+            updated_at_ms: self.updated_at_ms.max(1),
+        }
+    }
+}
+
+impl App {
     pub(super) fn set_split_view_enabled(&mut self, enabled: bool, focus: bool) {
-        self.split_view_enabled = enabled;
+        self.split_view.enabled = enabled;
         if enabled {
             self.refresh_split_view_cache(true);
         } else {
-            self.clear_split_view_cache();
+            self.split_view.clear_cache();
         }
 
         let mut snapshot = self.snapshot_without_page(SPLIT_VIEW_PAGE_ID);
         if enabled {
-            snapshot = self.decorate_side_panel_with_page(snapshot, self.split_view_page(), focus);
+            snapshot = self.decorate_side_panel_with_page(snapshot, self.split_view.page(), focus);
         } else if snapshot.focused_page_id.is_none() {
             snapshot.focused_page_id = self
                 .last_side_panel_focus_id
@@ -33,7 +73,7 @@ impl App {
     }
 
     pub(super) fn refresh_split_view_if_needed(&mut self) {
-        if !self.split_view_enabled {
+        if !self.split_view.enabled {
             return;
         }
         let changed = self.refresh_split_view_cache(false);
@@ -43,16 +83,8 @@ impl App {
         self.refresh_split_view_page();
     }
 
-    fn clear_split_view_cache(&mut self) {
-        self.split_view_markdown.clear();
-        self.split_view_markdown.shrink_to_fit();
-        self.split_view_updated_at_ms = now_ms();
-        self.split_view_rendered_display_version = 0;
-        self.split_view_rendered_streaming_hash = 0;
-    }
-
     fn refresh_split_view_page(&mut self) {
-        if !self.split_view_enabled {
+        if !self.split_view.enabled {
             return;
         }
 
@@ -60,7 +92,7 @@ impl App {
             self.side_panel.focused_page_id.as_deref() == Some(SPLIT_VIEW_PAGE_ID);
         let snapshot = self.decorate_side_panel_with_page(
             self.snapshot_without_page(SPLIT_VIEW_PAGE_ID),
-            self.split_view_page(),
+            self.split_view.page(),
             focus_split_view,
         );
         self.apply_side_panel_snapshot(snapshot);
@@ -69,41 +101,24 @@ impl App {
     fn refresh_split_view_cache(&mut self, force: bool) -> bool {
         let streaming_hash = hash_str(&self.streaming.streaming_text);
         if !force
-            && self.split_view_rendered_display_version == self.display_messages_version
-            && self.split_view_rendered_streaming_hash == streaming_hash
+            && self.split_view.rendered_display_version == self.display_messages_version
+            && self.split_view.rendered_streaming_hash == streaming_hash
         {
             return false;
         }
 
-        self.split_view_markdown = build_split_view_markdown(self);
-        self.split_view_updated_at_ms = now_ms();
-        self.split_view_rendered_display_version = self.display_messages_version;
-        self.split_view_rendered_streaming_hash = streaming_hash;
+        self.split_view.markdown = build_split_view_markdown(self);
+        self.split_view.updated_at_ms = now_ms();
+        self.split_view.rendered_display_version = self.display_messages_version;
+        self.split_view.rendered_streaming_hash = streaming_hash;
         true
-    }
-
-    pub(super) fn split_view_page(&self) -> SidePanelPage {
-        SidePanelPage {
-            id: SPLIT_VIEW_PAGE_ID.to_string(),
-            title: SPLIT_VIEW_TITLE.to_string(),
-            file_path: "split://chat-mirror".to_string(),
-            format: SidePanelPageFormat::Markdown,
-            pdf_data: None,
-            source: SidePanelPageSource::Ephemeral,
-            content: if self.split_view_markdown.trim().is_empty() {
-                split_view_placeholder_markdown()
-            } else {
-                self.split_view_markdown.clone()
-            },
-            updated_at_ms: self.split_view_updated_at_ms.max(1),
-        }
     }
 }
 
 pub(super) fn split_view_status_message(app: &App) -> String {
     format!(
         "Split view: {}\n\nWhen enabled, the side panel mirrors the current chat so you can scroll older context there while keeping the main composer and live output in view. It is transient and not persisted to session side-panel storage.",
-        if app.split_view_enabled() {
+        if app.split_view.enabled() {
             "enabled"
         } else {
             "disabled"
@@ -124,7 +139,7 @@ pub(super) fn handle_split_view_command(app: &mut App, trimmed: &str) -> bool {
 
     match arg {
         "" => {
-            let enabled = !app.split_view_enabled();
+            let enabled = !app.split_view.enabled();
             app.set_split_view_enabled(enabled, true);
             if enabled {
                 app.set_status_notice("Split view: ON");

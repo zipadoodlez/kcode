@@ -1281,11 +1281,7 @@ pub struct App {
     observe_mode_enabled: bool,
     observe_page_markdown: String,
     observe_page_updated_at_ms: u64,
-    split_view_enabled: bool,
-    split_view_markdown: String,
-    split_view_updated_at_ms: u64,
-    split_view_rendered_display_version: u64,
-    split_view_rendered_streaming_hash: u64,
+    split_view: split_view::SplitView,
     todos_view: todos_view::TodosView,
     /// Running and terminal background tasks shown beneath the pinned todo band.
     background_task_rows: Vec<crate::tui::BackgroundTaskRow>,

@@ -102,10 +102,10 @@ Staged, each lands whole.
   viewport 12/35, copy_selection 6/18, todos_view 4/14. No group is cleanly
   isolated. `copy_selection`, the stage-2 template, scores low: its methods also
   touch `diff_pane_*`, chat/diff auto-scroll, and status notices, so it cannot
-  be lifted without those. A finer read picked `TodosView` as the first
-  extraction: it is one concept and 37 of its 41 sites already live in
-  `todos_view.rs`. The order below is provisional; re-measure before each
-  extraction.
+  be lifted without those. A finer read picked the mirror-page concepts first:
+  `TodosView` and `SplitView` are each one concept with their sites already
+  concentrated in one file. The order below is provisional; re-measure before
+  each extraction.
   - Stage 1: one runtime axis. **Landed.** `is_remote` and `is_replay` are gone;
     `runtime_mode` is the single representation, written only through
     `App::set_runtime_mode` and read through `is_remote_client()` /
@@ -123,7 +123,17 @@ Staged, each lands whole.
     300, tests unchanged from baseline. The gate/poke todo fields (e.g.
     `auto_poke_*`, `todo_completion_gate_attempts`) are a different concept and
     stayed on `App`.
+  - `SplitView`. **Landed.** Five `split_view_*` fields plus their
+    sub-struct-only methods moved into `split_view.rs` as `SplitView`;
+    `app_fields` fell 300 to 296, tests unchanged from baseline.
   - Stage 5: `Panels` (12 fields, 89 sites): side panel and split view.
+    Split view is already out (`SplitView` sub-struct plus the shared
+    decoration below); observe and catchup remain.
+  - Shared side-panel decoration. **Landed.** The three mirror pages (todos,
+    observe, split view) plus catchup each carried a private copy of the same
+    two algorithms. They are now `App::decorate_side_panel_with_page` and
+    `App::snapshot_without_page` in `state_ui.rs`; the per-page content
+    builders stay local. Net -61 lines, no per-caller flags.
   - Stage 6: overlay/picker state (14 fields, 174 sites): session, model,
     account, and login pickers, one sub-struct each.
   - Stage 7: stream/status (26 fields, 414 sites).

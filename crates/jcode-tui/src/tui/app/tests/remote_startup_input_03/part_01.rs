@@ -1158,7 +1158,7 @@ fn test_new_for_remote_restores_split_view_from_reload_state() {
         app.save_input_for_reload(session_id);
 
         let restored = App::new_for_remote(Some(session_id.to_string()));
-        assert!(restored.split_view_enabled());
+        assert!(restored.split_view.enabled());
         let page = restored
             .side_panel()
             .focused_page()

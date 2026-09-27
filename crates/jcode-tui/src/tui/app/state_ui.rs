@@ -216,7 +216,7 @@ impl App {
             && self.rate_limit_pending_message.is_none()
             && resume_prompt.is_none()
             && !self.observe_mode_enabled
-            && !self.split_view_enabled
+            && !self.split_view.enabled
             && !self.todos_view.enabled
             && !self.todo_confidence_spike_challenged
             && self.last_todo_ownership_fingerprint.is_none()
@@ -307,7 +307,7 @@ impl App {
                 "observe_mode_enabled": self.observe_mode_enabled,
                 "observe_page_markdown": self.observe_page_markdown,
                 "observe_page_updated_at_ms": self.observe_page_updated_at_ms,
-                "split_view_enabled": self.split_view_enabled,
+                "split_view_enabled": self.split_view.enabled,
                 "todos_view_enabled": self.todos_view.enabled,
                 "todo_confidence_spike_challenged": self.todo_confidence_spike_challenged,
                 "last_todo_ownership_fingerprint": self.last_todo_ownership_fingerprint,
@@ -614,13 +614,13 @@ impl App {
         snapshot: crate::side_panel::SidePanelSnapshot,
     ) {
         self.refresh_split_view_if_needed();
-        let focus_split = self.split_view_enabled
+        let focus_split = self.split_view.enabled
             && self.side_panel.focused_page_id.as_deref()
                 == Some(super::split_view::SPLIT_VIEW_PAGE_ID);
         let focus_observe = self.observe_mode_enabled
             && self.side_panel.focused_page_id.as_deref() == Some(super::observe::OBSERVE_PAGE_ID);
-        let snapshot = if self.split_view_enabled {
-            self.decorate_side_panel_with_page(snapshot, self.split_view_page(), focus_split)
+        let snapshot = if self.split_view.enabled {
+            self.decorate_side_panel_with_page(snapshot, self.split_view.page(), focus_split)
         } else {
             snapshot
         };

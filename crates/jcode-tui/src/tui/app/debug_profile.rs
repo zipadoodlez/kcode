@@ -271,7 +271,7 @@ impl App {
             .map(|event| event.kind.capacity() + event.detail.capacity())
             .sum();
         let string_state_bytes = self.observe_page_markdown.capacity()
-            + self.split_view_markdown.capacity()
+            + self.split_view.markdown.capacity()
             + self
                 .status_notice
                 .as_ref()
@@ -460,7 +460,7 @@ impl App {
             },
             "images_and_views": {
                 "observe_page_markdown_bytes": self.observe_page_markdown.capacity(),
-                "split_view_markdown_bytes": self.split_view_markdown.capacity(),
+                "split_view_markdown_bytes": self.split_view.markdown.capacity(),
             },
             "tool_tracking": {
                 "tool_call_ids_count": self.tool_call_ids.len(),
