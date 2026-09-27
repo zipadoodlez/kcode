@@ -831,11 +831,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn current_session_id(&self) -> Option<String> {
-        if self.is_remote_client() {
-            self.remote_session_id.clone()
-        } else {
-            Some(self.session.id.clone())
-        }
+        self.active_client_session_id().map(str::to_string)
     }
 
     fn session_display_name(&self) -> Option<String> {
@@ -984,13 +980,10 @@ impl crate::tui::TuiState for App {
         static CACHE: Mutex<Option<(Instant, CachedContextSnapshot)>> = Mutex::new(None);
         const TTL: Duration = Duration::from_millis(250);
 
-        let session_key = if self.is_remote_client() {
-            self.remote_session_id
-                .clone()
-                .unwrap_or_else(|| self.session.id.clone())
-        } else {
-            self.session.id.clone()
-        };
+        let session_key = self
+            .active_client_session_id()
+            .unwrap_or(self.session.id.as_str())
+            .to_string();
         let message_count = if self.is_remote_client() {
             self.transcript.messages().len()
         } else {
@@ -1240,11 +1233,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn info_widget_data(&self) -> crate::tui::info_widget::InfoWidgetData {
-        let session_id = if self.is_remote_client() {
-            self.remote_session_id.as_deref()
-        } else {
-            Some(self.session.id.as_str())
-        };
+        let session_id = self.active_client_session_id();
 
         let todos_are_swarm_plan = self.swarm_enabled && !self.swarm.plan_items.is_empty();
         let (todos, todo_goals) =
@@ -1506,11 +1495,7 @@ impl crate::tui::TuiState for App {
             });
 
         let workspace_rows = if self.workspace_client.is_enabled() {
-            let session_id = if self.is_remote_client() {
-                self.remote_session_id.as_deref()
-            } else {
-                Some(self.session.id.as_str())
-            };
+            let session_id = self.active_client_session_id();
             self.workspace_client
                 .visible_rows(5, session_id, self.is_processing)
         } else {
@@ -1594,11 +1579,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn workspace_map_rows(&self) -> Vec<crate::tui::workspace_map::VisibleWorkspaceRow> {
-        let session_id = if self.is_remote_client() {
-            self.remote_session_id.as_deref()
-        } else {
-            Some(self.session.id.as_str())
-        };
+        let session_id = self.active_client_session_id();
         self.workspace_client
             .visible_rows(5, session_id, self.is_processing)
     }
@@ -1663,11 +1644,7 @@ impl crate::tui::TuiState for App {
         // session having spawned them; showing those would be noise. The spawn
         // tree is reconstructed from each member's `report_back_to_session_id`
         // parent edge.
-        let self_id = if self.is_remote_client() {
-            self.remote_session_id.as_deref()
-        } else {
-            Some(self.session.id.as_str())
-        };
+        let self_id = self.active_client_session_id();
         match self_id {
             Some(self_id) => filter_inline_swarm_subtree(&self.swarm.members, self_id),
             // Session identity is not known yet (e.g. right after connect,

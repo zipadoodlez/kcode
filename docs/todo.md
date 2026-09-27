@@ -393,6 +393,15 @@ Staged, each lands whole.
       callers are `app` descendants and call the struct). `app_fields` 226 ->
       217, baseline refreshed; `impl_app_blocks` 57, `super_glob_imports` 124.
       Verified: lib suite identical (1966/27), check, clippy, fmt, shape green.
+      **Active-session-id resolution condensed.** The
+      `if is_remote_client() { remote_session_id } else { session.id }` policy was
+      reimplemented in nine places: `state_ui.rs` (`active_client_session_id`),
+      `app.rs` (kv-cache id), `tui_state.rs` (current_session_id, context key,
+      info widget, workspace rows + map, swarm subtree), `tui_lifecycle_runtime.rs`
+      (terminal title), and `run_shell.rs` (run result). All now call the existing
+      `active_client_session_id()`; the two sites that deliberately fall back to
+      the local stub id keep an explicit `.unwrap_or(&self.session.id)`. No fields
+      moved, no ratchet change. Verified: lib suite identical (1966/27).
   - Stage 11: revisit `TuiState`. It is a 122-method trait with two impls, and
     `TestState` (39 fields, 83 sites, 13 files) exists so render tests avoid
     constructing an `App`. Deleting it is a trade, decided last, once `App` is

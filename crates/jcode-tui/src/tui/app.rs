@@ -1540,11 +1540,7 @@ impl App {
     /// session switches, local handoffs). The baseline must only be compared
     /// against requests from the same session, so we capture the active id here.
     fn kv_cache_session_id(&self) -> Option<String> {
-        if self.is_remote_client() {
-            self.remote_session_id.clone()
-        } else {
-            Some(self.session.id.clone())
-        }
+        self.active_client_session_id().map(str::to_string)
     }
 
     /// Return the stored baseline only when it belongs to the active session.

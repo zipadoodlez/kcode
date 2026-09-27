@@ -68,13 +68,7 @@ impl App {
             );
             return;
         }
-        let session_id = if self.is_remote_client() {
-            self.remote_session_id
-                .as_deref()
-                .unwrap_or(&self.session.id)
-        } else {
-            &self.session.id
-        };
+        let session_id = self.active_client_session_id().unwrap_or(&self.session.id);
         let session_name = crate::id::extract_session_name(session_id)
             .map(|s| s.to_string())
             .unwrap_or_else(|| session_id.to_string());

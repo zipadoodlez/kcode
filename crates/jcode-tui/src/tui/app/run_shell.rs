@@ -519,11 +519,7 @@ impl App {
             update_session: self.maintenance.update_requested.take(),
             restart_session: self.maintenance.restart_requested.take(),
             exit_code: self.requested_exit_code,
-            session_id: if self.is_remote_client() {
-                self.remote_session_id.clone()
-            } else {
-                Some(self.session.id.clone())
-            },
+            session_id: self.active_client_session_id().map(str::to_string),
         })
     }
 }
