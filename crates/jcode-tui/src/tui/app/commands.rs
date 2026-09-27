@@ -1382,7 +1382,7 @@ fn handle_catchup_command(app: &mut App, trimmed: &str) -> bool {
             let target_name = crate::id::extract_session_name(&target.id)
                 .map(|name| name.to_string())
                 .unwrap_or_else(|| target.id.clone());
-            app.queue_catchup_resume(
+            app.catchup.queue(
                 target.id.clone(),
                 Some(source_session_id),
                 Some((1, total)),
@@ -1418,7 +1418,7 @@ fn handle_back_command(app: &mut App, trimmed: &str) -> bool {
         app.set_status_notice("Finish current work before going back");
         return true;
     }
-    let Some(target) = app.pop_catchup_return_target() else {
+    let Some(target) = app.catchup.pop_return_target() else {
         app.push_display_message(DisplayMessage::system(
             "No previous Catch Up session is available.".to_string(),
         ));
@@ -1429,7 +1429,7 @@ fn handle_back_command(app: &mut App, trimmed: &str) -> bool {
     let target_name = crate::id::extract_session_name(&target)
         .map(|name| name.to_string())
         .unwrap_or_else(|| target.clone());
-    app.queue_catchup_resume(target, None, None, false);
+    app.catchup.queue(target, None, None, false);
     app.push_display_message(DisplayMessage::system(format!(
         "Queued return to {}.",
         target_name,

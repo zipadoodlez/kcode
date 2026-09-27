@@ -190,12 +190,14 @@ impl App {
             .map(estimate_pending_split_prompt_bytes)
             .unwrap_or(0);
         let pending_catchup_resume_bytes = self
-            .pending_catchup_resume
+            .catchup
+            .pending_resume
             .as_ref()
             .map(estimate_pending_catchup_resume_bytes)
             .unwrap_or(0);
         let in_flight_catchup_resume_bytes = self
-            .in_flight_catchup_resume
+            .catchup
+            .in_flight_resume
             .as_ref()
             .map(estimate_pending_catchup_resume_bytes)
             .unwrap_or(0);
@@ -221,7 +223,8 @@ impl App {
             .sum();
         let reload_info_bytes: usize = self.reload_info.iter().map(|value| value.capacity()).sum();
         let catchup_return_stack_bytes: usize = self
-            .catchup_return_stack
+            .catchup
+            .return_stack
             .iter()
             .map(|value| value.capacity())
             .sum();

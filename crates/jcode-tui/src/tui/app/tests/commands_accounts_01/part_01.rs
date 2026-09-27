@@ -823,7 +823,7 @@ fn test_catchup_next_queues_resume_for_attention_session() {
         app.submit_input();
 
         let pending = app
-            .pending_catchup_resume
+            .catchup.pending_resume
             .clone()
             .expect("missing pending catchup resume");
         assert_eq!(pending.target_session_id, target.id);
@@ -844,13 +844,13 @@ fn test_catchup_next_queues_resume_for_attention_session() {
 fn test_back_command_queues_return_without_showing_brief() {
     let mut app = create_test_app();
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-    app.catchup_return_stack.push("session_prev".to_string());
+    app.catchup.return_stack.push("session_prev".to_string());
 
     app.input = "/back".to_string();
     app.submit_input();
 
     let pending = app
-        .pending_catchup_resume
+        .catchup.pending_resume
         .clone()
         .expect("missing pending back resume");
     assert_eq!(pending.target_session_id, "session_prev");
@@ -885,7 +885,7 @@ fn test_maybe_show_catchup_after_history_adds_brief_page_and_marks_seen() {
         target.save().expect("save catchup brief session");
         let target_id = target.id.clone();
 
-        app.begin_in_flight_catchup_resume(PendingCatchupResume {
+        app.catchup.begin_in_flight(PendingCatchupResume {
             target_session_id: target_id.clone(),
             source_session_id: Some(source_session_id),
             queue_position: Some((1, 1)),
@@ -893,7 +893,7 @@ fn test_maybe_show_catchup_after_history_adds_brief_page_and_marks_seen() {
         });
         app.maybe_show_catchup_after_history(&target_id);
 
-        assert!(app.in_flight_catchup_resume.is_none());
+        assert!(app.catchup.in_flight_resume.is_none());
         assert_eq!(app.side_panel.focused_page_id.as_deref(), Some("catchup"));
         assert_eq!(app.side_panel.pages.len(), 2);
         assert!(app.side_panel.pages.iter().any(|page| page.id == "plan"));

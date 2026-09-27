@@ -130,9 +130,14 @@ Staged, each lands whole.
     into `observe.rs` as `Observe`; `app_fields` fell 296 to 294, tests
     unchanged from baseline. The reload-state fields on `RestoredReloadInput`
     are a different struct and stay put.
+  - `Catchup`. **Landed.** Three `catchup_*` fields plus the resume
+    bookkeeping methods (queue, take, begin/clear in-flight, pop return
+    target) moved into `catchup.rs` as `Catchup`; `app_fields` fell 294 to 292,
+    tests unchanged from baseline. `maybe_show_catchup_after_history` stays on
+    `App` (it loads a session and pushes a message).
   - Stage 5: `Panels` (12 fields, 89 sites): side panel and split view.
-    Split view is already out (`SplitView` sub-struct plus the shared
-    decoration below); observe and catchup remain.
+    The mirror pages (split view, todos, observe, catchup) are out; the
+    `side_pane_*`/`diff_pane_*` fields remain.
   - Shared side-panel decoration. **Landed.** The three mirror pages (todos,
     observe, split view) plus catchup each carried a private copy of the same
     two algorithms. They are now `App::decorate_side_panel_with_page` and

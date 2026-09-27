@@ -2621,7 +2621,7 @@ impl App {
                     continue;
                 };
                 let queue_position = catchup_queue_position(&current_session_id, session_id);
-                self.queue_catchup_resume(
+                self.catchup.queue(
                     session_id.to_string(),
                     Some(current_session_id.clone()),
                     queue_position,

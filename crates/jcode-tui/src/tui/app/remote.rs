@@ -141,14 +141,14 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
     let _ = check_debug_command(app, remote).await;
 
     if !app.is_processing {
-        if let Some(request) = app.take_pending_catchup_resume() {
+        if let Some(request) = app.catchup.take_pending() {
             match remote.resume_session(&request.target_session_id).await {
                 Ok(()) => {
                     let label = crate::id::extract_session_name(&request.target_session_id)
                         .map(|name| name.to_string())
                         .unwrap_or_else(|| request.target_session_id.clone());
                     let show_brief = request.show_brief;
-                    app.begin_in_flight_catchup_resume(request);
+                    app.catchup.begin_in_flight(request);
                     app.set_status_notice(if show_brief {
                         format!("Catch Up → {}", label)
                     } else {
@@ -157,7 +157,7 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
                     return true;
                 }
                 Err(err) => {
-                    app.clear_in_flight_catchup_resume();
+                    app.catchup.clear_in_flight();
                     app.push_display_message(DisplayMessage::error(format!(
                         "Failed to switch Catch Up session: {}",
                         err

@@ -1492,9 +1492,7 @@ pub struct App {
     session_picker_overlay: Option<RefCell<super::session_picker::SessionPicker>>,
     session_picker_mode: SessionPickerMode,
     pending_session_picker_load: Option<PendingSessionPickerLoad>,
-    catchup_return_stack: Vec<String>,
-    pending_catchup_resume: Option<PendingCatchupResume>,
-    in_flight_catchup_resume: Option<PendingCatchupResume>,
+    catchup: catchup::Catchup,
     /// Login picker overlay (None = not visible)
     login_picker_overlay: Option<RefCell<super::login_picker::LoginPicker>>,
     /// Account picker overlay (None = not visible)

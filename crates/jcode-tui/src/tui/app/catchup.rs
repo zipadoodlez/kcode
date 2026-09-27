@@ -4,15 +4,25 @@ use crate::side_panel::{SidePanelPage, SidePanelPageFormat, SidePanelPageSource}
 pub(super) const CATCHUP_PAGE_ID: &str = "catchup";
 const CATCHUP_PAGE_TITLE: &str = "Catch Up";
 
-impl App {
-    pub(super) fn queue_catchup_resume(
+/// Catch-up navigation bookkeeping: the resume waiting to fire, the one in
+/// flight, and the stack of sessions to return to. One home, so the resume
+/// handshake reads one struct.
+#[derive(Default)]
+pub(super) struct Catchup {
+    pub(super) return_stack: Vec<String>,
+    pub(super) pending_resume: Option<PendingCatchupResume>,
+    pub(super) in_flight_resume: Option<PendingCatchupResume>,
+}
+
+impl Catchup {
+    pub(super) fn queue(
         &mut self,
         target_session_id: String,
         source_session_id: Option<String>,
         queue_position: Option<(usize, usize)>,
         show_brief: bool,
     ) {
-        self.pending_catchup_resume = Some(PendingCatchupResume {
+        self.pending_resume = Some(PendingCatchupResume {
             target_session_id,
             source_session_id,
             queue_position,
@@ -20,32 +30,38 @@ impl App {
         });
     }
 
-    pub(super) fn take_pending_catchup_resume(&mut self) -> Option<PendingCatchupResume> {
-        self.pending_catchup_resume.take()
+    pub(super) fn take_pending(&mut self) -> Option<PendingCatchupResume> {
+        self.pending_resume.take()
     }
 
-    pub(super) fn begin_in_flight_catchup_resume(&mut self, request: PendingCatchupResume) {
+    pub(super) fn begin_in_flight(&mut self, request: PendingCatchupResume) {
         if request.show_brief
             && let Some(source) = request.source_session_id.as_ref()
-            && self.catchup_return_stack.last() != Some(source)
+            && self.return_stack.last() != Some(source)
         {
-            self.catchup_return_stack.push(source.clone());
+            self.return_stack.push(source.clone());
         }
-        self.in_flight_catchup_resume = Some(request);
+        self.in_flight_resume = Some(request);
     }
 
-    pub(super) fn clear_in_flight_catchup_resume(&mut self) {
-        self.in_flight_catchup_resume = None;
+    pub(super) fn clear_in_flight(&mut self) {
+        self.in_flight_resume = None;
     }
 
+    pub(super) fn pop_return_target(&mut self) -> Option<String> {
+        self.return_stack.pop()
+    }
+}
+
+impl App {
     pub(super) fn maybe_show_catchup_after_history(&mut self, session_id: &str) {
-        let Some(request) = self.in_flight_catchup_resume.clone() else {
+        let Some(request) = self.catchup.in_flight_resume.clone() else {
             return;
         };
         if request.target_session_id != session_id {
             return;
         }
-        self.in_flight_catchup_resume = None;
+        self.catchup.in_flight_resume = None;
         if !request.show_brief {
             return;
         }
@@ -72,10 +88,6 @@ impl App {
         );
         self.apply_side_panel_snapshot(snapshot);
         let _ = crate::catchup::mark_seen(&session.id, session.updated_at);
-    }
-
-    pub(super) fn pop_catchup_return_target(&mut self) -> Option<String> {
-        self.catchup_return_stack.pop()
     }
 
     fn catchup_page(&self, session_id: &str, markdown: String) -> SidePanelPage {
