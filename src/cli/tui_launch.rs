@@ -1,8 +1,7 @@
 #![cfg_attr(test, allow(clippy::await_holding_lock))]
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
-const MAX_INTERACTIVE_SWARM_REPLAY_PANES: usize = 16;
 use std::io::{self, Write};
 use std::process::Command as ProcessCommand;
 
