@@ -747,7 +747,7 @@ fn test_fallback_uses_live_local_credential_over_stale_route() {
 fn test_fallback_uses_remote_openai_credential_over_stale_route() {
     with_temp_jcode_home(|| {
         let (mut app, _) = create_dual_method_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_provider_name = Some("OpenAI".to_string());
         app.remote_provider_model = Some("gpt-6-astra".to_string());
         app.remote_model_options = ["openai-api", "openai-oauth"]
@@ -818,7 +818,7 @@ fn test_fallback_uses_remote_openai_credential_over_stale_route() {
 fn test_fallback_remote_without_credential_preserves_route_metadata() {
     with_temp_jcode_home(|| {
         let (mut app, _) = create_dual_method_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_provider_name = Some("OpenAI".to_string());
         app.remote_resolved_credential = None;
         app.session.route_api_method = Some("openai-api-key".to_string());

@@ -13,7 +13,7 @@
 fn test_busy_automatic_continuation_waits_for_running_turn_without_retrying() {
     for auto_retry in [false, true] {
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.auto_poke_incomplete_todos = false;
         let rt = tokio::runtime::Runtime::new().unwrap();
         let _guard = rt.enter();
@@ -97,7 +97,7 @@ fn test_busy_automatic_continuation_waits_for_running_turn_without_retrying() {
 #[test]
 fn test_external_stream_with_queued_followup_is_not_synthetic_startup() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
@@ -397,7 +397,7 @@ fn remote_ownership_gate_reads_the_remote_goal_assessment() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
         app.auto_poke_incomplete_todos = true;
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         let remote_session_id = format!("remote-ownership-{}", std::process::id());
         app.remote_session_id = Some(remote_session_id.clone());
 
@@ -572,7 +572,7 @@ fn remote_done_does_not_repeat_ownership_notice() {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let _guard = rt.enter();
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_session_id = Some(format!("ownership-remote-{}", app.session.id));
         app.auto_poke_incomplete_todos = true;
         save_blocked_ownership_fixture(app.remote_session_id.as_deref().unwrap());
@@ -666,7 +666,7 @@ fn test_repeated_guardrail_refusals_stop_auto_poke_loop() {
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
         remote.mark_history_loaded();
 
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.auto_poke_incomplete_todos = true;
 
         crate::todo::save_todos(

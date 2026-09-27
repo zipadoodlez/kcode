@@ -150,7 +150,7 @@ fn test_remote_fallback_provider_suggestions_normalize_bare_openai_openrouter_ro
         crate::auth::AuthStatus::invalidate_cache();
 
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_provider_model = Some("gpt-5.4".to_string());
         app.remote_available_entries = vec!["gpt-5.4".to_string()];
         app.remote_model_options.clear();

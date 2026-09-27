@@ -5,7 +5,7 @@ fn test_handle_server_event_available_models_updated_replaces_remote_model_catal
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_available_entries = vec!["old-model".to_string()];
     app.remote_model_options = vec![crate::provider::ModelRoute {
         model: "old-model".to_string(),
@@ -122,7 +122,7 @@ fn test_remote_available_models_updated_after_refresh_shows_summary_and_updates_
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.pending_remote_model_refresh_snapshot = Some((
         vec!["old-model".to_string()],
         vec![crate::provider::ModelRoute {
@@ -424,7 +424,7 @@ fn test_model_picker_remote_comtegra_model_uses_comtegra_route_not_copilot() {
     crate::env::set_var("COMTEGRA_API_KEY", "test-key");
 
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_available_entries = vec!["glm-51-nvfp4".to_string()];
 
     app.open_model_picker();
@@ -473,7 +473,7 @@ fn test_model_picker_remote_bedrock_model_has_bedrock_route_when_configured() {
     crate::auth::AuthStatus::invalidate_cache();
 
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_available_entries = vec!["us.amazon.nova-micro-v1:0".to_string()];
 
     app.open_model_picker();

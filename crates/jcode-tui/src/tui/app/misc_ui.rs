@@ -346,7 +346,7 @@ impl App {
     /// uses so the displayed `$` total and the widget stay consistent.
     fn resolve_remote_cost_pricing(&mut self) -> Option<ResolvedTokenPricing> {
         use crate::tui::TuiState;
-        if !self.is_remote {
+        if !self.is_remote_client() {
             return None;
         }
 
@@ -444,7 +444,7 @@ impl App {
     /// remote sessions, the local provider's tier otherwise. `None` means the
     /// standard tier.
     fn active_service_tier_for_pricing(&self) -> Option<String> {
-        if self.is_remote {
+        if self.is_remote_client() {
             self.remote_service_tier
                 .as_deref()
                 .map(str::trim)

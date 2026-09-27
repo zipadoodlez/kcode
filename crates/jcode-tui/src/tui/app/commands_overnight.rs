@@ -48,7 +48,7 @@ pub(super) fn handle_overnight_command(app: &mut App, trimmed: &str) -> bool {
                     app.enable_overnight_auto_poke(&manifest);
                     app.upsert_overnight_display_card(&manifest);
                     if let Some(prompt) = launch.initial_prompt {
-                        if !app.is_remote {
+                        if !app.is_remote_client() {
                             app.provider = visible_provider;
                         }
                         start_visible_overnight_turn(app, prompt);
@@ -70,7 +70,7 @@ pub(super) fn handle_overnight_command(app: &mut App, trimmed: &str) -> bool {
 }
 
 fn start_visible_overnight_turn(app: &mut App, content: String) {
-    if app.is_remote {
+    if app.is_remote_client() {
         app.commit_pending_streaming_assistant_message();
         app.queued_messages.push(content);
         app.set_status_notice("Overnight queued in current remote session");
@@ -122,7 +122,7 @@ fn show_overnight_help(app: &mut App) {
 }
 
 fn overnight_provider_for_app(app: &mut App) -> Arc<dyn Provider> {
-    if !app.is_remote {
+    if !app.is_remote_client() {
         return app.provider.fork();
     }
 

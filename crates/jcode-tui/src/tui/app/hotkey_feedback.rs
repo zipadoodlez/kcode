@@ -691,7 +691,7 @@ impl App {
         if trimmed != "/hotkeys" {
             return false;
         }
-        let registry = self.hotkey_registry(self.is_remote);
+        let registry = self.hotkey_registry(self.is_remote_client());
         let usage = self.hotkey_usage.get_or_insert_with(load_state);
         let listing = render_hotkeys_listing(&registry, usage, now_unix());
         self.push_display_message(jcode_tui_messages::DisplayMessage::system(listing));

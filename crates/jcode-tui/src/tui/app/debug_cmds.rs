@@ -419,7 +419,7 @@ impl App {
                 format!("OK: injected {n} inline swarm members; gallery forced active")
             }
         } else if cmd == "swarm" || cmd == "swarm-status" {
-            if self.is_remote {
+            if self.is_remote_client() {
                 serde_json::json!({
                     "session_count": self.remote_sessions.len(),
                     "client_count": self.remote_client_count,

@@ -198,7 +198,7 @@ impl App {
     /// `jcode self-dev` launch path). Such sessions should never auto-start the
     /// guided onboarding flow.
     fn is_selfdev_canary_session(&self) -> bool {
-        if self.is_remote {
+        if self.is_remote_client() {
             self.remote_is_canary.unwrap_or(self.session.is_canary)
         } else {
             self.session.is_canary
@@ -843,7 +843,7 @@ impl App {
     /// off-thread as soon as the choice is displayed and have the key handler
     /// consume the cached answer.
     fn onboarding_prefetch_recent_project(&mut self) {
-        if self.is_remote || self.onboarding_recent_project_prefetch.is_some() {
+        if self.is_remote_client() || self.onboarding_recent_project_prefetch.is_some() {
             return;
         }
         let slot: Arc<Mutex<Option<Option<PathBuf>>>> = Arc::new(Mutex::new(None));
@@ -866,7 +866,7 @@ impl App {
         let home = dirs::home_dir();
         let excluded: Vec<PathBuf> = home.iter().cloned().collect();
 
-        if self.is_remote
+        if self.is_remote_client()
             && let Some(working_dir) = self.session.working_dir.as_deref()
         {
             let working_dir = Path::new(working_dir);
@@ -879,7 +879,7 @@ impl App {
             }
         }
 
-        if self.is_remote {
+        if self.is_remote_client() {
             return None;
         }
 
@@ -970,7 +970,7 @@ impl App {
             return;
         }
         self.follow_chat_bottom_for_typing();
-        if self.is_remote {
+        if self.is_remote_client() {
             super::input::queue_message(self);
             self.set_status_notice("Architecture review queued");
         } else {
@@ -1029,7 +1029,7 @@ impl App {
     /// so prefer the same resolution the header uses; fall back to the session
     /// model and finally the local provider's model.
     fn onboarding_default_model_id(&self) -> String {
-        if self.is_remote
+        if self.is_remote_client()
             && let Some(model) = self.effective_remote_provider_model()
         {
             return model;
@@ -1162,7 +1162,7 @@ impl App {
         };
         let timed_out = pending.resolve_timed_out();
         if pending.await_catalog_refresh {
-            let refreshed = if self.is_remote {
+            let refreshed = if self.is_remote_client() {
                 self.remote_model_catalog_generation > pending.catalog_generation_at_request
             } else {
                 !self.auth_catalog_refresh_pending
@@ -1181,7 +1181,7 @@ impl App {
     fn onboarding_validation_provider(
         &self,
     ) -> Option<std::sync::Arc<dyn crate::provider::Provider>> {
-        if !self.is_remote {
+        if !self.is_remote_client() {
             return Some(self.provider.fork());
         }
         let provider: std::sync::Arc<dyn crate::provider::Provider> =

@@ -264,7 +264,7 @@ fn local_add_provider_message_does_not_retain_local_provider_copy() {
 #[test]
 fn remote_add_provider_message_retains_remote_provider_copy() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.ensure_provider_messages_hydrated();
     let before = app.messages.len();
     app.add_provider_message(Message::user("hello"));

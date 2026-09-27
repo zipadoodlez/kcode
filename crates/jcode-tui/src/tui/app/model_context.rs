@@ -140,14 +140,14 @@ impl App {
             .provider
             .cross_provider_failover
         {
-            crate::config::CrossProviderFailoverMode::Manual if !self.is_remote => {
+            crate::config::CrossProviderFailoverMode::Manual if !self.is_remote_client() => {
                 self.push_display_message(DisplayMessage::system(manual_message));
                 self.set_status_notice(format!(
                     "{} unavailable; switch manually if desired",
                     prompt.from_label
                 ));
             }
-            crate::config::CrossProviderFailoverMode::Countdown if !self.is_remote => {
+            crate::config::CrossProviderFailoverMode::Countdown if !self.is_remote_client() => {
                 self.pending_provider_failover = Some(super::PendingProviderFailover {
                     prompt: prompt.clone(),
                     deadline: Instant::now() + Duration::from_secs(3),
@@ -182,7 +182,7 @@ impl App {
     /// both local and remote sessions. Mirrors the model-picker's route source so
     /// the offered fallback matches what `/model` would show.
     fn fallback_candidate_routes(&self) -> Vec<crate::provider::ModelRoute> {
-        if self.is_remote {
+        if self.is_remote_client() {
             if !self.remote_model_options.is_empty() {
                 self.remote_model_options.clone()
             } else {
@@ -202,7 +202,7 @@ impl App {
         // so we never offer the active route as its own fallback.
         let provider =
             jcode_provider_core::parse_provider_hint(&self.current_provider_label_for_fallback());
-        let credential = if self.is_remote {
+        let credential = if self.is_remote_client() {
             self.remote_resolved_credential
         } else {
             self.provider.active_resolved_credential()
@@ -226,7 +226,7 @@ impl App {
     }
 
     fn current_provider_label_for_fallback(&self) -> String {
-        if self.is_remote {
+        if self.is_remote_client() {
             self.remote_provider_name
                 .clone()
                 .unwrap_or_else(|| "remote".to_string())
@@ -236,7 +236,7 @@ impl App {
     }
 
     fn current_model_for_fallback(&self) -> String {
-        if self.is_remote {
+        if self.is_remote_client() {
             self.remote_provider_model
                 .clone()
                 .unwrap_or_else(|| self.provider.model())
@@ -266,7 +266,7 @@ impl App {
     pub(super) fn offer_fallback_after_error(&mut self, error: &str) -> bool {
         // Remote sessions resend through the server: capture the failed turn's
         // payload from the pending retry slot while it is still populated.
-        let remote_resend = if self.is_remote {
+        let remote_resend = if self.is_remote_client() {
             self.rate_limit_pending_message
                 .as_ref()
                 .map(|pending| super::FallbackResendPayload {
@@ -328,7 +328,11 @@ impl App {
             format!("{} via {}", current_provider, from_method.display_label())
         };
 
-        let remote_resend = if self.is_remote { remote_resend } else { None };
+        let remote_resend = if self.is_remote_client() {
+            remote_resend
+        } else {
+            None
+        };
 
         // The raw error was already shown by the caller just above this offer,
         // so only name the failed route here instead of echoing the error text
@@ -408,7 +412,7 @@ impl App {
         // Capture the refused turn's payload so accepting the offer can
         // resend it after the route switch (remote sessions resend through
         // the server; local sessions resend via pending_turn).
-        let remote_resend = if self.is_remote {
+        let remote_resend = if self.is_remote_client() {
             self.rate_limit_pending_message
                 .as_ref()
                 .map(|pending| super::FallbackResendPayload {
@@ -465,7 +469,7 @@ impl App {
             return false;
         };
 
-        if self.is_remote {
+        if self.is_remote_client() {
             self.upstream_provider = None;
             self.status_detail = None;
             // Track the method we are switching to so subsequent fallback picks
@@ -570,7 +574,7 @@ impl App {
         // same source the model picker uses), since `self.provider` is a local
         // stand-in. Local sessions read the real provider. This keeps the cycle
         // and the picker consistent (both expose swarm / swarm-deep).
-        let efforts = if self.is_remote {
+        let efforts = if self.is_remote_client() {
             let (provider_name, provider_model) = self.remote_effort_identity();
             inferred_reasoning_efforts(provider_name.as_deref(), provider_model.as_deref())
         } else {
@@ -581,7 +585,7 @@ impl App {
             return;
         }
 
-        let current = if self.is_remote {
+        let current = if self.is_remote_client() {
             self.remote_reasoning_effort_hint()
         } else {
             self.provider.reasoning_effort()
@@ -628,7 +632,7 @@ impl App {
     }
 
     pub(super) fn update_context_limit_for_model(&mut self, model: &str) {
-        let limit = if self.is_remote {
+        let limit = if self.is_remote_client() {
             crate::provider::context_limit_for_model_with_provider(
                 model,
                 self.remote_provider_name.as_deref(),
@@ -655,7 +659,7 @@ impl App {
         cache_read_input_tokens: Option<u64>,
         cache_creation_input_tokens: Option<u64>,
     ) -> u64 {
-        let provider_name = if self.is_remote {
+        let provider_name = if self.is_remote_client() {
             self.remote_provider_name.clone().unwrap_or_default()
         } else {
             self.provider.name().to_string()
@@ -743,7 +747,7 @@ impl App {
     }
 
     pub(super) fn update_compaction_usage_from_stream(&mut self) {
-        if self.is_remote || !self.provider.uses_jcode_compaction() {
+        if self.is_remote_client() || !self.provider.uses_jcode_compaction() {
             return;
         }
         let Some(tokens) = self.current_stream_context_tokens() else {
@@ -844,7 +848,7 @@ impl App {
     }
 
     pub(super) fn auto_recover_context_limit(&mut self) -> Option<String> {
-        if self.is_remote || !self.provider.supports_compaction() {
+        if self.is_remote_client() || !self.provider.supports_compaction() {
             return None;
         }
         let compaction = self.registry.compaction();
@@ -917,7 +921,7 @@ impl App {
         terminal: &mut DefaultTerminal,
         event_stream: &mut EventStream,
     ) -> bool {
-        if self.is_remote {
+        if self.is_remote_client() {
             return false;
         }
 
@@ -999,7 +1003,7 @@ impl App {
         terminal: &mut DefaultTerminal,
         event_stream: &mut EventStream,
     ) -> bool {
-        if self.is_remote || !self.provider.supports_compaction() {
+        if self.is_remote_client() || !self.provider.supports_compaction() {
             return false;
         }
 
@@ -1324,7 +1328,7 @@ impl App {
             actions.push("Reset provider session resume state.".to_string());
         }
 
-        if !self.is_remote && self.provider.supports_compaction() {
+        if !self.is_remote_client() && self.provider.supports_compaction() {
             let observed_tokens = self
                 .current_stream_context_tokens()
                 .or_else(|| context_error.then_some(self.context_limit));
@@ -1491,7 +1495,7 @@ pub(super) fn handle_model_command(app: &mut App, trimmed: &str) -> bool {
             Err(e) => {
                 app.push_display_message(DisplayMessage::error(model_switch_failure_message(
                     &e.to_string(),
-                    app.is_remote,
+                    app.is_remote_client(),
                 )));
                 app.set_status_notice("Model switch failed");
             }

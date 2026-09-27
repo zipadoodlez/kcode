@@ -78,7 +78,7 @@ impl App {
     }
 
     pub(super) fn active_client_session_id(&self) -> Option<&str> {
-        if self.is_remote {
+        if self.is_remote_client() {
             self.remote_session_id.as_deref()
         } else {
             Some(self.session.id.as_str())
@@ -760,7 +760,7 @@ impl App {
         version: Option<&str>,
         session_id: Option<&str>,
     ) {
-        self.is_remote = true;
+        self.set_runtime_mode(AppRuntimeMode::RemoteClient);
         self.remote_server_short_name = name.map(str::to_string);
         self.remote_server_icon = icon.map(str::to_string);
         self.remote_server_version = version.map(str::to_string);
@@ -1100,14 +1100,14 @@ fn format_cache_stats(app: &App) -> String {
     } else {
         "5 minutes"
     };
-    let current_provider = if app.is_remote {
+    let current_provider = if app.is_remote_client() {
         app.remote_provider_name
             .clone()
             .unwrap_or_else(|| app.provider.name().to_string())
     } else {
         app.provider.name().to_string()
     };
-    let current_model = if app.is_remote {
+    let current_model = if app.is_remote_client() {
         app.remote_provider_model
             .clone()
             .unwrap_or_else(|| app.provider.model())
@@ -1180,7 +1180,7 @@ fn format_cache_stats(app: &App) -> String {
     let remote_history_tokens = app
         .remote_total_tokens
         .or_else(|| remote_usage.map(|usage| (usage.input_tokens, usage.output_tokens)));
-    let (history_input_tokens, history_output_tokens, totals_source) = if app.is_remote {
+    let (history_input_tokens, history_output_tokens, totals_source) = if app.is_remote_client() {
         if let Some((input, output)) = remote_history_tokens {
             (
                 input.saturating_add(app.token_accounting.total_input_tokens),
@@ -1228,8 +1228,8 @@ fn format_cache_stats(app: &App) -> String {
 
     lines.push("Current route / settings".to_string());
     lines.push(format!("- cache_ttl_setting: {}", ttl));
-    lines.push(format!("- is_remote: {}", app.is_remote));
-    lines.push(format!("- is_replay: {}", app.is_replay));
+    lines.push(format!("- is_remote: {}", app.is_remote_client()));
+    lines.push(format!("- is_replay: {}", app.is_replay_runtime()));
     lines.push(format!("- current_provider: {}", current_provider));
     lines.push(format!("- current_model: {}", current_model));
     lines.push(format!(
@@ -1557,7 +1557,7 @@ fn build_skills_report(app: &App) -> String {
     // Loaded skills. In remote mode we only have names; locally we have full
     // skill metadata (description + path).
     out.push_str("Loaded skills\n");
-    if app.is_remote && !app.remote_skills.is_empty() {
+    if app.is_remote_client() && !app.remote_skills.is_empty() {
         let mut names = app.remote_skills.clone();
         names.sort();
         for name in &names {
@@ -1593,7 +1593,7 @@ fn build_skills_report(app: &App) -> String {
     // Endorsed skills, marking which are installed. Build the installed set in a
     // remote-aware way (the inherent `available_skills()` ignores remote skills).
     let installed: std::collections::HashSet<String> =
-        if app.is_remote && !app.remote_skills.is_empty() {
+        if app.is_remote_client() && !app.remote_skills.is_empty() {
             app.remote_skills.iter().cloned().collect()
         } else {
             app.current_skills_snapshot()
@@ -1672,7 +1672,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
             ""
         };
         let mut content = format!("kcode client: {}{}", version, is_canary);
-        if app.is_remote {
+        if app.is_remote_client() {
             content.push_str("\nmode: remote/shared-server");
             let server_label = match (&app.remote_server_icon, &app.remote_server_short_name) {
                 (Some(icon), Some(name)) => format!("{} {}", icon, name),
@@ -1829,7 +1829,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
             }
         }
 
-        if app.is_remote {
+        if app.is_remote_client() {
             info.push_str("\nRemote Mode: connected\n");
             if let Some(count) = app.remote_client_count {
                 info.push_str(&format!("Connected Clients: {}\n", count));
@@ -1862,7 +1862,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
         let todos = crate::todo::load_todos(active_session_id.as_str()).unwrap_or_default();
 
         let (provider_name, model_name, reasoning_effort, service_tier, transport, total_tokens) =
-            if app.is_remote {
+            if app.is_remote_client() {
                 (
                     app.remote_provider_name
                         .clone()
@@ -1894,7 +1894,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
             if let Ok(manager) = manager.try_read() {
                 let provider_messages = app.materialized_provider_messages();
                 let stats = manager.stats_with(&provider_messages);
-                let mode = if app.is_remote {
+                let mode = if app.is_remote_client() {
                     app.remote_compaction_mode
                         .as_ref()
                         .map(|mode| mode.as_str().to_string())
@@ -1975,8 +1975,16 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
         context_report.push_str(&format!("- session name: {}\n", app.session.display_name()));
         context_report.push_str(&format!(
             "- mode: {}{}{}\n",
-            if app.is_remote { "remote" } else { "local" },
-            if app.is_replay { ", replay" } else { "" },
+            if app.is_remote_client() {
+                "remote"
+            } else {
+                "local"
+            },
+            if app.is_replay_runtime() {
+                ", replay"
+            } else {
+                ""
+            },
             if app.session.is_canary {
                 ", self-dev"
             } else {

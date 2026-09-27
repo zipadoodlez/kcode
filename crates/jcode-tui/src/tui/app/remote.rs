@@ -1024,7 +1024,7 @@ async fn recover_stuck_remote_history(app: &mut App, remote: &mut RemoteConnecti
     // Only meaningful for an established remote client connection. During the
     // initial connect/reconnect handshake the run loop drives history loading
     // directly, and there is no point re-requesting before we've attached.
-    if !app.is_remote {
+    if !app.is_remote_client() {
         return false;
     }
 

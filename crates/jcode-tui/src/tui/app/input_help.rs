@@ -195,13 +195,13 @@ impl App {
                 "/rename <session name>\nSet a custom display title for the current session. This updates the window title and /resume display.\n\n/rename --clear\nClear the custom name and return to the generated session title."
             }
             "unsave" => "/unsave\nRemove the bookmark from the current session.",
-            "client-reload" if self.is_remote => {
+            "client-reload" if self.is_remote_client() => {
                 "/client-reload\nForce client binary reload in remote mode."
             }
-            "server-reload" if self.is_remote => {
+            "server-reload" if self.is_remote_client() => {
                 "/server-reload\nForce server binary reload in remote mode."
             }
-            "continue" | "resumeall" | "resume-all" if self.is_remote => {
+            "continue" | "resumeall" | "resume-all" if self.is_remote_client() => {
                 "/continue\nContinue every interrupted live session that would auto-resume on a reload.\n\nThe server walks all currently-live sessions and, for each idle one that still owes the model a reply (a turn that errored or was interrupted mid-generation), injects the standard \"continue where you left off\" reminder so it picks back up. Sessions that are busy, fresh, or already complete are left untouched.\n\nAlias: /resumeall."
             }
             _ => return None,

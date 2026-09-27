@@ -259,7 +259,7 @@ impl App {
             remote_session_id: self.remote_session_id.clone(),
             provider: self.provider.name().to_string(),
             model: self.provider.model(),
-            is_remote: self.is_remote,
+            is_remote: self.is_remote_client(),
             is_processing: self.is_processing,
             uptime_secs: self.app_started.elapsed().as_secs(),
         }

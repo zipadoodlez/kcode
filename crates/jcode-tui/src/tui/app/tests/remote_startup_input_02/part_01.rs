@@ -110,7 +110,7 @@ fn test_model_picker_cursor_selection_prefixes_model() {
 #[test]
 fn test_model_picker_bedrock_selection_prefixes_model() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_available_entries = vec!["amazon.nova-pro-v1:0".to_string()];
     app.remote_model_options = vec![crate::provider::ModelRoute {
         model: "amazon.nova-pro-v1:0".to_string(),
@@ -153,7 +153,7 @@ fn test_model_picker_bedrock_selection_prefixes_model() {
 #[test]
 fn test_model_picker_bedrock_arn_selection_prefixes_model() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     let model = "arn:aws:bedrock:us-east-2:302154194530:inference-profile/us.deepseek.r1-v1:0";
     app.remote_available_entries = vec![model.to_string()];
     app.remote_model_options = vec![crate::provider::ModelRoute {
@@ -195,7 +195,7 @@ fn test_model_picker_bedrock_arn_selection_prefixes_model() {
 #[test]
 fn test_remote_fallback_bedrock_arn_does_not_create_openrouter_route() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     let model = "arn:aws:bedrock:us-east-2:302154194530:inference-profile/us.deepseek.r1-v1:0";
     app.remote_available_entries = vec![model.to_string()];
     app.remote_model_options.clear();
@@ -225,7 +225,7 @@ fn test_remote_placeholder_only_openai_routes_are_replaced_with_real_routes() {
 
         let model = "gpt-5.5";
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_provider_name = Some("OpenAI".to_string());
         app.remote_available_entries = vec![model.to_string()];
         app.remote_model_options = vec![crate::provider::ModelRoute {
@@ -264,7 +264,7 @@ fn test_remote_hydrated_catalog_restores_missing_direct_bedrock_route() {
 
         let model = "amazon.nova-pro-v1:0";
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_provider_name = Some("OpenAI".to_string());
         app.remote_available_entries = vec![model.to_string()];
         app.remote_model_options = vec![crate::provider::ModelRoute {
@@ -305,7 +305,7 @@ fn test_remote_current_fpt_live_model_uses_fpt_route_not_copilot_without_cache()
         crate::env::set_var("FPT_API_KEY", "test-fpt-key");
 
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_provider_name = Some("FPT AI Marketplace".to_string());
         app.remote_available_entries = vec!["GLM-5.1".to_string()];
         app.remote_model_options.clear();
@@ -342,7 +342,7 @@ fn test_remote_fallback_claude_model_gets_api_key_route_without_oauth() {
         crate::auth::AuthStatus::invalidate_cache();
 
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_available_entries = vec!["claude-fable-5".to_string()];
         app.remote_model_options.clear();
 
@@ -389,7 +389,7 @@ fn test_remote_cached_oauth_only_claude_route_gains_api_key_route_in_picker() {
         crate::auth::AuthStatus::invalidate_cache();
 
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_available_entries = vec!["claude-fable-5".to_string()];
         app.remote_model_options = vec![crate::provider::ModelRoute {
             model: "claude-fable-5".to_string(),
@@ -431,7 +431,7 @@ fn test_remote_cached_oauth_only_claude_route_gains_api_key_route_in_picker() {
 fn test_model_picker_ctrl_b_bedrock_selection_saves_bedrock_default() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_available_entries = vec!["amazon.nova-pro-v1:0".to_string()];
         app.remote_model_options = vec![crate::provider::ModelRoute {
             model: "amazon.nova-pro-v1:0".to_string(),
@@ -1531,7 +1531,7 @@ fn test_model_switch_notice_omits_placeholder_route_details() {
     with_temp_jcode_home(|| {
         let model = "placeholder-only-model";
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_provider_name = Some("Some Server".to_string());
         app.remote_provider_model = Some("other-model".to_string());
         app.remote_available_entries = vec![model.to_string()];
@@ -1603,7 +1603,7 @@ fn test_favorite_hotkey_does_not_confirm_remote_placeholder_without_matching_fav
     with_temp_jcode_home(|| {
         let model = "placeholder-favorite-hotkey-model";
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_provider_name = Some("Some Server".to_string());
         app.remote_provider_model = Some(model.to_string());
         app.remote_available_entries = vec![model.to_string()];
@@ -1632,7 +1632,7 @@ fn test_catalog_update_rebuilds_open_model_picker_with_real_routes() {
     with_temp_jcode_home(|| {
         let model = "gpt-5.5";
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_provider_name = Some("OpenAI".to_string());
         app.remote_provider_model = Some(model.to_string());
         app.remote_available_entries = vec![model.to_string()];

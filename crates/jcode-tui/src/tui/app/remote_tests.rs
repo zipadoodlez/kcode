@@ -406,8 +406,7 @@ fn submit_prepared_remote_input_defers_until_history_loads() {
     // submit path must hold the prompt until history loads instead of echoing
     // and sending it into that race.
     let mut app = create_test_app();
-    app.is_remote = true;
-    app.runtime_mode = crate::tui::app::AppRuntimeMode::RemoteClient;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
 
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     let _guard = rt.enter();
@@ -465,8 +464,7 @@ fn submit_prepared_remote_input_defers_until_history_loads() {
 #[test]
 fn remote_skill_invocation_with_prompt_sends_remote_turn() {
     let mut app = create_test_app();
-    app.is_remote = true;
-    app.runtime_mode = crate::tui::app::AppRuntimeMode::RemoteClient;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     let temp = tempfile::tempdir().expect("create skill dir");
     let skill_dir = temp.path().join(".jcode/skills/remote-skill");
     std::fs::create_dir_all(&skill_dir).expect("create skill dir");
@@ -510,8 +508,7 @@ fn process_remote_followups_auto_submits_staged_startup_prompt() {
     // (not `queued_messages`). The post-connect dispatcher must still submit it;
     // otherwise the spawned agent shows its prompt but never sends it.
     let mut app = create_test_app();
-    app.is_remote = true;
-    app.runtime_mode = crate::tui::app::AppRuntimeMode::RemoteClient;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.input = "Classify the issues in /tmp/batch.txt".to_string();
     app.cursor_pos = app.input.len();
     app.submit_input_on_startup = true;
@@ -555,8 +552,7 @@ fn process_remote_followups_auto_submits_staged_startup_prompt() {
 #[test]
 fn process_remote_followups_sends_startup_prompt_before_history_arrives() {
     let mut app = create_test_app();
-    app.is_remote = true;
-    app.runtime_mode = crate::tui::app::AppRuntimeMode::RemoteClient;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.input = "Start the fork immediately".to_string();
     app.cursor_pos = app.input.len();
     app.submit_input_on_startup = true;
@@ -661,8 +657,7 @@ fn startup_history(session_id: &str) -> ServerEvent {
 #[test]
 fn startup_send_state_is_not_preserved_for_real_session_switch() {
     let mut app = create_test_app();
-    app.is_remote = true;
-    app.runtime_mode = crate::tui::app::AppRuntimeMode::RemoteClient;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_session_id = Some("previous-session".to_string());
     app.input = "Start the fork immediately".to_string();
     app.submit_input_on_startup = true;
@@ -896,7 +891,7 @@ fn remote_history_watchdog_rerequests_history_when_stuck() {
     use tokio::io::AsyncBufReadExt;
 
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_session_id = Some("session_stuck".to_string());
 
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -948,7 +943,7 @@ fn remote_history_watchdog_does_not_rerequest_while_frame_is_arriving() {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_session_id = Some("session_large".to_string());
     app.remote_history_wait_started = Instant::now().checked_sub(Duration::from_secs(60));
 
@@ -995,7 +990,7 @@ fn remote_history_watchdog_clears_budget_once_history_loads() {
     use std::time::{Duration, Instant};
 
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_history_wait_started = Instant::now().checked_sub(Duration::from_secs(60));
     app.remote_history_recovery_attempts = 2;
 
@@ -1019,7 +1014,7 @@ fn remote_history_watchdog_advises_restart_after_giving_up() {
     use std::time::{Duration, Instant};
 
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_history_wait_started = Instant::now().checked_sub(Duration::from_secs(60));
     app.remote_history_recovery_attempts = super::REMOTE_HISTORY_RECOVERY_MAX_ATTEMPTS;
     app.remote_history_recovery_last_attempt = Some(Instant::now());
@@ -1062,7 +1057,7 @@ fn forward_pending_reasoning_effort_sends_effort_request_to_server() {
     use tokio::io::AsyncBufReadExt;
 
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.pending_reasoning_effort = Some("high".to_string());
 
     let rt = tokio::runtime::Runtime::new().expect("runtime");
@@ -1109,7 +1104,7 @@ fn forward_pending_reasoning_effort_sends_effort_request_to_server() {
 #[test]
 fn forward_pending_reasoning_effort_is_noop_without_staged_effort() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     assert!(app.pending_reasoning_effort.is_none());
 
     let rt = tokio::runtime::Runtime::new().expect("runtime");
@@ -1134,8 +1129,7 @@ fn remote_dropped_file_path_is_sent_as_a_prompt_not_a_slash_command() {
     let dropped = file.to_string_lossy().to_string();
 
     let mut app = create_test_app();
-    app.is_remote = true;
-    app.runtime_mode = crate::tui::app::AppRuntimeMode::RemoteClient;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
 
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     let _guard = rt.enter();
@@ -1172,8 +1166,7 @@ fn remote_submit_input_never_strands_a_local_pending_turn() {
     // remote session must queue for the remote tick loop rather than set
     // `pending_turn`, which only the local run loop consumes.
     let mut app = create_test_app();
-    app.is_remote = true;
-    app.runtime_mode = crate::tui::app::AppRuntimeMode::RemoteClient;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.input = "plain prompt".to_string();
     app.cursor_pos = app.input.len();
 

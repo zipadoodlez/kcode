@@ -2295,7 +2295,7 @@ impl App {
         // this handler returns. Refreshing the client-side provider as well used
         // to duplicate every catalog network request and could race the first
         // onboarding prompt with a second model switch.
-        if self.is_remote {
+        if self.is_remote_client() {
             return;
         }
         let provider = Arc::clone(&self.provider);

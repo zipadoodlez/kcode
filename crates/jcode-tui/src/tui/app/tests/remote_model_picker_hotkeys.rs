@@ -44,7 +44,7 @@ fn test_remote_model_picker_preview_ctrl_n_toggles_favorite() {
         let _guard = rt.enter();
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.inline_interactive_state = Some(remote_model_picker_preview_state());
 
         rt.block_on(app.handle_remote_key(
@@ -94,7 +94,7 @@ fn test_remote_model_picker_preview_ctrl_o_sets_default() {
         let _guard = rt.enter();
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.inline_interactive_state = Some(remote_model_picker_preview_state());
 
         rt.block_on(app.handle_remote_key(

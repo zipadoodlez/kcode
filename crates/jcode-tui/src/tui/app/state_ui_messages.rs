@@ -709,7 +709,7 @@ impl App {
         // Anchor the viewport before mutating so the prepend stays seamless.
         self.capture_history_anchor(overshoot);
 
-        if self.is_remote {
+        if self.is_remote_client() {
             self.compacted_history_lazy.pending_request_visible = Some(next_visible);
             self.set_status_notice(format!(
                 "Loading older compacted history… {} of {}",

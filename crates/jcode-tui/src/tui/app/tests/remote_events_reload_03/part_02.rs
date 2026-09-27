@@ -169,7 +169,7 @@ fn test_duplicate_history_for_same_session_is_ignored_after_fast_path_restore() 
 #[test]
 fn test_compacted_history_marker_scroll_queues_lazy_load() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.replace_display_messages(vec![DisplayMessage::system(
         "Earlier conversation compacted - 128 historical messages hidden from the UI. Scroll to the top to load older history.",
     )]);
@@ -291,7 +291,7 @@ fn test_compacted_history_event_applies_expanded_window() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_session_id = Some("session_lazy_history".to_string());
     app.push_display_message(DisplayMessage::assistant("existing tail"));
     app.scroll_offset = 12;

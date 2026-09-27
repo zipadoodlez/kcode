@@ -289,7 +289,7 @@ impl App {
     }
 
     pub(super) fn split_launch_in_flight(&self) -> bool {
-        self.is_remote
+        self.is_remote_client()
             && !self.is_processing
             && self
                 .pending_split_started_at

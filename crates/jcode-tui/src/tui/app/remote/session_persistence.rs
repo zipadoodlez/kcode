@@ -6,7 +6,7 @@ pub(super) fn persist_replay_display_message(
     title: Option<String>,
     content: &str,
 ) {
-    if app.is_remote {
+    if app.is_remote_client() {
         // In remote mode, the server owns authoritative session history. Persisting the
         // client's stale shadow copy can roll back newer turns after reconnect/reload.
         return;
@@ -17,7 +17,7 @@ pub(super) fn persist_replay_display_message(
 }
 
 pub(super) fn persist_swarm_status_snapshot(app: &mut App) {
-    if app.is_remote {
+    if app.is_remote_client() {
         // Avoid clobbering the server-owned session file from a remote client's shadow copy.
         return;
     }
@@ -34,7 +34,7 @@ pub(super) fn persist_swarm_plan_snapshot(
     participants: Vec<String>,
     reason: Option<String>,
 ) {
-    if app.is_remote {
+    if app.is_remote_client() {
         // Avoid clobbering the server-owned session file from a remote client's shadow copy.
         return;
     }

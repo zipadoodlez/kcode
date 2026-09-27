@@ -883,7 +883,7 @@ pub(super) fn queue_autojudge_remote(app: &mut App) {
 }
 
 pub(super) fn maybe_trigger_autoreview_local(app: &mut App) {
-    if !app.autoreview_enabled || app.is_remote || app.is_replay {
+    if !app.autoreview_enabled || app.is_remote_client() || app.is_replay_runtime() {
         return;
     }
     if let Err(error) = launch_autoreview_window_local(app) {
@@ -896,7 +896,7 @@ pub(super) fn maybe_trigger_autoreview_local(app: &mut App) {
 }
 
 pub(super) fn maybe_trigger_autojudge_local(app: &mut App) {
-    if !app.autojudge_enabled || app.is_remote || app.is_replay {
+    if !app.autojudge_enabled || app.is_remote_client() || app.is_replay_runtime() {
         return;
     }
     if let Err(error) = launch_autojudge_window_local(app) {

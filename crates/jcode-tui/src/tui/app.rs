@@ -1197,8 +1197,6 @@ pub struct App {
     remote_server_icon: Option<String>,
     // Current message request ID (for remote mode - to match Done events)
     current_message_id: Option<u64>,
-    // Whether running in remote mode
-    is_remote: bool,
     runtime_mode: AppRuntimeMode,
     // Remote rewind/undo request waiting for the server's replacement History payload.
     pending_remote_rewind_notice: Option<PendingRemoteRewindNotice>,
@@ -1214,8 +1212,6 @@ pub struct App {
     remote_history_recovery_last_attempt: Option<Instant>,
     // Server was just spawned - allow initial connection retries in run_remote
     server_spawning: bool,
-    // Whether running in replay mode (readonly playback of a saved session)
-    pub is_replay: bool,
     // Suppress terminal title updates for off-screen/silent replay instances.
     suppress_terminal_title_updates: bool,
     /// Override for elapsed time during headless video replay.
@@ -1731,7 +1727,7 @@ impl App {
     /// session switches, local handoffs). The baseline must only be compared
     /// against requests from the same session, so we capture the active id here.
     fn kv_cache_session_id(&self) -> Option<String> {
-        if self.is_remote {
+        if self.is_remote_client() {
             self.remote_session_id.clone()
         } else {
             Some(self.session.id.clone())

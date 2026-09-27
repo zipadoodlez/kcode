@@ -62,7 +62,7 @@ fn test_handle_server_event_session_renamed_updates_remote_title() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_session_id = Some("session_remote_rename".to_string());
     app.session.title = Some("Generated title".to_string());
 
@@ -1261,7 +1261,7 @@ fn test_remote_done_auto_pokes_again_when_todos_remain() {
         )
         .expect("save todos");
 
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.auto_poke_incomplete_todos = true;
         app.is_processing = true;
         app.status = ProcessingStatus::Streaming;

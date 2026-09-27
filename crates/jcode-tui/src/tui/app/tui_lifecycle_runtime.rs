@@ -13,9 +13,7 @@ impl App {
             Arc::new(InertRuntimeProvider::new(AppRuntimeMode::Replay));
         let registry = Registry::empty();
         let mut app = Self::new_minimal_with_session(provider, registry, session);
-        app.is_remote = false;
-        app.is_replay = true;
-        app.runtime_mode = AppRuntimeMode::Replay;
+        app.set_runtime_mode(AppRuntimeMode::Replay);
         let model_name = app.session.model.clone().unwrap_or_default();
         let session_name = app.session.short_name.clone().unwrap_or_default();
 
@@ -70,7 +68,7 @@ impl App {
             );
             return;
         }
-        let session_id = if self.is_remote {
+        let session_id = if self.is_remote_client() {
             self.remote_session_id
                 .as_deref()
                 .unwrap_or(&self.session.id)
@@ -95,7 +93,7 @@ impl App {
             .as_deref()
             .or(todo_title.as_deref())
             .or(self.session.title.as_deref());
-        let is_canary = if self.is_remote {
+        let is_canary = if self.is_remote_client() {
             self.remote_is_canary.unwrap_or(self.session.is_canary)
         } else {
             self.session.is_canary
@@ -172,6 +170,15 @@ impl App {
         self.runtime_mode == AppRuntimeMode::Replay
     }
 
+    /// The one writer for the runtime axis.
+    ///
+    /// `is_remote_client()` and `is_replay_runtime()` derive from `runtime_mode`,
+    /// so nothing should assign the mode's meaning anywhere else: a call to this
+    /// is the only way to move between remote, replay, and test-harness.
+    pub(crate) fn set_runtime_mode(&mut self, mode: AppRuntimeMode) {
+        self.runtime_mode = mode;
+    }
+
     pub(crate) fn uses_server_or_replay_metadata(&self) -> bool {
         matches!(
             self.runtime_mode,
@@ -194,7 +201,7 @@ impl App {
     /// client is idle, re-exec onto the new binary so TUI-side changes apply too.
     /// Returns true when a client reload was requested.
     pub(super) fn maybe_self_reload_after_server_reload(&mut self) -> bool {
-        if !self.is_remote || crate::tui::is_ssh_remote() {
+        if !self.is_remote_client() || crate::tui::is_ssh_remote() {
             return false;
         }
         let is_selfdev_session = self.remote_is_canary.unwrap_or(self.session.is_canary);

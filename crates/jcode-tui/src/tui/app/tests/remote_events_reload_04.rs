@@ -5,7 +5,7 @@ fn test_remote_fast_status_tracks_history_tier_including_explicit_off() {
         let _guard = rt.enter();
         let mut app = create_test_app();
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_session_id = Some("session_fast_status".to_string());
         remote.mark_history_loaded();
 
@@ -516,7 +516,7 @@ fn test_remote_auth_error_arms_fallback_offer_with_resend_payload() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("OpenAI".to_string());
     app.remote_provider_model = Some("gpt-5.5".to_string());
     app.remote_model_options = vec![
@@ -578,7 +578,7 @@ fn test_remote_fallback_offer_accept_stages_switch_and_resends() {
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
     remote.mark_history_loaded();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("OpenAI".to_string());
     app.remote_provider_model = Some("gpt-5.5".to_string());
     app.remote_model_options = vec![
@@ -655,7 +655,7 @@ fn test_remote_fallback_resend_dropped_when_switch_fails() {
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
     remote.mark_history_loaded();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.pending_fallback_resend = Some(crate::tui::app::FallbackResendPayload {
         content: "hi".to_string(),
         images: vec![],
@@ -719,7 +719,7 @@ fn test_provider_guardrail_event_offers_opus_reroute_with_resend_payload() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("OpenAI".to_string());
     app.remote_provider_model = Some("gpt-5.5".to_string());
     app.remote_model_options = vec![
@@ -780,7 +780,7 @@ fn test_guardrail_reroute_prefers_native_anthropic_route() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("OpenAI".to_string());
     app.remote_provider_model = Some("gpt-5.5".to_string());
     app.remote_model_options = vec![
@@ -822,7 +822,7 @@ fn test_guardrail_reroute_not_offered_when_already_on_opus() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("Anthropic".to_string());
     app.remote_provider_model = Some("claude-opus-4-8".to_string());
     app.remote_model_options = vec![
@@ -858,7 +858,7 @@ fn test_guardrail_reroute_not_offered_without_opus_route() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("OpenAI".to_string());
     app.remote_provider_model = Some("gpt-5.5".to_string());
     app.remote_model_options = vec![openai_oauth_route("gpt-5.5"), openai_oauth_route("gpt-5.4")];
@@ -1285,7 +1285,7 @@ fn test_tui_grok_build_login_starts_managed_oauth_flow() {
 #[test]
 fn test_info_widget_remote_openai_uses_remote_provider_for_usage_and_context() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("OpenAI".to_string());
     app.remote_provider_model = Some("gpt-5.4".to_string());
     app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::Oauth);
@@ -1309,7 +1309,7 @@ fn test_info_widget_remote_openai_uses_remote_provider_for_usage_and_context() {
 #[test]
 fn test_info_widget_remote_model_falls_back_to_model_provider_detection() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_model = Some("gpt-5.4".to_string());
     app.update_context_limit_for_model("gpt-5.4");
 
@@ -1329,7 +1329,7 @@ fn test_info_widget_remote_model_falls_back_to_model_provider_detection() {
 #[test]
 fn test_info_widget_remote_opencode_shows_cost_based_usage() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("opencode".to_string());
     app.remote_provider_model = Some("qwen3-coder".to_string());
     app.token_accounting.total_input_tokens = 12_000;
@@ -1356,7 +1356,7 @@ fn test_info_widget_remote_anthropic_api_key_shows_cost_based_usage() {
     // (server resolves ResolvedCredential::Oauth) keep the subscription usage
     // provider.
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("Claude".to_string());
     app.remote_provider_model = Some("claude-sonnet-4-20250514".to_string());
     app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::ApiKey);
@@ -1396,7 +1396,7 @@ fn test_info_widget_remote_anthropic_api_key_shows_cost_based_usage() {
 #[test]
 fn test_info_widget_remote_openai_billing_follows_resolved_credential() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("OpenAI".to_string());
     app.remote_provider_model = Some("gpt-5.4".to_string());
     app.token_accounting.total_input_tokens = 12_000;
@@ -1440,7 +1440,7 @@ fn test_info_widget_remote_openai_billing_follows_resolved_credential() {
 #[test]
 fn test_info_widget_remote_openai_uses_explicit_route_when_credential_is_missing() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("OpenAI".to_string());
     app.remote_provider_model = Some("gpt-5.4".to_string());
     app.remote_resolved_credential = None;
@@ -1665,7 +1665,7 @@ fn test_remote_anthropic_api_key_accrues_cost_from_token_usage() {
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("Claude".to_string());
     app.remote_provider_model = Some("claude-sonnet-4-6".to_string());
     app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::ApiKey);
@@ -1696,7 +1696,7 @@ fn test_remote_anthropic_api_key_accrues_cost_from_token_usage() {
 
     // OAuth subscription sessions are not metered per token; cost stays $0.
     let mut oauth_app = create_test_app();
-    oauth_app.is_remote = true;
+    oauth_app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     oauth_app.remote_provider_name = Some("Claude".to_string());
     oauth_app.remote_provider_model = Some("claude-sonnet-4-6".to_string());
     oauth_app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::Oauth);
@@ -1722,7 +1722,7 @@ fn test_resumed_session_seeds_cost_from_history_token_totals() {
     let _guard = rt.enter();
 
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("Claude".to_string());
     app.remote_provider_model = Some("claude-sonnet-4-6".to_string());
     app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::ApiKey);
@@ -1756,7 +1756,7 @@ fn test_resumed_session_seeds_cost_from_history_token_totals() {
 
     // OAuth subscription sessions are not metered per token; cost stays $0.
     let mut oauth_app = create_test_app();
-    oauth_app.is_remote = true;
+    oauth_app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     oauth_app.remote_provider_name = Some("Claude".to_string());
     oauth_app.remote_provider_model = Some("claude-sonnet-4-6".to_string());
     oauth_app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::Oauth);
@@ -1774,7 +1774,7 @@ fn test_remote_fast_mode_tier_bills_premium_rates_and_reprices_on_toggle() {
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("Claude".to_string());
     app.remote_provider_model = Some("claude-opus-4-6".to_string());
     app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::ApiKey);
@@ -1980,7 +1980,7 @@ fn test_debug_command_side_panel_latency_bench_reports_immediate_redraw() {
 #[test]
 fn test_remote_transcript_send_uses_remote_submission_path() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     let rt = tokio::runtime::Runtime::new().expect("runtime");
 
     rt.block_on(async {
@@ -2031,7 +2031,7 @@ fn test_remote_transcript_send_uses_remote_submission_path() {
 #[test]
 fn test_remote_review_shows_processing_until_split_response() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.input = "/review".to_string();
     app.cursor_pos = app.input.len();
 
@@ -2076,7 +2076,7 @@ fn test_remote_review_shows_processing_until_split_response() {
 fn test_remote_super_space_routes_next_prompt_to_new_session() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.input = "hello from split".to_string();
         app.cursor_pos = app.input.len();
 
@@ -2127,7 +2127,7 @@ fn test_remote_super_space_routes_next_prompt_to_new_session() {
 #[test]
 fn test_remote_judge_shows_processing_until_split_response() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.input = "/judge".to_string();
     app.cursor_pos = app.input.len();
 
@@ -2205,7 +2205,7 @@ fn test_externally_started_turn_adopts_processing_state_and_settles_on_done() {
     // the turn as in-progress (spinner) and settle it when the terminal Done
     // arrives, instead of staying visually idle while text streams in.
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
@@ -2264,7 +2264,7 @@ fn test_externally_started_turn_adopts_processing_state_and_settles_on_done() {
 #[test]
 fn test_externally_started_tool_turn_shows_running_tool_status() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
@@ -2290,7 +2290,7 @@ fn test_externally_started_tool_turn_shows_running_tool_status() {
 fn test_remote_fork_with_prompt_stages_split_prompt() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.input = "/fork explore plan b".to_string();
         app.cursor_pos = app.input.len();
 
@@ -2327,7 +2327,7 @@ fn test_remote_fork_with_prompt_stages_split_prompt() {
 fn test_remote_btw_stages_question_in_forked_session() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.input = "/btw what are we doing?".to_string();
         app.cursor_pos = app.input.len();
 
@@ -2360,7 +2360,7 @@ fn test_remote_btw_stages_question_in_forked_session() {
 #[test]
 fn test_remote_fork_without_prompt_splits_immediately() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.input = "/fork".to_string();
     app.cursor_pos = app.input.len();
 

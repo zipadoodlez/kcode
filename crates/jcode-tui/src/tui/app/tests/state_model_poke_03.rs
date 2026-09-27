@@ -61,7 +61,7 @@ fn test_open_model_picker_without_routes_shows_actionable_guidance() {
 #[test]
 fn test_remote_model_picker_during_startup_waits_for_session_catalog() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.set_remote_startup_phase(crate::tui::app::RemoteStartupPhase::LoadingSession);
     app.remote_provider_model = Some("gpt-5.6-sol".to_string());
     app.remote_available_entries.clear();
@@ -3000,7 +3000,7 @@ fn test_overnight_start_runs_as_visible_local_turn() {
 fn test_overnight_start_queues_remote_turn_without_stuck_sending() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         assert!(super::commands::handle_session_command(
             &mut app,
             "/overnight 1m hi"

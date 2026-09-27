@@ -91,10 +91,11 @@ Staged, each lands whole.
     baseline recorded in `dev/testing.md`. Remaining: measure per-group method
     cohesion (which `impl App` methods touch one group only), which sets the
     stage order below.
-  - Stage 1: one runtime axis. Drop `is_remote` and `is_replay`, keep
-    `runtime_mode`; reads go through `is_remote_client()`/`is_replay_runtime()`;
-    test writes become a `set_runtime_mode` helper. Verify with
-    `cargo test -p jcode-tui` and a grep that no field assignment remains.
+  - Stage 1: one runtime axis. **Landed.** `is_remote` and `is_replay` are gone;
+    `runtime_mode` is the single representation, written only through
+    `App::set_runtime_mode` and read through `is_remote_client()` /
+    `is_replay_runtime()`. `cargo test -p jcode-tui --lib` is unchanged from the
+    baseline (1966 passed, same 27 failed), and `app_fields` fell 310 -> 308.
   - Stage 2: `CopySelection` (9 fields, 103 sites), the template stage; home
     `copy_selection.rs`.
   - Stage 3: `Viewport` (13 fields, 145 sites): scroll, bookmark, redraw flags.

@@ -2,7 +2,8 @@ use super::*;
 
 impl App {
     pub(super) fn ensure_provider_messages_hydrated(&mut self) {
-        if !self.is_remote || !self.messages.is_empty() || self.session.messages.is_empty() {
+        if !self.is_remote_client() || !self.messages.is_empty() || self.session.messages.is_empty()
+        {
             return;
         }
 
@@ -11,7 +12,7 @@ impl App {
     }
 
     pub(super) fn materialized_provider_messages(&self) -> Vec<Message> {
-        if self.is_remote || !self.messages.is_empty() {
+        if self.is_remote_client() || !self.messages.is_empty() {
             self.messages.clone()
         } else {
             self.session.messages_for_provider_uncached()
@@ -19,7 +20,7 @@ impl App {
     }
 
     pub(super) fn local_transcript_message_count(&self) -> usize {
-        if self.is_remote {
+        if self.is_remote_client() {
             self.messages.len()
         } else {
             self.session.messages.len()
@@ -200,11 +201,11 @@ impl App {
     }
 
     pub(super) fn add_provider_message(&mut self, message: Message) {
-        if self.is_remote {
+        if self.is_remote_client() {
             self.ensure_provider_messages_hydrated();
             self.messages.push(message.clone());
         }
-        if self.is_remote || !self.provider.uses_jcode_compaction() {
+        if self.is_remote_client() || !self.provider.uses_jcode_compaction() {
             return;
         }
         let compaction = self.registry.compaction();
@@ -234,7 +235,7 @@ impl App {
     }
 
     pub(super) fn reseed_compaction_from_provider_messages(&mut self) {
-        if self.is_remote
+        if self.is_remote_client()
             || (!self.provider.uses_jcode_compaction() && self.session.compaction.is_none())
         {
             return;
@@ -318,7 +319,7 @@ impl App {
     pub(super) fn messages_for_provider(&mut self) -> (Vec<Message>, Option<CompactionEvent>) {
         self.ensure_provider_messages_hydrated();
 
-        if self.is_remote {
+        if self.is_remote_client() {
             return (self.messages.clone(), None);
         }
         let base_messages = self.materialized_provider_messages();
@@ -355,7 +356,7 @@ impl App {
     }
 
     pub(super) fn poll_compaction_completion(&mut self) -> bool {
-        if self.is_remote
+        if self.is_remote_client()
             || (!self.provider.supports_compaction() && self.session.compaction.is_none())
         {
             return false;
@@ -549,7 +550,7 @@ impl App {
         let mut new_result_ids = Vec::new();
         let mut assistant_tool_uses: Vec<(usize, Vec<String>)> = Vec::new();
 
-        if self.is_remote {
+        if self.is_remote_client() {
             for (index, msg) in self.messages.iter().enumerate().skip(scan_start) {
                 match msg.role {
                     Role::User => {
@@ -684,7 +685,7 @@ impl App {
                     tool_duration_ms: None,
                     token_usage: None,
                 };
-                if self.is_remote || !self.messages.is_empty() {
+                if self.is_remote_client() || !self.messages.is_empty() {
                     self.messages
                         .insert(index + 1 + inserted + offset, inserted_message);
                 }

@@ -2025,7 +2025,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 // surfaced. Diff within the subtree this session manages (the
                 // same scoping the inline strip uses), so agents belonging to
                 // other sessions in a shared swarm stay silent.
-                let self_id = if app.is_remote {
+                let self_id = if app.is_remote_client() {
                     app.remote_session_id.clone()
                 } else {
                     Some(app.session.id.clone())

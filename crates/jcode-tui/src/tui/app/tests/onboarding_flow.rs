@@ -921,7 +921,7 @@ fn remote_post_login_validation_waits_for_catalog_refresh() {
     use crate::tui::app::onboarding_flow::OnboardingPendingValidation;
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         // Simulate the state right after a remote login: a pending validation
         // armed to wait for the catalog generation to advance past 3.
         app.remote_model_catalog_generation = 3;
@@ -944,7 +944,7 @@ fn local_post_import_validation_waits_for_model_activation() {
     use crate::tui::app::onboarding_flow::OnboardingPendingValidation;
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
-        app.is_remote = false;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::TestHarness);
         app.auth_catalog_refresh_pending = true;
         app.onboarding_pending_model_validation = Some(
             OnboardingPendingValidation::awaiting_catalog_refresh(app.session.id.clone(), 0),
@@ -1606,7 +1606,7 @@ fn starting_recent_project_review_runs_as_a_visible_local_turn() {
 #[test]
 fn starting_recent_project_review_queues_remote_turn_without_stuck_sending() {
     let mut app = onboarding_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     let repository = app
         .onboarding_recent_project_path()
         .expect("remote session should provide its working directory");
@@ -1633,7 +1633,7 @@ fn starting_recent_project_review_queues_remote_turn_without_stuck_sending() {
 #[test]
 fn recent_project_review_falls_back_cleanly_when_no_repo_is_known() {
     let mut app = onboarding_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.session.working_dir = dirs::home_dir().map(|path| path.to_string_lossy().into_owned());
 
     app.onboarding_start_recent_project_review();

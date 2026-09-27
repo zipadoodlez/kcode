@@ -203,7 +203,7 @@ impl App {
     }
 
     fn widget_route_info(&self, model: Option<&str>) -> WidgetRouteInfo {
-        let uses_remote_widget_metadata = self.is_remote || self.is_replay_runtime();
+        let uses_remote_widget_metadata = self.is_remote_client() || self.is_replay_runtime();
         let remote_provider_name = if uses_remote_widget_metadata {
             self.remote_header_provider_name()
         } else {
@@ -621,7 +621,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn provider_name(&self) -> String {
-        if self.is_remote {
+        if self.is_remote_client() {
             self.remote_header_provider_name().unwrap_or_default()
         } else {
             self.remote_provider_name
@@ -631,7 +631,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn provider_model(&self) -> String {
-        if self.is_remote {
+        if self.is_remote_client() {
             self.remote_header_provider_model()
                 .unwrap_or_else(|| "connecting to server…".to_string())
         } else {
@@ -661,7 +661,7 @@ impl crate::tui::TuiState for App {
         if crate::tui::is_ssh_remote() {
             return self.remote_skills.clone();
         }
-        if self.is_remote && !self.remote_skills.is_empty() {
+        if self.is_remote_client() && !self.remote_skills.is_empty() {
             self.remote_skills.clone()
         } else {
             self.current_skills_snapshot()
@@ -797,7 +797,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn session_compaction_count(&self) -> usize {
-        if self.is_remote || !self.provider.uses_jcode_compaction() {
+        if self.is_remote_client() || !self.provider.uses_jcode_compaction() {
             return 0;
         }
         self.registry
@@ -809,11 +809,11 @@ impl crate::tui::TuiState for App {
     }
 
     fn is_remote_mode(&self) -> bool {
-        self.is_remote
+        self.is_remote_client()
     }
 
     fn is_canary(&self) -> bool {
-        if self.is_remote {
+        if self.is_remote_client() {
             self.remote_is_canary.unwrap_or(self.session.is_canary)
         } else {
             self.session.is_canary
@@ -821,7 +821,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn is_replay(&self) -> bool {
-        self.is_replay
+        self.is_replay_runtime()
     }
 
     fn diff_mode(&self) -> crate::config::DiffDisplayMode {
@@ -829,7 +829,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn current_session_id(&self) -> Option<String> {
-        if self.is_remote {
+        if self.is_remote_client() {
             self.remote_session_id.clone()
         } else {
             Some(self.session.id.clone())
@@ -837,7 +837,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn session_display_name(&self) -> Option<String> {
-        if self.is_remote {
+        if self.is_remote_client() {
             self.remote_session_id
                 .as_ref()
                 .or(self.resume_session_id.as_ref())
@@ -854,7 +854,7 @@ impl crate::tui::TuiState for App {
             return Some(format!("SSH {host}"));
         }
         self.remote_server_short_name.clone().or_else(|| {
-            if !self.is_remote {
+            if !self.is_remote_client() {
                 return None;
             }
             crate::registry::find_server_by_socket_sync(&crate::server::socket_path())
@@ -864,7 +864,7 @@ impl crate::tui::TuiState for App {
 
     fn server_display_icon(&self) -> Option<String> {
         self.remote_server_icon.clone().or_else(|| {
-            if !self.is_remote {
+            if !self.is_remote_client() {
                 return None;
             }
             crate::registry::find_server_by_socket_sync(&crate::server::socket_path())
@@ -873,7 +873,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn server_display_version(&self) -> Option<String> {
-        if !self.is_remote {
+        if !self.is_remote_client() {
             return None;
         }
         // Prefer the live version reported by the connected server (history
@@ -895,7 +895,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn status_notice(&self) -> Option<String> {
-        if !self.is_remote
+        if !self.is_remote_client()
             && self.provider.uses_jcode_compaction()
             && let Ok(manager) = self.registry.compaction().try_read()
             && manager.is_compacting()
@@ -979,20 +979,20 @@ impl crate::tui::TuiState for App {
         static CACHE: Mutex<Option<(Instant, CachedContextSnapshot)>> = Mutex::new(None);
         const TTL: Duration = Duration::from_millis(250);
 
-        let session_key = if self.is_remote {
+        let session_key = if self.is_remote_client() {
             self.remote_session_id
                 .clone()
                 .unwrap_or_else(|| self.session.id.clone())
         } else {
             self.session.id.clone()
         };
-        let message_count = if self.is_remote {
+        let message_count = if self.is_remote_client() {
             self.display_messages.len()
         } else {
             self.session.messages.len()
         };
         let (compaction_count, compaction_summary_chars, is_compacting, compaction_fresh) =
-            if self.is_remote {
+            if self.is_remote_client() {
                 (0, 0, false, true)
             } else if self.provider.uses_jcode_compaction() {
                 match self.registry.compaction().try_read() {
@@ -1020,7 +1020,7 @@ impl crate::tui::TuiState for App {
             && let Some((ts, cached)) = &*cache
             && ts.elapsed() < TTL
             && cached.session_key == session_key
-            && cached.is_remote == self.is_remote
+            && cached.is_remote == self.is_remote_client()
             && cached.display_messages_version == self.display_messages_version
             && cached.context_revision == self.context_revision
             && cached.message_count == message_count
@@ -1044,7 +1044,7 @@ impl crate::tui::TuiState for App {
         let mut tool_result_chars = 0usize;
         let mut tool_result_count = 0usize;
 
-        if self.is_remote {
+        if self.is_remote_client() {
             for msg in &self.display_messages {
                 match msg.role.as_str() {
                     "user" => {
@@ -1191,7 +1191,7 @@ impl crate::tui::TuiState for App {
                 Instant::now(),
                 CachedContextSnapshot {
                     session_key,
-                    is_remote: self.is_remote,
+                    is_remote: self.is_remote_client(),
                     display_messages_version: self.display_messages_version,
                     context_revision: self.context_revision,
                     message_count,
@@ -1227,7 +1227,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn server_update_available(&self) -> Option<bool> {
-        if self.is_remote {
+        if self.is_remote_client() {
             self.remote_server_has_update
         } else {
             None
@@ -1235,7 +1235,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn info_widget_data(&self) -> crate::tui::info_widget::InfoWidgetData {
-        let session_id = if self.is_remote {
+        let session_id = if self.is_remote_client() {
             self.remote_session_id.as_deref()
         } else {
             Some(self.session.id.as_str())
@@ -1264,7 +1264,7 @@ impl crate::tui::TuiState for App {
             None
         };
 
-        let uses_remote_widget_metadata = self.is_remote || self.is_replay_runtime();
+        let uses_remote_widget_metadata = self.is_remote_client() || self.is_replay_runtime();
         let (
             model,
             reasoning_effort,
@@ -1289,7 +1289,7 @@ impl crate::tui::TuiState for App {
             )
         };
 
-        let (session_count, client_count) = if self.is_remote {
+        let (session_count, client_count) = if self.is_remote_client() {
             (Some(self.remote_sessions.len()), None)
         } else {
             (None, None)
@@ -1306,80 +1306,81 @@ impl crate::tui::TuiState for App {
         let swarm_info = if self.swarm_enabled {
             let subagent_status = self.subagent_status.clone();
             let mut members: Vec<crate::protocol::SwarmMemberStatus> = Vec::new();
-            let (session_count, client_count, session_names, has_activity) = if self.is_remote {
-                // The compact swarm widget renders at most three rows. Keep the
-                // complete snapshot in `remote_swarm_members`, but do not clone
-                // every historical member (including large detail/todo payloads)
-                // on every frame just to discard almost all of them below.
-                let has_members = !self.remote_swarm_members.is_empty();
-                let session_names = if has_members {
-                    Vec::new()
+            let (session_count, client_count, session_names, has_activity) =
+                if self.is_remote_client() {
+                    // The compact swarm widget renders at most three rows. Keep the
+                    // complete snapshot in `remote_swarm_members`, but do not clone
+                    // every historical member (including large detail/todo payloads)
+                    // on every frame just to discard almost all of them below.
+                    let has_members = !self.remote_swarm_members.is_empty();
+                    let session_names = if has_members {
+                        Vec::new()
+                    } else {
+                        self.remote_sessions.iter().take(3).cloned().collect()
+                    };
+                    members = self.remote_swarm_members.iter().take(3).cloned().collect();
+                    let session_count = if has_members {
+                        self.remote_swarm_members.len()
+                    } else {
+                        self.remote_sessions.len()
+                    };
+                    let has_activity = self
+                        .remote_swarm_members
+                        .iter()
+                        .any(|m| m.status != "ready" || m.detail.is_some());
+                    (
+                        session_count,
+                        self.remote_client_count,
+                        session_names,
+                        has_activity,
+                    )
                 } else {
-                    self.remote_sessions.iter().take(3).cloned().collect()
+                    let (status, detail) = match &self.status {
+                        ProcessingStatus::Idle => ("ready".to_string(), None),
+                        ProcessingStatus::Sending => {
+                            ("running".to_string(), Some("sending".to_string()))
+                        }
+                        ProcessingStatus::Connecting(phase) => {
+                            ("running".to_string(), Some(phase.to_string()))
+                        }
+                        ProcessingStatus::Thinking(_) => ("thinking".to_string(), None),
+                        ProcessingStatus::Streaming => {
+                            ("running".to_string(), Some("streaming".to_string()))
+                        }
+                        ProcessingStatus::WaitingForNetwork { listener } => {
+                            ("waiting_network".to_string(), Some(listener.clone()))
+                        }
+                        ProcessingStatus::RunningTool(name) => {
+                            ("running".to_string(), Some(format!("tool: {}", name)))
+                        }
+                    };
+                    let detail = subagent_status.clone().or(detail);
+                    let has_activity = status != "ready" || detail.is_some();
+                    if has_activity {
+                        members.push(crate::protocol::SwarmMemberStatus {
+                            session_id: self.session.id.clone(),
+                            friendly_name: Some(self.session.display_name().to_string()),
+                            status,
+                            detail,
+                            task_label: None,
+                            role: None,
+                            is_headless: Some(false),
+                            live_attachments: Some(1),
+                            status_age_secs: Some(0),
+                            output_tail: None,
+                            report_back_to_session_id: None,
+                            todo_progress: None,
+                            todo_items: Vec::new(),
+                            runtime: crate::protocol::SwarmMemberRuntime::default(),
+                        });
+                    }
+                    (
+                        1,
+                        None,
+                        vec![self.session.display_name().to_string()],
+                        has_activity,
+                    )
                 };
-                members = self.remote_swarm_members.iter().take(3).cloned().collect();
-                let session_count = if has_members {
-                    self.remote_swarm_members.len()
-                } else {
-                    self.remote_sessions.len()
-                };
-                let has_activity = self
-                    .remote_swarm_members
-                    .iter()
-                    .any(|m| m.status != "ready" || m.detail.is_some());
-                (
-                    session_count,
-                    self.remote_client_count,
-                    session_names,
-                    has_activity,
-                )
-            } else {
-                let (status, detail) = match &self.status {
-                    ProcessingStatus::Idle => ("ready".to_string(), None),
-                    ProcessingStatus::Sending => {
-                        ("running".to_string(), Some("sending".to_string()))
-                    }
-                    ProcessingStatus::Connecting(phase) => {
-                        ("running".to_string(), Some(phase.to_string()))
-                    }
-                    ProcessingStatus::Thinking(_) => ("thinking".to_string(), None),
-                    ProcessingStatus::Streaming => {
-                        ("running".to_string(), Some("streaming".to_string()))
-                    }
-                    ProcessingStatus::WaitingForNetwork { listener } => {
-                        ("waiting_network".to_string(), Some(listener.clone()))
-                    }
-                    ProcessingStatus::RunningTool(name) => {
-                        ("running".to_string(), Some(format!("tool: {}", name)))
-                    }
-                };
-                let detail = subagent_status.clone().or(detail);
-                let has_activity = status != "ready" || detail.is_some();
-                if has_activity {
-                    members.push(crate::protocol::SwarmMemberStatus {
-                        session_id: self.session.id.clone(),
-                        friendly_name: Some(self.session.display_name().to_string()),
-                        status,
-                        detail,
-                        task_label: None,
-                        role: None,
-                        is_headless: Some(false),
-                        live_attachments: Some(1),
-                        status_age_secs: Some(0),
-                        output_tail: None,
-                        report_back_to_session_id: None,
-                        todo_progress: None,
-                        todo_items: Vec::new(),
-                        runtime: crate::protocol::SwarmMemberRuntime::default(),
-                    });
-                }
-                (
-                    1,
-                    None,
-                    vec![self.session.display_name().to_string()],
-                    has_activity,
-                )
-            };
 
             // Dock data: the agents this session actually manages (spawn
             // subtree), the shared panel selection/focus, and plan progress.
@@ -1496,7 +1497,7 @@ impl crate::tui::TuiState for App {
             });
 
         let workspace_rows = if self.workspace_client.is_enabled() {
-            let session_id = if self.is_remote {
+            let session_id = if self.is_remote_client() {
                 self.remote_session_id.as_deref()
             } else {
                 Some(self.session.id.as_str())
@@ -1509,7 +1510,7 @@ impl crate::tui::TuiState for App {
 
         let workspace_animation_tick = self.app_started.elapsed().as_millis() as u64 / 180;
 
-        let compaction_info = if !self.is_remote && self.provider.uses_jcode_compaction() {
+        let compaction_info = if !self.is_remote_client() && self.provider.uses_jcode_compaction() {
             let compaction = self.registry.compaction();
             compaction.try_read().ok().and_then(|manager| {
                 let compacted_messages = manager.compacted_count();
@@ -1566,7 +1567,7 @@ impl crate::tui::TuiState for App {
             observed_context_tokens: self.current_stream_context_tokens(),
             cache_hit_info,
             compaction_info,
-            is_compacting: if !self.is_remote && self.provider.uses_jcode_compaction() {
+            is_compacting: if !self.is_remote_client() && self.provider.uses_jcode_compaction() {
                 let compaction = self.registry.compaction();
                 compaction
                     .try_read()
@@ -1584,7 +1585,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn workspace_map_rows(&self) -> Vec<crate::tui::workspace_map::VisibleWorkspaceRow> {
-        let session_id = if self.is_remote {
+        let session_id = if self.is_remote_client() {
             self.remote_session_id.as_deref()
         } else {
             Some(self.session.id.as_str())
@@ -1653,7 +1654,7 @@ impl crate::tui::TuiState for App {
         // session having spawned them; showing those would be noise. The spawn
         // tree is reconstructed from each member's `report_back_to_session_id`
         // parent edge.
-        let self_id = if self.is_remote {
+        let self_id = if self.is_remote_client() {
             self.remote_session_id.as_deref()
         } else {
             Some(self.session.id.as_str())

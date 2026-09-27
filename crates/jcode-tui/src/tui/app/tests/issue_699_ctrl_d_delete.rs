@@ -72,7 +72,7 @@ fn test_remote_ctrl_d_deletes_character_under_cursor() {
         let _guard = rt.enter();
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.input = "hello".to_string();
         app.cursor_pos = 1;
 
@@ -99,7 +99,7 @@ fn test_remote_ctrl_d_on_empty_input_still_requests_quit() {
         let _guard = rt.enter();
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         assert!(app.input.is_empty());
 
         rt.block_on(app.handle_remote_key(

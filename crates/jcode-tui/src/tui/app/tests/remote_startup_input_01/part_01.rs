@@ -75,7 +75,7 @@ fn test_review_prefers_openai_oauth_gpt_5_4_when_available() {
 #[test]
 fn test_pending_split_launch_shows_processing_status_in_ui() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.pending_split_started_at = Some(Instant::now());
 
     assert!(app.is_processing());
@@ -90,7 +90,7 @@ fn test_pending_split_launch_shows_processing_status_in_ui() {
 #[test]
 fn test_expired_pending_split_launch_no_longer_shows_processing_status() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.pending_split_started_at = Some(Instant::now() - Duration::from_millis(400));
 
     assert!(!app.is_processing());
@@ -105,7 +105,7 @@ fn test_expired_pending_split_launch_no_longer_shows_processing_status() {
 #[test]
 fn test_pending_remote_dispatch_counts_as_processing_for_tui_state() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.pending_queued_dispatch = true;
 
     assert!(app.is_processing());
@@ -288,7 +288,7 @@ fn test_prepare_review_spawned_session_uses_visible_transcript_for_judge_session
 fn test_queue_autojudge_remote_targets_original_non_judge_session() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
 
         let mut root = crate::session::Session::create(None, Some("task".to_string()));
         root.save().expect("save root session");
@@ -662,7 +662,7 @@ fn test_subagent_command_suggestions_include_manual_launch_and_model_policy() {
 }
 
 fn configure_test_remote_models_with_copilot(app: &mut App) {
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_model = Some("claude-sonnet-4".to_string());
     app.remote_available_entries = vec![
         "claude-sonnet-4-6".to_string(),
@@ -674,7 +674,7 @@ fn configure_test_remote_models_with_copilot(app: &mut App) {
 }
 
 fn configure_test_remote_models_with_cursor(app: &mut App) {
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("cursor".to_string());
     app.remote_provider_model = Some("composer-1.5".to_string());
     app.remote_available_entries = vec![
@@ -748,7 +748,7 @@ fn test_available_models_updated_event_surfaces_authed_provider_in_remote_model_
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.handle_server_event(
         crate::protocol::ServerEvent::AvailableModelsUpdated {
             provider_name: Some("Copilot".to_string()),
@@ -816,7 +816,7 @@ fn test_duplicate_available_models_updated_event_is_a_no_op() {
         let _guard = rt.enter();
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         let event = || crate::protocol::ServerEvent::AvailableModelsUpdated {
             provider_name: Some("Copilot".to_string()),
             provider_model: Some("claude-opus-4.6".to_string()),
@@ -859,7 +859,7 @@ fn test_remote_final_catalog_replaces_post_login_loading_state_in_place() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_model = Some("gpt-5.4".to_string());
     app.remote_available_entries = vec!["gpt-5.4".to_string()];
     app.remote_model_options = vec![crate::provider::ModelRoute {
@@ -950,7 +950,7 @@ fn test_remote_model_switch_failure_shows_actionable_guidance() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.handle_server_event(
         crate::protocol::ServerEvent::ModelChanged {
             id: 7,
@@ -977,7 +977,7 @@ fn test_remote_prompt_defers_while_model_switch_is_in_flight() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let mut remote = rt.block_on(async { crate::tui::backend::RemoteConnection::dummy() });
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_model_switch_in_flight = true;
 
     rt.block_on(crate::tui::app::remote::submit_prepared_remote_input(
@@ -1015,7 +1015,7 @@ fn test_remote_prompt_defers_while_post_login_model_setup_is_pending() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let mut remote = rt.block_on(async { crate::tui::backend::RemoteConnection::dummy() });
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.auth_catalog_refresh_pending = true;
 
     rt.block_on(crate::tui::app::remote::submit_prepared_remote_input(
@@ -1054,7 +1054,7 @@ fn test_remote_model_switch_failure_restores_deferred_prompt() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_model_switch_in_flight = true;
     app.pending_prompt_after_model_switch = Some(crate::tui::app::input::PreparedInput {
         raw_input: "please use the selected model".to_string(),
@@ -1087,7 +1087,7 @@ fn test_model_picker_remote_falls_back_to_current_model_when_catalog_empty() {
     // entry with whatever routes another test cached.
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_provider_name = Some("openrouter".to_string());
         app.remote_provider_model = Some("anthropic/claude-sonnet-4".to_string());
         app.remote_available_entries.clear();
@@ -1121,7 +1121,7 @@ fn test_detailed_catalog_replaces_placeholder_routes_after_names_only_update() {
         let _guard = rt.enter();
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_provider_name = Some("Copilot".to_string());
 
         // Names-only frame: same model list, no route expansion.

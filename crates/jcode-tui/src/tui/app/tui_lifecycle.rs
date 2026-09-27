@@ -65,7 +65,7 @@ impl App {
 
         self.queued_messages = queued_messages;
         if self.has_queued_followups() {
-            if self.is_remote {
+            if self.is_remote_client() {
                 // Do not synthesize a processing turn for restored remote follow-ups.
                 // After a reload, the server may still be running the previous turn;
                 // the queue must remain a wait-until-turn-end queue until the history
@@ -532,14 +532,12 @@ impl App {
             remote_server_short_name: None,
             remote_server_icon: None,
             current_message_id: None,
-            is_remote: false,
             runtime_mode: AppRuntimeMode::TestHarness,
             pending_remote_rewind_notice: None,
             remote_history_wait_started: None,
             remote_history_recovery_attempts: 0,
             remote_history_recovery_last_attempt: None,
             server_spawning: false,
-            is_replay: false,
             suppress_terminal_title_updates: false,
             replay_elapsed_override: None,
             replay_processing_started_ms: None,
@@ -923,14 +921,12 @@ impl App {
             remote_server_short_name: None,
             remote_server_icon: None,
             current_message_id: None,
-            is_remote: false,
             runtime_mode: AppRuntimeMode::TestHarness,
             pending_remote_rewind_notice: None,
             remote_history_wait_started: None,
             remote_history_recovery_attempts: 0,
             remote_history_recovery_last_attempt: None,
             server_spawning: false,
-            is_replay: false,
             suppress_terminal_title_updates: false,
             replay_elapsed_override: None,
             replay_processing_started_ms: None,
@@ -1095,9 +1091,7 @@ impl App {
 
     pub fn new_for_test_harness(provider: Arc<dyn Provider>, registry: Registry) -> Self {
         let mut app = Self::new(provider, registry);
-        app.runtime_mode = AppRuntimeMode::TestHarness;
-        app.is_remote = false;
-        app.is_replay = false;
+        app.set_runtime_mode(AppRuntimeMode::TestHarness);
         app
     }
 
@@ -1187,8 +1181,7 @@ impl App {
             .and_then(|session_id| Session::load_startup_stub(session_id).ok())
             .unwrap_or_else(|| Session::create(None, None));
         let mut app = Self::new_minimal_with_session(provider, registry, session);
-        app.is_remote = true;
-        app.runtime_mode = AppRuntimeMode::RemoteClient;
+        app.set_runtime_mode(AppRuntimeMode::RemoteClient);
         app.remote_startup_phase = Some(super::RemoteStartupPhase::Connecting);
         app.remote_startup_phase_started = Some(Instant::now());
 

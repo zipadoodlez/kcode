@@ -558,7 +558,7 @@ pub(in crate::tui::app) async fn apply_remote_transcript_event(
 /// nobody dispatches, freezing the client in "Sending" forever. Queueing hands
 /// the turn to `process_remote_followups`, which also echoes the user message.
 pub(in crate::tui::app) fn stage_turn_for_remote_tick_loop(app: &mut App, input: &str) -> bool {
-    if !app.is_remote {
+    if !app.is_remote_client() {
         return false;
     }
     if app.is_processing && !app.queue_mode {

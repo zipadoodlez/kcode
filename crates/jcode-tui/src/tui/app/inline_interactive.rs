@@ -712,7 +712,7 @@ impl App {
         &self,
         routes: &mut Vec<crate::provider::ModelRoute>,
     ) {
-        if !self.is_remote {
+        if !self.is_remote_client() {
             return;
         }
         Self::extend_remote_routes_for_uncovered_models_static(
@@ -815,7 +815,10 @@ impl App {
     }
 
     pub(super) fn persist_remote_model_catalog_cache(&self) {
-        if crate::tui::is_ssh_remote() || !self.is_remote || self.remote_model_options.is_empty() {
+        if crate::tui::is_ssh_remote()
+            || !self.is_remote_client()
+            || self.remote_model_options.is_empty()
+        {
             return;
         }
 
@@ -852,7 +855,10 @@ impl App {
     }
 
     fn hydrate_remote_model_catalog_cache(&mut self) -> bool {
-        if crate::tui::is_ssh_remote() || !self.is_remote || !self.remote_model_options.is_empty() {
+        if crate::tui::is_ssh_remote()
+            || !self.is_remote_client()
+            || !self.remote_model_options.is_empty()
+        {
             return false;
         }
 
@@ -909,8 +915,8 @@ impl App {
         available_efforts: &[&str],
     ) -> ModelPickerCacheSignature {
         ModelPickerCacheSignature {
-            is_remote: self.is_remote,
-            provider_name: if self.is_remote {
+            is_remote: self.is_remote_client(),
+            provider_name: if self.is_remote_client() {
                 self.remote_provider_name
                     .clone()
                     .unwrap_or_else(|| "remote".to_string())
@@ -978,7 +984,7 @@ impl App {
         if std::env::var("JCODE_LOG_MODEL_PICKER_TIMING").is_ok() {
             crate::logging::info(&format!(
                 "[TIMING] model_picker_open: cache_hit=true, remote={}, simplified={}, routes={}, models={}, entries={}, total={}ms",
-                self.is_remote,
+                self.is_remote_client(),
                 crate::perf::tui_policy().simplified_model_picker,
                 route_count,
                 model_count,
@@ -1064,19 +1070,19 @@ impl App {
         // During remote startup the authoritative session catalog has not
         // arrived yet. Do not make an old persisted catalog look current just
         // because the user opened `/model` quickly after spawning the client.
-        let awaiting_initial_remote_catalog = self.is_remote
+        let awaiting_initial_remote_catalog = self.is_remote_client()
             && self.remote_startup_phase.is_some()
             && self.remote_model_options.is_empty()
             && self.remote_available_entries.is_empty();
 
-        if self.is_remote
+        if self.is_remote_client()
             && !awaiting_initial_remote_catalog
             && self.remote_model_options.is_empty()
         {
             self.hydrate_remote_model_catalog_cache();
         }
 
-        let current_model = if self.is_remote {
+        let current_model = if self.is_remote_client() {
             self.remote_provider_model
                 .clone()
                 .unwrap_or_else(|| "unknown".to_string())
@@ -1108,12 +1114,12 @@ impl App {
         let config_default_model = config.provider.default_model.clone();
         let config_default_provider = config.provider.default_provider.clone();
 
-        let current_effort = if self.is_remote {
+        let current_effort = if self.is_remote_client() {
             self.remote_reasoning_effort.clone()
         } else {
             self.provider.reasoning_effort()
         };
-        let available_efforts = if self.is_remote {
+        let available_efforts = if self.is_remote_client() {
             inferred_reasoning_efforts(
                 self.remote_provider_name.as_deref(),
                 self.remote_provider_model.as_deref(),
@@ -1134,7 +1140,7 @@ impl App {
             return;
         }
 
-        if !self.is_remote && !crate::perf::tui_policy().simplified_model_picker {
+        if !self.is_remote_client() && !crate::perf::tui_policy().simplified_model_picker {
             let routes_started = std::time::Instant::now();
             let routes = self.simplified_model_routes_for_picker(&current_model);
             let routes_ms = routes_started.elapsed().as_millis();
@@ -1156,7 +1162,7 @@ impl App {
         }
 
         let routes_started = std::time::Instant::now();
-        let routes: Vec<crate::provider::ModelRoute> = if self.is_remote {
+        let routes: Vec<crate::provider::ModelRoute> = if self.is_remote_client() {
             if !self.remote_model_options.is_empty() {
                 let mut routes = std::mem::take(&mut self.remote_model_options);
                 self.extend_remote_routes_for_uncovered_models(&mut routes);
@@ -1339,7 +1345,7 @@ impl App {
             return false;
         }
 
-        let current_model = if self.is_remote {
+        let current_model = if self.is_remote_client() {
             self.remote_provider_model
                 .clone()
                 .unwrap_or_else(|| "unknown".to_string())
@@ -1355,12 +1361,12 @@ impl App {
         };
         let config_default_model = config.provider.default_model.clone();
         let config_default_provider = config.provider.default_provider.clone();
-        let current_effort = if self.is_remote {
+        let current_effort = if self.is_remote_client() {
             self.remote_reasoning_effort.clone()
         } else {
             self.provider.reasoning_effort()
         };
-        let available_efforts = if self.is_remote {
+        let available_efforts = if self.is_remote_client() {
             inferred_reasoning_efforts(
                 self.remote_provider_name.as_deref(),
                 self.remote_provider_model.as_deref(),
@@ -1412,14 +1418,14 @@ impl App {
     ) -> Vec<crate::provider::ModelRoute> {
         use std::collections::BTreeMap;
 
-        let current_model = if self.is_remote {
+        let current_model = if self.is_remote_client() {
             self.remote_provider_model
                 .clone()
                 .unwrap_or_else(|| "unknown".to_string())
         } else {
             self.provider.model().to_string()
         };
-        let current_provider = if self.is_remote {
+        let current_provider = if self.is_remote_client() {
             self.remote_provider_name
                 .clone()
                 .unwrap_or_else(|| "remote".to_string())
@@ -1438,7 +1444,7 @@ impl App {
         let config_default_provider = config.provider.default_provider.clone();
         let config_anthropic_effort = config.provider.anthropic_reasoning_effort.clone();
         let config_openai_effort = config.provider.openai_reasoning_effort.clone();
-        let current_effort = if self.is_remote {
+        let current_effort = if self.is_remote_client() {
             self.remote_reasoning_effort.clone()
         } else {
             self.provider.reasoning_effort()
@@ -1466,7 +1472,7 @@ impl App {
             )
         };
 
-        let routes = if routes.is_empty() && self.is_remote && current_model != "unknown" {
+        let routes = if routes.is_empty() && self.is_remote_client() && current_model != "unknown" {
             vec![crate::provider::ModelRoute {
                 model: current_model.clone(),
                 provider: self
@@ -1483,7 +1489,7 @@ impl App {
             routes
         };
         let mut routes = crate::provider::dedupe_model_routes(routes);
-        if !self.is_remote {
+        if !self.is_remote_client() {
             crate::model_usage::enrich_routes(&mut routes);
         }
         let shared_usage: HashMap<_, _> = routes
@@ -1512,7 +1518,9 @@ impl App {
         if routes.is_empty() {
             self.inline_interactive_state = None;
             self.push_display_message(DisplayMessage::system(
-                crate::tui::app::model_context::no_models_available_message(self.is_remote),
+                crate::tui::app::model_context::no_models_available_message(
+                    self.is_remote_client(),
+                ),
             ));
             self.set_status_notice("No models available");
             return routes;
@@ -1832,7 +1840,7 @@ impl App {
         if total_ms >= 250 || std::env::var("JCODE_LOG_MODEL_PICKER_TIMING").is_ok() {
             crate::logging::info(&format!(
                 "[TIMING] model_picker_open: remote={}, simplified={}, routes={}, models={}, entries={}, routes={}ms, grouping={}ms, timestamps={}ms, entries_sort={}ms, total={}ms",
-                self.is_remote,
+                self.is_remote_client(),
                 crate::perf::tui_policy().simplified_model_picker,
                 routes.len(),
                 model_order.len(),
@@ -1876,7 +1884,7 @@ impl App {
             crate::logging::event_info(
                 "model_picker_open",
                 vec![
-                    ("remote", self.is_remote.to_string()),
+                    ("remote", self.is_remote_client().to_string()),
                     (
                         "simplified",
                         crate::perf::tui_policy()
@@ -1981,12 +1989,12 @@ impl App {
         let previous_cursor_pos = self.cursor_pos;
         let previous_status_notice = self.status_notice.clone();
 
-        if self.is_remote && self.remote_model_options.is_empty() {
+        if self.is_remote_client() && self.remote_model_options.is_empty() {
             self.hydrate_remote_model_catalog_cache();
         }
 
         let started = std::time::Instant::now();
-        let current_model = if self.is_remote {
+        let current_model = if self.is_remote_client() {
             self.remote_provider_model
                 .clone()
                 .unwrap_or_else(|| "unknown".to_string())
@@ -2002,12 +2010,12 @@ impl App {
         };
         let config_default_model = config.provider.default_model.clone();
         let config_default_provider = config.provider.default_provider.clone();
-        let current_effort = if self.is_remote {
+        let current_effort = if self.is_remote_client() {
             self.remote_reasoning_effort.clone()
         } else {
             self.provider.reasoning_effort()
         };
-        let available_efforts = if self.is_remote {
+        let available_efforts = if self.is_remote_client() {
             inferred_reasoning_efforts(
                 self.remote_provider_name.as_deref(),
                 self.remote_provider_model.as_deref(),
@@ -2024,8 +2032,8 @@ impl App {
         );
 
         let routes_started = std::time::Instant::now();
-        let took_remote_options = self.is_remote && !self.remote_model_options.is_empty();
-        let routes: Vec<crate::provider::ModelRoute> = if self.is_remote {
+        let took_remote_options = self.is_remote_client() && !self.remote_model_options.is_empty();
+        let routes: Vec<crate::provider::ModelRoute> = if self.is_remote_client() {
             if took_remote_options {
                 let mut routes = std::mem::take(&mut self.remote_model_options);
                 self.extend_remote_routes_for_uncovered_models(&mut routes);
@@ -2107,8 +2115,8 @@ impl App {
 
         serde_json::to_string_pretty(&serde_json::json!({
             "source_of_truth": "materialized_tui_model_picker",
-            "remote": self.is_remote,
-            "provider_name": if self.is_remote {
+            "remote": self.is_remote_client(),
+            "provider_name": if self.is_remote_client() {
                 self.remote_provider_name.clone().unwrap_or_else(|| "remote".to_string())
             } else {
                 self.provider.name().to_string()
@@ -2286,7 +2294,7 @@ impl App {
         }
         match action {
             AccountPickerAction::Switch { provider_id, label } => {
-                if self.is_remote {
+                if self.is_remote_client() {
                     self.pending_account_picker_action = Some(AccountPickerAction::Switch {
                         provider_id: provider_id.clone(),
                         label: label.clone(),
@@ -3579,7 +3587,7 @@ impl App {
                                     &entry.name,
                                     &route.provider,
                                     &route.detail,
-                                    self.is_remote,
+                                    self.is_remote_client(),
                                 ),
                             ));
                             self.set_status_notice("Model unavailable");
@@ -3643,11 +3651,11 @@ impl App {
                                     "effort",
                                     effort.clone().unwrap_or_else(|| "none".to_string()),
                                 ),
-                                ("remote", self.is_remote.to_string()),
+                                ("remote", self.is_remote_client().to_string()),
                             ],
                         );
 
-                        if self.is_remote {
+                        if self.is_remote_client() {
                             self.inline_interactive_state = None;
                             self.upstream_provider = None;
                             self.status_detail = None;
@@ -3710,7 +3718,7 @@ impl App {
                                     self.push_display_message(DisplayMessage::error(
                                         crate::tui::app::model_context::model_switch_failure_message(
                                             &error.to_string(),
-                                            self.is_remote,
+                                            self.is_remote_client(),
                                         ),
                                     ));
                                     self.set_status_notice("Model switch failed");
@@ -3862,7 +3870,7 @@ mod tests {
         assert!(super::model_picker_favorites_path().is_none());
         assert!(super::remote_model_catalog_cache_path().is_none());
         let mut app = crate::tui::app::tests::create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_startup_phase = None;
         app.remote_provider_name = Some("remote-provider".to_string());
         app.remote_provider_model = Some("remote-test-model".to_string());

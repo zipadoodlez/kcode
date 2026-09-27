@@ -798,7 +798,7 @@ fn test_help_topic_shows_back_command_details() {
 fn test_catchup_next_queues_resume_for_attention_session() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.remote_session_id = Some(app.session.id.clone());
 
         let mut target = Session::create(None, Some("catchup target".to_string()));
@@ -843,7 +843,7 @@ fn test_catchup_next_queues_resume_for_attention_session() {
 #[test]
 fn test_back_command_queues_return_without_showing_brief() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.catchup_return_stack.push("session_prev".to_string());
 
     app.input = "/back".to_string();
@@ -1298,7 +1298,7 @@ fn test_git_command_works_in_remote_mode_with_accessible_working_directory() {
     std::fs::write(repo.path().join("tracked.txt"), "after\n").expect("update tracked file");
 
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_session_id = Some("ses_remote_git".to_string());
     app.session.working_dir = Some(repo.path().display().to_string());
     submit_git_command_and_wait_for_response(&mut app);
@@ -1314,7 +1314,7 @@ fn test_git_command_works_in_remote_mode_with_accessible_working_directory() {
 }
 
 fn submit_git_command_and_wait_for_response(app: &mut App) {
-    let expected_session_id = if app.is_remote {
+    let expected_session_id = if app.is_remote_client() {
         app.remote_session_id
             .clone()
             .unwrap_or_else(|| app.session.id.clone())

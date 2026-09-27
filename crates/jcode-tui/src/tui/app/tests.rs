@@ -495,7 +495,7 @@ fn kv_cache_baseline_from_other_session_is_ignored() {
     // ~/.kcode/logs KV_CACHE_USAGE telemetry (common_prefix=0, current
     // message_count << baseline_message_count, yet read_pct=100/miss=none).
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_session_id = Some("session_big".to_string());
 
     let big_history: Vec<Message> = (0..40)
@@ -542,7 +542,7 @@ fn kv_cache_baseline_from_other_session_is_ignored() {
 #[test]
 fn kv_cache_baseline_same_session_still_compares() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_session_id = Some("session_same".to_string());
 
     let history = vec![
@@ -586,7 +586,7 @@ fn kv_cache_baseline_same_session_still_compares() {
 #[test]
 fn compaction_invalidates_kv_cache_baseline_and_stale_completion_cannot_restore_it() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_session_id = Some("session_compacted".to_string());
 
     let old_history: Vec<Message> = (0..176)
@@ -711,7 +711,7 @@ fn remote_token_usage_records_cache_stats_before_done_and_dedupes_snapshots() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("OpenAI".to_string());
     app.remote_provider_model = Some("gpt-5.5".to_string());
     app.display_messages
@@ -795,7 +795,7 @@ fn remote_token_usage_records_cache_stats_before_done_and_dedupes_snapshots() {
 #[test]
 fn cache_stats_uses_remote_history_token_usage_totals() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_total_tokens = Some((1_250_000, 200_000));
     app.remote_token_usage_totals = Some(crate::protocol::TokenUsageTotals {
         messages_with_token_usage: 3,
@@ -837,7 +837,7 @@ fn cache_stats_uses_remote_history_token_usage_totals() {
 #[test]
 fn version_command_shows_remote_server_identity_and_update_status() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_server_short_name = Some("blazing".to_string());
     app.remote_server_icon = Some("🔥".to_string());
     app.remote_server_version = Some("v0.14.2-dev (old)".to_string());
@@ -902,7 +902,7 @@ fn skills_command_lists_loaded_and_endorsed_skills() {
 #[test]
 fn skills_command_marks_active_skill_in_remote_mode() {
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_skills = vec!["optimization".to_string(), "firefox-browser".to_string()];
     app.active_skill = Some("optimization".to_string());
 
@@ -1107,7 +1107,7 @@ fn update_command_reloads_stale_remote_server_before_client_update_check() {
     use tokio::io::AsyncBufReadExt;
 
     let mut app = create_test_app();
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_server_has_update = Some(true);
 
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1149,7 +1149,7 @@ fn stale_server_history_is_deferred_before_remote_state_is_applied() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_session_id = Some("session_existing".to_string());
     app.connection_type = Some("websocket".to_string());
 
@@ -1239,7 +1239,7 @@ fn deferred_stale_server_history_captures_session_id_for_reload_handoff() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     // Fresh client: no session id learned yet (the #328 reproduction).
     app.remote_session_id = None;
     assert!(app.pending_reload_session_id.is_none());
@@ -1323,7 +1323,7 @@ fn ancient_server_history_is_deferred_via_client_side_release_check() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_session_id = Some("session_existing".to_string());
     app.connection_type = Some("websocket".to_string());
 
@@ -1412,7 +1412,7 @@ fn older_server_reporting_no_update_is_still_deferred_via_client_check() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_session_id = Some("session_existing".to_string());
 
     let redraw = app.handle_server_event(
@@ -1489,7 +1489,7 @@ fn current_release_server_history_is_not_deferred_by_client_check() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_session_id = Some("session_existing".to_string());
 
     let redraw = app.handle_server_event(
@@ -1548,7 +1548,7 @@ fn remote_done_finalizes_resumed_activity_without_current_message_id() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.is_processing = true;
     app.status = ProcessingStatus::RunningTool("bg".to_string());
     app.remote_resume_activity = Some(RemoteResumeActivity {

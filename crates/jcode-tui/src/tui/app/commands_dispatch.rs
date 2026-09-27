@@ -209,7 +209,7 @@ mod tests {
         }
         use crate::tui::app::{input, tests::create_test_app};
         let mut app = create_test_app();
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         for command in ["/config init", "/logout", "/save test", "/reload", "/git"] {
             assert!(super::dispatch_local_command(&mut app, command));
             assert!(

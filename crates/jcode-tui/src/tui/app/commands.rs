@@ -494,7 +494,7 @@ pub(super) fn poll_local_transfer_prepare(app: &mut App) -> bool {
 }
 
 pub(super) fn maybe_begin_pending_local_transfer(app: &mut App) -> bool {
-    if app.is_remote || app.is_processing || !app.pending_transfer_request {
+    if app.is_remote_client() || app.is_processing || !app.pending_transfer_request {
         return false;
     }
     if app.pending_local_transfer.is_some() {
@@ -748,7 +748,7 @@ fn handle_subagent_model_command(app: &mut App, trimmed: &str) -> bool {
         return false;
     }
 
-    if app.is_remote {
+    if app.is_remote_client() {
         app.push_display_message(DisplayMessage::error(
             "/subagent-model requires a live kcode server connection in remote mode.".to_string(),
         ));
@@ -794,7 +794,7 @@ fn handle_subagent_command(app: &mut App, trimmed: &str) -> bool {
         return false;
     }
 
-    if app.is_remote {
+    if app.is_remote_client() {
         app.push_display_message(DisplayMessage::error(
             "/subagent requires a live kcode server connection in remote mode.".to_string(),
         ));
@@ -1350,7 +1350,7 @@ fn handle_catchup_command(app: &mut App, trimmed: &str) -> bool {
     if !trimmed.starts_with("/catchup") {
         return false;
     }
-    if !app.is_remote {
+    if !app.is_remote_client() {
         app.push_display_message(DisplayMessage::error(
             "/catchup currently requires a connected shared server session.".to_string(),
         ));
@@ -1408,7 +1408,7 @@ fn handle_back_command(app: &mut App, trimmed: &str) -> bool {
     if trimmed != "/back" {
         return false;
     }
-    if !app.is_remote {
+    if !app.is_remote_client() {
         app.push_display_message(DisplayMessage::error(
             "/back currently requires a connected shared server session.".to_string(),
         ));
@@ -1450,7 +1450,7 @@ fn git_command_repo_dir(app: &App) -> Result<PathBuf, String> {
         ));
     }
 
-    if app.is_remote {
+    if app.is_remote_client() {
         return Err(
             "Unable to run /git: the remote session does not have a working directory.".to_string(),
         );
@@ -1583,7 +1583,7 @@ fn handle_transcript_command(app: &mut App, trimmed: &str) -> bool {
         }
     };
 
-    if !app.is_remote && app.session.id == session_id {
+    if !app.is_remote_client() && app.session.id == session_id {
         let _ = app.session.save();
     }
 
@@ -2038,7 +2038,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     if trimmed == "/transfer" {
-        if app.is_remote {
+        if app.is_remote_client() {
             app.push_display_message(DisplayMessage::error(
                 "/transfer requires an active connected session in remote mode.".to_string(),
             ));
@@ -2453,7 +2453,7 @@ Final proof packet required:\n\
 }
 
 pub(super) fn active_session_id(app: &App) -> String {
-    if app.is_remote {
+    if app.is_remote_client() {
         app.remote_session_id
             .clone()
             .unwrap_or_else(|| app.session.id.clone())

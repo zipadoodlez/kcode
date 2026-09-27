@@ -22,7 +22,7 @@ impl App {
             .map(|manager| manager.debug_memory_profile())
             .ok();
         let (provider_view_source, materialized_provider_messages): (&str, Cow<'_, [Message]>) =
-            if self.is_remote || !self.messages.is_empty() {
+            if self.is_remote_client() || !self.messages.is_empty() {
                 ("resident_ui", Cow::Borrowed(&self.messages))
             } else {
                 (

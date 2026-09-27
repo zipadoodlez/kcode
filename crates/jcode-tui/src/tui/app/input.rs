@@ -3786,7 +3786,7 @@ impl App {
                 return;
             }
 
-            if self.is_remote {
+            if self.is_remote_client() {
                 self.push_display_message(DisplayMessage::system(
                     "Input-line ! shell commands are only available in a local kcode TUI session.",
                 ));

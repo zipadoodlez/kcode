@@ -483,7 +483,7 @@ impl App {
         let next_openai = crate::auth::codex::next_account_label()
             .unwrap_or_else(|_| crate::auth::codex::primary_account_label());
         let now_ms = chrono::Utc::now().timestamp_millis();
-        let current_provider = if self.is_remote {
+        let current_provider = if self.is_remote_client() {
             self.remote_provider_name.clone()
         } else {
             Some(self.provider.name().to_string())

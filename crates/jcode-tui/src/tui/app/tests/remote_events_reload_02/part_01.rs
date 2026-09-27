@@ -23,7 +23,7 @@ fn test_remote_poke_queues_when_turn_is_in_progress() {
         )
         .expect("save todos");
 
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.is_processing = true;
         app.status = ProcessingStatus::Streaming;
         app.current_message_id = Some(42);
@@ -99,7 +99,7 @@ fn test_remote_ctrl_p_toggles_auto_poke() {
         let _guard = rt.enter();
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         assert!(app.auto_poke_incomplete_todos);
 
         rt.block_on(app.handle_remote_key(KeyCode::Char('p'), KeyModifiers::CONTROL, &mut remote))
@@ -126,7 +126,7 @@ fn test_remote_transfer_queues_pause_when_processing() {
         let _guard = rt.enter();
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.is_processing = true;
 
         app.input = "/transfer".to_string();
@@ -168,7 +168,7 @@ fn test_remote_interrupted_auto_poke_requeues_after_deferred_poke() {
         )
         .expect("save todos");
 
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.auto_poke_incomplete_todos = true;
         app.is_processing = true;
         app.status = ProcessingStatus::Streaming;

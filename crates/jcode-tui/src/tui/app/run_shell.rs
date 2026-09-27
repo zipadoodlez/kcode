@@ -518,7 +518,7 @@ impl App {
             update_session: self.update_requested.take(),
             restart_session: self.restart_requested.take(),
             exit_code: self.requested_exit_code,
-            session_id: if self.is_remote {
+            session_id: if self.is_remote_client() {
                 self.remote_session_id.clone()
             } else {
                 Some(self.session.id.clone())

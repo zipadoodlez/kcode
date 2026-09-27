@@ -79,7 +79,8 @@ impl App {
     }
 
     fn runtime_mode_allows_turn_notifications(&self) -> bool {
-        matches!(self.runtime_mode(), super::AppRuntimeMode::RemoteClient) && !self.is_replay
+        matches!(self.runtime_mode(), super::AppRuntimeMode::RemoteClient)
+            && !self.is_replay_runtime()
     }
 
     /// Final assistant text of the turn, used for the notification snippet.

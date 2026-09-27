@@ -354,7 +354,7 @@ impl App {
         let skills = self.current_skills_snapshot();
         push_skill_commands(&mut commands, &mut seen, &skills);
 
-        if self.is_remote && !self.remote_skills.is_empty() {
+        if self.is_remote_client() && !self.remote_skills.is_empty() {
             for skill in &self.remote_skills {
                 let command = format!("/{skill}");
                 if seen.insert(command.clone()) {
@@ -387,7 +387,7 @@ impl App {
         let mut seen = std::collections::HashSet::new();
         let mut models = Vec::new();
 
-        if self.is_remote {
+        if self.is_remote_client() {
             if let Some(current) = self.remote_provider_model.clone() {
                 push_unique(&mut seen, &mut models, current);
             }
@@ -447,7 +447,7 @@ impl App {
             "Use automatic OpenRouter provider routing",
         );
 
-        if self.is_remote {
+        if self.is_remote_client() {
             let routes = if !self.remote_model_options.is_empty() {
                 self.remote_model_options.clone()
             } else {
@@ -1425,7 +1425,7 @@ impl App {
             return Vec::new();
         }
         let preview_mode = self.onboarding_preview_mode;
-        let is_canary = if self.is_remote {
+        let is_canary = if self.is_remote_client() {
             self.remote_is_canary.unwrap_or(self.session.is_canary)
         } else {
             self.session.is_canary

@@ -97,7 +97,7 @@ fn test_remote_auto_poke_followup_preserves_visible_timer_and_stays_hidden() {
         .expect("save todos");
 
         let started = Instant::now() - Duration::from_secs(90);
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.auto_poke_incomplete_todos = true;
         app.is_processing = true;
         app.status = ProcessingStatus::Streaming;
@@ -165,7 +165,7 @@ fn test_remote_auto_poke_challenges_abrupt_confidence_increase() {
             }],
         )
         .expect("save passing goal");
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.auto_poke_incomplete_todos = true;
         app.is_processing = true;
         app.status = ProcessingStatus::Streaming;
@@ -226,7 +226,7 @@ fn test_remote_auto_poke_completion_below_threshold_tells_model_to_keep_working(
             }],
         )
         .expect("save passing goal");
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.auto_poke_incomplete_todos = true;
         app.is_processing = true;
         app.status = ProcessingStatus::Streaming;
@@ -272,7 +272,7 @@ fn test_remote_poke_status_and_off_update_state() {
         )
         .expect("save todos");
 
-        app.is_remote = true;
+        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.auto_poke_incomplete_todos = true;
         app.is_processing = true;
         app.status = ProcessingStatus::Streaming;
@@ -316,7 +316,7 @@ fn test_remote_rewind_lists_display_history_when_session_transcript_is_empty() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.session.messages.clear();
     app.push_display_message(DisplayMessage::user("hello"));
     app.push_display_message(DisplayMessage::assistant("hi there"));
@@ -340,7 +340,7 @@ fn test_remote_rewind_completion_shows_undo_hint_after_history_refresh() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.is_remote = true;
+    app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.push_display_message(DisplayMessage::user("hello"));
     app.push_display_message(DisplayMessage::assistant("hi there"));
 
