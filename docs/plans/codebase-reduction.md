@@ -246,14 +246,21 @@ So this is a **condense**, not a re-core. What the reading did confirm:
   `SwarmMemberStatus` share ~10 hand-copied fields with no conversion between
   them.
 - **The status vocabulary diverged.** `SwarmLifecycleStatus`
-  (`swarm-core/src/lib.rs:136`) is typed, but `SwarmMember.status` is `String`,
-  `AgentInfo.status` is `Option<String>`, and `is_active_status` is defined
-  twice with the same name and signature but different sets
-  (`plan/src/lib.rs:286` = `running|running_stale` vs
-  `tui-render/src/swarm_gallery.rs:55` = `running|streaming|thinking`).
-  Terminal-ness is defined three ways (`plan/src/lib.rs:279`, `swarm.rs:227`,
-  plus inline lists at `swarm.rs:1401`, `server.rs:341`). 134 non-test sites
-  string-match status literals.
+  (`swarm-core/src/lib.rs:136`) is typed, but it is missing the `streaming` and
+  `thinking` values that the code actually uses as member statuses
+  (`turn_loops.rs:207` writes `status: "streaming"`), so it would file them
+  under `Other(String)`. On top of that, `SwarmMember.status` is `String`,
+  `AgentInfo.status` is `Option<String>`, and the "active" set is re-spelled by
+  hand in at least nine places with three different sets:
+  `running|running_stale` (`plan/src/lib.rs:286`, `swarm.rs:568`,
+  `comm_control.rs:284`), `running|running_stale|queued` (`swarm.rs:635`,
+  `swarm.rs:1481`), and `running|streaming|thinking`
+  (`tui-render/src/swarm_gallery.rs:55`, `swarm.rs:722`, `swarm.rs:1382`,
+  `server_events.rs:2535`). Terminal-ness is likewise defined three ways
+  (`plan/src/lib.rs:279`, `swarm.rs:227`, inline at `server.rs:341`). Note the
+  two same-named `is_active_status` functions serve different domains (plan item
+  vs swarm member), so this is a name collision inside one vocabulary, not two
+  copies of one predicate. 134 non-test sites string-match status literals.
 - **Coordination state has no owner.** `SwarmMutationRuntime`
   (`swarm_mutation_state.rs:95`), `AwaitMembersRuntime` (`await_members_state.rs:71`),
   and two process-global claim maps (`comm_control.rs:101`,
@@ -358,6 +365,8 @@ pick for the maintainer.
 3. **Tier 3 and Tier 6 coupling.** `handle_client`'s context struct is where
    `SwarmState` should replace the 7 loose maps. That is one change serving two
    tiers. Do them together, or keep Tier 6 strictly after Tier 3?
-4. **Scope of this pass.** The plan is docs-only so far. The cheap, verified
-   cuts (dead `App::run`; the duplicate `is_active_status`) could land now, or
-   wait until a tier actually starts.
+4. **Scope of this pass.** The plan is docs-only so far. Dead `App::run` is a
+   safe standalone cut and could land now. The duplicate `is_active_status` is
+   *not* a safe standalone cut: the two functions serve different domains and
+   the member one relies on status values the typed enum lacks, so collapsing
+   them requires the Tier 6 enum work first. Corrected from the first draft.

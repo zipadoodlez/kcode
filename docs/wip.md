@@ -72,7 +72,7 @@ real owner, so this is condensation, not a re-core.
 | item | detail |
 |---|---|
 | member projection written 4x | `SwarmMember` is hand-mapped into `AgentInfo` (`protocol:219`), `SwarmMemberStatus` (`protocol:456`), and a local `MemberStatic` (`client_comm_context.rs:239`), by separate mappers (`swarm.rs:701`, `client_comm_context.rs:298`, `client_comm_channels.rs:84`) |
-| status predicates diverged | `is_active_status` defined twice with different sets (`plan/lib.rs:286` vs `swarm_gallery.rs:55`); terminal-ness defined 3 ways; 134 non-test string-match sites |
+| status vocabulary diverged | `SwarmLifecycleStatus` (`swarm-core:136`) lacks `streaming`/`thinking` which the code uses (`turn_loops.rs:207`), so they fall to `Other`; the "active" set is re-spelled in 9 places with 3 different sets; `is_active_status` exists twice as a name collision across two domains; 134 non-test string-match sites |
 | coordination state unowned | `SwarmMutationRuntime`, `AwaitMembersRuntime`, and two process-global claim maps (`comm_control.rs:101`, `communicate.rs:726`) |
 | channel subs across two locks | stitched with `std::mem::take` (`swarm_channels.rs:13-21`) |
 | `SwarmState` rebuilt, not passed | `handle_client` threads 7 loose `Arc<RwLock<HashMap>>` maps; `SwarmState { .. }` rebuilt at ~28 sites |
