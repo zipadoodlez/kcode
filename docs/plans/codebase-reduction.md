@@ -62,12 +62,16 @@ unrelated work.
 No design, no migration, nothing to half-finish. Highest return per hour.
 Ships alone trivially.
 
-- **Provider cut.** ~19k lines already scoped in `wip.md` (`cursor-runtime`,
-  `copilot*`, `antigravity*`, `grok-build-runtime`, `claude-cli-runtime`,
-  `bedrock`, `provider-doctor`, `provider-metadata`). Delete as each is proven
-  unused. Not a rewrite: the surviving lines are accumulated production
-  bugfixes. Note these crates are *not* thin wrappers (openai 2379, openrouter
-  2681, anthropic 1641, bedrock 1981 lines), so each deletion needs evidence.
+- **Provider cut - withdrawn (maintainer decision, 2026-09-27).** The first
+  draft proposed deleting ~19k lines across `cursor-runtime`, `copilot*`,
+  `antigravity*`, `grok-build-runtime`, `claude-cli-runtime`, `bedrock`,
+  `provider-doctor`, `provider-metadata`. That is off the table: **every
+  provider stays accessible to users.** The evidence agrees - the candidates
+  are all user-selectable in `ProviderChoice` (`src/cli/provider_init.rs`:
+  `Cursor`, `Copilot`, `Antigravity`, `GrokBuild`, `Bedrock`), `provider-metadata`
+  has 5 dependents, and `jcode-base` depends on `jcode-provider-copilot`. None
+  is safe to remove. Provider cleanup moves to tier 5 (unify the
+  representation, keep every provider).
 - **Repo hygiene** already listed in `wip.md`: upstream CI workflows, dead
   config, `scripts/`, budget baselines, missing `packaging/arch/PKGBUILD`.
 - **Dead TUI files.** No verified dead-file set exists yet. The inherited
@@ -232,10 +236,20 @@ the literals migrate later, on change.
   are pure projections.
 - Acceptance: adding a provider is one registry row plus its runtime; the count
   of hardcoded provider strings stops growing (add a budget for it if useful).
+- Optional crate-shape consolidation, evaluate separately: the per-provider
+  layout is non-uniform. Six providers ship a wire crate plus a `-runtime`
+  sibling (`anthropic`, `antigravity`, `copilot`, `gemini`, `openai`,
+  `openrouter`); three are runtime-only (`claude-cli-runtime`, `cursor-runtime`,
+  `grok-build-runtime`); `bedrock` is wire-only; `provider-core`, `env`,
+  `metadata`, `doctor` are shared or tooling. Making every provider the same
+  shape is a uniformity win at a possible compile-time cost. It removes no
+  provider; treat it as a candidate, not a mandate, and only if the pairs
+  genuinely change together.
 
-Do not confuse this with Tier 0's provider cut. The cut deletes unused
-providers; this unifies how the surviving ones are named. The cut makes this
-smaller.
+Tier 0's provider cut is withdrawn, so this is the **only** provider cleanup:
+keep every provider reachable, collapse the representation. If a change here
+would remove a provider rather than a duplicate *of* one, stop. Provider
+capability is fixed; only the way it is named and routed is in scope.
 
 ## Tier 6 - swarm/comm condensation
 
@@ -309,8 +323,10 @@ member projection, which is independent of the channel locks.
 ## Tier 7 - dependency diet
 
 660 lock packages for a terminal agent. Each removal is compile time and
-supply-chain surface. Build time tracks crate and dependency count, so Tier 0's
-provider deletions pay here too. This is the concrete answer to "faster".
+supply-chain surface. Build time tracks crate and dependency count, so any
+crate-count reduction pays here too (this is not the withdrawn provider cut; it
+trims genuinely unused dependencies, not providers). This is the concrete
+answer to "faster".
 
 ## Tier 8 - crate spine and file layout
 

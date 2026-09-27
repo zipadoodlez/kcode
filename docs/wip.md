@@ -10,7 +10,7 @@ git has the history.
 
 | plan | state | what's left |
 |---|---|---|
-| [plans/codebase-reduction.md](plans/codebase-reduction.md) | proposal, nothing implemented; claims re-verified 2026-09-27 | tier 0 (delete: provider cut, hygiene, dead local TUI loop) is the entry point - the inherited "dead TUI files" list did not survive reading, so no dead-file set is verified; tier 1 is now "condense the test suite" (its pixel-brittleness premise was refuted; the test tree is `include!`-wired into one module); tiers 3-6 are the unifications (protocol dispatch, command surface, provider identity, swarm/comm). Four open judgment calls are listed at the bottom of the plan |
+| [plans/codebase-reduction.md](plans/codebase-reduction.md) | proposal, nothing implemented; claims re-verified 2026-09-27; provider cut withdrawn by maintainer decision | tier 0 (delete: hygiene, dead local TUI loop) is the entry point - the inherited "dead TUI files" list did not survive reading, so no dead-file set is verified, and the provider cut is off the table (all providers stay accessible); tier 1 is now "condense the test suite" (its pixel-brittleness premise was refuted; the test tree is `include!`-wired into one module); tiers 3-6 are the unifications (protocol dispatch, command surface, provider identity, swarm/comm). Four open judgment calls are listed at the bottom of the plan |
 | [plans/browser-provider-protocol.md](plans/browser-provider-protocol.md) | draft spec, no implementation | tighten the core method set and the normalized `page.snapshot` format before building any adapter |
 
 Withdrawn: `plans/tui-render-ownership.md` (git history at `ce83f61a`). Its goal
@@ -53,7 +53,7 @@ as the reference for those groups.
 | dead config | `Cargo.lock` is committed (correct for a binary) but still listed in `.gitignore:3`; `.gitignore` also names paths absent here (`/.jcode/generated-images/`, `/telemetry-worker/backups/`, `graphify-out/`, `captures/`, `ios_simulator_screenshot.png`) |
 | `scripts/` | ~90 inherited files, no README; several are explicitly jcode-specific. Classify keep/delete/broken or delete |
 | budget baselines | the six budget files (`panic_budget.json`, `swallowed_error_budget.json`, `code_size_budget.json`, `warning_budget.txt`, `wildcard_reexport_budget.json`, `test_size_budget.json`) carry jcode's numbers; re-baseline or they are meaningless or block work |
-| fork policy | rebase lane vs hard divergence is undecided, and it blocks crate names, the env prefix and the provider cut. `README.md` states "does not track upstream", but nothing follows from it |
+| fork policy | rebase lane vs hard divergence is undecided, and it blocks crate names and the env prefix. `README.md` states "does not track upstream", but nothing follows from it |
 | licensing | no `license` field on the root `Cargo.toml` or any of the 63 members; add `license = "MIT"`, ship the LICENSE inside the package (the PKGBUILD), and generate a `THIRD_PARTY_NOTICES` from `Cargo.lock` |
 | dangling doc reference | `scripts/check_wildcard_reexport_budget.py` points at `docs/CRATE_OWNERSHIP_BOUNDARIES.md`, which does not exist (and SCREAMING_CASE violates the `docs/README.md` kebab-case convention). Fold it into reduction tier 8 or delete the reference |
 
@@ -61,8 +61,8 @@ as the reference for those groups.
 
 | item | state |
 |---|---|
-| provider cut | 20 `jcode-provider-*` crates, 61k lines, for roughly three wire formats (OpenAI-compatible, Anthropic, Gemini). ~19k cut candidates (`cursor-runtime`, `copilot*`, `antigravity*`, `grok-build-runtime`, `claude-cli-runtime`, `bedrock`, `provider-doctor`, `provider-metadata`/catalog); realistic target ~12-18k. Caution: the 46.8k non-test lines are accumulated production bugfixes - delete as they bite, do not rewrite blind |
-| provider identity cohesion | 7 enums plus several string vocabularies name the same thing; the code comment on `cli_provider_arg_for_session_key` admits they "overlap but are NOT identical". Reduction tier 5 unifies around one `ProviderId` registry |
+| provider clean format (all providers kept) | maintainer decision 2026-09-27: **no provider is deleted.** The old ~19k provider cut is withdrawn - every candidate backs a user-selectable provider (`ProviderChoice` exposes Cursor, Copilot, Antigravity, GrokBuild, Bedrock) and `provider-metadata` has 5 dependents. The 20 `jcode-provider-*` crates (61.1k lines) stay. Cleanup is reduction tier 5: one `ProviderId` representation, plus an optional per-provider crate-shape unification |
+| provider identity cohesion | 7 enums plus several string vocabularies name the same thing; the code comment on `cli_provider_arg_for_session_key` admits they "overlap but are NOT identical". Reduction tier 5 unifies around one `ProviderId` registry, keeping every provider reachable |
 
 ## Swarm layer
 
