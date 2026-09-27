@@ -473,7 +473,7 @@ impl App {
                                         });
                                         // Close any open reasoning region before committing the
                                         // assistant message so the blockquote is well-formed.
-                                        if self.reasoning_streaming {
+                                        if self.reasoning.streaming {
                                             self.close_reasoning_region(None);
                                         }
                                         self.commit_pending_streaming_assistant_message();
@@ -688,9 +688,9 @@ impl App {
                                     StreamEvent::ThinkingStart => {
                                         let start = Instant::now();
                                         self.resume_streaming_tps();
-                                        self.thinking_start = Some(start);
-                                        self.thinking_buffer.clear();
-                                        self.thinking_prefix_emitted = false;
+                                        self.reasoning.thinking_start = Some(start);
+                                        self.reasoning.thinking_buffer.clear();
+                                        self.reasoning.thinking_prefix_emitted = false;
                                         // Always show Thinking in status bar
                                         self.status = ProcessingStatus::Thinking(start);
                                         self.broadcast_debug(crate::tui::backend::DebugEvent::ThinkingStart);
@@ -707,14 +707,14 @@ impl App {
                                         // ThinkingStart (e.g. OpenRouter, Bedrock) or when the
                                         // reasoning text itself is hidden by config.
                                         let thinking_start =
-                                            *self.thinking_start.get_or_insert_with(Instant::now);
+                                            *self.reasoning.thinking_start.get_or_insert_with(Instant::now);
                                         let entered_thinking =
                                             !matches!(self.status, ProcessingStatus::Thinking(_));
                                         if entered_thinking {
                                             self.status = ProcessingStatus::Thinking(thinking_start);
                                         }
                                         // Buffer thinking content for status/debug accounting.
-                                        self.thinking_buffer.push_str(&thinking_text);
+                                        self.reasoning.thinking_buffer.push_str(&thinking_text);
                                         // Only render thinking content if enabled in config. It is
                                         // paced through the same segment-aware StreamBuffer as the
                                         // answer text, so ordering is preserved without flushing
@@ -733,8 +733,8 @@ impl App {
                                     }
                                     StreamEvent::ThinkingEnd => {
                                         self.pause_streaming_tps(true);
-                                        self.thinking_start = None;
-                                        self.thinking_buffer.clear();
+                                        self.reasoning.thinking_start = None;
+                                        self.reasoning.thinking_buffer.clear();
                                         self.broadcast_debug(crate::tui::backend::DebugEvent::ThinkingEnd);
                                     }
                                     StreamEvent::ThinkingDone { duration_secs: _ } => {
@@ -745,8 +745,8 @@ impl App {
                                             let ops = self.stream_buffer.push_close_reasoning();
                                             self.apply_stream_ops(ops);
                                         }
-                                        self.thinking_prefix_emitted = false;
-                                        self.thinking_buffer.clear();
+                                        self.reasoning.thinking_prefix_emitted = false;
+                                        self.reasoning.thinking_buffer.clear();
                                     }
                                     StreamEvent::OpenAIReasoning {
                                         id,
@@ -1032,7 +1032,7 @@ impl App {
             // a hard message boundary so the live-rendered reasoning is
             // anchored/retained instead of being silently stripped by
             // `collapse_reasoning_for_commit`.
-            if self.reasoning_streaming {
+            if self.reasoning.streaming {
                 self.close_reasoning_region(None);
             }
 

@@ -3382,10 +3382,10 @@ impl App {
     }
 
     pub(super) fn insert_thought_line(&mut self, line: String) {
-        if self.thought_line_inserted || line.is_empty() {
+        if self.reasoning.thought_line_inserted || line.is_empty() {
             return;
         }
-        self.thought_line_inserted = true;
+        self.reasoning.thought_line_inserted = true;
         let mut prefix = line;
         if !prefix.ends_with('\n') {
             prefix.push('\n');
@@ -3407,7 +3407,7 @@ impl App {
     /// must not shift).
     pub(super) fn gc_offscreen_reasoning_traces(&mut self) -> bool {
         // Only the traces *before* the most recent one are stale.
-        if self.turn_reasoning_traces.len() < 2 {
+        if self.reasoning.turn_traces.len() < 2 {
             return false;
         }
         if self.auto_scroll_paused {
@@ -3426,8 +3426,8 @@ impl App {
         // viewport shows the last `viewport` lines, so once the transcript has
         // grown a full viewport past the anchor point (with margin for the
         // separator blank line), the trace cannot be on screen.
-        let last = self.turn_reasoning_traces.len() - 1;
-        let stale: Vec<usize> = self.turn_reasoning_traces[..last]
+        let last = self.reasoning.turn_traces.len() - 1;
+        let stale: Vec<usize> = self.reasoning.turn_traces[..last]
             .iter()
             .filter(|t| total.saturating_sub(t.wrapped_lines_at_anchor) > viewport + 2)
             .map(|t| t.display_index)
@@ -3438,7 +3438,7 @@ impl App {
         let removed = self.remove_reasoning_trace_messages(stale.iter().copied());
         if removed > 0 {
             // Re-track surviving traces with adjusted display indices.
-            self.turn_reasoning_traces.retain_mut(|t| {
+            self.reasoning.turn_traces.retain_mut(|t| {
                 if stale.contains(&t.display_index) {
                     return false;
                 }
@@ -3480,23 +3480,23 @@ impl App {
         // region. If a region is still open when real (non-whitespace) answer
         // text arrives, close it first so the next `open_reasoning_region` still
         // inserts its blank-line separator. Without this, a stale
-        // `reasoning_streaming` flag makes `open_reasoning_region` early-return
+        // `reasoning.streaming` flag makes `open_reasoning_region` early-return
         // and the answer tail gets glued directly onto the next reasoning run
         // (e.g. `...patch + build.Ah, I see...`). Whitespace-only appends (the
         // separators emitted by the reasoning helpers themselves) never trip
         // this. `open_reasoning_region` only appends its separator *before*
         // setting the flag, so this cannot recurse.
-        if self.reasoning_streaming && !text.trim().is_empty() {
+        if self.reasoning.streaming && !text.trim().is_empty() {
             self.close_reasoning_region(None);
         }
         // A whitespace-only append skips the close above, so it pushes text
-        // *past* the live reasoning tail while `reasoning_partial_len` still
+        // *past* the live reasoning tail while `reasoning.partial_len` still
         // claims the tail sits at the end of the buffer. That offset then no
         // longer describes the buffer, which is the same desync class as
         // #632/#633/#635. The tail is only rebuildable while it is still the
         // suffix, so drop it here rather than leave a stale length behind.
-        if self.reasoning_partial_len > 0 {
-            self.reasoning_partial_len = 0;
+        if self.reasoning.partial_len > 0 {
+            self.reasoning.partial_len = 0;
         }
         self.streaming.streaming_text.push_str(text);
         self.refresh_split_view_if_needed();
@@ -3533,7 +3533,7 @@ impl App {
                     }
                 }
                 StreamOp::CloseReasoning => {
-                    if self.reasoning_streaming {
+                    if self.reasoning.streaming {
                         self.close_reasoning_region(None);
                         changed = true;
                     }
@@ -3563,10 +3563,10 @@ impl App {
         // byte length would make `strip_reasoning_partial_tail` slice at an
         // offset that has no relation to the new contents (and can land
         // mid-character, panicking). Reset the reasoning tail state with it.
-        self.reasoning_partial_len = 0;
-        self.reasoning_pending_line.clear();
-        self.reasoning_streaming = false;
-        self.reasoning_block_start = None;
+        self.reasoning.partial_len = 0;
+        self.reasoning.pending_line.clear();
+        self.reasoning.streaming = false;
+        self.reasoning.block_start = None;
         self.refresh_split_view_if_needed();
     }
 
@@ -3574,11 +3574,11 @@ impl App {
         self.streaming.streaming_text.clear();
         self.stream_message_ended = false;
         self.deferred_stream_done_id = None;
-        self.reasoning_streaming = false;
-        self.reasoning_pending_line.clear();
-        self.reasoning_partial_len = 0;
+        self.reasoning.streaming = false;
+        self.reasoning.pending_line.clear();
+        self.reasoning.partial_len = 0;
         // The stream (and any block offset into it) is gone.
-        self.reasoning_block_start = None;
+        self.reasoning.block_start = None;
         self.refresh_split_view_if_needed();
         self.streaming_md_renderer.borrow_mut().reset();
     }
@@ -3610,10 +3610,10 @@ impl App {
         self.clear_streaming_render_state();
         self.streaming_tool_calls.clear();
         self.batch_progress = None;
-        self.thought_line_inserted = false;
-        self.thinking_prefix_emitted = false;
-        self.thinking_buffer.clear();
-        self.thinking_start = None;
+        self.reasoning.thought_line_inserted = false;
+        self.reasoning.thinking_prefix_emitted = false;
+        self.reasoning.thinking_buffer.clear();
+        self.reasoning.thinking_start = None;
         // Assistant text committed to the transcript during this attempt (a
         // ToolStart boundary commits the pending streamed text) must also go;
         // the retry re-streams the entire response. `push_display_message`
@@ -3640,10 +3640,10 @@ impl App {
         let content = std::mem::take(&mut self.streaming.streaming_text);
         self.stream_message_ended = false;
         self.deferred_stream_done_id = None;
-        self.reasoning_streaming = false;
-        self.reasoning_pending_line.clear();
-        self.reasoning_partial_len = 0;
-        self.reasoning_block_start = None;
+        self.reasoning.streaming = false;
+        self.reasoning.pending_line.clear();
+        self.reasoning.partial_len = 0;
+        self.reasoning.block_start = None;
         self.refresh_split_view_if_needed();
         self.streaming_md_renderer.borrow_mut().reset();
         content
@@ -3654,7 +3654,7 @@ impl App {
         self.apply_stream_ops(ops);
         // A commit is a hard message boundary: end any still-open reasoning
         // region so `current` mode retains/discards the trace correctly.
-        if self.reasoning_streaming {
+        if self.reasoning.streaming {
             self.close_reasoning_region(None);
         }
 
@@ -3951,9 +3951,9 @@ impl App {
         // reasoning traces leave the transcript (ephemeral `current` mode).
         self.clear_turn_reasoning_traces();
         self.stream_buffer.clear();
-        self.thought_line_inserted = false;
-        self.thinking_prefix_emitted = false;
-        self.thinking_buffer.clear();
+        self.reasoning.thought_line_inserted = false;
+        self.reasoning.thinking_prefix_emitted = false;
+        self.reasoning.thinking_buffer.clear();
         self.streaming_tool_calls.clear();
         self.streaming.streaming_input_tokens = 0;
         self.streaming.streaming_output_tokens = 0;
@@ -4019,9 +4019,9 @@ impl App {
             self.session_save_pending = true;
             self.clear_streaming_render_state();
             self.stream_buffer.clear();
-            self.thought_line_inserted = false;
-            self.thinking_prefix_emitted = false;
-            self.thinking_buffer.clear();
+            self.reasoning.thought_line_inserted = false;
+            self.reasoning.thinking_prefix_emitted = false;
+            self.reasoning.thinking_buffer.clear();
             self.streaming_tool_calls.clear();
             self.streaming.streaming_input_tokens = 0;
             self.streaming.streaming_output_tokens = 0;

@@ -573,9 +573,9 @@ pub(super) fn finish_turn(app: &mut App) {
     app.interleave_message = None;
     app.pending_soft_interrupts.clear();
     app.pending_soft_interrupt_requests.clear();
-    app.thought_line_inserted = false;
-    app.thinking_prefix_emitted = false;
-    app.thinking_buffer.clear();
+    app.reasoning.thought_line_inserted = false;
+    app.reasoning.thinking_prefix_emitted = false;
+    app.reasoning.thinking_buffer.clear();
     app.note_runtime_memory_event_force("turn_completed", "local_turn_finished");
     let followup_scheduled = app.schedule_turn_end_followups();
     if !followup_scheduled {

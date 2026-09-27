@@ -305,9 +305,9 @@ pub(super) fn activate_auto_poke_local(app: &mut App) {
             app.status = ProcessingStatus::Sending;
             app.clear_streaming_render_state();
             app.stream_buffer.clear();
-            app.thought_line_inserted = false;
-            app.thinking_prefix_emitted = false;
-            app.thinking_buffer.clear();
+            app.reasoning.thought_line_inserted = false;
+            app.reasoning.thinking_prefix_emitted = false;
+            app.reasoning.thinking_buffer.clear();
             app.streaming_tool_calls.clear();
             app.batch_progress = None;
             app.streaming.streaming_input_tokens = 0;

@@ -609,7 +609,10 @@ pub(in crate::tui::app) fn handle_server_event(
             // to `Thinking` while reasoning deltas flow. The next `TextDelta` moves
             // it back to `Streaming`.
             if !matches!(app.status, ProcessingStatus::RunningTool(_)) {
-                let thinking_start = *app.thinking_start.get_or_insert_with(Instant::now);
+                let thinking_start = *app
+                    .reasoning
+                    .thinking_start
+                    .get_or_insert_with(Instant::now);
                 if !matches!(app.status, ProcessingStatus::Thinking(_)) {
                     app.status = ProcessingStatus::Thinking(thinking_start);
                 }
@@ -627,7 +630,7 @@ pub(in crate::tui::app) fn handle_server_event(
             eager_stream_redraw
         }
         ServerEvent::ReasoningDone { .. } => {
-            app.thinking_start = None;
+            app.reasoning.thinking_start = None;
             // Queue the region close behind any still-buffered reasoning so it
             // lands exactly after the final reasoning character reveals.
             let ops = app.stream_buffer.push_close_reasoning();
@@ -990,9 +993,9 @@ pub(in crate::tui::app) fn handle_server_event(
             app.stream_buffer.clear();
             app.streaming_tool_calls.clear();
             app.batch_progress = None;
-            app.thought_line_inserted = false;
-            app.thinking_prefix_emitted = false;
-            app.thinking_buffer.clear();
+            app.reasoning.thought_line_inserted = false;
+            app.reasoning.thinking_prefix_emitted = false;
+            app.reasoning.thinking_buffer.clear();
             if recovered_local || !app.pending_soft_interrupts.is_empty() {
                 crate::logging::info(&format!(
                     "Preserving {} pending soft interrupt(s) across interrupt",
@@ -1087,7 +1090,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 // began answer text). Close it as a hard message boundary so the
                 // live-rendered reasoning is anchored/retained instead of being
                 // silently stripped by `collapse_reasoning_for_commit` below.
-                if app.reasoning_streaming {
+                if app.reasoning.streaming {
                     app.close_reasoning_region(None);
                 }
                 app.pause_streaming_tps(false);
@@ -1123,9 +1126,9 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.batch_progress = None;
                 app.streaming_tool_calls.clear();
                 app.current_message_id = None;
-                app.thought_line_inserted = false;
-                app.thinking_prefix_emitted = false;
-                app.thinking_buffer.clear();
+                app.reasoning.thought_line_inserted = false;
+                app.reasoning.thinking_prefix_emitted = false;
+                app.reasoning.thinking_buffer.clear();
                 remote.clear_pending();
                 remote.reset_call_output_tokens_seen();
                 app.note_runtime_memory_event_force("turn_completed", "remote_turn_finished");
@@ -1249,9 +1252,9 @@ pub(in crate::tui::app) fn handle_server_event(
             app.status = ProcessingStatus::Idle;
             app.stream_message_ended = false;
             let recovered_local = recover_local_interleave_to_queue(app, "request error");
-            app.thought_line_inserted = false;
-            app.thinking_prefix_emitted = false;
-            app.thinking_buffer.clear();
+            app.reasoning.thought_line_inserted = false;
+            app.reasoning.thinking_prefix_emitted = false;
+            app.reasoning.thinking_buffer.clear();
             if recovered_local || !app.pending_soft_interrupts.is_empty() {
                 crate::logging::info(&format!(
                     "Preserving {} pending soft interrupt(s) across remote error",
@@ -1549,9 +1552,9 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.clear_display_messages();
                 app.clear_streaming_render_state();
                 app.streaming_tool_calls.clear();
-                app.thought_line_inserted = false;
-                app.thinking_prefix_emitted = false;
-                app.thinking_buffer.clear();
+                app.reasoning.thought_line_inserted = false;
+                app.reasoning.thinking_prefix_emitted = false;
+                app.reasoning.thinking_buffer.clear();
                 app.streaming.streaming_input_tokens = 0;
                 app.streaming.streaming_output_tokens = 0;
                 app.streaming.streaming_cache_read_tokens = None;
@@ -1830,9 +1833,9 @@ pub(in crate::tui::app) fn handle_server_event(
                                 app.clear_streaming_render_state();
                                 app.streaming_tool_calls.clear();
                                 app.batch_progress = None;
-                                app.thought_line_inserted = false;
-                                app.thinking_prefix_emitted = false;
-                                app.thinking_buffer.clear();
+                                app.reasoning.thought_line_inserted = false;
+                                app.reasoning.thinking_prefix_emitted = false;
+                                app.reasoning.thinking_buffer.clear();
                                 app.streaming.streaming_input_tokens = 0;
                                 app.streaming.streaming_output_tokens = 0;
                                 app.streaming.streaming_cache_read_tokens = None;

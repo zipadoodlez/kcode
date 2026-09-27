@@ -950,9 +950,9 @@ pub(super) fn handle_disconnect(
     app.clear_streaming_render_state();
     app.streaming_tool_calls.clear();
     app.batch_progress = None;
-    app.thought_line_inserted = false;
-    app.thinking_prefix_emitted = false;
-    app.thinking_buffer.clear();
+    app.reasoning.thought_line_inserted = false;
+    app.reasoning.thinking_prefix_emitted = false;
+    app.reasoning.thinking_buffer.clear();
     if recovered_local || !app.pending_soft_interrupts.is_empty() {
         crate::logging::info(&format!(
             "Preserving {} pending soft interrupt(s) across disconnect",

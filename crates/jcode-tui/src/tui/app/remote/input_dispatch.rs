@@ -44,9 +44,9 @@ pub(in crate::tui::app) async fn begin_remote_send(
     // into, the previous call's cache counters (issue #441). Newer servers
     // also emit KvCacheRequest per call, which re-arms this flag per call.
     app.mark_stream_usage_call_boundary();
-    app.thought_line_inserted = false;
-    app.thinking_prefix_emitted = false;
-    app.thinking_buffer.clear();
+    app.reasoning.thought_line_inserted = false;
+    app.reasoning.thinking_prefix_emitted = false;
+    app.reasoning.thinking_buffer.clear();
     app.rate_limit_pending_message = Some(PendingRemoteMessage {
         content,
         images,
@@ -334,9 +334,9 @@ pub(in crate::tui::app) fn begin_remote_split_launch(app: &mut App, label: &str)
     app.last_stream_activity = Some(started_at);
     app.remote_resume_activity = None;
     app.reset_streaming_tps();
-    app.thought_line_inserted = false;
-    app.thinking_prefix_emitted = false;
-    app.thinking_buffer.clear();
+    app.reasoning.thought_line_inserted = false;
+    app.reasoning.thinking_prefix_emitted = false;
+    app.reasoning.thinking_buffer.clear();
     app.current_message_id = None;
     app.set_status_notice(format!("{} launching", label));
 }
@@ -478,9 +478,9 @@ async fn submit_remote_input_shell(
     app.last_stream_activity = Some(Instant::now());
     app.remote_resume_activity = None;
     app.reset_streaming_tps();
-    app.thought_line_inserted = false;
-    app.thinking_prefix_emitted = false;
-    app.thinking_buffer.clear();
+    app.reasoning.thought_line_inserted = false;
+    app.reasoning.thinking_prefix_emitted = false;
+    app.reasoning.thinking_buffer.clear();
     app.rate_limit_pending_message = None;
     remote.reset_call_output_tokens_seen();
     app.set_status_notice(format!(

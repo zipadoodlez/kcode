@@ -182,7 +182,15 @@ Staged, each lands whole.
     and load request id are `App::model_picker: ModelPickerLoadState` in
     `inline_interactive.rs`; `app_fields` fell 274 to 271. The login picker
     remains.
-  - Stage 7: stream/status (26 fields, 414 sites).
+  - Stage 7: stream/status (26 fields, 414 sites). **Reasoning slice landed:**
+    the live thinking/reasoning stream (9 fields: the thinking buffer/line
+    state, the reasoning tail offsets, and the per-turn traces) moves into
+    `reasoning.rs` as `ReasoningState`; `app_fields` fell 259 to 251. The rest
+    of the region is not a mechanical sweep: `is_processing`, `status`,
+    `streaming`, `status_detail`, `subagent_status`, `batch_progress`,
+    `processing_started`, `stream_message_ended`, `context_limit`,
+    `context_info`, and `context_revision` all collide with other structs or
+    method names, so split them per concept with the receiver type checked.
   - Stage 8: provider and model context (15 fields, 281 sites); coordinate with
     the provider-identity item above, do not create a second registry.
     **Measured larger than the estimate**: the candidate fields total ~500

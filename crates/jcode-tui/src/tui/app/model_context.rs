@@ -966,9 +966,9 @@ impl App {
         self.streaming.streaming_cache_read_tokens = None;
         self.streaming.streaming_cache_creation_tokens = None;
         self.kv_cache.current_api_usage_recorded = false;
-        self.thought_line_inserted = false;
-        self.thinking_prefix_emitted = false;
-        self.thinking_buffer.clear();
+        self.reasoning.thought_line_inserted = false;
+        self.reasoning.thinking_prefix_emitted = false;
+        self.reasoning.thinking_buffer.clear();
         self.status = ProcessingStatus::Sending;
     }
 

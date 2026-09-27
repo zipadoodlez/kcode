@@ -570,7 +570,7 @@ fn remote_reasoning_then_text_preserves_order_through_paced_buffer() {
 
     // The reasoning region must be closed (current mode discards/retains it) and
     // the answer text must be present, unstyled, after it.
-    assert!(!app.reasoning_streaming, "region must close before answer");
+    assert!(!app.reasoning.streaming, "region must close before answer");
     let text = app.streaming_text();
     assert!(
         text.contains("The answer is 42."),
@@ -746,7 +746,7 @@ fn repro_reasoning_rendered_then_removed_when_turn_ends_open() {
                 .contains(jcode_tui_markdown::REASONING_SENTINEL),
             "precondition: reasoning rendered live in the stream"
         );
-        assert!(app.reasoning_streaming, "region open: no ReasoningDone sent");
+        assert!(app.reasoning.streaming, "region open: no ReasoningDone sent");
 
         // Turn ends with the region still open (no ReasoningDone, no answer text).
         app.handle_server_event(crate::protocol::ServerEvent::Done { id: 1 }, &mut remote);
@@ -788,7 +788,7 @@ fn open_reasoning_region_closed_at_turn_finish_is_anchored_not_dropped() {
 
         app.open_reasoning_region();
         app.append_reasoning_text("weighing the options before answering");
-        assert!(app.reasoning_streaming, "precondition: region open");
+        assert!(app.reasoning.streaming, "precondition: region open");
         assert!(
             app.streaming_text()
                 .contains(jcode_tui_markdown::REASONING_SENTINEL),
@@ -797,7 +797,7 @@ fn open_reasoning_region_closed_at_turn_finish_is_anchored_not_dropped() {
 
         // End-of-turn commit path (matches turn.rs / Done handler): close any open
         // region first, then commit whatever remains.
-        if app.reasoning_streaming {
+        if app.reasoning.streaming {
             app.close_reasoning_region(None);
         }
         let _ = app.commit_pending_streaming_assistant_message();
@@ -867,7 +867,7 @@ fn answer_text_appended_into_open_region_does_not_glue_next_reasoning() {
     // Appending real answer text must have closed the open reasoning region so a
     // later `open_reasoning_region` re-inserts its separator.
     assert!(
-        !app.reasoning_streaming,
+        !app.reasoning.streaming,
         "appending real answer text must close the open reasoning region"
     );
     // More reasoning arrives (opens a fresh region).
@@ -901,7 +901,7 @@ fn replace_streaming_text_resets_reasoning_tail_and_never_panics_on_multibyte() 
     app.open_reasoning_region();
     app.append_reasoning_text("thinking about the problem");
     assert!(
-        app.reasoning_partial_len > 0,
+        app.reasoning.partial_len > 0,
         "expected a live reasoning tail to be recorded"
     );
 
@@ -909,7 +909,7 @@ fn replace_streaming_text_resets_reasoning_tail_and_never_panics_on_multibyte() 
     // characters, shorter than the recorded tail length.
     app.replace_streaming_text("\u{6f22}\u{5b57}\u{1f600}".to_string());
     assert_eq!(
-        app.reasoning_partial_len,
+        app.reasoning.partial_len,
         0,
         "replacing the stream must drop the stale reasoning tail length"
     );
@@ -929,11 +929,11 @@ fn strip_reasoning_partial_tail_snaps_to_char_boundary() {
     // Two 3-byte characters: 6 bytes total.
     app.streaming.streaming_text = "\u{6f22}\u{5b57}".to_string();
     // Claim a 2-byte tail so new_len = 4, which is *not* a char boundary.
-    app.reasoning_partial_len = 2;
+    app.reasoning.partial_len = 2;
     app.strip_reasoning_partial_tail();
     // Snapped down to 3: the first character survives intact, no panic.
     assert_eq!(app.streaming_text(), "\u{6f22}");
-    assert_eq!(app.reasoning_partial_len, 0);
+    assert_eq!(app.reasoning.partial_len, 0);
 }
 
 /// Sibling of the `strip_reasoning_partial_tail` hazard: `reasoning_block_start`
@@ -947,8 +947,8 @@ fn anchor_current_reasoning_block_snaps_block_start_to_char_boundary() {
         // Two 3-byte characters.
         app.streaming.streaming_text = "\u{6f22}\u{5b57}".to_string();
         // Offset 4 is within the buffer but inside the second character.
-        app.reasoning_block_start = Some(4);
-        app.reasoning_streaming = true;
+        app.reasoning.block_start = Some(4);
+        app.reasoning.streaming = true;
         // Used to panic inside `split_off`.
         app.anchor_current_reasoning_block();
         // Buffer is still valid UTF-8 and no character was cut in half.
@@ -1020,9 +1020,9 @@ fn reasoning_streaming_state_space_never_panics_or_desyncs() {
         // Invariant 2: the recorded tail can never claim more bytes than exist,
         // which is what made `len() - partial_len` land at a bogus offset.
         assert!(
-            app.reasoning_partial_len <= text.len(),
+            app.reasoning.partial_len <= text.len(),
             "step {step}: reasoning_partial_len {} exceeds buffer len {}",
-            app.reasoning_partial_len,
+            app.reasoning.partial_len,
             text.len()
         );
         // Invariant 2b: the tail must describe the *current* buffer, not a
@@ -1030,15 +1030,15 @@ fn reasoning_streaming_state_space_never_panics_or_desyncs() {
         // boundary on its own merits. Without this, a stale length survives a
         // buffer swap and is only rescued by the defensive snap downstream,
         // which hides the desync instead of preventing it.
-        let implied = text.len() - app.reasoning_partial_len;
+        let implied = text.len() - app.reasoning.partial_len;
         assert!(
             text.is_char_boundary(implied),
             "step {step}: tail len {} implies non-boundary slice at {implied} in {text:?}",
-            app.reasoning_partial_len
+            app.reasoning.partial_len
         );
         // Invariant 3: a recorded block start must be a real boundary in the
         // current buffer, since `anchor_current_reasoning_block` splits there.
-        if let Some(start) = app.reasoning_block_start {
+        if let Some(start) = app.reasoning.block_start {
             assert!(
                 start <= text.len(),
                 "step {step}: reasoning_block_start {start} exceeds buffer len {}",

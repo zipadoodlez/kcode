@@ -117,7 +117,7 @@ impl App {
                 },
                 "streaming": {
                     "streaming_text_bytes": self.streaming.streaming_text.len(),
-                    "thinking_buffer_bytes": self.thinking_buffer.len(),
+                    "thinking_buffer_bytes": self.reasoning.thinking_buffer.len(),
                     "stream_buffer": self.stream_buffer.debug_memory_profile(),
                     "streaming_tool_calls_count": self.streaming_tool_calls.len(),
                     "streaming_tool_calls_json_bytes": streaming_tool_calls_json_bytes,

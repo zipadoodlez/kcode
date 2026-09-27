@@ -2,8 +2,8 @@
 //! italic text in the streaming buffer.
 //!
 //! Extracted from `input.rs`, which is over the code-size budget. Grouped here
-//! because these methods share one fragile invariant: `reasoning_partial_len`
-//! and `reasoning_block_start` are **byte offsets into
+//! because these methods share one fragile invariant: `reasoning.partial_len`
+//! and `reasoning.block_start` are **byte offsets into
 //! `streaming.streaming_text`**, recorded at one point and used to slice the
 //! buffer later. If the buffer is replaced in between, those offsets describe
 //! nothing, and slicing at a non-boundary offset panics and kills the process
@@ -17,7 +17,7 @@ impl App {
     /// Begin a reasoning region. Reasoning renders as dim, italic text (no
     /// blockquote gutter, no header, no footer). Idempotent while open.
     pub(in crate::tui::app) fn open_reasoning_region(&mut self) {
-        if self.reasoning_streaming {
+        if self.reasoning.streaming {
             return;
         }
         // Separate the reasoning block from any prior content with a blank line.
@@ -30,25 +30,25 @@ impl App {
                 self.append_streaming_text("\n\n");
             }
         }
-        self.reasoning_streaming = true;
-        self.reasoning_pending_line.clear();
-        self.reasoning_partial_len = 0;
+        self.reasoning.streaming = true;
+        self.reasoning.pending_line.clear();
+        self.reasoning.partial_len = 0;
         // Remember where this reasoning block starts in the stream so `current`
         // mode can later slice it back out in place (without disturbing any
         // preceding answer text) once the model starts answering.
-        self.reasoning_block_start = Some(self.streaming.streaming_text.len());
+        self.reasoning.block_start = Some(self.streaming.streaming_text.len());
     }
 
     /// Remove the live partial-reasoning tail (the rendered, not-yet-committed
     /// in-progress line) from the streaming buffer so it can be rebuilt. No-op
     /// when there is no live partial.
     pub(in crate::tui::app) fn strip_reasoning_partial_tail(&mut self) {
-        if self.reasoning_partial_len > 0 {
+        if self.reasoning.partial_len > 0 {
             let new_len = self
                 .streaming
                 .streaming_text
                 .len()
-                .saturating_sub(self.reasoning_partial_len);
+                .saturating_sub(self.reasoning.partial_len);
             // `String::truncate` panics when `new_len` is not a UTF-8 boundary.
             // The tail length is normally exact, but the buffer can be replaced
             // out from under us (reconnect/resume replays a server snapshot), so
@@ -56,7 +56,7 @@ impl App {
             // trusting the recorded length (see issues #632/#633/#635).
             let new_len = floor_char_boundary(&self.streaming.streaming_text, new_len);
             self.streaming.streaming_text.truncate(new_len);
-            self.reasoning_partial_len = 0;
+            self.reasoning.partial_len = 0;
         }
     }
 
@@ -70,7 +70,7 @@ impl App {
         if text.is_empty() {
             return;
         }
-        if !self.reasoning_streaming {
+        if !self.reasoning.streaming {
             self.open_reasoning_region();
         }
         // Drop the previous live tail; we rebuild committed lines + a fresh tail.
@@ -78,18 +78,18 @@ impl App {
         let mut committed = String::new();
         for ch in text.chars() {
             if ch == '\n' {
-                let line = std::mem::take(&mut self.reasoning_pending_line);
+                let line = std::mem::take(&mut self.reasoning.pending_line);
                 committed.push_str(&jcode_tui_markdown::reasoning_line_markup(&line));
             } else {
-                self.reasoning_pending_line.push(ch);
+                self.reasoning.pending_line.push(ch);
             }
         }
         if !committed.is_empty() {
             self.streaming.streaming_text.push_str(&committed);
         }
         // Re-append the live tail for the in-progress (partial) line.
-        let partial = jcode_tui_markdown::reasoning_partial_markup(&self.reasoning_pending_line);
-        self.reasoning_partial_len = partial.len();
+        let partial = jcode_tui_markdown::reasoning_partial_markup(&self.reasoning.pending_line);
+        self.reasoning.partial_len = partial.len();
         self.streaming.streaming_text.push_str(&partial);
         self.refresh_split_view_if_needed();
     }
@@ -98,18 +98,18 @@ impl App {
     /// `_footer` argument is ignored (the "Thought for Xs" footer was removed);
     /// it is kept for call-site compatibility.
     pub(in crate::tui::app) fn close_reasoning_region(&mut self, _footer: Option<String>) {
-        if !self.reasoning_streaming {
+        if !self.reasoning.streaming {
             return;
         }
         // Replace the live tail with the committed (newline-terminated) line.
         self.strip_reasoning_partial_tail();
-        let pending = std::mem::take(&mut self.reasoning_pending_line);
+        let pending = std::mem::take(&mut self.reasoning.pending_line);
         if !pending.is_empty() {
             self.streaming
                 .streaming_text
                 .push_str(&jcode_tui_markdown::reasoning_line_markup(&pending));
         }
-        self.reasoning_streaming = false;
+        self.reasoning.streaming = false;
 
         // In `current` mode, reasoning is ephemeral: it is never written to the
         // persistent transcript. The closed block is sliced out of the live
@@ -154,7 +154,7 @@ impl App {
         // recorded against an earlier state of the buffer, so clamping to the
         // length is not enough. `split_off` panics on a non-boundary offset, so
         // snap it to a character boundary (see issues #632/#633/#635).
-        let block_start = self.reasoning_block_start.take().unwrap_or(0);
+        let block_start = self.reasoning.block_start.take().unwrap_or(0);
         let block_start = floor_char_boundary(&self.streaming.streaming_text, block_start);
         // Everything from the block start onward is the reasoning markup. Split it
         // off so the preceding answer text (if any) stays in the live stream.
@@ -178,7 +178,8 @@ impl App {
                 self.push_display_message(DisplayMessage::assistant(preceding));
             }
         }
-        self.turn_reasoning_traces
+        self.reasoning
+            .turn_traces
             .push(crate::tui::app::TurnReasoningTrace {
                 display_index: self.display_messages.len(),
                 // Snapshot the transcript height when this trace anchors. The trace
@@ -197,10 +198,10 @@ impl App {
     /// simply gone the next time the user acts (a moment when the transcript
     /// reflows anyway).
     pub(in crate::tui::app) fn clear_turn_reasoning_traces(&mut self) {
-        if self.turn_reasoning_traces.is_empty() {
+        if self.reasoning.turn_traces.is_empty() {
             return;
         }
-        let traces = std::mem::take(&mut self.turn_reasoning_traces);
+        let traces = std::mem::take(&mut self.reasoning.turn_traces);
         let removed = self.remove_reasoning_trace_messages(traces.iter().map(|t| t.display_index));
         if removed > 0 {
             self.bump_display_messages_version();

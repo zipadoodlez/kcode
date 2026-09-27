@@ -80,6 +80,7 @@ pub(crate) mod onboarding_graph;
 mod onboarding_repair;
 mod onboarding_sim;
 mod prompt_history;
+mod reasoning;
 mod remote;
 mod remote_notifications;
 pub(crate) mod run_shell;
@@ -1005,37 +1006,8 @@ pub struct App {
     connection_phase_started: Option<Instant>,
     // Semantic stream buffer for chunked output
     stream_buffer: StreamBuffer,
-    // Track thinking start time for extended thinking display
-    thinking_start: Option<Instant>,
-    // Whether we've inserted the current turn's thought line
-    thought_line_inserted: bool,
-    // Buffer for accumulating thinking content during a thinking session
-    thinking_buffer: String,
-    // Whether the legacy single-line thought prefix was emitted this session
-    thinking_prefix_emitted: bool,
-    // Whether we are currently streaming reasoning (dim+italic) text
-    reasoning_streaming: bool,
-    // Incomplete trailing reasoning line awaiting a newline. Rendered live as the
-    // streaming buffer's tail (dim+italic) so reasoning trickles in token-by-token;
-    // promoted to a committed line once its newline arrives.
-    reasoning_pending_line: String,
-    // Byte length of the live partial-reasoning markup currently appended to
-    // `streaming_text` (the rendered tail of `reasoning_pending_line`). Truncated
-    // and re-appended on each delta so the in-progress line updates in place.
-    reasoning_partial_len: usize,
-    // Byte offset in `streaming_text` where the current reasoning block began
-    // (recorded by `open_reasoning_region`). Used in `current` mode to slice the
-    // closed reasoning block back out of the stream in place, keeping any answer
-    // text that preceded it in order.
-    reasoning_block_start: Option<usize>,
-    // Reasoning traces anchored during the current turn (`current`
-    // reasoning-display mode). Each entry tracks the display index plus the
-    // transcript's wrapped-line total when it anchored, so stale traces can be
-    // garbage-collected once they are provably scrolled off-screen (no visible
-    // motion). All remaining traces are removed when the next user prompt is
-    // submitted, keeping `current` mode ephemeral across turns without ever
-    // moving a trace while it is visible.
-    turn_reasoning_traces: Vec<TurnReasoningTrace>,
+    // Live thinking/reasoning stream state for the current turn.
+    reasoning: reasoning::ReasoningState,
     // Session maintenance control: requested re-exec/update actions, background
     // client maintenance, the server reload handshake, and reconnect status.
     maintenance: state_ui_maintenance::ReloadState,
