@@ -22,6 +22,34 @@ onboarding state-space invariants, and `cargo machete` when installed.
 
 A compile or clippy failure is a real regression; do not commit past it.
 
+## Knowledge graph
+
+`graphify-out/graph.json` is committed, so a clone gets the code graph without
+rebuilding it. Refresh it before committing so it matches the tree, and commit
+it with the change:
+
+```sh
+graphify update .   # AST-only, no API key; about a minute on this tree
+```
+
+The committed `.githooks/post-commit` and `post-checkout` do this automatically
+after each commit (no-op when graphify is not installed). `core.hooksPath` is
+local git config, so run `scripts/setup_git_hooks.sh` once per clone to point
+git at them.
+
+Query the graph instead of grepping for architecture questions:
+
+```sh
+graphify query "how does the transcript store state"
+graphify god-nodes
+graphify path "ServerEvent" "TuiState"
+```
+
+graph.json records the `built_at_commit` it was built from, so a stale graph is
+visible. Only `graph.json` and `GRAPH_REPORT.md` are tracked; the cache, the
+interpreter/root sidecars, and the HTML view are gitignored. The 44 MB JSON is
+excluded from text diffs and union-merged on conflict (see `.gitattributes`).
+
 ## Tests
 
 `cargo test` runs the workspace; target a crate while iterating

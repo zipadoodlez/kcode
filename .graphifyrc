@@ -1,0 +1,6 @@
+# Options read by `graphify hook install` (baked into the committed git hooks)
+# and by the graphify CLI.
+#
+# 0 disables the HTML visualization on rebuild. graphify-out/ then holds only
+# the two artifacts that travel with the repo: graph.json and GRAPH_REPORT.md.
+viz_node_limit=0

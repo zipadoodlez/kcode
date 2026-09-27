@@ -12,3 +12,12 @@ __pycache__/
 /*.avif
 /*.mp4
 /*.png
+
+# graphify: graph.json and GRAPH_REPORT.md travel with the repo. The incremental
+# cache, the daily pre-overwrite backups, the machine-specific
+# interpreter/root/label sidecars, and the HTML visualization (disabled for the
+# committed hooks in .graphifyrc) do not.
+graphify-out/*/
+graphify-out/manifest.json
+graphify-out/graph.html
+graphify-out/.graphify_*

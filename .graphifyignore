@@ -1,0 +1,4 @@
+# graphify scans the tree for code. graphify-out/ is generated from the tree, so
+# feeding it back in would be circular. target/ is build output.
+graphify-out/
+target/

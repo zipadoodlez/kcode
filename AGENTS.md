@@ -18,6 +18,12 @@
 - **Run the local gate before committing** - this fork has no CI.
   `scripts/check_guardrails.sh` (format, compile, clippy, lock, guardrail checks)
   must pass. See `docs/dev/post-change.md`.
+- **Refresh the knowledge graph before committing** - `graphify update .`
+  (AST-only, no API key) keeps `graphify-out/` matching the tree; commit the
+  refreshed graph with the change. The committed `.githooks/` hooks refresh it
+  after each commit too (`scripts/setup_git_hooks.sh` once per clone). For
+  codebase questions prefer `graphify query "<question>"` over grepping raw
+  files. See `docs/dev/post-change.md`.
 
 ## Install Notes
 - kcode does not install, update, or repoint itself. The OS package manager owns

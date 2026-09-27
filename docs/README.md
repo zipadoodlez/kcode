@@ -39,6 +39,7 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 - Server memory: `internals/memory.md`
 - Usage and statistics: `internals/usage.md`
 - Contributor process: `dev/post-change.md`, `dev/testing.md`, `dev/benchmarking.md`, `dev/dependencies.md`
+- Knowledge graph: `graphify-out/` (query with `graphify query`, refresh with `graphify update .`; see `dev/post-change.md`)
 - Message voice (user-facing strings): `dev/message-voice.md`
 - What the fork removed: `what-was-removed.md`
 - What is still in flight: `todo.md`
