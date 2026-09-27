@@ -257,6 +257,33 @@ Staged, each lands whole.
   Done when: the field count and `impl App` count fall monotonically
   (`check_app_shape.py`), `use super::*` falls from 124, and `app.rs` drops out
   of `code_size_budget.json`.
+
+  - [ ] **Behavior-check the landed extractions.** They were cut by *cohesion*
+    (which methods touch which fields), not by tracing behavior; tests prove the
+    moves preserved behavior, they do not prove the boundaries are right. A
+    cohesion cut can slice a state machine in half where two fields are written
+    in sequence by different methods, or joined where they merely co-occur.
+    Verify per landed struct by tracing the write sequences at turn/reconnect/
+    reset boundaries and confirming no transition spans two structs. Highest
+    risk: `ReloadState` (ten fields grouped under "session maintenance" and
+    never behaviorally traced; may be the background-client-maintenance half and
+    the server reload handshake, not one thing). Then `Swarm`, then the
+    `Redraw`/`Viewport` split. Lower risk (single render path, methods moved with
+    their fields): the four mirror pages, `CopySelection`, `Composer`,
+    `CommandSuggestions`, `PromptHistoryState`, and the picker/overlay states.
+    Evidence over looks: the outbound-input region's field split was wrong for
+    exactly this reason (`queue_recovery.rs` converts soft interrupts, interleave
+    messages, and in-flight sends into `queued_messages`, so those are one
+    pipeline, not three groups).
+  - [ ] **Re-core the outbound user-input pipeline** rather than condense it.
+    `queued_messages`, `hidden_queued_system_messages`, `pending_soft_interrupts`,
+    `pending_soft_interrupt_requests`, `interleave_message`, `interleave_images`,
+    `queued_followup_starved_since`, `pending_queued_dispatch`,
+    `rate_limit_pending_message`, and `rate_limit_reset` are parallel
+    representations of one thing, stitched by hand-written conversions in
+    `remote/queue_recovery.rs`. Packing them into a struct keeps the duplication;
+    the fix is one representation (a queue of outbound items carrying status and
+    ack id) that deletes the conversions. Needs a fresh context; not a field-move.
 - [ ] **Split `handle_client`** (`crates/jcode-app-core/src/server/client_lifecycle.rs:434`):
   28 args, body to :3041 (~2600 lines), 85 `Request::` arms, 15 sibling handler
   modules already exist for the arms. Introduce a request-context struct and move
