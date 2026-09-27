@@ -6,9 +6,10 @@ the checklist, not the reasoning.
 
 Ordered by what unblocks what, not by payoff alone: a few shared representations
 sit under many call sites, so settling a shape before sweeping sites avoids
-redoing the sweep. The fan-in, from `graphify god_nodes`, says which shapes those
-are: `create_test_app` 771, `Provider` 374, `TuiState` 206, `SwarmMember` 182,
-`App` 137, `ModelRoute` 128, `LoginProviderDescriptor` 126.
+redoing the sweep. The fan-in, from `graphify god_nodes` at `6dff3825`, says
+which shapes those are: `create_test_app` 771, `Provider` 312, `Message` 227,
+`ServerEvent` 208, `TuiState` 205, `SwarmMember` 182, `App` 137, `ToolContext`
+135, `LoginProviderDescriptor` 125.
 
 An item carries a compact evidence line so it can be picked up without
 re-deriving why it exists. An item marked `(decision)` needs a call from the
@@ -21,33 +22,167 @@ Cheap, and they unblock the rest.
 - [ ] (decision) Fork policy: rebase lane vs hard divergence is undecided and
   blocks crate names and the env prefix. `README.md` says "does not track
   upstream"; nothing follows from it.
-- [ ] (decision) Settle the two quality ratchets: drop the swallowed-error one
-  (it counts `let _ =`, `.ok()`, `.unwrap_or_default()`: 3,129 hits across 423
-  files, mostly idiomatic), and either re-baseline or drop the panic one, whose
-  remaining flags are guarded invariants or build/test code.
-- [ ] (decision) Clippy is red on untouched crates under stable 1.98: 3 lints in
-  `jcode-base`, 3 in `jcode-tui-workspace`, 1 in `jcode-compaction-core`
-  (identical if blocks, collapsible if, complex type, too many args, orphaned
-  doc comments). Newer lints, not this tree's regressions; fix them or pin the
-  toolchain. Evidence run 2026-09-27, rustc 1.98.1.
 - [ ] `scripts/` classification: ~80 inherited files, no README, several
   jcode-specific. Keep / delete / broken triage.
+- [ ] (decision) Do the two size ratchets keep kcode's re-baselined numbers or
+  get a different ceiling? They measure the fork's own drift now instead of
+  jcode's, which is what they were for.
+
+### The gate, measured (2026-09-27, HEAD `6dff3825`, rustc 1.98.1)
+
+Every gate was run rather than trusted, and three things the old text here said
+were wrong:
+
+- **Clippy was undercounted.** The old text said "3 lints in `jcode-base`, 3 in
+  `jcode-tui-workspace`, 1 in `jcode-compaction-core`" (7). The real run is
+  **40 lints in 28 files across 12 crates**, because a `-D warnings` run stops
+  at the first failing crate and only that crate's list had been read. Several
+  are not hygiene but real smells: `src/cli/login.rs:862,892,903` "statement
+  with no effect", `client_lifecycle.rs:1696,1725` and `turn.rs:908` "this if
+  branch is empty", `comm_session.rs:550` "this lint expectation is unfulfilled"
+  (a stale `#[expect]`), `browser_fast.rs:117,120` "`.fold` can be `any`".
+- **Two red ratchets were unrecorded.** `code_size_budget.json` fails on 37
+  files and `test_size_budget.json` on 19. Their baselines are jcode's numbers:
+  `client_lifecycle.rs` reads `3282 -> 3610`, and 3610 is what the file has been
+  since before the fork cut, so those checks can never pass. A gate that cannot
+  go green is a gate nobody reads, which is how they went unrecorded.
+- **The panic ratchet's classification is wrong**, not just its baseline.
+  `build.rs`, `**/examples/**` and `**/src/bin/**` count as production, so
+  `harness_repl.rs` alone is 15 of the 49 tracked hits and
+  `provider-grok-build-runtime/src/bin/fake_acp.rs` is a test fixture. The
+  baseline was also internally inconsistent: `total: 77` against a
+  `tracked_files` sum of 49.
+
+Decided and landed 2026-09-27:
+
+- The swallowed-error ratchet is **deleted**. It counts `let _ =`, `.ok()`,
+  `.unwrap_or_default()`: 3,129 hits across 423 files, which is idiomatic Rust,
+  so its signal is dominated by code that is not a defect.
+- The panic ratchet **excludes non-production paths** and is re-baselined to
+  this tree: 51 hits in 24 files, down from a baseline whose `total: 77` did not
+  match its own 49 tracked hits.
+- Both size ratchets are **re-baselined** to this tree (79 oversized files, 34
+  oversized test files), so they ratchet kcode's drift from here.
+- Clippy is **fixed**, so `-D warnings` means something again. Three of the
+  fixes were not hygiene: two `if tool_result.is_err()` bodies had been gutted,
+  `login.rs` carried three `"api_key";`-style statements whose
+  `telemetry::record_auth_success` consumer the fork cut removed, and clippy's
+  suggested `any()` for `browser_fast.rs`'s credential redaction would have
+  skipped the remaining credentials in a payload. The full gate is green.
 
 ## 1. Shared shapes
 
 Widest representation first, while the tree is still quiet. Sweeping call sites
 before the shape is settled is churn.
 
-- [ ] **Unify provider identity**: seven enums (`ActiveProvider`,
-  `RuntimeProviderId`, `ConfigProviderSelection`, `ProviderChoice`,
-  `LoginProviderTarget`, `WidgetProviderKind`, `ModelRouteApiMethod`) plus
-  string vocabularies (`provider_key`, `RuntimeKey`, `LoginProviderDescriptor`,
-  `ProviderAvailability`'s bools) name the same thing; the code comment on
-  `cli_provider_arg_for_session_key` admits they "overlap but are NOT identical".
-  They span crates (`provider-core`, `jcode-base`, `src/cli`). 153 files hardcode
-  provider strings, 30 match arms. One `ProviderId` registry; derive the rest.
-  Do not sweep the 153 sites first; migrate on change. Settles `-p` accepting 52
-  provider choices while `provider list` prints 26.
+- [ ] **One provider catalog, stated once.** The previous text here said "seven
+  enums name the same thing; one `ProviderId` registry, derive the rest". That
+  framing was wrong, and the correction matters, because merging what it named
+  would build the god module this file exists to avoid.
+
+  **They are three axes, and only one is duplicated.** `ActiveProvider` (8,
+  `provider-core/src/selection.rs:5`) is the *execution slot* the process runs
+  on, and `ConfigProviderSelection::active_provider` already proves it is
+  many-to-one (`OpenAiCompatibleProfile(_) => OpenRouter`).
+  `ModelRouteApiMethod` (15, `provider-core/src/lib.rs:885`) is the *per-model
+  wire method*, parsed from a persisted string at module boundaries.
+  `ProviderAvailability` (9 bools) is a *set of slots*. None of those should
+  merge with each other or with identity.
+
+  **What is duplicated is the catalog, five times over, plus one identity enum
+  stated twice.** Measured by reading each table:
+
+  - `ProviderChoice` and its `#[value(alias = ..)]` attributes: 52 variants,
+    `src/cli/provider_init.rs`.
+  - `ProviderChoice::as_arg_value()`: 52 arms.
+  - `PROVIDER_CHOICE_LOGIN_PROVIDERS`: 51 hand-written pairs.
+  - `LOGIN_PROVIDERS: [LoginProviderDescriptor; 52]` plus 52 constants:
+    `provider-metadata/src/catalog.rs`, 1,284 lines.
+  - `list_cli_providers()`: a hand-typed 26-element array,
+    `src/cli/commands/report_info.rs:562`.
+  - `LoginProviderTarget` (14) and `RuntimeProviderId` (14) have identical
+    membership, and `crates/jcode-base/src/auth/integration.rs:54-69` is a
+    14-arm 1:1 conversion between them (`Azure -> AzureOpenAi`,
+    `OpenAiCompatible(_) -> OpenAiCompatible`). A 1:1 conversion between two
+    enums is a proof that they are one concept written twice.
+  - `as_arg_value()` and `descriptor.id` agree on 51 of 52. The exception is
+    the deprecated `claude-subprocess`, which deliberately points at the
+    `claude` descriptor. So the pairing table is *derivable*, i.e. it is pure
+    duplication rather than a distinct vocabulary.
+
+  **The duplication already shipped a bug.** 26 of the 52 values `-p` accepts
+  are not printed by `kcode provider list`: `anthropic-api`, `openai-api`,
+  `bedrock`, `gemini-api`, `celeris`, `huggingface`, `minimax`, `nvidia-nim`,
+  `ollama`, `lmstudio` and 16 more, while the unknown-provider error tells the
+  user to consult that list. The class is live, not historical: `9d9d2259`
+  ("Add Celeris provider support", 7 files, 59 lines) wrote one provider in
+  five places and updated all of them except `list_cli_providers`.
+
+  The drift also runs the other way, and it is already **red on this tree**:
+  `cli::provider_init::tests::login_provider_choice_table_round_trips_catalog_providers`
+  (`provider_init_tests.rs:513`) asserts that every catalog id appears in the
+  CLI choice table, and fails because `orcarouter` exists in
+  `LOGIN_PROVIDERS` but has no `-p` value at all. (The other unpaired
+  descriptor is `auto-import`, which the test exempts.) So one provider in the
+  registry is unreachable from the CLI, and the two directions of the same
+  round trip are checked by two tables that disagree. B2 must preserve the
+  "catalog entry with no CLI choice" case as `None`, which a search by
+  `as_arg_value()` does naturally.
+
+  **Target.** One registry entry per provider, in `provider-metadata` where the
+  descriptors already live and already have the right fields (`id`,
+  `display_name`, `aliases`, `auth_kind`, `auth_state_key`, `target`,
+  per-surface `order`). The CLI arg value *is* the registry id. "Profile-backed"
+  is a property of the entry, not a list of 38 variants. Adding a provider is
+  one file plus a registry line.
+
+  Order, each lands whole; the first three delete code rather than move it.
+  `--` marks the verification.
+
+  - B1: **`provider list` derives from the registry.** Delete the 26-entry
+    array, iterate the pairing table with `Auto` as the one explicit
+    non-registry entry. Fixes all 26 gaps in one edit. `--` new test: printed id
+    set equals the accepted `-p` value set.
+  - B2: **Delete the pairing table.** `login_provider_for_choice(c)` becomes
+    `resolve_login_provider(c.as_arg_value())` (verified: it matches `id` then
+    aliases over `LOGIN_PROVIDERS`, one descriptor per constant). Two special
+    cases stay explicit: `Auto` has no descriptor, and the deprecated
+    `claude-subprocess` resolves to `claude`. Deletes ~200 lines and the second
+    list, which is where this drift class dies.
+  - B3: **Collapse the 38-variant arm** in `init_provider_with_options` (the
+    "is profile-backed" list) onto the predicate that already exists one screen
+    away, `profile_for_choice` (`provider_init.rs:417`).
+  - B4: **One identity enum.** Delete `RuntimeProviderId`'s 14-arm bridge.
+    Preferred shape: keep `ProviderActivation` free of the profile payload and
+    give the descriptor a `runtime_key()` accessor. `--` read
+    `activation.rs`'s consumers before committing.
+  - B5: **The registry drives the clap values.** Delete the 52 variants, their
+    aliases, and `as_arg_value()`; build `PossibleValuesParser` from the
+    registry with `PossibleValue::new(id).help(display_name).alias(..)` and
+    `.hide(true)` for the deprecated one, which keeps `--help` and completions.
+    Then `-p` accepts exactly what `provider list` prints, by construction.
+    About 250 `ProviderChoice::` sites in 16 files, 49 of them in
+    `provider_init_tests.rs`. Last and alone, gated on the provider-doctor
+    suite: it is the only stage that changes a user-visible CLI surface.
+
+  Not doing, with reasons: not merging `ActiveProvider` (execution slot, so
+  merging gives one enum doing three jobs), not merging `ModelRouteApiMethod`
+  (routing is not identity), not touching `ProviderAvailability`'s 9 bools
+  (~30 sites, readable, the win does not pay for the churn). The old "153 files
+  hardcode provider strings" figure was not re-derived here; what was measured
+  is the table structure above.
+
+  Open question, not a claim: `fallback_sequence`
+  (`provider-core/src/selection.rs:315`) is a hand-written 8x8 failover table,
+  8 arms each restating one priority order with the active provider moved
+  first. The Claude and OpenAI arms omit `Antigravity`, the other six include
+  it. Deliberate frontier-pair policy or an omission? Unread: the failover call
+  path. If it is "active first, then a canonical order", the ~80-line table
+  collapses to two lines.
+
+  Done when: adding a provider is 1 file plus a registry line (today it is 6
+  files and ~55 lines), the `-p` accepted set equals the `provider list`
+  printed set, and no pairing table exists.
 - [ ] Provider cleanup keeps every provider reachable. No provider is deleted
   (maintainer decision 2026-09-27): every cut candidate backs a user-selectable
   provider (`ProviderChoice` exposes Cursor, Copilot, Antigravity, GrokBuild,
@@ -547,9 +682,18 @@ tree first would just move that churn around.
 - [ ] Move subsystem code out of test files: `live_tests.rs` is a live-provider
   coverage ledger (21% tests), `provider_e2e.rs` (11% tests).
 - [ ] Pre-existing failures on this tree: `jcode-tui --lib` 27, `jcode-base --lib`
-  15, math/LaTeX 15, `test_lock_order` 1. Environmental, not regressions. Treat
-  as the baseline; the suite still covers removed features and brittle
-  pixel/color assertions, so collapse or delete rather than maintain.
+  15, root `kcode --lib` 12 of 193 (measured 2026-09-27 at `6dff3825` and again
+  with the working tree stashed, so they are this tree's, not a session's).
+  Sampled root causes are stale expectations for removed or renamed surface:
+  `login::next_step::tests::extracted_hints_match_the_strings_login_printed_before_extraction`
+  wants "run jcode" where the code now prints "run kcode",
+  `cli::args::tests::login_scriptable_flags_parse` parses a `--google-access-tier`
+  flag that went with the Google login cut, and
+  `cli::provider_init::tests::login_provider_choice_table_round_trips_catalog_providers`
+  is the provider-table drift in §1. Also math/LaTeX 15 and `test_lock_order` 1.
+  Environmental, not regressions. Treat as the baseline; the suite still covers
+  removed features and brittle pixel/color assertions, so collapse or delete
+  rather than maintain.
 
 ## 5. Hygiene, then packaging
 
