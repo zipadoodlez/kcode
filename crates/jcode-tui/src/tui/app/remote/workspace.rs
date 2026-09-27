@@ -99,9 +99,9 @@ pub(super) async fn handle_workspace_command(
         app.workspace_client
             .enable(current_session, &app.server_info.sessions);
         app.workspace_client.queue_split_target(target);
-        app.pending_split_label = Some("Workspace".to_string());
+        app.pending_split.label = Some("Workspace".to_string());
         if app.is_processing {
-            app.pending_split_request = true;
+            app.pending_split.request = true;
             app.push_display_message(DisplayMessage::system(
                 "Workspace add queued - new session will be created when idle.".to_string(),
             ));

@@ -853,21 +853,21 @@ pub(super) fn queue_review_spawn_remote(
     model_override: Option<String>,
     provider_key_override: Option<String>,
 ) {
-    app.pending_split_parent_session_id = Some(parent_session_id);
-    app.pending_split_startup_message = Some(startup_message);
-    app.pending_split_model_override = model_override;
-    app.pending_split_provider_key_override = provider_key_override;
-    app.pending_split_label = Some(label.to_string());
-    app.pending_split_started_at = Some(Instant::now());
-    app.pending_split_request = true;
+    app.pending_split.parent_session_id = Some(parent_session_id);
+    app.pending_split.startup_message = Some(startup_message);
+    app.pending_split.model_override = model_override;
+    app.pending_split.provider_key_override = provider_key_override;
+    app.pending_split.label = Some(label.to_string());
+    app.pending_split.started_at = Some(Instant::now());
+    app.pending_split.request = true;
     app.set_status_notice(format!("{} queued", label));
 }
 
 #[cfg(test)]
 pub(super) fn queue_autojudge_remote(app: &mut App) {
     if !app.autojudge_enabled
-        || app.pending_split_request
-        || app.pending_split_startup_message.is_some()
+        || app.pending_split.request
+        || app.pending_split.startup_message.is_some()
     {
         return;
     }

@@ -429,7 +429,7 @@ pub(super) fn poll_local_transfer_prepare(app: &mut App) -> bool {
     match recv_result {
         Ok(result) => {
             app.pending_local_transfer = None;
-            app.pending_transfer_request = false;
+            app.pending_split.transfer_request = false;
             match result {
                 Ok(prepared) => {
                     let exe = super::launch_client_executable();
@@ -483,7 +483,7 @@ pub(super) fn poll_local_transfer_prepare(app: &mut App) -> bool {
         Err(std::sync::mpsc::TryRecvError::Empty) => false,
         Err(std::sync::mpsc::TryRecvError::Disconnected) => {
             app.pending_local_transfer = None;
-            app.pending_transfer_request = false;
+            app.pending_split.transfer_request = false;
             app.push_display_message(DisplayMessage::error(
                 "Transfer preparation failed before returning a result.".to_string(),
             ));
@@ -494,7 +494,7 @@ pub(super) fn poll_local_transfer_prepare(app: &mut App) -> bool {
 }
 
 pub(super) fn maybe_begin_pending_local_transfer(app: &mut App) -> bool {
-    if app.is_remote_client() || app.is_processing || !app.pending_transfer_request {
+    if app.is_remote_client() || app.is_processing || !app.pending_split.transfer_request {
         return false;
     }
     if app.pending_local_transfer.is_some() {
@@ -509,7 +509,7 @@ pub(super) fn maybe_begin_pending_local_transfer(app: &mut App) -> bool {
             app.set_status_notice("Preparing transfer");
         }
         Err(error) => {
-            app.pending_transfer_request = false;
+            app.pending_split.transfer_request = false;
             app.push_display_message(DisplayMessage::error(format!(
                 "Failed to start transfer preparation: {}",
                 error
@@ -521,7 +521,7 @@ pub(super) fn maybe_begin_pending_local_transfer(app: &mut App) -> bool {
 }
 
 pub(super) fn handle_transfer_command_local(app: &mut App) {
-    if app.pending_transfer_request || app.pending_local_transfer.is_some() {
+    if app.pending_split.transfer_request || app.pending_local_transfer.is_some() {
         app.push_display_message(DisplayMessage::system(
             "A transfer is already pending.".to_string(),
         ));
@@ -529,7 +529,7 @@ pub(super) fn handle_transfer_command_local(app: &mut App) {
         return;
     }
 
-    app.pending_transfer_request = true;
+    app.pending_split.transfer_request = true;
     if app.is_processing {
         app.interleave_message = Some(transfer_pause_message());
         app.interleave_images.clear();

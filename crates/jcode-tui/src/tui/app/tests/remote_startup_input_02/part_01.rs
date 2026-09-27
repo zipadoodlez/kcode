@@ -919,7 +919,7 @@ fn test_transfer_command_queues_pause_while_processing_locally() {
 
     super::commands::handle_transfer_command_local(&mut app);
 
-    assert!(app.pending_transfer_request);
+    assert!(app.pending_split.transfer_request);
     let pause_message = super::commands::transfer_pause_message();
     assert_eq!(
         app.interleave_message.as_deref(),

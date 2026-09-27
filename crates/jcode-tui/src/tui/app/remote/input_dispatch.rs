@@ -1,4 +1,5 @@
-use super::super::{PendingRemoteMessage, PendingSplitPrompt};
+use super::super::PendingRemoteMessage;
+use super::super::pending_split::PendingSplitPrompt;
 use super::*;
 use crate::tui::app as app_mod;
 
@@ -271,31 +272,26 @@ pub(in crate::tui::app) async fn route_prepared_input_to_new_remote_session(
     prepared: input::PreparedInput,
 ) -> Result<()> {
     app.route_next_prompt_to_new_session = false;
-    app.pending_split_startup_message = None;
-    app.pending_split_prompt = Some(PendingSplitPrompt {
+    app.pending_split.startup_message = None;
+    app.pending_split.prompt = Some(PendingSplitPrompt {
         content: prepared.expanded,
         images: prepared.images,
     });
-    app.pending_split_model_override = None;
-    app.pending_split_provider_key_override = None;
-    app.pending_split_label = Some("Prompt".to_string());
-    app.pending_split_started_at = Some(Instant::now());
+    app.pending_split.model_override = None;
+    app.pending_split.provider_key_override = None;
+    app.pending_split.label = Some("Prompt".to_string());
+    app.pending_split.started_at = Some(Instant::now());
 
-    app.pending_split_request = false;
+    app.pending_split.request = false;
     if app.is_processing {
         app.set_status_notice("Prompt launching in new session");
         if let Err(error) = remote.split().await {
-            let pending = app
-                .pending_split_prompt
-                .take()
-                .map(|prompt| input::PreparedInput {
-                    raw_input: prepared.raw_input,
-                    expanded: prompt.content,
-                    images: prompt.images,
-                });
-            app.pending_split_model_override = None;
-            app.pending_split_provider_key_override = None;
-            app.pending_split_label = None;
+            let payload = app.pending_split.take_payload();
+            let pending = payload.prompt.map(|prompt| input::PreparedInput {
+                raw_input: prepared.raw_input,
+                expanded: prompt.content,
+                images: prompt.images,
+            });
             if let Some(prepared) = pending {
                 restore_prepared_remote_input(app, prepared);
             }
@@ -307,17 +303,12 @@ pub(in crate::tui::app) async fn route_prepared_input_to_new_remote_session(
     begin_remote_split_launch(app, "Prompt");
     if let Err(error) = remote.split().await {
         finish_remote_split_launch(app);
-        let pending = app
-            .pending_split_prompt
-            .take()
-            .map(|prompt| input::PreparedInput {
-                raw_input: prepared.raw_input,
-                expanded: prompt.content,
-                images: prompt.images,
-            });
-        app.pending_split_model_override = None;
-        app.pending_split_provider_key_override = None;
-        app.pending_split_label = None;
+        let payload = app.pending_split.take_payload();
+        let pending = payload.prompt.map(|prompt| input::PreparedInput {
+            raw_input: prepared.raw_input,
+            expanded: prompt.content,
+            images: prompt.images,
+        });
         if let Some(prepared) = pending {
             restore_prepared_remote_input(app, prepared);
         }
@@ -331,7 +322,7 @@ pub(in crate::tui::app) fn begin_remote_split_launch(app: &mut App, label: &str)
     app.status = ProcessingStatus::Sending;
     app.status_detail = None;
     let started_at = Instant::now();
-    app.pending_split_started_at = Some(started_at);
+    app.pending_split.started_at = Some(started_at);
     app.processing_started = Some(started_at);
     app.last_stream_activity = Some(started_at);
     app.remote_resume_activity = None;

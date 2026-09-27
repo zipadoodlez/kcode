@@ -411,6 +411,15 @@ Staged, each lands whole.
       in-flight remote turn id, not session or server-snapshot state. Put it with
       the turn-lifecycle cluster (`deferred_stream_done_id`, `pending_turn`,
       `remote_resume_activity`) when that cluster is extracted.
+      **`PendingSplit` extracted.** `app/pending_split.rs` holds the nine fields
+      describing a pending launch of the current work into a new sibling session
+      (split, transfer, review, workspace add: the server models all of them as
+      one `split()`, distinguished by `label`). The nine-field clear retyped in
+      five places is now `clear_payload()`, and the `SplitResponse` handler
+      consumes the payload with `take_payload()`; `PendingSplitPrompt` moved with
+      it. app_fields 217 -> 209, baseline refreshed; impl_app_blocks 57,
+      super_glob_imports 124. Verified: lib suite identical (1966/27), check,
+      clippy, fmt, shape green.
   - Stage 11: revisit `TuiState`. It is a 122-method trait with two impls, and
     `TestState` (39 fields, 83 sites, 13 files) exists so render tests avoid
     constructing an `App`. Deleting it is a trade, decided last, once `App` is

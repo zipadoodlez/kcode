@@ -717,7 +717,7 @@ impl crate::tui::TuiState for App {
             }
         }
         self.split_launch_in_flight()
-            .then(|| self.pending_split_started_at.map(|t| t.elapsed()))
+            .then(|| self.pending_split.started_at.map(|t| t.elapsed()))
             .flatten()
     }
 

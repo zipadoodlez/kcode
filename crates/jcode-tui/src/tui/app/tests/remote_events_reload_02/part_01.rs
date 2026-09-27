@@ -134,8 +134,8 @@ fn test_remote_transfer_queues_pause_when_processing() {
         rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
             .expect("/transfer should queue while processing");
 
-        assert!(app.pending_transfer_request);
-        assert_eq!(app.pending_split_label.as_deref(), Some("Transfer"));
+        assert!(app.pending_split.transfer_request);
+        assert_eq!(app.pending_split.label.as_deref(), Some("Transfer"));
         assert_eq!(
             app.status_notice(),
             Some("Transfer queued after current turn".to_string())

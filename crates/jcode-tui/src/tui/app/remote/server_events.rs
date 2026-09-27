@@ -2,6 +2,7 @@ use super::*;
 use crate::session_recovery::ReloadContext;
 use crate::tui::TuiState;
 use crate::tui::app as app_mod;
+use crate::tui::app::pending_split::SplitPayload;
 use crate::tui::app::remote::input_dispatch::restore_pending_startup_prompt_echo;
 use crate::tui::app::remote::swarm_plan_core::RemoteSwarmPlanSnapshot;
 use crate::tui::app::remote::swarm_status_core::swarm_status_transition_notice;
@@ -2615,13 +2616,8 @@ pub(in crate::tui::app) fn handle_server_event(
         } => {
             if app.workspace_client.handle_split_response(&new_session_id) {
                 finish_remote_split_launch(app);
-                app.pending_split_request = false;
-                app.pending_split_startup_message = None;
-                app.pending_split_parent_session_id = None;
-                app.pending_split_prompt = None;
-                app.pending_split_model_override = None;
-                app.pending_split_provider_key_override = None;
-                app.pending_split_label = None;
+                app.pending_split.request = false;
+                app.pending_split.clear_payload();
                 app.push_display_message(DisplayMessage::system(format!(
                     "Added {} to workspace.",
                     new_session_name,
@@ -2630,20 +2626,22 @@ pub(in crate::tui::app) fn handle_server_event(
                 return false;
             }
             if crate::tui::is_ssh_remote() {
-                app.pending_split_request = false;
+                app.pending_split.request = false;
                 app.set_status_notice(format!(
                     "Remote session created: {new_session_id}. Resume using --ssh and --resume."
                 ));
                 return false;
             }
             finish_remote_split_launch(app);
-            app.pending_split_request = false;
-            let startup_message = app.pending_split_startup_message.take();
-            let parent_session_id_override = app.pending_split_parent_session_id.take();
-            let startup_prompt = app.pending_split_prompt.take();
-            let model_override = app.pending_split_model_override.take();
-            let provider_key_override = app.pending_split_provider_key_override.take();
-            let split_label = app.pending_split_label.take();
+            app.pending_split.request = false;
+            let SplitPayload {
+                startup_message,
+                parent_session_id: parent_session_id_override,
+                prompt: startup_prompt,
+                model_override,
+                provider_key_override,
+                label: split_label,
+            } = app.pending_split.take_payload();
             if let Some(startup_message) = startup_message {
                 app_mod::commands::prepare_review_spawned_session(
                     &new_session_id,

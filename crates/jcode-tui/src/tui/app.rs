@@ -82,6 +82,7 @@ pub(crate) mod onboarding_graph;
 mod onboarding_repair;
 mod onboarding_sim;
 mod overnight_card;
+mod pending_split;
 mod prompt_history;
 mod reasoning;
 mod redraw;
@@ -139,12 +140,6 @@ struct PendingRemoteMessage {
     auto_retry: bool,
     retry_attempts: u8,
     retry_at: Option<Instant>,
-}
-
-#[derive(Debug, Clone)]
-struct PendingSplitPrompt {
-    content: String,
-    images: Vec<(String, String)>,
 }
 
 struct PendingLocalTransfer {
@@ -1257,24 +1252,9 @@ pub struct App {
     autoreview_after_current_turn: bool,
     // Whether the current remote turn should trigger autojudge after completion.
     autojudge_after_current_turn: bool,
-    // Startup message to preload into the next spawned split window.
-    pending_split_startup_message: Option<String>,
-    // Parent/original session that feedback flows should report back to after a split launch.
-    pending_split_parent_session_id: Option<String>,
-    // Startup user prompt to auto-submit in the next spawned split window.
-    pending_split_prompt: Option<PendingSplitPrompt>,
-    // Optional model override to apply before opening the next spawned split window.
-    pending_split_model_override: Option<String>,
-    // Optional provider key override to persist into the next spawned split window.
-    pending_split_provider_key_override: Option<String>,
-    // Human-friendly label for the next spawned split window flow.
-    pending_split_label: Option<String>,
-    // Timestamp for showing a temporary client-side running state while a split launch is in flight.
-    pending_split_started_at: Option<Instant>,
-    // Ask the remote followup loop to issue a split request once idle.
-    pending_split_request: bool,
-    // Ask the followup loop to issue a transfer request once idle.
-    pending_transfer_request: bool,
+    /// A pending launch of the current work into a new sibling session
+    /// (split, transfer, review, or workspace add). See `pending_split.rs`.
+    pending_split: pending_split::PendingSplit,
     // Local transfer preparation currently running in the background.
     pending_local_transfer: Option<PendingLocalTransfer>,
     // Queue mode: if true, Enter during processing queues; if false, Enter queues to send next

@@ -76,7 +76,7 @@ fn test_review_prefers_openai_oauth_gpt_5_4_when_available() {
 fn test_pending_split_launch_shows_processing_status_in_ui() {
     let mut app = create_test_app();
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-    app.pending_split_started_at = Some(Instant::now());
+    app.pending_split.started_at = Some(Instant::now());
 
     assert!(app.is_processing());
     assert!(crate::tui::TuiState::is_processing(&app));
@@ -91,7 +91,7 @@ fn test_pending_split_launch_shows_processing_status_in_ui() {
 fn test_expired_pending_split_launch_no_longer_shows_processing_status() {
     let mut app = create_test_app();
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-    app.pending_split_started_at = Some(Instant::now() - Duration::from_millis(400));
+    app.pending_split.started_at = Some(Instant::now() - Duration::from_millis(400));
 
     assert!(!app.is_processing());
     assert!(!crate::tui::TuiState::is_processing(&app));
@@ -308,11 +308,11 @@ fn test_queue_autojudge_remote_targets_original_non_judge_session() {
         super::commands::queue_autojudge_remote(&mut app);
 
         assert_eq!(
-            app.pending_split_parent_session_id.as_deref(),
+            app.pending_split.parent_session_id.as_deref(),
             Some(root.id.as_str())
         );
         let startup = app
-            .pending_split_startup_message
+            .pending_split.startup_message
             .as_deref()
             .expect("autojudge startup message");
         assert!(startup.contains(root.id.as_str()));

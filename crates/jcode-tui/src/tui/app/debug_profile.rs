@@ -1,3 +1,4 @@
+use super::pending_split::PendingSplitPrompt;
 use super::*;
 use std::borrow::Cow;
 
@@ -186,7 +187,8 @@ impl App {
             .map(estimate_pending_remote_message_bytes)
             .unwrap_or(0);
         let pending_split_prompt_bytes = self
-            .pending_split_prompt
+            .pending_split
+            .prompt
             .as_ref()
             .map(estimate_pending_split_prompt_bytes)
             .unwrap_or(0);
@@ -293,27 +295,32 @@ impl App {
                 .map(|value| value.capacity())
                 .unwrap_or(0)
             + self
-                .pending_split_startup_message
+                .pending_split
+                .startup_message
                 .as_ref()
                 .map(|value| value.capacity())
                 .unwrap_or(0)
             + self
-                .pending_split_parent_session_id
+                .pending_split
+                .parent_session_id
                 .as_ref()
                 .map(|value| value.capacity())
                 .unwrap_or(0)
             + self
-                .pending_split_model_override
+                .pending_split
+                .model_override
                 .as_ref()
                 .map(|value| value.capacity())
                 .unwrap_or(0)
             + self
-                .pending_split_provider_key_override
+                .pending_split
+                .provider_key_override
                 .as_ref()
                 .map(|value| value.capacity())
                 .unwrap_or(0)
             + self
-                .pending_split_label
+                .pending_split
+                .label
                 .as_ref()
                 .map(|value| value.capacity())
                 .unwrap_or(0)
@@ -444,7 +451,7 @@ impl App {
                 "estimate_bytes": pending_remote_message_bytes,
             },
             "pending_split_prompt": {
-                "present": self.pending_split_prompt.is_some(),
+                "present": self.pending_split.prompt.is_some(),
                 "estimate_bytes": pending_split_prompt_bytes,
             },
             "catchup": {

@@ -304,7 +304,8 @@ impl App {
         self.is_remote_client()
             && !self.is_processing
             && self
-                .pending_split_started_at
+                .pending_split
+                .started_at
                 .is_some_and(|started_at| started_at.elapsed() < Duration::from_millis(350))
     }
 
@@ -334,7 +335,7 @@ impl App {
             }
         }
         self.split_launch_in_flight()
-            .then(|| self.pending_split_started_at.map(|t| t.elapsed()))
+            .then(|| self.pending_split.started_at.map(|t| t.elapsed()))
             .flatten()
     }
 

@@ -1477,16 +1477,11 @@ async fn handle_remote_key_internal(
                     if app.is_processing {
                         app.set_status_notice("Autoreview queued");
                     } else {
-                        app.pending_split_request = false;
+                        app.pending_split.request = false;
                         begin_remote_split_launch(app, "Autoreview");
                         if let Err(error) = remote.split().await {
                             finish_remote_split_launch(app);
-                            app.pending_split_startup_message = None;
-                            app.pending_split_parent_session_id = None;
-                            app.pending_split_prompt = None;
-                            app.pending_split_model_override = None;
-                            app.pending_split_provider_key_override = None;
-                            app.pending_split_label = None;
+                            app.pending_split.clear_payload();
                             app.push_display_message(DisplayMessage::error(format!(
                                 "Failed to launch autoreview session: {}",
                                 error
@@ -1535,16 +1530,11 @@ async fn handle_remote_key_internal(
                     if app.is_processing {
                         app.set_status_notice("Autojudge queued");
                     } else {
-                        app.pending_split_request = false;
+                        app.pending_split.request = false;
                         begin_remote_split_launch(app, "Autojudge");
                         if let Err(error) = remote.split().await {
                             finish_remote_split_launch(app);
-                            app.pending_split_startup_message = None;
-                            app.pending_split_parent_session_id = None;
-                            app.pending_split_prompt = None;
-                            app.pending_split_model_override = None;
-                            app.pending_split_provider_key_override = None;
-                            app.pending_split_label = None;
+                            app.pending_split.clear_payload();
                             app.push_display_message(DisplayMessage::error(format!(
                                 "Failed to launch autojudge session: {}",
                                 error
@@ -1575,16 +1565,11 @@ async fn handle_remote_key_internal(
                     if app.is_processing {
                         app.set_status_notice("Review queued");
                     } else {
-                        app.pending_split_request = false;
+                        app.pending_split.request = false;
                         begin_remote_split_launch(app, "Review");
                         if let Err(error) = remote.split().await {
                             finish_remote_split_launch(app);
-                            app.pending_split_startup_message = None;
-                            app.pending_split_parent_session_id = None;
-                            app.pending_split_prompt = None;
-                            app.pending_split_model_override = None;
-                            app.pending_split_provider_key_override = None;
-                            app.pending_split_label = None;
+                            app.pending_split.clear_payload();
                             app.push_display_message(DisplayMessage::error(format!(
                                 "Failed to launch review session: {}",
                                 error
@@ -1615,16 +1600,11 @@ async fn handle_remote_key_internal(
                     if app.is_processing {
                         app.set_status_notice("Judge queued");
                     } else {
-                        app.pending_split_request = false;
+                        app.pending_split.request = false;
                         begin_remote_split_launch(app, "Judge");
                         if let Err(error) = remote.split().await {
                             finish_remote_split_launch(app);
-                            app.pending_split_startup_message = None;
-                            app.pending_split_parent_session_id = None;
-                            app.pending_split_prompt = None;
-                            app.pending_split_model_override = None;
-                            app.pending_split_provider_key_override = None;
-                            app.pending_split_label = None;
+                            app.pending_split.clear_payload();
                             app.push_display_message(DisplayMessage::error(format!(
                                 "Failed to launch judge session: {}",
                                 error
@@ -1887,7 +1867,7 @@ async fn handle_remote_key_internal(
                 }
 
                 if trimmed == "/transfer" {
-                    if app.pending_transfer_request {
+                    if app.pending_split.transfer_request {
                         app.push_display_message(DisplayMessage::system(
                             "A transfer is already pending.".to_string(),
                         ));
@@ -1895,7 +1875,7 @@ async fn handle_remote_key_internal(
                         return Ok(());
                     }
 
-                    app.pending_split_label = Some("Transfer".to_string());
+                    app.pending_split.label = Some("Transfer".to_string());
                     if app.is_processing {
                         let pause_message = app_mod::commands::transfer_pause_message();
                         let pause_display = pause_message.clone();
@@ -1905,7 +1885,7 @@ async fn handle_remote_key_internal(
                         {
                             Ok(request_id) => {
                                 app.track_pending_soft_interrupt(request_id, pause_display);
-                                app.pending_transfer_request = true;
+                                app.pending_split.transfer_request = true;
                                 app.push_display_message(DisplayMessage::system(
                                     "Queued /transfer. The current session will be asked to pause, then the compacted handoff will open in a new window."
                                         .to_string(),
@@ -1913,7 +1893,7 @@ async fn handle_remote_key_internal(
                                 app.set_status_notice("Transfer queued after current turn");
                             }
                             Err(error) => {
-                                app.pending_split_label = None;
+                                app.pending_split.label = None;
                                 app.push_display_message(DisplayMessage::error(format!(
                                     "Failed to queue transfer pause: {}",
                                     error
@@ -1928,7 +1908,7 @@ async fn handle_remote_key_internal(
                         begin_remote_split_launch(app, "Transfer");
                         if let Err(error) = remote.transfer().await {
                             finish_remote_split_launch(app);
-                            app.pending_split_label = None;
+                            app.pending_split.label = None;
                             app.push_display_message(DisplayMessage::error(format!(
                                 "Failed to launch transfer session: {}",
                                 error

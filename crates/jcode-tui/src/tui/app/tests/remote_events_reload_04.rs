@@ -2047,9 +2047,9 @@ fn test_remote_review_shows_processing_until_split_response() {
     assert!(matches!(app.status, ProcessingStatus::Sending));
     assert!(app.current_message_id.is_none());
     assert_eq!(app.status_notice(), Some("Review launching".to_string()));
-    assert!(app.pending_split_startup_message.is_some());
-    assert_eq!(app.pending_split_label.as_deref(), Some("Review"));
-    assert!(!app.pending_split_request);
+    assert!(app.pending_split.startup_message.is_some());
+    assert_eq!(app.pending_split.label.as_deref(), Some("Review"));
+    assert!(!app.pending_split.request);
 
     app.handle_server_event(
         crate::protocol::ServerEvent::SplitResponse {
@@ -2066,8 +2066,8 @@ fn test_remote_review_shows_processing_until_split_response() {
     );
     assert!(matches!(app.status, ProcessingStatus::Idle));
     assert!(app.processing_started.is_none());
-    assert!(app.pending_split_startup_message.is_none());
-    assert!(app.pending_split_label.is_none());
+    assert!(app.pending_split.startup_message.is_none());
+    assert!(app.pending_split.label.is_none());
 }
 
 #[test]
@@ -2095,9 +2095,9 @@ fn test_remote_super_space_routes_next_prompt_to_new_session() {
             .expect("armed prompt should launch split request immediately");
 
         assert!(!app.route_next_prompt_to_new_session);
-        assert!(app.pending_split_prompt.is_some());
-        assert_eq!(app.pending_split_label.as_deref(), Some("Prompt"));
-        assert!(!app.pending_split_request);
+        assert!(app.pending_split.prompt.is_some());
+        assert_eq!(app.pending_split.label.as_deref(), Some("Prompt"));
+        assert!(!app.pending_split.request);
         assert!(app.is_processing);
         assert!(matches!(app.status, ProcessingStatus::Streaming));
         assert_eq!(app.processing_started, active_started);
@@ -2117,8 +2117,8 @@ fn test_remote_super_space_routes_next_prompt_to_new_session() {
         assert_eq!(restored.input, "hello from split");
         assert!(restored.submit_on_restore);
         assert!(restored.pending_images.is_empty());
-        assert!(app.pending_split_prompt.is_none());
-        assert!(app.pending_split_label.is_none());
+        assert!(app.pending_split.prompt.is_none());
+        assert!(app.pending_split.label.is_none());
     });
 }
 
@@ -2143,9 +2143,9 @@ fn test_remote_judge_shows_processing_until_split_response() {
     assert!(matches!(app.status, ProcessingStatus::Sending));
     assert!(app.current_message_id.is_none());
     assert_eq!(app.status_notice(), Some("Judge launching".to_string()));
-    assert!(app.pending_split_startup_message.is_some());
-    assert_eq!(app.pending_split_label.as_deref(), Some("Judge"));
-    assert!(!app.pending_split_request);
+    assert!(app.pending_split.startup_message.is_some());
+    assert_eq!(app.pending_split.label.as_deref(), Some("Judge"));
+    assert!(!app.pending_split.request);
 
     app.handle_server_event(
         crate::protocol::ServerEvent::SplitResponse {
@@ -2162,8 +2162,8 @@ fn test_remote_judge_shows_processing_until_split_response() {
     );
     assert!(matches!(app.status, ProcessingStatus::Idle));
     assert!(app.processing_started.is_none());
-    assert!(app.pending_split_startup_message.is_none());
-    assert!(app.pending_split_label.is_none());
+    assert!(app.pending_split.startup_message.is_none());
+    assert!(app.pending_split.label.is_none());
 }
 
 // ====================================================================
@@ -2301,9 +2301,9 @@ fn test_remote_fork_with_prompt_stages_split_prompt() {
         rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
             .expect("/fork <prompt> should launch split request");
 
-        assert!(app.pending_split_prompt.is_some());
-        assert_eq!(app.pending_split_label.as_deref(), Some("Prompt"));
-        assert!(!app.pending_split_request);
+        assert!(app.pending_split.prompt.is_some());
+        assert_eq!(app.pending_split.label.as_deref(), Some("Prompt"));
+        assert!(!app.pending_split.request);
 
         app.handle_server_event(
             crate::protocol::ServerEvent::SplitResponse {
@@ -2318,7 +2318,7 @@ fn test_remote_fork_with_prompt_stages_split_prompt() {
             .expect("forked session should stage the prompt");
         assert_eq!(restored.input, "explore plan b");
         assert!(restored.submit_on_restore);
-        assert!(app.pending_split_prompt.is_none());
+        assert!(app.pending_split.prompt.is_none());
     });
 }
 
@@ -2338,7 +2338,7 @@ fn test_remote_btw_stages_question_in_forked_session() {
         rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
             .expect("/btw should launch split request");
 
-        assert!(app.pending_split_prompt.is_some());
+        assert!(app.pending_split.prompt.is_some());
 
         app.handle_server_event(
             crate::protocol::ServerEvent::SplitResponse {
@@ -2371,7 +2371,7 @@ fn test_remote_fork_without_prompt_splits_immediately() {
     rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
         .expect("/fork should send split request");
 
-    assert!(app.pending_split_prompt.is_none());
+    assert!(app.pending_split.prompt.is_none());
     assert!(
         app.display_messages()
             .iter()
