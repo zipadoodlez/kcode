@@ -6,8 +6,8 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 
 - `user/` - how to use kcode: install, commands, configuration, providers.
 - `internals/` - how kcode works: architecture, subsystems, protocols.
-- `plans/` - work we intend to do. Ideas we have committed to, not history.
 - `dev/` - contributor process: testing, benchmarking, dependency hygiene.
+- `todo.md` - outstanding work: the checklist, with each item's design inline.
 
 ## Conventions
 
@@ -15,9 +15,10 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
   links a recurring source of 404s.
 - **`user/` and `internals/` describe what the code does today.** If a doc and
   the code disagree, the doc is wrong.
-- **`plans/` describes intent.** Anything not yet built lives there, with the
-  problem it solves and how we would know it worked. Superseded plans are
-  deleted, not archived: git has the history.
+- **`todo.md` is the one home for outstanding work.** The checklist item and its
+  design live in the same entry, so finishing something is one edit in one file.
+  There is no separate plans directory; superseded items are deleted, not
+  archived: git has the history.
 - **Prefer one good doc over three thin ones.** If two docs would share a
   header structure, they are one doc.
 - **No marketing.** State what a thing does and what it costs.

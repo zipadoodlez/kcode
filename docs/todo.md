@@ -27,7 +27,7 @@ Cheap, and they unblock the rest.
   remaining flags are guarded invariants or build/test code.
 - [ ] App re-core baseline: record the `cargo test -p jcode-tui` baseline and add
   `scripts/check_app_shape.py` (field count and `impl App` count, `--update`) so
-  the re-core only moves one way. Stage 0 of `plans/app-recoring.md`.
+  the re-core only moves one way. Stage 0 of the `App` item in phase 2.
 - [ ] `scripts/` classification: ~80 inherited files, no README, several
   jcode-specific. Keep / delete / broken triage.
 
@@ -66,15 +66,57 @@ before the shape is settled is churn.
 
 Staged, each lands whole.
 
-- [ ] **Re-core `App`** (`crates/jcode-tui/src/tui/app.rs`): 309 declared fields
-  (~287 loose), 57 `impl App` blocks across 53 files held together by 124
-  `use super::*` globs, ~3,092 direct `self.<field>` sites. Group the fields
-  into sub-structs that also own their methods, collapse the runtime-mode
-  triplication (`AppRuntimeMode` + `is_remote` + `is_replay` +
-  `is_replay_runtime()`), then narrow each impl's imports. Isolated groups first,
-  coupled ones last. Staged plan with per-group cost: `plans/app-recoring.md`.
-  Revisits `TuiState` last, as a trade: it is a 122-method trait whose second
-  impl, `TestState`, exists so render tests avoid constructing an `App`.
+- [ ] **Re-core `App`** (`crates/jcode-tui/src/tui/app.rs`): the largest single
+  cost in the tree, so the plan lives here in full now that `plans/` is gone.
+
+  Evidence: `struct App` spans `app.rs:821-1547`, 309 fields (~287 loose, ~22
+  already sub-structs), 57 `impl App` blocks across 53 files, 124
+  `use super::*` globs, ~3,092 direct `self.<field>` sites. `app.rs` is 2,471
+  lines, already over the size ratchet. The runtime axis is encoded three times
+  (`runtime_mode`, `is_remote`, `is_replay`, plus two accessors that re-derive
+  it). `create_test_app()` is the graph's #1 hub (771 edges), so every shape
+  change ripples through test construction first.
+
+  Target: `App` becomes a coordinator holding named sub-structs, and each
+  sub-struct owns the methods that touch only it. The pattern is already in tree
+  (`impl OnboardingFlow`, `impl RemoteLogin`). Renaming `self.scroll_offset` to
+  `self.viewport.offset` is churn unless the methods move with the fields; that
+  move is the point. Group names come from the `TuiState` trait's own section
+  headers.
+
+  Order is isolation first, coupling last; each stage lands whole.
+
+  - Stage 0: baseline + `scripts/check_app_shape.py` ratchet. Also measure
+    per-group method cohesion (which `impl App` methods touch one group only).
+    The field/site counts below are measured; cohesion is not.
+  - Stage 1: one runtime axis. Drop `is_remote` and `is_replay`, keep
+    `runtime_mode`; reads go through `is_remote_client()`/`is_replay_runtime()`;
+    test writes become a `set_runtime_mode` helper. Verify with
+    `cargo test -p jcode-tui` and a grep that no field assignment remains.
+  - Stage 2: `CopySelection` (9 fields, 103 sites), the template stage; home
+    `copy_selection.rs`.
+  - Stage 3: `Viewport` (13 fields, 145 sites): scroll, bookmark, redraw flags.
+  - Stage 4: `TodosView` (14 fields, 72 sites).
+  - Stage 5: `Panels` (12 fields, 89 sites): side panel and split view.
+  - Stage 6: overlay/picker state (14 fields, 174 sites): session, model,
+    account, and login pickers, one sub-struct each.
+  - Stage 7: stream/status (26 fields, 414 sites).
+  - Stage 8: provider and model context (15 fields, 281 sites); coordinate with
+    the provider-identity item above, do not create a second registry.
+  - Stage 9: `Input` (17 fields, 303 sites; `input.rs` is 4,176 lines).
+  - Stage 10: transcript (13 fields, 170 sites), then session/server (18 fields,
+    390 sites); sweep the ~121 remaining loose fields into their owners.
+  - Stage 11: revisit `TuiState`. It is a 122-method trait with two impls, and
+    `TestState` (39 fields, 83 sites, 13 files) exists so render tests avoid
+    constructing an `App`. Deleting it is a trade, decided last, once `App` is
+    cheap to construct.
+
+  Out of scope: `handle_client`, the local turn path, provider identity, and the
+  crate spine are separate items.
+
+  Done when: the field count and `impl App` count fall monotonically
+  (`check_app_shape.py`), `use super::*` falls from 124, and `app.rs` drops out
+  of `code_size_budget.json`.
 - [ ] **Split `handle_client`** (`crates/jcode-app-core/src/server/client_lifecycle.rs:434`):
   28 args, body to :3041 (~2600 lines), 85 `Request::` arms, 15 sibling handler
   modules already exist for the arms. Introduce a request-context struct and move
@@ -188,6 +230,6 @@ Independent, no dependency on the phases above.
 
 ## Spec (not a checklist)
 
-`plans/browser-provider-protocol.md`: draft spec, no implementation. Tighten the
-core method set and the normalized `page.snapshot` format before building an
+`internals/browser-provider-protocol.md`: draft spec, no implementation. Tighten
+the core method set and the normalized `page.snapshot` format before building an
 adapter.

@@ -260,7 +260,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn corpus_includes_current_docs_but_not_plans() {
+    fn corpus_includes_current_docs() {
         assert!(JCODE_DOCS.iter().any(|(path, _)| *path == "README.md"));
         assert!(JCODE_DOCS.iter().any(|(path, _)| *path == "docs/README.md"));
         // Recursion reaches subdirectories (see build.rs).
@@ -268,11 +268,6 @@ mod tests {
             JCODE_DOCS
                 .iter()
                 .any(|(path, _)| path.starts_with("docs/user/"))
-        );
-        assert!(
-            !JCODE_DOCS
-                .iter()
-                .any(|(path, _)| path.starts_with("docs/plans/"))
         );
     }
 
