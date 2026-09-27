@@ -37,6 +37,7 @@ fn grep_input(query: &str, max_regions: Option<usize>) -> AgentGrepInput {
         no_ignore: None,
         max_files: None,
         max_regions,
+        max_tokens: None,
         full_region: None,
         debug_score: None,
         paths_only: None,
@@ -168,6 +169,7 @@ fn query_from_params_includes_scope_flags() {
         no_ignore: Some(true),
         max_files: None,
         max_regions: None,
+        max_tokens: None,
         full_region: None,
         debug_score: None,
         paths_only: Some(true),
@@ -203,6 +205,7 @@ fn query_from_params_drops_match_all_glob() {
         no_ignore: None,
         max_files: None,
         max_regions: None,
+        max_tokens: None,
         full_region: None,
         debug_score: None,
         paths_only: None,
@@ -238,6 +241,7 @@ fn query_from_params_scopes_file_path_to_parent_and_exact_glob() {
         no_ignore: None,
         max_files: None,
         max_regions: None,
+        max_tokens: None,
         full_region: None,
         debug_score: None,
         paths_only: None,
@@ -268,6 +272,7 @@ fn query_from_params_scopes_file_field_to_exact_file() {
         no_ignore: None,
         max_files: None,
         max_regions: None,
+        max_tokens: None,
         full_region: None,
         debug_score: None,
         paths_only: None,
@@ -298,6 +303,7 @@ fn query_from_params_find_allows_glob_only_search() {
         no_ignore: None,
         max_files: Some(25),
         max_regions: None,
+        max_tokens: None,
         full_region: None,
         debug_score: None,
         paths_only: Some(true),
@@ -330,6 +336,7 @@ fn query_from_params_find_still_rejects_unscoped_empty_query() {
         no_ignore: None,
         max_files: None,
         max_regions: None,
+        max_tokens: None,
         full_region: None,
         debug_score: None,
         paths_only: None,
@@ -362,6 +369,7 @@ fn query_from_params_smart_uses_terms() {
         no_ignore: None,
         max_files: Some(3),
         max_regions: Some(4),
+        max_tokens: None,
         full_region: Some("auto".to_string()),
         debug_score: Some(true),
         paths_only: None,
@@ -405,6 +413,7 @@ fn query_from_params_smart_falls_back_to_query() {
         no_ignore: None,
         max_files: Some(3),
         max_regions: Some(4),
+        max_tokens: None,
         full_region: Some("auto".to_string()),
         debug_score: Some(true),
         paths_only: None,
@@ -438,6 +447,7 @@ fn build_args_for_trace_still_requires_terms() {
         no_ignore: None,
         max_files: None,
         max_regions: None,
+        max_tokens: None,
         full_region: None,
         debug_score: None,
         paths_only: None,
@@ -475,6 +485,7 @@ fn schema_only_advertises_common_public_fields() {
     assert!(props.contains_key("type"));
     assert!(props.contains_key("max_files"));
     assert!(props.contains_key("max_regions"));
+    assert!(props.contains_key("max_tokens"));
     assert!(props.contains_key("paths_only"));
     assert_eq!(
         mode_enum,
@@ -520,6 +531,7 @@ fn query_from_params_outline_accepts_file_field() {
         no_ignore: None,
         max_files: None,
         max_regions: None,
+        max_tokens: None,
         full_region: None,
         debug_score: None,
         paths_only: None,
@@ -563,6 +575,7 @@ fn query_from_params_outline_treats_file_valued_path_as_target() {
         no_ignore: None,
         max_files: None,
         max_regions: None,
+        max_tokens: None,
         full_region: None,
         debug_score: None,
         paths_only: None,
@@ -602,6 +615,7 @@ fn query_from_params_outline_does_not_duplicate_file_valued_path() {
         no_ignore: None,
         max_files: None,
         max_regions: None,
+        max_tokens: None,
         full_region: None,
         debug_score: None,
         paths_only: None,
@@ -737,8 +751,7 @@ fn execute() { println!("implementation"); }
                 "query": "subject:lsp relation:implementation path:src/tool",
                 "path": ".",
                 "max_files": 2,
-                "max_regions": 3,
-                "debug_plan": true
+                "max_regions": 3
             }),
             ctx,
         )
@@ -941,24 +954,37 @@ fn input_accepts_legacy_grep_param_aliases() {
 }
 
 #[test]
-fn grep_defaults_to_a_bounded_match_count() {
-    // grep was the only mode with no default cap. kgrep bounds every result
-    // with `Budget`, so grep inherits `Budget::default()` and an explicit
-    // `max_regions` becomes the number of match records kept.
-    let uncapped = grep_budget(&grep_input("x", None));
+fn budget_maps_the_three_model_knobs() {
+    // The default is a floor on safety: with no knobs set, every field is
+    // kgrep's default.
+    let default = budget_from_params(&grep_input("x", None));
     assert_eq!(
-        uncapped.max_total_matches,
-        Budget::default().max_total_matches,
-        "grep must be bounded when the caller sets no cap"
+        default.max_total_matches,
+        Budget::default().max_total_matches
+    );
+    assert_eq!(default.max_hits, Budget::default().max_hits);
+    assert_eq!(
+        default.max_detail_tokens,
+        Budget::default().max_detail_tokens
     );
 
-    // An explicit cap must win in either direction, including a larger one, so
-    // the default is a floor on safety and not a ceiling on capability.
+    // An explicit value must win in either direction, including a larger one,
+    // so the default is a floor on safety and not a ceiling on capability.
+    // `max_files` is coverage, `max_regions` records, `max_tokens` detail.
     for explicit in [5usize, 5_000] {
+        let params = AgentGrepInput {
+            max_files: Some(explicit),
+            max_regions: Some(explicit),
+            max_tokens: Some(explicit),
+            ..grep_input("x", None)
+        };
+        let budget = budget_from_params(&params);
+        assert_eq!(budget.max_hits, Some(explicit), "max_files is coverage");
+        assert_eq!(budget.max_total_matches, explicit, "max_regions is records");
         assert_eq!(
-            grep_budget(&grep_input("x", Some(explicit))).max_total_matches,
-            explicit,
-            "an explicit cap must win over the default"
+            budget.max_detail_tokens,
+            Some(explicit),
+            "max_tokens is detail"
         );
     }
 
@@ -970,7 +996,7 @@ fn grep_defaults_to_a_bounded_match_count() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let params = grep_input("guard_context_overflow", None);
     let query = query_from_params(&params, &test_ctx(root)).expect("grep query");
-    let packet = lexical::run_grep(&query, grep_budget(&params)).expect("grep should run");
+    let packet = lexical::run_grep(&query, budget_from_params(&params)).expect("grep should run");
     assert!(
         packet.total_matches > 0,
         "sanity: the probe symbol should exist in this crate"

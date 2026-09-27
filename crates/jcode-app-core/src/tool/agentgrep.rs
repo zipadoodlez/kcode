@@ -61,6 +61,8 @@ struct AgentGrepInput {
     #[serde(default)]
     max_regions: Option<usize>,
     #[serde(default)]
+    max_tokens: Option<usize>,
+    #[serde(default)]
     full_region: Option<String>,
     #[serde(default)]
     debug_score: Option<bool>,
@@ -213,11 +215,15 @@ impl Tool for AgentGrepTool {
                 },
                 "max_files": {
                     "type": "integer",
-                    "description": "Maximum number of files to return for find/trace-style modes."
+                    "description": "Maximum number of files to return. Bounds coverage in every sweeping mode, grep included."
                 },
                 "max_regions": {
                     "type": "integer",
-                    "description": "Maximum number of matching regions to return."
+                    "description": "Maximum number of match records to return. A coarse cap; prefer max_tokens for the size of the answer."
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "description": "Maximum estimated tokens of match detail to return, across all files. The knob for the size of the answer: raise it to see more, or omit it for the default. Unused by outline."
                 },
                 "paths_only": {
                     "type": "boolean",
@@ -359,18 +365,17 @@ fn run_agentgrep_blocking(params: &AgentGrepInput, ctx: &ToolContext) -> Result<
     }
 }
 
-/// The bound on a grep result.
+/// The bound on a result, shared by every sweeping verb.
 ///
-/// grep's `max_regions` used to cap rendered excerpts directly. kgrep bounds a
-/// result with `Budget` instead, so the caller's cap becomes the number of match
-/// records kept. Without this the parameter would be accepted and ignored.
-fn grep_budget(params: &AgentGrepInput) -> Budget {
-    match params.max_regions {
-        Some(max) => Budget {
-            max_total_matches: max,
-            ..Budget::default()
-        },
-        None => Budget::default(),
+/// One home for the three knobs. `max_files` reaches grep here as well, because
+/// `Verb::Lexical` has no coverage cap of its own; find and trace carry the same
+/// number on the verb, and the two compose by whichever is smaller.
+fn budget_from_params(params: &AgentGrepInput) -> Budget {
+    let default = Budget::default();
+    Budget {
+        max_total_matches: params.max_regions.unwrap_or(default.max_total_matches),
+        max_hits: params.max_files.map_or(default.max_hits, Some),
+        max_detail_tokens: params.max_tokens.map_or(default.max_detail_tokens, Some),
     }
 }
 
@@ -384,14 +389,15 @@ fn execute_linked_agentgrep(params: &AgentGrepInput, ctx: &ToolContext) -> Resul
     match &query.verb {
         Verb::Lexical { .. } => {
             let packet = filter_packet_to_exact_file(
-                lexical::run_grep(&query, grep_budget(params)).map_err(anyhow::Error::msg)?,
+                lexical::run_grep(&query, budget_from_params(params))
+                    .map_err(anyhow::Error::msg)?,
                 exact_file.as_deref(),
             );
             Ok(ToolOutput::new(render_grep_text(&packet)).with_title("agentgrep grep"))
         }
         Verb::Path { .. } => {
             let packet = filter_packet_to_exact_file(
-                find::run_find(&query, Budget::default()).map_err(anyhow::Error::msg)?,
+                find::run_find(&query, budget_from_params(params)).map_err(anyhow::Error::msg)?,
                 exact_file.as_deref(),
             );
             Ok(ToolOutput::new(render_find_text(&packet, &render_options))
@@ -403,7 +409,7 @@ fn execute_linked_agentgrep(params: &AgentGrepInput, ctx: &ToolContext) -> Resul
         }
         Verb::Structural { .. } => {
             let packet = filter_packet_to_exact_file(
-                trace::run_trace(&query, Budget::default()).map_err(anyhow::Error::msg)?,
+                trace::run_trace(&query, budget_from_params(params)).map_err(anyhow::Error::msg)?,
                 exact_file.as_deref(),
             );
             Ok(ToolOutput::new(render_trace_text(&packet, &render_options))
