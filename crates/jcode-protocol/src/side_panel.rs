@@ -76,6 +76,31 @@ pub struct SidePanelPage {
     pub updated_at_ms: u64,
 }
 
+impl SidePanelPage {
+    /// An ephemeral markdown page: in-memory content, not backed by a file.
+    ///
+    /// Every mirror page (todos, split view, observe, catch-up) has this exact
+    /// shape, so the shape lives with the type instead of four times over.
+    pub fn ephemeral_markdown(
+        id: impl Into<String>,
+        title: impl Into<String>,
+        file_path: impl Into<String>,
+        content: impl Into<String>,
+        updated_at_ms: u64,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            title: title.into(),
+            file_path: file_path.into(),
+            format: SidePanelPageFormat::Markdown,
+            source: SidePanelPageSource::Ephemeral,
+            content: content.into(),
+            pdf_data: None,
+            updated_at_ms,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct SidePanelSnapshot {
     #[serde(default)]

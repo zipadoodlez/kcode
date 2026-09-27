@@ -1,5 +1,5 @@
 use super::App;
-use crate::side_panel::{SidePanelPage, SidePanelPageFormat, SidePanelPageSource};
+use crate::side_panel::SidePanelPage;
 use crate::todo::TodoItem;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -53,20 +53,17 @@ impl TodosView {
     }
 
     pub(super) fn page(&self) -> SidePanelPage {
-        SidePanelPage {
-            id: TODOS_VIEW_PAGE_ID.to_string(),
-            title: TODOS_VIEW_TITLE.to_string(),
-            file_path: "todos://current-session".to_string(),
-            format: SidePanelPageFormat::Markdown,
-            pdf_data: None,
-            source: SidePanelPageSource::Ephemeral,
-            content: if self.markdown.trim().is_empty() {
+        SidePanelPage::ephemeral_markdown(
+            TODOS_VIEW_PAGE_ID,
+            TODOS_VIEW_TITLE,
+            "todos://current-session",
+            if self.markdown.trim().is_empty() {
                 todos_view_placeholder_markdown()
             } else {
                 self.markdown.clone()
             },
-            updated_at_ms: self.updated_at_ms.max(1),
-        }
+            self.updated_at_ms.max(1),
+        )
     }
 }
 

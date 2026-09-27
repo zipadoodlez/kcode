@@ -1,5 +1,5 @@
 use super::{App, PendingCatchupResume};
-use crate::side_panel::{SidePanelPage, SidePanelPageFormat, SidePanelPageSource};
+use crate::side_panel::SidePanelPage;
 
 pub(super) const CATCHUP_PAGE_ID: &str = "catchup";
 const CATCHUP_PAGE_TITLE: &str = "Catch Up";
@@ -91,19 +91,16 @@ impl App {
     }
 
     fn catchup_page(&self, session_id: &str, markdown: String) -> SidePanelPage {
-        SidePanelPage {
-            id: CATCHUP_PAGE_ID.to_string(),
-            title: CATCHUP_PAGE_TITLE.to_string(),
-            file_path: format!("catchup://{}", session_id),
-            format: SidePanelPageFormat::Markdown,
-            pdf_data: None,
-            source: SidePanelPageSource::Ephemeral,
-            content: markdown,
-            updated_at_ms: std::time::SystemTime::now()
+        SidePanelPage::ephemeral_markdown(
+            CATCHUP_PAGE_ID,
+            CATCHUP_PAGE_TITLE,
+            format!("catchup://{}", session_id),
+            markdown,
+            std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|duration| duration.as_millis() as u64)
                 .unwrap_or(1)
                 .max(1),
-        }
+        )
     }
 }

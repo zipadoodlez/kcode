@@ -116,6 +116,16 @@ Staged, each lands whole.
     fell 292 to 285, tests unchanged from baseline. `copy_badge_ui` is a
     separate concept and stayed.
   - Stage 3: `Viewport` (13 fields, 145 sites): scroll, bookmark, redraw flags.
+    **Not a mechanical sweep.** The field names collide across at least six
+    other structs (`backend.rs`, `debug.rs`, `run_shell.rs`, `navigation.rs`,
+    `ui_smoothness.rs`, `session_picker.rs`, `ui_frame_metrics.rs`), and the
+    sites span 28 files (`scroll_core` alone is ~389 sites). Renaming
+    `self.scroll_offset` blindly hits the wrong receivers; do it per file with
+    the receiver type checked, or first give the viewport fields names that do
+    not collide.
+  - Shared ephemeral side-panel page. **Landed.** The four mirror-page builders
+    now call `SidePanelPage::ephemeral_markdown`, so the page shape lives with
+    the type instead of four times over.
   - Stage 4: `TodosView`. **Landed as the first extraction** (moved up from
     here). Nine `todos_view_*`/`pinned_todos_*`/`todo_card_rendered_hash` fields
     plus their sub-struct-only methods live in `todos_view.rs` as

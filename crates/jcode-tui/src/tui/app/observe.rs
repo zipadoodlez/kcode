@@ -1,6 +1,6 @@
 use super::{App, DisplayMessage};
 use crate::message::ToolCall;
-use crate::side_panel::{SidePanelPage, SidePanelPageFormat, SidePanelPageSource};
+use crate::side_panel::SidePanelPage;
 
 pub(super) const OBSERVE_PAGE_ID: &str = "observe";
 const OBSERVE_PAGE_TITLE: &str = "Observe";
@@ -20,20 +20,17 @@ impl Observe {
     }
 
     pub(super) fn page(&self) -> SidePanelPage {
-        SidePanelPage {
-            id: OBSERVE_PAGE_ID.to_string(),
-            title: OBSERVE_PAGE_TITLE.to_string(),
-            file_path: "observe://latest-context".to_string(),
-            format: SidePanelPageFormat::Markdown,
-            pdf_data: None,
-            source: SidePanelPageSource::Ephemeral,
-            content: if self.page_markdown.trim().is_empty() {
+        SidePanelPage::ephemeral_markdown(
+            OBSERVE_PAGE_ID,
+            OBSERVE_PAGE_TITLE,
+            "observe://latest-context",
+            if self.page_markdown.trim().is_empty() {
                 observe_placeholder_markdown()
             } else {
                 self.page_markdown.clone()
             },
-            updated_at_ms: self.page_updated_at_ms.max(1),
-        }
+            self.page_updated_at_ms.max(1),
+        )
     }
 }
 

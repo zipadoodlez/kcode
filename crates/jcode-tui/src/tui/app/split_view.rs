@@ -1,5 +1,5 @@
 use super::App;
-use crate::side_panel::{SidePanelPage, SidePanelPageFormat, SidePanelPageSource};
+use crate::side_panel::SidePanelPage;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -33,20 +33,17 @@ impl SplitView {
     }
 
     pub(super) fn page(&self) -> SidePanelPage {
-        SidePanelPage {
-            id: SPLIT_VIEW_PAGE_ID.to_string(),
-            title: SPLIT_VIEW_TITLE.to_string(),
-            file_path: "split://chat-mirror".to_string(),
-            format: SidePanelPageFormat::Markdown,
-            pdf_data: None,
-            source: SidePanelPageSource::Ephemeral,
-            content: if self.markdown.trim().is_empty() {
+        SidePanelPage::ephemeral_markdown(
+            SPLIT_VIEW_PAGE_ID,
+            SPLIT_VIEW_TITLE,
+            "split://chat-mirror",
+            if self.markdown.trim().is_empty() {
                 split_view_placeholder_markdown()
             } else {
                 self.markdown.clone()
             },
-            updated_at_ms: self.updated_at_ms.max(1),
-        }
+            self.updated_at_ms.max(1),
+        )
     }
 }
 
