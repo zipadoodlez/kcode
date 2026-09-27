@@ -3,15 +3,12 @@ use crate::message::{ContentBlock, ToolCall};
 use crate::session::Session;
 use crate::storage;
 use crate::{logging, util};
-use ::agentgrep::cli::{FindArgs, FullRegionMode, GrepArgs, OutlineArgs, SmartArgs};
-use ::agentgrep::find::{FindResult, run_find};
-use ::agentgrep::outline::run_outline;
-use ::agentgrep::search::{GrepResult, run_grep};
-use ::agentgrep::smart_dsl::{SmartQuery, parse_smart_query};
-use ::agentgrep::smart_engine::{SmartResult, run_smart};
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use kgrep::model::{Budget, FullRegionMode, Packet, Query, RenderOptions, Verb, Where};
+use kgrep::packet::{render_find_text, render_grep_text, render_outline_text, render_trace_text};
+use kgrep::{find, lexical, outline, trace};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -27,17 +24,11 @@ mod context;
 
 #[cfg(test)]
 use self::args::trace_or_smart_terms_owned;
-use self::args::{
-    build_find_args, build_grep_args, build_outline_args, build_smart_args_and_query,
-    resolve_search_root, summarize_agentgrep_request,
-};
+use self::args::{query_from_params, summarize_agentgrep_request};
 use self::context::maybe_write_context_json;
 #[cfg(test)]
 use self::context::{
     collect_bash_exposure, collect_trace_exposure, tune_known_file, tune_known_region,
-};
-use ::agentgrep::render::{
-    render_find_output, render_grep_output, render_outline_output, render_smart_output,
 };
 
 #[derive(Debug, Deserialize)]
@@ -72,20 +63,10 @@ struct AgentGrepInput {
     #[serde(default)]
     full_region: Option<String>,
     #[serde(default)]
-    debug_plan: Option<bool>,
-    #[serde(default)]
     debug_score: Option<bool>,
     #[serde(default)]
     paths_only: Option<bool>,
 }
-
-/// Default cap on rendered grep matches.
-///
-/// Generous enough that ordinary code searches are unaffected (most return far
-/// fewer), while bounding the pathological case of a common string inside large
-/// data files. The match header always reports the true total, so a caller who
-/// needs more can raise `max_regions` knowing what they are asking for.
-const DEFAULT_GREP_MAX_REGIONS: usize = 200;
 
 fn default_agentgrep_mode() -> String {
     "grep".to_string()
@@ -344,7 +325,7 @@ fn run_agentgrep_blocking(params: &AgentGrepInput, ctx: &ToolContext) -> Result<
     let context_path = maybe_write_context_json(params, ctx)?;
     let request = summarize_agentgrep_request(params, ctx, context_path.as_deref());
     let started_at = std::time::Instant::now();
-    let outcome = execute_linked_agentgrep(params, ctx, context_path.as_deref());
+    let outcome = execute_linked_agentgrep(params, ctx);
     let elapsed_ms = started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
 
     if let Some(path) = context_path {
@@ -378,60 +359,56 @@ fn run_agentgrep_blocking(params: &AgentGrepInput, ctx: &ToolContext) -> Result<
     }
 }
 
-fn execute_linked_agentgrep(
-    params: &AgentGrepInput,
-    ctx: &ToolContext,
-    context_json_path: Option<&Path>,
-) -> Result<ToolOutput> {
+/// The bound on a grep result.
+///
+/// grep's `max_regions` used to cap rendered excerpts directly. kgrep bounds a
+/// result with `Budget` instead, so the caller's cap becomes the number of match
+/// records kept. Without this the parameter would be accepted and ignored.
+fn grep_budget(params: &AgentGrepInput) -> Budget {
+    match params.max_regions {
+        Some(max) => Budget {
+            max_total_matches: max,
+            ..Budget::default()
+        },
+        None => Budget::default(),
+    }
+}
+
+fn execute_linked_agentgrep(params: &AgentGrepInput, ctx: &ToolContext) -> Result<ToolOutput> {
+    let query = query_from_params(params, ctx)?;
     let exact_file = exact_search_file_path(ctx, params.path.as_deref());
-    match params.mode.as_str() {
-        "grep" => {
-            let args = build_grep_args(params, ctx)?;
-            let root = resolve_search_root(ctx, args.path.as_deref())?;
-            let result = filter_grep_result_to_exact_file(
-                run_grep(&root, &args).map_err(anyhow::Error::msg)?,
+    let render_options = RenderOptions {
+        debug_score: params.debug_score.unwrap_or(false),
+    };
+
+    match &query.verb {
+        Verb::Lexical { .. } => {
+            let packet = filter_packet_to_exact_file(
+                lexical::run_grep(&query, grep_budget(params)).map_err(anyhow::Error::msg)?,
                 exact_file.as_deref(),
             );
-            // Bound the rendered matches by default. `find` and `outline` already
-            // default to 5 files / 6 regions, but grep passed `None` straight
-            // through, so one unscoped query over a repo containing large data
-            // files rendered every match: a search for a common key across 2,027
-            // benchmark transcripts produced 923k chars in a single call. The
-            // header still reports the true total, so the caller sees that more
-            // matches exist and can raise the cap deliberately.
-            let max_regions = params.max_regions.or(Some(DEFAULT_GREP_MAX_REGIONS));
-            Ok(
-                ToolOutput::new(render_grep_output(&result, &args, max_regions))
-                    .with_title("agentgrep grep"),
-            )
+            Ok(ToolOutput::new(render_grep_text(&packet)).with_title("agentgrep grep"))
         }
-        "find" => {
-            let args = build_find_args(params, ctx)?;
-            let root = resolve_search_root(ctx, args.path.as_deref())?;
-            let result =
-                filter_find_result_to_exact_file(run_find(&root, &args), exact_file.as_deref());
-            Ok(ToolOutput::new(render_find_output(&result, &args)).with_title("agentgrep find"))
-        }
-        "outline" => {
-            let args = build_outline_args(params, ctx, context_json_path)?;
-            let root = resolve_search_root(ctx, args.path.as_deref())?;
-            let result = run_outline(&root, &args).map_err(anyhow::Error::msg)?;
-            Ok(ToolOutput::new(render_outline_output(&result)).with_title("agentgrep outline"))
-        }
-        "trace" | "smart" => {
-            let (args, query) = build_smart_args_and_query(params, ctx, context_json_path)?;
-            let root = resolve_search_root(ctx, args.path.as_deref())?;
-            let result = filter_smart_result_to_exact_file(
-                run_smart(&root, &query, &args).map_err(anyhow::Error::msg)?,
+        Verb::Path { .. } => {
+            let packet = filter_packet_to_exact_file(
+                find::run_find(&query, Budget::default()).map_err(anyhow::Error::msg)?,
                 exact_file.as_deref(),
             );
-            Ok(ToolOutput::new(render_smart_output(&result, &args))
+            Ok(ToolOutput::new(render_find_text(&packet, &render_options))
+                .with_title("agentgrep find"))
+        }
+        Verb::Outline { .. } => {
+            let result = outline::run_outline(&query).map_err(anyhow::Error::msg)?;
+            Ok(ToolOutput::new(render_outline_text(&result)).with_title("agentgrep outline"))
+        }
+        Verb::Structural { .. } => {
+            let packet = filter_packet_to_exact_file(
+                trace::run_trace(&query, Budget::default()).map_err(anyhow::Error::msg)?,
+                exact_file.as_deref(),
+            );
+            Ok(ToolOutput::new(render_trace_text(&packet, &render_options))
                 .with_title(format!("agentgrep {}", params.mode)))
         }
-        _ => Err(anyhow::anyhow!(
-            "Unsupported agentgrep mode: {}. Use grep, find, outline, or trace.",
-            params.mode
-        )),
     }
 }
 
@@ -450,45 +427,20 @@ fn exact_search_file_path(ctx: &ToolContext, path: Option<&str>) -> Option<Strin
         .map(|name| name.to_string_lossy().into_owned())
 }
 
-fn filter_grep_result_to_exact_file(
-    mut result: GrepResult,
-    exact_file: Option<&str>,
-) -> GrepResult {
+/// Narrow a packet to the single file the caller named, when it named one.
+///
+/// A sweep searches the named file's parent and filters the result, because a
+/// walker root is a directory. All three sweeping verbs now return the same
+/// packet, so this is one function where there were three.
+fn filter_packet_to_exact_file(mut packet: Packet, exact_file: Option<&str>) -> Packet {
     let Some(exact_file) = exact_file else {
-        return result;
+        return packet;
     };
 
-    result.files.retain(|file| file.path == exact_file);
-    result.total_files = result.files.len();
-    result.total_matches = result.files.iter().map(|file| file.matches.len()).sum();
-    result
-}
-
-fn filter_find_result_to_exact_file(
-    mut result: FindResult,
-    exact_file: Option<&str>,
-) -> FindResult {
-    let Some(exact_file) = exact_file else {
-        return result;
-    };
-
-    result.files.retain(|file| file.path == exact_file);
-    result
-}
-
-fn filter_smart_result_to_exact_file(
-    mut result: SmartResult,
-    exact_file: Option<&str>,
-) -> SmartResult {
-    let Some(exact_file) = exact_file else {
-        return result;
-    };
-
-    result.files.retain(|file| file.path == exact_file);
-    result.summary.total_files = result.files.len();
-    result.summary.total_regions = result.files.iter().map(|file| file.regions.len()).sum();
-    result.summary.best_file = result.files.first().map(|file| file.path.clone());
-    result
+    packet.hits.retain(|hit| hit.path == exact_file);
+    packet.total_files = packet.hits.len();
+    packet.total_matches = packet.hits.iter().map(|hit| hit.matches.len()).sum();
+    packet
 }
 
 fn normalized_agentgrep_glob(glob: Option<&str>) -> Option<&str> {

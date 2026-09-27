@@ -94,7 +94,10 @@ jcode-tool-core = { path = "../jcode-tool-core" }
 flate2 = "1"
 tar = "0.4"
 tempfile = "3"
-agentgrep = { git = "https://github.com/1jehuang/agentgrep.git", tag = "v0.1.6" }
+# Development-only path dependency: kgrep absorbs agentgrep's engine.
+# This must become the published dependency before this branch lands, and
+# before that, kgrep must carry agentgrep's MIT notice.
+kgrep = { path = "../../../kgrep" }
 
 [features]
 default = ["pdf", "bedrock"]

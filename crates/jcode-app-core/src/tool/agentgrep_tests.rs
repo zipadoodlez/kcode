@@ -38,10 +38,15 @@ fn grep_input(query: &str, max_regions: Option<usize>) -> AgentGrepInput {
         max_files: None,
         max_regions,
         full_region: None,
-        debug_plan: None,
         debug_score: None,
         paths_only: None,
     }
+}
+
+/// The same input, asked to run in another mode.
+fn input_with_mode(mut params: AgentGrepInput, mode: &str) -> AgentGrepInput {
+    params.mode = mode.to_string();
+    params
 }
 
 #[tokio::test]
@@ -102,53 +107,6 @@ fn agentgrep_rejects_missing_session_cwd_instead_of_using_process_cwd() {
 }
 
 #[test]
-fn render_compacts_huge_grep_match_lines() {
-    let args = GrepArgs {
-        query: "set_status_notice".to_string(),
-        regex: false,
-        file_type: None,
-        json: false,
-        paths_only: false,
-        hidden: false,
-        no_ignore: false,
-        path: None,
-        glob: None,
-    };
-    let line = format!(
-        "{{\"output\":\"{}set_status_notice{}\"}}",
-        "a".repeat(800),
-        "b".repeat(800)
-    );
-
-    let compact = ::agentgrep::render::compact_rendered_match_line(&line, &args);
-
-    assert!(compact.contains("set_status_notice"));
-    assert!(compact.contains("[truncated:"), "{compact}");
-    assert!(
-        compact.chars().count() < 340,
-        "compact output should be bounded, got {} chars: {compact}",
-        compact.chars().count()
-    );
-}
-
-#[test]
-fn render_compacts_huge_trace_region_body_lines() {
-    let line = format!("function handleAuth(){{{}}}", "var x=1;".repeat(2000));
-
-    let compact = ::agentgrep::render::compact_region_body_line(&line);
-
-    assert!(compact.contains("[truncated:"), "{compact}");
-    assert!(
-        compact.chars().count() < 340,
-        "compact region body line should be bounded, got {} chars",
-        compact.chars().count()
-    );
-
-    let short = "fn small() {}";
-    assert_eq!(::agentgrep::render::compact_region_body_line(short), short);
-}
-
-#[test]
 fn grep_max_regions_limits_rendered_match_excerpts() {
     let temp = tempfile::tempdir().expect("tempdir");
     fs::write(
@@ -160,14 +118,13 @@ fn grep_max_regions_limits_rendered_match_excerpts() {
     let output = execute_linked_agentgrep(
         &grep_input("status_notice", Some(2)),
         &test_ctx(temp.path()),
-        None,
     )
     .expect("agentgrep execute")
     .output;
 
     assert_eq!(output.matches("      - @ ").count(), 2, "{output}");
     assert!(
-        output.contains("1 more matches omitted (max_regions=2)"),
+        output.contains("1 more matches counted but not stored"),
         "{output}"
     );
 }
@@ -183,13 +140,10 @@ fn grep_caps_non_code_file_match_excerpts_by_default() {
     )
     .expect("write file");
 
-    let output = execute_linked_agentgrep(
-        &grep_input("status_notice", None),
-        &test_ctx(temp.path()),
-        None,
-    )
-    .expect("agentgrep execute")
-    .output;
+    let output =
+        execute_linked_agentgrep(&grep_input("status_notice", None), &test_ctx(temp.path()))
+            .expect("agentgrep execute")
+            .output;
 
     assert_eq!(output.matches("      - @ ").count(), 3, "{output}");
     assert!(
@@ -199,7 +153,7 @@ fn grep_caps_non_code_file_match_excerpts_by_default() {
 }
 
 #[test]
-fn build_grep_args_includes_scope_flags() {
+fn query_from_params_includes_scope_flags() {
     let ctx = test_ctx(Path::new("/tmp/root"));
     let params = AgentGrepInput {
         mode: "grep".to_string(),
@@ -215,24 +169,26 @@ fn build_grep_args_includes_scope_flags() {
         max_files: None,
         max_regions: None,
         full_region: None,
-        debug_plan: None,
         debug_score: None,
         paths_only: Some(true),
     };
 
-    let args = build_grep_args(&params, &ctx).unwrap();
-    assert_eq!(args.query, "auth_status");
-    assert!(args.regex);
-    assert_eq!(args.file_type.as_deref(), Some("rs"));
-    assert!(args.paths_only);
-    assert!(args.hidden);
-    assert!(args.no_ignore);
-    assert_eq!(args.path.as_deref(), Some("/tmp/root/src"));
-    assert_eq!(args.glob.as_deref(), Some("src/**/*.rs"));
+    let query = query_from_params(&params, &ctx).unwrap();
+    let Verb::Lexical { text, regex } = &query.verb else {
+        panic!("expected a lexical verb");
+    };
+    assert_eq!(text, "auth_status");
+    assert!(*regex);
+    assert_eq!(query.where_.file_type.as_deref(), Some("rs"));
+    assert!(query.paths_only);
+    assert!(query.where_.hidden);
+    assert!(query.where_.no_ignore);
+    assert_eq!(query.where_.root, PathBuf::from("/tmp/root/src"));
+    assert_eq!(query.where_.glob.as_deref(), Some("src/**/*.rs"));
 }
 
 #[test]
-fn build_grep_args_drops_match_all_glob() {
+fn query_from_params_drops_match_all_glob() {
     let ctx = test_ctx(Path::new("/tmp/root"));
     let params = AgentGrepInput {
         mode: "grep".to_string(),
@@ -248,20 +204,22 @@ fn build_grep_args_drops_match_all_glob() {
         max_files: None,
         max_regions: None,
         full_region: None,
-        debug_plan: None,
         debug_score: None,
         paths_only: None,
     };
 
-    let args = build_grep_args(&params, &ctx).unwrap();
-    assert_eq!(args.query, "agentgrep");
-    assert_eq!(args.file_type.as_deref(), Some("rs"));
-    assert_eq!(args.path.as_deref(), Some("/tmp/root/."));
-    assert_eq!(args.glob, None);
+    let query = query_from_params(&params, &ctx).unwrap();
+    let Verb::Lexical { text, .. } = &query.verb else {
+        panic!("expected a lexical verb");
+    };
+    assert_eq!(text, "agentgrep");
+    assert_eq!(query.where_.file_type.as_deref(), Some("rs"));
+    assert_eq!(query.where_.root, PathBuf::from("/tmp/root/."));
+    assert_eq!(query.where_.glob, None);
 }
 
 #[test]
-fn build_grep_args_scopes_file_path_to_parent_and_exact_glob() {
+fn query_from_params_scopes_file_path_to_parent_and_exact_glob() {
     let temp = tempfile::tempdir().expect("tempdir");
     fs::create_dir_all(temp.path().join("src")).expect("mkdir");
     fs::write(temp.path().join("src/app.rs"), "fn auth_status() {}\n").expect("write file");
@@ -281,21 +239,17 @@ fn build_grep_args_scopes_file_path_to_parent_and_exact_glob() {
         max_files: None,
         max_regions: None,
         full_region: None,
-        debug_plan: None,
         debug_score: None,
         paths_only: None,
     };
 
-    let args = build_grep_args(&params, &ctx).unwrap();
-    assert_eq!(
-        args.path.as_deref(),
-        Some(temp.path().join("src").to_string_lossy().as_ref())
-    );
-    assert_eq!(args.glob.as_deref(), Some("app.rs"));
+    let query = query_from_params(&params, &ctx).unwrap();
+    assert_eq!(query.where_.root, temp.path().join("src"));
+    assert_eq!(query.where_.glob.as_deref(), Some("app.rs"));
 }
 
 #[test]
-fn build_grep_and_find_args_scope_file_field_to_exact_file() {
+fn query_from_params_scopes_file_field_to_exact_file() {
     let temp = tempfile::tempdir().expect("tempdir");
     fs::create_dir_all(temp.path().join("src")).expect("mkdir");
     fs::write(temp.path().join("src/app.rs"), "fn auth_status() {}\n").expect("write file");
@@ -315,22 +269,21 @@ fn build_grep_and_find_args_scope_file_field_to_exact_file() {
         max_files: None,
         max_regions: None,
         full_region: None,
-        debug_plan: None,
         debug_score: None,
         paths_only: None,
     };
 
-    let grep = build_grep_args(&params, &ctx).unwrap();
-    let find = build_find_args(&params, &ctx).unwrap();
-    let expected_parent = temp.path().join("src").to_string_lossy().into_owned();
-    assert_eq!(grep.path.as_deref(), Some(expected_parent.as_str()));
-    assert_eq!(grep.glob.as_deref(), Some("app.rs"));
-    assert_eq!(find.path.as_deref(), Some(expected_parent.as_str()));
-    assert_eq!(find.glob.as_deref(), Some("app.rs"));
+    let grep = query_from_params(&params, &ctx).unwrap();
+    let find = query_from_params(&input_with_mode(params, "find"), &ctx).unwrap();
+    let expected_parent = temp.path().join("src");
+    assert_eq!(grep.where_.root, expected_parent);
+    assert_eq!(grep.where_.glob.as_deref(), Some("app.rs"));
+    assert_eq!(find.where_.root, expected_parent);
+    assert_eq!(find.where_.glob.as_deref(), Some("app.rs"));
 }
 
 #[test]
-fn build_find_args_allows_glob_only_search() {
+fn query_from_params_find_allows_glob_only_search() {
     let ctx = test_ctx(Path::new("/tmp/root"));
     let params = AgentGrepInput {
         mode: "find".to_string(),
@@ -346,21 +299,23 @@ fn build_find_args_allows_glob_only_search() {
         max_files: Some(25),
         max_regions: None,
         full_region: None,
-        debug_plan: None,
         debug_score: None,
         paths_only: Some(true),
     };
 
-    let args = build_find_args(&params, &ctx).expect("glob-only find should be valid");
-    assert!(args.query_parts.is_empty());
-    assert_eq!(args.path.as_deref(), Some("/tmp/root/."));
-    assert_eq!(args.glob.as_deref(), Some("**/*release*"));
-    assert_eq!(args.max_files, 25);
-    assert!(args.paths_only);
+    let query = query_from_params(&params, &ctx).expect("glob-only find should be valid");
+    let Verb::Path { terms, max_files } = &query.verb else {
+        panic!("expected a path verb");
+    };
+    assert!(terms.is_empty());
+    assert_eq!(query.where_.root, PathBuf::from("/tmp/root/."));
+    assert_eq!(query.where_.glob.as_deref(), Some("**/*release*"));
+    assert_eq!(*max_files, 25);
+    assert!(query.paths_only);
 }
 
 #[test]
-fn build_find_args_still_rejects_unscoped_empty_query() {
+fn query_from_params_find_still_rejects_unscoped_empty_query() {
     let ctx = test_ctx(Path::new("/tmp/root"));
     let params = AgentGrepInput {
         mode: "find".to_string(),
@@ -376,12 +331,11 @@ fn build_find_args_still_rejects_unscoped_empty_query() {
         max_files: None,
         max_regions: None,
         full_region: None,
-        debug_plan: None,
         debug_score: None,
         paths_only: None,
     };
 
-    let error = build_find_args(&params, &ctx).unwrap_err();
+    let error = query_from_params(&params, &ctx).unwrap_err();
     assert_eq!(
         error.to_string(),
         "agentgrep find requires 'query' unless path, glob, or type narrows the search"
@@ -389,7 +343,7 @@ fn build_find_args_still_rejects_unscoped_empty_query() {
 }
 
 #[test]
-fn build_smart_args_uses_terms() {
+fn query_from_params_smart_uses_terms() {
     let ctx = test_ctx(Path::new("/workspace"));
     let params = AgentGrepInput {
         mode: "smart".to_string(),
@@ -409,30 +363,32 @@ fn build_smart_args_uses_terms() {
         max_files: Some(3),
         max_regions: Some(4),
         full_region: Some("auto".to_string()),
-        debug_plan: Some(true),
         debug_score: Some(true),
         paths_only: None,
     };
 
-    let (args, query) = build_smart_args_and_query(&params, &ctx, None).unwrap();
-    assert_eq!(
-        args.terms,
-        vec!["subject:auth_status", "relation:rendered", "path:src/tui"]
-    );
-    assert_eq!(args.max_files, 3);
-    assert_eq!(args.max_regions, 4);
-    assert!(matches!(args.full_region, FullRegionMode::Auto));
-    assert!(args.debug_plan);
-    assert!(args.debug_score);
-    assert_eq!(args.file_type.as_deref(), Some("rs"));
-    assert_eq!(args.path.as_deref(), Some("/workspace/repo"));
-    assert_eq!(query.subject, "auth_status");
-    assert_eq!(query.relation.as_str(), "rendered");
-    assert_eq!(query.path_hint.as_deref(), Some("src/tui"));
+    let query = query_from_params(&params, &ctx).unwrap();
+    let Verb::Structural {
+        query: structural,
+        max_files,
+        max_regions,
+        full_region,
+    } = &query.verb
+    else {
+        panic!("expected a structural verb");
+    };
+    assert_eq!(*max_files, 3);
+    assert_eq!(*max_regions, 4);
+    assert!(matches!(*full_region, FullRegionMode::Auto));
+    assert_eq!(query.where_.file_type.as_deref(), Some("rs"));
+    assert_eq!(query.where_.root, PathBuf::from("/workspace/repo"));
+    assert_eq!(structural.subject, "auth_status");
+    assert_eq!(structural.relation.as_str(), "rendered");
+    assert_eq!(structural.path_hint.as_deref(), Some("src/tui"));
 }
 
 #[test]
-fn build_smart_args_falls_back_to_query_terms() {
+fn query_from_params_smart_falls_back_to_query() {
     let ctx = test_ctx(Path::new("/workspace"));
     let params = AgentGrepInput {
         mode: "smart".to_string(),
@@ -450,21 +406,21 @@ fn build_smart_args_falls_back_to_query_terms() {
         max_files: Some(3),
         max_regions: Some(4),
         full_region: Some("auto".to_string()),
-        debug_plan: Some(true),
         debug_score: Some(true),
         paths_only: None,
     };
 
-    let (args, _query) = build_smart_args_and_query(&params, &ctx, None).unwrap();
-    assert_eq!(
-        args.terms,
-        vec![
-            "subject:auth_status",
-            "relation:rendered",
-            "path:src/tui",
-            "support:current"
-        ]
-    );
+    let query = query_from_params(&params, &ctx).unwrap();
+    let Verb::Structural {
+        query: structural, ..
+    } = &query.verb
+    else {
+        panic!("expected a structural verb");
+    };
+    assert_eq!(structural.subject, "auth_status");
+    assert_eq!(structural.relation.as_str(), "rendered");
+    assert_eq!(structural.path_hint.as_deref(), Some("src/tui"));
+    assert_eq!(structural.support, vec!["current".to_string()]);
 }
 
 #[test]
@@ -483,7 +439,6 @@ fn build_args_for_trace_still_requires_terms() {
         max_files: None,
         max_regions: None,
         full_region: None,
-        debug_plan: None,
         debug_score: None,
         paths_only: None,
     };
@@ -550,7 +505,7 @@ fn input_defaults_missing_mode_to_grep() {
 }
 
 #[test]
-fn build_outline_args_accepts_file_field() {
+fn query_from_params_outline_accepts_file_field() {
     let ctx = test_ctx(Path::new("/workspace"));
     let params = AgentGrepInput {
         mode: "outline".to_string(),
@@ -566,14 +521,16 @@ fn build_outline_args_accepts_file_field() {
         max_files: None,
         max_regions: None,
         full_region: None,
-        debug_plan: None,
         debug_score: None,
         paths_only: None,
     };
 
-    let args = build_outline_args(&params, &ctx, None).unwrap();
-    assert_eq!(args.file, "src/tool/agentgrep.rs");
-    assert_eq!(args.path.as_deref(), Some("/workspace/repo"));
+    let query = query_from_params(&params, &ctx).unwrap();
+    let Verb::Outline { file, .. } = &query.verb else {
+        panic!("expected an outline verb");
+    };
+    assert_eq!(file, "src/tool/agentgrep.rs");
+    assert_eq!(query.where_.root, PathBuf::from("/workspace/repo"));
 }
 
 #[test]
@@ -588,7 +545,7 @@ fn input_accepts_file_path_alias_for_file() {
 }
 
 #[test]
-fn build_outline_args_treats_file_valued_path_as_outline_target() {
+fn query_from_params_outline_treats_file_valued_path_as_target() {
     let temp = tempfile::tempdir().expect("tempdir");
     fs::write(temp.path().join("app.rs"), "fn main() {}\n").expect("write file");
     let ctx = test_ctx(temp.path());
@@ -607,22 +564,24 @@ fn build_outline_args_treats_file_valued_path_as_outline_target() {
         max_files: None,
         max_regions: None,
         full_region: None,
-        debug_plan: None,
         debug_score: None,
         paths_only: None,
     };
 
-    let args = build_outline_args(&params, &ctx, None).unwrap();
+    let query = query_from_params(&params, &ctx).unwrap();
+    let Verb::Outline { file, .. } = &query.verb else {
+        panic!("expected an outline verb");
+    };
     assert_eq!(
-        args.file,
-        temp.path().join("app.rs").display().to_string(),
+        file,
+        &temp.path().join("app.rs").display().to_string(),
         "file-valued path should become the outline target instead of joining query onto it"
     );
-    assert_eq!(args.path, None);
+    assert_eq!(query.where_.root, temp.path());
 }
 
 #[test]
-fn build_outline_args_does_not_duplicate_file_valued_path_when_file_is_also_set() {
+fn query_from_params_outline_does_not_duplicate_file_valued_path() {
     let temp = tempfile::tempdir().expect("tempdir");
     let relative_file = "src/tool/todo.rs";
     let absolute_file = temp.path().join(relative_file);
@@ -644,14 +603,16 @@ fn build_outline_args_does_not_duplicate_file_valued_path_when_file_is_also_set(
         max_files: None,
         max_regions: None,
         full_region: None,
-        debug_plan: None,
         debug_score: None,
         paths_only: None,
     };
 
-    let args = build_outline_args(&params, &ctx, None).unwrap();
-    assert_eq!(args.file, absolute_file.display().to_string());
-    assert_eq!(args.path, None);
+    let query = query_from_params(&params, &ctx).unwrap();
+    let Verb::Outline { file, .. } = &query.verb else {
+        panic!("expected an outline verb");
+    };
+    assert_eq!(file, &absolute_file.display().to_string());
+    assert_eq!(query.where_.root, temp.path());
 }
 
 #[tokio::test]
@@ -783,9 +744,8 @@ fn execute() { println!("implementation"); }
         )
         .await
         .expect("agentgrep execution");
-    assert!(output.output.contains("debug plan:"));
-    assert!(output.output.contains("subject: lsp"));
-    assert!(output.output.contains("relation: implementation"));
+    assert!(output.output.contains("subject:lsp"));
+    assert!(output.output.contains("relation:implementation"));
 }
 
 #[test]
@@ -982,24 +942,22 @@ fn input_accepts_legacy_grep_param_aliases() {
 
 #[test]
 fn grep_defaults_to_a_bounded_match_count() {
-    // grep was the only mode with no default cap: find defaults to 5 files and
-    // outline to 6 regions, but grep passed `None` through and rendered every
-    // match. One unscoped query over a repo with large data files produced 923k
-    // chars in a single call.
-    let unbounded = grep_input("x", None);
+    // grep was the only mode with no default cap. kgrep bounds every result
+    // with `Budget`, so grep inherits `Budget::default()` and an explicit
+    // `max_regions` becomes the number of match records kept.
+    let uncapped = grep_budget(&grep_input("x", None));
     assert_eq!(
-        unbounded.max_regions.or(Some(DEFAULT_GREP_MAX_REGIONS)),
-        Some(DEFAULT_GREP_MAX_REGIONS),
+        uncapped.max_total_matches,
+        Budget::default().max_total_matches,
         "grep must be bounded when the caller sets no cap"
     );
 
     // An explicit cap must win in either direction, including a larger one, so
     // the default is a floor on safety and not a ceiling on capability.
     for explicit in [5usize, 5_000] {
-        let params = grep_input("x", Some(explicit));
         assert_eq!(
-            params.max_regions.or(Some(DEFAULT_GREP_MAX_REGIONS)),
-            Some(explicit),
+            grep_budget(&grep_input("x", Some(explicit))).max_total_matches,
+            explicit,
             "an explicit cap must win over the default"
         );
     }
@@ -1010,18 +968,15 @@ fn grep_defaults_to_a_bounded_match_count() {
     // the compiler would fold away: this repo's own uses of a common internal
     // symbol must fit under the cap.
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let args = build_grep_args(&grep_input("guard_context_overflow", None), &test_ctx(root))
-        .expect("grep args");
-    let result = ::agentgrep::search::run_grep(root, &args).expect("grep should run");
+    let params = grep_input("guard_context_overflow", None);
+    let query = query_from_params(&params, &test_ctx(root)).expect("grep query");
+    let packet = lexical::run_grep(&query, grep_budget(&params)).expect("grep should run");
     assert!(
-        result.total_matches > 0,
+        packet.total_matches > 0,
         "sanity: the probe symbol should exist in this crate"
     );
     assert!(
-        result.total_matches < DEFAULT_GREP_MAX_REGIONS,
-        "an ordinary in-repo search returned {} matches, which the default cap \
-         of {} would clip",
-        result.total_matches,
-        DEFAULT_GREP_MAX_REGIONS
+        !packet.truncated,
+        "an ordinary in-repo search was truncated by the default budget"
     );
 }
