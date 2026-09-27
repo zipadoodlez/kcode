@@ -21,10 +21,9 @@ default_provider = "claude"
 default_model = "claude-opus-4-8"
 ```
 
-`provider list` prints the providers with a catalog entry; `-p` accepts more,
-because aliases and gateways resolve to the same backends without their own
-catalog row. When a name is rejected, `provider list` is the authority on what
-works, not the flag's help text.
+`provider list` prints every id `-p/--provider` accepts, each with its auth kind.
+The flag also accepts aliases for the same backends (for example `z.ai`, `hf`,
+`together`), and `--json` prints the list for scripting.
 
 ## Logging in
 

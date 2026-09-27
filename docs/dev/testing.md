@@ -84,15 +84,13 @@ The `App` re-core changes shape, not behavior, so this set should only shrink.
 `scripts/check_app_shape.py` ratchets the shape itself; see `../todo.md`.
 
 The root crate has its own pre-existing set: `cargo test -p kcode --lib` fails
-12 of 193 (181 passed). Measured at `6dff3825` and again with the working tree
-stashed, so they belong to the tree rather than to a change under test. Sampled
+10 of 195 (185 passed), measured 2026-09-28. It was 12 of 193 at `6dff3825`;
+B1/B2 fixed the two provider round-trip failures and added two tests. Sampled
 causes: stale expectations for removed or renamed surface, e.g.
 `login::next_step::tests::extracted_hints_match_the_strings_login_printed_before_extraction`
-wants "run jcode" where the code now prints "run kcode",
+wants "run jcode" where the code now prints "run kcode", and
 `cli::args::tests::login_scriptable_flags_parse` parses a `--google-access-tier`
-flag that no longer exists after the Google login was cut, and
-`cli::provider_init::tests::login_provider_choice_table_round_trips_catalog_providers`
-is the provider-table drift documented in `../todo.md` §1. The `../todo.md`
+flag that no longer exists after the Google login was cut. The `../todo.md`
 baseline bullet is the list to keep current.
 
 ## Testing onboarding locally

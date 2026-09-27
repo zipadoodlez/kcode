@@ -236,7 +236,7 @@ before the shape is settled is churn.
     Preferred shape: keep `ProviderActivation` free of the profile payload and
     give the descriptor a `runtime_key()` accessor. `--` read
     `activation.rs`'s consumers before committing.
-  - B5: **The registry drives the clap values.** Delete the 52 variants, their
+  - B5: **The registry drives the clap values.** Delete the 53 variants, their
     aliases, and `as_arg_value()`; build `PossibleValuesParser` from the
     registry with `PossibleValue::new(id).help(display_name).alias(..)` and
     `.hide(true)` for the deprecated one, which keeps `--help` and completions.
@@ -830,18 +830,16 @@ tree first would just move that churn around.
 - [ ] Move subsystem code out of test files: `live_tests.rs` is a live-provider
   coverage ledger (21% tests), `provider_e2e.rs` (11% tests).
 - [ ] Pre-existing failures on this tree: `jcode-tui --lib` 27, `jcode-base --lib`
-  15, root `kcode --lib` 12 of 193 (measured 2026-09-27 at `6dff3825` and again
-  with the working tree stashed, so they are this tree's, not a session's).
-  Sampled root causes are stale expectations for removed or renamed surface:
+  15, root `kcode --lib` 10 of 195 (measured 2026-09-28; it was 12 of 193 at
+  `6dff3825`, and B1/B2 cleared the two provider round-trip failures). Sampled
+  root causes are stale expectations for removed or renamed surface:
   `login::next_step::tests::extracted_hints_match_the_strings_login_printed_before_extraction`
-  wants "run jcode" where the code now prints "run kcode",
+  wants "run jcode" where the code now prints "run kcode", and
   `cli::args::tests::login_scriptable_flags_parse` parses a `--google-access-tier`
-  flag that went with the Google login cut, and
-  `cli::provider_init::tests::login_provider_choice_table_round_trips_catalog_providers`
-  is the provider-table drift in §1. Also math/LaTeX 15 and `test_lock_order` 1.
-  Environmental, not regressions. Treat as the baseline; the suite still covers
-  removed features and brittle pixel/color assertions, so collapse or delete
-  rather than maintain.
+  flag that went with the Google login cut. Also math/LaTeX 15 and
+  `test_lock_order` 1. Environmental, not regressions. Treat as the baseline; the
+  suite still covers removed features and brittle pixel/color assertions, so
+  collapse or delete rather than maintain.
 
 ## 5. Hygiene, then packaging
 

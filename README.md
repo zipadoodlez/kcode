@@ -232,41 +232,14 @@ commands `/z`, `/zz`, `/zzz`, `/zstatus`.
 
 ### Providers
 
-`kcode provider list` reports 26 canonical providers:
+`kcode provider list` prints every id `-p/--provider` accepts, each with its
+auth kind; `--json` prints the same list for scripting. The flag also accepts
+aliases for the same backends. Run the command rather than reading a copy here:
+the list is derived from the provider registry, so it cannot go stale.
 
-| id | provider | auth |
-|---|---|---|
-| `claude` | Anthropic/Claude | Claude Pro or Max |
-| `openai` | OpenAI | ChatGPT Plus or Pro |
-| `openrouter` | OpenRouter | API key, 200+ models |
-| `azure` | Azure OpenAI | Entra ID or API key |
-| `opencode` | OpenCode Zen | API key |
-| `opencode-go` | OpenCode Go | API key |
-| `zai` | Z.AI Coding Plan | API key |
-| `kimi` | Kimi Code | API key |
-| `conifer` | Conifer | API key, cost-routed gateway |
-| `groq` | Groq | API key |
-| `mistral` | Mistral | API key |
-| `perplexity` | Perplexity | API key |
-| `togetherai` | Together AI | API key |
-| `deepinfra` | Deep Infra | API key |
-| `novita` | Novita AI | API key |
-| `xai` | xAI | API key |
-| `grok-build` | Grok Build | subscription |
-| `chutes` | Chutes | API key |
-| `cerebras` | Cerebras | API key |
-| `alibaba-coding-plan` | Alibaba Cloud Coding Plan | API key |
-| `openai-compatible` | OpenAI-compatible | base URL + API key |
-| `cursor` | Cursor | browser login or API key |
-| `copilot` | GitHub Copilot | GitHub device flow |
-| `gemini` | Google Gemini | Code Assist OAuth |
-| `antigravity` | Antigravity | Google OAuth |
-| `auto` | Auto-detect | best configured provider |
-
-The `--provider` flag additionally accepts gateway/alias values that do not
-appear in `provider list` (for example `anthropic-api`, `bedrock`,
-`hugging-face`, `moonshot-ai`, `nebius`, `scaleway`, `lmstudio`, `ollama`).
-See [Status](#status-and-known-gaps).
+`kcode provider current` shows what was requested and what actually resolved.
+See [docs/user/providers.md](docs/user/providers.md) for login flows, credential
+locations, and per-provider notes.
 
 ### Tools
 
@@ -356,7 +329,7 @@ hooks, and the provider catalog.
 
 ---
 
-## Status
+## Status and known gaps
 
 Known gaps and work in progress are tracked in **[docs/todo.md](docs/todo.md)**:
 plans in flight, committed ideas that have no doc yet, and open items in the
