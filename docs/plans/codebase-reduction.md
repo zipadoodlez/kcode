@@ -70,8 +70,14 @@ Ships alone trivially.
   2681, anthropic 1641, bedrock 1981 lines), so each deletion needs evidence.
 - **Repo hygiene** already listed in `wip.md`: upstream CI workflows, dead
   config, `scripts/`, budget baselines, missing `packaging/arch/PKGBUILD`.
-- **Dead TUI files**: the three one-helper `ui_pinned_*` files, and any module
-  with no `#[path]`/`mod` declaration. (`ui_transitions.rs` is already deleted.)
+- **Dead TUI files.** No verified dead-file set exists yet. The inherited
+  claim in the first draft ("the three one-helper `ui_pinned_*` files, and any
+  module with no `#[path]`/`mod` declaration") did not survive reading: all four
+  `ui_pinned_*` files are declared (`ui.rs:64` loads `ui_pinned.rs`, 1102 lines;
+  its submodules at `ui_pinned.rs:3,6,40`), and the "no declaration" heuristic
+  is unreliable because the test tree is wired with `include!` (126 sites), not
+  the module system. Find real dead files with the compiler, not a file-scan.
+  (`ui_transitions.rs` is already deleted.)
 - **Dead local TUI event loop.** `App::run` (`tui/app/run_shell.rs:197`, ~112
   lines) has no caller anywhere in the repo: production launches
   `app.run_remote` (`src/cli/tui_launch.rs:161`), and no test calls it. It is
@@ -98,6 +104,14 @@ it. What the reading actually found:
   coverage ledger (schema, checkpoint taxonomy, coverage merge, ranking) with
   only 11 tests; `provider_e2e.rs` is 11% tests. The line counts overstate test
   weight. Move the infrastructure to a named module and leave the tests.
+- **The test tree is `include!`-wired, so it is one giant module.**
+  `tui/app/tests.rs` (1607 lines) `include!`s 62 files into a single module; the
+  repo has 126 `include!` sites. Every test file therefore shares one namespace
+  and its imports, which is why helper name collisions and `use super::*` are
+  everywhere, and why the test files are invisible to the module system
+  (and to grep-driven dead-code checks). Converting `include!` to real `mod`
+  files is mechanical, compiles independently per file, and is the enabling
+  cleanup for collapsing the near-duplicate tables.
 - **The snapshot pattern already exists.** `onboarding_golden.rs:render_onboarding_text`
   already renders to an offscreen buffer and compares visible text lines. The
   move is to generalize that, not to invent a pure view layer.

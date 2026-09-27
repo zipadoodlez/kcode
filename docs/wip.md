@@ -10,7 +10,7 @@ git has the history.
 
 | plan | state | what's left |
 |---|---|---|
-| [plans/codebase-reduction.md](plans/codebase-reduction.md) | proposal, nothing implemented; claims re-verified 2026-09-27 | tier 0 (delete: provider cut, hygiene, dead files, dead local TUI loop) is the entry point; tier 1 is now "condense the test suite" (its pixel-brittleness premise was refuted by reading); tiers 3-6 are the unifications (protocol dispatch, command surface, provider identity, swarm/comm) the audit added. Four open judgment calls are listed at the bottom of the plan - tier 1's fate, render-state ownership, tier 3/6 coupling, and whether to land the cheap cuts now |
+| [plans/codebase-reduction.md](plans/codebase-reduction.md) | proposal, nothing implemented; claims re-verified 2026-09-27 | tier 0 (delete: provider cut, hygiene, dead local TUI loop) is the entry point - the inherited "dead TUI files" list did not survive reading, so no dead-file set is verified; tier 1 is now "condense the test suite" (its pixel-brittleness premise was refuted; the test tree is `include!`-wired into one module); tiers 3-6 are the unifications (protocol dispatch, command surface, provider identity, swarm/comm). Four open judgment calls are listed at the bottom of the plan |
 | [plans/browser-provider-protocol.md](plans/browser-provider-protocol.md) | draft spec, no implementation | tighten the core method set and the normalized `page.snapshot` format before building any adapter |
 
 Withdrawn: `plans/tui-render-ownership.md` (git history at `ce83f61a`). Its goal
