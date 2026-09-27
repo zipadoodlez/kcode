@@ -45,8 +45,9 @@ graphify god-nodes
 graphify path "ServerEvent" "TuiState"
 ```
 
-graph.json records the `built_at_commit` it was built from, so a stale graph is
-visible. Only `graph.json` and `GRAPH_REPORT.md` are tracked; the cache, the
+graph.json records the `built_at_commit` of the last commit that changed the
+code topology, so a graph that lags a structural change is visible. Only
+`graph.json` and `GRAPH_REPORT.md` are tracked; the cache, the
 interpreter/root sidecars, and the HTML view are gitignored. The 44 MB JSON is
 excluded from text diffs and union-merged on conflict (see `.gitattributes`).
 

@@ -21,3 +21,4 @@ graphify-out/*/
 graphify-out/manifest.json
 graphify-out/graph.html
 graphify-out/.graphify_*
+graphify-out/.rebuild.lock
