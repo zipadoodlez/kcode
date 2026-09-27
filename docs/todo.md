@@ -19,14 +19,29 @@ maintainer before work starts; everything else is actionable.
 
 Cheap, and they unblock the rest.
 
-- [ ] (decision) Fork policy: rebase lane vs hard divergence is undecided and
-  blocks crate names and the env prefix. `README.md` says "does not track
-  upstream"; nothing follows from it.
-- [ ] `scripts/` classification: ~80 inherited files, no README, several
-  jcode-specific. Keep / delete / broken triage.
-- [ ] (decision) Do the two size ratchets keep kcode's re-baselined numbers or
-  get a different ceiling? They measure the fork's own drift now instead of
-  jcode's, which is what they were for.
+**Fork policy decided (2026-09-28): diverged.** There is no rebase lane and no
+upstream to track; kcode is its own tree. What that decision unblocks, now
+actionable:
+
+- [ ] **Rename the `JCODE_*` env prefix to `KCODE_*`,** with a `JCODE_*` read
+  fallback for one release, and `<runtime_dir>/jcode/` to
+  `<runtime_dir>/kcode/`. State already lives in `~/.kcode`. Do it before
+  packaging so the compatibility shim ships once.
+- [ ] **Crate names: pick (a) or (b), do not churn.** The workspace has 61
+  members and 60 of them are `jcode-*`; the root crate sets `[lib] name =
+  "jcode"` while its package is `kcode`. Either (a) rename the root `[lib]` to
+  `kcode` and leave the crate names, or (b) declare the crate names cosmetic and
+  change nothing. A mechanical rename of 60 crates has no functional payoff.
+- **Ratchets: keep kcode's re-baselined numbers.** Decided. They measure this
+  tree's drift, which is the point of a ratchet. Two things the decision
+  surfaced were measured and are fixed below: the two size ratchets were never
+  in the gate, and the binary rename left broken references behind.
+- **`scripts/` triage: done** (classification in §5). The gate, the dev
+  wrappers, and the documented harnesses stay; the one-off investigation
+  scripts are deleted.
+- **`packaging/arch/PKGBUILD`: deferred** by the maintainer (2026-09-28). README
+  keeps its promise until then. License fields were deliberately not added to the
+  manifests (nothing here is published); revisit with packaging.
 
 ### The gate, measured (2026-09-27, HEAD `6dff3825`, rustc 1.98.1)
 
@@ -69,6 +84,34 @@ Decided and landed 2026-09-27:
   `telemetry::record_auth_success` consumer the fork cut removed, and clippy's
   suggested `any()` for `browser_fast.rs`'s credential redaction would have
   skipped the remaining credentials in a payload. The full gate is green.
+
+### Gate follow-ups (2026-09-28)
+
+Found while acting on the ratchet decision; both are fixed, and both were
+invisible because nothing ran them.
+
+- **The two size ratchets were not in the gate.** `check_guardrails.sh` ran the
+  panic, dependency-boundary, wildcard, and `App`-shape ratchets, but neither
+  `check_code_size_budget.py` nor `check_test_size_budget.py`: the only caller of
+  the first was the (now deleted) `refactor_phase1_verify.sh`, and nothing at all
+  called the second. They passed (`tracked=79`, `tracked=34`), so they were
+  wired into `check_guardrails.sh` rather than deleted. A re-baselined ratchet
+  that never runs still guards nothing.
+- **The binary rename left broken references.** The fork renamed the root package
+  and bin to `kcode`, but scripts still invoked `--bin jcode`, `-p jcode`,
+  `target/{debug,release,selfdev}/jcode`, and a hardcoded
+  `~/.local/bin/jcode`. None of those resolve: the declared bins are `kcode`,
+  `test_api`, and `jcode-harness`. Worst case was `scripts/build_linux_compat.sh`,
+  which built `-p kcode --bin kcode` and then copied `.../release/jcode` into the
+  benchmark artifact, so the Harbor path could not have been producing the
+  binary it named. Fixed in `build_linux_compat.sh`, `quick-release.sh`,
+  `test_fast.sh`, `test_auth_e2e.sh`, `auth_fixture.sh`, `onboarding_sandbox.sh`,
+  `check_startup_budget.sh`, `real_provider_smoke.sh`, `agent_trace.sh`,
+  `antigravity_live_coverage.sh`, `memory_probe.sh`, `bench_startup.py`,
+  `profile_spawn.py`, plus the selfdev prompt (`selfdev_mode.txt` and its test)
+  and a rendered-command fixture in `ui_messages/tests.rs`. The `jcode-harness`
+  bin name and the `JCODE_*` env names are deliberately unchanged (the latter is
+  the env-prefix item above).
 
 ## 1. Shared shapes
 
@@ -622,10 +665,75 @@ Staged, each lands whole.
     `remote/queue_recovery.rs`. Packing them into a struct keeps the duplication;
     the fix is one representation (a queue of outbound items carrying status and
     ack id) that deletes the conversions. Needs a fresh context; not a field-move.
-- [ ] **Split `handle_client`** (`crates/jcode-app-core/src/server/client_lifecycle.rs:434`):
-  28 args, body to :3041 (~2600 lines), 85 `Request::` arms, 15 sibling handler
-  modules already exist for the arms. Introduce a request-context struct and move
-  arm groups into their modules. Design the context to hold `SwarmState` (above).
+- [ ] **Split `handle_client`** (`crates/jcode-app-core/src/server/client_lifecycle.rs`).
+  Researched 2026-09-28 by reading the function and its call sites, not
+  estimated. The line count is real; the god-ness is not where the old one-liner
+  put it, because the arms are already thin and mostly delegate.
+
+  Measured. The function is lines 434-3037 (~2600), and it decomposes as:
+
+  - **744 lines of setup prologue** (434-1178): the read loop that accepts
+    requests until `Subscribe` (lightweight control requests are answered inline
+    and dropped), working-dir resolution, provider fork, `Registry::new`,
+    `Agent::new_with_initial_working_dir`, prewarm, `SessionControlHandle`
+    registration, four separate `write().await` map inserts, and the per-client
+    event-forwarder task.
+  - **77 `Request::` arms, 1742 lines total**: largest `Subscribe` 195,
+    `SoftInterrupt` 81, `ResumeSession` 74, `Message` 64, `Rewind` 61,
+    `RewindUndo` 60, `Clear` 47; the rest are 15-40 lines and the `Comm*` arms
+    carry no logic, they unpack and forward.
+  - **~117 lines of teardown** (2920-3037) that already calls
+    `client_disconnect_cleanup` helpers.
+
+  The three real costs, in order:
+
+  1. **28 args** under `#[expect(clippy::too_many_arguments)]`, with exactly one
+     production caller (`server/runtime.rs:263`) plus tests, so a context struct
+     is mechanical. Ten of the args are swarm state: four are already modelled by
+     `SwarmState` (`swarm_members` -> `members`, `swarms_by_id`,
+     `swarm_plans` -> `plans`, `swarm_coordinators` -> `coordinators`), and six
+     more loose Arcs travel beside it (`shared_context`, `event_history`,
+     `event_counter`, `swarm_event_tx`, `await_members_runtime`,
+     `swarm_mutation_runtime`). Every `Comm*` arm re-wraps those into a
+     `SwarmState { .. }` literal inline. That literal is the "`SwarmState`
+     rebuilt at ~28 sites" duplication in §1, and a request context is where it
+     dies.
+  2. **The prologue is four unnamed state machines sharing ~15 locals by name**
+     (accept-until-Subscribe, session creation, registration, forwarder spawn).
+  3. **Per-client mutable locals** that every arm mutates: turn lifecycle
+     (`client_is_processing`, `processing_task`, `processing_message_id`,
+     `processing_session_id`), subscribe stage (`client_subscribed`,
+     `provisional_session`, `pending_request`), and connection flags
+     (`continue_on_disconnect`, `model_usage_updates_enabled`,
+     `supports_pdf_panels`, `client_selfdev`, `swarm_enabled`,
+     `last_available_models_snapshot`, `current_client_instance_id`).
+
+  Order, each stage lands whole; H1-H3 are pure moves and can share one change:
+
+  - H1: **`ClientContext`.** One struct holding the 28 args (Arcs cloned once at
+    the caller). Deletes the `#[expect]` and the 28-arg list. No behavior.
+  - H2: **Fold swarm ownership in.** Pass `SwarmState` (from the swarm/comm item
+    above, which is why that is ordered first) plus one `SwarmRuntimeHandles` for
+    the six loose Arcs, and delete the per-arm `SwarmState { .. }` literals.
+    Gated on §1's condensation, not on H1.
+  - H3: **Name the prologue.** Extract `accept_initial_request` (the
+    lightweight-control loop), `start_client_session` (provider / registry /
+    agent / prewarm / registration), and `spawn_client_event_forwarder`. Target:
+    under ~100 lines of named calls between the signature and the `match`.
+  - H4: **Move the remaining inline arms** into their sibling modules, largest
+    first (`Subscribe` -> `client_session`, `SoftInterrupt`, `ResumeSession`,
+    `Message`, `Rewind`, `RewindUndo`, `Clear`), so `client_lifecycle.rs` drops
+    out of `code_size_budget.json` (tracked 3606, threshold 1200). Gated on
+    H1-H3; each move is mechanical once the context exists.
+  - H5: **The turn-lifecycle locals.** Same concept as the `App` stage-7 turn
+    cluster: one owner for the in-flight turn, with the ops that keep
+    `processing_message_id`, the task handle, and `client_is_processing`
+    consistent. Do it after H3 has made the prologue readable, and reuse the
+    `App` result rather than re-deriving it.
+
+  Done when: `handle_client` is under ~600 lines, `client_lifecycle.rs` is out of
+  the size budget, and no `SwarmState { .. }` literal is constructed inside a
+  request arm.
 - [ ] **Unify the command surface**: slash-command identity is a string matched
   in four places: registry `REGISTERED_COMMANDS` (113 literals), `commands.rs`
   (59), `commands_dispatch.rs` (85), `remote/key_handling.rs` (54).
@@ -698,21 +806,68 @@ tree first would just move that churn around.
 ## 5. Hygiene, then packaging
 
 - [ ] `JCODE_*` env vars: state dir is `~/.kcode` but the prefix was never
-  renamed, and the runtime dir is `<runtime_dir>/jcode/`. Rename with a
-  `JCODE_*` fallback, or document as-is. Waits on the fork-policy decision.
+  renamed, and the runtime dir is `<runtime_dir>/jcode/`. The fork-policy decision
+  is made (diverged, §0), so this is now actionable: rename to `KCODE_*` with a
+  `JCODE_*` read fallback, or document as-is. Do it before packaging.
 - [ ] Unknown config sections are silently ignored, so older configs keep dead
   keys with no warning.
-- [ ] Self-dev tooling names the wrong package. `selfdev build` and
-  `build-reload` run `-p jcode --bin jcode`, but this fork's package is `kcode`
-  (root `[lib] name = "jcode"`, `[[bin]] name = "kcode"`), so the build fails
-  with "package ID specification `jcode` did not match any packages". Either
-  teach the tooling the fork's names, or keep
-  `cargo build --profile selfdev -p kcode --bin kcode` as the documented path
-  (see `docs/dev/post-change.md`).
-- [ ] (decision) `packaging/arch/PKGBUILD`: README advertises it, it does not
-  exist. Write it or drop the README promise. License fields were deliberately
-  not added to the manifests (nothing here is published); revisit with
-  packaging.
+- [ ] Self-dev tooling names the wrong package. The prompt and
+  `docs/dev/post-change.md` now name `-p kcode --bin kcode` (fixed 2026-09-28),
+  but the `selfdev build` / `build-reload` tool lives outside this repo and still
+  targets upstream's `jcode`, so it fails with "package ID specification `jcode`
+  did not match any packages". Not fixable here; the documented fallback is
+  `cargo build --profile selfdev -p kcode --bin kcode`.
+- [x] **`scripts/` classification** (triaged 2026-09-28; 82 tracked -> 63). The
+  rule: keep it if it is wired, documented, or a reusable harness with a
+  dependent; delete it if it was a one-off tied to a past bug, refactor, or
+  experiment that nothing references. `git show <sha>:scripts/<name>` recovers
+  anything deleted.
+  - **Gate (keep, wired):** `check_guardrails.sh`, `check_module_files.py`,
+    `check_panic_budget.py`, `check_code_size_budget.py`,
+    `check_test_size_budget.py`, `check_dependency_boundaries.py`,
+    `check_wildcard_reexport_budget.py`, `check_app_shape.py`,
+    `check_warning_budget.sh`, plus their `*_budget.json`/`warning_budget.txt`
+    data files. The two size ratchets were re-wired into the gate in this pass
+    (§0).
+  - **Dev wrapper / build (keep):** `dev_cargo.sh`, `cargo_exec.sh`,
+    `remote_build.sh`, `remote_config.sh`, `build_linux_compat.sh`,
+    `quick-release.sh`, `generate_release_notes.sh`, `security_preflight.sh`,
+    `setup_git_hooks.sh`, `test_dev_cargo_cwd.py`, `test_dev_cargo_jobs.sh`.
+  - **Documented harness (keep):** `onboarding_sandbox.sh`, `auth_fixture.sh`,
+    `capture_onboarding.sh`, `bench_startup.py`, `check_startup_budget.sh`,
+    `compile_time_probe.sh`, `compile_isolation_report.py`,
+    `jcode_harbor_agent.py`, `run_terminal_bench_harbor.sh`,
+    `run_terminal_bench_campaign.py`, `run_terminal_bench_claude.sh`,
+    `test_ci_suites.py`, `test_fast.sh`, `test_e2e.sh`, `test_auth_e2e.sh`,
+    `real_provider_smoke.sh`, `analyze_runtime_memory_log.py`,
+    `test_analyze_runtime_memory_log.py`, `screenshot_watcher.sh`,
+    `webfetch_corpus.sh`, `browser_handoff_fixture.py`,
+    `test_browser_handoff_live.py`.
+  - **Live / perf harness (keep, but not verified since the fork cut):**
+    `test_swarm.py`, `test_swarm_debug.py`, `test_dag_live.py`,
+    `test_soft_interrupt.py`, `antigravity_live_coverage.sh`,
+    `profile_spawn.py`, `profile_real_spawn.py`, `repro_input_lag.py`,
+    `repro_input_flicker.py`, `repro_real_spawn_lag.py`, `memory_probe.sh`,
+    `memory_regression_gate.sh`, `find_unlocked_env_tests.py`, `agent_trace.sh`,
+    `clean_target.sh`. These are capability, not clutter, so they were not
+    deleted; retest or drop them next pass. `memory_probe.sh` in particular still
+    hardcodes `$HOME/.jcode/sessions/`, which is the state-path half of the
+    env-prefix item above.
+  - **Deleted (19):** `analyze_root_crate.py` (planned a split that landed),
+    `refactor_shadow.sh` and `refactor_phase1_verify.sh` (verifier pair for the
+    same landed refactor), `debug_socket_test.sh` (superseded by the
+    `debug_socket` tool), `compare_token_usage.py`, `count_idle_draws.py` and
+    `dump_fresh_spawn_screen.py` (one animation-bug probe),
+    `measure_key_echo.py`, `sweep_animation_fps.py`,
+    `bench_startup_visible_ready.py`, `profile_single_spawn.py`,
+    `profile_remote_resume_burst.py`, `repro_expand_edit_shortcut.py`,
+    `stress_test.py`, `stress_test_40.sh`, `verify_light_theme.py`,
+    `bench_compile.sh` (duplicated `compile_time_probe.sh` and invoked the
+    removed `-p jcode --bin jcode`), `lib/configure_path.sh` (dead installer
+    helper; the fork does not self-install), and
+    `repro/tls-bad-record-mac/.gitignore` (empty fixture directory).
+  - No `scripts/README.md`: the gate script is self-documenting and this list is
+    the map, so a README would only be a second copy of it.
 
 ## Anytime
 
