@@ -171,12 +171,20 @@ fn single_line_preview(text: &str) -> String {
     line
 }
 
-impl App {
+/// App-side prompt-history state: the Ctrl+R search overlay and the lazily
+/// loaded cross-session history. One home with the history logic.
+#[derive(Default)]
+pub(super) struct PromptHistoryState {
+    pub(super) search: Option<PromptHistorySearchState>,
+    pub(super) persisted: Option<Vec<String>>,
+}
+
+impl PromptHistoryState {
     /// Lazily load the persisted prompt history. Under `cfg(test)` the load is
-    /// skipped (tests inject `persisted_prompt_history` directly) so unit tests
-    /// sharing one `JCODE_HOME` stay deterministic.
-    fn ensure_persisted_prompt_history_loaded(&mut self) {
-        if self.persisted_prompt_history.is_some() {
+    /// skipped (tests inject the history directly) so unit tests sharing one
+    /// `JCODE_HOME` stay deterministic.
+    pub(super) fn ensure_loaded(&mut self) {
+        if self.persisted.is_some() {
             return;
         }
         let loaded = if cfg!(test) {
@@ -186,16 +194,19 @@ impl App {
                 .map(|path| load_from_path(&path))
                 .unwrap_or_default()
         };
-        self.persisted_prompt_history = Some(loaded);
+        self.persisted = Some(loaded);
     }
+}
 
+impl App {
     /// Full recall history: persisted prompts from previous sessions (oldest
     /// first) followed by this session's visible prompts, deduped keeping the
     /// most recent occurrence so each prompt appears exactly once.
     pub(super) fn merged_prompt_history(&mut self) -> Vec<String> {
-        self.ensure_persisted_prompt_history_loaded();
+        self.prompt_history.ensure_loaded();
         let mut combined: Vec<String> = self
-            .persisted_prompt_history
+            .prompt_history
+            .persisted
             .as_deref()
             .unwrap_or_default()
             .to_vec();
@@ -231,8 +242,8 @@ impl App {
         if trimmed.starts_with('/') || trimmed.starts_with('!') {
             return;
         }
-        self.ensure_persisted_prompt_history_loaded();
-        let Some(history) = self.persisted_prompt_history.as_mut() else {
+        self.prompt_history.ensure_loaded();
+        let Some(history) = self.prompt_history.persisted.as_mut() else {
             return;
         };
         let already_most_recent = history.last().is_some_and(|last| last == trimmed);
@@ -256,7 +267,7 @@ impl App {
     /// until the user types a query; the current input-line draft is saved so
     /// Esc can restore it after the live preview overwrites the input.
     pub(super) fn open_prompt_history_search(&mut self) {
-        self.prompt_history_search = Some(PromptHistorySearchState {
+        self.prompt_history.search = Some(PromptHistorySearchState {
             original_input: self.composer.input.clone(),
             original_cursor: self.composer.cursor_pos,
             ..PromptHistorySearchState::default()
@@ -265,7 +276,7 @@ impl App {
 
     fn refresh_prompt_history_search_matches(&mut self) {
         let history = self.merged_prompt_history();
-        let Some(state) = self.prompt_history_search.as_mut() else {
+        let Some(state) = self.prompt_history.search.as_mut() else {
             return;
         };
         let query = state.query.trim().to_string();
@@ -297,7 +308,7 @@ impl App {
     /// Live-preview the selected match in the input line (readline-style).
     /// Falls back to the saved draft when nothing matches.
     fn apply_prompt_history_search_preview(&mut self) {
-        let Some(state) = self.prompt_history_search.as_ref() else {
+        let Some(state) = self.prompt_history.search.as_ref() else {
             return;
         };
         match state.matches.get(state.selected) {
@@ -315,7 +326,7 @@ impl App {
     /// Close the search overlay and restore the input-line draft that was
     /// active when it opened.
     fn cancel_prompt_history_search(&mut self) {
-        if let Some(state) = self.prompt_history_search.take() {
+        if let Some(state) = self.prompt_history.search.take() {
             self.composer.input = state.original_input;
             self.composer.cursor_pos = state.original_cursor;
         }
@@ -338,10 +349,11 @@ impl App {
             }
             KeyCode::Enter => {
                 let selected = self
-                    .prompt_history_search
+                    .prompt_history
+                    .search
                     .as_ref()
                     .and_then(|state| state.matches.get(state.selected).cloned());
-                self.prompt_history_search = None;
+                self.prompt_history.search = None;
                 if let Some(prompt) = selected {
                     self.composer.input = prompt;
                     self.composer.cursor_pos = self.composer.input.len();
@@ -354,14 +366,14 @@ impl App {
             KeyCode::Char('r') if ctrl => self.step_prompt_history_search(1),
             KeyCode::Down => self.step_prompt_history_search(-1),
             KeyCode::Backspace => {
-                if let Some(state) = self.prompt_history_search.as_mut() {
+                if let Some(state) = self.prompt_history.search.as_mut() {
                     state.query.pop();
                 }
                 self.refresh_prompt_history_search_matches();
             }
             _ => {
                 if let Some(text) = super::input::text_input_for_key(code, modifiers) {
-                    if let Some(state) = self.prompt_history_search.as_mut() {
+                    if let Some(state) = self.prompt_history.search.as_mut() {
                         state.query.push_str(&text);
                         state.selected = 0;
                     }
@@ -372,7 +384,7 @@ impl App {
     }
 
     fn step_prompt_history_search(&mut self, delta: i64) {
-        let Some(state) = self.prompt_history_search.as_mut() else {
+        let Some(state) = self.prompt_history.search.as_mut() else {
             return;
         };
         if state.matches.is_empty() {
@@ -385,7 +397,7 @@ impl App {
 
     /// Render-friendly snapshot of the search overlay for the UI layer.
     pub(crate) fn prompt_history_search_view(&self) -> Option<crate::tui::PromptHistorySearchView> {
-        let state = self.prompt_history_search.as_ref()?;
+        let state = self.prompt_history.search.as_ref()?;
         Some(crate::tui::PromptHistorySearchView {
             query: state.query.clone(),
             matches: state

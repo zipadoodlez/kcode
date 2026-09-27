@@ -237,8 +237,11 @@ Staged, each lands whole.
       limit; `app_fields` fell 238 to 234. `set_input_for_test` (a 50-call-site
       test helper) and the inherent `input()`/`cursor_pos()` getters stay on
       `App`. This begins draining `input.rs`.
-    - Remaining slices: prompt-history fields (`prompt_history_search`,
-      `persisted_prompt_history`) into `prompt_history.rs`; attachments/queue
+    - **Prompt history landed:** `prompt_history_search` and
+      `persisted_prompt_history` move into `prompt_history.rs` as
+      `PromptHistoryState`, with the loader it owns (`ensure_loaded`);
+      `app_fields` fell 234 to 233.
+    - Remaining slice: attachments/queue
       (`pasted_contents`, `pending_images`, `interleave_*`, `queued_messages`,
       `hidden_queued_system_messages`, `pending_soft_interrupt*`; 32/11).
   - Stage 10: transcript (13 fields, 170 sites), then session/server (18 fields,

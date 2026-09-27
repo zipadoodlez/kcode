@@ -1374,11 +1374,9 @@ pub struct App {
     /// Per-client Niri-style workspace navigation state. Previously a process
     /// global; now owned per App instance.
     workspace_client: super::workspace_client::WorkspaceClientState,
-    /// Reverse prompt-history search overlay state (Ctrl+R). None = closed.
-    prompt_history_search: Option<prompt_history::PromptHistorySearchState>,
-    /// Lazily-loaded persisted cross-session prompt history (oldest first,
-    /// deduped). None until first use; see `prompt_history.rs`.
-    persisted_prompt_history: Option<Vec<String>>,
+    /// Prompt-history state: the Ctrl+R search overlay and the lazily-loaded
+    /// cross-session history; see `prompt_history.rs`.
+    prompt_history: prompt_history::PromptHistoryState,
 }
 
 /// Inert provider used by runtime modes whose output is supplied by another source.

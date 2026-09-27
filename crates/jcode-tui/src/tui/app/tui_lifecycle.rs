@@ -614,8 +614,7 @@ impl App {
             usage: Default::default(),
             last_overnight_card_refresh: None,
             workspace_client: crate::tui::workspace_client::WorkspaceClientState::default(),
-            prompt_history_search: None,
-            persisted_prompt_history: None,
+            prompt_history: Default::default(),
         };
 
         for notice in app.provider.drain_startup_notices() {
@@ -930,8 +929,7 @@ impl App {
             usage: Default::default(),
             last_overnight_card_refresh: None,
             workspace_client: crate::tui::workspace_client::WorkspaceClientState::default(),
-            prompt_history_search: None,
-            persisted_prompt_history: None,
+            prompt_history: Default::default(),
         };
 
         for notice in app.provider.drain_startup_notices() {
