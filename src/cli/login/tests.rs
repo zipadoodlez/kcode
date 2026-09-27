@@ -237,6 +237,10 @@ impl Drop for ScopedLoginTestHome {
 }
 
 #[tokio::test]
+#[expect(
+    clippy::await_holding_lock,
+    reason = "the env lock must stay held for the whole test body, including its awaits, to keep JCODE_HOME stable against other env-mutating tests"
+)]
 async fn scoped_concurrent_begin_completion_and_cancel_are_isolated() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::TempDir::new().unwrap();

@@ -19,17 +19,9 @@ mod types;
 
 pub use types::{CopyTargetKind, MarkdownSpacingMode, RawCopyTarget};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct MarkdownConfigSnapshot {
     pub markdown_spacing: MarkdownSpacingMode,
-}
-
-impl Default for MarkdownConfigSnapshot {
-    fn default() -> Self {
-        Self {
-            markdown_spacing: MarkdownSpacingMode::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]

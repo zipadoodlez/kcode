@@ -342,16 +342,6 @@ impl App {
         viewport.max(COMPACTED_HISTORY_LOAD_SCROLL_THRESHOLD)
     }
 
-    /// Capture a viewport anchor describing the reader's current distance from
-    /// the bottom of the transcript, plus any leftover upward scroll intent that
-    /// could not be satisfied because the view was already at the top of the
-    /// currently-loaded content. The next render that includes the newly loaded
-    /// (prepended) history resolves this back into an absolute `scroll_offset`,
-    /// keeping the content under the reader stable across the load.
-
-    /// Adopt a resolved history anchor once a frame containing the newly loaded
-    /// content has rendered. Returns true when the scroll position changed.
-
     pub(super) fn maybe_queue_compacted_history_load(&mut self) {
         self.maybe_queue_compacted_history_load_with_overshoot(0);
     }

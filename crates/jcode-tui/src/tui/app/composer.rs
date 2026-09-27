@@ -42,6 +42,7 @@ impl Composer {
         self.input_undo_stack.push(snapshot);
     }
 
+    /// Find word boundary going backward (for Ctrl+W, Alt+B)
     pub(super) fn find_word_boundary_back(&self) -> usize {
         if self.cursor_pos == 0 {
             return 0;
@@ -73,6 +74,7 @@ impl Composer {
         pos
     }
 
+    /// Find word boundary going forward (for Alt+F, Alt+D)
     pub(super) fn find_word_boundary_forward(&self) -> usize {
         let len = self.input.len();
         if self.cursor_pos >= len {

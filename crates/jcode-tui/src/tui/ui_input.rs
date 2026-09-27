@@ -1845,59 +1845,59 @@ pub(super) fn build_notification_spans(app: &dyn TuiState) -> Vec<Span<'static>>
         ));
     }
 
-    if !app.is_processing() {
-        if let Some(cache_info) = app.cache_ttl_status() {
-            if cache_info.is_cold {
-                let tokens_str = cache_info
-                    .cached_tokens
-                    .map(|t| {
-                        if t >= 1_000_000 {
-                            format!(" ({:.1}M tok)", t as f64 / 1_000_000.0)
-                        } else if t >= 1_000 {
-                            format!(" ({}K tok)", t / 1000)
-                        } else {
-                            format!(" ({} tok)", t)
-                        }
-                    })
-                    .unwrap_or_default();
-                push_sep(&mut spans);
-                spans.push(Span::styled(
-                    format!("🧊 cache cold{}", tokens_str),
-                    Style::default().fg(info_color()),
-                ));
-                // Small gray "how long ago it went cold" hint, e.g. `1h 1m`.
-                spans.push(Span::styled(
-                    format!(
-                        " {}",
-                        crate::tui::format_compact_age(cache_info.cold_for_secs)
-                    ),
-                    Style::default().fg(dim_color()),
-                ));
-            } else if cache_info.expiring_soon() {
-                let tokens_str = cache_info
-                    .cached_tokens
-                    .map(|t| {
-                        if t >= 1_000 {
-                            format!(" {}K", t / 1000)
-                        } else {
-                            format!(" {}", t)
-                        }
-                    })
-                    .unwrap_or_default();
-                // Above a minute, a raw seconds count is hard to read at a
-                // glance; show minutes granularity instead.
-                let remaining = cache_info.remaining_secs;
-                let time_str = if remaining > 60 {
-                    format!("{}m", remaining.div_ceil(60))
-                } else {
-                    format!("{}s", remaining)
-                };
-                push_sep(&mut spans);
-                spans.push(Span::styled(
-                    format!("⏳ cache {}{}", time_str, tokens_str),
-                    Style::default().fg(queued_color()),
-                ));
-            }
+    if !app.is_processing()
+        && let Some(cache_info) = app.cache_ttl_status()
+    {
+        if cache_info.is_cold {
+            let tokens_str = cache_info
+                .cached_tokens
+                .map(|t| {
+                    if t >= 1_000_000 {
+                        format!(" ({:.1}M tok)", t as f64 / 1_000_000.0)
+                    } else if t >= 1_000 {
+                        format!(" ({}K tok)", t / 1000)
+                    } else {
+                        format!(" ({} tok)", t)
+                    }
+                })
+                .unwrap_or_default();
+            push_sep(&mut spans);
+            spans.push(Span::styled(
+                format!("🧊 cache cold{}", tokens_str),
+                Style::default().fg(info_color()),
+            ));
+            // Small gray "how long ago it went cold" hint, e.g. `1h 1m`.
+            spans.push(Span::styled(
+                format!(
+                    " {}",
+                    crate::tui::format_compact_age(cache_info.cold_for_secs)
+                ),
+                Style::default().fg(dim_color()),
+            ));
+        } else if cache_info.expiring_soon() {
+            let tokens_str = cache_info
+                .cached_tokens
+                .map(|t| {
+                    if t >= 1_000 {
+                        format!(" {}K", t / 1000)
+                    } else {
+                        format!(" {}", t)
+                    }
+                })
+                .unwrap_or_default();
+            // Above a minute, a raw seconds count is hard to read at a
+            // glance; show minutes granularity instead.
+            let remaining = cache_info.remaining_secs;
+            let time_str = if remaining > 60 {
+                format!("{}m", remaining.div_ceil(60))
+            } else {
+                format!("{}s", remaining)
+            };
+            push_sep(&mut spans);
+            spans.push(Span::styled(
+                format!("⏳ cache {}{}", time_str, tokens_str),
+                Style::default().fg(queued_color()),
+            ));
         }
     }
 

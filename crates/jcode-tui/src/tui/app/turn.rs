@@ -905,8 +905,6 @@ impl App {
                                                 ctx,
                                             )
                                             .await;
-                                        if tool_result.is_err() {
-                                        }
                                         let native_result = match tool_result {
                                             Ok(output) => crate::provider::NativeToolResult::success(request_id, output.output),
                                             Err(e) => crate::provider::NativeToolResult::error(request_id, e.to_string()),

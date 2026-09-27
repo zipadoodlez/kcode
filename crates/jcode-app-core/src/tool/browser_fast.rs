@@ -103,6 +103,10 @@ pub(super) async fn handoff(
 
 // Defense in depth for credential material rendered outside form controls. Redact the
 // whole containing string, not a clipped substring that might leave a token suffix.
+//
+// Container recursion deliberately visits *every* element. `Iterator::any` would
+// short-circuit at the first redaction and leave later credentials in the same
+// payload in the clear, which is why these are loops and not `any(..)`.
 fn redact_credentials(value: &mut Value) -> bool {
     static TOKENS: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::Regex::new(r"(?i)(?:\bsk-[a-z0-9_-]{8,}|\b(?:ghp|github_pat|gho|ghu|ghs|ghr)_[a-z0-9_]{8,}|\bbearer\s+[a-z0-9._~+/-]{8,}|\beyJ[a-z0-9_-]{8,}\.[a-z0-9_-]{8,}(?:\.[a-z0-9_-]+)?|[?&#](?:password|access_token|refresh_token|id_token|code|api_key|apikey|token|secret)=)").expect("static credential regex")
@@ -112,12 +116,20 @@ fn redact_credentials(value: &mut Value) -> bool {
             *text = "[REDACTED: credential material]".into();
             true
         }
-        Value::Array(items) => items
-            .iter_mut()
-            .fold(false, |found, item| redact_credentials(item) || found),
-        Value::Object(items) => items
-            .values_mut()
-            .fold(false, |found, item| redact_credentials(item) || found),
+        Value::Array(items) => {
+            let mut found = false;
+            for item in items.iter_mut() {
+                found |= redact_credentials(item);
+            }
+            found
+        }
+        Value::Object(items) => {
+            let mut found = false;
+            for item in items.values_mut() {
+                found |= redact_credentials(item);
+            }
+            found
+        }
         _ => false,
     }
 }

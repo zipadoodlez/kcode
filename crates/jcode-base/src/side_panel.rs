@@ -75,11 +75,13 @@ pub fn load_file(
 
     upsert_page_record(
         &mut state,
-        page_id,
-        title,
-        &source_path,
-        SidePanelPageSource::LinkedFile,
-        format,
+        PageRecordRef {
+            id: page_id,
+            title,
+            file_path: &source_path,
+            source: SidePanelPageSource::LinkedFile,
+            format,
+        },
         now,
         focus,
     );
@@ -252,11 +254,13 @@ fn write_page(
 
     upsert_page_record(
         &mut state,
-        page_id,
-        title,
-        &page_path,
-        SidePanelPageSource::Managed,
-        SidePanelPageFormat::Markdown,
+        PageRecordRef {
+            id: page_id,
+            title,
+            file_path: &page_path,
+            source: SidePanelPageSource::Managed,
+            format: SidePanelPageFormat::Markdown,
+        },
         now,
         focus,
     );
@@ -265,38 +269,46 @@ fn write_page(
     hydrate_snapshot(state)
 }
 
-fn upsert_page_record(
-    state: &mut PersistedSidePanelState,
-    page_id: &str,
-    title: Option<&str>,
-    file_path: &Path,
+/// The caller-declared half of a page record. The timestamp and focus flag are
+/// passed alongside it because they describe the write, not the page.
+struct PageRecordRef<'a> {
+    id: &'a str,
+    title: Option<&'a str>,
+    file_path: &'a Path,
     source: SidePanelPageSource,
     format: SidePanelPageFormat,
+}
+
+fn upsert_page_record(
+    state: &mut PersistedSidePanelState,
+    page: PageRecordRef<'_>,
     updated_at_ms: u64,
     focus: bool,
 ) {
-    let file_path = file_path.display().to_string();
-    if let Some(existing) = state.pages.iter_mut().find(|page| page.id == page_id) {
-        existing.title = title
+    let file_path = page.file_path.display().to_string();
+    if let Some(existing) = state.pages.iter_mut().find(|entry| entry.id == page.id) {
+        existing.title = page
+            .title
             .map(str::trim)
             .filter(|t| !t.is_empty())
             .unwrap_or(existing.title.as_str())
             .to_string();
         existing.file_path = file_path;
-        existing.format = format;
-        existing.source = source;
+        existing.format = page.format;
+        existing.source = page.source;
         existing.updated_at_ms = updated_at_ms;
     } else {
         state.pages.push(PersistedSidePanelPage {
-            id: page_id.to_string(),
-            title: title
+            id: page.id.to_string(),
+            title: page
+                .title
                 .map(str::trim)
                 .filter(|t| !t.is_empty())
-                .unwrap_or(page_id)
+                .unwrap_or(page.id)
                 .to_string(),
             file_path,
-            format,
-            source,
+            format: page.format,
+            source: page.source,
             updated_at_ms,
         });
     }
@@ -309,9 +321,7 @@ fn upsert_page_record(
 
     if focus {
         state.focus_revision = next_focus_revision(state.focus_revision);
-    }
-    if focus {
-        state.focused_page_id = Some(page_id.to_string());
+        state.focused_page_id = Some(page.id.to_string());
     }
 }
 

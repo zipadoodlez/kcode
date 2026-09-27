@@ -2347,12 +2347,10 @@ pub(super) fn is_scroll_only_key(app: &App, code: KeyCode, modifiers: KeyModifie
         }
     }
 
-    if modifiers.contains(KeyModifiers::CONTROL) {
-        if app.diff_pane_visible() {
-            match code {
-                KeyCode::Char('h') | KeyCode::Char('l') => return true,
-                _ => {}
-            }
+    if modifiers.contains(KeyModifiers::CONTROL) && app.diff_pane_visible() {
+        match code {
+            KeyCode::Char('h') | KeyCode::Char('l') => return true,
+            _ => {}
         }
     }
 
@@ -3768,7 +3766,6 @@ impl App {
         let trimmed = input.trim();
         let handled = super::commands_dispatch::dispatch_local_command(self, trimmed);
         if handled {
-            if trimmed.starts_with('/') {}
             return;
         }
 

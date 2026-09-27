@@ -2051,7 +2051,7 @@ pub(super) fn prepare_body(
         }
     }
 
-    let prepared = wrap_lines_with_map(
+    wrap_lines_with_map(
         acc.lines,
         &acc.raw_plain_lines,
         &acc.line_raw_overrides,
@@ -2062,8 +2062,7 @@ pub(super) fn prepare_body(
         &acc.edit_tool_line_ranges,
         &acc.copy_targets,
         &acc.segments,
-    );
-    prepared
+    )
 }
 
 fn wrap_lines(

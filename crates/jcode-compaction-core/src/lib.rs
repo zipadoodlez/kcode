@@ -61,14 +61,8 @@ pub const IMAGE_TOKEN_COST: usize = 1_600;
 /// Estimated conservatively: ~8k tokens for system prompt + ~10k for 50+ tools.
 pub const SYSTEM_OVERHEAD_TOKENS: usize = 18_000;
 
-/// Rolling window size for token history (proactive/semantic modes)
+/// Rolling window size for token history (proactive modes)
 pub const TOKEN_HISTORY_WINDOW: usize = 20;
-
-/// Maximum characters to embed per message (first N chars capture semantic content)
-
-/// Rolling window of per-turn embeddings used for topic-shift detection
-
-/// Per-manager semantic embedding cache capacity.
 
 pub const SUMMARY_PROMPT: &str = r#"Summarize our conversation so you can continue this work later.
 

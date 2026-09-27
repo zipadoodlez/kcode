@@ -859,7 +859,6 @@ fn login_openai_compatible_flow(
         )?;
         save_named_api_key(&resolved.env_file, &resolved.api_key_env, &key)?;
         eprintln!("\nSuccessfully saved {} API key!", resolved.display_name);
-        "api_key";
     } else {
         eprintln!("Endpoint: {}", resolved.api_base);
         if setup_url_depends_on_key {
@@ -889,7 +888,6 @@ fn login_openai_compatible_flow(
                 None,
             )?;
             eprintln!("\nSaved {} local endpoint setup.", resolved.display_name);
-            "local_endpoint";
         } else {
             crate::provider_catalog::save_env_value_to_env_file(
                 &resolved.api_key_env,
@@ -900,7 +898,6 @@ fn login_openai_compatible_flow(
                 "\nSaved {} local endpoint setup and optional API key.",
                 resolved.display_name
             );
-            "local_endpoint_with_optional_api_key";
         }
     }
 

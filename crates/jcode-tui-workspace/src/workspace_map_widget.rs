@@ -161,27 +161,9 @@ fn tile_color(
                 user_color()
             }
         }
-        WorkspaceSessionVisualState::Error => {
-            if focused {
-                error_color()
-            } else {
-                error_color()
-            }
-        }
-        WorkspaceSessionVisualState::Waiting => {
-            if focused {
-                warning_color()
-            } else {
-                warning_color()
-            }
-        }
-        WorkspaceSessionVisualState::Completed => {
-            if focused {
-                ai_color()
-            } else {
-                ai_color()
-            }
-        }
+        WorkspaceSessionVisualState::Error => error_color(),
+        WorkspaceSessionVisualState::Waiting => warning_color(),
+        WorkspaceSessionVisualState::Completed => ai_color(),
         WorkspaceSessionVisualState::Detached => {
             if focused {
                 header_name_color()

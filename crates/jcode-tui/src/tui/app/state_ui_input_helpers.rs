@@ -21,6 +21,9 @@ impl CommandSuggestions {
         *self.candidates_cache.borrow_mut() = None;
     }
 
+    /// Advance the suggestion memo epoch, invalidating it. Called once per
+    /// rendered frame so the memo only ever collapses reads *within* a frame
+    /// and never serves data that predates a state change.
     pub(crate) fn advance_epoch(&self) {
         self.epoch.set(self.epoch.get().wrapping_add(1));
     }
@@ -239,10 +242,6 @@ pub(crate) fn registered_command_entries() -> impl Iterator<Item = (&'static str
 }
 
 impl App {
-    /// Find word boundary going backward (for Ctrl+W, Alt+B)
-
-    /// Find word boundary going forward (for Alt+F, Alt+D)
-
     pub fn input(&self) -> &str {
         &self.composer.input
     }
@@ -1129,10 +1128,6 @@ impl App {
         });
         suggestions
     }
-
-    /// Advance the suggestion memo epoch, invalidating it. Called once per
-    /// rendered frame so the memo only ever collapses reads *within* a frame
-    /// and never serves data that predates a state change.
 
     /// Snapshot the non-input state that `command_suggestions` branches on
     /// before consulting the input buffer.

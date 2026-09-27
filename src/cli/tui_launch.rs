@@ -220,10 +220,6 @@ async fn should_show_server_spawning(server_spawning: bool) -> bool {
     true
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Replay command maps directly from CLI flags and transport options"
-)]
 // Session-launching helpers live in the core `session_launch` module so that
 // lower layers (server, restart_snapshot, tool) can relaunch sessions without
 // depending on `cli`. Re-exported here for the CLI's own callers.

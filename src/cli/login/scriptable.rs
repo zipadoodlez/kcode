@@ -181,14 +181,21 @@ pub(super) async fn start_scriptable_login(
     };
     persist_pending_login(&pending_path, &record, options.flow_id.is_some())?;
     emit_scriptable_auth_prompt(
-        provider.id,
-        &auth_url,
-        input_kind,
-        &pending_path,
-        user_code.as_deref(),
-        expires_at_ms,
+        &ScriptableAuthPrompt {
+            status: "pending",
+            provider: provider.id.to_string(),
+            auth_url: auth_url.clone(),
+            input_kind: input_kind.to_string(),
+            pending_path: pending_path.display().to_string(),
+            user_code: user_code.as_deref().map(str::to_string),
+            expires_at_ms,
+            resume_command: scriptable_resume_command(
+                provider.id,
+                input_kind,
+                options.flow_id.as_deref(),
+            ),
+        },
         options.json,
-        options.flow_id.as_deref(),
     )?;
     // Browserless CLI login routes here rather than through the interactive
     // provider functions. Keep stdout machine-readable and never add a QR to
@@ -725,41 +732,24 @@ pub(super) fn resolve_auth_input(value: &str) -> Result<String> {
     Ok(trimmed.to_string())
 }
 
-pub(super) fn emit_scriptable_auth_prompt(
-    provider: &str,
-    auth_url: &str,
-    input_kind: &str,
-    pending_path: &Path,
-    user_code: Option<&str>,
-    expires_at_ms: i64,
-    json: bool,
-    flow_id: Option<&str>,
-) -> Result<()> {
-    let resume_command = scriptable_resume_command(provider, input_kind, flow_id);
-    let prompt = ScriptableAuthPrompt {
-        status: "pending",
-        provider: provider.to_string(),
-        auth_url: auth_url.to_string(),
-        input_kind: input_kind.to_string(),
-        pending_path: pending_path.display().to_string(),
-        user_code: user_code.map(str::to_string),
-        expires_at_ms,
-        resume_command: resume_command.clone(),
-    };
+pub(super) fn emit_scriptable_auth_prompt(prompt: &ScriptableAuthPrompt, json: bool) -> Result<()> {
     if json {
-        println!("{}", serde_json::to_string(&prompt)?);
+        println!("{}", serde_json::to_string(prompt)?);
     } else {
-        println!("{}", auth_url);
-        if let Some(user_code) = user_code {
+        println!("{}", prompt.auth_url);
+        if let Some(user_code) = prompt.user_code.as_deref() {
             eprintln!("User code: {}", user_code);
         }
         eprintln!("Auth URL printed to stdout.");
-        eprintln!("Complete this login later with `{}`.", resume_command);
+        eprintln!(
+            "Complete this login later with `{}`.",
+            prompt.resume_command
+        );
         eprintln!(
             "This pending login expires at {} ms since epoch.",
-            expires_at_ms
+            prompt.expires_at_ms
         );
-        eprintln!("Pending login state saved at {}", pending_path.display());
+        eprintln!("Pending login state saved at {}", prompt.pending_path);
     }
     Ok(())
 }

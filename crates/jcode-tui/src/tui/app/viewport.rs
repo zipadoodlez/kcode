@@ -43,6 +43,12 @@ impl Viewport {
         }
     }
 
+    /// Capture a viewport anchor describing the reader's current distance from
+    /// the bottom of the transcript, plus any leftover upward scroll intent that
+    /// could not be satisfied because the view was already at the top of the
+    /// currently-loaded content. The next render that includes the newly loaded
+    /// (prepended) history resolves this back into an absolute `scroll_offset`,
+    /// keeping the content under the reader stable across the load.
     pub(super) fn capture_history_anchor(&mut self, overshoot: usize) {
         // Don't clobber an anchor that is still waiting to be resolved; the
         // original distance-from-bottom remains correct across further prepends.
@@ -66,6 +72,8 @@ impl Viewport {
         });
     }
 
+    /// Adopt a resolved history anchor once a frame containing the newly loaded
+    /// content has rendered. Returns true when the scroll position changed.
     pub(super) fn reconcile_history_anchor(&mut self) -> bool {
         let Some(anchor) = self.pending_history_anchor else {
             return false;
@@ -84,6 +92,7 @@ impl Viewport {
         changed
     }
 
+    /// Scroll to the next user prompt (scroll down - later in conversation)
     pub fn scroll_to_next_prompt(&mut self) {
         let positions = ui::last_user_prompt_positions();
         if positions.is_empty() || !self.auto_scroll_paused {

@@ -142,10 +142,9 @@ fn count_legacy_messages(messages: &[Value]) -> SessionEditStats {
                             | "patch"
                             | "apply_patch"
                             | "batch"
-                    ) {
-                        if let Some(id) = block["id"].as_str() {
-                            calls.insert(id, (name, &block["input"]));
-                        }
+                    ) && let Some(id) = block["id"].as_str()
+                    {
+                        calls.insert(id, (name, &block["input"]));
                     }
                 }
                 Some("tool_result") if block["is_error"] != true => {

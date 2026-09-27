@@ -411,8 +411,6 @@ impl App {
         }
     }
 
-    /// Scroll to the next user prompt (scroll down - later in conversation)
-
     /// Scroll to Nth most-recent user prompt (1 = most recent, 2 = second most recent, etc.).
     /// Uses actual wrapped line positions from the last render frame for accurate placement,
     /// positioning the prompt at the top of the viewport.

@@ -5,7 +5,7 @@ pub fn render_markdown_lazy(
     max_width: Option<usize>,
     visible_range: std::ops::Range<usize>,
 ) -> Vec<Line<'static>> {
-    let text = escape_currency_dollars(&text);
+    let text = escape_currency_dollars(text);
     let text = preserve_line_oriented_softbreaks(&text);
     let text = text.as_str();
     let mut lines: Vec<Line<'static>> = Vec::new();
