@@ -1286,28 +1286,7 @@ pub struct App {
     split_view_updated_at_ms: u64,
     split_view_rendered_display_version: u64,
     split_view_rendered_streaming_hash: u64,
-    todos_view_enabled: bool,
-    todos_view_markdown: String,
-    todos_view_updated_at_ms: u64,
-    todos_view_rendered_hash: u64,
-    /// Hash of the todo payload rendered into the inline chat todo card, used
-    /// to keep the card live-updating while it stays in the transcript.
-    todo_card_rendered_hash: u64,
-    /// JSON payload for the pinned todo band (display.pin_todos). `None` when
-    /// the feature is off or the session has no todos. Refreshed on tick.
-    /// The renderer wiring for these three fields is landing separately, so
-    /// they are allowed to be unread until it does.
-    #[allow(dead_code)]
-    pinned_todos_payload: Option<String>,
-    /// Hash of the todo payload behind `pinned_todos_payload`, used to skip
-    /// re-serializing when nothing changed between ticks.
-    #[allow(dead_code)]
-    pinned_todos_rendered_hash: u64,
-    /// Last time the pinned todo band re-read todos from disk (1s throttle).
-    #[allow(dead_code)]
-    pinned_todos_checked_at: Option<Instant>,
-    /// User-expanded state for the pinned todo band's `+N more` row.
-    pinned_todos_expanded: bool,
+    todos_view: todos_view::TodosView,
     /// Running and terminal background tasks shown beneath the pinned todo band.
     background_task_rows: Vec<crate::tui::BackgroundTaskRow>,
     last_side_panel_refresh: Option<Instant>,

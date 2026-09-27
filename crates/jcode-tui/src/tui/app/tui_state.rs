@@ -560,11 +560,11 @@ impl crate::tui::TuiState for App {
     }
 
     fn pinned_todos_payload(&self) -> Option<&str> {
-        self.pinned_todos_payload_ref()
+        self.todos_view.pinned_payload_ref()
     }
 
     fn pinned_todos_expanded(&self) -> bool {
-        self.pinned_todos_expanded
+        self.todos_view.pinned_expanded
     }
 
     fn background_task_rows(&self) -> &[crate::tui::BackgroundTaskRow] {

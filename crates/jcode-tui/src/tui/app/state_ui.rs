@@ -217,7 +217,7 @@ impl App {
             && resume_prompt.is_none()
             && !self.observe_mode_enabled
             && !self.split_view_enabled
-            && !self.todos_view_enabled
+            && !self.todos_view.enabled
             && !self.todo_confidence_spike_challenged
             && self.last_todo_ownership_fingerprint.is_none()
         {
@@ -308,7 +308,7 @@ impl App {
                 "observe_page_markdown": self.observe_page_markdown,
                 "observe_page_updated_at_ms": self.observe_page_updated_at_ms,
                 "split_view_enabled": self.split_view_enabled,
-                "todos_view_enabled": self.todos_view_enabled,
+                "todos_view_enabled": self.todos_view.enabled,
                 "todo_confidence_spike_challenged": self.todo_confidence_spike_challenged,
                 "last_todo_ownership_fingerprint": self.last_todo_ownership_fingerprint,
             });
@@ -624,10 +624,10 @@ impl App {
         } else {
             snapshot
         };
-        let focus_todos = self.todos_view_enabled
+        let focus_todos = self.todos_view.enabled
             && self.side_panel.focused_page_id.as_deref()
                 == Some(super::todos_view::TODOS_VIEW_PAGE_ID);
-        let snapshot = if self.todos_view_enabled {
+        let snapshot = if self.todos_view.enabled {
             self.decorate_side_panel_with_todos_view(snapshot, focus_todos)
         } else {
             snapshot

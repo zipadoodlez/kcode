@@ -102,19 +102,27 @@ Staged, each lands whole.
   viewport 12/35, copy_selection 6/18, todos_view 4/14. No group is cleanly
   isolated. `copy_selection`, the stage-2 template, scores low: its methods also
   touch `diff_pane_*`, chat/diff auto-scroll, and status notices, so it cannot
-  be lifted without those. `panels` leads this cut. The order below is
-  provisional; re-measure the candidate before each extraction.
+  be lifted without those. A finer read picked `TodosView` as the first
+  extraction: it is one concept and 37 of its 41 sites already live in
+  `todos_view.rs`. The order below is provisional; re-measure before each
+  extraction.
   - Stage 1: one runtime axis. **Landed.** `is_remote` and `is_replay` are gone;
     `runtime_mode` is the single representation, written only through
     `App::set_runtime_mode` and read through `is_remote_client()` /
     `is_replay_runtime()`. `cargo test -p jcode-tui --lib` is unchanged from the
     baseline (1966 passed, same 27 failed), and `app_fields` fell 310 -> 308.
   - Stage 2: was `CopySelection` as the template; the cohesion cut above says
-    it is not the most isolable group, so pick the first extraction by
-    re-measuring the candidates, not by field count. `CopySelection` (9 fields,
-    103 sites; home `copy_selection.rs`) stays a candidate.
+    it is not the most isolable group. First extraction landed as `TodosView`
+    (below); `CopySelection` (9 fields, 103 sites; home `copy_selection.rs`)
+    stays a candidate.
   - Stage 3: `Viewport` (13 fields, 145 sites): scroll, bookmark, redraw flags.
-  - Stage 4: `TodosView` (14 fields, 72 sites).
+  - Stage 4: `TodosView`. **Landed as the first extraction** (moved up from
+    here). Nine `todos_view_*`/`pinned_todos_*`/`todo_card_rendered_hash` fields
+    plus their sub-struct-only methods live in `todos_view.rs` as
+    `TodosView`; `App` holds one `todos_view` field. `app_fields` fell 308 to
+    300, tests unchanged from baseline. The gate/poke todo fields (e.g.
+    `auto_poke_*`, `todo_completion_gate_attempts`) are a different concept and
+    stayed on `App`.
   - Stage 5: `Panels` (12 fields, 89 sites): side panel and split view.
   - Stage 6: overlay/picker state (14 fields, 174 sites): session, model,
     account, and login pickers, one sub-struct each.

@@ -12,11 +12,67 @@ const TODOS_VIEW_TITLE: &str = "Todos";
 /// Display-message role used by the inline chat todo card.
 const TODO_CARD_ROLE: &str = "todos";
 
-impl App {
-    pub(super) fn todos_view_enabled(&self) -> bool {
-        self.todos_view_enabled
+/// State behind the three todos surfaces: the side-panel page, the inline chat
+/// card, and the pinned band. One home, so the refresh/pin/card logic reads one
+/// struct instead of nine loose `todos_view_*` fields on `App`.
+#[derive(Default)]
+pub(super) struct TodosView {
+    pub(super) enabled: bool,
+    pub(super) markdown: String,
+    pub(super) updated_at_ms: u64,
+    pub(super) rendered_hash: u64,
+    /// Hash of the payload rendered into the inline chat todo card, so the card
+    /// stays live-updating while it sits in the transcript.
+    pub(super) card_rendered_hash: u64,
+    /// JSON payload for the pinned todo band (`display.pin_todos`). `None` when
+    /// the feature is off or the session has no todos.
+    pub(super) pinned_payload: Option<String>,
+    /// Hash of `pinned_payload`, to skip re-serializing unchanged ticks.
+    pub(super) pinned_rendered_hash: u64,
+    /// Last time the pinned band re-read todos from disk (1s throttle).
+    pub(super) pinned_checked_at: Option<Instant>,
+    /// User-expanded state for the pinned band's `+N more` row.
+    pub(super) pinned_expanded: bool,
+}
+
+impl TodosView {
+    pub(super) fn enabled(&self) -> bool {
+        self.enabled
     }
 
+    /// The pinned-band renderer that reads this is landing separately, so the
+    /// accessor is allowed to be unused (outside tests) until it does.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(super) fn pinned_payload_ref(&self) -> Option<&str> {
+        self.pinned_payload.as_deref()
+    }
+
+    fn clear_cache(&mut self) {
+        self.markdown.clear();
+        self.markdown.shrink_to_fit();
+        self.updated_at_ms = now_ms();
+        self.rendered_hash = 0;
+    }
+
+    fn page(&self) -> SidePanelPage {
+        SidePanelPage {
+            id: TODOS_VIEW_PAGE_ID.to_string(),
+            title: TODOS_VIEW_TITLE.to_string(),
+            file_path: "todos://current-session".to_string(),
+            format: SidePanelPageFormat::Markdown,
+            pdf_data: None,
+            source: SidePanelPageSource::Ephemeral,
+            content: if self.markdown.trim().is_empty() {
+                todos_view_placeholder_markdown()
+            } else {
+                self.markdown.clone()
+            },
+            updated_at_ms: self.updated_at_ms.max(1),
+        }
+    }
+}
+
+impl App {
     fn latest_todo_card_index(&self) -> Option<usize> {
         self.display_messages
             .iter()
@@ -30,7 +86,7 @@ impl App {
             && idx + 1 == self.display_messages.len()
         {
             self.remove_display_message(idx);
-            self.todo_card_rendered_hash = 0;
+            self.todos_view.card_rendered_hash = 0;
             self.set_status_notice("Todos card dismissed");
             return;
         }
@@ -51,7 +107,7 @@ impl App {
         let goals = load_current_session_goals(session_id.as_deref());
         let plan = load_current_session_plan(session_id.as_deref());
         let content = todo_card_payload_json(&todos, &plan, &goals);
-        self.todo_card_rendered_hash =
+        self.todos_view.card_rendered_hash =
             hash_todos_payload(session_id.as_deref(), &todos, &plan, &goals);
 
         if let Some(idx) = self.latest_todo_card_index() {
@@ -79,10 +135,10 @@ impl App {
         let goals = load_current_session_goals(session_id.as_deref());
         let plan = load_current_session_plan(session_id.as_deref());
         let next_hash = hash_todos_payload(session_id.as_deref(), &todos, &plan, &goals);
-        if next_hash == self.todo_card_rendered_hash {
+        if next_hash == self.todos_view.card_rendered_hash {
             return false;
         }
-        self.todo_card_rendered_hash = next_hash;
+        self.todos_view.card_rendered_hash = next_hash;
         let content = todo_card_payload_json(&todos, &plan, &goals);
         self.replace_display_message_content(idx, content)
     }
@@ -95,26 +151,26 @@ impl App {
             return false;
         }
         if !crate::config::config().display.pin_todos {
-            if self.pinned_todos_payload.is_some() {
-                self.pinned_todos_payload = None;
-                self.pinned_todos_rendered_hash = 0;
+            if self.todos_view.pinned_payload.is_some() {
+                self.todos_view.pinned_payload = None;
+                self.todos_view.pinned_rendered_hash = 0;
                 return true;
             }
             return false;
         }
         const REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
-        if let Some(checked_at) = self.pinned_todos_checked_at
+        if let Some(checked_at) = self.todos_view.pinned_checked_at
             && checked_at.elapsed() < REFRESH_INTERVAL
         {
             return false;
         }
-        self.pinned_todos_checked_at = Some(Instant::now());
+        self.todos_view.pinned_checked_at = Some(Instant::now());
         let session_id = self.active_client_session_id().map(str::to_string);
         let todos = load_current_session_todos(session_id.as_deref());
         if todos.is_empty() {
-            if self.pinned_todos_payload.is_some() {
-                self.pinned_todos_payload = None;
-                self.pinned_todos_rendered_hash = 0;
+            if self.todos_view.pinned_payload.is_some() {
+                self.todos_view.pinned_payload = None;
+                self.todos_view.pinned_rendered_hash = 0;
                 return true;
             }
             return false;
@@ -122,34 +178,29 @@ impl App {
         let goals = load_current_session_goals(session_id.as_deref());
         let plan = load_current_session_plan(session_id.as_deref());
         let next_hash = hash_todos_payload(session_id.as_deref(), &todos, &plan, &goals);
-        if next_hash == self.pinned_todos_rendered_hash && self.pinned_todos_payload.is_some() {
+        if next_hash == self.todos_view.pinned_rendered_hash
+            && self.todos_view.pinned_payload.is_some()
+        {
             return false;
         }
-        self.pinned_todos_rendered_hash = next_hash;
-        self.pinned_todos_payload = Some(todo_card_payload_json(&todos, &plan, &goals));
+        self.todos_view.pinned_rendered_hash = next_hash;
+        self.todos_view.pinned_payload = Some(todo_card_payload_json(&todos, &plan, &goals));
         true
-    }
-
-    /// The pinned-band renderer that reads this is landing separately, so the
-    /// accessor is allowed to be unused (outside tests) until it does.
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(super) fn pinned_todos_payload_ref(&self) -> Option<&str> {
-        self.pinned_todos_payload.as_deref()
     }
 
     /// Force the pinned todo band to re-read state on the next tick, bypassing
     /// the 1s throttle. Used right after the user toggles `/todos pin`.
     pub(super) fn refresh_pinned_todos_now(&mut self) {
-        self.pinned_todos_checked_at = None;
+        self.todos_view.pinned_checked_at = None;
         self.refresh_pinned_todos_if_needed();
     }
 
     pub(super) fn set_todos_view_enabled(&mut self, enabled: bool, focus: bool) {
-        self.todos_view_enabled = enabled;
+        self.todos_view.enabled = enabled;
         if enabled {
             self.refresh_todos_view_cache(true);
         } else {
-            self.clear_todos_view_cache();
+            self.todos_view.clear_cache();
         }
 
         let mut snapshot = self.snapshot_without_todos_view();
@@ -170,12 +221,12 @@ impl App {
         mut snapshot: SidePanelSnapshot,
         focus_todos: bool,
     ) -> SidePanelSnapshot {
-        if !self.todos_view_enabled {
+        if !self.todos_view.enabled {
             return snapshot;
         }
 
         snapshot.pages.retain(|page| page.id != TODOS_VIEW_PAGE_ID);
-        snapshot.pages.push(self.todos_view_page());
+        snapshot.pages.push(self.todos_view.page());
         snapshot.pages.sort_by(|a, b| {
             b.updated_at_ms
                 .cmp(&a.updated_at_ms)
@@ -197,7 +248,7 @@ impl App {
     }
 
     pub(super) fn refresh_todos_view_if_needed(&mut self) -> bool {
-        if !self.todos_view_enabled {
+        if !self.todos_view.enabled {
             return false;
         }
         let changed = self.refresh_todos_view_cache(false);
@@ -209,7 +260,7 @@ impl App {
     }
 
     pub(super) fn refresh_todos_view_now(&mut self) -> bool {
-        if !self.todos_view_enabled {
+        if !self.todos_view.enabled {
             return false;
         }
         let changed = self.refresh_todos_view_cache(true);
@@ -217,15 +268,8 @@ impl App {
         changed
     }
 
-    fn clear_todos_view_cache(&mut self) {
-        self.todos_view_markdown.clear();
-        self.todos_view_markdown.shrink_to_fit();
-        self.todos_view_updated_at_ms = now_ms();
-        self.todos_view_rendered_hash = 0;
-    }
-
     fn refresh_todos_view_page(&mut self) {
-        if !self.todos_view_enabled {
+        if !self.todos_view.enabled {
             return;
         }
 
@@ -244,31 +288,14 @@ impl App {
         let goals = load_current_session_goals(session_id);
         let plan = load_current_session_plan(session_id);
         let next_hash = hash_todos_payload(session_id, &todos, &plan, &goals);
-        if !force && self.todos_view_rendered_hash == next_hash {
+        if !force && self.todos_view.rendered_hash == next_hash {
             return false;
         }
 
-        self.todos_view_markdown = build_todos_view_markdown(session_id, &todos, &plan, &goals);
-        self.todos_view_updated_at_ms = now_ms();
-        self.todos_view_rendered_hash = next_hash;
+        self.todos_view.markdown = build_todos_view_markdown(session_id, &todos, &plan, &goals);
+        self.todos_view.updated_at_ms = now_ms();
+        self.todos_view.rendered_hash = next_hash;
         true
-    }
-
-    fn todos_view_page(&self) -> SidePanelPage {
-        SidePanelPage {
-            id: TODOS_VIEW_PAGE_ID.to_string(),
-            title: TODOS_VIEW_TITLE.to_string(),
-            file_path: "todos://current-session".to_string(),
-            format: SidePanelPageFormat::Markdown,
-            pdf_data: None,
-            source: SidePanelPageSource::Ephemeral,
-            content: if self.todos_view_markdown.trim().is_empty() {
-                todos_view_placeholder_markdown()
-            } else {
-                self.todos_view_markdown.clone()
-            },
-            updated_at_ms: self.todos_view_updated_at_ms.max(1),
-        }
     }
 }
 
@@ -276,7 +303,7 @@ pub(super) fn todos_view_status_message(app: &App) -> String {
     format!(
         "Todo card: shown inline in the chat with /todos or {}.\n\nTodo side-panel screen: {}\n\nPinned todo band: {}\n\nWhen the panel screen is enabled (/todos panel), the side panel shows a transient Todos page dedicated to the current session's todo list and refreshes as the list changes. It is not persisted to session side-panel storage.\n\nWhen the pinned band is enabled (/todos pin), the full todo list stays pinned to the top of the chat transcript while it scrolls, like the previous-prompt preview.",
         crate::tui::keybind::todo_card_key_label(),
-        if app.todos_view_enabled() {
+        if app.todos_view.enabled() {
             "enabled"
         } else {
             "disabled"
@@ -306,7 +333,7 @@ pub(super) fn handle_todos_view_command(app: &mut App, trimmed: &str) -> bool {
         }
         // Legacy side-panel screen, now behind an explicit subcommand.
         "panel" => {
-            let enabled = !app.todos_view_enabled();
+            let enabled = !app.todos_view.enabled();
             app.set_todos_view_enabled(enabled, true);
             if enabled {
                 app.set_status_notice("Todos panel: ON");

@@ -838,7 +838,7 @@ impl App {
                 super::super::layout_utils::point_in_rect(mouse.column, mouse.row, area)
             })
         {
-            self.pinned_todos_expanded = true;
+            self.todos_view.pinned_expanded = true;
             finish_mouse_event!(false, "pinned_todos_expand");
         }
 
