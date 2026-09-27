@@ -393,6 +393,9 @@ Staged, each lands whole.
       callers are `app` descendants and call the struct). `app_fields` 226 ->
       217, baseline refreshed; `impl_app_blocks` 57, `super_glob_imports` 124.
       Verified: lib suite identical (1966/27), check, clippy, fmt, shape green.
+      Follow-up: `RemoteStartup` exposes `phase`/`started` as `pub(super)` with
+      only `set`/`clear`; its four single-caller accessors were deleted, matching
+      `RemoteServerInfo`.
       **Active-session-id resolution condensed.** The
       `if is_remote_client() { remote_session_id } else { session.id }` policy was
       reimplemented in nine places: `state_ui.rs` (`active_client_session_id`),

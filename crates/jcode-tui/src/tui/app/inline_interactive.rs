@@ -1082,7 +1082,7 @@ impl App {
         // arrived yet. Do not make an old persisted catalog look current just
         // because the user opened `/model` quickly after spawning the client.
         let awaiting_initial_remote_catalog = self.is_remote_client()
-            && self.remote_startup.is_active()
+            && self.remote_startup.phase.is_some()
             && self.remote_model_options.is_empty()
             && self.remote_available_entries.is_empty();
 

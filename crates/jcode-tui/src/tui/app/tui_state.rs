@@ -147,11 +147,12 @@ impl App {
         let effective_model = self.effective_remote_provider_model();
 
         self.remote_startup
-            .phase()
+            .phase
+            .as_ref()
             .and_then(|phase| {
                 let elapsed = self
                     .remote_startup
-                    .started()
+                    .started
                     .map(|started| started.elapsed())
                     .unwrap_or_default();
 
@@ -940,7 +941,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn remote_startup_phase_active(&self) -> bool {
-        self.remote_startup.is_active()
+        self.remote_startup.phase.is_some()
     }
 
     fn animation_elapsed(&self) -> f32 {

@@ -34,11 +34,15 @@ pub(super) struct RemoteServerInfo {
 /// budget the header uses to decide when to surface the phase label.
 #[derive(Default)]
 pub(super) struct RemoteStartup {
-    phase: Option<RemoteStartupPhase>,
-    started: Option<Instant>,
+    pub(super) phase: Option<RemoteStartupPhase>,
+    pub(super) started: Option<Instant>,
 }
 
 impl RemoteStartup {
+    /// Move to `phase`. The elapsed-time baseline is reset only when the phase
+    /// changes (or was unset), so re-issuing the same phase does not restart the
+    /// header's grace period. This is the only production mutation; tests set
+    /// `started` directly to age a phase.
     pub(super) fn set(&mut self, phase: RemoteStartupPhase) {
         let changed = self.phase.as_ref() != Some(&phase);
         self.phase = Some(phase);
@@ -50,24 +54,6 @@ impl RemoteStartup {
     pub(super) fn clear(&mut self) {
         self.phase = None;
         self.started = None;
-    }
-
-    pub(super) fn phase(&self) -> Option<&RemoteStartupPhase> {
-        self.phase.as_ref()
-    }
-
-    pub(super) fn started(&self) -> Option<Instant> {
-        self.started
-    }
-
-    pub(super) fn is_active(&self) -> bool {
-        self.phase.is_some()
-    }
-
-    /// Force the elapsed-time baseline. Test-only: lets a test age a phase.
-    #[cfg(test)]
-    pub(super) fn force_started(&mut self, started: Instant) {
-        self.started = Some(started);
     }
 }
 
