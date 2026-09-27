@@ -4,6 +4,9 @@ The one list of outstanding work. Tick an item when it lands and delete it; git
 has the history. Longer designs live in the doc an item links to; this file is
 the checklist, not the reasoning.
 
+**Order to work these in: `plans/roadmap.md`.** It sequences the items by shared
+shape and dependency; this file stays the unordered checklist.
+
 Ordered roughly by payoff. An item carries a compact evidence line so it can be
 picked up without re-deriving why it exists. An item marked `(decision)` needs a
 call from the maintainer before work starts; everything else is actionable.
