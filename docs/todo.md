@@ -167,6 +167,13 @@ Staged, each lands whole.
   - Stage 7: stream/status (26 fields, 414 sites).
   - Stage 8: provider and model context (15 fields, 281 sites); coordinate with
     the provider-identity item above, do not create a second registry.
+    **Measured larger than the estimate**: the candidate fields total ~500
+    `self.`/`app.` sites across 30+ files, and they mix two concepts
+    (provider connection: name/model/transport/credential/reasoning/service
+    tier; model selection: picker cache, pending switch/route/reasoning). Two
+    names also live on other structs (`upstream_provider`,
+    `provider_session_id`). Split along that seam before moving anything; do
+    not lump the two into one sub-struct.
   - Stage 9: `Input` (17 fields, 303 sites; `input.rs` is 4,176 lines).
   - Stage 10: transcript (13 fields, 170 sites), then session/server (18 fields,
     390 sites); sweep the ~121 remaining loose fields into their owners.
