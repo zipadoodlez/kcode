@@ -259,7 +259,8 @@ impl App {
             .map(|overlay| overlay.borrow().debug_memory_profile())
             .unwrap_or_else(|| serde_json::json!({"present": false, "total_estimate_bytes": 0}));
         let account_picker = self
-            .account_picker_overlay
+            .account_picker
+            .overlay
             .as_ref()
             .map(|overlay| overlay.borrow().debug_memory_profile())
             .unwrap_or_else(|| serde_json::json!({"present": false, "total_estimate_bytes": 0}));

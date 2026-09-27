@@ -1,6 +1,16 @@
 use super::auth_account_picker_saved_accounts::{account_display_name, anthropic_account_use};
 use super::*;
 
+/// App-side account-picker state: the open overlay, the pending action for the
+/// remote path, and the follow-up input the picker asked for. One home, so the
+/// picker's handling reads one struct instead of three loose fields.
+#[derive(Default)]
+pub(crate) struct AccountPickerState {
+    pub(crate) overlay: Option<std::cell::RefCell<crate::tui::account_picker::AccountPicker>>,
+    pub(crate) pending_action: Option<crate::tui::AccountPickerAction>,
+    pub(crate) pending_input: Option<PendingAccountInput>,
+}
+
 impl App {
     pub(crate) fn open_account_center(&mut self, provider_filter: Option<&str>) {
         use crate::tui::account_picker::{AccountPicker, AccountPickerCommand, AccountPickerItem};
@@ -311,7 +321,7 @@ impl App {
             Some(provider_id) => format!(" {} account center ", provider_id),
             None => " Accounts ".to_string(),
         };
-        self.account_picker_overlay = Some(std::cell::RefCell::new(AccountPicker::with_summary(
+        self.account_picker.overlay = Some(std::cell::RefCell::new(AccountPicker::with_summary(
             title, items, summary,
         )));
         self.inline_interactive_state = None;
@@ -377,7 +387,7 @@ impl App {
             }
         }
 
-        self.account_picker_overlay = Some(std::cell::RefCell::new(AccountPicker::new(
+        self.account_picker.overlay = Some(std::cell::RefCell::new(AccountPicker::new(
             " Add / Replace Account ",
             items,
         )));
@@ -1155,7 +1165,7 @@ impl App {
             display_name
         )));
         self.set_status_notice(format!("Account: new {} label...", display_name));
-        self.pending_account_input = Some(PendingAccountInput::NewAccountLabel {
+        self.account_picker.pending_input = Some(PendingAccountInput::NewAccountLabel {
             provider_id: provider_id.to_string(),
             display_name: display_name.to_string(),
         });
@@ -1173,7 +1183,7 @@ impl App {
             prompt
         )));
         self.set_status_notice(status_notice.clone());
-        self.pending_account_input = Some(PendingAccountInput::CommandValue {
+        self.account_picker.pending_input = Some(PendingAccountInput::CommandValue {
             prompt,
             command_prefix,
             empty_value,
@@ -1204,10 +1214,11 @@ impl App {
                     self.push_display_message(DisplayMessage::error(
                         "Account label cannot be empty.".to_string(),
                     ));
-                    self.pending_account_input = Some(PendingAccountInput::NewAccountLabel {
-                        provider_id,
-                        display_name,
-                    });
+                    self.account_picker.pending_input =
+                        Some(PendingAccountInput::NewAccountLabel {
+                            provider_id,
+                            display_name,
+                        });
                     return;
                 }
                 self.input = format!("/account {} add {}", provider_id, trimmed);
@@ -1227,12 +1238,13 @@ impl App {
                         self.push_display_message(DisplayMessage::error(
                             "A value is required for this setting.".to_string(),
                         ));
-                        self.pending_account_input = Some(PendingAccountInput::CommandValue {
-                            prompt,
-                            command_prefix,
-                            empty_value: None,
-                            status_notice,
-                        });
+                        self.account_picker.pending_input =
+                            Some(PendingAccountInput::CommandValue {
+                                prompt,
+                                command_prefix,
+                                empty_value: None,
+                                status_notice,
+                            });
                         return;
                     }
                 } else {
@@ -1253,7 +1265,7 @@ impl App {
         use crate::tui::account_picker::OverlayAction;
 
         let action = {
-            let Some(picker_cell) = self.account_picker_overlay.as_ref() else {
+            let Some(picker_cell) = self.account_picker.overlay.as_ref() else {
                 return Ok(None);
             };
             let mut picker = picker_cell.borrow_mut();
@@ -1263,11 +1275,11 @@ impl App {
         match action {
             OverlayAction::Continue => Ok(None),
             OverlayAction::Close => {
-                self.account_picker_overlay = None;
+                self.account_picker.overlay = None;
                 Ok(None)
             }
             OverlayAction::Execute(command) => {
-                self.account_picker_overlay = None;
+                self.account_picker.overlay = None;
                 Ok(Some(command))
             }
         }

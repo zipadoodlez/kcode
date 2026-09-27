@@ -166,7 +166,10 @@ Staged, each lands whole.
     account, and login pickers, one sub-struct each. **Session picker landed:**
     `session_picker_overlay`/`session_picker_mode`/`pending_session_picker_load`
     are now `App::session_picker: SessionPickerState` in `session_picker.rs`;
-    `app_fields` fell 279 to 277. The other pickers remain.
+    `app_fields` fell 279 to 277. **Account picker landed:** the overlay, pending
+    action, and pending follow-up input are `App::account_picker:
+    AccountPickerState` in `auth_account_picker.rs`; `app_fields` fell 277 to
+    275. The login and usage pickers remain.
   - Stage 7: stream/status (26 fields, 414 sites).
   - Stage 8: provider and model context (15 fields, 281 sites); coordinate with
     the provider-identity item above, do not create a second registry.

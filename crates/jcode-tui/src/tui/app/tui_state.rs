@@ -1790,7 +1790,7 @@ impl crate::tui::TuiState for App {
     fn account_picker_overlay(
         &self,
     ) -> Option<&RefCell<crate::tui::account_picker::AccountPicker>> {
-        self.account_picker_overlay.as_ref()
+        self.account_picker.overlay.as_ref()
     }
 
     fn usage_overlay(&self) -> Option<&RefCell<crate::tui::usage_overlay::UsageOverlay>> {

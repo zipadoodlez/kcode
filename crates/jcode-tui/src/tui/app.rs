@@ -1316,8 +1316,6 @@ pub struct App {
     /// User echo for a headed fork prompt sent before bootstrap History arrives.
     /// History replaces the transcript, so the echo must be applied afterwards.
     pending_startup_prompt_echo: Option<String>,
-    // Pending account switch from inline picker (for remote mode async processing)
-    pending_account_picker_action: Option<crate::tui::AccountPickerAction>,
     // Config-derived keybindings, loaded and hot-reloaded as one snapshot.
     keybinds: Keybinds,
     // Config reload generation the keybinding snapshot above was parsed at.
@@ -1439,8 +1437,6 @@ pub struct App {
     pending_login: Option<PendingLogin>,
     remote_login: Option<auth_remote::RemoteLogin>,
     remote_login_onboarding: auth_remote::Onboarding,
-    /// Pending account picker follow-up input (new label or setting value)
-    pending_account_input: Option<auth::PendingAccountInput>,
     /// Pending SSH remote target prompt. Stores the friendly remote name.
     pending_ssh_remote_name: Option<String>,
     /// One-shot flag: force the next paint to clear the terminal first.
@@ -1468,8 +1464,8 @@ pub struct App {
     catchup: catchup::Catchup,
     /// Login picker overlay (None = not visible)
     login_picker_overlay: Option<RefCell<super::login_picker::LoginPicker>>,
-    /// Account picker overlay (None = not visible)
-    account_picker_overlay: Option<RefCell<super::account_picker::AccountPicker>>,
+    /// Account picker overlay, pending action, and pending follow-up input.
+    account_picker: auth::AccountPickerState,
     /// Usage overlay (None = not visible)
     usage_overlay: Option<RefCell<super::usage_overlay::UsageOverlay>>,
     /// Whether a usage refresh request is currently in flight.

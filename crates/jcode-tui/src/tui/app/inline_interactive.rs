@@ -2295,7 +2295,7 @@ impl App {
         match action {
             AccountPickerAction::Switch { provider_id, label } => {
                 if self.is_remote_client() {
-                    self.pending_account_picker_action = Some(AccountPickerAction::Switch {
+                    self.account_picker.pending_action = Some(AccountPickerAction::Switch {
                         provider_id: provider_id.clone(),
                         label: label.clone(),
                     });

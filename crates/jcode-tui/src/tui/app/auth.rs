@@ -9,6 +9,7 @@ pub(crate) use self::auth_account_commands::{
     handle_account_command_remote, handle_auth_command, resolve_account_provider_descriptor,
     save_openai_fast_setting_local,
 };
+pub(super) use self::auth_account_picker::AccountPickerState;
 pub(super) use self::auth_types::{AccountCommand, PendingAccountInput, PendingLogin};
 
 use super::*;

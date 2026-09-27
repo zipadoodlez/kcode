@@ -793,7 +793,7 @@ impl App {
             picker_cell.borrow_mut().handle_overlay_mouse(mouse);
             finish_mouse_event!(false, "login_picker_overlay");
         }
-        if let Some(ref picker_cell) = self.account_picker_overlay {
+        if let Some(ref picker_cell) = self.account_picker.overlay {
             picker_cell.borrow_mut().handle_overlay_mouse(mouse);
             finish_mouse_event!(false, "account_picker_overlay");
         }

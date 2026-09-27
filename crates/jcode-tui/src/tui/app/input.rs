@@ -2628,9 +2628,9 @@ pub(super) fn handle_modal_key(
         return Ok(true);
     }
 
-    if app.account_picker_overlay.is_some() {
+    if app.account_picker.overlay.is_some() {
         if super::commands_dispatch::ssh_local_action_blocked(app, "Local account picker") {
-            app.account_picker_overlay = None;
+            app.account_picker.overlay = None;
             return Ok(true);
         }
         if let Some(command) = app.next_account_picker_action(code, modifiers)? {
@@ -3759,7 +3759,7 @@ impl App {
             return;
         }
 
-        if let Some(pending) = self.pending_account_input.take() {
+        if let Some(pending) = self.account_picker.pending_input.take() {
             self.handle_pending_account_input(pending, input);
             return;
         }

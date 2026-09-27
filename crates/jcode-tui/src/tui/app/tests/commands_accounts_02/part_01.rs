@@ -188,7 +188,7 @@ fn test_account_openai_command_opens_account_picker() {
         app.input = "/account openai".to_string();
         app.submit_input();
 
-        assert!(app.account_picker_overlay.is_none());
+        assert!(app.account_picker.overlay.is_none());
         let picker = app
             .inline_interactive_state
             .as_ref()
@@ -255,7 +255,7 @@ fn test_account_command_opens_account_picker() {
         app.input = "/account".to_string();
         app.submit_input();
 
-        assert!(app.account_picker_overlay.is_none());
+        assert!(app.account_picker.overlay.is_none());
         let picker = app
             .inline_interactive_state
             .as_ref()
@@ -408,7 +408,7 @@ fn test_account_picker_preview_from_input_filters_accounts() {
         assert!(picker.preview, "account picker should stay in preview mode");
         assert_eq!(picker.kind, crate::tui::PickerKind::Account);
         assert_eq!(picker.filter, "sec");
-        assert!(app.account_picker_overlay.is_none());
+        assert!(app.account_picker.overlay.is_none());
         assert_eq!(app.input(), "/account openai sec");
     });
 }
@@ -567,14 +567,14 @@ fn test_account_picker_prompt_new_openai_label_cancel_clears_prompt() {
     app.prompt_new_account_label(crate::tui::account_picker::AccountProviderKind::OpenAi);
 
     assert!(matches!(
-        app.pending_account_input,
+        app.account_picker.pending_input,
         Some(super::auth::PendingAccountInput::NewAccountLabel { ref provider_id, .. }) if provider_id == "openai"
     ));
 
     app.input = "/cancel".to_string();
     app.submit_input();
 
-    assert!(app.pending_account_input.is_none());
+    assert!(app.account_picker.pending_input.is_none());
     assert!(app.pending_login.is_none());
 }
 

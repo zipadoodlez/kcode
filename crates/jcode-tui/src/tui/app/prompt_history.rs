@@ -216,7 +216,7 @@ impl App {
     /// (those inputs can contain secrets).
     pub(super) fn record_prompt_history(&mut self, text: &str) {
         if self.pending_login.is_some()
-            || self.pending_account_input.is_some()
+            || self.account_picker.pending_input.is_some()
             || self.pending_ssh_remote_name.is_some()
         {
             return;

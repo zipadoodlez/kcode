@@ -1181,7 +1181,7 @@ impl App {
     pub(super) fn command_suggestions_signature(&self) -> CommandSuggestionsSignature {
         CommandSuggestionsSignature {
             pending_login: self.pending_login.is_some(),
-            pending_account_input: self.pending_account_input.is_some(),
+            pending_account_input: self.account_picker.pending_input.is_some(),
             pending_ssh_remote_name: self.pending_ssh_remote_name.is_some(),
             inline_preview_kind: self
                 .inline_interactive_state

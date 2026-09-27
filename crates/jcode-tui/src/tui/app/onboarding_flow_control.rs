@@ -357,7 +357,7 @@ impl App {
         // picker (the reported "pick provider -> enter key -> asks again" loop)
         // and characters like h/l/j/k/y/n would be eaten as navigation. Let the
         // normal input path handle everything until the pending entry resolves.
-        if self.pending_login.is_some() || self.pending_account_input.is_some() {
+        if self.pending_login.is_some() || self.account_picker.pending_input.is_some() {
             return false;
         }
         // Universal escape hatch. From any guided pre-ready phase, Esc always
@@ -370,7 +370,7 @@ impl App {
             && self.inline_interactive_state.is_none()
             && self.session_picker.overlay.is_none()
             && self.login_picker_overlay.is_none()
-            && self.account_picker_overlay.is_none()
+            && self.account_picker.overlay.is_none()
             && matches!(
                 self.onboarding_phase(),
                 Some(

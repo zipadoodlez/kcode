@@ -326,7 +326,7 @@ async fn handle_remote_key_internal(
         return app.handle_login_picker_key(code, modifiers);
     }
 
-    if app.account_picker_overlay.is_some() {
+    if app.account_picker.overlay.is_some() {
         if let Some(command) = app.next_account_picker_action(code, modifiers)? {
             app.handle_account_picker_command_remote(remote, command)
                 .await?;

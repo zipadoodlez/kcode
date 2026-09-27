@@ -449,7 +449,7 @@ async fn apply_terminal_event(
                         }
                     }
                 }
-                if let Some(selection) = app.pending_account_picker_action.take() {
+                if let Some(selection) = app.account_picker.pending_action.take() {
                     match selection {
                         crate::tui::AccountPickerAction::Switch { provider_id, label } => {
                             match provider_id.as_str() {
