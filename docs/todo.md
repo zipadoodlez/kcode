@@ -25,6 +25,11 @@ Cheap, and they unblock the rest.
   (it counts `let _ =`, `.ok()`, `.unwrap_or_default()`: 3,129 hits across 423
   files, mostly idiomatic), and either re-baseline or drop the panic one, whose
   remaining flags are guarded invariants or build/test code.
+- [ ] (decision) Clippy is red on untouched crates under stable 1.98: 3 lints in
+  `jcode-base`, 3 in `jcode-tui-workspace`, 1 in `jcode-compaction-core`
+  (identical if blocks, collapsible if, complex type, too many args, orphaned
+  doc comments). Newer lints, not this tree's regressions; fix them or pin the
+  toolchain. Evidence run 2026-09-27, rustc 1.98.1.
 - [ ] `scripts/` classification: ~80 inherited files, no README, several
   jcode-specific. Keep / delete / broken triage.
 
