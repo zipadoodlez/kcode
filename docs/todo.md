@@ -5,33 +5,21 @@ has the history. Longer designs live in the doc an item links to; this file is
 the checklist, not the reasoning.
 
 Ordered roughly by payoff. An item carries a compact evidence line so it can be
-picked up without re-deriving why it exists.
+picked up without re-deriving why it exists. An item marked `(decision)` needs a
+call from the maintainer before work starts; everything else is actionable.
 
-## Now (small, safe, lands whole)
+## Now
 
-- [ ] Panic-prone lines made to justify themselves locally (code landed, awaiting
-  the batch rebuild). Only one was a real crash: three
-  `.expect("config directory resolved ...")` on `app_config_dir()` in
-  `auth.rs` save-success messages, where the directory can genuinely be missing;
-  now `.map(...).unwrap_or_else(...)` falling back to the bare filename. The
-  other two were already guarded and were changed for legibility, not safety:
-  `provider_activity_oauth.rs` collapsed the `complete` bool plus four
-  `input/output.unwrap()`s into one `counted` match, and
-  `auth_account_picker.rs:751,1076` turned guarded `models.last().expect(...)`
-  into `if let` bindings. The remaining panic flags are guarded invariants or
-  build/test code (see the ratchet note below).
-- [ ] Settle the two quality ratchets (decision needed): drop the
-  swallowed-error one (it counts `let _ =`, `.ok()`, `.unwrap_or_default()`:
-  3,129 hits across 423 files, mostly idiomatic), and either re-baseline or drop
-  the panic one.
+- [ ] (decision) Settle the two quality ratchets: drop the swallowed-error one
+  (it counts `let _ =`, `.ok()`, `.unwrap_or_default()`: 3,129 hits across 423
+  files, mostly idiomatic), and either re-baseline or drop the panic one, whose
+  remaining flags are guarded invariants or build/test code.
 - [ ] `scripts/` classification: ~80 inherited files, no README, several
   jcode-specific. Keep / delete / broken triage.
-- [ ] `packaging/arch/PKGBUILD`: README advertises it, it does not exist.
-- [ ] Licensing: no `license` fields added, decided 2026-09-27. Nothing here is
-  ever published (no `cargo publish`/`cargo package` anywhere, 35 of 60 members
-  are `publish = false`), so the 60 member manifests need no license. Root plus
-  `LICENSE` already state MIT. Revisit with packaging or a workspace license
-  scanner.
+- [ ] (decision) `packaging/arch/PKGBUILD`: README advertises it, it does not
+  exist. Write it or drop the README promise. License fields were deliberately
+  not added to the manifests (nothing here is published); revisit with
+  packaging.
 
 ## Code structure (largest payoff first)
 
@@ -54,7 +42,7 @@ picked up without re-deriving why it exists.
   `handle_bus_event`, `finish_turn`). Either delete it and drive tests through
   the remote path, or `#[cfg(test)]`-gate the transitive closure. Two turn
   implementations is the real smell.
-- [ ] **Re-core the SSH-login state** (`crates/jcode-tui/src/tui/app/auth_remote.rs`):
+- [ ] (decision) **Re-core the SSH-login state** (`crates/jcode-tui/src/tui/app/auth_remote.rs`):
   one flow tracked by five correlated fields (`phase`, `task`, `operation`,
   `input_kind`, `input`) with 12 guarded `.unwrap()`s. Target is two enums,
   `Stage` and `Activity` (two, because a background `Operation::Status` poll runs
@@ -63,6 +51,7 @@ picked up without re-deriving why it exists.
   only: keep the no-`Debug`/no-`Clone` secrecy property and the `Drop`
   cleanup semantics; a non-1:1 state is a stop-and-report, not a guess. Verify
   with `cargo test -p jcode-tui auth_remote` (21 tests, security-focused).
+  Confirm before touching credential code.
 - [ ] **Unify the command surface**: slash-command identity is a string matched
   in four places: registry `REGISTERED_COMMANDS` (113 literals), `commands.rs`
   (59), `commands_dispatch.rs` (85), `remote/key_handling.rs` (54).
@@ -128,10 +117,6 @@ Covered by "Condense swarm/comm" above. References: `internals/swarm.md`.
 
 ## Hooks
 
-- [ ] Hook `SOURCE` contracts narrowed to what ships (code landed, awaiting the
-  batch rebuild): `turn_start` documented as always `chat`, dropping the never-
-  emitted `resume` and the `ambient` label from a removed mode; `session_start`
-  now says `create`/`attach`/`resume`.
 - [ ] Hooks are unobservable: no `/hooks`, no listing, no dry-run. A typo looks
   identical to a hook that does nothing.
 - [ ] Blocked calls are invisible: `pre_tool` stderr goes to the model, nothing
@@ -145,10 +130,6 @@ Covered by "Condense swarm/comm" above. References: `internals/swarm.md`.
 - [ ] `-p` accepts 52 provider choices, `provider list` prints 26.
 - [ ] Unknown config sections are silently ignored, so older configs keep dead
   keys with no warning.
-- [ ] `Cargo.toml` `[profile]` named packages that do not exist (`fontdb`,
-  `rustybuzz`), producing cargo warnings (code landed, awaiting the batch
-  rebuild). Stanzas deleted; `ttf-parser` kept, it is live via
-  `pdf-extract -> lopdf`.
 - [ ] Ambient-mode vocabulary outlived the ambient cut in user-facing places:
   `info_widget_tips.rs:20-21` advertises background cycles and emailed
   summaries, `input_help.rs:41` and `state_ui_input_helpers.rs:538` offer
@@ -161,9 +142,9 @@ Covered by "Condense swarm/comm" above. References: `internals/swarm.md`.
   teach the tooling the fork's names, or keep
   `cargo build --profile selfdev -p kcode --bin kcode` as the documented path
   (see `docs/dev/post-change.md`).
-- [ ] Fork policy: rebase lane vs hard divergence is undecided and blocks crate
-  names and the env prefix. `README.md` says "does not track upstream"; nothing
-  follows from it.
+- [ ] (decision) Fork policy: rebase lane vs hard divergence is undecided and
+  blocks crate names and the env prefix. `README.md` says "does not track
+  upstream"; nothing follows from it.
 
 ## Committed ideas (no plan yet)
 
@@ -174,13 +155,6 @@ Covered by "Condense swarm/comm" above. References: `internals/swarm.md`.
   ownership (reproducible builds, no self-modification, no telemetry,
   permission-gated by default, every performance claim shipped with a runnable
   script and raw artifacts in-repo).
-
-## Decisions needed
-
-- [ ] Quality ratchets: drop swallowed-error, and re-baseline or drop panic?
-- [ ] SSH-login re-core: confirm before touching credential code.
-- [ ] Packaging: write the PKGBUILD, or drop the README promise?
-- [ ] Fork policy: rebase lane or hard divergence?
 
 ## Spec (not a checklist)
 
