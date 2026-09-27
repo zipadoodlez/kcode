@@ -402,6 +402,14 @@ Staged, each lands whole.
       `active_client_session_id()`; the two sites that deliberately fall back to
       the local stub id keep an explicit `.unwrap_or(&self.session.id)`. No fields
       moved, no ratchet change. Verified: lib suite identical (1966/27).
+      **Resume-target resolution condensed.** The
+      `remote_session_id.or(resume_session_id)` policy was retyped in nine
+      expressions: `update_terminal_title` (ssh), `reconnect_target_session_id`,
+      `session_display_name`, workspace setup, session persistence,
+      `SessionRenamed`, and both reconnect status messages. One accessor,
+      `App::resume_target_session_id()`, now holds it; `reload_handoff_session_id`
+      keeps its extra `pending_reload_session_id` middle step. No fields moved,
+      no ratchet change. Verified: lib suite identical (1966/27).
       **Deferred: `current_message_id` belongs to the remote turn lifecycle.**
       It is written with `is_processing`/`status`/`processing_started`/
       `visible_turn_started`/`last_stream_activity` at every remote send

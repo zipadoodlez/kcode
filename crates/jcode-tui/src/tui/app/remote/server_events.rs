@@ -1379,9 +1379,7 @@ pub(in crate::tui::app) fn handle_server_event(
         } => {
             crate::tui::session_picker::invalidate_session_list_cache();
             let active_session_id = app
-                .remote_session_id
-                .as_deref()
-                .or(app.resume_session_id.as_deref())
+                .resume_target_session_id()
                 .unwrap_or(app.session.id.as_str());
             if active_session_id == session_id {
                 app.session.rename_title(title.clone());

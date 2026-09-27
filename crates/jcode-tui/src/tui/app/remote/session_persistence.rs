@@ -51,9 +51,7 @@ where
         anyhow::bail!("Session metadata belongs to the SSH server; local persistence is disabled");
     }
     let session_id = app
-        .remote_session_id
-        .as_deref()
-        .or(app.resume_session_id.as_deref())
+        .resume_target_session_id()
         .unwrap_or(app.session.id.as_str());
     let mut session = crate::session::Session::load(session_id)?;
     update(&mut session);

@@ -57,11 +57,7 @@ impl App {
             return;
         }
         if let Some(host) = crate::tui::ssh_remote_host() {
-            let session = self
-                .remote_session_id
-                .as_deref()
-                .or(self.resume_session_id.as_deref())
-                .unwrap_or("connecting");
+            let session = self.resume_target_session_id().unwrap_or("connecting");
             let _ = crossterm::execute!(
                 std::io::stdout(),
                 crossterm::terminal::SetTitle(format!("kcode SSH {host} {session}"))
@@ -121,10 +117,17 @@ impl App {
         );
     }
 
-    pub(super) fn reconnect_target_session_id(&self) -> Option<String> {
+    /// The session id to reuse across a reconnect or reload: the live
+    /// `remote_session_id` once the server has named one, otherwise the resume
+    /// target the client was launched with.
+    pub(super) fn resume_target_session_id(&self) -> Option<&str> {
         self.remote_session_id
-            .clone()
-            .or_else(|| self.resume_session_id.clone())
+            .as_deref()
+            .or(self.resume_session_id.as_deref())
+    }
+
+    pub(super) fn reconnect_target_session_id(&self) -> Option<String> {
+        self.resume_target_session_id().map(str::to_string)
     }
 
     /// Resolve the session id to resume across a client reload re-exec.

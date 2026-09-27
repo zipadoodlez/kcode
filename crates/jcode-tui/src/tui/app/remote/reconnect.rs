@@ -99,20 +99,10 @@ pub(super) fn reconnect_status_message(app: &App, state: &RemoteRunState, detail
     };
 
     let session_name = app
-        .remote_session_id
-        .as_ref()
-        .and_then(|id| crate::id::extract_session_name(id))
-        .or_else(|| {
-            app.resume_session_id
-                .as_ref()
-                .and_then(|id| crate::id::extract_session_name(id))
-        });
+        .resume_target_session_id()
+        .and_then(|id| crate::id::extract_session_name(id));
     let resume_hint = if let Some(host) = crate::tui::ssh_remote_host() {
-        let id = app
-            .remote_session_id
-            .as_deref()
-            .or(app.resume_session_id.as_deref())
-            .unwrap_or("pending");
+        let id = app.resume_target_session_id().unwrap_or("pending");
         format!(" · SSH {host} · remote session {id}")
     } else if let Some(name) = &session_name {
         format!(" · resume: kcode --resume {}", name)
@@ -145,20 +135,10 @@ pub(super) fn reload_wait_status_message(
     };
 
     let session_name = app
-        .remote_session_id
-        .as_ref()
-        .and_then(|id| crate::id::extract_session_name(id))
-        .or_else(|| {
-            app.resume_session_id
-                .as_ref()
-                .and_then(|id| crate::id::extract_session_name(id))
-        });
+        .resume_target_session_id()
+        .and_then(|id| crate::id::extract_session_name(id));
     let resume_hint = if let Some(host) = crate::tui::ssh_remote_host() {
-        let id = app
-            .remote_session_id
-            .as_deref()
-            .or(app.resume_session_id.as_deref())
-            .unwrap_or("pending");
+        let id = app.resume_target_session_id().unwrap_or("pending");
         format!(" · SSH {host} · remote session {id}")
     } else if let Some(name) = &session_name {
         format!(" · resume: kcode --resume {}", name)

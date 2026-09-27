@@ -836,10 +836,7 @@ impl crate::tui::TuiState for App {
 
     fn session_display_name(&self) -> Option<String> {
         if self.is_remote_client() {
-            self.remote_session_id
-                .as_ref()
-                .or(self.resume_session_id.as_ref())
-                .as_ref()
+            self.resume_target_session_id()
                 .and_then(|id| crate::id::extract_session_name(id))
                 .map(|s| s.to_string())
         } else {
