@@ -1872,11 +1872,11 @@ impl crate::tui::TuiState for App {
     }
 
     fn cache_ttl_status(&self) -> Option<crate::tui::CacheTtlInfo> {
-        let last_completed = self.last_api_completed?;
+        let last_completed = self.last_api_response.completed_at?;
         let provider = self.provider_name();
         let model = self.provider_model();
-        let last_provider = self.last_api_completed_provider.as_deref()?;
-        let last_model = self.last_api_completed_model.as_deref()?;
+        let last_provider = self.last_api_response.provider.as_deref()?;
+        let last_model = self.last_api_response.model.as_deref()?;
         if last_provider != provider || last_model != model {
             return None;
         }
@@ -1888,7 +1888,7 @@ impl crate::tui::TuiState for App {
             ttl_secs,
             is_cold: remaining == 0,
             cold_for_secs: elapsed.saturating_sub(ttl_secs),
-            cached_tokens: self.last_turn_input_tokens,
+            cached_tokens: self.last_api_response.input_tokens,
         })
     }
 }

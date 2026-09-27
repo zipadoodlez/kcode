@@ -1357,21 +1357,22 @@ fn format_cache_stats(app: &App) -> String {
     ));
     lines.push(format!(
         "- last_turn_input_tokens: {}",
-        opt_u64(app.last_turn_input_tokens)
+        opt_u64(app.last_api_response.input_tokens)
     ));
     lines.push(format!(
         "- last_api_completed_age_secs: {}",
-        app.last_api_completed
+        app.last_api_response
+            .completed_at
             .map(|instant| instant.elapsed().as_secs().to_string())
             .unwrap_or_else(|| "None".to_string())
     ));
     lines.push(format!(
         "- last_api_completed_provider: {}",
-        opt_string(app.last_api_completed_provider.as_deref())
+        opt_string(app.last_api_response.provider.as_deref())
     ));
     lines.push(format!(
         "- last_api_completed_model: {}",
-        opt_string(app.last_api_completed_model.as_deref())
+        opt_string(app.last_api_response.model.as_deref())
     ));
     lines.push(String::new());
 

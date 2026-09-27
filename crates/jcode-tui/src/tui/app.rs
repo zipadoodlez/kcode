@@ -911,14 +911,9 @@ pub struct App {
     // User-visible turn timer. Preserved across synthetic auto-poke follow-ups so elapsed time
     // reflects the original user turn rather than only the latest poke resend.
     visible_turn_started: Option<Instant>,
-    // When the last API response completed (for cache TTL tracking)
-    last_api_completed: Option<Instant>,
-    // Provider/model that produced the last completed API response. A warm cache is only
-    // meaningful for the same provider and model; switching either should make cache state cold.
-    last_api_completed_provider: Option<String>,
-    last_api_completed_model: Option<String>,
-    // Input tokens from the last completed turn (for cache TTL display)
-    last_turn_input_tokens: Option<u64>,
+    // The last completed API response (cache-TTL inputs): when, which
+    // provider/model, and how many input tokens.
+    last_api_response: state_ui_runtime::LastApiResponse,
     // Pending turn to process (allows UI to redraw before processing starts)
     pending_turn: bool,
     // When armed by /poke, automatically continue prompting until todos are complete.

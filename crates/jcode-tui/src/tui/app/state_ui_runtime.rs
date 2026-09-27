@@ -1,6 +1,17 @@
 use super::*;
 use crate::tui::{TuiState, detect_kv_cache_problem, ui};
 
+/// The last completed API response's identity and timing. These are the inputs
+/// to the cache-TTL countdown: a warm cache is only meaningful for the same
+/// provider and model, so the four are written and read as one unit.
+#[derive(Default)]
+pub(super) struct LastApiResponse {
+    pub(super) completed_at: Option<Instant>,
+    pub(super) provider: Option<String>,
+    pub(super) model: Option<String>,
+    pub(super) input_tokens: Option<u64>,
+}
+
 impl App {
     pub(super) fn current_skills_snapshot(&self) -> std::sync::Arc<crate::skill::SkillRegistry> {
         if crate::tui::is_ssh_remote() {
@@ -144,10 +155,10 @@ impl App {
         self.log_cache_miss_if_unexpected();
         self.record_completed_stream_cache_usage();
 
-        self.last_api_completed = Some(Instant::now());
-        self.last_api_completed_provider = Some(<Self as TuiState>::provider_name(self));
-        self.last_api_completed_model = Some(<Self as TuiState>::provider_model(self));
-        self.last_turn_input_tokens = {
+        self.last_api_response.completed_at = Some(Instant::now());
+        self.last_api_response.provider = Some(<Self as TuiState>::provider_name(self));
+        self.last_api_response.model = Some(<Self as TuiState>::provider_model(self));
+        self.last_api_response.input_tokens = {
             // Effective prompt size (input + cache read + creation): for
             // split-accounting providers bare input is only the uncached
             // remainder, and this figure feeds the cache countdown/cold

@@ -754,7 +754,7 @@ fn remote_token_usage_records_cache_stats_before_done_and_dedupes_snapshots() {
         Some(63_762)
     );
     assert_eq!(app.token_accounting.total_input_tokens, 63_762);
-    assert!(app.last_api_completed.is_some());
+    assert!(app.last_api_response.completed_at.is_some());
     assert!(app.kv_cache.pending_kv_cache_request.is_none());
 
     app.handle_server_event(
@@ -1566,7 +1566,7 @@ fn remote_done_finalizes_resumed_activity_without_current_message_id() {
     assert!(!app.is_processing);
     assert!(matches!(app.status, ProcessingStatus::Idle));
     assert!(app.remote_resume_activity.is_none());
-    assert!(app.last_api_completed.is_some());
+    assert!(app.last_api_response.completed_at.is_some());
 }
 
 #[test]

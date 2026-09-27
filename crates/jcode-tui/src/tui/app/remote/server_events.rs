@@ -751,9 +751,9 @@ pub(in crate::tui::app) fn handle_server_event(
                     app.streaming.streaming_cache_read_tokens.unwrap_or(0),
                     app.streaming.streaming_cache_creation_tokens.unwrap_or(0),
                 );
-                app.last_api_completed = Some(Instant::now());
-                app.last_api_completed_provider = Some(<App as TuiState>::provider_name(app));
-                app.last_api_completed_model = Some(<App as TuiState>::provider_model(app));
+                app.last_api_response.completed_at = Some(Instant::now());
+                app.last_api_response.provider = Some(<App as TuiState>::provider_name(app));
+                app.last_api_response.model = Some(<App as TuiState>::provider_model(app));
                 // Effective prompt (input + read + creation), matching the
                 // local push_turn_footer path: this feeds the cache
                 // countdown/cold indicators as "what gets resent".
@@ -762,7 +762,7 @@ pub(in crate::tui::app) fn handle_server_event(
                     app.streaming.streaming_cache_read_tokens.unwrap_or(0),
                     app.streaming.streaming_cache_creation_tokens.unwrap_or(0),
                 );
-                app.last_turn_input_tokens = (effective > 0).then_some(effective);
+                app.last_api_response.input_tokens = (effective > 0).then_some(effective);
             } else if was_recorded && app.kv_cache.current_api_usage_recorded {
                 app.token_accounting.total_input_tokens = app
                     .token_accounting
@@ -840,10 +840,10 @@ pub(in crate::tui::app) fn handle_server_event(
                 }
                 app.token_accounting.cache_next_optimal_input_tokens =
                     Some(effective_prompt_tokens);
-                app.last_api_completed = Some(Instant::now());
-                app.last_api_completed_provider = Some(<App as TuiState>::provider_name(app));
-                app.last_api_completed_model = Some(<App as TuiState>::provider_model(app));
-                app.last_turn_input_tokens =
+                app.last_api_response.completed_at = Some(Instant::now());
+                app.last_api_response.provider = Some(<App as TuiState>::provider_name(app));
+                app.last_api_response.model = Some(<App as TuiState>::provider_model(app));
+                app.last_api_response.input_tokens =
                     (effective_prompt_tokens > 0).then_some(effective_prompt_tokens);
             }
             eager_stream_redraw && matches!(app.status, ProcessingStatus::Streaming)
