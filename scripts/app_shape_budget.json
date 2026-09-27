@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "metrics": {
+    "app_fields": 310,
+    "impl_app_blocks": 57,
+    "super_glob_imports": 124
+  }
+}

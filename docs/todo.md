@@ -25,9 +25,6 @@ Cheap, and they unblock the rest.
   (it counts `let _ =`, `.ok()`, `.unwrap_or_default()`: 3,129 hits across 423
   files, mostly idiomatic), and either re-baseline or drop the panic one, whose
   remaining flags are guarded invariants or build/test code.
-- [ ] App re-core baseline: record the `cargo test -p jcode-tui` baseline and add
-  `scripts/check_app_shape.py` (field count and `impl App` count, `--update`) so
-  the re-core only moves one way. Stage 0 of the `App` item in phase 2.
 - [ ] `scripts/` classification: ~80 inherited files, no README, several
   jcode-specific. Keep / delete / broken triage.
 
@@ -69,8 +66,8 @@ Staged, each lands whole.
 - [ ] **Re-core `App`** (`crates/jcode-tui/src/tui/app.rs`): the largest single
   cost in the tree, so the plan lives here in full now that `plans/` is gone.
 
-  Evidence: `struct App` spans `app.rs:821-1547`, 309 fields (~287 loose, ~22
-  already sub-structs), 57 `impl App` blocks across 53 files, 124
+  Evidence: `struct App` spans `app.rs:821-1547`, 310 fields (measured by
+  `scripts/check_app_shape.py`), 57 `impl App` blocks across 53 files, 124
   `use super::*` globs, ~3,092 direct `self.<field>` sites. `app.rs` is 2,471
   lines, already over the size ratchet. The runtime axis is encoded three times
   (`runtime_mode`, `is_remote`, `is_replay`, plus two accessors that re-derive
@@ -86,9 +83,14 @@ Staged, each lands whole.
 
   Order is isolation first, coupling last; each stage lands whole.
 
-  - Stage 0: baseline + `scripts/check_app_shape.py` ratchet. Also measure
-    per-group method cohesion (which `impl App` methods touch one group only).
-    The field/site counts below are measured; cohesion is not.
+  - Stage 0: ratchet landed. `scripts/check_app_shape.py` (with
+    `scripts/app_shape_budget.json`) measures `app_fields`, `impl_app_blocks`,
+    and `super_glob_imports` and refuses growth; wired into
+    `scripts/check_guardrails.sh`. Baseline: `app_fields=310`,
+    `impl_app_blocks=57`, `super_glob_imports=124`. `cargo test -p jcode-tui`
+    baseline recorded in `dev/testing.md`. Remaining: measure per-group method
+    cohesion (which `impl App` methods touch one group only), which sets the
+    stage order below.
   - Stage 1: one runtime axis. Drop `is_remote` and `is_replay`, keep
     `runtime_mode`; reads go through `is_remote_client()`/`is_replay_runtime()`;
     test writes become a `set_runtime_mode` helper. Verify with
@@ -176,7 +178,7 @@ tree first would just move that churn around.
   `remote_events_reload_04.rs` (~43%, header-phase table at 1038-1180).
 - [ ] Move subsystem code out of test files: `live_tests.rs` is a live-provider
   coverage ledger (21% tests), `provider_e2e.rs` (11% tests).
-- [ ] Pre-existing failures on this tree: `jcode-tui --lib` 30, `jcode-base --lib`
+- [ ] Pre-existing failures on this tree: `jcode-tui --lib` 27, `jcode-base --lib`
   15, math/LaTeX 15, `test_lock_order` 1. Environmental, not regressions. Treat
   as the baseline; the suite still covers removed features and brittle
   pixel/color assertions, so collapse or delete rather than maintain.

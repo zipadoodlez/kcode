@@ -85,6 +85,9 @@ run_ratchet "panic-prone usage ratchet" check_panic_budget.py
 run_ratchet "swallowed-error usage ratchet" check_swallowed_error_budget.py
 run_gate "crate dependency boundaries" python3 scripts/check_dependency_boundaries.py
 run_gate "wildcard re-export ratchet" python3 scripts/check_wildcard_reexport_budget.py
+# The `App` re-core may only shrink, so its field/impl/glob counts are ratcheted
+# separately from file size (app.rs could shrink while fields regroup inward).
+run_ratchet "App shape ratchet" check_app_shape.py
 
 # Onboarding state-space invariants. The onboarding flow is a graph, and the
 # properties that keep users unstuck (no dead ends, every failure has a recovery
