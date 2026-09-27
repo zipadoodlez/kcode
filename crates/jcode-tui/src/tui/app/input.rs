@@ -1884,7 +1884,8 @@ impl App {
 
     /// Whether the configured `keybindings.new_terminal` chord matches this key.
     pub(crate) fn new_terminal_key_matches(&self, code: KeyCode, modifiers: KeyModifiers) -> bool {
-        self.keybinds.new_terminal_key
+        self.keybinds
+            .new_terminal_key
             .binding
             .as_ref()
             .map(|binding| binding.matches(code, modifiers))
@@ -1893,7 +1894,8 @@ impl App {
 
     /// Whether the configured `keybindings.open_resume` chord matches this key.
     pub(crate) fn open_resume_key_matches(&self, code: KeyCode, modifiers: KeyModifiers) -> bool {
-        self.keybinds.open_resume_key
+        self.keybinds
+            .open_resume_key
             .binding
             .as_ref()
             .map(|binding| binding.matches(code, modifiers))
@@ -1906,7 +1908,8 @@ impl App {
         code: KeyCode,
         modifiers: KeyModifiers,
     ) -> bool {
-        self.keybinds.fallback_switch_key
+        self.keybinds
+            .fallback_switch_key
             .binding
             .as_ref()
             .map(|binding| binding.matches(code, modifiers))
@@ -2256,7 +2259,12 @@ pub(super) fn handle_navigation_shortcuts(
         return true;
     }
 
-    if app.keybinds.toggle_keys.diff_mode_cycle.matches(code, modifiers) {
+    if app
+        .keybinds
+        .toggle_keys
+        .diff_mode_cycle
+        .matches(code, modifiers)
+    {
         app.diff_mode = app.diff_mode.cycle();
         if !app.diff_pane_visible() {
             app.diff_pane_focus = false;
@@ -2274,8 +2282,16 @@ pub(super) fn is_scroll_only_key(app: &App, code: KeyCode, modifiers: KeyModifie
     let mut modifiers = modifiers;
     ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers);
 
-    if app.keybinds.scroll_keys.scroll_amount(code, modifiers).is_some()
-        || app.keybinds.scroll_keys.prompt_jump(code, modifiers).is_some()
+    if app
+        .keybinds
+        .scroll_keys
+        .scroll_amount(code, modifiers)
+        .is_some()
+        || app
+            .keybinds
+            .scroll_keys
+            .prompt_jump(code, modifiers)
+            .is_some()
         || App::ctrl_side_panel_ratio_preset(&code, modifiers).is_some()
         || App::ctrl_prompt_rank(&code, modifiers).is_some()
         || app.keybinds.scroll_keys.is_bookmark(code, modifiers)
@@ -2349,7 +2365,12 @@ pub(super) fn handle_pre_control_shortcuts(
         super::commands::toggle_auto_poke_hotkey_local(app);
         return true;
     }
-    if app.keybinds.toggle_keys.copy_selection.matches(code, modifiers) {
+    if app
+        .keybinds
+        .toggle_keys
+        .copy_selection
+        .matches(code, modifiers)
+    {
         app.toggle_copy_selection_mode();
         return true;
     }
@@ -2362,11 +2383,21 @@ pub(super) fn handle_pre_control_shortcuts(
         app.toggle_side_panel();
         return true;
     }
-    if app.keybinds.toggle_keys.typing_scroll_lock.matches(code, modifiers) {
+    if app
+        .keybinds
+        .toggle_keys
+        .typing_scroll_lock
+        .matches(code, modifiers)
+    {
         app.toggle_typing_scroll_lock();
         return true;
     }
-    if app.keybinds.toggle_keys.info_widget.matches(code, modifiers) {
+    if app
+        .keybinds
+        .toggle_keys
+        .info_widget
+        .matches(code, modifiers)
+    {
         crate::tui::info_widget::toggle_enabled();
         let status = if crate::tui::info_widget::is_enabled() {
             "Info widget: ON"
@@ -2383,7 +2414,12 @@ pub(super) fn handle_pre_control_shortcuts(
     // Swarm views: Alt+N cycles chat → inline controls → full live page → chat.
     // Selection/open/prompt controls stay available in both active views, while
     // plain typing continues to flow to the chat input.
-    if app.keybinds.toggle_keys.swarm_panel_focus.matches(code, modifiers) {
+    if app
+        .keybinds
+        .toggle_keys
+        .swarm_panel_focus
+        .matches(code, modifiers)
+    {
         match app.cycle_swarm_panel_view() {
             super::tui_state::SwarmPanelView::Chat => {
                 app.set_status_notice("Swarm view closed");
@@ -2412,12 +2448,20 @@ pub(super) fn handle_pre_control_shortcuts(
         app.open_session_picker();
         return true;
     }
-    if let Some(direction) = app.keybinds.model_switch_keys.direction_for(code, modifiers) {
+    if let Some(direction) = app
+        .keybinds
+        .model_switch_keys
+        .direction_for(code, modifiers)
+    {
         app.record_keybinding_fast(super::shortcut_hints::LearnableAction::ModelSwitch);
         app.cycle_model(direction);
         return true;
     }
-    if let Some(direction) = app.keybinds.effort_switch_keys.direction_for(code, modifiers) {
+    if let Some(direction) = app
+        .keybinds
+        .effort_switch_keys
+        .direction_for(code, modifiers)
+    {
         app.record_keybinding_fast(super::shortcut_hints::LearnableAction::EffortCycle);
         app.cycle_effort(direction);
         return true;

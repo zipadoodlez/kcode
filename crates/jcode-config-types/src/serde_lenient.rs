@@ -39,9 +39,7 @@ where
 /// enum field must not discard the rest of the user's configuration.
 #[cfg(test)]
 mod tests {
-    use crate::{
-        DiffDisplayMode, DisplayConfig, MarkdownSpacingMode, OverscrollStatusMode,
-    };
+    use crate::{DiffDisplayMode, DisplayConfig, MarkdownSpacingMode, OverscrollStatusMode};
 
     fn parse(json: &str) -> DisplayConfig {
         serde_json::from_str(json).expect("display config must still parse")

@@ -469,8 +469,7 @@ impl App {
         if self.copy_selection_edge_autoscroll.is_none() {
             return false;
         }
-        const COPY_AUTOSCROLL_PERIOD: std::time::Duration =
-            std::time::Duration::from_millis(60);
+        const COPY_AUTOSCROLL_PERIOD: std::time::Duration = std::time::Duration::from_millis(60);
         let now = std::time::Instant::now();
         if let Some(last) = self.copy_selection_autoscroll_last
             && now.saturating_duration_since(last) < COPY_AUTOSCROLL_PERIOD

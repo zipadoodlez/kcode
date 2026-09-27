@@ -30,7 +30,10 @@ fn configured_palette_slots_load_from_a_real_config_file() {
         Some("#1050f0"),
         "a base16 slot must load"
     );
-    assert_eq!(loaded.display.palette.get("blue").map(String::as_str), Some("#ffaa00"));
+    assert_eq!(
+        loaded.display.palette.get("blue").map(String::as_str),
+        Some("#ffaa00")
+    );
     assert_eq!(loaded.display.palette.len(), 2);
     assert_eq!(
         loaded.display.colors.get("error").map(String::as_str),

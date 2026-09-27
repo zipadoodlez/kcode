@@ -1,6 +1,6 @@
 use super::{
-    Config, DiffDisplayMode, DisplayConfig, HookCommands, McpToolsMode,
-    ProviderConfig, SessionPickerResumeAction, SwarmSpawnMode, ToolConfig, config_env_fingerprint,
+    Config, DiffDisplayMode, DisplayConfig, HookCommands, McpToolsMode, ProviderConfig,
+    SessionPickerResumeAction, SwarmSpawnMode, ToolConfig, config_env_fingerprint,
     populate_context_limits_from_config_ref,
 };
 use std::ffi::OsString;
@@ -199,7 +199,6 @@ fn auto_poke_environment_override_uses_standard_boolean_values() {
 
     restore_env_var("JCODE_AUTO_POKE", previous);
 }
-
 
 #[test]
 fn swarm_max_concurrent_agents_parses_and_allows_zero_for_unbounded() {

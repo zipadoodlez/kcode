@@ -1275,28 +1275,20 @@ pub async fn login_and_bootstrap_provider(
     eprintln!();
 
     let runtime: Arc<dyn provider::Provider> = match provider.target {
-        LoginProviderTarget::AutoImport => {
-            Arc::new(provider::MultiProvider::new())
-        }
+        LoginProviderTarget::AutoImport => Arc::new(provider::MultiProvider::new()),
         LoginProviderTarget::Claude | LoginProviderTarget::ClaudeApiKey => {
             Arc::new(provider::MultiProvider::new())
         }
-        LoginProviderTarget::OpenAi => {
-            Arc::new(provider::MultiProvider::with_preference(true))
-        }
-        LoginProviderTarget::GrokBuild => {
-            crate::provider::external::instantiate_external_provider(
-                crate::provider::external::GROK_BUILD_RUNTIME,
-            )
-            .ok_or_else(|| anyhow::anyhow!("Grok Build runtime is not registered"))?
-        }
+        LoginProviderTarget::OpenAi => Arc::new(provider::MultiProvider::with_preference(true)),
+        LoginProviderTarget::GrokBuild => crate::provider::external::instantiate_external_provider(
+            crate::provider::external::GROK_BUILD_RUNTIME,
+        )
+        .ok_or_else(|| anyhow::anyhow!("Grok Build runtime is not registered"))?,
         LoginProviderTarget::OpenAiApiKey => {
             select_initial_model_provider("openai");
             Arc::new(provider::MultiProvider::with_preference(true))
         }
-        LoginProviderTarget::OpenRouter => {
-            Arc::new(provider::MultiProvider::new())
-        }
+        LoginProviderTarget::OpenRouter => Arc::new(provider::MultiProvider::new()),
         LoginProviderTarget::Bedrock => {
             select_initial_model_provider("bedrock");
             Arc::new(provider::MultiProvider::new())
@@ -1326,9 +1318,7 @@ pub async fn login_and_bootstrap_provider(
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
             Arc::new(jcode_provider_cursor_runtime::CursorCliProvider::new())
         }
-        LoginProviderTarget::Copilot => {
-            Arc::new(provider::MultiProvider::new())
-        }
+        LoginProviderTarget::Copilot => Arc::new(provider::MultiProvider::new()),
         LoginProviderTarget::Gemini => {
             clear_initial_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");

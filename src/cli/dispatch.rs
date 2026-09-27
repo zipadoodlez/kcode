@@ -9,9 +9,7 @@ use super::args::{
     Args, AuthCommand, Command, ModelCommand, ProviderCommand, RestartCommand, ServerCommand,
     SessionCommand, TranscriptModeArg,
 };
-use crate::{
-    agent, auth, build, provider, provider_catalog, server, session, startup_profile,
-};
+use crate::{agent, auth, build, provider, provider_catalog, server, session, startup_profile};
 
 use super::{acp, commands, debug, login, output, provider_init, terminal, tui_launch};
 use provider_init::ProviderChoice;

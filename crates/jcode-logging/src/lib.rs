@@ -786,7 +786,10 @@ mod tests {
         cleanup_old_logs_in(&dir, Local::now());
 
         assert!(!old_log.exists(), "old kcode log should be deleted");
-        assert!(!old_legacy.exists(), "legacy jcode log should still be swept");
+        assert!(
+            !old_legacy.exists(),
+            "legacy jcode log should still be swept"
+        );
         assert!(!old_desktop.exists(), "old desktop log should be deleted");
         assert!(new_log.exists(), "recent kcode log must survive");
         assert!(old_memory.exists(), "memory-events jsonl must survive");

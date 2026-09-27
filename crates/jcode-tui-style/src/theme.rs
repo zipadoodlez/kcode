@@ -137,5 +137,4 @@ mod tests {
         assert_eq!(spinner_frame(0.9, fps), "⠏");
         assert_eq!(spinner_frame(1.0, fps), "⠋");
     }
-
 }

@@ -274,7 +274,6 @@ impl SafetySystem {
 
         lines.join("\n")
     }
-
 }
 
 impl Default for SafetySystem {

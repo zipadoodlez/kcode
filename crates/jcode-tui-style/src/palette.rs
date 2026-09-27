@@ -174,8 +174,22 @@ const SLOT_BASE16_KEYS: [&str; 16] = [
 ];
 
 const SLOT_NAMES: [&str; 16] = [
-    "bg", "bg_alt", "bg_selection", "comment", "fg_dim", "fg", "fg_bright", "bg_bright", "red",
-    "orange", "yellow", "green", "cyan", "blue", "purple", "brown",
+    "bg",
+    "bg_alt",
+    "bg_selection",
+    "comment",
+    "fg_dim",
+    "fg",
+    "fg_bright",
+    "bg_bright",
+    "red",
+    "orange",
+    "yellow",
+    "green",
+    "cyan",
+    "blue",
+    "purple",
+    "brown",
 ];
 
 impl Slot {

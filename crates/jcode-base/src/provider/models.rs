@@ -45,7 +45,6 @@ struct PersistedModelCatalogScope {
     observed_at_unix_secs: u64,
 }
 
-
 /// Dynamic cache of model context window sizes, populated from API at startup.
 static CONTEXT_LIMIT_CACHE: std::sync::LazyLock<RwLock<HashMap<String, usize>>> =
     std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));

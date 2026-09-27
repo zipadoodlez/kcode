@@ -117,12 +117,20 @@ fn export_colors(app: &mut App) {
     let palette = configured_palette();
     let mut lines = vec!["[display.palette]".to_string()];
     for slot in ALL_SLOTS.iter().copied() {
-        lines.push(format!("{} = \"{}\"", slot.key(), to_hex(palette.slot_rgb(slot))));
+        lines.push(format!(
+            "{} = \"{}\"",
+            slot.key(),
+            to_hex(palette.slot_rgb(slot))
+        ));
     }
     lines.push(String::new());
     lines.push("[display.colors]".to_string());
     for role in ALL_ROLES.iter().copied() {
-        lines.push(format!("{} = \"{}\"", role.key(), to_hex(palette.rgb(role))));
+        lines.push(format!(
+            "{} = \"{}\"",
+            role.key(),
+            to_hex(palette.rgb(role))
+        ));
     }
     app.push_display_message(DisplayMessage::system(lines.join("\n")));
 }

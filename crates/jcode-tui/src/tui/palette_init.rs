@@ -24,7 +24,9 @@ pub fn init_palette() {
     let slots = &crate::config::config().display.palette;
     let (palette, slot_errors) = Palette::from_slot_pairs_over(
         base,
-        slots.iter().map(|(key, value)| (key.as_str(), value.as_str())),
+        slots
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str())),
     );
     for error in slot_errors {
         crate::logging::warn(&format!("display.palette: {error}"));

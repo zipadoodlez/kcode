@@ -5,12 +5,12 @@
 
 pub use jcode_config_types::{
     AgentsConfig, AuthConfig, AutoJudgeConfig, AutoReviewConfig, CompactionConfig, CompactionMode,
-    CrossProviderFailoverMode, DiffDisplayMode,
-    DisplayConfig, FeatureConfig, HookCommands, HooksConfig, KeybindingsConfig,
-    MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig, NamedProviderModelConfig,
-    NamedProviderType, NativeScrollbarConfig, NotificationsConfig, OverscrollStatusMode,
-    PowerConfig, ProviderConfig, ReasoningDisplayMode, SessionPickerResumeAction, SwarmSpawnMode,
-    SwarmStripLayout, TerminalConfig, UpdateChannel, WebSearchConfig, WebSearchEngine,
+    CrossProviderFailoverMode, DiffDisplayMode, DisplayConfig, FeatureConfig, HookCommands,
+    HooksConfig, KeybindingsConfig, MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig,
+    NamedProviderModelConfig, NamedProviderType, NativeScrollbarConfig, NotificationsConfig,
+    OverscrollStatusMode, PowerConfig, ProviderConfig, ReasoningDisplayMode,
+    SessionPickerResumeAction, SwarmSpawnMode, SwarmStripLayout, TerminalConfig, UpdateChannel,
+    WebSearchConfig, WebSearchEngine,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
