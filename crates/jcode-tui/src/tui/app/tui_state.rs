@@ -596,11 +596,11 @@ impl crate::tui::TuiState for App {
     }
 
     fn scroll_offset(&self) -> usize {
-        self.scroll_offset
+        self.viewport.scroll_offset
     }
 
     fn auto_scroll_paused(&self) -> bool {
-        self.auto_scroll_paused
+        self.viewport.auto_scroll_paused
     }
 
     fn terminal_clear_collapsed(&self) -> bool {
@@ -608,7 +608,8 @@ impl crate::tui::TuiState for App {
     }
 
     fn pending_history_anchor_lines_from_bottom(&self) -> Option<usize> {
-        self.pending_history_anchor
+        self.viewport
+            .pending_history_anchor
             .map(|anchor| anchor.lines_from_bottom)
     }
 

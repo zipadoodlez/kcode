@@ -123,13 +123,17 @@ Staged, each lands whole.
     `should_redraw_after_resize`, `flush_pending_resize_redraw`) move into
     `redraw.rs` as `Redraw` (out of `input.rs`); `app_fields` fell 248 to 245.
     The rename was receiver-aware because `force_full_redraw`/`force_full_repaint`
-    also live on `run_shell`/`ui_frame_metrics`. Remaining: the scroll half
-    (`scroll_offset`, `auto_scroll_paused`, `pending_history_anchor`,
-    `scroll_bookmark`, `typing_scroll_lock`; 17 methods touch only them), which
-    still needs the receiver-checked sweep (`scroll_offset`/`auto_scroll_paused`/
-    `typing_scroll_lock` collide with other structs). `last_wheel` and
-    `overscroll_status_mode` are not repaint requests and were left out of
-    `Redraw`.
+    also live on `run_shell`/`ui_frame_metrics`. **Scroll half landed:** the five
+    scroll fields (`scroll_offset`, `auto_scroll_paused`, `pending_history_anchor`,
+    `scroll_bookmark`, `typing_scroll_lock`) move into `viewport.rs` as
+    `Viewport`, along with the six methods that touch only them
+    (`follow_chat_bottom`, `debug_scroll_top`, `follow_chat_bottom_for_typing`,
+    `capture_history_anchor`, `reconcile_history_anchor`, `scroll_to_next_prompt`);
+    `app_fields` fell 245 to 241. The `TuiState` getters stay on `App` (the trait
+    is implemented for `App`), and the keys/commands that also touch
+    `set_status_notice`, `scroll_max_estimate`, or the compacted-history loader
+    stay on `App` and read through the struct. `last_wheel` and
+    `overscroll_status_mode` are not scroll state either and remain on `App`.
   - Shared ephemeral side-panel page. **Landed.** The four mirror-page builders
     now call `SidePanelPage::ephemeral_markdown`, so the page shape lives with
     the type instead of four times over.

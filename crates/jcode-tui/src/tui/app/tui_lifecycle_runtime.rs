@@ -624,7 +624,7 @@ pub(super) fn handle_dev_command(app: &mut App, trimmed: &str) -> bool {
             app.input.clear();
             app.cursor_pos = 0;
             app.clear_input_undo_history();
-            app.follow_chat_bottom();
+            app.viewport.follow_chat_bottom();
             app.redraw.force_full_redraw = true;
             app.set_status_notice("Onboarding preview: on");
         } else {

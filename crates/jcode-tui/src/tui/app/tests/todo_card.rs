@@ -363,8 +363,8 @@ fn pinned_todo_band_renders_below_sticky_prompt_without_separator() {
         },
     ];
     app.bump_display_messages_version();
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     app.is_processing = false;
     app.streaming.streaming_text.clear();
     app.status = ProcessingStatus::Idle;
@@ -373,7 +373,7 @@ fn pinned_todo_band_renders_below_sticky_prompt_without_separator() {
     let backend = ratatui::backend::TestBackend::new(60, 16);
     let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
 
-    app.auto_scroll_paused = true;
+    app.viewport.auto_scroll_paused = true;
     let top_text = render_and_snap(&app, &mut terminal);
     assert!(
         top_text.lines().take(6).any(|row| row.contains("pinned band item")),
@@ -381,7 +381,7 @@ fn pinned_todo_band_renders_below_sticky_prompt_without_separator() {
         top_text
     );
 
-    app.auto_scroll_paused = false;
+    app.viewport.auto_scroll_paused = false;
     let text = render_and_snap(&app, &mut terminal);
 
     let first_rows = text.lines().take(6).collect::<Vec<_>>();

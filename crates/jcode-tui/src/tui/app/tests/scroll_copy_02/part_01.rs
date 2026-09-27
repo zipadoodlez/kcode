@@ -838,8 +838,8 @@ fn test_ctrl_a_copies_chat_viewport_with_context_when_input_empty() {
         tool_data: None,
     }];
     app.bump_display_messages_version();
-    app.scroll_offset = 12;
-    app.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 12;
+    app.viewport.auto_scroll_paused = true;
 
     let backend = ratatui::backend::TestBackend::new(40, 8);
     let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
@@ -906,8 +906,8 @@ fn test_copy_selection_drag_to_top_edge_auto_scrolls_chat() {
         tool_data: None,
     }];
     app.bump_display_messages_version();
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     app.is_processing = false;
     app.streaming.streaming_text.clear();
     app.status = ProcessingStatus::Idle;
@@ -1033,8 +1033,8 @@ fn test_edge_autoscroll_rate_is_proximity_scaled_and_stops_on_release() {
         tool_data: None,
     }];
     app.bump_display_messages_version();
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     app.is_processing = false;
     app.streaming.streaming_text.clear();
     app.status = ProcessingStatus::Idle;
@@ -1147,8 +1147,8 @@ fn test_copy_selection_drag_near_top_edge_keeps_auto_scrolling() {
         tool_data: None,
     }];
     app.bump_display_messages_version();
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     app.is_processing = false;
     app.streaming.streaming_text.clear();
     app.status = ProcessingStatus::Idle;
@@ -1251,8 +1251,8 @@ fn test_copy_selection_drag_to_bottom_edge_when_pinned_does_not_snap_or_autoscro
         tool_data: None,
     }];
     app.bump_display_messages_version();
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     app.is_processing = false;
     app.streaming.streaming_text.clear();
     app.status = ProcessingStatus::Idle;
@@ -1360,8 +1360,8 @@ fn test_copy_selection_drag_below_last_line_fully_selects_last_line() {
         tool_data: None,
     }];
     app.bump_display_messages_version();
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     app.is_processing = false;
     app.streaming.streaming_text.clear();
     app.status = ProcessingStatus::Idle;
@@ -1478,8 +1478,8 @@ fn test_alt_a_copies_chat_viewport_with_context_when_input_empty() {
         tool_data: None,
     }];
     app.bump_display_messages_version();
-    app.scroll_offset = 4;
-    app.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 4;
+    app.viewport.auto_scroll_paused = true;
 
     let backend = ratatui::backend::TestBackend::new(40, 8);
     let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
@@ -1628,8 +1628,8 @@ fn wrapped_row_drag_copy_returns_the_logical_line_exactly() {
             tool_data: None,
         }];
         app.bump_display_messages_version();
-        app.scroll_offset = 0;
-        app.auto_scroll_paused = false;
+        app.viewport.scroll_offset = 0;
+        app.viewport.auto_scroll_paused = false;
         app.is_processing = false;
         app.streaming.streaming_text.clear();
         app.status = ProcessingStatus::Idle;

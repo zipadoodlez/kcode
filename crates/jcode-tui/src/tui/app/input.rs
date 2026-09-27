@@ -900,7 +900,7 @@ fn expand_matching_paste(app: &mut App, text: &str) -> bool {
         return false;
     };
 
-    app.follow_chat_bottom_for_typing();
+    app.viewport.follow_chat_bottom_for_typing();
     app.remember_input_undo_state();
     app.input.replace_range(
         placeholder_start..placeholder_start + placeholder.len(),
@@ -1126,7 +1126,7 @@ pub(super) fn insert_input_text(app: &mut App, text: &str) {
     // Keeping this at the shared insertion boundary also covers paste and
     // Shift+Enter, rather than relying on individual key dispatchers to remember
     // to reconcile the transcript viewport.
-    app.follow_chat_bottom_for_typing();
+    app.viewport.follow_chat_bottom_for_typing();
 
     let at_end = app.cursor_pos == app.input.len();
 
@@ -1196,7 +1196,7 @@ pub(super) fn handle_text_input(app: &mut App, text: &str) -> bool {
                     app.remember_input_undo_state();
                     app.input = prompt.clone();
                     app.cursor_pos = app.input.len();
-                    app.follow_chat_bottom_for_typing();
+                    app.viewport.follow_chat_bottom_for_typing();
                     app.submit_input();
                     return true;
                 }
@@ -2239,7 +2239,7 @@ pub(super) fn handle_navigation_shortcuts(
         if dir < 0 {
             app.scroll_to_prev_prompt();
         } else {
-            app.scroll_to_next_prompt();
+            app.viewport.scroll_to_next_prompt();
         }
         return true;
     }
@@ -2857,7 +2857,7 @@ pub(super) fn handle_basic_key(app: &mut App, code: KeyCode) -> bool {
                     app.set_status_notice("Interrupting...");
                 }
             } else {
-                app.follow_chat_bottom();
+                app.viewport.follow_chat_bottom();
                 clear_input_for_escape(app);
             }
             true
@@ -3364,7 +3364,7 @@ impl App {
         if self.reasoning.turn_traces.len() < 2 {
             return false;
         }
-        if self.auto_scroll_paused {
+        if self.viewport.auto_scroll_paused {
             // User is reading history; never remove anything they might see.
             return false;
         }
@@ -3700,7 +3700,7 @@ impl App {
         self.pasted_contents.clear();
         self.cursor_pos = 0;
         self.clear_input_undo_history();
-        self.follow_chat_bottom(); // Reset to bottom and resume auto-scroll on new input
+        self.viewport.follow_chat_bottom(); // Reset to bottom and resume auto-scroll on new input
 
         // If the previous assistant turn still has visible streamed text that has not yet been
         // committed into chat history, finalize it before inserting the next user turn.

@@ -23,7 +23,7 @@ impl App {
                 "display_messages": self.display_messages.len(),
                 "input": self.input,
                 "cursor_pos": self.cursor_pos,
-                "scroll_offset": self.scroll_offset,
+                "scroll_offset": self.viewport.scroll_offset,
                 "queued_messages": self.queued_messages.len(),
                 "provider_session_id": self.provider_session_id,
                 "model": self.provider.name(),
@@ -289,7 +289,7 @@ impl App {
                     match direction.as_str() {
                         "up" => self.debug_scroll_up(5),
                         "down" => self.debug_scroll_down(5),
-                        "top" => self.debug_scroll_top(),
+                        "top" => self.viewport.debug_scroll_top(),
                         "bottom" => self.debug_scroll_bottom(),
                         _ => {}
                     }
@@ -429,14 +429,14 @@ impl App {
             return match dir {
                 "up" => {
                     self.debug_scroll_up(5);
-                    format!("scroll: up to {}", self.scroll_offset)
+                    format!("scroll: up to {}", self.viewport.scroll_offset)
                 }
                 "down" => {
                     self.debug_scroll_down(5);
-                    format!("scroll: down to {}", self.scroll_offset)
+                    format!("scroll: down to {}", self.viewport.scroll_offset)
                 }
                 "top" => {
-                    self.debug_scroll_top();
+                    self.viewport.debug_scroll_top();
                     "scroll: top".to_string()
                 }
                 "bottom" => {

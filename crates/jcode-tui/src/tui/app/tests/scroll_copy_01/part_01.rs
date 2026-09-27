@@ -51,8 +51,8 @@ fn create_scroll_test_app(
         },
     ];
     app.bump_display_messages_version();
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     app.is_processing = false;
     app.streaming.streaming_text.clear();
     app.status = ProcessingStatus::Idle;
@@ -85,8 +85,8 @@ fn create_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend::TestBacke
         },
     ];
     app.bump_display_messages_version();
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     app.is_processing = false;
     app.streaming.streaming_text.clear();
     app.status = ProcessingStatus::Idle;
@@ -119,8 +119,8 @@ fn create_blockquote_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend
         },
     ];
     app.bump_display_messages_version();
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     app.is_processing = false;
     app.streaming.streaming_text.clear();
     app.status = ProcessingStatus::Idle;
@@ -138,8 +138,8 @@ fn create_error_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend::Tes
         DisplayMessage::error("permission denied while opening ~/.kcode/config.toml"),
     ];
     app.bump_display_messages_version();
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     app.is_processing = false;
     app.streaming.streaming_text.clear();
     app.status = ProcessingStatus::Idle;
@@ -164,8 +164,8 @@ fn create_tool_error_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend
         ),
     ];
     app.bump_display_messages_version();
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     app.is_processing = false;
     app.streaming.streaming_text.clear();
     app.status = ProcessingStatus::Idle;
@@ -191,8 +191,8 @@ fn create_tool_failed_output_copy_test_app()
         ),
     ];
     app.bump_display_messages_version();
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     app.is_processing = false;
     app.streaming.streaming_text.clear();
     app.status = ProcessingStatus::Idle;
@@ -417,7 +417,7 @@ fn test_chat_native_scrollbar_hides_scroll_counters() {
 
     let (mut app, mut terminal) = create_scroll_test_app(50, 12, 0, 24);
     app.chat_native_scrollbar = true;
-    app.auto_scroll_paused = true;
+    app.viewport.auto_scroll_paused = true;
 
     let _ = render_and_snap(&app, &mut terminal);
     let max_scroll = crate::tui::ui::last_max_scroll();
@@ -426,9 +426,9 @@ fn test_chat_native_scrollbar_hides_scroll_counters() {
         "expected scrollable content, got max_scroll={max_scroll}"
     );
 
-    app.scroll_offset = max_scroll / 2;
+    app.viewport.scroll_offset = max_scroll / 2;
     let text = render_and_snap(&app, &mut terminal);
-    let scroll = app.scroll_offset.min(crate::tui::ui::last_max_scroll());
+    let scroll = app.viewport.scroll_offset.min(crate::tui::ui::last_max_scroll());
     let remaining = crate::tui::ui::last_max_scroll().saturating_sub(scroll);
 
     assert!(
@@ -499,8 +499,8 @@ fn test_chat_mouse_scroll_requests_immediate_redraw_during_streaming() {
         modifiers: KeyModifiers::empty(),
     });
 
-    assert!(app.auto_scroll_paused, "scroll state should update immediately");
-    assert_ne!(app.scroll_offset, 0, "scroll offset should change immediately");
+    assert!(app.viewport.auto_scroll_paused, "scroll state should update immediately");
+    assert_ne!(app.viewport.scroll_offset, 0, "scroll offset should change immediately");
     assert!(
         !scroll_only,
         "chat mouse wheel scrolls should request immediate redraw while streaming"
@@ -533,8 +533,8 @@ fn test_chat_mouse_wheel_scroll_does_not_recall_prompt_history() {
         app.input.is_empty(),
         "mouse-wheel scrolling must not copy the previous prompt into the editor"
     );
-    assert!(app.auto_scroll_paused, "wheel-up should pause auto-scroll");
-    assert_ne!(app.scroll_offset, 0, "wheel-up should move the transcript");
+    assert!(app.viewport.auto_scroll_paused, "wheel-up should pause auto-scroll");
+    assert_ne!(app.viewport.scroll_offset, 0, "wheel-up should move the transcript");
 }
 
 #[test]
@@ -562,7 +562,7 @@ fn test_chat_mouse_scroll_down_reaches_bottom_without_dead_zone() {
         scrolled_up_scroll < bottom_scroll,
         "first wheel-up should move the resolved transcript viewport"
     );
-    assert!(app.auto_scroll_paused);
+    assert!(app.viewport.auto_scroll_paused);
 
     app.handle_mouse_event(MouseEvent {
         kind: MouseEventKind::ScrollDown,
@@ -578,7 +578,7 @@ fn test_chat_mouse_scroll_down_reaches_bottom_without_dead_zone() {
         "one opposite wheel detent should return to bottom"
     );
     assert!(
-        !app.auto_scroll_paused,
+        !app.viewport.auto_scroll_paused,
         "state should follow bottom as soon as the rendered viewport reaches bottom"
     );
 }
@@ -683,15 +683,15 @@ fn test_file_activity_scroll_reproduces_trailing_ghost_after_native_scroll_like_
     // into one flowing paragraph, which would repaint over the ghost cells.
     app.display_messages = vec![DisplayMessage::assistant(lines.join("\n\n"))];
     app.bump_display_messages_version();
-    app.auto_scroll_paused = true;
-    app.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 0;
 
     // The transcript begins with the persistent header, which can be taller
     // than this 12-row viewport. Scroll until the file activity line is
     // actually on screen instead of assuming it sits at the top.
     let mut clean = render_and_snap(&app, &mut terminal);
-    while !clean.contains("read lines") && app.scroll_offset < 200 {
-        app.scroll_offset += 1;
+    while !clean.contains("read lines") && app.viewport.scroll_offset < 200 {
+        app.viewport.scroll_offset += 1;
         clean = render_and_snap(&app, &mut terminal);
     }
     assert!(
@@ -719,7 +719,7 @@ fn test_file_activity_scroll_reproduces_trailing_ghost_after_native_scroll_like_
         .draw(updates)
         .expect("inject trailing nines after file activity line");
 
-    app.scroll_offset += 1;
+    app.viewport.scroll_offset += 1;
     let scrolled = render_and_snap(&app, &mut terminal);
 
     assert!(
@@ -731,16 +731,16 @@ fn test_file_activity_scroll_reproduces_trailing_ghost_after_native_scroll_like_
 #[test]
 fn test_remote_typing_resumes_bottom_follow_mode() {
     let mut app = create_test_app();
-    app.scroll_offset = 7;
-    app.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 7;
+    app.viewport.auto_scroll_paused = true;
 
     app.handle_remote_char_input('x');
 
     assert_eq!(app.input, "x");
     assert_eq!(app.cursor_pos, 1);
-    assert_eq!(app.scroll_offset, 0);
+    assert_eq!(app.viewport.scroll_offset, 0);
     assert!(
-        !app.auto_scroll_paused,
+        !app.viewport.auto_scroll_paused,
         "typing in remote mode should follow newest content, not pin top"
     );
 }
@@ -748,17 +748,17 @@ fn test_remote_typing_resumes_bottom_follow_mode() {
 #[test]
 fn test_local_typing_resumes_bottom_follow_mode() {
     let mut app = create_test_app();
-    app.scroll_offset = 7;
-    app.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 7;
+    app.viewport.auto_scroll_paused = true;
 
     app.handle_key(KeyCode::Char('x'), KeyModifiers::empty())
         .unwrap();
 
     assert_eq!(app.input, "x");
     assert_eq!(app.cursor_pos, 1);
-    assert_eq!(app.scroll_offset, 0);
+    assert_eq!(app.viewport.scroll_offset, 0);
     assert!(
-        !app.auto_scroll_paused,
+        !app.viewport.auto_scroll_paused,
         "local typing should follow newest content just like remote typing"
     );
 }
@@ -773,8 +773,8 @@ fn test_local_typing_snaps_rendered_viewport_to_bottom_in_one_frame() {
     let max_scroll = crate::tui::ui::last_max_scroll();
     assert!(max_scroll > 8, "expected a long transcript, got {max_scroll}");
 
-    app.auto_scroll_paused = true;
-    app.scroll_offset = max_scroll - 8;
+    app.viewport.auto_scroll_paused = true;
+    app.viewport.scroll_offset = max_scroll - 8;
     let _ = render_and_snap(&app, &mut terminal);
     assert_eq!(
         crate::tui::ui::last_resolved_chat_scroll(),
@@ -957,8 +957,8 @@ fn test_remote_typing_scroll_lock_preserves_scroll_position() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.scroll_offset = 7;
-    app.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 7;
+    app.viewport.auto_scroll_paused = true;
 
     rt.block_on(app.handle_remote_key(KeyCode::Char('s'), KeyModifiers::ALT, &mut remote))
         .unwrap();
@@ -966,9 +966,9 @@ fn test_remote_typing_scroll_lock_preserves_scroll_position() {
 
     assert_eq!(app.input, "x");
     assert_eq!(app.cursor_pos, 1);
-    assert_eq!(app.scroll_offset, 7);
+    assert_eq!(app.viewport.scroll_offset, 7);
     assert!(
-        app.auto_scroll_paused,
+        app.viewport.auto_scroll_paused,
         "typing scroll lock should preserve paused scroll state"
     );
 }
@@ -976,8 +976,8 @@ fn test_remote_typing_scroll_lock_preserves_scroll_position() {
 #[test]
 fn test_local_typing_scroll_lock_preserves_scroll_position() {
     let mut app = create_test_app();
-    app.scroll_offset = 7;
-    app.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 7;
+    app.viewport.auto_scroll_paused = true;
 
     app.handle_key(KeyCode::Char('s'), KeyModifiers::ALT)
         .unwrap();
@@ -986,9 +986,9 @@ fn test_local_typing_scroll_lock_preserves_scroll_position() {
 
     assert_eq!(app.input, "x");
     assert_eq!(app.cursor_pos, 1);
-    assert_eq!(app.scroll_offset, 7);
+    assert_eq!(app.viewport.scroll_offset, 7);
     assert!(
-        app.auto_scroll_paused,
+        app.viewport.auto_scroll_paused,
         "typing scroll lock should preserve local paused scroll state"
     );
 }
@@ -1000,8 +1000,8 @@ fn test_remote_typing_scroll_lock_can_be_toggled_back_off() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.scroll_offset = 7;
-    app.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 7;
+    app.viewport.auto_scroll_paused = true;
 
     rt.block_on(app.handle_remote_key(KeyCode::Char('s'), KeyModifiers::ALT, &mut remote))
         .unwrap();
@@ -1009,9 +1009,9 @@ fn test_remote_typing_scroll_lock_can_be_toggled_back_off() {
         .unwrap();
     app.handle_remote_char_input('x');
 
-    assert_eq!(app.scroll_offset, 0);
+    assert_eq!(app.viewport.scroll_offset, 0);
     assert!(
-        !app.auto_scroll_paused,
+        !app.viewport.auto_scroll_paused,
         "typing should resume following chat bottom after disabling the lock"
     );
 }
@@ -1103,18 +1103,18 @@ fn test_prompt_jump_ctrl_brackets() {
     // Seed max scroll estimates before key handling.
     render_and_snap(&app, &mut terminal);
 
-    assert_eq!(app.scroll_offset, 0);
-    assert!(!app.auto_scroll_paused);
+    assert_eq!(app.viewport.scroll_offset, 0);
+    assert!(!app.viewport.auto_scroll_paused);
 
     app.handle_key(KeyCode::Char('['), KeyModifiers::CONTROL)
         .unwrap();
-    assert!(app.auto_scroll_paused);
-    assert!(app.scroll_offset > 0);
+    assert!(app.viewport.auto_scroll_paused);
+    assert!(app.viewport.scroll_offset > 0);
 
-    let after_up = app.scroll_offset;
+    let after_up = app.viewport.scroll_offset;
     app.handle_key(KeyCode::Char(']'), KeyModifiers::CONTROL)
         .unwrap();
-    assert!(app.scroll_offset <= after_up);
+    assert!(app.viewport.scroll_offset <= after_up);
 }
 
 // NOTE: test_prompt_jump_ctrl_digits_by_recency was removed because it relied on
@@ -1129,9 +1129,9 @@ fn test_prompt_jump_ctrl_esc_fallback_on_macos() {
 
     render_and_snap(&app, &mut terminal);
 
-    assert_eq!(app.scroll_offset, 0);
+    assert_eq!(app.viewport.scroll_offset, 0);
     app.handle_key(KeyCode::Esc, KeyModifiers::CONTROL).unwrap();
-    assert!(app.auto_scroll_paused);
-    assert!(app.scroll_offset > 0);
+    assert!(app.viewport.auto_scroll_paused);
+    assert!(app.viewport.scroll_offset > 0);
 }
 

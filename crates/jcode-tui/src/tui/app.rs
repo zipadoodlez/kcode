@@ -108,6 +108,7 @@ mod turn;
 mod turn_memory;
 mod turn_notify;
 mod ui_prefs;
+mod viewport;
 
 pub(crate) use self::state_ui_storage::compact_display_messages_for_storage;
 
@@ -833,10 +834,6 @@ pub struct App {
     display_user_message_count: usize,
     display_edit_tool_message_count: usize,
     compacted_history_lazy: CompactedHistoryLazyState,
-    /// When older compacted history has just been loaded, this anchors the
-    /// viewport to the content the reader was looking at so the prepend does not
-    /// visibly jump. Resolved into `scroll_offset` by the next render frame.
-    pending_history_anchor: Option<HistoryScrollAnchor>,
     input: String,
     command_candidates_cache: RefCell<Option<CommandCandidatesCache>>,
     /// Per-input memo for `command_suggestions()`; see
@@ -846,9 +843,9 @@ pub struct App {
     /// `command_suggestions_cache` to a single frame.
     command_suggestions_epoch: std::cell::Cell<u64>,
     cursor_pos: usize,
-    scroll_offset: usize,
-    /// Pauses auto-scroll when user scrolls up during streaming
-    auto_scroll_paused: bool,
+    // Chat viewport scroll state: offset, auto-scroll pause, prepend anchor,
+    // bookmark, and typing scroll lock.
+    viewport: viewport::Viewport,
     active_skill: Option<String>,
     is_processing: bool,
     // Live streaming/turn progress (text, per-turn tokens, TPS tracking).
@@ -1258,10 +1255,6 @@ pub struct App {
     // Polled on idle ticks so config.toml keybinding edits hot-reload
     // without a restart.
     keybindings_config_generation: u64,
-    // Keep the current chat viewport while typing instead of snapping to bottom.
-    typing_scroll_lock: bool,
-    // Scroll bookmark: stashed scroll position for quick teleport back
-    scroll_bookmark: Option<usize>,
     // Stashed input: saved via Ctrl+S for later retrieval
     stashed_input: Option<(String, usize)>,
     // Undo history for in-progress input editing (Ctrl+Z)

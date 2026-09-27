@@ -122,8 +122,8 @@ impl App {
             if self.chat_native_scrollbar {
                 let viewport = layout.messages_area.height as usize;
                 let max_scroll = crate::tui::ui::last_max_scroll();
-                let position = if self.auto_scroll_paused {
-                    self.scroll_offset.min(max_scroll)
+                let position = if self.viewport.auto_scroll_paused {
+                    self.viewport.scroll_offset.min(max_scroll)
                 } else {
                     max_scroll
                 };

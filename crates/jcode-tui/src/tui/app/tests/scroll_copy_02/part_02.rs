@@ -130,8 +130,8 @@ fn make_edit_badge_test_app(
     ];
     app.bump_display_messages_version();
     app.diff_mode = crate::config::DiffDisplayMode::Inline;
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     app.is_processing = false;
     app.status = ProcessingStatus::Idle;
     app.session.short_name = Some("test".to_string());

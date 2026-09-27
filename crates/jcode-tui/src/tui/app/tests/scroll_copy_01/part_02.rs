@@ -8,12 +8,12 @@ fn test_prompt_jump_ctrl_digit_is_recency_rank_in_app() {
 
     let (prompt_up_code, prompt_up_mods) = prompt_up_key(&app);
     app.handle_key(prompt_up_code, prompt_up_mods).unwrap();
-    assert!(app.scroll_offset > 0);
+    assert!(app.viewport.scroll_offset > 0);
 
     // Ctrl+5 now means "5th most-recent prompt" (clamped to oldest).
     app.handle_key(KeyCode::Char('5'), KeyModifiers::CONTROL)
         .unwrap();
-    assert!(app.scroll_offset > 0);
+    assert!(app.viewport.scroll_offset > 0);
 }
 
 #[test]
@@ -28,12 +28,12 @@ fn test_scroll_cmd_j_k_fallback_in_app() {
     let (down_code, down_mods) = scroll_down_fallback_key(&app);
 
     app.handle_key(up_code, up_mods).unwrap();
-    assert!(app.auto_scroll_paused);
-    assert!(app.scroll_offset > 0);
-    let after_up = app.scroll_offset;
+    assert!(app.viewport.auto_scroll_paused);
+    assert!(app.viewport.scroll_offset > 0);
+    let after_up = app.viewport.scroll_offset;
 
     app.handle_key(down_code, down_mods).unwrap();
-    assert!(app.scroll_offset <= after_up);
+    assert!(app.viewport.scroll_offset <= after_up);
 }
 
 /// Terminal-style Ctrl+L: after the clear the rendered messages area shows no
@@ -253,18 +253,18 @@ fn test_remote_prompt_jump_ctrl_brackets() {
     // Seed max scroll estimates before key handling.
     render_and_snap(&app, &mut terminal);
 
-    assert_eq!(app.scroll_offset, 0);
-    assert!(!app.auto_scroll_paused);
+    assert_eq!(app.viewport.scroll_offset, 0);
+    assert!(!app.viewport.auto_scroll_paused);
 
     rt.block_on(app.handle_remote_key(KeyCode::Char('['), KeyModifiers::CONTROL, &mut remote))
         .unwrap();
-    assert!(app.auto_scroll_paused);
-    assert!(app.scroll_offset > 0);
+    assert!(app.viewport.auto_scroll_paused);
+    assert!(app.viewport.scroll_offset > 0);
 
-    let after_up = app.scroll_offset;
+    let after_up = app.viewport.scroll_offset;
     rt.block_on(app.handle_remote_key(KeyCode::Char(']'), KeyModifiers::CONTROL, &mut remote))
         .unwrap();
-    assert!(app.scroll_offset <= after_up);
+    assert!(app.viewport.scroll_offset <= after_up);
 }
 
 #[cfg(target_os = "macos")]
@@ -279,11 +279,11 @@ fn test_remote_prompt_jump_ctrl_esc_fallback_on_macos() {
     // Seed max scroll estimates before key handling.
     render_and_snap(&app, &mut terminal);
 
-    assert_eq!(app.scroll_offset, 0);
+    assert_eq!(app.viewport.scroll_offset, 0);
     rt.block_on(app.handle_remote_key(KeyCode::Esc, KeyModifiers::CONTROL, &mut remote))
         .unwrap();
-    assert!(app.auto_scroll_paused);
-    assert!(app.scroll_offset > 0);
+    assert!(app.viewport.auto_scroll_paused);
+    assert!(app.viewport.scroll_offset > 0);
 }
 
 #[test]
@@ -336,12 +336,12 @@ fn test_remote_prompt_jump_ctrl_digit_is_recency_rank() {
     let (prompt_up_code, prompt_up_mods) = prompt_up_key(&app);
     rt.block_on(app.handle_remote_key(prompt_up_code, prompt_up_mods, &mut remote))
         .unwrap();
-    assert!(app.scroll_offset > 0);
+    assert!(app.viewport.scroll_offset > 0);
 
     // Ctrl+5 now means "5th most-recent prompt" (clamped to oldest).
     rt.block_on(app.handle_remote_key(KeyCode::Char('5'), KeyModifiers::CONTROL, &mut remote))
         .unwrap();
-    assert!(app.scroll_offset > 0);
+    assert!(app.viewport.scroll_offset > 0);
 }
 
 #[test]
@@ -465,8 +465,8 @@ fn test_ctrl_l_puts_prompt_indicator_at_top_of_screen() {
     }
     app.display_messages = messages;
     app.bump_display_messages_version();
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
 
     let backend = ratatui::backend::TestBackend::new(80, 25);
     let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");

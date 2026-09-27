@@ -15,8 +15,8 @@ struct MouseScrollTraceState {
 impl MouseScrollTraceState {
     fn capture(app: &App) -> Self {
         Self {
-            chat_offset: app.scroll_offset,
-            auto_scroll_paused: app.auto_scroll_paused,
+            chat_offset: app.viewport.scroll_offset,
+            auto_scroll_paused: app.viewport.auto_scroll_paused,
             diff_offset: app.diff_pane_scroll,
             diff_auto_scroll: app.diff_pane_auto_scroll,
             help_scroll: app.help_scroll,
@@ -1019,14 +1019,14 @@ impl App {
         // is anchored to a distance-from-bottom rather than `scroll_offset`. Keep
         // scrolling continuous by moving the anchor itself instead of a stale
         // offset the renderer is currently ignoring.
-        if let Some(mut anchor) = self.pending_history_anchor {
+        if let Some(mut anchor) = self.viewport.pending_history_anchor {
             let total = super::super::ui::last_total_wrapped_lines();
             anchor.lines_from_bottom = anchor
                 .lines_from_bottom
                 .saturating_add(amount)
                 .min(total.max(anchor.lines_from_bottom));
-            self.pending_history_anchor = Some(anchor);
-            self.auto_scroll_paused = true;
+            self.viewport.pending_history_anchor = Some(anchor);
+            self.viewport.auto_scroll_paused = true;
             self.maybe_queue_compacted_history_load();
             // Force a full repaint: ratatui's diff does not re-emit the trailing
             // cell after a wide grapheme (emoji/CJK) when the symbol is unchanged,
@@ -1037,25 +1037,39 @@ impl App {
             self.redraw.request_full_repaint();
             return true;
         }
-        let before = (self.scroll_offset, self.auto_scroll_paused);
+        let before = (
+            self.viewport.scroll_offset,
+            self.viewport.auto_scroll_paused,
+        );
         let max = self.scroll_max_estimate();
-        if !self.auto_scroll_paused {
+        if !self.viewport.auto_scroll_paused {
             let rendered_max = super::super::ui::last_max_scroll();
-            let current_abs = max.saturating_sub(self.scroll_offset);
-            self.scroll_offset = current_abs.saturating_sub(amount);
+            let current_abs = max.saturating_sub(self.viewport.scroll_offset);
+            self.viewport.scroll_offset = current_abs.saturating_sub(amount);
             if rendered_max > 0 {
-                self.scroll_offset = self.scroll_offset.min(rendered_max.saturating_sub(amount));
+                self.viewport.scroll_offset = self
+                    .viewport
+                    .scroll_offset
+                    .min(rendered_max.saturating_sub(amount));
             }
         } else {
-            self.scroll_offset = self.scroll_offset.saturating_sub(amount);
+            self.viewport.scroll_offset = self.viewport.scroll_offset.saturating_sub(amount);
         }
-        self.auto_scroll_paused = true;
+        self.viewport.auto_scroll_paused = true;
         // If the upward scroll bottomed out against the top of the currently
         // loaded content, fold the unsatisfied intent into the prefetch as
         // overshoot so the newly loaded history scrolls into view smoothly.
-        let overshoot = if self.scroll_offset == 0 { amount } else { 0 };
+        let overshoot = if self.viewport.scroll_offset == 0 {
+            amount
+        } else {
+            0
+        };
         self.maybe_queue_compacted_history_load_with_overshoot(overshoot);
-        let changed = before != (self.scroll_offset, self.auto_scroll_paused);
+        let changed = before
+            != (
+                self.viewport.scroll_offset,
+                self.viewport.auto_scroll_paused,
+            );
         if changed {
             // See note above (ratatui #2357): force a clean repaint on scroll so
             // wide-grapheme trailing cells cannot leave a ghost character.
@@ -1065,14 +1079,14 @@ impl App {
     }
 
     pub(super) fn pause_chat_auto_scroll(&mut self) {
-        if self.auto_scroll_paused {
+        if self.viewport.auto_scroll_paused {
             return;
         }
 
         let max = self.scroll_max_estimate();
 
-        self.scroll_offset = max.saturating_sub(self.scroll_offset.min(max));
-        self.auto_scroll_paused = true;
+        self.viewport.scroll_offset = max.saturating_sub(self.viewport.scroll_offset.min(max));
+        self.viewport.auto_scroll_paused = true;
     }
 
     /// Scroll the chat transcript down by `amount` lines.
@@ -1085,21 +1099,21 @@ impl App {
         // Mirror `scroll_up`: while an older-history prepend is still settling,
         // the renderer is anchored to distance-from-bottom, so move the anchor
         // toward the bottom instead of a stale `scroll_offset`.
-        if let Some(mut anchor) = self.pending_history_anchor {
+        if let Some(mut anchor) = self.viewport.pending_history_anchor {
             if anchor.lines_from_bottom == 0 {
                 return false;
             }
             anchor.lines_from_bottom = anchor.lines_from_bottom.saturating_sub(amount);
-            self.pending_history_anchor = Some(anchor);
+            self.viewport.pending_history_anchor = Some(anchor);
             // ratatui #2357: clean repaint on scroll to avoid wide-grapheme ghosts.
             self.redraw.request_full_repaint();
             return true;
         }
-        if !self.auto_scroll_paused {
+        if !self.viewport.auto_scroll_paused {
             // Already pinned to the bottom: a further downward scroll is a no-op.
             return false;
         }
-        let before = self.scroll_offset;
+        let before = self.viewport.scroll_offset;
         let max = self.scroll_max_estimate();
         let rendered_max = super::super::ui::last_max_scroll();
         // The renderer's exact extent is the authoritative ceiling. Only fall
@@ -1113,29 +1127,23 @@ impl App {
             // Not streaming and nothing to scroll: we are already at the bottom.
             0
         };
-        self.scroll_offset = self.scroll_offset.saturating_add(amount);
-        let changed = if self.scroll_offset >= bottom_threshold {
-            self.follow_chat_bottom();
+        self.viewport.scroll_offset = self.viewport.scroll_offset.saturating_add(amount);
+        let changed = if self.viewport.scroll_offset >= bottom_threshold {
+            self.viewport.follow_chat_bottom();
             true
         } else {
             // Never let the stored offset grow past the largest offset that
             // still moves the rendered viewport. Otherwise scrolling down at
             // (or near) the bottom silently accumulates "phantom" offset that
             // later has to be undone before scrolling up moves the view again.
-            self.scroll_offset = self.scroll_offset.min(bottom_threshold);
-            self.scroll_offset != before
+            self.viewport.scroll_offset = self.viewport.scroll_offset.min(bottom_threshold);
+            self.viewport.scroll_offset != before
         };
         if changed {
             // ratatui #2357: clean repaint on scroll to avoid wide-grapheme ghosts.
             self.redraw.request_full_repaint();
         }
         changed
-    }
-
-    pub(super) fn follow_chat_bottom(&mut self) {
-        self.pending_history_anchor = None;
-        self.scroll_offset = 0;
-        self.auto_scroll_paused = false;
     }
 
     /// Whether the status line below the input is shown (config-pinned on).
@@ -1154,12 +1162,7 @@ impl App {
         self.scroll_down(amount);
     }
 
-    pub(super) fn debug_scroll_top(&mut self) {
-        self.scroll_offset = 0;
-        self.auto_scroll_paused = true;
-    }
-
     pub(super) fn debug_scroll_bottom(&mut self) {
-        self.follow_chat_bottom();
+        self.viewport.follow_chat_bottom();
     }
 }

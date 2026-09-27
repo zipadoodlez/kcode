@@ -193,7 +193,7 @@ impl App {
                 "display_messages": self.display_messages.len(),
                 "input": self.input,
                 "cursor_pos": self.cursor_pos,
-                "scroll_offset": self.scroll_offset,
+                "scroll_offset": self.viewport.scroll_offset,
                 "queued_messages": self.queued_messages.len(),
                 "provider_session_id": self.provider_session_id,
                 "model": self.provider.name(),
@@ -278,8 +278,8 @@ impl App {
             ];
             self.bump_display_messages_version();
             self.diff_mode = crate::config::DiffDisplayMode::Inline;
-            self.scroll_offset = 0;
-            self.auto_scroll_paused = false;
+            self.viewport.scroll_offset = 0;
+            self.viewport.auto_scroll_paused = false;
             self.input.clear();
             self.cursor_pos = 0;
             self.set_status_notice("Debug expand badge fixture ready");
@@ -706,14 +706,14 @@ impl App {
             match dir {
                 "up" => {
                     self.debug_scroll_up(5);
-                    format!("scroll: up to {}", self.scroll_offset)
+                    format!("scroll: up to {}", self.viewport.scroll_offset)
                 }
                 "down" => {
                     self.debug_scroll_down(5);
-                    format!("scroll: down to {}", self.scroll_offset)
+                    format!("scroll: down to {}", self.viewport.scroll_offset)
                 }
                 "top" => {
-                    self.debug_scroll_top();
+                    self.viewport.debug_scroll_top();
                     "scroll: top".to_string()
                 }
                 "bottom" => {

@@ -700,12 +700,12 @@ fn gc_never_runs_while_user_scrolled_up() {
         crate::tui::ui::set_last_total_wrapped_lines(200);
 
         // Scrolled up: the user may be reading the old trace; never remove it.
-        app.auto_scroll_paused = true;
+        app.viewport.auto_scroll_paused = true;
         assert!(!app.gc_offscreen_reasoning_traces());
         assert_eq!(trace_count(&app), 2);
 
         // Back at the tail: GC may proceed.
-        app.auto_scroll_paused = false;
+        app.viewport.auto_scroll_paused = false;
         assert!(app.gc_offscreen_reasoning_traces());
         assert_eq!(trace_count(&app), 1);
     });

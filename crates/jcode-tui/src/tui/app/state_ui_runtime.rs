@@ -69,7 +69,7 @@ impl App {
     }
 
     pub fn scroll_offset(&self) -> usize {
-        self.scroll_offset
+        self.viewport.scroll_offset
     }
 
     pub fn is_processing(&self) -> bool {
@@ -371,18 +371,18 @@ impl App {
             return;
         }
         // An explicit jump should win over a still-settling history prepend.
-        self.pending_history_anchor = None;
+        self.viewport.pending_history_anchor = None;
 
-        let current = self.scroll_offset;
+        let current = self.viewport.scroll_offset;
 
         // positions are in document order (top to bottom).
         // Find the last position that is strictly less than current (i.e. earlier/above).
         // If we're at the bottom (!auto_scroll_paused), treat current as past-the-end.
-        if !self.auto_scroll_paused {
+        if !self.viewport.auto_scroll_paused {
             // Jump to the most recent (last) prompt
             if let Some(&pos) = positions.last() {
-                self.scroll_offset = pos;
-                self.auto_scroll_paused = true;
+                self.viewport.scroll_offset = pos;
+                self.viewport.auto_scroll_paused = true;
             }
             return;
         }
@@ -396,40 +396,20 @@ impl App {
         }
 
         if let Some(pos) = target {
-            self.scroll_offset = pos;
+            self.viewport.scroll_offset = pos;
         } else {
             // No earlier prompt is loaded. If older compacted history exists,
             // pull it in (anchored) and jump to the very top so the next press
             // continues into the freshly loaded prompts instead of stalling.
             if self.compacted_history_has_remaining() {
-                self.scroll_offset = 0;
-                self.auto_scroll_paused = true;
+                self.viewport.scroll_offset = 0;
+                self.viewport.auto_scroll_paused = true;
                 self.maybe_queue_compacted_history_load();
             }
         }
     }
 
     /// Scroll to the next user prompt (scroll down - later in conversation)
-    pub fn scroll_to_next_prompt(&mut self) {
-        let positions = ui::last_user_prompt_positions();
-        if positions.is_empty() || !self.auto_scroll_paused {
-            return;
-        }
-        self.pending_history_anchor = None;
-
-        let current = self.scroll_offset;
-
-        // Find the first position strictly greater than current (i.e. later/below).
-        for &pos in &positions {
-            if pos > current {
-                self.scroll_offset = pos;
-                return;
-            }
-        }
-
-        // No more prompts below - go to bottom
-        self.follow_chat_bottom();
-    }
 
     /// Scroll to Nth most-recent user prompt (1 = most recent, 2 = second most recent, etc.).
     /// Uses actual wrapped line positions from the last render frame for accurate placement,
@@ -442,7 +422,7 @@ impl App {
         if positions.is_empty() {
             return;
         }
-        self.pending_history_anchor = None;
+        self.viewport.pending_history_anchor = None;
 
         // positions are in document order (top to bottom), we want most-recent first
         let target_idx = positions.len().saturating_sub(rank);
@@ -455,8 +435,8 @@ impl App {
             target_line,
             max_scroll
         ));
-        self.scroll_offset = target_line;
-        self.auto_scroll_paused = true;
+        self.viewport.scroll_offset = target_line;
+        self.viewport.auto_scroll_paused = true;
     }
 
     pub(super) fn toggle_input_stash(&mut self) {

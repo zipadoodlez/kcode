@@ -21,8 +21,8 @@ fn observe_smoothness_frame(
     let frame = crate::tui::ui::smoothness_frame_from_buffer(
         terminal.backend().buffer(),
         layout.messages_area,
-        app.scroll_offset,
-        !app.auto_scroll_paused,
+        app.viewport.scroll_offset,
+        !app.viewport.auto_scroll_paused,
     )
     .expect("messages area frame");
     recorder.observe(frame);

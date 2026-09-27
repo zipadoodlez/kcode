@@ -3,8 +3,8 @@ fn test_scroll_ctrl_k_j_offset() {
     let _render_lock = scroll_render_test_lock();
     let (mut app, mut terminal) = create_scroll_test_app(100, 30, 1, 20);
 
-    assert_eq!(app.scroll_offset, 0);
-    assert!(!app.auto_scroll_paused);
+    assert_eq!(app.viewport.scroll_offset, 0);
+    assert!(!app.viewport.auto_scroll_paused);
 
     let (up_code, up_mods) = scroll_up_key(&app);
     let (down_code, down_mods) = scroll_down_key(&app);
@@ -14,11 +14,11 @@ fn test_scroll_ctrl_k_j_offset() {
 
     // Scroll up (switches to absolute-from-top mode)
     app.handle_key(up_code.clone(), up_mods).unwrap();
-    assert!(app.auto_scroll_paused);
-    let first_offset = app.scroll_offset;
+    assert!(app.viewport.auto_scroll_paused);
+    let first_offset = app.viewport.scroll_offset;
 
     app.handle_key(up_code.clone(), up_mods).unwrap();
-    let second_offset = app.scroll_offset;
+    let second_offset = app.viewport.scroll_offset;
     assert!(
         second_offset < first_offset,
         "scrolling up should decrease absolute offset (move toward top)"
@@ -27,23 +27,23 @@ fn test_scroll_ctrl_k_j_offset() {
     // Scroll down (increases absolute position = moves toward bottom)
     app.handle_key(down_code.clone(), down_mods).unwrap();
     assert_eq!(
-        app.scroll_offset, first_offset,
+        app.viewport.scroll_offset, first_offset,
         "one scroll down should undo one scroll up"
     );
 
     // Keep scrolling down until back at bottom
     for _ in 0..10 {
         app.handle_key(down_code.clone(), down_mods).unwrap();
-        if !app.auto_scroll_paused {
+        if !app.viewport.auto_scroll_paused {
             break;
         }
     }
-    assert_eq!(app.scroll_offset, 0);
-    assert!(!app.auto_scroll_paused);
+    assert_eq!(app.viewport.scroll_offset, 0);
+    assert!(!app.viewport.auto_scroll_paused);
 
     // Stays at 0 when already at bottom
     app.handle_key(down_code.clone(), down_mods).unwrap();
-    assert_eq!(app.scroll_offset, 0);
+    assert_eq!(app.viewport.scroll_offset, 0);
 }
 
 #[test]
@@ -62,8 +62,8 @@ fn test_scroll_offset_capped() {
     }
 
     // Should be at 0 (absolute top) after scrolling up enough
-    assert_eq!(app.scroll_offset, 0);
-    assert!(app.auto_scroll_paused);
+    assert_eq!(app.viewport.scroll_offset, 0);
+    assert!(app.viewport.auto_scroll_paused);
 }
 
 #[test]
@@ -100,7 +100,7 @@ fn test_scroll_render_scrolled_up() {
     let (up_code, up_mods) = scroll_up_key(&app);
     app.handle_key(up_code, up_mods).unwrap();
 
-    assert!(app.auto_scroll_paused, "scroll-up should pause auto-follow");
+    assert!(app.viewport.auto_scroll_paused, "scroll-up should pause auto-follow");
 
     let text_scrolled = render_and_snap(&app, &mut terminal);
 
@@ -133,8 +133,8 @@ fn test_prompt_preview_reserves_rows_without_overwriting_visible_history() {
         },
     ];
     app.bump_display_messages_version();
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     app.is_processing = false;
     app.streaming.streaming_text.clear();
     app.status = ProcessingStatus::Idle;
@@ -170,13 +170,13 @@ fn test_scroll_top_does_not_snap_to_bottom() {
     let (mut app, mut terminal) = create_scroll_test_app(80, 25, 1, 24);
 
     // Top position in paused mode (absolute offset from top).
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = true;
     let text_top = render_and_snap(&app, &mut terminal);
 
     // Bottom position (auto-follow mode).
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     let text_bottom = render_and_snap(&app, &mut terminal);
 
     assert_ne!(
@@ -195,13 +195,13 @@ fn test_scroll_content_shifts() {
     let (mut app, mut terminal) = create_scroll_test_app(80, 25, 1, 12);
 
     // Render at bottom
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     let text_bottom = render_and_snap(&app, &mut terminal);
 
     // Render scrolled up (absolute line 10 from top)
-    app.scroll_offset = 10;
-    app.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 10;
+    app.viewport.auto_scroll_paused = true;
     let text_scrolled = render_and_snap(&app, &mut terminal);
 
     assert_ne!(
@@ -217,8 +217,8 @@ fn test_scroll_render_with_mermaid() {
 
     // Render at several positions without crashing.
     for (offset, paused) in [(0, false), (5, true), (10, true), (20, true), (50, true)] {
-        app.scroll_offset = offset;
-        app.auto_scroll_paused = paused;
+        app.viewport.scroll_offset = offset;
+        app.viewport.auto_scroll_paused = paused;
         terminal
             .draw(|f| crate::tui::ui::draw(f, &app))
             .unwrap_or_else(|e| panic!("draw failed at scroll_offset={}: {}", offset, e));
@@ -233,7 +233,7 @@ fn test_scroll_visual_debug_frame() {
     crate::tui::visual_debug::enable();
 
     // Render at bottom, verify frame capture works
-    app.scroll_offset = 0;
+    app.viewport.scroll_offset = 0;
     terminal
         .draw(|f| crate::tui::ui::draw(f, &app))
         .expect("draw at offset=0 failed");
@@ -242,8 +242,8 @@ fn test_scroll_visual_debug_frame() {
     assert!(frame.is_some(), "visual debug frame should be captured");
 
     // Render at scroll_offset=10, verify no panic
-    app.scroll_offset = 10;
-    app.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 10;
+    app.viewport.auto_scroll_paused = true;
     terminal
         .draw(|f| crate::tui::ui::draw(f, &app))
         .expect("draw at offset=10 failed");
@@ -264,8 +264,8 @@ fn test_full_redraw_clears_out_of_band_backend_artifacts_after_native_scroll_lik
     let _lock = scroll_render_test_lock();
 
     let (mut app, mut terminal) = create_scroll_test_app(60, 12, 0, 24);
-    app.auto_scroll_paused = true;
-    app.scroll_offset = 6;
+    app.viewport.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 6;
     let clean = render_and_snap(&app, &mut terminal);
 
     let width = terminal.backend().buffer().area.width;
@@ -325,8 +325,8 @@ fn test_scroll_key_then_render() {
     for _ in 0..3 {
         app.handle_key(up_code.clone(), up_mods).unwrap();
     }
-    assert!(app.auto_scroll_paused);
-    assert!(app.scroll_offset > 0);
+    assert!(app.viewport.auto_scroll_paused);
+    assert!(app.viewport.scroll_offset > 0);
 
     // Render again - verifies scroll_offset produces a valid frame without panic.
     // Note: LAST_MAX_SCROLL is a process-wide global that parallel tests
@@ -363,8 +363,8 @@ fn scroll_arms_force_full_repaint_to_clear_wide_grapheme_ghosts() {
     app.handle_key(up_code.clone(), up_mods).unwrap();
 
     // The scroll moved the viewport, so a clean repaint must be armed.
-    assert!(app.auto_scroll_paused, "scroll up should pause auto-scroll");
-    assert!(app.scroll_offset > 0, "scroll up should move the viewport");
+    assert!(app.viewport.auto_scroll_paused, "scroll up should pause auto-scroll");
+    assert!(app.viewport.scroll_offset > 0, "scroll up should move the viewport");
     assert!(
         app.redraw.force_full_repaint,
         "a viewport-moving scroll must arm force_full_repaint to clear ghosts"
@@ -390,7 +390,7 @@ fn scroll_arms_force_full_repaint_to_clear_wide_grapheme_ghosts() {
         if app.redraw.force_full_redraw {
             hard_cleared_on_down = true;
         }
-        if !app.auto_scroll_paused {
+        if !app.viewport.auto_scroll_paused {
             break;
         }
     }
@@ -513,7 +513,7 @@ fn test_scroll_round_trip() {
     for _ in 0..3 {
         app.handle_key(up_code.clone(), up_mods).unwrap();
     }
-    assert!(app.auto_scroll_paused);
+    assert!(app.viewport.auto_scroll_paused);
 
     // Rendering after scrolling up should succeed; exact buffer diffs are brittle
     // because process-wide render state can influence viewport clamping.
@@ -522,15 +522,15 @@ fn test_scroll_round_trip() {
     // Scroll back down until at bottom
     for _ in 0..20 {
         app.handle_key(down_code.clone(), down_mods).unwrap();
-        if !app.auto_scroll_paused {
+        if !app.viewport.auto_scroll_paused {
             break;
         }
     }
     assert_eq!(
-        app.scroll_offset, 0,
+        app.viewport.scroll_offset, 0,
         "scroll_offset should return to 0 after round-trip"
     );
-    assert!(!app.auto_scroll_paused);
+    assert!(!app.viewport.auto_scroll_paused);
 
     // Verify we're back at the bottom and rendering still succeeds.
     let _text_restored = render_and_snap(&app, &mut terminal);
@@ -553,8 +553,8 @@ fn test_scroll_down_past_bottom_does_not_accumulate_phantom_offset() {
     assert!(rendered_max > 2, "expected scrollable chat content");
 
     // Pause partway up the transcript.
-    app.scroll_offset = 1;
-    app.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 1;
+    app.viewport.auto_scroll_paused = true;
 
     // Simulate streaming so scroll_max_estimate() inflates above rendered_max.
     app.is_processing = true;
@@ -564,7 +564,7 @@ fn test_scroll_down_past_bottom_does_not_accumulate_phantom_offset() {
     // Hammer scroll-down well past the bottom.
     for _ in 0..200 {
         app.scroll_down(1);
-        if !app.auto_scroll_paused {
+        if !app.viewport.auto_scroll_paused {
             break;
         }
     }
@@ -573,9 +573,9 @@ fn test_scroll_down_past_bottom_does_not_accumulate_phantom_offset() {
     // actually display; otherwise scrolling back up has to drain phantom offset.
     let rendered_max = crate::tui::ui::last_max_scroll();
     assert!(
-        app.scroll_offset <= rendered_max,
+        app.viewport.scroll_offset <= rendered_max,
         "scroll_offset ({}) must not exceed rendered_max ({}) - phantom offset accumulated",
-        app.scroll_offset,
+        app.viewport.scroll_offset,
         rendered_max
     );
 }
@@ -620,9 +620,9 @@ fn test_copy_selection_from_bottom_rebases_scroll_instead_of_jumping_to_top() {
         app.copy_selection.mode,
         "copy selection mode should remain active"
     );
-    assert!(app.auto_scroll_paused, "selection should pause auto-follow");
+    assert!(app.viewport.auto_scroll_paused, "selection should pause auto-follow");
     assert_eq!(
-        app.scroll_offset, max_scroll,
+        app.viewport.scroll_offset, max_scroll,
         "selection should preserve the current bottom viewport when pausing auto-follow"
     );
 
@@ -644,11 +644,11 @@ fn repro_ctrl_shift_jk_scroll_with_text_in_input() {
     // Plain Ctrl+K / Ctrl+J (control only) -> should scroll.
     app.handle_key(KeyCode::Char('k'), KeyModifiers::CONTROL)
         .unwrap();
-    assert!(app.auto_scroll_paused, "Ctrl+K should scroll up");
-    let plain_offset = app.scroll_offset;
+    assert!(app.viewport.auto_scroll_paused, "Ctrl+K should scroll up");
+    let plain_offset = app.viewport.scroll_offset;
 
     // Reset to bottom.
-    app.follow_chat_bottom();
+    app.viewport.follow_chat_bottom();
 
     // Now put text in the input box, like a real user mid-prompt.
     app.input = "some draft text".to_string();
@@ -657,20 +657,20 @@ fn repro_ctrl_shift_jk_scroll_with_text_in_input() {
     app.handle_key(KeyCode::Char('k'), KeyModifiers::CONTROL | KeyModifiers::SHIFT)
         .unwrap();
     assert!(
-        app.auto_scroll_paused,
+        app.viewport.auto_scroll_paused,
         "Ctrl+Shift+K should scroll up even with text in input (offset moved like plain: {plain_offset})"
     );
     assert_eq!(
         app.input, "some draft text",
         "Ctrl+Shift+K must not kill input text"
     );
-    let shift_up_offset = app.scroll_offset;
+    let shift_up_offset = app.viewport.scroll_offset;
 
     // Ctrl+Shift+J should scroll back down.
     app.handle_key(KeyCode::Char('j'), KeyModifiers::CONTROL | KeyModifiers::SHIFT)
         .unwrap();
     assert!(
-        app.scroll_offset > shift_up_offset || !app.auto_scroll_paused,
+        app.viewport.scroll_offset > shift_up_offset || !app.viewport.auto_scroll_paused,
         "Ctrl+Shift+J should scroll down toward the bottom"
     );
     assert_eq!(
@@ -679,7 +679,7 @@ fn repro_ctrl_shift_jk_scroll_with_text_in_input() {
     );
 
     // Plain Ctrl+K with text still acts as kill-to-end-of-line (emacs habit).
-    app.follow_chat_bottom();
+    app.viewport.follow_chat_bottom();
     app.input = "draft".to_string();
     app.cursor_pos = 0;
     app.handle_key(KeyCode::Char('k'), KeyModifiers::CONTROL)
@@ -707,16 +707,15 @@ fn test_history_anchor_keeps_distance_from_bottom_after_prepend() {
     let total_before = crate::tui::ui::last_total_wrapped_lines();
     assert!(total_before > 0, "expected a rendered transcript");
 
-    app.scroll_offset = 4;
-    app.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 4;
+    app.viewport.auto_scroll_paused = true;
     render_and_snap(&app, &mut terminal);
     let total_before = crate::tui::ui::last_total_wrapped_lines();
 
     // Simulate the reader sitting 4 lines from the top: capture an anchor as if a
     // load were triggered, then "prepend" by growing the transcript.
-    app.capture_history_anchor(0);
-    let anchor = app
-        .pending_history_anchor
+    app.viewport.capture_history_anchor(0);
+    let anchor = app.viewport.pending_history_anchor
         .expect("anchor should be captured");
     let expected_from_bottom = total_before.saturating_sub(4);
     assert_eq!(
@@ -764,19 +763,19 @@ fn test_history_anchor_reconciles_into_scroll_offset_after_render() {
     let _render_lock = scroll_render_test_lock();
     let (mut app, mut terminal) = anchor_test_app();
 
-    app.scroll_offset = 3;
-    app.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 3;
+    app.viewport.auto_scroll_paused = true;
     render_and_snap(&app, &mut terminal);
 
-    app.capture_history_anchor(0);
-    assert!(app.pending_history_anchor.is_some());
+    app.viewport.capture_history_anchor(0);
+    assert!(app.viewport.pending_history_anchor.is_some());
 
     // Before any new frame, reconcile must wait (total unchanged).
     assert!(
-        !app.reconcile_history_anchor(),
+        !app.viewport.reconcile_history_anchor(),
         "reconcile should wait until a frame with new content has rendered"
     );
-    assert!(app.pending_history_anchor.is_some());
+    assert!(app.viewport.pending_history_anchor.is_some());
 
     // Prepend + render so the resolved scroll is published, then reconcile.
     app.display_messages.insert(
@@ -794,16 +793,16 @@ fn test_history_anchor_reconciles_into_scroll_offset_after_render() {
     render_and_snap(&app, &mut terminal);
     let resolved = crate::tui::ui::last_resolved_chat_scroll();
 
-    assert!(app.reconcile_history_anchor(), "reconcile should apply once");
+    assert!(app.viewport.reconcile_history_anchor(), "reconcile should apply once");
     assert!(
-        app.pending_history_anchor.is_none(),
+        app.viewport.pending_history_anchor.is_none(),
         "anchor should be consumed after reconcile"
     );
     assert_eq!(
-        app.scroll_offset, resolved,
+        app.viewport.scroll_offset, resolved,
         "scroll_offset should adopt the resolved on-screen position"
     );
-    assert!(app.auto_scroll_paused, "anchored view stays paused");
+    assert!(app.viewport.auto_scroll_paused, "anchored view stays paused");
 }
 
 /// Build a session whose compacted prefix is large enough to actually truncate
@@ -876,8 +875,8 @@ fn test_local_compacted_history_scroll_up_is_anchored_not_snapped() {
 
     // Scroll up to the top of the loaded window; this should both pull older
     // history in and anchor the viewport rather than snapping to the new top.
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = true;
     app.scroll_up(3);
 
     assert!(
@@ -886,7 +885,7 @@ fn test_local_compacted_history_scroll_up_is_anchored_not_snapped() {
     );
     // An anchor must have been captured so the next render keeps the view stable.
     assert!(
-        app.pending_history_anchor.is_some(),
+        app.viewport.pending_history_anchor.is_some(),
         "scroll-up that loads history should capture a viewport anchor"
     );
 }
@@ -905,8 +904,8 @@ fn test_prompt_jump_loads_older_history_when_at_top() {
 
     // At the top with no earlier loaded prompt, a prompt-up jump should pull in
     // the older compacted history instead of doing nothing.
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = true;
     app.scroll_to_prev_prompt();
 
     assert!(
@@ -970,7 +969,7 @@ fn repro_wheel_up_from_bottom_always_moves_viewport() {
                         "h={height} pad={padding} streaming={streaming}: \
                          wheel-up did not move the viewport (max_scroll={max_scroll}, \
                          offset={}, paused={})",
-                        app.scroll_offset, app.auto_scroll_paused
+                        app.viewport.scroll_offset, app.viewport.auto_scroll_paused
                     ));
                 }
             }
@@ -1029,7 +1028,7 @@ fn repro_wheel_down_after_up_burst_moves_viewport() {
                     failures.push(format!(
                         "h={height} pad={padding} streaming={streaming}: \
                          wheel-down after up-burst did not move (offset={}, paused={})",
-                        app.scroll_offset, app.auto_scroll_paused
+                        app.viewport.scroll_offset, app.viewport.auto_scroll_paused
                     ));
                 }
             }
@@ -1078,7 +1077,7 @@ fn repro_key_scroll_up_first_notch_moves_viewport() {
                         "h={height} pad={padding} streaming={streaming}: \
                          key scroll-up first notch did not move (max_scroll={max_scroll}, \
                          offset={}, paused={})",
-                        app.scroll_offset, app.auto_scroll_paused
+                        app.viewport.scroll_offset, app.viewport.auto_scroll_paused
                     ));
                 }
             }
@@ -1142,8 +1141,8 @@ fn repro_scroll_up_holds_while_reasoning_streams() {
                 failures.push(format!(
                     "h={height} pad={padding}: scroll-up during reasoning stream did not move \
                      (offset={}, paused={}, max={})",
-                    app.scroll_offset,
-                    app.auto_scroll_paused,
+                    app.viewport.scroll_offset,
+                    app.viewport.auto_scroll_paused,
                     crate::tui::ui::last_max_scroll()
                 ));
                 continue;
@@ -1161,7 +1160,7 @@ fn repro_scroll_up_holds_while_reasoning_streams() {
                 let ops = app.stream_buffer.flush_smooth_frame();
                 app.apply_stream_ops(ops);
                 let frame = render_and_snap(&app, &mut terminal);
-                if !app.auto_scroll_paused {
+                if !app.viewport.auto_scroll_paused {
                     failures.push(format!(
                         "h={height} pad={padding}: reasoning burst {burst} un-paused scroll \
                          (auto-follow yanked the view back to bottom)"
@@ -1242,8 +1241,8 @@ fn repro_mouse_wheel_during_token_by_token_reasoning() {
             failures.push(format!(
                 "h={height}: wheel-up during token reasoning did not move \
                  (offset={}, paused={}, max={})",
-                app.scroll_offset,
-                app.auto_scroll_paused,
+                app.viewport.scroll_offset,
+                app.viewport.auto_scroll_paused,
                 crate::tui::ui::last_max_scroll()
             ));
             continue;
@@ -1261,10 +1260,10 @@ fn repro_mouse_wheel_during_token_by_token_reasoning() {
             let ops = app.stream_buffer.flush_smooth_frame();
             app.apply_stream_ops(ops);
             let frame = render_and_snap(&app, &mut terminal);
-            if frame == bottom || !app.auto_scroll_paused {
+            if frame == bottom || !app.viewport.auto_scroll_paused {
                 failures.push(format!(
                     "h={height}: trickle {i} snapped back to bottom (paused={}, offset={})",
-                    app.auto_scroll_paused, app.scroll_offset
+                    app.viewport.auto_scroll_paused, app.viewport.scroll_offset
                 ));
                 break;
             }
@@ -1323,8 +1322,8 @@ fn repro_scroll_held_across_reasoning_close_and_answer() {
                 modifiers: KeyModifiers::empty(),
             });
             let scrolled = render_and_snap(&app, &mut terminal);
-            let scrolled_offset = app.scroll_offset;
-            if !app.auto_scroll_paused {
+            let scrolled_offset = app.viewport.scroll_offset;
+            if !app.viewport.auto_scroll_paused {
                 failures.push(format!("h={height} pad={padding}: scroll-up did not pause"));
                 continue;
             }
@@ -1346,11 +1345,11 @@ fn repro_scroll_held_across_reasoning_close_and_answer() {
 
             // The view must still be paused (user is reading) and not snapped to
             // the bottom by the reflow.
-            if !app.auto_scroll_paused {
+            if !app.viewport.auto_scroll_paused {
                 failures.push(format!(
                     "h={height} pad={padding}: reasoning close un-paused scroll \
                      (jumped to bottom); was offset={scrolled_offset}, now {}",
-                    app.scroll_offset
+                    app.viewport.scroll_offset
                 ));
                 continue;
             }
@@ -1368,11 +1367,11 @@ fn repro_scroll_held_across_reasoning_close_and_answer() {
                 modifiers: KeyModifiers::empty(),
             });
             let after_more = render_and_snap(&app, &mut terminal);
-            if after_more == before_more && app.scroll_offset > 0 {
+            if after_more == before_more && app.viewport.scroll_offset > 0 {
                 failures.push(format!(
                     "h={height} pad={padding}: scroll unresponsive after reasoning close \
                      (offset={}, max={})",
-                    app.scroll_offset,
+                    app.viewport.scroll_offset,
                     crate::tui::ui::last_max_scroll()
                 ));
             }
@@ -1406,8 +1405,8 @@ fn test_click_on_swarm_expand_badge_toggles_tldr_collapse() {
         DisplayMessage::swarm("DM from sheep", content),
     ];
     app.bump_display_messages_version();
-    app.scroll_offset = 0;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = false;
     app.is_processing = false;
     app.status = ProcessingStatus::Idle;
     app.session.short_name = Some("test".to_string());

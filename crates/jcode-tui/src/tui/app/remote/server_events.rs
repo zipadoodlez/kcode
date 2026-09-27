@@ -1586,7 +1586,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.reset_streaming_tps();
                 app.stream_message_ended = false;
                 app.remote_resume_activity = None;
-                app.follow_chat_bottom();
+                app.viewport.follow_chat_bottom();
                 if prev_session_id.is_some() {
                     app.queued_messages.clear();
                     app.interleave_message = None;

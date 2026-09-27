@@ -112,8 +112,8 @@ fn test_handterm_native_scroll_command_updates_chat_offset() {
     // scroll_down treats a rendered max of 0 (e.g. an undrawn or empty
     // transcript) as "already at the bottom" and snaps back to follow mode.
     let (mut app, mut terminal) = create_scroll_test_app(50, 12, 0, 24);
-    app.auto_scroll_paused = true;
-    app.scroll_offset = 6;
+    app.viewport.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 6;
     terminal
         .draw(|f| crate::tui::ui::draw(f, &app))
         .expect("draw failed");
@@ -128,7 +128,7 @@ fn test_handterm_native_scroll_command_updates_chat_offset() {
         delta: -2,
     });
     assert_eq!(
-        app.scroll_offset, 4,
+        app.viewport.scroll_offset, 4,
         "a native scroll applies the exact row delta immediately"
     );
 
@@ -137,7 +137,7 @@ fn test_handterm_native_scroll_command_updates_chat_offset() {
         delta: 3,
     });
     assert_eq!(
-        app.scroll_offset, 7,
+        app.viewport.scroll_offset, 7,
         "a native scroll applies the exact row delta immediately"
     );
 }
@@ -164,8 +164,8 @@ fn test_handterm_native_scroll_client_roundtrips_over_socket() {
         .expect("set read timeout");
 
     let (mut app, mut terminal) = create_scroll_test_app(50, 12, 0, 24);
-    app.auto_scroll_paused = true;
-    app.scroll_offset = 6;
+    app.viewport.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 6;
     let _ = render_and_snap(&app, &mut terminal);
 
     client.sync_from_app(&app);
@@ -191,7 +191,7 @@ fn test_handterm_native_scroll_client_roundtrips_over_socket() {
         .expect("scroll command should arrive");
 
     app.apply_handterm_native_scroll(command);
-    assert_eq!(app.scroll_offset, 4);
+    assert_eq!(app.viewport.scroll_offset, 4);
 
     unsafe {
         std::env::remove_var("HANDTERM_NATIVE_SCROLL_SOCKET");

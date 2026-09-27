@@ -179,11 +179,11 @@ fn test_compacted_history_marker_scroll_queues_lazy_load() {
     assert_eq!(state.visible_messages, 0);
     assert_eq!(state.remaining_messages, 128);
 
-    app.auto_scroll_paused = true;
-    app.scroll_offset = 5;
+    app.viewport.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 5;
     app.scroll_up(5);
 
-    assert_eq!(app.scroll_offset, 0);
+    assert_eq!(app.viewport.scroll_offset, 0);
     assert_eq!(app.take_pending_compacted_history_load(), Some(64));
 }
 
@@ -258,8 +258,8 @@ fn test_local_compacted_history_marker_scroll_expands_from_session() {
         "requesting 0 visible should hide the whole compacted prefix"
     );
 
-    app.auto_scroll_paused = true;
-    app.scroll_offset = 0;
+    app.viewport.auto_scroll_paused = true;
+    app.viewport.scroll_offset = 0;
     app.scroll_up(1);
 
     // Local sessions expand in place (no remote round-trip).
@@ -294,8 +294,8 @@ fn test_compacted_history_event_applies_expanded_window() {
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_session_id = Some("session_lazy_history".to_string());
     app.push_display_message(DisplayMessage::assistant("existing tail"));
-    app.scroll_offset = 12;
-    app.auto_scroll_paused = false;
+    app.viewport.scroll_offset = 12;
+    app.viewport.auto_scroll_paused = false;
 
     let needs_redraw = app.handle_server_event(
         crate::protocol::ServerEvent::CompactedHistory {
@@ -337,8 +337,8 @@ fn test_compacted_history_event_applies_expanded_window() {
     assert_eq!(app.display_messages().len(), 3);
     assert_eq!(app.display_messages()[1].content, "older response");
     assert_eq!(app.display_messages()[2].content, "current prompt");
-    assert!(app.auto_scroll_paused);
-    assert_eq!(app.scroll_offset, 0);
+    assert!(app.viewport.auto_scroll_paused);
+    assert_eq!(app.viewport.scroll_offset, 0);
     let state = app.compacted_history_lazy_state();
     assert_eq!(state.total_messages, 128);
     assert_eq!(state.visible_messages, 64);

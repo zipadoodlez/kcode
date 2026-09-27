@@ -110,7 +110,7 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
     needs_redraw |= dispatch_compacted_history_load(app, remote).await;
     // Adopt the resolved scroll position once a frame containing newly loaded
     // older history has rendered, so manual scrolling resumes seamlessly.
-    needs_redraw |= app.reconcile_history_anchor();
+    needs_redraw |= app.viewport.reconcile_history_anchor();
     // Reveal buffered streaming text at the smooth paced rate on each tick, the
     // same as the local turn loop. When Done arrived with a backlog, leave one
     // rendered live frame after the final reveal before committing the turn.
@@ -1742,7 +1742,7 @@ async fn handle_debug_command(app: &mut App, cmd: &str, remote: &mut RemoteConne
             "display_messages": app.display_messages.len(),
             "input": app.input,
             "cursor_pos": app.cursor_pos,
-            "scroll_offset": app.scroll_offset,
+            "scroll_offset": app.viewport.scroll_offset,
             "queued_messages": app.queued_messages.len(),
             "provider_session_id": app.provider_session_id,
             "provider_name": app.remote_provider_name.clone(),
@@ -2028,7 +2028,7 @@ fn handle_disconnected_key_internal(
             app.scroll_down(dec);
         }
         KeyCode::Esc => {
-            app.follow_chat_bottom();
+            app.viewport.follow_chat_bottom();
             input::clear_input_for_escape(app);
         }
         _ => {}

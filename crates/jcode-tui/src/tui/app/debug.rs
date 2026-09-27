@@ -325,8 +325,8 @@ impl ScrollTestState {
             display_messages: app.display_messages.clone(),
             display_messages_version: app.display_messages_version,
             side_panel: app.side_panel.clone(),
-            scroll_offset: app.scroll_offset,
-            auto_scroll_paused: app.auto_scroll_paused,
+            scroll_offset: app.viewport.scroll_offset,
+            auto_scroll_paused: app.viewport.auto_scroll_paused,
             diff_mode: app.diff_mode,
             diff_pane_scroll: app.diff_pane_scroll,
             diff_pane_scroll_x: app.diff_pane_scroll_x,
@@ -349,8 +349,8 @@ impl ScrollTestState {
         app.display_messages = self.display_messages;
         app.display_messages_version = self.display_messages_version;
         app.apply_side_panel_snapshot(self.side_panel);
-        app.scroll_offset = self.scroll_offset;
-        app.auto_scroll_paused = self.auto_scroll_paused;
+        app.viewport.scroll_offset = self.scroll_offset;
+        app.viewport.auto_scroll_paused = self.auto_scroll_paused;
         app.diff_mode = self.diff_mode;
         app.diff_pane_scroll = self.diff_pane_scroll;
         app.diff_pane_scroll_x = self.diff_pane_scroll_x;

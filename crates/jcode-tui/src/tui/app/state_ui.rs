@@ -589,24 +589,18 @@ impl App {
     /// Toggle scroll bookmark: stash current position and jump to bottom,
     /// or restore stashed position if already at bottom.
     pub(super) fn toggle_scroll_bookmark(&mut self) {
-        if let Some(saved) = self.scroll_bookmark.take() {
+        if let Some(saved) = self.viewport.scroll_bookmark.take() {
             // We have a bookmark - teleport back to it
-            self.scroll_offset = saved;
-            self.auto_scroll_paused = saved > 0;
+            self.viewport.scroll_offset = saved;
+            self.viewport.auto_scroll_paused = saved > 0;
             self.set_status_notice("📌 Returned to bookmark");
-        } else if self.auto_scroll_paused && self.scroll_offset > 0 {
+        } else if self.viewport.auto_scroll_paused && self.viewport.scroll_offset > 0 {
             // We're scrolled up - save position and jump to bottom
-            self.scroll_bookmark = Some(self.scroll_offset);
-            self.follow_chat_bottom();
+            self.viewport.scroll_bookmark = Some(self.viewport.scroll_offset);
+            self.viewport.follow_chat_bottom();
             self.set_status_notice("📌 Bookmark set - press again to return");
         }
         // If already at bottom with no bookmark, do nothing
-    }
-
-    pub(super) fn follow_chat_bottom_for_typing(&mut self) {
-        if !self.typing_scroll_lock {
-            self.follow_chat_bottom();
-        }
     }
 
     pub(super) fn set_side_panel_snapshot(
@@ -791,8 +785,8 @@ impl App {
     }
 
     pub(super) fn toggle_typing_scroll_lock(&mut self) {
-        self.typing_scroll_lock = !self.typing_scroll_lock;
-        let status = if self.typing_scroll_lock {
+        self.viewport.typing_scroll_lock = !self.viewport.typing_scroll_lock;
+        let status = if self.viewport.typing_scroll_lock {
             "Typing scroll lock: ON - typing stays at current chat position"
         } else {
             "Typing scroll lock: OFF - typing follows chat bottom"
@@ -882,7 +876,7 @@ impl App {
             input: self.input.clone(),
             cursor_pos: self.cursor_pos,
             is_processing: self.is_processing,
-            scroll_offset: self.scroll_offset,
+            scroll_offset: self.viewport.scroll_offset,
             status: format!("{:?}", self.status),
             provider_name: self.provider.name().to_string(),
             provider_model: self.provider.model().to_string(),

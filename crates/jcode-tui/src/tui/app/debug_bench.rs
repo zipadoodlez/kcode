@@ -119,7 +119,7 @@ impl App {
         self.diff_pane_scroll_x = 0;
         self.diff_pane_focus = false;
         self.diff_pane_auto_scroll = false;
-        self.follow_chat_bottom();
+        self.viewport.follow_chat_bottom();
         self.is_processing = false;
         self.clear_streaming_render_state();
         self.queued_messages.clear();
@@ -320,7 +320,7 @@ impl App {
         };
 
         // Establish total content height from a baseline (bottom) render.
-        self.follow_chat_bottom();
+        self.viewport.follow_chat_bottom();
         let mut errors: Vec<String> = Vec::new();
         if let Err(e) = terminal.draw(|f| crate::tui::ui::draw(f, self)) {
             errors.push(format!("baseline draw error: {}", e));
@@ -346,12 +346,12 @@ impl App {
         // travel (how much widgets move *relative to the text* they sit beside).
         let mut scroll_tops_abs: Vec<i64> = Vec::new();
         let mut frame_payloads: Vec<serde_json::Value> = Vec::new();
-        self.auto_scroll_paused = true;
+        self.viewport.auto_scroll_paused = true;
 
         let mut scroll_top = 0usize;
         while scroll_top <= max_scroll && frames.len() < max_frames {
             let offset = max_scroll.saturating_sub(scroll_top);
-            self.scroll_offset = offset;
+            self.viewport.scroll_offset = offset;
             if let Err(e) = terminal.draw(|f| crate::tui::ui::draw(f, self)) {
                 errors.push(format!("draw error at scroll_top {}: {}", scroll_top, e));
                 break;

@@ -393,14 +393,12 @@ impl App {
             display_user_message_count: 0,
             display_edit_tool_message_count: 0,
             compacted_history_lazy: CompactedHistoryLazyState::default(),
-            pending_history_anchor: None,
             input: String::new(),
             command_candidates_cache: RefCell::new(None),
             command_suggestions_cache: RefCell::new(None),
             command_suggestions_epoch: std::cell::Cell::new(0),
             cursor_pos: 0,
-            scroll_offset: 0,
-            auto_scroll_paused: false,
+            viewport: Default::default(),
             active_skill: None,
             is_processing: false,
             streaming: StreamingProgress::default(),
@@ -563,8 +561,6 @@ impl App {
             pending_startup_prompt_echo: None,
             keybinds: keybind::Keybinds::load(),
             keybindings_config_generation: crate::config::config_reload_generation(),
-            scroll_bookmark: None,
-            typing_scroll_lock: false,
             stashed_input: None,
             input_undo_stack: Vec::new(),
             status_notice: None,
@@ -719,14 +715,12 @@ impl App {
             display_user_message_count: 0,
             display_edit_tool_message_count: 0,
             compacted_history_lazy: CompactedHistoryLazyState::default(),
-            pending_history_anchor: None,
             input: String::new(),
             command_candidates_cache: RefCell::new(None),
             command_suggestions_cache: RefCell::new(None),
             command_suggestions_epoch: std::cell::Cell::new(0),
             cursor_pos: 0,
-            scroll_offset: 0,
-            auto_scroll_paused: false,
+            viewport: Default::default(),
             active_skill: None,
             is_processing: false,
             streaming: StreamingProgress::default(),
@@ -889,8 +883,6 @@ impl App {
             pending_startup_prompt_echo: None,
             keybinds: keybind::Keybinds::load(),
             keybindings_config_generation: crate::config::config_reload_generation(),
-            scroll_bookmark: None,
-            typing_scroll_lock: false,
             stashed_input: None,
             input_undo_stack: Vec::new(),
             status_notice: None,
@@ -1026,7 +1018,7 @@ impl App {
         if let Some(model) = self.session.model.clone() {
             self.update_context_limit_for_model(&model);
         }
-        self.follow_chat_bottom();
+        self.viewport.follow_chat_bottom();
         crate::logging::info(&format!(
             "Remote startup fast restore: session={}, display_messages={}, load={}ms, render={}ms, total={}ms",
             session_id,

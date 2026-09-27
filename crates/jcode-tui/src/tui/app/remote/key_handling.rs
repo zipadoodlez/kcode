@@ -684,7 +684,7 @@ async fn handle_remote_key_internal(
         if dir < 0 {
             app.scroll_to_prev_prompt();
         } else {
-            app.scroll_to_next_prompt();
+            app.viewport.scroll_to_next_prompt();
         }
         return Ok(());
     }
@@ -2624,7 +2624,7 @@ async fn handle_remote_key_internal(
                     app.set_status_notice("Interrupting...");
                 }
             } else {
-                app.follow_chat_bottom();
+                app.viewport.follow_chat_bottom();
                 input::clear_input_for_escape(app);
             }
         }

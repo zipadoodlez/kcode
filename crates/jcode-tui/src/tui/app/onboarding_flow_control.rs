@@ -969,7 +969,7 @@ impl App {
         if !self.onboarding_prepare_recent_project_review() {
             return;
         }
-        self.follow_chat_bottom_for_typing();
+        self.viewport.follow_chat_bottom_for_typing();
         if self.is_remote_client() {
             super::input::queue_message(self);
             self.set_status_notice("Architecture review queued");
