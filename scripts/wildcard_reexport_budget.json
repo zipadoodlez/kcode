@@ -1,5 +1,5 @@
 {
-  "total": 15,
+  "total": 13,
   "files": {
     "crates/jcode-app-core/src/lib.rs": 1,
     "crates/jcode-base/src/env.rs": 1,
@@ -13,7 +13,6 @@
     "crates/jcode-base/src/transport/mod.rs": 1,
     "crates/jcode-base/src/util.rs": 1,
     "crates/jcode-tui/src/lib.rs": 1,
-    "crates/jcode-tui/src/tui/mod.rs": 1,
     "src/lib.rs": 1
   }
 }

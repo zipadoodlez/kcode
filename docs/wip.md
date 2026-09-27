@@ -49,13 +49,12 @@ as the reference for those groups.
 
 | item | state |
 |---|---|
-| CI is upstream's | `discord-release.yml`, `update-star-history.yml`, `require-issue.yml`, `freebsd-smoke.yml` describe jcode, not this fork. Prune to kcode-shaped workflows |
-| dead config | `Cargo.lock` is committed (correct for a binary) but still listed in `.gitignore:3`; `.gitignore` also names paths absent here (`/.jcode/generated-images/`, `/telemetry-worker/backups/`, `graphify-out/`, `captures/`, `ios_simulator_screenshot.png`) |
+| CI is upstream's | 3 of 8 are already disabled on the fork (`ci.yml`, `update-star-history.yml`, `freebsd-smoke.yml` are `workflow_dispatch`-only); `discord-release.yml` posts to jcode's Discord and is dispatched by `release.yml`; `label-pr.yml` calls the Greptile service. Pruning to kcode-shaped workflows is a fork decision - the fork has so far chosen disable, not delete. `ci.yml`'s citation of a since-removed decision doc was dropped 2026-09-27 |
+| dead config | verified 2026-09-27: `.gitignore` names no dead paths. `/.jcode/generated-images/` is live (`crates/jcode-provider-openai/src/stream.rs:769` writes `<cwd>/.jcode/generated-images`), and `Cargo.lock` is not ignored. The earlier claim here was stale |
 | `scripts/` | ~90 inherited files, no README; several are explicitly jcode-specific. Classify keep/delete/broken or delete |
 | budget baselines | the six budget files (`panic_budget.json`, `swallowed_error_budget.json`, `code_size_budget.json`, `warning_budget.txt`, `wildcard_reexport_budget.json`, `test_size_budget.json`) carry jcode's numbers; re-baseline or they are meaningless or block work |
 | fork policy | rebase lane vs hard divergence is undecided, and it blocks crate names and the env prefix. `README.md` states "does not track upstream", but nothing follows from it |
 | licensing | no `license` field on the root `Cargo.toml` or any of the 63 members; add `license = "MIT"`, ship the LICENSE inside the package (the PKGBUILD), and generate a `THIRD_PARTY_NOTICES` from `Cargo.lock` |
-| dangling doc reference | `scripts/check_wildcard_reexport_budget.py` points at `docs/CRATE_OWNERSHIP_BOUNDARIES.md`, which does not exist (and SCREAMING_CASE violates the `docs/README.md` kebab-case convention). Fold it into reduction tier 8 or delete the reference |
 
 ## Provider layer
 

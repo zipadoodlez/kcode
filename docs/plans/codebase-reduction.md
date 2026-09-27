@@ -82,13 +82,11 @@ Ships alone trivially.
   is unreliable because the test tree is wired with `include!` (126 sites), not
   the module system. Find real dead files with the compiler, not a file-scan.
   (`ui_transitions.rs` is already deleted.)
-- **Dead local TUI event loop.** `App::run` (`tui/app/run_shell.rs:197`, ~112
-  lines) has no caller anywhere in the repo: production launches
-  `app.run_remote` (`src/cli/tui_launch.rs:161`), and no test calls it. It is
-  `pub`, so rustc never warns. Delete `run` and `local::handle_terminal_event`
-  (called only from `run`, verified), plus the `EventStream`/`Bus` plumbing only
-  they use. Keep `local::handle_tick` and `local::finish_turn`: tests and the
-  remote loop still call them.
+- **Dead local TUI event loop - reclassified, see Tier 3.** `App::run`
+  (`tui/app/run_shell.rs:197`) has zero callers, but it is the last non-test
+  reader of the local in-process execution path. Deleting it alone exposes ~41
+  items as dead under a plain `cargo check` and regresses the repo's 0-warning
+  baseline, so it is not a standalone delete.
 
 ## Tier 1 - condense the test suite
 
@@ -166,7 +164,10 @@ Mechanical, always compiles, never half-broken. `self.foo` becomes
 Reconcile with "Do not rewrite `tui/app/`" below: this is the mechanical move
 that rule carves out, not a rewrite.
 
-## Tier 3 - protocol dispatch re-core
+## Tier 3 - execution paths: server dispatch and the local loop
+
+Two execution paths are in scope here: the server-side request dispatcher, and
+the client's local in-process turn loop. They ship as separate steps.
 
 `handle_client` (`jcode-app-core/src/server/client_lifecycle.rs:434`) is the
 entire client protocol in one function: 28 parameters (with an
@@ -186,6 +187,35 @@ sibling that owns it and leaves the dispatcher smaller but working.
 - Acceptance: `handle_client` takes the context plus the stream, its body fits
   on a screen, and `scripts/code_size_budget.json`'s
   `server/client_lifecycle.rs` entry comes down instead of up.
+
+### The local in-process execution path is a second turn implementation
+
+`App::run` (`tui/app/run_shell.rs:197`) is an event loop with zero callers;
+production launches `run_remote` (`src/cli/tui_launch.rs:161`). It is `pub`, so
+rustc never flagged it, and because it was public it kept an entire subtree
+"reachable" for the dead-code lint. Deleting it alone is not safe: a plain
+`cargo check -p jcode-tui` then reports ~41 newly-dead items (~336 lines in the
+four files I tried), regressing the repo's 0-warning baseline.
+
+The subtree is real, not stale. `AppRuntimeMode::TestHarness` (`app.rs:47`)
+documents it as "the local in-process harness used by unit tests", and tests
+call `local::handle_tick`, `local::handle_bus_event`, and `local::finish_turn`.
+So the app carries two turn implementations - the local one (test-driven) and
+the remote one (production) - and `App::run` is the orphaned production-looking
+entry to the local one.
+
+Ships as one of these, not as a bare `run()` deletion:
+
+- Delete the local path and have tests drive the remote path (or a purpose-built
+  harness), so one turn implementation remains. Bigger, but it removes the
+  parallel path.
+- Or mark the local path as test-support: `#[cfg(test)]` on the transitive
+  closure (`local.rs`, and the `App` methods and fields only it reads, listed by
+  a `cargo check` run), plus the orphaned `run()`.
+
+Acceptance either way: `App::run` is gone, the local path is not mistaken for
+production, and `cargo check -p jcode-tui` stays at 0 warnings. Scope this item
+by itself; it does not ship inside Tier 0.
 
 ## Tier 4 - command surface unification
 
