@@ -68,9 +68,12 @@ fix it. Do not `--update` to silence a ratchet you did not mean to move.
 
 ## By change type
 
-- **UI / behavior change**: build and reload in one step with
-  `selfdev build-reload`, then exercise it. `cargo build` alone proves nothing
-  about behavior; the running session is served by the installed daemon.
+- **UI / behavior change**: build with
+  `cargo build --profile selfdev -p kcode --bin kcode`, then exercise it. There
+  is no `selfdev build-reload` in this fork: that tool targets upstream's `jcode`
+  package, which does not exist here. `cargo build` alone proves nothing about
+  behavior; the running session is served by the installed daemon, so run the
+  fresh binary against its own socket when you need to observe it.
 - **Public behavior, commands, or config change**: update `docs/user/` and, if
   the mechanism changed, `docs/internals/`. Those docs describe the code as it
   is today; a doc that disagrees with the code is wrong.

@@ -322,35 +322,19 @@ opt-level = 3
 [profile.test.package.compact_str]
 opt-level = 3
 
-# Keep the text-shaping stack optimized even in dev/selfdev/test builds.
+# Keep the PDF text-extraction stack optimized even in dev/selfdev/test builds.
 #
-# rustybuzz + ttf-parser do the glyph shaping for the desktop transcript. At
-# opt-level = 0 they are 15-40x slower, which made scrolling real
-# (emoji/markdown-heavy) transcripts janky in dev/selfdev builds even though the
-# production release build was smooth. These are stable third-party crates that
-# almost never recompile, so pinning them to opt-level = 3 costs a one-time
-# compile and is then reused across every iterative jcode rebuild (same rationale
-# as jcode-fuzzy above). It does NOT slow down recompiles of jcode's own
-# crates.
-[profile.dev.package.rustybuzz]
-opt-level = 3
-[profile.selfdev.package.rustybuzz]
-opt-level = 3
-[profile.test.package.rustybuzz]
-opt-level = 3
-
+# ttf-parser (pulled in by pdf-extract -> lopdf) does the font work for
+# extracting text from attached PDFs. At opt-level = 0 that path is markedly
+# slower, and this is a stable third-party crate that almost never recompiles,
+# so pinning it to opt-level = 3 costs a one-time compile and is then reused
+# across every iterative kcode rebuild (same rationale as jcode-fuzzy above). It
+# does NOT slow down recompiles of kcode's own crates.
 [profile.dev.package.ttf-parser]
 opt-level = 3
 [profile.selfdev.package.ttf-parser]
 opt-level = 3
 [profile.test.package.ttf-parser]
-opt-level = 3
-
-[profile.dev.package.fontdb]
-opt-level = 3
-[profile.selfdev.package.fontdb]
-opt-level = 3
-[profile.test.package.fontdb]
 opt-level = 3
 
 # Keep the raster image pipeline optimized in dev/selfdev/test builds.

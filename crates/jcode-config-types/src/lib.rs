@@ -737,15 +737,15 @@ pub struct HooksConfig {
     /// Runs when an agent turn begins (after the user message is added and
     /// before the model starts generating). Fires before the first `pre_tool`,
     /// so integrations can detect that the agent is actively working even while
-    /// it is only thinking/streaming text. Fields: MODEL, SOURCE
-    /// ("chat"/"resume"/"ambient"). Env override: JCODE_HOOK_TURN_START.
+    /// it is only thinking/streaming text. Fields: MODEL, SOURCE (always
+    /// "chat"). Env override: JCODE_HOOK_TURN_START.
     pub turn_start: Option<HookCommands>,
     /// Runs when an agent turn completes.
     /// Fields: STATUS ("ok"/"error"), DURATION_MS, MODEL, LAST_ASSISTANT_TEXT.
     /// Env override: JCODE_HOOK_TURN_END.
     pub turn_end: Option<HookCommands>,
-    /// Runs when a session becomes active (created or resumed).
-    /// Fields: SOURCE ("create"/"resume").
+    /// Runs when a session becomes active (created, attached or resumed).
+    /// Fields: SOURCE ("create"/"attach"/"resume").
     /// Env override: JCODE_HOOK_SESSION_START.
     pub session_start: Option<HookCommands>,
     /// Runs when a session closes normally.

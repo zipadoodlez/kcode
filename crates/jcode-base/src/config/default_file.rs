@@ -507,7 +507,7 @@ swarm_max_concurrent_agents = 32
 # Runs when an agent turn begins, before the model starts generating and before
 # the first pre_tool. Lets integrations detect the agent is working during the
 # think/stream window before any tool call. Extra fields: JCODE_HOOK_MODEL,
-# JCODE_HOOK_SOURCE ("chat"/"resume"/"ambient").
+# JCODE_HOOK_SOURCE (always "chat").
 # turn_start = "~/bin/jcode-turn-start"
 #
 # Runs when an agent turn completes. Extra fields: JCODE_HOOK_STATUS

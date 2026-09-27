@@ -74,7 +74,7 @@ slow the agent, and a failure is only logged.
 
 | hook | when | extra fields |
 |---|---|---|
-| `turn_start` | a turn begins, after the user message is added and before the model generates. Fires before the first `pre_tool`, so it is the earliest signal that the agent is working | `MODEL`, `SOURCE` |
+| `turn_start` | a turn begins, after the user message is added and before the model generates. Fires before the first `pre_tool`, so it is the earliest signal that the agent is working | `MODEL`, `SOURCE` (always `chat`) |
 | `turn_end` | a turn completes (covers TUI, desktop, swarm workers, headless) | `STATUS` (`ok`/`error`), `DURATION_MS`, `MODEL`, `LAST_ASSISTANT_TEXT` (first 4000 chars), `ERROR` (on failure) |
 | `session_start` | a session becomes active | `SOURCE` = `create`, `attach` (an existing session object was attached) or `resume` (restored by id) |
 | `session_end` | a session closes normally | `SOURCE` = `close` |
@@ -260,12 +260,6 @@ through the hook.
 
 Real gaps in the hook surface, tracked in [../todo.md](../todo.md):
 
-- **`turn_start` only ever fires with `SOURCE=chat`.** The config schema
-  advertises `chat`/`resume`/`ambient`, but `resume` is never passed and
-  `ambient` belongs to a mode this fork removed. Either narrow the contract to
-  `chat` or wire the resume path.
-- **The `session_start` schema comment is stale.** It says `SOURCE` is
-  `create`/`resume`; the code emits `create`, `attach` and `resume`.
 - **No way to see whether a hook is wired or firing.** There is no `/hooks`
   command, no listing of configured hooks, and no dry-run. A typo in a command
   string is indistinguishable from a hook that runs and does nothing - which is

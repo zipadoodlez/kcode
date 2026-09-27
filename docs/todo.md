@@ -9,13 +9,17 @@ picked up without re-deriving why it exists.
 
 ## Now (small, safe, lands whole)
 
-- [ ] Fix the three risky panic sites found while reading the panic ratchet:
-  `crates/jcode-base/src/provider_activity_oauth.rs:146,151,154` unwraps
-  `input: Option<u64>` in pricing math (panics computing cost); 
-  `crates/jcode-tui/src/tui/app/auth_account_picker.rs:751,1076`
-  `models.last().expect(...)`; `crates/jcode-tui/src/tui/app/auth.rs:1986,2183,2951`
-  `.expect("config directory resolved ...")`. The other ~37 panic flags are
-  guarded invariants or build/test code (see the ratchet note below).
+- [ ] Panic-prone lines made to justify themselves locally (code landed, awaiting
+  the batch rebuild). Only one was a real crash: three
+  `.expect("config directory resolved ...")` on `app_config_dir()` in
+  `auth.rs` save-success messages, where the directory can genuinely be missing;
+  now `.map(...).unwrap_or_else(...)` falling back to the bare filename. The
+  other two were already guarded and were changed for legibility, not safety:
+  `provider_activity_oauth.rs` collapsed the `complete` bool plus four
+  `input/output.unwrap()`s into one `counted` match, and
+  `auth_account_picker.rs:751,1076` turned guarded `models.last().expect(...)`
+  into `if let` bindings. The remaining panic flags are guarded invariants or
+  build/test code (see the ratchet note below).
 - [ ] Settle the two quality ratchets (decision needed): drop the
   swallowed-error one (it counts `let _ =`, `.ok()`, `.unwrap_or_default()`:
   3,129 hits across 423 files, mostly idiomatic), and either re-baseline or drop
@@ -23,8 +27,11 @@ picked up without re-deriving why it exists.
 - [ ] `scripts/` classification: ~80 inherited files, no README, several
   jcode-specific. Keep / delete / broken triage.
 - [ ] `packaging/arch/PKGBUILD`: README advertises it, it does not exist.
-- [ ] Licensing: add `license = "MIT"` to the root and member manifests, ship
-  the LICENSE in the package, generate `THIRD_PARTY_NOTICES` from `Cargo.lock`.
+- [ ] Licensing: no `license` fields added, decided 2026-09-27. Nothing here is
+  ever published (no `cargo publish`/`cargo package` anywhere, 35 of 60 members
+  are `publish = false`), so the 60 member manifests need no license. Root plus
+  `LICENSE` already state MIT. Revisit with packaging or a workspace license
+  scanner.
 
 ## Code structure (largest payoff first)
 
@@ -121,10 +128,10 @@ Covered by "Condense swarm/comm" above. References: `internals/swarm.md`.
 
 ## Hooks
 
-- [ ] `turn_start` `SOURCE` only ever emits `chat`; the schema advertises
-  `chat`/`resume`/`ambient`, and `ambient` belongs to a removed mode.
-- [ ] `session_start` schema comment is stale (says `create`/`resume`; code
-  emits `create`, `attach`, `resume`).
+- [ ] Hook `SOURCE` contracts narrowed to what ships (code landed, awaiting the
+  batch rebuild): `turn_start` documented as always `chat`, dropping the never-
+  emitted `resume` and the `ambient` label from a removed mode; `session_start`
+  now says `create`/`attach`/`resume`.
 - [ ] Hooks are unobservable: no `/hooks`, no listing, no dry-run. A typo looks
   identical to a hook that does nothing.
 - [ ] Blocked calls are invisible: `pre_tool` stderr goes to the model, nothing
@@ -138,8 +145,22 @@ Covered by "Condense swarm/comm" above. References: `internals/swarm.md`.
 - [ ] `-p` accepts 52 provider choices, `provider list` prints 26.
 - [ ] Unknown config sections are silently ignored, so older configs keep dead
   keys with no warning.
-- [ ] `Cargo.toml` `[profile]` names packages that do not exist (`fontdb`,
-  `rustybuzz`), producing cargo warnings.
+- [ ] `Cargo.toml` `[profile]` named packages that do not exist (`fontdb`,
+  `rustybuzz`), producing cargo warnings (code landed, awaiting the batch
+  rebuild). Stanzas deleted; `ttf-parser` kept, it is live via
+  `pdf-extract -> lopdf`.
+- [ ] Ambient-mode vocabulary outlived the ambient cut in user-facing places:
+  `info_widget_tips.rs:20-21` advertises background cycles and emailed
+  summaries, `input_help.rs:41` and `state_ui_input_helpers.rs:538` offer
+  `/agents ambient`, plus stale comments in `agent.rs`, `turn_execution.rs`,
+  `app.rs`. Check whether `/agents ambient` still routes before deleting it.
+- [ ] Self-dev tooling names the wrong package. `selfdev build` and
+  `build-reload` run `-p jcode --bin jcode`, but this fork's package is `kcode`
+  (root `[lib] name = "jcode"`, `[[bin]] name = "kcode"`), so the build fails
+  with "package ID specification `jcode` did not match any packages". Either
+  teach the tooling the fork's names, or keep
+  `cargo build --profile selfdev -p kcode --bin kcode` as the documented path
+  (see `docs/dev/post-change.md`).
 - [ ] Fork policy: rebase lane vs hard divergence is undecided and blocks crate
   names and the env prefix. `README.md` says "does not track upstream"; nothing
   follows from it.
