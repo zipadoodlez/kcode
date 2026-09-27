@@ -1013,7 +1013,7 @@ impl App {
         if self.terminal_clear_collapsed() {
             self.display_messages.pop();
             self.bump_display_messages_version();
-            self.request_full_repaint();
+            self.redraw.request_full_repaint();
         }
         // While older compacted history is still settling on screen, the renderer
         // is anchored to a distance-from-bottom rather than `scroll_offset`. Keep
@@ -1034,7 +1034,7 @@ impl App {
             // previous frame. See ratatui issue #2357. Buffer invalidation re-emits
             // every cell without the ED2 clear escape that made images flicker
             // during scroll (issue #404).
-            self.request_full_repaint();
+            self.redraw.request_full_repaint();
             return true;
         }
         let before = (self.scroll_offset, self.auto_scroll_paused);
@@ -1059,7 +1059,7 @@ impl App {
         if changed {
             // See note above (ratatui #2357): force a clean repaint on scroll so
             // wide-grapheme trailing cells cannot leave a ghost character.
-            self.request_full_repaint();
+            self.redraw.request_full_repaint();
         }
         changed
     }
@@ -1092,7 +1092,7 @@ impl App {
             anchor.lines_from_bottom = anchor.lines_from_bottom.saturating_sub(amount);
             self.pending_history_anchor = Some(anchor);
             // ratatui #2357: clean repaint on scroll to avoid wide-grapheme ghosts.
-            self.request_full_repaint();
+            self.redraw.request_full_repaint();
             return true;
         }
         if !self.auto_scroll_paused {
@@ -1127,7 +1127,7 @@ impl App {
         };
         if changed {
             // ratatui #2357: clean repaint on scroll to avoid wide-grapheme ghosts.
-            self.request_full_repaint();
+            self.redraw.request_full_repaint();
         }
         changed
     }

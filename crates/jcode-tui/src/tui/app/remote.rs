@@ -98,7 +98,7 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
     let mut needs_redraw = crate::tui::periodic_redraw_required(app);
     needs_redraw |= app.poll_ssh_login(remote).await;
     needs_redraw |= app.poll_ssh_login_onboarding();
-    needs_redraw |= app.flush_pending_resize_redraw();
+    needs_redraw |= app.redraw.flush_pending_resize_redraw();
     app.maybe_capture_runtime_memory_heartbeat();
     app.maybe_release_idle_heap();
     // Surface the cold-cache transcript warning the moment the TTL expires
@@ -529,7 +529,7 @@ async fn apply_terminal_event(
         }
         Some(Ok(Event::Resize(_, _))) => {
             input_attribution.event = Some("resize".to_string());
-            needs_redraw = app.should_redraw_after_resize();
+            needs_redraw = app.redraw.should_redraw_after_resize();
         }
         Some(Err(error)) => {
             input_attribution.event = Some(format!("event_error:{}", error));
@@ -774,7 +774,7 @@ fn handle_terminal_event_while_disconnected(
             }
         }
         Some(Ok(Event::Resize(_, _))) => {
-            needs_redraw = app.should_redraw_after_resize();
+            needs_redraw = app.redraw.should_redraw_after_resize();
         }
         None => {
             // Input EOF: if the controlling terminal is gone this client is an

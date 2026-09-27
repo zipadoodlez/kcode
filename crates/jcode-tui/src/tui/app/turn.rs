@@ -147,7 +147,7 @@ impl App {
                                 }
                             }
                             Some(Ok(Event::Resize(_, _))) => {
-                                if self.should_redraw_after_resize() {
+                                if self.redraw.should_redraw_after_resize() {
                                     frame_renderer.draw_full(self, terminal)?;
                                 }
                             }
@@ -156,7 +156,7 @@ impl App {
                     }
                     // Redraw periodically
                     _ = redraw_interval.tick() => {
-                        let _ = self.flush_pending_resize_redraw();
+                        let _ = self.redraw.flush_pending_resize_redraw();
                         frame_renderer.draw_full(self, terminal)?;
                     }
                     bus_event = async {
@@ -232,7 +232,7 @@ impl App {
                 tokio::select! {
                     // Redraw periodically
                     _ = redraw_interval.tick() => {
-                        let _ = self.flush_pending_resize_redraw();
+                        let _ = self.redraw.flush_pending_resize_redraw();
                         let ops = self.stream_buffer.flush_smooth_frame();
                         self.apply_stream_ops(ops);
                         // Poll for background compaction completion during streaming
@@ -416,7 +416,7 @@ impl App {
                                 }
                             }
                             Some(Ok(Event::Resize(_, _))) => {
-                                if self.should_redraw_after_resize() {
+                                if self.redraw.should_redraw_after_resize() {
                                     frame_renderer.draw_full(self, terminal)?;
                                 }
                             }
@@ -1259,7 +1259,7 @@ impl App {
                                     }
                                 }
                                 Some(Ok(Event::Resize(_, _))) => {
-                                    if self.should_redraw_after_resize() {
+                                    if self.redraw.should_redraw_after_resize() {
                                         frame_renderer.draw_full(self, terminal)?;
                                     }
                                 }
@@ -1303,7 +1303,7 @@ impl App {
                         }
                         // Redraw periodically
                         _ = redraw_interval.tick() => {
-                            let _ = self.flush_pending_resize_redraw();
+                            let _ = self.redraw.flush_pending_resize_redraw();
                             frame_renderer.draw_full(self, terminal)?;
                         }
                         // Poll tool execution

@@ -21,7 +21,7 @@ impl App {
             stage: 0,
         });
         self.set_status_notice("Update simulator · waiting for update signal...");
-        self.force_full_redraw = true;
+        self.redraw.force_full_redraw = true;
     }
 
     pub(super) fn restart_update_simulator(&mut self) {

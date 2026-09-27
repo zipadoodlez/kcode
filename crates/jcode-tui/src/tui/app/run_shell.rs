@@ -125,7 +125,8 @@ impl FrameRenderer {
     ) -> Result<()> {
         // Painting a frame is progress, including during long streaming turns.
         crate::logging::watchdog::beat("tui.draw");
-        let invalidation = full_frame_invalidation(app.force_full_redraw, app.force_full_repaint);
+        let invalidation =
+            full_frame_invalidation(app.redraw.force_full_redraw, app.redraw.force_full_repaint);
         let force_full_redraw = invalidation != FullFrameInvalidation::None;
         // Wrap the whole frame (optional clear + diff flush) in a synchronized update so the
         // terminal applies every cell change atomically. Without this, ratatui's crossterm
@@ -143,8 +144,8 @@ impl FrameRenderer {
             }
             FullFrameInvalidation::None => {}
         }
-        app.force_full_redraw = false;
-        app.force_full_repaint = false;
+        app.redraw.force_full_redraw = false;
+        app.redraw.force_full_repaint = false;
 
         let previous_frame = self.last_frame.as_ref();
         let draw_start = Instant::now();
@@ -281,7 +282,7 @@ impl App {
                     } => {
                         if let Some(command) = command {
                             self.apply_handterm_native_scroll(command);
-                            self.request_full_redraw();
+                            self.redraw.request_full_redraw();
                             needs_redraw = true;
                         } else {
                             handterm_native_scroll = None;
@@ -499,7 +500,7 @@ impl App {
                     } => {
                         if let Some(command) = command {
                             self.apply_handterm_native_scroll(command);
-                            self.request_full_redraw();
+                            self.redraw.request_full_redraw();
                             needs_redraw = true;
                         } else {
                             handterm_native_scroll = None;

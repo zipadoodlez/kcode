@@ -297,10 +297,10 @@ fn test_full_redraw_clears_out_of_band_backend_artifacts_after_native_scroll_lik
         "without a forced full redraw, ratatui diffing should leave the injected artifact in place"
     );
 
-    app.request_full_redraw();
-    assert!(app.force_full_redraw, "full redraw flag should be armed");
+    app.redraw.request_full_redraw();
+    assert!(app.redraw.force_full_redraw, "full redraw flag should be armed");
     terminal.clear().expect("test backend clear should succeed");
-    app.force_full_redraw = false;
+    app.redraw.force_full_redraw = false;
     terminal
         .draw(|f| crate::tui::ui::draw(f, &app))
         .expect("forced full redraw should succeed");
@@ -358,19 +358,19 @@ fn scroll_arms_force_full_repaint_to_clear_wide_grapheme_ghosts() {
 
     let (up_code, up_mods) = scroll_up_key(&app);
 
-    app.force_full_redraw = false;
-    app.force_full_repaint = false;
+    app.redraw.force_full_redraw = false;
+    app.redraw.force_full_repaint = false;
     app.handle_key(up_code.clone(), up_mods).unwrap();
 
     // The scroll moved the viewport, so a clean repaint must be armed.
     assert!(app.auto_scroll_paused, "scroll up should pause auto-scroll");
     assert!(app.scroll_offset > 0, "scroll up should move the viewport");
     assert!(
-        app.force_full_repaint,
+        app.redraw.force_full_repaint,
         "a viewport-moving scroll must arm force_full_repaint to clear ghosts"
     );
     assert!(
-        !app.force_full_redraw,
+        !app.redraw.force_full_redraw,
         "scroll must not arm the hard-clear path: terminal.clear() flickers \
          around kitty image placeholders (issue #404)"
     );
@@ -380,14 +380,14 @@ fn scroll_arms_force_full_repaint_to_clear_wide_grapheme_ghosts() {
     let mut armed_on_down = false;
     let mut hard_cleared_on_down = false;
     for _ in 0..80 {
-        app.force_full_redraw = false;
-        app.force_full_repaint = false;
+        app.redraw.force_full_redraw = false;
+        app.redraw.force_full_repaint = false;
         let moved = app.handle_key(down_code.clone(), down_mods).is_ok();
         let _ = moved;
-        if app.force_full_repaint {
+        if app.redraw.force_full_repaint {
             armed_on_down = true;
         }
-        if app.force_full_redraw {
+        if app.redraw.force_full_redraw {
             hard_cleared_on_down = true;
         }
         if !app.auto_scroll_paused {

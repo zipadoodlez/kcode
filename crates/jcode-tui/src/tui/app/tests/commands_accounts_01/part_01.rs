@@ -204,14 +204,14 @@ fn left_arrow_on_empty_input_is_a_noop_unless_opted_in() {
 fn test_resize_redraw_is_debounced() {
     let mut app = create_test_app();
 
-    assert!(app.should_redraw_after_resize());
-    assert!(!app.should_redraw_after_resize());
-    assert!(app.resize_redraw_pending);
+    assert!(app.redraw.should_redraw_after_resize());
+    assert!(!app.redraw.should_redraw_after_resize());
+    assert!(app.redraw.resize_redraw_pending);
 
-    app.last_resize_redraw = Some(Instant::now() - Duration::from_millis(40));
-    assert!(app.flush_pending_resize_redraw());
-    assert!(!app.resize_redraw_pending);
-    assert!(!app.flush_pending_resize_redraw());
+    app.redraw.last_resize_redraw = Some(Instant::now() - Duration::from_millis(40));
+    assert!(app.redraw.flush_pending_resize_redraw());
+    assert!(!app.redraw.resize_redraw_pending);
+    assert!(!app.redraw.flush_pending_resize_redraw());
 }
 
 #[test]

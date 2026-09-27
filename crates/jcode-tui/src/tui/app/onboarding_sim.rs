@@ -108,7 +108,7 @@ impl App {
         // state, exactly like the static `/onboarding-preview`.
         self.onboarding_preview_mode = true;
         self.apply_onboarding_sim_screen();
-        self.force_full_redraw = true;
+        self.redraw.force_full_redraw = true;
         self.update_onboarding_sim_status();
     }
 
@@ -123,7 +123,7 @@ impl App {
         self.session_picker.overlay = None;
         self.session_picker.mode = SessionPickerMode::Resume;
         self.onboarding_preview_mode = false;
-        self.force_full_redraw = true;
+        self.redraw.force_full_redraw = true;
         self.set_status_notice("Onboarding simulator: off");
     }
 
@@ -272,7 +272,7 @@ impl App {
         }
         self.onboarding_sim = Some(next as usize);
         self.apply_onboarding_sim_screen();
-        self.force_full_redraw = true;
+        self.redraw.force_full_redraw = true;
         self.update_onboarding_sim_status();
     }
 
@@ -365,11 +365,11 @@ impl App {
             // On the import summary, Left/Right preview the three action pills
             // instead of stepping screens (Tab still steps).
             KeyCode::Right if self.onboarding_sim_step_summary_pill(true) => {
-                self.force_full_redraw = true;
+                self.redraw.force_full_redraw = true;
                 true
             }
             KeyCode::Left if self.onboarding_sim_step_summary_pill(false) => {
-                self.force_full_redraw = true;
+                self.redraw.force_full_redraw = true;
                 true
             }
             KeyCode::Tab | KeyCode::Right => {
@@ -389,22 +389,22 @@ impl App {
             // they have no effect (already consumed so nothing leaks through).
             KeyCode::Up if on_import_screen => {
                 self.onboarding_sim_move_cursor(false);
-                self.force_full_redraw = true;
+                self.redraw.force_full_redraw = true;
                 true
             }
             KeyCode::Down if on_import_screen => {
                 self.onboarding_sim_move_cursor(true);
-                self.force_full_redraw = true;
+                self.redraw.force_full_redraw = true;
                 true
             }
             KeyCode::Char('h') | KeyCode::Char('y') | KeyCode::Char('Y') => {
                 self.onboarding_sim_set_highlight(true);
-                self.force_full_redraw = true;
+                self.redraw.force_full_redraw = true;
                 true
             }
             KeyCode::Char('l') | KeyCode::Char('n') | KeyCode::Char('N') => {
                 self.onboarding_sim_set_highlight(false);
-                self.force_full_redraw = true;
+                self.redraw.force_full_redraw = true;
                 true
             }
             _ => true,

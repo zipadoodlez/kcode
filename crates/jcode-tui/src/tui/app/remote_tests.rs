@@ -103,12 +103,12 @@ fn focus_changes_request_a_differential_redraw() {
 
     // Regaining focus requests a differential redraw so the window catches up
     // without clearing and retransmitting every terminal cell.
-    app.force_full_redraw = false;
+    app.redraw.force_full_redraw = false;
     let redraw = app.set_client_focused(true);
     assert!(redraw, "regaining focus should request a redraw");
     assert!(app.client_focused());
     assert!(
-        !app.force_full_redraw,
+        !app.redraw.force_full_redraw,
         "focus changes must not force an expensive full-terminal repaint"
     );
 }

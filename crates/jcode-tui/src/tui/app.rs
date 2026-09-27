@@ -81,6 +81,7 @@ mod onboarding_repair;
 mod onboarding_sim;
 mod prompt_history;
 mod reasoning;
+mod redraw;
 mod remote;
 mod remote_notifications;
 pub(crate) mod run_shell;
@@ -987,11 +988,8 @@ pub struct App {
     cancel_requested: bool,
     // Quit confirmation: tracks when first Ctrl+C was pressed
     quit_pending: Option<Instant>,
-    // Debounce redraw storms while the terminal is being resized.
-    last_resize_redraw: Option<Instant>,
-    // A throttled resize still needs one trailing geometry reset and repaint at
-    // the final terminal dimensions.
-    resize_redraw_pending: bool,
+    // Repaint requests and the resize-redraw debounce.
+    redraw: redraw::Redraw,
     // Cached MCP server names and tool counts (updated on connect/disconnect)
     mcp_server_names: Vec<(String, usize)>,
     // When the current connection phase (authenticating/connecting/waiting) began.
@@ -1371,15 +1369,6 @@ pub struct App {
     remote_login_onboarding: auth_remote::Onboarding,
     /// Pending SSH remote target prompt. Stores the friendly remote name.
     pending_ssh_remote_name: Option<String>,
-    /// One-shot flag: force the next paint to clear the terminal first.
-    /// Needed after native terminal scrolls mutate the screen outside ratatui's diff model.
-    force_full_redraw: bool,
-    /// One-shot flag: force the next paint to re-emit every cell by invalidating
-    /// ratatui's previous buffer, without an intermediate ED2 clear escape.
-    /// Chat scrolling uses this to clear wide-grapheme ghosts (ratatui #2357)
-    /// without the clear-then-repaint flicker around kitty image placeholders
-    /// (issue #404).
-    force_full_repaint: bool,
     /// Time of the last mouse-wheel notch, used only to scale how many lines a
     /// fast flick scrolls. No queue: each notch lands immediately.
     last_wheel: Option<Instant>,

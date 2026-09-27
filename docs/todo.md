@@ -116,13 +116,20 @@ Staged, each lands whole.
     fell 292 to 285, tests unchanged from baseline. `copy_badge_ui` is a
     separate concept and stayed.
   - Stage 3: `Viewport` (13 fields, 145 sites): scroll, bookmark, redraw flags.
-    **Not a mechanical sweep.** The field names collide across at least six
-    other structs (`backend.rs`, `debug.rs`, `run_shell.rs`, `navigation.rs`,
-    `ui_smoothness.rs`, `session_picker.rs`, `ui_frame_metrics.rs`), and the
-    sites span 28 files (`scroll_core` alone is ~389 sites). Renaming
-    `self.scroll_offset` blindly hits the wrong receivers; do it per file with
-    the receiver type checked, or first give the viewport fields names that do
-    not collide.
+    Measured: it is two concepts, not one, and each half is cohesive.
+    **Redraw half landed:** `force_full_redraw`, `force_full_repaint`,
+    `last_resize_redraw`, `resize_redraw_pending` and their five methods
+    (`request_full_redraw`, `request_full_repaint`, `commit_resize_redraw`,
+    `should_redraw_after_resize`, `flush_pending_resize_redraw`) move into
+    `redraw.rs` as `Redraw` (out of `input.rs`); `app_fields` fell 248 to 245.
+    The rename was receiver-aware because `force_full_redraw`/`force_full_repaint`
+    also live on `run_shell`/`ui_frame_metrics`. Remaining: the scroll half
+    (`scroll_offset`, `auto_scroll_paused`, `pending_history_anchor`,
+    `scroll_bookmark`, `typing_scroll_lock`; 17 methods touch only them), which
+    still needs the receiver-checked sweep (`scroll_offset`/`auto_scroll_paused`/
+    `typing_scroll_lock` collide with other structs). `last_wheel` and
+    `overscroll_status_mode` are not repaint requests and were left out of
+    `Redraw`.
   - Shared ephemeral side-panel page. **Landed.** The four mirror-page builders
     now call `SidePanelPage::ephemeral_markdown`, so the page shape lives with
     the type instead of four times over.

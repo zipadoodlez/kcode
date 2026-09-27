@@ -3173,52 +3173,6 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn request_full_redraw(&mut self) {
-        self.force_full_redraw = true;
-    }
-
-    /// Arm a full re-emit of every cell on the next frame without an
-    /// intermediate ED2 clear escape. Prefer this over `request_full_redraw`
-    /// when the real screen has not diverged from ratatui's model (e.g. chat
-    /// scrolling), so image placeholder cells do not flash blank (issue #404).
-    pub(super) fn request_full_repaint(&mut self) {
-        self.force_full_repaint = true;
-    }
-
-    const RESIZE_REDRAW_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(33);
-
-    fn commit_resize_redraw(&mut self, now: std::time::Instant) -> bool {
-        self.last_resize_redraw = Some(now);
-        self.resize_redraw_pending = false;
-        true
-    }
-
-    pub(super) fn should_redraw_after_resize(&mut self) -> bool {
-        let now = std::time::Instant::now();
-        match self.last_resize_redraw {
-            Some(last) if now.duration_since(last) < Self::RESIZE_REDRAW_MIN_INTERVAL => {
-                self.resize_redraw_pending = true;
-                false
-            }
-            _ => self.commit_resize_redraw(now),
-        }
-    }
-
-    /// Flush the trailing edge of a debounced resize burst. Without this, the
-    /// last resize event can be suppressed after an intermediate frame, leaving
-    /// width/height-sensitive Mermaid placeholders and image state stale until
-    /// some unrelated UI event happens to redraw the terminal.
-    pub(super) fn flush_pending_resize_redraw(&mut self) -> bool {
-        if !self.resize_redraw_pending {
-            return false;
-        }
-        let now = std::time::Instant::now();
-        match self.last_resize_redraw {
-            Some(last) if now.duration_since(last) < Self::RESIZE_REDRAW_MIN_INTERVAL => false,
-            _ => self.commit_resize_redraw(now),
-        }
-    }
-
     pub(super) fn update_copy_badge_key_event(&mut self, event: crossterm::event::KeyEvent) {
         if self.remote_login.is_some() {
             return;

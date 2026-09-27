@@ -70,7 +70,7 @@ pub(super) fn handle_tick(app: &mut App) -> bool {
     // no paint at all, which drops the animation to whatever unrelated events
     // happen to trigger (~4fps in practice).
     let mut needs_redraw = crate::tui::periodic_redraw_required(app);
-    needs_redraw |= app.flush_pending_resize_redraw();
+    needs_redraw |= app.redraw.flush_pending_resize_redraw();
     app.maybe_capture_runtime_memory_heartbeat();
     app.maybe_release_idle_heap();
     // Surface the cold-cache transcript warning the moment the TTL expires
@@ -395,7 +395,7 @@ fn apply_terminal_event(
             app.handle_mouse_event(mouse);
             Ok(true)
         }
-        Some(Ok(Event::Resize(_, _))) => Ok(app.should_redraw_after_resize()),
+        Some(Ok(Event::Resize(_, _))) => Ok(app.redraw.should_redraw_after_resize()),
         _ => Ok(false),
     }
 }
