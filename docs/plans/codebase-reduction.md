@@ -1,7 +1,8 @@
 # Codebase reduction plan
 
-Status: proposal, nothing implemented (tiers 0-2 unchanged; tiers 3-6 added from the
-2026-09 structural audit)
+Status: proposal, nothing implemented. Claims re-verified against the code on
+2026-09-27; the corrections are folded in below and the open judgment calls are
+listed at the end.
 
 The goal is a codebase where the next maintainer can be lazy: fewer lines,
 fewer concepts, fewer places to look, and a test suite that fails only for real
@@ -13,7 +14,7 @@ too.
 This absorbs [tuistate-decomposition.md](tuistate-decomposition.md) and the
 withdrawn `tui-render-ownership.md` (git history). It also folds the 2026-09
 structural audit of `jcode-tui`, `jcode-app-core`, and `jcode-base`; the audit's
-deletion-shaped items are tiers 0-2, and its re-core items are tiers 3-6.
+deletion-shaped items are tiers 0-2, and its unification items are tiers 3-6.
 
 ## Governing rules
 
@@ -34,24 +35,23 @@ deletion-shaped items are tiers 0-2, and its re-core items are tiers 3-6.
 
 ## Measured state
 
+Every number below was counted on this tree on 2026-09-27, not carried over.
+
 | measurement | value |
 |---|---|
-| lines of Rust | ~538k across ~946 files |
-| workspace crates | 61 (91 members) |
+| lines of Rust | ~538k across 945 files |
+| workspace crates | 61 members (60 under `crates/` plus the root package) |
 | packages in `Cargo.lock` | 660 |
 | three largest crates | `jcode-tui` 181k, `jcode-app-core` 110k, `jcode-base` 94k = 72% |
-| provider crates | 20 crates, 61k lines |
-| `App` fields | 307-317 (279 loose primitives); ~60 `impl App` blocks across 158 files under `tui/app/` |
+| provider crates | 20 crates, 61.1k lines |
+| `App` declared fields | 307 (279 loose primitives); 57 `impl App` blocks across 158 files under `tui/app/` |
 | `use super::*` globs in `jcode-tui` | 124 |
-| largest single functions | `handle_client` (`server/client_lifecycle.rs`) ~2600 lines, 28 args, 85 `Request::` arms |
-| largest files in the repo | all tests: `onboarding_eval` 3294, `openrouter_tests` 3685, `state_model_poke_03` 3020, `live_tests` 3080 |
-| test-named Rust files | 162.5k lines (~30% of the tree) |
+| `TuiState` | 122 methods, 2 implementors, 77 `dyn TuiState` sites |
+| largest single function | `handle_client` (`server/client_lifecycle.rs:434`): 28 args, 85 `Request::` arms, body 434-3041 (~2600 lines); its header imports 15 sibling modules on 32 `use` lines |
+| swarm/comm surface | audit-named files 31.3k lines (~36.4k production in the wider neighborhood, ~37k in the narrow surface); not the 55k the first draft claimed |
+| test-named Rust files | 162.5k lines, but two of the largest are mostly production code: `live_tests.rs` 21% tests, `provider_e2e.rs` 11% tests |
+| test brittleness | 0 of the large suites assert colors or grid coordinates; ~1% touch glyph text or style enums |
 | pre-existing test failures on `main` | `jcode-tui --lib` 31, math/LaTeX 15, `test_lock_order` 1 |
-
-The last rows are the most informative. The repo's biggest files are
-generated-looking test suites, the suite is already failing on `main`, and the
-largest function is a protocol dispatcher with 28 arguments. Those are the
-largest ongoing costs in the tree.
 
 Each tier below is backed by the budget scripts in `scripts/`; when a tier moves
 a tracked number, refresh the baseline in the same commit or the budget blocks
@@ -80,44 +80,54 @@ Ships alone trivially.
   they use. Keep `local::handle_tick` and `local::finish_turn`: tests and the
   remote loop still call them.
 
-## Tier 1 - rewrite the test strategy
+## Tier 1 - condense the test suite
 
-The one place a rewrite is justified, because it is the tax on every future
-change and it cannot be fixed by deletion alone. Ships alone behind the pure
-view layer it introduces.
+The first draft of this tier said "replace `TestBackend` pixel assertions".
+That premise is refuted: the large suites are behavioral. 0 of them assert
+colors or grid coordinates, and only ~1% touch glyph text or style enums. So
+brittleness is not the problem, and the pure-view rewrite is not justified by
+it. What the reading actually found:
 
-- Replace `TestBackend` pixel assertions and the derived suites
-  (`state_model_poke_01..03`, `scroll_copy_01..03`, `onboarding_eval`) with
-  snapshot assertions on a **pure view layer**: a `view(...) -> FrameDescription`
-  that is computed without a `Terminal` and asserted as text.
-- Keep a small number of real end-to-end harness tests for the paths that must
-  go through the terminal.
-- Acceptance: the suite passes on a clean tree, and a layout change produces one
-  readable snapshot diff instead of a screen of coordinate assertions.
-- The audit's test finding reinforces this: 162.5k test lines (~30%) with
-  suites that are themselves god modules (`openrouter_tests` 3685,
-  `onboarding_eval` 3294). Confirm whether the largest suites are duplicated
-  assertions or legitimately broad before deciding to collapse them; that read
-  is not done.
+- **Near-duplicate unrolled tables.** `onboarding_eval.rs` repeats one
+  monotonic check across nine hand-unrolled `meta_tierN` tests and carries the
+  same liveness logic three times (2672-2736, 3174-3293). `state_model_poke_03.rs`
+  is ~40% near-duplicate pairs, `session_tests/cases.rs` ~51%,
+  `remote_events_reload_04.rs` ~43% (header-phase table at 1038-1180). These
+  collapse to table-driven tests with one assertion body.
+- **Subsystem code parked in test files.** `live_tests.rs` is a live-provider
+  coverage ledger (schema, checkpoint taxonomy, coverage merge, ranking) with
+  only 11 tests; `provider_e2e.rs` is 11% tests. The line counts overstate test
+  weight. Move the infrastructure to a named module and leave the tests.
+- **The snapshot pattern already exists.** `onboarding_golden.rs:render_onboarding_text`
+  already renders to an offscreen buffer and compares visible text lines. The
+  move is to generalize that, not to invent a pure view layer.
 
-**This tier is what pulls in render-state ownership.** A pure view needs its
-inputs explicit, which means the render results currently in
-`OnceLock<Mutex<..>>` globals (`tui/ui.rs`, 14 accessors with a
-`#[cfg(test)]`/`#[cfg(not(test))]` pair each) have to be passed in. Scope that
-to what the snapshot layer actually needs. Do not turn it into a standalone
-migration of all 14 fields; that is the withdrawn plan and it can end
-half-done.
+Ships one file/cluster at a time; each collapsed cluster is consistent alone.
+
+- Acceptance: the duplicated tables are one table; test infrastructure lives in
+  a module named for it; the suite still passes.
+
+**Open question (see the end):** this reframe demotes the "pure view layer",
+which was what pulled in render-state ownership (below). Whether that work is
+still wanted is a judgment call, not a measurement.
+
+**Render-state ownership, only if the snapshot layer needs it.** Render results
+live in globals: `tui/ui.rs` has 18 production `static` values (atomics and
+`OnceLock<Mutex<..>>`) each with a `#[cfg(test)]` mirror, and the same
+`#[cfg(test)]` pattern is repeated across 17 `ui_*.rs` files. A text snapshot
+layer needs those inputs explicit. Scope this to what the snapshot tests
+actually need; do not migrate all of them for their own sake.
 
 ## Tier 2 - group `App`'s fields (the App re-core)
 
 Mechanical, always compiles, never half-broken. `self.foo` becomes
 `self.group.foo`. Ships group by group; each group is consistent on its own.
 
-- 279 of `App`'s fields are loose primitives. Group them into the named structs
-  the withdrawn decomposition doc catalogued (Transcript, Input, Scroll,
-  Provider, Stream/status, Session/server, Workspace, Overlay, Onboarding,
-  RenderState). Several groups already exist (`streaming`, `token_accounting`,
-  `kv_cache`, `cost`), so the pattern is proven.
+- 279 of `App`'s 307 declared fields are loose primitives. Group them into the
+  named structs the withdrawn decomposition doc catalogued (Transcript, Input,
+  Scroll, Provider, Stream/status, Session/server, Workspace, Overlay,
+  Onboarding, RenderState). Several groups already exist (`streaming`,
+  `token_accounting`, `kv_cache`, `cost`), so the pattern is proven.
 - Start with the 9 loose keybinding fields: pure data, no render coupling, no
   concurrency. Then continue group by group.
 - **Collapse the runtime-mode triplication as its own group.** Runtime mode is
@@ -127,15 +137,13 @@ Mechanical, always compiles, never half-broken. `self.foo` becomes
   `runtime_mode()==RemoteClient && !self.is_replay` (`turn_notify.rs:82`) and
   `self.is_remote || self.is_replay_runtime()` (`tui_state.rs:206`). Keep the
   enum, delete the bools.
-- **Then split the `impl App` blocks.** ~60 `impl App` blocks are spread across
+- **Then narrow the `impl App` imports.** 57 `impl App` blocks are spread across
   158 files under `tui/app/`, held together by 124 `use super::*` globs, so no
   impl file declares what state it actually touches. Once the field groups
-  exist, each impl file can import its group explicitly instead of `super::*`.
-  This is the step that turns the globs off.
+  exist, each impl file imports its group explicitly instead of `super::*`.
 - Effect: a maintainer reads ~15 named groups instead of 279 fields, and
-  `TuiState` (156 methods, 2 implementors, ~50 `&dyn` sites) loses its reason to
-  exist and can be deleted last by removing code rather than by designing
-  sub-traits.
+  `TuiState` (122 methods, 77 `&dyn` sites) loses its reason to exist and can be
+  deleted last by removing code rather than by designing sub-traits.
 
 Reconcile with "Do not rewrite `tui/app/`" below: this is the mechanical move
 that rule carves out, not a rewrite.
@@ -145,13 +153,15 @@ that rule carves out, not a rewrite.
 `handle_client` (`jcode-app-core/src/server/client_lifecycle.rs:434`) is the
 entire client protocol in one function: 28 parameters (with an
 `#[expect(clippy::too_many_arguments)]` at line 430), a body running to line
-3043 (~2600 lines), and 85 `Request::` arms. Its 30 import lines already pull
-from 20 sibling handler modules, so the split is half-done and the dispatcher
+3041 (~2600 lines), and 85 `Request::` arms. Its 32 import lines already pull
+from 15 sibling handler modules, so the split is half-done and the dispatcher
 kept the god role. Ships in arm-group increments; each group moves to the
 sibling that owns it and leaves the dispatcher smaller but working.
 
 - Introduce a request context struct (session, swarm, file, channel, debug
-  refs) so the arms stop threading 28 positional arguments.
+  refs) so the arms stop threading 28 positional arguments. Note the swarm
+  refs are themselves 7 loose `Arc<RwLock<HashMap<..>>>` maps; Tier 6 wants
+  `SwarmState` passed instead, so design the context to hold it.
 - Move arm groups into the modules that already exist for them
   (`client_actions`, `client_comm`, `client_session`, `client_state`,
   `provider_control`, `comm_*`).
@@ -163,14 +173,15 @@ sibling that owns it and leaves the dispatcher smaller but working.
 
 Slash-command identity is a string literal matched, independently, in four
 hand-maintained places: the registry `REGISTERED_COMMANDS`
-(`tui/app/state_ui_input_helpers.rs:39`), the local dispatch (`tui/app/commands.rs`,
-67 literals), the shared in-process dispatch (`tui/app/commands_dispatch.rs`, 101
-literals), and the remote reconnected path (`tui/app/remote/key_handling.rs`, 65
-literals, e.g. line 964 `trimmed == "/help"`, 1147 `starts_with("/subagent")`).
-`commands_dispatch.rs:1-13` documents the last drift: the two copies diverged and
-`/cancel`, `/ssh`, `/model-status` silently did nothing remotely. This is also
-the root of the `wip.md` rows "dead SSH-block commands" and `/help <item>`
-coverage, which are symptoms of the same string table.
+(`tui/app/state_ui_input_helpers.rs:39`, 113 distinct command literals), the
+local dispatch (`tui/app/commands.rs`, 59), the shared in-process dispatch
+(`tui/app/commands_dispatch.rs`, 85), and the remote reconnected path
+(`tui/app/remote/key_handling.rs`, 54, e.g. line 964 `trimmed == "/help"`, 1147
+`starts_with("/subagent")`). `commands_dispatch.rs:1-13` documents the last
+drift: the two copies diverged and `/cancel`, `/ssh`, `/model-status` silently
+did nothing remotely. This is also the root of the `wip.md` rows "dead SSH-block
+commands" and `/help <item>` coverage, which are symptoms of the same string
+table.
 
 Ships one command-family at a time; a family that moves to the table is
 consistent on its own.
@@ -183,16 +194,18 @@ consistent on its own.
 
 ## Tier 5 - provider identity unification
 
-Provider identity is encoded in at least six parallel vocabularies plus five
-enums, and the code says so. `jcode_provider_core::provider_key`
-(`selection.rs:95`, "claude"/"openai"/...), the `RuntimeKey` vocabulary
-("anthropic-api-key"), the CLI `ProviderChoice` ("anthropic-api"),
-`ModelRouteApiMethod` ("openai-compatible:<profile>"), `LoginProviderTarget`,
-and `ActiveProvider` (8 variants), `RuntimeProviderId` (14 variants,
-`base/provider/activation.rs`), `ConfigProviderSelection`, `WidgetProviderKind`
-(9 variants, `tui/app/tui_state.rs:17`), `ProviderAvailability` (9 bools). The
-doc comment on `cli_provider_arg_for_session_key` states the vocabularies
-"overlap but are NOT identical". `grep '"openai"|"anthropic"|"openrouter"'`
+Provider identity is encoded in seven enums and several string vocabularies, and
+the code says so. The enums: `ActiveProvider` (`provider-core/src/selection.rs:5`),
+`RuntimeProviderId` (`base/provider/activation.rs:10`), `ConfigProviderSelection`
+(`base/provider/selection.rs:6`), `ProviderChoice` (`src/cli/provider_init.rs:25`),
+`LoginProviderTarget` (`provider-metadata/src/lib.rs:25`), `WidgetProviderKind`
+(`tui/app/tui_state.rs:17`), `ModelRouteApiMethod`
+(`provider-core/src/lib.rs:885`). The strings: `provider_key`
+(`provider-core/src/selection.rs:95`), `RuntimeKey`
+(`provider-core/src/lib.rs:704`), `LoginProviderDescriptor`
+(`provider-metadata/src/lib.rs:104`), and `ProviderAvailability`'s 9 bools
+(`selection.rs:17`). The doc comment on `cli_provider_arg_for_session_key` states
+the vocabularies "overlap but are NOT identical". `grep '"openai"|"anthropic"|"openrouter"'`
 matches 153 files; `=> "openai"|"anthropic"|"openrouter"` appears 30 times.
 
 This is a **unify, not a sweep**: do not start by replacing the 153 literal
@@ -210,28 +223,67 @@ Do not confuse this with Tier 0's provider cut. The cut deletes unused
 providers; this unifies how the surviving ones are named. The cut makes this
 smaller.
 
-## Tier 6 - swarm/comm re-core
+## Tier 6 - swarm/comm condensation
 
-~55k lines model swarm/comm with no single owner. The same concept lives in
-`app-core/server/swarm.rs` (3170), `swarm_persistence.rs`, `swarm_mutation_state.rs`,
-`swarm_channels.rs`, `comm_control.rs` (2625), `comm_session.rs` (1431),
-`comm_plan.rs`, `comm_await.rs`, `comm_sync.rs`, `comm_graph.rs`; in
-`tool/communicate.rs` (3364), which re-fetches member/plan state over the wire
-and re-derives in-flight/cleanup policy locally; in `protocol/comm_format.rs`;
-in `jcode-swarm-core` + `jcode-plan`; and in `jcode-tui-render/swarm_gallery.rs` +
-`tui/app/commands_*.rs`.
+The first draft called this a re-core with "no shared representation". Reading
+the region refutes that. There **is** an owner: `SwarmState`
+(`server/state.rs:108`) owns members, plans, coordinators and swarms_by_id, with
+`SwarmRuntime` (`state.rs:117`) as its per-swarm snapshot and `load_runtime()`
+(`state.rs:150`). `jcode-swarm-core` is upstream, not a duplicate:
+`SwarmMemberRecord` (`swarm-core/src/lib.rs:215`) is the durable record,
+`SwarmMember` (`state.rs:188`) the runtime one. `VersionedPlan` -> its persisted
+form -> `PlanGraphStatus` is legal DTO layering. `tool/communicate.rs` holds no
+parallel model: it fetches `AgentInfo`/`PlanGraphStatus` over the socket and
+applies run-scoped policy. The task DAG has one model (`dag/mod.rs`).
 
-This is the highest-risk tier and the least read. It is gated on Tier 3 because
-the server half of swarm flows through `handle_client`. Ships only when the
-member/plan/channel state model moves whole; a half-moved swarm state model is
-the exact "half-migrated" failure the rules forbid.
+So this is a **condense**, not a re-core. What the reading did confirm:
 
-- Read the region end to end first, then name the invariants (member registry,
-  plan DAG, channel subscriptions) and give each one home.
-- Collapse the tool-side re-derivation onto the server state model rather than a
-  second implementation.
-- If the read does not produce a state model that shrinks, stop and leave it;
-  do not rearrange it for taste.
+- **The member projection is written four times by hand.** `SwarmMember` is
+  mapped field-by-field into `AgentInfo` (`protocol/src/lib.rs:219`) at
+  `client_comm_context.rs:298` and `client_comm_channels.rs:84`, into
+  `SwarmMemberStatus` (`protocol/src/lib.rs:456`) at `swarm.rs:701`, and into a
+  local `MemberStatic` (`client_comm_context.rs:239`). `AgentInfo` and
+  `SwarmMemberStatus` share ~10 hand-copied fields with no conversion between
+  them.
+- **The status vocabulary diverged.** `SwarmLifecycleStatus`
+  (`swarm-core/src/lib.rs:136`) is typed, but `SwarmMember.status` is `String`,
+  `AgentInfo.status` is `Option<String>`, and `is_active_status` is defined
+  twice with the same name and signature but different sets
+  (`plan/src/lib.rs:286` = `running|running_stale` vs
+  `tui-render/src/swarm_gallery.rs:55` = `running|streaming|thinking`).
+  Terminal-ness is defined three ways (`plan/src/lib.rs:279`, `swarm.rs:227`,
+  plus inline lists at `swarm.rs:1401`, `server.rs:341`). 134 non-test sites
+  string-match status literals.
+- **Coordination state has no owner.** `SwarmMutationRuntime`
+  (`swarm_mutation_state.rs:95`), `AwaitMembersRuntime` (`await_members_state.rs:71`),
+  and two process-global claim maps (`comm_control.rs:101`,
+  `communicate.rs:726`).
+- **Channel subscriptions straddle two locks** with no atomic owner
+  (`comm_session.rs:28`, stitched with `std::mem::take` in
+  `swarm_channels.rs:13-21`).
+- **Textual repeats:** `type SessionAgents` x19, `type ChannelSubscriptions`
+  x13, `swarm_id_for_session` copy-pasted 4 times
+  (`client_comm_channels.rs:13`, `client_comm_context.rs:12`,
+  `client_comm_message.rs:17`, `comm_graph.rs:45`).
+- **`SwarmState` is rebuilt, not passed.** `handle_client` threads 7 loose
+  `Arc<RwLock<HashMap<..>>>` maps, and `SwarmState { .. }` is reconstructed at
+  ~28 non-persisted sites instead of being the value passed across the boundary.
+
+Ships one duplication at a time: the status predicates are independent of the
+member projection, which is independent of the channel locks.
+
+- Unify the member projection behind one conversion so `SwarmMember` is the
+  single source and the wire types derive from it.
+- Make status one typed value end to end (`SwarmLifecycleStatus`), and collapse
+  the two `is_active_status` and the three terminal-ness definitions to one.
+- Give coordination state one owner; pass `SwarmState`, not loose maps (shared
+  with Tier 3's context struct).
+- One lock for channel subscriptions.
+- Layering smell to fix in passing: policy (not formatting) lives in
+  `jcode-protocol/src/comm_format.rs` (`comm_cleanup_candidate_session_ids:53`,
+  default status lists `:23,:33,:43`).
+- If a unification does not delete a representation, stop; do not rearrange for
+  taste.
 
 ## Tier 7 - dependency diet
 
@@ -243,14 +295,14 @@ provider deletions pay here too. This is the concrete answer to "faster".
 
 Last, and only where the boundaries are now real. Pure churn until then.
 
-- **The 61-crate layout is invisible at every call site.** `jcode-base/src/lib.rs`
+- **The 61-member layout is invisible at every call site.** `jcode-base/src/lib.rs`
   says it exists to halve the largest compilation unit; `jcode-app-core/src/lib.rs:19`
   does `pub use jcode_base::*` "so every existing `crate::<module>` path keeps
   resolving"; `src/lib.rs:22` does `pub use jcode_tui::*`. So `crate::provider`,
   `crate::config`, `crate::tool`, `crate::server` all resolve globally, and no
   call site tells you which physical crate owns a symbol. `jcode-base` is a
-  70-module grab bag (browser, mcp, storage, side_panel, terminal_launch, github,
-  hooks, ...) that 10 crates depend on wholesale.
+  grab bag (55 top-level modules: browser, mcp, storage, side_panel,
+  terminal_launch, github, hooks, ...) that 10 crates depend on wholesale.
 - `scripts/check_wildcard_reexport_budget.py` already ratchets this spine
   (baseline total 15) with a stated goal of zero. That script is the measure for
   this tier: drive the budget to zero and let the crate layout become real, or
@@ -269,6 +321,8 @@ Last, and only where the boundaries are now real. Pure churn until then.
 - Session persistence.
 - Provider runtime internals (accumulated bugfixes; delete only with evidence).
   Tier 5 unifies names above them; it does not touch their bodies.
+- The task DAG (`jcode-plan`) and `jcode-swarm-core`'s durable records: one
+  model each, verified.
 
 ## Verification
 
@@ -278,10 +332,32 @@ Last, and only where the boundaries are now real. Pure churn until then.
   parallel-order failures on `main`; verify a suspect with `--test-threads=1`
   before blaming the change.
 - Tiers 3, 5, 6: `cargo test -p jcode-app-core --lib` and the touched crate's
-  tests. Tier 3 also has `client_lifecycle_tests.rs`.
+  tests. Tier 3 also has `client_lifecycle_tests.rs`; Tier 6 has
+  `swarm_persistence_tests.rs` and `comm_control_tests/dag_e2e.rs`.
 - Tier 4: the command-suggestion cache test and the remote-path input tests
   (`tui/app/tests/command_suggestions_cache.rs`, `issue_496_input_routing.rs`).
 - Tier 0: a deletion is only done when `cargo check` and the crate's tests pass
   without it.
 - Any tier that moves a budget file: re-run the matching `scripts/check_*` and
   refresh only the entries the tier intentionally changed.
+
+## Open judgment calls
+
+These are decisions, not measurements. Recorded so the plan does not silently
+pick for the maintainer.
+
+1. **Is Tier 1 still a rewrite?** Its brittleness premise did not survive
+   reading. The remaining work is collapsing near-duplicate tables and moving
+   test infrastructure out of `tests/`. That is editing, not rewriting. If we
+   accept that, Tier 1's "one justified rewrite" status and its output (the
+   pure view layer) should both be dropped, and render-state ownership with
+   them.
+2. **Does render-state ownership survive?** It was pulled in by Tier 1's pure
+   view. If Tier 1 is demoted, this either disappears or attaches to Tier 2 as
+   "narrow the `ui.rs` globals while grouping `App`".
+3. **Tier 3 and Tier 6 coupling.** `handle_client`'s context struct is where
+   `SwarmState` should replace the 7 loose maps. That is one change serving two
+   tiers. Do them together, or keep Tier 6 strictly after Tier 3?
+4. **Scope of this pass.** The plan is docs-only so far. The cheap, verified
+   cuts (dead `App::run`; the duplicate `is_active_status`) could land now, or
+   wait until a tier actually starts.

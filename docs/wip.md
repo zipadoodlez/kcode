@@ -10,13 +10,15 @@ git has the history.
 
 | plan | state | what's left |
 |---|---|---|
-| [plans/codebase-reduction.md](plans/codebase-reduction.md) | proposal, nothing implemented | tier 0 (delete: provider cut, hygiene, dead files, dead local TUI loop) is the entry point; tier 1 (test strategy) is the one justified rewrite and the only thing that pulls in render-state ownership; tiers 3-6 are the re-cores (protocol dispatch, command surface, provider identity, swarm/comm) the 2026-09 structural audit added |
+| [plans/codebase-reduction.md](plans/codebase-reduction.md) | proposal, nothing implemented; claims re-verified 2026-09-27 | tier 0 (delete: provider cut, hygiene, dead files, dead local TUI loop) is the entry point; tier 1 is now "condense the test suite" (its pixel-brittleness premise was refuted by reading); tiers 3-6 are the unifications (protocol dispatch, command surface, provider identity, swarm/comm) the audit added. Four open judgment calls are listed at the bottom of the plan - tier 1's fate, render-state ownership, tier 3/6 coupling, and whether to land the cheap cuts now |
 | [plans/browser-provider-protocol.md](plans/browser-provider-protocol.md) | draft spec, no implementation | tighten the core method set and the normalized `page.snapshot` format before building any adapter |
 
 Withdrawn: `plans/tui-render-ownership.md` (git history at `ce83f61a`). Its goal
 still lands, as a consequence of tier 1 rather than as a standalone project: it
 had no symptom behind it on its own, and its intermediate state was worse than
-its start, which made finishing mandatory and therefore starting unsafe.
+its start, which made finishing mandatory and therefore starting unsafe. Re-read
+2026-09-27: tier 1's brittleness premise was refuted, so whether this goal still
+lands at all is an open call in the plan.
 
 [plans/tuistate-decomposition.md](plans/tuistate-decomposition.md) is also
 absorbed by tier 2 (group `App`'s fields). Its method categorization matches the
@@ -60,6 +62,20 @@ as the reference for those groups.
 | item | state |
 |---|---|
 | provider cut | 20 `jcode-provider-*` crates, 61k lines, for roughly three wire formats (OpenAI-compatible, Anthropic, Gemini). ~19k cut candidates (`cursor-runtime`, `copilot*`, `antigravity*`, `grok-build-runtime`, `claude-cli-runtime`, `bedrock`, `provider-doctor`, `provider-metadata`/catalog); realistic target ~12-18k. Caution: the 46.8k non-test lines are accumulated production bugfixes - delete as they bite, do not rewrite blind |
+| provider identity cohesion | 7 enums plus several string vocabularies name the same thing; the code comment on `cli_provider_arg_for_session_key` admits they "overlap but are NOT identical". Reduction tier 5 unifies around one `ProviderId` registry |
+
+## Swarm layer
+
+Verified while re-checking the plan's swarm claim (2026-09-27). `SwarmState` is a
+real owner, so this is condensation, not a re-core.
+
+| item | detail |
+|---|---|
+| member projection written 4x | `SwarmMember` is hand-mapped into `AgentInfo` (`protocol:219`), `SwarmMemberStatus` (`protocol:456`), and a local `MemberStatic` (`client_comm_context.rs:239`), by separate mappers (`swarm.rs:701`, `client_comm_context.rs:298`, `client_comm_channels.rs:84`) |
+| status predicates diverged | `is_active_status` defined twice with different sets (`plan/lib.rs:286` vs `swarm_gallery.rs:55`); terminal-ness defined 3 ways; 134 non-test string-match sites |
+| coordination state unowned | `SwarmMutationRuntime`, `AwaitMembersRuntime`, and two process-global claim maps (`comm_control.rs:101`, `communicate.rs:726`) |
+| channel subs across two locks | stitched with `std::mem::take` (`swarm_channels.rs:13-21`) |
+| `SwarmState` rebuilt, not passed | `handle_client` threads 7 loose `Arc<RwLock<HashMap>>` maps; `SwarmState { .. }` rebuilt at ~28 sites |
 
 ## Hook surface gaps
 
