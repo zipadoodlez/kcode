@@ -94,7 +94,7 @@ impl App {
         self.session_picker.pending_load = None;
         self.login_picker_overlay = None;
         self.account_picker.overlay = None;
-        self.usage_overlay = None;
+        self.usage.overlay = None;
         self.inline_interactive_state = None;
         self.copy_selection.mode = false;
         self.copy_selection.anchor = None;

@@ -169,7 +169,9 @@ Staged, each lands whole.
     `app_fields` fell 279 to 277. **Account picker landed:** the overlay, pending
     action, and pending follow-up input are `App::account_picker:
     AccountPickerState` in `auth_account_picker.rs`; `app_fields` fell 277 to
-    275. The login and usage pickers remain.
+    275. **Usage overlay landed:** the overlay and its refresh flag are
+    `App::usage: UsageOverlayState` in `usage_overlay.rs`; `app_fields` fell 275
+    to 274. The login picker remains.
   - Stage 7: stream/status (26 fields, 414 sites).
   - Stage 8: provider and model context (15 fields, 281 sites); coordinate with
     the provider-identity item above, do not create a second registry.

@@ -28,19 +28,19 @@ fn test_usage_card_renders_when_loading() {
 fn test_usage_card_does_not_capture_typing() {
     let mut app = create_test_app();
     app.open_usage_inline_loading();
-    assert!(app.usage_overlay.is_none());
+    assert!(app.usage.overlay.is_none());
 
     app.handle_key(KeyCode::Char('h'), KeyModifiers::empty())
         .expect("type after usage card");
 
-    assert!(app.usage_overlay.is_none());
+    assert!(app.usage.overlay.is_none());
     assert_eq!(app.input(), "h");
 }
 
 #[test]
 fn test_usage_report_updates_display_only_card_without_system_message() {
     let mut app = create_test_app();
-    app.usage_report_refreshing = true;
+    app.usage.report_refreshing = true;
     // App::new seeds the provider transcript with the immutable session-context
     // reminder, so assert the usage report adds nothing on top of it rather
     // than expecting an empty transcript.
@@ -58,9 +58,9 @@ fn test_usage_report_updates_display_only_card_without_system_message() {
         last_used_unix_secs: None,
     }]);
 
-    assert!(!app.usage_report_refreshing);
+    assert!(!app.usage.report_refreshing);
     assert!(app.inline_view_state.is_none());
-    assert!(app.usage_overlay.is_none());
+    assert!(app.usage.overlay.is_none());
     let msg = app.display_messages().last().expect("missing usage card");
     assert_eq!(msg.role, "usage");
     assert!(msg.content.contains("OpenAI (ChatGPT)"));
@@ -99,7 +99,7 @@ fn test_usage_progress_updates_card_incrementally() {
         from_cache: false,
     });
 
-    assert!(app.usage_report_refreshing);
+    assert!(app.usage.report_refreshing);
     assert_eq!(
         app.display_messages()
             .iter()

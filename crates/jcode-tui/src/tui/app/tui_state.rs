@@ -1794,7 +1794,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn usage_overlay(&self) -> Option<&RefCell<crate::tui::usage_overlay::UsageOverlay>> {
-        self.usage_overlay.as_ref()
+        self.usage.overlay.as_ref()
     }
 
     fn working_dir(&self) -> Option<String> {

@@ -142,10 +142,10 @@ impl App {
     pub(super) fn request_usage_report(&mut self) {
         use crate::bus::{Bus, BusEvent};
 
-        if self.usage_report_refreshing {
+        if self.usage.report_refreshing {
             return;
         }
-        self.usage_report_refreshing = true;
+        self.usage.report_refreshing = true;
 
         let publish = || async move {
             let results = crate::usage::fetch_all_provider_usage_progressive(|progress| {

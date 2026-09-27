@@ -1114,7 +1114,7 @@ impl App {
     }
 
     pub(super) fn handle_usage_report(&mut self, results: Vec<crate::usage::ProviderUsage>) {
-        self.usage_report_refreshing = false;
+        self.usage.report_refreshing = false;
         self.clear_usage_transient_ui();
         self.upsert_usage_display_card(Self::format_usage_display_card(
             &results,
@@ -1134,7 +1134,7 @@ impl App {
         &mut self,
         progress: crate::usage::ProviderUsageProgress,
     ) {
-        self.usage_report_refreshing = !progress.done;
+        self.usage.report_refreshing = !progress.done;
         self.clear_usage_transient_ui();
         self.upsert_usage_display_card(Self::format_usage_display_card(
             &progress.results,
@@ -1176,7 +1176,7 @@ impl App {
 
     fn clear_usage_transient_ui(&mut self) {
         self.inline_view_state = None;
-        self.usage_overlay = None;
+        self.usage.overlay = None;
         if self
             .inline_interactive_state
             .as_ref()

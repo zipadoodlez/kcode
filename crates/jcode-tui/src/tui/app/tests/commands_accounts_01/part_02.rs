@@ -231,13 +231,13 @@ fn test_usage_command_requests_usage_report_with_inline_view() {
     assert!(super::commands::handle_usage_command(&mut app, "/usage"));
 
     assert!(app.inline_interactive_state.is_none());
-    assert!(app.usage_overlay.is_none());
+    assert!(app.usage.overlay.is_none());
     assert!(app.inline_view_state.is_none());
     assert_eq!(
         app.display_messages().last().map(|m| m.role.as_str()),
         Some("usage")
     );
-    assert!(app.usage_report_refreshing);
+    assert!(app.usage.report_refreshing);
 }
 
 #[test]
@@ -248,13 +248,13 @@ fn test_usage_submit_input_requests_usage_report_with_inline_view() {
     app.submit_input();
 
     assert!(app.inline_interactive_state.is_none());
-    assert!(app.usage_overlay.is_none());
+    assert!(app.usage.overlay.is_none());
     assert!(app.inline_view_state.is_none());
     assert_eq!(
         app.display_messages().last().map(|m| m.role.as_str()),
         Some("usage")
     );
-    assert!(app.usage_report_refreshing);
+    assert!(app.usage.report_refreshing);
 }
 
 #[test]
@@ -268,7 +268,7 @@ fn test_usage_typing_does_not_open_picker_preview() {
 
     assert!(app.inline_interactive_state.is_none());
     assert_eq!(app.input(), "/usage");
-    assert!(!app.usage_report_refreshing);
+    assert!(!app.usage.report_refreshing);
 }
 
 #[test]
@@ -284,12 +284,12 @@ fn test_usage_enter_requests_report_with_inline_view() {
         .expect("submit /usage");
 
     assert!(app.inline_interactive_state.is_none());
-    assert!(app.usage_overlay.is_none());
+    assert!(app.usage.overlay.is_none());
     assert!(app.inline_view_state.is_none());
     assert_eq!(app.input(), "");
     assert_eq!(
         app.display_messages().last().map(|m| m.role.as_str()),
         Some("usage")
     );
-    assert!(app.usage_report_refreshing);
+    assert!(app.usage.report_refreshing);
 }

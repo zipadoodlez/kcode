@@ -1466,10 +1466,8 @@ pub struct App {
     login_picker_overlay: Option<RefCell<super::login_picker::LoginPicker>>,
     /// Account picker overlay, pending action, and pending follow-up input.
     account_picker: auth::AccountPickerState,
-    /// Usage overlay (None = not visible)
-    usage_overlay: Option<RefCell<super::usage_overlay::UsageOverlay>>,
-    /// Whether a usage refresh request is currently in flight.
-    usage_report_refreshing: bool,
+    /// Usage overlay and whether a usage refresh request is in flight.
+    usage: super::usage_overlay::UsageOverlayState,
     /// Last time the passive overnight progress card polled its run files.
     last_overnight_card_refresh: Option<Instant>,
     /// Per-client Niri-style workspace navigation state. Previously a process
