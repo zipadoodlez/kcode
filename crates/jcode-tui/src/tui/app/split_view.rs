@@ -1,7 +1,5 @@
 use super::App;
-use crate::side_panel::{
-    SidePanelPage, SidePanelPageFormat, SidePanelPageSource, SidePanelSnapshot,
-};
+use crate::side_panel::{SidePanelPage, SidePanelPageFormat, SidePanelPageSource};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -21,9 +19,9 @@ impl App {
             self.clear_split_view_cache();
         }
 
-        let mut snapshot = self.snapshot_without_split_view();
+        let mut snapshot = self.snapshot_without_page(SPLIT_VIEW_PAGE_ID);
         if enabled {
-            snapshot = self.decorate_side_panel_with_split_view(snapshot, focus);
+            snapshot = self.decorate_side_panel_with_page(snapshot, self.split_view_page(), focus);
         } else if snapshot.focused_page_id.is_none() {
             snapshot.focused_page_id = self
                 .last_side_panel_focus_id
@@ -32,37 +30,6 @@ impl App {
                 .or_else(|| snapshot.pages.first().map(|page| page.id.clone()));
         }
         self.apply_side_panel_snapshot(snapshot);
-    }
-
-    pub(super) fn decorate_side_panel_with_split_view(
-        &self,
-        mut snapshot: SidePanelSnapshot,
-        focus_split_view: bool,
-    ) -> SidePanelSnapshot {
-        if !self.split_view_enabled {
-            return snapshot;
-        }
-
-        snapshot.pages.retain(|page| page.id != SPLIT_VIEW_PAGE_ID);
-        snapshot.pages.push(self.split_view_page());
-        snapshot.pages.sort_by(|a, b| {
-            b.updated_at_ms
-                .cmp(&a.updated_at_ms)
-                .then_with(|| a.id.cmp(&b.id))
-        });
-        if focus_split_view || snapshot.focused_page_id.is_none() {
-            snapshot.focused_page_id = Some(SPLIT_VIEW_PAGE_ID.to_string());
-        }
-        snapshot
-    }
-
-    pub(super) fn snapshot_without_split_view(&self) -> SidePanelSnapshot {
-        let mut snapshot = self.side_panel.clone();
-        snapshot.pages.retain(|page| page.id != SPLIT_VIEW_PAGE_ID);
-        if snapshot.focused_page_id.as_deref() == Some(SPLIT_VIEW_PAGE_ID) {
-            snapshot.focused_page_id = None;
-        }
-        snapshot
     }
 
     pub(super) fn refresh_split_view_if_needed(&mut self) {
@@ -91,8 +58,9 @@ impl App {
 
         let focus_split_view =
             self.side_panel.focused_page_id.as_deref() == Some(SPLIT_VIEW_PAGE_ID);
-        let snapshot = self.decorate_side_panel_with_split_view(
-            self.snapshot_without_split_view(),
+        let snapshot = self.decorate_side_panel_with_page(
+            self.snapshot_without_page(SPLIT_VIEW_PAGE_ID),
+            self.split_view_page(),
             focus_split_view,
         );
         self.apply_side_panel_snapshot(snapshot);
@@ -114,7 +82,7 @@ impl App {
         true
     }
 
-    fn split_view_page(&self) -> SidePanelPage {
+    pub(super) fn split_view_page(&self) -> SidePanelPage {
         SidePanelPage {
             id: SPLIT_VIEW_PAGE_ID.to_string(),
             title: SPLIT_VIEW_TITLE.to_string(),

@@ -1,8 +1,6 @@
 use super::{App, DisplayMessage};
 use crate::message::ToolCall;
-use crate::side_panel::{
-    SidePanelPage, SidePanelPageFormat, SidePanelPageSource, SidePanelSnapshot,
-};
+use crate::side_panel::{SidePanelPage, SidePanelPageFormat, SidePanelPageSource};
 
 pub(super) const OBSERVE_PAGE_ID: &str = "observe";
 const OBSERVE_PAGE_TITLE: &str = "Observe";
@@ -18,13 +16,13 @@ impl App {
 
     pub(super) fn set_observe_mode_enabled(&mut self, enabled: bool, focus: bool) {
         self.observe_mode_enabled = enabled;
-        let mut snapshot = self.snapshot_without_observe();
+        let mut snapshot = self.snapshot_without_page(OBSERVE_PAGE_ID);
         if enabled {
             if self.observe_page_markdown.trim().is_empty() {
                 self.observe_page_markdown = observe_placeholder_markdown();
                 self.observe_page_updated_at_ms = now_ms();
             }
-            snapshot = self.decorate_side_panel_with_observe(snapshot, focus);
+            snapshot = self.decorate_side_panel_with_page(snapshot, self.observe_page(), focus);
         } else if snapshot.focused_page_id.is_none() {
             snapshot.focused_page_id = self
                 .last_side_panel_focus_id
@@ -130,45 +128,21 @@ impl App {
         }
     }
 
-    pub(super) fn decorate_side_panel_with_observe(
-        &self,
-        mut snapshot: SidePanelSnapshot,
-        focus_observe: bool,
-    ) -> SidePanelSnapshot {
-        snapshot.pages.retain(|page| page.id != OBSERVE_PAGE_ID);
-        snapshot.pages.push(self.observe_page());
-        snapshot.pages.sort_by(|a, b| {
-            b.updated_at_ms
-                .cmp(&a.updated_at_ms)
-                .then_with(|| a.id.cmp(&b.id))
-        });
-        if focus_observe || snapshot.focused_page_id.is_none() {
-            snapshot.focused_page_id = Some(OBSERVE_PAGE_ID.to_string());
-        }
-        snapshot
-    }
-
-    pub(super) fn snapshot_without_observe(&self) -> SidePanelSnapshot {
-        let mut snapshot = self.side_panel.clone();
-        snapshot.pages.retain(|page| page.id != OBSERVE_PAGE_ID);
-        if snapshot.focused_page_id.as_deref() == Some(OBSERVE_PAGE_ID) {
-            snapshot.focused_page_id = None;
-        }
-        snapshot
-    }
-
     fn refresh_observe_page(&mut self) {
         if !self.observe_mode_enabled {
             return;
         }
 
         let focus_observe = self.side_panel.focused_page_id.as_deref() == Some(OBSERVE_PAGE_ID);
-        let snapshot =
-            self.decorate_side_panel_with_observe(self.snapshot_without_observe(), focus_observe);
+        let snapshot = self.decorate_side_panel_with_page(
+            self.snapshot_without_page(OBSERVE_PAGE_ID),
+            self.observe_page(),
+            focus_observe,
+        );
         self.apply_side_panel_snapshot(snapshot);
     }
 
-    fn observe_page(&self) -> SidePanelPage {
+    pub(super) fn observe_page(&self) -> SidePanelPage {
         SidePanelPage {
             id: OBSERVE_PAGE_ID.to_string(),
             title: OBSERVE_PAGE_TITLE.to_string(),

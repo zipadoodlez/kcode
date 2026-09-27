@@ -620,7 +620,7 @@ impl App {
         let focus_observe = self.observe_mode_enabled
             && self.side_panel.focused_page_id.as_deref() == Some(super::observe::OBSERVE_PAGE_ID);
         let snapshot = if self.split_view_enabled {
-            self.decorate_side_panel_with_split_view(snapshot, focus_split)
+            self.decorate_side_panel_with_page(snapshot, self.split_view_page(), focus_split)
         } else {
             snapshot
         };
@@ -628,12 +628,12 @@ impl App {
             && self.side_panel.focused_page_id.as_deref()
                 == Some(super::todos_view::TODOS_VIEW_PAGE_ID);
         let snapshot = if self.todos_view.enabled {
-            self.decorate_side_panel_with_todos_view(snapshot, focus_todos)
+            self.decorate_side_panel_with_page(snapshot, self.todos_view.page(), focus_todos)
         } else {
             snapshot
         };
         let mut snapshot = if self.observe_mode_enabled {
-            self.decorate_side_panel_with_observe(snapshot, focus_observe)
+            self.decorate_side_panel_with_page(snapshot, self.observe_page(), focus_observe)
         } else {
             snapshot
         };
@@ -679,6 +679,47 @@ impl App {
             }
         }
         self.prewarm_focused_side_panel();
+    }
+
+    /// Insert an ephemeral side-panel page (one that mirrors live state rather
+    /// than a persisted file), replacing any earlier copy of it and re-sorting
+    /// the pages by freshness. Focuses it when `focus` is set or when nothing
+    /// else is focused.
+    ///
+    /// One algorithm for every mirror page: the per-page content lives with its
+    /// concept, the snapshot fiddling lives here.
+    pub(super) fn decorate_side_panel_with_page(
+        &self,
+        mut snapshot: crate::side_panel::SidePanelSnapshot,
+        page: crate::side_panel::SidePanelPage,
+        focus: bool,
+    ) -> crate::side_panel::SidePanelSnapshot {
+        let page_id = page.id.clone();
+        snapshot.pages.retain(|existing| existing.id != page_id);
+        snapshot.pages.push(page);
+        snapshot.pages.sort_by(|a, b| {
+            b.updated_at_ms
+                .cmp(&a.updated_at_ms)
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        if focus || snapshot.focused_page_id.is_none() {
+            snapshot.focused_page_id = Some(page_id);
+        }
+        snapshot
+    }
+
+    /// The current side panel with `page_id` removed, clearing the focus when it
+    /// pointed at that page. The base every mirror page re-decorates onto.
+    pub(super) fn snapshot_without_page(
+        &self,
+        page_id: &str,
+    ) -> crate::side_panel::SidePanelSnapshot {
+        let mut snapshot = self.side_panel.clone();
+        snapshot.pages.retain(|page| page.id != page_id);
+        if snapshot.focused_page_id.as_deref() == Some(page_id) {
+            snapshot.focused_page_id = None;
+        }
+        snapshot
     }
 
     pub(super) fn refresh_side_panel_linked_content_if_due(&mut self) -> bool {

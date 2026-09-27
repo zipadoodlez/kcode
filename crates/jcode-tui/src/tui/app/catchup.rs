@@ -1,7 +1,5 @@
 use super::{App, PendingCatchupResume};
-use crate::side_panel::{
-    SidePanelPage, SidePanelPageFormat, SidePanelPageSource, SidePanelSnapshot,
-};
+use crate::side_panel::{SidePanelPage, SidePanelPageFormat, SidePanelPageSource};
 
 pub(super) const CATCHUP_PAGE_ID: &str = "catchup";
 const CATCHUP_PAGE_TITLE: &str = "Catch Up";
@@ -67,25 +65,13 @@ impl App {
             request.queue_position,
             &brief,
         );
-        let mut snapshot = self.snapshot_without_catchup();
-        snapshot.pages.push(self.catchup_page(session_id, markdown));
-        snapshot.pages.sort_by(|a, b| {
-            b.updated_at_ms
-                .cmp(&a.updated_at_ms)
-                .then_with(|| a.id.cmp(&b.id))
-        });
-        snapshot.focused_page_id = Some(CATCHUP_PAGE_ID.to_string());
+        let snapshot = self.decorate_side_panel_with_page(
+            self.snapshot_without_page(CATCHUP_PAGE_ID),
+            self.catchup_page(session_id, markdown),
+            true,
+        );
         self.apply_side_panel_snapshot(snapshot);
         let _ = crate::catchup::mark_seen(&session.id, session.updated_at);
-    }
-
-    pub(super) fn snapshot_without_catchup(&self) -> SidePanelSnapshot {
-        let mut snapshot = self.side_panel.clone();
-        snapshot.pages.retain(|page| page.id != CATCHUP_PAGE_ID);
-        if snapshot.focused_page_id.as_deref() == Some(CATCHUP_PAGE_ID) {
-            snapshot.focused_page_id = None;
-        }
-        snapshot
     }
 
     pub(super) fn pop_catchup_return_target(&mut self) -> Option<String> {

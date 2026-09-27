@@ -1,7 +1,5 @@
 use super::App;
-use crate::side_panel::{
-    SidePanelPage, SidePanelPageFormat, SidePanelPageSource, SidePanelSnapshot,
-};
+use crate::side_panel::{SidePanelPage, SidePanelPageFormat, SidePanelPageSource};
 use crate::todo::TodoItem;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -54,7 +52,7 @@ impl TodosView {
         self.rendered_hash = 0;
     }
 
-    fn page(&self) -> SidePanelPage {
+    pub(super) fn page(&self) -> SidePanelPage {
         SidePanelPage {
             id: TODOS_VIEW_PAGE_ID.to_string(),
             title: TODOS_VIEW_TITLE.to_string(),
@@ -203,9 +201,9 @@ impl App {
             self.todos_view.clear_cache();
         }
 
-        let mut snapshot = self.snapshot_without_todos_view();
+        let mut snapshot = self.snapshot_without_page(TODOS_VIEW_PAGE_ID);
         if enabled {
-            snapshot = self.decorate_side_panel_with_todos_view(snapshot, focus);
+            snapshot = self.decorate_side_panel_with_page(snapshot, self.todos_view.page(), focus);
         } else if snapshot.focused_page_id.is_none() {
             snapshot.focused_page_id = self
                 .last_side_panel_focus_id
@@ -214,37 +212,6 @@ impl App {
                 .or_else(|| snapshot.pages.first().map(|page| page.id.clone()));
         }
         self.apply_side_panel_snapshot(snapshot);
-    }
-
-    pub(super) fn decorate_side_panel_with_todos_view(
-        &self,
-        mut snapshot: SidePanelSnapshot,
-        focus_todos: bool,
-    ) -> SidePanelSnapshot {
-        if !self.todos_view.enabled {
-            return snapshot;
-        }
-
-        snapshot.pages.retain(|page| page.id != TODOS_VIEW_PAGE_ID);
-        snapshot.pages.push(self.todos_view.page());
-        snapshot.pages.sort_by(|a, b| {
-            b.updated_at_ms
-                .cmp(&a.updated_at_ms)
-                .then_with(|| a.id.cmp(&b.id))
-        });
-        if focus_todos || snapshot.focused_page_id.is_none() {
-            snapshot.focused_page_id = Some(TODOS_VIEW_PAGE_ID.to_string());
-        }
-        snapshot
-    }
-
-    pub(super) fn snapshot_without_todos_view(&self) -> SidePanelSnapshot {
-        let mut snapshot = self.side_panel.clone();
-        snapshot.pages.retain(|page| page.id != TODOS_VIEW_PAGE_ID);
-        if snapshot.focused_page_id.as_deref() == Some(TODOS_VIEW_PAGE_ID) {
-            snapshot.focused_page_id = None;
-        }
-        snapshot
     }
 
     pub(super) fn refresh_todos_view_if_needed(&mut self) -> bool {
@@ -274,8 +241,11 @@ impl App {
         }
 
         let focus_todos = self.side_panel.focused_page_id.as_deref() == Some(TODOS_VIEW_PAGE_ID);
-        let snapshot = self
-            .decorate_side_panel_with_todos_view(self.snapshot_without_todos_view(), focus_todos);
+        let snapshot = self.decorate_side_panel_with_page(
+            self.snapshot_without_page(TODOS_VIEW_PAGE_ID),
+            self.todos_view.page(),
+            focus_todos,
+        );
         self.apply_side_panel_snapshot(snapshot);
     }
 
