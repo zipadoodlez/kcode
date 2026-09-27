@@ -402,6 +402,15 @@ Staged, each lands whole.
       `active_client_session_id()`; the two sites that deliberately fall back to
       the local stub id keep an explicit `.unwrap_or(&self.session.id)`. No fields
       moved, no ratchet change. Verified: lib suite identical (1966/27).
+      **Deferred: `current_message_id` belongs to the remote turn lifecycle.**
+      It is written with `is_processing`/`status`/`processing_started`/
+      `visible_turn_started`/`last_stream_activity` at every remote send
+      (`input_dispatch.rs:27,474`) and cleared at Done/disconnect/cancel/stall
+      (`server_events.rs:1011,1128,1182,1221`, `remote.rs:930,1621`,
+      `input_dispatch.rs:342,360`), and compared against the Done id. It is the
+      in-flight remote turn id, not session or server-snapshot state. Put it with
+      the turn-lifecycle cluster (`deferred_stream_done_id`, `pending_turn`,
+      `remote_resume_activity`) when that cluster is extracted.
   - Stage 11: revisit `TuiState`. It is a 122-method trait with two impls, and
     `TestState` (39 fields, 83 sites, 13 files) exists so render tests avoid
     constructing an `App`. Deleting it is a trade, decided last, once `App` is
