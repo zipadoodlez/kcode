@@ -10,7 +10,8 @@ lowering capability, in stages that each land whole.
 
 ## The problem, measured
 
-Read from the tree at `538b3636`:
+Sources: `graphify` (29,633-node graph) for the coupling hubs, then read from the
+tree at `538b3636`:
 
 - `struct App` spans `app.rs:821-1547`: **309 fields**, of which ~287 are loose
   scalars/options and ~22 are already sub-structs (`TokenAccounting`,
@@ -21,6 +22,20 @@ Read from the tree at `538b3636`:
   `remote/key_handling.rs` 2,635.
 - **6,182 `self.*` sites**, of which **~3,092 are direct `self.<field>` reads
   or writes**. That is the mechanical size of a full field re-home.
+- **Test construction is the #1 hub in the graph.** `create_test_app()` has
+  **771 edges**, more than `Provider` (374) or `Message` (266), and the largest
+  community (277 nodes) is exactly that construction cluster. Every App shape
+  change ripples through the test tree first, through one helper. Construction
+  funnels are `App::new_minimal_with_session`, `new_for_replay*`, and
+  `create_test_app`; grouping fields touches those, not call sites.
+- **`TuiState` is a trait, not a struct** (`tui/mod.rs:335`), and it already
+  names the target groups. 122 methods; exactly 2 impls: `App`
+  (`tui_state.rs:537`) and `TestState` (`ui_tests/mod.rs:166`, a parallel
+  39-field struct used in 83 sites across 13 files). `render_frame` takes
+  `&dyn TuiState`, and ~77 render helpers take it too. Its cost is the wide
+  interface plus the duplicate `TestState`; its benefit is rendering the UI in
+  tests without constructing an `App`. See Stage 11: deleting it is a trade,
+  not free.
 - The runtime axis is encoded **three times**: `runtime_mode: AppRuntimeMode`
   (24 uses), `is_remote: bool` (129 real accesses), `is_replay: bool` (~16),
   plus `is_remote_mode()` / `is_replay_runtime()` accessors that re-derive the
@@ -57,6 +72,13 @@ it, so a change to scroll behavior is read in `Viewport`, not `App`. The pattern
 already exists in-tree and is the model to copy: `impl OnboardingFlow`
 (`onboarding_flow.rs`), `impl RemoteLogin` (`auth_remote.rs`),
 `impl CopyBadgeUiState` (`app.rs:489`).
+
+**Group names come from the tree, not from this document.** The `TuiState`
+trait already partitions the surface, and its sections are the canonical names:
+Transcript, Input, Scroll, Provider, Stream/status, Session/server, Workspace,
+Diff pane, Side panel, Inline, Overlay, Copy selection, Onboarding, Misc. The
+stages below use those names where they overlap and add only what the trait does
+not cover (Todos, Panels, Swarm, Accounting).
 
 Three properties fall out:
 
@@ -197,11 +219,23 @@ approach before spending it on a bigger group.
   anything that resists grouping is itself a finding (a hidden concept or a
   coupling to name).
 
-### Stage 11 - Retire `TuiState`
+### Stage 11 - Retire `TuiState` (trade, decide last)
 
-- With `App` thin, `TuiState` (122 methods, 77 `&dyn` sites) has no remaining
-  reason to exist. Delete it. Do this only after Stage 10; attempting it earlier
-  just adds a fourth representation.
+Not the free win it looks like. `TuiState` is a 122-method trait whose second
+impl, `TestState`, exists so render tests can run without constructing an `App`
+(83 sites, 13 files).
+
+- The win: one interface in `mod.rs`, a 39-field duplicate struct, and ~77
+  `&dyn TuiState` helpers collapse to `&App`.
+- The cost: those 83 sites must build an `App` instead, through
+  `create_test_app` - already the graph's #1 hub. That is why this stage is
+  last: thinning `App` (Stages 2-10) is what makes constructing it cheap enough
+  for the trade to pay.
+- Decide with the trade on the table, not by assuming the trait is vestigial.
+  If `TestState` still earns its keep after `App` is thin, keep the trait and
+  delete only the duplicate surface.
+- Either way, update the trait's doc comment (`tui/mod.rs:325-334`), which
+  currently points at `docs/todo.md`.
 
 ## Out of scope
 
@@ -230,3 +264,19 @@ approach before spending it on a bigger group.
 - `app.rs` leaves `code_size_budget.json` (drops below 1200 lines).
 - A change to scroll behavior is read in `Viewport` alone; a change to a picker
   is read in its picker file alone.
+- Re-run `graphify god_nodes`: `create_test_app` should lose its #1 slot and the
+  construction community should shrink as `App` stops being the only way to
+  express the state the renderer reads.
+
+## How this was measured, and what is still a guess
+
+Measured: field count and span, `impl`/glob/site counts, per-group access-site
+costs, the `TuiState` impls and `TestState` usage, and the coupling hubs
+(`create_test_app` 771 edges, community 0) - via `graphify query`/`god_nodes`
+plus reading `app.rs`, `tui/mod.rs`, and `ui_tests/mod.rs`.
+
+Still unmeasured: **whether a group's methods are cohesive enough to move onto
+it.** The graph models type references, not field-to-method edges, so it cannot
+answer this; it needs reading each `impl App` body. Stage 0 does that per group.
+A group whose methods span groups gets re-scoped; an estimate here would be a
+guess dressed as a finding.
