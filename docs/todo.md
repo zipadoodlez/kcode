@@ -241,9 +241,15 @@ Staged, each lands whole.
       `persisted_prompt_history` move into `prompt_history.rs` as
       `PromptHistoryState`, with the loader it owns (`ensure_loaded`);
       `app_fields` fell 234 to 233.
-    - Remaining slice: attachments/queue
-      (`pasted_contents`, `pending_images`, `interleave_*`, `queued_messages`,
-      `hidden_queued_system_messages`, `pending_soft_interrupt*`; 32/11).
+    - **Composer payload landed (behaviorally chosen):** `pasted_contents` and
+      `pending_images` move into `Composer` too. The seam came from behavior, not
+      cohesion: `take_prepared_input` (`input.rs:1495`) reads `composer.input`,
+      `pasted_contents`, `pending_images`, and `composer.cursor_pos` together,
+      clears the pastes, and takes the images to build the message; `input.rs:1587`
+      asks "is there a draft?" as `input` + `pending_images`. `interleave_message`/
+      `interleave_images` were **not** included: they are a soft-interrupt payload
+      that gets merged into `pending_images` at send time, i.e. part of the
+      outbound pipeline. `app_fields` fell 233 to 231.
   - Stage 10: transcript (13 fields, 170 sites), then session/server (18 fields,
     390 sites); sweep the ~121 remaining loose fields into their owners.
   - Stage 11: revisit `TuiState`. It is a 122-method trait with two impls, and

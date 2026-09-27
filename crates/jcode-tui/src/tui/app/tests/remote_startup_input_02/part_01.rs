@@ -1336,13 +1336,13 @@ fn test_interleave_submission_preserves_pending_images() {
     app.composer.input = "[image 1] describe this".to_string();
     app.composer.cursor_pos = app.composer.input.len();
     let images = vec![("image/png".to_string(), "ZmFrZQ==".to_string())];
-    app.pending_images = images.clone();
+    app.composer.pending_images = images.clone();
 
     assert!(input::handle_enter(&mut app));
 
     assert_eq!(app.interleave_message.as_deref(), Some("[image 1] describe this"));
     assert_eq!(app.interleave_images, images);
-    assert!(app.pending_images.is_empty());
+    assert!(app.composer.pending_images.is_empty());
 }
 
 #[test]

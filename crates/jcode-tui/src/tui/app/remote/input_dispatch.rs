@@ -68,12 +68,12 @@ pub(in crate::tui::app) fn restore_prepared_remote_input(
 ) {
     app.composer.input = prepared.raw_input;
     app.composer.cursor_pos = app.composer.input.len();
-    app.pending_images = prepared.images;
+    app.composer.pending_images = prepared.images;
 }
 
 pub(in crate::tui::app) fn history_matches_pending_startup_prompt(app: &App) -> bool {
     if !app.submit_input_on_startup
-        || !app.pending_images.is_empty()
+        || !app.composer.pending_images.is_empty()
         || app.composer.input.trim().is_empty()
     {
         return false;
@@ -244,7 +244,7 @@ pub(in crate::tui::app) async fn submit_remote_slash_input(
     // keeps pasted images attached to the same user turn.
     app.composer.input = format!("/{}", skill_name);
     app.composer.cursor_pos = app.composer.input.len();
-    app.pending_images.clear();
+    app.composer.pending_images.clear();
     app.submit_input();
 
     let expanded_prompt = app
@@ -564,11 +564,11 @@ pub(in crate::tui::app) fn stage_turn_for_remote_tick_loop(app: &mut App, input:
         return false;
     }
     if app.is_processing && !app.queue_mode {
-        let images = std::mem::take(&mut app.pending_images);
+        let images = std::mem::take(&mut app.composer.pending_images);
         input::stage_local_interleave(app, input.to_string(), images);
         return true;
     }
     app.queued_messages.push(input.to_string());
-    app.pending_images.clear();
+    app.composer.pending_images.clear();
     true
 }

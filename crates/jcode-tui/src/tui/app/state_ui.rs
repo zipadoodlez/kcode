@@ -207,7 +207,7 @@ impl App {
                 && (!pending.content.trim().is_empty() || pending.system_reminder.is_some())
         });
         if self.composer.input.is_empty()
-            && self.pending_images.is_empty()
+            && self.composer.pending_images.is_empty()
             && self.queued_messages.is_empty()
             && self.hidden_queued_system_messages.is_empty()
             && self.interleave_message.is_none()
@@ -292,7 +292,7 @@ impl App {
             let data = serde_json::json!({
                 "cursor": resume_input.map(|input| input.len()).unwrap_or(self.composer.cursor_pos),
                 "input": resume_input.unwrap_or(self.composer.input.as_str()),
-                "pending_images": resume_images.unwrap_or(self.pending_images.as_slice()).iter().map(|(media_type, data)| serde_json::json!({
+                "pending_images": resume_images.unwrap_or(self.composer.pending_images.as_slice()).iter().map(|(media_type, data)| serde_json::json!({
                     "media_type": media_type,
                     "data": data,
                 })).collect::<Vec<_>>(),
@@ -1998,7 +1998,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
             "- supported: no".to_string()
         };
 
-        let pending_images = app.pending_images.len();
+        let pending_images = app.composer.pending_images.len();
         let queued_messages = app.queued_messages.len();
         let soft_interrupts = app.pending_soft_interrupts.len();
         let side_panel_pages = app.side_panel.pages.len();
@@ -2131,7 +2131,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
             queued_messages,
             if app.interleave_message.is_some() { "yes" } else { "no" },
             soft_interrupts,
-            app.pasted_contents.len(),
+            app.composer.pasted_contents.len(),
             pending_images,
             app.active_skill.as_deref().unwrap_or("none"),
             app.improve_mode

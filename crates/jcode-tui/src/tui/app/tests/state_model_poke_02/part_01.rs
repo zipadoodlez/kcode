@@ -771,7 +771,7 @@ fn test_context_command_reports_session_context_snapshot() {
         app.queue_mode = true;
         app.active_skill = Some("debug".to_string());
         app.queued_messages.push("queued follow-up".to_string());
-        app.pending_images
+        app.composer.pending_images
             .push(("image/png".to_string(), "abc".to_string()));
         app.side_panel = crate::side_panel::SidePanelSnapshot {
             focus_revision: 0,

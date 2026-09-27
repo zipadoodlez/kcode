@@ -997,10 +997,6 @@ pub struct App {
     // Session maintenance control: requested re-exec/update actions, background
     // client maintenance, the server reload handshake, and reconnect status.
     maintenance: state_ui_maintenance::ReloadState,
-    // Pasted content storage (displayed as placeholders, expanded on submit)
-    pasted_contents: Vec<String>,
-    // Pending pasted images (media_type, base64_data) attached to next message
-    pending_images: Vec<(String, String)>,
     // One-shot flag: the next submitted prompt is routed to a new headed session.
     route_next_prompt_to_new_session: bool,
     // Restore-time flag: auto-submit restored input after startup.

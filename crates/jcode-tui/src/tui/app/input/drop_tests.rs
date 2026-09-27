@@ -34,7 +34,7 @@ fn issue_1206_complete_non_image_drop_resolves_to_openable_path() {
         );
         assert_eq!(app.composer.cursor_pos, app.composer.input.len());
         assert_eq!(app.composer.input_undo_stack.last().unwrap().0, dropped);
-        assert!(app.pending_images.is_empty());
+        assert!(app.composer.pending_images.is_empty());
     }
 }
 
@@ -138,7 +138,7 @@ fn issue_1206_image_drop_still_attaches_bytes() {
     assert!(promote_dropped_images(&mut app));
     assert_eq!(app.composer.input, "[image 1]");
     assert_eq!(
-        app.pending_images,
+        app.composer.pending_images,
         vec![(
             "image/png".into(),
             base64::engine::general_purpose::STANDARD.encode(b"image payload")

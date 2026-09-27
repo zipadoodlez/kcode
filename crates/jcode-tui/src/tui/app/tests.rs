@@ -1000,7 +1000,8 @@ fn skill_invocation_with_prompt_attaches_pending_image_to_user_message() {
     )
     .expect("write skill");
     app.session.working_dir = Some(temp.path().to_string_lossy().to_string());
-    app.pending_images = vec![("image/png".to_string(), "ZmFrZSBwbmcgYnl0ZXM=".to_string())];
+    app.composer.pending_images =
+        vec![("image/png".to_string(), "ZmFrZSBwbmcgYnl0ZXM=".to_string())];
     app.composer.input = "/image-skill describe this screenshot".to_string();
     app.composer.cursor_pos = app.composer.input.len();
 
@@ -1009,7 +1010,7 @@ fn skill_invocation_with_prompt_attaches_pending_image_to_user_message() {
     assert_eq!(app.active_skill.as_deref(), Some("image-skill"));
     assert!(app.is_processing, "the trailing prompt should start a turn");
     assert!(
-        app.pending_images.is_empty(),
+        app.composer.pending_images.is_empty(),
         "pending images must be consumed by the submitted turn"
     );
     let submitted = app
@@ -1592,7 +1593,7 @@ fn oversized_pasted_submit_is_rejected_and_preserves_input() {
         "placeholder input should be preserved"
     );
     assert_eq!(
-        app.pasted_contents.len(),
+        app.composer.pasted_contents.len(),
         1,
         "expanded paste should remain recoverable"
     );

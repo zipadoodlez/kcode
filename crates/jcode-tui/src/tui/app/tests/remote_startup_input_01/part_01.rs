@@ -1076,7 +1076,7 @@ fn test_remote_model_switch_failure_restores_deferred_prompt() {
     assert!(app.pending_prompt_after_model_switch.is_none());
     assert_eq!(app.composer.input, "please use the selected model");
     assert_eq!(app.composer.cursor_pos, app.composer.input.len());
-    assert_eq!(app.pending_images.len(), 1);
+    assert_eq!(app.composer.pending_images.len(), 1);
     assert_eq!(app.status_notice(), Some("Model switch failed".to_string()));
 }
 

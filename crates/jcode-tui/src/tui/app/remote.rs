@@ -1120,7 +1120,7 @@ fn note_startup_submit_deferred(app: &mut App, reason: &'static str) {
     crate::logging::info(&format!(
         "Startup auto-submit deferred: {reason} (input_chars={}, pending_images={})",
         app.composer.input.chars().count(),
-        app.pending_images.len(),
+        app.composer.pending_images.len(),
     ));
 }
 
@@ -1199,7 +1199,7 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
         && !app.is_processing
         && !app.remote_model_switch_in_flight
         && !app.auth_catalog_refresh_pending
-        && (!app.composer.input.is_empty() || !app.pending_images.is_empty())
+        && (!app.composer.input.is_empty() || !app.composer.pending_images.is_empty())
     {
         app.submit_input_on_startup = false;
         app.startup_submit_deferred_reason = None;
@@ -1346,11 +1346,11 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
     if app.submit_input_on_startup && !app.is_processing {
         app.submit_input_on_startup = false;
         app.startup_submit_deferred_reason = None;
-        if !app.composer.input.is_empty() || !app.pending_images.is_empty() {
+        if !app.composer.input.is_empty() || !app.composer.pending_images.is_empty() {
             crate::logging::info(&format!(
                 "Startup auto-submit firing: input_chars={} pending_images={}",
                 app.composer.input.chars().count(),
-                app.pending_images.len(),
+                app.composer.pending_images.len(),
             ));
             let prepared = input::take_prepared_input(app);
             if let Err(error) = submit_prepared_remote_input(app, remote, prepared).await {

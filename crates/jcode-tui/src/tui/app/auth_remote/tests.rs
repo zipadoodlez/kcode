@@ -125,7 +125,7 @@ fn ssh_import_requires_explicit_consent_before_any_task_and_masks_private_input(
                 if !rejected.is_empty() {
                     assert_eq!(app.composer.input, "[hidden login input]");
                 }
-                assert!(app.pasted_contents.is_empty());
+                assert!(app.composer.pasted_contents.is_empty());
                 assert!(
                     !serde_json::to_string(&app.create_debug_snapshot())
                         .unwrap()
@@ -161,7 +161,7 @@ fn ssh_import_all_consent_cancel_paths_are_local_and_quit_is_preserved() {
             assert!(app.pending_login.is_none());
             assert_eq!(app.should_quit, matches!(cancel, "/quit" | "/exit"));
             assert!(app.composer.input.is_empty());
-            assert!(app.pasted_contents.is_empty());
+            assert!(app.composer.pasted_contents.is_empty());
         }
         app.handle_ssh_login_command("/login --import-local claude");
         app.handle_ssh_login_key(KeyCode::Char('c'), KeyModifiers::CONTROL, None);
@@ -293,7 +293,7 @@ fn ssh_login_callback_never_enters_composer_history_debug_or_paste_storage() {
         let secret = "http://localhost:1455/auth/callback?code=secret-callback&state=private-state";
         app.handle_paste(secret.into());
         assert_eq!(app.composer.input, "[hidden login input]");
-        assert!(app.pasted_contents.is_empty());
+        assert!(app.composer.pasted_contents.is_empty());
         assert!(
             !serde_json::to_string(&app.create_debug_snapshot())
                 .unwrap()
@@ -685,7 +685,7 @@ fn ssh_picker_paste_selects_visible_import_action_not_browser_login() {
                 app.handle_paste(query.clone());
                 assert!(app.remote_login.as_ref().unwrap().input.is_empty());
                 assert!(app.composer.input.is_empty());
-                assert!(app.pasted_contents.is_empty());
+                assert!(app.composer.pasted_contents.is_empty());
                 assert_eq!(app.inline_interactive_state.as_ref().unwrap().filter, query);
                 app.handle_ssh_login_key(KeyCode::Enter, KeyModifiers::NONE, None);
                 let login = app.remote_login.as_ref().unwrap();

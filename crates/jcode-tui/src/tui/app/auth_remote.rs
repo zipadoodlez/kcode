@@ -111,7 +111,7 @@ impl App {
         // Clear every generic input retention surface before accepting any secret.
         self.composer.input.clear();
         self.composer.cursor_pos = 0;
-        self.pasted_contents.clear();
+        self.composer.pasted_contents.clear();
         self.composer.clear_input_undo_history();
         self.inline_interactive_state = None;
         self.pending_login = Some(PendingLogin::Remote);
@@ -212,7 +212,7 @@ impl App {
         self.pending_login = None;
         self.composer.input.clear();
         self.composer.cursor_pos = 0;
-        self.pasted_contents.clear();
+        self.composer.pasted_contents.clear();
         self.composer.clear_input_undo_history();
     }
 

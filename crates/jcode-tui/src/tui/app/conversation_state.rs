@@ -737,8 +737,8 @@ impl App {
         // re-registering them if we cleared the registry here.
         self.clear_streaming_render_state();
         self.queued_messages.clear();
-        self.pasted_contents.clear();
-        self.pending_images.clear();
+        self.composer.pasted_contents.clear();
+        self.composer.pending_images.clear();
         self.active_skill = None;
         self.provider_session_id = None;
         self.session = new_session;

@@ -18,6 +18,10 @@ pub(super) struct Composer {
     pub(super) input_undo_stack: Vec<(String, usize)>,
     /// Tab-completion cycle: (base_input, suggestion_index).
     pub(super) tab_completion_state: Option<(String, usize)>,
+    /// Large pastes, shown as placeholders in `input` and expanded on submit.
+    pub(super) pasted_contents: Vec<String>,
+    /// Images (media_type, base64) attached to the next message.
+    pub(super) pending_images: Vec<(String, String)>,
 }
 
 impl Composer {

@@ -8,9 +8,9 @@
 fn attach_test_image(app: &mut App) {
     // Mirrors attach_image() in input.rs: push pending image, insert
     // "[image N]" placeholder at the cursor.
-    app.pending_images
+    app.composer.pending_images
         .push(("image/png".to_string(), "aGVsbG8=".to_string()));
-    let placeholder = format!("[image {}]", app.pending_images.len());
+    let placeholder = format!("[image {}]", app.composer.pending_images.len());
     let mut input = app.input().to_string();
     let pos = input.len();
     input.insert_str(pos, &placeholder);
@@ -28,7 +28,7 @@ fn test_image_placeholder_before_text_submits_as_user_turn_with_image() {
 
     assert!(app.is_processing, "placeholder + text should start a turn");
     assert!(
-        app.pending_images.is_empty(),
+        app.composer.pending_images.is_empty(),
         "submitting must consume pending images"
     );
     let submitted = app.session.messages.last().expect("submitted message");
@@ -55,7 +55,7 @@ fn test_image_placeholder_prefix_prevents_slash_command_routing() {
     // image attached), not a /help invocation.
     assert!(app.is_processing);
     assert!(app.help_scroll.is_none(), "help must not open");
-    assert!(app.pending_images.is_empty());
+    assert!(app.composer.pending_images.is_empty());
 }
 
 #[test]
@@ -79,7 +79,7 @@ fn test_slash_command_with_trailing_image_placeholder_routes_as_command() {
         last.content
     );
     assert_eq!(
-        app.pending_images.len(),
+        app.composer.pending_images.len(),
         1,
         "handled command leaves the pending image queued"
     );
@@ -101,5 +101,5 @@ fn test_unknown_skill_with_image_placeholder_reports_error_and_keeps_image() {
         "unexpected message: {}",
         last.content
     );
-    assert_eq!(app.pending_images.len(), 1);
+    assert_eq!(app.composer.pending_images.len(), 1);
 }

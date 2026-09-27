@@ -1664,8 +1664,8 @@ async fn handle_remote_key_internal(
                     app.clear_provider_messages();
                     app.clear_display_messages();
                     app.queued_messages.clear();
-                    app.pasted_contents.clear();
-                    app.pending_images.clear();
+                    app.composer.pasted_contents.clear();
+                    app.composer.pending_images.clear();
                     app.clear_streaming_render_state();
                     app.clear_live_usage_state();
                     // Full transcript discard: diagrams and side panel pages
@@ -1704,7 +1704,7 @@ async fn handle_remote_key_internal(
                     }
                     // Attached images belong to the forked prompt, not the
                     // parent's next message.
-                    let images = std::mem::take(&mut app.pending_images);
+                    let images = std::mem::take(&mut app.composer.pending_images);
                     let prepared = input::PreparedInput {
                         raw_input: prompt.to_string(),
                         expanded: prompt.to_string(),

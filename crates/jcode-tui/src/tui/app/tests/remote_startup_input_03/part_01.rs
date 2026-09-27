@@ -153,7 +153,7 @@ fn test_handle_paste_single_line() {
     // Small paste (< 5 lines) is inlined directly
     assert_eq!(app.input(), "hello world");
     assert_eq!(app.cursor_pos(), 11);
-    assert!(app.pasted_contents.is_empty()); // No placeholder storage needed
+    assert!(app.composer.pasted_contents.is_empty()); // No placeholder storage needed
 }
 
 #[test]
@@ -249,8 +249,8 @@ fn test_mixed_file_and_image_drop_keeps_file_and_attaches_image() {
     app.handle_paste(dropped);
 
     assert_eq!(app.input(), format!("\"{}\" [image 1]", file.display()));
-    assert_eq!(app.pending_images.len(), 1);
-    assert_eq!(app.pending_images[0].0, "image/png");
+    assert_eq!(app.composer.pending_images.len(), 1);
+    assert_eq!(app.composer.pending_images[0].0, "image/png");
 }
 
 #[test]
@@ -263,8 +263,8 @@ fn test_terminal_image_drop_attaches_image_instead_of_routing_as_a_skill() {
     app.handle_paste(image.display().to_string());
 
     assert_eq!(app.input(), "[image 1]");
-    assert_eq!(app.pending_images.len(), 1);
-    assert_eq!(app.pending_images[0].0, "image/png");
+    assert_eq!(app.composer.pending_images.len(), 1);
+    assert_eq!(app.composer.pending_images[0].0, "image/png");
     assert!(
         app.display_messages()
             .iter()
@@ -282,8 +282,8 @@ fn test_typed_absolute_image_path_promotes_before_slash_routing() {
 
     assert!(crate::tui::app::input::promote_dropped_images(&mut app));
     assert_eq!(app.input(), "[image 1]");
-    assert_eq!(app.pending_images.len(), 1);
-    assert_eq!(app.pending_images[0].0, "image/png");
+    assert_eq!(app.composer.pending_images.len(), 1);
+    assert_eq!(app.composer.pending_images[0].0, "image/png");
 }
 
 #[test]
@@ -298,7 +298,7 @@ fn test_incremental_terminal_drop_promotes_immediately_when_path_completes() {
     }
 
     assert_eq!(app.input(), "[image 1]");
-    assert_eq!(app.pending_images.len(), 1);
+    assert_eq!(app.composer.pending_images.len(), 1);
 }
 
 #[test]
@@ -309,7 +309,7 @@ fn test_handle_paste_multi_line() {
 
     // Small paste (< 5 lines) is inlined directly
     assert_eq!(app.input(), "line 1\nline 2\nline 3");
-    assert!(app.pasted_contents.is_empty());
+    assert!(app.composer.pasted_contents.is_empty());
 }
 
 #[test]
@@ -320,7 +320,7 @@ fn test_handle_paste_large() {
 
     // Large paste (5+ lines) uses placeholder
     assert_eq!(app.input(), "[pasted 5 lines]");
-    assert_eq!(app.pasted_contents.len(), 1);
+    assert_eq!(app.composer.pasted_contents.len(), 1);
 }
 
 #[test]
@@ -335,7 +335,7 @@ fn test_paste_again_expands_placeholder_in_place() {
 
     assert_eq!(app.input(), format!("{big}!"));
     assert_eq!(app.composer.cursor_pos, big.len());
-    assert!(app.pasted_contents.is_empty());
+    assert!(app.composer.pasted_contents.is_empty());
 }
 
 #[test]
@@ -346,7 +346,7 @@ fn test_paste_again_with_different_text_still_collapses() {
     app.handle_paste("f\ng\nh\ni\nj".to_string());
 
     assert_eq!(app.input(), "[pasted 5 lines][pasted 5 lines]");
-    assert_eq!(app.pasted_contents.len(), 2);
+    assert_eq!(app.composer.pasted_contents.len(), 2);
 }
 
 #[test]
@@ -368,7 +368,7 @@ fn test_paste_again_expands_matching_placeholder_not_newer_same_sized_paste() {
         crate::tui::app::input::expand_paste_placeholders(&mut app, &visible_input),
         format!("{first} {second}")
     );
-    assert_eq!(app.pasted_contents, vec![second]);
+    assert_eq!(app.composer.pasted_contents, vec![second]);
 }
 
 #[test]
@@ -377,11 +377,11 @@ fn test_paste_again_expands_only_most_recent_identical_placeholder() {
     let big = "a\nb\nc\nd\ne".to_string();
 
     app.set_input_for_test("[pasted 5 lines] [pasted 5 lines]");
-    app.pasted_contents = vec![big.clone(), big.clone()];
+    app.composer.pasted_contents = vec![big.clone(), big.clone()];
     app.handle_paste(big.clone());
 
     assert_eq!(app.input(), format!("[pasted 5 lines] {big}"));
-    assert_eq!(app.pasted_contents, vec![big]);
+    assert_eq!(app.composer.pasted_contents, vec![big]);
 }
 
 #[test]
@@ -399,7 +399,7 @@ fn test_paste_again_does_not_expand_an_edited_placeholder() {
         "[pasted 5 lines[pasted 5 lines]",
         "an edited placeholder must not be mistaken for the original"
     );
-    assert_eq!(app.pasted_contents.len(), 2);
+    assert_eq!(app.composer.pasted_contents.len(), 2);
 }
 
 #[test]
@@ -446,7 +446,7 @@ fn test_paste_expansion_on_submit() {
     }
 
     // Pasted contents should be cleared
-    assert!(app.pasted_contents.is_empty());
+    assert!(app.composer.pasted_contents.is_empty());
 }
 
 #[test]
@@ -461,7 +461,7 @@ fn test_multiple_pastes() {
 
     // Both small pastes inlined directly
     assert_eq!(app.input(), "first second\nline");
-    assert!(app.pasted_contents.is_empty());
+    assert!(app.composer.pasted_contents.is_empty());
 
     app.submit_input();
     // Display and model both get the same content (no expansion needed)

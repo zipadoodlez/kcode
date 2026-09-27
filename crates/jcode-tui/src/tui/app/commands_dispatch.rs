@@ -244,7 +244,7 @@ mod tests {
         app.composer.cursor_pos = 0;
         input::handle_paste(&mut app, path.clone());
         assert_eq!(app.composer.input, path);
-        assert!(app.pending_images.is_empty());
+        assert!(app.composer.pending_images.is_empty());
         assert!(input::parse_dropped_paths(&path).is_none());
         assert!(!input::promote_dropped_images(&mut app));
 

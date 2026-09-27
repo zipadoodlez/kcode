@@ -78,7 +78,7 @@ mod tests {
             app.cancel_ssh_login();
             assert!(!app.poll_ssh_login_onboarding());
             assert!(app.remote_login.is_none());
-            assert!(app.pasted_contents.is_empty());
+            assert!(app.composer.pasted_contents.is_empty());
             assert!(app.queued_messages.is_empty());
         });
     }
@@ -119,7 +119,7 @@ mod tests {
             assert!(app.poll_ssh_login_onboarding());
             app.handle_paste("yes".into());
             assert_eq!(app.composer.input, "[hidden login input]");
-            assert!(app.pasted_contents.is_empty());
+            assert!(app.composer.pasted_contents.is_empty());
             app.handle_ssh_login_key(KeyCode::Enter, KeyModifiers::NONE, None);
             assert_eq!(
                 app.inline_interactive_state.as_ref().unwrap().entries.len(),

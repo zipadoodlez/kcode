@@ -6,14 +6,14 @@ impl App {
     pub(super) fn apply_restored_reload_input(&mut self, restored: RestoredReloadInput) {
         self.composer.input = restored.input;
         self.composer.cursor_pos = restored.cursor;
-        self.pending_images = restored.pending_images;
+        self.composer.pending_images = restored.pending_images;
         self.submit_input_on_startup = restored.submit_on_restore
-            && (!self.composer.input.is_empty() || !self.pending_images.is_empty());
+            && (!self.composer.input.is_empty() || !self.composer.pending_images.is_empty());
         crate::logging::info(&format!(
             "Startup input restored: submit_on_restore={} input_chars={} pending_images={} queued_messages={} hidden_system={} => submit_input_on_startup={}",
             restored.submit_on_restore,
             self.composer.input.chars().count(),
-            self.pending_images.len(),
+            self.composer.pending_images.len(),
             restored.queued_messages.len(),
             restored.hidden_queued_system_messages.len(),
             self.submit_input_on_startup,
@@ -455,8 +455,6 @@ impl App {
             stream_buffer: StreamBuffer::new(),
             reasoning: Default::default(),
             maintenance: Default::default(),
-            pasted_contents: Vec::new(),
-            pending_images: Vec::new(),
             route_next_prompt_to_new_session: false,
             submit_input_on_startup: false,
             startup_submit_deferred_reason: None,
@@ -769,8 +767,6 @@ impl App {
             stream_buffer: StreamBuffer::new(),
             reasoning: Default::default(),
             maintenance: Default::default(),
-            pasted_contents: Vec::new(),
-            pending_images: Vec::new(),
             route_next_prompt_to_new_session: false,
             submit_input_on_startup: false,
             startup_submit_deferred_reason: None,

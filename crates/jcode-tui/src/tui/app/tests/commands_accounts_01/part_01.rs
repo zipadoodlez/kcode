@@ -125,15 +125,15 @@ fn slash_command_submit_retains_pending_images() {
     let _guard = runtime.enter();
     let mut app = create_test_app();
 
-    app.pending_images
+    app.composer.pending_images
         .push(("image/png".to_string(), "aGVsbG8=".to_string()));
     app.composer.input = "/help".to_string();
     app.submit_input();
 
     // Slash commands are handled locally and must not consume attached images;
     // the images stay pending and go out with the next real prompt submission.
-    assert_eq!(app.pending_images.len(), 1);
-    assert_eq!(app.pending_images[0].0, "image/png");
+    assert_eq!(app.composer.pending_images.len(), 1);
+    assert_eq!(app.composer.pending_images[0].0, "image/png");
     assert!(app.composer.input.is_empty());
 }
 

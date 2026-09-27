@@ -1858,7 +1858,7 @@ pub(in crate::tui::app) fn handle_server_event(
                     app.submit_input_on_startup = false;
                     app.composer.input.clear();
                     app.composer.cursor_pos = 0;
-                    app.pending_images.clear();
+                    app.composer.pending_images.clear();
                     app.set_status_notice("Reload complete - prompt preserved");
                 }
                 restore_pending_startup_prompt_echo(app);

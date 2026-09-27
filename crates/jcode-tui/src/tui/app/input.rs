@@ -870,12 +870,13 @@ pub(super) fn handle_text_paste(app: &mut App, text: String) {
     }
 
     let placeholder = paste_placeholder(&text);
-    app.pasted_contents.push(text);
+    app.composer.pasted_contents.push(text);
     insert_input_text(app, &placeholder);
 }
 
 fn expand_matching_paste(app: &mut App, text: &str) -> bool {
     let Some(content_index) = app
+        .composer
         .pasted_contents
         .iter()
         .rposition(|content| content == text)
@@ -887,7 +888,7 @@ fn expand_matching_paste(app: &mut App, text: &str) -> bool {
     // Placeholders only encode a line count. Skip placeholders belonging to
     // newer stored pastes with the same shape so equal-length, different text
     // cannot cause the wrong placeholder to expand.
-    let newer_same_placeholder_count = app.pasted_contents[content_index + 1..]
+    let newer_same_placeholder_count = app.composer.pasted_contents[content_index + 1..]
         .iter()
         .filter(|content| paste_placeholder(content) == placeholder)
         .count();
@@ -908,7 +909,7 @@ fn expand_matching_paste(app: &mut App, text: &str) -> bool {
         text,
     );
     app.composer.cursor_pos = placeholder_start + text.len();
-    app.pasted_contents.remove(content_index);
+    app.composer.pasted_contents.remove(content_index);
     app.reset_tab_completion();
     app.sync_model_picker_preview_from_input();
     true
@@ -1492,7 +1493,7 @@ pub(super) fn clear_input_for_escape(app: &mut App) {
 
 pub(super) fn expand_paste_placeholders(app: &mut App, input: &str) -> String {
     let mut result = input.to_string();
-    for content in app.pasted_contents.iter().rev() {
+    for content in app.composer.pasted_contents.iter().rev() {
         let placeholder = paste_placeholder(content);
         if let Some(pos) = result.rfind(&placeholder) {
             result.replace_range(pos..pos + placeholder.len(), content);
@@ -1522,7 +1523,9 @@ pub(super) fn retrieve_pending_message_for_edit(app: &mut App) -> bool {
     if let Some(msg) = app.interleave_message.take()
         && !msg.is_empty()
     {
-        app.pending_images.append(&mut app.interleave_images);
+        app.composer
+            .pending_images
+            .append(&mut app.interleave_images);
         parts.push(msg);
         had_pending = true;
     }
@@ -1584,7 +1587,7 @@ impl App {
     /// session history loads. See issues #267/#268/#76.
     pub(super) fn has_pending_startup_submission(&self) -> bool {
         self.submit_input_on_startup
-            && (!self.composer.input.trim().is_empty() || !self.pending_images.is_empty())
+            && (!self.composer.input.trim().is_empty() || !self.composer.pending_images.is_empty())
     }
 
     /// Folds this turn's guardrail-stop flag into the consecutive counter.
@@ -1993,7 +1996,7 @@ fn route_prompt_to_new_session_local(app: &mut App) -> bool {
         Err(error) => {
             app.composer.input = restored_raw;
             app.composer.cursor_pos = app.composer.input.len();
-            app.pending_images = restored_images;
+            app.composer.pending_images = restored_images;
             app.set_status_notice("Prompt launch failed");
             app.push_display_message(DisplayMessage::error(format!(
                 "Failed to launch prompt in a new session: {}",
@@ -2903,8 +2906,8 @@ pub(super) fn take_prepared_input(app: &mut App) -> PreparedInput {
     let raw_input = std::mem::take(&mut app.composer.input);
     app.record_prompt_history(&raw_input);
     let expanded = expand_paste_placeholders(app, &raw_input);
-    app.pasted_contents.clear();
-    let images = std::mem::take(&mut app.pending_images);
+    app.composer.pasted_contents.clear();
+    let images = std::mem::take(&mut app.composer.pending_images);
     app.composer.cursor_pos = 0;
     app.composer.clear_input_undo_history();
     PreparedInput {
@@ -2926,8 +2929,10 @@ pub(super) fn stage_local_interleave(
 
 fn attach_image(app: &mut App, media_type: String, base64_data: String) {
     let size_kb = base64_data.len() / 1024;
-    app.pending_images.push((media_type.clone(), base64_data));
-    let placeholder = format!("[image {}]", app.pending_images.len());
+    app.composer
+        .pending_images
+        .push((media_type.clone(), base64_data));
+    let placeholder = format!("[image {}]", app.composer.pending_images.len());
     app.composer.remember_input_undo_state();
     app.composer
         .input
@@ -3731,7 +3736,7 @@ impl App {
             self.push_display_message(DisplayMessage::system(notice));
             return;
         }
-        self.pasted_contents.clear();
+        self.composer.pasted_contents.clear();
         self.composer.cursor_pos = 0;
         self.composer.clear_input_undo_history();
         self.viewport.follow_chat_bottom(); // Reset to bottom and resume auto-scroll on new input
@@ -3888,7 +3893,7 @@ impl App {
             tool_data: None,
         });
         // Send expanded content (with actual pasted text) to model
-        let images = std::mem::take(&mut self.pending_images);
+        let images = std::mem::take(&mut self.composer.pending_images);
         if !images.is_empty() {
             crate::logging::info(&format!(
                 "Submitting with {} image(s): {}",

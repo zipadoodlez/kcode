@@ -130,10 +130,10 @@ impl App {
                     "current_turn_system_reminder_bytes": self.current_turn_system_reminder.as_ref().map(|value| value.len()).unwrap_or(0),
                 },
                 "clipboard_and_input_media": {
-                    "pasted_contents_count": self.pasted_contents.len(),
-                    "pasted_contents_bytes": estimate_string_vec_bytes(&self.pasted_contents),
-                    "pending_images_count": self.pending_images.len(),
-                    "pending_images_bytes": estimate_pending_images_bytes(&self.pending_images),
+                    "pasted_contents_count": self.composer.pasted_contents.len(),
+                    "pasted_contents_bytes": estimate_string_vec_bytes(&self.composer.pasted_contents),
+                    "pending_images_count": self.composer.pending_images.len(),
+                    "pending_images_bytes": estimate_pending_images_bytes(&self.composer.pending_images),
                 },
                 "images_and_views": {},
                 "remote_state": {

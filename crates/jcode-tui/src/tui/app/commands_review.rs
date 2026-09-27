@@ -290,8 +290,8 @@ pub(super) fn reset_current_session(app: &mut App) {
     app.swarm.plan_version = None;
     app.swarm.plan_swarm_id = None;
     app.queued_messages.clear();
-    app.pasted_contents.clear();
-    app.pending_images.clear();
+    app.composer.pasted_contents.clear();
+    app.composer.pending_images.clear();
     app.active_skill = None;
     app.improve_mode = None;
     let mut session = Session::create(None, None);
