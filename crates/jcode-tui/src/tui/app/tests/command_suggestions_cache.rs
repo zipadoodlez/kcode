@@ -84,7 +84,7 @@ fn advancing_the_epoch_forces_recomputation_for_identical_input() {
         tool_duration_ms: None,
         token_usage: None,
     });
-    app.advance_command_suggestions_epoch();
+    app.command_suggestions.advance_epoch();
 
     let after = app.command_suggestions();
     let signature = app.command_suggestions_signature();
@@ -160,7 +160,7 @@ fn measure_slash_palette_frame_cost() {
         let uncached_ms = started.elapsed().as_secs_f64() * 1000.0;
 
         // Cached: one build plus seven memo hits, as a real frame does.
-        app.advance_command_suggestions_epoch();
+        app.command_suggestions.advance_epoch();
         let started = Instant::now();
         for _ in 0..READS_PER_FRAME {
             let _ = app.command_suggestions();

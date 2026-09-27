@@ -1643,7 +1643,7 @@ pub(in crate::tui::app) fn handle_server_event(
             // supplies the authoritative snapshot.
             app.refresh_open_model_picker_after_catalog_update();
             app.remote_skills = skills;
-            app.invalidate_command_candidates_cache();
+            app.command_suggestions.invalidate_candidates_cache();
             app.remote_sessions = all_sessions;
             app.remote_client_count = client_count;
             app.remote_is_canary = is_canary;

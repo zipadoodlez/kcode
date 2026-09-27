@@ -12,7 +12,7 @@ fn slash_palette_remains_navigable_while_a_turn_is_streaming() {
 
     app.handle_key(KeyCode::Down, KeyModifiers::empty())
         .expect("navigate slash suggestions");
-    assert_eq!(app.command_suggestion_selected, 1);
+    assert_eq!(app.command_suggestions.selected, 1);
 
     app.handle_key(KeyCode::Enter, KeyModifiers::empty())
         .expect("accept slash suggestion");

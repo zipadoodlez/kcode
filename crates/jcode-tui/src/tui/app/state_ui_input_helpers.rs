@@ -3,6 +3,30 @@ use crate::tui::core;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+/// App-side command-suggestion state: the candidate and suggestion memo caches,
+/// the epoch bounding the suggestion cache's lifetime, and the selected row.
+/// One home; the completion behavior stays on `App`.
+#[derive(Default)]
+pub(super) struct CommandSuggestions {
+    pub(super) candidates_cache: std::cell::RefCell<Option<CommandCandidatesCache>>,
+    /// Per-input memo for `command_suggestions()`; see `CommandSuggestionsCache`.
+    pub(super) cache: std::cell::RefCell<Option<CommandSuggestionsCache>>,
+    /// Monotonic frame counter bounding the lifetime of `cache` to a single frame.
+    pub(super) epoch: std::cell::Cell<u64>,
+    /// Selected row in the visible command suggestion list.
+    pub(super) selected: usize,
+}
+
+impl CommandSuggestions {
+    pub(super) fn invalidate_candidates_cache(&self) {
+        *self.candidates_cache.borrow_mut() = None;
+    }
+
+    pub(crate) fn advance_epoch(&self) {
+        self.epoch.set(self.epoch.get().wrapping_add(1));
+    }
+}
+
 #[derive(Clone, Copy)]
 struct RegisteredCommand {
     name: &'static str,
@@ -324,7 +348,7 @@ impl App {
     }
 
     fn command_candidates(&self) -> Vec<(String, &'static str)> {
-        if let Some(cache) = self.command_candidates_cache.borrow().as_ref() {
+        if let Some(cache) = self.command_suggestions.candidates_cache.borrow().as_ref() {
             return cache.candidates.clone();
         }
 
@@ -363,14 +387,10 @@ impl App {
             }
         }
 
-        *self.command_candidates_cache.borrow_mut() = Some(CommandCandidatesCache {
+        *self.command_suggestions.candidates_cache.borrow_mut() = Some(CommandCandidatesCache {
             candidates: commands.clone(),
         });
         commands
-    }
-
-    pub(super) fn invalidate_command_candidates_cache(&self) {
-        *self.command_candidates_cache.borrow_mut() = None;
     }
 
     fn model_suggestion_candidates(&self) -> Vec<(String, &'static str)> {
@@ -1149,8 +1169,8 @@ impl App {
         // prefixes). Memoize on the exact input plus the guard state the
         // branches below consult, so any transition still recomputes.
         let signature = self.command_suggestions_signature();
-        let epoch = self.command_suggestions_epoch.get();
-        if let Some(cache) = self.command_suggestions_cache.borrow().as_ref()
+        let epoch = self.command_suggestions.epoch.get();
+        if let Some(cache) = self.command_suggestions.cache.borrow().as_ref()
             && cache.epoch == epoch
             && cache.signature == signature
             && cache.input == self.input
@@ -1159,7 +1179,7 @@ impl App {
         }
 
         let suggestions = self.command_suggestions_uncached(&signature);
-        *self.command_suggestions_cache.borrow_mut() = Some(CommandSuggestionsCache {
+        *self.command_suggestions.cache.borrow_mut() = Some(CommandSuggestionsCache {
             input: self.input.clone(),
             signature,
             epoch,
@@ -1171,10 +1191,6 @@ impl App {
     /// Advance the suggestion memo epoch, invalidating it. Called once per
     /// rendered frame so the memo only ever collapses reads *within* a frame
     /// and never serves data that predates a state change.
-    pub(crate) fn advance_command_suggestions_epoch(&self) {
-        self.command_suggestions_epoch
-            .set(self.command_suggestions_epoch.get().wrapping_add(1));
-    }
 
     /// Snapshot the non-input state that `command_suggestions` branches on
     /// before consulting the input buffer.
@@ -1236,10 +1252,11 @@ impl App {
     fn clamp_command_suggestion_selection(&mut self) -> Vec<(String, &'static str)> {
         let suggestions = self.command_suggestions();
         if suggestions.is_empty() {
-            self.command_suggestion_selected = 0;
+            self.command_suggestions.selected = 0;
         } else {
-            self.command_suggestion_selected = self
-                .command_suggestion_selected
+            self.command_suggestions.selected = self
+                .command_suggestions
+                .selected
                 .min(suggestions.len().saturating_sub(1));
         }
         suggestions
@@ -1252,8 +1269,8 @@ impl App {
         }
 
         let len = suggestions.len() as i32;
-        let selected = self.command_suggestion_selected as i32;
-        self.command_suggestion_selected = (selected + delta).rem_euclid(len) as usize;
+        let selected = self.command_suggestions.selected as i32;
+        self.command_suggestions.selected = (selected + delta).rem_euclid(len) as usize;
         true
     }
 
@@ -1294,7 +1311,7 @@ impl App {
 
     pub(super) fn accept_selected_command_suggestion(&mut self) -> bool {
         let suggestions = self.clamp_command_suggestion_selection();
-        let Some((cmd, _)) = suggestions.get(self.command_suggestion_selected).cloned() else {
+        let Some((cmd, _)) = suggestions.get(self.command_suggestions.selected).cloned() else {
             return false;
         };
         if cmd == self.input.trim() {
@@ -1305,7 +1322,7 @@ impl App {
         self.input = cmd;
         self.cursor_pos = self.input.len();
         self.tab_completion_state = None;
-        self.command_suggestion_selected = 0;
+        self.command_suggestions.selected = 0;
         self.sync_model_picker_preview_from_input();
         true
     }
@@ -1533,7 +1550,8 @@ impl App {
 
         // Apply first suggestion and start tracking the cycle
         let selected = self
-            .command_suggestion_selected
+            .command_suggestions
+            .selected
             .min(current_suggestions.len().saturating_sub(1));
         let (cmd, _) = &current_suggestions[selected];
         let base = self.input.clone();
@@ -1545,14 +1563,14 @@ impl App {
         }
         self.cursor_pos = self.input.len();
         self.tab_completion_state = Some((base, selected));
-        self.command_suggestion_selected = 0;
+        self.command_suggestions.selected = 0;
         true
     }
 
     /// Reset tab completion state (call when user types/modifies input)
     pub fn reset_tab_completion(&mut self) {
         self.tab_completion_state = None;
-        self.command_suggestion_selected = 0;
+        self.command_suggestions.selected = 0;
     }
 
     pub(super) fn remember_input_undo_state(&mut self) {

@@ -57,7 +57,7 @@ impl App {
             if let Ok(mut shared) = self.registry.skills().try_write() {
                 *shared = reloaded;
             }
-            self.invalidate_command_candidates_cache();
+            self.command_suggestions.invalidate_candidates_cache();
             // The header lists loaded skills; refresh it now rather than
             // waiting out the header cache TTL.
             crate::tui::ui::prepare::invalidate_header_prep_cache();

@@ -51,7 +51,7 @@ fn write_startup_skill(root: &std::path::Path, name: &str) {
 
 fn startup_skill_commands(app: &mut App, input: &str) -> Vec<String> {
     app.input = input.into();
-    app.advance_command_suggestions_epoch();
+    app.command_suggestions.advance_epoch();
     app.command_suggestions()
         .into_iter()
         .filter(|(_, help)| *help == "Activate skill")

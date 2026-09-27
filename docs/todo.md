@@ -218,7 +218,23 @@ Staged, each lands whole.
     names also live on other structs (`upstream_provider`,
     `provider_session_id`). Split along that seam before moving anything; do
     not lump the two into one sub-struct.
-  - Stage 9: `Input` (17 fields, 303 sites; `input.rs` is 4,176 lines).
+  - Stage 9: `Input`. Measured: 21 fields, ~1940 direct sites, 69 files, and
+    the names are hyper-common (`input`, `cursor_pos` also parameters, locals,
+    and fields on `backend`/`debug`/`session_picker`/`ui_input`). Split into
+    slices with the receiver-aware rename plus a call-site guard (`input()` and
+    `command_suggestion_selected()` are `TuiState` accessors).
+    - **Command suggestions landed:** `command_candidates_cache`,
+      `command_suggestions_cache`, `command_suggestions_epoch`,
+      `command_suggestion_selected` move into `state_ui_input_helpers.rs` as
+      `CommandSuggestions`, with the two methods that touch only them
+      (`advance_epoch`, `invalidate_candidates_cache`); `app_fields` fell 241 to
+      238.
+    - Remaining slices: composer text (`input`, `cursor_pos`, `stashed_input`,
+      `input_undo_stack`, `tab_completion_state`; 71 methods touch, 26 only) into
+      a `composer.rs` (this begins draining the 4,131-line `input.rs`);
+      prompt-history fields into `prompt_history.rs`; attachments/queue
+      (`pasted_contents`, `pending_images`, `interleave_*`, `queued_messages`,
+      `hidden_queued_system_messages`, `pending_soft_interrupt*`; 32/11).
   - Stage 10: transcript (13 fields, 170 sites), then session/server (18 fields,
     390 sites); sweep the ~121 remaining loose fields into their owners.
   - Stage 11: revisit `TuiState`. It is a 122-method trait with two impls, and

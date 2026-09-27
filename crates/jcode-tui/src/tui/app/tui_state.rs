@@ -741,11 +741,11 @@ impl crate::tui::TuiState for App {
     }
 
     fn advance_command_suggestions_epoch(&self) {
-        App::advance_command_suggestions_epoch(self)
+        self.command_suggestions.advance_epoch()
     }
 
     fn command_suggestion_selected(&self) -> usize {
-        self.command_suggestion_selected
+        self.command_suggestions.selected
     }
 
     fn prompt_history_search(&self) -> Option<crate::tui::PromptHistorySearchView> {

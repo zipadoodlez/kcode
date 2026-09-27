@@ -351,13 +351,13 @@ fn test_command_suggestion_arrow_and_ctrl_navigation_accepts_highlighted_row() {
 
     app.handle_key(KeyCode::Down, KeyModifiers::empty())
         .unwrap();
-    assert_eq!(app.command_suggestion_selected, 1);
+    assert_eq!(app.command_suggestions.selected, 1);
     app.handle_key(KeyCode::Char('k'), KeyModifiers::CONTROL)
         .unwrap();
-    assert_eq!(app.command_suggestion_selected, 0);
+    assert_eq!(app.command_suggestions.selected, 0);
     app.handle_key(KeyCode::Char('j'), KeyModifiers::CONTROL)
         .unwrap();
-    assert_eq!(app.command_suggestion_selected, 1);
+    assert_eq!(app.command_suggestions.selected, 1);
 
     let expected = suggestions[1].0.clone();
     app.handle_key(KeyCode::Enter, KeyModifiers::empty())
@@ -377,17 +377,17 @@ fn test_command_suggestion_navigation_moves_through_all_rows_and_allows_shift_ar
     for expected in 1..=crate::tui::app::COMMAND_SUGGESTION_VISIBLE_LIMIT {
         app.handle_key(KeyCode::Down, KeyModifiers::empty())
             .unwrap();
-        assert_eq!(app.command_suggestion_selected, expected);
+        assert_eq!(app.command_suggestions.selected, expected);
     }
 
     app.handle_key(KeyCode::Down, KeyModifiers::SHIFT).unwrap();
     assert_eq!(
-        app.command_suggestion_selected,
+        app.command_suggestions.selected,
         crate::tui::app::COMMAND_SUGGESTION_VISIBLE_LIMIT + 1
     );
     app.handle_key(KeyCode::Up, KeyModifiers::SHIFT).unwrap();
     assert_eq!(
-        app.command_suggestion_selected,
+        app.command_suggestions.selected,
         crate::tui::app::COMMAND_SUGGESTION_VISIBLE_LIMIT
     );
 
@@ -396,7 +396,7 @@ fn test_command_suggestion_navigation_moves_through_all_rows_and_allows_shift_ar
             .unwrap();
     }
     assert_eq!(
-        app.command_suggestion_selected,
+        app.command_suggestions.selected,
         crate::tui::app::COMMAND_SUGGESTION_VISIBLE_LIMIT
     );
 }
@@ -581,13 +581,13 @@ fn test_remote_command_suggestion_arrow_and_ctrl_navigation_accepts_highlighted_
 
     rt.block_on(app.handle_remote_key(KeyCode::Down, KeyModifiers::empty(), &mut remote))
         .unwrap();
-    assert_eq!(app.command_suggestion_selected, 1);
+    assert_eq!(app.command_suggestions.selected, 1);
     rt.block_on(app.handle_remote_key(KeyCode::Char('k'), KeyModifiers::CONTROL, &mut remote))
         .unwrap();
-    assert_eq!(app.command_suggestion_selected, 0);
+    assert_eq!(app.command_suggestions.selected, 0);
     rt.block_on(app.handle_remote_key(KeyCode::Char('j'), KeyModifiers::CONTROL, &mut remote))
         .unwrap();
-    assert_eq!(app.command_suggestion_selected, 1);
+    assert_eq!(app.command_suggestions.selected, 1);
 
     let expected = suggestions[1].0.clone();
     rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))

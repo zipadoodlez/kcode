@@ -835,13 +835,8 @@ pub struct App {
     display_edit_tool_message_count: usize,
     compacted_history_lazy: CompactedHistoryLazyState,
     input: String,
-    command_candidates_cache: RefCell<Option<CommandCandidatesCache>>,
-    /// Per-input memo for `command_suggestions()`; see
-    /// [`CommandSuggestionsCache`].
-    command_suggestions_cache: RefCell<Option<CommandSuggestionsCache>>,
-    /// Monotonic frame counter bounding the lifetime of
-    /// `command_suggestions_cache` to a single frame.
-    command_suggestions_epoch: std::cell::Cell<u64>,
+    // Command-suggestion memo caches, epoch, and selected row.
+    command_suggestions: state_ui_input_helpers::CommandSuggestions,
     cursor_pos: usize,
     // Chat viewport scroll state: offset, auto-scroll pause, prepend anchor,
     // bookmark, and typing scroll lock.
@@ -1320,8 +1315,6 @@ pub struct App {
     // Tab completion state: (base_input, suggestion_index)
     // base_input is the original input before cycling, suggestion_index is current position
     tab_completion_state: Option<(String, usize)>,
-    // Selected row in the visible command suggestion list.
-    command_suggestion_selected: usize,
     // Time when app started (for startup animations)
     app_started: Instant,
     // Whether the client terminal currently has focus. When the terminal window
