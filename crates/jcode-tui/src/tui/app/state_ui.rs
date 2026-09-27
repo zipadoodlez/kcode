@@ -44,25 +44,6 @@ impl App {
         }
     }
 
-    pub(super) fn note_client_focus(&mut self, force: bool) {
-        if crate::tui::is_ssh_remote() {
-            return;
-        }
-        let Some(session_id) = self.active_client_session_id() else {
-            return;
-        };
-        let session_id = session_id.to_string();
-
-        if !force
-            && self.last_client_focus_session_id.as_deref() == Some(session_id.as_str())
-            && self
-                .last_client_focus_recorded_at
-                .is_some_and(|last| last.elapsed() < Self::CLIENT_FOCUS_RECORD_DEBOUNCE)
-        {
-            return;
-        }
-    }
-
     pub(super) fn note_client_interaction(&mut self) {
         // Every key/mouse/paste event routes through here, which makes this the
         // one place that reliably knows the user is actively driving the UI.
@@ -77,9 +58,6 @@ impl App {
         // repaints about once a second -- the intermittent "can't scroll" bug.
         if !self.client_focused {
             self.set_client_focused(true);
-        }
-        if !crate::perf::tui_policy().enable_focus_change {
-            self.note_client_focus(false);
         }
     }
 
@@ -100,14 +78,7 @@ impl App {
             return false;
         }
         self.client_focused = focused;
-        if focused {
-            // Schedule an immediate differential frame so a newly-focused window
-            // catches up and resumes animation timing from "now".
-            self.note_client_focus(true);
-            true
-        } else {
-            false
-        }
+        focused
     }
 
     /// Whether a redraw is worth performing while the terminal is unfocused.

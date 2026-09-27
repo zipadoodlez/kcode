@@ -366,7 +366,6 @@ fn apply_terminal_event(
         Some(Ok(Event::FocusGained)) => {
             crate::tui::reapply_configured_terminal_modes_after_focus();
             let redraw = app.set_client_focused(true);
-            app.note_client_focus(true);
             Ok(redraw)
         }
         Some(Ok(Event::FocusLost)) => {

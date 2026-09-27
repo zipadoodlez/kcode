@@ -1360,7 +1360,6 @@ pub(in crate::tui::app) fn handle_server_event(
             remote.set_session_id(session_id.clone());
             app.remote_session_id = Some(session_id.clone());
             crate::set_current_session(&session_id);
-            app.note_client_focus(true);
             app.update_terminal_title();
             false
         }
@@ -1531,7 +1530,6 @@ pub(in crate::tui::app) fn handle_server_event(
             remote.set_session_id(session_id.clone());
             app.remote_session_id = Some(session_id.clone());
             crate::set_current_session(&session_id);
-            app.note_client_focus(true);
             let session_changed = prev_session_id.as_deref() != Some(session_id.as_str());
             // The initial Subscribe snapshot predates an early startup Message
             // sent on the same ordered connection. Adopting its session id must

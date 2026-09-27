@@ -1189,8 +1189,6 @@ pub struct App {
     /// Running and terminal background tasks shown beneath the pinned todo band.
     background_tasks: background_tasks::BackgroundTaskBand,
     last_side_panel_refresh: Option<Instant>,
-    last_client_focus_recorded_at: Option<Instant>,
-    last_client_focus_session_id: Option<String>,
     // Most recently focused side panel page, used to restore visibility when toggled off.
     last_side_panel_focus_id: Option<String>,
     // User explicitly hid the side panel with the side-panel toggle key. While set, incoming snapshots may update
@@ -1448,7 +1446,6 @@ impl App {
     /// retry (18k in one session) because retry loops kept resending against
     /// a dead credential.
     const CREDENTIAL_FAILURE_BREAKER_THRESHOLD: u32 = 3;
-    const CLIENT_FOCUS_RECORD_DEBOUNCE: Duration = Duration::from_secs(2);
     const KV_CACHE_OPTIMAL_OK_PCT: u8 = 85;
     const KV_CACHE_MIN_MISSED_TOKENS: u64 = 1_024;
     const KV_CACHE_MAX_MISS_SAMPLES: usize = 12;

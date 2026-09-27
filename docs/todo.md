@@ -357,6 +357,30 @@ Staged, each lands whole.
       red gate items are the pre-existing recorded ones (local.rs was already
       at 6 at HEAD, and neither new file appears in the panic/swallowed
       reports).
+      **Session/server recon (dead-weight removal landed; extraction not
+      started).** The region is not one concept, and the trait's "Session /
+      server" section (`tui/mod.rs:489`) is a presentation grab-bag, not a
+      field contract. The live connection object is loop-local
+      (`RemoteRunState`, `remote/reconnect.rs:17`); the `remote_*` fields on
+      `App` are the render-facing snapshot. Seams found: (1) server hello
+      snapshot, 7 fields, single writer in the History handler
+      (`server_events.rs:1501-1503`, `1647-1653`), never reset on session
+      switch; (2) startup phase, 2 fields, ops `set/clear_remote_startup_phase`
+      already hold the invariant; (3) history-recovery watchdog, 3 fields, the
+      whole state machine is `recover_stuck_remote_history`, ops
+      `begin/clear_remote_history_wait` exist; (4) `server_spawning` (op exists)
+      vs `auto_server_reload` (cached `display` config, not connection state);
+      (5) `current_message_id` and `remote_session_id` are turn/session
+      identity, not server info. The session-switch reset
+      (`server_events.rs:1545-1602`) and History handler are App-level
+      orchestration across ~12 clusters and must stay so (sub-structs expose
+      ops; App keeps the sequence). **Dead-weight removal:**
+      `last_client_focus_session_id`, `last_client_focus_recorded_at`,
+      `CLIENT_FOCUS_RECORD_DEBOUNCE`, and `note_client_focus` were residue from
+      `c4a95aa5` ("feat!: remove dictation"), which deleted the only body that
+      wrote the fields, leaving a no-op recorder with six call sites. Deleted;
+      `app_fields` 228 -> 226, baseline refreshed. Verified: lib suite identical
+      (1966/27), check, clippy, fmt, shape green.
   - Stage 11: revisit `TuiState`. It is a 122-method trait with two impls, and
     `TestState` (39 fields, 83 sites, 13 files) exists so render tests avoid
     constructing an `App`. Deleting it is a trade, decided last, once `App` is
