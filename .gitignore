@@ -13,12 +13,7 @@ __pycache__/
 /*.mp4
 /*.png
 
-# graphify: graph.json and GRAPH_REPORT.md travel with the repo. The incremental
-# cache, the daily pre-overwrite backups, the machine-specific
-# interpreter/root/label sidecars, and the HTML visualization (disabled for the
-# committed hooks in .graphifyrc) do not.
-graphify-out/*/
-graphify-out/manifest.json
-graphify-out/graph.html
-graphify-out/.graphify_*
-graphify-out/.rebuild.lock
+# graphify's graph is a derived, machine-local cache: AST plus docs, rebuilt by
+# the committed hooks. It is not tracked, because a committed copy is neither
+# reproducible (community assignment depends on the environment) nor current.
+graphify-out/

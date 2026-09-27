@@ -24,16 +24,13 @@ A compile or clippy failure is a real regression; do not commit past it.
 
 ## Knowledge graph
 
-`graphify-out/graph.json` is committed, so a clone gets the code graph without
-rebuilding it. The committed `.githooks/post-commit` and `post-checkout` rebuild
-it after each commit: AST-only (no API key), incremental over the files the
-commit touched. The rebuild is detached, so the refreshed graph lands in the
-next commit. `core.hooksPath` is local git config, so run
-`scripts/setup_git_hooks.sh` once per clone to point git at them.
-
-If you are not running the hook, run `graphify update .` before committing
-instead (about a minute on this tree). Use one or the other, not both: they are
-the same rebuild.
+`graphify-out/` is a local cache and is not tracked. Build it once per clone
+with `graphify update .` (about a minute on this tree, AST-only, no API key).
+After that the committed `.githooks/post-commit` and `post-checkout` rebuild it
+for free: incremental over the files the commit touched, and detached, so it
+never blocks a commit. `core.hooksPath` is local git config and does not travel
+with a clone, so run `scripts/setup_git_hooks.sh` once per clone to point git at
+the hooks.
 
 Query the graph instead of grepping for architecture questions:
 
