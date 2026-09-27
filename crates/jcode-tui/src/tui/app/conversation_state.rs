@@ -507,7 +507,7 @@ impl App {
     pub(super) fn set_swarm_feature_enabled(&mut self, enabled: bool) {
         self.swarm_enabled = enabled;
         if !enabled {
-            self.remote_swarm_members.clear();
+            self.swarm.members.clear();
         }
     }
 

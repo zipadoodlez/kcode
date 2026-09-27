@@ -286,9 +286,9 @@ pub(super) fn reset_current_session(app: &mut App) {
     app.clear_display_messages();
     app.clear_streaming_render_state();
     app.clear_live_usage_state();
-    app.swarm_plan_items.clear();
-    app.swarm_plan_version = None;
-    app.swarm_plan_swarm_id = None;
+    app.swarm.plan_items.clear();
+    app.swarm.plan_version = None;
+    app.swarm.plan_swarm_id = None;
     app.queued_messages.clear();
     app.pasted_contents.clear();
     app.pending_images.clear();

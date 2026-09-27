@@ -88,7 +88,7 @@ fn test_handle_server_event_swarm_status_announces_member_completion() {
         app.display_messages_version, version_before,
         "live swarm snapshots must not invalidate global transcript caches"
     );
-    assert_eq!(app.remote_swarm_members.len(), 3);
+    assert_eq!(app.swarm.members.len(), 3);
     assert_eq!(
         app.status_notice(),
         None,

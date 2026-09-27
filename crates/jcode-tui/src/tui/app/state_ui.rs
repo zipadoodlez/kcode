@@ -2172,8 +2172,8 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
             context_report.push_str("\nSwarm\n");
             context_report.push_str(&format!(
                 "- plan items: {}\n- remote members: {}\n- connected clients: {}\n",
-                app.swarm_plan_items.len(),
-                app.remote_swarm_members.len(),
+                app.swarm.plan_items.len(),
+                app.swarm.members.len(),
                 app.remote_client_count
                     .map(|count| count.to_string())
                     .unwrap_or_else(|| "n/a".to_string()),

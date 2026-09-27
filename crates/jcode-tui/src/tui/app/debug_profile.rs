@@ -244,9 +244,9 @@ impl App {
             .map(|value| value.capacity())
             .sum();
         let remote_swarm_members_json_bytes =
-            crate::process_memory::estimate_json_bytes(&self.remote_swarm_members);
+            crate::process_memory::estimate_json_bytes(&self.swarm.members);
         let swarm_plan_items_json_bytes =
-            crate::process_memory::estimate_json_bytes(&self.swarm_plan_items);
+            crate::process_memory::estimate_json_bytes(&self.swarm.plan_items);
         let session_picker = self
             .session_picker_overlay
             .as_ref()
@@ -456,9 +456,9 @@ impl App {
             "remote_state_extra": {
                 "remote_sessions_count": self.remote_sessions.len(),
                 "remote_sessions_bytes": remote_sessions_bytes,
-                "remote_swarm_members_count": self.remote_swarm_members.len(),
+                "remote_swarm_members_count": self.swarm.members.len(),
                 "remote_swarm_members_json_bytes": remote_swarm_members_json_bytes,
-                "swarm_plan_items_count": self.swarm_plan_items.len(),
+                "swarm_plan_items_count": self.swarm.plan_items.len(),
                 "swarm_plan_items_json_bytes": swarm_plan_items_json_bytes,
             },
             "images_and_views": {

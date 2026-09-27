@@ -1592,10 +1592,10 @@ pub(in crate::tui::app) fn handle_server_event(
                 }
                 app.remote_total_tokens = None;
                 app.remote_token_usage_totals = None;
-                app.remote_swarm_members.clear();
-                app.swarm_plan_items.clear();
-                app.swarm_plan_version = None;
-                app.swarm_plan_swarm_id = None;
+                app.swarm.members.clear();
+                app.swarm.plan_items.clear();
+                app.swarm.plan_version = None;
+                app.swarm.plan_swarm_id = None;
                 remote.reset_call_output_tokens_seen();
             }
             let model_catalog_snapshot = jcode_provider_core::ModelCatalogSnapshot::new(
@@ -2032,7 +2032,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 };
                 if let Some(self_id) = self_id.as_deref() {
                     let prev = app_mod::tui_state::filter_inline_swarm_subtree(
-                        &app.remote_swarm_members,
+                        &app.swarm.members,
                         self_id,
                     );
                     let next = app_mod::tui_state::filter_inline_swarm_subtree(&members, self_id);
@@ -2040,10 +2040,10 @@ pub(in crate::tui::app) fn handle_server_event(
                         app.set_status_notice(notice);
                     }
                 }
-                app.remote_swarm_members = members;
+                app.swarm.members = members;
                 persist_swarm_status_snapshot(app);
             } else {
-                app.remote_swarm_members.clear();
+                app.swarm.members.clear();
             }
             // The dedicated swarm page and strip render directly from this live
             // snapshot. The transcript uses its own stable summary signature, so
@@ -2067,9 +2067,10 @@ pub(in crate::tui::app) fn handle_server_event(
             // inline diagram. Same-swarm version regressions are ignored,
             // except near v1 (a deleted-and-recreated plan restarts its
             // version counter and must still render).
-            let stale_regression = app.swarm_plan_swarm_id.as_deref() == Some(swarm_id.as_str())
+            let stale_regression = app.swarm.plan_swarm_id.as_deref() == Some(swarm_id.as_str())
                 && app
-                    .swarm_plan_version
+                    .swarm
+                    .plan_version
                     .is_some_and(|current| version < current)
                 && version > 2;
             if !stale_regression {
@@ -2082,9 +2083,9 @@ pub(in crate::tui::app) fn handle_server_event(
                     summary,
                 };
                 let notice = snapshot.status_notice();
-                app.swarm_plan_swarm_id = Some(snapshot.swarm_id.clone());
-                app.swarm_plan_version = Some(snapshot.version);
-                app.swarm_plan_items = snapshot.items.clone();
+                app.swarm.plan_swarm_id = Some(snapshot.swarm_id.clone());
+                app.swarm.plan_version = Some(snapshot.version);
+                app.swarm.plan_items = snapshot.items.clone();
                 persist_swarm_plan_snapshot(
                     app,
                     snapshot.swarm_id,
@@ -2527,7 +2528,8 @@ pub(in crate::tui::app) fn handle_server_event(
                 // prose message to read. Keep the live card under the spawn call
                 // and insert a duplicate snapshot where the report arrived.
                 if let Some(mut member) = app
-                    .remote_swarm_members
+                    .swarm
+                    .members
                     .iter()
                     .find(|member| member.session_id == from_session)
                     .cloned()

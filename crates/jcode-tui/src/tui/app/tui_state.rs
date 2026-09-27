@@ -1241,7 +1241,7 @@ impl crate::tui::TuiState for App {
             Some(self.session.id.as_str())
         };
 
-        let todos_are_swarm_plan = self.swarm_enabled && !self.swarm_plan_items.is_empty();
+        let todos_are_swarm_plan = self.swarm_enabled && !self.swarm.plan_items.is_empty();
         let (todos, todo_goals) =
             if crate::config::config().display.pin_todos && !todos_are_swarm_plan {
                 // The pinned band is the single source of truth while enabled. Do
@@ -1250,7 +1250,7 @@ impl crate::tui::TuiState for App {
                 (Vec::new(), Vec::new())
             } else if todos_are_swarm_plan {
                 (
-                    crate::tui::info_widget::swarm_plan_todos(&self.swarm_plan_items),
+                    crate::tui::info_widget::swarm_plan_todos(&self.swarm.plan_items),
                     Vec::new(),
                 )
             } else {
@@ -1309,23 +1309,24 @@ impl crate::tui::TuiState for App {
             let (session_count, client_count, session_names, has_activity) =
                 if self.is_remote_client() {
                     // The compact swarm widget renders at most three rows. Keep the
-                    // complete snapshot in `remote_swarm_members`, but do not clone
+                    // complete snapshot in `swarm.members`, but do not clone
                     // every historical member (including large detail/todo payloads)
                     // on every frame just to discard almost all of them below.
-                    let has_members = !self.remote_swarm_members.is_empty();
+                    let has_members = !self.swarm.members.is_empty();
                     let session_names = if has_members {
                         Vec::new()
                     } else {
                         self.remote_sessions.iter().take(3).cloned().collect()
                     };
-                    members = self.remote_swarm_members.iter().take(3).cloned().collect();
+                    members = self.swarm.members.iter().take(3).cloned().collect();
                     let session_count = if has_members {
-                        self.remote_swarm_members.len()
+                        self.swarm.members.len()
                     } else {
                         self.remote_sessions.len()
                     };
                     let has_activity = self
-                        .remote_swarm_members
+                        .swarm
+                        .members
                         .iter()
                         .any(|m| m.status != "ready" || m.detail.is_some());
                     (
@@ -1394,17 +1395,19 @@ impl crate::tui::TuiState for App {
                 || client_count.is_some()
                 || !managed_members.is_empty()
             {
-                let plan_progress = if self.swarm_plan_items.is_empty() {
+                let plan_progress = if self.swarm.plan_items.is_empty() {
                     None
                 } else {
-                    let total = self.swarm_plan_items.len() as u32;
+                    let total = self.swarm.plan_items.len() as u32;
                     let done = self
-                        .swarm_plan_items
+                        .swarm
+                        .plan_items
                         .iter()
                         .filter(|item| matches!(item.status.as_str(), "completed" | "done"))
                         .count() as u32;
                     let running = self
-                        .swarm_plan_items
+                        .swarm
+                        .plan_items
                         .iter()
                         .filter(|item| matches!(item.status.as_str(), "running" | "running_stale"))
                         .count() as u32;
@@ -1419,10 +1422,11 @@ impl crate::tui::TuiState for App {
                     selected: if managed_members.is_empty() {
                         0
                     } else {
-                        self.swarm_panel_selected
+                        self.swarm
+                            .panel_selected
                             .min(managed_members.len().saturating_sub(1))
                     },
-                    focused: self.swarm_panel_focused,
+                    focused: self.swarm.panel_focused,
                     plan_progress,
                     spinner_frame: (self.animation_elapsed()
                         * jcode_tui_render::swarm_gallery::STRIP_SPINNER_FPS)
@@ -1644,7 +1648,7 @@ impl crate::tui::TuiState for App {
 
     fn inline_swarm_members(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
         if self.debug_force_inline_gallery {
-            return self.remote_swarm_members.clone();
+            return self.swarm.members.clone();
         }
         if !self.swarm_enabled {
             return Vec::new();
@@ -1660,7 +1664,7 @@ impl crate::tui::TuiState for App {
             Some(self.session.id.as_str())
         };
         match self_id {
-            Some(self_id) => filter_inline_swarm_subtree(&self.remote_swarm_members, self_id),
+            Some(self_id) => filter_inline_swarm_subtree(&self.swarm.members, self_id),
             // Session identity is not known yet (e.g. right after connect,
             // before the History event sets `remote_session_id`). Showing all
             // swarm members here caused the inline strip to flash on startup
@@ -1696,7 +1700,7 @@ impl crate::tui::TuiState for App {
             })
             .collect();
 
-        for member in &self.remote_swarm_members {
+        for member in &self.swarm.members {
             if spawned_ids.contains(member.session_id.as_str())
                 && included.insert(member.session_id.clone())
             {
@@ -1711,16 +1715,16 @@ impl crate::tui::TuiState for App {
         if count == 0 {
             0
         } else {
-            self.swarm_panel_selected.min(count - 1)
+            self.swarm.panel_selected.min(count - 1)
         }
     }
 
     fn swarm_panel_focused(&self) -> bool {
-        self.swarm_panel_focused
+        self.swarm.panel_focused
     }
 
     fn swarm_panel_full_page(&self) -> bool {
-        self.swarm_panel_full_page && self.inline_swarm_gallery_active()
+        self.swarm.panel_full_page && self.inline_swarm_gallery_active()
     }
 
     fn side_pane_ratio(&self) -> u8 {
@@ -1898,41 +1902,41 @@ impl App {
     /// Cycle chat → inline controls → full live swarm page → chat.
     pub(crate) fn cycle_swarm_panel_view(&mut self) -> SwarmPanelView {
         if !self.inline_swarm_gallery_active() {
-            self.swarm_panel_focused = false;
-            self.swarm_panel_full_page = false;
+            self.swarm.panel_focused = false;
+            self.swarm.panel_full_page = false;
             return SwarmPanelView::Chat;
         }
 
-        let next = match (self.swarm_panel_focused, self.swarm_panel_full_page) {
+        let next = match (self.swarm.panel_focused, self.swarm.panel_full_page) {
             (false, _) => SwarmPanelView::Controls,
             (true, false) => SwarmPanelView::FullPage,
             (true, true) => SwarmPanelView::Chat,
         };
         match next {
             SwarmPanelView::Chat => {
-                self.swarm_panel_focused = false;
-                self.swarm_panel_full_page = false;
+                self.swarm.panel_focused = false;
+                self.swarm.panel_full_page = false;
             }
             SwarmPanelView::Controls => {
-                self.swarm_panel_focused = true;
-                self.swarm_panel_full_page = false;
+                self.swarm.panel_focused = true;
+                self.swarm.panel_full_page = false;
             }
             SwarmPanelView::FullPage => {
-                self.swarm_panel_focused = true;
-                self.swarm_panel_full_page = true;
+                self.swarm.panel_focused = true;
+                self.swarm.panel_full_page = true;
             }
         }
         if next != SwarmPanelView::Chat {
             let count = self.inline_swarm_members().len();
-            self.swarm_panel_selected = self.swarm_panel_selected.min(count.saturating_sub(1));
+            self.swarm.panel_selected = self.swarm.panel_selected.min(count.saturating_sub(1));
         }
         next
     }
 
     #[allow(dead_code)]
     pub(crate) fn set_swarm_panel_focus(&mut self, focused: bool) {
-        self.swarm_panel_focused = focused && self.inline_swarm_gallery_active();
-        self.swarm_panel_full_page = false;
+        self.swarm.panel_focused = focused && self.inline_swarm_gallery_active();
+        self.swarm.panel_full_page = false;
     }
 
     /// Move the swarm panel selection by `delta` (e.g. +1 for next, -1 for
@@ -1942,9 +1946,9 @@ impl App {
         if count == 0 {
             return;
         }
-        let cur = self.swarm_panel_selected.min(count - 1) as isize;
+        let cur = self.swarm.panel_selected.min(count - 1) as isize;
         let next = (cur + delta).clamp(0, count as isize - 1);
-        self.swarm_panel_selected = next as usize;
+        self.swarm.panel_selected = next as usize;
     }
 
     /// Handle a key while the swarm panel is focused. Returns true if the key was
@@ -1958,7 +1962,7 @@ impl App {
         code: crossterm::event::KeyCode,
         modifiers: crossterm::event::KeyModifiers,
     ) -> bool {
-        if !self.swarm_panel_focused || !self.inline_swarm_gallery_active() {
+        if !self.swarm.panel_focused || !self.inline_swarm_gallery_active() {
             return false;
         }
         match swarm_panel_action_for_key(code, modifiers) {
@@ -1979,8 +1983,8 @@ impl App {
                 true
             }
             Some(SwarmPanelAction::Exit) => {
-                self.swarm_panel_focused = false;
-                self.swarm_panel_full_page = false;
+                self.swarm.panel_focused = false;
+                self.swarm.panel_full_page = false;
                 true
             }
             None => false,
@@ -1996,7 +2000,7 @@ impl App {
             return;
         }
         let order = crate::tui::info_widget::swarm_gallery::members_display_order(&members);
-        let idx = self.swarm_panel_selected.min(order.len().saturating_sub(1));
+        let idx = self.swarm.panel_selected.min(order.len().saturating_sub(1));
         let Some(session_id) = order.get(idx).cloned() else {
             self.set_status_notice("No swarm agent selected");
             return;

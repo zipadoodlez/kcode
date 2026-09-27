@@ -325,7 +325,7 @@ impl App {
             let raw = raw.trim();
             if raw == "off" {
                 self.debug_force_inline_gallery = false;
-                self.remote_swarm_members.clear();
+                self.swarm.members.clear();
                 "OK: inline swarm gallery cleared".to_string()
             } else {
                 let n: usize = raw.parse().unwrap_or(3);
@@ -341,7 +341,7 @@ impl App {
                     "Done: 4 tests passed, committed.",
                     "Waiting on coordinator approval for plan",
                 ];
-                self.remote_swarm_members = (0..n)
+                self.swarm.members = (0..n)
                     .map(|i| crate::protocol::SwarmMemberStatus {
                         session_id: format!("session_{:02}", i),
                         friendly_name: Some(names[i % names.len()].to_string()),
@@ -423,7 +423,7 @@ impl App {
                 serde_json::json!({
                     "session_count": self.remote_sessions.len(),
                     "client_count": self.remote_client_count,
-                    "members": self.remote_swarm_members,
+                    "members": self.swarm.members,
                 })
                 .to_string()
             } else {

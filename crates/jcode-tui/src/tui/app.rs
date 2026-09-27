@@ -94,6 +94,7 @@ mod state_ui_maintenance;
 mod state_ui_messages;
 mod state_ui_runtime;
 mod state_ui_storage;
+mod swarm;
 mod swarm_hint;
 mod terminal_liveness;
 mod terminal_setup_command;
@@ -1215,14 +1216,6 @@ pub struct App {
     remote_session_id: Option<String>,
     // All sessions on the server (remote mode only)
     remote_sessions: Vec<String>,
-    /// Cached image-set signature. Text-only transcript changes must not
-    /// invalidate this because rebuilding it materializes every image payload.
-    // Swarm member status snapshots (remote mode only)
-    remote_swarm_members: Vec<crate::protocol::SwarmMemberStatus>,
-    // Latest swarm plan snapshot (local or remote server event stream)
-    swarm_plan_items: Vec<crate::plan::PlanItem>,
-    swarm_plan_version: Option<u64>,
-    swarm_plan_swarm_id: Option<String>,
     // Number of connected clients (remote mode only)
     remote_client_count: Option<usize>,
     // Session to resume on connect (remote mode)
@@ -1239,15 +1232,11 @@ pub struct App {
     // Suppress duplicate memory injection messages for near-identical prompts.
     // Swarm feature toggle for this session
     swarm_enabled: bool,
+    // Swarm member/plan snapshots and the inline panel's selection.
+    swarm: swarm::Swarm,
     // Debug-only: force the inline swarm gallery active (bypasses spawn-mode
     // and members-present gating) so visual tests can drive it deterministically.
     debug_force_inline_gallery: bool,
-    // Currently selected agent index in the inline swarm panel (display order).
-    swarm_panel_selected: usize,
-    // Whether the inline swarm panel has keyboard focus (navigable list + detail).
-    swarm_panel_focused: bool,
-    // Whether the focused swarm panel owns the main transcript viewport.
-    swarm_panel_full_page: bool,
     // Diff display mode (toggle with Alt+G)
     diff_mode: crate::config::DiffDisplayMode,
     // Center all content (from config)

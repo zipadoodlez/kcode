@@ -22,7 +22,7 @@ pub(super) fn persist_swarm_status_snapshot(app: &mut App) {
         return;
     }
     app.session
-        .record_swarm_status_event(app.remote_swarm_members.clone());
+        .record_swarm_status_event(app.swarm.members.clone());
     let _ = app.session.save();
 }
 

@@ -30,9 +30,9 @@ fn swarm_plan_updates_state_without_adding_an_inline_diagram() {
         &mut remote,
     );
 
-    assert_eq!(app.swarm_plan_swarm_id.as_deref(), Some("test-swarm"));
-    assert_eq!(app.swarm_plan_version, Some(3));
-    assert_eq!(app.swarm_plan_items, vec![item]);
+    assert_eq!(app.swarm.plan_swarm_id.as_deref(), Some("test-swarm"));
+    assert_eq!(app.swarm.plan_version, Some(3));
+    assert_eq!(app.swarm.plan_items, vec![item]);
     assert_eq!(
         app.display_messages().len(),
         message_count,

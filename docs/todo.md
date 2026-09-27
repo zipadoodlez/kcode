@@ -126,6 +126,13 @@ Staged, each lands whole.
   - Shared ephemeral side-panel page. **Landed.** The four mirror-page builders
     now call `SidePanelPage::ephemeral_markdown`, so the page shape lives with
     the type instead of four times over.
+  - `Swarm`. **Landed** (App-side state only). Seven `swarm_*` fields (member
+    snapshots, plan, panel selection) move into `swarm.rs` as `Swarm`; the
+    panel navigation and subtree filtering stay on `App` because they read
+    config, session identity, and the transcript. `swarm_enabled`,
+    `debug_force_inline_gallery`, and `swarm_hint_shown_this_session` stay as
+    flags on `App`. `app_fields` fell 285 to 279. The cross-crate swarm/comm
+    condensation (phase 1) is separate and untouched.
   - Stage 4: `TodosView`. **Landed as the first extraction** (moved up from
     here). Nine `todos_view_*`/`pinned_todos_*`/`todo_card_rendered_hash` fields
     plus their sub-struct-only methods live in `todos_view.rs` as
