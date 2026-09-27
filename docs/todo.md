@@ -23,13 +23,14 @@ call from the maintainer before work starts; everything else is actionable.
 
 ## Code structure (largest payoff first)
 
-- [ ] **Re-core `App`** (`crates/jcode-tui/src/tui/app.rs`): 307 declared fields
-  (279 loose primitives), 57 `impl App` blocks across 158 files held together by
-  124 `use super::*` globs. Group the fields (Transcript, Input, Scroll, Provider,
-  Stream/status, Session/server, Workspace, Overlay, Onboarding, RenderState),
-  collapse the runtime-mode triplication (`AppRuntimeMode` + `is_remote` +
-  `is_replay` + `is_replay_runtime()`), then narrow each impl's imports. End
-  state: `TuiState` (122 methods, 77 `&dyn` sites) has no reason to exist.
+- [ ] **Re-core `App`** (`crates/jcode-tui/src/tui/app.rs`): 309 declared fields
+  (~287 loose), 57 `impl App` blocks across 53 files held together by 124
+  `use super::*` globs, ~3,092 direct `self.<field>` sites. Group the fields
+  into sub-structs that also own their methods, collapse the runtime-mode
+  triplication (`AppRuntimeMode` + `is_remote` + `is_replay` +
+  `is_replay_runtime()`), then narrow each impl's imports. End state: `TuiState`
+  (122 methods, 77 `&dyn` sites) has no reason to exist. Staged plan with
+  per-group cost: `plans/app-recoring.md`.
 - [ ] **Split `handle_client`** (`crates/jcode-app-core/src/server/client_lifecycle.rs:434`):
   28 args, body to :3041 (~2600 lines), 85 `Request::` arms, 15 sibling handler
   modules already exist for the arms. Introduce a request-context struct and move
