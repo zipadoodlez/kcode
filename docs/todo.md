@@ -317,7 +317,11 @@ Staged, each lands whole.
       only on the three recorded items.
     - **Stage 10b/10c, separate slices:** give the pinned background-task band
       and the overnight card writer their own homes out of
-      `state_ui_messages.rs`.
+      `state_ui_messages.rs`. Same shape as 10a: fields private, every mutation
+      through an op that keeps any derived state right, reads through one
+      accessor with no `len()`/`last()` shortcuts beside it, `pub(super)` and
+      `#[cfg(test)]` only where a caller actually needs it. Both touch the
+      transcript only through its public ops, so they can move without it.
   - Stage 11: revisit `TuiState`. It is a 122-method trait with two impls, and
     `TestState` (39 fields, 83 sites, 13 files) exists so render tests avoid
     constructing an `App`. Deleting it is a trade, decided last, once `App` is
