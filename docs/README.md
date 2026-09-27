@@ -41,4 +41,4 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 - Contributor process: `dev/post-change.md`, `dev/testing.md`, `dev/benchmarking.md`, `dev/dependencies.md`
 - Message voice (user-facing strings): `dev/message-voice.md`
 - What the fork removed: `what-was-removed.md`
-- What is still in flight: `wip.md`
+- What is still in flight: `todo.md`

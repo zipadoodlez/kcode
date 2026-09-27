@@ -19,7 +19,7 @@ Policy:
 
 The long-term goal is to drive this budget to zero as the migration-era
 re-export spine (base -> app-core -> tui -> root) is dismantled. See
-`docs/plans/codebase-reduction.md` tier 8 (crate spine and file layout).
+`docs/todo.md` (crate spine item).
 """
 
 from __future__ import annotations

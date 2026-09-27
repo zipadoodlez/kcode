@@ -358,7 +358,7 @@ hooks, and the provider catalog.
 
 ## Status
 
-Known gaps and work in progress are tracked in **[docs/wip.md](docs/wip.md)**:
+Known gaps and work in progress are tracked in **[docs/todo.md](docs/todo.md)**:
 plans in flight, committed ideas that have no doc yet, and open items in the
 code. That is the single list; this README does not duplicate it.
 

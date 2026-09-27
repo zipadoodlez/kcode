@@ -258,7 +258,7 @@ through the hook.
 
 ## Not implemented yet
 
-Real gaps in the hook surface, tracked in [../wip.md](../wip.md):
+Real gaps in the hook surface, tracked in [../todo.md](../todo.md):
 
 - **`turn_start` only ever fires with `SOURCE=chat`.** The config schema
   advertises `chat`/`resume`/`ambient`, but `resume` is never passed and
@@ -273,4 +273,4 @@ Real gaps in the hook surface, tracked in [../wip.md](../wip.md):
 - **Blocked tool calls are invisible to you.** `pre_tool` stderr goes to the
   model; nothing tells the user "your policy blocked 3 calls this session".
 - **Hook failures are log-only.** Observers log and drop.
-- **The env prefix is still `JCODE_`**, not `KCODE_` (see `wip.md`).
+- **The env prefix is still `JCODE_`**, not `KCODE_` (see `todo.md`).

@@ -57,7 +57,7 @@ the whole graph rather than leaving them to review:
 This runs locally via `scripts/check_guardrails.sh` (`onboarding state-space
 invariants`), and `crates/jcode-tui/src/tui/app/tests/onboarding_eval.rs` scores
 the flow's path budget. The graph's remaining follow-on work (extracting the
-transition table and an effect-interpreter split) is tracked in [../wip.md](../wip.md).
+transition table and an effect-interpreter split) is tracked in [../todo.md](../todo.md).
 
 ## Trying it locally
 

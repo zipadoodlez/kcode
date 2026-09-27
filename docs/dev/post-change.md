@@ -47,8 +47,7 @@ fix it. Do not `--update` to silence a ratchet you did not mean to move.
 - **Public behavior, commands, or config change**: update `docs/user/` and, if
   the mechanism changed, `docs/internals/`. Those docs describe the code as it
   is today; a doc that disagrees with the code is wrong.
-- **Introduced or removed a concept**: record it in `docs/wip.md` and, if it is
-  planned work, `docs/plans/`.
+- **Introduced or removed a concept**: record it in `docs/todo.md`.
 
 ## Environment
 
