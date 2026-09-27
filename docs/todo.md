@@ -133,6 +133,9 @@ Staged, each lands whole.
     `debug_force_inline_gallery`, and `swarm_hint_shown_this_session` stay as
     flags on `App`. `app_fields` fell 285 to 279. The cross-crate swarm/comm
     condensation (phase 1) is separate and untouched.
+  - `HotkeyFeedback`. **Landed.** The inline note slot, the persisted per-action
+    usage counters, and the unknown-chord tracking move into
+    `hotkey_feedback.rs` as `HotkeyFeedbackState`; `app_fields` fell 271 to 268.
   - Stage 4: `TodosView`. **Landed as the first extraction** (moved up from
     here). Nine `todos_view_*`/`pinned_todos_*`/`todo_card_rendered_hash` fields
     plus their sub-struct-only methods live in `todos_view.rs` as

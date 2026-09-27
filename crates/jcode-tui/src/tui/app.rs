@@ -1338,15 +1338,9 @@ pub struct App {
     terminal_setup_hint_shown_this_session: bool,
     // Whether the swarm-config-is-a-prompt hint has been surfaced this session.
     swarm_hint_shown_this_session: bool,
-    // Inline hotkey feedback: "pressed X → does Y" for rare known chords or
-    // "X isn't bound · nearest: ..." for unknown; same slot as learn_hint.
-    hotkey_feedback: Option<(String, Instant)>,
-    // Lazily-loaded persisted per-action hotkey usage counters.
-    hotkey_usage: Option<hotkey_feedback::HotkeyUsageState>,
-    // Per-chord counts of unknown-hotkey notices shown this session.
-    unknown_hotkey_seen: std::collections::HashMap<String, u32>,
-    // When the last unknown-hotkey notice was shown, for rate limiting.
-    last_unknown_hotkey_notice: Option<Instant>,
+    // Hotkey feedback: the inline note slot, persisted usage counters, and the
+    // unknown-chord notice tracking.
+    hotkey_feedback_state: hotkey_feedback::HotkeyFeedbackState,
     // Experimental feature warnings already shown in this session.
     experimental_feature_warnings_seen: HashSet<String>,
     // Active first-use experimental warning for the currently running tool.

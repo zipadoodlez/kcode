@@ -27,6 +27,17 @@ use crate::tui::keybind::{
     ToggleKeys, WorkspaceNavigationKeys,
 };
 
+/// App-side hotkey-feedback state: the inline note currently shown, the
+/// lazily-loaded per-action usage counters, and the unknown-chord tracking. One
+/// home, so the feedback paths read one struct.
+#[derive(Default)]
+pub(super) struct HotkeyFeedbackState {
+    pub(super) current: Option<(String, std::time::Instant)>,
+    pub(super) usage: Option<HotkeyUsageState>,
+    pub(super) unknown_seen: HashMap<String, u32>,
+    pub(super) last_unknown_notice: Option<std::time::Instant>,
+}
+
 /// An action is "familiar" once used this many times via its hotkey.
 const FAMILIAR_USES: u32 = 4;
 /// A familiar action becomes worth one reminder after this much disuse.
@@ -692,7 +703,10 @@ impl App {
             return false;
         }
         let registry = self.hotkey_registry(self.is_remote_client());
-        let usage = self.hotkey_usage.get_or_insert_with(load_state);
+        let usage = self
+            .hotkey_feedback_state
+            .usage
+            .get_or_insert_with(load_state);
         let listing = render_hotkeys_listing(&registry, usage, now_unix());
         self.push_display_message(jcode_tui_messages::DisplayMessage::system(listing));
         true
@@ -751,7 +765,10 @@ impl App {
         };
 
         let now = now_unix();
-        let state = self.hotkey_usage.get_or_insert_with(load_state);
+        let state = self
+            .hotkey_feedback_state
+            .usage
+            .get_or_insert_with(load_state);
         let stat = state.actions.entry(info.action.to_string()).or_default();
         let unfamiliar = is_unfamiliar(stat, now);
         stat.uses = stat.uses.saturating_add(1);
@@ -764,7 +781,7 @@ impl App {
         }
 
         if unfamiliar && !info.quiet {
-            self.hotkey_feedback = Some((
+            self.hotkey_feedback_state.current = Some((
                 format!("⌨ {} → {}", info.label(), info.description),
                 std::time::Instant::now(),
             ));
@@ -803,20 +820,24 @@ impl App {
 
         // Rate-limit: repeats of held keys and frantic mashing should not spam.
         let now = std::time::Instant::now();
-        if let Some(last) = self.last_unknown_hotkey_notice
+        if let Some(last) = self.hotkey_feedback_state.last_unknown_notice
             && now.duration_since(last).as_millis() < UNKNOWN_NOTICE_MIN_GAP_MS
         {
             return;
         }
         let chord = format_binding(&KeyBinding { code, modifiers });
-        let seen = self.unknown_hotkey_seen.entry(chord).or_insert(0);
+        let seen = self
+            .hotkey_feedback_state
+            .unknown_seen
+            .entry(chord)
+            .or_insert(0);
         if *seen >= UNKNOWN_NOTICE_MAX_PER_CHORD {
             return;
         }
         *seen += 1;
-        self.last_unknown_hotkey_notice = Some(now);
+        self.hotkey_feedback_state.last_unknown_notice = Some(now);
 
-        self.hotkey_feedback = Some((
+        self.hotkey_feedback_state.current = Some((
             unknown_chord_message(&registry, code, modifiers),
             std::time::Instant::now(),
         ));

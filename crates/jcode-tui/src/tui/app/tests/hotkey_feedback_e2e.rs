@@ -4,7 +4,7 @@
 #[test]
 fn unknown_ctrl_chord_sets_hotkey_feedback_with_suggestion() {
     let mut app = create_test_app();
-    assert!(app.hotkey_feedback.is_none());
+    assert!(app.hotkey_feedback_state.current.is_none());
 
     // Ctrl+M is unbound (no control-key handler claims 'm'); the nearest
     // known hotkey is Alt+M (side panel toggle).
@@ -12,7 +12,7 @@ fn unknown_ctrl_chord_sets_hotkey_feedback_with_suggestion() {
         .unwrap();
 
     let (message, _) = app
-        .hotkey_feedback
+        .hotkey_feedback_state.current
         .clone()
         .expect("unknown chord should set feedback");
     assert!(message.contains("Ctrl+M"), "{message}");
@@ -40,7 +40,7 @@ fn rare_known_hotkey_sets_feedback_and_repeats_stop_once_familiar() {
     app.handle_key(KeyCode::Char('t'), KeyModifiers::CONTROL)
         .unwrap();
     let (message, _) = app
-        .hotkey_feedback
+        .hotkey_feedback_state.current
         .clone()
         .expect("first use of a known hotkey should set feedback");
     assert!(message.contains("Ctrl+T"), "{message}");
@@ -51,11 +51,11 @@ fn rare_known_hotkey_sets_feedback_and_repeats_stop_once_familiar() {
         app.handle_key(KeyCode::Char('t'), KeyModifiers::CONTROL)
             .unwrap();
     }
-    app.hotkey_feedback = None;
+    app.hotkey_feedback_state.current = None;
     app.handle_key(KeyCode::Char('t'), KeyModifiers::CONTROL)
         .unwrap();
     assert!(
-        app.hotkey_feedback.is_none(),
+        app.hotkey_feedback_state.current.is_none(),
         "familiar hotkeys should not re-announce"
     );
 }
@@ -67,7 +67,7 @@ fn plain_typing_never_sets_hotkey_feedback() {
         .unwrap();
     app.handle_key(KeyCode::Char('I'), KeyModifiers::SHIFT)
         .unwrap();
-    assert!(app.hotkey_feedback.is_none());
+    assert!(app.hotkey_feedback_state.current.is_none());
     assert_eq!(app.input, "hI");
 }
 
@@ -80,7 +80,7 @@ fn unknown_chord_notice_is_rate_limited_per_chord() {
         app.handle_key(KeyCode::Char(';'), KeyModifiers::CONTROL)
             .unwrap();
         // Reset the time-based limiter so only the per-chord cap applies.
-        app.last_unknown_hotkey_notice = None;
+        app.hotkey_feedback_state.last_unknown_notice = None;
     }
-    assert!(app.unknown_hotkey_seen.get("Ctrl+;").copied().unwrap_or(0) <= 3);
+    assert!(app.hotkey_feedback_state.unknown_seen.get("Ctrl+;").copied().unwrap_or(0) <= 3);
 }
