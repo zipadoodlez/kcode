@@ -49,7 +49,7 @@ class Budget:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("binary", nargs="?", default="./target/release/jcode")
+    parser.add_argument("binary", nargs="?", default="./target/release/kcode")
     parser.add_argument("--runs", type=int, default=5, help="number of startup runs")
     parser.add_argument(
         "--check",

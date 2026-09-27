@@ -4,7 +4,7 @@
 # (two bash calls, exercises thought_signature replay) -> expect both outputs.
 set -uo pipefail
 
-JC=./target/selfdev/jcode
+JC=./target/selfdev/kcode
 CHAT_PROMPT='Reply with exactly: SMOKE_OK'
 TOOL_PROMPT="Run 'echo aa11' with bash, then in a SECOND separate bash call run 'echo bb22', then report both outputs."
 CHAT_TIMEOUT=90

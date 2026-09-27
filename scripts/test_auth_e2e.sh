@@ -28,7 +28,7 @@ if [[ "${JCODE_AUTH_TEST_JSON:-0}" == "1" ]]; then
   args+=(--json)
 fi
 
-(cd "$repo_root" && cargo run --bin jcode -- "${args[@]}")
+(cd "$repo_root" && cargo run --bin kcode -- "${args[@]}")
 
 echo ""
 echo "=== Auth E2E OK ==="

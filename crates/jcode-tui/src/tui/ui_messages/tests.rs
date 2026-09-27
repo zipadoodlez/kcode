@@ -1982,7 +1982,7 @@ fn render_tool_message_shows_intent_and_technical_preview_on_one_line() {
             id: "call_intent".to_string(),
             name: "bash".to_string(),
             input: serde_json::json!({
-                "command": "cargo test -p jcode render_background_task --lib",
+                "command": "cargo test -p kcode render_background_task --lib",
                 "intent": "Verify compact progress card"
             }),
             intent: Some("Verify compact progress card".to_string()),
@@ -2013,7 +2013,7 @@ fn render_tool_message_hides_technical_preview_by_default() {
             id: "call_intent".to_string(),
             name: "bash".to_string(),
             input: serde_json::json!({
-                "command": "cargo test -p jcode render_background_task --lib",
+                "command": "cargo test -p kcode render_background_task --lib",
                 "intent": "Verify compact progress card"
             }),
             intent: Some("Verify compact progress card".to_string()),

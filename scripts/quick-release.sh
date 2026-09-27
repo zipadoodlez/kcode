@@ -208,8 +208,8 @@ ensure_release_draft() {
 
 if [[ "$MODE" == "prepare-fast" ]]; then
     echo "▸ Refreshing the warm selfdev Linux build before the version bump..."
-    JCODE_REMOTE_CARGO=0 scripts/dev_cargo.sh build --profile selfdev -p jcode --bin jcode
-    source_bin="target/selfdev/jcode"
+    JCODE_REMOTE_CARGO=0 scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode
+    source_bin="target/selfdev/kcode"
     [[ -x "$source_bin" ]] || { echo "Error: selfdev binary not found: $source_bin" >&2; exit 1; }
     prepared_marker="target/selfdev/fast-release-prepared"
     {
@@ -228,8 +228,8 @@ if [[ "$MODE" == "prepare-fast-macos" ]]; then
     echo "▸ Refreshing the macOS arm64 build before the version bump..."
     JCODE_RELEASE_BUILD=1 JCODE_BUILD_SEMVER="$VERSION_NUM" \
         CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" \
-        cargo build --release --target aarch64-apple-darwin --bin jcode
-    source_bin="target/aarch64-apple-darwin/release/jcode"
+        cargo build --release --target aarch64-apple-darwin --bin kcode
+    source_bin="target/aarch64-apple-darwin/release/kcode"
     [[ -x "$source_bin" ]] || { echo "Error: macOS binary not found: $source_bin" >&2; exit 1; }
     file "$source_bin" | grep -q 'Mach-O 64-bit' || { echo "Error: bad macOS binary" >&2; exit 1; }
     prepared_marker="target/aarch64-apple-darwin/release/fast-macos-release-prepared"
@@ -263,7 +263,7 @@ fi
 if [[ "$MODE" == "fast-local" ]]; then
     echo "▸ Validating the prepared selfdev Linux build..."
     build_start=$(date +%s)
-    source_bin="target/selfdev/jcode"
+    source_bin="target/selfdev/kcode"
     [[ -x "$source_bin" ]] || { echo "Error: selfdev binary not found: $source_bin" >&2; exit 1; }
     prepared_marker="target/selfdev/fast-release-prepared"
     [[ -f "$prepared_marker" ]] || {
@@ -284,7 +284,7 @@ if [[ "$MODE" == "fast-local" ]]; then
     }
     actual_sha256="$(sha256sum "$source_bin" | cut -d' ' -f1)"
     [[ "$prepared_sha256" == "$actual_sha256" ]] || {
-        echo "Error: target/selfdev/jcode changed after fast-release preparation." >&2
+        echo "Error: target/selfdev/kcode changed after fast-release preparation." >&2
         exit 1
     }
     unexpected_release_files="$(git diff-tree --no-commit-id --name-only -r HEAD | grep -Ev '^(Cargo\.toml|Cargo\.lock|changelog/)' || true)"
@@ -345,7 +345,7 @@ fi
 
 if [[ "$MODE" == "fast-macos-local" ]]; then
     echo "▸ Validating the prepared macOS arm64 build..."
-    source_bin="target/aarch64-apple-darwin/release/jcode"
+    source_bin="target/aarch64-apple-darwin/release/kcode"
     prepared_marker="target/aarch64-apple-darwin/release/fast-macos-release-prepared"
     [[ -x "$source_bin" ]] || { echo "Error: macOS binary not found: $source_bin" >&2; exit 1; }
     [[ -f "$prepared_marker" ]] || {
@@ -397,8 +397,8 @@ LINUX_PID=$!
 (
     JCODE_RELEASE_BUILD=1 JCODE_BUILD_SEMVER="$VERSION_NUM" \
         CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" \
-        cargo build --release --target aarch64-apple-darwin --bin jcode 2>/dev/null
-    cp target/aarch64-apple-darwin/release/jcode "$DIST/jcode-macos-aarch64"
+        cargo build --release --target aarch64-apple-darwin --bin kcode 2>/dev/null
+    cp target/aarch64-apple-darwin/release/kcode "$DIST/jcode-macos-aarch64"
     chmod +x "$DIST/jcode-macos-aarch64"
     (cd "$DIST" && tar czf jcode-macos-aarch64.tar.gz jcode-macos-aarch64)
     echo "  ✅ macOS done ($(elapsed)s)"

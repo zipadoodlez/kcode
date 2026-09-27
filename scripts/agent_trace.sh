@@ -6,7 +6,7 @@ prompt=${1:-"Use the bash tool to run 'pwd', then use the ls tool to list the cu
 provider=${JCODE_PROVIDER:-auto}
 cargo_exec="$repo_root/scripts/cargo_exec.sh"
 
-if [[ ! -x "$repo_root/target/release/jcode" ]]; then
+if [[ ! -x "$repo_root/target/release/kcode" ]]; then
   (cd "$repo_root" && "$cargo_exec" build --release)
 fi
 

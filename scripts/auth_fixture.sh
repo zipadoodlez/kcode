@@ -87,13 +87,13 @@ copy_dir_contents() {
 }
 
 run_jcode() {
-  local binary_path="$repo_root/target/debug/jcode"
+  local binary_path="$repo_root/target/debug/kcode"
   (
     cd "$repo_root"
     if [[ -x "$binary_path" ]]; then
       env JCODE_HOME="$jcode_home" JCODE_RUNTIME_DIR="$runtime_dir" "$binary_path" "$@"
     else
-      env JCODE_HOME="$jcode_home" JCODE_RUNTIME_DIR="$runtime_dir" cargo run --bin jcode -- "$@"
+      env JCODE_HOME="$jcode_home" JCODE_RUNTIME_DIR="$runtime_dir" cargo run --bin kcode -- "$@"
     fi
   )
 }

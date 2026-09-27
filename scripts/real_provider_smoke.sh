@@ -37,7 +37,7 @@ fi
 
 echo ""
 echo "Test 3: End-to-end trace"
-if [[ ! -x "$repo_root/target/release/jcode" ]]; then
+if [[ ! -x "$repo_root/target/release/kcode" ]]; then
   (cd "$repo_root" && "$cargo_exec" build --release)
 fi
 

@@ -22,8 +22,8 @@
 # Options:
 #   --session <id>    Session to resume (default: session_hog_1783086065415_4ad4ae66cd43dd5b)
 #   --idle-secs <n>   Idle wait before the idle phase (default: 30)
-#   --binary <path>   Client binary (default: ~/.local/bin/jcode)
-#   --jcode <path>    jcode CLI used for `jcode debug ...` (default: ~/.local/bin/jcode)
+#   --binary <path>   Client binary (default: ~/.local/bin/kcode)
+#   --jcode <path>    jcode CLI used for `jcode debug ...` (default: ~/.local/bin/kcode)
 #   --cwd <path>      Working directory for the tester (default: $HOME)
 #   --skip-trim       Skip the forced-trim phase
 #   --keep            Do not stop the tester on exit (for manual inspection)
@@ -37,8 +37,8 @@ set -euo pipefail
 
 SESSION_ID="session_hog_1783086065415_4ad4ae66cd43dd5b"
 IDLE_SECS=30
-JCODE_BIN="${JCODE_BIN:-$HOME/.local/bin/jcode}"
-CLIENT_BIN="$HOME/.local/bin/jcode"
+JCODE_BIN="${JCODE_BIN:-$HOME/.local/bin/kcode}"
+CLIENT_BIN="$HOME/.local/bin/kcode"
 TESTER_CWD="$HOME"
 SKIP_TRIM=0
 KEEP_TESTER=0
@@ -64,7 +64,7 @@ die() { log "FATAL: $*"; exit 1; }
 
 command -v jq >/dev/null || die "jq is required"
 [[ -x "$JCODE_BIN" ]] || die "jcode CLI not found at $JCODE_BIN"
-[[ -x "$CLIENT_BIN" ]] || CLIENT_BIN="$(command -v jcode)" || die "client binary not found"
+[[ -x "$CLIENT_BIN" ]] || CLIENT_BIN="$(command -v kcode)" || die "client binary not found"
 [[ -f "$HOME/.jcode/sessions/${SESSION_ID}.json" ]] \
     || log "WARN: $HOME/.jcode/sessions/${SESSION_ID}.json not found; resume may create a new session"
 

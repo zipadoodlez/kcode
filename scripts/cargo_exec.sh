@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Thin wrapper used by the test/refactor helper scripts (test_fast.sh,
-# test_e2e.sh, refactor_phase1_verify.sh, agent_trace.sh, real_provider_smoke.sh).
+# Thin wrapper used by the test helper scripts (test_fast.sh, test_e2e.sh,
+# agent_trace.sh, real_provider_smoke.sh).
 #
 # Historically this exec'd bare `cargo "$@"`, which meant the test/check
 # workflows ran with NONE of the adaptive build controls the selfdev path gets

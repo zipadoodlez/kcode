@@ -178,11 +178,11 @@ run_jcode() {
     echo "JCODE_SANDBOX_BIN=$JCODE_SANDBOX_BIN is not executable" >&2
     return 1
   fi
-  local binary_path="$repo_root/target/debug/jcode"
+  local binary_path="$repo_root/target/debug/kcode"
   if [[ -x "$binary_path" ]]; then
     run_in_sandbox "$binary_path" "${prefix[@]}" "$@"
   else
-    run_in_sandbox cargo run --bin jcode -- "${prefix[@]}" "$@"
+    run_in_sandbox cargo run --bin kcode -- "${prefix[@]}" "$@"
   fi
 }
 
