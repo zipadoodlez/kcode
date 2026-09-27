@@ -357,10 +357,10 @@ Staged, each lands whole.
       red gate items are the pre-existing recorded ones (local.rs was already
       at 6 at HEAD, and neither new file appears in the panic/swallowed
       reports).
-      **Session/server recon (dead-weight removal landed; extraction not
-      started).** The region is not one concept, and the trait's "Session /
-      server" section (`tui/mod.rs:489`) is a presentation grab-bag, not a
-      field contract. The live connection object is loop-local
+      **Session/server recon (seam analysis, kept for reference; the slices
+      below have since landed).** The region is not one concept, and the
+      trait's "Session / server" section (`tui/mod.rs:489`) is a presentation
+      grab-bag, not a field contract. The live connection object is loop-local
       (`RemoteRunState`, `remote/reconnect.rs:17`); the `remote_*` fields on
       `App` are the render-facing snapshot. Seams found: (1) server hello
       snapshot, 7 fields, single writer in the History handler
@@ -431,6 +431,13 @@ Staged, each lands whole.
       it. app_fields 217 -> 209, baseline refreshed; impl_app_blocks 57,
       super_glob_imports 124. Verified: lib suite identical (1966/27), check,
       clippy, fmt, shape green.
+      **Still open from this region:** `server_spawning`/`auto_server_reload`
+      (seam 4; `auto_server_reload` is cached `display` config, not connection
+      state), `remote_session_id` (kept: active session identity, 86 sites),
+      `pending_local_transfer` (the local transfer prepare channel), and
+      `route_next_prompt_to_new_session` (the next-prompt arm toggle). The last
+      two are single fields with their own lifecycles and are not worth a
+      struct.
   - Stage 11: revisit `TuiState`. It is a 122-method trait with two impls, and
     `TestState` (39 fields, 83 sites, 13 files) exists so render tests avoid
     constructing an `App`. Deleting it is a trade, decided last, once `App` is
