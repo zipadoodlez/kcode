@@ -85,7 +85,8 @@ impl App {
 
     /// Final assistant text of the turn, used for the notification snippet.
     fn last_assistant_text_for_notification(&self) -> Option<String> {
-        self.display_messages
+        self.transcript
+            .messages()
             .iter()
             .rev()
             .find(|m| m.role == "assistant" && !m.content.trim().is_empty())

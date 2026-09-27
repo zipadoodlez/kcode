@@ -860,7 +860,7 @@ fn test_remote_done_waits_for_paced_backlog_and_one_live_frame() {
 
     assert!(app.is_processing, "Done must not force-flush the backlog");
     assert_eq!(app.deferred_stream_done_id, Some(42));
-    assert!(app.display_messages.iter().all(|message| {
+    assert!(app.transcript.messages().iter().all(|message| {
         message.role != "assistant" || !message.content.contains(response)
     }));
 
@@ -878,7 +878,7 @@ fn test_remote_done_waits_for_paced_backlog_and_one_live_frame() {
     rt.block_on(crate::tui::app::remote::handle_tick(&mut app, &mut remote));
     assert!(!app.is_processing);
     assert_eq!(app.deferred_stream_done_id, None);
-    assert!(app.display_messages.iter().any(|message| {
+    assert!(app.transcript.messages().iter().any(|message| {
         message.role == "assistant" && message.content == response
     }));
 }

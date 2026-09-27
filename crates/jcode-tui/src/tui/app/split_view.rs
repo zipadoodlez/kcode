@@ -89,7 +89,7 @@ impl App {
     fn refresh_split_view_cache(&mut self, force: bool) -> bool {
         let streaming_hash = hash_str(&self.streaming.streaming_text);
         if !force
-            && self.split_view.rendered_display_version == self.display_messages_version
+            && self.split_view.rendered_display_version == self.transcript.version()
             && self.split_view.rendered_streaming_hash == streaming_hash
         {
             return false;
@@ -97,7 +97,7 @@ impl App {
 
         self.split_view.markdown = build_split_view_markdown(self);
         self.split_view.updated_at_ms = now_ms();
-        self.split_view.rendered_display_version = self.display_messages_version;
+        self.split_view.rendered_display_version = self.transcript.version();
         self.split_view.rendered_streaming_hash = streaming_hash;
         true
     }

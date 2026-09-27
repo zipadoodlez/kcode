@@ -181,7 +181,7 @@ impl App {
         self.reasoning
             .turn_traces
             .push(crate::tui::app::TurnReasoningTrace {
-                display_index: self.display_messages.len(),
+                display_index: self.transcript.messages().len(),
                 // Snapshot the transcript height when this trace anchors. The trace
                 // begins life at the viewport tail; once the transcript grows a
                 // full viewport beyond this point the trace is provably off-screen

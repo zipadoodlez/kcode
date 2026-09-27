@@ -1195,7 +1195,7 @@ pub(super) fn handle_text_input(app: &mut App, text: &str) -> bool {
     );
     if app.composer.input.is_empty()
         && !app.is_processing
-        && (app.display_messages.is_empty() || onboarding_suggestions)
+        && (app.transcript.messages().is_empty() || onboarding_suggestions)
     {
         let mut chars = text.chars();
         if let (Some(c), None) = (chars.next(), chars.next())
@@ -2590,8 +2590,8 @@ pub(super) fn handle_expand_edit_badge_shortcut(app: &mut App, key: char) -> boo
     }
 
     let visible_expand_badge = crate::tui::ui::visible_expand_edit_badge();
-    let has_edit_tool_message = app.display_edit_tool_message_count > 0
-        || app.display_messages.iter().any(|message| {
+    let has_edit_tool_message = app.transcript.has_edit_tool_messages()
+        || app.transcript.messages().iter().any(|message| {
             message
                 .tool_data
                 .as_ref()
@@ -3457,8 +3457,10 @@ impl App {
         let mut removed = 0usize;
         for idx in sorted {
             let idx = idx.saturating_sub(removed);
-            if idx < self.display_messages.len() && self.display_messages[idx].role == "reasoning" {
-                self.display_messages.remove(idx);
+            if idx < self.transcript.messages().len()
+                && self.transcript.messages()[idx].role == "reasoning"
+            {
+                self.transcript.remove(idx);
                 removed += 1;
             }
         }
@@ -3616,11 +3618,12 @@ impl App {
         let to_remove = self.attempt_committed_assistant_messages;
         for _ in 0..to_remove {
             if self
-                .display_messages
+                .transcript
+                .messages()
                 .last()
                 .is_some_and(|m| m.role == "assistant")
             {
-                let idx = self.display_messages.len() - 1;
+                let idx = self.transcript.messages().len() - 1;
                 self.remove_display_message(idx);
             } else {
                 break;

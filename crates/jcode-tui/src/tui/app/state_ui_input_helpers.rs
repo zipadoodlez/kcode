@@ -1289,7 +1289,7 @@ impl App {
         if self.onboarding_flow_drives_welcome() {
             return true;
         }
-        if !self.display_messages.is_empty() || self.is_processing {
+        if !self.transcript.messages().is_empty() || self.is_processing {
             return false;
         }
         !self.suggestion_prompts().is_empty()
@@ -1396,7 +1396,7 @@ impl App {
             return vec![("Log in to get started".to_string(), "/login".to_string())];
         }
 
-        if (!self.display_messages.is_empty() || self.is_processing) && !preview_mode {
+        if (!self.transcript.messages().is_empty() || self.is_processing) && !preview_mode {
             return Vec::new();
         }
 

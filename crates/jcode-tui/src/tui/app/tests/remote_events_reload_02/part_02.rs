@@ -53,15 +53,15 @@ fn test_handle_remote_disconnect_preserves_pending_interleaves_for_reconnect() {
 fn test_replace_display_message_content_bumps_version() {
     let mut app = create_test_app();
     app.push_display_message(DisplayMessage::system("old reconnect status".to_string()));
-    let before = app.display_messages_version;
+    let before = app.transcript.version();
 
     assert!(app.replace_display_message_content(0, "new reconnect status".to_string()));
-    assert_eq!(app.display_messages[0].content, "new reconnect status");
-    assert_ne!(app.display_messages_version, before);
+    assert_eq!(app.transcript.messages()[0].content, "new reconnect status");
+    assert_ne!(app.transcript.version(), before);
 
-    let after_change = app.display_messages_version;
+    let after_change = app.transcript.version();
     assert!(app.replace_display_message_content(0, "new reconnect status".to_string()));
-    assert_eq!(app.display_messages_version, after_change);
+    assert_eq!(app.transcript.version(), after_change);
 }
 
 #[test]
@@ -89,7 +89,7 @@ fn test_replace_latest_tool_display_message_updates_latest_match_and_bumps_versi
         title: None,
         tool_data: Some(tool_call),
     });
-    let before = app.display_messages_version;
+    let before = app.transcript.version();
 
     assert!(app.replace_latest_tool_display_message(
         "tool-1",
@@ -106,15 +106,15 @@ fn test_replace_latest_tool_display_message_updates_latest_match_and_bumps_versi
         app.display_messages()[1].title.as_deref(),
         Some("new title")
     );
-    assert_ne!(app.display_messages_version, before);
+    assert_ne!(app.transcript.version(), before);
 
-    let after_change = app.display_messages_version;
+    let after_change = app.transcript.version();
     assert!(app.replace_latest_tool_display_message(
         "tool-1",
         Some("new title".to_string()),
         "final output".to_string(),
     ));
-    assert_eq!(app.display_messages_version, after_change);
+    assert_eq!(app.transcript.version(), after_change);
 }
 
 #[test]
@@ -134,7 +134,7 @@ fn test_replace_latest_tool_display_message_removes_background_lifecycle_card() 
             thought_signature: None,
         }),
     });
-    let before = app.display_messages_version;
+    let before = app.transcript.version();
 
     assert!(app.replace_latest_tool_display_message(
         "tool-bg",
@@ -144,7 +144,7 @@ fn test_replace_latest_tool_display_message_removes_background_lifecycle_card() 
     ));
 
     assert!(app.display_messages().is_empty());
-    assert_ne!(app.display_messages_version, before);
+    assert_ne!(app.transcript.version(), before);
 }
 
 #[test]
@@ -154,7 +154,7 @@ fn test_push_display_message_coalesces_repeated_single_line_system_messages() {
     app.push_display_message(DisplayMessage::system(
         "✓ Reconnected successfully.".to_string(),
     ));
-    let before = app.display_messages_version;
+    let before = app.transcript.version();
     app.push_display_message(DisplayMessage::system(
         "✓ Reconnected successfully.".to_string(),
     ));
@@ -167,7 +167,7 @@ fn test_push_display_message_coalesces_repeated_single_line_system_messages() {
         app.display_messages()[0].content,
         "✓ Reconnected successfully. [×3]"
     );
-    assert_ne!(app.display_messages_version, before);
+    assert_ne!(app.transcript.version(), before);
 }
 
 #[test]
@@ -189,14 +189,14 @@ fn test_remove_display_message_bumps_version() {
     app.push_display_message(DisplayMessage::system(
         "temporary reconnect status".to_string(),
     ));
-    let before = app.display_messages_version;
+    let before = app.transcript.version();
 
     let removed = app
         .remove_display_message(0)
         .expect("message should be removed");
     assert_eq!(removed.content, "temporary reconnect status");
-    assert!(app.display_messages.is_empty());
-    assert_ne!(app.display_messages_version, before);
+    assert!(app.transcript.messages().is_empty());
+    assert_ne!(app.transcript.version(), before);
 }
 
 #[test]
@@ -231,16 +231,18 @@ fn test_incremental_display_message_counts_match_full_recompute() {
     app.remove_display_message(0);
     app.remove_display_message(5);
 
-    let incremental_user = app.display_user_message_count;
-    let incremental_edit = app.display_edit_tool_message_count;
+    let incremental_user = app.transcript.user_message_count();
+    let incremental_edit = app.transcript.edit_tool_message_count();
 
     let expected_user = app
-        .display_messages
+        .transcript
+        .messages()
         .iter()
         .filter(|m| m.effective_role() == "user")
         .count();
     let expected_edit = app
-        .display_messages
+        .transcript
+        .messages()
         .iter()
         .filter(|m| {
             m.tool_data

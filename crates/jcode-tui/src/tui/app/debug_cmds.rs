@@ -190,7 +190,7 @@ impl App {
             serde_json::json!({
                 "processing": self.is_processing,
                 "messages": self.messages.len(),
-                "display_messages": self.display_messages.len(),
+                "display_messages": self.transcript.messages().len(),
                 "input": self.composer.input,
                 "cursor_pos": self.composer.cursor_pos,
                 "scroll_offset": self.viewport.scroll_offset,
@@ -259,7 +259,7 @@ impl App {
             let new_string = (0..24)
                 .map(|idx| format!("new fixture line {idx}\n"))
                 .collect::<String>();
-            self.display_messages = vec![
+            self.transcript.set_all(vec![
                 DisplayMessage::user("please edit demo.txt"),
                 DisplayMessage::tool(
                     "Edited demo.txt".to_string(),
@@ -275,7 +275,7 @@ impl App {
                         thought_signature: None,
                     },
                 ),
-            ];
+            ]);
             self.bump_display_messages_version();
             self.diff_mode = crate::config::DiffDisplayMode::Inline;
             self.viewport.scroll_offset = 0;
@@ -286,18 +286,18 @@ impl App {
             serde_json::json!({
                 "ok": true,
                 "diff_mode": format!("{:?}", self.diff_mode),
-                "display_edit_tool_message_count": self.display_edit_tool_message_count,
+                "display_edit_tool_message_count": self.transcript.edit_tool_message_count(),
                 "input": self.composer.input,
             })
             .to_string()
         } else if cmd == "expand-badge-state" {
             serde_json::json!({
                 "diff_mode": format!("{:?}", self.diff_mode),
-                "display_edit_tool_message_count": self.display_edit_tool_message_count,
+                "display_edit_tool_message_count": self.transcript.edit_tool_message_count(),
                 "input": self.composer.input,
                 "cursor_pos": self.composer.cursor_pos,
                 "status_notice": self.status_notice.as_ref().map(|(text, _)| text),
-                "display_messages": self.display_messages.len(),
+                "display_messages": self.transcript.messages().len(),
             })
             .to_string()
         } else if cmd == "picker" || cmd == "picker:state" {
@@ -473,7 +473,8 @@ impl App {
             }
         } else if cmd == "last_response" {
             // Get last assistant message
-            self.display_messages
+            self.transcript
+                .messages()
                 .iter()
                 .rev()
                 .find(|m| m.role == "assistant" || m.role == "error")
@@ -482,7 +483,8 @@ impl App {
         } else if cmd == "history" {
             // Return all messages as JSON
             let msgs: Vec<serde_json::Value> = self
-                .display_messages
+                .transcript
+                .messages()
                 .iter()
                 .map(|m| {
                     serde_json::json!({

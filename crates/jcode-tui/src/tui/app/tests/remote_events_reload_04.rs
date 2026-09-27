@@ -1902,7 +1902,7 @@ fn test_debug_command_message_respects_queue_mode() {
     // provider messages are not retained in `app.messages`.
     assert!(app.pending_turn);
     assert_eq!(app.messages.len(), 0);
-    assert_eq!(app.display_messages.len(), 1);
+    assert_eq!(app.transcript.messages().len(), 1);
     assert_eq!(app.session.messages.len(), initial_session_messages + 1);
     let submitted_message = app
         .session
@@ -1916,7 +1916,7 @@ fn test_debug_command_message_respects_queue_mode() {
     // Reset for next test
     app.pending_turn = false;
     app.messages.clear();
-    app.display_messages.clear();
+    app.transcript.clear();
     app.session.messages.clear();
 
     // Test 2: When processing with queue_mode=true, should queue
@@ -2253,7 +2253,8 @@ fn test_externally_started_turn_adopts_processing_state_and_settles_on_done() {
     assert!(matches!(app.status, ProcessingStatus::Idle));
     assert!(app.processing_started.is_none());
     assert!(
-        app.display_messages
+        app.transcript
+            .messages()
             .iter()
             .any(|message| message.role == "assistant"
                 && message.content.contains("Wake turn streaming text")),

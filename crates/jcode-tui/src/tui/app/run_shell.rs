@@ -333,7 +333,7 @@ impl App {
         let mut remote_state = remote::RemoteRunState::default();
 
         'outer: loop {
-            if self.display_messages.is_empty() {
+            if self.transcript.messages().is_empty() {
                 if self.server_spawning {
                     self.set_remote_startup_phase(super::RemoteStartupPhase::StartingServer);
                 } else {

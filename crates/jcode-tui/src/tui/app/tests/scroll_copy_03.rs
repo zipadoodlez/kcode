@@ -114,7 +114,7 @@ fn test_scroll_render_scrolled_up() {
 fn test_prompt_preview_reserves_rows_without_overwriting_visible_history() {
     let _render_lock = scroll_render_test_lock();
     let mut app = create_test_app();
-    app.display_messages = vec![
+    app.transcript.set_all(vec![
         DisplayMessage {
             role: "user".to_string(),
             content: "This is a deliberately long prompt preview that should wrap into two preview rows at the top of the viewport".to_string(),
@@ -131,7 +131,7 @@ fn test_prompt_preview_reserves_rows_without_overwriting_visible_history() {
             title: None,
             tool_data: None,
         },
-    ];
+    ]);
     app.bump_display_messages_version();
     app.viewport.scroll_offset = 0;
     app.viewport.auto_scroll_paused = false;
@@ -725,7 +725,7 @@ fn test_history_anchor_keeps_distance_from_bottom_after_prepend() {
 
     // Grow the transcript (older content prepended) and re-render. The resolved
     // scroll must keep the same distance from the bottom, not snap to the top.
-    app.display_messages.insert(
+    app.transcript.insert(
         0,
         DisplayMessage {
             role: "assistant".to_string(),
@@ -778,7 +778,7 @@ fn test_history_anchor_reconciles_into_scroll_offset_after_render() {
     assert!(app.viewport.pending_history_anchor.is_some());
 
     // Prepend + render so the resolved scroll is published, then reconcile.
-    app.display_messages.insert(
+    app.transcript.insert(
         0,
         DisplayMessage {
             role: "assistant".to_string(),
@@ -1400,10 +1400,10 @@ fn test_click_on_swarm_expand_badge_toggles_tldr_collapse() {
     let body = "The flaky test was caused by a race in the setup helper. \
                 I rewrote it to use a barrier and verified 200 consecutive runs pass.";
     let content = jcode_tui_messages::encode_collapsible_swarm_content("fixed the flaky test", body);
-    app.display_messages = vec![
+    app.transcript.set_all(vec![
         DisplayMessage::user("hi"),
         DisplayMessage::swarm("DM from sheep", content),
-    ];
+    ]);
     app.bump_display_messages_version();
     app.viewport.scroll_offset = 0;
     app.viewport.auto_scroll_paused = false;
@@ -1463,14 +1463,14 @@ fn test_click_on_swarm_expand_badge_toggles_tldr_collapse() {
     // A click on the tldr text (left of the badge) must NOT toggle.
     click(&mut app, badge_col.saturating_sub(6), badge_row);
     assert!(
-        jcode_tui_messages::parse_collapsible_swarm_content(&app.display_messages[1].content)
+        jcode_tui_messages::parse_collapsible_swarm_content(&app.transcript.messages()[1].content)
             .is_some_and(|parsed| !parsed.expanded),
         "click left of the badge must not expand the card"
     );
 
     click(&mut app, badge_col + 2, badge_row);
     let parsed =
-        jcode_tui_messages::parse_collapsible_swarm_content(&app.display_messages[1].content)
+        jcode_tui_messages::parse_collapsible_swarm_content(&app.transcript.messages()[1].content)
             .expect("content stays collapsible after toggle");
     assert!(parsed.expanded, "badge click must expand the card");
     assert_eq!(app.status_notice(), Some("Swarm message expanded".to_string()));
@@ -1504,7 +1504,7 @@ fn test_click_on_swarm_expand_badge_toggles_tldr_collapse() {
         collapse_badge.expect("collapse badge must be visible in the frame");
     click(&mut app, collapse_col + 2, collapse_row);
     assert!(
-        jcode_tui_messages::parse_collapsible_swarm_content(&app.display_messages[1].content)
+        jcode_tui_messages::parse_collapsible_swarm_content(&app.transcript.messages()[1].content)
             .is_some_and(|parsed| !parsed.expanded),
         "collapse badge click must fold the card back down"
     );

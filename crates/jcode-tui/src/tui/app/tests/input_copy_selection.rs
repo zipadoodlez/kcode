@@ -219,14 +219,14 @@ fn test_input_composer_soft_wrapped_selection_copies_unwrapped_text() {
 fn test_chat_drag_into_composer_clamps_to_chat_pane() {
     let _render_lock = scroll_render_test_lock();
     let mut app = create_test_app();
-    app.display_messages = vec![DisplayMessage {
+    app.transcript.set_all(vec![DisplayMessage {
         role: "user".to_string(),
         content: "transcript prompt line".to_string(),
         tool_calls: vec![],
         duration_secs: None,
         title: None,
         tool_data: None,
-    }];
+    }]);
     app.bump_display_messages_version();
     app.composer.input = "draft under composition".to_string();
     app.composer.cursor_pos = app.composer.input.len();

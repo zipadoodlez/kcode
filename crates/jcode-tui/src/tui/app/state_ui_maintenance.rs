@@ -84,19 +84,12 @@ impl App {
     ) {
         let title = Self::client_maintenance_card_title(action);
         if let Some(idx) = self
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .rposition(|message| Self::is_client_maintenance_message(message, &title))
         {
-            let message = &mut self.display_messages[idx];
-            let title_changed = message.title.as_deref() != Some(title.as_str());
-            if title_changed {
-                message.title = Some(title);
-            }
-            if message.content != content || title_changed {
-                message.content = content;
-                self.bump_display_messages_version();
-            }
+            self.replace_display_message_title_and_content(idx, Some(title), content);
         } else {
             self.push_display_message(DisplayMessage::system(content).with_title(title));
         }
@@ -108,13 +101,14 @@ impl App {
     ) -> bool {
         let title = Self::client_maintenance_card_title(action);
         let Some(idx) = self
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .rposition(|message| Self::is_client_maintenance_message(message, &title))
         else {
             return false;
         };
-        self.display_messages.remove(idx);
+        self.transcript.remove(idx);
         self.bump_display_messages_version();
         true
     }

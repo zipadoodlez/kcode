@@ -536,11 +536,11 @@ impl App {
 
 impl crate::tui::TuiState for App {
     fn display_messages(&self) -> &[DisplayMessage] {
-        &self.display_messages
+        self.transcript.messages()
     }
 
     fn display_user_message_count(&self) -> usize {
-        self.display_user_message_count
+        self.transcript.user_message_count()
     }
 
     fn compacted_hidden_user_prompts(&self) -> usize {
@@ -548,11 +548,11 @@ impl crate::tui::TuiState for App {
     }
 
     fn has_display_edit_tool_messages(&self) -> bool {
-        self.display_edit_tool_message_count > 0
+        self.transcript.has_edit_tool_messages()
     }
 
     fn display_messages_version(&self) -> u64 {
-        self.display_messages_version
+        self.transcript.version()
     }
 
     fn streaming_text(&self) -> &str {
@@ -772,7 +772,7 @@ impl crate::tui::TuiState for App {
         // Restored/resumed clients often have a full transcript but no stream event in this
         // process yet. Treat those as already idle so reopening many historical sessions does not
         // spend the first warm-up window rerendering large static transcripts at idle FPS.
-        if !self.display_messages.is_empty() && !self.is_processing {
+        if !self.transcript.messages().is_empty() && !self.is_processing {
             return Some(crate::tui::REDRAW_DEEP_IDLE_AFTER + std::time::Duration::from_secs(1));
         }
 
@@ -991,7 +991,7 @@ impl crate::tui::TuiState for App {
             self.session.id.clone()
         };
         let message_count = if self.is_remote_client() {
-            self.display_messages.len()
+            self.transcript.messages().len()
         } else {
             self.session.messages.len()
         };
@@ -1025,7 +1025,7 @@ impl crate::tui::TuiState for App {
             && ts.elapsed() < TTL
             && cached.session_key == session_key
             && cached.is_remote == self.is_remote_client()
-            && cached.display_messages_version == self.display_messages_version
+            && cached.display_messages_version == self.transcript.version()
             && cached.context_revision == self.context_revision
             && cached.message_count == message_count
             && cached.compaction_count == compaction_count
@@ -1049,7 +1049,7 @@ impl crate::tui::TuiState for App {
         let mut tool_result_count = 0usize;
 
         if self.is_remote_client() {
-            for msg in &self.display_messages {
+            for msg in self.transcript.messages() {
                 match msg.role.as_str() {
                     "user" => {
                         user_count += 1;
@@ -1196,7 +1196,7 @@ impl crate::tui::TuiState for App {
                 CachedContextSnapshot {
                     session_key,
                     is_remote: self.is_remote_client(),
-                    display_messages_version: self.display_messages_version,
+                    display_messages_version: self.transcript.version(),
                     context_revision: self.context_revision,
                     message_count,
                     compaction_count,
@@ -1693,7 +1693,8 @@ impl crate::tui::TuiState for App {
             .map(|member| member.session_id.clone())
             .collect();
         let spawned_ids: std::collections::HashSet<&str> = self
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .filter_map(|message| message.tool_data.as_ref().map(|tool| (message, tool)))
             .filter(|(_, tool)| tool.name.eq_ignore_ascii_case("swarm"))

@@ -4,7 +4,8 @@ impl App {
     pub(in crate::tui::app) fn build_debug_snapshot(&self) -> DebugSnapshot {
         let frame = crate::tui::visual_debug::latest_frame();
         let recent_messages = self
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .rev()
             .take(20)
@@ -20,7 +21,7 @@ impl App {
             state: serde_json::json!({
                 "processing": self.is_processing,
                 "messages": self.messages.len(),
-                "display_messages": self.display_messages.len(),
+                "display_messages": self.transcript.messages().len(),
                 "input": self.composer.input,
                 "cursor_pos": self.composer.cursor_pos,
                 "scroll_offset": self.viewport.scroll_offset,

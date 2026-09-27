@@ -3901,7 +3901,8 @@ mod tests {
         )
         .unwrap();
         assert!(
-            app.display_messages
+            app.transcript
+                .messages()
                 .last()
                 .unwrap()
                 .content

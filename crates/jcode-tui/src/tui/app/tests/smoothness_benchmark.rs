@@ -263,16 +263,16 @@ fn smoothness_benchmark_mid_transcript_growth_settles_quickly() {
 
     // A transcript tall enough to scroll, with a todo-like block in the middle.
     for i in 0..6 {
-        app.display_messages.push(DisplayMessage::assistant(format!(
+        app.transcript.append(DisplayMessage::assistant(format!(
             "Message {i} line one.\nMessage {i} line two.\nMessage {i} line three."
         )));
     }
-    let todo_idx = app.display_messages.len();
-    app.display_messages.push(DisplayMessage::assistant(
+    let todo_idx = app.transcript.messages().len();
+    app.transcript.append(DisplayMessage::assistant(
         "todo: item 1\ntodo: item 2".to_string(),
     ));
     for i in 6..10 {
-        app.display_messages.push(DisplayMessage::assistant(format!(
+        app.transcript.append(DisplayMessage::assistant(format!(
             "Message {i} line one.\nMessage {i} line two.\nMessage {i} line three."
         )));
     }
@@ -294,8 +294,7 @@ fn smoothness_benchmark_mid_transcript_growth_settles_quickly() {
         .map(|i| format!("todo: item {i}"))
         .collect::<Vec<_>>()
         .join("\n");
-    app.display_messages[todo_idx].content = grown;
-    app.bump_display_messages_version();
+    app.replace_display_message_content(todo_idx, grown);
 
     // Render until motion settles (tail catch-up slide runs at frame cadence).
     for _ in 0..20 {

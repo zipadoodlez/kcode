@@ -471,7 +471,7 @@ fn test_handle_turn_error_failover_prompt_manual_mode_shows_system_notice() {
 
         app.handle_turn_error(failover_error_message(&prompt));
 
-        let last = app.display_messages.last().expect("display message");
+        let last = app.transcript.messages().last().expect("display message");
         assert_eq!(last.role, "system");
         assert!(last.content.contains("did not resend your prompt"));
         assert!(last.content.contains("/model"));
@@ -510,7 +510,7 @@ fn test_handle_turn_error_failover_prompt_countdown_can_switch_and_retry() {
         assert!(app.pending_turn);
         assert_eq!(active_provider.lock().unwrap().as_str(), "openai");
         assert_eq!(app.session.model.as_deref(), Some("gpt-test"));
-        let last = app.display_messages.last().expect("display message");
+        let last = app.transcript.messages().last().expect("display message");
         assert!(
             last.content
                 .contains("cross_provider_failover = \"manual\"")

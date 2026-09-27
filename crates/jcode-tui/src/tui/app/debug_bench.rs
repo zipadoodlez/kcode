@@ -94,7 +94,7 @@ impl App {
         let was_visual_debug = crate::tui::visual_debug::is_enabled();
         crate::tui::visual_debug::enable();
 
-        self.display_messages = vec![
+        self.transcript.set_all(vec![
             DisplayMessage {
                 role: "user".to_string(),
                 content: "Headless side-panel latency benchmark".to_string(),
@@ -111,7 +111,7 @@ impl App {
                 title: None,
                 tool_data: None,
             },
-        ];
+        ]);
         self.bump_display_messages_version();
         self.side_panel = Self::build_side_panel_latency_snapshot(sections, padding);
         self.diff_mode = crate::config::DiffDisplayMode::Off;

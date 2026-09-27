@@ -111,7 +111,7 @@ fn make_edit_badge_test_app(
     let new_string = (0..old_line_count)
         .map(|idx| format!("new line {idx}\n"))
         .collect::<String>();
-    app.display_messages = vec![
+    app.transcript.set_all(vec![
         DisplayMessage::user("please edit demo.txt"),
         DisplayMessage::tool(
             "Edited demo.txt".to_string(),
@@ -127,7 +127,7 @@ fn make_edit_badge_test_app(
                 thought_signature: None,
             },
         ),
-    ];
+    ]);
     app.bump_display_messages_version();
     app.diff_mode = crate::config::DiffDisplayMode::Inline;
     app.viewport.scroll_offset = 0;
@@ -363,7 +363,7 @@ fn test_expand_badge_does_not_render_for_short_untruncated_edit_diff() {
 fn test_expand_badge_shortcut_opens_full_inline_from_non_inline_mode() {
     let _render_lock = scroll_render_test_lock();
     let (mut app, _terminal) = create_copy_test_app();
-    app.display_messages.push(DisplayMessage::tool(
+    app.transcript.append(DisplayMessage::tool(
         "Edited demo.txt".to_string(),
         crate::message::ToolCall {
             id: "edit_1".to_string(),
@@ -394,7 +394,7 @@ fn test_expand_badge_shortcut_opens_full_inline_from_non_inline_mode() {
 fn test_expand_badge_shortcut_uses_display_messages_when_edit_count_is_stale() {
     let _render_lock = scroll_render_test_lock();
     let (mut app, _terminal) = create_copy_test_app();
-    app.display_messages.push(DisplayMessage::tool(
+    app.transcript.append(DisplayMessage::tool(
         "Edited demo.txt".to_string(),
         crate::message::ToolCall {
             id: "edit_1".to_string(),
@@ -410,7 +410,7 @@ fn test_expand_badge_shortcut_uses_display_messages_when_edit_count_is_stale() {
     ));
     app.bump_display_messages_version();
     app.diff_mode = crate::config::DiffDisplayMode::Off;
-    app.display_edit_tool_message_count = 0;
+    app.transcript.force_edit_tool_message_count(0);
 
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     app.handle_key_event(KeyEvent::new(

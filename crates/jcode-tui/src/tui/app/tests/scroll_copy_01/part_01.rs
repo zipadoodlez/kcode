@@ -32,7 +32,7 @@ fn create_scroll_test_app(
 
     let mut app = create_test_app();
     let content = App::build_scroll_test_content(diagrams, padding, None);
-    app.display_messages = vec![
+    app.transcript.set_all(vec![
         DisplayMessage {
             role: "user".to_string(),
             content: "Scroll test".to_string(),
@@ -49,7 +49,7 @@ fn create_scroll_test_app(
             title: None,
             tool_data: None,
         },
-    ];
+    ]);
     app.bump_display_messages_version();
     app.viewport.scroll_offset = 0;
     app.viewport.auto_scroll_paused = false;
@@ -66,7 +66,7 @@ fn create_scroll_test_app(
 
 fn create_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend::TestBackend>) {
     let mut app = create_test_app();
-    app.display_messages = vec![
+    app.transcript.set_all(vec![
         DisplayMessage {
             role: "user".to_string(),
             content: "Show me some code".to_string(),
@@ -83,7 +83,7 @@ fn create_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend::TestBacke
             title: None,
             tool_data: None,
         },
-    ];
+    ]);
     app.bump_display_messages_version();
     app.viewport.scroll_offset = 0;
     app.viewport.auto_scroll_paused = false;
@@ -99,7 +99,7 @@ fn create_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend::TestBacke
 
 fn create_blockquote_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend::TestBackend>) {
     let mut app = create_test_app();
-    app.display_messages = vec![
+    app.transcript.set_all(vec![
         DisplayMessage {
             role: "user".to_string(),
             content: "Quote something".to_string(),
@@ -117,7 +117,7 @@ fn create_blockquote_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend
             title: None,
             tool_data: None,
         },
-    ];
+    ]);
     app.bump_display_messages_version();
     app.viewport.scroll_offset = 0;
     app.viewport.auto_scroll_paused = false;
@@ -133,10 +133,10 @@ fn create_blockquote_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend
 
 fn create_error_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend::TestBackend>) {
     let mut app = create_test_app();
-    app.display_messages = vec![
+    app.transcript.set_all(vec![
         DisplayMessage::user("Show me the last error"),
         DisplayMessage::error("permission denied while opening ~/.kcode/config.toml"),
-    ];
+    ]);
     app.bump_display_messages_version();
     app.viewport.scroll_offset = 0;
     app.viewport.auto_scroll_paused = false;
@@ -152,7 +152,7 @@ fn create_error_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend::Tes
 
 fn create_tool_error_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend::TestBackend>) {
     let mut app = create_test_app();
-    app.display_messages = vec![
+    app.transcript.set_all(vec![
         DisplayMessage::user("Run the command"),
         DisplayMessage::tool(
             "Error: permission denied",
@@ -162,7 +162,7 @@ fn create_tool_error_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend
                 input: serde_json::json!({"command": "cat /root/secret"}),
                 intent: None, thought_signature: None, },
         ),
-    ];
+    ]);
     app.bump_display_messages_version();
     app.viewport.scroll_offset = 0;
     app.viewport.auto_scroll_paused = false;
@@ -179,7 +179,7 @@ fn create_tool_error_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend
 fn create_tool_failed_output_copy_test_app()
 -> (App, ratatui::Terminal<ratatui::backend::TestBackend>) {
     let mut app = create_test_app();
-    app.display_messages = vec![
+    app.transcript.set_all(vec![
         DisplayMessage::user("Run the command"),
         DisplayMessage::tool(
             "cat: /root/secret: Permission denied\n\nExit code: 1",
@@ -189,7 +189,7 @@ fn create_tool_failed_output_copy_test_app()
                 input: serde_json::json!({"command": "cat /root/secret"}),
                 intent: None, thought_signature: None, },
         ),
-    ];
+    ]);
     app.bump_display_messages_version();
     app.viewport.scroll_offset = 0;
     app.viewport.auto_scroll_paused = false;
@@ -321,10 +321,11 @@ fn render_and_snap(
 fn test_blockquote_paragraph_border_is_continuous_in_terminal_cells() {
     let _lock = scroll_render_test_lock();
     let (mut app, mut terminal) = create_blockquote_copy_test_app();
-    app.display_messages[1].content =
+    app.replace_display_message_content(
+        1,
         "Draft only:\n\n> Hello,\n>\n> A quoted paragraph.\n>\n> Thanks,\n> Someone\n\nOutside the quote."
-            .to_string();
-    app.bump_display_messages_version();
+            .to_string(),
+    );
     let screen = render_and_snap(&app, &mut terminal);
     let rows: Vec<_> = screen.lines().collect();
     let start = rows
@@ -385,14 +386,14 @@ fn test_chat_native_scrollbar_hidden_when_content_fits() {
 
     let mut app = create_test_app();
     app.chat_native_scrollbar = true;
-    app.display_messages = vec![DisplayMessage {
+    app.transcript.set_all(vec![DisplayMessage {
         role: "assistant".to_string(),
         content: "short response".to_string(),
         tool_calls: vec![],
         duration_secs: None,
         title: None,
         tool_data: None,
-    }];
+    }]);
     app.bump_display_messages_version();
     app.session.short_name = Some("test".to_string());
     app.is_processing = false;
@@ -681,7 +682,7 @@ fn test_file_activity_scroll_reproduces_trailing_ghost_after_native_scroll_like_
     // activity line owning its row with trailing blank cells (so a blank->blank
     // diff skips repainting the injected ghost). Single newlines now soft-wrap
     // into one flowing paragraph, which would repaint over the ghost cells.
-    app.display_messages = vec![DisplayMessage::assistant(lines.join("\n\n"))];
+    app.transcript.set_all(vec![DisplayMessage::assistant(lines.join("\n\n"))]);
     app.bump_display_messages_version();
     app.viewport.auto_scroll_paused = true;
     app.viewport.scroll_offset = 0;

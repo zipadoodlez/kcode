@@ -746,7 +746,7 @@ fn startup_check_ignores_synthetic_scaffolding_messages() {
         // post-login path instead. Either way, the flow must have *started*:
         // scaffolding messages must not be mistaken for real activity.
         assert!(
-            !app.display_messages.is_empty(),
+            !app.transcript.messages().is_empty(),
             "precondition: scaffolding messages present"
         );
         assert!(app.onboarding_startup_checked);
@@ -1322,16 +1322,17 @@ fn import_failure_h_key_prepares_agent_repair_brief() {
         // Simulate a failed import that recorded a reason.
         app.onboarding_import_error = Some("the saved credential was rejected".to_string());
         app.onboarding_import_failed_provider = Some("openai".to_string());
-        let before = app.display_messages.len();
+        let before = app.transcript.messages().len();
 
         // H on the failure screen prepares the agent repair brief.
         assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Char('H')));
 
         // A brief was pushed into the transcript with the agent-runnable
         // commands and the failure reason, so it works even without a clipboard.
-        assert!(app.display_messages.len() > before, "brief message pushed");
+        assert!(app.transcript.messages().len() > before, "brief message pushed");
         let brief = app
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .rev()
             .find(|m| m.content.contains("Agent repair brief"))

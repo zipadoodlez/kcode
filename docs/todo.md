@@ -250,8 +250,74 @@ Staged, each lands whole.
       `interleave_images` were **not** included: they are a soft-interrupt payload
       that gets merged into `pending_images` at send time, i.e. part of the
       outbound pipeline. `app_fields` fell 233 to 231.
-  - Stage 10: transcript (13 fields, 170 sites), then session/server (18 fields,
-    390 sites); sweep the ~121 remaining loose fields into their owners.
+  - Stage 10: transcript, then session/server (18 fields, 390 sites); sweep the
+    ~121 remaining loose fields into their owners.
+    - **Stage 10a behavior trace (done, no code change).** The transcript is
+      four fields, not thirteen: `display_messages`, `display_messages_version`,
+      `display_user_message_count`, `display_edit_tool_message_count`. Their home
+      is already `state_ui_messages.rs`; the trace says why they belong together
+      and where the seam leaks.
+      Verified invariant: the two counters are `O(1)` caches of the vec (the
+      comment records that appending M messages was once `O(M^2)`), and every
+      mutation must bump the version, which is the *change notification* the
+      render caches key on: `split_view.rendered_display_version`
+      (split_view.rs:92), the navigation wrapped-line cache (navigation.rs:312),
+      `ui_prepare` (:558, :958), frame-equality in `ui_frame_metrics`
+      (:720, :738), pinned diffs (ui.rs:2303). `bump_display_messages_version_
+      no_stats` (state_ui.rs:182) also bumps `context_revision` and calls
+      `refresh_split_view_if_needed`, so the version is a fan-out point, not a
+      private counter.
+      Checked, not assumed: `context_revision` is *not* a duplicate of the
+      version. It is bumped from `conversation_state.rs:414` too (provider
+      context) and its readers cache provider render info
+      (tui_state.rs:1018-1029), so the two stay separate.
+      **The leak, and the reason to extract:** the mutation surface is not
+      contained. Six files outside the module reach into the vec directly and
+      have to remember to bump: `input.rs:3461`
+      (`remove_reasoning_trace_messages`), `state_ui_maintenance.rs:85`
+      (in-place title/content) and `:117` (remove), `update_sim.rs:34` (retain),
+      `turn.rs:814` (streaming tool output writes `dm.content`),
+      `navigation.rs:1013` (drops the Ctrl+L spacer on scroll-up), plus whole-vec
+      assignment in `debug.rs:349` / `debug_bench.rs:97`. Two of those also
+      hand-call `refresh_split_view_if_needed`. The "mutate, remember to bump,
+      maybe refresh" ritual recurs at ~15 sites.
+      **The module is also three concepts.** `background_task_rows` with its
+      `retain_latest_background_tasks` / `upsert_*` / `finish_*` / `prune_*`
+      (the pinned task band) and `last_overnight_card_refresh` with
+      `maybe_refresh_overnight_display_card` / `upsert_overnight_display_card` /
+      `maybe_tail_overnight_current_session_transcript` (the overnight card
+      writer) share the file with the transcript and touch it only through
+      `push_display_message` / `replace_*`. Separate concerns, not transcript
+      parts; the old "13 fields" estimate would have lumped them.
+      **Move:** extract `Transcript` (`app/transcript.rs`) owning `messages`,
+      `version`, `user_message_count`, `edit_tool_message_count`, with the stats
+      machinery (`recompute_display_message_stats`,
+      `adjust_display_message_stats`) moved next to it from `state_ui.rs`. `App`
+      keeps the fan-out (`bump_display_messages_version` = version bump +
+      `bump_context_revision` + `refresh_split_view_if_needed`) and delegates.
+      Churn measured: 357 read sites already use the `TuiState::
+      display_messages()` accessor; ~220 direct field sites remain (54 whole-vec
+      assignments, 14 push, the rest len/iter/last), 146 of them in `app/tests*`.
+      Reads go through `messages()`; whole-vec writes through `set_all()` so tests
+      pass the same invariant; the six out-of-module direct mutations above
+      become the module's own methods.
+      **Landed.** `app/transcript.rs` holds `messages`, `version`,
+      `user_message_count`, `edit_tool_message_count`, and `messages` is private,
+      so every mutation goes through an op that keeps the counters right. Two
+      concepts disappeared: the `bump_display_messages_version` /
+      `_no_stats` pair (it existed only to avoid an `O(M)` rescan, and the rescan
+      is gone) and the whole `state_ui.rs` stats block
+      (`recompute_display_message_stats`, `adjust_display_message_stats`).
+      `bump_display_messages_version` remains as the one cross-cutting fan-out
+      (version + `context_revision` + split view). `app_fields` 231 -> 228 (four
+      fields out, one `transcript` field in); `super_glob_imports` stayed at 124
+      by importing explicitly instead of globbing. Verified: check, clippy, and
+      `cargo test -p jcode-tui --lib -- --test-threads=1` identical to the
+      baseline (1966 passed, the same 27 pre-existing failures); the gate is red
+      only on the three recorded items.
+    - **Stage 10b/10c, separate slices:** give the pinned background-task band
+      and the overnight card writer their own homes out of
+      `state_ui_messages.rs`.
   - Stage 11: revisit `TuiState`. It is a 122-method trait with two impls, and
     `TestState` (39 fields, 83 sites, 13 files) exists so render tests avoid
     constructing an `App`. Deleting it is a trade, decided last, once `App` is

@@ -69,7 +69,8 @@ impl TodosView {
 
 impl App {
     fn latest_todo_card_index(&self) -> Option<usize> {
-        self.display_messages
+        self.transcript
+            .messages()
             .iter()
             .rposition(|message| message.role == TODO_CARD_ROLE)
     }
@@ -78,7 +79,7 @@ impl App {
     /// dismiss it when the card is already the trailing message.
     pub(super) fn toggle_todo_card(&mut self) {
         if let Some(idx) = self.latest_todo_card_index()
-            && idx + 1 == self.display_messages.len()
+            && idx + 1 == self.transcript.messages().len()
         {
             self.remove_display_message(idx);
             self.todos_view.card_rendered_hash = 0;
@@ -106,7 +107,7 @@ impl App {
             hash_todos_payload(session_id.as_deref(), &todos, &plan, &goals);
 
         if let Some(idx) = self.latest_todo_card_index() {
-            if idx + 1 == self.display_messages.len() {
+            if idx + 1 == self.transcript.messages().len() {
                 self.replace_display_message_content(idx, content);
                 return;
             }

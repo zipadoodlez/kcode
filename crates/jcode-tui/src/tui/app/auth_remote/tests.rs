@@ -105,7 +105,7 @@ fn ssh_import_requires_explicit_consent_before_any_task_and_masks_private_input(
             assert_eq!(login.provider, provider);
             assert!(matches!(app.pending_login, Some(PendingLogin::Remote)));
             assert!(app.login_picker_overlay.is_none());
-            let warning = &app.display_messages().last().unwrap().content;
+            let warning = &app.transcript.messages().last().unwrap().content;
             for required in [
                 "test-remote",
                 provider,
@@ -271,7 +271,7 @@ fn ssh_import_failure_or_cancel_never_enters_oauth_retry_or_cleanup() {
                 assert!(app.poll_ssh_login(&mut remote).await);
                 assert!(app.remote_login.is_none());
                 assert!(app.pending_login.is_none());
-                let message = &app.display_messages().last().unwrap().content;
+                let message = &app.transcript.messages().last().unwrap().content;
                 assert!(!message.contains("Paste a fresh completion"));
                 assert!(!message.contains("Pending authorization was removed"));
                 assert!(message.contains(if cancelled {
@@ -399,7 +399,7 @@ fn ssh_picker_unsupported_catalog_actions_never_start_local_auth() {
             assert!(app.pending_login.is_none(), "{}", provider.id);
             assert!(app.login_picker_overlay.is_none());
             assert!(app.inline_interactive_state.is_none());
-            let message = &app.display_messages().last().unwrap().content;
+            let message = &app.transcript.messages().last().unwrap().content;
             assert!(message.contains("setup on test-remote"), "{message}");
             assert!(message.contains("not yet supported"), "{message}");
             assert!(

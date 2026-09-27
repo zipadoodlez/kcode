@@ -60,7 +60,8 @@ fn reasoning_region_emits_dim_italic_lines_no_gutter_header_or_footer() {
             app.streaming_text()
         );
         let anchored = app
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .find(|m| m.role == "reasoning")
             .expect("closed trace anchors as a display-only reasoning message");
@@ -106,7 +107,7 @@ fn reasoning_region_closes_before_normal_output() {
             "reasoning must not remain in the answer stream: {text:?}"
         );
         assert!(
-            app.display_messages.iter().any(|m| m.role == "reasoning"),
+            app.transcript.messages().iter().any(|m| m.role == "reasoning"),
             "closed trace anchors in the transcript"
         );
     });
@@ -324,7 +325,8 @@ fn reasoning_close_promotes_pending_partial_line() {
             app.streaming_text()
         );
         let anchored = app
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .find(|m| m.role == "reasoning")
             .expect("anchored trace exists");
@@ -365,12 +367,14 @@ fn reasoning_preceded_by_answer_keeps_order_and_drops_reasoning() {
         );
         // Intro committed ahead of the anchored trace, in order.
         let intro_idx = app
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .position(|m| m.role == "assistant" && m.content.contains("Intro before thinking."))
             .expect("intro committed before the anchored trace");
         let trace_idx = app
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .position(|m| m.role == "reasoning")
             .expect("trace anchored in the transcript");
@@ -401,7 +405,8 @@ fn multiple_reasoning_blocks_anchor_in_order_and_clear_next_prompt() {
         app.close_reasoning_region(None);
 
         let reasoning_msgs: Vec<usize> = app
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .enumerate()
             .filter(|(_, m)| m.role == "reasoning")
@@ -422,7 +427,8 @@ fn multiple_reasoning_blocks_anchor_in_order_and_clear_next_prompt() {
         // The next prompt removes the turn's traces (ephemeral across turns).
         app.clear_turn_reasoning_traces();
         assert_eq!(
-            app.display_messages
+            app.transcript
+                .messages()
                 .iter()
                 .filter(|m| m.role == "reasoning")
                 .count(),
@@ -430,7 +436,8 @@ fn multiple_reasoning_blocks_anchor_in_order_and_clear_next_prompt() {
             "next prompt clears the turn's anchored traces"
         );
         assert!(
-            app.display_messages
+            app.transcript
+                .messages()
                 .iter()
                 .any(|m| m.content.contains("Answer one.")),
             "committed answers survive trace cleanup"
@@ -455,7 +462,8 @@ fn anchored_trace_never_moves_and_clears_on_next_prompt() {
         app.close_reasoning_region(None);
 
         let trace_idx = app
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .position(|m| m.role == "reasoning")
             .expect("first trace anchored");
@@ -468,11 +476,11 @@ fn anchored_trace_never_moves_and_clears_on_next_prompt() {
         app.close_reasoning_region(None);
 
         assert_eq!(
-            app.display_messages[trace_idx].role, "reasoning",
+            app.transcript.messages()[trace_idx].role, "reasoning",
             "anchored trace must keep its transcript position"
         );
         assert!(
-            app.display_messages[trace_idx]
+            app.transcript.messages()[trace_idx]
                 .content
                 .contains("first trace"),
             "anchored trace content unchanged"
@@ -481,7 +489,8 @@ fn anchored_trace_never_moves_and_clears_on_next_prompt() {
         // Next prompt clears all of the turn's traces.
         app.clear_turn_reasoning_traces();
         assert_eq!(
-            app.display_messages
+            app.transcript
+                .messages()
                 .iter()
                 .filter(|m| m.role == "reasoning")
                 .count(),
@@ -610,7 +619,8 @@ fn anchored_trace_survives_tool_commit_and_answer_commit() {
         );
         assert!(
             !app
-                .display_messages
+                .transcript
+                .messages()
                 .iter()
                 .any(|m| m.role == "assistant" && m.content.contains("thought")),
             "no thought-summary residue may be committed"
@@ -619,7 +629,8 @@ fn anchored_trace_survives_tool_commit_and_answer_commit() {
 }
 
 fn trace_count(app: &App) -> usize {
-    app.display_messages
+    app.transcript
+        .messages()
         .iter()
         .filter(|m| m.role == "reasoning")
         .count()
@@ -666,7 +677,8 @@ fn gc_dissolves_stale_traces_only_when_provably_offscreen() {
         assert!(app.gc_offscreen_reasoning_traces());
         assert_eq!(trace_count(&app), 1, "stale off-screen trace dissolved");
         assert!(
-            app.display_messages
+            app.transcript
+                .messages()
                 .iter()
                 .any(|m| m.role == "reasoning" && m.content.contains("current thought")),
             "the most recent trace always survives"
@@ -756,14 +768,16 @@ fn repro_reasoning_rendered_then_removed_when_turn_ends_open() {
             .streaming_text()
             .contains(jcode_tui_markdown::REASONING_SENTINEL);
         let anchored = app
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .any(|m| m.role == "reasoning" && m.content.contains("weighing the options"));
         assert!(
             anchored || lingered_in_stream,
             "BUG: reasoning was rendered live then removed on turn finish; \
              display_messages={:?}, stream={:?}",
-            app.display_messages
+            app.transcript
+                .messages()
                 .iter()
                 .map(|m| (m.role.as_str(), m.content.as_str()))
                 .collect::<Vec<_>>(),
@@ -803,7 +817,8 @@ fn open_reasoning_region_closed_at_turn_finish_is_anchored_not_dropped() {
         let _ = app.commit_pending_streaming_assistant_message();
 
         let anchored = app
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .any(|m| m.role == "reasoning" && m.content.contains("weighing the options"));
         let lingered_in_stream = app
@@ -812,7 +827,8 @@ fn open_reasoning_region_closed_at_turn_finish_is_anchored_not_dropped() {
         assert!(
             anchored || lingered_in_stream,
             "reasoning rendered live must be preserved at turn finish; display_messages={:?}, stream={:?}",
-            app.display_messages
+            app.transcript
+                .messages()
                 .iter()
                 .map(|m| (m.role.as_str(), m.content.as_str()))
                 .collect::<Vec<_>>(),

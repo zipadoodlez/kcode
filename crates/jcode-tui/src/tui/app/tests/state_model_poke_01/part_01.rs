@@ -644,7 +644,7 @@ fn test_ctrl_l_terminal_clear_adds_spacer_and_keeps_everything() {
         }],
     );
     app.queued_messages.push("queued".to_string());
-    app.display_messages = vec![DisplayMessage::system("visible chat".to_string())];
+    app.transcript.set_all(vec![DisplayMessage::system("visible chat".to_string())]);
     app.bump_display_messages_version();
     app.viewport.scroll_offset = 25;
     app.viewport.auto_scroll_paused = true;
@@ -662,7 +662,7 @@ fn test_ctrl_l_terminal_clear_adds_spacer_and_keeps_everything() {
         "a spacer is appended; the transcript itself is NOT cleared"
     );
     assert_eq!(app.display_messages()[0].content, "visible chat");
-    let spacer = &app.display_messages()[1];
+    let spacer = &app.transcript.messages()[1];
     assert_eq!(spacer.role, "spacer");
     assert_eq!(spacer.content, "30", "spacer spans the viewport height");
     assert_eq!(app.session.messages.len(), session_messages_before);
@@ -689,7 +689,7 @@ fn test_ctrl_l_terminal_clear_adds_spacer_and_keeps_everything() {
 #[test]
 fn test_ctrl_l_spacer_dropped_when_new_content_arrives() {
     let mut app = create_test_app();
-    app.display_messages = vec![DisplayMessage::system("old chat".to_string())];
+    app.transcript.set_all(vec![DisplayMessage::system("old chat".to_string())]);
     app.bump_display_messages_version();
     crate::tui::ui::set_last_chat_viewport_height(20);
 
@@ -719,7 +719,7 @@ fn test_ctrl_l_spacer_dropped_when_new_content_arrives() {
 #[test]
 fn test_cmd_l_terminal_clear_matches_ctrl_l() {
     let mut app = create_test_app();
-    app.display_messages = vec![DisplayMessage::system("visible chat".to_string())];
+    app.transcript.set_all(vec![DisplayMessage::system("visible chat".to_string())]);
     app.bump_display_messages_version();
     app.viewport.scroll_offset = 12;
     app.viewport.auto_scroll_paused = true;
@@ -748,7 +748,7 @@ fn test_cls_command_clears_view_but_keeps_context() {
             cache_control: None,
         }],
     );
-    app.display_messages = vec![DisplayMessage::system("visible chat".to_string())];
+    app.transcript.set_all(vec![DisplayMessage::system("visible chat".to_string())]);
     app.bump_display_messages_version();
     let session_id_before = app.session.id.clone();
     let session_messages_before = app.session.messages.len();
@@ -860,10 +860,10 @@ fn test_workspace_info_widget_appears_in_visual_debug_frame_when_enabled() {
     let mut app = create_test_app();
     app.workspace_client.reset_for_tests();
     app.centered = true;
-    app.display_messages = vec![
+    app.transcript.set_all(vec![
         DisplayMessage::system("Workspace widget render test".to_string()),
         DisplayMessage::assistant("Short content keeps room for info widgets.".to_string()),
-    ];
+    ]);
     app.bump_display_messages_version();
 
     let current_session = app.session.id.clone();

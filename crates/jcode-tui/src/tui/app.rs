@@ -102,6 +102,7 @@ mod swarm_hint;
 mod terminal_liveness;
 mod terminal_setup_command;
 mod todos_view;
+mod transcript;
 mod tui_lifecycle;
 mod tui_lifecycle_runtime;
 mod tui_state;
@@ -830,10 +831,8 @@ pub struct App {
     mcp_manager: Arc<RwLock<McpManager>>,
     messages: Vec<Message>,
     session: Session,
-    display_messages: Vec<DisplayMessage>,
-    display_messages_version: u64,
-    display_user_message_count: usize,
-    display_edit_tool_message_count: usize,
+    // The rendered conversation, with its counters and change version.
+    transcript: transcript::Transcript,
     compacted_history_lazy: CompactedHistoryLazyState,
     // Input composer: buffer, cursor, stash, undo history, tab completion.
     composer: composer::Composer,
@@ -1460,7 +1459,8 @@ impl App {
         system_dynamic: &str,
     ) {
         let turn_number = self
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .filter(|message| message.role == "user")
             .count()
@@ -1511,7 +1511,8 @@ impl App {
         signature: KvCacheRequestSignature,
     ) {
         let turn_number = self
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .filter(|message| message.role == "user")
             .count()
@@ -1631,7 +1632,8 @@ impl App {
         // Turn-1 sessions have no meaningful warm prefix to lose; mirror the
         // request-start gate.
         let user_turns = self
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .filter(|message| message.role == "user")
             .count();
@@ -1971,7 +1973,8 @@ impl App {
     fn fallback_pending_kv_cache_request(&self) -> PendingKvCacheRequest {
         PendingKvCacheRequest {
             turn_number: self
-                .display_messages
+                .transcript
+                .messages()
                 .iter()
                 .filter(|message| message.role == "user")
                 .count()

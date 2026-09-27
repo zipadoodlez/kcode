@@ -806,7 +806,7 @@ fn test_submit_input_adds_message() {
 #[test]
 fn test_submit_input_commits_pending_streaming_assistant_text_before_user_message() {
     let mut app = create_test_app();
-    app.display_messages.push(DisplayMessage::tool(
+    app.transcript.append(DisplayMessage::tool(
         "file contents",
         crate::message::ToolCall {
             id: "tool_read".to_string(),

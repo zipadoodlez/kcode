@@ -112,7 +112,7 @@ impl App {
         // "Session Context" message (role=user) plus assorted system scaffolding.
         // Those are not real activity, so we ignore them when deciding whether
         // the session is already in use.
-        let has_real_conversation = self.display_messages.iter().any(|m| {
+        let has_real_conversation = self.transcript.messages().iter().any(|m| {
             let role = m.role.as_str();
             let is_system_reminder =
                 role == "user" && m.content.trim_start().starts_with("<system-reminder>");

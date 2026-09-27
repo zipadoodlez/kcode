@@ -19,7 +19,7 @@ fn test_cancel_pending_provider_failover_clears_countdown() {
         app.cancel_pending_provider_failover("Provider auto-switch canceled");
 
         assert!(app.pending_provider_failover.is_none());
-        let last = app.display_messages.last().expect("display message");
+        let last = app.transcript.messages().last().expect("display message");
         assert_eq!(last.role, "system");
         assert!(last.content.contains("Canceled provider auto-switch"));
         assert!(
@@ -684,7 +684,8 @@ fn test_turn_error_offers_same_model_oauth_fallback() {
             "an auth error with a working OAuth route should arm a fallback offer"
         );
         let offer_msg = app
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .find(|m| m.content.contains("Fallback available"))
             .expect("offer message should be shown");

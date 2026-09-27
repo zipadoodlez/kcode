@@ -95,11 +95,12 @@ impl App {
         // embedded in the scrollback.
         if message.role != "spacer"
             && self
-                .display_messages
+                .transcript
+                .messages()
                 .last()
                 .is_some_and(|last| last.role == "spacer")
         {
-            self.display_messages.pop();
+            self.transcript.pop();
         }
         if self.try_coalesce_repeated_display_message(&message) {
             return;
@@ -114,13 +115,8 @@ impl App {
         } else {
             self.attempt_committed_assistant_messages = 0;
         }
-        // Maintain the cached display-message counters incrementally for this
-        // single append, then bump the version without a full O(M) rescan.
-        // Appending is the hot path; rescanning every append was O(M^2) over a
-        // long session.
-        self.adjust_display_message_stats(&message, true);
-        self.display_messages.push(message);
-        self.bump_display_messages_version_no_stats();
+        self.transcript.append(message);
+        self.bump_display_messages_version();
         if is_tool && self.diff_mode.has_side_pane() && self.diff_pane_auto_scroll {
             self.diff_pane_scroll = usize::MAX;
         }
@@ -129,7 +125,7 @@ impl App {
     pub(super) fn replace_display_messages(&mut self, mut messages: Vec<DisplayMessage>) {
         messages.retain(|message| !is_background_task_lifecycle_message(&message.content));
         compact_display_messages_for_storage(&mut messages);
-        self.display_messages = messages;
+        self.transcript.set_all(messages);
         self.attempt_committed_assistant_messages = 0;
         self.sync_compacted_history_lazy_from_display_messages();
         self.bump_display_messages_version();
@@ -137,14 +133,14 @@ impl App {
     }
 
     pub(super) fn replace_display_message_content(&mut self, idx: usize, content: String) -> bool {
-        if let Some(message) = self.display_messages.get_mut(idx) {
-            if message.content != content {
-                message.content = content;
-                self.bump_display_messages_version();
+        match self.transcript.replace_content(idx, content) {
+            None => false,
+            Some(changed) => {
+                if changed {
+                    self.bump_display_messages_version();
+                }
+                true
             }
-            true
-        } else {
-            false
         }
     }
 
@@ -154,15 +150,17 @@ impl App {
         title: Option<String>,
         content: String,
     ) -> bool {
-        if let Some(message) = self.display_messages.get_mut(idx) {
-            if message.title != title || message.content != content {
-                message.title = title;
-                message.content = content;
-                self.bump_display_messages_version();
+        match self
+            .transcript
+            .replace_title_and_content(idx, title, content)
+        {
+            None => false,
+            Some(changed) => {
+                if changed {
+                    self.bump_display_messages_version();
+                }
+                true
             }
-            true
-        } else {
-            false
         }
     }
 
@@ -172,7 +170,7 @@ impl App {
         title: Option<String>,
         content: String,
     ) -> bool {
-        let Some(idx) = self.display_messages.iter().rposition(|message| {
+        let Some(idx) = self.transcript.messages().iter().rposition(|message| {
             message.tool_data.as_ref().map(|tool| tool.id.as_str()) == Some(tool_call_id)
         }) else {
             return false;
@@ -322,7 +320,7 @@ impl App {
             return false;
         };
         let title = Some("Overnight".to_string());
-        let idx = self.display_messages.iter().rposition(|message| {
+        let idx = self.transcript.messages().iter().rposition(|message| {
             message.role == "overnight"
                 && serde_json::from_str::<crate::overnight::OvernightProgressCard>(&message.content)
                     .is_ok_and(|card| card.run_id == manifest.run_id)
@@ -349,7 +347,8 @@ impl App {
         self.last_overnight_card_refresh = Some(now);
 
         let has_card = self
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .any(|message| message.role == "overnight");
         let Ok(Some(manifest)) = crate::overnight::latest_manifest() else {
@@ -396,27 +395,18 @@ impl App {
     }
 
     pub(super) fn remove_display_message(&mut self, idx: usize) -> Option<DisplayMessage> {
-        if idx < self.display_messages.len() {
-            let removed = self.display_messages.remove(idx);
+        let removed = self.transcript.remove(idx);
+        if removed.is_some() {
             self.bump_display_messages_version();
-            Some(removed)
-        } else {
-            None
         }
+        removed
     }
 
     pub(super) fn append_reload_message(&mut self, line: &str) {
-        if let Some(idx) = self
-            .display_messages
-            .iter()
-            .rposition(Self::is_reload_message)
+        if self
+            .transcript
+            .append_line_to_last_matching(Self::is_reload_message, line, "Reload")
         {
-            let msg = &mut self.display_messages[idx];
-            if !msg.content.is_empty() {
-                msg.content.push('\n');
-            }
-            msg.content.push_str(line);
-            msg.title = Some("Reload".to_string());
             self.bump_display_messages_version();
         } else {
             self.push_display_message(
@@ -442,7 +432,7 @@ impl App {
             return false;
         }
 
-        let Some(last) = self.display_messages.last_mut() else {
+        let Some(last) = self.transcript.messages().last() else {
             return false;
         };
         if !Self::is_repeat_compactable_display_message(last) {
@@ -460,8 +450,11 @@ impl App {
         }
 
         let next_count = last_count.saturating_add(1);
-        last.content = Self::format_repeated_display_content(message.content.as_str(), next_count);
-        self.bump_display_messages_version();
+        let merged = Self::format_repeated_display_content(message.content.as_str(), next_count);
+        let idx = self.transcript.messages().len() - 1;
+        if self.transcript.replace_content(idx, merged) == Some(true) {
+            self.bump_display_messages_version();
+        }
         true
     }
 
@@ -509,8 +502,8 @@ impl App {
         // block started so a stale offset can't slice the new stream.
         self.reasoning.block_start = None;
         self.reasoning.turn_traces.clear();
-        if !self.display_messages.is_empty() {
-            self.display_messages.clear();
+        if !self.transcript.messages().is_empty() {
+            self.transcript.clear();
             self.bump_display_messages_version();
         }
     }
@@ -527,10 +520,11 @@ impl App {
         // not stack blank pages: with a trailing spacer and nothing after it,
         // the viewport is already visually clear, so just re-snap.
         let already_clear = self
-            .display_messages
+            .transcript
+            .messages()
             .last()
             .is_some_and(|message| message.role == "spacer");
-        if rows > 0 && !already_clear && !self.display_messages.is_empty() {
+        if rows > 0 && !already_clear && !self.transcript.messages().is_empty() {
             self.push_display_message(DisplayMessage::spacer(rows));
         }
         self.viewport.follow_chat_bottom();
@@ -548,7 +542,8 @@ impl App {
             && !self.is_processing
             && self.streaming.streaming_text.is_empty()
             && self
-                .display_messages
+                .transcript
+                .messages()
                 .last()
                 .is_some_and(|message| message.role == "spacer")
     }
@@ -575,7 +570,7 @@ impl App {
         hidden_user_prompts: usize,
     ) {
         compact_display_messages_for_storage(&mut messages);
-        self.display_messages = messages;
+        self.transcript.set_all(messages);
         self.compacted_history_lazy = CompactedHistoryLazyState {
             total_messages,
             visible_messages,
@@ -702,7 +697,8 @@ impl App {
 
     fn sync_compacted_history_lazy_from_display_messages(&mut self) {
         let mut lazy = self
-            .display_messages
+            .transcript
+            .messages()
             .first()
             .and_then(parse_compacted_history_marker)
             .unwrap_or_default();

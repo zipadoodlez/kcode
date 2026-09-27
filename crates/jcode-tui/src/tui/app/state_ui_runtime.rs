@@ -186,7 +186,8 @@ impl App {
     /// Log detailed info when an unexpected cache miss occurs (cache write on turn 3+)
     pub(super) fn log_cache_miss_if_unexpected(&self) {
         let user_turn_count = self
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .filter(|m| m.role == "user")
             .count();
@@ -221,7 +222,7 @@ impl App {
             let mut assistant_msgs = 0;
             let mut tool_msgs = 0;
             let mut other_msgs = 0;
-            for msg in &self.display_messages {
+            for msg in self.transcript.messages() {
                 match msg.role.as_str() {
                     "user" => user_msgs += 1,
                     "assistant" => assistant_msgs += 1,
@@ -293,7 +294,7 @@ impl App {
         if let Some(last_activity) = self.last_stream_activity {
             return Some(last_activity.elapsed());
         }
-        if !self.display_messages.is_empty() && !self.is_processing {
+        if !self.transcript.messages().is_empty() && !self.is_processing {
             return Some(crate::tui::REDRAW_DEEP_IDLE_AFTER + Duration::from_secs(1));
         }
         Some(self.app_started.elapsed())

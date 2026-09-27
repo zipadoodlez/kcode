@@ -168,7 +168,7 @@ impl App {
             plan.listener_summary,
             reason.trim().trim_end_matches('.')
         );
-        if let Some(idx) = self.display_messages.iter().rposition(|message| {
+        if let Some(idx) = self.transcript.messages().iter().rposition(|message| {
             message.role == "system"
                 && (message.title.as_deref() == Some("Connection")
                     || message.content.starts_with("📡 Network appears offline"))
@@ -243,7 +243,7 @@ impl App {
                         .trim_end_matches('.')
                         .trim()
                 );
-                if let Some(idx) = self.display_messages.iter().rposition(|message| {
+                if let Some(idx) = self.transcript.messages().iter().rposition(|message| {
                     message.role == "system"
                         && (message.title.as_deref() == Some("Connection")
                             || message
@@ -388,10 +388,7 @@ impl App {
             mcp_manager,
             messages: Vec::new(),
             session,
-            display_messages: Vec::new(),
-            display_messages_version: 0,
-            display_user_message_count: 0,
-            display_edit_tool_message_count: 0,
+            transcript: Default::default(),
             compacted_history_lazy: CompactedHistoryLazyState::default(),
             composer: Default::default(),
             command_suggestions: Default::default(),
@@ -700,10 +697,7 @@ impl App {
             mcp_manager,
             messages: Vec::new(),
             session,
-            display_messages: Vec::new(),
-            display_messages_version: 0,
-            display_user_message_count: 0,
-            display_edit_tool_message_count: 0,
+            transcript: Default::default(),
             compacted_history_lazy: CompactedHistoryLazyState::default(),
             composer: Default::default(),
             command_suggestions: Default::default(),
@@ -1002,7 +996,7 @@ impl App {
         crate::logging::info(&format!(
             "Remote startup fast restore: session={}, display_messages={}, load={}ms, render={}ms, total={}ms",
             session_id,
-            self.display_messages.len(),
+            self.transcript.messages().len(),
             load_start
                 .elapsed()
                 .as_millis()

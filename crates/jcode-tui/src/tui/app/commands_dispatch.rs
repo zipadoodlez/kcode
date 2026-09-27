@@ -213,7 +213,8 @@ mod tests {
         for command in ["/config init", "/logout", "/save test", "/reload", "/git"] {
             assert!(super::dispatch_local_command(&mut app, command));
             assert!(
-                app.display_messages
+                app.transcript
+                    .messages()
                     .last()
                     .unwrap()
                     .content

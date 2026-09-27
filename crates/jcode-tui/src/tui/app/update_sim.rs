@@ -30,12 +30,11 @@ impl App {
     }
 
     fn remove_simulated_update_messages(&mut self) {
-        let before = self.display_messages.len();
-        self.display_messages.retain(|message| {
+        let removed = self.transcript.retain(|message| {
             message.title.as_deref() != Some("Updating jcode")
                 && !message.content.starts_with("Update simulator complete")
         });
-        if self.display_messages.len() != before {
+        if removed {
             self.bump_display_messages_version();
         }
         self.maintenance.background_client_action = None;

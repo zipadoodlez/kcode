@@ -205,7 +205,8 @@ mod colors {
 
     /// Text of the last message the app pushed, whatever its role.
     fn last_message(app: &crate::tui::app::App) -> String {
-        app.display_messages
+        app.transcript
+            .messages()
             .last()
             .map(|message| message.content.clone())
             .unwrap_or_default()

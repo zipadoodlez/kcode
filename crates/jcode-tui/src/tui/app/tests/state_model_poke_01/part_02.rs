@@ -176,7 +176,7 @@ fn test_pinned_content_uses_left_splitter_instead_of_rounded_box() {
 
     let mut app = create_test_app();
     app.diff_mode = crate::config::DiffDisplayMode::Pinned;
-    app.display_messages = vec![DisplayMessage {
+    app.transcript.set_all(vec![DisplayMessage {
         role: "tool".to_string(),
         content: "wrote src/demo.rs".to_string(),
         tool_calls: vec![],
@@ -190,7 +190,7 @@ fn test_pinned_content_uses_left_splitter_instead_of_rounded_box() {
                 "content": "fn demo() {}\n"
             }),
             intent: None, thought_signature: None, }),
-    }];
+    }]);
     app.bump_display_messages_version();
 
     let backend = ratatui::backend::TestBackend::new(80, 12);
@@ -219,7 +219,7 @@ fn test_file_diff_uses_left_splitter_instead_of_rounded_box() {
 
     let mut app = create_test_app();
     app.diff_mode = crate::config::DiffDisplayMode::File;
-    app.display_messages = vec![DisplayMessage {
+    app.transcript.set_all(vec![DisplayMessage {
         role: "tool".to_string(),
         content: "updated demo.rs".to_string(),
         tool_calls: vec![],
@@ -233,7 +233,7 @@ fn test_file_diff_uses_left_splitter_instead_of_rounded_box() {
                 "content": "fn demo() {\n    println!(\"hi\");\n}\n"
             }),
             intent: None, thought_signature: None, }),
-    }];
+    }]);
     app.bump_display_messages_version();
 
     let backend = ratatui::backend::TestBackend::new(100, 18);

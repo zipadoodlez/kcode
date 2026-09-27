@@ -211,7 +211,8 @@ impl App {
             .unwrap_or_default()
             .to_vec();
         combined.extend(
-            self.display_messages
+            self.transcript
+                .messages()
                 .iter()
                 .filter(|message| message.role == "user")
                 .map(|message| message.content.trim().to_string())

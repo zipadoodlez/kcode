@@ -70,7 +70,7 @@ fn test_handle_server_event_swarm_status_announces_member_completion() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
-    let version_before = app.display_messages_version;
+    let version_before = app.transcript.version();
 
     // First snapshot: two of our workers running plus an unrelated agent.
     let redraw = app.handle_server_event(
@@ -85,7 +85,7 @@ fn test_handle_server_event_swarm_status_announces_member_completion() {
     );
     assert!(redraw, "swarm cards should redraw as soon as members arrive");
     assert_eq!(
-        app.display_messages_version, version_before,
+        app.transcript.version(), version_before,
         "live swarm snapshots must not invalidate global transcript caches"
     );
     assert_eq!(app.swarm.members.len(), 3);

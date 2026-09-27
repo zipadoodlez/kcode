@@ -35,7 +35,7 @@ impl App {
             &self.messages,
             &materialized_provider_messages,
             provider_view_source,
-            &self.display_messages,
+            self.transcript.messages(),
             &self.side_panel,
         );
 
@@ -49,12 +49,13 @@ impl App {
             provider_message_memory.record_message(message);
         }
         let display_messages_bytes: usize = self
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .map(estimate_display_message_bytes)
             .sum();
         let mut display_message_memory = DisplayMessageMemoryStats::default();
-        for message in &self.display_messages {
+        for message in self.transcript.messages() {
             display_message_memory.record_message(message);
         }
         let streaming_tool_calls_json_bytes: usize = self
@@ -99,7 +100,7 @@ impl App {
                     "max_block_bytes": provider_message_memory.max_block_bytes,
                 },
                 "display_messages": {
-                    "count": self.display_messages.len(),
+                    "count": self.transcript.messages().len(),
                     "estimate_bytes": display_messages_bytes,
                     "role_bytes": display_message_memory.role_bytes,
                     "content_bytes": display_message_memory.content_bytes,

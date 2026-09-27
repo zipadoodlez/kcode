@@ -119,7 +119,7 @@ impl App {
     /// transcript index `msg_idx`. Returns `true` when the message was a
     /// collapsible swarm card and its state changed.
     pub(super) fn toggle_swarm_message_expand(&mut self, msg_idx: usize) -> bool {
-        let Some(message) = self.display_messages.get(msg_idx) else {
+        let Some(message) = self.transcript.messages().get(msg_idx) else {
             return false;
         };
         if message.role != "swarm" {
@@ -256,7 +256,8 @@ impl App {
         let renderer_max = super::super::ui::last_max_scroll();
         let Some(layout) = super::super::ui::last_layout_snapshot() else {
             return renderer_max.max(
-                self.display_messages
+                self.transcript
+                    .messages()
                     .len()
                     .saturating_mul(100)
                     .saturating_add(self.streaming.streaming_text.len()),
@@ -309,17 +310,18 @@ impl App {
 
         let message_lines = MESSAGE_LINES_CACHE.with(|cache| {
             if let Some((version, cached_width, lines)) = cache.get()
-                && version == self.display_messages_version
+                && version == self.transcript.version()
                 && cached_width == width
             {
                 return lines;
             }
             let lines = self
-                .display_messages
+                .transcript
+                .messages()
                 .iter()
                 .map(|message| wrapped_text_lines(&message.content, width))
                 .sum::<usize>();
-            cache.set(Some((self.display_messages_version, width, lines)));
+            cache.set(Some((self.transcript.version(), width, lines)));
             lines
         });
 
@@ -1011,7 +1013,7 @@ impl App {
         // spacer so scrolling up reveals the transcript immediately instead of
         // first having to travel back through a viewport of blank rows.
         if self.terminal_clear_collapsed() {
-            self.display_messages.pop();
+            self.transcript.pop();
             self.bump_display_messages_version();
             self.redraw.request_full_repaint();
         }

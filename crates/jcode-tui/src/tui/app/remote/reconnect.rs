@@ -184,7 +184,7 @@ fn set_disconnect_status_message(app: &mut App, state: &mut RemoteRunState, cont
             title: None,
             tool_data: None,
         });
-        state.disconnect_msg_idx = Some(app.display_messages.len() - 1);
+        state.disconnect_msg_idx = Some(app.transcript.messages().len() - 1);
     }
 }
 
@@ -338,7 +338,7 @@ async fn recover_reloading_server(
         let _ = app.replace_display_message_content(idx, content);
     } else {
         app.push_display_message(DisplayMessage::system(content));
-        state.disconnect_msg_idx = Some(app.display_messages.len() - 1);
+        state.disconnect_msg_idx = Some(app.transcript.messages().len() - 1);
     }
     terminal.draw(|frame| crate::tui::ui::draw(frame, app))?;
 
@@ -679,7 +679,7 @@ pub(in crate::tui::app) async fn handle_post_connect<B: ratatui::backend::Backen
             state.reconnect_attempts > 0,
             session_to_resume,
             app.remote_session_id.as_deref(),
-            !app.display_messages.is_empty(),
+            !app.transcript.messages().is_empty(),
             reload_reconnect_needs_server_history,
         );
 

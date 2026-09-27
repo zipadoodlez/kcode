@@ -1910,7 +1910,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 ReloadContext::recovery_directive(None, was_interrupted == Some(true), "", None)
             });
             if let Some(reload_recovery) = reload_recovery
-                && !app.display_messages.is_empty()
+                && !app.transcript.messages().is_empty()
             {
                 let continuation_message = reload_recovery.continuation_message;
                 crate::logging::info(&format!(

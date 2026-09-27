@@ -96,7 +96,7 @@ fn test_refresh_model_list_command_shows_summary_and_status_notice() {
         Some("Model list refreshed: +3 models, +9 routes, ~2 changed".to_string())
     );
 
-    let last = app.display_messages.last().expect("display message");
+    let last = app.transcript.messages().last().expect("display message");
     assert_eq!(last.role, "system");
     assert!(last.content.contains("Model List Refresh Complete"));
     assert!(last.content.contains("Models: 12 → 15  (+3 / -0)"));
@@ -106,7 +106,8 @@ fn test_refresh_model_list_command_shows_summary_and_status_notice() {
     assert!(last.content.contains("cerebras-large"));
     assert!(last.content.contains("cerebras-reasoning"));
     assert!(!app
-        .display_messages
+        .transcript
+        .messages()
         .iter()
         .any(|message| message.role == "background_task"));
     assert!(app.background_task_rows_ref().iter().any(|row| {
@@ -180,7 +181,7 @@ fn test_remote_available_models_updated_after_refresh_shows_summary_and_updates_
     assert_eq!(app.remote_model_options.len(), 2);
     assert!(app.pending_remote_model_refresh_snapshot.is_none());
 
-    let last = app.display_messages.last().expect("display message");
+    let last = app.transcript.messages().last().expect("display message");
     assert_eq!(last.role, "system");
     assert!(last.content.contains("Model List Refresh Complete"));
     assert!(last.content.contains("Models: 1 → 2  (+1 / -0)"));
@@ -210,7 +211,7 @@ fn test_remote_runtime_activity_notification_renders_as_system_message() {
         &mut remote,
     );
 
-    let last = app.display_messages.last().expect("display message");
+    let last = app.transcript.messages().last().expect("display message");
     assert_eq!(last.role, "system");
     assert!(last.content.contains("Auth Change Received"));
     assert_eq!(
@@ -245,7 +246,7 @@ fn test_remote_auth_activity_notification_is_status_only_during_onboarding() {
     );
 
     assert!(
-        app.display_messages.is_empty(),
+        app.transcript.messages().is_empty(),
         "onboarding should keep auth runtime activity out of chat"
     );
     assert_eq!(
@@ -279,7 +280,8 @@ fn test_remote_final_catalog_activity_is_two_lines_and_completes_model_setup() {
 
     assert!(!app.auth_catalog_refresh_pending);
     let last = app
-        .display_messages
+        .transcript
+        .messages()
         .last()
         .expect("compact catalog message");
     assert_eq!(last.role, "system");
@@ -306,7 +308,7 @@ fn test_remote_auth_model_change_does_not_add_a_third_visible_line() {
     );
 
     assert_eq!(app.remote_provider_model.as_deref(), Some("gpt-5.6-sol"));
-    assert!(app.display_messages.is_empty());
+    assert!(app.transcript.messages().is_empty());
 }
 
 #[test]
@@ -335,7 +337,7 @@ fn test_remote_onboarding_catalog_activity_completes_model_setup_without_chat_no
     );
 
     assert!(!app.auth_catalog_refresh_pending);
-    assert!(app.display_messages.is_empty());
+    assert!(app.transcript.messages().is_empty());
 }
 
 #[test]
@@ -371,7 +373,7 @@ fn test_remote_catalog_activity_notification_upserts_compact_row() {
         );
     }
 
-    assert!(app.display_messages.is_empty());
+    assert!(app.transcript.messages().is_empty());
     assert_eq!(app.background_task_rows_ref().len(), 1);
     assert!(app.auth_catalog_refresh_pending);
     assert_eq!(

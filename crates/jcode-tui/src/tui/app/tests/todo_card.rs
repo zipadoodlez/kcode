@@ -3,24 +3,25 @@
 #[test]
 fn toggle_todo_card_pushes_then_dismisses_trailing_card() {
     let mut app = create_test_app();
-    assert!(!app.display_messages.iter().any(|m| m.role == "todos"));
+    assert!(!app.transcript.messages().iter().any(|m| m.role == "todos"));
 
     app.toggle_todo_card();
     assert_eq!(
-        app.display_messages
+        app.transcript
+            .messages()
             .iter()
             .filter(|m| m.role == "todos")
             .count(),
         1
     );
     assert_eq!(
-        app.display_messages.last().map(|m| m.role.as_str()),
+        app.transcript.messages().last().map(|m| m.role.as_str()),
         Some("todos")
     );
 
     // Toggling again while the card is the trailing message dismisses it.
     app.toggle_todo_card();
-    assert!(!app.display_messages.iter().any(|m| m.role == "todos"));
+    assert!(!app.transcript.messages().iter().any(|m| m.role == "todos"));
 }
 
 #[test]
@@ -32,13 +33,14 @@ fn toggle_todo_card_moves_stale_card_to_bottom_instead_of_stacking() {
     // Card exists but is no longer trailing: toggling re-shows at the bottom.
     app.toggle_todo_card();
     let card_count = app
-        .display_messages
+        .transcript
+        .messages()
         .iter()
         .filter(|m| m.role == "todos")
         .count();
     assert_eq!(card_count, 1, "the transcript keeps at most one todo card");
     assert_eq!(
-        app.display_messages.last().map(|m| m.role.as_str()),
+        app.transcript.messages().last().map(|m| m.role.as_str()),
         Some("todos")
     );
 }
@@ -48,7 +50,7 @@ fn todos_command_defaults_to_card_and_panel_subcommand_keeps_side_panel() {
     let mut app = create_test_app();
 
     assert!(super::commands::handle_session_command(&mut app, "/todos"));
-    assert!(app.display_messages.iter().any(|m| m.role == "todos"));
+    assert!(app.transcript.messages().iter().any(|m| m.role == "todos"));
     assert!(!app.todos_view.enabled());
 
     assert!(super::commands::handle_session_command(
@@ -68,7 +70,7 @@ fn todos_command_defaults_to_card_and_panel_subcommand_keeps_side_panel() {
 fn todo_alias_shows_card() {
     let mut app = create_test_app();
     assert!(super::commands::handle_session_command(&mut app, "/todo"));
-    assert!(app.display_messages.iter().any(|m| m.role == "todos"));
+    assert!(app.transcript.messages().iter().any(|m| m.role == "todos"));
 }
 
 #[test]
@@ -93,7 +95,8 @@ fn refresh_todo_card_updates_content_when_todos_change() {
     crate::todo::save_todos(&session_id, &[todo("write the card", "pending")]).unwrap();
     app.toggle_todo_card();
     let card = app
-        .display_messages
+        .transcript
+        .messages()
         .iter()
         .find(|m| m.role == "todos")
         .expect("todo card pushed");
@@ -106,7 +109,8 @@ fn refresh_todo_card_updates_content_when_todos_change() {
     crate::todo::save_todos(&session_id, &[todo("write the card", "completed")]).unwrap();
     assert!(app.refresh_todo_card_if_needed());
     let card = app
-        .display_messages
+        .transcript
+        .messages()
         .iter()
         .find(|m| m.role == "todos")
         .expect("todo card still present");
@@ -152,7 +156,8 @@ fn refresh_todo_card_updates_content_when_goal_scores_change() {
     crate::todo::save_plan(&session_id, &plan).unwrap();
     app.toggle_todo_card();
     let card = app
-        .display_messages
+        .transcript
+        .messages()
         .iter()
         .find(|message| message.role == "todos")
         .expect("todo card pushed");
@@ -165,7 +170,8 @@ fn refresh_todo_card_updates_content_when_goal_scores_change() {
     crate::todo::save_goals(&session_id, &[goal(95)]).unwrap();
     assert!(app.refresh_todo_card_if_needed());
     let card = app
-        .display_messages
+        .transcript
+        .messages()
         .iter()
         .find(|message| message.role == "todos")
         .expect("todo card still present");
@@ -297,7 +303,7 @@ fn pinned_todos_hide_todo_tool_messages_from_the_transcript() {
     )
     .unwrap();
     app.refresh_pinned_todos_now();
-    app.display_messages = vec![
+    app.transcript.set_all(vec![
         DisplayMessage::tool(
             "duplicate todo transcript card",
             crate::message::ToolCall {
@@ -318,7 +324,7 @@ fn pinned_todos_hide_todo_tool_messages_from_the_transcript() {
                 thought_signature: None,
             },
         ),
-    ];
+    ]);
     app.bump_display_messages_version();
     app.session.short_name = Some("test".to_string());
     let backend = ratatui::backend::TestBackend::new(80, 40);
@@ -344,7 +350,7 @@ fn pinned_todo_band_renders_below_sticky_prompt_without_separator() {
     app.refresh_pinned_todos_now();
     assert!(app.todos_view.pinned_payload_ref().is_some());
 
-    app.display_messages = vec![
+    app.transcript.set_all(vec![
         DisplayMessage {
             role: "user".to_string(),
             content: "kick off the work".to_string(),
@@ -361,7 +367,7 @@ fn pinned_todo_band_renders_below_sticky_prompt_without_separator() {
             title: None,
             tool_data: None,
         },
-    ];
+    ]);
     app.bump_display_messages_version();
     app.viewport.scroll_offset = 0;
     app.viewport.auto_scroll_paused = false;

@@ -1188,7 +1188,7 @@ impl App {
     }
 
     fn upsert_usage_display_card(&mut self, content: String) {
-        let existing = self.display_messages.iter().rposition(|message| {
+        let existing = self.transcript.messages().iter().rposition(|message| {
             message.role == "usage" && message.title.as_deref() == Some("Usage")
         });
         if let Some(idx) = existing {

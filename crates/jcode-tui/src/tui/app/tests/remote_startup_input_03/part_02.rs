@@ -299,7 +299,7 @@ fn test_reload_progress_coalesces_into_single_message() {
     );
 
     assert_eq!(app.display_messages().len(), 1);
-    let reload_msg = &app.display_messages()[0];
+    let reload_msg = &app.transcript.messages()[0];
     assert_eq!(reload_msg.role, "system");
     assert_eq!(reload_msg.title.as_deref(), Some("Reload"));
     assert_eq!(

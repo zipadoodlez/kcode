@@ -162,7 +162,7 @@ fn kv_cache_signature_ignores_non_transmitted_message_metadata() {
 fn cold_cache_warning_is_persisted_when_starting_next_request() {
     let mut app = create_test_app();
     crate::provider::anthropic::set_cache_ttl_1h(true);
-    app.display_messages.push(DisplayMessage::user("first"));
+    app.transcript.append(DisplayMessage::user("first"));
     let session_id = app.kv_cache_session_id();
     app.kv_cache.kv_cache_baseline = Some(KvCacheBaseline {
         session_id,
@@ -175,7 +175,7 @@ fn cold_cache_warning_is_persisted_when_starting_next_request() {
         signature: None,
     });
 
-    app.display_messages.push(DisplayMessage::user("second"));
+    app.transcript.append(DisplayMessage::user("second"));
     app.begin_kv_cache_request(&[Message::user("second")], &[], "system", "");
 
     let warning = app
@@ -201,7 +201,7 @@ fn cold_cache_warning_fires_on_idle_tick_before_next_message() {
     // for the next request to start.
     let mut app = create_test_app();
     crate::provider::anthropic::set_cache_ttl_1h(true);
-    app.display_messages.push(DisplayMessage::user("first"));
+    app.transcript.append(DisplayMessage::user("first"));
     let session_id = app.kv_cache_session_id();
     app.kv_cache.kv_cache_baseline = Some(KvCacheBaseline {
         session_id,
@@ -244,7 +244,7 @@ fn cold_cache_warning_fires_on_idle_tick_before_next_message() {
     assert_eq!(count, 1);
 
     // And the request-start fallback must not duplicate the idle warning.
-    app.display_messages.push(DisplayMessage::user("second"));
+    app.transcript.append(DisplayMessage::user("second"));
     app.begin_kv_cache_request(&[Message::user("second")], &[], "system", "");
     let count = app
         .display_messages()
@@ -261,7 +261,7 @@ fn cold_cache_warning_fires_on_idle_tick_before_next_message() {
 fn idle_cold_cache_warning_waits_for_ttl_and_rearms_after_new_cache_write() {
     let mut app = create_test_app();
     crate::provider::anthropic::set_cache_ttl_1h(true);
-    app.display_messages.push(DisplayMessage::user("first"));
+    app.transcript.append(DisplayMessage::user("first"));
     let session_id = app.kv_cache_session_id();
     app.kv_cache.kv_cache_baseline = Some(KvCacheBaseline {
         session_id: session_id.clone(),
@@ -714,8 +714,7 @@ fn remote_token_usage_records_cache_stats_before_done_and_dedupes_snapshots() {
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_provider_name = Some("OpenAI".to_string());
     app.remote_provider_model = Some("gpt-5.5".to_string());
-    app.display_messages
-        .push(DisplayMessage::user("live prompt"));
+    app.transcript.append(DisplayMessage::user("live prompt"));
 
     app.handle_server_event(
         crate::protocol::ServerEvent::KvCacheRequest {

@@ -809,10 +809,10 @@ impl App {
                                         });
 
                                         // Update the tool's DisplayMessage with the output (if it exists)
-                                        if let Some(dm) = self.display_messages.iter_mut().rev().find(|dm| {
-                                            dm.tool_data.as_ref().map(|td| &td.id) == Some(&tool_use_id)
-                                        }) {
-                                            dm.content = content.clone();
+                                        if self
+                                            .transcript
+                                            .replace_tool_output(&tool_use_id, content.clone())
+                                        {
                                             self.bump_display_messages_version();
                                         }
 

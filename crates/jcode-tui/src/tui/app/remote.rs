@@ -975,7 +975,7 @@ pub(super) fn handle_disconnect(
         title: Some(CONNECTION_MESSAGE_TITLE.to_string()),
         tool_data: None,
     });
-    state.disconnect_msg_idx = Some(app.display_messages.len() - 1);
+    state.disconnect_msg_idx = Some(app.transcript.messages().len() - 1);
     state.reconnect_attempts = 1;
 }
 
@@ -1739,7 +1739,7 @@ async fn handle_debug_command(app: &mut App, cmd: &str, remote: &mut RemoteConne
         return serde_json::json!({
             "processing": app.is_processing,
             "messages": app.messages.len(),
-            "display_messages": app.display_messages.len(),
+            "display_messages": app.transcript.messages().len(),
             "input": app.composer.input,
             "cursor_pos": app.composer.cursor_pos,
             "scroll_offset": app.viewport.scroll_offset,

@@ -963,7 +963,7 @@ fn test_remote_model_switch_failure_shows_actionable_guidance() {
 
     assert_eq!(app.status_notice(), Some("Model switch failed".to_string()));
 
-    let last = app.display_messages.last().expect("display message");
+    let last = app.transcript.messages().last().expect("display message");
     assert_eq!(last.role, "error");
     assert!(last.content.contains("credentials expired"));
     assert!(last.content.contains("/model"));
@@ -1003,7 +1003,8 @@ fn test_remote_prompt_defers_while_model_switch_is_in_flight() {
     assert_eq!(queued.raw_input, "hello after model switch");
     assert_eq!(queued.images.len(), 1);
     assert!(
-        app.display_messages
+        app.transcript
+            .messages()
             .iter()
             .all(|message| message.role != "user")
     );
@@ -1041,7 +1042,8 @@ fn test_remote_prompt_defers_while_post_login_model_setup_is_pending() {
         Some("review my project")
     );
     assert!(
-        app.display_messages
+        app.transcript
+            .messages()
             .iter()
             .all(|message| message.role != "user")
     );

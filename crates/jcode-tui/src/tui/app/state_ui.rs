@@ -1,6 +1,5 @@
 use super::state_ui_storage::infer_spawned_session_startup_hints;
 use super::*;
-use crate::tui::ui::tools_ui;
 use crate::tui::{TuiState, backend};
 
 pub(super) struct RestoredReloadInput {
@@ -35,46 +34,6 @@ impl App {
             return false;
         }
         true
-    }
-
-    fn recompute_display_message_stats(&mut self) {
-        self.display_user_message_count = self
-            .display_messages
-            .iter()
-            .filter(|message| message.effective_role() == "user")
-            .count();
-        self.display_edit_tool_message_count = self
-            .display_messages
-            .iter()
-            .filter(|message| Self::display_message_is_edit_tool(message))
-            .count();
-    }
-
-    /// Whether a single display message counts as an edit-tool message for the
-    /// incrementally-maintained `display_edit_tool_message_count`.
-    fn display_message_is_edit_tool(message: &DisplayMessage) -> bool {
-        message
-            .tool_data
-            .as_ref()
-            .map(|tool| tools_ui::is_edit_tool_name(&tool.name))
-            .unwrap_or(false)
-    }
-
-    /// Fold a single message into the cached display-message counters with the
-    /// given sign (+1 when added, -1 when removed). This keeps the counters
-    /// O(1) per mutation instead of rescanning the whole transcript via
-    /// `recompute_display_message_stats`, which made appending M messages one at
-    /// a time cumulatively O(M^2).
-    pub(super) fn adjust_display_message_stats(&mut self, message: &DisplayMessage, added: bool) {
-        let delta: isize = if added { 1 } else { -1 };
-        if message.effective_role() == "user" {
-            self.display_user_message_count =
-                (self.display_user_message_count as isize + delta).max(0) as usize;
-        }
-        if Self::display_message_is_edit_tool(message) {
-            self.display_edit_tool_message_count =
-                (self.display_edit_tool_message_count as isize + delta).max(0) as usize;
-        }
     }
 
     pub(super) fn active_client_session_id(&self) -> Option<&str> {
@@ -166,21 +125,16 @@ impl App {
     }
 
     pub fn display_messages(&self) -> &[DisplayMessage] {
-        &self.display_messages
+        self.transcript.messages()
     }
 
+    /// Invalidate everything downstream of the transcript: bump its version and
+    /// refresh the caches other subsystems keep of it (`context_revision`, split
+    /// view). The transcript maintains its own counters and version on every
+    /// mutation, so this only adds the cross-cutting fan-out; calling it after a
+    /// mutation is idempotent.
     pub(super) fn bump_display_messages_version(&mut self) {
-        self.recompute_display_message_stats();
-        self.bump_display_messages_version_no_stats();
-    }
-
-    /// Drop rendered inline images and every cache keyed by their contents.
-    /// Use this when the entire transcript is discarded.
-    /// Bump the display-messages version without rescanning the transcript to
-    /// recompute counters. Callers that have already maintained the cached
-    /// counters incrementally (e.g. a single append) use this to stay O(1).
-    pub(super) fn bump_display_messages_version_no_stats(&mut self) {
-        self.display_messages_version = self.display_messages_version.wrapping_add(1);
+        self.transcript.bump_version();
         self.bump_context_revision();
         self.refresh_split_view_if_needed();
     }
@@ -860,7 +814,8 @@ impl App {
 
         DebugEvent::StateSnapshot {
             display_messages: self
-                .display_messages
+                .transcript
+                .messages()
                 .iter()
                 .map(|m| DebugMessage {
                     role: m.role.clone(),
@@ -1831,7 +1786,8 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
             .unwrap_or_else(|_| "unknown".to_string());
 
         let turn_count = app
-            .display_messages
+            .transcript
+            .messages()
             .iter()
             .filter(|m| m.role == "user")
             .count();

@@ -51,7 +51,7 @@ fn test_open_model_picker_without_routes_shows_actionable_guidance() {
     assert!(app.inline_interactive_state.is_none());
     assert_eq!(app.status_notice(), Some("No models available".to_string()));
 
-    let last = app.display_messages.last().expect("display message");
+    let last = app.transcript.messages().last().expect("display message");
     assert_eq!(last.role, "system");
     assert!(last.content.contains("/login"));
     assert!(last.content.contains("/account"));
@@ -735,7 +735,7 @@ fn test_tui_api_key_auth_refreshes_catalog_shows_diff_without_opening_picker() {
         "activation completion should still not open /model automatically"
     );
     assert_eq!(app.session.model.as_deref(), Some("state-space-alpha"));
-    let last = app.display_messages.last().expect("activation message");
+    let last = app.transcript.messages().last().expect("activation message");
     assert!(last.content.contains("Added models:"));
     assert!(last.content.contains("state-space-alpha"));
     assert!(last.content.contains("state-space-beta"));
@@ -803,7 +803,8 @@ fn test_tui_cerebras_paste_key_lifecycle_has_no_degraded_success_messages() {
     );
 
     let prompt = app
-        .display_messages
+        .transcript
+        .messages()
         .last()
         .expect("login prompt")
         .content
@@ -982,7 +983,8 @@ fn test_tui_cerebras_paste_key_lifecycle_has_no_degraded_success_messages() {
         "post-login activation must preserve the authenticated Cerebras route instead of switching a bare model"
     );
     let transcript = app
-        .display_messages
+        .transcript
+        .messages()
         .iter()
         .map(|message| message.content.as_str())
         .collect::<Vec<_>>()
@@ -1384,7 +1386,7 @@ fn test_local_model_picker_selection_failure_keeps_picker_open_and_shows_next_st
     );
     assert_eq!(app.status_notice(), Some("Model switch failed".to_string()));
 
-    let last = app.display_messages.last().expect("display message");
+    let last = app.transcript.messages().last().expect("display message");
     assert_eq!(last.role, "error");
     assert!(last.content.contains("credentials expired"));
     assert!(last.content.contains("/model"));
@@ -1848,7 +1850,7 @@ fn test_agent_model_picker_openrouter_bare_openai_route_saves_openai_catalog_pre
     app.handle_key(KeyCode::Enter, KeyModifiers::empty())
         .expect("agent model picker selection should succeed");
 
-    let last = app.display_messages.last().expect("display message");
+    let last = app.transcript.messages().last().expect("display message");
     assert_eq!(last.role, "system");
     assert!(
         last.content.contains("openai/gpt-5.4@OpenAI"),
@@ -1860,7 +1862,7 @@ fn test_agent_model_picker_openrouter_bare_openai_route_saves_openai_catalog_pre
 #[test]
 fn test_local_model_picker_render_shows_antigravity_models_exactly_as_user_sees_them() {
     let mut app = create_antigravity_picker_test_app();
-    app.display_messages = vec![DisplayMessage::system("seed render state")];
+    app.transcript.set_all(vec![DisplayMessage::system("seed render state")]);
     app.bump_display_messages_version();
     app.open_model_picker();
     wait_for_model_picker_load(&mut app);
@@ -1923,7 +1925,7 @@ GPT:
 #[test]
 fn test_login_smoke_model_picker_renders_unstacked_provider_rows() {
     let mut app = create_login_smoke_model_app();
-    app.display_messages = vec![DisplayMessage::system("seed render state")];
+    app.transcript.set_all(vec![DisplayMessage::system("seed render state")]);
     app.bump_display_messages_version();
     app.open_model_picker();
     wait_for_model_picker_load(&mut app);
