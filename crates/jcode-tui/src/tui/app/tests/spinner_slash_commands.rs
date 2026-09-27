@@ -4,8 +4,8 @@ fn slash_palette_remains_navigable_while_a_turn_is_streaming() {
     app.is_processing = true;
     app.status = ProcessingStatus::Streaming;
     app.processing_started = Some(Instant::now());
-    app.input = "/".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     let suggestions = app.command_suggestions();
     assert!(suggestions.len() > 1, "slash palette should be open");
@@ -16,7 +16,7 @@ fn slash_palette_remains_navigable_while_a_turn_is_streaming() {
 
     app.handle_key(KeyCode::Enter, KeyModifiers::empty())
         .expect("accept slash suggestion");
-    assert_ne!(app.input, "/");
-    assert!(app.input.starts_with('/'));
+    assert_ne!(app.composer.input, "/");
+    assert!(app.composer.input.starts_with('/'));
     assert!(!app.cancel_requested, "palette input must not interrupt the turn");
 }

@@ -65,8 +65,8 @@ impl App {
             filter: String::new(),
             preview: false,
         });
-        self.input.clear();
-        self.cursor_pos = 0;
+        self.composer.input.clear();
+        self.composer.cursor_pos = 0;
     }
 
     pub(crate) fn open_login_picker_inline(&mut self) {
@@ -180,8 +180,8 @@ impl App {
             filter: String::new(),
             preview: false,
         });
-        self.input.clear();
-        self.cursor_pos = 0;
+        self.composer.input.clear();
+        self.composer.cursor_pos = 0;
     }
 
     pub(crate) fn open_agent_model_picker(&mut self, target: AgentModelTarget) {

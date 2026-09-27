@@ -66,13 +66,15 @@ pub(in crate::tui::app) fn restore_prepared_remote_input(
     app: &mut App,
     prepared: input::PreparedInput,
 ) {
-    app.input = prepared.raw_input;
-    app.cursor_pos = app.input.len();
+    app.composer.input = prepared.raw_input;
+    app.composer.cursor_pos = app.composer.input.len();
     app.pending_images = prepared.images;
 }
 
 pub(in crate::tui::app) fn history_matches_pending_startup_prompt(app: &App) -> bool {
-    if !app.submit_input_on_startup || !app.pending_images.is_empty() || app.input.trim().is_empty()
+    if !app.submit_input_on_startup
+        || !app.pending_images.is_empty()
+        || app.composer.input.trim().is_empty()
     {
         return false;
     }
@@ -81,7 +83,7 @@ pub(in crate::tui::app) fn history_matches_pending_startup_prompt(app: &App) -> 
         .iter()
         .rev()
         .find(|message| message.role == "user")
-        .is_some_and(|message| message.content == app.input)
+        .is_some_and(|message| message.content == app.composer.input)
 }
 
 /// Restore the visible user turn for a startup prompt that was sent before the
@@ -208,15 +210,15 @@ pub(in crate::tui::app) async fn submit_remote_slash_input(
     }
 
     let Some(invocation) = snapshot.resolve_invocation(&raw_input) else {
-        app.input = raw_input;
-        app.cursor_pos = app.input.len();
+        app.composer.input = raw_input;
+        app.composer.cursor_pos = app.composer.input.len();
         app.submit_input();
         return Ok(());
     };
 
     let Some(trailing_prompt) = invocation.prompt else {
-        app.input = raw_input;
-        app.cursor_pos = app.input.len();
+        app.composer.input = raw_input;
+        app.composer.cursor_pos = app.composer.input.len();
         app.submit_input();
         return Ok(());
     };
@@ -230,8 +232,8 @@ pub(in crate::tui::app) async fn submit_remote_slash_input(
     if skill.is_none() {
         // Preserve the existing unknown-skill and built-in slash-command
         // handling, including the helpful endorsed-skill installation hint.
-        app.input = raw_input;
-        app.cursor_pos = app.input.len();
+        app.composer.input = raw_input;
+        app.composer.cursor_pos = app.composer.input.len();
         app.submit_input();
         return Ok(());
     }
@@ -240,8 +242,8 @@ pub(in crate::tui::app) async fn submit_remote_slash_input(
     // the activation notice, then prepare only the trailing prompt for the
     // remote request. This avoids duplicating slash-command presentation and
     // keeps pasted images attached to the same user turn.
-    app.input = format!("/{}", skill_name);
-    app.cursor_pos = app.input.len();
+    app.composer.input = format!("/{}", skill_name);
+    app.composer.cursor_pos = app.composer.input.len();
     app.pending_images.clear();
     app.submit_input();
 
@@ -359,8 +361,8 @@ pub(in crate::tui::app) fn finish_remote_split_launch(app: &mut App) {
 }
 
 fn set_transcript_input(app: &mut App, text: String) {
-    app.input = text;
-    app.cursor_pos = app.input.len();
+    app.composer.input = text;
+    app.composer.cursor_pos = app.composer.input.len();
     app.reset_tab_completion();
     app.sync_model_picker_preview_from_input();
 }
@@ -406,7 +408,7 @@ async fn submit_remote_transcript_input(
     remote: &mut RemoteConnection,
 ) -> Result<()> {
     input::promote_dropped_images(app);
-    let trimmed = app.input.trim().to_string();
+    let trimmed = app.composer.input.trim().to_string();
     if trimmed.is_empty() {
         app.set_status_notice("Transcript was empty");
         return Ok(());
@@ -419,9 +421,9 @@ async fn submit_remote_transcript_input(
     }
 
     if let Some(command) = input::extract_input_shell_command(&trimmed) {
-        let raw_input = std::mem::take(&mut app.input);
-        app.cursor_pos = 0;
-        app.clear_input_undo_history();
+        let raw_input = std::mem::take(&mut app.composer.input);
+        app.composer.cursor_pos = 0;
+        app.composer.clear_input_undo_history();
         submit_remote_input_shell(app, remote, raw_input, command.to_string()).await?;
         return Ok(());
     }
@@ -506,7 +508,7 @@ pub(in crate::tui::app) fn apply_transcript_event(
             app.set_status_notice("Transcript inserted");
         }
         TranscriptMode::Append => {
-            let mut combined = app.input.clone();
+            let mut combined = app.composer.input.clone();
             combined.push_str(&text);
             set_transcript_input(app, combined);
             app.set_status_notice("Transcript appended");

@@ -27,8 +27,8 @@ fn test_remote_poke_queues_when_turn_is_in_progress() {
         app.is_processing = true;
         app.status = ProcessingStatus::Streaming;
         app.current_message_id = Some(42);
-        app.input = "/poke".to_string();
-        app.cursor_pos = app.input.len();
+        app.composer.input = "/poke".to_string();
+        app.composer.cursor_pos = app.composer.input.len();
 
         rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
             .expect("/poke should queue behind the current turn");
@@ -129,8 +129,8 @@ fn test_remote_transfer_queues_pause_when_processing() {
         app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.is_processing = true;
 
-        app.input = "/transfer".to_string();
-        app.cursor_pos = app.input.len();
+        app.composer.input = "/transfer".to_string();
+        app.composer.cursor_pos = app.composer.input.len();
         rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
             .expect("/transfer should queue while processing");
 
@@ -223,7 +223,7 @@ fn test_handle_server_event_remote_observe_tracks_tool_exec_and_done() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.input = "/observe on".to_string();
+    app.composer.input = "/observe on".to_string();
     app.submit_input();
     assert_eq!(app.side_panel.focused_page_id.as_deref(), Some("observe"));
 
@@ -286,7 +286,7 @@ fn test_handle_remote_event_redraws_observe_tool_exec_immediately() {
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
     let mut state = super::remote::RemoteRunState::default();
 
-    app.input = "/observe on".to_string();
+    app.composer.input = "/observe on".to_string();
     app.submit_input();
 
     let (outcome, needs_redraw) = rt
@@ -413,7 +413,7 @@ fn test_handle_remote_event_redraws_observe_tool_done_immediately() {
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
     let mut state = super::remote::RemoteRunState::default();
 
-    app.input = "/observe on".to_string();
+    app.composer.input = "/observe on".to_string();
     app.submit_input();
 
     let (_, needs_redraw) = rt
@@ -504,7 +504,7 @@ fn test_handle_remote_event_redraws_observe_tool_done_immediately() {
 #[test]
 fn test_observe_marks_large_tool_results() {
     let mut app = create_test_app();
-    app.input = "/observe on".to_string();
+    app.composer.input = "/observe on".to_string();
     app.submit_input();
 
     let tool_call = crate::message::ToolCall {
@@ -529,7 +529,7 @@ fn test_observe_repaint_does_not_leave_severity_badge_artifact() {
     let _lock = scroll_render_test_lock();
 
     let mut app = create_test_app();
-    app.input = "/observe on".to_string();
+    app.composer.input = "/observe on".to_string();
     app.submit_input();
 
     let backend = ratatui::backend::TestBackend::new(90, 20);

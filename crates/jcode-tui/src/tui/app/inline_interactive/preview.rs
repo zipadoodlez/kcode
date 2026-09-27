@@ -123,7 +123,7 @@ impl App {
     }
 
     pub(crate) fn sync_model_picker_preview_from_input(&mut self) {
-        let Some(request) = self.inline_picker_preview_request(&self.input) else {
+        let Some(request) = self.inline_picker_preview_request(&self.composer.input) else {
             if self
                 .inline_interactive_state
                 .as_ref()
@@ -142,8 +142,8 @@ impl App {
             .unwrap_or(true);
 
         if should_open {
-            let saved_input = self.input.clone();
-            let saved_cursor = self.cursor_pos;
+            let saved_input = self.composer.input.clone();
+            let saved_cursor = self.composer.cursor_pos;
             let append_model_filter_space = matches!(
                 request,
                 InlinePickerPreviewRequest::Model { ref filter }
@@ -160,13 +160,13 @@ impl App {
                 preview_opened = true;
             }
             // Preview must not steal the user's command input.
-            self.input = saved_input;
-            self.cursor_pos = saved_cursor;
+            self.composer.input = saved_input;
+            self.composer.cursor_pos = saved_cursor;
             // Once the model picker is visible, put the cursor in its filter
             // argument so typing narrows models instead of extending `/model`.
             if preview_opened && append_model_filter_space {
-                self.input.push(' ');
-                self.cursor_pos = self.input.len();
+                self.composer.input.push(' ');
+                self.composer.cursor_pos = self.composer.input.len();
             }
         }
 
@@ -206,8 +206,8 @@ impl App {
             if let Some(ref mut picker) = self.inline_interactive_state {
                 picker.column = 0;
             }
-            self.input.clear();
-            self.cursor_pos = 0;
+            self.composer.input.clear();
+            self.composer.cursor_pos = 0;
             return true;
         }
         // `/login` + immediate Enter must not silently start the first
@@ -224,12 +224,12 @@ impl App {
             if let Some(ref mut picker) = self.inline_interactive_state {
                 picker.column = 0;
             }
-            self.input.clear();
-            self.cursor_pos = 0;
+            self.composer.input.clear();
+            self.composer.cursor_pos = 0;
             return true;
         }
-        self.input.clear();
-        self.cursor_pos = 0;
+        self.composer.input.clear();
+        self.composer.cursor_pos = 0;
         let _ = self.handle_inline_interactive_key(KeyCode::Enter, KeyModifiers::NONE);
         true
     }

@@ -41,16 +41,16 @@ pub(in crate::tui::app) fn enter_inserts_newline(
 /// The backslash itself is removed, matching shell line-continuation muscle
 /// memory. An escaped backslash (`\\`) is literal text and still submits.
 fn consume_backslash_continuation(app: &mut App) -> bool {
-    if app.cursor_pos != app.input.len() || !app.input.ends_with('\\') {
+    if app.composer.cursor_pos != app.composer.input.len() || !app.composer.input.ends_with('\\') {
         return false;
     }
-    let trailing = app.input.len() - app.input.trim_end_matches('\\').len();
+    let trailing = app.composer.input.len() - app.composer.input.trim_end_matches('\\').len();
     if trailing.is_multiple_of(2) {
         return false;
     }
-    app.remember_input_undo_state();
-    app.input.pop();
-    app.cursor_pos = app.input.len();
+    app.composer.remember_input_undo_state();
+    app.composer.input.pop();
+    app.composer.cursor_pos = app.composer.input.len();
     hint_terminal_setup_once(app);
     insert_input_text(app, "\n");
     true

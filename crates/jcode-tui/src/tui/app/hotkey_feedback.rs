@@ -760,7 +760,7 @@ impl App {
         }
 
         let registry = self.hotkey_registry(remote);
-        let Some(info) = lookup(&registry, self.input.is_empty(), code, modifiers) else {
+        let Some(info) = lookup(&registry, self.composer.input.is_empty(), code, modifiers) else {
             return;
         };
 
@@ -814,7 +814,7 @@ impl App {
         let registry = self.hotkey_registry(remote);
         // A known-but-contextually-inert chord (e.g. the fallback-accept key
         // with no offer armed) is not "unbound"; stay silent.
-        if lookup(&registry, self.input.is_empty(), code, modifiers).is_some() {
+        if lookup(&registry, self.composer.input.is_empty(), code, modifiers).is_some() {
             return;
         }
 

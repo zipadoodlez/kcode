@@ -23,10 +23,17 @@ fn issue_1206_complete_non_image_drop_resolves_to_openable_path() {
         let mut app = create_test_app();
         app.set_input_for_test(dropped.clone());
         assert!(promote_dropped_images(&mut app), "{dropped}");
-        assert!(std::path::Path::new(&app.input).is_file(), "{}", app.input);
-        assert_eq!(std::fs::read(&app.input).unwrap(), b"readable notes");
-        assert_eq!(app.cursor_pos, app.input.len());
-        assert_eq!(app.input_undo_stack.last().unwrap().0, dropped);
+        assert!(
+            std::path::Path::new(&app.composer.input).is_file(),
+            "{}",
+            app.composer.input
+        );
+        assert_eq!(
+            std::fs::read(&app.composer.input).unwrap(),
+            b"readable notes"
+        );
+        assert_eq!(app.composer.cursor_pos, app.composer.input.len());
+        assert_eq!(app.composer.input_undo_stack.last().unwrap().0, dropped);
         assert!(app.pending_images.is_empty());
     }
 }
@@ -41,10 +48,10 @@ fn issue_1206_clean_paths_and_prose_do_not_change_or_add_undo() {
     ] {
         let mut app = create_test_app();
         app.set_input_for_test(input.clone());
-        let undo = app.input_undo_stack.clone();
+        let undo = app.composer.input_undo_stack.clone();
         assert!(!promote_dropped_images(&mut app));
-        assert_eq!(app.input, input);
-        assert_eq!(app.input_undo_stack, undo);
+        assert_eq!(app.composer.input, input);
+        assert_eq!(app.composer.input_undo_stack, undo);
     }
 }
 
@@ -57,12 +64,12 @@ fn issue_1206_multi_drop_stays_separable_and_idempotent() {
     app.set_input_for_test(format!("'{}' '{}'", first.display(), second.display()));
     assert!(promote_dropped_images(&mut app));
     assert_eq!(
-        parse_dropped_paths(&app.input).unwrap(),
+        parse_dropped_paths(&app.composer.input).unwrap(),
         vec![first, second]
     );
-    let undo = app.input_undo_stack.clone();
+    let undo = app.composer.input_undo_stack.clone();
     assert!(!promote_dropped_images(&mut app));
-    assert_eq!(app.input_undo_stack, undo);
+    assert_eq!(app.composer.input_undo_stack, undo);
 }
 
 #[test]
@@ -77,7 +84,7 @@ fn issue_1206_multi_drop_preserves_literal_shell_punctuation() {
     app.set_input_for_test(format!("\"{}\" '{}'", first.display(), second.display()));
     promote_dropped_images(&mut app);
     assert_eq!(
-        parse_dropped_paths(&app.input).unwrap(),
+        parse_dropped_paths(&app.composer.input).unwrap(),
         vec![first, second]
     );
 }
@@ -95,7 +102,7 @@ fn issue_1206_key_stream_preserves_escaped_prefix_until_submission() {
         handle_text_input(&mut app, &ch.to_string());
     }
     assert_eq!(
-        app.input, stream,
+        app.composer.input, stream,
         "do not rewrite partially received key streams"
     );
     let prepared = take_prepared_input(&mut app);
@@ -112,7 +119,7 @@ fn issue_1206_local_submit_and_bracketed_paste_both_resolve_paths() {
     let escaped = file.display().to_string().replace(' ', "\\ ");
     let mut app = create_test_app();
     handle_paste(&mut app, escaped.clone());
-    assert!(std::path::Path::new(&app.input).is_file());
+    assert!(std::path::Path::new(&app.composer.input).is_file());
     app.set_input_for_test(escaped);
     app.submit_input();
     let message = app.session.messages.last().unwrap();
@@ -129,7 +136,7 @@ fn issue_1206_image_drop_still_attaches_bytes() {
     let mut app = create_test_app();
     app.set_input_for_test(image.display().to_string().replace(' ', "\\ "));
     assert!(promote_dropped_images(&mut app));
-    assert_eq!(app.input, "[image 1]");
+    assert_eq!(app.composer.input, "[image 1]");
     assert_eq!(
         app.pending_images,
         vec![(

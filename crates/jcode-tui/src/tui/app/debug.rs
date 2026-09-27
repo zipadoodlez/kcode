@@ -337,8 +337,8 @@ impl ScrollTestState {
             queued_messages: app.queued_messages.clone(),
             interleave_message: app.interleave_message.clone(),
             pending_soft_interrupts: app.pending_soft_interrupts.clone(),
-            input: app.input.clone(),
-            cursor_pos: app.cursor_pos,
+            input: app.composer.input.clone(),
+            cursor_pos: app.composer.cursor_pos,
             status: app.status.clone(),
             processing_started: app.processing_started,
             status_notice: app.status_notice.clone(),
@@ -361,8 +361,8 @@ impl ScrollTestState {
         app.queued_messages = self.queued_messages;
         app.interleave_message = self.interleave_message;
         app.pending_soft_interrupts = self.pending_soft_interrupts;
-        app.input = self.input;
-        app.cursor_pos = self.cursor_pos;
+        app.composer.input = self.input;
+        app.composer.cursor_pos = self.cursor_pos;
         app.status = self.status;
         app.processing_started = self.processing_started;
         app.status_notice = self.status_notice;

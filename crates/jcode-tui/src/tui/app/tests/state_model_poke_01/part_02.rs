@@ -41,7 +41,7 @@ fn test_mouse_scroll_over_tool_side_panel_keeps_typing_in_chat() {
     app.handle_key(KeyCode::Char('x'), KeyModifiers::empty())
         .expect("typing into chat should succeed");
 
-    assert_eq!(app.input, "x");
+    assert_eq!(app.composer.input, "x");
 }
 
 #[test]

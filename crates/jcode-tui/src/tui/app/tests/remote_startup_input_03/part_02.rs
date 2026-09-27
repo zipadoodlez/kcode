@@ -205,7 +205,7 @@ fn test_initial_history_bootstrap_skips_resubmit_when_prompt_already_in_history(
 
         let mut restored = App::new_for_remote(Some(session_id.to_string()));
         assert!(restored.submit_input_on_startup);
-        assert_eq!(restored.input, "continue implementing the fix");
+        assert_eq!(restored.composer.input, "continue implementing the fix");
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         let _guard = rt.enter();
@@ -257,7 +257,7 @@ fn test_initial_history_bootstrap_skips_resubmit_when_prompt_already_in_history(
         );
 
         assert!(!restored.submit_input_on_startup);
-        assert!(restored.input.is_empty());
+        assert!(restored.composer.input.is_empty());
         assert!(
             restored
                 .display_messages()

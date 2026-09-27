@@ -988,8 +988,8 @@ impl App {
             preview: false,
         });
         if !preserve_input {
-            self.input.clear();
-            self.cursor_pos = 0;
+            self.composer.input.clear();
+            self.composer.cursor_pos = 0;
         }
 
         if std::env::var("JCODE_LOG_MODEL_PICKER_TIMING").is_ok() {
@@ -1934,7 +1934,7 @@ impl App {
             }
         });
         let saved_input = if preserve_input {
-            Some((self.input.clone(), self.cursor_pos))
+            Some((self.composer.input.clone(), self.composer.cursor_pos))
         } else {
             None
         };
@@ -1978,11 +1978,11 @@ impl App {
         }
 
         if let Some((input, cursor_pos)) = saved_input {
-            self.input = input;
-            self.cursor_pos = cursor_pos;
+            self.composer.input = input;
+            self.composer.cursor_pos = cursor_pos;
         } else {
-            self.input.clear();
-            self.cursor_pos = 0;
+            self.composer.input.clear();
+            self.composer.cursor_pos = 0;
         }
         routes
     }
@@ -1996,8 +1996,8 @@ impl App {
         let previous_model_picker_cache = self.model_picker.cache.clone();
         let previous_pending_model_picker_load = self.model_picker.pending.take();
         let previous_model_picker_load_request_id = self.model_picker.load_request_id;
-        let previous_input = self.input.clone();
-        let previous_cursor_pos = self.cursor_pos;
+        let previous_input = self.composer.input.clone();
+        let previous_cursor_pos = self.composer.cursor_pos;
         let previous_status_notice = self.status_notice.clone();
 
         if self.is_remote_client() && self.remote_model_options.is_empty() {
@@ -2120,8 +2120,8 @@ impl App {
             // methods and must never be written back as the detailed catalog.
             self.remote_model_options = routes;
         }
-        self.input = previous_input;
-        self.cursor_pos = previous_cursor_pos;
+        self.composer.input = previous_input;
+        self.composer.cursor_pos = previous_cursor_pos;
         self.status_notice = previous_status_notice;
 
         serde_json::to_string_pretty(&serde_json::json!({
@@ -2256,8 +2256,8 @@ impl App {
                 if let Some(ref mut picker) = self.inline_interactive_state {
                     if picker.filtered.is_empty() {
                         self.inline_interactive_state = None;
-                        self.input.clear();
-                        self.cursor_pos = 0;
+                        self.composer.input.clear();
+                        self.composer.cursor_pos = 0;
                         return Ok(true);
                     }
                     // `/login` + immediate Enter should not silently launch the
@@ -2270,29 +2270,29 @@ impl App {
                     {
                         picker.preview = false;
                         picker.column = 0;
-                        self.input.clear();
-                        self.cursor_pos = 0;
+                        self.composer.input.clear();
+                        self.composer.cursor_pos = 0;
                         return Ok(true);
                     }
                     picker.preview = false;
                     if picker.kind == PickerKind::Usage {
                         picker.column = 0;
-                        self.input.clear();
-                        self.cursor_pos = 0;
+                        self.composer.input.clear();
+                        self.composer.cursor_pos = 0;
                         self.request_usage_report();
                         return Ok(true);
                     }
                     picker.column = picker.preview_activation_column();
                 }
-                self.input.clear();
-                self.cursor_pos = 0;
+                self.composer.input.clear();
+                self.composer.cursor_pos = 0;
                 self.handle_inline_interactive_key(KeyCode::Enter, modifiers)?;
                 Ok(true)
             }
             KeyCode::Esc => {
                 self.inline_interactive_state = None;
-                self.input.clear();
-                self.cursor_pos = 0;
+                self.composer.input.clear();
+                self.composer.cursor_pos = 0;
                 Ok(true)
             }
             _ => Ok(false),
@@ -2413,7 +2413,7 @@ impl App {
     /// so the default input behavior is unchanged. Returns true when the
     /// gesture fired.
     pub(super) fn maybe_open_active_sessions_on_left(&mut self) -> bool {
-        if !self.input.is_empty() || self.cursor_pos != 0 {
+        if !self.composer.input.is_empty() || self.composer.cursor_pos != 0 {
             return false;
         }
         if !crate::config::config().display.active_sessions_manager {

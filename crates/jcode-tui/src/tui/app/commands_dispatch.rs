@@ -221,7 +221,7 @@ mod tests {
             );
         }
         for command in ["/login", "/account", "/subagent-model"] {
-            app.input = command.to_string();
+            app.composer.input = command.to_string();
             app.sync_model_picker_preview_from_input();
             assert!(app.inline_interactive_state.is_none(), "{command}");
         }
@@ -240,23 +240,23 @@ mod tests {
         let image = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
         std::fs::write(image.path(), b"local image bytes").unwrap();
         let path = image.path().to_string_lossy().to_string();
-        app.input.clear();
-        app.cursor_pos = 0;
+        app.composer.input.clear();
+        app.composer.cursor_pos = 0;
         input::handle_paste(&mut app, path.clone());
-        assert_eq!(app.input, path);
+        assert_eq!(app.composer.input, path);
         assert!(app.pending_images.is_empty());
         assert!(input::parse_dropped_paths(&path).is_none());
         assert!(!input::promote_dropped_images(&mut app));
 
-        app.input.clear();
-        app.cursor_pos = 0;
+        app.composer.input.clear();
+        app.composer.cursor_pos = 0;
         input::insert_input_text(&mut app, "ordinary remote prompt");
-        assert_eq!(app.input, "ordinary remote prompt");
+        assert_eq!(app.composer.input, "ordinary remote prompt");
         app.is_processing = true;
-        app.input = "/cancel".to_string();
+        app.composer.input = "/cancel".to_string();
         app.submit_input();
         assert!(app.cancel_requested);
-        assert!(app.input.is_empty());
+        assert!(app.composer.input.is_empty());
     }
 
     #[test]

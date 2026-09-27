@@ -66,8 +66,8 @@ fn drag_copy(
 fn test_input_composer_drag_selects_and_copies_typed_text() {
     let _render_lock = scroll_render_test_lock();
     let mut app = create_test_app();
-    app.input = "select this draft".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "select this draft".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     let backend = ratatui::backend::TestBackend::new(80, 24);
     let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
@@ -109,8 +109,8 @@ fn test_input_composer_drag_selects_and_copies_typed_text() {
 fn test_input_composer_selection_never_includes_prompt_prefix() {
     let _render_lock = scroll_render_test_lock();
     let mut app = create_test_app();
-    app.input = "no prompt here".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "no prompt here".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     let backend = ratatui::backend::TestBackend::new(80, 24);
     let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
@@ -141,8 +141,8 @@ fn test_input_composer_selection_never_includes_prompt_prefix() {
 fn test_input_composer_multiline_selection_preserves_newlines() {
     let _render_lock = scroll_render_test_lock();
     let mut app = create_test_app();
-    app.input = "alpha one\nbeta two".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "alpha one\nbeta two".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     let backend = ratatui::backend::TestBackend::new(80, 24);
     let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
@@ -181,8 +181,8 @@ fn test_input_composer_soft_wrapped_selection_copies_unwrapped_text() {
     let mut app = create_test_app();
     // Narrow terminal so this single logical line soft-wraps across rows.
     let text = "abcdefghij klmnopqrst uvwxyz0123456789";
-    app.input = text.to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = text.to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     let backend = ratatui::backend::TestBackend::new(30, 20);
     let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
@@ -228,8 +228,8 @@ fn test_chat_drag_into_composer_clamps_to_chat_pane() {
         tool_data: None,
     }];
     app.bump_display_messages_version();
-    app.input = "draft under composition".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "draft under composition".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     let backend = ratatui::backend::TestBackend::new(80, 24);
     let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
@@ -325,8 +325,8 @@ fn test_chat_drag_into_composer_clamps_to_chat_pane() {
 fn test_input_composer_click_still_moves_caret() {
     let _render_lock = scroll_render_test_lock();
     let mut app = create_test_app();
-    app.input = "caret target".to_string();
-    app.cursor_pos = 0;
+    app.composer.input = "caret target".to_string();
+    app.composer.cursor_pos = 0;
 
     let backend = ratatui::backend::TestBackend::new(80, 24);
     let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
@@ -354,7 +354,7 @@ fn test_input_composer_click_still_moves_caret() {
     });
 
     assert_eq!(
-        app.cursor_pos, point.column,
+        app.composer.cursor_pos, point.column,
         "plain click in the composer must reposition the caret"
     );
     // No selection was made or copied by the plain click.
@@ -366,8 +366,8 @@ fn test_input_composer_click_still_moves_caret() {
 fn test_input_composer_drag_then_release_copies_via_full_mouse_path() {
     let _render_lock = scroll_render_test_lock();
     let mut app = create_test_app();
-    app.input = "full path check".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "full path check".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     let backend = ratatui::backend::TestBackend::new(80, 24);
     let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");

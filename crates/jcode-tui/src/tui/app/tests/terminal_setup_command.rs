@@ -166,7 +166,7 @@ fn decoded_shift_enter_inserts_a_newline_instead_of_submitting() {
     app.handle_key(KeyCode::Char('b'), KeyModifiers::empty())
         .expect("type b");
 
-    assert_eq!(app.input, "a\nb");
+    assert_eq!(app.composer.input, "a\nb");
     assert!(
         app.display_messages().is_empty(),
         "Shift+Enter must not submit: {:?}",
@@ -245,11 +245,11 @@ fn falling_back_to_a_backslash_newline_points_at_terminal_setup_once() {
     // fixable. Surface that once, then stay quiet.
     let mut app = create_test_app();
     app.set_input_for_test("first\\");
-    app.cursor_pos = app.input.len();
+    app.composer.cursor_pos = app.composer.input.len();
     app.handle_key(KeyCode::Enter, KeyModifiers::empty())
         .expect("enter");
 
-    assert_eq!(app.input, "first\n");
+    assert_eq!(app.composer.input, "first\n");
     let notice = app
         .status_notice()
         .expect("first fallback should surface the tip");
@@ -261,7 +261,7 @@ fn falling_back_to_a_backslash_newline_points_at_terminal_setup_once() {
     // Second use must not renag.
     app.set_status_notice("something else".to_string());
     app.set_input_for_test("second\\");
-    app.cursor_pos = app.input.len();
+    app.composer.cursor_pos = app.composer.input.len();
     app.handle_key(KeyCode::Enter, KeyModifiers::empty())
         .expect("enter");
     assert_eq!(
@@ -280,7 +280,7 @@ fn working_shift_enter_never_triggers_the_terminal_setup_tip() {
     app.handle_key(KeyCode::Enter, KeyModifiers::SHIFT)
         .expect("shift+enter");
 
-    assert_eq!(app.input, "a\n");
+    assert_eq!(app.composer.input, "a\n");
     assert!(
         !app.terminal_setup_hint_shown_this_session,
         "Shift+Enter worked, so there is nothing to fix"

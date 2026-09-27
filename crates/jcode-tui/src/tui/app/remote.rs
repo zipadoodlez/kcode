@@ -71,7 +71,7 @@ fn handle_ctrl_kill_to_end(app: &mut App, code: KeyCode, modifiers: KeyModifiers
     if modifiers.contains(KeyModifiers::CONTROL)
         && !modifiers.contains(KeyModifiers::SHIFT)
         && matches!(code, KeyCode::Char('k'))
-        && !app.input.is_empty()
+        && !app.composer.input.is_empty()
     {
         input::delete_input_to_end(app);
         return true;
@@ -1119,7 +1119,7 @@ fn note_startup_submit_deferred(app: &mut App, reason: &'static str) {
     app.startup_submit_deferred_reason = Some(reason);
     crate::logging::info(&format!(
         "Startup auto-submit deferred: {reason} (input_chars={}, pending_images={})",
-        app.input.chars().count(),
+        app.composer.input.chars().count(),
         app.pending_images.len(),
     ));
 }
@@ -1199,7 +1199,7 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
         && !app.is_processing
         && !app.remote_model_switch_in_flight
         && !app.auth_catalog_refresh_pending
-        && (!app.input.is_empty() || !app.pending_images.is_empty())
+        && (!app.composer.input.is_empty() || !app.pending_images.is_empty())
     {
         app.submit_input_on_startup = false;
         app.startup_submit_deferred_reason = None;
@@ -1255,10 +1255,10 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
         // attempt, so do not echo it again; just clear the input box if the
         // error path restored the prompt there.
         if let Some(raw_input) = payload.raw_input.as_deref()
-            && app.input == raw_input
+            && app.composer.input == raw_input
         {
-            app.input.clear();
-            app.cursor_pos = 0;
+            app.composer.input.clear();
+            app.composer.cursor_pos = 0;
         }
         app.last_submitted_input = payload.raw_input.clone();
         crate::logging::info("Resending failed turn after accepted fallback route switch");
@@ -1346,10 +1346,10 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
     if app.submit_input_on_startup && !app.is_processing {
         app.submit_input_on_startup = false;
         app.startup_submit_deferred_reason = None;
-        if !app.input.is_empty() || !app.pending_images.is_empty() {
+        if !app.composer.input.is_empty() || !app.pending_images.is_empty() {
             crate::logging::info(&format!(
                 "Startup auto-submit firing: input_chars={} pending_images={}",
-                app.input.chars().count(),
+                app.composer.input.chars().count(),
                 app.pending_images.len(),
             ));
             let prepared = input::take_prepared_input(app);
@@ -1717,7 +1717,7 @@ async fn handle_debug_command(app: &mut App, cmd: &str, remote: &mut RemoteConne
     let cmd = cmd.trim();
     if cmd.starts_with("message:") {
         let msg = cmd.strip_prefix("message:").unwrap_or("");
-        app.input = msg.to_string();
+        app.composer.input = msg.to_string();
         let result = handle_remote_key(app, KeyCode::Enter, KeyModifiers::empty(), remote).await;
         if let Err(e) = result {
             return format!("ERR: {}", e);
@@ -1727,7 +1727,7 @@ async fn handle_debug_command(app: &mut App, cmd: &str, remote: &mut RemoteConne
         return format!("OK: queued message '{}'", msg);
     }
     if cmd == "reload" {
-        app.input = "/reload".to_string();
+        app.composer.input = "/reload".to_string();
         let result = handle_remote_key(app, KeyCode::Enter, KeyModifiers::empty(), remote).await;
         if let Err(e) = result {
             return format!("ERR: {}", e);
@@ -1740,8 +1740,8 @@ async fn handle_debug_command(app: &mut App, cmd: &str, remote: &mut RemoteConne
             "processing": app.is_processing,
             "messages": app.messages.len(),
             "display_messages": app.display_messages.len(),
-            "input": app.input,
-            "cursor_pos": app.cursor_pos,
+            "input": app.composer.input,
+            "cursor_pos": app.composer.cursor_pos,
             "scroll_offset": app.viewport.scroll_offset,
             "queued_messages": app.queued_messages.len(),
             "provider_session_id": app.provider_session_id,
@@ -1772,7 +1772,7 @@ async fn handle_debug_command(app: &mut App, cmd: &str, remote: &mut RemoteConne
         return results.join("\n");
     }
     if cmd == "submit" {
-        if app.input.is_empty() {
+        if app.composer.input.is_empty() {
             return "submit error: input is empty".to_string();
         }
         let result = handle_remote_key(app, KeyCode::Enter, KeyModifiers::empty(), remote).await;
@@ -1805,11 +1805,11 @@ fn handle_disconnected_local_command(app: &mut App, trimmed: &str) -> bool {
 
     if handled {
         if trimmed.starts_with('/') {}
-        app.input.clear();
-        app.cursor_pos = 0;
+        app.composer.input.clear();
+        app.composer.cursor_pos = 0;
         app.reset_tab_completion();
         app.sync_model_picker_preview_from_input();
-        app.clear_input_undo_history();
+        app.composer.clear_input_undo_history();
     }
 
     handled
@@ -1817,7 +1817,7 @@ fn handle_disconnected_local_command(app: &mut App, trimmed: &str) -> bool {
 
 fn queue_message_for_reconnect(app: &mut App) {
     input::promote_dropped_images(app);
-    let trimmed = app.input.trim().to_string();
+    let trimmed = app.composer.input.trim().to_string();
     if trimmed.is_empty() {
         return;
     }
@@ -1921,11 +1921,11 @@ fn handle_disconnected_key_internal(
                 return Ok(());
             }
             KeyCode::Left | KeyCode::Home | KeyCode::Char('a') => {
-                app.cursor_pos = 0;
+                app.composer.cursor_pos = 0;
                 return Ok(());
             }
             KeyCode::Right | KeyCode::End | KeyCode::Char('e') => {
-                app.cursor_pos = app.input.len();
+                app.composer.cursor_pos = app.composer.input.len();
                 return Ok(());
             }
             KeyCode::Char('z') => {
@@ -1983,36 +1983,48 @@ fn handle_disconnected_key_internal(
     match code {
         KeyCode::Char(c) => handle_remote_char_input(app, c),
         KeyCode::Backspace => {
-            if app.cursor_pos > 0 {
-                let prev = super::super::core::prev_char_boundary(&app.input, app.cursor_pos);
-                app.remember_input_undo_state();
-                app.input.drain(prev..app.cursor_pos);
-                app.cursor_pos = prev;
+            if app.composer.cursor_pos > 0 {
+                let prev = super::super::core::prev_char_boundary(
+                    &app.composer.input,
+                    app.composer.cursor_pos,
+                );
+                app.composer.remember_input_undo_state();
+                app.composer.input.drain(prev..app.composer.cursor_pos);
+                app.composer.cursor_pos = prev;
                 app.reset_tab_completion();
                 app.sync_model_picker_preview_from_input();
             }
         }
         KeyCode::Delete => {
-            if app.cursor_pos < app.input.len() {
-                let next = super::super::core::next_char_boundary(&app.input, app.cursor_pos);
-                app.remember_input_undo_state();
-                app.input.drain(app.cursor_pos..next);
+            if app.composer.cursor_pos < app.composer.input.len() {
+                let next = super::super::core::next_char_boundary(
+                    &app.composer.input,
+                    app.composer.cursor_pos,
+                );
+                app.composer.remember_input_undo_state();
+                app.composer.input.drain(app.composer.cursor_pos..next);
                 app.reset_tab_completion();
                 app.sync_model_picker_preview_from_input();
             }
         }
         KeyCode::Left => {
-            if app.cursor_pos > 0 {
-                app.cursor_pos = super::super::core::prev_char_boundary(&app.input, app.cursor_pos);
+            if app.composer.cursor_pos > 0 {
+                app.composer.cursor_pos = super::super::core::prev_char_boundary(
+                    &app.composer.input,
+                    app.composer.cursor_pos,
+                );
             }
         }
         KeyCode::Right => {
-            if app.cursor_pos < app.input.len() {
-                app.cursor_pos = super::super::core::next_char_boundary(&app.input, app.cursor_pos);
+            if app.composer.cursor_pos < app.composer.input.len() {
+                app.composer.cursor_pos = super::super::core::next_char_boundary(
+                    &app.composer.input,
+                    app.composer.cursor_pos,
+                );
             }
         }
-        KeyCode::Home => app.cursor_pos = 0,
-        KeyCode::End => app.cursor_pos = app.input.len(),
+        KeyCode::Home => app.composer.cursor_pos = 0,
+        KeyCode::End => app.composer.cursor_pos = app.composer.input.len(),
         KeyCode::Tab => {
             app.autocomplete();
         }

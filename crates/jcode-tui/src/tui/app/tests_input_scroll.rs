@@ -6,11 +6,11 @@ fn test_disconnected_key_handler_allows_typing_and_queueing() {
 
     remote::handle_disconnected_key(&mut app, KeyCode::Char('h'), KeyModifiers::empty()).unwrap();
     remote::handle_disconnected_key(&mut app, KeyCode::Char('i'), KeyModifiers::empty()).unwrap();
-    assert_eq!(app.input, "hi");
+    assert_eq!(app.composer.input, "hi");
 
     remote::handle_disconnected_key(&mut app, KeyCode::Enter, KeyModifiers::empty()).unwrap();
 
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
     assert_eq!(app.queued_messages().len(), 1);
     assert_eq!(app.queued_messages()[0], "hi");
     assert_eq!(
@@ -22,11 +22,11 @@ fn test_disconnected_key_handler_allows_typing_and_queueing() {
 #[test]
 fn test_disconnected_command_enter_encoded_as_meta_queues_prompt() {
     let mut app = create_test_app();
-    app.input = "queued with command".to_string();
+    app.composer.input = "queued with command".to_string();
 
     remote::handle_disconnected_key(&mut app, KeyCode::Enter, KeyModifiers::META).unwrap();
 
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
     assert_eq!(app.queued_messages(), &["queued with command".to_string()]);
 }
 
@@ -91,7 +91,7 @@ fn test_disconnected_ctrl_enter_queues_for_reconnect() {
     remote::handle_disconnected_key(&mut app, KeyCode::Char('i'), KeyModifiers::empty()).unwrap();
     remote::handle_disconnected_key(&mut app, KeyCode::Enter, KeyModifiers::CONTROL).unwrap();
 
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
     assert_eq!(app.queued_messages().len(), 1);
     assert_eq!(app.queued_messages()[0], "hi");
 }
@@ -104,7 +104,7 @@ fn test_disconnected_cmd_enter_queues_for_reconnect() {
     remote::handle_disconnected_key(&mut app, KeyCode::Char('i'), KeyModifiers::empty()).unwrap();
     remote::handle_disconnected_key(&mut app, KeyCode::Enter, KeyModifiers::SUPER).unwrap();
 
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
     assert_eq!(app.queued_messages().len(), 1);
     assert_eq!(app.queued_messages()[0], "hi");
 }
@@ -112,12 +112,12 @@ fn test_disconnected_cmd_enter_queues_for_reconnect() {
 #[test]
 fn test_disconnected_key_handler_restart_runs_locally() {
     let mut app = create_test_app();
-    app.input = "/restart".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/restart".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     remote::handle_disconnected_key(&mut app, KeyCode::Enter, KeyModifiers::empty()).unwrap();
 
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
     assert!(app.maintenance.restart_requested.is_some());
     assert!(app.should_quit);
     assert!(app.queued_messages().is_empty());
@@ -126,12 +126,12 @@ fn test_disconnected_key_handler_restart_runs_locally() {
 #[test]
 fn test_disconnected_key_handler_runs_effort_locally() {
     let mut app = create_test_app();
-    app.input = "/effort".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/effort".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     remote::handle_disconnected_key(&mut app, KeyCode::Enter, KeyModifiers::empty()).unwrap();
 
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
     assert!(app.queued_messages().is_empty());
     let last = app
         .display_messages()
@@ -148,12 +148,12 @@ fn test_disconnected_key_handler_runs_model_picker_locally() {
     // OpenAI models are effort-expanded into one entry per reasoning effort,
     // and the "current" entry only matches when the session's effort matches.
     app.remote_reasoning_effort = Some("high".to_string());
-    app.input = "/model".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/model".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     remote::handle_disconnected_key(&mut app, KeyCode::Enter, KeyModifiers::empty()).unwrap();
 
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
     assert!(app.queued_messages().is_empty());
     let picker = app
         .inline_interactive_state
@@ -178,12 +178,12 @@ fn test_disconnected_key_handler_runs_reload_locally() {
         created = true;
     }
 
-    app.input = "/reload".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/reload".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     remote::handle_disconnected_key(&mut app, KeyCode::Enter, KeyModifiers::empty()).unwrap();
 
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
     assert!(app.queued_messages().is_empty());
     assert!(app.maintenance.reload_requested.is_some());
     assert!(app.should_quit);
@@ -198,12 +198,12 @@ fn test_disconnected_key_handler_runs_debug_command_locally() {
     crate::tui::visual_debug::disable();
 
     let mut app = create_test_app();
-    app.input = "/debug-visual off".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/debug-visual off".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     remote::handle_disconnected_key(&mut app, KeyCode::Enter, KeyModifiers::empty()).unwrap();
 
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
     assert!(app.queued_messages().is_empty());
     assert_eq!(app.status_notice(), Some("Visual debug: OFF".to_string()));
     let last = app
@@ -217,12 +217,12 @@ fn test_disconnected_key_handler_runs_debug_command_locally() {
 #[test]
 fn test_disconnected_key_handler_does_not_queue_server_commands() {
     let mut app = create_test_app();
-    app.input = "/server-reload".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/server-reload".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     remote::handle_disconnected_key(&mut app, KeyCode::Enter, KeyModifiers::empty()).unwrap();
 
-    assert_eq!(app.input, "/server-reload");
+    assert_eq!(app.composer.input, "/server-reload");
     assert!(app.queued_messages().is_empty());
     assert_eq!(
         app.status_notice(),

@@ -325,8 +325,8 @@ impl App {
             title, items, summary,
         )));
         self.inline_interactive_state = None;
-        self.input.clear();
-        self.cursor_pos = 0;
+        self.composer.input.clear();
+        self.composer.cursor_pos = 0;
         self.set_status_notice("Account center: choose an action");
     }
 
@@ -392,8 +392,8 @@ impl App {
             items,
         )));
         self.inline_interactive_state = None;
-        self.input.clear();
-        self.cursor_pos = 0;
+        self.composer.input.clear();
+        self.composer.cursor_pos = 0;
         self.set_status_notice("Account center: choose add/replace target");
     }
 
@@ -437,8 +437,8 @@ impl App {
             filter: String::new(),
             preview: false,
         });
-        self.input.clear();
-        self.cursor_pos = 0;
+        self.composer.input.clear();
+        self.composer.cursor_pos = 0;
         self.set_status_notice(format!(
             "Account → {} (↑↓ or j/k, Enter to select)",
             provider_label
@@ -1118,8 +1118,8 @@ impl App {
                 provider_filter,
             } => self.open_account_add_replace_flow(provider_filter.as_deref()),
             crate::tui::account_picker::AccountPickerCommand::SubmitInput(input) => {
-                self.input = input;
-                self.cursor_pos = self.input.len();
+                self.composer.input = input;
+                self.composer.cursor_pos = self.composer.input.len();
                 self.submit_input();
             }
             crate::tui::account_picker::AccountPickerCommand::PromptValue {
@@ -1131,13 +1131,13 @@ impl App {
             crate::tui::account_picker::AccountPickerCommand::PromptNew { provider } => {
                 match provider {
                     crate::tui::account_picker::AccountProviderKind::Anthropic => {
-                        self.input = "/account claude add".to_string();
-                        self.cursor_pos = self.input.len();
+                        self.composer.input = "/account claude add".to_string();
+                        self.composer.cursor_pos = self.composer.input.len();
                         self.submit_input();
                     }
                     crate::tui::account_picker::AccountProviderKind::OpenAi => {
-                        self.input = "/account openai add".to_string();
-                        self.cursor_pos = self.input.len();
+                        self.composer.input = "/account openai add".to_string();
+                        self.composer.cursor_pos = self.composer.input.len();
                         self.submit_input();
                     }
                 }
@@ -1221,8 +1221,8 @@ impl App {
                         });
                     return;
                 }
-                self.input = format!("/account {} add {}", provider_id, trimmed);
-                self.cursor_pos = self.input.len();
+                self.composer.input = format!("/account {} add {}", provider_id, trimmed);
+                self.composer.cursor_pos = self.composer.input.len();
                 self.submit_input();
             }
             PendingAccountInput::CommandValue {
@@ -1250,8 +1250,8 @@ impl App {
                 } else {
                     trimmed.to_string()
                 };
-                self.input = format!("{} {}", command_prefix, value);
-                self.cursor_pos = self.input.len();
+                self.composer.input = format!("{} {}", command_prefix, value);
+                self.composer.cursor_pos = self.composer.input.len();
                 self.submit_input();
             }
         }

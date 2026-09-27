@@ -822,8 +822,8 @@ fn test_submit_input_commits_pending_streaming_assistant_text_before_user_messag
     let ops = app.stream_buffer.push_text(" that was still buffered.");
     app.apply_stream_ops(ops);
 
-    app.input = "follow up".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "follow up".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     app.submit_input();
 
     assert_eq!(app.display_messages().len(), 3);
@@ -1167,8 +1167,8 @@ fn test_ctrl_c_still_arms_quit_when_idle() {
 #[test]
 fn test_ctrl_x_cuts_entire_input_line_to_clipboard() {
     let mut app = create_test_app();
-    app.input = "hello world".to_string();
-    app.cursor_pos = 5;
+    app.composer.input = "hello world".to_string();
+    app.composer.cursor_pos = 5;
 
     let copied = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
     let copied_for_closure = copied.clone();
@@ -1193,8 +1193,8 @@ fn test_ctrl_x_cuts_entire_input_line_to_clipboard() {
 #[test]
 fn test_ctrl_x_preserves_input_when_clipboard_copy_fails() {
     let mut app = create_test_app();
-    app.input = "hello world".to_string();
-    app.cursor_pos = 5;
+    app.composer.input = "hello world".to_string();
+    app.composer.cursor_pos = 5;
 
     let cut = super::input::cut_input_line_to_clipboard_with(&mut app, |_text| false);
 
@@ -1210,8 +1210,8 @@ fn test_ctrl_x_preserves_input_when_clipboard_copy_fails() {
 #[test]
 fn test_ctrl_a_keeps_home_behavior_when_input_present() {
     let mut app = create_test_app();
-    app.input = "hello world".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "hello world".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     app.handle_key(KeyCode::Char('a'), KeyModifiers::CONTROL)
         .unwrap();
@@ -1333,8 +1333,8 @@ fn test_interleave_submission_preserves_pending_images() {
     let mut app = create_test_app();
     app.is_processing = true;
     app.queue_mode = false;
-    app.input = "[image 1] describe this".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "[image 1] describe this".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     let images = vec![("image/png".to_string(), "ZmFrZQ==".to_string())];
     app.pending_images = images.clone();
 
@@ -1349,7 +1349,7 @@ fn test_interleave_submission_preserves_pending_images() {
 fn test_send_action_submits_bang_commands_while_processing() {
     let mut app = create_test_app();
     app.is_processing = true;
-    app.input = "!pwd".to_string();
+    app.composer.input = "!pwd".to_string();
 
     assert_eq!(app.send_action(false), SendAction::Submit);
     assert_eq!(app.send_action(true), SendAction::Submit);

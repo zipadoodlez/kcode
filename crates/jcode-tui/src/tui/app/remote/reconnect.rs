@@ -751,7 +751,7 @@ pub(in crate::tui::app) async fn handle_post_connect<B: ratatui::backend::Backen
 
     // Dispatch restored work once the server history is in place. This must
     // also cover a pending startup submission (e.g. a headed swarm spawn whose
-    // initial prompt was staged into `app.input` with `submit_input_on_startup`),
+    // initial prompt was staged into `app.composer.input` with `submit_input_on_startup`),
     // not just queued follow-ups. Without this, a freshly spawned visible agent
     // would show its prompt in the input box but never actually submit it,
     // because `process_remote_followups` (the only production dispatcher) was

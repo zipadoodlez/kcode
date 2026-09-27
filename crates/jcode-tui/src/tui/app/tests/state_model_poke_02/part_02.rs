@@ -191,8 +191,8 @@ fn test_login_command_suggestions_follow_provider_catalog() {
 fn test_model_autocomplete_completes_unique_match() {
     let mut app = create_test_app();
     configure_test_remote_models(&mut app);
-    app.input = "/model g52c".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/model g52c".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     assert!(app.autocomplete());
     assert_eq!(app.input(), "/model gpt-5.2-codex");
@@ -203,8 +203,8 @@ fn test_model_autocomplete_completes_unique_provider_match() {
     let mut app = create_test_app();
     configure_test_remote_openrouter_provider_routes(&mut app);
 
-    app.input = "/model anthropic/claude-sonnet-4@fi".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/model anthropic/claude-sonnet-4@fi".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     assert!(app.autocomplete());
     assert_eq!(app.input(), "/model anthropic/claude-sonnet-4@Fireworks");

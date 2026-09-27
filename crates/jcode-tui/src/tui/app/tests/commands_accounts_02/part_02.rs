@@ -17,7 +17,7 @@ fn test_improve_mode_persists_in_session_file() {
 #[test]
 fn test_refactor_command_starts_refactor_loop() {
     let mut app = create_test_app();
-    app.input = "/refactor".to_string();
+    app.composer.input = "/refactor".to_string();
     app.submit_input();
 
     assert_eq!(app.improve_mode, Some(ImproveMode::RefactorRun));
@@ -49,7 +49,7 @@ fn test_refactor_command_starts_refactor_loop() {
 #[test]
 fn test_plan_command_is_plan_only_and_presents_plan_card() {
     let mut app = create_test_app();
-    app.input = "/plan add a compact message mode".to_string();
+    app.composer.input = "/plan add a compact message mode".to_string();
     app.submit_input();
 
     // /plan is a one-shot, not a resumable improve/refactor loop.
@@ -81,7 +81,7 @@ fn test_plan_command_is_plan_only_and_presents_plan_card() {
 #[test]
 fn test_plan_command_without_goal_plans_current_focus() {
     let mut app = create_test_app();
-    app.input = "/plan".to_string();
+    app.composer.input = "/plan".to_string();
     app.submit_input();
 
     assert_eq!(app.improve_mode, None);
@@ -99,7 +99,7 @@ fn test_plan_command_without_goal_plans_current_focus() {
 #[test]
 fn test_refactor_plan_command_is_plan_only_and_accepts_focus() {
     let mut app = create_test_app();
-    app.input = "/refactor plan command parsing".to_string();
+    app.composer.input = "/refactor plan command parsing".to_string();
     app.submit_input();
 
     assert_eq!(app.improve_mode, Some(ImproveMode::RefactorPlan));
@@ -159,7 +159,7 @@ fn test_refactor_status_summarizes_current_todos() {
         .expect("save todos");
 
         app.improve_mode = Some(ImproveMode::RefactorRun);
-        app.input = "/refactor status".to_string();
+        app.composer.input = "/refactor status".to_string();
         app.submit_input();
 
         let msg = app
@@ -199,7 +199,7 @@ fn test_refactor_resume_uses_saved_mode_and_current_todos() {
         )
         .expect("save todos");
 
-        app.input = "/refactor resume".to_string();
+        app.composer.input = "/refactor resume".to_string();
         app.submit_input();
 
         assert_eq!(app.improve_mode, Some(ImproveMode::RefactorRun));
@@ -230,7 +230,7 @@ fn test_fix_resets_provider_session() {
     app.session.provider_session_id = Some("provider-session".to_string());
     app.last_stream_error = Some("Stream error: context window exceeded".to_string());
 
-    app.input = "/fix".to_string();
+    app.composer.input = "/fix".to_string();
     app.submit_input();
 
     assert!(app.provider_session_id.is_none());
@@ -250,12 +250,12 @@ fn test_turn_error_restores_prompt_to_input() {
     let mut app = create_test_app();
     // Simulate a submitted prompt that started a turn.
     app.last_submitted_input = Some("explain this bug".to_string());
-    app.input.clear();
+    app.composer.input.clear();
 
     app.handle_turn_error("Token refresh needed");
 
     // The typed prompt should be restored to the input box so it is not lost.
-    assert_eq!(app.input, "explain this bug");
+    assert_eq!(app.composer.input, "explain this bug");
     // And the saved copy is consumed once restored.
     assert!(app.last_submitted_input.is_none());
 }
@@ -265,10 +265,10 @@ fn test_turn_error_does_not_clobber_new_input() {
     let mut app = create_test_app();
     app.last_submitted_input = Some("old prompt".to_string());
     // User already started typing a new prompt.
-    app.input = "new prompt".to_string();
+    app.composer.input = "new prompt".to_string();
 
     app.handle_turn_error("Token refresh needed");
 
     // We must not overwrite text the user already started.
-    assert_eq!(app.input, "new prompt");
+    assert_eq!(app.composer.input, "new prompt");
 }

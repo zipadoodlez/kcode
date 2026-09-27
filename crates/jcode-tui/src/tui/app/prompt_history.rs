@@ -257,8 +257,8 @@ impl App {
     /// Esc can restore it after the live preview overwrites the input.
     pub(super) fn open_prompt_history_search(&mut self) {
         self.prompt_history_search = Some(PromptHistorySearchState {
-            original_input: self.input.clone(),
-            original_cursor: self.cursor_pos,
+            original_input: self.composer.input.clone(),
+            original_cursor: self.composer.cursor_pos,
             ..PromptHistorySearchState::default()
         });
     }
@@ -302,12 +302,12 @@ impl App {
         };
         match state.matches.get(state.selected) {
             Some(prompt) => {
-                self.input = prompt.clone();
-                self.cursor_pos = self.input.len();
+                self.composer.input = prompt.clone();
+                self.composer.cursor_pos = self.composer.input.len();
             }
             None => {
-                self.input = state.original_input.clone();
-                self.cursor_pos = state.original_cursor;
+                self.composer.input = state.original_input.clone();
+                self.composer.cursor_pos = state.original_cursor;
             }
         }
     }
@@ -316,8 +316,8 @@ impl App {
     /// active when it opened.
     fn cancel_prompt_history_search(&mut self) {
         if let Some(state) = self.prompt_history_search.take() {
-            self.input = state.original_input;
-            self.cursor_pos = state.original_cursor;
+            self.composer.input = state.original_input;
+            self.composer.cursor_pos = state.original_cursor;
         }
     }
 
@@ -343,8 +343,8 @@ impl App {
                     .and_then(|state| state.matches.get(state.selected).cloned());
                 self.prompt_history_search = None;
                 if let Some(prompt) = selected {
-                    self.input = prompt;
-                    self.cursor_pos = self.input.len();
+                    self.composer.input = prompt;
+                    self.composer.cursor_pos = self.composer.input.len();
                     self.reset_tab_completion();
                     self.sync_model_picker_preview_from_input();
                 }

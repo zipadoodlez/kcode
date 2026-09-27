@@ -970,8 +970,8 @@ fn skill_invocation_with_prompt_activates_and_submits_in_one_turn() {
     )
     .expect("write skill");
     app.session.working_dir = Some(temp.path().to_string_lossy().to_string());
-    app.input = "/prompt-skill \"then type prompt here and all that\"".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/prompt-skill \"then type prompt here and all that\"".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     app.submit_input();
 
@@ -1001,8 +1001,8 @@ fn skill_invocation_with_prompt_attaches_pending_image_to_user_message() {
     .expect("write skill");
     app.session.working_dir = Some(temp.path().to_string_lossy().to_string());
     app.pending_images = vec![("image/png".to_string(), "ZmFrZSBwbmcgYnl0ZXM=".to_string())];
-    app.input = "/image-skill describe this screenshot".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/image-skill describe this screenshot".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     app.submit_input();
 
@@ -1034,8 +1034,8 @@ fn unknown_skill_invocation_surfaces_error_and_sends_nothing() {
     let mut app = create_test_app();
     let temp = tempfile::tempdir().expect("tempdir");
     app.session.working_dir = Some(temp.path().to_string_lossy().to_string());
-    app.input = "/definitely-not-a-real-skill".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/definitely-not-a-real-skill".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     let session_messages_before = app.session.messages.len();
 
     app.submit_input();
@@ -1066,8 +1066,8 @@ fn endorsed_but_not_installed_skill_invocation_surfaces_install_hint() {
         })
         .expect("an endorsed skill with an install hint that is not installed");
 
-    app.input = format!("/{}", endorsed.name);
-    app.cursor_pos = app.input.len();
+    app.composer.input = format!("/{}", endorsed.name);
+    app.composer.cursor_pos = app.composer.input.len();
     let session_messages_before = app.session.messages.len();
 
     app.submit_input();
@@ -1578,7 +1578,7 @@ fn oversized_pasted_submit_is_rejected_and_preserves_input() {
     );
 
     crate::tui::app::input::handle_text_paste(&mut app, pasted);
-    let placeholder = app.input.clone();
+    let placeholder = app.composer.input.clone();
     assert!(placeholder.starts_with("[pasted "));
 
     app.submit_input();
@@ -1588,7 +1588,7 @@ fn oversized_pasted_submit_is_rejected_and_preserves_input() {
         "oversized input must not enter sending state"
     );
     assert_eq!(
-        app.input, placeholder,
+        app.composer.input, placeholder,
         "placeholder input should be preserved"
     );
     assert_eq!(

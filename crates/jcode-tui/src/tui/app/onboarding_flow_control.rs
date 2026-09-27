@@ -122,7 +122,7 @@ impl App {
             );
             !is_system_reminder && !is_scaffolding
         });
-        if has_real_conversation || self.is_processing || !self.input.is_empty() {
+        if has_real_conversation || self.is_processing || !self.composer.input.is_empty() {
             self.onboarding_startup_checked = true;
             return;
         }
@@ -954,8 +954,8 @@ impl App {
             return false;
         };
         self.onboarding_finish();
-        self.input = Self::onboarding_recent_project_review_prompt(&repository);
-        self.cursor_pos = self.input.len();
+        self.composer.input = Self::onboarding_recent_project_review_prompt(&repository);
+        self.composer.cursor_pos = self.composer.input.len();
         true
     }
 

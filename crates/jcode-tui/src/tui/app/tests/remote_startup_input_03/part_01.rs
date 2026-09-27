@@ -334,7 +334,7 @@ fn test_paste_again_expands_placeholder_in_place() {
     app.handle_paste(big.clone());
 
     assert_eq!(app.input(), format!("{big}!"));
-    assert_eq!(app.cursor_pos, big.len());
+    assert_eq!(app.composer.cursor_pos, big.len());
     assert!(app.pasted_contents.is_empty());
 }
 
@@ -362,7 +362,7 @@ fn test_paste_again_expands_matching_placeholder_not_newer_same_sized_paste() {
     app.handle_paste(first.clone());
 
     assert_eq!(app.input(), format!("{first} [pasted 5 lines]"));
-    assert_eq!(app.cursor_pos, first.len());
+    assert_eq!(app.composer.cursor_pos, first.len());
     let visible_input = app.input().to_string();
     assert_eq!(
         crate::tui::app::input::expand_paste_placeholders(&mut app, &visible_input),
@@ -859,8 +859,8 @@ fn test_startup_update_diverged_offer_clears_on_submit() {
         "prefixed divergence summary should still arm the offer"
     );
 
-    app.input = "do something else".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "do something else".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     app.submit_input();
     assert!(
         app.pending_merge_offer.is_none(),
@@ -911,7 +911,7 @@ fn test_selfdev_command_spawns_session_in_test_mode() {
     let mut app = create_test_app();
     app.session.working_dir = Some(repo.path().display().to_string());
 
-    app.input = "/selfdev fix the markdown renderer".to_string();
+    app.composer.input = "/selfdev fix the markdown renderer".to_string();
     app.submit_input();
 
     let last = app.display_messages().last().expect("selfdev message");
@@ -949,8 +949,8 @@ fn test_save_and_restore_reload_state_preserves_queued_messages() {
     let mut app = create_test_app();
     let session_id = format!("test-reload-{}", std::process::id());
 
-    app.input = "draft".to_string();
-    app.cursor_pos = 3;
+    app.composer.input = "draft".to_string();
+    app.composer.cursor_pos = 3;
     app.queued_messages.push("queued one".to_string());
     app.queued_messages.push("queued two".to_string());
     app.hidden_queued_system_messages
@@ -1016,8 +1016,8 @@ fn test_save_and_restore_reload_state_preserves_interleave_and_pending_retry() {
     let mut app = create_test_app();
     let session_id = format!("test-reload-pending-{}", std::process::id());
 
-    app.input = "draft".to_string();
-    app.cursor_pos = 5;
+    app.composer.input = "draft".to_string();
+    app.composer.cursor_pos = 5;
     app.interleave_message = Some("urgent now".to_string());
     app.pending_soft_interrupts = vec![
         "already sent one".to_string(),

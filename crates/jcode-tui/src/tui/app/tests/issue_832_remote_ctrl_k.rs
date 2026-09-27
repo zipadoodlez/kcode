@@ -8,7 +8,7 @@ fn issue_832_remote_ctrl_k_kills_draft_but_ctrl_shift_k_scrolls() {
 
     render_and_snap(&app, &mut terminal);
     app.set_input_for_test("hello world again");
-    app.cursor_pos = "hello world ".len();
+    app.composer.cursor_pos = "hello world ".len();
 
     rt.block_on(app.handle_remote_key(KeyCode::Char('k'), KeyModifiers::CONTROL, &mut remote))
         .unwrap();
@@ -18,7 +18,7 @@ fn issue_832_remote_ctrl_k_kills_draft_but_ctrl_shift_k_scrolls() {
     assert_eq!(app.viewport.scroll_offset, 0, "plain Ctrl+K must not jump prompts");
 
     app.set_input_for_test("hello world again");
-    app.cursor_pos = "hello world ".len();
+    app.composer.cursor_pos = "hello world ".len();
     rt.block_on(app.handle_remote_key(
         KeyCode::Char('k'),
         KeyModifiers::CONTROL | KeyModifiers::SHIFT,
@@ -38,7 +38,7 @@ fn issue_832_disconnected_ctrl_k_kills_draft_but_ctrl_shift_k_scrolls() {
 
     render_and_snap(&app, &mut terminal);
     app.set_input_for_test("hello world again");
-    app.cursor_pos = "hello world ".len();
+    app.composer.cursor_pos = "hello world ".len();
 
     super::remote::handle_disconnected_key(
         &mut app,
@@ -52,7 +52,7 @@ fn issue_832_disconnected_ctrl_k_kills_draft_but_ctrl_shift_k_scrolls() {
     assert_eq!(app.viewport.scroll_offset, 0, "plain Ctrl+K must not jump prompts");
 
     app.set_input_for_test("hello world again");
-    app.cursor_pos = "hello world ".len();
+    app.composer.cursor_pos = "hello world ".len();
     super::remote::handle_disconnected_key(
         &mut app,
         KeyCode::Char('k'),

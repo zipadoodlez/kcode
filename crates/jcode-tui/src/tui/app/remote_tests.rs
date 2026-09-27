@@ -504,13 +504,13 @@ fn remote_skill_invocation_with_prompt_sends_remote_turn() {
 #[test]
 fn process_remote_followups_auto_submits_staged_startup_prompt() {
     // Regression for issues #267/#268/#76: a headed swarm spawn stages its
-    // initial prompt into `app.input` with `submit_input_on_startup = true`
+    // initial prompt into `app.composer.input` with `submit_input_on_startup = true`
     // (not `queued_messages`). The post-connect dispatcher must still submit it;
     // otherwise the spawned agent shows its prompt but never sends it.
     let mut app = create_test_app();
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-    app.input = "Classify the issues in /tmp/batch.txt".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "Classify the issues in /tmp/batch.txt".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     app.submit_input_on_startup = true;
 
     // The gate predicate is the actual fix site: a staged startup prompt counts
@@ -537,7 +537,7 @@ fn process_remote_followups_auto_submits_staged_startup_prompt() {
         "startup submission flag should be consumed after dispatch"
     );
     assert!(
-        app.input.is_empty(),
+        app.composer.input.is_empty(),
         "input should be cleared once the startup prompt is submitted"
     );
     assert!(
@@ -553,8 +553,8 @@ fn process_remote_followups_auto_submits_staged_startup_prompt() {
 fn process_remote_followups_sends_startup_prompt_before_history_arrives() {
     let mut app = create_test_app();
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-    app.input = "Start the fork immediately".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "Start the fork immediately".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     app.submit_input_on_startup = true;
 
     let rt = tokio::runtime::Runtime::new().expect("runtime");
@@ -565,7 +565,7 @@ fn process_remote_followups_sends_startup_prompt_before_history_arrives() {
     rt.block_on(process_remote_followups(&mut app, &mut remote));
 
     assert!(!app.submit_input_on_startup);
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
     assert!(
         app.is_processing,
         "the ordered startup request should start immediately"
@@ -659,7 +659,7 @@ fn startup_send_state_is_not_preserved_for_real_session_switch() {
     let mut app = create_test_app();
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_session_id = Some("previous-session".to_string());
-    app.input = "Start the fork immediately".to_string();
+    app.composer.input = "Start the fork immediately".to_string();
     app.submit_input_on_startup = true;
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     let _guard = rt.enter();
@@ -688,13 +688,13 @@ fn has_pending_startup_submission_requires_input_and_flag() {
         "flag alone with empty input is not a pending submission"
     );
 
-    app.input = "   ".to_string();
+    app.composer.input = "   ".to_string();
     assert!(
         !app.has_pending_startup_submission(),
         "whitespace-only input is not a pending submission"
     );
 
-    app.input = "do the work".to_string();
+    app.composer.input = "do the work".to_string();
     assert!(app.has_pending_startup_submission());
 
     app.submit_input_on_startup = false;
@@ -1167,8 +1167,8 @@ fn remote_submit_input_never_strands_a_local_pending_turn() {
     // `pending_turn`, which only the local run loop consumes.
     let mut app = create_test_app();
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-    app.input = "plain prompt".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "plain prompt".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     app.submit_input();
 

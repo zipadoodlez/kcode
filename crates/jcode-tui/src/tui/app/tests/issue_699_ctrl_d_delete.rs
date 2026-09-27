@@ -4,14 +4,14 @@
 #[test]
 fn test_ctrl_d_deletes_character_under_cursor() {
     let mut app = create_test_app();
-    app.input = "hello".to_string();
-    app.cursor_pos = 1;
+    app.composer.input = "hello".to_string();
+    app.composer.cursor_pos = 1;
 
     app.handle_key(KeyCode::Char('d'), KeyModifiers::CONTROL)
         .unwrap();
 
-    assert_eq!(app.input, "hllo");
-    assert_eq!(app.cursor_pos, 1);
+    assert_eq!(app.composer.input, "hllo");
+    assert_eq!(app.composer.cursor_pos, 1);
     assert!(
         app.quit_pending.is_none(),
         "Ctrl+D with text in the input must not arm quit"
@@ -21,13 +21,13 @@ fn test_ctrl_d_deletes_character_under_cursor() {
 #[test]
 fn test_ctrl_d_at_end_of_non_empty_input_does_not_quit() {
     let mut app = create_test_app();
-    app.input = "hello".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "hello".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     app.handle_key(KeyCode::Char('d'), KeyModifiers::CONTROL)
         .unwrap();
 
-    assert_eq!(app.input, "hello", "nothing to delete forward");
+    assert_eq!(app.composer.input, "hello", "nothing to delete forward");
     assert!(
         app.quit_pending.is_none(),
         "Ctrl+D must never quit while the input line has pending text"
@@ -37,7 +37,7 @@ fn test_ctrl_d_at_end_of_non_empty_input_does_not_quit() {
 #[test]
 fn test_ctrl_d_on_empty_input_still_requests_quit() {
     let mut app = create_test_app();
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
 
     app.handle_key(KeyCode::Char('d'), KeyModifiers::CONTROL)
         .unwrap();
@@ -51,13 +51,13 @@ fn test_ctrl_d_on_empty_input_still_requests_quit() {
 #[test]
 fn test_ctrl_d_deletes_multibyte_character() {
     let mut app = create_test_app();
-    app.input = "héllo".to_string();
-    app.cursor_pos = 1;
+    app.composer.input = "héllo".to_string();
+    app.composer.cursor_pos = 1;
 
     app.handle_key(KeyCode::Char('d'), KeyModifiers::CONTROL)
         .unwrap();
 
-    assert_eq!(app.input, "hllo");
+    assert_eq!(app.composer.input, "hllo");
 }
 
 // The normal `jcode` TUI runs as a remote client (`is_remote = true`), so the
@@ -73,8 +73,8 @@ fn test_remote_ctrl_d_deletes_character_under_cursor() {
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
         app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-        app.input = "hello".to_string();
-        app.cursor_pos = 1;
+        app.composer.input = "hello".to_string();
+        app.composer.cursor_pos = 1;
 
         rt.block_on(app.handle_remote_key(
             KeyCode::Char('d'),
@@ -83,7 +83,7 @@ fn test_remote_ctrl_d_deletes_character_under_cursor() {
         ))
         .expect("Ctrl+D should be handled in the remote path");
 
-        assert_eq!(app.input, "hllo");
+        assert_eq!(app.composer.input, "hllo");
         assert!(
             app.quit_pending.is_none(),
             "Ctrl+D with text in the input must not arm quit in a remote session"
@@ -100,7 +100,7 @@ fn test_remote_ctrl_d_on_empty_input_still_requests_quit() {
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
         app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-        assert!(app.input.is_empty());
+        assert!(app.composer.input.is_empty());
 
         rt.block_on(app.handle_remote_key(
             KeyCode::Char('d'),

@@ -65,7 +65,7 @@ impl App {
     }
 
     pub fn cursor_pos(&self) -> usize {
-        self.cursor_pos
+        self.composer.cursor_pos
     }
 
     pub fn scroll_offset(&self) -> usize {
@@ -440,19 +440,19 @@ impl App {
     }
 
     pub(super) fn toggle_input_stash(&mut self) {
-        if let Some((stashed, stashed_cursor)) = self.stashed_input.take() {
-            let current_input = std::mem::replace(&mut self.input, stashed);
-            let current_cursor = std::mem::replace(&mut self.cursor_pos, stashed_cursor);
+        if let Some((stashed, stashed_cursor)) = self.composer.stashed_input.take() {
+            let current_input = std::mem::replace(&mut self.composer.input, stashed);
+            let current_cursor = std::mem::replace(&mut self.composer.cursor_pos, stashed_cursor);
             if current_input.is_empty() {
                 self.set_status_notice("📋 Input restored from stash");
             } else {
-                self.stashed_input = Some((current_input, current_cursor));
+                self.composer.stashed_input = Some((current_input, current_cursor));
                 self.set_status_notice("📋 Swapped input with stash");
             }
-        } else if !self.input.is_empty() {
-            let input = std::mem::take(&mut self.input);
-            let cursor = std::mem::replace(&mut self.cursor_pos, 0);
-            self.stashed_input = Some((input, cursor));
+        } else if !self.composer.input.is_empty() {
+            let input = std::mem::take(&mut self.composer.input);
+            let cursor = std::mem::replace(&mut self.composer.cursor_pos, 0);
+            self.composer.stashed_input = Some((input, cursor));
             self.set_status_notice("📋 Input stashed");
         }
     }

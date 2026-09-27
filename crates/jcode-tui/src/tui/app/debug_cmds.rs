@@ -8,8 +8,8 @@ impl App {
         let Some(picker) = self.inline_interactive_state.as_ref() else {
             return serde_json::json!({
                 "open": false,
-                "input": self.input,
-                "cursor_pos": self.cursor_pos,
+                "input": self.composer.input,
+                "cursor_pos": self.composer.cursor_pos,
             })
             .to_string();
         };
@@ -74,8 +74,8 @@ impl App {
             "open": true,
             "kind": format!("{:?}", picker.kind),
             "preview": picker.preview,
-            "input": self.input,
-            "cursor_pos": self.cursor_pos,
+            "input": self.composer.input,
+            "cursor_pos": self.composer.cursor_pos,
             "filter": picker.filter,
             "selected": picker.selected,
             "column": picker.column,
@@ -154,7 +154,7 @@ impl App {
         if cmd.starts_with("message:") {
             let msg = cmd.strip_prefix("message:").unwrap_or("");
             // Inject the message respecting queue mode (like keyboard Enter)
-            self.input = msg.to_string();
+            self.composer.input = msg.to_string();
             match self.send_action(false) {
                 SendAction::Submit => {
                     self.submit_input();
@@ -181,7 +181,7 @@ impl App {
             }
         } else if cmd == "reload" {
             // Trigger reload
-            self.input = "/reload".to_string();
+            self.composer.input = "/reload".to_string();
             self.submit_input();
             self.debug_trace.record("reload", "triggered".to_string());
             "OK: reload triggered".to_string()
@@ -191,8 +191,8 @@ impl App {
                 "processing": self.is_processing,
                 "messages": self.messages.len(),
                 "display_messages": self.display_messages.len(),
-                "input": self.input,
-                "cursor_pos": self.cursor_pos,
+                "input": self.composer.input,
+                "cursor_pos": self.composer.cursor_pos,
                 "scroll_offset": self.viewport.scroll_offset,
                 "queued_messages": self.queued_messages.len(),
                 "provider_session_id": self.provider_session_id,
@@ -280,22 +280,22 @@ impl App {
             self.diff_mode = crate::config::DiffDisplayMode::Inline;
             self.viewport.scroll_offset = 0;
             self.viewport.auto_scroll_paused = false;
-            self.input.clear();
-            self.cursor_pos = 0;
+            self.composer.input.clear();
+            self.composer.cursor_pos = 0;
             self.set_status_notice("Debug expand badge fixture ready");
             serde_json::json!({
                 "ok": true,
                 "diff_mode": format!("{:?}", self.diff_mode),
                 "display_edit_tool_message_count": self.display_edit_tool_message_count,
-                "input": self.input,
+                "input": self.composer.input,
             })
             .to_string()
         } else if cmd == "expand-badge-state" {
             serde_json::json!({
                 "diff_mode": format!("{:?}", self.diff_mode),
                 "display_edit_tool_message_count": self.display_edit_tool_message_count,
-                "input": self.input,
-                "cursor_pos": self.cursor_pos,
+                "input": self.composer.input,
+                "cursor_pos": self.composer.cursor_pos,
                 "status_notice": self.status_notice.as_ref().map(|(text, _)| text),
                 "display_messages": self.display_messages.len(),
             })
@@ -736,16 +736,16 @@ impl App {
             }
             results.join("\n")
         } else if cmd == "input" {
-            format!("input: {:?}", self.input)
+            format!("input: {:?}", self.composer.input)
         } else if cmd.starts_with("set_input:") {
             let new_input = cmd.strip_prefix("set_input:").unwrap_or("");
-            self.input = new_input.to_string();
-            self.cursor_pos = self.input.len();
+            self.composer.input = new_input.to_string();
+            self.composer.cursor_pos = self.composer.input.len();
             self.debug_trace
-                .record("input", format!("set:{}", self.input));
-            format!("OK: input set to {:?}", self.input)
+                .record("input", format!("set:{}", self.composer.input));
+            format!("OK: input set to {:?}", self.composer.input)
         } else if cmd == "submit" {
-            if self.input.is_empty() {
+            if self.composer.input.is_empty() {
                 "submit error: input is empty".to_string()
             } else {
                 self.submit_input();

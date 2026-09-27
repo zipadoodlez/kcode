@@ -110,13 +110,13 @@ fn slash_resume_opens_session_picker_overlay_locally() {
     let _guard = runtime.enter();
     let mut app = create_test_app();
 
-    app.input = "/resume".to_string();
+    app.composer.input = "/resume".to_string();
     app.submit_input();
 
     assert!(app.session_picker.overlay.is_some());
     assert_eq!(app.session_picker.mode, SessionPickerMode::Resume);
     assert!(app.session_picker.pending_load.is_some());
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
 }
 
 #[test]
@@ -127,14 +127,14 @@ fn slash_command_submit_retains_pending_images() {
 
     app.pending_images
         .push(("image/png".to_string(), "aGVsbG8=".to_string()));
-    app.input = "/help".to_string();
+    app.composer.input = "/help".to_string();
     app.submit_input();
 
     // Slash commands are handled locally and must not consume attached images;
     // the images stay pending and go out with the next real prompt submission.
     assert_eq!(app.pending_images.len(), 1);
     assert_eq!(app.pending_images[0].0, "image/png");
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
 }
 
 #[test]
@@ -143,13 +143,13 @@ fn slash_sessions_alias_opens_session_picker_overlay_locally() {
     let _guard = runtime.enter();
     let mut app = create_test_app();
 
-    app.input = "/sessions".to_string();
+    app.composer.input = "/sessions".to_string();
     app.submit_input();
 
     assert!(app.session_picker.overlay.is_some());
     assert_eq!(app.session_picker.mode, SessionPickerMode::Resume);
     assert!(app.session_picker.pending_load.is_some());
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
 }
 
 #[test]
@@ -158,13 +158,13 @@ fn slash_session_alias_opens_session_picker_overlay_locally() {
     let _guard = runtime.enter();
     let mut app = create_test_app();
 
-    app.input = "/session".to_string();
+    app.composer.input = "/session".to_string();
     app.submit_input();
 
     assert!(app.session_picker.overlay.is_some());
     assert_eq!(app.session_picker.mode, SessionPickerMode::Resume);
     assert!(app.session_picker.pending_load.is_some());
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
 }
 
 #[test]
@@ -173,13 +173,13 @@ fn slash_active_opens_active_sessions_picker_locally() {
     let _guard = runtime.enter();
     let mut app = create_test_app();
 
-    app.input = "/active".to_string();
+    app.composer.input = "/active".to_string();
     app.submit_input();
 
     assert!(app.session_picker.overlay.is_some());
     assert_eq!(app.session_picker.mode, SessionPickerMode::ActiveSessions);
     assert!(app.session_picker.pending_load.is_some());
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
 }
 
 #[test]
@@ -194,8 +194,8 @@ fn left_arrow_on_empty_input_is_a_noop_unless_opted_in() {
     assert!(app.session_picker.overlay.is_none());
 
     // With text in the input the gesture never fires regardless of config.
-    app.input = "hello".to_string();
-    app.cursor_pos = 0;
+    app.composer.input = "hello".to_string();
+    app.composer.cursor_pos = 0;
     assert!(!app.maybe_open_active_sessions_on_left());
     assert!(app.session_picker.overlay.is_none());
 }
@@ -217,7 +217,7 @@ fn test_resize_redraw_is_debounced() {
 #[test]
 fn test_help_topic_shows_command_details() {
     let mut app = create_test_app();
-    app.input = "/help compact".to_string();
+    app.composer.input = "/help compact".to_string();
     app.submit_input();
 
     let msg = app
@@ -233,7 +233,7 @@ fn test_help_topic_shows_command_details() {
 #[test]
 fn test_help_topic_shows_provider_test_coverage_command_details() {
     let mut app = create_test_app();
-    app.input = "/help provider-test-coverage".to_string();
+    app.composer.input = "/help provider-test-coverage".to_string();
     app.submit_input();
 
     let msg = app
@@ -249,7 +249,7 @@ fn test_help_topic_shows_provider_test_coverage_command_details() {
 #[test]
 fn test_help_topic_shows_log_command_details() {
     let mut app = create_test_app();
-    app.input = "/help log".to_string();
+    app.composer.input = "/help log".to_string();
     app.submit_input();
 
     let msg = app
@@ -264,7 +264,7 @@ fn test_help_topic_shows_log_command_details() {
 #[test]
 fn slash_log_mark_reports_marker_and_note() {
     let mut app = create_test_app();
-    app.input = "/log mark before repro".to_string();
+    app.composer.input = "/log mark before repro".to_string();
     app.submit_input();
 
     let msg = app
@@ -280,7 +280,7 @@ fn slash_log_mark_reports_marker_and_note() {
 #[test]
 fn slash_log_without_mark_shows_usage() {
     let mut app = create_test_app();
-    app.input = "/log".to_string();
+    app.composer.input = "/log".to_string();
     app.submit_input();
 
     let msg = app
@@ -294,7 +294,7 @@ fn slash_log_without_mark_shows_usage() {
 #[test]
 fn slash_provider_test_coverage_without_args_shows_cli_style_summary() {
     let mut app = create_test_app();
-    app.input = "/provider-test-coverage".to_string();
+    app.composer.input = "/provider-test-coverage".to_string();
     app.submit_input();
 
     assert!(app.model_status_scroll.is_some());
@@ -317,7 +317,7 @@ fn slash_provider_test_coverage_without_args_shows_cli_style_summary() {
 #[test]
 fn slash_provider_test_coverage_with_args_shows_provider_detail() {
     let mut app = create_test_app();
-    app.input = "/provider-test-coverage fpt FPT.AI-KIE-v1.7".to_string();
+    app.composer.input = "/provider-test-coverage fpt FPT.AI-KIE-v1.7".to_string();
     app.submit_input();
 
     assert!(app.model_status_scroll.is_some());
@@ -335,7 +335,7 @@ fn slash_provider_test_coverage_with_args_shows_provider_detail() {
 #[test]
 fn slash_provider_test_coverage_overlay_scrolls_with_mouse_wheel() {
     let mut app = create_test_app();
-    app.input = "/provider-test-coverage".to_string();
+    app.composer.input = "/provider-test-coverage".to_string();
     app.submit_input();
 
     assert_eq!(app.model_status_scroll, Some(0));
@@ -469,7 +469,7 @@ fn session_picker_preview_wheel_uses_shared_scroll_momentum() {
 #[test]
 fn test_help_topic_shows_btw_command_details() {
     let mut app = create_test_app();
-    app.input = "/help btw".to_string();
+    app.composer.input = "/help btw".to_string();
     app.submit_input();
 
     let msg = app
@@ -484,7 +484,7 @@ fn test_help_topic_shows_btw_command_details() {
 #[test]
 fn test_help_topic_shows_fork_command_details() {
     let mut app = create_test_app();
-    app.input = "/help fork".to_string();
+    app.composer.input = "/help fork".to_string();
     app.submit_input();
 
     let msg = app
@@ -499,7 +499,7 @@ fn test_help_topic_shows_fork_command_details() {
 #[test]
 fn test_help_topic_shows_git_command_details() {
     let mut app = create_test_app();
-    app.input = "/help git".to_string();
+    app.composer.input = "/help git".to_string();
     app.submit_input();
 
     let msg = app
@@ -515,7 +515,7 @@ fn test_help_topic_shows_git_command_details() {
 #[test]
 fn test_help_topic_shows_commit_command_details() {
     let mut app = create_test_app();
-    app.input = "/help commit".to_string();
+    app.composer.input = "/help commit".to_string();
     app.submit_input();
 
     let msg = app
@@ -531,7 +531,7 @@ fn test_help_topic_shows_commit_command_details() {
 #[test]
 fn test_commit_command_starts_synthetic_user_turn() {
     let mut app = create_test_app();
-    app.input = "/commit".to_string();
+    app.composer.input = "/commit".to_string();
     app.submit_input();
 
     assert!(app.is_processing);
@@ -547,7 +547,7 @@ fn test_commit_command_starts_synthetic_user_turn() {
 #[test]
 fn test_commit_push_command_starts_synthetic_user_turn() {
     let mut app = create_test_app();
-    app.input = "/commit-push".to_string();
+    app.composer.input = "/commit-push".to_string();
     app.submit_input();
 
     assert!(app.is_processing);
@@ -563,7 +563,7 @@ fn test_commit_push_command_starts_synthetic_user_turn() {
 #[test]
 fn test_help_topic_shows_commit_push_command_details() {
     let mut app = create_test_app();
-    app.input = "/help commit-push".to_string();
+    app.composer.input = "/help commit-push".to_string();
     app.submit_input();
 
     let msg = app
@@ -578,7 +578,7 @@ fn test_help_topic_shows_commit_push_command_details() {
 #[test]
 fn test_fast_release_command_starts_synthetic_user_turn() {
     let mut app = create_test_app();
-    app.input = "/fast-release".to_string();
+    app.composer.input = "/fast-release".to_string();
     app.submit_input();
 
     assert!(app.is_processing);
@@ -596,7 +596,7 @@ fn test_fast_release_command_starts_synthetic_user_turn() {
 #[test]
 fn test_triage_command_starts_synthetic_user_turn() {
     let mut app = create_test_app();
-    app.input = "/triage".to_string();
+    app.composer.input = "/triage".to_string();
     app.submit_input();
 
     assert!(app.is_processing);
@@ -619,7 +619,7 @@ fn test_triage_command_includes_focus_in_prompt() {
 #[test]
 fn test_cut_release_alias_starts_fast_release_turn() {
     let mut app = create_test_app();
-    app.input = "/cut-release".to_string();
+    app.composer.input = "/cut-release".to_string();
     app.submit_input();
 
     assert!(app.is_processing);
@@ -646,7 +646,7 @@ fn test_fast_release_prompt_uses_selfdev_cache() {
 #[test]
 fn test_fast_macos_release_command_uses_prepared_cross_build() {
     let mut app = create_test_app();
-    app.input = "/fast-macos-release".to_string();
+    app.composer.input = "/fast-macos-release".to_string();
     app.submit_input();
 
     assert!(app.is_processing);
@@ -669,7 +669,7 @@ fn test_fast_macos_release_command_uses_prepared_cross_build() {
 #[test]
 fn test_help_topic_shows_fast_macos_release_details() {
     let mut app = create_test_app();
-    app.input = "/help fast-macos-release".to_string();
+    app.composer.input = "/help fast-macos-release".to_string();
     app.submit_input();
 
     let msg = app
@@ -686,7 +686,7 @@ fn test_help_topic_shows_fast_macos_release_details() {
 #[test]
 fn test_remote_release_command_uses_tag_only_ci_path() {
     let mut app = create_test_app();
-    app.input = "/remote-release".to_string();
+    app.composer.input = "/remote-release".to_string();
     app.submit_input();
 
     assert!(app.is_processing);
@@ -713,7 +713,7 @@ fn test_remote_release_command_uses_tag_only_ci_path() {
 #[test]
 fn test_commit_push_release_alias_starts_synthetic_user_turn() {
     let mut app = create_test_app();
-    app.input = "/commit-push-release".to_string();
+    app.composer.input = "/commit-push-release".to_string();
     app.submit_input();
 
     assert!(app.is_processing);
@@ -731,7 +731,7 @@ fn test_commit_push_release_alias_starts_synthetic_user_turn() {
 #[test]
 fn test_help_topic_shows_cut_release_command_details() {
     let mut app = create_test_app();
-    app.input = "/help cut-release".to_string();
+    app.composer.input = "/help cut-release".to_string();
     app.submit_input();
 
     let msg = app
@@ -749,7 +749,7 @@ fn test_help_topic_shows_cut_release_command_details() {
 #[test]
 fn test_help_topic_shows_remote_release_command_details() {
     let mut app = create_test_app();
-    app.input = "/help remote-release".to_string();
+    app.composer.input = "/help remote-release".to_string();
     app.submit_input();
 
     let msg = app
@@ -766,7 +766,7 @@ fn test_help_topic_shows_remote_release_command_details() {
 #[test]
 fn test_help_topic_shows_catchup_command_details() {
     let mut app = create_test_app();
-    app.input = "/help catchup".to_string();
+    app.composer.input = "/help catchup".to_string();
     app.submit_input();
 
     let msg = app
@@ -782,7 +782,7 @@ fn test_help_topic_shows_catchup_command_details() {
 #[test]
 fn test_help_topic_shows_back_command_details() {
     let mut app = create_test_app();
-    app.input = "/help back".to_string();
+    app.composer.input = "/help back".to_string();
     app.submit_input();
 
     let msg = app
@@ -819,7 +819,7 @@ fn test_catchup_next_queues_resume_for_attention_session() {
         target.mark_closed();
         target.save().expect("save catchup target");
 
-        app.input = "/catchup next".to_string();
+        app.composer.input = "/catchup next".to_string();
         app.submit_input();
 
         let pending = app
@@ -846,7 +846,7 @@ fn test_back_command_queues_return_without_showing_brief() {
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.catchup.return_stack.push("session_prev".to_string());
 
-    app.input = "/back".to_string();
+    app.composer.input = "/back".to_string();
     app.submit_input();
 
     let pending = app
@@ -917,7 +917,7 @@ fn test_maybe_show_catchup_after_history_adds_brief_page_and_marks_seen() {
 #[test]
 fn test_help_topic_shows_observe_command_details() {
     let mut app = create_test_app();
-    app.input = "/help observe".to_string();
+    app.composer.input = "/help observe".to_string();
     app.submit_input();
 
     let msg = app
@@ -932,7 +932,7 @@ fn test_help_topic_shows_observe_command_details() {
 #[test]
 fn test_help_topic_shows_splitview_command_details() {
     let mut app = create_test_app();
-    app.input = "/help splitview".to_string();
+    app.composer.input = "/help splitview".to_string();
     app.submit_input();
 
     let msg = app
@@ -950,7 +950,7 @@ fn test_help_topic_shows_splitview_command_details() {
 #[test]
 fn test_help_topic_shows_refactor_command_details() {
     let mut app = create_test_app();
-    app.input = "/help refactor".to_string();
+    app.composer.input = "/help refactor".to_string();
     app.submit_input();
 
     let msg = app
@@ -977,7 +977,7 @@ fn test_save_command_bookmarks_session_with_memory_enabled() {
         Message::assistant_text("a2"),
     ];
 
-    app.input = "/save quick-label".to_string();
+    app.composer.input = "/save quick-label".to_string();
     app.submit_input();
 
     assert!(app.session.saved);
@@ -1017,7 +1017,7 @@ fn test_goals_command_opens_overview_in_side_panel() {
 
     let mut app = create_test_app();
     app.session.working_dir = Some(project.display().to_string());
-    app.input = "/goals".to_string();
+    app.composer.input = "/goals".to_string();
     app.submit_input();
 
     assert_eq!(app.side_panel.focused_page_id.as_deref(), Some("goals"));
@@ -1042,7 +1042,7 @@ fn test_mission_and_goal_commands_are_disabled() {
     crate::env::set_var("JCODE_HOME", temp.path());
 
     let mut app = create_test_app();
-    app.input = "/mission make browser control reliable".to_string();
+    app.composer.input = "/mission make browser control reliable".to_string();
     app.submit_input();
     assert!(!app.is_processing, "/mission must not start a turn");
     assert!(
@@ -1060,7 +1060,7 @@ fn test_mission_and_goal_commands_are_disabled() {
         "/mission must not create a mission"
     );
 
-    app.input = "/goal status".to_string();
+    app.composer.input = "/goal status".to_string();
     app.submit_input();
     assert!(!app.is_processing, "/goal must not start a turn");
     assert!(
@@ -1096,7 +1096,7 @@ fn test_goals_legacy_alias_is_not_captured_by_goal_mission_alias() {
 
     let mut app = create_test_app();
     app.session.working_dir = Some(project.display().to_string());
-    app.input = "/goals".to_string();
+    app.composer.input = "/goals".to_string();
     app.submit_input();
 
     assert_eq!(app.side_panel.focused_page_id.as_deref(), Some("goals"));
@@ -1116,7 +1116,7 @@ fn test_goals_legacy_alias_is_not_captured_by_goal_mission_alias() {
 #[test]
 fn test_test_command_queues_layered_verification_prompt() {
     let mut app = create_test_app();
-    app.input = "/test browser control is reliable".to_string();
+    app.composer.input = "/test browser control is reliable".to_string();
     app.submit_input();
 
     assert!(app.pending_queued_dispatch);
@@ -1133,7 +1133,7 @@ fn test_test_command_queues_layered_verification_prompt() {
 #[test]
 fn test_btw_command_requires_question() {
     let mut app = create_test_app();
-    app.input = "/btw".to_string();
+    app.composer.input = "/btw".to_string();
     app.submit_input();
 
     let msg = app.display_messages().last().expect("missing btw error");
@@ -1149,7 +1149,7 @@ fn test_btw_command_forks_session_with_question() {
     crate::env::set_var("JCODE_HOME", temp.path());
 
     let mut app = create_test_app();
-    app.input = "/btw what did we decide about config?".to_string();
+    app.composer.input = "/btw what did we decide about config?".to_string();
     app.submit_input();
 
     // Terminal spawning is disabled under cfg(test), so the fork reports the
@@ -1188,7 +1188,7 @@ fn test_fork_command_with_prompt_forks_session() {
     crate::env::set_var("JCODE_HOME", temp.path());
 
     let mut app = create_test_app();
-    app.input = "/fork try the other approach".to_string();
+    app.composer.input = "/fork try the other approach".to_string();
     app.submit_input();
 
     let msg = app
@@ -1224,7 +1224,7 @@ fn test_fork_command_without_prompt_forks_idle_session() {
     crate::env::set_var("JCODE_HOME", temp.path());
 
     let mut app = create_test_app();
-    app.input = "/fork".to_string();
+    app.composer.input = "/fork".to_string();
     app.submit_input();
 
     let msg = app
@@ -1260,7 +1260,7 @@ fn test_split_command_local_is_alias_for_fork() {
     crate::env::set_var("JCODE_HOME", temp.path());
 
     let mut app = create_test_app();
-    app.input = "/split".to_string();
+    app.composer.input = "/split".to_string();
     app.submit_input();
 
     let msg = app
@@ -1326,7 +1326,7 @@ fn submit_git_command_and_wait_for_response(app: &mut App) {
     let mut bus_rx = crate::bus::Bus::global().subscribe();
     while bus_rx.try_recv().is_ok() {}
 
-    app.input = "/git".to_string();
+    app.composer.input = "/git".to_string();
     app.submit_input();
 
     rt.block_on(async {
@@ -1352,7 +1352,7 @@ fn submit_git_command_and_wait_for_response(app: &mut App) {
 fn test_observe_command_enables_transient_page_without_persisting() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
-        app.input = "/observe on".to_string();
+        app.composer.input = "/observe on".to_string();
         app.submit_input();
 
         assert_eq!(app.side_panel.focused_page_id.as_deref(), Some("observe"));
@@ -1378,7 +1378,7 @@ fn test_observe_command_enables_transient_page_without_persisting() {
 fn test_splitview_command_enables_transient_page_without_persisting() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
-        app.input = "/splitview on".to_string();
+        app.composer.input = "/splitview on".to_string();
         app.submit_input();
 
         assert_eq!(
@@ -1408,7 +1408,7 @@ fn test_splitview_command_off_restores_previous_side_panel_page() {
     let mut app = create_test_app();
     app.set_side_panel_snapshot(test_side_panel_snapshot("plan", "Plan"));
 
-    app.input = "/splitview on".to_string();
+    app.composer.input = "/splitview on".to_string();
     app.submit_input();
     assert_eq!(
         app.side_panel.focused_page_id.as_deref(),
@@ -1416,7 +1416,7 @@ fn test_splitview_command_off_restores_previous_side_panel_page() {
     );
     assert!(app.side_panel.pages.iter().any(|page| page.id == "plan"));
 
-    app.input = "/splitview off".to_string();
+    app.composer.input = "/splitview off".to_string();
     app.submit_input();
     assert_eq!(app.side_panel.focused_page_id.as_deref(), Some("plan"));
     assert!(
@@ -1488,12 +1488,12 @@ fn test_observe_command_off_restores_previous_side_panel_page() {
     let mut app = create_test_app();
     app.set_side_panel_snapshot(test_side_panel_snapshot("plan", "Plan"));
 
-    app.input = "/observe on".to_string();
+    app.composer.input = "/observe on".to_string();
     app.submit_input();
     assert_eq!(app.side_panel.focused_page_id.as_deref(), Some("observe"));
     assert!(app.side_panel.pages.iter().any(|page| page.id == "plan"));
 
-    app.input = "/observe off".to_string();
+    app.composer.input = "/observe off".to_string();
     app.submit_input();
     assert_eq!(app.side_panel.focused_page_id.as_deref(), Some("plan"));
     assert!(!app.side_panel.pages.iter().any(|page| page.id == "observe"));
@@ -1502,7 +1502,7 @@ fn test_observe_command_off_restores_previous_side_panel_page() {
 #[test]
 fn test_observe_updates_latest_tool_context_only() {
     let mut app = create_test_app();
-    app.input = "/observe on".to_string();
+    app.composer.input = "/observe on".to_string();
     app.submit_input();
 
     let tool_call = crate::message::ToolCall {
@@ -1541,7 +1541,7 @@ fn test_observe_updates_latest_tool_context_only() {
 #[test]
 fn test_observe_ignores_noise_tools_and_preserves_latest_useful_context() {
     let mut app = create_test_app();
-    app.input = "/observe on".to_string();
+    app.composer.input = "/observe on".to_string();
     app.submit_input();
 
     let read_tool = crate::message::ToolCall {
@@ -1597,7 +1597,7 @@ fn test_goals_show_command_focuses_goal_page() {
 
     let mut app = create_test_app();
     app.session.working_dir = Some(project.display().to_string());
-    app.input = format!("/goals show {}", goal.id);
+    app.composer.input = format!("/goals show {}", goal.id);
     app.submit_input();
 
     assert_eq!(
@@ -1616,7 +1616,7 @@ fn test_goals_show_command_focuses_goal_page() {
 fn test_compact_mode_command_updates_local_session_mode() {
     let mut app = create_test_app();
 
-    app.input = "/compact mode proactive".to_string();
+    app.composer.input = "/compact mode proactive".to_string();
     app.submit_input();
 
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1638,7 +1638,7 @@ fn test_compact_mode_status_shows_local_mode() {
         manager.set_mode(crate::config::CompactionMode::Proactive);
     });
 
-    app.input = "/compact mode".to_string();
+    app.composer.input = "/compact mode".to_string();
     app.submit_input();
 
     let last = app.display_messages().last().expect("missing response");
@@ -1649,7 +1649,7 @@ fn test_compact_mode_status_shows_local_mode() {
 fn test_fast_on_while_processing_mentions_next_request_locally() {
     let mut app = create_fast_test_app();
     app.is_processing = true;
-    app.input = "/fast on".to_string();
+    app.composer.input = "/fast on".to_string();
 
     app.submit_input();
 

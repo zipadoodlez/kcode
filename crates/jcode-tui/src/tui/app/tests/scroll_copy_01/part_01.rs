@@ -358,8 +358,8 @@ fn test_armed_new_session_mode_shows_input_hint_and_indicator() {
     let _lock = scroll_render_test_lock();
 
     let mut app = create_test_app();
-    app.input = "draft prompt".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "draft prompt".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     app.handle_key(KeyCode::Char(' '), KeyModifiers::SUPER)
         .expect("Super+Space should arm new-session mode");
 
@@ -516,7 +516,7 @@ fn test_chat_mouse_wheel_scroll_does_not_recall_prompt_history() {
 
     let (mut app, mut terminal) = create_scroll_test_app(50, 12, 0, 36);
     render_and_snap(&app, &mut terminal);
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
     assert!(
         crate::tui::ui::last_max_scroll() > 2,
         "expected scrollable chat content"
@@ -530,7 +530,7 @@ fn test_chat_mouse_wheel_scroll_does_not_recall_prompt_history() {
     });
 
     assert!(
-        app.input.is_empty(),
+        app.composer.input.is_empty(),
         "mouse-wheel scrolling must not copy the previous prompt into the editor"
     );
     assert!(app.viewport.auto_scroll_paused, "wheel-up should pause auto-scroll");
@@ -736,8 +736,8 @@ fn test_remote_typing_resumes_bottom_follow_mode() {
 
     app.handle_remote_char_input('x');
 
-    assert_eq!(app.input, "x");
-    assert_eq!(app.cursor_pos, 1);
+    assert_eq!(app.composer.input, "x");
+    assert_eq!(app.composer.cursor_pos, 1);
     assert_eq!(app.viewport.scroll_offset, 0);
     assert!(
         !app.viewport.auto_scroll_paused,
@@ -754,8 +754,8 @@ fn test_local_typing_resumes_bottom_follow_mode() {
     app.handle_key(KeyCode::Char('x'), KeyModifiers::empty())
         .unwrap();
 
-    assert_eq!(app.input, "x");
-    assert_eq!(app.cursor_pos, 1);
+    assert_eq!(app.composer.input, "x");
+    assert_eq!(app.composer.cursor_pos, 1);
     assert_eq!(app.viewport.scroll_offset, 0);
     assert!(
         !app.viewport.auto_scroll_paused,
@@ -931,7 +931,7 @@ fn test_remote_alt_y_toggles_copy_selection_instead_of_typing() {
         .unwrap();
 
     assert!(app.copy_selection.mode);
-    assert!(app.input.is_empty(), "Alt+Y must not insert text");
+    assert!(app.composer.input.is_empty(), "Alt+Y must not insert text");
 }
 
 #[test]
@@ -946,7 +946,7 @@ fn test_remote_alt_i_toggles_info_widget_instead_of_typing() {
         .unwrap();
 
     assert_ne!(crate::tui::info_widget::is_enabled(), initially_enabled);
-    assert!(app.input.is_empty(), "Alt+I must not insert text");
+    assert!(app.composer.input.is_empty(), "Alt+I must not insert text");
     crate::tui::info_widget::toggle_enabled();
 }
 
@@ -964,8 +964,8 @@ fn test_remote_typing_scroll_lock_preserves_scroll_position() {
         .unwrap();
     app.handle_remote_char_input('x');
 
-    assert_eq!(app.input, "x");
-    assert_eq!(app.cursor_pos, 1);
+    assert_eq!(app.composer.input, "x");
+    assert_eq!(app.composer.cursor_pos, 1);
     assert_eq!(app.viewport.scroll_offset, 7);
     assert!(
         app.viewport.auto_scroll_paused,
@@ -984,8 +984,8 @@ fn test_local_typing_scroll_lock_preserves_scroll_position() {
     app.handle_key(KeyCode::Char('x'), KeyModifiers::empty())
         .unwrap();
 
-    assert_eq!(app.input, "x");
-    assert_eq!(app.cursor_pos, 1);
+    assert_eq!(app.composer.input, "x");
+    assert_eq!(app.composer.cursor_pos, 1);
     assert_eq!(app.viewport.scroll_offset, 7);
     assert!(
         app.viewport.auto_scroll_paused,

@@ -206,7 +206,7 @@ impl App {
                 && self.rate_limit_reset.is_none()
                 && (!pending.content.trim().is_empty() || pending.system_reminder.is_some())
         });
-        if self.input.is_empty()
+        if self.composer.input.is_empty()
             && self.pending_images.is_empty()
             && self.queued_messages.is_empty()
             && self.hidden_queued_system_messages.is_empty()
@@ -290,8 +290,8 @@ impl App {
                 .map(|(_, content)| content.clone())
                 .collect::<Vec<_>>();
             let data = serde_json::json!({
-                "cursor": resume_input.map(|input| input.len()).unwrap_or(self.cursor_pos),
-                "input": resume_input.unwrap_or(self.input.as_str()),
+                "cursor": resume_input.map(|input| input.len()).unwrap_or(self.composer.cursor_pos),
+                "input": resume_input.unwrap_or(self.composer.input.as_str()),
                 "pending_images": resume_images.unwrap_or(self.pending_images.as_slice()).iter().map(|(media_type, data)| serde_json::json!({
                     "media_type": media_type,
                     "data": data,
@@ -873,8 +873,8 @@ impl App {
                 .collect(),
             streaming_text: self.streaming.streaming_text.clone(),
             streaming_tool_calls: self.streaming_tool_calls.clone(),
-            input: self.input.clone(),
-            cursor_pos: self.cursor_pos,
+            input: self.composer.input.clone(),
+            cursor_pos: self.composer.cursor_pos,
             is_processing: self.is_processing,
             scroll_offset: self.viewport.scroll_offset,
             status: format!("{:?}", self.status),
@@ -2143,7 +2143,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
                 .as_deref()
                 .unwrap_or("none"),
             app.last_stream_error.as_deref().unwrap_or("none"),
-            if app.stashed_input.is_some() { "yes" } else { "no" },
+            if app.composer.stashed_input.is_some() { "yes" } else { "no" },
         ));
         context_report.push_str("\nTodos\n");
         context_report.push_str(&todo_lines);

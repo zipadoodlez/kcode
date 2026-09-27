@@ -23,7 +23,7 @@ fn test_tool_side_panel_focus_supports_horizontal_pan_keys() {
     app.handle_key(KeyCode::Right, KeyModifiers::empty())
         .unwrap();
     assert_eq!(app.diff_pane_scroll_x, 4);
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
 
     app.handle_key(KeyCode::Left, KeyModifiers::empty())
         .unwrap();
@@ -344,8 +344,8 @@ fn test_refresh_model_list_command_suggestions() {
 #[test]
 fn test_command_suggestion_arrow_and_ctrl_navigation_accepts_highlighted_row() {
     let mut app = create_test_app();
-    app.input = "/con".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/con".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     let suggestions = app.command_suggestions();
     assert!(suggestions.len() >= 2);
 
@@ -362,15 +362,15 @@ fn test_command_suggestion_arrow_and_ctrl_navigation_accepts_highlighted_row() {
     let expected = suggestions[1].0.clone();
     app.handle_key(KeyCode::Enter, KeyModifiers::empty())
         .unwrap();
-    assert_eq!(app.input, expected);
-    assert_eq!(app.cursor_pos, app.input.len());
+    assert_eq!(app.composer.input, expected);
+    assert_eq!(app.composer.cursor_pos, app.composer.input.len());
 }
 
 #[test]
 fn test_command_suggestion_navigation_moves_through_all_rows_and_allows_shift_arrow_noise() {
     let mut app = create_test_app();
-    app.input = "/".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     let suggestion_count = app.command_suggestions().len();
     assert!(suggestion_count > crate::tui::app::COMMAND_SUGGESTION_VISIBLE_LIMIT);
 
@@ -484,8 +484,8 @@ fn assert_command_match_recolored(
 fn test_command_suggestion_render_highlights_selected_row_by_color() {
     let _lock = scroll_render_test_lock();
     let mut app = create_test_app();
-    app.input = "/con".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/con".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     let suggestions = app.command_suggestions();
     assert!(suggestions.len() >= 2);
     let first = suggestions[0].0.clone();
@@ -511,8 +511,8 @@ fn test_command_suggestion_render_highlights_selected_row_by_color() {
 fn test_single_command_suggestion_uses_selected_color_only() {
     let _lock = scroll_render_test_lock();
     let mut app = create_test_app();
-    app.input = "/review".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/review".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     let suggestions = app.command_suggestions();
     assert_eq!(suggestions.len(), 1);
     let command = suggestions[0].0.clone();
@@ -533,8 +533,8 @@ fn test_single_command_suggestion_uses_selected_color_only() {
 fn test_command_suggestion_render_window_scrolls_with_selection() {
     let _lock = scroll_render_test_lock();
     let mut app = create_test_app();
-    app.input = "/".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     let suggestions = app.command_suggestions();
     let limit = crate::tui::app::COMMAND_SUGGESTION_VISIBLE_LIMIT;
     assert!(suggestions.len() > limit);
@@ -570,8 +570,8 @@ fn test_command_suggestion_render_window_scrolls_with_selection() {
 #[test]
 fn test_remote_command_suggestion_arrow_and_ctrl_navigation_accepts_highlighted_row() {
     let mut app = create_test_app();
-    app.input = "/con".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/con".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     let suggestions = app.command_suggestions();
     assert!(suggestions.len() >= 2);
 
@@ -592,8 +592,8 @@ fn test_remote_command_suggestion_arrow_and_ctrl_navigation_accepts_highlighted_
     let expected = suggestions[1].0.clone();
     rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
         .unwrap();
-    assert_eq!(app.input, expected);
-    assert_eq!(app.cursor_pos, app.input.len());
+    assert_eq!(app.composer.input, expected);
+    assert_eq!(app.composer.cursor_pos, app.composer.input.len());
 }
 
 #[test]
@@ -804,7 +804,7 @@ fn test_context_command_reports_session_context_snapshot() {
         )
         .expect("save todos");
 
-        app.input = "/context".to_string();
+        app.composer.input = "/context".to_string();
         app.submit_input();
 
         let msg = app
@@ -863,8 +863,8 @@ fn test_nested_command_suggestions_filter_partial_suffixes() {
 #[test]
 fn test_autocomplete_adds_space_for_nested_argument_commands() {
     let mut app = create_test_app();
-    app.input = "/goals sh".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/goals sh".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     assert!(app.autocomplete());
     assert_eq!(app.input(), "/goals show ");
@@ -1030,7 +1030,7 @@ fn test_login_picker_preview_filter_parsing() {
 #[test]
 fn test_agents_command_opens_agent_picker() {
     let mut app = create_test_app();
-    app.input = "/agents".to_string();
+    app.composer.input = "/agents".to_string();
 
     app.submit_input();
 

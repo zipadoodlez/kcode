@@ -68,7 +68,7 @@ fn plain_typing_never_sets_hotkey_feedback() {
     app.handle_key(KeyCode::Char('I'), KeyModifiers::SHIFT)
         .unwrap();
     assert!(app.hotkey_feedback_state.current.is_none());
-    assert_eq!(app.input, "hI");
+    assert_eq!(app.composer.input, "hI");
 }
 
 #[test]

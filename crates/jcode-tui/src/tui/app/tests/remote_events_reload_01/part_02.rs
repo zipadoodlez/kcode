@@ -283,8 +283,8 @@ fn test_remote_poke_status_and_off_update_state() {
                 &super::commands::incomplete_poke_todos(&app),
             ));
 
-        app.input = "/poke status".to_string();
-        app.cursor_pos = app.input.len();
+        app.composer.input = "/poke status".to_string();
+        app.composer.cursor_pos = app.composer.input.len();
         rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
             .expect("/poke status should succeed remotely");
         assert!(app.display_messages().iter().any(|msg| {
@@ -293,8 +293,8 @@ fn test_remote_poke_status_and_off_update_state() {
                 && msg.content.contains("A turn is currently running.")
         }));
 
-        app.input = "/poke off".to_string();
-        app.cursor_pos = app.input.len();
+        app.composer.input = "/poke off".to_string();
+        app.composer.cursor_pos = app.composer.input.len();
         rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
             .expect("/poke off should succeed remotely");
 
@@ -321,8 +321,8 @@ fn test_remote_rewind_lists_display_history_when_session_transcript_is_empty() {
     app.push_display_message(DisplayMessage::user("hello"));
     app.push_display_message(DisplayMessage::assistant("hi there"));
 
-    app.input = "/rewind".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/rewind".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
         .expect("/rewind should be handled remotely");
 
@@ -344,8 +344,8 @@ fn test_remote_rewind_completion_shows_undo_hint_after_history_refresh() {
     app.push_display_message(DisplayMessage::user("hello"));
     app.push_display_message(DisplayMessage::assistant("hi there"));
 
-    app.input = "/rewind 1".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/rewind 1".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
         .expect("/rewind N should be sent remotely");
 

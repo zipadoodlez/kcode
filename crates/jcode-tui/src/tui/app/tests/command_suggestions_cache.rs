@@ -15,8 +15,8 @@ fn cached_suggestions_match_uncached_across_input_mutations() {
         "", "/", "/m", "/mod", "/model", "/help", "/conifg", "/goals ", "/rewind ", "not a command",
         "/",
     ] {
-        app.input = input.to_string();
-        app.cursor_pos = app.input.len();
+        app.composer.input = input.to_string();
+        app.composer.cursor_pos = app.composer.input.len();
 
         let signature = app.command_suggestions_signature();
         let expected = app.command_suggestions_uncached(&signature);
@@ -43,11 +43,11 @@ fn cached_suggestions_match_uncached_across_input_mutations() {
 fn editing_input_within_a_frame_invalidates_the_memo() {
     let mut app = create_test_app();
 
-    app.input = "/hel".to_string();
+    app.composer.input = "/hel".to_string();
     let for_hel = app.command_suggestions();
 
     // No epoch bump: simulate a second read after an edit inside one frame.
-    app.input = "/mod".to_string();
+    app.composer.input = "/mod".to_string();
     let for_mod = app.command_suggestions();
 
     assert_ne!(
@@ -67,7 +67,7 @@ fn editing_input_within_a_frame_invalidates_the_memo() {
 #[test]
 fn advancing_the_epoch_forces_recomputation_for_identical_input() {
     let mut app = create_test_app();
-    app.input = "/rewind ".to_string();
+    app.composer.input = "/rewind ".to_string();
 
     let before = app.command_suggestions();
 
@@ -106,7 +106,7 @@ fn advancing_the_epoch_forces_recomputation_for_identical_input() {
 #[test]
 fn pending_prompt_transition_invalidates_the_memo() {
     let mut app = create_test_app();
-    app.input = "/c".to_string();
+    app.composer.input = "/c".to_string();
 
     let normal = app.command_suggestions();
     assert!(
@@ -148,8 +148,8 @@ fn measure_slash_palette_frame_cost() {
     let mut app = create_test_app();
 
     for input in ["/", "/m", "/mod", "/model"] {
-        app.input = input.to_string();
-        app.cursor_pos = app.input.len();
+        app.composer.input = input.to_string();
+        app.composer.cursor_pos = app.composer.input.len();
 
         // Uncached: what every read cost before the memo.
         let signature = app.command_suggestions_signature();

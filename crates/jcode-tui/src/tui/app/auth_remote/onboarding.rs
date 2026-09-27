@@ -118,7 +118,7 @@ mod tests {
             queue_empty_status(app);
             assert!(app.poll_ssh_login_onboarding());
             app.handle_paste("yes".into());
-            assert_eq!(app.input, "[hidden login input]");
+            assert_eq!(app.composer.input, "[hidden login input]");
             assert!(app.pasted_contents.is_empty());
             app.handle_ssh_login_key(KeyCode::Enter, KeyModifiers::NONE, None);
             assert_eq!(
@@ -129,7 +129,7 @@ mod tests {
             app.handle_paste("no".into());
             app.handle_ssh_login_key(KeyCode::Enter, KeyModifiers::NONE, None);
             assert!(app.remote_login.is_none());
-            assert!(app.input.is_empty());
+            assert!(app.composer.input.is_empty());
         });
     }
 
@@ -137,11 +137,11 @@ mod tests {
     fn ssh_onboarding_never_replaces_drafts_or_explicit_login() {
         with_app(|app| {
             queue_empty_status(app);
-            app.input = "unfinished draft".into();
+            app.composer.input = "unfinished draft".into();
             assert!(!app.poll_ssh_login_onboarding());
-            assert_eq!(app.input, "unfinished draft");
+            assert_eq!(app.composer.input, "unfinished draft");
             assert!(app.remote_login.is_none());
-            app.input.clear();
+            app.composer.input.clear();
             app.pending_turn = true;
             assert!(!app.poll_ssh_login_onboarding());
             app.pending_turn = false;
@@ -207,7 +207,7 @@ impl App {
         if self.should_quit
             || self.is_processing()
             || self.pending_turn
-            || !self.input.is_empty()
+            || !self.composer.input.is_empty()
             || self.inline_interactive_state.is_some()
             || self.inline_view_state.is_some()
             || self.login_picker_overlay.is_some()
@@ -329,8 +329,8 @@ impl App {
             Phase::ImportOffer => {
                 login.phase = Phase::Choosing;
                 login.input.clear();
-                self.input.clear();
-                self.cursor_pos = 0;
+                self.composer.input.clear();
+                self.composer.cursor_pos = 0;
                 self.open_ssh_login_picker(accept);
             }
             Phase::ImportConsent => {

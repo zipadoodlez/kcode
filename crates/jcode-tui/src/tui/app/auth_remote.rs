@@ -109,10 +109,10 @@ impl App {
             }
         };
         // Clear every generic input retention surface before accepting any secret.
-        self.input.clear();
-        self.cursor_pos = 0;
+        self.composer.input.clear();
+        self.composer.cursor_pos = 0;
         self.pasted_contents.clear();
-        self.clear_input_undo_history();
+        self.composer.clear_input_undo_history();
         self.inline_interactive_state = None;
         self.pending_login = Some(PendingLogin::Remote);
         self.remote_login = Some(RemoteLogin {
@@ -198,8 +198,8 @@ impl App {
         login.phase = Phase::Starting;
         login.input.clear();
         login.run(Operation::Begin, None);
-        self.input.clear();
-        self.cursor_pos = 0;
+        self.composer.input.clear();
+        self.composer.cursor_pos = 0;
         self.set_status_notice(format!("SSH login: {provider} starting. Esc cancels."));
     }
 
@@ -210,10 +210,10 @@ impl App {
         self.remote_login = None;
         self.inline_interactive_state = None;
         self.pending_login = None;
-        self.input.clear();
-        self.cursor_pos = 0;
+        self.composer.input.clear();
+        self.composer.cursor_pos = 0;
         self.pasted_contents.clear();
-        self.clear_input_undo_history();
+        self.composer.clear_input_undo_history();
     }
 
     pub(super) fn cancel_ssh_login(&mut self) {
@@ -254,8 +254,8 @@ impl App {
         } else {
             login.run(Operation::Cancel, None);
         }
-        self.input.clear();
-        self.cursor_pos = 0;
+        self.composer.input.clear();
+        self.composer.cursor_pos = 0;
         self.set_status_notice(if importing {
             "SSH credential import: stopping transfer. Credentials already saved cannot be undone."
         } else {
@@ -304,7 +304,7 @@ impl App {
         let Some(login) = self.remote_login.as_ref() else {
             return;
         };
-        self.input = if login.phase == Phase::Choosing
+        self.composer.input = if login.phase == Phase::Choosing
             && (PROVIDERS
                 .iter()
                 .any(|provider| provider.starts_with(&login.input))
@@ -316,7 +316,7 @@ impl App {
         } else {
             "[hidden login input]".into()
         };
-        self.cursor_pos = self.input.len();
+        self.composer.cursor_pos = self.composer.input.len();
     }
 
     pub(super) fn handle_ssh_login_key(
@@ -434,8 +434,8 @@ impl App {
             return;
         };
         let input = std::mem::take(&mut login.input);
-        self.input.clear();
-        self.cursor_pos = 0;
+        self.composer.input.clear();
+        self.composer.cursor_pos = 0;
         let input = input.trim();
         if matches!(input, "/quit" | "/exit") {
             login.quit_after_cancel = true;

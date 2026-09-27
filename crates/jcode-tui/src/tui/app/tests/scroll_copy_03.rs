@@ -651,7 +651,7 @@ fn repro_ctrl_shift_jk_scroll_with_text_in_input() {
     app.viewport.follow_chat_bottom();
 
     // Now put text in the input box, like a real user mid-prompt.
-    app.input = "some draft text".to_string();
+    app.composer.input = "some draft text".to_string();
 
     // Ctrl+Shift+K with text present.
     app.handle_key(KeyCode::Char('k'), KeyModifiers::CONTROL | KeyModifiers::SHIFT)
@@ -661,7 +661,7 @@ fn repro_ctrl_shift_jk_scroll_with_text_in_input() {
         "Ctrl+Shift+K should scroll up even with text in input (offset moved like plain: {plain_offset})"
     );
     assert_eq!(
-        app.input, "some draft text",
+        app.composer.input, "some draft text",
         "Ctrl+Shift+K must not kill input text"
     );
     let shift_up_offset = app.viewport.scroll_offset;
@@ -674,18 +674,18 @@ fn repro_ctrl_shift_jk_scroll_with_text_in_input() {
         "Ctrl+Shift+J should scroll down toward the bottom"
     );
     assert_eq!(
-        app.input, "some draft text",
+        app.composer.input, "some draft text",
         "Ctrl+Shift+J must not alter input text"
     );
 
     // Plain Ctrl+K with text still acts as kill-to-end-of-line (emacs habit).
     app.viewport.follow_chat_bottom();
-    app.input = "draft".to_string();
-    app.cursor_pos = 0;
+    app.composer.input = "draft".to_string();
+    app.composer.cursor_pos = 0;
     app.handle_key(KeyCode::Char('k'), KeyModifiers::CONTROL)
         .unwrap();
     assert_eq!(
-        app.input, "",
+        app.composer.input, "",
         "plain Ctrl+K should still kill to end of line"
     );
 }
@@ -1525,8 +1525,8 @@ fn command_palette_open_does_not_move_existing_rows() {
     // Case 1: mostly-empty session (packed layout, free space below input).
     let (mut app, mut terminal) = create_scroll_test_app(100, 30, 0, 4);
     let before = render_and_snap(&app, &mut terminal);
-    app.input = "/".to_string();
-    app.cursor_pos = 1;
+    app.composer.input = "/".to_string();
+    app.composer.cursor_pos = 1;
     let after = render_and_snap(&app, &mut terminal);
     let before_rows: Vec<&str> = before.lines().collect();
     let after_rows: Vec<&str> = after.lines().collect();
@@ -1564,8 +1564,8 @@ fn command_palette_open_does_not_move_existing_rows() {
     // the bottom rows instead.
     let (mut app, mut terminal) = create_scroll_test_app(100, 30, 0, 60);
     let before = render_and_snap(&app, &mut terminal);
-    app.input = "/".to_string();
-    app.cursor_pos = 1;
+    app.composer.input = "/".to_string();
+    app.composer.cursor_pos = 1;
     let after = render_and_snap(&app, &mut terminal);
     let before_rows: Vec<&str> = before.lines().collect();
     let after_rows: Vec<&str> = after.lines().collect();

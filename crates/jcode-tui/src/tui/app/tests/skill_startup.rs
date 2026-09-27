@@ -50,7 +50,7 @@ fn write_startup_skill(root: &std::path::Path, name: &str) {
 }
 
 fn startup_skill_commands(app: &mut App, input: &str) -> Vec<String> {
-    app.input = input.into();
+    app.composer.input = input.into();
     app.command_suggestions.advance_epoch();
     app.command_suggestions()
         .into_iter()

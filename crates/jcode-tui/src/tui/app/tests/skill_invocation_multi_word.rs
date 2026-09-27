@@ -10,8 +10,8 @@ fn skill_invocation_matches_a_multi_word_skill_name() {
     )
     .expect("write skill");
     app.session.working_dir = Some(temp.path().to_string_lossy().to_string());
-    app.input = "/My Custom Skill".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/My Custom Skill".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     app.submit_input();
 

@@ -112,8 +112,8 @@ impl App {
                 },
                 "transcript_memory": transcript_memory,
                 "input": {
-                    "text_bytes": self.input.len(),
-                    "cursor_pos": self.cursor_pos,
+                    "text_bytes": self.composer.input.len(),
+                    "cursor_pos": self.composer.cursor_pos,
                 },
                 "streaming": {
                     "streaming_text_bytes": self.streaming.streaming_text.len(),
@@ -202,11 +202,13 @@ impl App {
             .map(estimate_pending_catchup_resume_bytes)
             .unwrap_or(0);
         let input_undo_stack_bytes: usize = self
+            .composer
             .input_undo_stack
             .iter()
             .map(|(text, _)| text.capacity())
             .sum();
         let stashed_input_bytes = self
+            .composer
             .stashed_input
             .as_ref()
             .map(|(text, _)| text.capacity())
@@ -452,7 +454,7 @@ impl App {
                 "requests_bytes": pending_soft_interrupt_requests_bytes,
             },
             "input_history": {
-                "undo_entries": self.input_undo_stack.len(),
+                "undo_entries": self.composer.input_undo_stack.len(),
                 "undo_stack_bytes": input_undo_stack_bytes,
                 "stashed_input_bytes": stashed_input_bytes,
             },

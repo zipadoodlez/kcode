@@ -861,7 +861,7 @@ impl App {
             None
         };
         if let Some(cursor_pos) = clicked_input_cursor {
-            self.cursor_pos = cursor_pos.min(self.input.len());
+            self.composer.cursor_pos = cursor_pos.min(self.composer.input.len());
             self.reset_tab_completion();
         }
 

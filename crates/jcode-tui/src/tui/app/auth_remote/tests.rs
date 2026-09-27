@@ -123,7 +123,7 @@ fn ssh_import_requires_explicit_consent_before_any_task_and_masks_private_input(
             for rejected in ["CONFIRM", "confirm extra", "private-not-a-confirmation"] {
                 app.handle_paste(rejected.into());
                 if !rejected.is_empty() {
-                    assert_eq!(app.input, "[hidden login input]");
+                    assert_eq!(app.composer.input, "[hidden login input]");
                 }
                 assert!(app.pasted_contents.is_empty());
                 assert!(
@@ -160,7 +160,7 @@ fn ssh_import_all_consent_cancel_paths_are_local_and_quit_is_preserved() {
             assert!(app.remote_login.is_none());
             assert!(app.pending_login.is_none());
             assert_eq!(app.should_quit, matches!(cancel, "/quit" | "/exit"));
-            assert!(app.input.is_empty());
+            assert!(app.composer.input.is_empty());
             assert!(app.pasted_contents.is_empty());
         }
         app.handle_ssh_login_command("/login --import-local claude");
@@ -292,7 +292,7 @@ fn ssh_login_callback_never_enters_composer_history_debug_or_paste_storage() {
         app.remote_login.as_mut().unwrap().input_kind = "callback_url".into();
         let secret = "http://localhost:1455/auth/callback?code=secret-callback&state=private-state";
         app.handle_paste(secret.into());
-        assert_eq!(app.input, "[hidden login input]");
+        assert_eq!(app.composer.input, "[hidden login input]");
         assert!(app.pasted_contents.is_empty());
         assert!(
             !serde_json::to_string(&app.create_debug_snapshot())
@@ -303,10 +303,10 @@ fn ssh_login_callback_never_enters_composer_history_debug_or_paste_storage() {
         assert!(app.queued_messages.is_empty());
         app.handle_ssh_login_key(KeyCode::Char('u'), KeyModifiers::CONTROL, None);
         assert!(app.remote_login.as_ref().unwrap().input.is_empty());
-        assert!(app.input.is_empty());
+        assert!(app.composer.input.is_empty());
         // Sensitive input cannot activate a slash command, even through text APIs.
         super::super::input::handle_text_input(app, "/model secret-callback");
-        assert_eq!(app.input, "[hidden login input]");
+        assert_eq!(app.composer.input, "[hidden login input]");
         assert!(app.pending_model_switch.is_none());
     });
 }
@@ -317,7 +317,7 @@ fn ssh_login_enter_preempts_local_preview_and_preserves_pending_command_privacy(
         let runtime = tokio::runtime::Runtime::new().unwrap();
         runtime.block_on(async {
             let mut remote = crate::tui::backend::RemoteConnection::dummy();
-            app.input = "/login".into();
+            app.composer.input = "/login".into();
             app.handle_remote_key(KeyCode::Enter, KeyModifiers::NONE, &mut remote)
                 .await
                 .unwrap();
@@ -357,7 +357,7 @@ fn ssh_login_bare_picker_cancel_keys_show_persistent_feedback() {
             assert!(!app.should_quit);
             assert!(!app.pending_turn);
             assert!(app.queued_messages.is_empty());
-            assert!(app.input.is_empty());
+            assert!(app.composer.input.is_empty());
             let message = app.display_messages().last().unwrap();
             assert_eq!(message.role, "system");
             assert_eq!(
@@ -422,7 +422,7 @@ fn ssh_login_disconnected_keys_stay_in_private_flow() {
         assert!(app.remote_login.is_none());
         assert!(app.queued_messages.is_empty());
         assert!(!app.pending_turn);
-        assert!(app.input.is_empty());
+        assert!(app.composer.input.is_empty());
     });
 }
 
@@ -492,7 +492,7 @@ fn ssh_login_failed_completion_stays_private_and_cancel_clears_state() {
             assert!(app.poll_ssh_login(&mut remote).await);
             assert!(app.remote_login.is_none());
             assert!(app.pending_login.is_none());
-            assert!(app.input.is_empty());
+            assert!(app.composer.input.is_empty());
         });
     });
 }
@@ -684,7 +684,7 @@ fn ssh_picker_paste_selects_visible_import_action_not_browser_login() {
                 };
                 app.handle_paste(query.clone());
                 assert!(app.remote_login.as_ref().unwrap().input.is_empty());
-                assert!(app.input.is_empty());
+                assert!(app.composer.input.is_empty());
                 assert!(app.pasted_contents.is_empty());
                 assert_eq!(app.inline_interactive_state.as_ref().unwrap().filter, query);
                 app.handle_ssh_login_key(KeyCode::Enter, KeyModifiers::NONE, None);

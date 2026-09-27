@@ -185,7 +185,7 @@ fn test_account_openai_command_opens_account_picker() {
         .unwrap();
 
         let mut app = create_test_app();
-        app.input = "/account openai".to_string();
+        app.composer.input = "/account openai".to_string();
         app.submit_input();
 
         assert!(app.account_picker.overlay.is_none());
@@ -252,7 +252,7 @@ fn test_account_command_opens_account_picker() {
         .unwrap();
 
         let mut app = create_test_app();
-        app.input = "/account".to_string();
+        app.composer.input = "/account".to_string();
         app.submit_input();
 
         assert!(app.account_picker.overlay.is_none());
@@ -328,7 +328,7 @@ fn test_account_picker_supports_arrow_and_vim_navigation() {
         .unwrap();
 
         let mut app = create_test_app();
-        app.input = "/account openai".to_string();
+        app.composer.input = "/account openai".to_string();
         app.submit_input();
 
         let initial_selected = app
@@ -453,7 +453,7 @@ fn test_account_command_combines_claude_and_openai_accounts() {
         .unwrap();
 
         let mut app = create_test_app();
-        app.input = "/account".to_string();
+        app.composer.input = "/account".to_string();
         app.submit_input();
 
         let picker = app
@@ -514,7 +514,7 @@ fn test_account_command_uses_fast_auth_snapshot_without_running_cursor_status() 
         crate::auth::AuthStatus::invalidate_cache();
         let _ = std::fs::remove_file(&marker);
 
-        app.input = "/account".to_string();
+        app.composer.input = "/account".to_string();
         app.submit_input();
 
         assert!(app.inline_interactive_state.is_some());
@@ -550,7 +550,7 @@ fn test_account_switch_shorthand_switches_openai_account_by_label() {
         let mut app = create_test_app();
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            app.input = "/account switch openai2".to_string();
+            app.composer.input = "/account switch openai2".to_string();
             app.submit_input();
 
             assert_eq!(
@@ -571,7 +571,7 @@ fn test_account_picker_prompt_new_openai_label_cancel_clears_prompt() {
         Some(super::auth::PendingAccountInput::NewAccountLabel { ref provider_id, .. }) if provider_id == "openai"
     ));
 
-    app.input = "/cancel".to_string();
+    app.composer.input = "/cancel".to_string();
     app.submit_input();
 
     assert!(app.account_picker.pending_input.is_none());
@@ -581,7 +581,7 @@ fn test_account_picker_prompt_new_openai_label_cancel_clears_prompt() {
 #[test]
 fn test_login_command_opens_inline_login_picker() {
     let mut app = create_test_app();
-    app.input = "/login".to_string();
+    app.composer.input = "/login".to_string();
     app.submit_input();
 
     let picker = app
@@ -595,7 +595,7 @@ fn test_login_command_opens_inline_login_picker() {
 #[test]
 fn test_account_openai_compatible_settings_renders_provider_settings() {
     let mut app = create_test_app();
-    app.input = "/account openai-compatible settings".to_string();
+    app.composer.input = "/account openai-compatible settings".to_string();
     app.submit_input();
 
     let msg = app
@@ -612,7 +612,7 @@ fn test_account_openai_compatible_settings_renders_provider_settings() {
 fn test_account_default_provider_command_saves_config() {
     let _guard = crate::storage::lock_test_env();
     let mut app = create_test_app();
-    app.input = "/account default-provider openai".to_string();
+    app.composer.input = "/account default-provider openai".to_string();
     app.submit_input();
 
     let cfg = crate::config::Config::load();
@@ -622,7 +622,7 @@ fn test_account_default_provider_command_saves_config() {
 #[test]
 fn test_commands_alias_shows_help() {
     let mut app = create_test_app();
-    app.input = "/commands".to_string();
+    app.composer.input = "/commands".to_string();
     app.submit_input();
 
     assert!(
@@ -634,7 +634,7 @@ fn test_commands_alias_shows_help() {
 #[test]
 fn test_improve_command_starts_improvement_loop() {
     let mut app = create_test_app();
-    app.input = "/improve".to_string();
+    app.composer.input = "/improve".to_string();
     app.submit_input();
 
     assert_eq!(app.improve_mode, Some(ImproveMode::ImproveRun));
@@ -662,7 +662,7 @@ fn test_improve_command_starts_improvement_loop() {
 #[test]
 fn test_improve_plan_command_is_plan_only_and_accepts_focus() {
     let mut app = create_test_app();
-    app.input = "/improve plan startup performance".to_string();
+    app.composer.input = "/improve plan startup performance".to_string();
     app.submit_input();
 
     assert_eq!(app.improve_mode, Some(ImproveMode::ImprovePlan));
@@ -722,7 +722,7 @@ fn test_improve_status_summarizes_current_todos() {
         .expect("save todos");
 
         app.improve_mode = Some(ImproveMode::ImproveRun);
-        app.input = "/improve status".to_string();
+        app.composer.input = "/improve status".to_string();
         app.submit_input();
 
         let msg = app
@@ -743,7 +743,7 @@ fn test_improve_status_summarizes_current_todos() {
 fn test_improve_stop_without_active_run_reports_idle() {
     let mut app = create_test_app();
     app.session.improve_mode = None;
-    app.input = "/improve stop".to_string();
+    app.composer.input = "/improve stop".to_string();
     app.submit_input();
 
     let msg = app
@@ -758,7 +758,7 @@ fn test_improve_stop_queues_stop_prompt_and_clears_mode() {
     let mut app = create_test_app();
     app.improve_mode = Some(ImproveMode::ImproveRun);
     app.session.improve_mode = Some(crate::session::SessionImproveMode::ImproveRun);
-    app.input = "/improve stop".to_string();
+    app.composer.input = "/improve stop".to_string();
     app.submit_input();
 
     assert_eq!(app.improve_mode, None);
@@ -780,7 +780,7 @@ fn test_improve_stop_queues_stop_prompt_and_clears_mode() {
 #[test]
 fn test_improve_resume_requires_saved_mode() {
     let mut app = create_test_app();
-    app.input = "/improve resume".to_string();
+    app.composer.input = "/improve resume".to_string();
     app.submit_input();
 
     let msg = app
@@ -813,7 +813,7 @@ fn test_improve_resume_uses_saved_mode_and_current_todos() {
         )
         .expect("save todos");
 
-        app.input = "/improve resume".to_string();
+        app.composer.input = "/improve resume".to_string();
         app.submit_input();
 
         assert_eq!(app.improve_mode, Some(ImproveMode::ImproveRun));

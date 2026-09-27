@@ -6,7 +6,7 @@ fn test_fast_default_on_saves_config_and_updates_session() {
     crate::env::set_var("JCODE_HOME", temp.path());
 
     let mut app = create_fast_test_app();
-    app.input = "/fast default on".to_string();
+    app.composer.input = "/fast default on".to_string();
 
     app.submit_input();
 
@@ -36,7 +36,7 @@ fn test_fast_default_off_persists_explicit_off() {
     crate::config::Config::set_openai_service_tier(Some("priority")).expect("save fast default");
 
     let mut app = create_fast_test_app();
-    app.input = "/fast default off".to_string();
+    app.composer.input = "/fast default off".to_string();
 
     app.submit_input();
 
@@ -64,7 +64,7 @@ fn test_fast_status_shows_saved_default() {
     crate::config::Config::set_openai_service_tier(Some("priority")).expect("save fast default");
 
     let mut app = create_fast_test_app();
-    app.input = "/fast status".to_string();
+    app.composer.input = "/fast status".to_string();
 
     app.submit_input();
 
@@ -86,7 +86,7 @@ fn test_alignment_command_persists_and_applies_immediately() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
         app.set_centered(false);
-        app.input = "/alignment centered".to_string();
+        app.composer.input = "/alignment centered".to_string();
 
         app.submit_input();
 
@@ -111,7 +111,7 @@ fn test_alignment_status_shows_current_and_saved_defaults() {
 
         let mut app = create_test_app();
         app.set_centered(true);
-        app.input = "/alignment".to_string();
+        app.composer.input = "/alignment".to_string();
 
         app.submit_input();
 
@@ -130,7 +130,7 @@ fn test_alignment_status_shows_current_and_saved_defaults() {
 #[test]
 fn test_alignment_invalid_usage_shows_error() {
     let mut app = create_test_app();
-    app.input = "/alignment diagonal".to_string();
+    app.composer.input = "/alignment diagonal".to_string();
 
     app.submit_input();
 
@@ -145,7 +145,7 @@ fn test_compact_notifications_command_persists_and_applies_immediately() {
         crate::config::Config::set_compact_notifications(false).expect("save default");
 
         let mut app = create_test_app();
-        app.input = "/compact-notifications on".to_string();
+        app.composer.input = "/compact-notifications on".to_string();
 
         app.submit_input();
 
@@ -168,7 +168,7 @@ fn test_compact_notifications_status_reports_current_value() {
         crate::config::Config::set_compact_notifications(true).expect("save default");
 
         let mut app = create_test_app();
-        app.input = "/compact-notifications".to_string();
+        app.composer.input = "/compact-notifications".to_string();
 
         app.submit_input();
 
@@ -184,7 +184,7 @@ fn test_compact_notifications_status_reports_current_value() {
 #[test]
 fn test_compact_notifications_invalid_usage_shows_error() {
     let mut app = create_test_app();
-    app.input = "/compact-notifications maybe".to_string();
+    app.composer.input = "/compact-notifications maybe".to_string();
 
     app.submit_input();
 
@@ -196,7 +196,7 @@ fn test_compact_notifications_invalid_usage_shows_error() {
 #[test]
 fn test_help_topic_shows_fix_command_details() {
     let mut app = create_test_app();
-    app.input = "/help fix".to_string();
+    app.composer.input = "/help fix".to_string();
     app.submit_input();
 
     let msg = app
@@ -243,7 +243,7 @@ fn test_usage_command_requests_usage_report_with_inline_view() {
 #[test]
 fn test_usage_submit_input_requests_usage_report_with_inline_view() {
     let mut app = create_test_app();
-    app.input = "/usage".to_string();
+    app.composer.input = "/usage".to_string();
 
     app.submit_input();
 

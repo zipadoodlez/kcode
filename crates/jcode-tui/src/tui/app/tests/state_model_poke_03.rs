@@ -82,8 +82,8 @@ fn test_remote_model_picker_during_startup_waits_for_session_catalog() {
 fn test_remote_model_command_opens_picker_without_catalog_request() {
     let mut app = create_test_app();
     configure_test_remote_models(&mut app);
-    app.input = "/model".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/model".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
@@ -2914,7 +2914,7 @@ fn test_finish_turn_auto_poke_preserves_visible_turn_started() {
 #[test]
 fn test_help_topic_shows_overnight_command_details() {
     let mut app = create_test_app();
-    app.input = "/help overnight".to_string();
+    app.composer.input = "/help overnight".to_string();
     app.submit_input();
 
     let msg = app

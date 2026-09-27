@@ -528,7 +528,7 @@ fn openrouter_key_typed_through_full_key_path_does_not_reopen_picker() {
                 "picker re-opened while typing '{ch}'"
             );
         }
-        assert_eq!(app.input, key, "every typed character must reach the input buffer");
+        assert_eq!(app.composer.input, key, "every typed character must reach the input buffer");
 
         // Pressing Enter submits the key to the pending-login handler instead of
         // re-opening the provider picker (the old loop).
@@ -541,7 +541,7 @@ fn openrouter_key_typed_through_full_key_path_does_not_reopen_picker() {
             app.inline_interactive_state.is_none(),
             "Enter must not re-open the provider picker"
         );
-        assert!(app.input.is_empty(), "input buffer should clear after submit");
+        assert!(app.composer.input.is_empty(), "input buffer should clear after submit");
 
         // Crucially: the key must actually be *persisted*, not just "not loop".
         // It is written to $JCODE_HOME/config/jcode/openrouter.env and exported
@@ -763,7 +763,7 @@ fn startup_check_skips_when_input_is_present() {
         let mut app = create_test_app();
         app.onboarding_flow = None;
         app.onboarding_startup_checked = false;
-        app.input = "restored draft".to_string();
+        app.composer.input = "restored draft".to_string();
 
         app.maybe_begin_onboarding_flow_on_startup();
 
@@ -1574,8 +1574,8 @@ fn preparing_recent_project_review_finishes_onboarding_and_seeds_the_first_turn(
     assert!(app.onboarding_prepare_recent_project_review());
 
     assert!(!app.onboarding_flow_active());
-    assert_eq!(app.input, expected);
-    assert_eq!(app.cursor_pos, app.input.len());
+    assert_eq!(app.composer.input, expected);
+    assert_eq!(app.composer.cursor_pos, app.composer.input.len());
 }
 
 #[test]
@@ -1623,7 +1623,7 @@ fn starting_recent_project_review_queues_remote_turn_without_stuck_sending() {
         !app.is_processing,
         "remote review must stay idle until the remote queue dispatches"
     );
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
     assert_eq!(
         app.queued_messages,
         vec![expected]

@@ -770,12 +770,12 @@ impl App {
         if prompt.trim().is_empty() {
             return;
         }
-        if !self.input.is_empty() {
+        if !self.composer.input.is_empty() {
             // User already started a new prompt; do not overwrite it.
             return;
         }
-        self.input = prompt;
-        self.cursor_pos = self.input.len();
+        self.composer.input = prompt;
+        self.composer.cursor_pos = self.composer.input.len();
         self.reset_tab_completion();
         self.sync_model_picker_preview_from_input();
         self.set_status_notice("Prompt restored to input after error");

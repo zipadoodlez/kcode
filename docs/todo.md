@@ -229,10 +229,16 @@ Staged, each lands whole.
       `CommandSuggestions`, with the two methods that touch only them
       (`advance_epoch`, `invalidate_candidates_cache`); `app_fields` fell 241 to
       238.
-    - Remaining slices: composer text (`input`, `cursor_pos`, `stashed_input`,
-      `input_undo_stack`, `tab_completion_state`; 71 methods touch, 26 only) into
-      a `composer.rs` (this begins draining the 4,131-line `input.rs`);
-      prompt-history fields into `prompt_history.rs`; attachments/queue
+    - **Composer landed:** `input`, `cursor_pos`, `stashed_input`,
+      `input_undo_stack`, `tab_completion_state` move into `composer.rs` as
+      `Composer`, with the four methods that touch only them
+      (`clear_input_undo_history`, `remember_input_undo_state`,
+      `find_word_boundary_back`, `find_word_boundary_forward`) and the undo
+      limit; `app_fields` fell 238 to 234. `set_input_for_test` (a 50-call-site
+      test helper) and the inherent `input()`/`cursor_pos()` getters stay on
+      `App`. This begins draining `input.rs`.
+    - Remaining slices: prompt-history fields (`prompt_history_search`,
+      `persisted_prompt_history`) into `prompt_history.rs`; attachments/queue
       (`pasted_contents`, `pending_images`, `interleave_*`, `queued_messages`,
       `hidden_queued_system_messages`, `pending_soft_interrupt*`; 32/11).
   - Stage 10: transcript (13 fields, 170 sites), then session/server (18 fields,

@@ -58,17 +58,17 @@ fn test_up_arrow_recalls_prompts_from_previous_sessions() {
     app.bump_display_messages_version();
 
     app.handle_key(KeyCode::Up, KeyModifiers::empty()).unwrap();
-    assert_eq!(app.input, "current prompt");
+    assert_eq!(app.composer.input, "current prompt");
 
     app.handle_key(KeyCode::Up, KeyModifiers::empty()).unwrap();
-    assert_eq!(app.input, "newer old prompt");
+    assert_eq!(app.composer.input, "newer old prompt");
 
     app.handle_key(KeyCode::Up, KeyModifiers::empty()).unwrap();
-    assert_eq!(app.input, "old session prompt");
+    assert_eq!(app.composer.input, "old session prompt");
 
     app.handle_key(KeyCode::Down, KeyModifiers::empty())
         .unwrap();
-    assert_eq!(app.input, "newer old prompt");
+    assert_eq!(app.composer.input, "newer old prompt");
 }
 
 #[test]
@@ -113,21 +113,21 @@ fn test_ctrl_r_opens_history_search_and_enter_inserts_selection() {
     let state = app.prompt_history_search.as_ref().unwrap();
     assert_eq!(state.matches, vec!["fix the login bug".to_string()]);
     // The selected match previews live in the input line.
-    assert_eq!(app.input, "fix the login bug");
+    assert_eq!(app.composer.input, "fix the login bug");
 
     app.handle_key(KeyCode::Enter, KeyModifiers::empty())
         .unwrap();
     assert!(app.prompt_history_search.is_none());
-    assert_eq!(app.input, "fix the login bug");
-    assert_eq!(app.cursor_pos, app.input.len());
+    assert_eq!(app.composer.input, "fix the login bug");
+    assert_eq!(app.composer.cursor_pos, app.composer.input.len());
 }
 
 #[test]
 fn test_history_search_esc_cancels_without_touching_input() {
     let mut app = create_test_app();
     app.persisted_prompt_history = Some(vec!["some prompt".to_string()]);
-    app.input = "draft".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "draft".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     app.handle_key(KeyCode::Char('r'), KeyModifiers::CONTROL)
         .unwrap();
@@ -138,13 +138,13 @@ fn test_history_search_esc_cancels_without_touching_input() {
         app.handle_key(KeyCode::Char(c), KeyModifiers::empty())
             .unwrap();
     }
-    assert_eq!(app.input, "some prompt");
+    assert_eq!(app.composer.input, "some prompt");
 
     // ...but Esc restores the original draft.
     app.handle_key(KeyCode::Esc, KeyModifiers::empty()).unwrap();
     assert!(app.prompt_history_search.is_none());
-    assert_eq!(app.input, "draft");
-    assert_eq!(app.cursor_pos, "draft".len());
+    assert_eq!(app.composer.input, "draft");
+    assert_eq!(app.composer.cursor_pos, "draft".len());
 }
 
 #[test]
@@ -165,17 +165,17 @@ fn test_history_search_up_down_moves_selection() {
             .unwrap();
     }
     assert_eq!(app.prompt_history_search.as_ref().unwrap().selected, 0);
-    assert_eq!(app.input, "prompt gamma");
+    assert_eq!(app.composer.input, "prompt gamma");
 
     app.handle_key(KeyCode::Up, KeyModifiers::empty()).unwrap();
     assert_eq!(app.prompt_history_search.as_ref().unwrap().selected, 1);
-    assert_eq!(app.input, "prompt beta");
+    assert_eq!(app.composer.input, "prompt beta");
 
     // Ctrl+R again also steps older (readline muscle memory).
     app.handle_key(KeyCode::Char('r'), KeyModifiers::CONTROL)
         .unwrap();
     assert_eq!(app.prompt_history_search.as_ref().unwrap().selected, 2);
-    assert_eq!(app.input, "prompt alpha");
+    assert_eq!(app.composer.input, "prompt alpha");
 
     app.handle_key(KeyCode::Down, KeyModifiers::empty())
         .unwrap();
@@ -184,7 +184,7 @@ fn test_history_search_up_down_moves_selection() {
     // Enter keeps the selected (middle) match in the input line.
     app.handle_key(KeyCode::Enter, KeyModifiers::empty())
         .unwrap();
-    assert_eq!(app.input, "prompt beta");
+    assert_eq!(app.composer.input, "prompt beta");
 }
 
 #[test]
@@ -209,8 +209,8 @@ fn test_prompt_history_file_roundtrip_dedupes_and_caps() {
 #[test]
 fn test_submit_input_records_prompt_history() {
     let mut app = create_test_app();
-    app.input = "hello world".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "hello world".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     app.submit_input();
 

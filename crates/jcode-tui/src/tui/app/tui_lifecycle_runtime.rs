@@ -621,9 +621,9 @@ pub(super) fn handle_dev_command(app: &mut App, trimmed: &str) -> bool {
         };
         app.onboarding_preview_mode = enable;
         if enable {
-            app.input.clear();
-            app.cursor_pos = 0;
-            app.clear_input_undo_history();
+            app.composer.input.clear();
+            app.composer.cursor_pos = 0;
+            app.composer.clear_input_undo_history();
             app.viewport.follow_chat_bottom();
             app.redraw.force_full_redraw = true;
             app.set_status_notice("Onboarding preview: on");

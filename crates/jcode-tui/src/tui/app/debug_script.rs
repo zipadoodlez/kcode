@@ -21,8 +21,8 @@ impl App {
                 "processing": self.is_processing,
                 "messages": self.messages.len(),
                 "display_messages": self.display_messages.len(),
-                "input": self.input,
-                "cursor_pos": self.cursor_pos,
+                "input": self.composer.input,
+                "cursor_pos": self.composer.cursor_pos,
                 "scroll_offset": self.viewport.scroll_offset,
                 "queued_messages": self.queued_messages.len(),
                 "provider_session_id": self.provider_session_id,
@@ -246,17 +246,17 @@ impl App {
         for step in &script.steps {
             let step_result = match step {
                 TestStep::Message { content } => {
-                    self.input = content.clone();
+                    self.composer.input = content.clone();
                     self.submit_input();
                     format!("message: {}", content)
                 }
                 TestStep::SetInput { text } => {
-                    self.input = text.clone();
-                    self.cursor_pos = self.input.len();
+                    self.composer.input = text.clone();
+                    self.composer.cursor_pos = self.composer.input.len();
                     format!("set_input: {}", text)
                 }
                 TestStep::Submit => {
-                    if !self.input.is_empty() {
+                    if !self.composer.input.is_empty() {
                         self.submit_input();
                         "submit: OK".to_string()
                     } else {
@@ -402,14 +402,14 @@ impl App {
         }
         if trimmed.starts_with("set_input:") {
             let new_input = trimmed.strip_prefix("set_input:").unwrap_or("");
-            self.input = new_input.to_string();
-            self.cursor_pos = self.input.len();
+            self.composer.input = new_input.to_string();
+            self.composer.cursor_pos = self.composer.input.len();
             self.debug_trace
-                .record("input", format!("set:{}", self.input));
-            return format!("OK: input set to {:?}", self.input);
+                .record("input", format!("set:{}", self.composer.input));
+            return format!("OK: input set to {:?}", self.composer.input);
         }
         if trimmed == "submit" {
-            if self.input.is_empty() {
+            if self.composer.input.is_empty() {
                 return "ERR: input is empty".to_string();
             }
             self.submit_input();
@@ -418,7 +418,7 @@ impl App {
         }
         if trimmed.starts_with("message:") {
             let msg = trimmed.strip_prefix("message:").unwrap_or("");
-            self.input = msg.to_string();
+            self.composer.input = msg.to_string();
             self.submit_input();
             self.debug_trace
                 .record("message", format!("submitted:{}", msg));
@@ -447,7 +447,7 @@ impl App {
             };
         }
         if trimmed == "reload" {
-            self.input = "/reload".to_string();
+            self.composer.input = "/reload".to_string();
             self.submit_input();
             self.debug_trace.record("reload", "triggered".to_string());
             return "OK: reload triggered".to_string();

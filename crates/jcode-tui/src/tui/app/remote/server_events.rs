@@ -1856,8 +1856,8 @@ pub(in crate::tui::app) fn handle_server_event(
                         "Reload-restored startup prompt already present in server history; skipping client resubmit",
                     );
                     app.submit_input_on_startup = false;
-                    app.input.clear();
-                    app.cursor_pos = 0;
+                    app.composer.input.clear();
+                    app.composer.cursor_pos = 0;
                     app.pending_images.clear();
                     app.set_status_notice("Reload complete - prompt preserved");
                 }
@@ -2150,10 +2150,10 @@ pub(in crate::tui::app) fn handle_server_event(
                 if let Some(payload) = app.pending_fallback_resend.take()
                     && let Some(raw_input) = payload.raw_input
                     && !raw_input.trim().is_empty()
-                    && app.input.is_empty()
+                    && app.composer.input.is_empty()
                 {
-                    app.input = raw_input;
-                    app.cursor_pos = app.input.len();
+                    app.composer.input = raw_input;
+                    app.composer.cursor_pos = app.composer.input.len();
                 }
                 app.push_display_message(DisplayMessage::error(
                     crate::tui::app::model_context::model_switch_failure_message(&err, true),

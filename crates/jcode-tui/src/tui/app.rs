@@ -58,6 +58,7 @@ mod commands_improve;
 mod commands_overnight;
 mod commands_plan;
 mod commands_review;
+mod composer;
 mod conversation_state;
 mod copy_selection;
 mod debug;
@@ -834,10 +835,10 @@ pub struct App {
     display_user_message_count: usize,
     display_edit_tool_message_count: usize,
     compacted_history_lazy: CompactedHistoryLazyState,
-    input: String,
+    // Input composer: buffer, cursor, stash, undo history, tab completion.
+    composer: composer::Composer,
     // Command-suggestion memo caches, epoch, and selected row.
     command_suggestions: state_ui_input_helpers::CommandSuggestions,
-    cursor_pos: usize,
     // Chat viewport scroll state: offset, auto-scroll pause, prepend anchor,
     // bookmark, and typing scroll lock.
     viewport: viewport::Viewport,
@@ -1250,10 +1251,6 @@ pub struct App {
     // Polled on idle ticks so config.toml keybinding edits hot-reload
     // without a restart.
     keybindings_config_generation: u64,
-    // Stashed input: saved via Ctrl+S for later retrieval
-    stashed_input: Option<(String, usize)>,
-    // Undo history for in-progress input editing (Ctrl+Z)
-    input_undo_stack: Vec<(String, usize)>,
     // Short-lived notice for status feedback (model switch, cycle diff mode, etc.)
     status_notice: Option<(String, Instant)>,
     // Distinct learned-keybinding nudge ("you keep doing X the slow way, press
@@ -1312,9 +1309,6 @@ pub struct App {
     // After an interrupt, wait one redraw before auto-dispatching queued followups so
     // the queued preview can render in the interrupted state first.
     pending_queued_dispatch: bool,
-    // Tab completion state: (base_input, suggestion_index)
-    // base_input is the original input before cycling, suggestion_index is current position
-    tab_completion_state: Option<(String, usize)>,
     // Time when app started (for startup animations)
     app_started: Instant,
     // Whether the client terminal currently has focus. When the terminal window
@@ -1459,7 +1453,6 @@ impl App {
     /// retry (18k in one session) because retry loops kept resending against
     /// a dead credential.
     const CREDENTIAL_FAILURE_BREAKER_THRESHOLD: u32 = 3;
-    const INPUT_UNDO_LIMIT: usize = 128;
     const CLIENT_FOCUS_RECORD_DEBOUNCE: Duration = Duration::from_secs(2);
     const KV_CACHE_OPTIMAL_OK_PCT: u8 = 85;
     const KV_CACHE_MIN_MISSED_TOKENS: u64 = 1_024;

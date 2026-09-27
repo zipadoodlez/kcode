@@ -4,15 +4,15 @@ use crate::tui::{backend, keybind};
 
 impl App {
     pub(super) fn apply_restored_reload_input(&mut self, restored: RestoredReloadInput) {
-        self.input = restored.input;
-        self.cursor_pos = restored.cursor;
+        self.composer.input = restored.input;
+        self.composer.cursor_pos = restored.cursor;
         self.pending_images = restored.pending_images;
         self.submit_input_on_startup = restored.submit_on_restore
-            && (!self.input.is_empty() || !self.pending_images.is_empty());
+            && (!self.composer.input.is_empty() || !self.pending_images.is_empty());
         crate::logging::info(&format!(
             "Startup input restored: submit_on_restore={} input_chars={} pending_images={} queued_messages={} hidden_system={} => submit_input_on_startup={}",
             restored.submit_on_restore,
-            self.input.chars().count(),
+            self.composer.input.chars().count(),
             self.pending_images.len(),
             restored.queued_messages.len(),
             restored.hidden_queued_system_messages.len(),
@@ -393,9 +393,8 @@ impl App {
             display_user_message_count: 0,
             display_edit_tool_message_count: 0,
             compacted_history_lazy: CompactedHistoryLazyState::default(),
-            input: String::new(),
+            composer: Default::default(),
             command_suggestions: Default::default(),
-            cursor_pos: 0,
             viewport: Default::default(),
             active_skill: None,
             is_processing: false,
@@ -559,8 +558,6 @@ impl App {
             pending_startup_prompt_echo: None,
             keybinds: keybind::Keybinds::load(),
             keybindings_config_generation: crate::config::config_reload_generation(),
-            stashed_input: None,
-            input_undo_stack: Vec::new(),
             status_notice: None,
             learn_hint: None,
             learn_hint_shown_this_session: false,
@@ -588,7 +585,6 @@ impl App {
             queue_mode: display.queue_mode,
             auto_server_reload: display.auto_server_reload,
             pending_queued_dispatch: false,
-            tab_completion_state: None,
             app_started: Instant::now(),
             client_focused: true,
             runtime_memory_log,
@@ -712,9 +708,8 @@ impl App {
             display_user_message_count: 0,
             display_edit_tool_message_count: 0,
             compacted_history_lazy: CompactedHistoryLazyState::default(),
-            input: String::new(),
+            composer: Default::default(),
             command_suggestions: Default::default(),
-            cursor_pos: 0,
             viewport: Default::default(),
             active_skill: None,
             is_processing: false,
@@ -878,8 +873,6 @@ impl App {
             pending_startup_prompt_echo: None,
             keybinds: keybind::Keybinds::load(),
             keybindings_config_generation: crate::config::config_reload_generation(),
-            stashed_input: None,
-            input_undo_stack: Vec::new(),
             status_notice: None,
             learn_hint: None,
             learn_hint_shown_this_session: false,
@@ -908,7 +901,6 @@ impl App {
             queue_mode: display.queue_mode,
             auto_server_reload: display.auto_server_reload,
             pending_queued_dispatch: false,
-            tab_completion_state: None,
             app_started: Instant::now(),
             client_focused: true,
             runtime_memory_log,

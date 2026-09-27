@@ -134,8 +134,8 @@ impl App {
         self.push_usage_loading_card();
         self.inline_interactive_state = None;
         self.inline_view_state = None;
-        self.input.clear();
-        self.cursor_pos = 0;
+        self.composer.input.clear();
+        self.composer.cursor_pos = 0;
         self.set_status_notice("Usage → refreshing");
     }
 

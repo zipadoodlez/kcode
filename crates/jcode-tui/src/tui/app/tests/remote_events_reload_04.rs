@@ -32,7 +32,7 @@ fn test_remote_fast_status_tracks_history_tier_including_explicit_off() {
                 tier
             );
 
-            app.input = "/fast status".to_string();
+            app.composer.input = "/fast status".to_string();
             rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
                 .expect("fast status");
             let status = &app
@@ -678,7 +678,7 @@ fn test_remote_fallback_resend_dropped_when_switch_fails() {
 
     assert!(app.pending_fallback_resend.is_none());
     assert_eq!(
-        app.input, "hi",
+        app.composer.input, "hi",
         "prompt should be restored to the input box"
     );
 
@@ -2019,7 +2019,7 @@ fn test_remote_transcript_send_uses_remote_submission_path() {
         "remote transcript send must not use local pending_turn path"
     );
     assert!(
-        app.input.is_empty(),
+        app.composer.input.is_empty(),
         "submitted transcript should clear input"
     );
     assert!(
@@ -2032,8 +2032,8 @@ fn test_remote_transcript_send_uses_remote_submission_path() {
 fn test_remote_review_shows_processing_until_split_response() {
     let mut app = create_test_app();
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-    app.input = "/review".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/review".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     let _guard = rt.enter();
@@ -2077,8 +2077,8 @@ fn test_remote_super_space_routes_next_prompt_to_new_session() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
         app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-        app.input = "hello from split".to_string();
-        app.cursor_pos = app.input.len();
+        app.composer.input = "hello from split".to_string();
+        app.composer.cursor_pos = app.composer.input.len();
 
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let _guard = rt.enter();
@@ -2128,8 +2128,8 @@ fn test_remote_super_space_routes_next_prompt_to_new_session() {
 fn test_remote_judge_shows_processing_until_split_response() {
     let mut app = create_test_app();
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-    app.input = "/judge".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/judge".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     let _guard = rt.enter();
@@ -2291,8 +2291,8 @@ fn test_remote_fork_with_prompt_stages_split_prompt() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
         app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-        app.input = "/fork explore plan b".to_string();
-        app.cursor_pos = app.input.len();
+        app.composer.input = "/fork explore plan b".to_string();
+        app.composer.cursor_pos = app.composer.input.len();
 
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let _guard = rt.enter();
@@ -2328,8 +2328,8 @@ fn test_remote_btw_stages_question_in_forked_session() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
         app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-        app.input = "/btw what are we doing?".to_string();
-        app.cursor_pos = app.input.len();
+        app.composer.input = "/btw what are we doing?".to_string();
+        app.composer.cursor_pos = app.composer.input.len();
 
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let _guard = rt.enter();
@@ -2361,8 +2361,8 @@ fn test_remote_btw_stages_question_in_forked_session() {
 fn test_remote_fork_without_prompt_splits_immediately() {
     let mut app = create_test_app();
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-    app.input = "/fork".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/fork".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     let _guard = rt.enter();

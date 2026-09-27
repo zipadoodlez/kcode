@@ -282,10 +282,10 @@ async fn handle_remote_key_internal(
     }
     // A local login picker preview must not capture native SSH /login.
     if code == KeyCode::Enter && crate::tui::is_ssh_remote() {
-        let input = app.input.clone();
+        let input = app.composer.input.clone();
         if app.handle_ssh_login_command(input.trim()) {
-            app.input.clear();
-            app.cursor_pos = 0;
+            app.composer.input.clear();
+            app.composer.cursor_pos = 0;
             return Ok(());
         }
     }
@@ -595,24 +595,24 @@ async fn handle_remote_key_internal(
                     app.set_status_notice("Moving tool to background...");
                     return Ok(());
                 }
-                app.cursor_pos = app.find_word_boundary_back();
+                app.composer.cursor_pos = app.composer.find_word_boundary_back();
                 return Ok(());
             }
             // Alt/Option+Left/Right move by word, matching Alt+B / Alt+F.
             KeyCode::Left => {
-                app.cursor_pos = app.find_word_boundary_back();
+                app.composer.cursor_pos = app.composer.find_word_boundary_back();
                 return Ok(());
             }
             KeyCode::Char('f') | KeyCode::Right => {
-                app.cursor_pos = app.find_word_boundary_forward();
+                app.composer.cursor_pos = app.composer.find_word_boundary_forward();
                 return Ok(());
             }
             KeyCode::Char('d') => {
-                let end = app.find_word_boundary_forward();
-                if app.cursor_pos < end {
-                    app.remember_input_undo_state();
+                let end = app.composer.find_word_boundary_forward();
+                if app.composer.cursor_pos < end {
+                    app.composer.remember_input_undo_state();
                 }
-                app.input.drain(app.cursor_pos..end);
+                app.composer.input.drain(app.composer.cursor_pos..end);
                 return Ok(());
             }
             KeyCode::Backspace | KeyCode::Delete | KeyCode::Char('\u{7f}') => {
@@ -634,11 +634,11 @@ async fn handle_remote_key_internal(
                 return Ok(());
             }
             KeyCode::Left | KeyCode::Home | KeyCode::Char('a') => {
-                app.cursor_pos = 0;
+                app.composer.cursor_pos = 0;
                 return Ok(());
             }
             KeyCode::Right | KeyCode::End | KeyCode::Char('e') => {
-                app.cursor_pos = app.input.len();
+                app.composer.cursor_pos = app.composer.input.len();
                 return Ok(());
             }
             KeyCode::Char('z') => {
@@ -743,8 +743,8 @@ async fn handle_remote_key_internal(
                     app.set_status_notice("Moving tool to background...");
                     return Ok(());
                 }
-                if app.cursor_pos > 0 {
-                    app.cursor_pos = app.find_word_boundary_back();
+                if app.composer.cursor_pos > 0 {
+                    app.composer.cursor_pos = app.composer.find_word_boundary_back();
                 }
                 return Ok(());
             }
@@ -790,28 +790,28 @@ async fn handle_remote_key_internal(
                 return Ok(());
             }
             KeyCode::Char('a') => {
-                app.cursor_pos = 0;
+                app.composer.cursor_pos = 0;
                 return Ok(());
             }
             KeyCode::Char('e') => {
-                app.cursor_pos = app.input.len();
+                app.composer.cursor_pos = app.composer.input.len();
                 return Ok(());
             }
             KeyCode::Char('f') => {
-                if app.cursor_pos < app.input.len() {
-                    app.cursor_pos = app.find_word_boundary_forward();
+                if app.composer.cursor_pos < app.composer.input.len() {
+                    app.composer.cursor_pos = app.composer.find_word_boundary_forward();
                 }
                 return Ok(());
             }
             KeyCode::Left => {
-                if app.cursor_pos > 0 {
-                    app.cursor_pos = app.find_word_boundary_back();
+                if app.composer.cursor_pos > 0 {
+                    app.composer.cursor_pos = app.composer.find_word_boundary_back();
                 }
                 return Ok(());
             }
             KeyCode::Right => {
-                if app.cursor_pos < app.input.len() {
-                    app.cursor_pos = app.find_word_boundary_forward();
+                if app.composer.cursor_pos < app.composer.input.len() {
+                    app.composer.cursor_pos = app.composer.find_word_boundary_forward();
                 }
                 return Ok(());
             }
@@ -854,12 +854,12 @@ async fn handle_remote_key_internal(
         }
     }
 
-    if input::is_alternate_enter(code, modifiers) && !app.input.trim().starts_with('/') {
+    if input::is_alternate_enter(code, modifiers) && !app.composer.input.trim().starts_with('/') {
         if app.activate_picker_from_preview() {
             return Ok(());
         }
 
-        if !app.input.is_empty() {
+        if !app.composer.input.is_empty() {
             let prepared = input::take_prepared_input(app);
 
             if app.route_next_prompt_to_new_session {
@@ -926,27 +926,28 @@ async fn handle_remote_key_internal(
             handle_remote_char_input(app, c);
         }
         KeyCode::Backspace => {
-            if app.cursor_pos > 0 {
-                let prev = core::prev_char_boundary(&app.input, app.cursor_pos);
-                app.remember_input_undo_state();
-                app.input.drain(prev..app.cursor_pos);
-                app.cursor_pos = prev;
+            if app.composer.cursor_pos > 0 {
+                let prev = core::prev_char_boundary(&app.composer.input, app.composer.cursor_pos);
+                app.composer.remember_input_undo_state();
+                app.composer.input.drain(prev..app.composer.cursor_pos);
+                app.composer.cursor_pos = prev;
                 app.reset_tab_completion();
                 app.sync_model_picker_preview_from_input();
             }
         }
         KeyCode::Delete => {
-            if app.cursor_pos < app.input.len() {
-                let next = core::next_char_boundary(&app.input, app.cursor_pos);
-                app.remember_input_undo_state();
-                app.input.drain(app.cursor_pos..next);
+            if app.composer.cursor_pos < app.composer.input.len() {
+                let next = core::next_char_boundary(&app.composer.input, app.composer.cursor_pos);
+                app.composer.remember_input_undo_state();
+                app.composer.input.drain(app.composer.cursor_pos..next);
                 app.reset_tab_completion();
                 app.sync_model_picker_preview_from_input();
             }
         }
         KeyCode::Left => {
-            if app.cursor_pos > 0 {
-                app.cursor_pos = core::prev_char_boundary(&app.input, app.cursor_pos);
+            if app.composer.cursor_pos > 0 {
+                app.composer.cursor_pos =
+                    core::prev_char_boundary(&app.composer.input, app.composer.cursor_pos);
             } else {
                 // Opt-in: Left on an empty input opens the active sessions
                 // manager (no-op unless display.active_sessions_manager).
@@ -954,15 +955,16 @@ async fn handle_remote_key_internal(
             }
         }
         KeyCode::Right => {
-            if app.cursor_pos < app.input.len() {
-                app.cursor_pos = core::next_char_boundary(&app.input, app.cursor_pos);
+            if app.composer.cursor_pos < app.composer.input.len() {
+                app.composer.cursor_pos =
+                    core::next_char_boundary(&app.composer.input, app.composer.cursor_pos);
             }
         }
         KeyCode::Home => {
-            app.cursor_pos = 0;
+            app.composer.cursor_pos = 0;
         }
         KeyCode::End => {
-            app.cursor_pos = app.input.len();
+            app.composer.cursor_pos = app.composer.input.len();
         }
         KeyCode::Tab => {
             app.autocomplete();
@@ -971,7 +973,7 @@ async fn handle_remote_key_internal(
             if app.activate_picker_from_preview() {
                 return Ok(());
             }
-            if !app.input.is_empty() {
+            if !app.composer.input.is_empty() {
                 let prepared = input::take_prepared_input(app);
                 let trimmed = prepared.expanded.trim();
 
@@ -2071,8 +2073,8 @@ async fn handle_remote_key_internal(
                 }
 
                 if app.pending_login.is_some() {
-                    app.input = trimmed.to_string();
-                    app.cursor_pos = app.input.len();
+                    app.composer.input = trimmed.to_string();
+                    app.composer.cursor_pos = app.composer.input.len();
                     app.submit_input();
                     return Ok(());
                 }

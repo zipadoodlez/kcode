@@ -419,7 +419,7 @@ fn test_expand_badge_shortcut_uses_display_messages_when_edit_count_is_stale() {
     ));
 
     assert_eq!(app.diff_mode, crate::config::DiffDisplayMode::FullInline);
-    assert!(app.input.is_empty(), "shortcut should not insert text");
+    assert!(app.composer.input.is_empty(), "shortcut should not insert text");
 }
 
 #[test]
@@ -533,8 +533,8 @@ fn test_mouse_click_in_input_moves_cursor_to_clicked_position() {
     // A persisted first-run state can otherwise replace the composer with the
     // suggestion welcome screen, leaving a zero-height input hit target.
     app.push_display_message(DisplayMessage::assistant("seed transcript"));
-    app.input = "hello world".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "hello world".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     app.set_centered(false);
     app.session.short_name = Some("test".to_string());
 
@@ -555,7 +555,7 @@ fn test_mouse_click_in_input_moves_cursor_to_clicked_position() {
     });
 
     assert!(!handled, "clicks should request an immediate redraw");
-    assert_eq!(app.cursor_pos, 2);
+    assert_eq!(app.composer.cursor_pos, 2);
 }
 
 #[test]
@@ -623,8 +623,8 @@ fn test_mouse_click_in_input_switches_focus_from_side_panel() {
             updated_at_ms: 1,
         }],
     };
-    app.input = "hello world".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "hello world".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     app.set_centered(false);
     app.session.short_name = Some("test".to_string());
 
@@ -645,7 +645,7 @@ fn test_mouse_click_in_input_switches_focus_from_side_panel() {
     });
 
     assert!(!handled, "clicks should request an immediate redraw");
-    assert_eq!(app.cursor_pos, 2);
+    assert_eq!(app.composer.cursor_pos, 2);
     assert!(
         !app.diff_pane_focus,
         "clicking input should restore chat focus"
@@ -659,8 +659,8 @@ fn test_mouse_click_in_wrapped_input_moves_cursor_to_second_visual_line() {
     let mut app = create_test_app();
     // Keep first-run suggestions from replacing the composer under test.
     app.push_display_message(DisplayMessage::assistant("seed transcript"));
-    app.input = "abcdefghij".to_string();
-    app.cursor_pos = 0;
+    app.composer.input = "abcdefghij".to_string();
+    app.composer.cursor_pos = 0;
     app.set_centered(false);
     app.session.short_name = Some("test".to_string());
 
@@ -681,6 +681,6 @@ fn test_mouse_click_in_wrapped_input_moves_cursor_to_second_visual_line() {
     // The idle composer no longer reserves space for the old send-mode glyph,
     // so this 11-column input wraps after eight characters. Column four on the
     // second visual line is one character into that segment.
-    assert_eq!(app.cursor_pos, 9);
+    assert_eq!(app.composer.cursor_pos, 9);
 }
 

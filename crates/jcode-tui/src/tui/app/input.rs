@@ -623,18 +623,18 @@ pub(super) fn cut_input_line_to_clipboard_with<F>(app: &mut App, mut copy_text: 
 where
     F: FnMut(&str) -> bool,
 {
-    if app.input.is_empty() {
+    if app.composer.input.is_empty() {
         return false;
     }
 
-    if !copy_text(&app.input) {
+    if !copy_text(&app.composer.input) {
         app.set_status_notice("Failed to copy input line");
         return false;
     }
 
-    app.remember_input_undo_state();
-    app.input.clear();
-    app.cursor_pos = 0;
+    app.composer.remember_input_undo_state();
+    app.composer.input.clear();
+    app.composer.cursor_pos = 0;
     app.reset_tab_completion();
     app.sync_model_picker_preview_from_input();
     app.set_status_notice("✂ Cut input line");
@@ -755,7 +755,7 @@ pub(super) fn promote_dropped_images(app: &mut App) -> bool {
     if attach_dropped_images(app) {
         return true;
     }
-    let Some(paths) = parse_dropped_paths(&app.input) else {
+    let Some(paths) = parse_dropped_paths(&app.composer.input) else {
         return false;
     };
     let normalized = paths
@@ -763,23 +763,23 @@ pub(super) fn promote_dropped_images(app: &mut App) -> bool {
         .map(|path| format_dropped_path(path, paths.len() > 1))
         .collect::<Vec<_>>()
         .join(" ");
-    if normalized == app.input {
+    if normalized == app.composer.input {
         return false;
     }
-    app.remember_input_undo_state();
-    app.input = normalized;
-    app.cursor_pos = app.input.len();
+    app.composer.remember_input_undo_state();
+    app.composer.input = normalized;
+    app.composer.cursor_pos = app.composer.input.len();
     app.reset_tab_completion();
     true
 }
 
 fn attach_dropped_images(app: &mut App) -> bool {
-    let Some(images) = dropped_image_files(&app.input) else {
+    let Some(images) = dropped_image_files(&app.composer.input) else {
         return false;
     };
     let count = images.len();
-    app.input.clear();
-    app.cursor_pos = 0;
+    app.composer.input.clear();
+    app.composer.cursor_pos = 0;
     for (media_type, data) in images {
         attach_image(
             app,
@@ -892,6 +892,7 @@ fn expand_matching_paste(app: &mut App, text: &str) -> bool {
         .filter(|content| paste_placeholder(content) == placeholder)
         .count();
     let Some(placeholder_start) = app
+        .composer
         .input
         .rmatch_indices(placeholder.as_str())
         .map(|(position, _)| position)
@@ -901,12 +902,12 @@ fn expand_matching_paste(app: &mut App, text: &str) -> bool {
     };
 
     app.viewport.follow_chat_bottom_for_typing();
-    app.remember_input_undo_state();
-    app.input.replace_range(
+    app.composer.remember_input_undo_state();
+    app.composer.input.replace_range(
         placeholder_start..placeholder_start + placeholder.len(),
         text,
     );
-    app.cursor_pos = placeholder_start + text.len();
+    app.composer.cursor_pos = placeholder_start + text.len();
     app.pasted_contents.remove(content_index);
     app.reset_tab_completion();
     app.sync_model_picker_preview_from_input();
@@ -1128,40 +1129,51 @@ pub(super) fn insert_input_text(app: &mut App, text: &str) {
     // to reconcile the transcript viewport.
     app.viewport.follow_chat_bottom_for_typing();
 
-    let at_end = app.cursor_pos == app.input.len();
+    let at_end = app.composer.cursor_pos == app.composer.input.len();
 
     // A habitual space typed after an auto-inserted picker separator would
     // only add noise. Swallow it so command + space + filter still produces
     // a single separator.
-    if text == " " && at_end && matches!(app.input.trim_start(), "/login " | "/model " | "/models ")
+    if text == " "
+        && at_end
+        && matches!(
+            app.composer.input.trim_start(),
+            "/login " | "/model " | "/models "
+        )
     {
         return;
     }
 
-    app.remember_input_undo_state();
+    app.composer.remember_input_undo_state();
 
     // After a picker command is fully typed (or completed without a trailing
     // space), the next printable character starts its filter. Insert the
     // separator instead of extending the command token and closing the picker.
     if at_end
-        && matches!(app.input.trim_start(), "/login" | "/model" | "/models")
+        && matches!(
+            app.composer.input.trim_start(),
+            "/login" | "/model" | "/models"
+        )
         && !text.starts_with(char::is_whitespace)
     {
-        app.input.push(' ');
-        app.cursor_pos = app.input.len();
+        app.composer.input.push(' ');
+        app.composer.cursor_pos = app.composer.input.len();
     }
 
-    app.input.insert_str(app.cursor_pos, text);
-    app.cursor_pos += text.len();
+    app.composer.input.insert_str(app.composer.cursor_pos, text);
+    app.composer.cursor_pos += text.len();
 
     // Typing the final command character immediately arms picker filtering.
     // Without this, users can keep typing the command token or press Enter
     // without realizing the visible picker is ready to filter.
-    if app.cursor_pos == app.input.len()
-        && matches!(app.input.trim_start(), "/login" | "/model" | "/models")
+    if app.composer.cursor_pos == app.composer.input.len()
+        && matches!(
+            app.composer.input.trim_start(),
+            "/login" | "/model" | "/models"
+        )
     {
-        app.input.push(' ');
-        app.cursor_pos = app.input.len();
+        app.composer.input.push(' ');
+        app.composer.cursor_pos = app.composer.input.len();
     }
 
     app.reset_tab_completion();
@@ -1180,7 +1192,7 @@ pub(super) fn handle_text_input(app: &mut App, text: &str) -> bool {
         app.onboarding_phase(),
         Some(crate::tui::app::onboarding_flow::OnboardingPhase::Suggestions)
     );
-    if app.input.is_empty()
+    if app.composer.input.is_empty()
         && !app.is_processing
         && (app.display_messages.is_empty() || onboarding_suggestions)
     {
@@ -1193,9 +1205,9 @@ pub(super) fn handle_text_input(app: &mut App, text: &str) -> bool {
             if idx >= 1 && idx <= suggestions.len() {
                 let (_label, prompt) = &suggestions[idx - 1];
                 if !prompt.starts_with('/') {
-                    app.remember_input_undo_state();
-                    app.input = prompt.clone();
-                    app.cursor_pos = app.input.len();
+                    app.composer.remember_input_undo_state();
+                    app.composer.input = prompt.clone();
+                    app.composer.cursor_pos = app.composer.input.len();
                     app.viewport.follow_chat_bottom_for_typing();
                     app.submit_input();
                     return true;
@@ -1245,16 +1257,16 @@ pub(super) fn handle_multiline_input_navigation(
     // line can occupy several rows, and Up/Down should follow what the user
     // sees. Falls through to history recall at the first/last visual row.
     if let Some(target) = visual_line_move_in_composer(app, code) {
-        app.cursor_pos = target;
+        app.composer.cursor_pos = target;
         return true;
     }
 
-    if !app.input.contains('\n') {
+    if !app.composer.input.contains('\n') {
         return false;
     }
 
-    let input = app.input.as_str();
-    let cursor = app.cursor_pos.min(input.len());
+    let input = app.composer.input.as_str();
+    let cursor = app.composer.cursor_pos.min(input.len());
     let line_start = input[..cursor].rfind('\n').map(|idx| idx + 1).unwrap_or(0);
     let line_end = input[cursor..]
         .find('\n')
@@ -1288,7 +1300,7 @@ pub(super) fn handle_multiline_input_navigation(
         _ => return false,
     };
 
-    app.cursor_pos = target;
+    app.composer.cursor_pos = target;
     true
 }
 
@@ -1307,7 +1319,12 @@ fn visual_line_move_in_composer(app: &App, code: KeyCode) -> Option<usize> {
         KeyCode::Down => 1,
         _ => return None,
     };
-    input_ui::visual_line_move(&app.input, app.cursor_pos, line_width, delta)
+    input_ui::visual_line_move(
+        &app.composer.input,
+        app.composer.cursor_pos,
+        line_width,
+        delta,
+    )
 }
 
 fn composer_area_width() -> Option<u16> {
@@ -1353,20 +1370,23 @@ pub(super) fn handle_prompt_history_navigation(
         return false;
     }
 
-    let target = if app.input.is_empty() {
+    let target = if app.composer.input.is_empty() {
         match code {
             KeyCode::Up => Some(history.len() - 1),
             KeyCode::Down => None,
             _ => None,
         }
     } else {
-        let Some(current_index) = history.iter().rposition(|prompt| prompt == &app.input) else {
+        let Some(current_index) = history
+            .iter()
+            .rposition(|prompt| prompt == &app.composer.input)
+        else {
             if explicit_history && matches!(code, KeyCode::Up) {
                 return history
                     .last()
                     .map(|prompt| {
-                        app.input = prompt.clone();
-                        app.cursor_pos = app.input.len();
+                        app.composer.input = prompt.clone();
+                        app.composer.cursor_pos = app.composer.input.len();
                         app.reset_tab_completion();
                         app.sync_model_picker_preview_from_input();
                     })
@@ -1378,8 +1398,8 @@ pub(super) fn handle_prompt_history_navigation(
             KeyCode::Up => Some(current_index.saturating_sub(1)),
             KeyCode::Down if current_index + 1 < history.len() => Some(current_index + 1),
             KeyCode::Down => {
-                app.input.clear();
-                app.cursor_pos = 0;
+                app.composer.input.clear();
+                app.composer.cursor_pos = 0;
                 app.reset_tab_completion();
                 app.sync_model_picker_preview_from_input();
                 return true;
@@ -1394,8 +1414,8 @@ pub(super) fn handle_prompt_history_navigation(
     let Some(prompt) = history.get(target) else {
         return false;
     };
-    app.input = prompt.clone();
-    app.cursor_pos = app.input.len();
+    app.composer.input = prompt.clone();
+    app.composer.cursor_pos = app.composer.input.len();
     app.reset_tab_completion();
     app.sync_model_picker_preview_from_input();
     true
@@ -1457,12 +1477,12 @@ fn shifted_printable_fallback(c: char, modifiers: KeyModifiers) -> char {
 }
 
 pub(super) fn clear_input_for_escape(app: &mut App) {
-    let had_input = !app.input.is_empty();
+    let had_input = !app.composer.input.is_empty();
     if had_input {
-        app.remember_input_undo_state();
+        app.composer.remember_input_undo_state();
     }
-    app.input.clear();
-    app.cursor_pos = 0;
+    app.composer.input.clear();
+    app.composer.cursor_pos = 0;
     app.reset_tab_completion();
     app.sync_model_picker_preview_from_input();
     if had_input {
@@ -1487,7 +1507,7 @@ pub(super) fn queue_message(app: &mut App) {
 }
 
 pub(super) fn retrieve_pending_message_for_edit(app: &mut App) -> bool {
-    if !app.input.is_empty() {
+    if !app.composer.input.is_empty() {
         return false;
     }
 
@@ -1515,8 +1535,8 @@ pub(super) fn retrieve_pending_message_for_edit(app: &mut App) -> bool {
     }
 
     if !parts.is_empty() {
-        app.input = parts.join("\n\n");
-        app.cursor_pos = app.input.len();
+        app.composer.input = parts.join("\n\n");
+        app.composer.cursor_pos = app.composer.input.len();
         let count = parts.len();
         app.set_status_notice(format!(
             "Retrieved {} pending message{} for editing",
@@ -1532,7 +1552,7 @@ pub(super) fn send_action(app: &App, alternate_shortcut: bool) -> SendAction {
     if !app.is_processing {
         return SendAction::Submit;
     }
-    if app.input.trim().starts_with('/') || app.input.trim().starts_with('!') {
+    if app.composer.input.trim().starts_with('/') || app.composer.input.trim().starts_with('!') {
         return SendAction::Submit;
     }
     if alternate_shortcut {
@@ -1558,13 +1578,13 @@ impl App {
     /// True when a startup submission is staged and ready to auto-send.
     ///
     /// Headed spawns (and reloads with a resume prompt) stage their initial
-    /// prompt into `self.input` and set `submit_input_on_startup`, rather than
+    /// prompt into `self.composer.input` and set `submit_input_on_startup`, rather than
     /// pushing onto `queued_messages`. The post-connect dispatcher must treat
     /// this as pending work so the prompt is actually submitted once the remote
     /// session history loads. See issues #267/#268/#76.
     pub(super) fn has_pending_startup_submission(&self) -> bool {
         self.submit_input_on_startup
-            && (!self.input.trim().is_empty() || !self.pending_images.is_empty())
+            && (!self.composer.input.trim().is_empty() || !self.pending_images.is_empty())
     }
 
     /// Folds this turn's guardrail-stop flag into the consecutive counter.
@@ -1949,10 +1969,10 @@ pub(super) fn is_next_prompt_new_session_hotkey(code: KeyCode, modifiers: KeyMod
 }
 
 fn input_routes_to_new_session(app: &App) -> bool {
-    if !app.route_next_prompt_to_new_session || app.input.is_empty() {
+    if !app.route_next_prompt_to_new_session || app.composer.input.is_empty() {
         return false;
     }
-    let trimmed = app.input.trim_start();
+    let trimmed = app.composer.input.trim_start();
     !trimmed.starts_with('/') && extract_input_shell_command(trimmed).is_none()
 }
 
@@ -1971,8 +1991,8 @@ fn route_prompt_to_new_session_local(app: &mut App) -> bool {
     match commands::launch_prompt_in_new_session_local(app, prepared.expanded, prepared.images) {
         Ok(_) => true,
         Err(error) => {
-            app.input = restored_raw;
-            app.cursor_pos = app.input.len();
+            app.composer.input = restored_raw;
+            app.composer.cursor_pos = app.composer.input.len();
             app.pending_images = restored_images;
             app.set_status_notice("Prompt launch failed");
             app.push_display_message(DisplayMessage::error(format!(
@@ -1989,7 +2009,7 @@ pub(super) fn handle_alternate_enter(app: &mut App) {
         return;
     }
 
-    if app.input.is_empty() {
+    if app.composer.input.is_empty() {
         return;
     }
 
@@ -2026,22 +2046,22 @@ pub(super) fn handle_control_key(app: &mut App, code: KeyCode) -> bool {
             true
         }
         KeyCode::Char('a') => {
-            app.cursor_pos = 0;
+            app.composer.cursor_pos = 0;
             true
         }
         KeyCode::Char('e') => {
-            app.cursor_pos = app.input.len();
+            app.composer.cursor_pos = app.composer.input.len();
             true
         }
         KeyCode::Char('b') => {
-            if app.cursor_pos > 0 {
-                app.cursor_pos = app.find_word_boundary_back();
+            if app.composer.cursor_pos > 0 {
+                app.composer.cursor_pos = app.composer.find_word_boundary_back();
             }
             true
         }
         KeyCode::Char('f') => {
-            if app.cursor_pos < app.input.len() {
-                app.cursor_pos = app.find_word_boundary_forward();
+            if app.composer.cursor_pos < app.composer.input.len() {
+                app.composer.cursor_pos = app.composer.find_word_boundary_forward();
             }
             true
         }
@@ -2068,14 +2088,14 @@ pub(super) fn handle_control_key(app: &mut App, code: KeyCode) -> bool {
             true
         }
         KeyCode::Left => {
-            if app.cursor_pos > 0 {
-                app.cursor_pos = app.find_word_boundary_back();
+            if app.composer.cursor_pos > 0 {
+                app.composer.cursor_pos = app.composer.find_word_boundary_back();
             }
             true
         }
         KeyCode::Right => {
-            if app.cursor_pos < app.input.len() {
-                app.cursor_pos = app.find_word_boundary_forward();
+            if app.composer.cursor_pos < app.composer.input.len() {
+                app.composer.cursor_pos = app.composer.find_word_boundary_forward();
             }
             true
         }
@@ -2088,19 +2108,19 @@ pub(super) fn handle_control_key(app: &mut App, code: KeyCode) -> bool {
 }
 
 pub(super) fn delete_input_to_start(app: &mut App) {
-    if app.cursor_pos > 0 {
-        app.remember_input_undo_state();
+    if app.composer.cursor_pos > 0 {
+        app.composer.remember_input_undo_state();
     }
-    app.input.drain(..app.cursor_pos);
-    app.cursor_pos = 0;
+    app.composer.input.drain(..app.composer.cursor_pos);
+    app.composer.cursor_pos = 0;
     app.sync_model_picker_preview_from_input();
 }
 
 pub(super) fn delete_input_to_end(app: &mut App) {
-    if app.cursor_pos < app.input.len() {
-        app.remember_input_undo_state();
+    if app.composer.cursor_pos < app.composer.input.len() {
+        app.composer.remember_input_undo_state();
     }
-    app.input.truncate(app.cursor_pos);
+    app.composer.input.truncate(app.composer.cursor_pos);
     app.sync_model_picker_preview_from_input();
 }
 
@@ -2120,11 +2140,11 @@ pub(super) fn handle_super_key(app: &mut App, code: KeyCode) -> bool {
             true
         }
         KeyCode::Left | KeyCode::Home | KeyCode::Char('a') => {
-            app.cursor_pos = 0;
+            app.composer.cursor_pos = 0;
             true
         }
         KeyCode::Right | KeyCode::End | KeyCode::Char('e') => {
-            app.cursor_pos = app.input.len();
+            app.composer.cursor_pos = app.composer.input.len();
             true
         }
         KeyCode::Char('z') => {
@@ -2157,29 +2177,29 @@ pub(super) fn handle_super_key(app: &mut App, code: KeyCode) -> bool {
 ///
 /// Returns true when the key was consumed as a forward delete.
 pub(super) fn try_ctrl_d_forward_delete(app: &mut App) -> bool {
-    if app.is_processing || app.input.is_empty() {
+    if app.is_processing || app.composer.input.is_empty() {
         return false;
     }
-    if app.cursor_pos >= app.input.len() {
+    if app.composer.cursor_pos >= app.composer.input.len() {
         // Cursor at end of a non-empty line: nothing to delete forward, but
         // quitting here would still be a surprise while text is pending.
         return true;
     }
-    let next = crate::tui::core::next_char_boundary(&app.input, app.cursor_pos);
-    app.remember_input_undo_state();
-    app.input.drain(app.cursor_pos..next);
+    let next = crate::tui::core::next_char_boundary(&app.composer.input, app.composer.cursor_pos);
+    app.composer.remember_input_undo_state();
+    app.composer.input.drain(app.composer.cursor_pos..next);
     app.reset_tab_completion();
     app.sync_model_picker_preview_from_input();
     true
 }
 
 pub(super) fn delete_input_word_back(app: &mut App) {
-    let start = app.find_word_boundary_back();
-    if start < app.cursor_pos {
-        app.remember_input_undo_state();
+    let start = app.composer.find_word_boundary_back();
+    if start < app.composer.cursor_pos {
+        app.composer.remember_input_undo_state();
     }
-    app.input.drain(start..app.cursor_pos);
-    app.cursor_pos = start;
+    app.composer.input.drain(start..app.composer.cursor_pos);
+    app.composer.cursor_pos = start;
     app.sync_model_picker_preview_from_input();
 }
 
@@ -2187,19 +2207,19 @@ pub(super) fn handle_alt_key(app: &mut App, code: KeyCode) -> bool {
     match code {
         // Alt/Option+Left/Right move by word, matching Alt+B / Alt+F.
         KeyCode::Left | KeyCode::Char('b') => {
-            app.cursor_pos = app.find_word_boundary_back();
+            app.composer.cursor_pos = app.composer.find_word_boundary_back();
             true
         }
         KeyCode::Right | KeyCode::Char('f') => {
-            app.cursor_pos = app.find_word_boundary_forward();
+            app.composer.cursor_pos = app.composer.find_word_boundary_forward();
             true
         }
         KeyCode::Char('d') => {
-            let end = app.find_word_boundary_forward();
-            if app.cursor_pos < end {
-                app.remember_input_undo_state();
+            let end = app.composer.find_word_boundary_forward();
+            if app.composer.cursor_pos < end {
+                app.composer.remember_input_undo_state();
             }
-            app.input.drain(app.cursor_pos..end);
+            app.composer.input.drain(app.composer.cursor_pos..end);
             app.sync_model_picker_preview_from_input();
             true
         }
@@ -2213,7 +2233,7 @@ pub(super) fn handle_alt_key(app: &mut App, code: KeyCode) -> bool {
             paste_from_clipboard(app);
             true
         }
-        KeyCode::Char('a') if app.input.is_empty() => {
+        KeyCode::Char('a') if app.composer.input.is_empty() => {
             app.copy_chat_viewport_context_to_clipboard();
             true
         }
@@ -2348,7 +2368,7 @@ pub(super) fn handle_pre_control_shortcuts(
     if modifiers.contains(KeyModifiers::CONTROL)
         && !modifiers.contains(KeyModifiers::SHIFT)
         && matches!(code, KeyCode::Char('k'))
-        && !app.input.is_empty()
+        && !app.composer.input.is_empty()
     {
         delete_input_to_end(app);
         return true;
@@ -2718,7 +2738,7 @@ pub(super) fn handle_global_control_shortcuts(app: &mut App, code: KeyCode) -> b
             app.open_prompt_history_search();
             true
         }
-        KeyCode::Char('a') if app.input.is_empty() => {
+        KeyCode::Char('a') if app.composer.input.is_empty() => {
             app.copy_chat_viewport_context_to_clipboard();
             true
         }
@@ -2741,7 +2761,7 @@ pub(super) fn handle_enter(app: &mut App) -> bool {
     if app.activate_picker_from_preview() {
         return true;
     }
-    if !app.input.is_empty() {
+    if !app.composer.input.is_empty() {
         if route_prompt_to_new_session_local(app) {
             return true;
         }
@@ -2761,29 +2781,38 @@ pub(super) fn handle_basic_key(app: &mut App, code: KeyCode) -> bool {
     match code {
         KeyCode::Char(c) => handle_text_input(app, &c.to_string()),
         KeyCode::Backspace => {
-            if app.cursor_pos > 0 {
-                let prev = crate::tui::core::prev_char_boundary(&app.input, app.cursor_pos);
-                app.remember_input_undo_state();
-                app.input.drain(prev..app.cursor_pos);
-                app.cursor_pos = prev;
+            if app.composer.cursor_pos > 0 {
+                let prev = crate::tui::core::prev_char_boundary(
+                    &app.composer.input,
+                    app.composer.cursor_pos,
+                );
+                app.composer.remember_input_undo_state();
+                app.composer.input.drain(prev..app.composer.cursor_pos);
+                app.composer.cursor_pos = prev;
                 app.reset_tab_completion();
                 app.sync_model_picker_preview_from_input();
             }
             true
         }
         KeyCode::Delete => {
-            if app.cursor_pos < app.input.len() {
-                let next = crate::tui::core::next_char_boundary(&app.input, app.cursor_pos);
-                app.remember_input_undo_state();
-                app.input.drain(app.cursor_pos..next);
+            if app.composer.cursor_pos < app.composer.input.len() {
+                let next = crate::tui::core::next_char_boundary(
+                    &app.composer.input,
+                    app.composer.cursor_pos,
+                );
+                app.composer.remember_input_undo_state();
+                app.composer.input.drain(app.composer.cursor_pos..next);
                 app.reset_tab_completion();
                 app.sync_model_picker_preview_from_input();
             }
             true
         }
         KeyCode::Left => {
-            if app.cursor_pos > 0 {
-                app.cursor_pos = crate::tui::core::prev_char_boundary(&app.input, app.cursor_pos);
+            if app.composer.cursor_pos > 0 {
+                app.composer.cursor_pos = crate::tui::core::prev_char_boundary(
+                    &app.composer.input,
+                    app.composer.cursor_pos,
+                );
             } else {
                 // Opt-in: Left on an empty input opens the active sessions
                 // manager (no-op unless display.active_sessions_manager).
@@ -2792,17 +2821,20 @@ pub(super) fn handle_basic_key(app: &mut App, code: KeyCode) -> bool {
             true
         }
         KeyCode::Right => {
-            if app.cursor_pos < app.input.len() {
-                app.cursor_pos = crate::tui::core::next_char_boundary(&app.input, app.cursor_pos);
+            if app.composer.cursor_pos < app.composer.input.len() {
+                app.composer.cursor_pos = crate::tui::core::next_char_boundary(
+                    &app.composer.input,
+                    app.composer.cursor_pos,
+                );
             }
             true
         }
         KeyCode::Home => {
-            app.cursor_pos = 0;
+            app.composer.cursor_pos = 0;
             true
         }
         KeyCode::End => {
-            app.cursor_pos = app.input.len();
+            app.composer.cursor_pos = app.composer.input.len();
             true
         }
         KeyCode::Tab => {
@@ -2868,13 +2900,13 @@ pub(super) fn handle_basic_key(app: &mut App, code: KeyCode) -> bool {
 
 pub(super) fn take_prepared_input(app: &mut App) -> PreparedInput {
     promote_dropped_images(app);
-    let raw_input = std::mem::take(&mut app.input);
+    let raw_input = std::mem::take(&mut app.composer.input);
     app.record_prompt_history(&raw_input);
     let expanded = expand_paste_placeholders(app, &raw_input);
     app.pasted_contents.clear();
     let images = std::mem::take(&mut app.pending_images);
-    app.cursor_pos = 0;
-    app.clear_input_undo_history();
+    app.composer.cursor_pos = 0;
+    app.composer.clear_input_undo_history();
     PreparedInput {
         raw_input,
         expanded,
@@ -2896,9 +2928,11 @@ fn attach_image(app: &mut App, media_type: String, base64_data: String) {
     let size_kb = base64_data.len() / 1024;
     app.pending_images.push((media_type.clone(), base64_data));
     let placeholder = format!("[image {}]", app.pending_images.len());
-    app.remember_input_undo_state();
-    app.input.insert_str(app.cursor_pos, &placeholder);
-    app.cursor_pos += placeholder.len();
+    app.composer.remember_input_undo_state();
+    app.composer
+        .input
+        .insert_str(app.composer.cursor_pos, &placeholder);
+    app.composer.cursor_pos += placeholder.len();
     app.sync_model_picker_preview_from_input();
     app.set_status_notice(format!("Pasted {} ({} KB)", media_type, size_kb));
 }
@@ -3148,7 +3182,7 @@ impl App {
             }
             // During the onboarding model-selection phase, Enter on an empty
             // prompt opens the model picker instead of submitting nothing.
-            if self.input.trim().is_empty()
+            if self.composer.input.trim().is_empty()
                 && matches!(
                     self.onboarding_phase(),
                     Some(crate::tui::app::onboarding_flow::OnboardingPhase::ModelSelect)
@@ -3668,10 +3702,10 @@ impl App {
         // Connected SSH input is dispatched through the wire client, never the
         // local submit fallback (which reads skills and persists prompts).
         if crate::tui::is_ssh_remote() {
-            let input = self.input.clone();
+            let input = self.composer.input.clone();
             if super::commands_dispatch::dispatch_local_command(self, input.trim()) {
-                self.input.clear();
-                self.cursor_pos = 0;
+                self.composer.input.clear();
+                self.composer.cursor_pos = 0;
             } else {
                 super::commands_dispatch::ssh_local_action_blocked(
                     self,
@@ -3685,21 +3719,21 @@ impl App {
             return;
         }
 
-        let raw_input = std::mem::take(&mut self.input);
+        let raw_input = std::mem::take(&mut self.composer.input);
         // Persist to cross-session prompt history (no-op for slash/shell
         // commands, secret-intercept inputs, and oversized pastes).
         self.record_prompt_history(&raw_input);
         let mut input = self.expand_paste_placeholders(&raw_input);
         if let Some(notice) = input_exceeds_submit_limit(&input) {
-            self.input = raw_input;
-            self.cursor_pos = self.input.len();
+            self.composer.input = raw_input;
+            self.composer.cursor_pos = self.composer.input.len();
             self.set_status_notice(notice.clone());
             self.push_display_message(DisplayMessage::system(notice));
             return;
         }
         self.pasted_contents.clear();
-        self.cursor_pos = 0;
-        self.clear_input_undo_history();
+        self.composer.cursor_pos = 0;
+        self.composer.clear_input_undo_history();
         self.viewport.follow_chat_bottom(); // Reset to bottom and resume auto-scroll on new input
 
         // If the previous assistant turn still has visible streamed text that has not yet been

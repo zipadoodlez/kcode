@@ -80,7 +80,7 @@ fn test_rewind_truncates_provider_messages() {
     app.provider_session_id = Some("provider-session".to_string());
     app.session.provider_session_id = Some("provider-session".to_string());
 
-    app.input = "/rewind 2".to_string();
+    app.composer.input = "/rewind 2".to_string();
     app.submit_input();
 
     assert_eq!(app.messages.len(), 2);
@@ -112,7 +112,7 @@ fn test_rewind_undo_restores_truncated_messages() {
     app.provider_session_id = Some("provider-session".to_string());
     app.session.provider_session_id = Some("provider-session".to_string());
 
-    app.input = "/rewind 1".to_string();
+    app.composer.input = "/rewind 1".to_string();
     app.submit_input();
     assert_eq!(app.session.visible_conversation_message_count(), 1);
     assert!(
@@ -123,7 +123,7 @@ fn test_rewind_undo_restores_truncated_messages() {
             .contains("Undo anytime with /rewind undo")
     );
 
-    app.input = "/rewind undo".to_string();
+    app.composer.input = "/rewind undo".to_string();
     app.submit_input();
 
     assert_eq!(app.session.visible_conversation_message_count(), 3);
@@ -156,7 +156,7 @@ fn test_rewind_lists_visible_messages_when_initial_session_context_is_hidden() {
         );
     }
 
-    app.input = "/rewind".to_string();
+    app.composer.input = "/rewind".to_string();
     app.submit_input();
 
     let last = app.display_messages().last().expect("history message");
@@ -182,13 +182,13 @@ fn test_rewind_autocomplete_does_not_fuzzy_rewrite_numeric_targets() {
         );
     }
 
-    app.input = "/rewind 10".to_string();
+    app.composer.input = "/rewind 10".to_string();
     assert!(!app.autocomplete());
-    assert_eq!(app.input, "/rewind 10");
+    assert_eq!(app.composer.input, "/rewind 10");
 
-    app.input = "/rewind 2".to_string();
+    app.composer.input = "/rewind 2".to_string();
     assert!(!app.autocomplete());
-    assert_eq!(app.input, "/rewind 2");
+    assert_eq!(app.composer.input, "/rewind 2");
 }
 
 #[test]
@@ -214,8 +214,8 @@ fn test_rewind_autocomplete_uses_visible_message_count() {
     assert_eq!(app.session.messages.len(), 2);
     assert_eq!(app.session.visible_conversation_message_count(), 1);
 
-    app.input = "/rewind ".to_string();
-    let suggestions = app.get_suggestions_for(&app.input);
+    app.composer.input = "/rewind ".to_string();
+    let suggestions = app.get_suggestions_for(&app.composer.input);
     assert_eq!(
         suggestions,
         vec![("/rewind 1".to_string(), "Rewind to this message")]
@@ -634,8 +634,8 @@ fn test_handle_key_backspace() {
 fn test_ctrl_l_terminal_clear_adds_spacer_and_keeps_everything() {
     let mut app = create_test_app();
     app.diff_mode = crate::config::DiffDisplayMode::Off;
-    app.input = "draft message".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "draft message".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     app.session.add_message(
         Role::User,
         vec![ContentBlock::Text {
@@ -753,8 +753,8 @@ fn test_cls_command_clears_view_but_keeps_context() {
     let session_id_before = app.session.id.clone();
     let session_messages_before = app.session.messages.len();
 
-    app.input = "/cls".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "/cls".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
     app.submit_input();
 
     assert!(app.display_messages().is_empty(), "view should be cleared");

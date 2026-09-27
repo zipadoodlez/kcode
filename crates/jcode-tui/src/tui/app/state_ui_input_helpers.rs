@@ -1,5 +1,4 @@
 use super::*;
-use crate::tui::core;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -241,74 +240,17 @@ pub(crate) fn registered_command_entries() -> impl Iterator<Item = (&'static str
 
 impl App {
     /// Find word boundary going backward (for Ctrl+W, Alt+B)
-    pub(super) fn find_word_boundary_back(&self) -> usize {
-        if self.cursor_pos == 0 {
-            return 0;
-        }
-        let mut pos = self.cursor_pos;
-
-        // Move back one char
-        pos = core::prev_char_boundary(&self.input, pos);
-
-        // Skip trailing whitespace
-        while pos > 0 {
-            let ch = self.input[pos..].chars().next().unwrap_or(' ');
-            if !ch.is_whitespace() {
-                break;
-            }
-            pos = core::prev_char_boundary(&self.input, pos);
-        }
-
-        // Skip word characters
-        while pos > 0 {
-            let prev = core::prev_char_boundary(&self.input, pos);
-            let ch = self.input[prev..].chars().next().unwrap_or(' ');
-            if ch.is_whitespace() {
-                break;
-            }
-            pos = prev;
-        }
-
-        pos
-    }
 
     /// Find word boundary going forward (for Alt+F, Alt+D)
-    pub(super) fn find_word_boundary_forward(&self) -> usize {
-        let len = self.input.len();
-        if self.cursor_pos >= len {
-            return len;
-        }
-        let mut pos = self.cursor_pos;
-
-        // Skip current word
-        while pos < len {
-            let ch = self.input[pos..].chars().next().unwrap_or(' ');
-            if ch.is_whitespace() {
-                break;
-            }
-            pos = core::next_char_boundary(&self.input, pos);
-        }
-
-        // Skip whitespace
-        while pos < len {
-            let ch = self.input[pos..].chars().next().unwrap_or(' ');
-            if !ch.is_whitespace() {
-                break;
-            }
-            pos = core::next_char_boundary(&self.input, pos);
-        }
-
-        pos
-    }
 
     pub fn input(&self) -> &str {
-        &self.input
+        &self.composer.input
     }
 
     #[cfg(test)]
     pub(crate) fn set_input_for_test(&mut self, input: impl Into<String>) {
-        self.input = input.into();
-        self.cursor_pos = self.input.len();
+        self.composer.input = input.into();
+        self.composer.cursor_pos = self.composer.input.len();
     }
 
     /// Typo-resistant fuzzy score. Higher is better; `None` means no match.
@@ -1173,14 +1115,14 @@ impl App {
         if let Some(cache) = self.command_suggestions.cache.borrow().as_ref()
             && cache.epoch == epoch
             && cache.signature == signature
-            && cache.input == self.input
+            && cache.input == self.composer.input
         {
             return cache.suggestions.clone();
         }
 
         let suggestions = self.command_suggestions_uncached(&signature);
         *self.command_suggestions.cache.borrow_mut() = Some(CommandSuggestionsCache {
-            input: self.input.clone(),
+            input: self.composer.input.clone(),
             signature,
             epoch,
             suggestions: suggestions.clone(),
@@ -1221,7 +1163,7 @@ impl App {
             || signature.pending_account_input
             || signature.pending_ssh_remote_name
         {
-            let input = self.input.trim_start();
+            let input = self.composer.input.trim_start();
             let typed = input.trim_end();
             if !typed.is_empty() && typed.starts_with('/') && "/cancel".starts_with(typed) {
                 return vec![("/cancel".into(), "Cancel the pending prompt")];
@@ -1234,7 +1176,7 @@ impl App {
         // suggestion list underneath would duplicate it (and its rows are not
         // arrow-navigable anyway, since the preview claims Up/Down first).
         if let Some(kind) = signature.inline_preview_kind {
-            let input = self.input.trim_start();
+            let input = self.composer.input.trim_start();
             let suppress = match kind {
                 crate::tui::PickerKind::Model => {
                     input.starts_with("/model") || input.starts_with("/models")
@@ -1246,7 +1188,7 @@ impl App {
                 return Vec::new();
             }
         }
-        self.get_suggestions_for(&self.input)
+        self.get_suggestions_for(&self.composer.input)
     }
 
     fn clamp_command_suggestion_selection(&mut self) -> Vec<(String, &'static str)> {
@@ -1314,14 +1256,14 @@ impl App {
         let Some((cmd, _)) = suggestions.get(self.command_suggestions.selected).cloned() else {
             return false;
         };
-        if cmd == self.input.trim() {
+        if cmd == self.composer.input.trim() {
             return false;
         }
 
-        self.remember_input_undo_state();
-        self.input = cmd;
-        self.cursor_pos = self.input.len();
-        self.tab_completion_state = None;
+        self.composer.remember_input_undo_state();
+        self.composer.input = cmd;
+        self.composer.cursor_pos = self.composer.input.len();
+        self.composer.tab_completion_state = None;
         self.command_suggestions.selected = 0;
         self.sync_model_picker_preview_from_input();
         true
@@ -1508,22 +1450,24 @@ impl App {
     /// Autocomplete current input - cycles through suggestions on repeated Tab
     pub fn autocomplete(&mut self) -> bool {
         // Get suggestions for current input
-        let current_suggestions = self.get_suggestions_for(&self.input);
+        let current_suggestions = self.get_suggestions_for(&self.composer.input);
 
         // Check if we're continuing a tab cycle from a previous base
-        if let Some((ref base, idx)) = self.tab_completion_state.clone() {
+        if let Some((ref base, idx)) = self.composer.tab_completion_state.clone() {
             let base_suggestions = self.get_suggestions_for(base);
 
             // If current input is in base suggestions AND there are multiple options, continue cycling
             if base_suggestions.len() > 1
-                && base_suggestions.iter().any(|(cmd, _)| cmd == &self.input)
+                && base_suggestions
+                    .iter()
+                    .any(|(cmd, _)| cmd == &self.composer.input)
             {
                 let next_index = (idx + 1) % base_suggestions.len();
                 let (cmd, _) = &base_suggestions[next_index];
-                self.remember_input_undo_state();
-                self.input = cmd.clone();
-                self.cursor_pos = self.input.len();
-                self.tab_completion_state = Some((base.clone(), next_index));
+                self.composer.remember_input_undo_state();
+                self.composer.input = cmd.clone();
+                self.composer.cursor_pos = self.composer.input.len();
+                self.composer.tab_completion_state = Some((base.clone(), next_index));
                 return true;
             }
             // Otherwise, fall through to start a new cycle with current input
@@ -1531,20 +1475,22 @@ impl App {
 
         // Start fresh cycle with current input
         if current_suggestions.is_empty() {
-            self.tab_completion_state = None;
+            self.composer.tab_completion_state = None;
             return false;
         }
 
         // If only one suggestion and it matches exactly, add trailing space for commands
         // that accept arguments, then we're done
-        if current_suggestions.len() == 1 && current_suggestions[0].0 == self.input {
-            if !self.input.ends_with(' ') && Self::command_accepts_args(&self.input) {
-                self.remember_input_undo_state();
-                self.input.push(' ');
-                self.cursor_pos = self.input.len();
+        if current_suggestions.len() == 1 && current_suggestions[0].0 == self.composer.input {
+            if !self.composer.input.ends_with(' ')
+                && Self::command_accepts_args(&self.composer.input)
+            {
+                self.composer.remember_input_undo_state();
+                self.composer.input.push(' ');
+                self.composer.cursor_pos = self.composer.input.len();
                 return true;
             }
-            self.tab_completion_state = None;
+            self.composer.tab_completion_state = None;
             return false;
         }
 
@@ -1554,44 +1500,29 @@ impl App {
             .selected
             .min(current_suggestions.len().saturating_sub(1));
         let (cmd, _) = &current_suggestions[selected];
-        let base = self.input.clone();
-        self.remember_input_undo_state();
-        self.input = cmd.clone();
+        let base = self.composer.input.clone();
+        self.composer.remember_input_undo_state();
+        self.composer.input = cmd.clone();
         // If unique match, add trailing space for arg-accepting commands
-        if current_suggestions.len() == 1 && Self::command_accepts_args(&self.input) {
-            self.input.push(' ');
+        if current_suggestions.len() == 1 && Self::command_accepts_args(&self.composer.input) {
+            self.composer.input.push(' ');
         }
-        self.cursor_pos = self.input.len();
-        self.tab_completion_state = Some((base, selected));
+        self.composer.cursor_pos = self.composer.input.len();
+        self.composer.tab_completion_state = Some((base, selected));
         self.command_suggestions.selected = 0;
         true
     }
 
     /// Reset tab completion state (call when user types/modifies input)
     pub fn reset_tab_completion(&mut self) {
-        self.tab_completion_state = None;
+        self.composer.tab_completion_state = None;
         self.command_suggestions.selected = 0;
     }
 
-    pub(super) fn remember_input_undo_state(&mut self) {
-        let snapshot = (self.input.clone(), self.cursor_pos.min(self.input.len()));
-        if self.input_undo_stack.last() == Some(&snapshot) {
-            return;
-        }
-        if self.input_undo_stack.len() >= Self::INPUT_UNDO_LIMIT {
-            self.input_undo_stack.remove(0);
-        }
-        self.input_undo_stack.push(snapshot);
-    }
-
-    pub(super) fn clear_input_undo_history(&mut self) {
-        self.input_undo_stack.clear();
-    }
-
     pub(super) fn undo_input_change(&mut self) {
-        if let Some((input, cursor_pos)) = self.input_undo_stack.pop() {
-            self.input = input;
-            self.cursor_pos = cursor_pos.min(self.input.len());
+        if let Some((input, cursor_pos)) = self.composer.input_undo_stack.pop() {
+            self.composer.input = input;
+            self.composer.cursor_pos = cursor_pos.min(self.composer.input.len());
             self.reset_tab_completion();
             self.sync_model_picker_preview_from_input();
             self.set_status_notice("↶ Input restored");

@@ -83,23 +83,23 @@ fn test_empty_prompt_up_down_browses_previous_prompts() {
     app.bump_display_messages_version();
 
     app.handle_key(KeyCode::Up, KeyModifiers::empty()).unwrap();
-    assert_eq!(app.input, "second prompt");
-    assert_eq!(app.cursor_pos, app.input.len());
+    assert_eq!(app.composer.input, "second prompt");
+    assert_eq!(app.composer.cursor_pos, app.composer.input.len());
 
     app.handle_key(KeyCode::Up, KeyModifiers::empty()).unwrap();
-    assert_eq!(app.input, "first prompt");
+    assert_eq!(app.composer.input, "first prompt");
 
     app.handle_key(KeyCode::Up, KeyModifiers::empty()).unwrap();
-    assert_eq!(app.input, "first prompt");
+    assert_eq!(app.composer.input, "first prompt");
 
     app.handle_key(KeyCode::Down, KeyModifiers::empty())
         .unwrap();
-    assert_eq!(app.input, "second prompt");
+    assert_eq!(app.composer.input, "second prompt");
 
     app.handle_key(KeyCode::Down, KeyModifiers::empty())
         .unwrap();
-    assert!(app.input.is_empty());
-    assert_eq!(app.cursor_pos, 0);
+    assert!(app.composer.input.is_empty());
+    assert_eq!(app.composer.cursor_pos, 0);
 }
 
 #[test]
@@ -113,41 +113,41 @@ fn test_ctrl_up_browses_history_when_no_pending_message() {
     app.bump_display_messages_version();
 
     app.handle_key(KeyCode::Up, KeyModifiers::CONTROL).unwrap();
-    assert_eq!(app.input, "second prompt");
+    assert_eq!(app.composer.input, "second prompt");
 
     app.handle_key(KeyCode::Up, KeyModifiers::CONTROL).unwrap();
-    assert_eq!(app.input, "first prompt");
+    assert_eq!(app.composer.input, "first prompt");
 }
 
 #[test]
 fn test_prompt_history_up_does_not_replace_unmatched_draft() {
     let mut app = create_test_app();
     app.display_messages = vec![DisplayMessage::user("previous prompt")];
-    app.input = "draft".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "draft".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     app.handle_key(KeyCode::Up, KeyModifiers::empty()).unwrap();
 
-    assert_eq!(app.input, "draft");
-    assert_eq!(app.cursor_pos, "draft".len());
+    assert_eq!(app.composer.input, "draft");
+    assert_eq!(app.composer.cursor_pos, "draft".len());
 }
 
 #[test]
 fn test_multiline_prompt_up_down_moves_cursor_within_input() {
     let mut app = create_test_app();
-    app.input = "abc\ndefg\nxy".to_string();
-    app.cursor_pos = "abc\nde".len();
+    app.composer.input = "abc\ndefg\nxy".to_string();
+    app.composer.cursor_pos = "abc\nde".len();
 
     app.handle_key(KeyCode::Up, KeyModifiers::empty()).unwrap();
-    assert_eq!(app.cursor_pos, "ab".len());
+    assert_eq!(app.composer.cursor_pos, "ab".len());
 
     app.handle_key(KeyCode::Down, KeyModifiers::empty())
         .unwrap();
-    assert_eq!(app.cursor_pos, "abc\nde".len());
+    assert_eq!(app.composer.cursor_pos, "abc\nde".len());
 
     app.handle_key(KeyCode::Down, KeyModifiers::empty())
         .unwrap();
-    assert_eq!(app.cursor_pos, app.input.len());
+    assert_eq!(app.composer.cursor_pos, app.composer.input.len());
 }
 
 #[test]
@@ -158,16 +158,16 @@ fn test_multiline_history_prompt_prioritizes_cursor_until_boundary() {
         DisplayMessage::assistant("older response"),
         DisplayMessage::user("line one\nline two"),
     ];
-    app.input = "line one\nline two".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "line one\nline two".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     app.handle_key(KeyCode::Up, KeyModifiers::empty()).unwrap();
-    assert_eq!(app.input, "line one\nline two");
-    assert_eq!(app.cursor_pos, "line one".len());
+    assert_eq!(app.composer.input, "line one\nline two");
+    assert_eq!(app.composer.cursor_pos, "line one".len());
 
     app.handle_key(KeyCode::Up, KeyModifiers::empty()).unwrap();
-    assert_eq!(app.input, "older prompt");
-    assert_eq!(app.cursor_pos, app.input.len());
+    assert_eq!(app.composer.input, "older prompt");
+    assert_eq!(app.composer.cursor_pos, app.composer.input.len());
 }
 
 #[test]
@@ -178,21 +178,21 @@ fn test_ctrl_up_down_always_browses_prompt_history() {
         DisplayMessage::assistant("older response"),
         DisplayMessage::user("line one\nline two"),
     ];
-    app.input = "line one\nline two".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "line one\nline two".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     app.handle_key(KeyCode::Up, KeyModifiers::CONTROL).unwrap();
-    assert_eq!(app.input, "older prompt");
-    assert_eq!(app.cursor_pos, app.input.len());
+    assert_eq!(app.composer.input, "older prompt");
+    assert_eq!(app.composer.cursor_pos, app.composer.input.len());
 
     app.handle_key(KeyCode::Down, KeyModifiers::CONTROL)
         .unwrap();
-    assert_eq!(app.input, "line one\nline two");
-    assert_eq!(app.cursor_pos, app.input.len());
+    assert_eq!(app.composer.input, "line one\nline two");
+    assert_eq!(app.composer.cursor_pos, app.composer.input.len());
 
     app.handle_key(KeyCode::Down, KeyModifiers::CONTROL)
         .unwrap();
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
 }
 
 #[test]
@@ -209,19 +209,19 @@ fn test_remote_empty_prompt_up_down_browses_previous_prompts() {
 
     rt.block_on(app.handle_remote_key(KeyCode::Up, KeyModifiers::empty(), &mut remote))
         .unwrap();
-    assert_eq!(app.input, "second remote prompt");
+    assert_eq!(app.composer.input, "second remote prompt");
 
     rt.block_on(app.handle_remote_key(KeyCode::Up, KeyModifiers::empty(), &mut remote))
         .unwrap();
-    assert_eq!(app.input, "first remote prompt");
+    assert_eq!(app.composer.input, "first remote prompt");
 
     rt.block_on(app.handle_remote_key(KeyCode::Down, KeyModifiers::empty(), &mut remote))
         .unwrap();
-    assert_eq!(app.input, "second remote prompt");
+    assert_eq!(app.composer.input, "second remote prompt");
 
     rt.block_on(app.handle_remote_key(KeyCode::Down, KeyModifiers::empty(), &mut remote))
         .unwrap();
-    assert!(app.input.is_empty());
+    assert!(app.composer.input.is_empty());
 }
 
 #[test]
@@ -237,7 +237,7 @@ fn test_remote_ctrl_up_retrieves_pending_queue_before_prompt_history() {
     rt.block_on(app.handle_remote_key(KeyCode::Up, KeyModifiers::CONTROL, &mut remote))
         .unwrap();
 
-    assert_eq!(app.input, "queued followup");
+    assert_eq!(app.composer.input, "queued followup");
     assert!(app.queued_messages.is_empty());
     assert!(!app.pending_queued_dispatch);
 }

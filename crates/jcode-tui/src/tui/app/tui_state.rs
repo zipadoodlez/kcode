@@ -572,11 +572,11 @@ impl crate::tui::TuiState for App {
     }
 
     fn input(&self) -> &str {
-        &self.input
+        &self.composer.input
     }
 
     fn cursor_pos(&self) -> usize {
-        self.cursor_pos
+        self.composer.cursor_pos
     }
 
     fn is_processing(&self) -> bool {
@@ -973,7 +973,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn has_stashed_input(&self) -> bool {
-        self.stashed_input.is_some()
+        self.composer.stashed_input.is_some()
     }
 
     fn context_snapshot(&self) -> crate::tui::ContextSnapshot {

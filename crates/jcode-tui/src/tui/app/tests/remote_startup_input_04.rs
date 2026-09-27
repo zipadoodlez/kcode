@@ -22,8 +22,8 @@ fn test_handle_server_event_transcript_replace_updates_input() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.input = "old draft".to_string();
-    app.cursor_pos = app.input.len();
+    app.composer.input = "old draft".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
 
     app.handle_server_event(
         crate::protocol::ServerEvent::Transcript {
@@ -33,8 +33,8 @@ fn test_handle_server_event_transcript_replace_updates_input() {
         &mut remote,
     );
 
-    assert_eq!(app.input, "new dictated text");
-    assert_eq!(app.cursor_pos, app.input.len());
+    assert_eq!(app.composer.input, "new dictated text");
+    assert_eq!(app.composer.cursor_pos, app.composer.input.len());
     assert_eq!(
         app.status_notice(),
         Some("Transcript replaced input".to_string())
