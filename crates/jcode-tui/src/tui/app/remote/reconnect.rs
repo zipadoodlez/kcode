@@ -98,9 +98,18 @@ pub(super) fn reconnect_status_message(app: &App, state: &RemoteRunState, detail
         format!("{}m {}s", elapsed.as_secs() / 60, elapsed.as_secs() % 60)
     };
 
+    // Name the first source that yields a session name. This is deliberately
+    // not `resume_target_session_id`: a remote id that carries no parseable
+    // name must still fall through to the resume id.
     let session_name = app
-        .resume_target_session_id()
-        .and_then(|id| crate::id::extract_session_name(id));
+        .remote_session_id
+        .as_ref()
+        .and_then(|id| crate::id::extract_session_name(id))
+        .or_else(|| {
+            app.resume_session_id
+                .as_ref()
+                .and_then(|id| crate::id::extract_session_name(id))
+        });
     let resume_hint = if let Some(host) = crate::tui::ssh_remote_host() {
         let id = app.resume_target_session_id().unwrap_or("pending");
         format!(" · SSH {host} · remote session {id}")
@@ -134,9 +143,18 @@ pub(super) fn reload_wait_status_message(
         format!("{}m {}s", elapsed.as_secs() / 60, elapsed.as_secs() % 60)
     };
 
+    // Name the first source that yields a session name. This is deliberately
+    // not `resume_target_session_id`: a remote id that carries no parseable
+    // name must still fall through to the resume id.
     let session_name = app
-        .resume_target_session_id()
-        .and_then(|id| crate::id::extract_session_name(id));
+        .remote_session_id
+        .as_ref()
+        .and_then(|id| crate::id::extract_session_name(id))
+        .or_else(|| {
+            app.resume_session_id
+                .as_ref()
+                .and_then(|id| crate::id::extract_session_name(id))
+        });
     let resume_hint = if let Some(host) = crate::tui::ssh_remote_host() {
         let id = app.resume_target_session_id().unwrap_or("pending");
         format!(" · SSH {host} · remote session {id}")

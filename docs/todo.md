@@ -467,6 +467,17 @@ Staged, each lands whole.
     exactly this reason (`queue_recovery.rs` converts soft interrupts, interleave
     messages, and in-flight sends into `queued_messages`, so those are one
     pipeline, not three groups).
+    **Verified 2026-09-27 (this session's structs).** Traced writers and
+    boundaries for `BackgroundTaskBand`, `OvernightCard`, `RemoteServerInfo`,
+    `RemoteStartup`, `HistoryRecovery`, and `PendingSplit`: no module leaks
+    writes around its ops (only tests, plus `RemoteServerInfo`'s intentional
+    `pub(super)` fields), and the session-switch reset touches none of them
+    except `clear_remote_startup_phase` (correct: a switch ends "loading
+    session"). One defect found and fixed: the resume-target condense dropped
+    the per-source name fallback in the two reconnect status messages, so a
+    remote id carrying no parseable name no longer fell through to the resume
+    id. Not yet traced: `ReloadState`, `Swarm`, the `Redraw`/`Viewport` split,
+    and the lower-risk list above.
   - [ ] **Re-core the outbound user-input pipeline** rather than condense it.
     `queued_messages`, `hidden_queued_system_messages`, `pending_soft_interrupts`,
     `pending_soft_interrupt_requests`, `interleave_message`, `interleave_images`,
