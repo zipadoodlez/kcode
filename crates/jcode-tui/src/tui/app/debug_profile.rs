@@ -270,7 +270,7 @@ impl App {
             .iter()
             .map(|event| event.kind.capacity() + event.detail.capacity())
             .sum();
-        let string_state_bytes = self.observe_page_markdown.capacity()
+        let string_state_bytes = self.observe.page_markdown.capacity()
             + self.split_view.markdown.capacity()
             + self
                 .status_notice
@@ -459,7 +459,7 @@ impl App {
                 "swarm_plan_items_json_bytes": swarm_plan_items_json_bytes,
             },
             "images_and_views": {
-                "observe_page_markdown_bytes": self.observe_page_markdown.capacity(),
+                "observe_page_markdown_bytes": self.observe.page_markdown.capacity(),
                 "split_view_markdown_bytes": self.split_view.markdown.capacity(),
             },
             "tool_tracking": {

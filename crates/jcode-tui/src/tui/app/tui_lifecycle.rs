@@ -31,8 +31,8 @@ impl App {
         self.interleave_images.clear();
         self.rate_limit_pending_message = restored.rate_limit_pending_message;
         self.rate_limit_reset = restored.rate_limit_reset;
-        self.observe_page_markdown = restored.observe_page_markdown;
-        self.observe_page_updated_at_ms = restored.observe_page_updated_at_ms;
+        self.observe.page_markdown = restored.observe_page_markdown;
+        self.observe.page_updated_at_ms = restored.observe_page_updated_at_ms;
         self.set_observe_mode_enabled(restored.observe_mode_enabled, restored.observe_mode_enabled);
         self.set_split_view_enabled(restored.split_view_enabled, restored.split_view_enabled);
         self.set_todos_view_enabled(restored.todos_view_enabled, restored.todos_view_enabled);
@@ -571,9 +571,7 @@ impl App {
             diff_pane_focus: false,
             diff_pane_auto_scroll: true,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
-            observe_mode_enabled: false,
-            observe_page_markdown: String::new(),
-            observe_page_updated_at_ms: 0,
+            observe: Default::default(),
             split_view: Default::default(),
             todos_view: Default::default(),
             background_task_rows: Vec::new(),
@@ -948,9 +946,7 @@ impl App {
             diff_pane_focus: false,
             diff_pane_auto_scroll: true,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
-            observe_mode_enabled: false,
-            observe_page_markdown: String::new(),
-            observe_page_updated_at_ms: 0,
+            observe: Default::default(),
             split_view: Default::default(),
             todos_view: Default::default(),
             background_task_rows: Vec::new(),

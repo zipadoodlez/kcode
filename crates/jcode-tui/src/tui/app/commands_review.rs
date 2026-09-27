@@ -309,7 +309,7 @@ pub(super) fn reset_current_session(app: &mut App) {
 fn observe_status_message(app: &App) -> String {
     format!(
         "Observe mode: {}\n\nWhen enabled, the side panel shows a transient Observe page with only the latest useful tool call or tool result added to context. UI/bookkeeping tools like side_panel, goal, and todo reads/writes are skipped so the view stays readable. It is not persisted to disk.",
-        if app.observe_mode_enabled() {
+        if app.observe.enabled() {
             "enabled"
         } else {
             "disabled"
@@ -325,7 +325,7 @@ pub(super) fn handle_observe_command(app: &mut App, trimmed: &str) -> bool {
     let arg = trimmed.strip_prefix("/observe").unwrap_or_default().trim();
     match arg {
         "" => {
-            let enabled = !app.observe_mode_enabled();
+            let enabled = !app.observe.enabled();
             app.set_observe_mode_enabled(enabled, true);
             if enabled {
                 app.set_status_notice("Observe: ON");

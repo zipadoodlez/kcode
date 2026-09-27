@@ -1278,9 +1278,7 @@ pub struct App {
     diff_pane_focus: bool,
     diff_pane_auto_scroll: bool,
     side_panel: crate::side_panel::SidePanelSnapshot,
-    observe_mode_enabled: bool,
-    observe_page_markdown: String,
-    observe_page_updated_at_ms: u64,
+    observe: observe::Observe,
     split_view: split_view::SplitView,
     todos_view: todos_view::TodosView,
     /// Running and terminal background tasks shown beneath the pinned todo band.

@@ -215,7 +215,7 @@ impl App {
             && self.pending_soft_interrupt_requests.is_empty()
             && self.rate_limit_pending_message.is_none()
             && resume_prompt.is_none()
-            && !self.observe_mode_enabled
+            && !self.observe.enabled
             && !self.split_view.enabled
             && !self.todos_view.enabled
             && !self.todo_confidence_spike_challenged
@@ -304,9 +304,9 @@ impl App {
                 "pending_soft_interrupt_resend": pending_soft_interrupt_resend,
                 "rate_limit_pending_message": rate_limit_pending_message,
                 "rate_limit_reset_in_ms": rate_limit_reset_in_ms,
-                "observe_mode_enabled": self.observe_mode_enabled,
-                "observe_page_markdown": self.observe_page_markdown,
-                "observe_page_updated_at_ms": self.observe_page_updated_at_ms,
+                "observe_mode_enabled": self.observe.enabled,
+                "observe_page_markdown": self.observe.page_markdown,
+                "observe_page_updated_at_ms": self.observe.page_updated_at_ms,
                 "split_view_enabled": self.split_view.enabled,
                 "todos_view_enabled": self.todos_view.enabled,
                 "todo_confidence_spike_challenged": self.todo_confidence_spike_challenged,
@@ -617,7 +617,7 @@ impl App {
         let focus_split = self.split_view.enabled
             && self.side_panel.focused_page_id.as_deref()
                 == Some(super::split_view::SPLIT_VIEW_PAGE_ID);
-        let focus_observe = self.observe_mode_enabled
+        let focus_observe = self.observe.enabled
             && self.side_panel.focused_page_id.as_deref() == Some(super::observe::OBSERVE_PAGE_ID);
         let snapshot = if self.split_view.enabled {
             self.decorate_side_panel_with_page(snapshot, self.split_view.page(), focus_split)
@@ -632,8 +632,8 @@ impl App {
         } else {
             snapshot
         };
-        let mut snapshot = if self.observe_mode_enabled {
-            self.decorate_side_panel_with_page(snapshot, self.observe_page(), focus_observe)
+        let mut snapshot = if self.observe.enabled {
+            self.decorate_side_panel_with_page(snapshot, self.observe.page(), focus_observe)
         } else {
             snapshot
         };

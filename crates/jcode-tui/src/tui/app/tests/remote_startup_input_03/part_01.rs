@@ -1103,8 +1103,8 @@ fn test_save_and_restore_reload_state_preserves_observe_mode() {
     let session_id = format!("test-reload-observe-{}", std::process::id());
 
     app.set_observe_mode_enabled(true, true);
-    app.observe_page_markdown = "# Observe\n\nPersist me through reload.".to_string();
-    app.observe_page_updated_at_ms = 42;
+    app.observe.page_markdown = "# Observe\n\nPersist me through reload.".to_string();
+    app.observe.page_updated_at_ms = 42;
     app.save_input_for_reload(&session_id);
 
     let restored = App::restore_input_for_reload(&session_id).expect("reload state should exist");
@@ -1134,12 +1134,12 @@ fn test_new_for_remote_restores_observe_mode_from_reload_state() {
     let session_id = format!("test-remote-observe-{}", std::process::id());
 
     app.set_observe_mode_enabled(true, true);
-    app.observe_page_markdown = "# Observe\n\nRestored after reload.".to_string();
-    app.observe_page_updated_at_ms = 99;
+    app.observe.page_markdown = "# Observe\n\nRestored after reload.".to_string();
+    app.observe.page_updated_at_ms = 99;
     app.save_input_for_reload(&session_id);
 
     let restored = App::new_for_remote(Some(session_id));
-    assert!(restored.observe_mode_enabled());
+    assert!(restored.observe.enabled());
     let page = restored
         .side_panel()
         .focused_page()

@@ -126,6 +126,10 @@ Staged, each lands whole.
   - `SplitView`. **Landed.** Five `split_view_*` fields plus their
     sub-struct-only methods moved into `split_view.rs` as `SplitView`;
     `app_fields` fell 300 to 296, tests unchanged from baseline.
+  - `Observe`. **Landed.** Three `observe_*` fields plus `enabled`/`page` moved
+    into `observe.rs` as `Observe`; `app_fields` fell 296 to 294, tests
+    unchanged from baseline. The reload-state fields on `RestoredReloadInput`
+    are a different struct and stay put.
   - Stage 5: `Panels` (12 fields, 89 sites): side panel and split view.
     Split view is already out (`SplitView` sub-struct plus the shared
     decoration below); observe and catchup remain.

@@ -5,24 +5,52 @@ use crate::side_panel::{SidePanelPage, SidePanelPageFormat, SidePanelPageSource}
 pub(super) const OBSERVE_PAGE_ID: &str = "observe";
 const OBSERVE_PAGE_TITLE: &str = "Observe";
 
-impl App {
-    pub(super) fn observe_mode_enabled(&self) -> bool {
-        self.observe_mode_enabled
+/// State behind the observe side-panel page: a live log of the agent's own tool
+/// activity. One home, so the refresh and page logic reads one struct.
+#[derive(Default)]
+pub(super) struct Observe {
+    pub(super) enabled: bool,
+    pub(super) page_markdown: String,
+    pub(super) page_updated_at_ms: u64,
+}
+
+impl Observe {
+    pub(super) fn enabled(&self) -> bool {
+        self.enabled
     }
 
+    pub(super) fn page(&self) -> SidePanelPage {
+        SidePanelPage {
+            id: OBSERVE_PAGE_ID.to_string(),
+            title: OBSERVE_PAGE_TITLE.to_string(),
+            file_path: "observe://latest-context".to_string(),
+            format: SidePanelPageFormat::Markdown,
+            pdf_data: None,
+            source: SidePanelPageSource::Ephemeral,
+            content: if self.page_markdown.trim().is_empty() {
+                observe_placeholder_markdown()
+            } else {
+                self.page_markdown.clone()
+            },
+            updated_at_ms: self.page_updated_at_ms.max(1),
+        }
+    }
+}
+
+impl App {
     fn should_observe_tool(&self, tool_call: &ToolCall) -> bool {
-        self.observe_mode_enabled && !is_noise_tool(&tool_call.name)
+        self.observe.enabled && !is_noise_tool(&tool_call.name)
     }
 
     pub(super) fn set_observe_mode_enabled(&mut self, enabled: bool, focus: bool) {
-        self.observe_mode_enabled = enabled;
+        self.observe.enabled = enabled;
         let mut snapshot = self.snapshot_without_page(OBSERVE_PAGE_ID);
         if enabled {
-            if self.observe_page_markdown.trim().is_empty() {
-                self.observe_page_markdown = observe_placeholder_markdown();
-                self.observe_page_updated_at_ms = now_ms();
+            if self.observe.page_markdown.trim().is_empty() {
+                self.observe.page_markdown = observe_placeholder_markdown();
+                self.observe.page_updated_at_ms = now_ms();
             }
-            snapshot = self.decorate_side_panel_with_page(snapshot, self.observe_page(), focus);
+            snapshot = self.decorate_side_panel_with_page(snapshot, self.observe.page(), focus);
         } else if snapshot.focused_page_id.is_none() {
             snapshot.focused_page_id = self
                 .last_side_panel_focus_id
@@ -37,8 +65,8 @@ impl App {
         if !self.should_observe_tool(tool_call) {
             return;
         }
-        self.observe_page_markdown = build_observe_tool_call_markdown(tool_call);
-        self.observe_page_updated_at_ms = now_ms();
+        self.observe.page_markdown = build_observe_tool_call_markdown(tool_call);
+        self.observe.page_updated_at_ms = now_ms();
         self.refresh_observe_page();
     }
 
@@ -52,9 +80,9 @@ impl App {
         if !self.should_observe_tool(tool_call) {
             return;
         }
-        self.observe_page_markdown =
+        self.observe.page_markdown =
             build_observe_tool_result_markdown(tool_call, output, is_error, title);
-        self.observe_page_updated_at_ms = now_ms();
+        self.observe.page_updated_at_ms = now_ms();
         self.refresh_observe_page();
     }
 
@@ -129,34 +157,17 @@ impl App {
     }
 
     fn refresh_observe_page(&mut self) {
-        if !self.observe_mode_enabled {
+        if !self.observe.enabled {
             return;
         }
 
         let focus_observe = self.side_panel.focused_page_id.as_deref() == Some(OBSERVE_PAGE_ID);
         let snapshot = self.decorate_side_panel_with_page(
             self.snapshot_without_page(OBSERVE_PAGE_ID),
-            self.observe_page(),
+            self.observe.page(),
             focus_observe,
         );
         self.apply_side_panel_snapshot(snapshot);
-    }
-
-    pub(super) fn observe_page(&self) -> SidePanelPage {
-        SidePanelPage {
-            id: OBSERVE_PAGE_ID.to_string(),
-            title: OBSERVE_PAGE_TITLE.to_string(),
-            file_path: "observe://latest-context".to_string(),
-            format: SidePanelPageFormat::Markdown,
-            pdf_data: None,
-            source: SidePanelPageSource::Ephemeral,
-            content: if self.observe_page_markdown.trim().is_empty() {
-                observe_placeholder_markdown()
-            } else {
-                self.observe_page_markdown.clone()
-            },
-            updated_at_ms: self.observe_page_updated_at_ms.max(1),
-        }
     }
 }
 
