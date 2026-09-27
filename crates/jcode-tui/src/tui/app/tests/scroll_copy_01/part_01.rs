@@ -930,7 +930,7 @@ fn test_remote_alt_y_toggles_copy_selection_instead_of_typing() {
     rt.block_on(app.handle_remote_key(KeyCode::Char('y'), KeyModifiers::ALT, &mut remote))
         .unwrap();
 
-    assert!(app.copy_selection_mode);
+    assert!(app.copy_selection.mode);
     assert!(app.input.is_empty(), "Alt+Y must not insert text");
 }
 

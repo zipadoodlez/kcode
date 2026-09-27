@@ -2,42 +2,43 @@ use super::App;
 use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-impl App {
-    const COPY_VIEWPORT_CONTEXT_LINES: usize = 4;
+/// Modal in-app selection/copy state for the chat viewport. One home, so the
+/// anchor/drag/autoscroll logic reads one struct instead of eight loose fields.
+#[derive(Default)]
+pub(super) struct CopySelection {
+    pub(super) mode: bool,
+    pub(super) anchor: Option<crate::tui::CopySelectionPoint>,
+    pub(super) cursor: Option<crate::tui::CopySelectionPoint>,
+    pub(super) pending_anchor: Option<crate::tui::CopySelectionPoint>,
+    pub(super) dragging: bool,
+    pub(super) goal_column: Option<usize>,
+    /// While a mouse drag is held at the top/bottom edge of a pane, keep
+    /// auto-scrolling on every tick (browser-style) until the drag leaves the
+    /// edge or ends. Stores the pane and whether to scroll upward.
+    pub(super) edge_autoscroll: Option<(crate::tui::CopySelectionPane, bool, u16)>,
+    /// Last time the tick path advanced the drag edge autoscroll. The redraw
+    /// loop now runs at the fast tick while a drag is held, so the scroll step
+    /// is throttled to the legacy 60ms period to keep its rate unchanged.
+    pub(super) autoscroll_last: Option<std::time::Instant>,
+}
 
-    pub(super) fn enter_copy_selection_mode(&mut self) {
-        self.copy_selection_mode = true;
-        self.copy_selection_dragging = false;
-        self.copy_selection_pending_anchor = None;
-        self.diff_pane_focus = false;
+impl CopySelection {
+    pub(super) fn exit_mode(&mut self) {
+        self.mode = false;
+        self.dragging = false;
+        self.pending_anchor = None;
+        self.anchor = None;
+        self.cursor = None;
+        self.goal_column = None;
     }
 
-    pub(super) fn exit_copy_selection_mode(&mut self) {
-        self.copy_selection_mode = false;
-        self.copy_selection_dragging = false;
-        self.copy_selection_pending_anchor = None;
-        self.copy_selection_anchor = None;
-        self.copy_selection_cursor = None;
-        self.copy_selection_goal_column = None;
+    pub(super) fn current_pane(&self) -> Option<crate::tui::CopySelectionPane> {
+        self.cursor.or(self.anchor).map(|point| point.pane)
     }
 
-    pub(super) fn toggle_copy_selection_mode(&mut self) {
-        if self.copy_selection_mode {
-            self.exit_copy_selection_mode();
-        } else {
-            self.enter_copy_selection_mode();
-        }
-    }
-
-    pub(super) fn current_copy_selection_pane(&self) -> Option<crate::tui::CopySelectionPane> {
-        self.copy_selection_cursor
-            .or(self.copy_selection_anchor)
-            .map(|point| point.pane)
-    }
-
-    pub(super) fn normalized_copy_selection(&self) -> Option<crate::tui::CopySelectionRange> {
-        let anchor = self.copy_selection_anchor?;
-        let cursor = self.copy_selection_cursor?;
+    pub(super) fn normalized(&self) -> Option<crate::tui::CopySelectionRange> {
+        let anchor = self.anchor?;
+        let cursor = self.cursor?;
         if anchor.pane != cursor.pane {
             return None;
         }
@@ -54,9 +55,28 @@ impl App {
         }
     }
 
-    pub(super) fn current_copy_selection_text(&self) -> Option<String> {
-        let range = self.normalized_copy_selection()?;
+    pub(super) fn current_text(&self) -> Option<String> {
+        let range = self.normalized()?;
         crate::tui::ui::copy_selection_text(range)
+    }
+}
+
+impl App {
+    const COPY_VIEWPORT_CONTEXT_LINES: usize = 4;
+
+    pub(super) fn enter_copy_selection_mode(&mut self) {
+        self.copy_selection.mode = true;
+        self.copy_selection.dragging = false;
+        self.copy_selection.pending_anchor = None;
+        self.diff_pane_focus = false;
+    }
+
+    pub(super) fn toggle_copy_selection_mode(&mut self) {
+        if self.copy_selection.mode {
+            self.copy_selection.exit_mode();
+        } else {
+            self.enter_copy_selection_mode();
+        }
     }
 
     fn line_text(pane: crate::tui::CopySelectionPane, abs_line: usize) -> Option<String> {
@@ -98,7 +118,8 @@ impl App {
     }
 
     fn preferred_copy_pane(&self) -> crate::tui::CopySelectionPane {
-        self.current_copy_selection_pane()
+        self.copy_selection
+            .current_pane()
             .or_else(|| {
                 self.diff_pane_focus
                     .then_some(crate::tui::CopySelectionPane::SidePane)
@@ -113,8 +134,9 @@ impl App {
     }
 
     fn default_copy_point(&self) -> Option<crate::tui::CopySelectionPoint> {
-        self.copy_selection_cursor
-            .or(self.copy_selection_anchor)
+        self.copy_selection
+            .cursor
+            .or(self.copy_selection.anchor)
             .and_then(Self::clamp_point)
             .or_else(|| Self::first_visible_copy_point(self.preferred_copy_pane()))
             .or_else(|| Self::first_visible_copy_point(crate::tui::CopySelectionPane::Chat))
@@ -137,22 +159,23 @@ impl App {
 
     fn collapse_selection_to(&mut self, point: crate::tui::CopySelectionPoint) {
         self.note_copy_selection_activity(point.pane);
-        self.copy_selection_anchor = Some(point);
-        self.copy_selection_cursor = Some(point);
-        self.copy_selection_goal_column = Some(point.column);
+        self.copy_selection.anchor = Some(point);
+        self.copy_selection.cursor = Some(point);
+        self.copy_selection.goal_column = Some(point.column);
     }
 
     fn extend_selection_to(&mut self, point: crate::tui::CopySelectionPoint) {
         self.note_copy_selection_activity(point.pane);
-        if self.copy_selection_anchor.is_none()
+        if self.copy_selection.anchor.is_none()
             || self
-                .copy_selection_anchor
+                .copy_selection
+                .anchor
                 .is_some_and(|anchor| anchor.pane != point.pane)
         {
-            self.copy_selection_anchor = Some(point);
+            self.copy_selection.anchor = Some(point);
         }
-        self.copy_selection_cursor = Some(point);
-        self.copy_selection_goal_column = Some(point.column);
+        self.copy_selection.cursor = Some(point);
+        self.copy_selection.goal_column = Some(point.column);
     }
 
     fn update_selection_with_point(&mut self, point: crate::tui::CopySelectionPoint, extend: bool) {
@@ -222,7 +245,7 @@ impl App {
         if line_count == 0 {
             return false;
         }
-        let goal = self.copy_selection_goal_column.unwrap_or(point.column);
+        let goal = self.copy_selection.goal_column.unwrap_or(point.column);
         let next_line =
             (point.abs_line as i32 + delta).clamp(0, line_count.saturating_sub(1) as i32) as usize;
         point.abs_line = next_line;
@@ -280,7 +303,7 @@ impl App {
         if line_count == 0 {
             return false;
         }
-        self.copy_selection_anchor = Some(crate::tui::CopySelectionPoint {
+        self.copy_selection.anchor = Some(crate::tui::CopySelectionPoint {
             pane,
             abs_line: 0,
             column: 0,
@@ -291,8 +314,8 @@ impl App {
             abs_line: last_line,
             column: Self::line_width(pane, last_line).unwrap_or(0),
         };
-        self.copy_selection_cursor = Some(end_point);
-        self.copy_selection_goal_column = Some(end_point.column);
+        self.copy_selection.cursor = Some(end_point);
+        self.copy_selection.goal_column = Some(end_point.column);
         self.note_copy_selection_activity(pane);
         true
     }
@@ -316,7 +339,7 @@ impl App {
             .saturating_sub(1)
             .min(line_count.saturating_sub(1));
 
-        self.copy_selection_anchor = Some(crate::tui::CopySelectionPoint {
+        self.copy_selection.anchor = Some(crate::tui::CopySelectionPoint {
             pane: crate::tui::CopySelectionPane::Chat,
             abs_line: start_line,
             column: 0,
@@ -328,8 +351,8 @@ impl App {
                 .map(|text| UnicodeWidthStr::width(text.as_str()))
                 .unwrap_or(0),
         };
-        self.copy_selection_cursor = Some(end_point);
-        self.copy_selection_goal_column = Some(end_point.column);
+        self.copy_selection.cursor = Some(end_point);
+        self.copy_selection.goal_column = Some(end_point.column);
         self.note_copy_selection_activity(crate::tui::CopySelectionPane::Chat);
         true
     }
@@ -344,14 +367,14 @@ impl App {
     {
         if !self.select_chat_viewport_context() {
             self.set_status_notice("Nothing visible to copy");
-            self.exit_copy_selection_mode();
+            self.copy_selection.exit_mode();
             return false;
         }
 
-        let text = self.current_copy_selection_text().unwrap_or_default();
+        let text = self.copy_selection.current_text().unwrap_or_default();
         if text.is_empty() {
             self.set_status_notice("Nothing visible to copy");
-            self.exit_copy_selection_mode();
+            self.copy_selection.exit_mode();
             return false;
         }
 
@@ -361,7 +384,7 @@ impl App {
         } else {
             self.set_status_notice("Failed to copy viewport context");
         }
-        self.exit_copy_selection_mode();
+        self.copy_selection.exit_mode();
         success
     }
 
@@ -373,7 +396,7 @@ impl App {
     where
         F: FnOnce(&str) -> bool,
     {
-        let text = self.current_copy_selection_text().unwrap_or_default();
+        let text = self.copy_selection.current_text().unwrap_or_default();
         if text.is_empty() {
             self.set_status_notice("Selection is empty");
             return false;
@@ -381,7 +404,7 @@ impl App {
         let success = copy_text(&text);
         if success {
             self.set_status_notice("Copied selection");
-            self.exit_copy_selection_mode();
+            self.copy_selection.exit_mode();
         } else {
             self.set_status_notice("Failed to copy selection");
         }
@@ -398,17 +421,17 @@ impl App {
     where
         F: FnOnce(&str) -> bool,
     {
-        let text = self.current_copy_selection_text().unwrap_or_default();
+        let text = self.copy_selection.current_text().unwrap_or_default();
         if text.is_empty() {
             self.set_status_notice("Selection is empty");
             return false;
         }
 
         let success = copy_text(&text);
-        self.copy_selection_mode = false;
-        self.copy_selection_dragging = false;
-        self.copy_selection_pending_anchor = None;
-        self.copy_selection_edge_autoscroll = None;
+        self.copy_selection.mode = false;
+        self.copy_selection.dragging = false;
+        self.copy_selection.pending_anchor = None;
+        self.copy_selection.edge_autoscroll = None;
         self.set_status_notice(if success {
             "Copied selection · highlight remains visible"
         } else {
@@ -425,7 +448,7 @@ impl App {
         let extend = modifiers.contains(KeyModifiers::SHIFT);
         match code {
             KeyCode::Esc => {
-                self.exit_copy_selection_mode();
+                self.copy_selection.exit_mode();
                 true
             }
             KeyCode::Char('a') if modifiers.contains(KeyModifiers::CONTROL) => {
@@ -466,27 +489,27 @@ impl App {
     /// fast tick while a drag is held, so without this the drag would scroll
     /// ~4x faster (and reintroduce the runaway rate the proximity tiers fixed).
     pub(super) fn tick_copy_selection_edge_autoscroll(&mut self) -> bool {
-        if self.copy_selection_edge_autoscroll.is_none() {
+        if self.copy_selection.edge_autoscroll.is_none() {
             return false;
         }
         const COPY_AUTOSCROLL_PERIOD: std::time::Duration = std::time::Duration::from_millis(60);
         let now = std::time::Instant::now();
-        if let Some(last) = self.copy_selection_autoscroll_last
+        if let Some(last) = self.copy_selection.autoscroll_last
             && now.saturating_duration_since(last) < COPY_AUTOSCROLL_PERIOD
         {
             return false;
         }
-        self.copy_selection_autoscroll_last = Some(now);
+        self.copy_selection.autoscroll_last = Some(now);
         self.progress_copy_selection_edge_autoscroll()
     }
 
     pub(super) fn progress_copy_selection_edge_autoscroll(&mut self) -> bool {
-        let Some((pane, upward, speed)) = self.copy_selection_edge_autoscroll else {
+        let Some((pane, upward, speed)) = self.copy_selection.edge_autoscroll else {
             return false;
         };
         // Only active during an in-progress mouse drag selection.
-        if !self.copy_selection_dragging {
-            self.copy_selection_edge_autoscroll = None;
+        if !self.copy_selection.dragging {
+            self.copy_selection.edge_autoscroll = None;
             return false;
         }
         // Scroll `speed` lines (faster the closer the drag sits to the edge),
@@ -555,22 +578,22 @@ impl App {
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
                 let point = point?;
-                if self.copy_selection_mode {
-                    self.copy_selection_dragging = true;
-                    self.copy_selection_pending_anchor = None;
+                if self.copy_selection.mode {
+                    self.copy_selection.dragging = true;
+                    self.copy_selection.pending_anchor = None;
                     self.update_selection_with_point(point, false);
                 } else {
-                    self.copy_selection_pending_anchor = Some(point);
-                    self.copy_selection_dragging = false;
-                    self.copy_selection_anchor = None;
-                    self.copy_selection_cursor = None;
-                    self.copy_selection_goal_column = None;
+                    self.copy_selection.pending_anchor = Some(point);
+                    self.copy_selection.dragging = false;
+                    self.copy_selection.anchor = None;
+                    self.copy_selection.cursor = None;
+                    self.copy_selection.goal_column = None;
                 }
                 Some(false)
             }
             MouseEventKind::Drag(MouseButton::Left) => {
-                if !self.copy_selection_dragging {
-                    let pending = self.copy_selection_pending_anchor?;
+                if !self.copy_selection.dragging {
+                    let pending = self.copy_selection.pending_anchor?;
                     let point = point.filter(|point| point.pane == pending.pane)?;
                     // Kitty reports mouse motion at pixel granularity, so a
                     // plain click with sub-cell hand jitter still delivers
@@ -583,13 +606,13 @@ impl App {
                     if point == pending {
                         return Some(false);
                     }
-                    self.copy_selection_pending_anchor = None;
-                    self.copy_selection_dragging = true;
+                    self.copy_selection.pending_anchor = None;
+                    self.copy_selection.dragging = true;
                     self.collapse_selection_to(pending);
                     self.update_selection_with_point(point, true);
                     return Some(false);
                 }
-                let active_pane = self.current_copy_selection_pane();
+                let active_pane = self.copy_selection.current_pane();
                 // Browser-style edge auto-scroll: if the drag is at the top/bottom
                 // boundary row of the active pane, keep scrolling so the selection can
                 // extend past the currently visible transcript. This takes priority
@@ -608,18 +631,18 @@ impl App {
                     // outpace a cursor held still. Re-arming always refreshes the
                     // proximity speed without an extra nudge.
                     let same_direction = matches!(
-                        self.copy_selection_edge_autoscroll,
+                        self.copy_selection.edge_autoscroll,
                         Some((armed_pane, armed_up, _)) if armed_pane == pane && armed_up == upward
                     );
                     if !same_direction {
                         self.step_copy_selection_scroll(pane, upward, 1);
-                        self.copy_selection_autoscroll_last = None;
+                        self.copy_selection.autoscroll_last = None;
                     }
-                    self.copy_selection_edge_autoscroll = Some((pane, upward, speed));
+                    self.copy_selection.edge_autoscroll = Some((pane, upward, speed));
                     return Some(false);
                 }
                 // Left the edge: stop the continuous autoscroll.
-                self.copy_selection_edge_autoscroll = None;
+                self.copy_selection.edge_autoscroll = None;
                 // Resolve the drag target, clamping vertical overshoot (e.g. a
                 // drag into the blank space below the last line) to the nearest
                 // in-bounds line edge so the boundary line is fully selected,
@@ -635,43 +658,43 @@ impl App {
             MouseEventKind::Up(MouseButton::Left) => {
                 // Clear any armed (un-dragged) press anchor; a plain click does
                 // not start a selection.
-                self.copy_selection_pending_anchor = None;
-                self.copy_selection_edge_autoscroll = None;
-                if !self.copy_selection_dragging {
+                self.copy_selection.pending_anchor = None;
+                self.copy_selection.edge_autoscroll = None;
+                if !self.copy_selection.dragging {
                     // A press+release with no drag is a plain click, not a
                     // selection. While actively in copy-selection mode we still
                     // consume it (so a stray click does not leak into the chat),
                     // but in normal mode we must let it fall through to the
                     // click handlers (inline-image expand badge, link open).
                     // Returning `Some(false)` here would swallow those clicks,
-                    // since the `Down` arms `copy_selection_pending_anchor` and
+                    // since the `Down` arms `copy_selection.pending_anchor` and
                     // this branch runs before the expand/link checks.
-                    return if self.copy_selection_mode {
+                    return if self.copy_selection.mode {
                         Some(false)
                     } else {
                         None
                     };
                 }
-                self.copy_selection_dragging = false;
-                let release_pane = self.current_copy_selection_pane();
+                self.copy_selection.dragging = false;
+                let release_pane = self.copy_selection.current_pane();
                 let resolved = release_pane.and_then(|pane| {
                     crate::tui::ui::copy_pane_drag_point(pane, mouse.column, mouse.row)
                 });
                 if let Some(point) = resolved.filter(|point| Some(point.pane) == release_pane) {
                     self.update_selection_with_point(point, true);
                 }
-                if self.copy_selection_mode {
+                if self.copy_selection.mode {
                     return Some(false);
                 }
                 if !self.copy_current_selection_preserving_highlight(copy_text) {
-                    self.exit_copy_selection_mode();
+                    self.copy_selection.exit_mode();
                 }
                 Some(false)
             }
             MouseEventKind::ScrollUp => {
-                if !(self.copy_selection_mode
-                    || self.copy_selection_dragging
-                    || self.copy_selection_pending_anchor.is_some())
+                if !(self.copy_selection.mode
+                    || self.copy_selection.dragging
+                    || self.copy_selection.pending_anchor.is_some())
                 {
                     return None;
                 }
@@ -681,16 +704,17 @@ impl App {
                     .filter(|point| point.pane != crate::tui::CopySelectionPane::Input)
                     .map(|point| self.scroll_copy_selection_pane(point.pane, true))
                     .or_else(|| {
-                        self.copy_selection_dragging
-                            .then(|| self.current_copy_selection_pane())
+                        self.copy_selection
+                            .dragging
+                            .then(|| self.copy_selection.current_pane())
                             .flatten()
                             .map(|pane| self.scroll_copy_selection_pane(pane, true))
                     })
             }
             MouseEventKind::ScrollDown => {
-                if !(self.copy_selection_mode
-                    || self.copy_selection_dragging
-                    || self.copy_selection_pending_anchor.is_some())
+                if !(self.copy_selection.mode
+                    || self.copy_selection.dragging
+                    || self.copy_selection.pending_anchor.is_some())
                 {
                     return None;
                 }
@@ -698,8 +722,9 @@ impl App {
                     .filter(|point| point.pane != crate::tui::CopySelectionPane::Input)
                     .map(|point| self.scroll_copy_selection_pane(point.pane, false))
                     .or_else(|| {
-                        self.copy_selection_dragging
-                            .then(|| self.current_copy_selection_pane())
+                        self.copy_selection
+                            .dragging
+                            .then(|| self.copy_selection.current_pane())
                             .flatten()
                             .map(|pane| self.scroll_copy_selection_pane(pane, false))
                     })

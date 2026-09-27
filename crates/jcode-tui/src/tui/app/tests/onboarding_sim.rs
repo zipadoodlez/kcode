@@ -108,8 +108,8 @@ fn alt_5_resets_onboarding_sim_to_a_pristine_first_screen() {
         .store(true, std::sync::atomic::Ordering::Release);
     app.help_scroll = Some(4);
     app.model_status_scroll = Some(2);
-    app.copy_selection_mode = true;
-    app.copy_selection_dragging = true;
+    app.copy_selection.mode = true;
+    app.copy_selection.dragging = true;
 
     app.handle_key(KeyCode::Char('5'), KeyModifiers::ALT)
         .unwrap();
@@ -128,8 +128,8 @@ fn alt_5_resets_onboarding_sim_to_a_pristine_first_screen() {
     assert!(app.onboarding_pending_model_validation.is_none());
     assert!(app.help_scroll.is_none());
     assert!(app.model_status_scroll.is_none());
-    assert!(!app.copy_selection_mode);
-    assert!(!app.copy_selection_dragging);
+    assert!(!app.copy_selection.mode);
+    assert!(!app.copy_selection.dragging);
     assert!(
         !app
             .onboarding_auto_model_selection_active

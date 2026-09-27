@@ -96,13 +96,13 @@ impl App {
         self.account_picker_overlay = None;
         self.usage_overlay = None;
         self.inline_interactive_state = None;
-        self.copy_selection_mode = false;
-        self.copy_selection_anchor = None;
-        self.copy_selection_cursor = None;
-        self.copy_selection_pending_anchor = None;
-        self.copy_selection_dragging = false;
-        self.copy_selection_goal_column = None;
-        self.copy_selection_edge_autoscroll = None;
+        self.copy_selection.mode = false;
+        self.copy_selection.anchor = None;
+        self.copy_selection.cursor = None;
+        self.copy_selection.pending_anchor = None;
+        self.copy_selection.dragging = false;
+        self.copy_selection.goal_column = None;
+        self.copy_selection.edge_autoscroll = None;
         self.onboarding_sim = Some(0);
         // Force the dedicated welcome layout to render regardless of session
         // state, exactly like the static `/onboarding-preview`.

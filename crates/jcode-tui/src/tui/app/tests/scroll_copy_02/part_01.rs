@@ -173,7 +173,7 @@ fn test_copy_selection_mode_toggle_shows_notification() {
     app.handle_key(KeyCode::Char('y'), KeyModifiers::ALT)
         .unwrap();
 
-    assert!(app.copy_selection_mode);
+    assert!(app.copy_selection.mode);
 
     let text = render_and_snap(&app, &mut terminal);
     assert!(
@@ -194,7 +194,7 @@ fn test_copy_selection_select_all_uses_rendered_chat_text_without_copy_badges() 
     assert!(app.select_all_in_copy_mode());
 
     let selected = app
-        .current_copy_selection_text()
+        .copy_selection.current_text()
         .expect("expected selected transcript text");
     assert!(selected.contains("Show me some code"));
     assert!(selected.contains("fn main() {"));
@@ -219,10 +219,10 @@ fn test_copy_selection_metrics_match_built_selection_text() {
     // The allocation-free metrics path used by the status line must agree with
     // the char/line counts of the actually-built selection text.
     let range = app
-        .normalized_copy_selection()
+        .copy_selection.normalized()
         .expect("normalized selection range");
     let text = app
-        .current_copy_selection_text()
+        .copy_selection.current_text()
         .expect("selection text for full transcript");
     let (chars, lines) =
         crate::tui::ui::copy_selection_metrics(range).expect("selection metrics");
@@ -256,19 +256,19 @@ fn test_copy_selection_full_user_prompt_line_skips_prompt_chrome() {
         })
         .expect("expected visible user prompt line");
 
-    app.copy_selection_anchor = Some(crate::tui::CopySelectionPoint {
+    app.copy_selection.anchor = Some(crate::tui::CopySelectionPoint {
         pane: crate::tui::CopySelectionPane::Chat,
         abs_line: prompt_idx,
         column: 0,
     });
-    app.copy_selection_cursor = Some(crate::tui::CopySelectionPoint {
+    app.copy_selection.cursor = Some(crate::tui::CopySelectionPoint {
         pane: crate::tui::CopySelectionPane::Chat,
         abs_line: prompt_idx,
         column: unicode_width::UnicodeWidthStr::width(prompt_text.as_str()),
     });
 
     let selected = app
-        .current_copy_selection_text()
+        .copy_selection.current_text()
         .expect("expected user prompt selection text");
     assert_eq!(selected, "Show me some code");
 }
@@ -296,19 +296,19 @@ fn test_copy_selection_swarm_message_skips_rail_chrome() {
         })
         .expect("expected visible swarm body line");
 
-    app.copy_selection_anchor = Some(crate::tui::CopySelectionPoint {
+    app.copy_selection.anchor = Some(crate::tui::CopySelectionPoint {
         pane: crate::tui::CopySelectionPane::Chat,
         abs_line: start_idx,
         column: 0,
     });
-    app.copy_selection_cursor = Some(crate::tui::CopySelectionPoint {
+    app.copy_selection.cursor = Some(crate::tui::CopySelectionPoint {
         pane: crate::tui::CopySelectionPane::Chat,
         abs_line: end_idx,
         column: unicode_width::UnicodeWidthStr::width(end_text.as_str()),
     });
 
     let selected = app
-        .current_copy_selection_text()
+        .copy_selection.current_text()
         .expect("expected selected swarm text");
     assert!(selected.contains("Broadcast"));
     assert!(selected.contains("hello team"));
@@ -355,19 +355,19 @@ fn test_copy_selection_reconstructs_wrapped_chat_lines_without_hard_wraps() {
         .find(|(idx, _)| *idx == *first_idx + 1)
         .expect("expected adjacent wrapped continuation line");
 
-    app.copy_selection_anchor = Some(crate::tui::CopySelectionPoint {
+    app.copy_selection.anchor = Some(crate::tui::CopySelectionPoint {
         pane: crate::tui::CopySelectionPane::Chat,
         abs_line: *first_idx,
         column: 0,
     });
-    app.copy_selection_cursor = Some(crate::tui::CopySelectionPoint {
+    app.copy_selection.cursor = Some(crate::tui::CopySelectionPoint {
         pane: crate::tui::CopySelectionPane::Chat,
         abs_line: *second_idx,
         column: unicode_width::UnicodeWidthStr::width(second_text.as_str()),
     });
 
     let selected = app
-        .current_copy_selection_text()
+        .copy_selection.current_text()
         .expect("expected wrapped selection text");
     assert!(
         !selected.contains('\n'),
@@ -429,19 +429,19 @@ fn test_copy_selection_centered_list_keeps_logical_list_text() {
         .find(|(_, text)| text.contains("success criteria") || text.contains("matters"))
         .expect("last list line");
 
-    app.copy_selection_anchor = Some(crate::tui::CopySelectionPoint {
+    app.copy_selection.anchor = Some(crate::tui::CopySelectionPoint {
         pane: crate::tui::CopySelectionPane::Chat,
         abs_line: *start_idx,
         column: 0,
     });
-    app.copy_selection_cursor = Some(crate::tui::CopySelectionPoint {
+    app.copy_selection.cursor = Some(crate::tui::CopySelectionPoint {
         pane: crate::tui::CopySelectionPane::Chat,
         abs_line: *end_idx,
         column: unicode_width::UnicodeWidthStr::width(end_text.as_str()),
     });
 
     let selected = app
-        .current_copy_selection_text()
+        .copy_selection.current_text()
         .expect("expected selected list text");
 
     assert!(
@@ -525,9 +525,9 @@ fn test_copy_selection_mouse_drag_extracts_expected_multiline_range() {
     });
 
     let selected = app
-        .current_copy_selection_text()
+        .copy_selection.current_text()
         .expect("expected multiline selection");
-    let range = app.normalized_copy_selection().expect("normalized range");
+    let range = app.copy_selection.normalized().expect("normalized range");
     assert_eq!(range.start.abs_line, fn_line_idx);
     assert_eq!(range.end.abs_line, print_line_idx);
     assert!(
@@ -544,8 +544,8 @@ fn test_copy_selection_mouse_drag_extracts_expected_multiline_range() {
         row: end_row,
         modifiers: KeyModifiers::empty(),
     });
-    assert!(app.copy_selection_mode);
-    assert!(!app.copy_selection_dragging);
+    assert!(app.copy_selection.mode);
+    assert!(!app.copy_selection.dragging);
 }
 
 #[test]
@@ -590,9 +590,9 @@ fn test_copy_selection_mouse_click_does_not_enter_mode() {
         modifiers: KeyModifiers::empty(),
     });
 
-    assert!(!app.copy_selection_mode);
-    assert!(app.copy_selection_anchor.is_none());
-    assert!(app.copy_selection_cursor.is_none());
+    assert!(!app.copy_selection.mode);
+    assert!(app.copy_selection.anchor.is_none());
+    assert!(app.copy_selection.cursor.is_none());
 }
 
 #[test]
@@ -678,9 +678,9 @@ fn test_copy_selection_mouse_drag_auto_copies_and_keeps_highlight() {
         },
     );
 
-    assert!(!app.copy_selection_mode);
-    assert!(app.copy_selection_anchor.is_some());
-    assert!(app.copy_selection_cursor.is_some());
+    assert!(!app.copy_selection.mode);
+    assert!(app.copy_selection.anchor.is_some());
+    assert!(app.copy_selection.cursor.is_some());
     assert!(copied.lock().unwrap().contains("println!(\"hello\");"));
     assert_eq!(
         app.status_notice(),
@@ -766,14 +766,14 @@ fn test_side_panel_mouse_drag_extracts_expected_text() {
     );
 
     let selected = app
-        .current_copy_selection_text()
+        .copy_selection.current_text()
         .expect("expected side pane selection");
     assert!(
         selected.contains("beta highlight target"),
         "selected={selected}"
     );
     assert_eq!(
-        app.current_copy_selection_pane(),
+        app.copy_selection.current_pane(),
         Some(crate::tui::CopySelectionPane::SidePane)
     );
 
@@ -790,7 +790,7 @@ fn test_side_panel_mouse_drag_extracts_expected_text() {
         },
     );
     assert!(copied.lock().unwrap().contains("beta highlight target"));
-    assert!(!app.copy_selection_mode);
+    assert!(!app.copy_selection.mode);
 }
 
 #[test]
@@ -811,9 +811,9 @@ fn test_copy_selection_copy_action_uses_clipboard_hook_and_exits_mode() {
     });
 
     assert!(success);
-    assert!(!app.copy_selection_mode);
-    assert!(app.copy_selection_anchor.is_none());
-    assert!(app.copy_selection_cursor.is_none());
+    assert!(!app.copy_selection.mode);
+    assert!(app.copy_selection.anchor.is_none());
+    assert!(app.copy_selection.cursor.is_none());
     assert!(copied.lock().unwrap().contains("println!(\"hello\");"));
     assert_eq!(app.status_notice(), Some("Copied selection".to_string()));
 }
@@ -856,14 +856,14 @@ fn test_ctrl_a_copies_chat_viewport_with_context_when_input_empty() {
         .min(line_count.saturating_sub(1));
     assert!(app.select_chat_viewport_context());
     let range = app
-        .normalized_copy_selection()
+        .copy_selection.normalized()
         .expect("expected viewport context range");
     assert_eq!(range.start.pane, crate::tui::CopySelectionPane::Chat);
     assert_eq!(range.end.pane, crate::tui::CopySelectionPane::Chat);
     assert_eq!(range.start.abs_line, expected_start);
     assert_eq!(range.end.abs_line, expected_end);
     let preselected_text = app
-        .current_copy_selection_text()
+        .copy_selection.current_text()
         .expect("expected viewport context text");
     assert!(
         !preselected_text.trim().is_empty(),
@@ -882,9 +882,9 @@ fn test_ctrl_a_copies_chat_viewport_with_context_when_input_empty() {
         "copied text should match selected viewport context: {copied_text:?}"
     );
     assert_eq!(app.status_notice(), Some("Copied selection".to_string()));
-    assert!(!app.copy_selection_mode);
-    assert!(app.copy_selection_anchor.is_none());
-    assert!(app.copy_selection_cursor.is_none());
+    assert!(!app.copy_selection.mode);
+    assert!(app.copy_selection.anchor.is_none());
+    assert!(app.copy_selection.cursor.is_none());
 }
 
 #[test]
@@ -1322,7 +1322,7 @@ fn test_copy_selection_drag_to_bottom_edge_when_pinned_does_not_snap_or_autoscro
 
     // The selection end should land on the exact line under the cursor, not snap
     // to the very last line of the transcript.
-    let range = app.normalized_copy_selection().expect("normalized range");
+    let range = app.copy_selection.normalized().expect("normalized range");
     assert_eq!(
         range.end.abs_line, target_line,
         "selection should extend to the line under the cursor, not snap to the last line"
@@ -1435,7 +1435,7 @@ fn test_copy_selection_drag_below_last_line_fully_selects_last_line() {
     assert_eq!(app.scroll_offset(), before_scroll, "must not scroll");
 
     // The selection should now extend through the END of the last line.
-    let range = app.normalized_copy_selection().expect("normalized range");
+    let range = app.copy_selection.normalized().expect("normalized range");
     assert_eq!(
         range.end.abs_line, last_line,
         "selection should extend to the last content line"
@@ -1445,7 +1445,7 @@ fn test_copy_selection_drag_below_last_line_fully_selects_last_line() {
         "selection should cover the full last line (through its end)"
     );
     let selected = app
-        .current_copy_selection_text()
+        .copy_selection.current_text()
         .expect("expected selection text");
     assert!(
         selected.contains(last_text.trim_end()),
@@ -1519,19 +1519,19 @@ fn test_changelog_overlay_supports_drag_select_and_copy() {
         })
         .expect("expected a visible non-empty changelog line");
 
-    app.copy_selection_anchor = Some(crate::tui::CopySelectionPoint {
+    app.copy_selection.anchor = Some(crate::tui::CopySelectionPoint {
         pane: crate::tui::CopySelectionPane::Chat,
         abs_line: line_idx,
         column: 0,
     });
-    app.copy_selection_cursor = Some(crate::tui::CopySelectionPoint {
+    app.copy_selection.cursor = Some(crate::tui::CopySelectionPoint {
         pane: crate::tui::CopySelectionPane::Chat,
         abs_line: line_idx,
         column: unicode_width::UnicodeWidthStr::width(line_text.as_str()),
     });
 
     let selected = app
-        .current_copy_selection_text()
+        .copy_selection.current_text()
         .expect("expected selection text from changelog overlay");
     assert_eq!(selected, line_text);
 }
@@ -1715,7 +1715,7 @@ fn wrapped_row_drag_copy_returns_the_logical_line_exactly() {
                     modifiers: KeyModifiers::empty(),
                 });
             }
-            app.current_copy_selection_text()
+            app.copy_selection.current_text()
         };
 
         // 1. Whole logical line, dragged from the start of the first row.

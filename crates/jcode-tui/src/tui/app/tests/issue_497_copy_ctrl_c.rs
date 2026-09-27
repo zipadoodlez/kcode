@@ -17,7 +17,7 @@ fn test_ctrl_c_with_active_copy_selection_copies_instead_of_quitting() {
     app.enter_copy_selection_mode();
     assert!(app.select_all_in_copy_mode());
     assert!(
-        app.current_copy_selection_text()
+        app.copy_selection.current_text()
             .is_some_and(|t| !t.is_empty()),
         "test needs a non-empty selection"
     );
@@ -50,7 +50,7 @@ fn test_ctrl_c_in_copy_mode_without_selection_still_falls_through() {
     render_and_snap(&app, &mut terminal);
 
     app.enter_copy_selection_mode();
-    assert!(app.current_copy_selection_text().is_none());
+    assert!(app.copy_selection.current_text().is_none());
 
     app.handle_key(KeyCode::Char('c'), KeyModifiers::CONTROL)
         .unwrap();

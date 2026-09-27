@@ -617,7 +617,7 @@ fn test_copy_selection_from_bottom_rebases_scroll_instead_of_jumping_to_top() {
         .expect("move selection cursor");
 
     assert!(
-        app.copy_selection_mode,
+        app.copy_selection.mode,
         "copy selection mode should remain active"
     );
     assert!(app.auto_scroll_paused, "selection should pause auto-follow");

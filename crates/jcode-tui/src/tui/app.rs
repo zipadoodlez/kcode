@@ -1121,20 +1121,7 @@ pub struct App {
     // Inline UI state for copy badges ([Alt] [⇧] [S])
     copy_badge_ui: CopyBadgeUiState,
     // Modal in-app selection/copy state for the chat viewport.
-    copy_selection_mode: bool,
-    copy_selection_anchor: Option<crate::tui::CopySelectionPoint>,
-    copy_selection_cursor: Option<crate::tui::CopySelectionPoint>,
-    copy_selection_pending_anchor: Option<crate::tui::CopySelectionPoint>,
-    copy_selection_dragging: bool,
-    copy_selection_goal_column: Option<usize>,
-    /// While drag-selecting with the mouse held at the top/bottom edge of a pane,
-    /// keep auto-scrolling on every tick (browser-style) until the drag leaves the
-    /// edge or ends. Stores the pane and whether to scroll upward.
-    copy_selection_edge_autoscroll: Option<(crate::tui::CopySelectionPane, bool, u16)>,
-    /// Last time the tick path advanced the drag edge autoscroll. The redraw
-    /// loop now runs at the fast tick while a drag is held, so the scroll step
-    /// is throttled to the legacy 60ms period to keep its rate unchanged.
-    copy_selection_autoscroll_last: Option<Instant>,
+    copy_selection: copy_selection::CopySelection,
     // Debug socket broadcast channel (if enabled)
     debug_tx: Option<tokio::sync::broadcast::Sender<super::backend::DebugEvent>>,
     // Remote provider info (set when running in remote mode)

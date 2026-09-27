@@ -2639,7 +2639,7 @@ pub(super) fn handle_modal_key(
         return Ok(true);
     }
 
-    if app.copy_selection_mode {
+    if app.copy_selection.mode {
         if modifiers.contains(KeyModifiers::CONTROL)
             && matches!(code, KeyCode::Char('c') | KeyCode::Char('d'))
         {
@@ -2650,7 +2650,8 @@ pub(super) fn handle_modal_key(
             // through (interrupt/quit) when nothing is selected.
             if code == KeyCode::Char('c')
                 && app
-                    .current_copy_selection_text()
+                    .copy_selection
+                    .current_text()
                     .is_some_and(|text| !text.is_empty())
             {
                 app.copy_current_selection_to_clipboard();

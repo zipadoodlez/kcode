@@ -101,8 +101,8 @@ fn test_input_composer_drag_selects_and_copies_typed_text() {
     assert_eq!(copied, "select this draft");
     assert_eq!(app.status_notice(), Some("Copied selection".to_string()));
     // Selection state is cleared after the copy.
-    assert!(app.copy_selection_anchor.is_none());
-    assert!(app.copy_selection_cursor.is_none());
+    assert!(app.copy_selection.anchor.is_none());
+    assert!(app.copy_selection.cursor.is_none());
 }
 
 #[test]
@@ -298,7 +298,7 @@ fn test_chat_drag_into_composer_clamps_to_chat_pane() {
     );
     // The selection must stay clamped to the chat pane.
     assert_eq!(
-        app.current_copy_selection_pane(),
+        app.copy_selection.current_pane(),
         Some(crate::tui::CopySelectionPane::Chat)
     );
     app.handle_copy_selection_mouse_with(
@@ -358,7 +358,7 @@ fn test_input_composer_click_still_moves_caret() {
         "plain click in the composer must reposition the caret"
     );
     // No selection was made or copied by the plain click.
-    assert!(app.copy_selection_anchor.is_none());
+    assert!(app.copy_selection.anchor.is_none());
     assert_ne!(app.status_notice(), Some("Copied selection".to_string()));
 }
 

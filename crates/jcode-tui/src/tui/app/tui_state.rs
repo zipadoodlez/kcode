@@ -617,7 +617,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn copy_selection_edge_autoscroll_active(&self) -> bool {
-        self.copy_selection_edge_autoscroll.is_some() && self.copy_selection_dragging
+        self.copy_selection.edge_autoscroll.is_some() && self.copy_selection.dragging
     }
 
     fn provider_name(&self) -> String {
@@ -1810,15 +1810,15 @@ impl crate::tui::TuiState for App {
     }
 
     fn copy_selection_mode(&self) -> bool {
-        self.copy_selection_mode
+        self.copy_selection.mode
     }
 
     fn copy_selection_range(&self) -> Option<crate::tui::CopySelectionRange> {
-        self.normalized_copy_selection()
+        self.copy_selection.normalized()
     }
 
     fn copy_selection_status(&self) -> Option<crate::tui::CopySelectionStatus> {
-        if !self.copy_selection_mode {
+        if !self.copy_selection.mode {
             return None;
         }
 
@@ -1827,13 +1827,15 @@ impl crate::tui::TuiState for App {
         // frame and drag move (O(selection) per frame; a "select all" rebuilt
         // the whole transcript text repeatedly).
         let (selected_chars, selected_lines) = self
-            .normalized_copy_selection()
+            .copy_selection
+            .normalized()
             .and_then(crate::tui::ui::copy_selection_metrics)
             .unwrap_or((0, 0));
         let has_selection = selected_chars > 0;
         Some(crate::tui::CopySelectionStatus {
             pane: self
-                .current_copy_selection_pane()
+                .copy_selection
+                .current_pane()
                 .unwrap_or(crate::tui::CopySelectionPane::Chat),
             has_action: has_selection,
             selected_chars,
@@ -1842,7 +1844,7 @@ impl crate::tui::TuiState for App {
             } else {
                 0
             },
-            dragging: self.copy_selection_dragging,
+            dragging: self.copy_selection.dragging,
         })
     }
 

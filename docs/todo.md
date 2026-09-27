@@ -71,13 +71,12 @@ Staged, each lands whole.
 - [ ] **Re-core `App`** (`crates/jcode-tui/src/tui/app.rs`): the largest single
   cost in the tree, so the plan lives here in full now that `plans/` is gone.
 
-  Evidence: `struct App` spans `app.rs:821-1547`, 310 fields (measured by
-  `scripts/check_app_shape.py`), 57 `impl App` blocks across 53 files, 124
-  `use super::*` globs, ~3,092 direct `self.<field>` sites. `app.rs` is 2,471
-  lines, already over the size ratchet. The runtime axis is now a single
-  representation (`runtime_mode`, Stage 1). `create_test_app()` is the graph's
-  #1 hub (771 edges), so every shape change ripples through test construction
-  first.
+  Evidence: `struct App` spans `app.rs:821-1501`, 285 fields (measured by
+  `scripts/check_app_shape.py`; 310 at the start of this work), 57 `impl App`
+  blocks across 53 files, 124 `use super::*` globs. `app.rs` is 2,425 lines,
+  still over the size ratchet. The runtime axis is now a single representation
+  (`runtime_mode`, Stage 1). `create_test_app()` is the graph's #1 hub (771
+  edges), so every shape change ripples through test construction first.
 
   Target: `App` becomes a coordinator holding named sub-structs, and each
   sub-struct owns the methods that touch only it. The pattern is already in tree
@@ -100,21 +99,22 @@ Staged, each lands whole.
   and a "pure" method may still call a coupled one). Methods touching fields of
   exactly one group and no other group's fields: panels 20/43, input 22/67,
   viewport 12/35, copy_selection 6/18, todos_view 4/14. No group is cleanly
-  isolated. `copy_selection`, the stage-2 template, scores low: its methods also
-  touch `diff_pane_*`, chat/diff auto-scroll, and status notices, so it cannot
-  be lifted without those. A finer read picked the mirror-page concepts first:
-  `TodosView` and `SplitView` are each one concept with their sites already
-  concentrated in one file. The order below is provisional; re-measure before
+  isolated. `copy_selection`, the stage-2 template, scored low on that cut; it
+  landed anyway as a state + self-contained-method extraction once the mirror
+  pages had set the pattern. The order below is provisional; re-measure before
   each extraction.
   - Stage 1: one runtime axis. **Landed.** `is_remote` and `is_replay` are gone;
     `runtime_mode` is the single representation, written only through
     `App::set_runtime_mode` and read through `is_remote_client()` /
     `is_replay_runtime()`. `cargo test -p jcode-tui --lib` is unchanged from the
     baseline (1966 passed, same 27 failed), and `app_fields` fell 310 -> 308.
-  - Stage 2: was `CopySelection` as the template; the cohesion cut above says
-    it is not the most isolable group. First extraction landed as `TodosView`
-    (below); `CopySelection` (9 fields, 103 sites; home `copy_selection.rs`)
-    stays a candidate.
+  - Stage 2: `CopySelection`. **Landed.** Eight `copy_selection_*` fields and
+    their self-contained methods (`exit_mode`, `current_pane`, `normalized`,
+    `current_text`) live in `copy_selection.rs` as `CopySelection`; `App` holds
+    one `copy_selection` field. The drag/anchor methods that also touch
+    `diff_pane_*`, auto-scroll, and status notices stay on `App`. `app_fields`
+    fell 292 to 285, tests unchanged from baseline. `copy_badge_ui` is a
+    separate concept and stayed.
   - Stage 3: `Viewport` (13 fields, 145 sites): scroll, bookmark, redraw flags.
   - Stage 4: `TodosView`. **Landed as the first extraction** (moved up from
     here). Nine `todos_view_*`/`pinned_todos_*`/`todo_card_rendered_hash` fields
