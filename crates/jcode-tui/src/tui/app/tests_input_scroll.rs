@@ -118,7 +118,7 @@ fn test_disconnected_key_handler_restart_runs_locally() {
     remote::handle_disconnected_key(&mut app, KeyCode::Enter, KeyModifiers::empty()).unwrap();
 
     assert!(app.input.is_empty());
-    assert!(app.restart_requested.is_some());
+    assert!(app.maintenance.restart_requested.is_some());
     assert!(app.should_quit);
     assert!(app.queued_messages().is_empty());
 }
@@ -185,7 +185,7 @@ fn test_disconnected_key_handler_runs_reload_locally() {
 
     assert!(app.input.is_empty());
     assert!(app.queued_messages().is_empty());
-    assert!(app.reload_requested.is_some());
+    assert!(app.maintenance.reload_requested.is_some());
     assert!(app.should_quit);
 
     if created {

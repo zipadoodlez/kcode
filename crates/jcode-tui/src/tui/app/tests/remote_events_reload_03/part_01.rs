@@ -345,7 +345,7 @@ fn test_handle_server_event_history_after_reload_reports_no_continuation_needed(
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
-    app.pending_reload_reconnect_status = Some(PendingReloadReconnectStatus::AwaitingHistory {
+    app.maintenance.pending_reload_reconnect_status = Some(PendingReloadReconnectStatus::AwaitingHistory {
         session_id: Some("ses_reload_done".to_string()),
     });
 
@@ -395,7 +395,7 @@ fn test_handle_server_event_history_after_reload_reports_no_continuation_needed(
     );
 
     assert!(app.hidden_queued_system_messages.is_empty());
-    assert!(app.pending_reload_reconnect_status.is_none());
+    assert!(app.maintenance.pending_reload_reconnect_status.is_none());
     assert!(app.display_messages().iter().any(|m| {
         m.role == "system"
             && m.content.contains("no continuation needed")

@@ -38,8 +38,8 @@ impl App {
         if self.display_messages.len() != before {
             self.bump_display_messages_version();
         }
-        self.background_client_action = None;
-        self.pending_background_client_reload = None;
+        self.maintenance.background_client_action = None;
+        self.maintenance.pending_background_client_reload = None;
     }
 
     /// Advance the preview from the regular TUI tick. Delays are intentionally

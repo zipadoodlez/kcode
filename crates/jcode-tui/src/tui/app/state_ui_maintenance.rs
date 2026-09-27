@@ -1,5 +1,24 @@
 use super::*;
 
+/// App-side session maintenance control: the requested re-exec/update actions,
+/// the background client maintenance in flight, the server reload handshake, and
+/// the reload reconnect status. One home, so the maintenance paths read one
+/// struct instead of ten loose fields.
+#[derive(Default)]
+pub(super) struct ReloadState {
+    pub(super) reload_requested: Option<String>,
+    pub(super) rebuild_requested: Option<String>,
+    pub(super) update_requested: Option<String>,
+    pub(super) restart_requested: Option<String>,
+    pub(super) background_client_action: Option<crate::bus::ClientMaintenanceAction>,
+    pub(super) pending_background_client_reload:
+        Option<(String, crate::bus::ClientMaintenanceAction)>,
+    pub(super) pending_server_reload: bool,
+    pub(super) pending_reload_session_id: Option<String>,
+    pub(super) server_auto_reload_attempts: u32,
+    pub(super) pending_reload_reconnect_status: Option<PendingReloadReconnectStatus>,
+}
+
 impl App {
     /// Open the harmless update preview from anywhere in the TUI. Terminals may
     /// report Alt+_ as either Alt+_ or Alt+Shift+_, so accept both forms.
@@ -123,7 +142,7 @@ impl App {
             self.set_status_notice("Update the client and SSH server separately, then reconnect");
             return;
         }
-        if let Some(current) = self.background_client_action {
+        if let Some(current) = self.maintenance.background_client_action {
             let message = Self::client_maintenance_busy_message(current, action);
             self.set_status_notice(&message);
             self.set_client_maintenance_message(
@@ -133,8 +152,8 @@ impl App {
             return;
         }
 
-        self.background_client_action = Some(action);
-        self.pending_background_client_reload = None;
+        self.maintenance.background_client_action = Some(action);
+        self.maintenance.pending_background_client_reload = None;
 
         match action {
             // Self-install/update and self-dev rebuild are gone: the package
@@ -179,18 +198,18 @@ impl App {
                 downloaded,
                 total,
             } => {
-                self.background_client_action = Some(action);
+                self.maintenance.background_client_action = Some(action);
                 let progress = download_progress_bar(downloaded, total);
                 self.set_status_notice(format!("↑ {} · {}", version, progress));
                 self.remove_client_maintenance_message(action);
             }
             UpdateStatus::Installing { version } => {
-                self.background_client_action = Some(action);
+                self.maintenance.background_client_action = Some(action);
                 self.set_status_notice(format!("↑ {} · preparing", version));
                 self.remove_client_maintenance_message(action);
             }
             UpdateStatus::Installed { version } => {
-                self.background_client_action = None;
+                self.maintenance.background_client_action = None;
                 self.set_status_notice(format!("Updated to {}; restarting...", version));
                 self.set_client_maintenance_message(
                     action,
@@ -202,15 +221,15 @@ impl App {
                 );
             }
             UpdateStatus::UpToDate => {
-                if self.background_client_action == Some(action) {
-                    self.background_client_action = None;
+                if self.maintenance.background_client_action == Some(action) {
+                    self.maintenance.background_client_action = None;
                 }
-                self.pending_background_client_reload = None;
+                self.maintenance.pending_background_client_reload = None;
                 self.remove_client_maintenance_message(action);
             }
             UpdateStatus::Error(error) => {
-                self.background_client_action = None;
-                self.pending_background_client_reload = None;
+                self.maintenance.background_client_action = None;
+                self.maintenance.pending_background_client_reload = None;
                 if summary_is_divergence(&error)
                     || summary_is_divergence(error.trim_start_matches("Update failed: "))
                 {
@@ -252,7 +271,8 @@ impl App {
             return false;
         }
 
-        let Some((session_id, action)) = self.pending_background_client_reload.take() else {
+        let Some((session_id, action)) = self.maintenance.pending_background_client_reload.take()
+        else {
             return false;
         };
 
@@ -271,7 +291,7 @@ impl App {
             // from the old client's final interactive state to its first frame.
             crate::env::set_var("JCODE_RELOAD_GAP_STARTED_MS", now.as_millis().to_string());
         }
-        self.reload_requested = Some(session_id);
+        self.maintenance.reload_requested = Some(session_id);
         self.should_quit = true;
         true
     }
@@ -292,7 +312,7 @@ impl App {
                 if session_id != active_session_id {
                     return;
                 }
-                self.background_client_action = Some(action);
+                self.maintenance.background_client_action = Some(action);
                 self.set_status_notice(message.clone());
                 self.set_client_maintenance_message(
                     action,
@@ -310,8 +330,8 @@ impl App {
                 if session_id != active_session_id {
                     return;
                 }
-                self.background_client_action = None;
-                self.pending_background_client_reload = None;
+                self.maintenance.background_client_action = None;
+                self.maintenance.pending_background_client_reload = None;
                 let message = format!("Already up to date ({})", current);
                 self.set_status_notice(&message);
                 self.set_client_maintenance_message(
@@ -331,7 +351,7 @@ impl App {
                 if session_id != active_session_id {
                     return;
                 }
-                self.background_client_action = None;
+                self.maintenance.background_client_action = None;
                 let ready_message = match action {
                     ClientMaintenanceAction::Update => format!("✅ Updated to {}.", version),
                     ClientMaintenanceAction::Rebuild => {
@@ -339,7 +359,7 @@ impl App {
                     }
                 };
                 if self.is_processing {
-                    self.pending_background_client_reload = Some((session_id, action));
+                    self.maintenance.pending_background_client_reload = Some((session_id, action));
                     self.set_status_notice(format!(
                         "{} ready - will reload after the current turn",
                         action.title()
@@ -359,7 +379,7 @@ impl App {
                     action,
                     Self::client_maintenance_card_message(action, ready_message, "Reloading now."),
                 );
-                self.pending_background_client_reload = Some((session_id, action));
+                self.maintenance.pending_background_client_reload = Some((session_id, action));
                 if !self.maybe_finish_background_client_reload() {
                     self.set_status_notice(format!("↑ {} ready · reloads when idle", version));
                     self.remove_client_maintenance_message(action);
@@ -373,8 +393,8 @@ impl App {
                 if session_id != active_session_id {
                     return;
                 }
-                self.background_client_action = None;
-                self.pending_background_client_reload = None;
+                self.maintenance.background_client_action = None;
+                self.maintenance.pending_background_client_reload = None;
                 if summary_is_divergence(&message)
                     || summary_is_divergence(message.trim_start_matches("Update failed: "))
                 {

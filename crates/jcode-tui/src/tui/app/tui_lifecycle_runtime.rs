@@ -137,7 +137,7 @@ impl App {
     ///
     /// Prefers the live `remote_session_id`, then the id captured from a
     /// History payload that was deferred for a version mismatch
-    /// (`pending_reload_session_id`), then the resume target the client was
+    /// (`maintenance.pending_reload_session_id`), then the resume target the client was
     /// launched with. Only when none of those is known do we fabricate a fresh
     /// `ses_*` id. Fabricating eagerly is what caused issue #328: the re-exec
     /// would `kcode --resume <bogus-id>` and crash with "No session found
@@ -146,7 +146,7 @@ impl App {
     pub(super) fn reload_handoff_session_id(&self) -> String {
         self.remote_session_id
             .clone()
-            .or_else(|| self.pending_reload_session_id.clone())
+            .or_else(|| self.maintenance.pending_reload_session_id.clone())
             .or_else(|| self.resume_session_id.clone())
             .unwrap_or_else(|| {
                 let fabricated = crate::id::new_id("ses");
@@ -220,7 +220,7 @@ impl App {
             "Server reloaded onto a newer build; reloading client binary to match...",
         );
         self.save_input_for_reload(&session_id);
-        self.reload_requested = Some(session_id);
+        self.maintenance.reload_requested = Some(session_id);
         self.should_quit = true;
         true
     }
@@ -657,7 +657,7 @@ pub(super) fn handle_dev_command(app: &mut App, trimmed: &str) -> bool {
             .set_status(crate::session::SessionStatus::Reloaded);
         let _ = app.session.save();
         app.save_input_for_reload(&app.session.id.clone());
-        app.reload_requested = Some(app.session.id.clone());
+        app.maintenance.reload_requested = Some(app.session.id.clone());
         app.should_quit = true;
         return true;
     }
@@ -676,7 +676,7 @@ pub(super) fn handle_dev_command(app: &mut App, trimmed: &str) -> bool {
             .set_status(crate::session::SessionStatus::Reloaded);
         let _ = app.session.save();
         app.save_input_for_reload(&app.session.id.clone());
-        app.restart_requested = Some(app.session.id.clone());
+        app.maintenance.restart_requested = Some(app.session.id.clone());
         app.should_quit = true;
         return true;
     }

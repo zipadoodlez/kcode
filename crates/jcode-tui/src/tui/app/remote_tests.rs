@@ -712,12 +712,12 @@ fn process_remote_followups_auto_reloads_server_by_default() {
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
     remote.mark_history_loaded();
 
-    app.pending_server_reload = true;
+    app.maintenance.pending_server_reload = true;
     app.auto_server_reload = true;
 
     rt.block_on(process_remote_followups(&mut app, &mut remote));
 
-    assert!(!app.pending_server_reload);
+    assert!(!app.maintenance.pending_server_reload);
     let last = app
         .display_messages()
         .last()
@@ -729,7 +729,7 @@ fn process_remote_followups_auto_reloads_server_by_default() {
 #[test]
 fn process_remote_followups_reloads_server_even_before_history_loads() {
     // Regression guard: when the server/client binaries differ, the History
-    // handler defers session state and sets `pending_server_reload = true`
+    // handler defers session state and sets `maintenance.pending_server_reload = true`
     // WITHOUT marking history as loaded. The reload must still fire; otherwise
     // history stays unloaded forever and every typed prompt stalls on
     // "Loading session..." until the user restarts.
@@ -740,13 +740,13 @@ fn process_remote_followups_reloads_server_even_before_history_loads() {
     // Intentionally do NOT mark history loaded, mirroring the deferred path.
     assert!(!remote.has_loaded_history());
 
-    app.pending_server_reload = true;
+    app.maintenance.pending_server_reload = true;
     app.auto_server_reload = true;
 
     rt.block_on(process_remote_followups(&mut app, &mut remote));
 
     assert!(
-        !app.pending_server_reload,
+        !app.maintenance.pending_server_reload,
         "pending server reload should be consumed even while history is unloaded"
     );
     let last = app
@@ -765,12 +765,12 @@ fn process_remote_followups_respects_disabled_auto_server_reload() {
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
     remote.mark_history_loaded();
 
-    app.pending_server_reload = true;
+    app.maintenance.pending_server_reload = true;
     app.auto_server_reload = false;
 
     rt.block_on(process_remote_followups(&mut app, &mut remote));
 
-    assert!(!app.pending_server_reload);
+    assert!(!app.maintenance.pending_server_reload);
     let last = app.display_messages().last().expect("missing info message");
     assert_eq!(last.role, "system");
     assert!(last.content.contains("display.auto_server_reload = false"));
@@ -791,9 +791,9 @@ fn process_remote_followups_pauses_auto_reload_after_repeated_attempts() {
     for _ in 0..10 {
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
         remote.mark_history_loaded();
-        app.pending_server_reload = true;
+        app.maintenance.pending_server_reload = true;
         rt.block_on(process_remote_followups(&mut app, &mut remote));
-        assert!(!app.pending_server_reload);
+        assert!(!app.maintenance.pending_server_reload);
         if let Some(last) = app.display_messages().last()
             && last.content.contains("auto-reload paused")
         {

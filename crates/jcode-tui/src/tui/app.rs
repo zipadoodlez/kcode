@@ -900,8 +900,6 @@ pub struct App {
     // while the client was idle. Drives the starvation watchdog that recovers a
     // stranded auto-poke continuation instead of spinning forever.
     queued_followup_starved_since: Option<Instant>,
-    // Reload reconnect is waiting for server history before deciding whether to continue.
-    pending_reload_reconnect_status: Option<PendingReloadReconnectStatus>,
     // Current status
     status: ProcessingStatus,
     // Subagent status (shown during Task tool execution)
@@ -1038,18 +1036,9 @@ pub struct App {
     // submitted, keeping `current` mode ephemeral across turns without ever
     // moving a trace while it is visible.
     turn_reasoning_traces: Vec<TurnReasoningTrace>,
-    // Hot-reload: if set, exec into new binary with this session ID (no rebuild)
-    reload_requested: Option<String>,
-    // Hot-rebuild: if set, do full git pull + cargo build + tests then exec
-    rebuild_requested: Option<String>,
-    // Update: if set, check for and download update from GitHub releases then exec
-    update_requested: Option<String>,
-    // Interactive background client maintenance action currently running
-    background_client_action: Option<crate::bus::ClientMaintenanceAction>,
-    // Reload the updated/rebuilt client once the current turn is idle
-    pending_background_client_reload: Option<(String, crate::bus::ClientMaintenanceAction)>,
-    // Restart: if set, exec into current binary with this session ID (no build)
-    restart_requested: Option<String>,
+    // Session maintenance control: requested re-exec/update actions, background
+    // client maintenance, the server reload handshake, and reconnect status.
+    maintenance: state_ui_maintenance::ReloadState,
     // Pasted content storage (displayed as placeholders, expanded on submit)
     pasted_contents: Vec<String>,
     // Pending pasted images (media_type, base64_data) attached to next message
@@ -1164,21 +1153,6 @@ pub struct App {
     remote_server_version: Option<String>,
     // Whether the remote server has a newer binary available
     remote_server_has_update: Option<bool>,
-    // Auto-reload server when stale (set on first connect if server_has_update)
-    pending_server_reload: bool,
-    // Real session id captured from a History event whose payload we deferred
-    // because of a server/runtime version mismatch. The deferral returns before
-    // `remote_session_id` is assigned, so without stashing the id here the
-    // subsequent client reload handoff has no session to resume and would
-    // fabricate a bogus `ses_<ts>_<rand>` id, producing
-    // "No session found matching ..." on the next launch (issue #328).
-    pending_reload_session_id: Option<String>,
-    // Defense-in-depth circuit breaker for issue #277: count how many times this
-    // client has auto-reloaded the server. A healthy reload happens at most once
-    // (afterwards the server is up to date), so repeated auto-reloads indicate a
-    // false-positive "update available" loop. Past a small threshold we stop
-    // auto-reloading and surface a message instead of flickering forever.
-    server_auto_reload_attempts: u32,
     // Remote server short name (e.g., "running", "blazing")
     remote_server_short_name: Option<String>,
     // Remote server icon (e.g., "🔥", "🌫️")

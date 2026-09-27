@@ -1199,7 +1199,7 @@ fn stale_server_history_is_deferred_before_remote_state_is_applied() {
     );
 
     assert!(!redraw);
-    assert!(app.pending_server_reload);
+    assert!(app.maintenance.pending_server_reload);
     assert_eq!(app.remote_server_has_update, Some(true));
     assert_eq!(app.remote_server_version.as_deref(), Some("v0.0.1-stale"));
     assert_eq!(app.remote_session_id.as_deref(), Some("session_existing"));
@@ -1242,7 +1242,7 @@ fn deferred_stale_server_history_captures_session_id_for_reload_handoff() {
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     // Fresh client: no session id learned yet (the #328 reproduction).
     app.remote_session_id = None;
-    assert!(app.pending_reload_session_id.is_none());
+    assert!(app.maintenance.pending_reload_session_id.is_none());
 
     let redraw = app.handle_server_event(
         crate::protocol::ServerEvent::History {
@@ -1294,10 +1294,10 @@ fn deferred_stale_server_history_captures_session_id_for_reload_handoff() {
     // History is deferred (no redraw, reload pending, remote_session_id still
     // unset) but the real session id is captured for the reload handoff.
     assert!(!redraw);
-    assert!(app.pending_server_reload);
+    assert!(app.maintenance.pending_server_reload);
     assert_eq!(app.remote_session_id.as_deref(), None);
     assert_eq!(
-        app.pending_reload_session_id.as_deref(),
+        app.maintenance.pending_reload_session_id.as_deref(),
         Some("session_real_server_owned")
     );
 
@@ -1377,7 +1377,7 @@ fn ancient_server_history_is_deferred_via_client_side_release_check() {
     crate::env::remove_var("JCODE_TEST_CLIENT_VERSION_OVERRIDE");
 
     assert!(!redraw);
-    assert!(app.pending_server_reload);
+    assert!(app.maintenance.pending_server_reload);
     // Remote session state must NOT have been applied from the ancient server.
     assert_eq!(app.remote_session_id.as_deref(), Some("session_existing"));
     assert_eq!(remote.session_id(), None);
@@ -1460,7 +1460,7 @@ fn older_server_reporting_no_update_is_still_deferred_via_client_check() {
 
     assert!(!redraw);
     assert!(
-        app.pending_server_reload,
+        app.maintenance.pending_server_reload,
         "client-proven-older server must defer + reload even when it reports Some(false)"
     );
     assert_eq!(app.remote_server_has_update, Some(false));
@@ -1537,7 +1537,7 @@ fn current_release_server_history_is_not_deferred_by_client_check() {
     // client-side staleness check. (The History arm always returns false for
     // redraw; the meaningful signal is that state was actually applied.)
     let _ = redraw;
-    assert!(!app.pending_server_reload);
+    assert!(!app.maintenance.pending_server_reload);
     assert_eq!(app.remote_session_id.as_deref(), Some("session_current"));
 }
 

@@ -136,6 +136,10 @@ Staged, each lands whole.
   - `HotkeyFeedback`. **Landed.** The inline note slot, the persisted per-action
     usage counters, and the unknown-chord tracking move into
     `hotkey_feedback.rs` as `HotkeyFeedbackState`; `app_fields` fell 271 to 268.
+  - `ReloadState`. **Landed.** Ten session-maintenance fields (the requested
+    reload/rebuild/update/restart actions, background client maintenance, the
+    server reload handshake, and the reload reconnect status) move into
+    `state_ui_maintenance.rs` as `ReloadState`; `app_fields` fell 268 to 259.
   - Stage 4: `TodosView`. **Landed as the first extraction** (moved up from
     here). Nine `todos_view_*`/`pinned_todos_*`/`todo_card_rendered_hash` fields
     plus their sub-struct-only methods live in `todos_view.rs` as

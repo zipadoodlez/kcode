@@ -137,7 +137,7 @@ fn ssh_remote_reconnect_waits_for_authoritative_history_without_local_reload() {
             .await
             .unwrap();
             assert!(!app.should_quit);
-            assert!(app.reload_requested.is_none());
+            assert!(app.maintenance.reload_requested.is_none());
             assert!(!remote.has_loaded_history());
             assert_eq!(
                 app.remote_startup_phase,
@@ -194,7 +194,7 @@ fn ssh_remote_history_is_authoritative_even_when_empty_or_server_version_differs
         };
         app.handle_server_event(event, &mut remote);
         assert!(remote.has_loaded_history());
-        assert!(!app.pending_server_reload);
+        assert!(!app.maintenance.pending_server_reload);
         assert!(app.display_messages().is_empty());
         assert!(app.streaming.streaming_text.is_empty());
         assert_eq!(app.remote_provider_model.as_deref(), Some("remote-model"));

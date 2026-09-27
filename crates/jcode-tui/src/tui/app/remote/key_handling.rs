@@ -1026,7 +1026,7 @@ async fn handle_remote_key_internal(
                         ));
                         let session_id = app.reload_handoff_session_id();
                         app.save_input_for_reload(&session_id);
-                        app.reload_requested = Some(session_id);
+                        app.maintenance.reload_requested = Some(session_id);
                         app.should_quit = true;
                     }
                     return Ok(());
@@ -1038,7 +1038,7 @@ async fn handle_remote_key_internal(
                     ));
                     let session_id = app.reload_handoff_session_id();
                     app.save_input_for_reload(&session_id);
-                    app.reload_requested = Some(session_id);
+                    app.maintenance.reload_requested = Some(session_id);
                     app.should_quit = true;
                     return Ok(());
                 }

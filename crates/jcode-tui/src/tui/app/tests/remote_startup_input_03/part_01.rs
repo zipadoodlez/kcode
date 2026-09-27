@@ -609,7 +609,7 @@ fn test_background_update_ready_reloads_immediately_when_idle() {
         version: "v1.2.3".to_string(),
     });
 
-    assert_eq!(app.reload_requested.as_deref(), Some(session_id.as_str()));
+    assert_eq!(app.maintenance.reload_requested.as_deref(), Some(session_id.as_str()));
     assert!(app.should_quit);
 }
 
@@ -625,9 +625,9 @@ fn test_background_update_ready_waits_for_turn_to_finish() {
         version: "v1.2.3".to_string(),
     });
 
-    assert!(app.reload_requested.is_none());
+    assert!(app.maintenance.reload_requested.is_none());
     assert_eq!(
-        app.pending_background_client_reload
+        app.maintenance.pending_background_client_reload
             .as_ref()
             .map(|(id, action)| (id.as_str(), *action)),
         Some((session_id.as_str(), ClientMaintenanceAction::Update))
@@ -637,7 +637,7 @@ fn test_background_update_ready_waits_for_turn_to_finish() {
     app.is_processing = false;
     crate::tui::app::local::handle_tick(&mut app);
 
-    assert_eq!(app.reload_requested.as_deref(), Some(session_id.as_str()));
+    assert_eq!(app.maintenance.reload_requested.as_deref(), Some(session_id.as_str()));
     assert!(app.should_quit);
 }
 
@@ -653,7 +653,7 @@ fn test_background_update_ready_waits_for_typing_to_go_idle() {
         version: "v1.2.3".to_string(),
     });
 
-    assert!(app.reload_requested.is_none());
+    assert!(app.maintenance.reload_requested.is_none());
     assert!(!app.should_quit);
     assert_eq!(
         app.status_notice(),
@@ -662,7 +662,7 @@ fn test_background_update_ready_waits_for_typing_to_go_idle() {
 
     app.last_user_interaction = Some(Instant::now() - Duration::from_secs(2));
     crate::tui::app::local::handle_tick(&mut app);
-    assert_eq!(app.reload_requested.as_deref(), Some(session_id.as_str()));
+    assert_eq!(app.maintenance.reload_requested.as_deref(), Some(session_id.as_str()));
     assert!(app.should_quit);
 }
 
@@ -796,8 +796,8 @@ fn test_startup_update_up_to_date_removes_transient_card() {
             .all(|message| message.title.as_deref() != Some("Update")),
         "no-update startup checks should not leave a persistent update card"
     );
-    assert!(app.background_client_action.is_none());
-    assert!(app.pending_background_client_reload.is_none());
+    assert!(app.maintenance.background_client_action.is_none());
+    assert!(app.maintenance.pending_background_client_reload.is_none());
 }
 
 #[test]
@@ -844,7 +844,7 @@ fn test_startup_update_diverged_offers_merge_without_failure_card() {
         message.content
     );
     assert!(app.pending_merge_offer.is_some());
-    assert!(app.background_client_action.is_none());
+    assert!(app.maintenance.background_client_action.is_none());
 }
 
 #[test]
@@ -894,8 +894,8 @@ fn test_startup_update_error_replaces_checking_card() {
         !notice.contains('\n'),
         "notice should be one line: {notice}"
     );
-    assert!(app.background_client_action.is_none());
-    assert!(app.pending_background_client_reload.is_none());
+    assert!(app.maintenance.background_client_action.is_none());
+    assert!(app.maintenance.pending_background_client_reload.is_none());
 }
 
 #[test]

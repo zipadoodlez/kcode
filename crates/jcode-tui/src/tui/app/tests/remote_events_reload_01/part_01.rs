@@ -645,7 +645,7 @@ fn test_handle_post_connect_requests_client_reload_after_server_reload_even_with
 
     assert!(matches!(outcome, super::remote::PostConnectOutcome::Quit));
     assert_eq!(
-        app.reload_requested.as_deref(),
+        app.maintenance.reload_requested.as_deref(),
         Some("session_reload_after_reconnect")
     );
     assert!(app.should_quit);

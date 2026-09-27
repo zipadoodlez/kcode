@@ -1498,7 +1498,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.remote_server_short_name = server_name.clone();
                 app.remote_server_icon = server_icon.clone();
                 app.remote_server_has_update = server_has_update;
-                app.pending_server_reload = true;
+                app.maintenance.pending_server_reload = true;
                 // Remember the session the server told us about *before* bailing
                 // out. We deliberately return below without assigning
                 // `app.remote_session_id` (history stays deferred until after the
@@ -1508,7 +1508,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 // ever resolve, leaving the user at a "No session found matching
                 // ..." shell prompt after an auto-update (issue #328).
                 if !session_id.is_empty() {
-                    app.pending_reload_session_id = Some(session_id.clone());
+                    app.maintenance.pending_reload_session_id = Some(session_id.clone());
                 }
                 app.clear_remote_startup_phase();
                 // Version-mismatch handling: the package manager owns the
@@ -1687,9 +1687,9 @@ pub(in crate::tui::app) fn handle_server_event(
 
             if !crate::tui::is_ssh_remote()
                 && server_has_update == Some(true)
-                && !app.pending_server_reload
+                && !app.maintenance.pending_server_reload
             {
-                app.pending_server_reload = true;
+                app.maintenance.pending_server_reload = true;
                 app.set_status_notice("Server update available");
             }
             app.remote_server_short_name = server_name;
@@ -1887,18 +1887,18 @@ pub(in crate::tui::app) fn handle_server_event(
 
             app.maybe_show_catchup_after_history(&session_id);
 
-            let should_consume_pending_reload_status = match app
-                .pending_reload_reconnect_status
-                .as_ref()
-            {
-                Some(PendingReloadReconnectStatus::AwaitingHistory {
-                    session_id: Some(expected),
-                }) => expected == &session_id,
-                Some(PendingReloadReconnectStatus::AwaitingHistory { session_id: None }) => true,
-                _ => false,
-            };
+            let should_consume_pending_reload_status =
+                match app.maintenance.pending_reload_reconnect_status.as_ref() {
+                    Some(PendingReloadReconnectStatus::AwaitingHistory {
+                        session_id: Some(expected),
+                    }) => expected == &session_id,
+                    Some(PendingReloadReconnectStatus::AwaitingHistory { session_id: None }) => {
+                        true
+                    }
+                    _ => false,
+                };
             let pending_reload_reconnect_status = if should_consume_pending_reload_status {
-                app.pending_reload_reconnect_status.take()
+                app.maintenance.pending_reload_reconnect_status.take()
             } else {
                 None
             };
