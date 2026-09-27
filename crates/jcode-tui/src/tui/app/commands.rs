@@ -2975,7 +2975,7 @@ pub(super) fn handle_agents_command(app: &mut App, trimmed: &str) -> bool {
 
     let Some(target) = parse_agents_target(rest) else {
         app.push_display_message(DisplayMessage::error(
-            "Usage: /agents or /agents <swarm|review|judge|memory|ambient>".to_string(),
+            "Usage: /agents or /agents <swarm|review|judge>".to_string(),
         ));
         return true;
     };

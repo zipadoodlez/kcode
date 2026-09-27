@@ -38,7 +38,7 @@ impl App {
                 "/refresh-model-list\nForce-refresh provider model catalogs, update /model, and persist the refreshed cache."
             }
             "agents" => {
-                "/agents\nOpen the agent-model config picker.\n\n/agents <swarm|review|judge|memory|ambient>\nJump straight to that agent role's saved model override."
+                "/agents\nOpen the agent-model config picker.\n\n/agents <swarm|review|judge>\nJump straight to that agent role's saved model override."
             }
             "swarm-prompt" => {
                 "/swarm-prompt\nOpen the active swarm routing prompt in $VISUAL or $EDITOR.\n\nJcode uses a nonblank project override at ./.jcode/swarm-prompt.md when present, then ~/.kcode/swarm-prompt.md, then the built-in default. If no editable override exists, this command creates the global file from the built-in default. Restart or reload Jcode after editing because running agent tool registries cache the prompt."

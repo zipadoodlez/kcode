@@ -1435,7 +1435,6 @@ pub struct App {
     debug_trace: DebugTrace,
     // Incremental markdown renderer for streaming text (uses RefCell for interior mutability)
     streaming_md_renderer: RefCell<IncrementalMarkdownRenderer>,
-    /// Ambient mode system prompt override (when running as visible ambient cycle)
     /// Pending login flow: if set, next input is intercepted as OAuth code or API key
     pending_login: Option<PendingLogin>,
     remote_login: Option<auth_remote::RemoteLogin>,

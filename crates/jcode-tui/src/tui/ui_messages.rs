@@ -2299,20 +2299,15 @@ fn parse_scheduled_tool_message(msg: &DisplayMessage) -> Option<ParsedScheduledT
     let mut lines = normalized.lines().map(str::trim);
     let first_line = lines.next()?.trim();
 
-    let (when, id) = if let Some(rest) = first_line.strip_prefix("Scheduled task '") {
-        let (_task_in_line, when_part) = rest.split_once("' for ")?;
-        if let Some((when, id_part)) = when_part.rsplit_once(" (id: ") {
-            (
-                when.trim().to_string(),
-                id_part.strip_suffix(')').map(str::trim).map(str::to_string),
-            )
-        } else {
-            (when_part.trim().to_string(), None)
-        }
+    let rest = first_line.strip_prefix("Scheduled task '")?;
+    let (_task_in_line, when_part) = rest.split_once("' for ")?;
+    let (when, id) = if let Some((when, id_part)) = when_part.rsplit_once(" (id: ") {
+        (
+            when.trim().to_string(),
+            id_part.strip_suffix(')').map(str::trim).map(str::to_string),
+        )
     } else {
-        let rest = first_line.strip_prefix("Scheduled ambient task ")?;
-        let (id, when) = rest.split_once(" for ")?;
-        (when.trim().to_string(), Some(id.trim().to_string()))
+        (when_part.trim().to_string(), None)
     };
 
     let mut working_dir = None;

@@ -239,7 +239,7 @@ pub struct Agent {
     /// MCP tools to wait for), this is set so the per-turn registry scan stops.
     /// Reset whenever the tool list is intentionally unlocked.
     mcp_late_register_resolved: bool,
-    /// Override system prompt (used by ambient mode to inject a custom prompt)
+    /// Override for the built-in system prompt, when set.
     system_prompt_override: Option<String>,
     /// AGENTS.md is session bootstrap input. Keep the captured text stable so
     /// tool writes do not mutate the provider's cacheable prefix mid-session.

@@ -337,7 +337,7 @@ impl Agent {
     }
 
     /// Mark this session as a debug/test session
-    /// Set a custom system prompt override (used by ambient mode).
+    /// Set a custom system prompt override.
     /// When set, this replaces the normal system prompt entirely.
     pub fn set_system_prompt(&mut self, prompt: &str) {
         self.system_prompt_override = Some(prompt.to_string());

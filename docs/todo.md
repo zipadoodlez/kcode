@@ -252,11 +252,6 @@ tree first would just move that churn around.
   `JCODE_*` fallback, or document as-is. Waits on the fork-policy decision.
 - [ ] Unknown config sections are silently ignored, so older configs keep dead
   keys with no warning.
-- [ ] Ambient-mode vocabulary outlived the ambient cut in user-facing places:
-  `info_widget_tips.rs:20-21` advertises background cycles and emailed
-  summaries, `input_help.rs:41` and `state_ui_input_helpers.rs:538` offer
-  `/agents ambient`, plus stale comments in `agent.rs`, `turn_execution.rs`,
-  `app.rs`. Check whether `/agents ambient` still routes before deleting it.
 - [ ] Self-dev tooling names the wrong package. `selfdev build` and
   `build-reload` run `-p jcode --bin jcode`, but this fork's package is `kcode`
   (root `[lib] name = "jcode"`, `[[bin]] name = "kcode"`), so the build fails
