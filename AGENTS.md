@@ -15,6 +15,9 @@
   the user asks you to review or integrate a PR or branch, you may inspect, test,
   and integrate that contribution regardless of author status. Do not pull in
   unrelated branches or merge a PR without user authorization.
+- **Run the local gate before committing** - this fork has no CI.
+  `scripts/check_guardrails.sh` (format, compile, clippy, lock, guardrail checks)
+  must pass. See `docs/dev/post-change.md`.
 
 ## Install Notes
 - kcode does not install, update, or repoint itself. The OS package manager owns

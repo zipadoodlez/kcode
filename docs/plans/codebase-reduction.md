@@ -72,8 +72,11 @@ Ships alone trivially.
   has 5 dependents, and `jcode-base` depends on `jcode-provider-copilot`. None
   is safe to remove. Provider cleanup moves to tier 5 (unify the
   representation, keep every provider).
-- **Repo hygiene** already listed in `wip.md`: upstream CI workflows, dead
-  config, `scripts/`, budget baselines, missing `packaging/arch/PKGBUILD`.
+- **Repo hygiene.** CI landed 2026-09-27: the seven inherited workflows and their
+  jcode-only support files were deleted and replaced by `scripts/check.sh` plus
+  `docs/dev/post-change.md`; `.gitignore` needed nothing. Still open in `wip.md`:
+  the `scripts/` classification, the budget re-baseline, and the missing
+  `packaging/arch/PKGBUILD`.
 - **Dead TUI files.** No verified dead-file set exists yet. The inherited
   claim in the first draft ("the three one-helper `ui_pinned_*` files, and any
   module with no `#[path]`/`mod` declaration") did not survive reading: all four

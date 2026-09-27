@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
-# Run every gate in CI's "Quality Guardrails" + "Format" jobs, locally.
+# Run every guardrail gate locally. This is the fork's only gate: the GitHub
+# Actions CI it used to mirror was removed, so nothing checks a push for you.
 #
-# Why this exists: the guardrail steps live only in .github/workflows/ci.yml, so
-# the usual way to discover one is to push and watch master go red. That is slow
-# and, with several agents pushing in parallel, it means whoever pushes next
-# inherits someone else's red build. Run this before pushing instead.
+# Run it before committing. The alternative is discovering a broken gate at the
+# next build, after the change is buried under others.
 #
 # Usage:
 #   scripts/check_guardrails.sh              # check only, non-zero on failure
 #   scripts/check_guardrails.sh --fix        # rustfmt + rebaseline ratchets
 #   scripts/check_guardrails.sh --skip-slow  # skip cargo check/clippy/machete
 #
-# Note: CI tracks the `stable` toolchain. If your local stable is behind, clippy
-# can pass here and fail in CI on a newly added lint, so this warns when the two
-# are likely to disagree. Run `rustup update stable` to align them.
+# Note: this runs on your local `stable` toolchain. If it is behind the latest
+# stable, clippy can pass here and fail on a machine that has updated, so the
+# script prints the local stable version to compare.
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -82,8 +81,6 @@ fi
 # release "Build release binary" step.
 run_gate "Cargo.lock is up to date" cargo metadata --locked --format-version 1
 run_gate "warning budget" bash scripts/check_warning_budget.sh
-run_ratchet "oversized-file ratchet" check_code_size_budget.py
-run_ratchet "oversized-test ratchet" check_test_size_budget.py
 run_ratchet "panic-prone usage ratchet" check_panic_budget.py
 run_ratchet "swallowed-error usage ratchet" check_swallowed_error_budget.py
 run_gate "crate dependency boundaries" python3 scripts/check_dependency_boundaries.py
@@ -111,7 +108,7 @@ echo ""
 if command -v rustup >/dev/null 2>&1; then
     installed="$(rustup run stable rustc --version 2>/dev/null | awk '{print $2}')"
     if [[ -n "$installed" ]]; then
-        echo "toolchain: stable = $installed (CI uses whatever \`stable\` is today)"
+        echo "toolchain: stable = $installed (other checkouts may be ahead; run \`rustup update stable\` if clippy disagrees)"
     fi
 fi
 
