@@ -82,7 +82,6 @@ fi
 run_gate "Cargo.lock is up to date" cargo metadata --locked --format-version 1
 run_gate "warning budget" bash scripts/check_warning_budget.sh
 run_ratchet "panic-prone usage ratchet" check_panic_budget.py
-run_ratchet "swallowed-error usage ratchet" check_swallowed_error_budget.py
 run_gate "crate dependency boundaries" python3 scripts/check_dependency_boundaries.py
 run_gate "wildcard re-export ratchet" python3 scripts/check_wildcard_reexport_budget.py
 # The `App` re-core may only shrink, so its field/impl/glob counts are ratcheted

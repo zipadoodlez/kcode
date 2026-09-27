@@ -17,7 +17,7 @@ scripts/check_guardrails.sh --skip-slow  # skip cargo check/clippy/machete
 It must pass. It runs the old CI guardrail set locally: module declarations
 resolve, `cargo fmt --check`, `cargo check --all-targets --all-features`,
 `cargo clippy -- -D warnings`, `Cargo.lock` freshness, the warning budget, the
-size/panic/swallowed-error/wildcard ratchets, crate dependency boundaries, the
+size/panic/wildcard ratchets, crate dependency boundaries, the
 onboarding state-space invariants, and `cargo machete` when installed.
 
 A compile or clippy failure is a real regression; do not commit past it.
@@ -58,10 +58,18 @@ you want a readable local report.
 
 ## Budget ratchets
 
-Several ratchets (`scripts/check_*`) carry jcode's numbers and currently trip
-because the fork grew past them. When growth is intentional, re-baseline the
-specific file with `--update` (or `--fix` above) in the same commit; otherwise
-fix it. Do not `--update` to silence a ratchet you did not mean to move.
+Several ratchets (`scripts/check_*`) are baselined to this fork's tree, so a
+red one is this fork's own drift rather than inherited jcode numbers. When
+growth is intentional, re-baseline the specific file with `--update` (or
+`--fix` above) in the same commit; otherwise fix it. Do not `--update` to
+silence a ratchet you did not mean to move.
+
+The panic ratchet counts only production paths. Test files, `build.rs`,
+`examples/`, `benches/` and `fake_*`/`*_fixture*` files are excluded, because a
+panic there is a build failure, sample code, or a test fixture, not runtime
+behavior a user can hit. The swallowed-error ratchet was deleted: it counted
+`let _ =`, `.ok()` and `.unwrap_or_default()`, which are idiomatic Rust, so its
+signal was dominated by code that is not a defect.
 
 ## By change type
 

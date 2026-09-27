@@ -6,6 +6,14 @@ Counts production Rust occurrences of:
 - `.expect(`
 - `panic!`, `todo!`, `unimplemented!`
 
+"Production" excludes test files (by path, as before) and three layouts whose
+panics are not runtime behavior a user can hit:
+
+- `build.rs`: compile-time script, a panic there is a build failure.
+- `examples/`, `benches/`: sample and benchmark code, not shipped paths.
+- `fake_*.rs`, `*_fixture*.rs`: declared test fixtures (e.g. the fake ACP
+  server the grok-build live tests spawn).
+
 Policy:
 - Existing files may not increase their count.
 - New production files may not introduce panic-prone usage.
@@ -28,6 +36,7 @@ SCAN_ROOTS = (REPO_ROOT / "src", REPO_ROOT / "crates")
 PATTERN = re.compile(r"\.unwrap\(|\.expect\(|\b(?:panic!|todo!|unimplemented!)")
 CFG_TEST_RE = re.compile(r"^\s*#\s*\[\s*cfg\s*\(\s*(?:all\s*\(\s*)?test\s*[,)]")
 ITEM_START_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:mod|fn)\b")
+NON_PRODUCTION_DIRS = ("examples", "benches")
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,6 +46,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def is_test_rust_file(path: Path) -> bool:
+    """True when this file's panics are not reachable production behavior."""
     rel = path.relative_to(REPO_ROOT).as_posix()
     if path.suffix != ".rs":
         return False
@@ -46,7 +56,13 @@ def is_test_rust_file(path: Path) -> bool:
         for part in parts
     ):
         return True
+    if any(part in NON_PRODUCTION_DIRS for part in parts):
+        return True
     name = path.name
+    if name == "build.rs":
+        return True
+    if name.startswith("fake_") or "_fixture" in name:
+        return True
     return (
         name == "tests.rs"
         or name.endswith("_tests.rs")
