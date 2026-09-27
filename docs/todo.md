@@ -74,10 +74,10 @@ Staged, each lands whole.
   Evidence: `struct App` spans `app.rs:821-1547`, 310 fields (measured by
   `scripts/check_app_shape.py`), 57 `impl App` blocks across 53 files, 124
   `use super::*` globs, ~3,092 direct `self.<field>` sites. `app.rs` is 2,471
-  lines, already over the size ratchet. The runtime axis is encoded three times
-  (`runtime_mode`, `is_remote`, `is_replay`, plus two accessors that re-derive
-  it). `create_test_app()` is the graph's #1 hub (771 edges), so every shape
-  change ripples through test construction first.
+  lines, already over the size ratchet. The runtime axis is now a single
+  representation (`runtime_mode`, Stage 1). `create_test_app()` is the graph's
+  #1 hub (771 edges), so every shape change ripples through test construction
+  first.
 
   Target: `App` becomes a coordinator holding named sub-structs, and each
   sub-struct owns the methods that touch only it. The pattern is already in tree
@@ -88,21 +88,31 @@ Staged, each lands whole.
 
   Order is isolation first, coupling last; each stage lands whole.
 
-  - Stage 0: ratchet landed. `scripts/check_app_shape.py` (with
+  - Stage 0: **Landed.** `scripts/check_app_shape.py` (with
     `scripts/app_shape_budget.json`) measures `app_fields`, `impl_app_blocks`,
     and `super_glob_imports` and refuses growth; wired into
-    `scripts/check_guardrails.sh`. Baseline: `app_fields=310`,
+    `scripts/check_guardrails.sh`. Baseline after Stage 1: `app_fields=308`,
     `impl_app_blocks=57`, `super_glob_imports=124`. `cargo test -p jcode-tui`
-    baseline recorded in `dev/testing.md`. Remaining: measure per-group method
-    cohesion (which `impl App` methods touch one group only), which sets the
-    stage order below.
+    baseline in `dev/testing.md`.
+
+  Cohesion (first cut, 2026-09-27): direct `self.<field>` reads per `impl App`
+  method, fields assigned to a group by name (approximate; no transitive calls,
+  and a "pure" method may still call a coupled one). Methods touching fields of
+  exactly one group and no other group's fields: panels 20/43, input 22/67,
+  viewport 12/35, copy_selection 6/18, todos_view 4/14. No group is cleanly
+  isolated. `copy_selection`, the stage-2 template, scores low: its methods also
+  touch `diff_pane_*`, chat/diff auto-scroll, and status notices, so it cannot
+  be lifted without those. `panels` leads this cut. The order below is
+  provisional; re-measure the candidate before each extraction.
   - Stage 1: one runtime axis. **Landed.** `is_remote` and `is_replay` are gone;
     `runtime_mode` is the single representation, written only through
     `App::set_runtime_mode` and read through `is_remote_client()` /
     `is_replay_runtime()`. `cargo test -p jcode-tui --lib` is unchanged from the
     baseline (1966 passed, same 27 failed), and `app_fields` fell 310 -> 308.
-  - Stage 2: `CopySelection` (9 fields, 103 sites), the template stage; home
-    `copy_selection.rs`.
+  - Stage 2: was `CopySelection` as the template; the cohesion cut above says
+    it is not the most isolable group, so pick the first extraction by
+    re-measuring the candidates, not by field count. `CopySelection` (9 fields,
+    103 sites; home `copy_selection.rs`) stays a candidate.
   - Stage 3: `Viewport` (13 fields, 145 sites): scroll, bookmark, redraw flags.
   - Stage 4: `TodosView` (14 fields, 72 sites).
   - Stage 5: `Panels` (12 fields, 89 sites): side panel and split view.
