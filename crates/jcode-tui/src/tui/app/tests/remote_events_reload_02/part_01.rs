@@ -722,7 +722,7 @@ fn test_handle_server_event_soft_interrupt_injected_background_task_retains_row_
 
     assert!(app.display_messages().is_empty());
     assert_eq!(
-        app.background_task_rows_ref()[0].status,
+        app.background_tasks.rows()[0].status,
         crate::tui::BackgroundTaskRowStatus::Completed
     );
 }
@@ -762,7 +762,7 @@ fn test_handle_server_event_notification_background_task_scope_uses_failed_row()
         .iter()
         .any(|message| message.role == "background_task"));
     assert_eq!(
-        app.background_task_rows_ref()[0].status,
+        app.background_tasks.rows()[0].status,
         crate::tui::BackgroundTaskRowStatus::Failed
     );
     assert!(text.contains("× bg bash"), "missing compact failed row:\n{text}");

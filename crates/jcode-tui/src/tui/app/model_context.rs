@@ -1795,7 +1795,7 @@ impl App {
         match completed.result {
             Ok(summary) => {
                 self.invalidate_model_picker_cache();
-                self.finish_background_task(
+                self.background_tasks.finish(
                     "refresh-model-list".to_string(),
                     "Model list refresh".to_string(),
                     crate::tui::BackgroundTaskRowStatus::Completed,
@@ -1809,7 +1809,7 @@ impl App {
                 ));
             }
             Err(error) => {
-                self.finish_background_task(
+                self.background_tasks.finish(
                     "refresh-model-list".to_string(),
                     "Model list refresh".to_string(),
                     crate::tui::BackgroundTaskRowStatus::Failed,

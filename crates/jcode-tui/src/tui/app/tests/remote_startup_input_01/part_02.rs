@@ -110,7 +110,7 @@ fn test_refresh_model_list_command_shows_summary_and_status_notice() {
         .messages()
         .iter()
         .any(|message| message.role == "background_task"));
-    assert!(app.background_task_rows_ref().iter().any(|row| {
+    assert!(app.background_tasks.rows().iter().any(|row| {
         row.task_id == "refresh-model-list"
             && row.status == crate::tui::BackgroundTaskRowStatus::Completed
     }));
@@ -374,10 +374,10 @@ fn test_remote_catalog_activity_notification_upserts_compact_row() {
     }
 
     assert!(app.transcript.messages().is_empty());
-    assert_eq!(app.background_task_rows_ref().len(), 1);
+    assert_eq!(app.background_tasks.rows().len(), 1);
     assert!(app.auth_catalog_refresh_pending);
     assert_eq!(
-        app.background_task_rows_ref()[0],
+        app.background_tasks.rows()[0],
         crate::tui::BackgroundTaskRow {
             task_id: "refresh-model-list".to_string(),
             label: "Model list refresh".to_string(),

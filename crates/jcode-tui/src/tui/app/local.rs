@@ -94,7 +94,7 @@ pub(super) fn handle_tick(app: &mut App) -> bool {
     needs_redraw |= app.refresh_todos_view_if_needed();
     needs_redraw |= app.refresh_todo_card_if_needed();
     needs_redraw |= app.refresh_pinned_todos_if_needed();
-    needs_redraw |= app.prune_irrelevant_background_tasks();
+    needs_redraw |= app.background_tasks.prune_irrelevant();
     needs_redraw |= app.refresh_side_panel_linked_content_if_due();
     needs_redraw |= app.poll_model_picker_load();
     needs_redraw |= app.poll_session_picker_load();
@@ -284,7 +284,7 @@ pub(super) fn handle_ui_activity(app: &mut App, activity: UiActivity) -> bool {
 
     match activity.kind {
         UiActivityKind::Background => {
-            if !app.upsert_running_background_task_started(&activity.message) {
+            if !app.background_tasks.upsert_started(&activity.message) {
                 app.push_display_message(DisplayMessage::background_task(activity.message.clone()))
             }
         }
@@ -298,7 +298,7 @@ pub(super) fn handle_ui_activity(app: &mut App, activity: UiActivity) -> bool {
                 )
                 .is_some()
             {
-                app.upsert_running_background_task_progress(&activity.message);
+                app.background_tasks.upsert_progress(&activity.message);
             } else {
                 app.push_display_message(DisplayMessage::system(activity.message.clone()))
             }
@@ -411,7 +411,8 @@ fn handle_background_task_completed(app: &mut App, task: BackgroundTaskCompleted
         } else {
             crate::tui::BackgroundTaskRowStatus::Failed
         };
-        app.finish_background_task(task.task_id.clone(), label, status);
+        app.background_tasks
+            .finish(task.task_id.clone(), label, status);
     }
     if !task.notify || task.session_id != app.session.id {
         return;
@@ -459,11 +460,12 @@ fn handle_background_task_stalled(app: &mut App, task: crate::bus::BackgroundTas
 
     let notification = crate::message::format_background_task_stalled_markdown(&task);
     let percent = app
-        .background_task_rows_ref()
+        .background_tasks
+        .rows()
         .iter()
         .find(|row| row.task_id == task.task_id)
         .and_then(|row| row.percent);
-    app.upsert_running_background_task(
+    app.background_tasks.upsert_running(
         task.task_id.clone(),
         crate::message::background_task_display_label(
             &task.tool_name,
@@ -521,7 +523,8 @@ fn handle_background_task_progress(app: &mut App, event: BackgroundTaskProgressE
         &event.tool_name,
         event.display_name.as_deref(),
     );
-    app.upsert_running_background_task(event.task_id.clone(), label, event.progress.percent);
+    app.background_tasks
+        .upsert_running(event.task_id.clone(), label, event.progress.percent);
 
     let notice = format!(
         "Background task · {} · {}",

@@ -322,6 +322,21 @@ Staged, each lands whole.
       accessor with no `len()`/`last()` shortcuts beside it, `pub(super)` and
       `#[cfg(test)]` only where a caller actually needs it. Both touch the
       transcript only through its public ops, so they can move without it.
+      **10b landed (pinned background-task band).** `app/background_tasks.rs`
+      holds `BackgroundTaskBand`: `rows` is private and the band owns the trim
+      (`retain_latest`, at most two rows, newest last) plus `upsert_running` /
+      `upsert_progress` / `upsert_started` / `finish` / `prune_irrelevant`.
+      The seven `background_task_rows_*` methods are gone from `impl App`;
+      callers read through `background_tasks.rows()` and mutate through the
+      ops (`app.background_tasks.upsert_started(..)`), with `rows_mut()` under
+      `#[cfg(test)]` for the one test that ages a completed row. Net-zero on
+      the ratchet, as expected for a field-move: `app_fields` stays 228 (one
+      `background_tasks` field in, one `background_task_rows` field out),
+      `impl_app_blocks` 57 and `super_glob_imports` 124 unchanged, so no
+      re-baseline. `state_ui_messages.rs` 813 -> 690 lines. Verified:
+      `cargo test -p jcode-tui --lib -- --test-threads=1` identical to the
+      baseline (1966 passed, the same 27 pre-existing failures), check, clippy,
+      fmt, and `check_app_shape.py` all green.
   - Stage 11: revisit `TuiState`. It is a 122-method trait with two impls, and
     `TestState` (39 fields, 83 sites, 13 files) exists so render tests avoid
     constructing an `App`. Deleting it is a trade, decided last, once `App` is

@@ -568,7 +568,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn background_task_rows(&self) -> &[crate::tui::BackgroundTaskRow] {
-        self.background_task_rows_ref()
+        self.background_tasks.rows()
     }
 
     fn input(&self) -> &str {

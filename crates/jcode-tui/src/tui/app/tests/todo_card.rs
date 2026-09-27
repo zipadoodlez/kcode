@@ -420,17 +420,17 @@ fn background_task_rows_render_without_todos_or_transcript_cards() {
     let mut app = create_test_app();
     app.session.short_name = Some("test".to_string());
     app.push_display_message(DisplayMessage::assistant("ordinary transcript content"));
-    app.upsert_running_background_task(
+    app.background_tasks.upsert_running(
         "running".to_string(),
         "cargo test".to_string(),
         Some(42.0),
     );
-    app.finish_background_task(
+    app.background_tasks.finish(
         "done".to_string(),
         "release build".to_string(),
         crate::tui::BackgroundTaskRowStatus::Completed,
     );
-    app.finish_background_task(
+    app.background_tasks.finish(
         "failed".to_string(),
         "integration tests".to_string(),
         crate::tui::BackgroundTaskRowStatus::Failed,
@@ -461,17 +461,17 @@ fn background_task_rows_render_without_todos_or_transcript_cards() {
 #[test]
 fn background_task_rows_retain_the_two_most_recently_active_tasks() {
     let mut app = create_test_app();
-    app.upsert_running_background_task("first".to_string(), "first task".to_string(), None);
-    app.upsert_running_background_task("second".to_string(), "second task".to_string(), None);
-    app.upsert_running_background_task(
+    app.background_tasks.upsert_running("first".to_string(), "first task".to_string(), None);
+    app.background_tasks.upsert_running("second".to_string(), "second task".to_string(), None);
+    app.background_tasks.upsert_running(
         "first".to_string(),
         "first task updated".to_string(),
         Some(50.0),
     );
-    app.upsert_running_background_task("third".to_string(), "third task".to_string(), None);
+    app.background_tasks.upsert_running("third".to_string(), "third task".to_string(), None);
 
     assert_eq!(
-        app.background_task_rows_ref()
+        app.background_tasks.rows()
             .iter()
             .map(|row| row.task_id.as_str())
             .collect::<Vec<_>>(),
@@ -486,7 +486,7 @@ fn indeterminate_background_update_preserves_last_known_percent() {
     let mut app = create_test_app();
     app.session.short_name = Some("test".to_string());
     app.push_display_message(DisplayMessage::assistant("ordinary transcript content"));
-    app.upsert_running_background_task(
+    app.background_tasks.upsert_running(
         "build".to_string(),
         "cargo build".to_string(),
         Some(42.0),
@@ -494,10 +494,10 @@ fn indeterminate_background_update_preserves_last_known_percent() {
 
     // A later phase-only parser update carries no percentage. It should update
     // activity/label state without resetting the visible bar to zero.
-    app.upsert_running_background_task("build".to_string(), "Compiling jcode".to_string(), None);
+    app.background_tasks.upsert_running("build".to_string(), "Compiling jcode".to_string(), None);
 
     let row = app
-        .background_task_rows_ref()
+        .background_tasks.rows()
         .iter()
         .find(|row| row.task_id == "build")
         .expect("background row should remain present");
@@ -516,33 +516,33 @@ fn indeterminate_background_update_preserves_last_known_percent() {
 #[test]
 fn completed_background_tasks_clear_after_they_stop_being_relevant() {
     let mut app = create_test_app();
-    app.finish_background_task(
+    app.background_tasks.finish(
         "failed".to_string(),
         "integration tests".to_string(),
         crate::tui::BackgroundTaskRowStatus::Failed,
     );
-    app.upsert_running_background_task("running".to_string(), "cargo test".to_string(), None);
-    app.finish_background_task(
+    app.background_tasks.upsert_running("running".to_string(), "cargo test".to_string(), None);
+    app.background_tasks.finish(
         "done".to_string(),
         "release build".to_string(),
         crate::tui::BackgroundTaskRowStatus::Completed,
     );
 
-    app.background_task_rows
+    app.background_tasks.rows_mut()
         .iter_mut()
         .find(|row| row.task_id == "done")
         .unwrap()
         .completed_at = Some(std::time::Instant::now() - std::time::Duration::from_secs(13));
 
-    assert!(app.prune_irrelevant_background_tasks());
+    assert!(app.background_tasks.prune_irrelevant());
     assert_eq!(
-        app.background_task_rows_ref()
+        app.background_tasks.rows()
             .iter()
             .map(|row| row.task_id.as_str())
             .collect::<Vec<_>>(),
         vec!["running"]
     );
-    assert!(!app.prune_irrelevant_background_tasks());
+    assert!(!app.background_tasks.prune_irrelevant());
 }
 
 #[test]

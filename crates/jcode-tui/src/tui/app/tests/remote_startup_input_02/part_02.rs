@@ -18,7 +18,7 @@ fn test_handle_background_task_completed_retains_row_without_transcript_card() {
     super::local::handle_bus_event(&mut app, Ok(event));
 
     assert!(app.display_messages().is_empty());
-    let row = &app.background_task_rows_ref()[0];
+    let row = &app.background_tasks.rows()[0];
     assert_eq!(row.task_id, "bg123");
     assert_eq!(row.label, "bash");
     assert_eq!(row.percent, Some(100.0));
@@ -86,7 +86,7 @@ fn test_handle_background_task_progress_updates_status_notice() {
     );
     assert!(app.display_messages().is_empty());
     assert_eq!(
-        app.background_task_rows_ref(),
+        app.background_tasks.rows(),
         &[crate::tui::BackgroundTaskRow {
             task_id: "bgprogress".to_string(),
             label: "bash".to_string(),
@@ -110,7 +110,7 @@ fn test_background_task_started_activity_creates_running_row_without_card() {
 
     assert!(app.display_messages().is_empty());
     assert_eq!(
-        app.background_task_rows_ref(),
+        app.background_tasks.rows(),
         &[crate::tui::BackgroundTaskRow {
             task_id: "bgstarted".to_string(),
             label: "cargo test".to_string(),
@@ -201,10 +201,10 @@ fn test_handle_background_task_progress_updates_existing_compact_row() {
     }
 
     assert!(app.display_messages().is_empty());
-    assert_eq!(app.background_task_rows_ref().len(), 1);
-    assert_eq!(app.background_task_rows_ref()[0].percent, Some(75.0));
+    assert_eq!(app.background_tasks.rows().len(), 1);
+    assert_eq!(app.background_tasks.rows()[0].percent, Some(75.0));
     assert_eq!(
-        app.background_task_rows_ref()[0].status,
+        app.background_tasks.rows()[0].status,
         crate::tui::BackgroundTaskRowStatus::Running
     );
 }

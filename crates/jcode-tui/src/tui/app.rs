@@ -50,6 +50,7 @@ pub enum AppRuntimeMode {
 mod auth;
 mod auth_account_picker_saved_accounts;
 mod auth_remote;
+mod background_tasks;
 mod catchup;
 mod commands;
 mod commands_colors;
@@ -1185,7 +1186,7 @@ pub struct App {
     split_view: split_view::SplitView,
     todos_view: todos_view::TodosView,
     /// Running and terminal background tasks shown beneath the pinned todo band.
-    background_task_rows: Vec<crate::tui::BackgroundTaskRow>,
+    background_tasks: background_tasks::BackgroundTaskBand,
     last_side_panel_refresh: Option<Instant>,
     last_client_focus_recorded_at: Option<Instant>,
     last_client_focus_session_id: Option<String>,

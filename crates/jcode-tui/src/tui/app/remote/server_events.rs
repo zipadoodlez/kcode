@@ -2378,7 +2378,8 @@ pub(in crate::tui::app) fn handle_server_event(
                         &completed.tool_name,
                         completed.display_name.as_deref(),
                     );
-                    app.finish_background_task(completed.task_id, label, status);
+                    app.background_tasks
+                        .finish(completed.task_id, label, status);
                 }
             } else {
                 app.push_display_message(DisplayMessage {
@@ -2437,7 +2438,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 if crate::message::parse_background_task_progress_notification_markdown(&message)
                     .is_some()
                 {
-                    app.upsert_running_background_task_progress(&message);
+                    app.background_tasks.upsert_progress(&message);
                 } else {
                     if let Some(completed) =
                         crate::message::parse_background_task_notification_markdown(&message)
@@ -2451,7 +2452,8 @@ pub(in crate::tui::app) fn handle_server_event(
                             &completed.tool_name,
                             completed.display_name.as_deref(),
                         );
-                        app.finish_background_task(completed.task_id, label, status);
+                        app.background_tasks
+                            .finish(completed.task_id, label, status);
                     }
                 }
                 app.set_status_notice(presentation.status_notice);
@@ -2482,11 +2484,11 @@ pub(in crate::tui::app) fn handle_server_event(
                         )
                 {
                     let status_notice = progress.summary.clone();
-                    app.upsert_running_background_task_progress(&message);
+                    app.background_tasks.upsert_progress(&message);
                     app.set_status_notice(status_notice);
                     return false;
                 } else if scope == "background_activity" {
-                    if !app.upsert_running_background_task_started(&message) {
+                    if !app.background_tasks.upsert_started(&message) {
                         app.push_display_message(DisplayMessage::background_task(message.clone()));
                         persist_replay_display_message(app, "background_task", None, &message);
                     }
