@@ -575,7 +575,7 @@ fn test_model_picker_reuses_cached_entries_until_invalidated() {
     app.open_model_picker();
     wait_for_model_picker_load(&mut app);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
-    assert!(app.model_picker_cache.is_some());
+    assert!(app.model_picker.cache.is_some());
 
     app.open_model_picker();
     wait_for_model_picker_load(&mut app);
@@ -1247,7 +1247,7 @@ fn test_model_picker_opens_simplified_state_before_async_routes_complete() {
     assert_eq!(picker.entries.len(), 1);
     assert_eq!(picker.entries[0].name, "counting-a");
     assert_eq!(picker.entries[0].options[0].detail, "simplified catalog");
-    assert!(app.pending_model_picker_load.is_some());
+    assert!(app.model_picker.pending.is_some());
     assert_eq!(
         app.status_notice(),
         Some("Updating model routes…".to_string())
@@ -1354,7 +1354,7 @@ fn test_model_picker_does_not_cache_single_model_fallback() {
     wait_for_model_picker_load(&mut app);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert!(
-        app.model_picker_cache.is_none(),
+        app.model_picker.cache.is_none(),
         "single-model fallback results should not be retained"
     );
 

@@ -171,7 +171,10 @@ Staged, each lands whole.
     AccountPickerState` in `auth_account_picker.rs`; `app_fields` fell 277 to
     275. **Usage overlay landed:** the overlay and its refresh flag are
     `App::usage: UsageOverlayState` in `usage_overlay.rs`; `app_fields` fell 275
-    to 274. The login picker remains.
+    to 274. **Model picker landed:** the cache, catalog revision, pending load,
+    and load request id are `App::model_picker: ModelPickerLoadState` in
+    `inline_interactive.rs`; `app_fields` fell 274 to 271. The login picker
+    remains.
   - Stage 7: stream/status (26 fields, 414 sites).
   - Stage 8: provider and model context (15 fields, 281 sites); coordinate with
     the provider-identity item above, do not create a second registry.

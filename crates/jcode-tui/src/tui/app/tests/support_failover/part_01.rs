@@ -213,7 +213,7 @@ fn create_named_provider_test_app(name: &'static str, model: &'static str) -> Ap
 
 fn wait_for_model_picker_load(app: &mut App) {
     let start = Instant::now();
-    while app.pending_model_picker_load.is_some() {
+    while app.model_picker.pending.is_some() {
         app.poll_model_picker_load();
         assert!(
             start.elapsed() < Duration::from_secs(2),

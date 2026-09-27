@@ -8,6 +8,17 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// App-side model-picker load state: the cached catalog, the revision it was
+/// built at, the pending async load that will replace it, and that load's
+/// request id. One home, so the picker's load path reads one struct.
+#[derive(Default)]
+pub(super) struct ModelPickerLoadState {
+    pub(super) cache: Option<ModelPickerCache>,
+    pub(super) catalog_revision: u64,
+    pub(super) pending: Option<PendingModelPickerLoad>,
+    pub(super) load_request_id: u64,
+}
+
 #[path = "inline_interactive/helpers.rs"]
 mod helpers;
 #[path = "inline_interactive/openers.rs"]
@@ -893,10 +904,10 @@ impl App {
     }
 
     pub(super) fn invalidate_model_picker_cache(&mut self) {
-        self.model_picker_cache = None;
-        self.model_picker_catalog_revision = self.model_picker_catalog_revision.wrapping_add(1);
-        self.pending_model_picker_load = None;
-        self.model_picker_load_request_id = self.model_picker_load_request_id.wrapping_add(1);
+        self.model_picker.cache = None;
+        self.model_picker.catalog_revision = self.model_picker.catalog_revision.wrapping_add(1);
+        self.model_picker.pending = None;
+        self.model_picker.load_request_id = self.model_picker.load_request_id.wrapping_add(1);
     }
 
     fn model_route_cache_marker(route: &crate::provider::ModelRoute) -> String {
@@ -932,7 +943,7 @@ impl App {
                 .map(|effort| (*effort).to_string())
                 .collect(),
             simplified_model_picker: crate::perf::tui_policy().simplified_model_picker,
-            catalog_revision: self.model_picker_catalog_revision,
+            catalog_revision: self.model_picker.catalog_revision,
             remote_provider_name: self.remote_provider_name.clone(),
             remote_available_len: self.remote_available_entries.len(),
             remote_available_first: self.remote_available_entries.first().cloned(),
@@ -955,7 +966,7 @@ impl App {
         picker_started: std::time::Instant,
         preserve_input: bool,
     ) -> bool {
-        let Some(cache) = self.model_picker_cache.as_ref() else {
+        let Some(cache) = self.model_picker.cache.as_ref() else {
             return false;
         };
         if cache.signature != *signature {
@@ -1299,8 +1310,8 @@ impl App {
         picker_started: std::time::Instant,
         build_routes: impl FnOnce() -> Vec<crate::provider::ModelRoute> + Send + 'static,
     ) {
-        self.model_picker_load_request_id = self.model_picker_load_request_id.wrapping_add(1);
-        let request_id = self.model_picker_load_request_id;
+        self.model_picker.load_request_id = self.model_picker.load_request_id.wrapping_add(1);
+        let request_id = self.model_picker.load_request_id;
         let (tx, rx) = std::sync::mpsc::channel();
         let build = move || {
             let routes_started = std::time::Instant::now();
@@ -1315,7 +1326,7 @@ impl App {
             std::thread::spawn(build);
         }
 
-        self.pending_model_picker_load = Some(PendingModelPickerLoad {
+        self.model_picker.pending = Some(PendingModelPickerLoad {
             request_id,
             signature,
             picker_started,
@@ -1324,7 +1335,7 @@ impl App {
     }
 
     pub(super) fn poll_model_picker_load(&mut self) -> bool {
-        let Some(pending) = self.pending_model_picker_load.as_ref() else {
+        let Some(pending) = self.model_picker.pending.as_ref() else {
             return false;
         };
 
@@ -1332,16 +1343,16 @@ impl App {
             Ok(result) => result,
             Err(std::sync::mpsc::TryRecvError::Empty) => return false,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                self.pending_model_picker_load = None;
+                self.model_picker.pending = None;
                 self.set_status_notice("Model list update failed");
                 return true;
             }
         };
 
-        let Some(pending) = self.pending_model_picker_load.take() else {
+        let Some(pending) = self.model_picker.pending.take() else {
             return false;
         };
-        if pending.request_id != self.model_picker_load_request_id {
+        if pending.request_id != self.model_picker.load_request_id {
             return false;
         }
 
@@ -1931,14 +1942,14 @@ impl App {
         self.inline_view_state = None;
         if cache_entries && Self::should_cache_model_picker_entries(model_order.len(), routes.len())
         {
-            self.model_picker_cache = Some(ModelPickerCache {
+            self.model_picker.cache = Some(ModelPickerCache {
                 signature: cache_signature,
                 entries: entries.clone(),
                 route_count: routes.len(),
                 model_count: model_order.len(),
             });
         } else {
-            self.model_picker_cache = None;
+            self.model_picker.cache = None;
         }
         self.inline_interactive_state = Some(InlineInteractiveState {
             kind: PickerKind::Model,
@@ -1982,9 +1993,9 @@ impl App {
     ) -> String {
         let previous_inline_view = self.inline_view_state.clone();
         let previous_inline_interactive = self.inline_interactive_state.clone();
-        let previous_model_picker_cache = self.model_picker_cache.clone();
-        let previous_pending_model_picker_load = self.pending_model_picker_load.take();
-        let previous_model_picker_load_request_id = self.model_picker_load_request_id;
+        let previous_model_picker_cache = self.model_picker.cache.clone();
+        let previous_pending_model_picker_load = self.model_picker.pending.take();
+        let previous_model_picker_load_request_id = self.model_picker.load_request_id;
         let previous_input = self.input.clone();
         let previous_cursor_pos = self.cursor_pos;
         let previous_status_notice = self.status_notice.clone();
@@ -2100,9 +2111,9 @@ impl App {
 
         self.inline_view_state = previous_inline_view;
         self.inline_interactive_state = previous_inline_interactive;
-        self.model_picker_cache = previous_model_picker_cache;
-        self.pending_model_picker_load = previous_pending_model_picker_load;
-        self.model_picker_load_request_id = previous_model_picker_load_request_id;
+        self.model_picker.cache = previous_model_picker_cache;
+        self.model_picker.pending = previous_pending_model_picker_load;
+        self.model_picker.load_request_id = previous_model_picker_load_request_id;
         if took_remote_options && self.remote_model_options.is_empty() {
             // Restore only routes that originated from remote_model_options.
             // Lightweight fallback routes carry placeholder "remote-catalog"
@@ -3882,7 +3893,7 @@ mod tests {
         assert_eq!(routes[0].api_method, "remote-catalog");
         app.open_model_picker();
         assert!(app.inline_interactive_state.is_some());
-        assert!(app.pending_model_picker_load.is_none());
+        assert!(app.model_picker.pending.is_none());
         app.persist_remote_model_catalog_cache();
         app.handle_inline_interactive_key(
             KeyCode::Char('o'),

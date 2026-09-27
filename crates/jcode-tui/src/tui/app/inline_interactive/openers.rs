@@ -195,7 +195,7 @@ impl App {
         let inherit_summary = agent_model_default_summary(target, self);
         self.open_model_picker();
         let load_started = std::time::Instant::now();
-        while self.pending_model_picker_load.is_some()
+        while self.model_picker.pending.is_some()
             && load_started.elapsed() < std::time::Duration::from_secs(2)
         {
             if self.poll_model_picker_load() {
