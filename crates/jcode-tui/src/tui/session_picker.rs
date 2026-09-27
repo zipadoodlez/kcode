@@ -28,6 +28,16 @@ pub use jcode_tui_session_picker::{
     SessionSource,
 };
 
+/// App-side session-picker UI state: the open overlay, its mode, and the pending
+/// async load. One home, so the picker's render and input paths read one struct
+/// instead of three loose fields on `App`.
+#[derive(Default)]
+pub(super) struct SessionPickerState {
+    pub(super) overlay: Option<std::cell::RefCell<SessionPicker>>,
+    pub(super) mode: crate::tui::app::SessionPickerMode,
+    pub(super) pending_load: Option<crate::tui::app::PendingSessionPickerLoad>,
+}
+
 mod filter;
 mod loading;
 mod memory;

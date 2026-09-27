@@ -2363,8 +2363,8 @@ impl App {
         };
         picker.set_current_dir(current_dir);
         picker.set_current_session_id(Some(super::commands::active_session_id(self)));
-        self.session_picker_overlay = Some(RefCell::new(picker));
-        self.session_picker_mode = SessionPickerMode::Resume;
+        self.session_picker.overlay = Some(RefCell::new(picker));
+        self.session_picker.mode = SessionPickerMode::Resume;
         self.set_status_notice(status);
         self.start_session_picker_load();
     }
@@ -2391,8 +2391,8 @@ impl App {
         picker.set_current_dir(current_dir);
         picker.set_current_session_id(Some(super::commands::active_session_id(self)));
         picker.activate_active_filter();
-        self.session_picker_overlay = Some(RefCell::new(picker));
-        self.session_picker_mode = SessionPickerMode::ActiveSessions;
+        self.session_picker.overlay = Some(RefCell::new(picker));
+        self.session_picker.mode = SessionPickerMode::ActiveSessions;
         self.set_status_notice(status);
         self.start_session_picker_load();
     }
@@ -2416,7 +2416,7 @@ impl App {
     /// the live presence snapshot so working/ready badges (and the Active view
     /// membership) track reality. Returns true when a redraw is needed.
     pub(super) fn poll_session_picker_presence(&mut self) -> bool {
-        let Some(picker_cell) = self.session_picker_overlay.as_ref() else {
+        let Some(picker_cell) = self.session_picker.overlay.as_ref() else {
             return false;
         };
         picker_cell.borrow_mut().maybe_refresh_live_presence()
@@ -2424,7 +2424,7 @@ impl App {
 
     fn start_session_picker_load(&mut self) {
         let (tx, rx) = std::sync::mpsc::channel();
-        self.pending_session_picker_load = Some(super::PendingSessionPickerLoad { receiver: rx });
+        self.session_picker.pending_load = Some(super::PendingSessionPickerLoad { receiver: rx });
 
         tokio::task::spawn_blocking(move || {
             let result = session_picker::load_sessions_grouped();
@@ -2446,11 +2446,11 @@ impl App {
         // multi-select survive the swap. Rebuilding a fresh picker here used to
         // yank the view out from under the user a second or two after they opened
         // `/resume`, which felt like a lag/jump.
-        let has_overlay = self.session_picker_overlay.is_some();
+        let has_overlay = self.session_picker.overlay.is_some();
         if has_overlay {
-            let notice = match self.session_picker_mode {
+            let notice = match self.session_picker.mode {
                 SessionPickerMode::Resume => {
-                    if let Some(existing) = self.session_picker_overlay.as_ref() {
+                    if let Some(existing) = self.session_picker.overlay.as_ref() {
                         existing
                             .borrow_mut()
                             .reseed_grouped(server_groups, orphan_sessions);
@@ -2458,7 +2458,7 @@ impl App {
                     "Sessions loaded"
                 }
                 SessionPickerMode::CatchUp => {
-                    if let Some(existing) = self.session_picker_overlay.as_ref() {
+                    if let Some(existing) = self.session_picker.overlay.as_ref() {
                         let mut picker = existing.borrow_mut();
                         // Keep the catch-up filter active; reseed preserves it.
                         picker.activate_catchup_filter();
@@ -2467,7 +2467,7 @@ impl App {
                     "Catch Up sessions loaded"
                 }
                 SessionPickerMode::ActiveSessions => {
-                    if let Some(existing) = self.session_picker_overlay.as_ref() {
+                    if let Some(existing) = self.session_picker.overlay.as_ref() {
                         let mut picker = existing.borrow_mut();
                         // Keep the active filter; reseed preserves it and
                         // refreshes the live presence snapshot.
@@ -2482,12 +2482,12 @@ impl App {
             return true;
         }
 
-        match self.session_picker_mode {
+        match self.session_picker.mode {
             SessionPickerMode::Resume => {
                 let mut picker = SessionPicker::new_grouped(server_groups, orphan_sessions);
                 picker.set_current_dir(self.session.working_dir.clone());
                 picker.set_current_session_id(Some(super::commands::active_session_id(self)));
-                self.session_picker_overlay = Some(RefCell::new(picker));
+                self.session_picker.overlay = Some(RefCell::new(picker));
                 self.set_status_notice("Sessions loaded");
                 true
             }
@@ -2495,7 +2495,7 @@ impl App {
                 let mut picker = SessionPicker::new_grouped(server_groups, orphan_sessions);
                 picker.activate_catchup_filter();
                 picker.set_current_dir(self.session.working_dir.clone());
-                self.session_picker_overlay = Some(RefCell::new(picker));
+                self.session_picker.overlay = Some(RefCell::new(picker));
                 self.set_status_notice("Catch Up sessions loaded");
                 true
             }
@@ -2504,7 +2504,7 @@ impl App {
                 picker.set_current_dir(self.session.working_dir.clone());
                 picker.set_current_session_id(Some(super::commands::active_session_id(self)));
                 picker.activate_active_filter();
-                self.session_picker_overlay = Some(RefCell::new(picker));
+                self.session_picker.overlay = Some(RefCell::new(picker));
                 self.set_status_notice("Active sessions loaded");
                 true
             }
@@ -2516,15 +2516,15 @@ impl App {
 
     pub(super) fn poll_session_picker_load(&mut self) -> bool {
         let recv_result = {
-            let Some(pending) = self.pending_session_picker_load.as_ref() else {
+            let Some(pending) = self.session_picker.pending_load.as_ref() else {
                 return false;
             };
             pending.receiver.try_recv()
         };
 
-        let picker_active = self.session_picker_overlay.is_some()
+        let picker_active = self.session_picker.overlay.is_some()
             && matches!(
-                self.session_picker_mode,
+                self.session_picker.mode,
                 SessionPickerMode::Resume
                     | SessionPickerMode::CatchUp
                     | SessionPickerMode::ActiveSessions
@@ -2532,16 +2532,16 @@ impl App {
 
         match recv_result {
             Ok(Ok((server_groups, orphan_sessions))) => {
-                self.pending_session_picker_load = None;
+                self.session_picker.pending_load = None;
                 if picker_active {
                     return self.apply_loaded_session_picker(server_groups, orphan_sessions);
                 }
                 false
             }
             Ok(Err(e)) => {
-                self.pending_session_picker_load = None;
+                self.session_picker.pending_load = None;
                 if picker_active {
-                    self.session_picker_overlay = None;
+                    self.session_picker.overlay = None;
                     self.push_display_message(DisplayMessage::error(format!(
                         "Failed to load sessions: {}",
                         e
@@ -2553,9 +2553,9 @@ impl App {
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => false,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                self.pending_session_picker_load = None;
+                self.session_picker.pending_load = None;
                 if picker_active {
-                    self.session_picker_overlay = None;
+                    self.session_picker.overlay = None;
                     self.push_display_message(DisplayMessage::error(
                         "Session loading stopped before returning a result.".to_string(),
                     ));
@@ -2596,8 +2596,8 @@ impl App {
         // Ensure the filter is applied even on the loading placeholder so the
         // refreshed list lands in the catch-up view.
         picker.activate_catchup_filter();
-        self.session_picker_overlay = Some(RefCell::new(picker));
-        self.session_picker_mode = SessionPickerMode::CatchUp;
+        self.session_picker.overlay = Some(RefCell::new(picker));
+        self.session_picker.mode = SessionPickerMode::CatchUp;
         self.set_status_notice("Loading Catch Up sessions...");
         self.start_session_picker_load();
     }
@@ -2613,7 +2613,7 @@ impl App {
             return;
         }
 
-        if self.session_picker_mode == SessionPickerMode::CatchUp {
+        if self.session_picker.mode == SessionPickerMode::CatchUp {
             let current_session_id = super::commands::active_session_id(self);
             let mut names = Vec::with_capacity(targets.len());
             for target in targets {
@@ -2659,7 +2659,7 @@ impl App {
 
         for target in targets {
             let mut cwd = default_cwd.clone();
-            if let Some(picker_cell) = self.session_picker_overlay.as_ref() {
+            if let Some(picker_cell) = self.session_picker.overlay.as_ref() {
                 let picker = picker_cell.borrow();
                 if let Some(session) = picker.session_for_target(target)
                     && let Some(dir) = session.working_dir.as_deref()
@@ -2827,8 +2827,8 @@ impl App {
         // Selecting the session we are already in (visible in the Active view,
         // labeled "current") should simply close the picker, not re-resume.
         if session_id == super::commands::active_session_id(self) {
-            self.session_picker_overlay = None;
-            self.session_picker_mode = SessionPickerMode::Resume;
+            self.session_picker.overlay = None;
+            self.session_picker.mode = SessionPickerMode::Resume;
             self.set_status_notice("Already in this session");
             return;
         }
@@ -2841,8 +2841,8 @@ impl App {
             )));
         }
         self.workspace_client.queue_resume_session(session_id);
-        self.session_picker_overlay = None;
-        self.session_picker_mode = SessionPickerMode::Resume;
+        self.session_picker.overlay = None;
+        self.session_picker.mode = SessionPickerMode::Resume;
         self.set_status_notice(format!("Switching → {}", name));
     }
 
@@ -2880,8 +2880,8 @@ impl App {
             "Claude Code exited and its transcript was prepared as {session_id}."
         )));
         self.workspace_client.queue_resume_session(session_id);
-        self.session_picker_overlay = None;
-        self.session_picker_mode = SessionPickerMode::Resume;
+        self.session_picker.overlay = None;
+        self.session_picker.mode = SessionPickerMode::Resume;
         self.set_status_notice(format!("Taking over Claude → {display_id}"));
         true
     }
@@ -2979,11 +2979,11 @@ impl App {
         modifiers: KeyModifiers,
     ) -> Result<()> {
         if super::commands_dispatch::ssh_local_action_blocked(self, "Local session picker") {
-            self.session_picker_overlay = None;
+            self.session_picker.overlay = None;
             return Ok(());
         }
         let action = {
-            let Some(picker_cell) = self.session_picker_overlay.as_ref() else {
+            let Some(picker_cell) = self.session_picker.overlay.as_ref() else {
                 return Ok(());
             };
             let mut picker = picker_cell.borrow_mut();
@@ -2992,17 +2992,17 @@ impl App {
         match action {
             OverlayAction::Continue => {}
             OverlayAction::Close => {
-                self.session_picker_overlay = None;
-                if self.session_picker_mode == SessionPickerMode::Onboarding {
+                self.session_picker.overlay = None;
+                if self.session_picker.mode == SessionPickerMode::Onboarding {
                     // Escaping the onboarding choice starts a clean new session.
-                    self.session_picker_mode = SessionPickerMode::Resume;
+                    self.session_picker.mode = SessionPickerMode::Resume;
                     self.onboarding_show_suggestions();
                 } else {
-                    self.session_picker_mode = SessionPickerMode::Resume;
+                    self.session_picker.mode = SessionPickerMode::Resume;
                 }
             }
             OverlayAction::Selected(result)
-                if matches!(self.session_picker_mode, SessionPickerMode::Onboarding) =>
+                if matches!(self.session_picker.mode, SessionPickerMode::Onboarding) =>
             {
                 let ids = match result {
                     PickerResult::Selected(ids)
@@ -3018,20 +3018,20 @@ impl App {
                     PickerResult::StartNewSession => {
                         // User explicitly chose to start fresh; close the picker
                         // and show the onboarding suggestion cards.
-                        self.session_picker_overlay = None;
-                        self.session_picker_mode = SessionPickerMode::Resume;
+                        self.session_picker.overlay = None;
+                        self.session_picker.mode = SessionPickerMode::Resume;
                         self.onboarding_show_suggestions();
                         return Ok(());
                     }
                     PickerResult::ReviewRecentProject => {
-                        self.session_picker_overlay = None;
-                        self.session_picker_mode = SessionPickerMode::Resume;
+                        self.session_picker.overlay = None;
+                        self.session_picker.mode = SessionPickerMode::Resume;
                         self.onboarding_start_recent_project_review();
                         return Ok(());
                     }
                 };
-                self.session_picker_overlay = None;
-                self.session_picker_mode = SessionPickerMode::Resume;
+                self.session_picker.overlay = None;
+                self.session_picker.mode = SessionPickerMode::Resume;
                 if ids.is_empty() {
                     self.onboarding_show_suggestions();
                 } else {
@@ -3043,14 +3043,14 @@ impl App {
             OverlayAction::Selected(PickerResult::Selected(ids))
             | OverlayAction::Selected(PickerResult::SelectedInNewTerminal(ids)) => {
                 self.handle_session_picker_selection(&ids);
-                if let Some(picker_cell) = self.session_picker_overlay.as_ref() {
+                if let Some(picker_cell) = self.session_picker.overlay.as_ref() {
                     picker_cell.borrow_mut().clear_selected_sessions();
                 }
             }
             OverlayAction::Selected(PickerResult::SelectedInCurrentTerminal(ids)) => {
-                if self.session_picker_mode == SessionPickerMode::CatchUp {
+                if self.session_picker.mode == SessionPickerMode::CatchUp {
                     self.handle_session_picker_selection(&ids);
-                    if let Some(picker_cell) = self.session_picker_overlay.as_ref() {
+                    if let Some(picker_cell) = self.session_picker.overlay.as_ref() {
                         picker_cell.borrow_mut().clear_selected_sessions();
                     }
                 } else {
@@ -3067,14 +3067,14 @@ impl App {
                 // Only the onboarding picker emits this, and that case is
                 // handled by the onboarding arm above. Outside onboarding,
                 // treat it as a no-op close.
-                self.session_picker_overlay = None;
-                self.session_picker_mode = SessionPickerMode::Resume;
+                self.session_picker.overlay = None;
+                self.session_picker.mode = SessionPickerMode::Resume;
             }
             OverlayAction::Selected(PickerResult::ReviewRecentProject) => {
                 // Only the onboarding picker emits this. Outside onboarding,
                 // close defensively without launching a proactive turn.
-                self.session_picker_overlay = None;
-                self.session_picker_mode = SessionPickerMode::Resume;
+                self.session_picker.overlay = None;
+                self.session_picker.mode = SessionPickerMode::Resume;
             }
         }
         Ok(())

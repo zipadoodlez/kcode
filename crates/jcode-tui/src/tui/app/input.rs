@@ -2614,7 +2614,7 @@ pub(super) fn handle_modal_key(
         return Ok(true);
     }
 
-    if app.session_picker_overlay.is_some() {
+    if app.session_picker.overlay.is_some() {
         app.handle_session_picker_key(code, modifiers)?;
         return Ok(true);
     }

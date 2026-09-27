@@ -318,7 +318,7 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    if app.session_picker_overlay.is_some() {
+    if app.session_picker.overlay.is_some() {
         return app.handle_session_picker_key(code, modifiers);
     }
 

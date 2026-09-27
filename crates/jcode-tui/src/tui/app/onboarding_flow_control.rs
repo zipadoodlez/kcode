@@ -368,7 +368,7 @@ impl App {
         // overlay (picker / sign-in) is open we let Esc close that first.
         if code == KeyCode::Esc
             && self.inline_interactive_state.is_none()
-            && self.session_picker_overlay.is_none()
+            && self.session_picker.overlay.is_none()
             && self.login_picker_overlay.is_none()
             && self.account_picker_overlay.is_none()
             && matches!(
@@ -807,8 +807,8 @@ impl App {
     pub(super) fn onboarding_open_start_choice(&mut self) {
         let mut picker = SessionPicker::new(Vec::new());
         picker.activate_onboarding_banner(Self::onboarding_start_choice_banner_lines());
-        self.session_picker_overlay = Some(RefCell::new(picker));
-        self.session_picker_mode = SessionPickerMode::Onboarding;
+        self.session_picker.overlay = Some(RefCell::new(picker));
+        self.session_picker.mode = SessionPickerMode::Onboarding;
         self.set_onboarding_phase(OnboardingPhase::StartChoice {
             shown_at: Instant::now(),
         });

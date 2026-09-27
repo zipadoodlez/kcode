@@ -248,7 +248,8 @@ impl App {
         let swarm_plan_items_json_bytes =
             crate::process_memory::estimate_json_bytes(&self.swarm.plan_items);
         let session_picker = self
-            .session_picker_overlay
+            .session_picker
+            .overlay
             .as_ref()
             .map(|overlay| overlay.borrow().debug_memory_profile())
             .unwrap_or_else(|| serde_json::json!({"present": false, "total_estimate_bytes": 0}));

@@ -1,8 +1,8 @@
 #[test]
 fn session_picker_resume_action_keeps_overlay_open() {
     let mut app = create_test_app();
-    app.session_picker_mode = SessionPickerMode::CatchUp;
-    app.session_picker_overlay = Some(RefCell::new(
+    app.session_picker.mode = SessionPickerMode::CatchUp;
+    app.session_picker.overlay = Some(RefCell::new(
         crate::tui::session_picker::SessionPicker::new(vec![
             crate::tui::session_picker::SessionInfo {
                 id: "session_keep_open".to_string(),
@@ -46,14 +46,14 @@ fn session_picker_resume_action_keeps_overlay_open() {
     )
     .expect("session picker enter should succeed");
 
-    assert!(app.session_picker_overlay.is_some());
+    assert!(app.session_picker.overlay.is_some());
 }
 
 #[test]
 fn session_picker_enter_queues_current_terminal_resume_and_closes_overlay() {
     let mut app = create_test_app();
-    app.session_picker_mode = SessionPickerMode::Resume;
-    app.session_picker_overlay = Some(RefCell::new(
+    app.session_picker.mode = SessionPickerMode::Resume;
+    app.session_picker.overlay = Some(RefCell::new(
         crate::tui::session_picker::SessionPicker::new(vec![
             crate::tui::session_picker::SessionInfo {
                 id: "session_here_123".to_string(),
@@ -97,7 +97,7 @@ fn session_picker_enter_queues_current_terminal_resume_and_closes_overlay() {
     )
     .expect("session picker enter should succeed");
 
-    assert!(app.session_picker_overlay.is_none());
+    assert!(app.session_picker.overlay.is_none());
     assert_eq!(
         app.workspace_client.take_pending_resume_session().as_deref(),
         Some("session_here_123")
@@ -113,9 +113,9 @@ fn slash_resume_opens_session_picker_overlay_locally() {
     app.input = "/resume".to_string();
     app.submit_input();
 
-    assert!(app.session_picker_overlay.is_some());
-    assert_eq!(app.session_picker_mode, SessionPickerMode::Resume);
-    assert!(app.pending_session_picker_load.is_some());
+    assert!(app.session_picker.overlay.is_some());
+    assert_eq!(app.session_picker.mode, SessionPickerMode::Resume);
+    assert!(app.session_picker.pending_load.is_some());
     assert!(app.input.is_empty());
 }
 
@@ -146,9 +146,9 @@ fn slash_sessions_alias_opens_session_picker_overlay_locally() {
     app.input = "/sessions".to_string();
     app.submit_input();
 
-    assert!(app.session_picker_overlay.is_some());
-    assert_eq!(app.session_picker_mode, SessionPickerMode::Resume);
-    assert!(app.pending_session_picker_load.is_some());
+    assert!(app.session_picker.overlay.is_some());
+    assert_eq!(app.session_picker.mode, SessionPickerMode::Resume);
+    assert!(app.session_picker.pending_load.is_some());
     assert!(app.input.is_empty());
 }
 
@@ -161,9 +161,9 @@ fn slash_session_alias_opens_session_picker_overlay_locally() {
     app.input = "/session".to_string();
     app.submit_input();
 
-    assert!(app.session_picker_overlay.is_some());
-    assert_eq!(app.session_picker_mode, SessionPickerMode::Resume);
-    assert!(app.pending_session_picker_load.is_some());
+    assert!(app.session_picker.overlay.is_some());
+    assert_eq!(app.session_picker.mode, SessionPickerMode::Resume);
+    assert!(app.session_picker.pending_load.is_some());
     assert!(app.input.is_empty());
 }
 
@@ -176,9 +176,9 @@ fn slash_active_opens_active_sessions_picker_locally() {
     app.input = "/active".to_string();
     app.submit_input();
 
-    assert!(app.session_picker_overlay.is_some());
-    assert_eq!(app.session_picker_mode, SessionPickerMode::ActiveSessions);
-    assert!(app.pending_session_picker_load.is_some());
+    assert!(app.session_picker.overlay.is_some());
+    assert_eq!(app.session_picker.mode, SessionPickerMode::ActiveSessions);
+    assert!(app.session_picker.pending_load.is_some());
     assert!(app.input.is_empty());
 }
 
@@ -191,13 +191,13 @@ fn left_arrow_on_empty_input_is_a_noop_unless_opted_in() {
     // Default config: the active sessions manager gesture is opt-in, so Left
     // on an empty input must not open any overlay.
     assert!(!app.maybe_open_active_sessions_on_left());
-    assert!(app.session_picker_overlay.is_none());
+    assert!(app.session_picker.overlay.is_none());
 
     // With text in the input the gesture never fires regardless of config.
     app.input = "hello".to_string();
     app.cursor_pos = 0;
     assert!(!app.maybe_open_active_sessions_on_left());
-    assert!(app.session_picker_overlay.is_none());
+    assert!(app.session_picker.overlay.is_none());
 }
 
 #[test]
@@ -426,11 +426,11 @@ fn session_picker_preview_wheel_uses_shared_scroll_momentum() {
         .expect("render picker");
 
     let mut app = create_test_app();
-    app.session_picker_mode = SessionPickerMode::Resume;
-    app.session_picker_overlay = Some(RefCell::new(picker));
+    app.session_picker.mode = SessionPickerMode::Resume;
+    app.session_picker.overlay = Some(RefCell::new(picker));
 
     let scroll_before = app
-        .session_picker_overlay
+        .session_picker.overlay
         .as_ref()
         .unwrap()
         .borrow()
@@ -455,7 +455,7 @@ fn session_picker_preview_wheel_uses_shared_scroll_momentum() {
     );
     // A wheel notch scrolls the preview immediately.
     let scroll_after = app
-        .session_picker_overlay
+        .session_picker.overlay
         .as_ref()
         .unwrap()
         .borrow()

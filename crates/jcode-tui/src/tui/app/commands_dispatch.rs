@@ -232,8 +232,8 @@ mod tests {
         app.open_agents_picker();
         app.handle_new_terminal_hotkey();
         app.toggle_next_prompt_new_session_routing();
-        assert!(app.session_picker_overlay.is_none());
-        assert!(app.pending_session_picker_load.is_none());
+        assert!(app.session_picker.overlay.is_none());
+        assert!(app.session_picker.pending_load.is_none());
         assert!(app.inline_interactive_state.is_none());
         assert!(!app.route_next_prompt_to_new_session);
 

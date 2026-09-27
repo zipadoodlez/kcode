@@ -585,7 +585,7 @@ impl App {
                 Self::overlay_scroll_step(&mut self.model_status_scroll, direction)
             }
             MouseScrollTarget::SessionPickerPreview => {
-                let Some(picker_cell) = self.session_picker_overlay.as_ref() else {
+                let Some(picker_cell) = self.session_picker.overlay.as_ref() else {
                     return false;
                 };
                 picker_cell
@@ -761,7 +761,7 @@ impl App {
             }
         }
 
-        if let Some(ref picker_cell) = self.session_picker_overlay {
+        if let Some(ref picker_cell) = self.session_picker.overlay {
             // Route wheel events over the preview pane through the shared
             // scroll-momentum queue so the picker scrolls with the same smooth
             // easing as the main chat viewport. List-pane wheels step the

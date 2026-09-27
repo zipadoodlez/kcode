@@ -89,9 +89,9 @@ impl App {
         self.changelog_scroll = None;
         self.help_scroll = None;
         self.model_status_scroll = None;
-        self.session_picker_overlay = None;
-        self.session_picker_mode = SessionPickerMode::Resume;
-        self.pending_session_picker_load = None;
+        self.session_picker.overlay = None;
+        self.session_picker.mode = SessionPickerMode::Resume;
+        self.session_picker.pending_load = None;
         self.login_picker_overlay = None;
         self.account_picker_overlay = None;
         self.usage_overlay = None;
@@ -120,8 +120,8 @@ impl App {
             return;
         }
         self.onboarding_flow = None;
-        self.session_picker_overlay = None;
-        self.session_picker_mode = SessionPickerMode::Resume;
+        self.session_picker.overlay = None;
+        self.session_picker.mode = SessionPickerMode::Resume;
         self.onboarding_preview_mode = false;
         self.force_full_redraw = true;
         self.set_status_notice("Onboarding simulator: off");
@@ -227,8 +227,8 @@ impl App {
         }
         let screen = screens.remove(index);
         let is_start_choice = matches!(&screen.phase, OnboardingPhase::StartChoice { .. });
-        self.session_picker_overlay = None;
-        self.session_picker_mode = SessionPickerMode::Resume;
+        self.session_picker.overlay = None;
+        self.session_picker.mode = SessionPickerMode::Resume;
         self.onboarding_flow = Some(OnboardingFlow {
             phase: screen.phase,
         });

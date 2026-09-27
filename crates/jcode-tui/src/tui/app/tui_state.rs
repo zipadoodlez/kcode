@@ -1780,7 +1780,7 @@ impl crate::tui::TuiState for App {
     fn session_picker_overlay(
         &self,
     ) -> Option<&RefCell<crate::tui::session_picker::SessionPicker>> {
-        self.session_picker_overlay.as_ref()
+        self.session_picker.overlay.as_ref()
     }
 
     fn login_picker_overlay(&self) -> Option<&RefCell<crate::tui::login_picker::LoginPicker>> {

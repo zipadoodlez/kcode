@@ -648,7 +648,7 @@ fn answering_no_on_continue_prompt_shows_suggestions() {
             Some(OnboardingPhase::Suggestions)
         ));
         // No session picker overlay opened on the "No" path.
-        assert!(app.session_picker_overlay.is_none());
+        assert!(app.session_picker.overlay.is_none());
     });
 }
 
@@ -695,9 +695,9 @@ fn onboarding_start_choice_is_action_only_and_defaults_to_review() {
         app.onboarding_phase(),
         Some(OnboardingPhase::StartChoice { .. })
     ));
-    assert_eq!(app.session_picker_mode, SessionPickerMode::Onboarding);
+    assert_eq!(app.session_picker.mode, SessionPickerMode::Onboarding);
     let picker = app
-        .session_picker_overlay
+        .session_picker.overlay
         .as_ref()
         .expect("start choice picker")
         .borrow();
@@ -1042,7 +1042,7 @@ fn startup_check_imported_transcripts_do_not_count_as_history() {
 /// open for them to act in.
 fn onboarding_state_is_escapable(app: &App) -> bool {
     use crate::tui::app::onboarding_flow::OnboardingPhase;
-    if app.inline_interactive_state.is_some() || app.session_picker_overlay.is_some() {
+    if app.inline_interactive_state.is_some() || app.session_picker.overlay.is_some() {
         return true;
     }
     match app.onboarding_phase() {

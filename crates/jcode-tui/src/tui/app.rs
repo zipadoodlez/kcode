@@ -261,7 +261,7 @@ struct KvCacheMissSample {
     reason: KvCacheMissReason,
 }
 
-struct PendingSessionPickerLoad {
+pub(super) struct PendingSessionPickerLoad {
     receiver: mpsc::Receiver<
         anyhow::Result<(
             Vec<super::session_picker::ServerGroup>,
@@ -1463,10 +1463,8 @@ pub struct App {
     help_scroll: Option<usize>,
     model_status_scroll: Option<usize>,
     model_status_content: String,
-    /// Session picker overlay (None = not visible)
-    session_picker_overlay: Option<RefCell<super::session_picker::SessionPicker>>,
-    session_picker_mode: SessionPickerMode,
-    pending_session_picker_load: Option<PendingSessionPickerLoad>,
+    /// Session picker overlay, mode, and pending async load.
+    session_picker: super::session_picker::SessionPickerState,
     catchup: catchup::Catchup,
     /// Login picker overlay (None = not visible)
     login_picker_overlay: Option<RefCell<super::login_picker::LoginPicker>>,

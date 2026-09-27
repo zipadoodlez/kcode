@@ -163,7 +163,10 @@ Staged, each lands whole.
     per-page cache refresh and content builders stay local. No per-caller
     flags.
   - Stage 6: overlay/picker state (14 fields, 174 sites): session, model,
-    account, and login pickers, one sub-struct each.
+    account, and login pickers, one sub-struct each. **Session picker landed:**
+    `session_picker_overlay`/`session_picker_mode`/`pending_session_picker_load`
+    are now `App::session_picker: SessionPickerState` in `session_picker.rs`;
+    `app_fields` fell 279 to 277. The other pickers remain.
   - Stage 7: stream/status (26 fields, 414 sites).
   - Stage 8: provider and model context (15 fields, 281 sites); coordinate with
     the provider-identity item above, do not create a second registry.
