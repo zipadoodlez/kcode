@@ -837,10 +837,10 @@ fn cache_stats_uses_remote_history_token_usage_totals() {
 fn version_command_shows_remote_server_identity_and_update_status() {
     let mut app = create_test_app();
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-    app.remote_server_short_name = Some("blazing".to_string());
-    app.remote_server_icon = Some("🔥".to_string());
-    app.remote_server_version = Some("v0.14.2-dev (old)".to_string());
-    app.remote_server_has_update = Some(true);
+    app.server_info.short_name = Some("blazing".to_string());
+    app.server_info.icon = Some("🔥".to_string());
+    app.server_info.version = Some("v0.14.2-dev (old)".to_string());
+    app.server_info.has_update = Some(true);
 
     assert!(super::state_ui::handle_info_command(&mut app, "/version"));
     let content = app.display_messages().last().unwrap().content.clone();
@@ -1108,7 +1108,7 @@ fn update_command_reloads_stale_remote_server_before_client_update_check() {
 
     let mut app = create_test_app();
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-    app.remote_server_has_update = Some(true);
+    app.server_info.has_update = Some(true);
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     let mut line = String::new();
@@ -1200,14 +1200,14 @@ fn stale_server_history_is_deferred_before_remote_state_is_applied() {
 
     assert!(!redraw);
     assert!(app.maintenance.pending_server_reload);
-    assert_eq!(app.remote_server_has_update, Some(true));
-    assert_eq!(app.remote_server_version.as_deref(), Some("v0.0.1-stale"));
+    assert_eq!(app.server_info.has_update, Some(true));
+    assert_eq!(app.server_info.version.as_deref(), Some("v0.0.1-stale"));
     assert_eq!(app.remote_session_id.as_deref(), Some("session_existing"));
     assert_eq!(remote.session_id(), None);
     assert_eq!(app.connection_type.as_deref(), Some("websocket"));
     assert!(app.remote_skills.is_empty());
-    assert!(app.remote_sessions.is_empty());
-    assert_eq!(app.remote_client_count, None);
+    assert!(app.server_info.sessions.is_empty());
+    assert_eq!(app.server_info.client_count, None);
     assert_eq!(app.remote_total_tokens, None);
     assert_ne!(
         app.session.subagent_model.as_deref(),
@@ -1382,7 +1382,7 @@ fn ancient_server_history_is_deferred_via_client_side_release_check() {
     assert_eq!(app.remote_session_id.as_deref(), Some("session_existing"));
     assert_eq!(remote.session_id(), None);
     assert!(app.remote_skills.is_empty());
-    assert!(app.remote_sessions.is_empty());
+    assert!(app.server_info.sessions.is_empty());
     assert_ne!(
         app.session.subagent_model.as_deref(),
         Some("ancient-subagent")
@@ -1463,7 +1463,7 @@ fn older_server_reporting_no_update_is_still_deferred_via_client_check() {
         app.maintenance.pending_server_reload,
         "client-proven-older server must defer + reload even when it reports Some(false)"
     );
-    assert_eq!(app.remote_server_has_update, Some(false));
+    assert_eq!(app.server_info.has_update, Some(false));
     // Remote session state must NOT have been applied from the old server.
     assert_eq!(app.remote_session_id.as_deref(), Some("session_existing"));
     assert_eq!(remote.session_id(), None);

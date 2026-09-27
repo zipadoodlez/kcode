@@ -199,7 +199,7 @@ impl App {
     /// guided onboarding flow.
     fn is_selfdev_canary_session(&self) -> bool {
         if self.is_remote_client() {
-            self.remote_is_canary.unwrap_or(self.session.is_canary)
+            self.server_info.is_canary.unwrap_or(self.session.is_canary)
         } else {
             self.session.is_canary
         }

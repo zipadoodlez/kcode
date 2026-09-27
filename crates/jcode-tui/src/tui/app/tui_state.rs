@@ -146,11 +146,12 @@ impl App {
     fn remote_header_provider_model(&self) -> Option<String> {
         let effective_model = self.effective_remote_provider_model();
 
-        self.remote_startup_phase
-            .as_ref()
+        self.remote_startup
+            .phase()
             .and_then(|phase| {
                 let elapsed = self
-                    .remote_startup_phase_started
+                    .remote_startup
+                    .started()
                     .map(|started| started.elapsed())
                     .unwrap_or_default();
 
@@ -815,7 +816,7 @@ impl crate::tui::TuiState for App {
 
     fn is_canary(&self) -> bool {
         if self.is_remote_client() {
-            self.remote_is_canary.unwrap_or(self.session.is_canary)
+            self.server_info.is_canary.unwrap_or(self.session.is_canary)
         } else {
             self.session.is_canary
         }
@@ -854,7 +855,7 @@ impl crate::tui::TuiState for App {
         if let Some(host) = crate::tui::ssh_remote_host() {
             return Some(format!("SSH {host}"));
         }
-        self.remote_server_short_name.clone().or_else(|| {
+        self.server_info.short_name.clone().or_else(|| {
             if !self.is_remote_client() {
                 return None;
             }
@@ -864,7 +865,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn server_display_icon(&self) -> Option<String> {
-        self.remote_server_icon.clone().or_else(|| {
+        self.server_info.icon.clone().or_else(|| {
             if !self.is_remote_client() {
                 return None;
             }
@@ -880,7 +881,7 @@ impl crate::tui::TuiState for App {
         // Prefer the live version reported by the connected server (history
         // sync); fall back to the registry record so a version is available
         // even before the first history event arrives.
-        self.remote_server_version.clone().or_else(|| {
+        self.server_info.version.clone().or_else(|| {
             crate::registry::find_server_by_socket_sync(&crate::server::socket_path())
                 .map(|info| info.version)
                 .filter(|version| !version.trim().is_empty())
@@ -888,11 +889,11 @@ impl crate::tui::TuiState for App {
     }
 
     fn server_sessions(&self) -> Vec<String> {
-        self.remote_sessions.clone()
+        self.server_info.sessions.clone()
     }
 
     fn connected_clients(&self) -> Option<usize> {
-        self.remote_client_count
+        self.server_info.client_count
     }
 
     fn status_notice(&self) -> Option<String> {
@@ -946,7 +947,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn remote_startup_phase_active(&self) -> bool {
-        self.remote_startup_phase.is_some()
+        self.remote_startup.is_active()
     }
 
     fn animation_elapsed(&self) -> f32 {
@@ -1232,7 +1233,7 @@ impl crate::tui::TuiState for App {
 
     fn server_update_available(&self) -> Option<bool> {
         if self.is_remote_client() {
-            self.remote_server_has_update
+            self.server_info.has_update
         } else {
             None
         }
@@ -1294,12 +1295,12 @@ impl crate::tui::TuiState for App {
         };
 
         let (session_count, client_count) = if self.is_remote_client() {
-            (Some(self.remote_sessions.len()), None)
+            (Some(self.server_info.sessions.len()), None)
         } else {
             (None, None)
         };
         let session_name = self.session_display_name().map(|name| {
-            if let Some(ref srv) = self.remote_server_short_name {
+            if let Some(ref srv) = self.server_info.short_name {
                 format!("{} {}", srv, name)
             } else {
                 name
@@ -1320,13 +1321,13 @@ impl crate::tui::TuiState for App {
                     let session_names = if has_members {
                         Vec::new()
                     } else {
-                        self.remote_sessions.iter().take(3).cloned().collect()
+                        self.server_info.sessions.iter().take(3).cloned().collect()
                     };
                     members = self.swarm.members.iter().take(3).cloned().collect();
                     let session_count = if has_members {
                         self.swarm.members.len()
                     } else {
-                        self.remote_sessions.len()
+                        self.server_info.sessions.len()
                     };
                     let has_activity = self
                         .swarm
@@ -1335,7 +1336,7 @@ impl crate::tui::TuiState for App {
                         .any(|m| m.status != "ready" || m.detail.is_some());
                     (
                         session_count,
-                        self.remote_client_count,
+                        self.server_info.client_count,
                         session_names,
                         has_activity,
                     )

@@ -725,17 +725,17 @@ pub(in crate::tui::app) async fn handle_post_connect<B: ratatui::backend::Backen
         );
         remote.mark_history_loaded();
         app.clear_remote_startup_phase();
-        app.clear_remote_history_wait();
+        app.history_recovery.clear();
     } else if !remote.has_loaded_history() {
         app.set_remote_startup_phase(super::super::RemoteStartupPhase::LoadingSession);
         // Start a fresh history-recovery budget for this connection so the
         // watchdog can re-request the bootstrap History payload if it never
         // arrives (otherwise the session is stuck on "loading session…" until
         // the user runs /restart).
-        app.begin_remote_history_wait();
+        app.history_recovery.begin();
     } else {
         app.clear_remote_startup_phase();
-        app.clear_remote_history_wait();
+        app.history_recovery.clear();
     }
 
     // Hydrate route metadata as part of connection bootstrap, not when the

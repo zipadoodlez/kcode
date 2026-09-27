@@ -1082,7 +1082,7 @@ impl App {
         // arrived yet. Do not make an old persisted catalog look current just
         // because the user opened `/model` quickly after spawning the client.
         let awaiting_initial_remote_catalog = self.is_remote_client()
-            && self.remote_startup_phase.is_some()
+            && self.remote_startup.is_active()
             && self.remote_model_options.is_empty()
             && self.remote_available_entries.is_empty();
 
@@ -3882,7 +3882,7 @@ mod tests {
         assert!(super::remote_model_catalog_cache_path().is_none());
         let mut app = crate::tui::app::tests::create_test_app();
         app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-        app.remote_startup_phase = None;
+        app.remote_startup.clear();
         app.remote_provider_name = Some("remote-provider".to_string());
         app.remote_provider_model = Some("remote-test-model".to_string());
         app.remote_available_entries = vec!["remote-test-model".to_string()];

@@ -1497,9 +1497,9 @@ pub(in crate::tui::app) fn handle_server_event(
                     server_version.as_deref(),
                 )
             {
-                app.remote_server_short_name = server_name.clone();
-                app.remote_server_icon = server_icon.clone();
-                app.remote_server_has_update = server_has_update;
+                app.server_info.short_name = server_name.clone();
+                app.server_info.icon = server_icon.clone();
+                app.server_info.has_update = server_has_update;
                 app.maintenance.pending_server_reload = true;
                 // Remember the session the server told us about *before* bailing
                 // out. We deliberately return below without assigning
@@ -1642,13 +1642,13 @@ pub(in crate::tui::app) fn handle_server_event(
             app.refresh_open_model_picker_after_catalog_update();
             app.remote_skills = skills;
             app.command_suggestions.invalidate_candidates_cache();
-            app.remote_sessions = all_sessions;
-            app.remote_client_count = client_count;
-            app.remote_is_canary = is_canary;
-            app.remote_server_version = server_version;
-            app.remote_server_short_name = server_name.clone();
-            app.remote_server_icon = server_icon.clone();
-            app.remote_server_has_update = server_has_update;
+            app.server_info.sessions = all_sessions;
+            app.server_info.client_count = client_count;
+            app.server_info.is_canary = is_canary;
+            app.server_info.version = server_version;
+            app.server_info.short_name = server_name.clone();
+            app.server_info.icon = server_icon.clone();
+            app.server_info.has_update = server_has_update;
             let history_total_tokens = total_tokens.or_else(|| {
                 token_usage_totals.map(|totals| (totals.input_tokens, totals.output_tokens))
             });
@@ -1684,7 +1684,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 ));
             }
             app.workspace_client
-                .sync_after_history(&session_id, &app.remote_sessions);
+                .sync_after_history(&session_id, &app.server_info.sessions);
 
             if !crate::tui::is_ssh_remote()
                 && server_has_update == Some(true)
@@ -1693,9 +1693,9 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.maintenance.pending_server_reload = true;
                 app.set_status_notice("Server update available");
             }
-            app.remote_server_short_name = server_name;
+            app.server_info.short_name = server_name;
             if let Some(icon) = server_icon {
-                app.remote_server_icon = Some(icon);
+                app.server_info.icon = Some(icon);
             }
 
             app.update_terminal_title();
@@ -1748,7 +1748,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 remote.mark_history_loaded();
                 // History arrived: cancel the "stuck on loading session…"
                 // recovery watchdog so it doesn't re-request on a later tick.
-                app.clear_remote_history_wait();
+                app.history_recovery.clear();
                 if !crate::tui::is_ssh_remote()
                     && messages.is_empty()
                     && !session_changed

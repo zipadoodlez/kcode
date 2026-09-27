@@ -140,8 +140,8 @@ fn ssh_remote_reconnect_waits_for_authoritative_history_without_local_reload() {
             assert!(app.maintenance.reload_requested.is_none());
             assert!(!remote.has_loaded_history());
             assert_eq!(
-                app.remote_startup_phase,
-                Some(super::RemoteStartupPhase::LoadingSession)
+                app.remote_startup.phase(),
+                Some(&super::RemoteStartupPhase::LoadingSession)
             );
         });
     });

@@ -53,7 +53,7 @@ pub(in crate::tui::app) async fn reload_stale_remote_server_before_update(
     app: &mut App,
     remote: &mut RemoteConnection,
 ) -> Result<bool> {
-    if app.remote_server_has_update != Some(true) {
+    if app.server_info.has_update != Some(true) {
         return Ok(false);
     }
 
@@ -1008,7 +1008,7 @@ async fn handle_remote_key_internal(
                 if trimmed == "/reload" {
                     let client_needs_reload = app.has_newer_binary();
                     let server_needs_reload =
-                        app.remote_server_has_update.unwrap_or(client_needs_reload);
+                        app.server_info.has_update.unwrap_or(client_needs_reload);
 
                     if !client_needs_reload && !server_needs_reload {
                         app.push_display_message(DisplayMessage::system(

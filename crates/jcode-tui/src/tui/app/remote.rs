@@ -1,5 +1,6 @@
 #![cfg_attr(test, allow(clippy::items_after_test_module))]
 
+use super::remote_state::HistoryRecoveryStep;
 use super::{
     App, DisplayMessage, PendingReloadReconnectStatus, ProcessingStatus, RemoteResumeActivity,
     SendAction, ctrl_bracket_fallback_to_esc, input, parse_rate_limit_error,
@@ -977,38 +978,20 @@ pub(super) fn handle_disconnect(
     state.reconnect_attempts = 1;
 }
 
-/// First wait before the watchdog re-requests history. Generous enough that a
-/// normal (slow) bootstrap completes on its own, short enough that a genuinely
-/// stuck session recovers in seconds instead of requiring a manual `/restart`.
-const REMOTE_HISTORY_RECOVERY_FIRST_DELAY: Duration = Duration::from_secs(6);
-/// Spacing between subsequent re-requests after the first one.
-const REMOTE_HISTORY_RECOVERY_RETRY_INTERVAL: Duration = Duration::from_secs(5);
-/// How many times we re-request history before giving up and telling the user
-/// to `/restart`. Bounded so a server that genuinely never answers does not
-/// spin forever.
-const REMOTE_HISTORY_RECOVERY_MAX_ATTEMPTS: u32 = 4;
-
 /// Watchdog for the "stuck on loading session…" bug.
 ///
-/// Every remote prompt path is gated behind `RemoteConnection::has_loaded_history()`:
-/// `submit_prepared_remote_input` parks prompts in `pending_prompt_before_history`,
-/// and `process_remote_followups` returns early at the `!has_loaded_history()`
-/// gate. That gate only clears when the server delivers a `History` event. If
-/// that event never arrives after a (re)connect or reload handoff (dropped
-/// event, momentarily busy agent, or a path that returned without history), the
-/// client is stuck forever showing "loading session…" and the only escape is a
-/// manual `/restart`.
-///
-/// This watchdog detects a connection that has been waiting too long for the
-/// bootstrap history and re-requests it a bounded number of times. If history
-/// still never loads, it surfaces an actionable message instead of leaving the
-/// user staring at a frozen header.
+/// Every remote prompt path is gated behind `RemoteConnection::has_loaded_history()`,
+/// which only clears when the server delivers a `History` event. If that event
+/// never arrives after a (re)connect or reload handoff, the client is stuck on
+/// "loading session…" until a manual `/restart`. The retry budget and its
+/// transition live in `HistoryRecovery`; this supplies the environment and does
+/// the I/O.
 async fn recover_stuck_remote_history(app: &mut App, remote: &mut RemoteConnection) -> bool {
-    // Once history has loaded the watchdog has nothing to do; make sure its
-    // budget is cleared so a later rewind-triggered reload starts fresh.
+    // Once history has loaded the watchdog has nothing to do; clear its budget
+    // so a later rewind-triggered reload starts fresh.
     if remote.has_loaded_history() {
-        if app.remote_history_wait_started.is_some() {
-            app.clear_remote_history_wait();
+        if app.history_recovery.is_waiting() {
+            app.history_recovery.clear();
         }
         return false;
     }
@@ -1026,35 +1009,15 @@ async fn recover_stuck_remote_history(app: &mut App, remote: &mut RemoteConnecti
         return false;
     }
 
-    let now = Instant::now();
-    let waited = match app.remote_history_wait_started {
-        Some(started) => now.saturating_duration_since(started),
-        None => {
-            // Begin tracking from the first tick that observes unloaded history
-            // on a live connection.
-            app.remote_history_wait_started = Some(now);
-            return false;
-        }
-    };
-
-    if waited < REMOTE_HISTORY_RECOVERY_FIRST_DELAY {
-        return false;
-    }
-
-    // A large newline-delimited History event may take longer than the
-    // watchdog delay to arrive. Once any part of a frame is buffered, the
-    // response was not dropped: it is actively being assembled by the reader.
-    // Re-requesting here queues another complete (potentially tens-of-MB)
-    // History payload behind the first and can keep the connection saturated
-    // for minutes. Let the in-flight frame finish instead.
-    if remote.has_buffered_inbound_frame() {
-        return false;
-    }
-
-    if app.remote_history_recovery_attempts >= REMOTE_HISTORY_RECOVERY_MAX_ATTEMPTS {
-        // We've exhausted re-requests. Surface a one-time actionable hint so the
-        // user isn't stuck on a silent "loading session…" forever.
-        if app.remote_history_recovery_last_attempt.is_some() {
+    // `frame_buffered` covers a large newline-delimited History event still being
+    // assembled by the reader: the response was not dropped, so queueing another
+    // tens-of-MB payload behind it would only saturate the connection.
+    let step = app
+        .history_recovery
+        .step(Instant::now(), remote.has_buffered_inbound_frame());
+    match step {
+        HistoryRecoveryStep::Wait => false,
+        HistoryRecoveryStep::GiveUp => {
             crate::logging::warn(
                 "Remote history never loaded after repeated re-requests; session is stuck on \
                  'loading session…'. Advising /restart.",
@@ -1065,41 +1028,28 @@ async fn recover_stuck_remote_history(app: &mut App, remote: &mut RemoteConnecti
                     .to_string(),
             ));
             app.set_status_notice("Session history not loading - try /restart");
-            // Clear last_attempt so we don't repeat the message every tick, but
-            // keep attempts at max so we don't re-enter the retry path.
-            app.remote_history_recovery_last_attempt = None;
-            return true;
+            true
         }
-        return false;
-    }
-
-    // Rate-limit re-requests so we don't flood the server.
-    if let Some(last) = app.remote_history_recovery_last_attempt
-        && now.saturating_duration_since(last) < REMOTE_HISTORY_RECOVERY_RETRY_INTERVAL
-    {
-        return false;
-    }
-
-    app.remote_history_recovery_attempts += 1;
-    app.remote_history_recovery_last_attempt = Some(now);
-    crate::logging::warn(&format!(
-        "Remote history still not loaded after {}s; re-requesting session history (attempt {}/{}, session={:?})",
-        waited.as_secs(),
-        app.remote_history_recovery_attempts,
-        REMOTE_HISTORY_RECOVERY_MAX_ATTEMPTS,
-        app.remote_session_id,
-    ));
-    match remote.request_history().await {
-        Ok(_) => {
-            app.set_status_notice("Loading session… re-requesting history");
-        }
-        Err(err) => {
-            crate::logging::error(&format!(
-                "History recovery re-request failed: {err}; will retry on next watchdog tick"
+        HistoryRecoveryStep::Retry {
+            waited_secs,
+            attempt,
+        } => {
+            crate::logging::warn(&format!(
+                "Remote history still not loaded after {}s; re-requesting session history (attempt {}/{}, session={:?})",
+                waited_secs,
+                attempt,
+                super::remote_state::REMOTE_HISTORY_RECOVERY_MAX_ATTEMPTS,
+                app.remote_session_id,
             ));
+            match remote.request_history().await {
+                Ok(_) => app.set_status_notice("Loading session… re-requesting history"),
+                Err(err) => crate::logging::error(&format!(
+                    "History recovery re-request failed: {err}; will retry on next watchdog tick"
+                )),
+            }
+            true
         }
     }
-    true
 }
 
 /// Record (once per distinct reason) why the restored startup auto-submit is
@@ -1749,8 +1699,8 @@ async fn handle_debug_command(app: &mut App, cmd: &str, remote: &mut RemoteConne
             "remote_transport": app.remote_transport.clone(),
             "side_pane_ratio": app.side_pane_ratio,
             "remote": true,
-            "server_version": app.remote_server_version.clone(),
-            "server_has_update": app.remote_server_has_update,
+            "server_version": app.server_info.version.clone(),
+            "server_has_update": app.server_info.has_update,
             "version": jcode_build_meta::version(),
         })
         .to_string();

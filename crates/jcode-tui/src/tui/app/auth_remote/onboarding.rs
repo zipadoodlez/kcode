@@ -211,7 +211,7 @@ impl App {
             || self.inline_interactive_state.is_some()
             || self.inline_view_state.is_some()
             || self.login_picker_overlay.is_some()
-            || self.remote_history_wait_started.is_some()
+            || self.history_recovery.is_waiting()
             || self.pending_prompt_before_history.is_some()
             || self.pending_prompt_after_model_switch.is_some()
             || self.pending_startup_prompt_echo.is_some()

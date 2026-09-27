@@ -909,18 +909,19 @@ fn remote_history_watchdog_rerequests_history_when_stuck() {
         // First tick simply starts tracking the wait; no re-request yet.
         let first = super::recover_stuck_remote_history(&mut app, &mut remote).await;
         assert!(!first, "first observation should only arm the watchdog");
-        assert!(app.remote_history_wait_started.is_some());
-        assert_eq!(app.remote_history_recovery_attempts, 0);
+        assert!(app.history_recovery.is_waiting());
+        assert_eq!(app.history_recovery.attempts(), 0);
 
         // Simulate the connection having been stuck past the recovery delay.
-        app.remote_history_wait_started = Instant::now().checked_sub(Duration::from_secs(60));
+        app.history_recovery
+            .force_waiting_since(Instant::now() - Duration::from_secs(60));
 
         let redraw = super::recover_stuck_remote_history(&mut app, &mut remote).await;
         reader
             .read_line(&mut line)
             .await
             .expect("history re-request should be readable by peer");
-        (redraw, app.remote_history_recovery_attempts)
+        (redraw, app.history_recovery.attempts())
     });
 
     assert!(redraw, "re-requesting history should trigger a redraw");
@@ -945,7 +946,8 @@ fn remote_history_watchdog_does_not_rerequest_while_frame_is_arriving() {
     let mut app = create_test_app();
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
     app.remote_session_id = Some("session_large".to_string());
-    app.remote_history_wait_started = Instant::now().checked_sub(Duration::from_secs(60));
+    app.history_recovery
+        .force_waiting_since(Instant::now() - Duration::from_secs(60));
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
@@ -972,7 +974,7 @@ fn remote_history_watchdog_does_not_rerequest_while_frame_is_arriving() {
 
         let redraw = super::recover_stuck_remote_history(&mut app, &mut remote).await;
         assert!(!redraw, "in-flight history should not trigger recovery");
-        assert_eq!(app.remote_history_recovery_attempts, 0);
+        assert_eq!(app.history_recovery.attempts(), 0);
 
         let mut line = String::new();
         assert!(
@@ -991,8 +993,9 @@ fn remote_history_watchdog_clears_budget_once_history_loads() {
 
     let mut app = create_test_app();
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-    app.remote_history_wait_started = Instant::now().checked_sub(Duration::from_secs(60));
-    app.remote_history_recovery_attempts = 2;
+    app.history_recovery
+        .force_waiting_since(Instant::now() - Duration::from_secs(60));
+    app.history_recovery.force_attempts(2);
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     let redraw = rt.block_on(async {
@@ -1002,9 +1005,9 @@ fn remote_history_watchdog_clears_budget_once_history_loads() {
     });
 
     assert!(!redraw);
-    assert!(app.remote_history_wait_started.is_none());
-    assert_eq!(app.remote_history_recovery_attempts, 0);
-    assert!(app.remote_history_recovery_last_attempt.is_none());
+    assert!(!app.history_recovery.is_waiting());
+    assert_eq!(app.history_recovery.attempts(), 0);
+    assert!(!app.history_recovery.has_last_attempt());
 }
 
 /// After exhausting re-requests the watchdog surfaces an actionable `/restart`
@@ -1015,9 +1018,12 @@ fn remote_history_watchdog_advises_restart_after_giving_up() {
 
     let mut app = create_test_app();
     app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-    app.remote_history_wait_started = Instant::now().checked_sub(Duration::from_secs(60));
-    app.remote_history_recovery_attempts = super::REMOTE_HISTORY_RECOVERY_MAX_ATTEMPTS;
-    app.remote_history_recovery_last_attempt = Some(Instant::now());
+    app.history_recovery
+        .force_waiting_since(Instant::now() - Duration::from_secs(60));
+    app.history_recovery
+        .force_attempts(super::super::remote_state::REMOTE_HISTORY_RECOVERY_MAX_ATTEMPTS);
+    app.history_recovery
+        .force_last_attempt(Some(Instant::now()));
 
     let before = app.display_messages().len();
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1035,7 +1041,7 @@ fn remote_history_watchdog_advises_restart_after_giving_up() {
         messages.last().unwrap().content
     );
     // last_attempt cleared so the hint is not repeated every tick.
-    assert!(app.remote_history_recovery_last_attempt.is_none());
+    assert!(!app.history_recovery.has_last_attempt());
 
     // A subsequent tick must not add another hint.
     let rt2 = tokio::runtime::Runtime::new().unwrap();

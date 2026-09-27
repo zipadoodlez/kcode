@@ -421,8 +421,8 @@ impl App {
         } else if cmd == "swarm" || cmd == "swarm-status" {
             if self.is_remote_client() {
                 serde_json::json!({
-                    "session_count": self.remote_sessions.len(),
-                    "client_count": self.remote_client_count,
+                    "session_count": self.server_info.sessions.len(),
+                    "client_count": self.server_info.client_count,
                     "members": self.swarm.members,
                 })
                 .to_string()

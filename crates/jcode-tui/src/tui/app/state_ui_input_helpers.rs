@@ -1383,7 +1383,7 @@ impl App {
         }
         let preview_mode = self.onboarding_preview_mode;
         let is_canary = if self.is_remote_client() {
-            self.remote_is_canary.unwrap_or(self.session.is_canary)
+            self.server_info.is_canary.unwrap_or(self.session.is_canary)
         } else {
             self.session.is_canary
         };

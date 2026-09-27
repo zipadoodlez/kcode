@@ -94,11 +94,11 @@ impl App {
             .or(todo_title.as_deref())
             .or(self.session.title.as_deref());
         let is_canary = if self.is_remote_client() {
-            self.remote_is_canary.unwrap_or(self.session.is_canary)
+            self.server_info.is_canary.unwrap_or(self.session.is_canary)
         } else {
             self.session.is_canary
         };
-        let server_name = self.remote_server_short_name.as_deref().unwrap_or("kcode");
+        let server_name = self.server_info.short_name.as_deref().unwrap_or("kcode");
         let icon = connection_type_icon(self.connection_type.as_deref()).unwrap_or(session_icon);
         let session_label = crate::process_title::terminal_session_label(&session_name, None);
         let fallback_label = if server_name.eq_ignore_ascii_case("kcode") {
@@ -204,7 +204,7 @@ impl App {
         if !self.is_remote_client() || crate::tui::is_ssh_remote() {
             return false;
         }
-        let is_selfdev_session = self.remote_is_canary.unwrap_or(self.session.is_canary);
+        let is_selfdev_session = self.server_info.is_canary.unwrap_or(self.session.is_canary);
         if !is_selfdev_session {
             return false;
         }

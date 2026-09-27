@@ -744,9 +744,9 @@ impl App {
         session_id: Option<&str>,
     ) {
         self.set_runtime_mode(AppRuntimeMode::RemoteClient);
-        self.remote_server_short_name = name.map(str::to_string);
-        self.remote_server_icon = icon.map(str::to_string);
-        self.remote_server_version = version.map(str::to_string);
+        self.server_info.short_name = name.map(str::to_string);
+        self.server_info.icon = icon.map(str::to_string);
+        self.server_info.version = version.map(str::to_string);
         self.remote_session_id = session_id.map(str::to_string);
     }
 
@@ -1659,7 +1659,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
         let mut content = format!("kcode client: {}{}", version, is_canary);
         if app.is_remote_client() {
             content.push_str("\nmode: remote/shared-server");
-            let server_label = match (&app.remote_server_icon, &app.remote_server_short_name) {
+            let server_label = match (&app.server_info.icon, &app.server_info.short_name) {
                 (Some(icon), Some(name)) => format!("{} {}", icon, name),
                 (None, Some(name)) => name.clone(),
                 _ => "connected server".to_string(),
@@ -1667,11 +1667,12 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
             content.push_str(&format!("\nserver: {}", server_label));
             content.push_str(&format!(
                 "\nserver version: {}",
-                app.remote_server_version
+                app.server_info
+                    .version
                     .as_deref()
                     .unwrap_or("unknown until history sync")
             ));
-            if app.remote_server_has_update.unwrap_or(false) {
+            if app.server_info.has_update.unwrap_or(false) {
                 content.push_str(
                     "\nstatus: server is older or differs from installed stable/current; reload recommended",
                 );
@@ -1817,7 +1818,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
 
         if app.is_remote_client() {
             info.push_str("\nRemote Mode: connected\n");
-            if let Some(count) = app.remote_client_count {
+            if let Some(count) = app.server_info.client_count {
                 info.push_str(&format!("Connected Clients: {}\n", count));
             }
         }
@@ -2096,7 +2097,8 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
                 "- plan items: {}\n- remote members: {}\n- connected clients: {}\n",
                 app.swarm.plan_items.len(),
                 app.swarm.members.len(),
-                app.remote_client_count
+                app.server_info
+                    .client_count
                     .map(|count| count.to_string())
                     .unwrap_or_else(|| "n/a".to_string()),
             ));

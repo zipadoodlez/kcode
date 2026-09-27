@@ -381,6 +381,18 @@ Staged, each lands whole.
       wrote the fields, leaving a no-op recorder with six call sites. Deleted;
       `app_fields` 228 -> 226, baseline refreshed. Verified: lib suite identical
       (1966/27), check, clippy, fmt, shape green.
+      **Server/client state extraction landed.** `app/remote_state.rs` now
+      holds `RemoteServerInfo` (7 -> 1; flat snapshot, fields `pub(super)` since
+      it has no derived state), `RemoteStartup` (2 -> 1; `set`/`clear` moved off
+      `App` with their reset-started-on-change invariant), and `HistoryRecovery`
+      (3 -> 1; the first-delay / rate-limit / give-up transition moved into
+      `HistoryRecovery::step`, returning `Wait`/`GiveUp`/`Retry`, so `remote.rs`
+      only supplies the environment and does the I/O). `App` keeps thin
+      `set/clear_remote_startup_phase` wrappers because `ui_header.rs` is outside
+      `app`; the `begin/clear_remote_history_wait` wrappers were deleted (all
+      callers are `app` descendants and call the struct). `app_fields` 226 ->
+      217, baseline refreshed; `impl_app_blocks` 57, `super_glob_imports` 124.
+      Verified: lib suite identical (1966/27), check, clippy, fmt, shape green.
   - Stage 11: revisit `TuiState`. It is a 122-method trait with two impls, and
     `TestState` (39 fields, 83 sites, 13 files) exists so render tests avoid
     constructing an `App`. Deleting it is a trade, decided last, once `App` is

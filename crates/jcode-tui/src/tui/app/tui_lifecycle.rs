@@ -475,8 +475,7 @@ impl App {
             remote_provider_model: None,
             remote_model_catalog_generation: 0,
             remote_resolved_credential: None,
-            remote_startup_phase: None,
-            remote_startup_phase_started: None,
+            remote_startup: Default::default(),
             remote_reasoning_effort: None,
             remote_service_tier: None,
             remote_transport: None,
@@ -488,17 +487,11 @@ impl App {
             remote_skills: Vec::new(),
             remote_total_tokens: None,
             remote_token_usage_totals: None,
-            remote_is_canary: None,
-            remote_server_version: None,
-            remote_server_has_update: None,
-            remote_server_short_name: None,
-            remote_server_icon: None,
+            server_info: Default::default(),
             current_message_id: None,
             runtime_mode: AppRuntimeMode::TestHarness,
             pending_remote_rewind_notice: None,
-            remote_history_wait_started: None,
-            remote_history_recovery_attempts: 0,
-            remote_history_recovery_last_attempt: None,
+            history_recovery: Default::default(),
             server_spawning: false,
             suppress_terminal_title_updates: false,
             replay_elapsed_override: None,
@@ -507,8 +500,6 @@ impl App {
             tool_result_ids: HashSet::new(),
             tool_output_scan_index: 0,
             remote_session_id: None,
-            remote_sessions: Vec::new(),
-            remote_client_count: None,
             resume_session_id: None,
             requested_exit_code: None,
             autoreview_enabled,
@@ -782,8 +773,7 @@ impl App {
             remote_provider_model: None,
             remote_model_catalog_generation: 0,
             remote_resolved_credential: None,
-            remote_startup_phase: None,
-            remote_startup_phase_started: None,
+            remote_startup: Default::default(),
             remote_reasoning_effort: None,
             remote_service_tier: None,
             remote_transport: None,
@@ -795,17 +785,11 @@ impl App {
             remote_skills: Vec::new(),
             remote_total_tokens: None,
             remote_token_usage_totals: None,
-            remote_is_canary: None,
-            remote_server_version: None,
-            remote_server_has_update: None,
-            remote_server_short_name: None,
-            remote_server_icon: None,
+            server_info: Default::default(),
             current_message_id: None,
             runtime_mode: AppRuntimeMode::TestHarness,
             pending_remote_rewind_notice: None,
-            remote_history_wait_started: None,
-            remote_history_recovery_attempts: 0,
-            remote_history_recovery_last_attempt: None,
+            history_recovery: Default::default(),
             server_spawning: false,
             suppress_terminal_title_updates: false,
             replay_elapsed_override: None,
@@ -814,8 +798,6 @@ impl App {
             tool_result_ids: HashSet::new(),
             tool_output_scan_index: 0,
             remote_session_id: None,
-            remote_sessions: Vec::new(),
-            remote_client_count: None,
             resume_session_id: None,
             requested_exit_code: None,
             autoreview_enabled,
@@ -1018,8 +1000,8 @@ impl App {
             .unwrap_or_else(|| Session::create(None, None));
         let mut app = Self::new_minimal_with_session(provider, registry, session);
         app.set_runtime_mode(AppRuntimeMode::RemoteClient);
-        app.remote_startup_phase = Some(super::RemoteStartupPhase::Connecting);
-        app.remote_startup_phase_started = Some(Instant::now());
+        app.remote_startup
+            .set(super::RemoteStartupPhase::Connecting);
 
         if let Some(host) = crate::tui::ssh_remote_host() {
             // The server supplies history, credentials, models and project state.
@@ -1073,7 +1055,7 @@ impl App {
     /// instead of failing fatally, allowing the TUI to show while the server starts.
     pub fn set_server_spawning(&mut self) {
         self.server_spawning = true;
-        self.remote_startup_phase = Some(super::RemoteStartupPhase::StartingServer);
-        self.remote_startup_phase_started = Some(Instant::now());
+        self.remote_startup
+            .set(super::RemoteStartupPhase::StartingServer);
     }
 }

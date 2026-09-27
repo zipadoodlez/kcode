@@ -242,7 +242,8 @@ impl App {
                 .map(|value| value.capacity())
                 .sum::<usize>();
         let remote_sessions_bytes: usize = self
-            .remote_sessions
+            .server_info
+            .sessions
             .iter()
             .map(|value| value.capacity())
             .sum();
@@ -378,17 +379,20 @@ impl App {
                 .map(|value| value.capacity())
                 .unwrap_or(0)
             + self
-                .remote_server_version
+                .server_info
+                .version
                 .as_ref()
                 .map(|value| value.capacity())
                 .unwrap_or(0)
             + self
-                .remote_server_short_name
+                .server_info
+                .short_name
                 .as_ref()
                 .map(|value| value.capacity())
                 .unwrap_or(0)
             + self
-                .remote_server_icon
+                .server_info
+                .icon
                 .as_ref()
                 .map(|value| value.capacity())
                 .unwrap_or(0)
@@ -460,7 +464,7 @@ impl App {
                 "stashed_input_bytes": stashed_input_bytes,
             },
             "remote_state_extra": {
-                "remote_sessions_count": self.remote_sessions.len(),
+                "remote_sessions_count": self.server_info.sessions.len(),
                 "remote_sessions_bytes": remote_sessions_bytes,
                 "remote_swarm_members_count": self.swarm.members.len(),
                 "remote_swarm_members_json_bytes": remote_swarm_members_json_bytes,

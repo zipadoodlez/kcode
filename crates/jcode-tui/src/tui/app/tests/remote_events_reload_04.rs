@@ -1116,8 +1116,7 @@ fn test_remote_tui_state_shows_startup_elapsed_in_header() {
     with_neutral_remote_model_hints(|| {
         let mut app = App::new_for_remote(None);
         app.set_remote_startup_phase(crate::tui::app::RemoteStartupPhase::Connecting);
-        app.remote_startup_phase_started =
-            Some(std::time::Instant::now() - std::time::Duration::from_secs(5));
+        app.remote_startup.force_started(std::time::Instant::now() - std::time::Duration::from_secs(5));
 
         assert_eq!(
             crate::tui::TuiState::provider_model(&app),
@@ -1171,8 +1170,7 @@ fn test_remote_header_keeps_known_model_during_brief_loading_session_phase() {
 
     // A genuinely stuck load still surfaces the phase label after the grace
     // period so the user can tell something is wrong.
-    app.remote_startup_phase_started =
-        Some(std::time::Instant::now() - std::time::Duration::from_secs(5));
+    app.remote_startup.force_started(std::time::Instant::now() - std::time::Duration::from_secs(5));
     assert_eq!(
         crate::tui::TuiState::provider_model(&app),
         "loading session… 5s"

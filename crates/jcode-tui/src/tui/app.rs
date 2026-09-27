@@ -87,6 +87,7 @@ mod reasoning;
 mod redraw;
 mod remote;
 mod remote_notifications;
+mod remote_state;
 pub(crate) mod run_shell;
 mod runtime_memory;
 mod shortcut_hints;
@@ -1086,8 +1087,8 @@ pub struct App {
     /// subscription vs cost-based usage display for remote sessions without
     /// re-deriving it from the provider name.
     remote_resolved_credential: Option<jcode_provider_core::ResolvedCredential>,
-    remote_startup_phase: Option<RemoteStartupPhase>,
-    remote_startup_phase_started: Option<Instant>,
+    /// Remote startup handshake phase + elapsed budget (see `remote_state.rs`).
+    remote_startup: remote_state::RemoteStartup,
     remote_reasoning_effort: Option<String>,
     remote_service_tier: Option<String>,
     remote_transport: Option<String>,
@@ -1102,31 +1103,15 @@ pub struct App {
     remote_total_tokens: Option<(u64, u64)>,
     // Detailed persisted token/cache usage totals (from server in remote mode)
     remote_token_usage_totals: Option<crate::protocol::TokenUsageTotals>,
-    // Whether the remote session is canary/self-dev (from server)
-    remote_is_canary: Option<bool>,
-    // Remote server version (from server)
-    remote_server_version: Option<String>,
-    // Whether the remote server has a newer binary available
-    remote_server_has_update: Option<bool>,
-    // Remote server short name (e.g., "running", "blazing")
-    remote_server_short_name: Option<String>,
-    // Remote server icon (e.g., "🔥", "🌫️")
-    remote_server_icon: Option<String>,
+    /// Server hello snapshot: identity, version, sessions, client count.
+    server_info: remote_state::RemoteServerInfo,
     // Current message request ID (for remote mode - to match Done events)
     current_message_id: Option<u64>,
     runtime_mode: AppRuntimeMode,
     // Remote rewind/undo request waiting for the server's replacement History payload.
     pending_remote_rewind_notice: Option<PendingRemoteRewindNotice>,
-    // History-recovery watchdog for the "stuck on loading session…" bug. When a
-    // remote (re)connect never receives the bootstrap `History` event, every
-    // prompt path is gated behind `has_loaded_history()` and the session is
-    // permanently stuck on "loading session…" until the user runs `/restart`.
-    // These track when the current connection began waiting for history and how
-    // many times we have re-requested it, so the watchdog can re-issue
-    // `GetHistory` a few times before giving up.
-    remote_history_wait_started: Option<Instant>,
-    remote_history_recovery_attempts: u32,
-    remote_history_recovery_last_attempt: Option<Instant>,
+    /// History-recovery watchdog for the "stuck on loading session…" bug.
+    history_recovery: remote_state::HistoryRecovery,
     // Server was just spawned - allow initial connection retries in run_remote
     server_spawning: bool,
     // Suppress terminal title updates for off-screen/silent replay instances.
@@ -1143,10 +1128,6 @@ pub struct App {
     tool_output_scan_index: usize,
     // Current session ID (from server in remote mode)
     remote_session_id: Option<String>,
-    // All sessions on the server (remote mode only)
-    remote_sessions: Vec<String>,
-    // Number of connected clients (remote mode only)
-    remote_client_count: Option<usize>,
     // Session to resume on connect (remote mode)
     resume_session_id: Option<String>,
     // Exit code to use when quitting (for canary wrapper communication)
