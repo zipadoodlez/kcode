@@ -63,7 +63,7 @@ lines.
 | Second markdown renderer | ~4,700 (`kcode-render-core` 4,542 + adapter 795) | `render_markdown_via_core` has only test callers; the TUI uses the legacy path (`ui_messages.rs:95`); the adapter's own doc says the legacy path "remains authoritative; this adapter is validated against it before any switchover" | `render-core` also supplies `reasoning_line_markup` to `kcode-base/src/session/render.rs` | a switchover, not a deletion: land it and delete the legacy path, or abandon it and delete the core |
 | Harnesses living in test files | ~7k | `[census]`: `live_tests.rs` 3,080 is `pub mod` production code consumed by `kcode-provider-doctor`; `onboarding_eval.rs` 3,294 embeds a metrics framework; `smoothness_benchmark.rs` 332; `browser_fast_live_tests.rs` 250 | `live_tests` is genuinely production | move the non-test halves into modules; `live_tests` is a misnamed production module |
 | Duplicated tiny helpers | ~500 over ~10 families | `[census]` names both file:line per family; verified `now_ms` x3 is byte-identical (`observe.rs:257`, `split_view.rs:310`, `todos_view.rs:566`) | 5-20 lines each | one home each, low risk |
-| Parallel persisted-state runtime | ~150 (`swarm_mutation_state.rs` 281, `await_members_state.rs` 278) | verified: same 6-fn skeleton (`load_state`, `save_state`, `ensure_pending_state`, `request_key`, `persist_final_response`, `is_stale`); payload and TTL differ | different payloads | make the skeleton generic over the payload |
+| Parallel persisted-state runtime | ~20, not 150 | read both files: the mechanism already lives in `server/durable_state.rs` (`load_json_state`, `save_json_state`, `hashed_request_key`, `state_dir`); only the 3-line `load_state`/`save_state` wrappers rhyme, and the payload, TTLs, and `is_stale` bodies differ | payload-specific | leave duplicated; a generic would weld two unrelated payloads together |
 | `ui_prefs` module + empty `provider/fingerprint.rs` | ~31 | verified: `ui_prefs` is declared, has zero references, and carries `#![allow(dead_code)]`; `fingerprint.rs` is a whitespace-only file with a `mod` declaration | nothing | delete |
 | Provider wire/runtime split, provider catalog | 0 deletable | `[census]`: runtime crates re-export the wire crates rather than reimplementing them; the catalog is single-source in `kcode-provider-metadata`, re-exported by `kcode-base` | real protocol/transport separation | keep; §1's B3-B5 is identity, not data |
 | Provider trait test doubles | 0 deletable, a per-file tax | 45 files `impl …Provider for`, many of them `_tests.rs`; the trait has ~50 methods | test doubles need the shape | same trade as `TestState` in §2 |
@@ -88,8 +88,6 @@ the persisted-one-shot-hint concept has one home; `fenced_block` moved to
   `now_ms` x3 is deliberately left: routing it through
   `tui::test_harness::now_ms()` (the existing clock home) would change behavior
   under the test clock, which is a fix with its own verification, not a move.
-- [ ] Make the persisted pending-state skeleton generic over its payload
-  (`swarm_mutation_state.rs`, `await_members_state.rs`, ~150 lines).
 - [ ] Move the non-test halves out of the test tree (`live_tests.rs`,
   `onboarding_eval.rs`, `smoothness_benchmark.rs`); §4 owns the test-tree item.
 - [ ] Delete the dead local turn path and migrate the 33 test call sites onto
