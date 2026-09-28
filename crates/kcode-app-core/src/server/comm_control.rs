@@ -1,8 +1,7 @@
 #![cfg_attr(test, allow(clippy::items_after_test_module))]
 
-use super::append_swarm_completion_report_instructions;
 use super::swarm::{
-    now_unix_ms, swarm_task_heartbeat_interval, swarm_task_stale_after, touch_swarm_task_progress,
+    swarm_task_heartbeat_interval, swarm_task_stale_after, touch_swarm_task_progress,
 };
 use super::swarm_mutation_state::{
     PersistedSwarmMutationResponse, begin_or_join_in_flight as begin_swarm_mutation_no_replay,
@@ -16,6 +15,7 @@ use super::{
     persist_swarm_state_for, queue_soft_interrupt_for_session, record_swarm_event,
     set_member_task_label, truncate_detail, update_member_status, update_member_status_with_report,
 };
+use super::{append_swarm_completion_report_instructions, durable_state::now_unix_ms};
 use crate::agent::Agent;
 use crate::plan::{
     TaskControlAction, assignment_affinities_for_task, assignment_loads,

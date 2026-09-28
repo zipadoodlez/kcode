@@ -1,3 +1,4 @@
+use super::durable_state::now_unix_ms;
 use super::{SwarmMember, SwarmTaskProgress, VersionedPlan};
 use crate::protocol::ServerEvent;
 use crate::storage;
@@ -138,13 +139,6 @@ struct PersistedSwarmMember {
     /// conservative migration fallback so reports are not discarded eagerly.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     terminal_since_unix_ms: Option<u64>,
-}
-
-fn now_unix_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
 }
 
 #[cfg(not(test))]

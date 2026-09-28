@@ -1,3 +1,4 @@
+use super::durable_state::now_unix_ms;
 use super::state::{MAX_EVENT_HISTORY, fanout_session_event};
 use super::{SwarmEvent, SwarmEventType, SwarmMember, SwarmState, VersionedPlan};
 use super::{persist_swarm_state_for, remove_persisted_swarm_state_for};
@@ -16,7 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Mutex as StdMutex, OnceLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock, broadcast};
 
 fn status_age_secs(last_status_change: Instant) -> u64 {
@@ -146,13 +147,6 @@ fn configured_positive_u64(name: &str, default: u64) -> u64 {
         .and_then(|value| value.trim().parse::<u64>().ok())
         .filter(|value| *value > 0)
         .unwrap_or(default)
-}
-
-pub(super) fn now_unix_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
 }
 
 fn log_swarm_lifecycle(phase: &str, fields: Vec<(&str, String)>) {
