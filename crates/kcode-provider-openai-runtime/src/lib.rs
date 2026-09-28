@@ -996,25 +996,16 @@ impl OpenAIProvider {
     }
 
     fn normalize_reasoning_effort(raw: &str) -> Option<String> {
-        let value = raw.trim().to_lowercase();
-        if value.is_empty() {
-            return None;
-        }
-        match value.as_str() {
-            // `swarm` is a UI sentinel meaning "configured root effort + use the swarm tool".
-            // We keep it stored so the UI/session reflect it and the agent injects
-            // the swarm directive; it is translated to a real effort at request time
-            // by `api_reasoning_effort`.
-            "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "swarm"
-            | "swarm-deep" => Some(value),
-            other => {
-                kcode_base::logging::info(&format!(
-                    "Warning: Ignoring unsupported OpenAI reasoning effort '{}'; expected none|minimal|low|medium|high|xhigh|max.",
-                    other
-                ));
-                None
-            }
-        }
+        // `swarm` and `swarm-deep` are UI sentinels meaning "configured root
+        // effort + use the swarm tool". They stay in the accepted set so the
+        // UI/session reflect them; `api_reasoning_effort` translates them to a
+        // real effort at request time. The ladder itself lives in provider-core,
+        // so the accepted set cannot drift from the one the UI offers.
+        kcode_provider_core::normalize_effort(
+            raw,
+            kcode_provider_core::OPENAI_SELECTABLE_EFFORTS,
+            "OpenAI",
+        )
     }
 
     /// Default reasoning effort to apply when the user has *not* explicitly

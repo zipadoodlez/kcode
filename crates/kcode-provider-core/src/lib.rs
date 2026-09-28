@@ -49,13 +49,13 @@ pub use models::{
 };
 pub use reasoning::{
     DEEPSEEK_SELECTABLE_EFFORTS, OPENAI_SELECTABLE_EFFORTS, OPENROUTER_SELECTABLE_EFFORTS,
-    canonical_reasoning_effort, inferred_reasoning_efforts,
+    canonical_reasoning_effort, inferred_reasoning_efforts, normalize_effort,
 };
 pub use selection::{
     ActiveProvider, ProviderAvailability, auto_default_provider, cli_provider_arg_for_session_key,
     dedupe_model_routes, explicit_model_provider_prefix, fallback_sequence,
-    model_name_for_provider, parse_provider_hint, provider_from_model_key, provider_key,
-    provider_label, strip_own_model_prefix,
+    model_name_for_provider, own_model_id, parse_provider_hint, provider_from_model_key,
+    provider_key, provider_label, simple_model_routes, strip_own_model_prefix,
 };
 
 use anyhow::Result;

@@ -43,6 +43,31 @@ pub const DEEPSEEK_SELECTABLE_EFFORTS: &[&str] = &[
     "swarm-deep",
 ];
 
+/// Normalize a requested reasoning effort against a selectable ladder.
+///
+/// Returns the accepted value, or `None` after logging a rejection when the
+/// ladder does not contain it. `provider_label` names the provider in the log
+/// line only.
+///
+/// The point of taking the ladder as an argument is that these are the same
+/// ladders [`inferred_reasoning_efforts`] offers the UI, so the accepted set and
+/// the offered set cannot drift apart. Before this, each provider restated its
+/// ladder as a `match` arm list next to the constant that already held it.
+pub fn normalize_effort(raw: &str, ladder: &[&str], provider_label: &str) -> Option<String> {
+    let value = raw.trim().to_ascii_lowercase();
+    if value.is_empty() {
+        return None;
+    }
+    if ladder.contains(&value.as_str()) {
+        return Some(value);
+    }
+    kcode_logging::info(&format!(
+        "Warning: Ignoring unsupported {provider_label} reasoning effort '{value}'; expected {}.",
+        ladder.join("|")
+    ));
+    None
+}
+
 /// Convert a provider-advertised OpenAI/OpenRouter effort into the canonical
 /// static value used by the provider trait.
 pub fn canonical_reasoning_effort(value: &str) -> Option<&'static str> {

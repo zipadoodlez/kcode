@@ -1141,60 +1141,32 @@ impl OpenRouterProvider {
     }
 
     fn normalize_reasoning_effort(raw: &str) -> Option<String> {
-        let value = raw.trim().to_ascii_lowercase();
-        if value.is_empty() {
-            return None;
-        }
-        match value.as_str() {
-            "none" | "low" | "medium" | "high" | "max" | "swarm" | "swarm-deep" => Some(value),
-            // Match the existing OpenAI UX: accept unknown non-empty effort values
-            // by snapping to the strongest setting instead of rejecting the command.
-            other => {
-                kcode_base::logging::info(&format!(
-                    "Warning: Ignoring unsupported DeepSeek reasoning effort '{}'; expected none|low|medium|high|max.",
-                    other
-                ));
-                None
-            }
-        }
+        kcode_provider_core::normalize_effort(
+            raw,
+            kcode_provider_core::DEEPSEEK_SELECTABLE_EFFORTS,
+            "DeepSeek",
+        )
     }
 
     fn normalize_openai_reasoning_effort(raw: &str) -> Option<String> {
-        let value = raw.trim().to_ascii_lowercase();
-        if value.is_empty() {
-            return None;
-        }
-        match value.as_str() {
-            "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "swarm"
-            | "swarm-deep" => Some(value),
-            other => {
-                kcode_base::logging::info(&format!(
-                    "Warning: Ignoring unsupported OpenAI-compatible reasoning effort '{}'.",
-                    other
-                ));
-                None
-            }
-        }
+        kcode_provider_core::normalize_effort(
+            raw,
+            kcode_provider_core::OPENAI_SELECTABLE_EFFORTS,
+            "OpenAI-compatible",
+        )
     }
 
     fn normalize_unified_reasoning_effort(raw: &str) -> Option<String> {
-        let value = raw.trim().to_ascii_lowercase();
-        if value.is_empty() {
-            return None;
+        // OpenRouter treats `max` as an alias for `xhigh`; that wire quirk stays
+        // here rather than becoming a flag on the shared normalizer.
+        if raw.trim().eq_ignore_ascii_case("max") {
+            return Some("xhigh".to_string());
         }
-        match value.as_str() {
-            "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "swarm" | "swarm-deep" => {
-                Some(value)
-            }
-            "max" => Some("xhigh".to_string()),
-            other => {
-                kcode_base::logging::info(&format!(
-                    "Warning: Ignoring unsupported OpenRouter reasoning effort '{}'; expected none|minimal|low|medium|high|xhigh|max alias.",
-                    other
-                ));
-                None
-            }
-        }
+        kcode_provider_core::normalize_effort(
+            raw,
+            kcode_provider_core::OPENROUTER_SELECTABLE_EFFORTS,
+            "OpenRouter",
+        )
     }
 
     fn configured_max_tokens(_profile_id: Option<&str>) -> Option<u32> {
