@@ -5,6 +5,9 @@ Policy:
 - Test Rust files above the configured LOC threshold are tracked in a baseline.
 - Existing tracked oversized test files may not grow.
 - New oversized test files may not be introduced.
+- A file that shrinks below its recorded size fails until the baseline records
+  it, so the cap can only tighten. Otherwise an unrecorded improvement leaves
+  the looser old cap in force and lets the file regrow unnoticed.
 - `--update` refreshes the baseline after intentional cleanup.
 """
 
@@ -136,12 +139,18 @@ def main() -> int:
         return 1
 
     if improvements:
-        print("Test-size budget improved:")
+        print(
+            "Test-size budget improved, but the baseline was not updated. The "
+            "ratchet only tightens: record the improvement in this commit with "
+            "`scripts/check_test_size_budget.py --update`, or the old, looser cap "
+            "stays in force:",
+            file=sys.stderr,
+        )
         for entry in improvements:
-            print(f"  - {entry}")
-        print("Consider running: scripts/check_test_size_budget.py --update")
-    else:
-        print(f"Test-size budget OK: tracked={len(tracked)} threshold={threshold}LOC")
+            print(f"  - {entry}", file=sys.stderr)
+        return 1
+
+    print(f"Test-size budget OK: tracked={len(tracked)} threshold={threshold}LOC")
     return 0
 
 

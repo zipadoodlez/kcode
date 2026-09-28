@@ -22,9 +22,15 @@ maintainer before work starts; everything else is actionable.
 - **No provider is deleted** (maintainer decision 2026-09-27): every cut
   candidate backs a user-selectable provider. Cleanup is identity unification
   (below), not removal.
-- **Gate is wired and green.** `scripts/check_guardrails.sh` runs clippy
-  (`-D warnings`), the panic, code-size, test-size, dependency-boundary,
-  wildcard-reexport, and `App`-shape ratchets, plus the warning budget.
+- **Gate is wired and green.** `scripts/check_guardrails.sh` runs nine steps:
+  `cargo fmt --check`, `cargo clippy -- -D warnings` (which also compiles every
+  target), `Cargo.lock` freshness, the code-size, test-size, wildcard-reexport,
+  and `App`-shape ratchets, crate dependency boundaries, and the six onboarding
+  state-space invariant tests. Audited 2026-09-28: it had fourteen steps; five
+  were deleted as redundant or as counts that could not make the distinction
+  their rule needed (see `docs/dev/post-change.md`). The ratchets now fail when
+  a tracked number improves without the baseline being updated, so they can only
+  tighten.
 
 ## 0. Deletion ledger (the line-count question, measured)
 

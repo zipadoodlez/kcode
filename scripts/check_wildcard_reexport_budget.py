@@ -15,6 +15,9 @@ Policy:
 - Existing files may not increase their count.
 - New production files may not introduce cross-crate wildcard re-exports.
 - Total count may not increase.
+- A removal fails until the baseline records it, so the budget can only tighten.
+  Otherwise an unrecorded removal leaves the looser old budget in force and lets
+  the re-export come back unnoticed.
 - `--update` refreshes the baseline after intentional cleanup.
 
 The long-term goal is to drive this budget to zero as the migration-era
@@ -153,11 +156,21 @@ def main() -> int:
         counts.get(rel, 0) < allowed for rel, allowed in baseline_files.items()
     ):
         print(
-            f"wildcard re-export budget check passed (total={total}, baseline={baseline_total}); "
-            "consider running --update to ratchet the baseline down"
+            "wildcard re-export budget improved, but the baseline was not "
+            "updated. The ratchet only tightens: record the improvement in this "
+            "commit with `scripts/check_wildcard_reexport_budget.py --update`, "
+            "or the old, looser budget stays in force:",
+            file=sys.stderr,
         )
-    else:
-        print(f"wildcard re-export budget check passed (total={total})")
+        for rel, allowed in sorted(baseline_files.items()):
+            count = counts.get(rel, 0)
+            if count < allowed:
+                print(f"  - {rel}: {allowed} -> {count}", file=sys.stderr)
+        if total < baseline_total:
+            print(f"  - total: {baseline_total} -> {total}", file=sys.stderr)
+        return 1
+
+    print(f"wildcard re-export budget check passed (total={total})")
     return 0
 
 

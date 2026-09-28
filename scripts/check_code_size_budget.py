@@ -9,7 +9,9 @@ Policy:
   baseline file.
 - Existing tracked oversized files may not grow.
 - New oversized production files may not be introduced.
-- If oversized files shrink or disappear, the script reports the improvement.
+- A file that shrinks below its recorded size fails until the baseline records
+  it, so the cap can only tighten. Otherwise an unrecorded improvement leaves
+  the looser old cap in force and lets the file regrow unnoticed.
 - `--update` refreshes the baseline after intentional cleanup.
 """
 
@@ -159,15 +161,21 @@ def main() -> int:
         return 1
 
     if improvements:
-        print("Code-size budget improved:")
-        for entry in improvements:
-            print(f"  - {entry}")
-        print("Consider running: scripts/check_code_size_budget.py --update")
-    else:
         print(
-            "Code-size budget OK: "
-            f"tracked={len(tracked)} threshold={threshold}LOC no oversized-file regressions"
+            "Code-size budget improved, but the baseline was not updated. The "
+            "ratchet only tightens: record the improvement in this commit with "
+            "`scripts/check_code_size_budget.py --update`, or the old, looser cap "
+            "stays in force:",
+            file=sys.stderr,
         )
+        for entry in improvements:
+            print(f"  - {entry}", file=sys.stderr)
+        return 1
+
+    print(
+        "Code-size budget OK: "
+        f"tracked={len(tracked)} threshold={threshold}LOC no oversized-file regressions"
+    )
     return 0
 
 

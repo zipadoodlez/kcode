@@ -8,7 +8,7 @@
 # Usage:
 #   scripts/check_guardrails.sh              # check only, non-zero on failure
 #   scripts/check_guardrails.sh --fix        # rustfmt + rebaseline ratchets
-#   scripts/check_guardrails.sh --skip-slow  # skip cargo check/clippy/machete
+#   scripts/check_guardrails.sh --skip-slow  # skip cargo clippy
 #
 # Note: this runs on your local `stable` toolchain. If it is behind the latest
 # stable, clippy can pass here and fail on a machine that has updated, so the
@@ -56,11 +56,9 @@ run_ratchet() {
 }
 
 echo "=== Format ==="
-# Before rustfmt: a `mod x;` with no file makes rustfmt fail with "Error writing
-# files: failed to resolve mod", which reads like a formatting problem and hides
-# every gate behind it. Naming the real cause first turns a confusing Format
-# failure into an obvious one (221159294).
-run_gate "module declarations resolve" python3 scripts/check_module_files.py
+# A `mod x;` with no file is caught by rustfmt itself ("failed to resolve mod
+# `x`: ... does not exist") and by `cargo check` (E0583), so no separate
+# detector runs here.
 if $FIX; then
     cargo fmt --all
 fi
@@ -69,10 +67,11 @@ run_gate "cargo fmt --all --check" cargo fmt --all --check
 echo ""
 echo "=== Quality Guardrails ==="
 if $SKIP_SLOW; then
-    echo "⏭  cargo check / clippy / machete (--skip-slow)"
+    echo "⏭  cargo clippy (--skip-slow)"
 else
-    run_gate "cargo check --all-targets --all-features" \
-        cargo check --all-targets --all-features -j "$JOBS"
+    # clippy compiles every target with every feature, so it subsumes a
+    # separate `cargo check`: a compile error fails it too, and the two run
+    # different compiler drivers, so having both compiles the tree twice.
     run_gate "cargo clippy -- -D warnings" \
         cargo clippy --all-targets --all-features -j "$JOBS" -- -D warnings
 fi
@@ -80,8 +79,6 @@ fi
 # A stale lockfile otherwise passes the fast jobs and only fails at the
 # release "Build release binary" step.
 run_gate "Cargo.lock is up to date" cargo metadata --locked --format-version 1
-run_gate "warning budget" bash scripts/check_warning_budget.sh
-run_ratchet "panic-prone usage ratchet" check_panic_budget.py
 # Both size ratchets were re-baselined to this fork on 2026-09-27 but left out
 # of the gate, so they guarded nothing; a ratchet that never runs is not a
 # ratchet. They measure file-size drift, separate from the `App` shape ratchet
@@ -89,7 +86,7 @@ run_ratchet "panic-prone usage ratchet" check_panic_budget.py
 run_ratchet "code size budget" check_code_size_budget.py
 run_ratchet "test size budget" check_test_size_budget.py
 run_gate "crate dependency boundaries" python3 scripts/check_dependency_boundaries.py
-run_gate "wildcard re-export ratchet" python3 scripts/check_wildcard_reexport_budget.py
+run_ratchet "wildcard re-export ratchet" check_wildcard_reexport_budget.py
 # The `App` re-core may only shrink, so its field/impl/glob counts are ratcheted
 # separately from file size (app.rs could shrink while fields regroup inward).
 run_ratchet "App shape ratchet" check_app_shape.py
@@ -101,15 +98,7 @@ run_ratchet "App shape ratchet" check_app_shape.py
 # invariant that nobody could see by reading one screen's code, so this gate is
 # cheap insurance against the whole class.
 run_gate "onboarding state-space invariants" \
-    cargo test --profile selfdev -p kcode-tui -j "$JOBS" onboarding_graph::
-
-if $SKIP_SLOW; then
-    :
-elif command -v cargo-machete >/dev/null 2>&1; then
-    run_gate "unused dependencies (cargo machete)" cargo machete
-else
-    echo "⏭  cargo machete (not installed: cargo install cargo-machete --locked)"
-fi
+    cargo test --profile selfdev -p kcode-tui --lib -j "$JOBS" onboarding_graph::
 
 echo ""
 # CI installs the current `stable`; a stale local toolchain hides new lints.

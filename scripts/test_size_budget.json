@@ -1,7 +1,7 @@
 {
   "threshold_loc": 1200,
   "tracked_files": {
-    "crates/kcode-app-core/src/agent_tests.rs": 2177,
+    "crates/kcode-app-core/src/agent_tests.rs": 2173,
     "crates/kcode-app-core/src/server/client_lifecycle_tests.rs": 1466,
     "crates/kcode-app-core/src/server/comm_control_tests/dag_e2e.rs": 1332,
     "crates/kcode-app-core/src/server/comm_session_tests.rs": 1207,

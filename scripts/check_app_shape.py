@@ -14,6 +14,9 @@ a metric nobody trusts.
 
 Policy:
 - Each metric may only stay flat or fall.
+- A metric that falls fails until the baseline records it, so the counts can only
+  tighten. Otherwise an unrecorded improvement leaves the looser old number in
+  force and lets it regrow unnoticed.
 - `--update` re-baselines after an intentional change (a stage of the re-core
   that adds fields to a sub-struct and removes them from `App` is net-zero here,
   re-baseline then; a stage that is not net-zero is a regression).
@@ -177,12 +180,18 @@ def main() -> int:
 
     summary = ", ".join(f"{k}={v}" for k, v in metrics.items())
     if improvements:
-        print(f"App shape improved ({summary}):")
+        print(
+            "App shape improved, but the baseline was not updated. The ratchet "
+            "only tightens: record the improvement in this commit with "
+            "`scripts/check_app_shape.py --update`, or the looser old number "
+            "stays in force:",
+            file=sys.stderr,
+        )
         for entry in improvements:
-            print(f"  - {entry}")
-        print("Consider running: scripts/check_app_shape.py --update")
-    else:
-        print(f"App shape OK ({summary})")
+            print(f"  - {entry}", file=sys.stderr)
+        return 1
+
+    print(f"App shape OK ({summary})")
     return 0
 
 

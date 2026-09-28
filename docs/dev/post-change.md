@@ -11,14 +11,13 @@ or tell an agent to run it, after a major change and before committing.
 ```sh
 scripts/check_guardrails.sh              # non-zero on failure
 scripts/check_guardrails.sh --fix        # rustfmt + rebaseline ratchets
-scripts/check_guardrails.sh --skip-slow  # skip cargo check/clippy/machete
+scripts/check_guardrails.sh --skip-slow  # skip cargo clippy
 ```
 
-It must pass. It runs the old CI guardrail set locally: module declarations
-resolve, `cargo fmt --check`, `cargo check --all-targets --all-features`,
-`cargo clippy -- -D warnings`, `Cargo.lock` freshness, the warning budget, the
-size/panic/wildcard ratchets, crate dependency boundaries, the
-onboarding state-space invariants, and `cargo machete` when installed.
+It must pass. It runs the old CI guardrail set locally: `cargo fmt --check`,
+`cargo clippy -- -D warnings` (which also compiles every target), `Cargo.lock`
+freshness, the size, wildcard, and `App`-shape ratchets, crate dependency
+boundaries, and the onboarding state-space invariants.
 
 A compile or clippy failure is a real regression; do not commit past it.
 
@@ -64,12 +63,28 @@ growth is intentional, re-baseline the specific file with `--update` (or
 `--fix` above) in the same commit; otherwise fix it. Do not `--update` to
 silence a ratchet you did not mean to move.
 
-The panic ratchet counts only production paths. Test files, `build.rs`,
-`examples/`, `benches/` and `fake_*`/`*_fixture*` files are excluded, because a
-panic there is a build failure, sample code, or a test fixture, not runtime
-behavior a user can hit. The swallowed-error ratchet was deleted: it counted
-`let _ =`, `.ok()` and `.unwrap_or_default()`, which are idiomatic Rust, so its
-signal was dominated by code that is not a defect.
+The two size ratchets (production and test files) also fail when a tracked file
+*shrinks*, so an improvement has to be recorded in the same commit. The cap then
+only ever tightens: an unrecorded shrink would leave the old, looser cap in
+force and let the file regrow to it unnoticed.
+
+Two ratchets were deleted because a count cannot make the distinction the rule
+needs. The swallowed-error ratchet counted `let _ =`, `.ok()` and
+`.unwrap_or_default()`, which are idiomatic Rust, so its signal was dominated by
+code that is not a defect. The panic ratchet counted `.unwrap()`, `.expect()`
+and `panic!` in production paths: it could not tell a justified
+`.expect("invariant")` from a careless `.unwrap()`, so it blocked correct new
+code, and the one place it pointed at (the SSH-login flow's guarded unwraps) is
+tracked as work in `docs/todo.md` §2 instead. If the policy is ever wanted back,
+clippy's `unwrap_used`/`expect_used`/`panic` lints express it with a per-site
+`#[allow(..., reason = "...")]`.
+
+Three more steps were removed for being redundant rather than wrong: a
+`mod`-without-file pre-check (rustfmt reports the missing file itself), a
+separate `cargo check` (clippy compiles every target, so it covers the same
+compile errors and the pair built the tree twice), and the warning budget
+(clippy's `-D warnings` denies the same warnings over a wider target and feature
+set). `cargo machete` was removed because it never ran here.
 
 ## By change type
 
