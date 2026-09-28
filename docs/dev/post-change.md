@@ -14,10 +14,16 @@ scripts/check_guardrails.sh --fix        # rustfmt + rebaseline ratchets
 scripts/check_guardrails.sh --skip-slow  # skip cargo clippy
 ```
 
-It must pass. It runs the old CI guardrail set locally: `cargo fmt --check`,
-`cargo clippy -- -D warnings` (which also compiles every target), `Cargo.lock`
-freshness, the size, wildcard, and `App`-shape ratchets, crate dependency
-boundaries, and the onboarding state-space invariants.
+It must pass before a push. It is not a per-commit tax: a change that cannot
+affect the build (docs, comments, markdown) needs none of it, and a small Rust
+change can be checked narrowly first with `cargo fmt --all --check`, the ratchet
+covering what it touched, and `cargo clippy -p <crate> --all-targets -- -D
+warnings`.
+
+It runs the old CI guardrail set locally: `cargo fmt --check`, `cargo clippy --
+-D warnings` (which also compiles every target), `Cargo.lock` freshness, the
+size, wildcard, and `App`-shape ratchets, crate dependency boundaries, and the
+onboarding state-space invariants.
 
 A compile or clippy failure is a real regression; do not commit past it.
 

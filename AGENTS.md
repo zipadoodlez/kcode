@@ -18,9 +18,15 @@
 - **Do not "fix" the remaining `jcode` names** - some of them deliberately refer
   to the upstream project or to the wire service, and the list is in
   `docs/dev/post-change.md` under Names. Renaming those breaks compatibility.
-- **Run the local gate before committing** - this fork has no CI.
-  `scripts/check_guardrails.sh` (format, compile, clippy, lock, guardrail checks)
-  must pass. See `docs/dev/post-change.md`.
+- **Gate the change, not the commit** - this fork has no CI, so
+  `scripts/check_guardrails.sh` is the only check. Run the whole script when the
+  change can affect the build (Rust code, `Cargo.toml`/`Cargo.lock`, anything the
+  build reads) and once before a push. A docs-, comment-, or markdown-only change
+  needs no gate at all. For a small Rust change, check it narrowly first -
+  `cargo fmt --all --check`, the ratchet covering what you touched, and
+  `cargo clippy -p <crate> --all-targets -- -D warnings` - and save the full run
+  for the push. Do not add test suites beyond what the change can affect.
+  See `docs/dev/post-change.md`.
 - **Keep the knowledge graph current** - `graphify-out/` is a local cache and is
   not tracked: it is derived, and its content depends on the environment, so a
   committed copy would be neither reproducible nor current. Build it once per
