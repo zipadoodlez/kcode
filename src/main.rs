@@ -52,6 +52,9 @@ fn main() -> Result<()> {
 }
 
 fn run_main() -> Result<()> {
+    // Before any configuration is read: accept the public `KCODE_*` spelling
+    // for the `JCODE_*` variables this tree still reads.
+    jcode::env::adopt_kcode_env_prefix();
     configure_system_allocator();
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 

@@ -12,6 +12,22 @@ profiles in [providers.md](providers.md), credentials in [auth.md](auth.md),
 `[hooks]` and `[terminal]` in [hooks.md](hooks.md), and `[keybindings]` in
 [tui.md](tui.md).
 
+## Environment variables
+
+Every setting that has an environment variable is accepted under either
+spelling: `KCODE_HOME` or `JCODE_HOME`, `KCODE_SOCKET` or `JCODE_SOCKET`, and so
+on. `KCODE_*` is the public name for this fork and wins when both are set;
+`JCODE_*` is the legacy spelling and still works. The names kcode produces for
+its own child processes are unchanged.
+
+The three that matter most:
+
+| Variable | Effect |
+| --- | --- |
+| `KCODE_HOME` | state directory, default `~/.kcode` |
+| `KCODE_SOCKET` | server socket path, default `<runtime_dir>/kcode.sock` |
+| `KCODE_RUNTIME_DIR` | directory for runtime sockets, default `XDG_RUNTIME_DIR` |
+
 ## The system prompt
 
 kcode assembles its system prompt from layers. Two are user-editable files, so

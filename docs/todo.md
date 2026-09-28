@@ -23,11 +23,22 @@ Cheap, and they unblock the rest.
 upstream to track; kcode is its own tree. What that decision unblocks, now
 actionable:
 
-- [ ] **Rename the `JCODE_*` env prefix to `KCODE_*`,** with a `JCODE_*` read
-  fallback for one release, and `<runtime_dir>/jcode/` to
-  `<runtime_dir>/kcode/`. State already lives in `~/.kcode`. Packaging has since
-  landed as `kcode-git`, so the shim now has to survive upgrades of an installed
-  package rather than being dropped before a first ship.
+- [x] **`KCODE_*` is the public env prefix (2026-09-28).** The process copies
+  every `KCODE_*` variable onto its `JCODE_*` twin at startup
+  (`crates/jcode-core/src/env.rs::adopt_kcode_env_prefix`, called first in
+  `src/main.rs`), so both spellings configure kcode and the public one wins when
+  both are set. State already lived in `~/.kcode`; the stale
+  `<runtime_dir>/jcode/` socket directory is now `<runtime_dir>/kcode/`. The
+  copy is direction-flippable, which is what keeps it alive across upgrades of
+  the installed package.
+- [ ] **Env literals: sweep to `KCODE_*` or declare them cosmetic.** Measured
+  2026-09-28: 397 distinct names, 3012 string literals (1101 in production code,
+  1911 in tests) across 280 Rust files, plus 58 non-Rust files (docs, scripts,
+  packaging). Nothing user-visible depends on the literals now that
+  `adopt_kcode_env_prefix` accepts the public spelling, so this is the same
+  shape as the crate-name call above: a mechanical rename with no functional
+  payoff. Needs a maintainer decision, and if it is a sweep, the startup copy
+  flips to `JCODE_*` → `KCODE_*` for one release.
 - [ ] **Crate names: pick (a) or (b), do not churn.** The workspace has 61
   members and 60 of them are `jcode-*`; the root crate sets `[lib] name =
   "jcode"` while its package is `kcode`. Either (a) rename the root `[lib]` to
@@ -846,10 +857,9 @@ tree first would just move that churn around.
 
 ## 5. Hygiene, then packaging
 
-- [ ] `JCODE_*` env vars: state dir is `~/.kcode` but the prefix was never
-  renamed, and the runtime dir is `<runtime_dir>/jcode/`. The fork-policy decision
-  is made (diverged, §0), so this is now actionable: rename to `KCODE_*` with a
-  `JCODE_*` read fallback, or document as-is.
+- [x] `JCODE_*` env vars: state dir is `~/.kcode`, the prefix is now accepted in
+  its `KCODE_*` spelling, and `<runtime_dir>/jcode/` is renamed (2026-09-28).
+  The remaining question is the internal literal sweep, tracked in §0.
 - [ ] Unknown config sections are silently ignored, so older configs keep dead
   keys with no warning.
 - [x] **Self-dev tooling names the wrong package.** The prompt and
