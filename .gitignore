@@ -17,3 +17,12 @@ __pycache__/
 # the committed hooks. It is not tracked, because a committed copy is neither
 # reproducible (community assignment depends on the environment) nor current.
 graphify-out/
+
+# makepkg build artifacts for the Arch recipe in packaging/arch/. The bare
+# clone in `kcode-git/` is the local reference makepkg keeps for the `git+`
+# source; it holds a full pack of this repository, so committing it would add
+# tens of megabytes of binary history.
+packaging/arch/src/
+packaging/arch/pkg/
+packaging/arch/kcode-git/
+packaging/arch/*.pkg.tar.*

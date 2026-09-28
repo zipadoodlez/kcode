@@ -25,8 +25,9 @@ actionable:
 
 - [ ] **Rename the `JCODE_*` env prefix to `KCODE_*`,** with a `JCODE_*` read
   fallback for one release, and `<runtime_dir>/jcode/` to
-  `<runtime_dir>/kcode/`. State already lives in `~/.kcode`. Do it before
-  packaging so the compatibility shim ships once.
+  `<runtime_dir>/kcode/`. State already lives in `~/.kcode`. Packaging has since
+  landed as `kcode-git`, so the shim now has to survive upgrades of an installed
+  package rather than being dropped before a first ship.
 - [ ] **Crate names: pick (a) or (b), do not churn.** The workspace has 61
   members and 60 of them are `jcode-*`; the root crate sets `[lib] name =
   "jcode"` while its package is `kcode`. Either (a) rename the root `[lib]` to
@@ -39,9 +40,11 @@ actionable:
 - **`scripts/` triage: done** (classification in §5). The gate, the dev
   wrappers, and the documented harnesses stay; the one-off investigation
   scripts are deleted.
-- **`packaging/arch/PKGBUILD`: deferred** by the maintainer (2026-09-28). README
-  keeps its promise until then. License fields were deliberately not added to the
-  manifests (nothing here is published); revisit with packaging.
+- **`packaging/arch/PKGBUILD`: done.** A `-git` source package, because kcode
+  has no tags to build a release from. README documents `makepkg -si` and
+  `aur build` with aurutils. Licence fields stay out of the Cargo manifests:
+  nothing is published to a registry, and the PKGBUILD declares `MIT` next to
+  `LICENSE`.
 
 ### The gate, measured (2026-09-27, HEAD `6dff3825`, rustc 1.98.1)
 
@@ -846,7 +849,7 @@ tree first would just move that churn around.
 - [ ] `JCODE_*` env vars: state dir is `~/.kcode` but the prefix was never
   renamed, and the runtime dir is `<runtime_dir>/jcode/`. The fork-policy decision
   is made (diverged, §0), so this is now actionable: rename to `KCODE_*` with a
-  `JCODE_*` read fallback, or document as-is. Do it before packaging.
+  `JCODE_*` read fallback, or document as-is.
 - [ ] Unknown config sections are silently ignored, so older configs keep dead
   keys with no warning.
 - [ ] Self-dev tooling names the wrong package. The prompt and

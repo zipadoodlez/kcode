@@ -43,16 +43,35 @@ thing to keep an eye on over time.
 ### Arch Linux (preferred)
 
 kcode is meant to be owned by the package manager, not dropped into
-`~/.local/bin`. Build and install from the packaging recipe:
+`~/.local/bin`. The recipe is `packaging/arch/PKGBUILD`; the package is
+`kcode-git`, because kcode has no tags to build a release from.
+
+With makepkg, which installs directly:
 
 ```bash
-makepkg -si                 # from packaging/arch/
-aur build -d <repo>         # or, with aurutils
+cd packaging/arch
+makepkg -si
 ```
 
-> Packaging (`packaging/arch/PKGBUILD`) is not written yet; see
-> [Status](#status-and-known-gaps). Until then use the source build below and
-> avoid copying the binary into `~/.local/bin`, which pacman cannot manage.
+With aurutils, which builds into a local repository and leaves installation to
+pacman. Point aurutils at your repository once:
+
+```bash
+mkdir -p ~/.config/aurutils
+echo 'AUR_REPO=custom' >> ~/.config/aurutils/env
+```
+
+then, from `packaging/arch/`:
+
+```bash
+aur build                    # build, add to [custom], refresh its database
+sudo pacman -Syu kcode-git   # install from it
+```
+
+`aur build -c` builds inside a systemd-nspawn container instead of the host.
+Both paths need network, because the recipe clones the source and cargo fetches
+crates, including the `kgrep` git dependency. A cold build takes about 15
+minutes.
 
 ### From source
 
