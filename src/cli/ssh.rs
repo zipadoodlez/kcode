@@ -85,7 +85,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     let mut quit = signal(SignalKind::quit())?;
     let result = tokio::select! {
         result = super::tui_launch::run_tui_client(
-            args.resume, false, true, Some(working_dir), false, false,
+            args.resume, false, true, Some(working_dir), false,
         ) => result,
         _ = hup.recv() => Ok(()),
         _ = term.recv() => Ok(()),

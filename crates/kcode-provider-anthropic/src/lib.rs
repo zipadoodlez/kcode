@@ -878,11 +878,8 @@ pub struct ApiTool {
     pub cache_control: Option<CacheControlParam>,
 }
 
-/// Test-only helpers shared by this crate's test modules.
-///
-/// `text_msg` had a byte-identical copy in three of them
-/// (`cache_prefix_invariant_tests`, `duplicate_tool_result_tests`,
-/// `trailing_assistant_repair_tests`). One home stops them drifting into tests
+/// Test-only helpers shared by this crate's test modules. `text_msg` had a
+/// byte-identical copy in three of them; one home stops them drifting into tests
 /// that silently assert different message shapes.
 #[cfg(test)]
 pub(crate) mod test_support {

@@ -1,8 +1,7 @@
 use super::*;
 use kcode_tui_style::theme::{
     accent_color, ai_color, ai_text, asap_color, dim_color, error_color, file_link_color,
-    header_name_color, queued_color, success_color, tool_color, user_bg, user_color,
-    warning_color,
+    header_name_color, queued_color, success_color, tool_color, user_bg, user_color, warning_color,
 };
 use ratatui::widgets::Wrap;
 

@@ -527,9 +527,7 @@ pub fn list_sessions() -> Result<()> {
 
             Ok(())
         }
-        None
-        | Some(tui::session_picker::PickerResult::StartNewSession)
-        | Some(tui::session_picker::PickerResult::ReviewRecentProject) => {
+        None => {
             eprintln!("No session selected.");
             Ok(())
         }

@@ -9,8 +9,8 @@ use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use kcode_session_types::SessionStatus;
 use kcode_tui_style::theme::{
-    accent_color, ai_color, asap_color, border_color, error_color, header_name_color,
-    queued_color, selection_bg_color, success_color, warning_color,
+    accent_color, ai_color, asap_color, border_color, error_color, header_name_color, queued_color,
+    selection_bg_color, success_color, warning_color,
 };
 use ratatui::{
     Frame,
