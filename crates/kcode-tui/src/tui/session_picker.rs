@@ -10,11 +10,11 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEv
 use kcode_session_types::SessionStatus;
 use kcode_tui_style::theme::{
     accent_color, ai_color, asap_color, border_color, error_color, header_name_color,
-    pending_color, queued_color, selection_bg_color, success_color, warning_color,
+    queued_color, selection_bg_color, success_color, warning_color,
 };
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},

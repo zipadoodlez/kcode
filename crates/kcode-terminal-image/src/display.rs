@@ -87,7 +87,7 @@ impl ImageProtocol {
     /// uses it to explain a silent nothing to a user whose terminal would work,
     /// without prompting everyone on a text-only terminal.
     pub fn sixel_needs_converter() -> bool {
-        !*HAS_IMAGEMAGICK && terminal_speaks_sixel()
+        !*HAS_IMAGEMAGICK && Self::terminal_speaks_sixel()
     }
 
     /// Detect if terminal supports Sixel graphics
@@ -95,7 +95,7 @@ impl ImageProtocol {
         // Sixel needs an encoder: kcode shells out to ImageMagick's `convert` to
         // produce the sixel payload, so a terminal that speaks sixel still shows
         // nothing without it. [`sixel_needs_converter`] reports that case.
-        *HAS_IMAGEMAGICK && terminal_speaks_sixel()
+        *HAS_IMAGEMAGICK && Self::terminal_speaks_sixel()
     }
 
     /// Whether `TERM`/`TERM_PROGRAM` name a terminal that renders sixel.

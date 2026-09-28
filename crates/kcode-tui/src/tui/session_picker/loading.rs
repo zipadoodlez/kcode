@@ -3001,46 +3001,16 @@ pub fn load_sessions_grouped() -> Result<(Vec<ServerGroup>, Vec<SessionInfo>)> {
     Ok((groups, orphan_sessions))
 }
 
-/// Load only the sessions for a single external CLI (Codex or Claude Code),
-/// Which external CLI an OAuth login was detected for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ExternalCli {
-    Codex,
-    ClaudeCode,
-    Pi,
-    OpenCode,
-    Cursor,
-}
-
-impl ExternalCli {
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            ExternalCli::Codex => "Codex",
-            ExternalCli::ClaudeCode => "Claude Code",
-            ExternalCli::Pi => "Pi",
-            ExternalCli::OpenCode => "OpenCode",
-            ExternalCli::Cursor => "Cursor",
-        }
-    }
-}
-
-/// returned as orphan [`SessionInfo`] grouped output compatible with
-/// `SessionPicker::new_grouped`.
+/// Run one external transcript loader and return its sessions as orphan
+/// [`SessionInfo`], grouped output compatible with `SessionPicker::new_grouped`.
 ///
-/// Kept as a focused test helper for the external transcript importers.
+/// Kept as a focused test helper for the external transcript importers, so a
+/// test can exercise one loader without the picker's filter mode.
 #[cfg(test)]
-pub(crate) fn load_external_cli_sessions_grouped(
-    cli: ExternalCli,
+pub(crate) fn load_external_sessions_grouped(
+    loader: fn(usize) -> Vec<SessionInfo>,
 ) -> (Vec<ServerGroup>, Vec<SessionInfo>) {
-    let scan_limit = session_scan_limit();
-    let sessions = match cli {
-        ExternalCli::Codex => load_external_codex_sessions(scan_limit),
-        ExternalCli::ClaudeCode => load_external_claude_code_sessions(scan_limit),
-        ExternalCli::Pi => load_external_pi_sessions(scan_limit),
-        ExternalCli::OpenCode => load_external_opencode_sessions(scan_limit),
-        ExternalCli::Cursor => load_external_cursor_sessions(scan_limit),
-    };
-    (Vec::new(), sessions)
+    (Vec::new(), loader(session_scan_limit()))
 }
 
 #[cfg(test)]

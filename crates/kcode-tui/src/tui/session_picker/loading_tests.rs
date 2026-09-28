@@ -1094,7 +1094,7 @@ fn scoped_loader_returns_only_codex_sessions() {
     });
     kcode_session.save().expect("save kcode session");
 
-    let (groups, orphans) = load_external_cli_sessions_grouped(ExternalCli::Codex);
+    let (groups, orphans) = load_external_sessions_grouped(load_external_codex_sessions);
     assert!(groups.is_empty(), "scoped loader produces only orphans");
     assert!(
         orphans
