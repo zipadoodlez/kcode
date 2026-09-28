@@ -25,7 +25,7 @@ fn with_ssh_remote_test_home(f: impl FnOnce()) {
 }
 
 #[test]
-fn ssh_remote_startup_ignores_colliding_local_session_and_onboarding() {
+fn ssh_remote_startup_ignores_colliding_local_session() {
     with_ssh_remote_test_home(|| {
         let mut local = crate::session::Session::create(None, None);
         local.add_message(
@@ -40,7 +40,6 @@ fn ssh_remote_startup_ignores_colliding_local_session_and_onboarding() {
         assert!(app.display_messages().is_empty());
         assert_eq!(app.resume_session_id.as_deref(), Some(local.id.as_str()));
         assert!(app.remote_session_id.is_none());
-        assert!(!app.onboarding_welcome_active());
         assert!(app.suggestion_prompts().is_empty());
         assert!(!app.auto_server_reload);
         assert_eq!(

@@ -44,7 +44,7 @@ impl CredState {
         }
     }
 
-    /// Human-facing status line used by onboarding and `/login` surfaces.
+    /// Human-facing status line used by the `/login` surfaces.
     ///
     /// Deriving every label from one function is what makes it impossible to
     /// show "login expired" for a provider that was never configured.

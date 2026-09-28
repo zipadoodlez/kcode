@@ -98,7 +98,6 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
     });
     let mut needs_redraw = crate::tui::periodic_redraw_required(app);
     needs_redraw |= app.poll_ssh_login(remote).await;
-    needs_redraw |= app.poll_ssh_login_onboarding();
     needs_redraw |= app.redraw.flush_pending_resize_redraw();
     app.maybe_capture_runtime_memory_heartbeat();
     app.maybe_release_idle_heap();
@@ -135,7 +134,6 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
     needs_redraw |= app.poll_model_picker_load();
     needs_redraw |= app.poll_session_picker_load();
     needs_redraw |= app.poll_session_picker_presence();
-    needs_redraw |= app.onboarding_tick();
     needs_redraw |= app.progress_update_simulator();
     needs_redraw |= app.refresh_keybindings_if_config_reloaded();
 
@@ -615,7 +613,7 @@ pub(super) async fn handle_bus_event(
             let success = login.success && login.provider != "copilot_code";
             let provider_hint = auth_provider_hint_for_login_provider(&login.provider);
             let auth = auth_changed_event_for_login_provider(&login.provider);
-            let prefer_strongest = success && app.onboarding_should_prefer_strongest_model();
+            let prefer_strongest = success && app.should_prefer_strongest_model();
             app.handle_login_completed(login);
             if success
                 && let Err(error) = remote
@@ -629,9 +627,6 @@ pub(super) async fn handle_bus_event(
                 app.set_status_notice("Model setup will retry after reconnect");
             }
             true
-        }
-        Ok(BusEvent::OnboardingModelValidated(result)) => {
-            app.handle_onboarding_model_validated(result)
         }
         Ok(BusEvent::UpdateStatus(status)) => {
             app.handle_update_status(status);

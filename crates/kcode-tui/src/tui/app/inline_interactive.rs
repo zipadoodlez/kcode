@@ -2487,7 +2487,6 @@ impl App {
                     }
                     "Active sessions loaded"
                 }
-                SessionPickerMode::Onboarding => return false,
             };
             self.set_status_notice(notice);
             return true;
@@ -2519,9 +2518,6 @@ impl App {
                 self.set_status_notice("Active sessions loaded");
                 true
             }
-            // Onboarding constructs its action-only picker synchronously, so it
-            // never flows through this async path.
-            SessionPickerMode::Onboarding => false,
         }
     }
 
@@ -3004,52 +3000,7 @@ impl App {
             OverlayAction::Continue => {}
             OverlayAction::Close => {
                 self.session_picker.overlay = None;
-                if self.session_picker.mode == SessionPickerMode::Onboarding {
-                    // Escaping the onboarding choice starts a clean new session.
-                    self.session_picker.mode = SessionPickerMode::Resume;
-                    self.onboarding_show_suggestions();
-                } else {
-                    self.session_picker.mode = SessionPickerMode::Resume;
-                }
-            }
-            OverlayAction::Selected(result)
-                if matches!(self.session_picker.mode, SessionPickerMode::Onboarding) =>
-            {
-                let ids = match result {
-                    PickerResult::Selected(ids)
-                    | PickerResult::SelectedInNewTerminal(ids)
-                    | PickerResult::SelectedInCurrentTerminal(ids) => ids,
-                    PickerResult::TakeOverClaude(target) => {
-                        if self.handle_live_claude_takeover(&target) {
-                            self.onboarding_finish();
-                        }
-                        return Ok(());
-                    }
-                    PickerResult::RestoreCrashedGroup(_) => Vec::new(),
-                    PickerResult::StartNewSession => {
-                        // User explicitly chose to start fresh; close the picker
-                        // and show the onboarding suggestion cards.
-                        self.session_picker.overlay = None;
-                        self.session_picker.mode = SessionPickerMode::Resume;
-                        self.onboarding_show_suggestions();
-                        return Ok(());
-                    }
-                    PickerResult::ReviewRecentProject => {
-                        self.session_picker.overlay = None;
-                        self.session_picker.mode = SessionPickerMode::Resume;
-                        self.onboarding_start_recent_project_review();
-                        return Ok(());
-                    }
-                };
-                self.session_picker.overlay = None;
                 self.session_picker.mode = SessionPickerMode::Resume;
-                if ids.is_empty() {
-                    self.onboarding_show_suggestions();
-                } else {
-                    // Single-select: resume only the first chosen transcript.
-                    self.handle_session_picker_current_terminal_selection(&ids[..1]);
-                    self.onboarding_finish();
-                }
             }
             OverlayAction::Selected(PickerResult::Selected(ids))
             | OverlayAction::Selected(PickerResult::SelectedInNewTerminal(ids)) => {
@@ -3073,19 +3024,6 @@ impl App {
             }
             OverlayAction::Selected(PickerResult::RestoreCrashedGroup(session_ids)) => {
                 self.handle_batch_crash_restore(&session_ids);
-            }
-            OverlayAction::Selected(PickerResult::StartNewSession) => {
-                // Only the onboarding picker emits this, and that case is
-                // handled by the onboarding arm above. Outside onboarding,
-                // treat it as a no-op close.
-                self.session_picker.overlay = None;
-                self.session_picker.mode = SessionPickerMode::Resume;
-            }
-            OverlayAction::Selected(PickerResult::ReviewRecentProject) => {
-                // Only the onboarding picker emits this. Outside onboarding,
-                // close defensively without launching a proactive turn.
-                self.session_picker.overlay = None;
-                self.session_picker.mode = SessionPickerMode::Resume;
             }
         }
         Ok(())
@@ -3751,9 +3689,6 @@ impl App {
                         } else {
                             format!("{} · {}", notice, route_detail)
                         });
-                        // First-run onboarding: the model choice was the last
-                        // step before the action picker.
-                        self.onboarding_open_start_choice();
                     }
                 }
             }

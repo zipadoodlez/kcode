@@ -7,9 +7,9 @@ if [[ $# -gt 0 ]]; then
   shift
 fi
 
-sandbox_name=${KCODE_ONBOARDING_SANDBOX:-default}
-sandbox_root_default="$repo_root/.tmp/onboarding/$sandbox_name"
-sandbox_root=${KCODE_ONBOARDING_DIR:-$sandbox_root_default}
+sandbox_name=${KCODE_AUTH_FIXTURE_SANDBOX:-default}
+sandbox_root_default="$repo_root/.tmp/auth-fixtures/$sandbox_name"
+sandbox_root=${KCODE_AUTH_FIXTURE_SANDBOX_DIR:-$sandbox_root_default}
 kcode_home="$sandbox_root/home"
 runtime_dir="$sandbox_root/runtime"
 fixture_root_default="$repo_root/.tmp/auth-fixtures"
@@ -31,8 +31,8 @@ Commands:
   help                         Show this help
 
 Environment overrides:
-  KCODE_ONBOARDING_SANDBOX     Sandbox name to load into/from (default: default)
-  KCODE_ONBOARDING_DIR         Explicit onboarding sandbox directory
+  KCODE_AUTH_FIXTURE_SANDBOX      Sandbox name to load into/from (default: default)
+  KCODE_AUTH_FIXTURE_SANDBOX_DIR  Explicit sandbox directory
   KCODE_AUTH_FIXTURE_DIR       Fixture store (default: .tmp/auth-fixtures)
 
 Notes:

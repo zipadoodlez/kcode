@@ -55,7 +55,6 @@
     "crates/kcode-tui/src/tui/app/inline_interactive.rs": 4678,
     "crates/kcode-tui/src/tui/app/input.rs": 4170,
     "crates/kcode-tui/src/tui/app/model_context.rs": 1949,
-    "crates/kcode-tui/src/tui/app/onboarding_flow_control.rs": 1671,
     "crates/kcode-tui/src/tui/app/remote.rs": 2095,
     "crates/kcode-tui/src/tui/app/remote/key_handling.rs": 2597,
     "crates/kcode-tui/src/tui/app/remote/server_events.rs": 2727,

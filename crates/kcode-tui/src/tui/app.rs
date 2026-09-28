@@ -32,7 +32,6 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -77,11 +76,6 @@ mod misc_ui;
 mod model_context;
 mod navigation;
 mod observe;
-pub(crate) mod onboarding_flow;
-mod onboarding_flow_control;
-pub(crate) mod onboarding_graph;
-mod onboarding_repair;
-mod onboarding_sim;
 mod overnight_card;
 mod pending_split;
 mod prompt_history;
@@ -388,8 +382,6 @@ pub(super) enum SessionPickerMode {
     /// Opt-in active sessions manager: the picker scoped to live (open)
     /// sessions, showing which are still working vs ready for input.
     ActiveSessions,
-    /// First-run onboarding action picker.
-    Onboarding,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1003,57 +995,8 @@ pub struct App {
     /// instead of spamming every tick. Used to debug headed-spawn prompts that
     /// appear "seen but never sent".
     startup_submit_deferred_reason: Option<&'static str>,
-    /// One-shot/session-local preview of the first-run onboarding empty state.
-    onboarding_preview_mode: bool,
-    /// Active onboarding simulator: `Some(index)` is the current simulated
-    /// screen (driven by `onboarding_sim.rs`); `None` when not simulating. The
-    /// simulator seeds synthetic phases so a developer can step through every
-    /// first-run screen via Alt+5 reset or Cmd+5 toggle without touching real auth state.
-    onboarding_sim: Option<usize>,
     /// Active time-based, non-destructive update experience preview.
     update_sim: Option<update_sim::UpdateSimulator>,
-    /// Active guided first-run onboarding flow (model select -> continue ->
-    /// transcript pick -> suggestions). `None` when not onboarding.
-    onboarding_flow: Option<onboarding_flow::OnboardingFlow>,
-    /// Shared cancellation guard for delayed post-login model catalog refreshes.
-    /// Onboarding completion clears it so a late catalog result cannot override
-    /// the model after the user has moved into a normal session.
-    onboarding_auto_model_selection_active: Arc<AtomicBool>,
-    /// Model last chosen by onboarding automation. A later catalog event may
-    /// improve it only while the active model still matches this value.
-    onboarding_auto_model_selection_baseline: Arc<std::sync::Mutex<Option<String>>>,
-    /// `Some(started_at)` between committing the login-import screen (Enter on
-    /// the Yes/No list) and the async import resolving via `LoginCompleted`.
-    /// While set, the onboarding welcome card shows an "Importing your
-    /// logins..." progress state instead of the manual-login recovery copy, so
-    /// the user isn't told to "log in again" right after choosing to import. The
-    /// timestamp lets the onboarding tick watchdog recover the flow if the async
-    /// `LoginCompleted` event never arrives (e.g. a wedged runtime), so the user
-    /// can never be permanently stranded on the progress screen. `None` when no
-    /// import is in flight.
-    onboarding_import_in_progress: Option<Instant>,
-    /// Set when a login import attempt failed (or imported nothing), so the
-    /// onboarding recovery screen can explain what went wrong and give concrete
-    /// next steps instead of the generic first-run "log in to get started" copy.
-    /// `None` when there is no failure to report. Cleared when the user leaves
-    /// the recovery screen (opens the picker) or onboarding advances.
-    onboarding_import_error: Option<String>,
-    /// The provider id we were importing/validating when onboarding failed, used
-    /// to target the agent repair brief (`kcode auth-test --provider X`). `None`
-    /// when unknown.
-    onboarding_import_failed_provider: Option<String>,
-    /// Pending first-run model-validation request for the new-session screen.
-    /// In remote/client mode the live default model is reported by the server
-    /// asynchronously, so we record that a validation is wanted and let the
-    /// onboarding tick fire it once a concrete model id (not "unknown") is
-    /// known. `None` means no validation is pending.
-    onboarding_pending_model_validation: Option<onboarding_flow::OnboardingPendingValidation>,
-    /// Prefetched result of the onboarding recent-project lookup. `None` means no
-    /// prefetch was started; `Some(slot)` holds `None` while the background scan
-    /// runs and `Some(result)` once it finished. Keeps the first-run "find bugs"
-    /// action from blocking on a cold session-list disk scan.
-    onboarding_recent_project_prefetch:
-        Option<std::sync::Arc<std::sync::Mutex<Option<Option<std::path::PathBuf>>>>>,
     // Inline UI state for copy badges ([Alt] [⇧] [S])
     copy_badge_ui: CopyBadgeUiState,
     // Modal in-app selection/copy state for the chat viewport.
@@ -1065,11 +1008,9 @@ pub struct App {
     remote_provider_name: Option<String>,
     remote_provider_model: Option<String>,
     /// Monotonic counter bumped each time the server pushes a fresh remote model
-    /// catalog snapshot (`AvailableModelsUpdated`). The onboarding readiness
-    /// validation uses this to wait for the post-login catalog refresh to land
-    /// before capturing the model label, so it reports the freshly-selected
-    /// model (e.g. gpt-5.5 after an OpenAI login) instead of the stale pre-login
-    /// default.
+    /// catalog snapshot (`AvailableModelsUpdated`). A byte-identical redelivery
+    /// must not bump it, which is what makes "did the catalog actually change"
+    /// observably different from "the server sent something".
     remote_model_catalog_generation: u64,
     /// Server-resolved billing credential reported by a remote server: OAuth
     /// (subscription) vs API key (cost-based), or `None` when the active

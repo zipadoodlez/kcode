@@ -4,8 +4,7 @@
 
 `cargo test` runs the workspace. Target individual crates while iterating:
 `cargo test -p kcode-tui --lib`, `cargo test -p kcode-app-core --lib`, and so
-on. The onboarding state-space invariants are also a guardrail gate; see
-[../internals/onboarding.md](../internals/onboarding.md).
+on.
 
 ## Known flakiness: `kcode-tui` lib tests under parallel execution
 
@@ -73,7 +72,6 @@ tui::app::tests::test_startup_update_checking_stays_quiet_until_update_work_star
 tui::app::tests::test_startup_update_error_replaces_checking_card
 tui::app::tests::test_tool_side_panel_uses_shared_right_pane_keyboard_focus
 tui::session_picker::loading::tests::load_sessions_includes_saved_sessions_beyond_scan_limit
-tui::session_picker::tests::onboarding_banner_renders_prompt_and_both_action_rows
 tui::session_picker::tests::test_loading_preview_refreshes_search_index_for_picker_filtering
 tui::ui::messages::tests::render_tool_message_memory_recall_centered_mode_left_aligns_with_padding
 tui::ui::messages::tests::visually_appealing_prompt_batched_retry_renders_complete_todo_card
@@ -93,46 +91,21 @@ wants "run kcode" where the code now prints "run kcode", and
 flag that no longer exists after the Google login was cut. The `../todo.md`
 baseline bullet is the list to keep current.
 
-## Testing onboarding locally
+## Auth fixtures
 
-Onboarding is easiest to iterate with an isolated sandbox, so repeated runs never
-touch real auth state. `scripts/onboarding_sandbox.sh` roots state under
-`KCODE_HOME` and `KCODE_RUNTIME_DIR`, so no real config, sockets, or trusted
-external-auth imports are reused, and one `reset` throws it all away.
+Repeated login testing can skip the browser: put an isolated sandbox into an
+interesting state (logged in, expired token, approved import) and save it.
 
 ```sh
-scripts/onboarding_sandbox.sh fresh                  # clean isolated launch
-scripts/onboarding_sandbox.sh reset                  # blank onboarding state
-scripts/onboarding_sandbox.sh seed-real-logins       # copy real external logins in
-scripts/onboarding_sandbox.sh login openai           # log in without touching normal config
-scripts/onboarding_sandbox.sh kcode auth status      # run any kcode command in the sandbox
+scripts/auth_fixture.sh save normal-openai
+scripts/auth_fixture.sh load normal-openai
+scripts/auth_fixture.sh list
+scripts/auth_fixture.sh run normal-openai -- auth status
 ```
 
-Because a fresh sandbox has nothing to import, `seed-real-logins` copies your
-real external credential files into `$KCODE_HOME/external/<same relative path>`
-(and with `--with-transcripts`, your Codex/Claude transcripts), so detection and
-import behave as on a first-run machine that already has those tools. The copies
-are real tokens, so the sandbox stays local-only; your original `$HOME` files are
-never moved, rewritten, or deleted.
-
-### Auth fixtures
-
-Repeated login testing can skip the browser: put a sandbox into an interesting
-state (logged in, expired token, approved import) and save it.
-
-```sh
-scripts/onboarding_sandbox.sh fixture-save normal-openai
-scripts/onboarding_sandbox.sh fixture-load normal-openai
-scripts/auth_fixture.sh list          # lower-level helper
-```
-
-The fixture store defaults to `.tmp/auth-fixtures` (local developer state) and may
-hold real tokens, so do not commit or share it. Overrides:
-`KCODE_ONBOARDING_SANDBOX`, `KCODE_ONBOARDING_DIR`, `KCODE_AUTH_FIXTURE_DIR`.
-
-### Headless screenshots
-
-`scripts/capture_onboarding.sh` renders the same `OnboardingFlow` phases and
-ratatui widget tree into an offscreen `TestBackend`, writing SVG (and PNG when
-`rsvg-convert` is present) for every resting state in `onboarding_graph.rs`. It
-never launches a terminal or reads real credentials.
+`scripts/auth_fixture.sh` roots state under `KCODE_HOME` and `KCODE_RUNTIME_DIR`
+inside its own directory, so no real config, sockets, or credentials are reused.
+The store defaults to `.tmp/auth-fixtures` (local developer state) and may hold
+real tokens, so do not commit or share it. Overrides:
+`KCODE_AUTH_FIXTURE_SANDBOX`, `KCODE_AUTH_FIXTURE_SANDBOX_DIR`,
+`KCODE_AUTH_FIXTURE_DIR`.

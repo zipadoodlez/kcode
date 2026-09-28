@@ -91,15 +91,6 @@ run_ratchet "wildcard re-export ratchet" check_wildcard_reexport_budget.py
 # separately from file size (app.rs could shrink while fields regroup inward).
 run_ratchet "App shape ratchet" check_app_shape.py
 
-# Onboarding state-space invariants. The onboarding flow is a graph, and the
-# properties that keep users unstuck (no dead ends, every failure has a recovery
-# edge, an escape hatch everywhere, bounded keystrokes to a settled state) are
-# checkable in microseconds. Every onboarding bug we have shipped was a violated
-# invariant that nobody could see by reading one screen's code, so this gate is
-# cheap insurance against the whole class.
-run_gate "onboarding state-space invariants" \
-    cargo test --profile selfdev -p kcode-tui --lib -j "$JOBS" onboarding_graph::
-
 echo ""
 # CI installs the current `stable`; a stale local toolchain hides new lints.
 if command -v rustup >/dev/null 2>&1; then

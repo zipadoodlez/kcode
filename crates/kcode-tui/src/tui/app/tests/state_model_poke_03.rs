@@ -660,16 +660,6 @@ fn test_new_local_session_does_not_run_post_login_model_refresh() {
         "startup refreshed a provider catalog"
     );
     assert!(!app.auth_catalog_refresh_pending);
-    assert!(
-        !app.onboarding_auto_model_selection_active
-            .load(Ordering::SeqCst)
-    );
-    assert!(
-        app.onboarding_auto_model_selection_baseline
-            .lock()
-            .unwrap()
-            .is_none()
-    );
 }
 
 #[test]
@@ -1705,9 +1695,6 @@ fn test_azure_login_completion_switches_local_model_without_completion() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let registry = rt.block_on(crate::tool::Registry::new(provider.clone()));
     let mut app = App::new_for_test_harness(provider, registry);
-    app.onboarding_flow = Some(crate::tui::app::onboarding_flow::OnboardingFlow {
-        phase: crate::tui::app::onboarding_flow::OnboardingPhase::Done,
-    });
     app.queue_mode = false;
     app.diff_mode = crate::config::DiffDisplayMode::Inline;
     app.provider_session_id = Some("stale-upstream".to_string());

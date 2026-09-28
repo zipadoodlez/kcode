@@ -612,13 +612,11 @@ fn restart_save_auto_restore_flag_parses() {
     }
 }
 
-/// Contract test for the onboarding agent-repair brief (see
-/// `kcode-tui::tui::app::onboarding_repair::build_repair_brief`). The brief
-/// tells a coding agent to run these exact commands to diagnose and fix a
-/// failed login. If any flag here stops parsing, the brief would hand the agent
-/// a broken command, so this guards the agent-facing CLI contract.
+/// The commands the README documents for connecting a provider must parse. If a
+/// flag here stops parsing, the setup instructions hand the user a broken
+/// command, so this guards that contract.
 #[test]
-fn onboarding_repair_brief_commands_are_valid_cli() {
+fn provider_setup_commands_are_valid_cli() {
     // Diagnose.
     Args::try_parse_from(["kcode", "auth-test", "--provider", "openai", "--json"])
         .expect("auth-test --provider --json must parse");

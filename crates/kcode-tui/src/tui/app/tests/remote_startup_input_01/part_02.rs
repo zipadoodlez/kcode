@@ -221,41 +221,6 @@ fn test_remote_runtime_activity_notification_renders_as_system_message() {
 }
 
 #[test]
-fn test_remote_auth_activity_notification_is_status_only_during_onboarding() {
-    let mut app = create_test_app();
-    let mut flow = crate::tui::app::onboarding_flow::OnboardingFlow::begin();
-    flow.phase = crate::tui::app::onboarding_flow::OnboardingPhase::Login { import: None };
-    app.onboarding_flow = Some(flow);
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let _guard = rt.enter();
-    let mut remote = crate::tui::backend::RemoteConnection::dummy();
-
-    app.handle_server_event(
-        crate::protocol::ServerEvent::Notification {
-            from_session: "kcode".to_string(),
-            from_name: Some("Kcode".to_string()),
-            notification_type: crate::protocol::NotificationType::Message {
-                scope: Some("auth_activity".to_string()),
-                channel: None,
-                tldr: None,
-            },
-            message: "**Auth Change Received**\n\nThe server is refreshing provider credentials."
-                .to_string(),
-        },
-        &mut remote,
-    );
-
-    assert!(
-        app.transcript.messages().is_empty(),
-        "onboarding should keep auth runtime activity out of chat"
-    );
-    assert_eq!(
-        app.status_notice(),
-        Some("Auth Change Received".to_string())
-    );
-}
-
-#[test]
 fn test_remote_final_catalog_activity_is_two_lines_and_completes_model_setup() {
     let mut app = create_test_app();
     app.auth_catalog_refresh_pending = true;
@@ -308,35 +273,6 @@ fn test_remote_auth_model_change_does_not_add_a_third_visible_line() {
     );
 
     assert_eq!(app.remote_provider_model.as_deref(), Some("gpt-5.6-sol"));
-    assert!(app.transcript.messages().is_empty());
-}
-
-#[test]
-fn test_remote_onboarding_catalog_activity_completes_model_setup_without_chat_noise() {
-    let mut app = create_test_app();
-    let mut flow = crate::tui::app::onboarding_flow::OnboardingFlow::begin();
-    flow.phase = crate::tui::app::onboarding_flow::OnboardingPhase::Login { import: None };
-    app.onboarding_flow = Some(flow);
-    app.auth_catalog_refresh_pending = true;
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let _guard = rt.enter();
-    let mut remote = crate::tui::backend::RemoteConnection::dummy();
-
-    app.handle_server_event(
-        crate::protocol::ServerEvent::Notification {
-            from_session: "kcode".to_string(),
-            from_name: Some("Kcode".to_string()),
-            notification_type: crate::protocol::NotificationType::Message {
-                scope: Some("catalog_activity".to_string()),
-                channel: None,
-                tldr: None,
-            },
-            message: "**Model ready:** `gpt-5.6-sol`\nOpenAI catalog changed: models +14/-10, routes +24/-19/~3. Use `/model`.".to_string(),
-        },
-        &mut remote,
-    );
-
-    assert!(!app.auth_catalog_refresh_pending);
     assert!(app.transcript.messages().is_empty());
 }
 

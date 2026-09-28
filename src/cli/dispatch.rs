@@ -684,7 +684,6 @@ async fn run_default_command(args: Args) -> Result<()> {
         !server_running,
         args.fresh_spawn,
         args.remote_working_dir,
-        args.onboarding_sim,
         args.update_sim,
     )
     .await?;
@@ -865,7 +864,7 @@ pub(crate) async fn maybe_prompt_server_bootstrap_login(
 ) -> Result<()> {
     startup_profile::mark("cred_check_start");
 
-    // Normal interactive launches perform onboarding inside the TUI, and an
+    // Normal interactive launches configure a provider inside the TUI, and an
     // explicit provider choice never needs auto-detection here. Avoid probing
     // every credential backend unless the caller explicitly opted into the
     // legacy headless CLI bootstrap flow; probing those backends is slow and
@@ -879,7 +878,7 @@ pub(crate) async fn maybe_prompt_server_bootstrap_login(
     let cred_state = detect_bootstrap_credentials().await;
     startup_profile::mark("cred_check_done");
 
-    // Onboarding now happens entirely inside the TUI. We deliberately do *not*
+    // Provider setup happens entirely inside the TUI. We deliberately do *not*
     // run the blocking CLI "Approve sources" import prompt or the
     // "Choose a provider" selection menu here: a brand-new user launches
     // straight into the TUI, which detects the missing credentials and walks
@@ -988,7 +987,7 @@ async fn spawn_server_with_executable(
         cmd.env("KCODE_DEBUG_CONTROL", "1");
     }
     cmd.arg("--provider").arg(provider_choice.as_arg_value());
-    // The interactive TUI owns first-run onboarding/login. Let the spawned
+    // The interactive TUI owns login. Let the spawned
     // server boot with a deferred (credential-less) provider when nothing is
     // configured yet, instead of bailing; the TUI activates a provider via the
     // in-TUI `/login` flow. See init_provider_with_options.

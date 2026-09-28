@@ -20,8 +20,6 @@
     "crates/kcode-provider-openrouter-runtime/src/openrouter_tests.rs": 3685,
     "crates/kcode-tui/src/tui/app/tests.rs": 1607,
     "crates/kcode-tui/src/tui/app/tests/commands_accounts_01/part_01.rs": 1669,
-    "crates/kcode-tui/src/tui/app/tests/onboarding_eval.rs": 3293,
-    "crates/kcode-tui/src/tui/app/tests/onboarding_flow.rs": 1700,
     "crates/kcode-tui/src/tui/app/tests/remote_events_reload_01/part_01.rs": 1318,
     "crates/kcode-tui/src/tui/app/tests/remote_events_reload_04.rs": 2471,
     "crates/kcode-tui/src/tui/app/tests/remote_startup_input_02/part_01.rs": 1691,

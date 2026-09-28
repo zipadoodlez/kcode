@@ -676,10 +676,9 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
     };
     let streaming_ms = streaming_start.elapsed().as_secs_f64() * 1000.0;
 
-    let is_initial_empty = app.onboarding_preview_mode()
-        || (app.display_messages().is_empty()
-            && !app.is_processing()
-            && app.streaming_text().is_empty());
+    let is_initial_empty = app.display_messages().is_empty()
+        && !app.is_processing()
+        && app.streaming_text().is_empty();
 
     if is_initial_empty {
         let compose_start = Instant::now();

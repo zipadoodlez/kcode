@@ -349,9 +349,10 @@ pub enum Request {
         /// profile deterministically.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         auth: Option<AuthChanged>,
-        /// First-run onboarding may ask the server to choose the strongest
-        /// available route across all authenticated providers. Normal re-auth,
-        /// account switching, and older clients leave this false.
+        /// Ask the server to choose the strongest available route across all
+        /// authenticated providers, used when the user has expressed no
+        /// provider/model preference. Account switching and older clients leave
+        /// this false.
         #[serde(default, skip_serializing_if = "is_false")]
         prefer_strongest: bool,
     },

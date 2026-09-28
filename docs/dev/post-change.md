@@ -24,7 +24,7 @@ run, since the full gate uses them and dropping them can pass where it fails.
 It runs the old CI guardrail set locally: `cargo fmt --check`, `cargo clippy --
 -D warnings` (which also compiles every target), `Cargo.lock` freshness, the
 size, wildcard, and `App`-shape ratchets, crate dependency boundaries, and the
-onboarding state-space invariants.
+the crate dependency boundaries.
 
 A compile or clippy failure is a real regression; do not commit past it.
 

@@ -751,7 +751,7 @@ fn collect_recent_files_recursive(root: &Path, extension: &str, limit: usize) ->
 /// (Codex / Claude Code) when building its preview. These JSONL transcripts can
 /// be tens of MB, but the preview only ever shows the last ~20 messages, so
 /// parsing the whole file on every selection change made arrow-key navigation
-/// in the resume / onboarding picker lag badly (each load reparsed the entire
+/// in the picker lag badly (each load reparsed the entire
 /// file on a fresh thread). Reading a bounded tail keeps each preview load to a
 /// sub-millisecond seek + parse regardless of transcript size.
 ///
@@ -3002,15 +3002,36 @@ pub fn load_sessions_grouped() -> Result<(Vec<ServerGroup>, Vec<SessionInfo>)> {
 }
 
 /// Load only the sessions for a single external CLI (Codex or Claude Code),
+/// Which external CLI an OAuth login was detected for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ExternalCli {
+    Codex,
+    ClaudeCode,
+    Pi,
+    OpenCode,
+    Cursor,
+}
+
+impl ExternalCli {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            ExternalCli::Codex => "Codex",
+            ExternalCli::ClaudeCode => "Claude Code",
+            ExternalCli::Pi => "Pi",
+            ExternalCli::OpenCode => "OpenCode",
+            ExternalCli::Cursor => "Cursor",
+        }
+    }
+}
+
 /// returned as orphan [`SessionInfo`] grouped output compatible with
 /// `SessionPicker::new_grouped`.
 ///
 /// Kept as a focused test helper for the external transcript importers.
 #[cfg(test)]
 pub(crate) fn load_external_cli_sessions_grouped(
-    cli: crate::tui::app::onboarding_flow::ExternalCli,
+    cli: ExternalCli,
 ) -> (Vec<ServerGroup>, Vec<SessionInfo>) {
-    use crate::tui::app::onboarding_flow::ExternalCli;
     let scan_limit = session_scan_limit();
     let sessions = match cli {
         ExternalCli::Codex => load_external_codex_sessions(scan_limit),

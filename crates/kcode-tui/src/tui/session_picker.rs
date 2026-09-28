@@ -66,16 +66,6 @@ pub enum PickerResult {
     /// to Kcode. This is never emitted by ordinary Enter/resume behavior.
     TakeOverClaude(ResumeTarget),
     RestoreCrashedGroup(Vec<String>),
-    /// The onboarding "Start a new session" row was chosen.
-    StartNewSession,
-    /// The onboarding read-only recent-project architecture review was chosen.
-    ReviewRecentProject,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum OnboardingAction {
-    StartNewSession,
-    ReviewRecentProject,
 }
 
 #[derive(Clone, Debug)]
@@ -276,14 +266,6 @@ pub struct SessionPicker {
     loading_message: Option<String>,
     pending_preview_load: Option<PendingSessionPreviewLoad>,
     preview_load_failures: HashSet<String>,
-    /// Onboarding banner shown at the top of the picker (first-run "resume or
-    /// start new" experience). When set, the picker reserves space at the top
-    /// for the formatted onboarding prompt and shows selectable action rows
-    /// above the session list.
-    onboarding_banner: Option<Vec<Line<'static>>>,
-    /// The highlighted onboarding action. `None` means focus is in the session
-    /// list below the action rows.
-    onboarding_action: Option<OnboardingAction>,
     /// Cached, fully-wrapped preview content so scrolling does not re-render and
     /// re-wrap the whole preview every frame. Invalidated by content hash and
     /// pane geometry (see [`PreviewCacheKey`]).
@@ -345,8 +327,6 @@ impl SessionPicker {
             loading_message: None,
             pending_preview_load: None,
             preview_load_failures: HashSet::new(),
-            onboarding_banner: None,
-            onboarding_action: None,
             preview_cache: None,
             current_dir: None,
             live_presence: std::collections::HashMap::new(),
@@ -389,8 +369,6 @@ impl SessionPicker {
             loading_message: Some("Loading sessions…".to_string()),
             pending_preview_load: None,
             preview_load_failures: HashSet::new(),
-            onboarding_banner: None,
-            onboarding_action: None,
             preview_cache: None,
             current_dir: None,
             live_presence: std::collections::HashMap::new(),
@@ -465,8 +443,6 @@ impl SessionPicker {
             loading_message: None,
             pending_preview_load: None,
             preview_load_failures: HashSet::new(),
-            onboarding_banner: None,
-            onboarding_action: None,
             preview_cache: None,
             current_dir: None,
             live_presence: std::collections::HashMap::new(),
@@ -747,35 +723,10 @@ impl SessionPicker {
         }
     }
 
-    /// Restrict the picker to a single external CLI source (onboarding flow:
-    /// "continue where you left off" in Codex or Claude Code).
+    /// Restrict the picker to a single external CLI source.
     pub fn activate_external_cli_filter(&mut self, mode: SessionFilterMode) {
         self.filter_mode = mode;
         self.rebuild_items();
-    }
-
-    /// Turn this picker into the first-run action-only experience. The suggested
-    /// Git-based bug review starts highlighted above the blank-session action.
-    pub fn activate_onboarding_banner(&mut self, banner_lines: Vec<Line<'static>>) {
-        self.onboarding_banner = Some(banner_lines);
-        self.onboarding_action = Some(OnboardingAction::ReviewRecentProject);
-    }
-
-    /// Whether the onboarding banner experience is active.
-    pub fn onboarding_banner_active(&self) -> bool {
-        self.onboarding_banner.is_some()
-    }
-
-    /// Whether the onboarding "Start a new session" row is currently highlighted.
-    pub fn onboarding_start_new_highlighted(&self) -> bool {
-        self.onboarding_banner.is_some()
-            && self.onboarding_action == Some(OnboardingAction::StartNewSession)
-    }
-
-    /// Whether the onboarding recent-project review row is currently highlighted.
-    pub fn onboarding_review_recent_project_highlighted(&self) -> bool {
-        self.onboarding_banner.is_some()
-            && self.onboarding_action == Some(OnboardingAction::ReviewRecentProject)
     }
 
     /// Number of sessions currently visible under the active filter.
@@ -786,8 +737,7 @@ impl SessionPicker {
             .count()
     }
 
-    /// Resume target for the most recently active visible session, used by the
-    /// onboarding flow to auto-select the latest transcript on timeout.
+    /// Resume target for the most recently active visible session.
     pub fn latest_visible_resume_target(&self) -> Option<ResumeTarget> {
         self.visible_sessions
             .iter()
@@ -925,7 +875,7 @@ impl SessionPicker {
     }
 
     /// Test-only accessor: the source classification of every currently visible
-    /// session. Used by onboarding tests to assert the combined external-CLI
+    /// session. Used by tests to assert the combined external-CLI
     /// picker surfaces both Codex and Claude Code transcripts.
     #[cfg(test)]
     pub(crate) fn visible_session_iter_for_test(&self) -> impl Iterator<Item = &SessionInfo> + '_ {
@@ -1214,19 +1164,6 @@ impl SessionPicker {
             return self.handle_search_key(code, modifiers);
         }
 
-        // The first-run choice is deliberately simpler than the full session
-        // picker: Enter submits, and every other key rotates between its two
-        // actions. This makes the page work without requiring users to discover
-        // a particular navigation key.
-        if self.onboarding_banner_active() && code != KeyCode::Enter {
-            if self.onboarding_review_recent_project_highlighted() {
-                self.onboarding_action = Some(OnboardingAction::StartNewSession);
-            } else {
-                self.onboarding_action = Some(OnboardingAction::ReviewRecentProject);
-            }
-            return Ok(OverlayAction::Continue);
-        }
-
         match code {
             KeyCode::Esc => {
                 if !self.search_query.is_empty() {
@@ -1241,12 +1178,6 @@ impl SessionPicker {
                 self.toggle_selected_session();
             }
             KeyCode::Enter => {
-                if self.onboarding_start_new_highlighted() {
-                    return Ok(OverlayAction::Selected(PickerResult::StartNewSession));
-                }
-                if self.onboarding_review_recent_project_highlighted() {
-                    return Ok(OverlayAction::Selected(PickerResult::ReviewRecentProject));
-                }
                 let targets = self.selection_or_current_targets();
                 if !targets.is_empty() {
                     return Ok(OverlayAction::Selected(
@@ -2076,127 +2007,11 @@ impl SessionPicker {
         frame.render_widget(Paragraph::new(preview_lines), header_area);
     }
 
-    /// Render the suggested first-run prompt as the primary centered action,
-    /// with the current-directory session kept secondary in the bottom-right.
-    fn render_onboarding_band(&self, frame: &mut Frame, area: Rect) {
-        if area.height == 0 {
-            return;
-        }
-        let accent = accent_color();
-        let inner = area.inner(Margin {
-            horizontal: 2,
-            vertical: 1,
-        });
-        if inner.height == 0 {
-            return;
-        }
-
-        let content_width = inner.width.min(108);
-        let content_x = inner.x + inner.width.saturating_sub(content_width) / 2;
-        let prompt_lines = self.onboarding_banner.clone().unwrap_or_default();
-        let prompt_height = prompt_lines
-            .iter()
-            .map(|line| {
-                let width = line.width().max(1) as u16;
-                width.div_ceil(content_width.max(1))
-            })
-            .sum::<u16>()
-            .min(inner.height.saturating_sub(2));
-        let review_y = inner.y + inner.height.saturating_sub(1) / 2;
-        let prompt_y = review_y
-            .saturating_sub(prompt_height.saturating_add(2))
-            .max(inner.y);
-        let prompt_area = Rect {
-            x: content_x,
-            y: prompt_y,
-            width: content_width,
-            height: prompt_height.min(review_y.saturating_sub(prompt_y)),
-        };
-
-        if prompt_area.height > 0 {
-            let prompt = Paragraph::new(prompt_lines)
-                .alignment(Alignment::Center)
-                .wrap(ratatui::widgets::Wrap { trim: false });
-            frame.render_widget(prompt, prompt_area);
-        }
-
-        let action_line = |label: &'static str, selected: bool| {
-            let (cap_style, body_style) = if selected {
-                (
-                    Style::default().fg(accent),
-                    Style::default()
-                        .fg(kcode_tui_style::theme::user_bg())
-                        .bg(accent)
-                        .add_modifier(Modifier::BOLD),
-                )
-            } else {
-                (
-                    Style::default().fg(selection_bg_color()),
-                    Style::default()
-                        .fg(pending_color())
-                        .bg(selection_bg_color()),
-                )
-            };
-            Line::from(vec![
-                Span::styled("\u{25D6}", cap_style),
-                Span::styled(format!(" {label} "), body_style),
-                Span::styled("\u{25D7}", cap_style),
-            ])
-        };
-
-        let review_selected = self.onboarding_review_recent_project_highlighted();
-        frame.render_widget(
-            Paragraph::new(action_line(
-                "Find bugs in my most active repo",
-                review_selected,
-            ))
-            .alignment(Alignment::Center),
-            Rect {
-                x: inner.x,
-                y: review_y,
-                width: inner.width,
-                height: 1,
-            },
-        );
-
-        let start_selected = self.onboarding_start_new_highlighted();
-        frame.render_widget(
-            Paragraph::new(action_line(
-                "Start in the current directory",
-                start_selected,
-            ))
-            .alignment(Alignment::Right),
-            Rect {
-                x: inner.x,
-                y: inner.y + inner.height.saturating_sub(1),
-                width: inner.width,
-                height: 1,
-            },
-        );
-    }
-
     pub fn render(&mut self, frame: &mut Frame) {
         let has_banner = self.crashed_sessions.is_some();
         let has_search = self.search_active || !self.search_query.is_empty();
-        let has_onboarding = self.onboarding_banner.is_some();
-        // The first-run picker is action-only. Do not render the session list or
-        // preview panes underneath it, which would make this look like `/resume`.
-        if has_onboarding && self.visible_sessions.is_empty() {
-            self.last_list_area = None;
-            self.last_preview_area = None;
-            self.render_onboarding_band(frame, frame.area());
-            return;
-        }
-
         // Build vertical constraints
         let mut v_constraints = Vec::new();
-        if has_onboarding {
-            // Reserve ~20% of the height for the onboarding prompt and actions,
-            // clamped to a sensible band.
-            let total = frame.area().height;
-            let reserved = ((total as u32 * 20 / 100) as u16).clamp(7, total.saturating_sub(6));
-            v_constraints.push(Constraint::Length(reserved.max(7)));
-        }
         if has_banner {
             v_constraints.push(Constraint::Length(1));
         }
@@ -2211,12 +2026,6 @@ impl SessionPicker {
             .split(frame.area());
 
         let mut chunk_idx = 0;
-
-        // Render the onboarding band (prompt + action rows) if present.
-        if has_onboarding {
-            self.render_onboarding_band(frame, v_chunks[chunk_idx]);
-            chunk_idx += 1;
-        }
 
         // Render banner if present
         if has_banner {

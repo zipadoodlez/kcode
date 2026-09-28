@@ -62,8 +62,6 @@ pub(super) fn ssh_unsupported_command(input: &str) -> bool {
             | "/rebuild"
             | "/update"
             | "/update-sim"
-            | "/onboarding-sim"
-            | "/onboarding-preview"
             | "/usage"
             | "/fix"
             | "/stats"

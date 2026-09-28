@@ -75,7 +75,7 @@ fn a_status_notice_still_requires_periodic_frames() {
     );
 }
 
-/// The post-onboarding notice screen: the transcript holds only system
+/// The post-setup notice screen: the transcript holds only system
 /// notices ("Here are a few things you can try", the login summary), the user
 /// pressed a key moments ago, and no stream has ever run in this process.
 ///

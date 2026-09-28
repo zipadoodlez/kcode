@@ -77,13 +77,7 @@ pub(crate) struct Args {
     #[arg(long, global = true)]
     pub(crate) no_selfdev: bool,
 
-    /// Start the onboarding simulator on launch (same as `/onboarding-sim`).
-    /// Steps through every first-run onboarding screen with synthetic data;
-    /// never touches real auth state.
-    #[arg(long = "onboarding-sim")]
-    pub(crate) onboarding_sim: bool,
-
-    /// Launch the normal TUI, skip onboarding, then autoplay a safe simulation
+    /// Launch the normal TUI, then autoplay a safe simulation
     /// of receiving, downloading, installing, and restarting after an update.
     #[arg(long = "update-sim")]
     pub(crate) update_sim: bool,

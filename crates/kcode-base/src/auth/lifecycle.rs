@@ -246,7 +246,7 @@ pub fn provider_model_to_select_after_auth_with_configured_default(
 ///
 /// This is intentionally separate from [`provider_model_to_select_after_auth`],
 /// which keeps normal re-authentication scoped to the provider that changed.
-/// First-run onboarding can use this global selector after importing multiple
+/// A fresh login can use this global selector after importing multiple
 /// accounts. Returning the complete route preserves OAuth/API-key/profile
 /// identity when the caller applies the selection.
 pub fn globally_preferred_default_route(routes: &[ModelRoute]) -> Option<ModelRoute> {

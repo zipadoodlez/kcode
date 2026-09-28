@@ -69,7 +69,7 @@ impl SessionFilterMode {
             Self::Pi => Self::OpenCode,
             Self::OpenCode => Self::Cursor,
             Self::Cursor => Self::All,
-            // ExternalClis is an onboarding-only composite filter, not part of
+            // ExternalClis is a composite filter over the external CLI sources, not part of
             // the user-facing cycle; treat it as a no-op anchor.
             Self::ExternalClis => Self::All,
         }

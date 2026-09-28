@@ -176,14 +176,6 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
         "/diff",
         "Cycle or set diff display mode (off/inline/full/pinned/file)",
     ),
-    RegisteredCommand::public(
-        "/onboarding-preview",
-        "Preview the first-run onboarding screen",
-    ),
-    RegisteredCommand::public(
-        "/onboarding-sim",
-        "Walk through every first-run onboarding screen (Alt+5 reset, Cmd+5 toggle)",
-    ),
     RegisteredCommand::public("/reload", "Restart the client with the current binary"),
     RegisteredCommand::public("/restart", "Restart with current binary"),
     RegisteredCommand::public("/rebuild", "Background rebuild and auto reload"),
@@ -1262,109 +1254,19 @@ impl App {
         true
     }
 
-    /// Whether to show the dedicated first-run onboarding welcome screen
-    /// (prominent donut, welcome text, login prompt).
-    ///
-    /// This is true exactly when the empty screen is showing onboarding
-    /// suggestion prompts (brand-new install / unauthenticated / new user) so
-    /// the welcome layout and the suggestions stay in sync.
-    pub fn onboarding_welcome_active(&self) -> bool {
-        if crate::tui::is_ssh_remote() {
-            return false;
-        }
-        if self.onboarding_preview_mode {
-            return true;
-        }
-        // While the guided onboarding flow is driving the pre-suggestion phases
-        // (model select / continue prompt), keep the welcome screen up even
-        // though the server may have pushed scaffolding messages. The flow
-        // renders its own body via `onboarding_welcome_kind()`.
-        if self.onboarding_flow_drives_welcome() {
-            return true;
-        }
-        if !self.transcript.messages().is_empty() || self.is_processing {
-            return false;
-        }
-        !self.suggestion_prompts().is_empty()
-    }
-
-    /// What the onboarding welcome screen should render in its body, driven by
-    /// the active guided flow phase. Defaults to the starter suggestion cards.
-    pub fn onboarding_welcome_kind(&self) -> crate::tui::OnboardingWelcomeKind {
-        use crate::tui::OnboardingWelcomeKind;
-        use crate::tui::app::onboarding_flow::{OnboardingPhase, SummaryPill};
-        match self.onboarding_phase() {
-            Some(OnboardingPhase::Login { import }) => {
-                let prompt = import.as_ref().map(|review| {
-                    let rows = review
-                        .candidates
-                        .iter()
-                        .enumerate()
-                        .map(|(i, candidate)| crate::tui::LoginImportRow {
-                            provider_summary: candidate.provider_summary().to_string(),
-                            source_name: candidate.source_name().to_string(),
-                            checked: review.checked.get(i).copied().unwrap_or(false),
-                        })
-                        .collect();
-                    crate::tui::LoginImportPrompt {
-                        rows,
-                        cursor: review.cursor,
-                        continue_focused: review.continue_focused,
-                        choosing: review.choosing,
-                        summary_pill: match review.summary_pill {
-                            SummaryPill::Continue => crate::tui::ImportSummaryPill::Continue,
-                            SummaryPill::ImportLess => crate::tui::ImportSummaryPill::ImportLess,
-                        },
-                        checked_count: review.checked_count(),
-                        seconds_left: review.seconds_remaining(),
-                    }
-                });
-                OnboardingWelcomeKind::Login {
-                    import: prompt,
-                    importing: self.onboarding_import_in_progress.is_some(),
-                    error: self.onboarding_import_error.clone(),
-                    // Only offer the agent-repair option on the failure screen,
-                    // and only when we can name an agent the user recently used.
-                    repair_agent_label: self.onboarding_import_error.as_ref().and_then(|_| {
-                        crate::tui::app::onboarding_repair::detect_preferred_repair_agent()
-                            .map(|a| a.label().to_string())
-                    }),
-                }
-            }
-            Some(OnboardingPhase::LoginOpenAi { yes_highlighted }) => {
-                OnboardingWelcomeKind::LoginOpenAi {
-                    yes_highlighted: *yes_highlighted,
-                }
-            }
-            _ => OnboardingWelcomeKind::Suggestions,
-        }
-    }
-
-    /// Whether the guided onboarding flow is in a phase that should take over
-    /// the welcome screen body (the login walkthrough or the OpenAI prompt).
-    /// The action picker uses the session-picker overlay instead, and the
-    /// suggestions phase is the default welcome body.
-    fn onboarding_flow_drives_welcome(&self) -> bool {
-        use crate::tui::app::onboarding_flow::OnboardingPhase;
-        matches!(
-            self.onboarding_phase(),
-            Some(OnboardingPhase::Login { .. } | OnboardingPhase::LoginOpenAi { .. })
-        )
-    }
-
-    /// Get suggestion prompts for new users on the initial empty screen.
-    /// Returns (label, prompt_text) pairs. Empty once user is experienced or not authenticated.
+    /// The starter line for the empty first screen: one hint, and only when it
+    /// is actionable. Setup guidance otherwise lives in the README, so this does
+    /// not grow a roster again.
     pub fn suggestion_prompts(&self) -> Vec<(String, String)> {
         if crate::tui::is_ssh_remote() {
             return Vec::new();
         }
-        let preview_mode = self.onboarding_preview_mode;
         let is_canary = if self.is_remote_client() {
             self.server_info.is_canary.unwrap_or(self.session.is_canary)
         } else {
             self.session.is_canary
         };
-        if is_canary && !preview_mode {
+        if is_canary {
             return Vec::new();
         }
 

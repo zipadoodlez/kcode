@@ -73,7 +73,7 @@ pub(crate) fn invalidate_git_info_cache() {
 
 /// Pin the git-status widget to a fixed value for deterministic renders.
 ///
-/// Full-frame artifact generators (onboarding screenshots) would otherwise
+/// Full-frame artifact generators would otherwise
 /// capture the live ahead/behind/dirty counts of whatever repo the generator
 /// happens to run in. Marking the entry as `refreshing` keeps the TTL path
 /// from spawning a background probe that overwrites the seed mid-render.

@@ -1059,13 +1059,12 @@ fn benchmark_resume_loading_reports_timings() {
 }
 
 #[test]
-fn onboarding_scoped_loader_returns_only_codex_sessions() {
-    use crate::tui::app::onboarding_flow::ExternalCli;
+fn scoped_loader_returns_only_codex_sessions() {
     let _env_lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("temp dir");
     let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
-    // A Codex transcript that the onboarding picker should surface.
+    // A Codex transcript that the scoped picker should surface.
     let codex_dir = temp.path().join("external/.codex/sessions/2026/05/01");
     std::fs::create_dir_all(&codex_dir).expect("create codex dir");
     std::fs::write(
@@ -1075,7 +1074,7 @@ fn onboarding_scoped_loader_returns_only_codex_sessions() {
     .expect("write codex transcript");
 
     // A kcode session that must NOT appear in the scoped Codex view (the whole
-    // point of the scoped loader is to skip parsing these on onboarding).
+    // point of the scoped loader is to skip parsing these).
     let mut kcode_session = Session::create_with_id(
         "session_onboarding_kcode_1780000000000".to_string(),
         Some("/tmp/kcode-onboard".to_string()),
@@ -1085,7 +1084,7 @@ fn onboarding_scoped_loader_returns_only_codex_sessions() {
         id: "msg-1".to_string(),
         role: crate::message::Role::User,
         content: vec![crate::message::ContentBlock::Text {
-            text: "should not show in codex onboarding view".to_string(),
+            text: "should not show in the codex scoped view".to_string(),
             cache_control: None,
         }],
         display_role: None,
@@ -1101,7 +1100,7 @@ fn onboarding_scoped_loader_returns_only_codex_sessions() {
         orphans
             .iter()
             .any(|s| s.id == "codex:codex-onboarding-test"),
-        "expected codex transcript in scoped onboarding load: {:?}",
+        "expected codex transcript in the scoped load: {:?}",
         orphans.iter().map(|s| &s.id).collect::<Vec<_>>()
     );
     assert!(

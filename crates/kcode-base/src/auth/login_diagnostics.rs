@@ -109,7 +109,7 @@ pub fn auth_failure_recovery_hint(provider_id: &str, reason: AuthFailureReason) 
             "Retry the same flow and paste the full callback URL, authorization code, or required API key when prompted.".to_string()
         }
         AuthFailureReason::SaveFailed => {
-            "Check whether kcode can write its config directory, or retry inside an isolated sandbox with `bash scripts/onboarding_sandbox.sh fresh`.".to_string()
+            "Check whether kcode can write its config directory, or retry inside an isolated sandbox with `bash scripts/auth_fixture.sh save fresh`.".to_string()
         }
         AuthFailureReason::PostLoginValidationFailed => format!(
             "Credentials were saved, but runtime verification failed. Run `kcode auth-test --provider {}` and `kcode auth doctor {}` for guided diagnosis.",

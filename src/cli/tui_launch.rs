@@ -83,7 +83,6 @@ pub async fn run_tui_client(
     server_spawning: bool,
     fresh_spawn: bool,
     remote_working_dir: Option<String>,
-    onboarding_sim: bool,
     update_sim: bool,
 ) -> Result<()> {
     startup_profile::mark("tui_client_enter");
@@ -145,9 +144,6 @@ pub async fn run_tui_client(
     let mut app = tui::App::new_for_remote_with_options(resume_session.clone(), fresh_spawn);
     if should_show_server_spawning(server_spawning).await {
         app.set_server_spawning();
-    }
-    if onboarding_sim {
-        app.start_onboarding_simulator_on_launch();
     }
     if update_sim {
         app.start_update_simulator_on_launch();

@@ -2432,12 +2432,6 @@ pub(in crate::tui::app) fn handle_server_event(
                 {
                     app.finish_auth_catalog_refresh();
                 }
-                if app.onboarding_flow_active()
-                    && matches!(scope, "auth_activity" | "catalog_activity")
-                {
-                    app.set_status_notice(runtime_activity_status_notice(&message));
-                    return false;
-                }
                 if scope == "catalog_activity"
                     && let Some(progress) =
                         crate::message::parse_background_task_progress_notification_markdown(

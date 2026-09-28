@@ -1833,18 +1833,6 @@ impl crate::tui::TuiState for App {
         })
     }
 
-    fn onboarding_preview_mode(&self) -> bool {
-        self.onboarding_preview_mode
-    }
-
-    fn onboarding_welcome_active(&self) -> bool {
-        App::onboarding_welcome_active(self)
-    }
-
-    fn onboarding_welcome_kind(&self) -> crate::tui::OnboardingWelcomeKind {
-        App::onboarding_welcome_kind(self)
-    }
-
     fn suggestion_prompts(&self) -> Vec<(String, String)> {
         App::suggestion_prompts(self)
     }

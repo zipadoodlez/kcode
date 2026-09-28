@@ -1538,7 +1538,7 @@ async fn init_provider_with_options(
                 // genuinely headless callers still fail loudly.
                 if std::env::var_os("KCODE_DEFERRED_AUTH_BOOTSTRAP").is_some() {
                     crate::logging::info(
-                        "No credentials configured; booting deferred-auth MultiProvider for in-TUI onboarding login",
+                        "No credentials configured; booting deferred-auth MultiProvider for the in-TUI login picker",
                     );
                     let multi = provider::MultiProvider::from_auth_status(availability.auth_status);
                     crate::env::set_var("KCODE_ACTIVE_PROVIDER", multi.name().to_lowercase());

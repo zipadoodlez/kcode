@@ -619,7 +619,7 @@ fn login_bedrock_flow() -> Result<()> {
     eprintln!(
         "Generate a Bedrock API key in the AWS Bedrock console: https://console.aws.amazon.com/bedrock/home#/api-keys"
     );
-    eprintln!("Short-term keys are recommended for onboarding/testing.\n");
+    eprintln!("Short-term keys are recommended for testing.\n");
 
     let region = read_line_trimmed("AWS region [us-east-2]: ")?;
     let region = if region.trim().is_empty() {

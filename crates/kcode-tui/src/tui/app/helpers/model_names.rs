@@ -2,7 +2,7 @@
 //!
 //! Model ids arrive as raw provider slugs (`claude-opus-4-8`, `gpt-5.1-codex-max`,
 //! `gemini-3.1-pro-preview`). Every user-facing surface (the `/model` picker,
-//! header, status line, info widgets, onboarding copy) wants the same friendly
+//! header, status line, info widgets) wants the same friendly
 //! rendering, so the formatting rules live here rather than being reinvented per
 //! call site.
 //!

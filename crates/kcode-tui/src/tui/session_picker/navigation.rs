@@ -15,19 +15,6 @@ impl SessionPicker {
     }
 
     pub fn next(&mut self) {
-        // Onboarding actions form a short list above the resumable sessions.
-        if self.onboarding_review_recent_project_highlighted() {
-            self.onboarding_action = Some(OnboardingAction::StartNewSession);
-            return;
-        }
-        if self.onboarding_start_new_highlighted() {
-            self.onboarding_action = None;
-            if self.visible_sessions.is_empty() {
-                // Nothing below the actions, so stay on the last action.
-                self.onboarding_action = Some(OnboardingAction::StartNewSession);
-            }
-            return;
-        }
         if self.visible_sessions.is_empty() {
             return;
         }
@@ -40,20 +27,7 @@ impl SessionPicker {
     }
 
     pub fn previous(&mut self) {
-        // Onboarding: already on the first action -> nothing above it.
-        if self.onboarding_review_recent_project_highlighted() {
-            return;
-        }
-        if self.onboarding_start_new_highlighted() {
-            self.onboarding_action = Some(OnboardingAction::ReviewRecentProject);
-            return;
-        }
         if self.visible_sessions.is_empty() {
-            // Onboarding picker with no transcripts: Up lands on the final
-            // onboarding action.
-            if self.onboarding_banner.is_some() {
-                self.onboarding_action = Some(OnboardingAction::StartNewSession);
-            }
             return;
         }
         let current = self.list_state.selected().unwrap_or(0);
@@ -61,10 +35,6 @@ impl SessionPicker {
             self.list_state.select(Some(prev));
             self.scroll_offset = 0;
             self.auto_scroll_preview = true;
-        } else if self.onboarding_banner.is_some() {
-            // At the top of the session list in onboarding mode -> move up to
-            // the final onboarding action.
-            self.onboarding_action = Some(OnboardingAction::StartNewSession);
         }
     }
 

@@ -13,8 +13,6 @@ impl App {
     /// Start from the normal TUI and autoplay the same status transitions used by
     /// a real background update. No updater, download, install, or reload runs.
     pub fn start_update_simulator_on_launch(&mut self) {
-        self.onboarding_flow = None;
-        self.onboarding_preview_mode = false;
         self.update_sim = Some(UpdateSimulator {
             started_at: Instant::now(),
             stage: 0,

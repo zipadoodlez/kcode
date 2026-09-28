@@ -473,7 +473,7 @@ impl App {
         );
 
         // Spawn the loopback waiter. On success it publishes LoginCompleted just
-        // like the manual paste path, so onboarding and account UI react
+        // like the manual paste path, so account UI and the header react
         // identically.
         if let (Some(listener), true) = (callback_listener, callback_available) {
             let verifier_clone = verifier.clone();
@@ -1057,9 +1057,7 @@ impl App {
             crate::provider::bedrock::ENV_FILE,
             crate::provider::bedrock::API_KEY_ENV,
             Some("us.amazon.nova-micro-v1:0"),
-            Some(
-                "Region: us-east-2 (default for TUI onboarding; use CLI login for another region)",
-            ),
+            Some("Region: us-east-2 (the TUI default; use CLI login for another region)"),
             false,
             None,
         );
@@ -1956,7 +1954,7 @@ impl App {
                                 )
                             }
                         } else if key_name == crate::provider::bedrock::API_KEY_ENV {
-                            "You can now use /model to switch to Bedrock models. TUI onboarding saved region us-east-2; for a different region, run kcode login --provider bedrock from a terminal.".to_string()
+                            "You can now use /model to switch to Bedrock models. The TUI defaulted to region us-east-2; for a different region, run kcode login --provider bedrock from a terminal.".to_string()
                         } else if key_name == "OPENROUTER_API_KEY" {
                             "You can now use /model to switch to OpenRouter models. If the model list looks stale, run /refresh-model-list.".to_string()
                         } else {
@@ -2250,11 +2248,11 @@ impl App {
         }
     }
 
-    pub(super) fn onboarding_should_prefer_strongest_model(&self) -> bool {
-        if !self.onboarding_flow_active() {
-            return false;
-        }
-
+    /// Whether a fresh login should adopt the strongest available route rather
+    /// than the default one. True when the user has expressed no preference: no
+    /// configured `default_provider` / `default_model`, and no explicit runtime
+    /// provider.
+    pub(super) fn should_prefer_strongest_model(&self) -> bool {
         let provider_config = &crate::config::config().provider;
         let has_explicit_default = provider_config
             .default_provider
@@ -2294,16 +2292,13 @@ impl App {
         ));
         // Remote mode forwards the auth change to the server immediately after
         // this handler returns. Refreshing the client-side provider as well used
-        // to duplicate every catalog network request and could race the first
-        // onboarding prompt with a second model switch.
+        // to duplicate every catalog network request.
         if self.is_remote_client() {
             return;
         }
         let provider = Arc::clone(&self.provider);
         let provider_hint = provider_hint.map(str::to_string);
         let session_id = self.session.id.clone();
-        let auto_selection_active = Arc::clone(&self.onboarding_auto_model_selection_active);
-        let auto_selection_baseline = Arc::clone(&self.onboarding_auto_model_selection_baseline);
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
                 let activation = crate::auth::lifecycle::activate_auth_change(
@@ -2311,18 +2306,12 @@ impl App {
                 );
                 provider.on_auth_changed();
                 if select_local_model && activation.provider_id.is_some() {
-                    let model_before_catalog_wait = provider.model();
                     // Select from hot/local routes once. Live catalogs publish
                     // ModelsUpdated and are handled by the UI without holding the
                     // login flow in a polling loop.
                     'select_local: {
                         let routes = provider.model_routes();
                         let selection = if prefer_strongest {
-                            if !auto_selection_active.load(std::sync::atomic::Ordering::Acquire)
-                                || provider.model() != model_before_catalog_wait
-                            {
-                                break 'select_local;
-                            }
                             let Some(route) =
                                 crate::auth::lifecycle::globally_preferred_default_route(&routes)
                             else {
@@ -2362,22 +2351,11 @@ impl App {
                         let Some((model, model_request, provider_key, exact_route)) = selection else {
                             break 'select_local;
                         };
-                        if prefer_strongest
-                            && (!auto_selection_active
-                                .load(std::sync::atomic::Ordering::Acquire)
-                                || provider.model() != model_before_catalog_wait)
-                        {
-                            break 'select_local;
-                        }
                         let applied = exact_route.as_ref().map_or_else(
                             || provider.set_model(&model_request),
                             |selection| provider.set_route_selection(selection),
                         );
                         if applied.is_ok() {
-                            *auto_selection_baseline
-                                .lock()
-                                .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-                                Some(provider.model());
                             crate::bus::Bus::global().publish_models_updated();
                             crate::bus::Bus::global().publish(
                                 crate::bus::BusEvent::ProviderModelActivated {
@@ -2433,41 +2411,6 @@ impl App {
             }
             self.finish_auth_catalog_refresh();
         }
-    }
-
-    /// Adopt a better route delivered by a background catalog refresh, but
-    /// never override a model the user selected after onboarding began.
-    pub(super) fn maybe_apply_event_driven_onboarding_model(&mut self) {
-        if !self
-            .onboarding_auto_model_selection_active
-            .load(std::sync::atomic::Ordering::Acquire)
-        {
-            return;
-        }
-        let baseline = self
-            .onboarding_auto_model_selection_baseline
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone();
-        if baseline.as_deref() != Some(self.provider.model().as_str()) {
-            self.onboarding_auto_model_selection_active
-                .store(false, std::sync::atomic::Ordering::Release);
-            return;
-        }
-        let routes = self.provider.model_routes();
-        let Some(route) = crate::auth::lifecycle::globally_preferred_default_route(&routes) else {
-            return;
-        };
-        let selection = crate::provider::RouteSelection::from_model_route(&route);
-        let model_request = selection.routed_model_spec();
-        if self.provider.set_route_selection(&selection).is_err() {
-            return;
-        }
-        let model = self.finalize_model_switch(&model_request);
-        *self
-            .onboarding_auto_model_selection_baseline
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(model);
     }
 
     fn login_provider_is_azure(provider: &str) -> bool {
@@ -2775,25 +2718,12 @@ impl App {
             self.reset_credential_failure_breaker();
             self.auth_catalog_refresh_pending = true;
             self.invalidate_model_picker_cache();
-            let suppress_first_run_login_noise =
-                self.onboarding_flow_active() && !matches!(login.provider.as_str(), "copilot_code");
-            if !suppress_first_run_login_noise {
-                self.push_display_message(DisplayMessage::system(login.message));
-            }
+            self.push_display_message(DisplayMessage::system(login.message));
             self.set_status_notice(format!("Login: {} ready", login.provider));
             if Self::login_provider_is_azure(&login.provider) {
                 self.activate_azure_runtime_model_after_login();
             } else {
-                let prefer_strongest = self.onboarding_should_prefer_strongest_model();
-                if prefer_strongest {
-                    self.onboarding_auto_model_selection_active
-                        .store(true, std::sync::atomic::Ordering::Release);
-                    *self
-                        .onboarding_auto_model_selection_baseline
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-                        Some(self.provider.model());
-                }
+                let prefer_strongest = self.should_prefer_strongest_model();
                 // Direct OpenAI-compatible logins already launched the
                 // profile-specific catalog refresh and model activation before
                 // publishing LoginCompleted. The generic auth refresh still
@@ -2815,16 +2745,8 @@ impl App {
                 &login.provider,
                 &login.message,
             );
-            // During onboarding we route the failure to the recovery screen
-            // (which explains next steps) instead of dumping a raw error message
-            // and a status notice the user can miss.
-            if self.onboarding_flow_active() {
-                self.onboarding_handle_login_failed(Some(message));
-            } else {
-                self.push_display_message(DisplayMessage::error(message));
-                self.set_status_notice(format!("Login: {} failed", login.provider));
-                self.onboarding_handle_login_failed(None);
-            }
+            self.push_display_message(DisplayMessage::error(message));
+            self.set_status_notice(format!("Login: {} failed", login.provider));
         }
         if self.pending_login.is_some() {
             self.pending_login = None;

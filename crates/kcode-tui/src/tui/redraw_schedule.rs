@@ -23,7 +23,7 @@ pub(crate) const REDRAW_DEEP_IDLE_AFTER: Duration = Duration::from_secs(30);
 /// "already past the deep-idle threshold" for any non-empty transcript that
 /// has never streamed in this process, which is correct for a restored
 /// historical session but also matches a brand-new session the moment
-/// onboarding leaves its "here are a few things to try" notice. A recent
+/// provider setup leaves a status notice behind. A recent
 /// keystroke/mouse/paste is direct evidence the session is not dormant, so it
 /// must hold deep idle off for the same window.
 fn deep_idle_dormant(state: &dyn TuiState) -> bool {

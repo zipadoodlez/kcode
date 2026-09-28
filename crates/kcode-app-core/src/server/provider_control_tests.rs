@@ -861,7 +861,7 @@ async fn notify_auth_changed_switches_from_stale_model_to_matching_provider_rout
 }
 
 #[tokio::test]
-async fn onboarding_auth_refresh_prefers_global_gpt_5_6_route_over_fable() {
+async fn auth_refresh_prefers_global_gpt_5_6_route_over_fable() {
     let _guard = EnvGuard::save(&[
         "KCODE_RUNTIME_PROVIDER",
         "KCODE_ACTIVE_PROVIDER",
