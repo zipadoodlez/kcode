@@ -131,8 +131,8 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
         "Show/toggle single-line swarm/file-activity notifications",
     ),
     RegisteredCommand::public(
-        "/show-agentgrep-output",
-        "Show/toggle full agentgrep search output inline in chat",
+        "/show-kgrep-output",
+        "Show/toggle full kgrep search output inline in chat",
     ),
     RegisteredCommand::public(
         "/tool-call-details",
@@ -1003,21 +1003,21 @@ impl App {
             );
         }
 
-        if prefix.starts_with("/show-agentgrep-output ") {
+        if prefix.starts_with("/show-kgrep-output ") {
             return self.rank_suggestions(
                 input,
                 vec![
                     (
-                        "/show-agentgrep-output status".into(),
-                        "Show whether agentgrep output is shown inline",
+                        "/show-kgrep-output status".into(),
+                        "Show whether kgrep output is shown inline",
                     ),
                     (
-                        "/show-agentgrep-output on".into(),
-                        "Render full agentgrep search results inline in chat",
+                        "/show-kgrep-output on".into(),
+                        "Render full kgrep search results inline in chat",
                     ),
                     (
-                        "/show-agentgrep-output off".into(),
-                        "Show only the one-line agentgrep summary",
+                        "/show-kgrep-output off".into(),
+                        "Show only the one-line kgrep summary",
                     ),
                 ],
             );
@@ -1573,7 +1573,7 @@ impl App {
                 | "/compact mode"
                 | "/alignment"
                 | "/compact-notifications"
-                | "/show-agentgrep-output"
+                | "/show-kgrep-output"
                 | "/reasoning"
                 | "/thinking"
                 | "/thinking-display"

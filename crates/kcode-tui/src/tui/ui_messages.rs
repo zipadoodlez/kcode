@@ -483,11 +483,11 @@ fn render_plaintext_lines(content: &str, wrap_width: usize) -> Vec<Line<'static>
     lines
 }
 
-/// Render the full agentgrep tool output inline beneath the tool summary line.
+/// Render the full kgrep tool output inline beneath the tool summary line.
 /// Each output line is prefixed with a dim left border and indented so it reads
 /// as a nested block. Long lines are hard-split to the available width and the
 /// block is capped so a giant search result cannot flood the transcript.
-fn render_agentgrep_output_body(content: &str, row_width: usize) -> Vec<Line<'static>> {
+fn render_kgrep_output_body(content: &str, row_width: usize) -> Vec<Line<'static>> {
     const MAX_BODY_LINES: usize = 400;
     let border = "    │ ";
     let border_width = UnicodeWidthStr::width(border);
@@ -3543,14 +3543,14 @@ pub(crate) fn render_tool_message(
     );
     let rendered_tool_line_text = super::line_plain_text(&rendered_tool_line);
     lines.push(rendered_tool_line);
-    // Optionally render the full agentgrep search output inline in the
-    // transcript. Gated behind `display.show_agentgrep_output` (default false)
+    // Optionally render the full kgrep search output inline in the
+    // transcript. Gated behind `display.show_kgrep_output` (default false)
     // so most users keep the compact one-line summary.
-    if tools_ui::canonical_tool_name(&tc.name) == "agentgrep"
-        && crate::config::config().display.show_agentgrep_output
+    if tools_ui::canonical_tool_name(&tc.name) == "kgrep"
+        && crate::config::config().display.show_kgrep_output
         && !msg.content.trim().is_empty()
     {
-        for line in render_agentgrep_output_body(&msg.content, row_width) {
+        for line in render_kgrep_output_body(&msg.content, row_width) {
             lines.push(line);
         }
     }

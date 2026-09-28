@@ -193,9 +193,7 @@ pub(super) fn summarize_apply_patch_input(patch_text: &str) -> String {
     }
 }
 
-fn parse_agentgrep_smart_subject_relation(
-    input: &serde_json::Value,
-) -> (Option<&str>, Option<&str>) {
+fn parse_kgrep_smart_subject_relation(input: &serde_json::Value) -> (Option<&str>, Option<&str>) {
     let mut subject = None;
     let mut relation = None;
 
@@ -1030,8 +1028,8 @@ pub(super) fn get_tool_summary_with_budget(
                 format!("'{}'", truncate_regex_display(pattern, budget))
             }
         }
-        "agentgrep" => {
-            // agentgrep defaults to grep mode when `mode` is omitted. Mirror the
+        "kgrep" => {
+            // kgrep defaults to grep mode when `mode` is omitted. Mirror the
             // tool schema here so batch sub-call rows still show the useful
             // query/path summary instead of the unhelpful bare `grep` label.
             let mode = tool
@@ -1060,7 +1058,7 @@ pub(super) fn get_tool_summary_with_budget(
                     }
                 }
                 "trace" | "smart" => {
-                    let (subject, relation) = parse_agentgrep_smart_subject_relation(&tool.input);
+                    let (subject, relation) = parse_kgrep_smart_subject_relation(&tool.input);
 
                     match (subject, relation) {
                         (Some(subject), Some(relation)) => format!(

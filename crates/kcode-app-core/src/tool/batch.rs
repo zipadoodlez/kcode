@@ -21,7 +21,7 @@ const BATCH_DESCRIPTION: &str = r#"Run independent tool calls in parallel instea
       "limit": 200
     },
     {
-      "tool": "agentgrep",
+      "tool": "kgrep",
       "intent": "Find configuration usage",
       "query": "Config",
       "path": "src",

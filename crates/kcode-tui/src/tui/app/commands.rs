@@ -2686,20 +2686,20 @@ fn handle_tool_call_details_command(app: &mut App, trimmed: &str) -> bool {
     true
 }
 
-fn handle_show_agentgrep_output_command(app: &mut App, trimmed: &str) -> bool {
-    if trimmed != "/show-agentgrep-output" && !trimmed.starts_with("/show-agentgrep-output ") {
+fn handle_show_kgrep_output_command(app: &mut App, trimmed: &str) -> bool {
+    if trimmed != "/show-kgrep-output" && !trimmed.starts_with("/show-kgrep-output ") {
         return false;
     }
 
     let rest = trimmed
-        .strip_prefix("/show-agentgrep-output")
+        .strip_prefix("/show-kgrep-output")
         .unwrap_or_default()
         .trim();
 
     if rest.is_empty() || matches!(rest, "show" | "status") {
-        let current = crate::config::config().display.show_agentgrep_output;
+        let current = crate::config::config().display.show_kgrep_output;
         app.push_display_message(DisplayMessage::system(format!(
-            "Show agentgrep output is currently {}.\n\nWhen on, the full agentgrep search results render inline in the transcript instead of just the one-line summary.\n\nUse /show-agentgrep-output on or /show-agentgrep-output off to change it.",
+            "Show kgrep output is currently {}.\n\nWhen on, the full kgrep search results render inline in the transcript instead of just the one-line summary.\n\nUse /show-kgrep-output on or /show-kgrep-output off to change it.",
             if current { "on" } else { "off" }
         )));
         return true;
@@ -2707,22 +2707,22 @@ fn handle_show_agentgrep_output_command(app: &mut App, trimmed: &str) -> bool {
 
     let Some(enabled) = parse_on_off_value(rest) else {
         app.push_display_message(DisplayMessage::error(
-            "Usage: /show-agentgrep-output (show), /show-agentgrep-output on, or /show-agentgrep-output off".to_string(),
+            "Usage: /show-kgrep-output (show|on|off)".to_string(),
         ));
         return true;
     };
 
     app.set_status_notice(format!(
-        "Show agentgrep output: {}",
+        "Show kgrep output: {}",
         if enabled { "on" } else { "off" }
     ));
-    match crate::config::Config::set_show_agentgrep_output(enabled) {
+    match crate::config::Config::set_show_kgrep_output(enabled) {
         Ok(()) => app.push_display_message(DisplayMessage::system(format!(
-            "Saved show agentgrep output: {}. Applied to this session immediately.",
+            "Saved show kgrep output: {}. Applied to this session immediately.",
             if enabled { "on" } else { "off" }
         ))),
         Err(error) => app.push_display_message(DisplayMessage::error(format!(
-            "Applied show agentgrep output {} for this session, but failed to save it as the default: {}",
+            "Applied show kgrep output {} for this session, but failed to save it as the default: {}",
             if enabled { "on" } else { "off" },
             error
         ))),
@@ -3098,7 +3098,7 @@ pub(super) fn handle_config_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    if handle_show_agentgrep_output_command(app, trimmed) {
+    if handle_show_kgrep_output_command(app, trimmed) {
         return true;
     }
 

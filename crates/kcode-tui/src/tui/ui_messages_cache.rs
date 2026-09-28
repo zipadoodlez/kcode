@@ -17,7 +17,7 @@ where
         diff_mode,
         kcode_tui_messages::MessageCacheContext {
             centered: markdown::center_code_blocks(),
-            show_agentgrep_output: crate::config::config().display.show_agentgrep_output,
+            show_kgrep_output: crate::config::config().display.show_kgrep_output,
             show_bash_output: crate::config::config().display.show_bash_output,
             tool_call_details: crate::config::config().display.tool_call_details,
         },

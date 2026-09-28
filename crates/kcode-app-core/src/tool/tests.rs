@@ -344,8 +344,8 @@ fn test_resolve_tool_name_oauth_aliases() {
     assert_eq!(Registry::resolve_tool_name("task_runner"), "subagent");
     assert_eq!(Registry::resolve_tool_name("task"), "subagent");
     assert_eq!(Registry::resolve_tool_name("launch"), "open");
-    assert_eq!(Registry::resolve_tool_name("grep"), "agentgrep");
-    assert_eq!(Registry::resolve_tool_name("file_grep"), "agentgrep");
+    assert_eq!(Registry::resolve_tool_name("grep"), "kgrep");
+    assert_eq!(Registry::resolve_tool_name("file_grep"), "kgrep");
     assert_eq!(Registry::resolve_tool_name("todo_read"), "todo");
     assert_eq!(Registry::resolve_tool_name("todo_write"), "todo");
     assert_eq!(Registry::resolve_tool_name("todoread"), "todo");
@@ -1246,7 +1246,7 @@ async fn test_context_guard_never_spends_more_than_it_reports() {
 
 #[tokio::test]
 async fn test_context_guard_refusal_reads_clearly_for_todays_regression() {
-    // The exact shape that motivated this change: a 233k-token agentgrep result
+    // The exact shape that motivated this change: a 233k-token kgrep result
     // against a 200k budget with 18k already used. Printed so the wording stays
     // reviewable, and asserted so it keeps naming the cost and the escape hatch.
     let compaction = Arc::new(RwLock::new(CompactionManager::new().with_budget(200_000)));
@@ -1262,7 +1262,7 @@ async fn test_context_guard_refusal_reads_clearly_for_todays_regression() {
     };
 
     let result = registry
-        .guard_context_overflow("agentgrep", ToolOutput::new("x".repeat(932_000)), false)
+        .guard_context_overflow("kgrep", ToolOutput::new("x".repeat(932_000)), false)
         .await;
     println!("---\n{}\n---", result.output);
 
@@ -1550,10 +1550,10 @@ async fn test_guard_withholds_large_output_on_a_million_token_window() {
         compaction,
     };
 
-    // ~233k tokens: the real size of the agentgrep result that started this.
+    // ~233k tokens: the real size of the kgrep result that started this.
     let output = ToolOutput::new("x".repeat(932_000));
     let result = registry
-        .guard_context_overflow("agentgrep", output, false)
+        .guard_context_overflow("kgrep", output, false)
         .await;
 
     assert!(

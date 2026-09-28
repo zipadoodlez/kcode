@@ -354,7 +354,7 @@ impl ToolOutput {
 /// Providers can present tools with Claude Code aliases (e.g. `file_grep`,
 /// `shell_exec`) or API namespace prefixes (e.g. `functions.bash`). Models can
 /// repeat those names in sub-tool calls such as `batch`, while our registry
-/// uses canonical internal names (`agentgrep`, `bash`). This mapping ensures
+/// uses canonical internal names (`kgrep`, `bash`). This mapping ensures
 /// all of those forms resolve correctly.
 ///
 /// This lives in `kcode-tool-core` (rather than the tool `Registry`) so that
@@ -378,11 +378,11 @@ pub fn resolve_tool_name(name: &str) -> &str {
         "file_write" => "write",
         "edit_file" => "edit",
         "file_edit" => "edit",
-        // The native grep tool was removed in favor of agentgrep, but models
-        // still frequently call `grep` (and OAuth's `file_grep`). agentgrep's
+        // The native grep tool was removed in favor of kgrep, but models
+        // still frequently call `grep` (and OAuth's `file_grep`). kgrep's
         // grep mode accepts `pattern` as an alias for `query`, so these calls
         // work as-is.
-        "grep" | "file_grep" => "agentgrep",
+        "grep" | "file_grep" => "kgrep",
         "skill" | "Skill" => "skill_manage",
         "todoread" | "todowrite" | "todo_read" | "todo_write" | "todos" => "todo",
         // The Anthropic OAuth surface advertises PascalCase tool names and
@@ -393,7 +393,7 @@ pub fn resolve_tool_name(name: &str) -> &str {
         "Read" => "read",
         "Write" => "write",
         "Edit" => "edit",
-        "Grep" => "agentgrep",
+        "Grep" => "kgrep",
         "Agent" => "subagent",
         "ScheduleWakeup" => "schedule",
         other => other,
@@ -408,7 +408,7 @@ mod tool_types_tests {
     fn resolve_tool_name_strips_function_namespace_before_alias_resolution() {
         assert_eq!(resolve_tool_name("functions.bash"), "bash");
         assert_eq!(resolve_tool_name("functions.shell_exec"), "bash");
-        assert_eq!(resolve_tool_name("functions.file_grep"), "agentgrep");
+        assert_eq!(resolve_tool_name("functions.file_grep"), "kgrep");
     }
 
     #[test]
@@ -427,7 +427,7 @@ mod tool_types_tests {
         assert_eq!(resolve_tool_name("Bash"), "bash");
         assert_eq!(resolve_tool_name("Write"), "write");
         assert_eq!(resolve_tool_name("Edit"), "edit");
-        assert_eq!(resolve_tool_name("Grep"), "agentgrep");
+        assert_eq!(resolve_tool_name("Grep"), "kgrep");
         assert_eq!(resolve_tool_name("Agent"), "subagent");
         assert_eq!(resolve_tool_name("ScheduleWakeup"), "schedule");
         assert_eq!(resolve_tool_name("Skill"), "skill_manage");

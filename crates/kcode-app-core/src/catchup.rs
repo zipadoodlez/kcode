@@ -392,7 +392,7 @@ fn tool_use_step(block: &ContentBlock) -> Option<String> {
     };
     let obj = input.as_object();
     match name.as_str() {
-        "agentgrep" | "grep" | "glob" | "ls" | "codesearch" | "session_search" => {
+        "kgrep" | "grep" | "glob" | "ls" | "codesearch" | "session_search" => {
             Some("Searched code and session context".to_string())
         }
         "read" => Some(

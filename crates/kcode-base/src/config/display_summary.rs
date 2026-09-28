@@ -48,7 +48,7 @@ impl Config {
 - Side panel native scrollbar: {}
 - Redraw FPS: {}
 - Copy badge Alt label: {}
-- Show agentgrep output: {}
+- Show kgrep output: {}
 - Tool call details: {}
 - Theme: {}
 - Custom colors: {}
@@ -134,7 +134,7 @@ impl Config {
             } else {
                 self.display.copy_badge_alt_label.trim()
             },
-            self.display.show_agentgrep_output,
+            self.display.show_kgrep_output,
             self.display.tool_call_details,
             if self.display.theme.trim().is_empty() {
                 "dark"

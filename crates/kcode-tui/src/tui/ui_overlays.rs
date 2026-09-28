@@ -223,8 +223,8 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         "Collapse swarm/file-activity notifications to one line",
     ));
     lines.push(help_entry(
-        "/show-agentgrep-output [status|on|off]",
-        "Render full agentgrep search output inline in chat",
+        "/show-kgrep-output [status|on|off]",
+        "Render full kgrep search output inline in chat",
     ));
     lines.push(help_entry("/config", "Show active configuration"));
     lines.push(help_entry("/config init", "Create default config file"));

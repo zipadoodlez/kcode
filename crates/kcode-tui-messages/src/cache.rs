@@ -12,7 +12,7 @@ struct MessageCacheKey {
     message_hash: u64,
     content_len: usize,
     centered: bool,
-    show_agentgrep_output: bool,
+    show_kgrep_output: bool,
     show_bash_output: bool,
     tool_call_details: bool,
 }
@@ -60,7 +60,7 @@ const MESSAGE_CACHE_LIMIT: usize = 2048;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MessageCacheContext {
     pub centered: bool,
-    pub show_agentgrep_output: bool,
+    pub show_kgrep_output: bool,
     pub show_bash_output: bool,
     pub tool_call_details: bool,
 }
@@ -108,7 +108,7 @@ where
         message_hash: msg.stable_cache_hash(),
         content_len: msg.content.len(),
         centered: context.centered,
-        show_agentgrep_output: context.show_agentgrep_output,
+        show_kgrep_output: context.show_kgrep_output,
         show_bash_output: context.show_bash_output,
         tool_call_details: context.tool_call_details,
     };

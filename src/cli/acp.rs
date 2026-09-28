@@ -1844,7 +1844,7 @@ fn tool_title(name: &str) -> String {
         "read" => "Reading file".to_string(),
         "write" => "Writing file".to_string(),
         "edit" | "multiedit" | "patch" | "apply_patch" => "Editing files".to_string(),
-        "agentgrep" | "grep" | "glob" | "ls" => "Searching workspace".to_string(),
+        "kgrep" | "grep" | "glob" | "ls" => "Searching workspace".to_string(),
         "webfetch" | "websearch" => "Fetching web content".to_string(),
         other => other.replace('_', " "),
     }
@@ -1855,7 +1855,7 @@ pub(crate) fn tool_kind(name: &str) -> &'static str {
         "read" => "read",
         "write" | "edit" | "multiedit" | "patch" | "apply_patch" => "edit",
         "bash" | "bg" | "selfdev" => "execute",
-        "agentgrep" | "grep" | "glob" | "ls" | "session_search" | "conversation_search" => "search",
+        "kgrep" | "grep" | "glob" | "ls" | "session_search" | "conversation_search" => "search",
         "webfetch" | "websearch" | "codesearch" => "fetch",
         _ => "other",
     }
@@ -1889,7 +1889,7 @@ mod tests {
         assert_eq!(tool_kind("read"), "read");
         assert_eq!(tool_kind("apply_patch"), "edit");
         assert_eq!(tool_kind("bash"), "execute");
-        assert_eq!(tool_kind("agentgrep"), "search");
+        assert_eq!(tool_kind("kgrep"), "search");
         assert_eq!(tool_kind("webfetch"), "fetch");
         assert_eq!(tool_kind("swarm"), "other");
     }

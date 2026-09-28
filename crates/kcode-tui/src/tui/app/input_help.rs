@@ -176,8 +176,8 @@ impl App {
             "compact-notifications" => {
                 "/compact-notifications\nShow whether swarm/file-activity notifications are compact.\n\n/compact-notifications on\nCollapse file-activity notifications to a single line (path · summary), dropping the intent and diff preview.\n\n/compact-notifications off\nRestore the full multi-line notification cards."
             }
-            "show-agentgrep-output" => {
-                "/show-agentgrep-output\nShow whether full agentgrep search output renders inline in the transcript.\n\n/show-agentgrep-output on\nRender the full agentgrep search results inline beneath each agentgrep call instead of just the one-line summary.\n\n/show-agentgrep-output off\nShow only the compact one-line agentgrep summary."
+            "show-kgrep-output" => {
+                "/show-kgrep-output\nShow whether full kgrep search output renders inline in the transcript.\n\n/show-kgrep-output on\nRender the full kgrep search results inline beneath each kgrep call instead of just the one-line summary.\n\n/show-kgrep-output off\nShow only the compact one-line kgrep summary."
             }
             "tool-call-details" => {
                 "/tool-call-details\nShow whether the dimmed technical detail (command, path, args) renders next to the model-provided intent on tool rows.\n\n/tool-call-details on\nShow the technical detail after the intent, e.g. `bash · Run tests · $ cargo test`.\n\n/tool-call-details off\nShow only the intent on tool rows that have one. Rows without an intent still show the technical detail, and error summaries always render."

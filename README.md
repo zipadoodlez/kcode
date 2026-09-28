@@ -225,7 +225,7 @@ Slash commands inside the TUI. The registry lives in
 | `/alignment` | Default text alignment |
 | `/thinking-display` | Show/hide model thinking (off/full/current) |
 | `/tool-call-details` | Dimmed technical details on tool rows |
-| `/show-agentgrep-output` | Full agentgrep output inline |
+| `/show-kgrep-output` | Full kgrep output inline |
 | `/compact-notifications` | Single-line swarm/file-activity notifications |
 | `/terminal-setup` | Fix Shift+Enter newlines |
 | `/debug-visual`, `/screenshot-mode`, `/screenshot`, `/record` | Visual debug and capture |
@@ -271,7 +271,7 @@ Tools the agent can call. Implementations live in
 `crates/kcode-app-core/src/tool/`.
 
 **Filesystem and shell:** `bash`, `read`, `write`, `edit`, `multiedit`,
-`patch`, `apply_patch`, `ls`, `glob`, `grep`, `agentgrep` (grep/find/outline/
+`patch`, `apply_patch`, `ls`, `glob`, `grep`, `kgrep` (grep/find/outline/
 trace modes), `open`, `bg`
 
 **Web:** `webfetch`, `websearch`

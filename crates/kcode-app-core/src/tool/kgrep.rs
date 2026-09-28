@@ -10,19 +10,19 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-const AGENTGREP_FOREGROUND_BUDGET: Duration = Duration::from_secs(5);
+const KGREP_FOREGROUND_BUDGET: Duration = Duration::from_secs(5);
 
 mod args;
 
 #[cfg(test)]
 use self::args::trace_or_smart_terms_owned;
-use self::args::{query_from_params, summarize_agentgrep_request};
+use self::args::{query_from_params, summarize_kgrep_request};
 
 #[derive(Debug, Deserialize)]
-struct AgentGrepInput {
-    #[serde(default = "default_agentgrep_mode")]
+struct KgrepInput {
+    #[serde(default = "default_kgrep_mode")]
     mode: String,
-    // `pattern` accepted for legacy grep-tool calls aliased to agentgrep.
+    // `pattern` accepted for legacy grep-tool calls aliased to kgrep.
     #[serde(default, alias = "pattern")]
     query: Option<String>,
     // `file_path` accepted because agents frequently pass it instead of `file`.
@@ -34,7 +34,7 @@ struct AgentGrepInput {
     regex: Option<bool>,
     #[serde(default)]
     path: Option<String>,
-    // `include` accepted for legacy grep-tool calls aliased to agentgrep.
+    // `include` accepted for legacy grep-tool calls aliased to kgrep.
     #[serde(default, alias = "include")]
     glob: Option<String>,
     #[serde(rename = "type", default)]
@@ -57,22 +57,22 @@ struct AgentGrepInput {
     paths_only: Option<bool>,
 }
 
-fn default_agentgrep_mode() -> String {
+fn default_kgrep_mode() -> String {
     "grep".to_string()
 }
 
-pub struct AgentGrepTool;
+pub struct KgrepTool;
 
-impl AgentGrepTool {
+impl KgrepTool {
     pub fn new() -> Self {
         Self
     }
 }
 
 #[async_trait]
-impl Tool for AgentGrepTool {
+impl Tool for KgrepTool {
     fn name(&self) -> &str {
-        "agentgrep"
+        "kgrep"
     }
 
     fn description(&self) -> &str {
@@ -139,7 +139,7 @@ impl Tool for AgentGrepTool {
     }
 
     async fn execute(&self, input: Value, ctx: ToolContext) -> Result<ToolOutput> {
-        let params: AgentGrepInput = serde_json::from_value(input)?;
+        let params: KgrepInput = serde_json::from_value(input)?;
         let display_name = summarize_background_search(&params);
         let session_id = ctx.session_id.clone();
         // The search shells out to ripgrep and walks/reads files (and for
@@ -151,11 +151,10 @@ impl Tool for AgentGrepTool {
         // the first cold-cache search feel like it "takes forever" with no
         // spinner and an unresponsive interrupt. This mirrors how the sibling
         // grep/glob/ls tools offload their work.
-        let work_handle =
-            tokio::task::spawn_blocking(move || run_agentgrep_blocking(&params, &ctx));
+        let work_handle = tokio::task::spawn_blocking(move || run_kgrep_blocking(&params, &ctx));
         await_or_background_search(
             work_handle,
-            AGENTGREP_FOREGROUND_BUDGET,
+            KGREP_FOREGROUND_BUDGET,
             display_name,
             session_id,
         )
@@ -170,13 +169,11 @@ async fn await_or_background_search(
     session_id: String,
 ) -> Result<ToolOutput> {
     match tokio::time::timeout(foreground_budget, &mut work_handle).await {
-        Ok(joined) => {
-            joined.map_err(|err| anyhow::anyhow!("agentgrep task failed to join: {err}"))?
-        }
+        Ok(joined) => joined.map_err(|err| anyhow::anyhow!("kgrep task failed to join: {err}"))?,
         Err(_) => {
             let info = crate::background::global()
                 .adopt_with_options(
-                    "agentgrep",
+                    "kgrep",
                     Some(display_name.clone()),
                     &session_id,
                     true,
@@ -205,7 +202,7 @@ async fn await_or_background_search(
     }
 }
 
-fn summarize_background_search(params: &AgentGrepInput) -> String {
+fn summarize_background_search(params: &KgrepInput) -> String {
     let subject = params
         .query
         .as_deref()
@@ -217,32 +214,28 @@ fn summarize_background_search(params: &AgentGrepInput) -> String {
                 .and_then(|terms| terms.first().map(String::as_str))
         })
         .unwrap_or("workspace");
-    format!(
-        "agentgrep {}: {}",
-        params.mode,
-        util::truncate_str(subject, 80)
-    )
+    format!("kgrep {}: {}", params.mode, util::truncate_str(subject, 80))
 }
 
-fn run_agentgrep_blocking(params: &AgentGrepInput, ctx: &ToolContext) -> Result<ToolOutput> {
+fn run_kgrep_blocking(params: &KgrepInput, ctx: &ToolContext) -> Result<ToolOutput> {
     if ctx.working_dir.is_none() {
         let explicit_path = params.path.as_deref().or(params.file.as_deref());
         if explicit_path.is_none_or(|path| !Path::new(path).is_absolute()) {
             anyhow::bail!(
-                "agentgrep requires a session working directory unless an absolute path is provided"
+                "kgrep requires a session working directory unless an absolute path is provided"
             );
         }
     }
-    let request = summarize_agentgrep_request(params, ctx);
+    let request = summarize_kgrep_request(params, ctx);
     let started_at = std::time::Instant::now();
-    let outcome = execute_linked_agentgrep(params, ctx);
+    let outcome = execute_linked_kgrep(params, ctx);
     let elapsed_ms = started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
 
     match outcome {
         Ok(output) => {
             if elapsed_ms >= 2_000 {
                 logging::warn(&format!(
-                    "agentgrep slow mode={} elapsed_ms={} request={}",
+                    "kgrep slow mode={} elapsed_ms={} request={}",
                     params.mode, elapsed_ms, request
                 ));
             }
@@ -252,11 +245,11 @@ fn run_agentgrep_blocking(params: &AgentGrepInput, ctx: &ToolContext) -> Result<
             let detail = err.to_string();
             let detail = util::truncate_str(detail.trim(), 600);
             logging::warn(&format!(
-                "agentgrep failure mode={} elapsed_ms={} request={} error={}",
+                "kgrep failure mode={} elapsed_ms={} request={} error={}",
                 params.mode, elapsed_ms, request, detail
             ));
             Err(anyhow::anyhow!(
-                "agentgrep {} failed after {}ms: {}",
+                "kgrep {} failed after {}ms: {}",
                 params.mode,
                 elapsed_ms,
                 err
@@ -270,7 +263,7 @@ fn run_agentgrep_blocking(params: &AgentGrepInput, ctx: &ToolContext) -> Result<
 /// One home for the three knobs. `max_files` reaches grep here as well, because
 /// `Verb::Lexical` has no coverage cap of its own; find and trace carry the same
 /// number on the verb, and the two compose by whichever is smaller.
-fn budget_from_params(params: &AgentGrepInput) -> Budget {
+fn budget_from_params(params: &KgrepInput) -> Budget {
     let default = Budget::default();
     Budget {
         max_total_matches: params.max_regions.unwrap_or(default.max_total_matches),
@@ -279,7 +272,7 @@ fn budget_from_params(params: &AgentGrepInput) -> Budget {
     }
 }
 
-fn execute_linked_agentgrep(params: &AgentGrepInput, ctx: &ToolContext) -> Result<ToolOutput> {
+fn execute_linked_kgrep(params: &KgrepInput, ctx: &ToolContext) -> Result<ToolOutput> {
     let query = query_from_params(params, ctx)?;
     let exact_file = exact_search_file_path(ctx, params.path.as_deref());
     let render_options = RenderOptions {
@@ -293,19 +286,21 @@ fn execute_linked_agentgrep(params: &AgentGrepInput, ctx: &ToolContext) -> Resul
                     .map_err(anyhow::Error::msg)?,
                 exact_file.as_deref(),
             );
-            Ok(ToolOutput::new(render_grep_text(&packet)).with_title("agentgrep grep"))
+            Ok(ToolOutput::new(render_grep_text(&packet)).with_title("kgrep grep"))
         }
         Verb::Path { .. } => {
             let packet = filter_packet_to_exact_file(
                 find::run_find(&query, budget_from_params(params)).map_err(anyhow::Error::msg)?,
                 exact_file.as_deref(),
             );
-            Ok(ToolOutput::new(render_find_text(&packet, &render_options))
-                .with_title("agentgrep find"))
+            Ok(
+                ToolOutput::new(render_find_text(&packet, &render_options))
+                    .with_title("kgrep find"),
+            )
         }
         Verb::Outline { .. } => {
             let result = outline::run_outline(&query).map_err(anyhow::Error::msg)?;
-            Ok(ToolOutput::new(render_outline_text(&result)).with_title("agentgrep outline"))
+            Ok(ToolOutput::new(render_outline_text(&result)).with_title("kgrep outline"))
         }
         Verb::Structural { .. } => {
             let packet = filter_packet_to_exact_file(
@@ -313,7 +308,7 @@ fn execute_linked_agentgrep(params: &AgentGrepInput, ctx: &ToolContext) -> Resul
                 exact_file.as_deref(),
             );
             Ok(ToolOutput::new(render_trace_text(&packet, &render_options))
-                .with_title(format!("agentgrep {}", params.mode)))
+                .with_title(format!("kgrep {}", params.mode)))
         }
     }
 }
@@ -349,7 +344,7 @@ fn filter_packet_to_exact_file(mut packet: Packet, exact_file: Option<&str>) -> 
     packet
 }
 
-fn normalized_agentgrep_glob(glob: Option<&str>) -> Option<&str> {
+fn normalized_kgrep_glob(glob: Option<&str>) -> Option<&str> {
     let glob = glob?.trim();
     if glob.is_empty() {
         return None;
@@ -362,8 +357,8 @@ fn normalized_agentgrep_glob(glob: Option<&str>) -> Option<&str> {
     Some(glob)
 }
 
-fn normalized_agentgrep_glob_owned(glob: Option<&str>) -> Option<String> {
-    normalized_agentgrep_glob(glob).map(ToOwned::to_owned)
+fn normalized_kgrep_glob_owned(glob: Option<&str>) -> Option<String> {
+    normalized_kgrep_glob(glob).map(ToOwned::to_owned)
 }
 
 fn is_match_all_glob(glob: &str) -> bool {
@@ -371,5 +366,5 @@ fn is_match_all_glob(glob: &str) -> bool {
 }
 
 #[cfg(test)]
-#[path = "agentgrep_tests.rs"]
+#[path = "kgrep_tests.rs"]
 mod tests;

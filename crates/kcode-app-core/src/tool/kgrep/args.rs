@@ -16,7 +16,7 @@ fn resolved_search_scope(
     let Some(path) = path else {
         return ResolvedSearchScope {
             root: None,
-            glob: normalized_agentgrep_glob_owned(glob),
+            glob: normalized_kgrep_glob_owned(glob),
         };
     };
 
@@ -38,7 +38,7 @@ fn resolved_search_scope(
 
     ResolvedSearchScope {
         root: Some(resolved.display().to_string()),
-        glob: normalized_agentgrep_glob_owned(glob),
+        glob: normalized_kgrep_glob_owned(glob),
     }
 }
 
@@ -48,14 +48,14 @@ fn resolved_search_scope(
 /// it, and everything above it is the agent envelope: schema, budget, background
 /// adoption and context.json. The four modes dispatch here, building a different
 /// verb each time, because the verbs are not interchangeable.
-pub(super) fn query_from_params(params: &AgentGrepInput, ctx: &ToolContext) -> Result<Query> {
+pub(super) fn query_from_params(params: &KgrepInput, ctx: &ToolContext) -> Result<Query> {
     let paths_only = params.paths_only.unwrap_or(false);
     let (where_, verb) = match params.mode.as_str() {
         "grep" => {
             let text = params
                 .query
                 .clone()
-                .ok_or_else(|| anyhow::anyhow!("agentgrep grep requires 'query'"))?;
+                .ok_or_else(|| anyhow::anyhow!("kgrep grep requires 'query'"))?;
             (
                 narrowed_where(params, ctx)?,
                 Verb::Lexical {
@@ -69,11 +69,11 @@ pub(super) fn query_from_params(params: &AgentGrepInput, ctx: &ToolContext) -> R
             if query.trim().is_empty()
                 && params.path.as_deref().is_none_or(str::is_empty)
                 && params.file.as_deref().is_none_or(str::is_empty)
-                && normalized_agentgrep_glob(params.glob.as_deref()).is_none()
+                && normalized_kgrep_glob(params.glob.as_deref()).is_none()
                 && params.file_type.as_deref().is_none_or(str::is_empty)
             {
                 return Err(anyhow::anyhow!(
-                    "agentgrep find requires 'query' unless path, glob, or type narrows the search"
+                    "kgrep find requires 'query' unless path, glob, or type narrows the search"
                 ));
             }
             (
@@ -98,7 +98,7 @@ pub(super) fn query_from_params(params: &AgentGrepInput, ctx: &ToolContext) -> R
             let terms = trace_or_smart_terms_owned(params)?;
             let query = kgrep::trace::parse_query(&terms).map_err(|err| {
                 anyhow::anyhow!(
-                    "{}\n\ntrace queries use a small DSL. Example:\n  agentgrep trace subject:auth_status relation:rendered support:ui",
+                    "{}\n\ntrace queries use a small DSL. Example:\n  kgrep trace subject:auth_status relation:rendered support:ui",
                     err
                 )
             })?;
@@ -114,7 +114,7 @@ pub(super) fn query_from_params(params: &AgentGrepInput, ctx: &ToolContext) -> R
         }
         other => {
             return Err(anyhow::anyhow!(
-                "Unsupported agentgrep mode: {other}. Use grep, find, outline, or trace."
+                "Unsupported kgrep mode: {other}. Use grep, find, outline, or trace."
             ));
         }
     };
@@ -126,7 +126,7 @@ pub(super) fn query_from_params(params: &AgentGrepInput, ctx: &ToolContext) -> R
 }
 
 /// The narrowing every sweeping verb shares, as kgrep's `Where`.
-fn narrowed_where(params: &AgentGrepInput, ctx: &ToolContext) -> Result<Where> {
+fn narrowed_where(params: &KgrepInput, ctx: &ToolContext) -> Result<Where> {
     let scope = resolved_search_scope(
         ctx,
         params.path.as_deref(),
@@ -153,7 +153,7 @@ fn narrowed_where(params: &AgentGrepInput, ctx: &ToolContext) -> Result<Where> {
 /// described, not a filter, so scoping it the way a sweep is scoped would turn
 /// the target into a glob and lose it. A file-valued `path` is treated as the
 /// target itself, so the file argument is not joined onto it.
-fn outline_target(params: &AgentGrepInput, ctx: &ToolContext) -> Result<(PathBuf, String)> {
+fn outline_target(params: &KgrepInput, ctx: &ToolContext) -> Result<(PathBuf, String)> {
     if let Some(path) = params.path.as_deref() {
         let resolved = resolve_path_arg(ctx, path);
         if resolved.is_file() {
@@ -169,11 +169,11 @@ fn outline_target(params: &AgentGrepInput, ctx: &ToolContext) -> Result<(PathBuf
     let root = ctx
         .working_dir
         .clone()
-        .ok_or_else(|| anyhow::anyhow!("agentgrep requires a session working directory"))?;
+        .ok_or_else(|| anyhow::anyhow!("kgrep requires a session working directory"))?;
     Ok((root, outline_file_arg(params)?))
 }
 
-pub(super) fn trace_or_smart_terms_owned(params: &AgentGrepInput) -> Result<Vec<String>> {
+pub(super) fn trace_or_smart_terms_owned(params: &KgrepInput) -> Result<Vec<String>> {
     if let Some(terms) = params.terms.as_ref().filter(|terms| !terms.is_empty()) {
         return Ok(terms.clone());
     }
@@ -198,13 +198,13 @@ pub(super) fn trace_or_smart_terms_owned(params: &AgentGrepInput) -> Result<Vec<
     };
 
     Err(anyhow::anyhow!(
-        "agentgrep {} requires {}",
+        "kgrep {} requires {}",
         params.mode,
         field_hint
     ))
 }
 
-fn outline_file_arg(params: &AgentGrepInput) -> Result<String> {
+fn outline_file_arg(params: &KgrepInput) -> Result<String> {
     params
         .file
         .clone()
@@ -216,7 +216,7 @@ fn outline_file_arg(params: &AgentGrepInput) -> Result<String> {
                 .and_then(|terms| terms.first().cloned())
         })
         .ok_or_else(|| {
-            anyhow::anyhow!("agentgrep outline requires 'file' (or legacy 'query' / first term)")
+            anyhow::anyhow!("kgrep outline requires 'file' (or legacy 'query' / first term)")
         })
 }
 
@@ -226,7 +226,7 @@ fn parse_full_region_mode(value: Option<&str>) -> Result<FullRegionMode> {
         "always" => Ok(FullRegionMode::Always),
         "never" => Ok(FullRegionMode::Never),
         other => Err(anyhow::anyhow!(
-            "agentgrep trace full_region must be one of: auto, always, never; got {other}"
+            "kgrep trace full_region must be one of: auto, always, never; got {other}"
         )),
     }
 }
@@ -238,10 +238,10 @@ fn resolved_root_string(ctx: &ToolContext, path: Option<&str>) -> Option<String>
 pub(super) fn resolve_search_root(ctx: &ToolContext, path: Option<&str>) -> Result<PathBuf> {
     path.map(PathBuf::from)
         .or_else(|| ctx.working_dir.clone())
-        .ok_or_else(|| anyhow::anyhow!("agentgrep requires a session working directory"))
+        .ok_or_else(|| anyhow::anyhow!("kgrep requires a session working directory"))
 }
 
-pub(super) fn summarize_agentgrep_request(params: &AgentGrepInput, ctx: &ToolContext) -> String {
+pub(super) fn summarize_kgrep_request(params: &KgrepInput, ctx: &ToolContext) -> String {
     let mut parts = vec![format!("mode={}", params.mode)];
     if let Some(query) = params.query.as_deref() {
         parts.push(format!("query={}", util::truncate_str(query, 80)));
@@ -258,7 +258,7 @@ pub(super) fn summarize_agentgrep_request(params: &AgentGrepInput, ctx: &ToolCon
     if let Some(path) = resolved_root_string(ctx, params.path.as_deref()) {
         parts.push(format!("root={path}"));
     }
-    if let Some(glob) = normalized_agentgrep_glob(params.glob.as_deref()) {
+    if let Some(glob) = normalized_kgrep_glob(params.glob.as_deref()) {
         parts.push(format!("glob={glob}"));
     }
     if let Some(file_type) = params.file_type.as_deref() {

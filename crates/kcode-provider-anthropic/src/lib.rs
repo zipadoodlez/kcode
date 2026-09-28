@@ -1138,7 +1138,7 @@ mod cache_prefix_invariant_tests {
             tool_def("read"),
             tool_def("write"),
             tool_def("edit"),
-            tool_def("agentgrep"),
+            tool_def("kgrep"),
         ];
         let formatted = format_tools(&registry, true, false);
         let names: Vec<&str> = formatted.iter().map(|t| t.name.as_str()).collect();
@@ -1149,7 +1149,7 @@ mod cache_prefix_invariant_tests {
                 "advertised ghost builtin {ghost} without a backing registry tool: {names:?}"
             );
         }
-        for present in ["Bash", "Read", "Write", "Edit", "agentgrep"] {
+        for present in ["Bash", "Read", "Write", "Edit", "kgrep"] {
             assert!(names.contains(&present), "missing {present} in {names:?}");
         }
     }

@@ -216,13 +216,13 @@ impl Config {
         Ok(())
     }
 
-    /// Update the persisted show-agentgrep-output preference.
-    pub fn set_show_agentgrep_output(show: bool) -> anyhow::Result<()> {
+    /// Update the persisted show-kgrep-output preference.
+    pub fn set_show_kgrep_output(show: bool) -> anyhow::Result<()> {
         let mut cfg = Self::load_for_update()?;
-        cfg.display.show_agentgrep_output = show;
+        cfg.display.show_kgrep_output = show;
         cfg.save()?;
         crate::logging::info(&format!(
-            "Saved display.show_agentgrep_output to config: {}",
+            "Saved display.show_kgrep_output to config: {}",
             show
         ));
         Ok(())

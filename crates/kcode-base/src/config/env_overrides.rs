@@ -244,9 +244,9 @@ impl Config {
                 self.display.compact_notifications = parsed;
             }
         }
-        if let Ok(v) = std::env::var("KCODE_SHOW_AGENTGREP_OUTPUT") {
+        if let Ok(v) = std::env::var("KCODE_SHOW_KGREP_OUTPUT") {
             if let Some(parsed) = parse_env_bool(&v) {
-                self.display.show_agentgrep_output = parsed;
+                self.display.show_kgrep_output = parsed;
             }
         }
         if let Ok(v) = std::env::var("KCODE_SHOW_BASH_OUTPUT") {

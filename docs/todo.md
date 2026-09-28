@@ -30,7 +30,7 @@ actionable:
 - [x] **`jcode` renamed to `kcode` across the tree (2026-09-28).** 742 files
   rewritten and 967 paths renamed: 60 crate directories, the root `[lib]`, the
   `kcode-harness` bin target, the `.kcode/` project directory, and the
-  `agentgrep` tool (now `kgrep`) with its files. `Cargo.lock` regenerated.
+  `kgrep` tool (now `kgrep`) with its files. `Cargo.lock` regenerated.
 - [x] **Crate names: renamed, not declared cosmetic.** The earlier call was to
   leave the 60 `jcode-*` crates alone. Reversed deliberately: consistency across
   the tree is worth the diff, and the rename is mechanical.

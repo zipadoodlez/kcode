@@ -2331,7 +2331,7 @@ mod tests {
                         progress: None,
                     },
                     GalleryToolIntent {
-                        tool_name: "agentgrep".into(),
+                        tool_name: "kgrep".into(),
                         intent: "Locate refresh implementation".into(),
                         status: "completed".into(),
                         progress: None,

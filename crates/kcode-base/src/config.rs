@@ -107,7 +107,7 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "KCODE_SCROLL_UP_FALLBACK_KEY",
     "KCODE_SCROLL_UP_KEY",
     "KCODE_SEARXNG_URL",
-    "KCODE_SHOW_AGENTGREP_OUTPUT",
+    "KCODE_SHOW_KGREP_OUTPUT",
     "KCODE_SHOW_BASH_OUTPUT",
     "KCODE_SHOW_DIFFS",
     "KCODE_SHOW_THINKING",
@@ -661,7 +661,7 @@ impl ToolConfig {
                     "multiedit",
                     "apply_patch",
                     "patch",
-                    "agentgrep",
+                    "kgrep",
                     "ls",
                     "batch",
                     "mcp",
@@ -680,7 +680,7 @@ impl ToolConfig {
                     "multiedit",
                     "apply_patch",
                     "patch",
-                    "agentgrep",
+                    "kgrep",
                     "ls",
                 ]
                 .into_iter()

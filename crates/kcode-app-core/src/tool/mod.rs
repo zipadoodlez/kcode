@@ -1,4 +1,3 @@
-mod agentgrep;
 mod apply_patch;
 mod bash;
 mod batch;
@@ -13,6 +12,7 @@ mod edit_stats;
 pub mod inflight;
 mod invalid;
 mod kcode_docs;
+mod kgrep;
 mod ls;
 pub mod mcp;
 mod multiedit;
@@ -339,12 +339,7 @@ impl Registry {
             let mut m = HashMap::new();
             Self::insert_tool_timed(&mut m, &mut timings, "read", read::ReadTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "write", write::WriteTool::new);
-            Self::insert_tool_timed(
-                &mut m,
-                &mut timings,
-                "agentgrep",
-                agentgrep::AgentGrepTool::new,
-            );
+            Self::insert_tool_timed(&mut m, &mut timings, "kgrep", kgrep::KgrepTool::new);
             Self::insert_tool_timed(
                 &mut m,
                 &mut timings,

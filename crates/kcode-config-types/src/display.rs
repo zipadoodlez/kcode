@@ -58,10 +58,10 @@ pub struct DisplayConfig {
     pub compact_notifications: bool,
     /// Override the Alt/Option label shown in copy badges. Empty = auto (⌥ on macOS, Alt elsewhere).
     pub copy_badge_alt_label: String,
-    /// Show the full agentgrep tool output inline in the transcript instead of
+    /// Show the full kgrep tool output inline in the transcript instead of
     /// just the one-line summary (default: false)
     #[serde(default)]
-    pub show_agentgrep_output: bool,
+    pub show_kgrep_output: bool,
     /// Show up to the last three non-empty bash output lines beneath the tool
     /// summary (default: false).
     #[serde(default)]
@@ -131,7 +131,7 @@ impl Default for DisplayConfig {
             prompt_preview: true,
             compact_notifications: false,
             copy_badge_alt_label: String::new(),
-            show_agentgrep_output: false,
+            show_kgrep_output: false,
             show_bash_output: false,
             tool_call_details: false,
             native_scrollbars: NativeScrollbarConfig::default(),

@@ -523,7 +523,7 @@ fn tool_config_mcp_exposure_env_overrides() {
 #[test]
 fn tool_config_explicit_enabled_uses_allow_list() {
     let cfg = ToolConfig {
-        enabled: vec!["agentgrep".to_string()],
+        enabled: vec!["kgrep".to_string()],
         ..ToolConfig::default()
     };
     let selection = cfg.selection();
@@ -531,8 +531,8 @@ fn tool_config_explicit_enabled_uses_allow_list() {
         .allowed_tools
         .expect("explicit enabled is an allow-list");
 
-    assert!(allowed.contains("agentgrep"));
-    assert!(!selection.disabled_tools.contains("agentgrep"));
+    assert!(allowed.contains("kgrep"));
+    assert!(!selection.disabled_tools.contains("kgrep"));
 }
 
 #[test]
@@ -544,20 +544,20 @@ fn tool_config_all_enabled_sentinel_keeps_unrestricted_toolset() {
     let selection = cfg.selection();
 
     assert!(selection.allowed_tools.is_none());
-    assert!(!selection.disabled_tools.contains("agentgrep"));
+    assert!(!selection.disabled_tools.contains("kgrep"));
 }
 
 #[test]
 fn tool_config_explicit_disabled_overrides_all_enabled_sentinel() {
     let cfg = ToolConfig {
         enabled: vec!["*".to_string()],
-        disabled: vec!["agentgrep".to_string()],
+        disabled: vec!["kgrep".to_string()],
         ..ToolConfig::default()
     };
     let selection = cfg.selection();
 
     assert!(selection.allowed_tools.is_none());
-    assert!(selection.disabled_tools.contains("agentgrep"));
+    assert!(selection.disabled_tools.contains("kgrep"));
 }
 
 #[test]
@@ -572,7 +572,7 @@ fn tool_config_acp_profile_allows_core_coding_plus_batch() {
     assert!(allowed.contains("read"));
     assert!(allowed.contains("write"));
     assert!(allowed.contains("apply_patch"));
-    assert!(allowed.contains("agentgrep"));
+    assert!(allowed.contains("kgrep"));
     assert!(allowed.contains("batch"));
     assert!(allowed.contains("mcp"));
     assert!(!allowed.contains("swarm"));
@@ -601,7 +601,7 @@ fn tool_config_minimal_profile_allows_core_coding_tools() {
     assert!(allowed.contains("read"));
     assert!(allowed.contains("write"));
     assert!(allowed.contains("apply_patch"));
-    assert!(allowed.contains("agentgrep"));
+    assert!(allowed.contains("kgrep"));
     assert!(!allowed.contains("browser"));
     assert!(!allowed.contains("swarm"));
 }
@@ -654,7 +654,7 @@ fn tool_config_disabled_only_keeps_full_profile_with_deny_list() {
     assert!(selection.allowed_tools.is_none());
     assert!(selection.disabled_tools.contains("browser"));
     assert!(selection.disabled_tools.contains("swarm"));
-    assert!(!selection.disabled_tools.contains("agentgrep"));
+    assert!(!selection.disabled_tools.contains("kgrep"));
 }
 
 #[test]

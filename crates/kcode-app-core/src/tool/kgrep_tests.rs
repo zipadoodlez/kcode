@@ -13,8 +13,8 @@ fn test_ctx(root: &Path) -> ToolContext {
     }
 }
 
-fn grep_input(query: &str, max_regions: Option<usize>) -> AgentGrepInput {
-    AgentGrepInput {
+fn grep_input(query: &str, max_regions: Option<usize>) -> KgrepInput {
+    KgrepInput {
         mode: "grep".to_string(),
         query: Some(query.to_string()),
         file: None,
@@ -35,7 +35,7 @@ fn grep_input(query: &str, max_regions: Option<usize>) -> AgentGrepInput {
 }
 
 /// The same input, asked to run in another mode.
-fn input_with_mode(mut params: AgentGrepInput, mode: &str) -> AgentGrepInput {
+fn input_with_mode(mut params: KgrepInput, mode: &str) -> KgrepInput {
     params.mode = mode.to_string();
     params
 }
@@ -47,7 +47,7 @@ async fn foreground_budget_returns_fast_search_result_directly() {
         handle,
         std::time::Duration::from_secs(1),
         "fast search".to_string(),
-        "agentgrep-fast-test".to_string(),
+        "kgrep-fast-test".to_string(),
     )
     .await
     .expect("fast search should complete in foreground");
@@ -66,7 +66,7 @@ async fn foreground_budget_promotes_slow_search_without_cancelling_it() {
         handle,
         std::time::Duration::from_millis(1),
         "slow search".to_string(),
-        "agentgrep-slow-test".to_string(),
+        "kgrep-slow-test".to_string(),
     )
     .await
     .expect("slow search should be promoted");
@@ -87,11 +87,11 @@ async fn foreground_budget_promotes_slow_search_without_cancelling_it() {
 }
 
 #[test]
-fn agentgrep_rejects_missing_session_cwd_instead_of_using_process_cwd() {
+fn kgrep_rejects_missing_session_cwd_instead_of_using_process_cwd() {
     let mut ctx = test_ctx(Path::new("/unused"));
     ctx.working_dir = None;
 
-    let error = run_agentgrep_blocking(&grep_input("needle", None), &ctx)
+    let error = run_kgrep_blocking(&grep_input("needle", None), &ctx)
         .expect_err("workspace search without a session cwd must fail");
 
     assert!(error.to_string().contains("session working directory"));
@@ -106,11 +106,11 @@ fn grep_max_regions_limits_rendered_match_excerpts() {
     )
     .expect("write file");
 
-    let output = execute_linked_agentgrep(
+    let output = execute_linked_kgrep(
         &grep_input("status_notice", Some(2)),
         &test_ctx(temp.path()),
     )
-    .expect("agentgrep execute")
+    .expect("kgrep execute")
     .output;
 
     assert_eq!(output.matches("      - @ ").count(), 2, "{output}");
@@ -131,10 +131,9 @@ fn grep_caps_non_code_file_match_excerpts_by_default() {
     )
     .expect("write file");
 
-    let output =
-        execute_linked_agentgrep(&grep_input("status_notice", None), &test_ctx(temp.path()))
-            .expect("agentgrep execute")
-            .output;
+    let output = execute_linked_kgrep(&grep_input("status_notice", None), &test_ctx(temp.path()))
+        .expect("kgrep execute")
+        .output;
 
     assert_eq!(output.matches("      - @ ").count(), 3, "{output}");
     assert!(
@@ -146,7 +145,7 @@ fn grep_caps_non_code_file_match_excerpts_by_default() {
 #[test]
 fn query_from_params_includes_scope_flags() {
     let ctx = test_ctx(Path::new("/tmp/root"));
-    let params = AgentGrepInput {
+    let params = KgrepInput {
         mode: "grep".to_string(),
         query: Some("auth_status".to_string()),
         file: None,
@@ -182,9 +181,9 @@ fn query_from_params_includes_scope_flags() {
 #[test]
 fn query_from_params_drops_match_all_glob() {
     let ctx = test_ctx(Path::new("/tmp/root"));
-    let params = AgentGrepInput {
+    let params = KgrepInput {
         mode: "grep".to_string(),
-        query: Some("agentgrep".to_string()),
+        query: Some("kgrep".to_string()),
         file: None,
         terms: None,
         regex: Some(false),
@@ -205,7 +204,7 @@ fn query_from_params_drops_match_all_glob() {
     let Verb::Lexical { text, .. } = &query.verb else {
         panic!("expected a lexical verb");
     };
-    assert_eq!(text, "agentgrep");
+    assert_eq!(text, "kgrep");
     assert_eq!(query.where_.file_type.as_deref(), Some("rs"));
     assert_eq!(query.where_.root, PathBuf::from("/tmp/root/."));
     assert_eq!(query.where_.glob, None);
@@ -218,7 +217,7 @@ fn query_from_params_scopes_file_path_to_parent_and_exact_glob() {
     fs::write(temp.path().join("src/app.rs"), "fn auth_status() {}\n").expect("write file");
 
     let ctx = test_ctx(temp.path());
-    let params = AgentGrepInput {
+    let params = KgrepInput {
         mode: "grep".to_string(),
         query: Some("auth_status".to_string()),
         file: None,
@@ -249,7 +248,7 @@ fn query_from_params_scopes_file_field_to_exact_file() {
     fs::write(temp.path().join("src/app.rs"), "fn auth_status() {}\n").expect("write file");
 
     let ctx = test_ctx(temp.path());
-    let params = AgentGrepInput {
+    let params = KgrepInput {
         mode: "grep".to_string(),
         query: Some("auth_status".to_string()),
         file: Some("src/app.rs".to_string()),
@@ -280,7 +279,7 @@ fn query_from_params_scopes_file_field_to_exact_file() {
 #[test]
 fn query_from_params_find_allows_glob_only_search() {
     let ctx = test_ctx(Path::new("/tmp/root"));
-    let params = AgentGrepInput {
+    let params = KgrepInput {
         mode: "find".to_string(),
         query: None,
         file: None,
@@ -313,7 +312,7 @@ fn query_from_params_find_allows_glob_only_search() {
 #[test]
 fn query_from_params_find_still_rejects_unscoped_empty_query() {
     let ctx = test_ctx(Path::new("/tmp/root"));
-    let params = AgentGrepInput {
+    let params = KgrepInput {
         mode: "find".to_string(),
         query: None,
         file: None,
@@ -335,14 +334,14 @@ fn query_from_params_find_still_rejects_unscoped_empty_query() {
     let error = query_from_params(&params, &ctx).unwrap_err();
     assert_eq!(
         error.to_string(),
-        "agentgrep find requires 'query' unless path, glob, or type narrows the search"
+        "kgrep find requires 'query' unless path, glob, or type narrows the search"
     );
 }
 
 #[test]
 fn query_from_params_smart_uses_terms() {
     let ctx = test_ctx(Path::new("/workspace"));
-    let params = AgentGrepInput {
+    let params = KgrepInput {
         mode: "smart".to_string(),
         query: None,
         file: None,
@@ -388,7 +387,7 @@ fn query_from_params_smart_uses_terms() {
 #[test]
 fn query_from_params_smart_falls_back_to_query() {
     let ctx = test_ctx(Path::new("/workspace"));
-    let params = AgentGrepInput {
+    let params = KgrepInput {
         mode: "smart".to_string(),
         query: Some(
             "subject:auth_status relation:rendered path:src/tui support:current".to_string(),
@@ -424,7 +423,7 @@ fn query_from_params_smart_falls_back_to_query() {
 
 #[test]
 fn build_args_for_trace_still_requires_terms() {
-    let params = AgentGrepInput {
+    let params = KgrepInput {
         mode: "trace".to_string(),
         query: Some("subject:auth_status relation:rendered".to_string()),
         file: None,
@@ -444,26 +443,23 @@ fn build_args_for_trace_still_requires_terms() {
     };
 
     let error = trace_or_smart_terms_owned(&params).unwrap_err();
-    assert_eq!(
-        error.to_string(),
-        "agentgrep trace requires non-empty 'terms'"
-    );
+    assert_eq!(error.to_string(), "kgrep trace requires non-empty 'terms'");
 }
 
 #[test]
 fn schema_only_advertises_common_public_fields() {
-    let schema = AgentGrepTool::new().parameters_schema();
+    let schema = KgrepTool::new().parameters_schema();
     let props = schema["properties"]
         .as_object()
-        .expect("agentgrep schema should have properties");
+        .expect("kgrep schema should have properties");
     let required = schema["required"].as_array().cloned().unwrap_or_default();
     let mode_enum = props["mode"]["enum"]
         .as_array()
-        .expect("agentgrep mode should expose enum values");
+        .expect("kgrep mode should expose enum values");
 
     assert!(
         !required.contains(&json!("mode")),
-        "agentgrep mode should be optional because omitted mode defaults to grep"
+        "kgrep mode should be optional because omitted mode defaults to grep"
     );
     assert!(props.contains_key("mode"));
     assert!(props.contains_key("query"));
@@ -495,11 +491,11 @@ fn schema_only_advertises_common_public_fields() {
 
 #[test]
 fn input_defaults_missing_mode_to_grep() {
-    let params: AgentGrepInput = serde_json::from_value(json!({
+    let params: KgrepInput = serde_json::from_value(json!({
         "query": "auth_status",
         "path": "src"
     }))
-    .expect("agentgrep input without mode should deserialize");
+    .expect("kgrep input without mode should deserialize");
 
     assert_eq!(params.mode, "grep");
     assert_eq!(params.query.as_deref(), Some("auth_status"));
@@ -508,10 +504,10 @@ fn input_defaults_missing_mode_to_grep() {
 #[test]
 fn query_from_params_outline_accepts_file_field() {
     let ctx = test_ctx(Path::new("/workspace"));
-    let params = AgentGrepInput {
+    let params = KgrepInput {
         mode: "outline".to_string(),
         query: None,
-        file: Some("src/tool/agentgrep.rs".to_string()),
+        file: Some("src/tool/kgrep.rs".to_string()),
         terms: None,
         regex: None,
         path: Some("repo".to_string()),
@@ -531,17 +527,17 @@ fn query_from_params_outline_accepts_file_field() {
     let Verb::Outline { file, .. } = &query.verb else {
         panic!("expected an outline verb");
     };
-    assert_eq!(file, "src/tool/agentgrep.rs");
+    assert_eq!(file, "src/tool/kgrep.rs");
     assert_eq!(query.where_.root, PathBuf::from("/workspace/repo"));
 }
 
 #[test]
 fn input_accepts_file_path_alias_for_file() {
-    let params: AgentGrepInput = serde_json::from_value(json!({
+    let params: KgrepInput = serde_json::from_value(json!({
         "mode": "outline",
         "file_path": "src/app.rs"
     }))
-    .expect("agentgrep input with file_path should deserialize");
+    .expect("kgrep input with file_path should deserialize");
 
     assert_eq!(params.file.as_deref(), Some("src/app.rs"));
 }
@@ -552,7 +548,7 @@ fn query_from_params_outline_treats_file_valued_path_as_target() {
     fs::write(temp.path().join("app.rs"), "fn main() {}\n").expect("write file");
     let ctx = test_ctx(temp.path());
 
-    let params = AgentGrepInput {
+    let params = KgrepInput {
         mode: "outline".to_string(),
         query: Some("fn".to_string()),
         file: None,
@@ -592,7 +588,7 @@ fn query_from_params_outline_does_not_duplicate_file_valued_path() {
     fs::write(&absolute_file, "pub fn save_todos() {}\n").expect("write file");
     let ctx = test_ctx(temp.path());
 
-    let params = AgentGrepInput {
+    let params = KgrepInput {
         mode: "outline".to_string(),
         query: None,
         file: Some(relative_file.to_string()),
@@ -629,7 +625,7 @@ async fn execute_runs_linked_grep() {
     )
     .expect("write file");
 
-    let tool = AgentGrepTool::new();
+    let tool = KgrepTool::new();
     let ctx = test_ctx(temp.path());
     let output = tool
         .execute(
@@ -649,7 +645,7 @@ async fn execute_runs_linked_grep_when_mode_is_omitted() {
     fs::create_dir_all(temp.path().join("src")).expect("mkdir");
     fs::write(temp.path().join("src/app.rs"), "pub fn auth_status() {}\n").expect("write file");
 
-    let tool = AgentGrepTool::new();
+    let tool = KgrepTool::new();
     let ctx = test_ctx(temp.path());
     let output = tool
         .execute(json!({"query": "auth_status", "path": "src"}), ctx)
@@ -671,7 +667,7 @@ async fn execute_grep_file_field_does_not_scan_sibling_files() {
     )
     .expect("write sibling");
 
-    let output = AgentGrepTool::new()
+    let output = KgrepTool::new()
         .execute(
             json!({"mode": "grep", "query": "target", "file": "src/app.rs"}),
             test_ctx(temp.path()),
@@ -699,7 +695,7 @@ async fn execute_runs_linked_grep_when_path_points_to_file() {
     )
     .expect("write sibling file");
 
-    let tool = AgentGrepTool::new();
+    let tool = KgrepTool::new();
     let ctx = test_ctx(temp.path());
     let output = tool
         .execute(
@@ -732,7 +728,7 @@ fn execute() { println!("implementation"); }
     )
     .expect("write file");
 
-    let tool = AgentGrepTool::new();
+    let tool = KgrepTool::new();
     let ctx = test_ctx(temp.path());
     let output = tool
         .execute(
@@ -746,7 +742,7 @@ fn execute() { println!("implementation"); }
             ctx,
         )
         .await
-        .expect("agentgrep execution");
+        .expect("kgrep execution");
     assert!(output.output.contains("subject:lsp"));
     assert!(output.output.contains("relation:implementation"));
 }
@@ -754,9 +750,9 @@ fn execute() { println!("implementation"); }
 #[test]
 fn input_accepts_legacy_grep_param_aliases() {
     // Models sometimes call the removed native `grep` tool, which is now
-    // aliased to agentgrep. Its `pattern`/`include` params must map to
-    // agentgrep's `query`/`glob`.
-    let input: AgentGrepInput = serde_json::from_value(serde_json::json!({
+    // aliased to kgrep. Its `pattern`/`include` params must map to
+    // kgrep's `query`/`glob`.
+    let input: KgrepInput = serde_json::from_value(serde_json::json!({
         "pattern": "fn main",
         "include": "*.rs",
         "path": "src"
@@ -787,7 +783,7 @@ fn budget_maps_the_three_model_knobs() {
     // so the default is a floor on safety and not a ceiling on capability.
     // `max_files` is coverage, `max_regions` records, `max_tokens` detail.
     for explicit in [5usize, 5_000] {
-        let params = AgentGrepInput {
+        let params = KgrepInput {
             max_files: Some(explicit),
             max_regions: Some(explicit),
             max_tokens: Some(explicit),

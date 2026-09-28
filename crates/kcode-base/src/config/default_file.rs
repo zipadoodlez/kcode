@@ -150,10 +150,10 @@ reasoning_display = "full"
 # instead of the full multi-line card with diff preview (default: false)
 # compact_notifications = false
 
-# Show the full agentgrep tool output inline in the transcript instead of just
+# Show the full kgrep tool output inline in the transcript instead of just
 # the one-line summary (default: false). Useful when you want to read search
 # results directly in the chat.
-# show_agentgrep_output = false
+# show_kgrep_output = false
 
 # Show up to the last three non-empty lines of bash output beneath the tool
 # summary (default: false).
@@ -279,10 +279,10 @@ bing_market = "en-US"
 # Profiles: "full" (default), "acp", "minimal"/"lite", or "none".
 # acp keeps core coding tools plus batch for generic ACP clients.
 # minimal keeps core coding tools only: bash, read, write, edit, multiedit,
-# apply_patch, patch, agentgrep, glob, grep, and ls.
+# apply_patch, patch, kgrep, glob, grep, and ls.
 profile = "full"
 # Explicit allow-list. When non-empty, only these tools are exposed.
-# enabled = ["bash", "read", "write", "apply_patch", "agentgrep", "ls"]
+# enabled = ["bash", "read", "write", "apply_patch", "kgrep", "ls"]
 # All built-in tools are exposed by the full profile.
 # Use enabled = ["*"] to explicitly select the unrestricted full toolset.
 # Hide selected tools after applying the profile/allow-list.

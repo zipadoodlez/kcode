@@ -127,7 +127,7 @@ fn description_includes_parallel_tool_call_example() {
     assert!(BATCH_DESCRIPTION.contains("Run independent tool calls in parallel"));
     assert!(BATCH_DESCRIPTION.contains(r#""tool_calls": ["#));
     assert!(BATCH_DESCRIPTION.contains(r#""tool": "read""#));
-    assert!(BATCH_DESCRIPTION.contains(r#""tool": "agentgrep""#));
+    assert!(BATCH_DESCRIPTION.contains(r#""tool": "kgrep""#));
 }
 
 #[test]
@@ -302,7 +302,7 @@ fn subcall_level_accept_large_output_is_forwarded_into_parameters() {
     // silently dropped and the sub-call withheld again.
     let input = serde_json::json!({
         "tool_calls": [{
-            "tool": "agentgrep",
+            "tool": "kgrep",
             "accept_large_output": true,
             "parameters": { "query": "x" },
         }]
@@ -321,7 +321,7 @@ fn subcall_level_accept_large_output_does_not_override_an_explicit_value() {
     // sub-call and must win over a blanket flag beside `tool`.
     let input = serde_json::json!({
         "tool_calls": [{
-            "tool": "agentgrep",
+            "tool": "kgrep",
             "accept_large_output": true,
             "parameters": { "query": "x", "accept_large_output": false },
         }]
