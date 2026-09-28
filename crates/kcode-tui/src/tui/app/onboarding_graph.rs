@@ -17,9 +17,9 @@
 //!      (no dead ends, every failure recovers, bounded work, escape hatches).
 //!
 //! The graph is deliberately *descriptive*: the live `App` state machine remains
-//! the implementation, and `onboarding_eval.rs` drives the real app across
-//! authored edges to prove the description stays faithful. That gives the
-//! anti-drift guarantee without a risky rewrite of the running flow.
+//! the implementation, and `tests/onboarding_graph_fidelity.rs` drives the real
+//! app across authored edges to prove the description stays faithful. That gives
+//! the anti-drift guarantee without a risky rewrite of the running flow.
 
 // Most of this descriptive graph is exercised by the exhaustive tests below.
 // The live flow only needs the node vocabulary, so production builds naturally
