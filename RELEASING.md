@@ -42,6 +42,11 @@ Already set up on the dev laptop (xps13):
 
 ## CI Release (automated, ~11 min Linux + macOS)
 
+> **Not in this fork.** kcode has no `.github/` directory, so no tag-triggered
+> workflow runs, no Homebrew tap is updated, and no AUR repo is updated. This
+> section records what CI would do when it is set up; `scripts/quick-release.sh`
+> is the path that exists today.
+
 Triggered automatically when a `v*` tag is pushed to GitHub.
 
 ### Workflow: `.github/workflows/release.yml`
@@ -61,8 +66,8 @@ Tag push (v*)
           ├─► Keep failed architectures unavailable without blocking others
           ├─► Generate and upload SHA256SUMS
           ├─► Publish the available release assets
-          ├─► Update Homebrew formula (1jehuang/homebrew-jcode)
-          └─► Update AUR package (kcode-bin)
+          ├─► Update Homebrew formula (not set up yet)
+          └─► Update AUR package (not set up yet)
 ```
 
 Key design decisions:
@@ -76,12 +81,16 @@ Key design decisions:
 
 ### Package manager updates
 
-CI handles Homebrew and AUR updates automatically:
+CI would handle Homebrew and AUR updates; neither is set up for kcode yet:
 
-- **Homebrew**: Updates `Formula/jcode.rb` in `1jehuang/homebrew-jcode` with new SHA256 hashes
-- **AUR**: Updates `PKGBUILD` and `.SRCINFO` in the `kcode-bin` AUR repo
+- **Homebrew**: not supported. Publishing through a tap would need a `kcode`
+  formula and tap, which do not exist. The inherited `1jehuang/homebrew-jcode`
+  references above came from upstream and describe that project's tap.
+- **AUR**: not supported by CI. `packaging/arch/` holds a `kcode-git` source
+  package that is built by hand.
 
-Both are triggered conditionally by the final `release` job. Homebrew updates only when all four Linux/macOS formula assets exist; AUR updates whenever Linux x86_64 exists.
+Both would be triggered conditionally by the final `release` job: Homebrew when
+all four Linux/macOS formula assets exist, AUR whenever Linux x86_64 exists.
 
 ## Which to use
 
@@ -89,7 +98,7 @@ Both are triggered conditionally by the final `release` job. Homebrew updates on
 |----------|--------|-----------------|
 | Hotfix / urgent bug | `scripts/quick-release.sh` | ~12 min |
 | Regular release | Push `v*` tag | ~11 min |
-| Need Homebrew/AUR | Push `v*` tag | ~11 min |
+| Need Homebrew/AUR | not available yet | - |
 
 The quick-release script reduces local build latency, but it deliberately leaves the release as a draft. The tag-triggered workflow publishes every successful architecture after checksum generation. Package managers update only when their own required assets exist.
 
