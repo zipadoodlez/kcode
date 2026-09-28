@@ -1914,12 +1914,6 @@ impl App {
         next
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn set_swarm_panel_focus(&mut self, focused: bool) {
-        self.swarm.panel_focused = focused && self.inline_swarm_gallery_active();
-        self.swarm.panel_full_page = false;
-    }
-
     /// Move the swarm panel selection by `delta` (e.g. +1 for next, -1 for
     /// previous), saturating at the ends.
     pub(crate) fn move_swarm_panel_selection(&mut self, delta: isize) {

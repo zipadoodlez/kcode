@@ -88,13 +88,23 @@ shares `app/hint_state.rs` for load/save/unix-seconds; `fenced_block` moved to
 about -150 lines. The rest, each re-read and verified before it was written
 down; rows I did not personally re-check say `[census]`.
 
-Dead weight, zero callers:
+Dead weight. The census listed five things here; verification found most of them
+live: `onboarding_graph::{graph,node_props,check_invariants,min_keystrokes_to}`
+are what the gate's six onboarding tests run, and `ImportReview::{position,
+current_checked}` are asserted in `tests/onboarding_flow.rs`. Landed 2026-09-28:
+`ImportReview::current` and `set_swarm_panel_focus` (10 lines, both hidden by
+`#[allow(dead_code)]`). `onboarding_enter_continue_prompt` is deliberately kept —
+it is the only production constructor of the legacy `ContinuePrompt` phase, so
+deleting it makes the compiler report the variant as never constructed (tested).
 
-- [ ] `ImportReview::{current,position,current_checked}`
-  (`onboarding_flow.rs:163,172,243`), `onboarding_enter_continue_prompt`
-  (`onboarding_flow_control.rs:302`), `set_swarm_panel_focus`
-  (`tui_state.rs:1917`), and `onboarding_graph::{graph,node_props,
-  check_invariants,min_keystrokes_to}` `[census]`.
+- [ ] `#[allow(dead_code)]` hides what is left. Stripping the eight
+  unconditional sites surfaced six items: a field (`kcode-base/src/session.rs:18`
+  `sleep_assertion`), dead accessors (`session_search_index.rs:216`
+  `len`/`is_empty`), test-only items (`onboarding_flow`'s accessors,
+  `info_widget_swarm_gallery.rs:454`), and the deliberate `ContinuePrompt`
+  retention. One site (`tool/open.rs:478`) surfaced nothing, so that attribute is
+  redundant. The `cfg_attr` sites are conditional (platform, feature,
+  `cfg(test)`) and should stay.
 - [ ] The dead local turn path (~810-1,500 lines); §2 owns it.
 
 One home per duplicated helper. Body hashes were compared for each of these:

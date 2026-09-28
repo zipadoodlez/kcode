@@ -157,16 +157,6 @@ impl ImportReview {
         self.continue_focused = pill == SummaryPill::Continue;
     }
 
-    /// The candidate the cursor is currently on, if any. Returns `None` while
-    /// the "Continue" pill is focused.
-    #[allow(dead_code)] // Accessor kept for the import-review UI; not wired to a caller yet.
-    pub(crate) fn current(&self) -> Option<&crate::external_auth::ExternalAuthReviewCandidate> {
-        if self.continue_focused {
-            return None;
-        }
-        self.candidates.get(self.cursor)
-    }
-
     /// 1-based position of the cursor row (for "1 of 3" display).
     #[allow(dead_code)] // Accessor kept for the import-review UI; not wired to a caller yet.
     pub(crate) fn position(&self) -> usize {

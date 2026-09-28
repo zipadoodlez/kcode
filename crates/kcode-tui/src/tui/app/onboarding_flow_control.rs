@@ -296,9 +296,9 @@ impl App {
     /// with a [`DECISION_TIMEOUT`] countdown; the default (and timeout choice)
     /// is "Yes" so the resume menu opens unless the user declines.
     ///
-    /// Retained for compatibility with replay/test fixtures and the
-    /// `ContinuePrompt` rendering/key/tick paths. The live onboarding flow now
-    /// opens the two-action start choice directly.
+    /// Retained for the replay/test fixtures and the `ContinuePrompt` paths: it
+    /// is the only production construction site of that legacy phase, so
+    /// deleting it makes the compiler call the variant never constructed.
     #[allow(dead_code)]
     fn onboarding_enter_continue_prompt(&mut self, cli: ExternalCli) {
         self.set_onboarding_phase(OnboardingPhase::ContinuePrompt {
