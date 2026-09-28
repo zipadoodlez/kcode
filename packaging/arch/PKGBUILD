@@ -4,7 +4,7 @@
 # release tarball. Build and install with `makepkg -si`, or build into a local
 # repository with `aur build` and let pacman install it. See README "Install".
 pkgname=kcode-git
-pkgver=r5767.d90ade9
+pkgver=r5776.37c1129
 pkgrel=1
 pkgdesc="Kcode: a fast, focused coding agent (TUI, multi-model, swarm coordination)"
 arch=('x86_64')
@@ -14,6 +14,11 @@ depends=('libgcc') # from `ldd`: libc, libm and libgcc_s are the only shared lib
 makedepends=('rust') # provides cargo; there is no separate cargo package
 provides=('kcode')
 conflicts=('kcode')
+# Arch's makepkg OPTIONS enables `lto`, which compiles ring's and aws-lc's C and
+# assembly to GIMPLE-only objects; rustc's final link does not run -flto, so
+# every symbol they define is undefined at link time. The project itself only
+# enables LTO in the separate release-lto profile, never in release.
+options=('!lto')
 source=("$pkgname::git+$url.git")
 b2sums=('SKIP')
 
