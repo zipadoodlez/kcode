@@ -139,15 +139,11 @@ fn available_models_display_seeds_from_persisted_catalog() {
     let temp = tempfile::TempDir::new().expect("tempdir");
     let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
-    let path = GeminiProvider::persisted_catalog_path().expect("catalog path");
-    kcode_base::storage::write_json(
-        &path,
-        &PersistedCatalog {
-            models: vec!["gemini-3-pro-preview".to_string()],
-            fetched_at_rfc3339: chrono::Utc::now().to_rfc3339(),
-        },
-    )
-    .expect("write persisted catalog");
+    kcode_base::provider::model_cache::store_model_list(
+        "gemini_models_cache.json",
+        "Gemini",
+        &["gemini-3-pro-preview".to_string()],
+    );
 
     let provider = GeminiProvider::new();
     assert!(

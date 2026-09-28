@@ -14,6 +14,7 @@ pub mod external;
 mod failover;
 pub mod gemini;
 mod image_clamp;
+pub mod model_cache;
 pub mod models;
 mod multi_provider;
 pub mod openai;

@@ -6,8 +6,8 @@
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use chrono::Utc;
 use kcode_base::auth::gemini as gemini_auth;
+use kcode_base::provider::model_cache;
 use kcode_message_types::{ConnectionPhase, Message, StreamEvent, ToolDefinition};
 use kcode_provider_core::{EventStream, Provider};
 pub use kcode_provider_gemini::{
@@ -33,11 +33,9 @@ use tokio::sync::{Mutex, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-struct PersistedCatalog {
-    models: Vec<String>,
-    fetched_at_rfc3339: String,
-}
+/// Cache file name for the shared model-catalog cache: see
+/// [`kcode_base::provider::model_cache`].
+const MODEL_CACHE_FILE: &str = "gemini_models_cache.json";
 
 pub struct GeminiProvider {
     client: reqwest::Client,
@@ -70,39 +68,8 @@ struct CachedGeminiState {
 }
 
 impl GeminiProvider {
-    fn persisted_catalog_path() -> Result<std::path::PathBuf> {
-        Ok(kcode_base::storage::app_config_dir()?.join("gemini_models_cache.json"))
-    }
-
-    fn load_persisted_catalog() -> Option<PersistedCatalog> {
-        let path = Self::persisted_catalog_path().ok()?;
-        kcode_base::storage::read_json(&path)
-            .ok()
-            .filter(|catalog: &PersistedCatalog| !catalog.models.is_empty())
-    }
-
-    fn persist_catalog(models: &[String]) {
-        if models.is_empty() {
-            return;
-        }
-        let Ok(path) = Self::persisted_catalog_path() else {
-            return;
-        };
-        let payload = PersistedCatalog {
-            models: models.to_vec(),
-            fetched_at_rfc3339: Utc::now().to_rfc3339(),
-        };
-        if let Err(error) = kcode_base::storage::write_json(&path, &payload) {
-            kcode_base::logging::warn(&format!(
-                "Failed to persist Gemini model catalog {}: {}",
-                path.display(),
-                error
-            ));
-        }
-    }
-
     fn seed_cached_catalog(&self) {
-        if let Some(catalog) = Self::load_persisted_catalog()
+        if let Some(catalog) = model_cache::load_model_list(MODEL_CACHE_FILE)
             && let Ok(mut models) = self.fetched_models.write()
         {
             *models = catalog.models;
@@ -309,7 +276,7 @@ impl GeminiProvider {
             if let Ok(mut guard) = self.fetched_models.write() {
                 *guard = models.clone();
             }
-            Self::persist_catalog(&models);
+            model_cache::store_model_list(MODEL_CACHE_FILE, "Gemini", &models);
         }
         Ok(models)
     }
@@ -350,7 +317,7 @@ impl GeminiProvider {
             if let Ok(mut guard) = self.fetched_models.write() {
                 *guard = models.clone();
             }
-            Self::persist_catalog(&models);
+            model_cache::store_model_list(MODEL_CACHE_FILE, "Gemini", &models);
         }
         Ok(models)
     }

@@ -2,7 +2,6 @@ use kcode_message_types::{
     ContentBlock, Message as ChatMessage, Role, TOOL_OUTPUT_MISSING_TEXT, ToolDefinition,
     sanitize_tool_id,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
@@ -35,12 +34,6 @@ pub const FALLBACK_MODELS: &[&str] = &[
     "gpt-5-mini",
     "gpt-4.1",
 ];
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PersistedCatalog {
-    pub models: Vec<String>,
-    pub fetched_at_rfc3339: String,
-}
 
 pub fn is_known_display_model(model: &str) -> bool {
     FALLBACK_MODELS.contains(&model)

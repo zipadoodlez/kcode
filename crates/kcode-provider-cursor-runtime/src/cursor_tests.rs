@@ -69,15 +69,11 @@ fn available_models_display_seeds_from_persisted_catalog() {
     let prev_home = std::env::var_os("KCODE_HOME");
     kcode_base::env::set_var("KCODE_HOME", temp.path());
 
-    let path = CursorCliProvider::persisted_catalog_path().expect("catalog path");
-    kcode_base::storage::write_json(
-        &path,
-        &PersistedCatalog {
-            models: vec!["cursor-disk-model".to_string()],
-            fetched_at_rfc3339: chrono::Utc::now().to_rfc3339(),
-        },
-    )
-    .expect("write persisted catalog");
+    kcode_base::provider::model_cache::store_model_list(
+        "cursor_models_cache.json",
+        "Cursor",
+        &["cursor-disk-model".to_string()],
+    );
 
     let provider = CursorCliProvider::new();
     assert!(

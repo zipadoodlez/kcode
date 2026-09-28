@@ -25,17 +25,21 @@ pub use kcode_provider_antigravity::{
     parse_fetch_available_models_response, remap_unsupported_model,
 };
 
+/// Cache file name for the shared model-catalog cache: see
+/// [`crate::provider::model_cache`]. Antigravity's payload is the parsed
+/// catalog (plus the backend default), so only the path/read/write mechanism is
+/// shared.
+const CATALOG_CACHE_FILE: &str = "antigravity_models_cache.json";
+
 /// Path of the persisted warm-catalog cache shared by the runtime crate and
 /// base's `/usage` report.
-pub fn persisted_catalog_path() -> Result<std::path::PathBuf> {
-    Ok(crate::storage::app_config_dir()?.join("antigravity_models_cache.json"))
+pub fn persisted_catalog_path() -> Option<std::path::PathBuf> {
+    crate::provider::model_cache::catalog_cache_path(CATALOG_CACHE_FILE)
 }
 
 /// Load the persisted warm catalog, if present and non-empty.
 pub fn load_persisted_catalog() -> Option<PersistedCatalog> {
-    let path = persisted_catalog_path().ok()?;
-    crate::storage::read_json(&path)
-        .ok()
+    crate::provider::model_cache::load_catalog_cache(CATALOG_CACHE_FILE)
         .filter(|catalog: &PersistedCatalog| !catalog.models.is_empty())
 }
 
@@ -44,21 +48,15 @@ pub fn persist_catalog(snapshot: &CatalogSnapshot) {
     if snapshot.models.is_empty() {
         return;
     }
-    let Ok(path) = persisted_catalog_path() else {
-        return;
-    };
-    let payload = PersistedCatalog {
-        models: snapshot.models.clone(),
-        fetched_at_rfc3339: Utc::now().to_rfc3339(),
-        default_model_id: snapshot.default_model_id.clone(),
-    };
-    if let Err(error) = crate::storage::write_json(&path, &payload) {
-        crate::logging::warn(&format!(
-            "Failed to persist Antigravity model catalog {}: {}",
-            path.display(),
-            error
-        ));
-    }
+    crate::provider::model_cache::store_catalog_cache(
+        CATALOG_CACHE_FILE,
+        "Antigravity",
+        &PersistedCatalog {
+            models: snapshot.models.clone(),
+            fetched_at_rfc3339: Utc::now().to_rfc3339(),
+            default_model_id: snapshot.default_model_id.clone(),
+        },
+    );
 }
 
 async fn fetch_available_models_with_project(

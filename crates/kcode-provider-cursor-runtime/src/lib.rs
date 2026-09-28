@@ -10,13 +10,12 @@
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use chrono::Utc;
 use kcode_base::auth::cursor as cursor_auth;
 use kcode_base::provider::cursor::{AVAILABLE_MODELS, DEFAULT_MODEL};
+use kcode_base::provider::model_cache;
 use kcode_message_types::{ContentBlock, Message, Role, StreamEvent, ToolDefinition};
 use kcode_provider_core::{EventStream, Provider};
 use serde::Deserialize;
-use serde::Serialize;
 use serde_json::{Value, json};
 use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
@@ -112,11 +111,9 @@ struct CursorModelsResponse {
     models: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-struct PersistedCatalog {
-    models: Vec<String>,
-    fetched_at_rfc3339: String,
-}
+/// Cache file name for the shared model-catalog cache: see
+/// [`kcode_base::provider::model_cache`].
+const MODEL_CACHE_FILE: &str = "cursor_models_cache.json";
 
 fn merge_cursor_models(dynamic: &[String], current: &str) -> Vec<String> {
     let mut merged = Vec::new();
@@ -184,39 +181,8 @@ pub struct CursorCliProvider {
 }
 
 impl CursorCliProvider {
-    fn persisted_catalog_path() -> Result<std::path::PathBuf> {
-        Ok(kcode_base::storage::app_config_dir()?.join("cursor_models_cache.json"))
-    }
-
-    fn load_persisted_catalog() -> Option<PersistedCatalog> {
-        let path = Self::persisted_catalog_path().ok()?;
-        kcode_base::storage::read_json(&path)
-            .ok()
-            .filter(|catalog: &PersistedCatalog| !catalog.models.is_empty())
-    }
-
-    fn persist_catalog(models: &[String]) {
-        if models.is_empty() {
-            return;
-        }
-        let Ok(path) = Self::persisted_catalog_path() else {
-            return;
-        };
-        let payload = PersistedCatalog {
-            models: models.to_vec(),
-            fetched_at_rfc3339: Utc::now().to_rfc3339(),
-        };
-        if let Err(error) = kcode_base::storage::write_json(&path, &payload) {
-            kcode_base::logging::warn(&format!(
-                "Failed to persist Cursor model catalog {}: {}",
-                path.display(),
-                error
-            ));
-        }
-    }
-
     fn seed_cached_catalog(&self) {
-        if let Some(catalog) = Self::load_persisted_catalog()
+        if let Some(catalog) = model_cache::load_model_list(MODEL_CACHE_FILE)
             && let Ok(mut models) = self.fetched_models.write()
         {
             *models = catalog.models;
@@ -360,7 +326,7 @@ impl Provider for CursorCliProvider {
                         "Discovered Cursor models: {}",
                         models.join(", ")
                     ));
-                    Self::persist_catalog(&models);
+                    model_cache::store_model_list(MODEL_CACHE_FILE, "Cursor", &models);
                     *self
                         .fetched_models
                         .write()

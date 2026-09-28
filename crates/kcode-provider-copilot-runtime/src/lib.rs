@@ -7,16 +7,15 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use chrono::Utc;
 use kcode_base::auth::copilot as copilot_auth;
+use kcode_base::provider::model_cache;
 use kcode_message_types::{
     ContentBlock, Message as ChatMessage, Role, StreamEvent, ToolDefinition,
 };
 #[cfg(test)]
 use kcode_provider_copilot::max_token_parameter_for_model as copilot_max_token_parameter_for_model;
 use kcode_provider_copilot::{
-    COPILOT_API_VERSION, PersistedCatalog,
-    add_max_token_parameter as add_copilot_max_token_parameter,
+    COPILOT_API_VERSION, add_max_token_parameter as add_copilot_max_token_parameter,
     build_messages as build_copilot_messages, build_tools as build_copilot_tools,
 };
 use kcode_provider_copilot::{DEFAULT_MODEL, FALLBACK_MODELS};
@@ -34,6 +33,10 @@ enum CatalogSource {
     Cached,
     Live,
 }
+
+/// Cache file name for the shared model-catalog cache: see
+/// [`kcode_base::provider::model_cache`].
+const MODEL_CACHE_FILE: &str = "copilot_models_cache.json";
 
 /// Copilot API provider - uses GitHub Copilot's OpenAI-compatible API.
 /// Authenticates via GitHub OAuth token, exchanges for Copilot bearer token,
@@ -102,39 +105,8 @@ impl CopilotApiProvider {
         }
     }
 
-    fn persisted_catalog_path() -> Result<std::path::PathBuf> {
-        Ok(kcode_base::storage::app_config_dir()?.join("copilot_models_cache.json"))
-    }
-
-    fn load_persisted_catalog() -> Option<PersistedCatalog> {
-        let path = Self::persisted_catalog_path().ok()?;
-        kcode_base::storage::read_json(&path)
-            .ok()
-            .filter(|catalog: &PersistedCatalog| !catalog.models.is_empty())
-    }
-
-    fn persist_catalog(models: &[String]) {
-        if models.is_empty() {
-            return;
-        }
-        let Ok(path) = Self::persisted_catalog_path() else {
-            return;
-        };
-        let payload = PersistedCatalog {
-            models: models.to_vec(),
-            fetched_at_rfc3339: Utc::now().to_rfc3339(),
-        };
-        if let Err(error) = kcode_base::storage::write_json(&path, &payload) {
-            kcode_base::logging::warn(&format!(
-                "Failed to persist Copilot model catalog {}: {}",
-                path.display(),
-                error
-            ));
-        }
-    }
-
     fn seed_cached_catalog(&self) {
-        if let Some(catalog) = Self::load_persisted_catalog() {
+        if let Some(catalog) = model_cache::load_model_list(MODEL_CACHE_FILE) {
             if let Ok(mut models) = self.fetched_models.try_write() {
                 *models = catalog.models;
             }
@@ -372,7 +344,9 @@ impl CopilotApiProvider {
                 if let Ok(mut source) = self.catalog_source.try_write() {
                     *source = CatalogSource::Live;
                 }
-                Self::persist_catalog(
+                model_cache::store_model_list(
+                    MODEL_CACHE_FILE,
+                    "Copilot",
                     &self
                         .fetched_models
                         .try_read()
