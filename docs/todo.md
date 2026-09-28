@@ -26,6 +26,75 @@ maintainer before work starts; everything else is actionable.
   (`-D warnings`), the panic, code-size, test-size, dependency-boundary,
   wildcard-reexport, and `App`-shape ratchets, plus the warning budget.
 
+## 0. Deletion ledger (the line-count question, measured)
+
+Written because "over 500k lines, want under 200k" was a goal with no data
+behind it. Measured 2026-09-28 by four read-only census passes (one per big
+region) plus a dead-code probe on `App`. Every count is `wc -l` or a run
+`grep`; rows sourced from the passes are marked `[census]` where I did not
+re-verify them myself. The probe edited one file and reverted it.
+
+### Size
+
+- **536,649 Rust lines**, 954 tracked `.rs` files (`git ls-files '*.rs' | xargs
+  wc -l`). Non-Rust tracked text adds ~28k.
+- **Production ~353k, tests ~184k**: 132,323 lines in test-named files plus
+  51,352 inside inline `#[cfg(test)]` blocks. A broader test-file match counts
+  ~194k `[census]`; the ~10k gap is definition, not disagreement.
+- Three crates are 72% of the tree: `kcode-tui` 181,595, `kcode-app-core`
+  109,167, `kcode-base` 93,624. 60 crates total, 8 under 400 lines.
+- `kcode-tui/src/tui/app` alone is ~117k (72k prod, 45k test), and the
+  `app/tests` include! tree is 40k of that.
+
+### Verdict on the 200k hope
+
+**Not reachable by deletion without removing capability.** Production alone is
+353k, so deleting *every* test line still leaves 353k. A total under 200k needs
+~340k production lines gone, i.e. the majority of the product. The measured
+deletable pool below is ~15-25k. The shape work in §1-§3 is the real lever, and
+it moves comprehension, not the count: its own ratchet is field counts, not
+lines.
+
+### The ledger
+
+| cluster | lines | evidence | what holds its place | verdict |
+|---|---|---|---|---|
+| Dead local turn path | ~810 whole files (`local.rs` 590, `event_wrappers.rs` 38, `overnight_card.rs` 183) + ~30 partial items | `App::run` (`run_shell.rs:198`) has zero callers (live entry is `run_remote`, `tui_launch.rs:160`); cfg-ing it out yields exactly 48 `never used` items | tests drive `local::` from 8 files / 33 sites | delete after migrating those tests; ~1.5k with the partials |
+| Second markdown renderer | ~4,700 (`kcode-render-core` 4,542 + adapter 795) | `render_markdown_via_core` has only test callers; the TUI uses the legacy path (`ui_messages.rs:95`); the adapter's own doc says the legacy path "remains authoritative; this adapter is validated against it before any switchover" | `render-core` also supplies `reasoning_line_markup` to `kcode-base/src/session/render.rs` | a switchover, not a deletion: land it and delete the legacy path, or abandon it and delete the core |
+| Harnesses living in test files | ~7k | `[census]`: `live_tests.rs` 3,080 is `pub mod` production code consumed by `kcode-provider-doctor`; `onboarding_eval.rs` 3,294 embeds a metrics framework; `smoothness_benchmark.rs` 332; `browser_fast_live_tests.rs` 250 | `live_tests` is genuinely production | move the non-test halves into modules; `live_tests` is a misnamed production module |
+| Duplicated tiny helpers | ~500 over ~10 families | `[census]` names both file:line per family; verified `now_ms` x3 is byte-identical (`observe.rs:257`, `split_view.rs:310`, `todos_view.rs:566`) | 5-20 lines each | one home each, low risk |
+| Parallel persisted-state runtime | ~150 (`swarm_mutation_state.rs` 281, `await_members_state.rs` 278) | verified: same 6-fn skeleton (`load_state`, `save_state`, `ensure_pending_state`, `request_key`, `persist_final_response`, `is_stale`); payload and TTL differ | different payloads | make the skeleton generic over the payload |
+| `ui_prefs` module + empty `provider/fingerprint.rs` | ~31 | verified: `ui_prefs` is declared, has zero references, and carries `#![allow(dead_code)]`; `fingerprint.rs` is a whitespace-only file with a `mod` declaration | nothing | delete |
+| Provider wire/runtime split, provider catalog | 0 deletable | `[census]`: runtime crates re-export the wire crates rather than reimplementing them; the catalog is single-source in `kcode-provider-metadata`, re-exported by `kcode-base` | real protocol/transport separation | keep; §1's B3-B5 is identity, not data |
+| Provider trait test doubles | 0 deletable, a per-file tax | 45 files `impl …Provider for`, many of them `_tests.rs`; the trait has ~50 methods | test doubles need the shape | same trade as `TestState` in §2 |
+| Test near-duplicates | small, unverified | `[census]` found only 13 cross-file duplicated test function names | — | §4's "~40% near-dup" figures were *per file* and were **not** re-derived this pass |
+
+Not duplicated, checked so it is not re-litigated: the `kcode-base` one-line
+`console.rs`/`env.rs`/`id.rs`/`plan.rs`/`protocol.rs`/`stdin_detect.rs` files are
+the 13 wildcard re-export shims tracked in §3, not dead code.
+
+### Actionable, cheapest first
+
+- [ ] Delete `ui_prefs` and `provider/fingerprint.rs` (~31 lines, no callers).
+- [ ] Give the ~10 duplicated helper families one home each (~500 lines).
+- [ ] Make the persisted pending-state skeleton generic over its payload
+  (`swarm_mutation_state.rs`, `await_members_state.rs`, ~150 lines).
+- [ ] Move the non-test halves out of the test tree (`live_tests.rs`,
+  `onboarding_eval.rs`, `smoothness_benchmark.rs`); §4 owns the test-tree item.
+- [ ] Delete the dead local turn path and migrate the 33 test call sites onto
+  the remote path (~810-1,500 lines); §2 owns the local-turn-path item.
+- [ ] Decide the markdown renderer: finish the switchover or delete
+  `kcode-render-core` (~4,000 lines either way).
+
+### What would settle the floor
+
+The pool above is what four passes could *prove* is removable. The remaining
+uncertainty is not measured: reachability of the `pub` surface across crates
+(the compiler cannot flag it), a byte-level pairwise diff of provider impls
+(name-level only), and per-file near-duplication inside the test tree. Until
+those run, "the floor is ~450-500k" is an estimate, not a measurement, and
+200k is not on the table.
+
 ## 1. Shared shapes
 
 Widest representation first, while the tree is still quiet. Sweeping call sites
@@ -319,7 +388,10 @@ tree first would just move that churn around.
 - [ ] Condense near-duplicate tables: `onboarding_eval.rs` (nine unrolled
   `meta_tierN` tests, liveness logic triplicated at 2672-2736 and 3174-3293),
   `state_model_poke_03.rs` (~40% near-dup pairs), `session_tests/cases.rs` (~51%),
-  `remote_events_reload_04.rs` (~43%, header-phase table at 1038-1180).
+  `remote_events_reload_04.rs` (~43%, header-phase table at 1038-1180). The
+  percentages are per file and were not re-derived by the §0 census, which found
+  only 13 cross-file duplicated test names; re-measure before treating them as
+  targets.
 - [ ] Move subsystem code out of test files: `live_tests.rs` is a live-provider
   coverage ledger (21% tests), `provider_e2e.rs` (11% tests).
 - [ ] Pre-existing failures on this tree: `kcode-tui --lib` 27, `kcode-base --lib`
