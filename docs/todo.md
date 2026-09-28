@@ -852,11 +852,13 @@ tree first would just move that churn around.
   `JCODE_*` read fallback, or document as-is.
 - [ ] Unknown config sections are silently ignored, so older configs keep dead
   keys with no warning.
-- [ ] Self-dev tooling names the wrong package. The prompt and
-  `docs/dev/post-change.md` now name `-p kcode --bin kcode` (fixed 2026-09-28),
-  but the `selfdev build` / `build-reload` tool lives outside this repo and still
-  targets upstream's `jcode`, so it fails with "package ID specification `jcode`
-  did not match any packages". Not fixable here; the documented fallback is
+- [x] **Self-dev tooling names the wrong package.** The prompt and
+  `docs/dev/post-change.md` now name `-p kcode --bin kcode`, and the prompt no
+  longer instructs the agent to call a tool this fork does not ship (fixed
+  2026-09-28, `crates/jcode-base/src/prompt/selfdev_mode.txt`). The `selfdev
+  build` / `build-reload` tool still lives outside this repo and still targets
+  upstream's `jcode`, so it remains unusable if something else supplies it. Not
+  fixable here; the documented path is
   `cargo build --profile selfdev -p kcode --bin kcode`.
 - [x] **`scripts/` classification** (triaged 2026-09-28; 82 tracked -> 63). The
   rule: keep it if it is wired, documented, or a reusable harness with a

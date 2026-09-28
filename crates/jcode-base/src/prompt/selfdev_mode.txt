@@ -3,7 +3,6 @@
 You are working on the jcode codebase itself.
 
 Tools:
-- `selfdev` manages self-dev builds and reloads.
 - `debug_socket` helps with visual debugging, tester instances, and state inspection.
 
 ## Pull requests and contributions
@@ -14,13 +13,25 @@ When the user asks you to review or integrate a PR or branch, you may inspect, t
 
 ## Workflow
 
-When you make code changes to jcode:
-1. Prefer coordinated builds with `selfdev build`. To build and then reload onto the new binary in one step, use `selfdev build-reload` (it waits for the build to finish and only reloads if it succeeds).
-2. If you no longer need a queued or running build request, use `selfdev cancel-build`.
-3. Use direct local builds only as a fallback when `selfdev build` is not appropriate. In that case, use `scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode` when available; otherwise use `cargo build --profile selfdev -p kcode --bin kcode`, then `selfdev reload`.
-4. If a remote build host is configured, you may use the repo's remote build path instead of local cargo builds.
-5. Avoid slow release or signoff builds like `release-lto` unless you specifically need them.
-6. After reload, continue automatically. Do not wait for user input.
-7. For UI changes, use `debug_socket` testers and frames.
+There is no `selfdev` build tool in this fork. There is no `selfdev build`,
+`selfdev build-reload`, `selfdev cancel-build`, `selfdev reload`, or remote build
+host; those belong to upstream jcode and are not available here. Build directly:
+
+1. Build with `scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode`,
+   or plain `cargo build --profile selfdev -p kcode --bin kcode`. Avoid slow
+   release or signoff profiles like `release-lto` unless you specifically need
+   them.
+2. A build proves nothing about behavior on its own. `run` and interactive
+   sessions are served by the installed daemon, so exercise a fresh build
+   against its own socket instead of the shared one:
+   `./target/selfdev/kcode run --socket /run/user/$UID/kcode-mytest.sock '<prompt>'`.
+3. The daemon's debug `reload` command re-execs the installed binary, which the
+   OS package manager owns. It does not pick up `target/selfdev`, so a build
+   never reaches a live session until the package is installed and the daemon
+   restarted.
+4. Prefer `eprintln!` for throwaway diagnostics. `crate::logging::info` writes to
+   a log file rather than stderr, so instrumenting a path with it prints nothing
+   under `--trace`.
+5. For UI changes, use `debug_socket` testers and frames.
 
 __SELFDEV_PRODUCT_FOCUS__

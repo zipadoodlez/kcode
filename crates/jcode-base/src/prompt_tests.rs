@@ -483,7 +483,7 @@ fn test_selfdev_prompt_uses_full_selfdev_instructions() {
     let prompt = build_system_prompt_with_selfdev(None, &[], true);
     assert!(prompt.contains("You are working on the jcode codebase itself."));
     assert!(prompt.contains("launched from the TUI/root jcode context"));
-    assert!(prompt.contains("selfdev build target=tui"));
+    assert!(prompt.contains("package `kcode`, binary `kcode`"));
     assert!(!prompt.contains("Self-Development Access"));
 }
 
@@ -496,19 +496,25 @@ fn test_split_selfdev_prompt_defaults_to_tui_focus_for_repo_root() {
             .static_part
             .contains("launched from the TUI/root jcode context")
     );
-    assert!(split.static_part.contains("selfdev build target=tui"));
+    assert!(
+        split
+            .static_part
+            .contains("package `kcode`, binary `kcode`")
+    );
 }
 
 #[test]
-fn test_selfdev_prompt_prefers_publish_flow_for_active_builds() {
+fn test_selfdev_prompt_describes_fork_build_workflow() {
     let prompt = build_system_prompt_with_selfdev(None, &[], true);
-    assert!(prompt.contains("selfdev build"));
-    assert!(prompt.contains("cancel-build"));
-    assert!(prompt.contains("selfdev reload"));
-    assert!(prompt.contains("fallback when `selfdev build` is not appropriate"));
+    // The prompt must name the build path that exists in this fork...
+    assert!(prompt.contains("There is no `selfdev` build tool in this fork"));
     assert!(prompt.contains("scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode"));
-    assert!(prompt.contains("remote build host is configured"));
-    assert!(prompt.contains("Do not wait for user input"));
+    assert!(prompt.contains("cargo build --profile selfdev -p kcode --bin kcode"));
+    assert!(prompt.contains("its own socket"));
+    // ...and must not carry instructions for machinery this fork does not ship.
+    assert!(!prompt.contains("Prefer coordinated builds"));
+    assert!(!prompt.contains("Do not wait for user input"));
+    assert!(!prompt.contains("If a remote build host is configured"));
 }
 
 #[test]
