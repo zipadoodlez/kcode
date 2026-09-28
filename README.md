@@ -248,7 +248,7 @@ Tools the agent can call. Implementations live in
 
 **Filesystem and shell:** `bash`, `read`, `write`, `edit`, `multiedit`,
 `patch`, `apply_patch`, `ls`, `glob`, `grep`, `agentgrep` (grep/find/outline/
-smart search), `open`, `bg`
+trace modes), `open`, `bg`
 
 **Web:** `webfetch`, `websearch`
 
