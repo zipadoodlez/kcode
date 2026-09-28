@@ -8,13 +8,16 @@
 //!
 //! Three things live here:
 //!
-//!   1. [`NodeId`] / [`EdgeId`] / [`FailureReason`]: the closed vocabulary. These
-//!      are the only strings that ever reach the debug trace, which is what makes
-//!      the trace payload structurally incapable of carrying user data.
-//!   2. [`graph`]: the authored nodes and edges, including the failure and
-//!      recovery nodes that the flow really has but never modelled.
+//!   1. [`NodeId`] / [`EdgeId`]: the closed vocabulary. These are the only
+//!      strings that ever reach the debug trace, which is what makes the trace
+//!      payload structurally incapable of carrying user data.
+//!   2. [`graph`]: the authored nodes and edges. Only states the live flow can
+//!      actually enter are modelled; three that no code could enter (a blocking
+//!      environment, a classified login failure, a permanently rejected
+//!      credential) used to be declared here and were deleted, because a state
+//!      nothing constructs is documentation pretending to be code.
 //!   3. [`check_invariants`]: the properties every future edit must preserve
-//!      (no dead ends, every failure recovers, bounded work, escape hatches).
+//!      (no dead ends, bounded work, escape hatches, reachability).
 //!
 //! The graph is deliberately *descriptive*: the live `App` state machine remains
 //! the implementation, and `tests/onboarding_graph_fidelity.rs` drives the real
@@ -37,22 +40,12 @@ pub enum NodeId {
     /// Virtual entry. Routing out of here is decided by probed environment and
     /// detected credentials, not by a keystroke.
     Start,
-    /// Environment probe says a login cannot possibly be saved or completed.
-    /// Modelled explicitly so the user is told *before* burning a login attempt.
-    EnvBlocked,
     /// Fresh install, nothing to import: offer the default provider sign-in.
     LoginOpenAi,
     /// Detected external CLI logins, shown as a checkbox review.
     LoginImport,
     /// Nothing importable and the default sign-in was declined or failed.
     LoginRecovery,
-    /// A login attempt failed. Distinct from `LoginRecovery` because we know the
-    /// classified reason here and can offer a targeted next method.
-    LoginFailed,
-    /// Credentials exist but the provider rejected them permanently. Terminal
-    /// for the credential, not for the user: they can re-login or continue on a
-    /// different provider.
-    CredRejected,
     /// Legacy transient phase, auto-advances.
     ModelSelect,
     /// "Continue where you left off?" (legacy/replay path).
@@ -70,12 +63,9 @@ impl NodeId {
     pub fn label(self) -> &'static str {
         match self {
             NodeId::Start => "start",
-            NodeId::EnvBlocked => "env_blocked",
             NodeId::LoginOpenAi => "login_openai",
             NodeId::LoginImport => "login_import",
             NodeId::LoginRecovery => "login_recovery",
-            NodeId::LoginFailed => "login_failed",
-            NodeId::CredRejected => "cred_rejected",
             NodeId::ModelSelect => "model_select",
             NodeId::ContinuePrompt => "continue_prompt",
             NodeId::StartChoice => "start_choice",
@@ -87,15 +77,12 @@ impl NodeId {
     /// Every node. The invariant checks iterate this, so a new variant is
     /// automatically covered once added here (and the compiler forces that via
     /// the wildcard-free `label`/`props` matches).
-    pub fn all() -> [NodeId; 12] {
+    pub fn all() -> [NodeId; 9] {
         [
             NodeId::Start,
-            NodeId::EnvBlocked,
             NodeId::LoginOpenAi,
             NodeId::LoginImport,
             NodeId::LoginRecovery,
-            NodeId::LoginFailed,
-            NodeId::CredRejected,
             NodeId::ModelSelect,
             NodeId::ContinuePrompt,
             NodeId::StartChoice,
@@ -108,16 +95,12 @@ impl NodeId {
 /// Why a traversal left a node. Closed vocabulary: no user data.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EdgeId {
-    /// Probe found a blocking environment problem.
-    RouteEnvBlocked,
     /// Probe found no importable logins: offer the default sign-in.
     RouteFreshInstall,
     /// Probe detected external CLI logins worth importing.
     RouteImportable,
     /// Probe found working credentials already.
     RouteAlreadyAuthed,
-    /// Probe found a credential the provider permanently rejected.
-    RouteCredRejected,
     /// User picked the default provider sign-in.
     ChooseSignIn,
     /// User declined the sign-in and deferred to `/login`.
@@ -152,11 +135,9 @@ impl EdgeId {
     /// Closed-vocabulary label: a stable identifier with no user data.
     pub fn label(self) -> &'static str {
         match self {
-            EdgeId::RouteEnvBlocked => "route_env_blocked",
             EdgeId::RouteFreshInstall => "route_fresh_install",
             EdgeId::RouteImportable => "route_importable",
             EdgeId::RouteAlreadyAuthed => "route_already_authed",
-            EdgeId::RouteCredRejected => "route_cred_rejected",
             EdgeId::ChooseSignIn => "choose_sign_in",
             EdgeId::DeclineSignIn => "decline_sign_in",
             EdgeId::ImportAccepted => "import_accepted",
@@ -216,16 +197,6 @@ pub fn node_props(node: NodeId) -> NodeProps {
             is_legacy: false,
         },
         // Blocking environment problem (e.g. unwritable config dir). A failure,
-        // but a recoverable one: the user can skip into a degraded session.
-        EnvBlocked => NodeProps {
-            is_decision: true,
-            has_default: false,
-            is_ready: false,
-            is_terminal: false,
-            is_failure: true,
-            is_transient: false,
-            is_legacy: false,
-        },
         LoginOpenAi => NodeProps {
             is_decision: true,
             has_default: false,
@@ -250,24 +221,6 @@ pub fn node_props(node: NodeId) -> NodeProps {
             is_ready: false,
             is_terminal: false,
             is_failure: false,
-            is_transient: false,
-            is_legacy: false,
-        },
-        LoginFailed => NodeProps {
-            is_decision: true,
-            has_default: false,
-            is_ready: false,
-            is_terminal: false,
-            is_failure: true,
-            is_transient: false,
-            is_legacy: false,
-        },
-        CredRejected => NodeProps {
-            is_decision: true,
-            has_default: false,
-            is_ready: false,
-            is_terminal: false,
-            is_failure: true,
             is_transient: false,
             is_legacy: false,
         },
@@ -368,38 +321,6 @@ pub fn graph() -> Vec<Edge> {
             is_escape: false,
         },
         Edge {
-            from: Start,
-            to: EnvBlocked,
-            edge: E::RouteEnvBlocked,
-            keystrokes: 0,
-            is_escape: false,
-        },
-        Edge {
-            from: Start,
-            to: CredRejected,
-            edge: E::RouteCredRejected,
-            keystrokes: 0,
-            is_escape: false,
-        },
-        // ---- Environment is blocking: explain it, but never trap the user ----
-        // Retry after fixing the reported problem (e.g. directory permissions).
-        Edge {
-            from: EnvBlocked,
-            to: LoginOpenAi,
-            edge: E::RetryOtherMethod,
-            keystrokes: 1,
-            is_escape: false,
-        },
-        // Or continue into a degraded session and deal with it later.
-        Edge {
-            from: EnvBlocked,
-            to: Done,
-            edge: E::Skip,
-            keystrokes: 1,
-            is_escape: true,
-        },
-        // ---- Default provider sign-in ----
-        Edge {
             from: LoginOpenAi,
             to: StartChoice,
             edge: E::ChooseSignIn,
@@ -413,14 +334,6 @@ pub fn graph() -> Vec<Edge> {
             keystrokes: 1,
             is_escape: true,
         },
-        Edge {
-            from: LoginOpenAi,
-            to: LoginFailed,
-            edge: E::LoginFail,
-            keystrokes: 0,
-            is_escape: false,
-        },
-        // ---- Import review ----
         Edge {
             from: LoginImport,
             to: StartChoice,
@@ -452,13 +365,6 @@ pub fn graph() -> Vec<Edge> {
         },
         Edge {
             from: LoginRecovery,
-            to: LoginFailed,
-            edge: E::LoginFail,
-            keystrokes: 0,
-            is_escape: false,
-        },
-        Edge {
-            from: LoginRecovery,
             to: Done,
             edge: E::Skip,
             keystrokes: 1,
@@ -466,46 +372,6 @@ pub fn graph() -> Vec<Edge> {
         },
         // ---- A login failed: every exit here must be actionable ----
         // Try the method the environment probe says can actually work.
-        Edge {
-            from: LoginFailed,
-            to: LoginRecovery,
-            edge: E::RetryOtherMethod,
-            keystrokes: 1,
-            is_escape: false,
-        },
-        // Hand the diagnosis to an external agent (onboarding_repair.rs).
-        Edge {
-            from: LoginFailed,
-            to: Done,
-            edge: E::HandOffToAgent,
-            keystrokes: 1,
-            is_escape: false,
-        },
-        Edge {
-            from: LoginFailed,
-            to: Done,
-            edge: E::Skip,
-            keystrokes: 1,
-            is_escape: true,
-        },
-        // ---- Credential permanently rejected by the provider ----
-        // Re-login mints a new token, which clears the terminal state.
-        Edge {
-            from: CredRejected,
-            to: LoginRecovery,
-            edge: E::RetryOtherMethod,
-            keystrokes: 1,
-            is_escape: false,
-        },
-        // Or proceed on whichever provider still works (degraded-ready).
-        Edge {
-            from: CredRejected,
-            to: StartChoice,
-            edge: E::Skip,
-            keystrokes: 1,
-            is_escape: true,
-        },
-        // ---- Transient / legacy ----
         Edge {
             from: ModelSelect,
             to: StartChoice,
@@ -797,42 +663,21 @@ mod tests {
         // rule rejects a graph that breaks it.
         let base = graph();
 
-        // Dead end: a node with its outgoing edges removed.
-        let pruned: Vec<Edge> = base
-            .iter()
-            .copied()
-            .filter(|e| e.from != NodeId::LoginFailed)
-            .collect();
+        // Dead end: a node with its outgoing edges removed. The fixture must be
+        // a node that is neither ready nor terminal, or removing its exits would
+        // not change the answer.
+        let fixture = NodeId::LoginRecovery;
+        let pruned: Vec<Edge> = base.iter().copied().filter(|e| e.from != fixture).collect();
         assert!(
-            !pruned.iter().any(|e| e.from == NodeId::LoginFailed),
-            "test setup should have removed the failure node's exits"
+            !pruned.iter().any(|e| e.from == fixture),
+            "test setup should have removed the node's exits"
         );
         assert!(
-            min_keystrokes_to(NodeId::LoginFailed, &pruned, |n| node_props(n).is_ready
+            min_keystrokes_to(fixture, &pruned, |n| node_props(n).is_ready
                 || node_props(n).is_terminal)
             .is_none(),
             "a node with no exits must be unable to reach a settled state"
         );
-    }
-
-    #[test]
-    fn every_failure_node_reaches_a_settled_state_quickly() {
-        let edges = graph();
-        for node in NodeId::all() {
-            if !node_props(node).is_failure {
-                continue;
-            }
-            let cost = min_keystrokes_to(node, &edges, |n| {
-                let p = node_props(n);
-                p.is_ready || p.is_terminal
-            })
-            .unwrap_or_else(|| panic!("{} must reach a settled state", node.label()));
-            assert!(
-                cost <= 2,
-                "{} needs {cost} keystrokes to escape a failure; users abandon here",
-                node.label()
-            );
-        }
     }
 
     #[test]
