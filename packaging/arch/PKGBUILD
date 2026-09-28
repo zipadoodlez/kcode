@@ -4,7 +4,7 @@
 # release tarball. Build and install with `makepkg -si`, or build into a local
 # repository with `aur build` and let pacman install it. See README "Install".
 pkgname=kcode-git
-pkgver=r5776.37c1129
+pkgver=r5798.f705799
 pkgrel=1
 pkgdesc="Kcode: a fast, focused coding agent (TUI, multi-model, swarm coordination)"
 arch=('x86_64')
