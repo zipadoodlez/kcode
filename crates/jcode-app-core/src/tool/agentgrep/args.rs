@@ -241,11 +241,7 @@ pub(super) fn resolve_search_root(ctx: &ToolContext, path: Option<&str>) -> Resu
         .ok_or_else(|| anyhow::anyhow!("agentgrep requires a session working directory"))
 }
 
-pub(super) fn summarize_agentgrep_request(
-    params: &AgentGrepInput,
-    ctx: &ToolContext,
-    context_json_path: Option<&Path>,
-) -> String {
+pub(super) fn summarize_agentgrep_request(params: &AgentGrepInput, ctx: &ToolContext) -> String {
     let mut parts = vec![format!("mode={}", params.mode)];
     if let Some(query) = params.query.as_deref() {
         parts.push(format!("query={}", util::truncate_str(query, 80)));
@@ -270,9 +266,6 @@ pub(super) fn summarize_agentgrep_request(
     }
     if params.paths_only.unwrap_or(false) {
         parts.push("paths_only=true".to_string());
-    }
-    if context_json_path.is_some() {
-        parts.push("context_json=true".to_string());
     }
     parts.join(" ")
 }

@@ -1,35 +1,22 @@
 use super::{Tool, ToolContext, ToolOutput};
-use crate::message::{ContentBlock, ToolCall};
-use crate::session::Session;
-use crate::storage;
 use crate::{logging, util};
 use anyhow::Result;
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use kgrep::model::{Budget, FullRegionMode, Packet, Query, RenderOptions, Verb, Where};
 use kgrep::packet::{render_find_text, render_grep_text, render_outline_text, render_trace_text};
 use kgrep::{find, lexical, outline, trace};
-use regex::Regex;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Value, json};
-use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 use std::time::Duration;
 
 const AGENTGREP_FOREGROUND_BUDGET: Duration = Duration::from_secs(5);
 
 mod args;
-mod context;
 
 #[cfg(test)]
 use self::args::trace_or_smart_terms_owned;
 use self::args::{query_from_params, summarize_agentgrep_request};
-use self::context::maybe_write_context_json;
-#[cfg(test)]
-use self::context::{
-    collect_bash_exposure, collect_trace_exposure, tune_known_file, tune_known_region,
-};
 
 #[derive(Debug, Deserialize)]
 struct AgentGrepInput {
@@ -72,88 +59,6 @@ struct AgentGrepInput {
 
 fn default_agentgrep_mode() -> String {
     "grep".to_string()
-}
-
-#[derive(Debug, Serialize, Default)]
-struct AgentGrepHarnessContext {
-    version: u32,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    known_regions: Vec<AgentGrepKnownRegion>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    known_files: Vec<AgentGrepKnownFile>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    known_symbols: Vec<AgentGrepKnownSymbol>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    focus_files: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct AgentGrepKnownRegion {
-    path: String,
-    start_line: usize,
-    end_line: usize,
-    body_confidence: f32,
-    current_version_confidence: f32,
-    prune_confidence: f32,
-    source_strength: &'static str,
-    reasons: Vec<&'static str>,
-}
-
-#[derive(Debug, Serialize)]
-struct AgentGrepKnownFile {
-    path: String,
-    structure_confidence: f32,
-    body_confidence: f32,
-    current_version_confidence: f32,
-    prune_confidence: f32,
-    source_strength: &'static str,
-    reasons: Vec<&'static str>,
-}
-
-#[derive(Debug, Serialize)]
-struct AgentGrepKnownSymbol {
-    path: String,
-    symbol: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    kind: Option<&'static str>,
-    structure_confidence: f32,
-    body_confidence: f32,
-    current_version_confidence: f32,
-    prune_confidence: f32,
-    source_strength: &'static str,
-    reasons: Vec<&'static str>,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct RegionConfidenceProfile {
-    body_confidence: f32,
-    current_version_confidence: f32,
-    prune_confidence: f32,
-    source_strength: &'static str,
-}
-
-#[derive(Debug, Clone)]
-struct PendingTraceRegion {
-    path: String,
-    kind: Option<&'static str>,
-    start_line: usize,
-    end_line: usize,
-}
-
-#[derive(Debug, Clone)]
-struct ToolExposureObservation {
-    tool: ToolCall,
-    content: String,
-    timestamp: Option<DateTime<Utc>>,
-    message_index: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct ExposureDescriptor {
-    timestamp: Option<DateTime<Utc>>,
-    message_index: usize,
-    total_messages: usize,
-    compaction_cutoff: Option<usize>,
 }
 
 pub struct AgentGrepTool;
@@ -328,15 +233,10 @@ fn run_agentgrep_blocking(params: &AgentGrepInput, ctx: &ToolContext) -> Result<
             );
         }
     }
-    let context_path = maybe_write_context_json(params, ctx)?;
-    let request = summarize_agentgrep_request(params, ctx, context_path.as_deref());
+    let request = summarize_agentgrep_request(params, ctx);
     let started_at = std::time::Instant::now();
     let outcome = execute_linked_agentgrep(params, ctx);
     let elapsed_ms = started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
-
-    if let Some(path) = context_path {
-        let _ = std::fs::remove_file(path);
-    }
 
     match outcome {
         Ok(output) => {
