@@ -1,6 +1,6 @@
 # Changelog entries
 
-User-facing changelog entries for jcode releases. One JSON file per release,
+User-facing changelog entries for kcode releases. One JSON file per release,
 written by the agent during `/cut-release`, reviewed in the release diff, and
 consumed by jcode.sh and the GitHub release body.
 
@@ -41,7 +41,7 @@ consumed by jcode.sh and the GitHub release body.
 
 ## Writing guidelines
 
-- Write for users of jcode, not contributors. Describe the effect, not the
+- Write for users of kcode, not contributors. Describe the effect, not the
   implementation ("swarm agents no longer lose retried commands", not
   "close mutation-dedup races").
 - Skip internal-only changes entirely: refactors, CI, test-only, code moves.

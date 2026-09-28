@@ -8,14 +8,14 @@ Terminal TUI · multi-provider · agentic tools · swarm coordination
 
 </div>
 
-kcode is kcode with a large amount of surface area removed. Same TUI, same
+kcode is jcode with a large amount of surface area removed. Same TUI, same
 multi-model support, same tools, minus the parts this fork does not want to
 carry. Roughly **241,000 lines across 1,079 files** of diagram rendering,
 memory, ambient mode, hosted models and platform clients were cut; see
 [what-was-removed.md](docs/what-was-removed.md) for the full record.
 
 kcode has its own repository and history and does **not** track upstream jcode
-commits. It inherits kcode's provider support and auth flows, which are the main
+commits. It inherits jcode's provider support and auth flows, which are the main
 thing to keep an eye on over time.
 
 ---

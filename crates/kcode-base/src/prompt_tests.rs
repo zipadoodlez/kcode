@@ -635,7 +635,7 @@ fn project_system_prompt_file_replaces_default_base_prompt() {
 
     let (prompt, _info) = build_system_prompt_full(None, &[], false, Some(&dir));
     assert!(prompt.contains("You are a custom agent."));
-    assert!(!prompt.contains("Kcode is open source"));
+    assert!(!prompt.contains("kcode is open source"));
 
     // Empty override falls back to the built-in default.
     std::fs::write(kcode_dir.join("system-prompt.md"), "   \n").unwrap();
