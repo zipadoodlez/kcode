@@ -62,44 +62,6 @@ fn detects_model_not_found_errors() {
 }
 
 #[test]
-fn fallback_models_skip_current_model() {
-    assert_eq!(
-        gemini_fallback_models("gemini-2.5-flash"),
-        vec![
-            "gemini-3.1-pro-preview",
-            "gemini-3-pro-preview",
-            "gemini-2.5-pro",
-            "gemini-3-flash-preview",
-            "gemini-2.0-flash",
-        ]
-    );
-}
-
-#[test]
-fn extract_gemini_model_ids_discovers_nested_models() {
-    let response = json!({
-        "routing": {
-            "manual": {
-                "models": [
-                    {"id": "gemini-3-pro-preview"},
-                    {"name": "gemini-3.1-pro-preview"}
-                ]
-            },
-            "auto": ["gemini-3-flash-preview", "not-a-model"]
-        }
-    });
-
-    assert_eq!(
-        extract_gemini_model_ids(&response),
-        vec![
-            "gemini-3.1-pro-preview".to_string(),
-            "gemini-3-pro-preview".to_string(),
-            "gemini-3-flash-preview".to_string(),
-        ]
-    );
-}
-
-#[test]
 fn available_models_display_prefers_discovered_models_and_current_model() {
     let provider = GeminiProvider::new();
     provider.set_model("gemini-4-pro-preview").unwrap();

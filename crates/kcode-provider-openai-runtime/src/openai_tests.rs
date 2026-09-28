@@ -224,6 +224,24 @@ async fn live_openai_smoke(model: &str, sentinel: &str) -> Result<Option<String>
     Ok(Some(response))
 }
 
+/// Shared test-only user message.
+///
+/// The fragments below are `include!`d into this module, so they share one
+/// namespace. `responses_input.rs` and `websocket_prewarm.rs` each had a
+/// byte-identical copy of this under a different name (`user_text`,
+/// `prewarm_user_message`).
+fn user_text(text: &str) -> ChatMessage {
+    ChatMessage {
+        role: Role::User,
+        content: vec![ContentBlock::Text {
+            text: text.to_string(),
+            cache_control: None,
+        }],
+        timestamp: None,
+        tool_duration_ms: None,
+    }
+}
+
 include!("openai_tests/models_state.rs");
 include!("openai_tests/responses_input.rs");
 include!("openai_tests/transport_runtime.rs");

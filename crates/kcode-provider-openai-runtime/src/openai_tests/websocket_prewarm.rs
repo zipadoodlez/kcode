@@ -20,18 +20,6 @@ fn prewarm_test_tool() -> ToolDefinition {
     }
 }
 
-fn prewarm_user_message(text: &str) -> ChatMessage {
-    ChatMessage {
-        role: Role::User,
-        content: vec![ContentBlock::Text {
-            text: text.to_string(),
-            cache_control: None,
-        }],
-        timestamp: None,
-        tool_duration_ms: None,
-    }
-}
-
 async fn wait_for_prewarm(slot: &openai_websocket_prewarm::PrewarmSlot) {
     tokio::time::timeout(Duration::from_secs(2), async {
         while !slot.is_ready() {
@@ -166,7 +154,7 @@ async fn websocket_v2_prewarm_is_adopted_by_complete_without_losing_request_stat
     wait_for_prewarm(&provider.prewarm).await;
 
     let messages = vec![
-        prewarm_user_message("first user turn"),
+        user_text("first user turn"),
         ChatMessage {
             role: Role::Assistant,
             content: vec![
@@ -184,7 +172,7 @@ async fn websocket_v2_prewarm_is_adopted_by_complete_without_losing_request_stat
             timestamp: None,
             tool_duration_ms: None,
         },
-        prewarm_user_message("current user turn"),
+        user_text("current user turn"),
     ];
     let mut events = provider
         .complete(&messages, &tools, "preserve this system prompt", None)

@@ -878,6 +878,29 @@ pub struct ApiTool {
     pub cache_control: Option<CacheControlParam>,
 }
 
+/// Test-only helpers shared by this crate's test modules.
+///
+/// `text_msg` had a byte-identical copy in three of them
+/// (`cache_prefix_invariant_tests`, `duplicate_tool_result_tests`,
+/// `trailing_assistant_repair_tests`). One home stops them drifting into tests
+/// that silently assert different message shapes.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use kcode_message_types::{ContentBlock, Message, Role};
+
+    pub(crate) fn text_msg(role: Role, text: &str) -> Message {
+        Message {
+            role,
+            content: vec![ContentBlock::Text {
+                text: text.to_string(),
+                cache_control: None,
+            }],
+            timestamp: None,
+            tool_duration_ms: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod cache_prefix_invariant_tests {
     //! Deterministic proof that injecting a trailing memory message can never move
@@ -892,19 +915,8 @@ mod cache_prefix_invariant_tests {
     //! These tests pin that invariant so a refactor cannot silently break the cache.
 
     use super::*;
+    use crate::test_support::text_msg;
     use kcode_message_types::{ContentBlock, Message, Role};
-
-    fn text_msg(role: Role, text: &str) -> Message {
-        Message {
-            role,
-            content: vec![ContentBlock::Text {
-                text: text.to_string(),
-                cache_control: None,
-            }],
-            timestamp: None,
-            tool_duration_ms: None,
-        }
-    }
 
     /// A realistic warm conversation: user/assistant turns ending on a user message.
     fn base_conversation() -> Vec<Message> {

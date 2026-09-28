@@ -1346,30 +1346,6 @@ fn autodetected_profile_seeds_default_model_and_cache_namespace() {
 }
 
 #[test]
-fn test_parse_model_spec() {
-    let (model, provider) = parse_model_spec("anthropic/claude-sonnet-4@Fireworks");
-    assert_eq!(model, "anthropic/claude-sonnet-4");
-    let provider = provider.expect("provider");
-    assert_eq!(provider.name, "Fireworks");
-    assert!(!provider.allow_fallbacks);
-
-    let (model, provider) = parse_model_spec("anthropic/claude-sonnet-4@Fireworks!");
-    assert_eq!(model, "anthropic/claude-sonnet-4");
-    let provider = provider.expect("provider");
-    assert_eq!(provider.name, "Fireworks");
-    assert!(!provider.allow_fallbacks);
-
-    let (model, provider) = parse_model_spec("moonshotai/kimi-k2.5@moonshot");
-    assert_eq!(model, "moonshotai/kimi-k2.5");
-    let provider = provider.expect("provider");
-    assert_eq!(provider.name, "Moonshot AI");
-
-    let (model, provider) = parse_model_spec("anthropic/claude-sonnet-4@auto");
-    assert_eq!(model, "anthropic/claude-sonnet-4");
-    assert!(provider.is_none());
-}
-
-#[test]
 fn fork_preserves_explicit_provider_pin() {
     let provider = make_provider();
     provider

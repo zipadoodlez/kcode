@@ -11,19 +11,8 @@
 //! rejects every subsequent request and the session is permanently wedged.
 
 use super::*;
+use crate::test_support::text_msg;
 use kcode_message_types::{ContentBlock, Message, Role};
-
-fn text_msg(role: Role, text: &str) -> Message {
-    Message {
-        role,
-        content: vec![ContentBlock::Text {
-            text: text.to_string(),
-            cache_control: None,
-        }],
-        timestamp: None,
-        tool_duration_ms: None,
-    }
-}
 
 fn tool_use(id: &str) -> Message {
     Message {

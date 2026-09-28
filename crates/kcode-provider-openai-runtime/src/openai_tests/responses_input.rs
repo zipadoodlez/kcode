@@ -10,18 +10,6 @@ fn assistant_tool_use(id: &str, name: &str, input: serde_json::Value) -> ChatMes
     }
 }
 
-fn user_text(text: &str) -> ChatMessage {
-    ChatMessage {
-        role: Role::User,
-        content: vec![ContentBlock::Text {
-            text: text.to_string(),
-            cache_control: None,
-        }],
-        timestamp: None,
-        tool_duration_ms: None,
-    }
-}
-
 fn response_item_type(item: &serde_json::Value) -> Option<&str> {
     item.get("type").and_then(|v| v.as_str())
 }

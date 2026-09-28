@@ -7,19 +7,8 @@
 //! interrupted assistant turn. `format_messages` must repair that shape.
 
 use super::*;
+use crate::test_support::text_msg;
 use kcode_message_types::{ContentBlock, Message, Role};
-
-fn text_msg(role: Role, text: &str) -> Message {
-    Message {
-        role,
-        content: vec![ContentBlock::Text {
-            text: text.to_string(),
-            cache_control: None,
-        }],
-        timestamp: None,
-        tool_duration_ms: None,
-    }
-}
 
 fn roles(messages: &[ApiMessage]) -> Vec<&str> {
     messages.iter().map(|m| m.role.as_str()).collect()
