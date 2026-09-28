@@ -8,9 +8,9 @@
 //!
 //! Three things live here:
 //!
-//!   1. [`NodeId`] / [`EdgeId`]: the closed vocabulary. These are the only
-//!      strings that ever reach the debug trace, which is what makes the trace
-//!      payload structurally incapable of carrying user data.
+//!   1. [`NodeId`]: the closed vocabulary. These are the only strings that
+//!      ever reach the debug trace, which is what makes the trace payload
+//!      structurally incapable of carrying user data.
 //!   2. [`graph`]: the authored nodes and edges. Only states the live flow can
 //!      actually enter are modelled; three that no code could enter (a blocking
 //!      environment, a classified login failure, a permanently rejected
@@ -77,6 +77,7 @@ impl NodeId {
     /// Every node. The invariant checks iterate this, so a new variant is
     /// automatically covered once added here (and the compiler forces that via
     /// the wildcard-free `label`/`props` matches).
+    #[cfg(test)]
     pub fn all() -> [NodeId; 9] {
         [
             NodeId::Start,
@@ -92,72 +93,10 @@ impl NodeId {
     }
 }
 
-/// Why a traversal left a node. Closed vocabulary: no user data.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum EdgeId {
-    /// Probe found no importable logins: offer the default sign-in.
-    RouteFreshInstall,
-    /// Probe detected external CLI logins worth importing.
-    RouteImportable,
-    /// Probe found working credentials already.
-    RouteAlreadyAuthed,
-    /// User picked the default provider sign-in.
-    ChooseSignIn,
-    /// User declined the sign-in and deferred to `/login`.
-    DeclineSignIn,
-    /// Import review committed (any number of candidates).
-    ImportAccepted,
-    /// Import produced nothing usable.
-    ImportEmpty,
-    /// A login completed and validated.
-    LoginOk,
-    /// A login attempt failed.
-    LoginFail,
-    /// User retried with a different method after a failure.
-    RetryOtherMethod,
-    /// User handed the problem to an external coding agent (`onboarding_repair`).
-    HandOffToAgent,
-    /// User skipped ahead, accepting a degraded state.
-    Skip,
-    /// Auto-advance with no user input.
-    AutoAdvance,
-    /// User chose the suggested review action.
-    ChooseReview,
-    /// User chose a blank new session.
-    ChooseBlank,
-    /// User answered the resume prompt affirmatively.
-    ContinueYes,
-    /// User declined to resume.
-    ContinueNo,
-}
-
-impl EdgeId {
-    /// Closed-vocabulary label: a stable identifier with no user data.
-    pub fn label(self) -> &'static str {
-        match self {
-            EdgeId::RouteFreshInstall => "route_fresh_install",
-            EdgeId::RouteImportable => "route_importable",
-            EdgeId::RouteAlreadyAuthed => "route_already_authed",
-            EdgeId::ChooseSignIn => "choose_sign_in",
-            EdgeId::DeclineSignIn => "decline_sign_in",
-            EdgeId::ImportAccepted => "import_accepted",
-            EdgeId::ImportEmpty => "import_empty",
-            EdgeId::LoginOk => "login_ok",
-            EdgeId::LoginFail => "login_fail",
-            EdgeId::RetryOtherMethod => "retry_other_method",
-            EdgeId::HandOffToAgent => "hand_off_to_agent",
-            EdgeId::Skip => "skip",
-            EdgeId::AutoAdvance => "auto_advance",
-            EdgeId::ChooseReview => "choose_review",
-            EdgeId::ChooseBlank => "choose_blank",
-            EdgeId::ContinueYes => "continue_yes",
-            EdgeId::ContinueNo => "continue_no",
-        }
-    }
-}
-
-/// Structural properties of a node, used by the invariant checks and the
-/// efficiency scorecard.
+/// Structural properties of a node, used by the invariant checks.
+///
+/// Test-only: production needs the node vocabulary, not the classification.
+#[cfg(test)]
 #[derive(Clone, Copy, Debug)]
 pub struct NodeProps {
     /// The user must make a choice here.
@@ -168,10 +107,6 @@ pub struct NodeProps {
     pub is_ready: bool,
     /// No further onboarding transitions leave this node.
     pub is_terminal: bool,
-    /// This node represents something having gone wrong. Failure nodes are held
-    /// to a stricter standard: they must have a recovery edge that is not
-    /// "restart kcode".
-    pub is_failure: bool,
     /// The user never rests here: it auto-advances before a frame is drawn.
     /// Transient nodes are exempt from the escape-hatch rule because there is
     /// nothing to escape from, but they still must make progress.
@@ -184,6 +119,7 @@ pub struct NodeProps {
 }
 
 /// Per-node properties. Wildcard-free: a new node must be classified here.
+#[cfg(test)]
 pub fn node_props(node: NodeId) -> NodeProps {
     use NodeId::*;
     match node {
@@ -192,7 +128,6 @@ pub fn node_props(node: NodeId) -> NodeProps {
             has_default: false,
             is_ready: false,
             is_terminal: false,
-            is_failure: false,
             is_transient: false,
             is_legacy: false,
         },
@@ -202,7 +137,6 @@ pub fn node_props(node: NodeId) -> NodeProps {
             has_default: false,
             is_ready: false,
             is_terminal: false,
-            is_failure: false,
             is_transient: false,
             is_legacy: false,
         },
@@ -211,7 +145,6 @@ pub fn node_props(node: NodeId) -> NodeProps {
             has_default: true,
             is_ready: false,
             is_terminal: false,
-            is_failure: false,
             is_transient: false,
             is_legacy: false,
         },
@@ -220,7 +153,6 @@ pub fn node_props(node: NodeId) -> NodeProps {
             has_default: false,
             is_ready: false,
             is_terminal: false,
-            is_failure: false,
             is_transient: false,
             is_legacy: false,
         },
@@ -230,7 +162,6 @@ pub fn node_props(node: NodeId) -> NodeProps {
             has_default: true,
             is_ready: false,
             is_terminal: false,
-            is_failure: false,
             is_transient: true,
             is_legacy: false,
         },
@@ -241,7 +172,6 @@ pub fn node_props(node: NodeId) -> NodeProps {
             has_default: true,
             is_ready: false,
             is_terminal: false,
-            is_failure: false,
             is_transient: false,
             is_legacy: true,
         },
@@ -250,7 +180,6 @@ pub fn node_props(node: NodeId) -> NodeProps {
             has_default: false,
             is_ready: true,
             is_terminal: false,
-            is_failure: false,
             is_transient: false,
             is_legacy: false,
         },
@@ -259,7 +188,6 @@ pub fn node_props(node: NodeId) -> NodeProps {
             has_default: false,
             is_ready: true,
             is_terminal: true,
-            is_failure: false,
             is_transient: false,
             is_legacy: false,
         },
@@ -268,7 +196,6 @@ pub fn node_props(node: NodeId) -> NodeProps {
             has_default: false,
             is_ready: false,
             is_terminal: true,
-            is_failure: false,
             is_transient: false,
             is_legacy: false,
         },
@@ -280,7 +207,6 @@ pub fn node_props(node: NodeId) -> NodeProps {
 pub struct Edge {
     pub from: NodeId,
     pub to: NodeId,
-    pub edge: EdgeId,
     /// In-TUI keystrokes to traverse this edge on the default path.
     pub keystrokes: u32,
     /// Whether this edge is an escape hatch (skip/defer/continue-degraded).
@@ -295,63 +221,54 @@ pub struct Edge {
 /// environment, a classified login failure, and a permanently rejected
 /// credential. Those are exactly the states where users got stuck.
 pub fn graph() -> Vec<Edge> {
-    use EdgeId as E;
     use NodeId::*;
     vec![
         // ---- Entry routing, decided by probe + detected credentials ----
         Edge {
             from: Start,
             to: LoginOpenAi,
-            edge: E::RouteFreshInstall,
             keystrokes: 0,
             is_escape: false,
         },
         Edge {
             from: Start,
             to: LoginImport,
-            edge: E::RouteImportable,
             keystrokes: 0,
             is_escape: false,
         },
         Edge {
             from: Start,
             to: ModelSelect,
-            edge: E::RouteAlreadyAuthed,
             keystrokes: 0,
             is_escape: false,
         },
         Edge {
             from: LoginOpenAi,
             to: StartChoice,
-            edge: E::ChooseSignIn,
             keystrokes: 1,
             is_escape: false,
         },
         Edge {
             from: LoginOpenAi,
             to: Done,
-            edge: E::DeclineSignIn,
             keystrokes: 1,
             is_escape: true,
         },
         Edge {
             from: LoginImport,
             to: StartChoice,
-            edge: E::ImportAccepted,
             keystrokes: 1,
             is_escape: false,
         },
         Edge {
             from: LoginImport,
             to: LoginRecovery,
-            edge: E::ImportEmpty,
             keystrokes: 1,
             is_escape: false,
         },
         Edge {
             from: LoginImport,
             to: Done,
-            edge: E::Skip,
             keystrokes: 1,
             is_escape: true,
         },
@@ -359,14 +276,12 @@ pub fn graph() -> Vec<Edge> {
         Edge {
             from: LoginRecovery,
             to: StartChoice,
-            edge: E::LoginOk,
             keystrokes: 1,
             is_escape: false,
         },
         Edge {
             from: LoginRecovery,
             to: Done,
-            edge: E::Skip,
             keystrokes: 1,
             is_escape: true,
         },
@@ -375,21 +290,18 @@ pub fn graph() -> Vec<Edge> {
         Edge {
             from: ModelSelect,
             to: StartChoice,
-            edge: E::AutoAdvance,
             keystrokes: 0,
             is_escape: false,
         },
         Edge {
             from: ContinuePrompt,
             to: StartChoice,
-            edge: E::ContinueYes,
             keystrokes: 1,
             is_escape: false,
         },
         Edge {
             from: ContinuePrompt,
             to: Suggestions,
-            edge: E::ContinueNo,
             keystrokes: 1,
             is_escape: true,
         },
@@ -397,14 +309,12 @@ pub fn graph() -> Vec<Edge> {
         Edge {
             from: StartChoice,
             to: Suggestions,
-            edge: E::ChooseBlank,
             keystrokes: 1,
             is_escape: true,
         },
         Edge {
             from: StartChoice,
             to: Done,
-            edge: E::ChooseReview,
             keystrokes: 1,
             is_escape: false,
         },
@@ -445,6 +355,7 @@ pub fn transition_is_declared(from: NodeId, to: NodeId) -> bool {
 }
 
 /// A violated structural property, with enough detail to fix it.
+#[cfg(test)]
 #[derive(Debug, PartialEq, Eq)]
 pub struct Violation {
     pub invariant: &'static str,
@@ -455,6 +366,7 @@ pub struct Violation {
 ///
 /// This is the payoff of writing the graph down: these are the bugs that used
 /// to be found by users, checked here in microseconds instead.
+#[cfg(test)]
 pub fn check_invariants() -> Vec<Violation> {
     let edges = graph();
     let mut violations = Vec::new();
@@ -475,24 +387,7 @@ pub fn check_invariants() -> Vec<Violation> {
             });
         }
 
-        // 2. Every failure node recovers. "Restart kcode" is not a recovery, so
-        //    we require an edge that either retries or hands off to a fix.
-        if props.is_failure {
-            let recovers = outs.iter().any(|e| {
-                matches!(
-                    e.edge,
-                    EdgeId::RetryOtherMethod | EdgeId::HandOffToAgent | EdgeId::LoginOk
-                )
-            });
-            if !recovers {
-                violations.push(Violation {
-                    invariant: "failures_recover",
-                    detail: format!("{} offers no retry or hand-off edge", node.label()),
-                });
-            }
-        }
-
-        // 3. Escape hatch everywhere: from any node the user can sit on, there
+        // 2. Escape hatch everywhere: from any node the user can sit on, there
         //    is a way into a usable (possibly degraded) app.
         if !props.is_terminal
             && !props.is_transient
@@ -505,7 +400,7 @@ pub fn check_invariants() -> Vec<Violation> {
             });
         }
 
-        // 4. Reachability: every node except the virtual Start must be
+        // 3. Reachability: every node except the virtual Start must be
         //    reachable, otherwise it is dead code that will rot.
         if node != NodeId::Start && !props.is_legacy && !edges.iter().any(|e| e.to == node) {
             violations.push(Violation {
@@ -526,7 +421,7 @@ pub fn check_invariants() -> Vec<Violation> {
             });
         }
 
-        // 5. Progress: no self-loop, which would be a retry with no visible
+        // 4. Progress: no self-loop, which would be a retry with no visible
         //    state change. This is the shape of the two-day OpenAI retry loop.
         if outs.iter().any(|e| e.to == node) {
             violations.push(Violation {
@@ -539,7 +434,7 @@ pub fn check_invariants() -> Vec<Violation> {
         }
     }
 
-    // 6. Bounded work: from every node the user can sit on, a ready or terminal
+    // 5. Bounded work: from every node the user can sit on, a ready or terminal
     //    state must be reachable, and within a small keystroke budget.
     const MAX_KEYSTROKES_TO_SETTLED: u32 = 4;
     for node in NodeId::all() {
@@ -565,32 +460,15 @@ pub fn check_invariants() -> Vec<Violation> {
         }
     }
 
-    // 7. Edge vocabulary is closed and unambiguous: two edges out of the same
-    //    node may not share an EdgeId, or a trace could not be replayed.
-    let mut seen: BTreeSet<(NodeId, EdgeId)> = BTreeSet::new();
-    for e in &edges {
-        if !seen.insert((e.from, e.edge)) {
-            violations.push(Violation {
-                invariant: "deterministic_edges",
-                detail: format!(
-                    "{} has two edges labelled {}, so a trace is ambiguous",
-                    e.from.label(),
-                    e.edge.label()
-                ),
-            });
-        }
-    }
-
-    // 8. Forced decisions are budgeted. A decision node with no timeout default
+    // 6. Forced decisions are budgeted. A decision node with no timeout default
     //    stops the flow until the user answers, so each one is real friction on
-    //    the critical path. Failure nodes are exempt: after something went
-    //    wrong, asking is correct, and auto-picking would be worse.
+    //    the critical path.
     const MAX_FORCED_DECISIONS: usize = 3;
     let forced: Vec<&'static str> = NodeId::all()
         .into_iter()
         .filter(|&node| {
             let p = node_props(node);
-            p.is_decision && !p.has_default && !p.is_failure
+            p.is_decision && !p.has_default
         })
         .map(NodeId::label)
         .collect();
@@ -613,6 +491,7 @@ pub fn check_invariants() -> Vec<Violation> {
 /// Bellman-Ford style relaxation: the graph is tiny, and this stays correct if
 /// someone later adds a cycle (which the invariants permit as long as it makes
 /// visible progress).
+#[cfg(test)]
 pub fn min_keystrokes_to<F: Fn(NodeId) -> bool>(
     start: NodeId,
     edges: &[Edge],
@@ -721,7 +600,7 @@ mod tests {
     }
 
     #[test]
-    fn labels_are_a_closed_snake_case_vocabulary() {
+    fn node_labels_are_a_closed_snake_case_vocabulary() {
         // The trace sends these verbatim, so they must be stable identifiers
         // with no user data, no spaces, and no punctuation.
         let mut seen = BTreeSet::new();
@@ -733,16 +612,6 @@ mod tests {
             );
             assert!(seen.insert(label), "duplicate node label {label:?}");
         }
-        let mut seen_edges = BTreeSet::new();
-        for edge in graph() {
-            let label = edge.edge.label();
-            assert!(
-                label.chars().all(|c| c.is_ascii_lowercase() || c == '_'),
-                "edge label {label:?} is not a stable identifier"
-            );
-            seen_edges.insert(label);
-        }
-        assert!(!seen_edges.is_empty());
     }
 
     #[test]
