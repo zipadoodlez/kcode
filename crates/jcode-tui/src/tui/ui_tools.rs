@@ -1059,16 +1059,16 @@ pub(super) fn get_tool_summary_with_budget(
                         )
                     }
                 }
-                "smart" => {
+                "trace" | "smart" => {
                     let (subject, relation) = parse_agentgrep_smart_subject_relation(&tool.input);
 
                     match (subject, relation) {
                         (Some(subject), Some(relation)) => format!(
-                            "smart {}:{}",
+                            "{mode} {}:{}",
                             truncate_identifier_display(subject, bounded(18)),
                             truncate_identifier_display(relation, bounded(14))
                         ),
-                        _ => "smart".to_string(),
+                        _ => mode.to_string(),
                     }
                 }
                 other => other.to_string(),
