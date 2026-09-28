@@ -887,15 +887,8 @@ impl CopilotApiProvider {
 }
 
 fn is_retryable_error(error_str: &str) -> bool {
-    kcode_provider_core::is_transient_transport_error(error_str)
-        || error_str.contains("500 internal server error")
-        || error_str.contains("502 bad gateway")
-        || error_str.contains("503 service unavailable")
-        || error_str.contains("504 gateway timeout")
-        || error_str.contains("overloaded")
-        || error_str.contains("429 too many requests")
-        || error_str.contains("rate limit")
-        || error_str.contains("rate_limit")
+    kcode_provider_core::is_retryable_provider_error(error_str)
+        // Copilot-specific stream failures on its multiplexed API.
         || error_str.contains("stream error")
         || error_str.contains("stream read timeout")
 }

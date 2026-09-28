@@ -87,6 +87,27 @@ pub fn is_transient_transport_error(error_str: &str) -> bool {
         || lower.contains("sendrequest")
 }
 
+/// Transport faults plus the HTTP 5xx and rate-limit surfaces every provider
+/// emits, as a substring test.
+///
+/// This is the shared part of a provider's `is_retryable_error`. Providers add
+/// their own wire-specific markers on top (Anthropic's `api_error`, Copilot's
+/// stream timeouts) and must keep doing so separately: folding them in here would
+/// make every provider retry on another provider's failure text.
+pub fn is_retryable_provider_error(error_str: &str) -> bool {
+    is_transient_transport_error(error_str)
+        // Server errors (5xx), including the overloaded shortcut.
+        || error_str.contains("500 internal server error")
+        || error_str.contains("502 bad gateway")
+        || error_str.contains("503 service unavailable")
+        || error_str.contains("504 gateway timeout")
+        || error_str.contains("overloaded")
+        // Rate limiting (429).
+        || error_str.contains("429 too many requests")
+        || error_str.contains("rate limit")
+        || error_str.contains("rate_limit")
+}
+
 #[cfg(test)]
 mod tests {
     use super::{is_transient_transport_error, send_with_initial_response_timeout};

@@ -1069,17 +1069,12 @@ async fn run_claude_cli(
 
 /// Check if an error is transient and should be retried
 fn is_retryable_error(error_str: &str) -> bool {
-    kcode_provider_core::is_transient_transport_error(error_str)
-        // Claude CLI specific errors
+    kcode_provider_core::is_retryable_provider_error(error_str)
+        // Claude CLI process-transport failures.
         || error_str.contains("processtransport")
         || error_str.contains("not ready for writing")
         || error_str.contains("taskgroup")
         || error_str.contains("sub-exception")
-        // Server errors (5xx)
-        || error_str.contains("502 bad gateway")
-        || error_str.contains("503 service unavailable")
-        || error_str.contains("504 gateway timeout")
-        || error_str.contains("overloaded")
 }
 
 fn to_claude_tool_name(name: &str) -> String {

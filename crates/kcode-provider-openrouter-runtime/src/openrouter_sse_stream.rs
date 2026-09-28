@@ -317,8 +317,8 @@ fn is_retryable_error(error_str: &str) -> bool {
         _ => {}
     }
 
-    kcode_provider_core::is_transient_transport_error(error_str)
-        || error_str.contains("stream error")
+    kcode_provider_core::is_retryable_provider_error(error_str)
+        // Bare `eof`; the shared classifier only matches `unexpected eof`.
         || error_str.contains("eof")
         || error_str.contains("5")
             && (error_str.contains("50")
@@ -326,7 +326,6 @@ fn is_retryable_error(error_str: &str) -> bool {
                 || error_str.contains("503")
                 || error_str.contains("504")
                 || error_str.contains("internal server error"))
-        || error_str.contains("overloaded")
 }
 
 #[cfg(test)]

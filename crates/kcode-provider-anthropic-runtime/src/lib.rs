@@ -2172,18 +2172,10 @@ async fn stream_response(
 
 /// Check if an error is transient and should be retried
 fn is_retryable_error(error_str: &str) -> bool {
-    kcode_provider_core::is_transient_transport_error(error_str)
-        // Server errors (5xx)
-        || error_str.contains("500 internal server error")
-        || error_str.contains("502 bad gateway")
-        || error_str.contains("503 service unavailable")
-        || error_str.contains("504 gateway timeout")
-        || error_str.contains("overloaded")
-        // Rate limiting (429)
-        || error_str.contains("429 too many requests")
-        || error_str.contains("rate limit")
-        || error_str.contains("rate_limit")
-        // API-level server errors (SSE error events)
+    kcode_provider_core::is_retryable_provider_error(error_str)
+        // Anthropic reports API-level failures as SSE error events without an
+        // HTTP status, so `api_error` and a bare `internal server error` are
+        // retryable here but not universally.
         || error_str.contains("api_error")
         || error_str.contains("internal server error")
 }

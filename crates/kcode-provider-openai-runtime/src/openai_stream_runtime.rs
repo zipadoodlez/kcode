@@ -1625,32 +1625,17 @@ fn classify_unavailable_model_error(status: StatusCode, body: &str) -> Option<St
 
 /// Check if an error is transient and should be retried
 pub(super) fn is_retryable_error(error_str: &str) -> bool {
-    // Shared transport-layer classifier used by every other provider. This
-    // covers transient TLS/network faults (connection reset/closed/refused/
-    // aborted, broken pipe, timeouts, unexpected EOF, error decoding/reading,
-    // TLS BadRecordMac / fatal-alert, TLS handshake EOF, DNS/route failures,
-    // and HTTP/2 stream/protocol faults). Keeping the OpenAI path delegated
-    // here ensures retry behavior is unified across providers (issue #338).
-    kcode_provider_core::is_transient_transport_error(error_str)
+    // Shared classifier: transient TLS/network and HTTP/2 faults plus the 5xx
+    // and rate-limit surfaces. Keeping the OpenAI path delegated here is what
+    // makes retry behavior uniform across providers (issue #338).
+    kcode_provider_core::is_retryable_provider_error(error_str)
         // OpenAI-specific transport wrapper.
         || error_str.contains("failed to send request to openai api")
         // Stream/decode errors specific to the OpenAI streaming runtime.
-        || error_str.contains("incomplete message")
         || error_str.contains("stream disconnected before completion")
         || error_str.contains("ended before message completion marker")
         || error_str.contains("falling back from websockets to https transport")
-        // Server errors (5xx)
-        || error_str.contains("500 internal server error")
-        || error_str.contains("502 bad gateway")
-        || error_str.contains("503 service unavailable")
-        || error_str.contains("504 gateway timeout")
-        || error_str.contains("overloaded")
-        // Rate limiting (429): transient, recovers on retry. Unified with the
-        // other providers (Anthropic/Copilot) which already retry these.
-        || error_str.contains("429 too many requests")
-        || error_str.contains("rate limit")
-        || error_str.contains("rate_limit")
-        // API-level server errors
+        // API-level server errors.
         || error_str.contains("api_error")
         || error_str.contains("server_error")
         || error_str.contains("internal server error")

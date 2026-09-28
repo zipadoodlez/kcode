@@ -15,7 +15,7 @@ pub mod selection;
 pub mod transport;
 
 pub use kcode_usage_types::{ModelUsage, compare_model_usage};
-pub use transport::is_transient_transport_error;
+pub use transport::{is_retryable_provider_error, is_transient_transport_error};
 
 pub use anthropic::{
     ANTHROPIC_OAUTH_BETA_HEADERS, ANTHROPIC_OAUTH_BETA_HEADERS_1M, AnthropicContextMode,
