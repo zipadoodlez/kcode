@@ -130,10 +130,10 @@ impl DiffDisplayMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum OverscrollStatusMode {
-    /// Never show the status line (default; the compact facts stack is used).
-    #[default]
+    /// Never show the status line; the compact facts stack is used instead.
     Off,
-    /// Always show the status line below the input.
+    /// Always show the status line below the input (default).
+    #[default]
     On,
 }
 
@@ -958,7 +958,7 @@ pub struct FeatureConfig {
     pub swarm: bool,
     /// Default state of auto-poke (automatic follow-up when the model stops with
     /// incomplete todos). `/poke on` / `/poke off` still override this per session
-    /// (default: true)
+    /// (default: false)
     pub auto_poke: bool,
     /// Inject timestamps into user messages and tool results sent to the model (default: true)
     pub message_timestamps: bool,
@@ -978,7 +978,7 @@ impl Default for FeatureConfig {
         Self {
             check_updates: true,
             swarm: true,
-            auto_poke: true,
+            auto_poke: false,
             message_timestamps: true,
             kv_cache_miss_notices: true,
             update_channel: UpdateChannel::default(),

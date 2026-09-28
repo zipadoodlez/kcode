@@ -182,9 +182,9 @@ reasoning_display = "full"
 # external_sessions = true
 
 # Status line (model/provider/context info below the input):
-#   "off" - never shown; the compact facts stack is used (default)
-#   "on"  - always visible
-# overscroll_status = "off"
+#   "on"  - always visible (default)
+#   "off" - never shown; the compact facts stack is used
+# overscroll_status = "on"
 
 # Active redraw FPS (processing, streaming, spinners): 1-120 (default: 60)
 # Runtime policy may cap this lower on slower environments such as WSL/Windows Terminal.
@@ -243,8 +243,8 @@ check_updates = true
 # Swarm: multi-session coordination features
 swarm = true
 # Auto-poke: automatically nudge the model to continue when it stops with
-# incomplete todos. /poke on and /poke off still override this per session.
-auto_poke = true
+# incomplete todos. Off by default; /poke on enables it for a session.
+auto_poke = false
 # Inject timestamps into user messages and tool results sent to the model
 message_timestamps = true
 # Show an in-chat warning when a request misses the KV cache for a harness-caused

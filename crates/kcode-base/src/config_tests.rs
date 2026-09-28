@@ -161,15 +161,6 @@ fn swarm_max_concurrent_agents_defaults_to_safe_live_worker_budget() {
 }
 
 #[test]
-fn auto_poke_feature_defaults_on_and_parses_false() {
-    assert!(Config::default().features.auto_poke);
-
-    let cfg: Config =
-        toml::from_str("[features]\nauto_poke = false\n").expect("features.auto_poke should parse");
-    assert!(!cfg.features.auto_poke);
-}
-
-#[test]
 fn auto_poke_toggle_key_defaults_parses_and_reports_disabled() {
     assert_eq!(Config::default().keybindings.auto_poke_toggle, "ctrl+p");
 
