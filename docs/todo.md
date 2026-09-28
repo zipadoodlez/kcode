@@ -62,7 +62,7 @@ lines.
 | Dead local turn path | ~810 whole files (`local.rs` 590, `event_wrappers.rs` 38, `overnight_card.rs` 183) + ~30 partial items | `App::run` (`run_shell.rs:198`) has zero callers (live entry is `run_remote`, `tui_launch.rs:160`); cfg-ing it out yields exactly 48 `never used` items | tests drive `local::` from 8 files / 33 sites | delete after migrating those tests; ~1.5k with the partials |
 | Second markdown renderer | ~4,700 (`kcode-render-core` 4,542 + adapter 795) | `render_markdown_via_core` has only test callers; the TUI uses the legacy path (`ui_messages.rs:95`); the adapter's own doc says the legacy path "remains authoritative; this adapter is validated against it before any switchover" | `render-core` also supplies `reasoning_line_markup` to `kcode-base/src/session/render.rs` | a switchover, not a deletion: land it and delete the legacy path, or abandon it and delete the core |
 | Harnesses living in test files | ~7k | `[census]`: `live_tests.rs` 3,080 is `pub mod` production code consumed by `kcode-provider-doctor`; `onboarding_eval.rs` 3,294 embeds a metrics framework; `smoothness_benchmark.rs` 332; `browser_fast_live_tests.rs` 250 | `live_tests` is genuinely production | move the non-test halves into modules; `live_tests` is a misnamed production module |
-| Duplicated tiny helpers | ~500 over ~10 families | `[census]` names both file:line per family; verified `now_ms` x3 is byte-identical (`observe.rs:257`, `split_view.rs:310`, `todos_view.rs:566`) | 5-20 lines each | one home each, low risk |
+| Duplicated tiny helpers | ~230, not the 500 first guessed | every family in the item list below was re-read and its bodies hash-compared; the census's `detect_*`/`generate_diff_*` rows were dropped as not-duplicates | 3-90 lines each, all with a home that already exists | one home each; see the item list |
 | Parallel persisted-state runtime | ~20, not 150 | read both files: the mechanism already lives in `server/durable_state.rs` (`load_json_state`, `save_json_state`, `hashed_request_key`, `state_dir`); only the 3-line `load_state`/`save_state` wrappers rhyme, and the payload, TTLs, and `is_stale` bodies differ | payload-specific | leave duplicated; a generic would weld two unrelated payloads together |
 | `ui_prefs` module + empty `provider/fingerprint.rs` | ~31 | verified: `ui_prefs` is declared, has zero references, and carries `#![allow(dead_code)]`; `fingerprint.rs` is a whitespace-only file with a `mod` declaration | nothing | delete |
 | Provider wire/runtime split, provider catalog | 0 deletable | `[census]`: runtime crates re-export the wire crates rather than reimplementing them; the catalog is single-source in `kcode-provider-metadata`, re-exported by `kcode-base` | real protocol/transport separation | keep; §1's B3-B5 is identity, not data |
@@ -75,19 +75,64 @@ the 13 wildcard re-export shims tracked in §3, not dead code.
 
 ### Actionable, cheapest first
 
-Landed 2026-09-28 (gate green, net -139 lines): deleted `ui_prefs` and
-`provider/fingerprint.rs`; the three hint files (`hotkey_feedback`,
-`shortcut_hints`, `swarm_hint`) now share `app/hint_state.rs` for load/save, so
-the persisted-one-shot-hint concept has one home; `fenced_block` moved to
-`kcode_base::side_panel`. The rest remain:
+Landed 2026-09-28 (gate green): `ui_prefs` + `provider/fingerprint.rs` deleted
+(~31 lines); the hint trio (`hotkey_feedback`, `shortcut_hints`, `swarm_hint`)
+shares `app/hint_state.rs` for load/save/unix-seconds; `fenced_block` moved to
+`kcode_base::side_panel`; `now_unix_ms` x3 folded onto `durable_state`. Net
+about -150 lines. The rest, each re-read and verified before it was written
+down; rows I did not personally re-check say `[census]`.
 
-- [ ] Give the remaining duplicated helper families one home each:
-  `now_unix_ms` x3, `swarm_id_for_session` x4, `build_file_touch_preview` x3,
-  `generate_diff_summary` x3, `generate_diff` x2, `sanitize_session_id` x3,
-  `state_dir`/`state_path`, `detect_load`/`detect_memory`/`parse_meminfo_kb`.
-  `now_ms` x3 is deliberately left: routing it through
-  `tui::test_harness::now_ms()` (the existing clock home) would change behavior
-  under the test clock, which is a fix with its own verification, not a move.
+Dead weight, zero callers:
+
+- [ ] `ImportReview::{current,position,current_checked}`
+  (`onboarding_flow.rs:163,172,243`), `onboarding_enter_continue_prompt`
+  (`onboarding_flow_control.rs:302`), `set_swarm_panel_focus`
+  (`tui_state.rs:1917`), and `onboarding_graph::{graph,node_props,
+  check_invariants,min_keystrokes_to}` `[census]`.
+- [ ] The dead local turn path (~810-1,500 lines); §2 owns it.
+
+One home per duplicated helper. Body hashes were compared for each of these:
+
+- [ ] `build_file_touch_preview` is byte-identical in three files, and so are
+  its two consts: `tool/write.rs:193,10-11`, `tool/edit.rs:213,10-11`,
+  `tool/apply_patch.rs:322,10-11` (~87 lines).
+- [ ] `SessionAgents` and `ChannelSubscriptions` are restated 32 times across
+  22 files while `server.rs:105-106` already declares both `pub(super)`. Import
+  them instead of re-declaring the type.
+- [ ] `swarm_id_for_session` (the async member lookup, not the identity fn at
+  `util.rs:113`) is byte-identical 3x: `client_comm_channels.rs:13`,
+  `client_comm_context.rs:12`, `client_comm_message.rs:17`. Same for
+  `friendly_name_for_session` 2x (`client_comm_context.rs:20`,
+  `client_comm_message.rs:25`).
+- [ ] `sanitize_session_id` 3x identical (`mission.rs:179`,
+  `durable_state.rs:14`, `reload_recovery.rs:54`). The home already exists; it
+  just needs widening, and `reload_recovery.rs:404`'s test moves with it.
+- [ ] `parse_meminfo_kb` 3x identical (`overnight.rs:595`, `perf.rs:282`, and
+  `kcode-tui/src/tui/ui_frame_metrics.rs:916`, so this one is cross-crate).
+- [ ] `truncated_stream_payload_context` identical in both wire crates
+  (`provider-openai/src/stream.rs:19`, `provider-openrouter/src/stream.rs:14`);
+  `kcode-provider-core` is the shared hub.
+- [ ] Two const pairs: `RELOAD_MARKER_MAX_AGE` = 30s twice (`app/remote.rs:67`,
+  `app/remote/reconnect.rs:15`); `RELOAD_RESTORE_MARKER_MAX_AGE` = 60s twice
+  (`client_state.rs:26`, `client_session.rs:31`).
+- [ ] `external_home_path` 2x `[census]` (`onboarding_flow.rs:539`,
+  `onboarding_repair.rs:96`).
+- [ ] `now_ms` 3x in `app/` (`observe.rs:242`, `split_view.rs:295`,
+  `todos_view.rs:566`) plus a fourth in `kcode-base/src/side_panel.rs:557`.
+  Deliberately left: the existing clock home is
+  `tui::test_harness::now_ms()`, and routing through it changes behavior under
+  the test clock, so that is a fix needing its own verification, not a move.
+
+Checked and deliberately not welded: `detect_memory` returns a 4-tuple in
+`overnight.rs` and a 2-tuple in `perf.rs`; `detect_load` differs in how it
+counts CPUs; `generate_diff_summary` (3x) and `generate_diff` (2x) have
+different bodies despite identical signatures. The rest of the census's
+same-name hits are coincidental (`shell_single_quote`, `record`, `default_action`,
+`DEFAULT_LIMIT`, `execute_debug_command`, `SearchInput`/`SearchResult`, ...),
+not one concept.
+
+Bigger, each its own pass:
+
 - [ ] Move the non-test halves out of the test tree (`live_tests.rs`,
   `onboarding_eval.rs`, `smoothness_benchmark.rs`); §4 owns the test-tree item.
 - [ ] Delete the dead local turn path and migrate the 33 test call sites onto
@@ -345,6 +390,16 @@ Staged, each lands whole.
   Done when: `handle_client` is under ~600 lines, `client_lifecycle.rs` is out of
   the size budget, and no `SwarmState { .. }` literal is constructed inside a
   request arm.
+- [ ] **Condense `tool/communicate.rs`** (3,364 lines) `[census]`: the 2026-09-28
+  census read it and found four concepts welded together — swarm coordination,
+  capacity cleanup (`cleanup_swarm_workers`, `stop_swarm_sessions`), the run-plan
+  driver (`run_swarm_plan_loop`, the driver-claim helpers), and a large block of
+  `format_*`/`fetch_*` output formatters around a ~1,100-line `execute`. Same
+  census explicitly found these are *not* splits: `server/swarm.rs` (one cohesive
+  membership concept), `server/comm_control.rs` (one concept, covered by §1),
+  `agent/turn_streaming_mpsc.rs` (one concept with labeled injection points).
+  `tool/session_search.rs` has two real seams (native index vs external-source
+  ingestion).
 - [ ] **Unify the command surface**: slash-command identity is a string matched
   in four places: registry `REGISTERED_COMMANDS` (113 literals), `commands.rs`
   (59), `commands_dispatch.rs` (85), `remote/key_handling.rs` (54).
@@ -403,12 +458,31 @@ tree first would just move that churn around.
   targets.
 - [ ] Move subsystem code out of test files: `live_tests.rs` is a live-provider
   coverage ledger (21% tests), `provider_e2e.rs` (11% tests).
+- [ ] One home per duplicated test helper `[census]`; 13 names are defined in
+  more than one file, with `lock_env` (7 files) and `test_agent`, `ctx` (4 each)
+  the worst: `configured_swarm_root_effort_reads_real_config` (3),
+  `available_models_display_seeds_from_persisted_catalog` (3), then
+  `tracked_env_vars`, `clear_openai_compatible_runtime_env`, `create_test_app`,
+  `ensure_test_kcode_home_if_unset`, `empty_swarm_status_state`,
+  `load_auth_file_renames_existing_labels_to_animal_scheme`,
+  `test_mask_email_censors_local_part`, `routes` (2 each).
 - [ ] Pre-existing failures on this tree: `kcode-tui --lib` 27, `kcode-base --lib`
   15, root `kcode --lib` 10 of 195 (measured 2026-09-28; it was 12 of 193 at
   `6dff3825`). Sampled root causes are stale expectations for removed or renamed
   surface. Also math/LaTeX 15 and `test_lock_order` 1. Environmental, not
   regressions. Treat as the baseline; the suite still covers removed features and
   brittle pixel/color assertions, so collapse or delete rather than maintain.
+- [ ] `kcode-app-core --lib` also has two failures with one root cause,
+  diagnosed 2026-09-28: `client_actions_tests.rs:441` still asserts the member's
+  `swarm_id` equals its working dir, and `communicate_tests/end_to_end.rs:587`
+  still expects two independent root clients in one repo to share a swarm.
+  `a830fe18` ("fix(swarm): isolate plans by root session", 2026-08-09) moved
+  swarm identity to `session:<id>` across 5 files and updated neither test;
+  swarm identity is defined at `server/util.rs:113`. Fix is a test update
+  (expect `session:<id>`; make the peer a spawned child, since children inherit
+  the parent's swarm via `parent_swarm_id`) unless the cwd-sharing model that
+  `d4eb3250` (#481) introduced is actually wanted, in which case `a830fe18` is
+  the regression and the fix is in production code.
 
 ## 5. Hygiene, then packaging
 
