@@ -28,25 +28,6 @@ fn observe_smoothness_frame(
     recorder.observe(frame);
 }
 
-/// Debug variant: also return the rendered text so failures can be diagnosed.
-#[allow(dead_code)]
-fn observe_smoothness_frame_text(
-    app: &App,
-    terminal: &mut ratatui::Terminal<ratatui::backend::TestBackend>,
-    recorder: &mut kcode_tui_core::anchor_stability::AnchorStabilityRecorder,
-) -> String {
-    observe_smoothness_frame(app, terminal, recorder);
-    let buf = terminal.backend().buffer();
-    let mut out = String::new();
-    for y in 0..buf.area.height {
-        for x in 0..buf.area.width {
-            out.push_str(buf[(x, y)].symbol());
-        }
-        out.push('\n');
-    }
-    out
-}
-
 #[test]
 fn smoothness_benchmark_simulated_streaming_turn_stays_within_budget() {
     // The budgets below describe a turn that streams *visible* reasoning and then

@@ -15,15 +15,15 @@ use crate::storage::{active_pids_dir, register_active_pid, unregister_active_pid
 /// idle-sleep in the middle of a streaming model response.
 pub struct StreamingGuard {
     _marker: crate::storage::StreamingGuard,
-    #[allow(dead_code)]
-    sleep_assertion: crate::platform::PowerAssertion,
+    /// Held for its lifetime only; dropping it releases the macOS sleep assertion.
+    _sleep_assertion: crate::platform::PowerAssertion,
 }
 
 impl StreamingGuard {
     pub fn new(session_id: impl Into<String>) -> Self {
         Self {
             _marker: crate::storage::StreamingGuard::new(session_id),
-            sleep_assertion: crate::platform::PowerAssertion::prevent_user_idle_system_sleep(
+            _sleep_assertion: crate::platform::PowerAssertion::prevent_user_idle_system_sleep(
                 "Kcode streaming model response",
             ),
         }

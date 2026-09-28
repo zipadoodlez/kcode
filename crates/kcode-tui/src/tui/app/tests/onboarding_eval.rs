@@ -106,7 +106,6 @@ fn all_onboarding_phases() -> Vec<(&'static str, OnboardingPhase)> {
 /// One screen the user must clear on an entry path.
 struct Step {
     /// Phase label (for the report / cross-referencing the phase table).
-    #[allow(dead_code)]
     phase: &'static str,
     /// In-TUI keystrokes to advance on the happy (default) path.
     keystrokes: u32,

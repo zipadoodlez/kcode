@@ -97,14 +97,29 @@ current_checked}` are asserted in `tests/onboarding_flow.rs`. Landed 2026-09-28:
 it is the only production constructor of the legacy `ContinuePrompt` phase, so
 deleting it makes the compiler report the variant as never constructed (tested).
 
-- [ ] `#[allow(dead_code)]` hides what is left. Stripping the eight
-  unconditional sites surfaced six items: a field (`kcode-base/src/session.rs:18`
-  `sleep_assertion`), dead accessors (`session_search_index.rs:216`
-  `len`/`is_empty`), test-only items (`onboarding_flow`'s accessors,
-  `info_widget_swarm_gallery.rs:454`), and the deliberate `ContinuePrompt`
-  retention. One site (`tool/open.rs:478`) surfaced nothing, so that attribute is
-  redundant. The `cfg_attr` sites are conditional (platform, feature,
-  `cfg(test)`) and should stay.
+The `#[allow(dead_code)]` sweep is done (2026-09-28). Each unconditional site was
+stripped and clippy asked what it hid:
+
+- `kcode-base/src/session.rs:18` held an RAII power assertion for its lifetime
+  only, so the field is renamed `_sleep_assertion` (matching the `_marker`
+  beside it) and the attribute is gone, not the field.
+- `session_search_index.rs:216` hid `len`/`is_empty` with no caller; deleted.
+- `onboarding_flow.rs` and `info_widget_swarm_gallery.rs:454` hid items only tests
+  use; they now say `#[cfg(test)]`, and the gallery's now-test-only import moved
+  with it.
+- `tests/smoothness_benchmark.rs` hid an unused debug helper; deleted. That
+  attribute was *not* redundant, contrary to the first reading.
+- `tests/onboarding_eval.rs` and `examples/swarm_agent_count.rs` were redundant:
+  both annotated items are read or used. Attributes deleted.
+- `tool/open.rs:478` was not redundant either: the struct is used only by a
+  `cfg(not(target_os = "macos"))` function, so the attribute is now
+  `cfg_attr(target_os = "macos", allow(dead_code))`.
+- `onboarding_flow_control.rs:308` stays, with the reason written down: the only
+  production constructor of the legacy `ContinuePrompt` phase.
+
+One unconditional `#[allow(dead_code)]` remains, that last one. The `cfg_attr`
+sites are conditional on platform, feature, or `cfg(test)` and stay as they are.
+
 - [ ] The dead local turn path (~810-1,500 lines); §2 owns it.
 
 One home per duplicated helper. Body hashes were compared for each of these:
@@ -509,6 +524,12 @@ tree first would just move that churn around.
 
 Independent, no dependency on the phases above.
 
+- [ ] Not every color derives from a role. `configured_native_color`
+  (`kcode-tui-style/src/palette.rs`) attributes a shade to a role only when it
+  equals that role's default, so hardcoded `Color::Rgb(...)` shades pass through
+  and `/colors` cannot recolor them. Examples: `login_picker.rs`
+  `PANEL_BG`/`PANEL_BORDER`, `info_widget_swarm_gallery.rs`. Give each orphaned
+  shade a role, or mark it intentionally fixed.
 - [ ] Hooks are unobservable: no `/hooks`, no listing, no dry-run. A typo looks
   identical to a hook that does nothing.
 - [ ] Blocked calls are invisible: `pre_tool` stderr goes to the model, nothing

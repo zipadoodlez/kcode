@@ -475,7 +475,7 @@ async fn spawn_with_grace(mut cmd: Command, backend: &str) -> Result<()> {
 /// `stems` are normalized application identifiers for the default browser(s)
 /// (e.g. `firefox`), and `pre_ids` are the matching window ids that existed
 /// before the open so we can prefer a freshly created window afterwards.
-#[allow(dead_code)]
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 struct BrowserFocusContext {
     stems: Vec<String>,
     pre_ids: HashSet<u64>,

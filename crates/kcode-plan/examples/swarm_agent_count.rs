@@ -30,7 +30,6 @@ enum Act {
     Complete,
     Expand(Vec<NodeSpec>),
     InjectGap(Vec<NodeSpec>),
-    #[allow(dead_code)]
     Fail,
 }
 

@@ -157,8 +157,9 @@ impl ImportReview {
         self.continue_focused = pill == SummaryPill::Continue;
     }
 
-    /// 1-based position of the cursor row (for "1 of 3" display).
-    #[allow(dead_code)] // Accessor kept for the import-review UI; not wired to a caller yet.
+    /// 1-based position of the cursor row (for "1 of 3" display). Only tests
+    /// read it today; drop the `cfg(test)` when the import-review UI wires up.
+    #[cfg(test)]
     pub(crate) fn position(&self) -> usize {
         self.cursor + 1
     }
@@ -228,8 +229,8 @@ impl ImportReview {
     }
 
     /// Whether the row under the cursor is currently checked. False while the
-    /// "Continue" pill is focused.
-    #[allow(dead_code)] // Accessor kept for the import-review UI; not wired to a caller yet.
+    /// "Continue" pill is focused. Only tests read it today.
+    #[cfg(test)]
     pub(crate) fn current_checked(&self) -> bool {
         if self.continue_focused {
             return false;

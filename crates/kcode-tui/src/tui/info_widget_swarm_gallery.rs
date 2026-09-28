@@ -9,8 +9,10 @@
 
 use crate::protocol::SwarmMemberStatus;
 use kcode_tui_core::keybind::alt_chord_lower;
+#[cfg(test)]
+use kcode_tui_render::swarm_gallery::render_gallery;
 use kcode_tui_render::swarm_gallery::{
-    GalleryMember, SwarmStripHint, display_order, humanize_age, is_active_status, render_gallery,
+    GalleryMember, SwarmStripHint, display_order, humanize_age, is_active_status,
     render_swarm_compact, render_swarm_live_card, render_swarm_strip, render_swarm_strip_vertical,
     status_accent, status_glyph,
 };
@@ -451,7 +453,8 @@ fn clamp_line_to_width(line: &mut Line<'static>, width: usize) {
 }
 
 /// Render the inline swarm gallery for the given members into `area`-width lines.
-#[allow(dead_code)]
+/// Only the tests below call it today.
+#[cfg(test)]
 pub(crate) fn render_swarm_gallery_lines(
     members: &[SwarmMemberStatus],
     width: usize,
