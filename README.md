@@ -64,8 +64,13 @@ echo 'AUR_REPO=custom' >> ~/.config/aurutils/env
 then, from `packaging/arch/`:
 
 ```bash
+cd packaging/arch
 aur build                    # build, add to [custom], refresh its database
-sudo pacman -Syu kcode-git   # install from it
+
+# Install from anywhere except packaging/arch: makepkg keeps a bare clone of the
+# `git+` source there named kcode-git, and pacman reads that argument as a path.
+# No -y: [custom] is a local file:// repository, so this needs no network.
+sudo pacman -S kcode-git
 ```
 
 `aur build -c` builds inside a systemd-nspawn container instead of the host.
