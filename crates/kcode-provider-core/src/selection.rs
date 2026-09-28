@@ -248,6 +248,35 @@ pub fn own_model_id<'a>(
     Ok(trimmed)
 }
 
+/// Build the plain route list for a provider whose selectable models are exactly
+/// its advertised ids: one available route per model, no per-model capability,
+/// usage, or cost.
+///
+/// Providers that attach per-model metadata (Antigravity's `available` and
+/// catalog detail, OpenRouter's aggregator routes) build their own; this is only
+/// for the `available_models_display()`-to-routes shape that Gemini, Cursor, and
+/// Grok Build each spelled out separately. The point is that a field added to
+/// [`ModelRoute`] lands in one place instead of every such provider.
+pub fn simple_model_routes(
+    models: Vec<String>,
+    provider: &str,
+    api_method: &str,
+    detail: &str,
+) -> Vec<ModelRoute> {
+    models
+        .into_iter()
+        .map(|model| ModelRoute {
+            model,
+            provider: provider.to_string(),
+            api_method: api_method.to_string(),
+            available: true,
+            detail: detail.to_string(),
+            cheapness: None,
+            usage: None,
+        })
+        .collect()
+}
+
 pub fn dedupe_model_routes(routes: Vec<ModelRoute>) -> Vec<ModelRoute> {
     use std::collections::HashMap;
 

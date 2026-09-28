@@ -295,18 +295,12 @@ impl Provider for CursorCliProvider {
     }
 
     fn model_routes(&self) -> Vec<kcode_provider_core::ModelRoute> {
-        self.available_models_display()
-            .into_iter()
-            .map(|model| kcode_provider_core::ModelRoute {
-                model,
-                provider: "Cursor".to_string(),
-                api_method: "cursor".to_string(),
-                available: true,
-                detail: String::new(),
-                usage: None,
-                cheapness: None,
-            })
-            .collect()
+        kcode_provider_core::simple_model_routes(
+            self.available_models_display(),
+            "Cursor",
+            "cursor",
+            "",
+        )
     }
 
     async fn prefetch_models(&self) -> Result<()> {

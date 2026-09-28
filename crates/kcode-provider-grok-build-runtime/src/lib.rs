@@ -202,18 +202,12 @@ impl Provider for GrokBuildProvider {
     }
 
     fn model_routes(&self) -> Vec<ModelRoute> {
-        self.available_models_display()
-            .into_iter()
-            .map(|model| ModelRoute {
-                model,
-                provider: "Grok Build".to_string(),
-                api_method: "grok-build-acp".to_string(),
-                available: true,
-                detail: "Grok Build subscription via Kcode-managed ACP".to_string(),
-                usage: None,
-                cheapness: None,
-            })
-            .collect()
+        kcode_provider_core::simple_model_routes(
+            self.available_models_display(),
+            "Grok Build",
+            "grok-build-acp",
+            "Grok Build subscription via Kcode-managed ACP",
+        )
     }
 
     async fn prefetch_models(&self) -> Result<()> {
