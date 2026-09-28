@@ -3526,6 +3526,7 @@ dependencies = [
 [[package]]
 name = "kgrep"
 version = "0.1.0"
+source = "git+https://github.com/zipadoodlez/kgrep.git?rev=bc205e8362831ca234976bea44cf92b614950b5b#bc205e8362831ca234976bea44cf92b614950b5b"
 dependencies = [
  "clap",
  "globset",
