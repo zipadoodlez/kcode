@@ -461,7 +461,6 @@ impl App {
             onboarding_flow: None,
             onboarding_auto_model_selection_active: Arc::new(AtomicBool::new(false)),
             onboarding_auto_model_selection_baseline: Arc::new(std::sync::Mutex::new(None)),
-            onboarding_startup_checked: false,
             onboarding_import_in_progress: None,
             onboarding_import_error: None,
             onboarding_import_failed_provider: None,
@@ -751,7 +750,6 @@ impl App {
             onboarding_flow: None,
             onboarding_auto_model_selection_active: Arc::new(AtomicBool::new(false)),
             onboarding_auto_model_selection_baseline: Arc::new(std::sync::Mutex::new(None)),
-            onboarding_startup_checked: false,
             onboarding_import_in_progress: None,
             onboarding_import_error: None,
             onboarding_import_failed_provider: None,
@@ -990,7 +988,6 @@ impl App {
         if let Some(host) = crate::tui::ssh_remote_host() {
             // The server supplies history, credentials, models and project state.
             // Local reload files can belong to an unrelated session with the same id.
-            app.onboarding_startup_checked = true;
             app.auto_server_reload = false;
             app.session.working_dir = None;
             app.resume_session_id = resume_session;

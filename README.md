@@ -100,6 +100,26 @@ kcode server stop
 
 Inside the TUI, type `/` for the command palette and `/help` for help.
 
+### Connecting a provider
+
+kcode does not prompt you to log in. It shows a single line telling you to when
+it has no provider it could send a request to, and otherwise starts working.
+
+```bash
+kcode login                     # pick a provider interactively (OAuth or API key)
+kcode login --provider openai   # a specific one
+printf '%s' "$THE_API_KEY" | kcode provider add my-endpoint \
+    --base-url https://api.example.com/v1 --model <model> --api-key-stdin
+```
+
+If you already use another agent CLI, `kcode login` offers to import its logins
+rather than making you authenticate again. An API-key provider also works purely
+from the environment: set the variable named in `kcode provider list` (for
+example `DEEPSEEK_API_KEY`) and it is usable with no further setup.
+
+`kcode auth doctor` reports what is broken when a provider is configured but
+rejected, with the recovery steps for each case.
+
 ---
 
 ## Surface map

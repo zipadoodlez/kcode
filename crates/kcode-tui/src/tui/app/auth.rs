@@ -2810,9 +2810,6 @@ impl App {
                     !profile_activation_owns_selection,
                 );
             }
-            // First-run onboarding: once the user has authenticated on a fresh
-            // install, walk them through model selection -> continue/suggestions.
-            self.maybe_begin_onboarding_flow_after_login();
         } else {
             let message = crate::auth::login_diagnostics::augment_auth_error_message(
                 &login.provider,

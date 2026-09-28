@@ -130,6 +130,31 @@ fn browser_unusable_here() -> bool {
     )
 }
 
+/// Whether a named OpenAI-compatible profile could serve a request: an inline
+/// key, the env/config key it names, or no key required at all (a local
+/// endpoint). Used by [`AuthStatus::any_provider_usable`].
+fn profile_is_usable(profile: &crate::config::NamedProviderConfig) -> bool {
+    if profile
+        .api_key
+        .as_deref()
+        .is_some_and(|key| !key.trim().is_empty())
+    {
+        return true;
+    }
+    let Some(env_key) = profile
+        .api_key_env
+        .as_deref()
+        .filter(|key| !key.trim().is_empty())
+    else {
+        return profile.requires_api_key != Some(true);
+    };
+    crate::provider_catalog::load_env_value_from_env_or_config(
+        env_key,
+        profile.env_file.as_deref().unwrap_or_default(),
+    )
+    .is_some_and(|value| !value.trim().is_empty())
+}
+
 /// True when the current process is a Rust test binary (`cargo test` /
 /// `cargo nextest`). Test binaries always run from `target/**/deps/`, a
 /// location no installed or self-dev kcode binary ever runs from.
@@ -395,6 +420,21 @@ impl AuthStatus {
             || self.gemini == AuthState::Available
             || self.cursor == AuthState::Available
             || self.grok_build == AuthState::Available
+    }
+
+    /// True when any provider on this machine could actually serve a request: a
+    /// built-in credential, or a configured OpenAI-compatible profile whose key
+    /// is present.
+    ///
+    /// [`AuthStatus::has_any_available`] enumerates only the built-in providers,
+    /// so a user whose only provider is a named profile (DeepSeek, Z.ai, Kimi, a
+    /// local llama.cpp) reads as "nothing available" and gets told to log in.
+    pub fn any_provider_usable() -> bool {
+        AuthStatus::check_fast().has_any_available()
+            || crate::config::config()
+                .providers
+                .values()
+                .any(profile_is_usable)
     }
 
     /// Emit a structured, non-secret snapshot of which providers currently have

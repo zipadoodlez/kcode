@@ -42,7 +42,6 @@ fn ssh_remote_startup_ignores_colliding_local_session_and_onboarding() {
         assert!(app.remote_session_id.is_none());
         assert!(!app.onboarding_welcome_active());
         assert!(app.suggestion_prompts().is_empty());
-        assert!(app.onboarding_startup_checked);
         assert!(!app.auto_server_reload);
         assert_eq!(
             app.server_display_name().as_deref(),

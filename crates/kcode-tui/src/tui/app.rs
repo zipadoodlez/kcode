@@ -1022,11 +1022,6 @@ pub struct App {
     /// Model last chosen by onboarding automation. A later catalog event may
     /// improve it only while the active model still matches this value.
     onboarding_auto_model_selection_baseline: Arc<std::sync::Mutex<Option<String>>>,
-    /// One-shot guard: have we evaluated whether to auto-start the onboarding
-    /// flow on startup yet? The fresh-install path logs in at the CLI before the
-    /// TUI launches, so no in-TUI login event fires; this lets us still begin the
-    /// flow once the TUI is ready and already authenticated.
-    onboarding_startup_checked: bool,
     /// `Some(started_at)` between committing the login-import screen (Enter on
     /// the Yes/No list) and the async import resolving via `LoginCompleted`.
     /// While set, the onboarding welcome card shows an "Importing your

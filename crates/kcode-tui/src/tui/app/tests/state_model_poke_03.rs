@@ -1705,11 +1705,6 @@ fn test_azure_login_completion_switches_local_model_without_completion() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let registry = rt.block_on(crate::tool::Registry::new(provider.clone()));
     let mut app = App::new_for_test_harness(provider, registry);
-    // This test asserts the login-completed status notice; a brand-new-install
-    // classification would let first-run onboarding overwrite it with the
-    // StartChoice prompt. Pre-commit the onboarding guard so the flow never
-    // starts.
-    app.onboarding_startup_checked = true;
     app.onboarding_flow = Some(crate::tui::app::onboarding_flow::OnboardingFlow {
         phase: crate::tui::app::onboarding_flow::OnboardingPhase::Done,
     });
