@@ -1032,12 +1032,7 @@ impl Provider for GeminiProvider {
     }
 
     fn set_model(&self, model: &str) -> Result<()> {
-        // See `strip_own_model_prefix`: `--provider gemini` routes through this
-        // runtime directly, so session restore hands it `gemini:<model>`.
-        let trimmed = kcode_provider_core::strip_own_model_prefix(model, "gemini:");
-        if trimmed.is_empty() {
-            anyhow::bail!("Gemini model cannot be empty");
-        }
+        let trimmed = kcode_provider_core::own_model_id(model, "gemini:", "Gemini")?;
         *self
             .model
             .write()

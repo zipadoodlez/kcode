@@ -766,14 +766,7 @@ impl Provider for AntigravityProvider {
     }
 
     fn set_model(&self, model: &str) -> Result<()> {
-        // `--provider antigravity` uses this runtime directly, so session
-        // restore hands it the routing spec `antigravity:<model>` rather than a
-        // bare id. See `strip_own_model_prefix`: keeping the prefix made every
-        // resumed turn 404.
-        let trimmed = kcode_provider_core::strip_own_model_prefix(model, "antigravity:");
-        if trimmed.is_empty() {
-            anyhow::bail!("Antigravity model cannot be empty");
-        }
+        let trimmed = kcode_provider_core::own_model_id(model, "antigravity:", "Antigravity")?;
         *self
             .model
             .write()

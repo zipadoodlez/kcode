@@ -269,12 +269,7 @@ impl Provider for CursorCliProvider {
     }
 
     fn set_model(&self, model: &str) -> Result<()> {
-        // See `strip_own_model_prefix`: `--provider cursor` routes through this
-        // runtime directly, so session restore hands it `cursor:<model>`.
-        let trimmed = kcode_provider_core::strip_own_model_prefix(model, "cursor:");
-        if trimmed.is_empty() {
-            anyhow::bail!("Cursor model cannot be empty");
-        }
+        let trimmed = kcode_provider_core::own_model_id(model, "cursor:", "Cursor")?;
         *self
             .model
             .write()

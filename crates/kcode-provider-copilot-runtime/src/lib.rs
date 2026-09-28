@@ -1030,12 +1030,7 @@ impl Provider for CopilotApiProvider {
     }
 
     fn set_model(&self, model: &str) -> Result<()> {
-        // See `strip_own_model_prefix`: `--provider copilot` routes through this
-        // runtime directly, so session restore hands it `copilot:<model>`.
-        let trimmed = kcode_provider_core::strip_own_model_prefix(model, "copilot:");
-        if trimmed.is_empty() {
-            anyhow::bail!("Copilot model cannot be empty");
-        }
+        let trimmed = kcode_provider_core::own_model_id(model, "copilot:", "Copilot")?;
         if trimmed.contains("[1m]") {
             anyhow::bail!(
                 "1M context window models are not supported via Copilot. Use the Anthropic API directly."

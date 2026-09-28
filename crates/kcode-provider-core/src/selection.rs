@@ -226,6 +226,28 @@ pub fn strip_own_model_prefix<'a>(model: &'a str, own_prefix: &str) -> &'a str {
     }
 }
 
+/// Resolve the model id a `Provider::set_model` call should adopt: the caller's
+/// own routing prefix stripped, and an empty result rejected.
+///
+/// Every runtime that can be selected directly (`--provider gemini`, `cursor`,
+/// `copilot`, `antigravity`) receives `"<prefix>:<model>"` from session restore
+/// and would 404 on every resumed turn if it sent the prefix. Only the strip and
+/// the empty check are shared here: writing the result into the provider's own
+/// model slot stays with the provider, because Copilot's slot is
+/// contention-sensitive (`try_write`) while the others take a poison-tolerant
+/// blocking write.
+pub fn own_model_id<'a>(
+    model: &'a str,
+    own_prefix: &str,
+    provider_label: &str,
+) -> anyhow::Result<&'a str> {
+    let trimmed = strip_own_model_prefix(model, own_prefix);
+    if trimmed.is_empty() {
+        anyhow::bail!("{provider_label} model cannot be empty");
+    }
+    Ok(trimmed)
+}
+
 pub fn dedupe_model_routes(routes: Vec<ModelRoute>) -> Vec<ModelRoute> {
     use std::collections::HashMap;
 
