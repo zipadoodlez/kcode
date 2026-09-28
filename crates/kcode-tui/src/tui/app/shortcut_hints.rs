@@ -26,6 +26,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use super::App;
+use super::hint_state;
 
 /// Used the keybinding this many times => considered learned; stop nudging.
 const LEARNED_FAST_THRESHOLD: u32 = 3;
@@ -127,56 +128,20 @@ struct ProficiencyState {
     actions: HashMap<String, ActionStat>,
 }
 
-fn state_path() -> Option<std::path::PathBuf> {
-    crate::storage::app_config_dir()
-        .ok()
-        .map(|dir| dir.join(STATE_FILE))
-}
-
-fn load_state() -> ProficiencyState {
-    let Some(path) = state_path() else {
-        return ProficiencyState::default();
-    };
-    crate::storage::read_json::<ProficiencyState>(&path).unwrap_or_default()
-}
-
-fn save_state(state: &ProficiencyState) {
-    let Some(path) = state_path() else {
-        return;
-    };
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    if let Err(error) = crate::storage::write_json(&path, state) {
-        crate::logging::info(&format!(
-            "Failed to persist keybinding-proficiency state {}: {}",
-            path.display(),
-            error
-        ));
-    }
-}
-
-fn now_unix() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
-
 /// Record that the user performed `action` via its keyboard shortcut.
 pub(crate) fn record_fast(action: LearnableAction) {
-    let mut state = load_state();
+    let mut state = hint_state::load::<ProficiencyState>(STATE_FILE);
     let stat = state.actions.entry(action.id().to_string()).or_default();
     stat.fast_uses = stat.fast_uses.saturating_add(1);
-    save_state(&state);
+    hint_state::save(STATE_FILE, &state);
 }
 
 /// Record that the user performed `action` the slow way (slash command/menu).
 pub(crate) fn record_slow(action: LearnableAction) {
-    let mut state = load_state();
+    let mut state = hint_state::load::<ProficiencyState>(STATE_FILE);
     let stat = state.actions.entry(action.id().to_string()).or_default();
     stat.slow_uses = stat.slow_uses.saturating_add(1);
-    save_state(&state);
+    hint_state::save(STATE_FILE, &state);
 }
 
 /// Pure ranked pick: among `candidates` (action id + stat + whether currently
@@ -208,8 +173,8 @@ fn pick_action_id<'a>(
 /// Returns `(message, label)` where `message` is the fully-formed nudge text.
 /// Pure-ish: reads config + bindings, mutates persisted hint counters.
 fn next_learn_hint() -> Option<String> {
-    let mut state = load_state();
-    let now = now_unix();
+    let mut state = hint_state::load::<ProficiencyState>(STATE_FILE);
+    let now = hint_state::now_unix_secs();
 
     // Resolve which actions are currently bound (have a shortcut label).
     let labels: HashMap<&'static str, String> = LearnableAction::ALL
@@ -243,7 +208,7 @@ fn next_learn_hint() -> Option<String> {
     let stat = state.actions.entry(chosen_id.to_string()).or_default();
     stat.hints_shown = stat.hints_shown.saturating_add(1);
     stat.last_hint_unix = now;
-    save_state(&state);
+    hint_state::save(STATE_FILE, &state);
 
     Some(format!(
         "⌨ You usually {} the slow way \u{2014} press {} next time",
@@ -356,7 +321,7 @@ mod tests {
         record_slow(LearnableAction::Resume);
         record_fast(LearnableAction::Resume);
 
-        let state = load_state();
+        let state = hint_state::load::<ProficiencyState>(STATE_FILE);
         let stat = state.actions.get("resume").expect("stat present");
         assert_eq!(stat.slow_uses, 2);
         assert_eq!(stat.fast_uses, 1);

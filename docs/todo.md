@@ -75,8 +75,19 @@ the 13 wildcard re-export shims tracked in §3, not dead code.
 
 ### Actionable, cheapest first
 
-- [ ] Delete `ui_prefs` and `provider/fingerprint.rs` (~31 lines, no callers).
-- [ ] Give the ~10 duplicated helper families one home each (~500 lines).
+Landed 2026-09-28 (gate green, net -139 lines): deleted `ui_prefs` and
+`provider/fingerprint.rs`; the three hint files (`hotkey_feedback`,
+`shortcut_hints`, `swarm_hint`) now share `app/hint_state.rs` for load/save, so
+the persisted-one-shot-hint concept has one home; `fenced_block` moved to
+`kcode_base::side_panel`. The rest remain:
+
+- [ ] Give the remaining duplicated helper families one home each:
+  `now_unix_ms` x3, `swarm_id_for_session` x4, `build_file_touch_preview` x3,
+  `generate_diff_summary` x3, `generate_diff` x2, `sanitize_session_id` x3,
+  `state_dir`/`state_path`, `detect_load`/`detect_memory`/`parse_meminfo_kb`.
+  `now_ms` x3 is deliberately left: routing it through
+  `tui::test_harness::now_ms()` (the existing clock home) would change behavior
+  under the test clock, which is a fix with its own verification, not a move.
 - [ ] Make the persisted pending-state skeleton generic over its payload
   (`swarm_mutation_state.rs`, `await_members_state.rs`, ~150 lines).
 - [ ] Move the non-test halves out of the test tree (`live_tests.rs`,

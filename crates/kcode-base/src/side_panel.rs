@@ -29,6 +29,24 @@ pub fn write_markdown_page(
     write_page(session_id, page_id, title, content, focus, false)
 }
 
+/// Wrap `text` in a markdown code fence, sizing the fence so a backtick run
+/// inside `text` cannot close it early. Page builders use this so embedded tool
+/// output cannot break out of its block.
+pub fn fenced_block(language: &str, text: &str) -> String {
+    let max_run = text
+        .split('\n')
+        .flat_map(|line| line.split(|ch| ch != '`'))
+        .map(str::len)
+        .max()
+        .unwrap_or(0);
+    let fence = "`".repeat(max_run.max(3) + 1);
+    if language.trim().is_empty() {
+        format!("{fence}\n{text}\n{fence}")
+    } else {
+        format!("{fence}{language}\n{text}\n{fence}")
+    }
+}
+
 pub fn append_markdown_page(
     session_id: &str,
     page_id: &str,

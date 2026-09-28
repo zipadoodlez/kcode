@@ -66,6 +66,7 @@ mod debug;
 mod event_wrappers;
 mod handterm_native_scroll;
 pub(crate) mod helpers;
+mod hint_state;
 mod hotkey_feedback;
 mod idle_heap_release;
 mod inline_interactive;
@@ -113,7 +114,6 @@ mod tui_state;
 mod turn;
 mod turn_memory;
 mod turn_notify;
-mod ui_prefs;
 mod viewport;
 
 pub(crate) use self::state_ui_storage::compact_display_messages_for_storage;

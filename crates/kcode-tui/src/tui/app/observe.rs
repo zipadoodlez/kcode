@@ -188,7 +188,7 @@ fn build_observe_tool_call_markdown(tool_call: &ToolCall) -> String {
     format!(
         "# Observe\n\nLatest tool call emitted by the model.\n\n- Tool: `{}`\n- Status: running\n\n## Tool input\n{}\n",
         tool_call.name,
-        fenced_block("json", &pretty_json(&tool_call.input))
+        crate::side_panel::fenced_block("json", &pretty_json(&tool_call.input))
     )
 }
 
@@ -222,29 +222,14 @@ fn build_observe_tool_result_markdown(
     }
     markdown.push_str(&format!(
         "\n## Tool input\n{}\n\n## Tool output\n{}\n",
-        fenced_block("json", &pretty_json(&tool_call.input)),
-        fenced_block("text", if output.is_empty() { "(empty)" } else { output })
+        crate::side_panel::fenced_block("json", &pretty_json(&tool_call.input)),
+        crate::side_panel::fenced_block("text", if output.is_empty() { "(empty)" } else { output })
     ));
     markdown
 }
 
 fn pretty_json(value: &serde_json::Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
-}
-
-fn fenced_block(language: &str, text: &str) -> String {
-    let max_run = text
-        .split('\n')
-        .flat_map(|line| line.split(|ch| ch != '`'))
-        .map(str::len)
-        .max()
-        .unwrap_or(0);
-    let fence = "`".repeat(max_run.max(3) + 1);
-    if language.trim().is_empty() {
-        format!("{fence}\n{text}\n{fence}")
-    } else {
-        format!("{fence}{language}\n{text}\n{fence}")
-    }
 }
 
 fn is_noise_tool(name: &str) -> bool {

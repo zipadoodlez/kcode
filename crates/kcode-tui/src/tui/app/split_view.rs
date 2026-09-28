@@ -219,7 +219,7 @@ fn build_split_view_markdown(app: &App) -> String {
                 if let Some(tool) = message.tool_data.as_ref() {
                     markdown.push_str(&format!("- Tool: `{}`\n\n", tool.name));
                 }
-                markdown.push_str(&fenced_block(
+                markdown.push_str(&crate::side_panel::fenced_block(
                     "text",
                     if message.content.trim().is_empty() {
                         "(empty)"
@@ -236,7 +236,7 @@ fn build_split_view_markdown(app: &App) -> String {
                     .filter(|title| !title.trim().is_empty())
                     .unwrap_or("System");
                 markdown.push_str(&format!("## {}\n\n", title));
-                markdown.push_str(&fenced_block(
+                markdown.push_str(&crate::side_panel::fenced_block(
                     "text",
                     if message.content.trim().is_empty() {
                         "(empty)"
@@ -276,21 +276,6 @@ fn push_markdown_body(markdown: &mut String, body: &str) {
 
 fn split_view_placeholder_markdown() -> String {
     "# Split View\n\nMirror of the current chat. Open it while you scroll old context in the side pane and keep typing in the main composer.\n\nOnce the conversation has content, the full transcript will appear here with its own scroll position.\n".to_string()
-}
-
-fn fenced_block(language: &str, text: &str) -> String {
-    let max_run = text
-        .split('\n')
-        .flat_map(|line| line.split(|ch| ch != '`'))
-        .map(str::len)
-        .max()
-        .unwrap_or(0);
-    let fence = "`".repeat(max_run.max(3) + 1);
-    if language.trim().is_empty() {
-        format!("{fence}\n{text}\n{fence}")
-    } else {
-        format!("{fence}{language}\n{text}\n{fence}")
-    }
 }
 
 fn capitalize_role(role: &str) -> String {

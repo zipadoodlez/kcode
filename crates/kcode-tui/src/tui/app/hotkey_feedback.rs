@@ -22,6 +22,7 @@ use kcode_tui_core::keybind::format_binding;
 use serde::{Deserialize, Serialize};
 
 use super::App;
+use super::hint_state;
 use crate::tui::keybind::{
     CenteredToggleKeys, EffortSwitchKeys, KeyBinding, ModelSwitchKeys, OptionalBinding, ScrollKeys,
     ToggleKeys, WorkspaceNavigationKeys,
@@ -593,42 +594,6 @@ fn is_unfamiliar(stat: &UsageStat, now_unix: u64) -> bool {
     stat.uses < FAMILIAR_USES || now_unix.saturating_sub(stat.last_used_unix) >= STALE_SECS
 }
 
-fn state_path() -> Option<std::path::PathBuf> {
-    crate::storage::app_config_dir()
-        .ok()
-        .map(|dir| dir.join(STATE_FILE))
-}
-
-fn load_state() -> HotkeyUsageState {
-    let Some(path) = state_path() else {
-        return HotkeyUsageState::default();
-    };
-    crate::storage::read_json::<HotkeyUsageState>(&path).unwrap_or_default()
-}
-
-fn save_state(state: &HotkeyUsageState) {
-    let Some(path) = state_path() else {
-        return;
-    };
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    if let Err(error) = crate::storage::write_json(&path, state) {
-        crate::logging::info(&format!(
-            "Failed to persist hotkey usage state {}: {}",
-            path.display(),
-            error
-        ));
-    }
-}
-
-fn now_unix() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
-
 /// Render the `/hotkeys` listing: every known chord with its action and the
 /// user's personal usage level. Pure over its inputs for testability.
 pub(super) fn render_hotkeys_listing(
@@ -706,8 +671,8 @@ impl App {
         let usage = self
             .hotkey_feedback_state
             .usage
-            .get_or_insert_with(load_state);
-        let listing = render_hotkeys_listing(&registry, usage, now_unix());
+            .get_or_insert_with(|| hint_state::load::<HotkeyUsageState>(STATE_FILE));
+        let listing = render_hotkeys_listing(&registry, usage, hint_state::now_unix_secs());
         self.push_display_message(kcode_tui_messages::DisplayMessage::system(listing));
         true
     }
@@ -764,11 +729,11 @@ impl App {
             return;
         };
 
-        let now = now_unix();
+        let now = hint_state::now_unix_secs();
         let state = self
             .hotkey_feedback_state
             .usage
-            .get_or_insert_with(load_state);
+            .get_or_insert_with(|| hint_state::load::<HotkeyUsageState>(STATE_FILE));
         let stat = state.actions.entry(info.action.to_string()).or_default();
         let unfamiliar = is_unfamiliar(stat, now);
         stat.uses = stat.uses.saturating_add(1);
@@ -777,7 +742,7 @@ impl App {
         // `last_used_unix` on disk tracks reality without rewriting the file on
         // every rapid keypress (word-nav, scrolling).
         if stat.uses <= FAMILIAR_USES || unfamiliar || stat.uses.is_multiple_of(32) {
-            save_state(state);
+            hint_state::save(STATE_FILE, state);
         }
 
         if unfamiliar && !info.quiet {

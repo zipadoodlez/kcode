@@ -14,6 +14,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::App;
+use super::hint_state;
 
 /// Never show the swarm-config hint more than this many times, ever.
 const MAX_SHOWS: u32 = 3;
@@ -24,35 +25,6 @@ const STATE_FILE: &str = "swarm_config_hint.json";
 struct SwarmHintState {
     #[serde(default)]
     shows: u32,
-}
-
-fn state_path() -> Option<std::path::PathBuf> {
-    crate::storage::app_config_dir()
-        .ok()
-        .map(|dir| dir.join(STATE_FILE))
-}
-
-fn load_state() -> SwarmHintState {
-    let Some(path) = state_path() else {
-        return SwarmHintState::default();
-    };
-    crate::storage::read_json::<SwarmHintState>(&path).unwrap_or_default()
-}
-
-fn save_state(state: &SwarmHintState) {
-    let Some(path) = state_path() else {
-        return;
-    };
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    if let Err(error) = crate::storage::write_json(&path, state) {
-        crate::logging::info(&format!(
-            "Failed to persist swarm-config-hint state {}: {}",
-            path.display(),
-            error
-        ));
-    }
 }
 
 /// Pure decision: should the hint be shown given the persisted show count and
@@ -71,12 +43,15 @@ impl App {
     /// invokes the `swarm` tool. No-op after the lifetime cap or once shown
     /// this session. Rendered in the learn-hint pop-out slot.
     pub(in crate::tui::app) fn maybe_surface_swarm_config_hint(&mut self) {
-        if !should_show(load_state().shows, self.swarm_hint_shown_this_session) {
+        if !should_show(
+            hint_state::load::<SwarmHintState>(STATE_FILE).shows,
+            self.swarm_hint_shown_this_session,
+        ) {
             return;
         }
-        let mut state = load_state();
+        let mut state = hint_state::load::<SwarmHintState>(STATE_FILE);
         state.shows = state.shows.saturating_add(1);
-        save_state(&state);
+        hint_state::save(STATE_FILE, &state);
         self.swarm_hint_shown_this_session = true;
         self.learn_hint = Some((hint_message(), std::time::Instant::now()));
     }
@@ -113,11 +88,11 @@ mod tests {
         let prev = std::env::var_os("KCODE_HOME");
         crate::env::set_var("KCODE_HOME", temp.path());
 
-        let mut state = load_state();
+        let mut state = hint_state::load::<SwarmHintState>(STATE_FILE);
         assert_eq!(state.shows, 0);
         state.shows = 2;
-        save_state(&state);
-        assert_eq!(load_state().shows, 2);
+        hint_state::save(STATE_FILE, &state);
+        assert_eq!(hint_state::load::<SwarmHintState>(STATE_FILE).shows, 2);
 
         if let Some(prev) = prev {
             crate::env::set_var("KCODE_HOME", prev);
