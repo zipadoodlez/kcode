@@ -24,9 +24,10 @@
   build reads) and once before a push. A docs-, comment-, or markdown-only change
   needs no gate at all. For a small Rust change, check it narrowly first -
   `cargo fmt --all --check`, the ratchet covering what you touched, and
-  `cargo clippy -p <crate> --all-targets -- -D warnings` - and save the full run
-  for the push. Do not add test suites beyond what the change can affect.
-  See `docs/dev/post-change.md`.
+  `cargo clippy -p <crate> --all-targets --all-features -- -D warnings` - and
+  save the full run for the push. Keep `--all-targets --all-features` on the
+  narrow run: dropping them can pass where the full gate fails. Do not add test
+  suites beyond what the change can affect. See `docs/dev/post-change.md`.
 - **Keep the knowledge graph current** - `graphify-out/` is a local cache and is
   not tracked: it is derived, and its content depends on the environment, so a
   committed copy would be neither reproducible nor current. Build it once per
