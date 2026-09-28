@@ -5,7 +5,7 @@ server's scheduler turns ready nodes into worker turns. Agents are fungible
 workers, not entities you micromanage: the old coordinator/worktree-manager
 roles are scheduler policy, not user-facing roles.
 
-The graph is a single server-owned, versioned object (`jcode-plan`'s
+The graph is a single server-owned, versioned object (`kcode-plan`'s
 `VersionedPlan`). Agents mutate it only through validated ops.
 
 ## Two modes: deep and light
@@ -75,7 +75,7 @@ explore surfaces the gaps the gate then turns into nodes.
 
 ## Gates (deep mode)
 
-Comprehensiveness is structural, enforced by the engine in `jcode-plan/src/dag`:
+Comprehensiveness is structural, enforced by the engine in `kcode-plan/src/dag`:
 
 - **Gate discipline.** Every composite node must have a critique (explore) or
   verify (code) dependent before it can close. Gates are adversarial and

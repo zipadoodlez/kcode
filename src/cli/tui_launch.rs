@@ -97,13 +97,13 @@ pub async fn run_tui_client(
     if let Some(ref session_id) = resume_session {
         set_current_session(session_id);
     }
-    let native_ssh = std::env::var_os("JCODE_SSH_REMOTE").is_some();
+    let native_ssh = std::env::var_os("KCODE_SSH_REMOTE").is_some();
     if !native_ssh {
         spawn_session_signal_watchers();
     }
 
     if native_ssh {
-        let host = std::env::var("JCODE_SSH_REMOTE").unwrap_or_default();
+        let host = std::env::var("KCODE_SSH_REMOTE").unwrap_or_default();
         let label = resume_session.as_deref().unwrap_or("new session");
         crate::process_title::set_client_remote_display_title(
             &host,
@@ -231,42 +231,42 @@ pub use crate::session_launch::{
 pub fn list_sessions() -> Result<()> {
     fn build_resume_target_command(
         exe: &std::path::Path,
-        target: &jcode_tui_session_picker::ResumeTarget,
+        target: &kcode_tui_session_picker::ResumeTarget,
     ) -> (std::path::PathBuf, Vec<String>) {
         match target {
-            jcode_tui_session_picker::ResumeTarget::JcodeSession { session_id } => (
+            kcode_tui_session_picker::ResumeTarget::KcodeSession { session_id } => (
                 exe.to_path_buf(),
                 vec!["--resume".to_string(), session_id.clone()],
             ),
-            jcode_tui_session_picker::ResumeTarget::ClaudeCodeSession { session_id, .. } => (
+            kcode_tui_session_picker::ResumeTarget::ClaudeCodeSession { session_id, .. } => (
                 exe.to_path_buf(),
                 vec![
                     "--resume".to_string(),
                     crate::import::imported_claude_code_session_id(session_id),
                 ],
             ),
-            jcode_tui_session_picker::ResumeTarget::CodexSession { session_id, .. } => (
+            kcode_tui_session_picker::ResumeTarget::CodexSession { session_id, .. } => (
                 exe.to_path_buf(),
                 vec![
                     "--resume".to_string(),
                     crate::import::imported_codex_session_id(session_id),
                 ],
             ),
-            jcode_tui_session_picker::ResumeTarget::PiSession { session_path } => (
+            kcode_tui_session_picker::ResumeTarget::PiSession { session_path } => (
                 exe.to_path_buf(),
                 vec![
                     "--resume".to_string(),
                     crate::import::imported_pi_session_id(session_path),
                 ],
             ),
-            jcode_tui_session_picker::ResumeTarget::OpenCodeSession { session_id, .. } => (
+            kcode_tui_session_picker::ResumeTarget::OpenCodeSession { session_id, .. } => (
                 exe.to_path_buf(),
                 vec![
                     "--resume".to_string(),
                     crate::import::imported_opencode_session_id(session_id),
                 ],
             ),
-            jcode_tui_session_picker::ResumeTarget::CursorSession { session_id, .. } => (
+            kcode_tui_session_picker::ResumeTarget::CursorSession { session_id, .. } => (
                 exe.to_path_buf(),
                 vec![
                     "--resume".to_string(),
@@ -284,22 +284,22 @@ pub fn list_sessions() -> Result<()> {
     }
 
     fn spawn_target_in_new_terminal(
-        target: &jcode_tui_session_picker::ResumeTarget,
+        target: &kcode_tui_session_picker::ResumeTarget,
         exe: &std::path::Path,
         cwd: &std::path::Path,
     ) -> Result<bool> {
         let (program, args) = build_resume_target_command(exe, target);
         let title = match target {
-            jcode_tui_session_picker::ResumeTarget::JcodeSession { session_id } => {
+            kcode_tui_session_picker::ResumeTarget::KcodeSession { session_id } => {
                 resumed_window_title(session_id)
             }
-            jcode_tui_session_picker::ResumeTarget::ClaudeCodeSession { session_id, .. } => {
+            kcode_tui_session_picker::ResumeTarget::ClaudeCodeSession { session_id, .. } => {
                 format!("🧵 Claude Code {}", &session_id[..session_id.len().min(8)])
             }
-            jcode_tui_session_picker::ResumeTarget::CodexSession { session_id, .. } => {
+            kcode_tui_session_picker::ResumeTarget::CodexSession { session_id, .. } => {
                 format!("🧠 Codex {}", &session_id[..session_id.len().min(8)])
             }
-            jcode_tui_session_picker::ResumeTarget::PiSession { session_path } => {
+            kcode_tui_session_picker::ResumeTarget::PiSession { session_path } => {
                 format!(
                     "π Pi {}",
                     std::path::Path::new(session_path)
@@ -308,10 +308,10 @@ pub fn list_sessions() -> Result<()> {
                         .unwrap_or("session")
                 )
             }
-            jcode_tui_session_picker::ResumeTarget::OpenCodeSession { session_id, .. } => {
+            kcode_tui_session_picker::ResumeTarget::OpenCodeSession { session_id, .. } => {
                 format!("◌ OpenCode {}", &session_id[..session_id.len().min(8)])
             }
-            jcode_tui_session_picker::ResumeTarget::CursorSession { session_id, .. } => {
+            kcode_tui_session_picker::ResumeTarget::CursorSession { session_id, .. } => {
                 format!("▮ Cursor {}", &session_id[..session_id.len().min(8)])
             }
         };
@@ -323,7 +323,7 @@ pub fn list_sessions() -> Result<()> {
     match tui::session_picker::pick_session()? {
         Some(tui::session_picker::PickerResult::TakeOverClaude(target)) => {
             let resolved_target = crate::import::take_over_live_claude_session(&target)?;
-            let jcode_tui_session_picker::ResumeTarget::JcodeSession { session_id } =
+            let kcode_tui_session_picker::ResumeTarget::KcodeSession { session_id } =
                 &resolved_target
             else {
                 anyhow::bail!("Claude takeover did not produce a Kcode session");
@@ -353,9 +353,9 @@ pub fn list_sessions() -> Result<()> {
 
             if targets.len() == 1 {
                 let target = &targets[0];
-                let resolved_target = crate::import::resolve_resume_target_to_jcode(target)?;
+                let resolved_target = crate::import::resolve_resume_target_to_kcode(target)?;
                 let mut session_cwd = cwd.clone();
-                if let jcode_tui_session_picker::ResumeTarget::JcodeSession { session_id } =
+                if let kcode_tui_session_picker::ResumeTarget::KcodeSession { session_id } =
                     &resolved_target
                     && let Ok(sess) = session::Session::load(session_id)
                     && let Some(dir) = sess.working_dir.as_deref()
@@ -377,7 +377,7 @@ pub fn list_sessions() -> Result<()> {
 
                 for target in targets {
                     let resolved_target =
-                        match crate::import::resolve_resume_target_to_jcode(&target) {
+                        match crate::import::resolve_resume_target_to_kcode(&target) {
                             Ok(target) => target,
                             Err(e) => {
                                 eprintln!("Failed to import selected session: {}", e);
@@ -385,7 +385,7 @@ pub fn list_sessions() -> Result<()> {
                             }
                         };
                     let mut session_cwd = cwd.clone();
-                    if let jcode_tui_session_picker::ResumeTarget::JcodeSession { session_id } =
+                    if let kcode_tui_session_picker::ResumeTarget::KcodeSession { session_id } =
                         &resolved_target
                         && let Ok(sess) = session::Session::load(session_id)
                         && let Some(dir) = sess.working_dir.as_deref()
@@ -431,7 +431,7 @@ pub fn list_sessions() -> Result<()> {
             let mut warned_no_terminal = false;
 
             for target in targets {
-                let resolved_target = match crate::import::resolve_resume_target_to_jcode(&target) {
+                let resolved_target = match crate::import::resolve_resume_target_to_kcode(&target) {
                     Ok(target) => target,
                     Err(e) => {
                         eprintln!("Failed to import selected session: {}", e);
@@ -439,7 +439,7 @@ pub fn list_sessions() -> Result<()> {
                     }
                 };
                 let mut session_cwd = cwd.clone();
-                if let jcode_tui_session_picker::ResumeTarget::JcodeSession { session_id } =
+                if let kcode_tui_session_picker::ResumeTarget::KcodeSession { session_id } =
                     &resolved_target
                     && let Ok(sess) = session::Session::load(session_id)
                     && let Some(dir) = sess.working_dir.as_deref()

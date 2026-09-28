@@ -1,0 +1,9 @@
+[package]
+name = "kcode-compaction-core"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+kcode-message-types = { path = "../kcode-message-types" }
+serde_json = "1"

@@ -2,7 +2,7 @@
 //!
 //! These exercise the real server reload fan-out and streaming-interrupt paths
 //! against a `MockProvider` with multiple clients attached, without execing a
-//! new binary (the server runs with `JCODE_TEST_SESSION=1`, so
+//! new binary (the server runs with `KCODE_TEST_SESSION=1`, so
 //! `await_reload_signal` performs all the in-process bookkeeping -- recovery
 //! intents, graceful shutdown, marker writes, and client fan-out -- but skips
 //! the final `exec`). This is the cheapest way to cover the multi-client +
@@ -14,22 +14,22 @@ use crate::test_support::*;
 /// Spin up an in-process server backed by a `MockProvider`.
 async fn start_inprocess_server(
     label: &str,
-    provider: Arc<dyn jcode::provider::Provider>,
+    provider: Arc<dyn kcode::provider::Provider>,
 ) -> Result<(
     std::path::PathBuf,
     std::path::PathBuf,
     tokio::task::JoinHandle<Result<()>>,
 )> {
     let runtime_dir = short_runtime_dir(format!(
-        "jcode-reload-mc-{label}-{}",
+        "kcode-reload-mc-{label}-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos()
     ));
     std::fs::create_dir_all(&runtime_dir)?;
-    let socket_path = runtime_dir.join("jcode.sock");
-    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+    let socket_path = runtime_dir.join("kcode.sock");
+    let debug_socket_path = runtime_dir.join("kcode-debug.sock");
 
     let server_instance =
         server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());

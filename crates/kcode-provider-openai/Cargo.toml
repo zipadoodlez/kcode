@@ -1,0 +1,19 @@
+[package]
+name = "kcode-provider-openai"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+bytes = "1"
+futures = "0.3"
+kcode-core = { path = "../kcode-core" }
+kcode-logging = { path = "../kcode-logging" }
+kcode-message-types = { path = "../kcode-message-types" }
+kcode-provider-core = { path = "../kcode-provider-core" }
+reqwest = { version = "0.12", default-features = false, features = ["stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["sync"] }

@@ -2,12 +2,12 @@
 """Opt-in native SSH acceptance against a built CLI and an explicitly chosen host.
 
 Required environment (no network access when unset):
-  JCODE_NATIVE_SSH_BINARY=/absolute/path/to/local/jcode
-  JCODE_NATIVE_SSH_HOST=jcode-dev
-  JCODE_NATIVE_SSH_REMOTE_BINARY=/absolute/path/to/remote-wrapper
-  JCODE_NATIVE_SSH_CWD=/absolute/remote/workspace
-Optional JCODE_NATIVE_SSH_SERVER_SOCKET selects a prestarted isolated daemon.
-The remote wrapper should select an isolated JCODE_HOME/JCODE_RUNTIME_DIR and a
+  KCODE_NATIVE_SSH_BINARY=/absolute/path/to/local/kcode
+  KCODE_NATIVE_SSH_HOST=kcode-dev
+  KCODE_NATIVE_SSH_REMOTE_BINARY=/absolute/path/to/remote-wrapper
+  KCODE_NATIVE_SSH_CWD=/absolute/remote/workspace
+Optional KCODE_NATIVE_SSH_SERVER_SOCKET selects a prestarted isolated daemon.
+The remote wrapper should select an isolated KCODE_HOME/KCODE_RUNTIME_DIR and a
 fresh matching binary. Host keys must already be verified in system known_hosts.
 
 Run: python3 tests/test_native_ssh_cli.py
@@ -15,7 +15,7 @@ Offline harness checks: python3 tests/test_native_ssh_cli.py --self-test
 
 Creates one uniquely marked, context-only remote session and leaves it there as
 an acceptance artifact. NEVER sends a model-turn message, installs software,
-changes SSH configuration, or stops the remote daemon. Local Jcode state is
+changes SSH configuration, or stops the remote daemon. Local Kcode state is
 isolated, but system SSH keys/config/agent remain available. Linux /proc is used
 to verify owned SSH children and private adapter sockets disappear on both TUI
 /quit and a second attach closed by SIGHUP (terminal-close behavior).
@@ -41,7 +41,7 @@ import time
 import unittest
 import uuid
 
-PREFIX = "JCODE_NATIVE_SSH_"
+PREFIX = "KCODE_NATIVE_SSH_"
 MAX_FRAME = 8 * 1024 * 1024
 MAX_STDERR = 16 * 1024
 TIMEOUT = 60
@@ -189,7 +189,7 @@ class Bridge:
 
     def handshake(self):
         header = self.frame()
-        require(header.get("kind") == "jcode-native-stdio" and header.get("protocol") == 1,
+        require(header.get("kind") == "kcode-native-stdio" and header.get("protocol") == 1,
                 f"Wrong native SSH handshake: {header}")
         require(bool(header.get("version") and header.get("socket_path") and header.get("working_dir")),
                 "Missing handshake identity metadata")
@@ -254,9 +254,9 @@ def owned_ssh(cli_pid):
 
 
 def owned_sockets(directory):
-    # Jcode hardening can deny /proc/<pid>/fd even for our own child. A unique
+    # Kcode hardening can deny /proc/<pid>/fd even for our own child. A unique
     # TMPDIR passed only to this CLI makes filesystem observation unambiguous.
-    return {path for path in Path(directory).glob("jcode-ssh-*/native.sock") if path.is_socket()}
+    return {path for path in Path(directory).glob("kcode-ssh-*/native.sock") if path.is_socket()}
 
 
 def child_terminal():
@@ -267,7 +267,7 @@ def child_terminal():
 def tui_acceptance(config, env, local_cwd, session_id, sentinel, *, exit_mode="quit"):
     require(exit_mode in {"quit", "sighup"}, "Unknown TUI exit mode")
     # Only sockets live here. Keep this path short for Unix sockaddr limits,
-    # independently of potentially long JCODE_SCRATCH_DIR artifact paths.
+    # independently of potentially long KCODE_SCRATCH_DIR artifact paths.
     socket_temp = tempfile.TemporaryDirectory(prefix="jssh-", dir="/tmp")
     child_env = dict(env, TMPDIR=socket_temp.name)
     master, slave = pty.openpty()
@@ -320,7 +320,7 @@ def tui_acceptance(config, env, local_cwd, session_id, sentinel, *, exit_mode="q
             raise AssertionError("TUI did not show SSH host and remote sentinel:\n" + visible(output)[-6000:])
         pump(0.5)
         text = visible(output).lower()
-        for marker in ("welcome to jcode", "choose your provider", "let's get you set up", "sign in to get started"):
+        for marker in ("welcome to kcode", "choose your provider", "let's get you set up", "sign in to get started"):
             require(marker not in text, f"Unexpected local onboarding: {marker}")
         require(ssh_children, "Did not observe a real owned SSH child")
         require(sockets, "Did not observe the private native adapter socket")
@@ -364,23 +364,23 @@ def tui_acceptance(config, env, local_cwd, session_id, sentinel, *, exit_mode="q
 
 def run_acceptance(config):
     require(sys.platform.startswith("linux"), "PTY owned-child acceptance requires Linux /proc")
-    with tempfile.TemporaryDirectory(prefix="jcode-native-ssh-", dir=os.environ.get("JCODE_SCRATCH_DIR")) as root:
+    with tempfile.TemporaryDirectory(prefix="kcode-native-ssh-", dir=os.environ.get("KCODE_SCRATCH_DIR")) as root:
         root = Path(root)
-        home = root / "jcode"
+        home = root / "kcode"
         runtime = root / "runtime"
         home.mkdir(mode=0o700)
         runtime.mkdir(mode=0o700)
         # Keep the user's real HOME only for explicitly requested system SSH
-        # identity/config. Isolate all Jcode state and disable local UI hooks.
-        env = {key: value for key, value in os.environ.items() if not key.startswith("JCODE_")}
+        # identity/config. Isolate all Kcode state and disable local UI hooks.
+        env = {key: value for key, value in os.environ.items() if not key.startswith("KCODE_")}
         for key in ("DISPLAY", "WAYLAND_DISPLAY", "KITTY_LISTEN_ON", "TMUX", "ZELLIJ"):
             env.pop(key, None)
-        env.update(JCODE_HOME=str(home), JCODE_RUNTIME_DIR=str(runtime), XDG_RUNTIME_DIR=str(runtime),
-                   JCODE_NO_TELEMETRY="1", JCODE_WAKE_MODE="external", TERM="xterm-256color",
+        env.update(KCODE_HOME=str(home), KCODE_RUNTIME_DIR=str(runtime), XDG_RUNTIME_DIR=str(runtime),
+                   KCODE_NO_TELEMETRY="1", KCODE_WAKE_MODE="external", TERM="xterm-256color",
                    DO_NOT_TRACK="1", NO_COLOR="0")
         # SSH agent may live under the original XDG runtime, but its absolute
         # SSH_AUTH_SOCK value is deliberately retained above.
-        sentinel = "JCODE_SSH_CONTEXT_" + uuid.uuid4().hex
+        sentinel = "KCODE_SSH_CONTEXT_" + uuid.uuid4().hex
         instance = "native-ssh-acceptance-" + uuid.uuid4().hex
         pipeline = subprocess.run(
             ["ssh", *SSH_FLAGS, "--", config["HOST"], remote_command(config)],
@@ -389,7 +389,7 @@ def run_acceptance(config):
         require(pipeline.returncode == 0,
                 "SSH pipeline failed on stdin EOF: " + pipeline.stderr.decode(errors="replace"))
         frames = [json.loads(line) for line in pipeline.stdout.splitlines() if line.strip()]
-        require(frames and frames[0].get("kind") == "jcode-native-stdio", "Pipeline handshake missing")
+        require(frames and frames[0].get("kind") == "kcode-native-stdio", "Pipeline handshake missing")
         require(any(frame.get("type") == "pong" and frame.get("id") == 99 for frame in frames),
                 "Pipeline discarded its final Pong on stdin EOF")
         print("PASS real SSH pipeline: stdin EOF preserves final Pong and exits0")
@@ -422,7 +422,7 @@ def run_acceptance(config):
             result = subprocess.run(local_command(config, tail=tail), stdin=subprocess.DEVNULL,
                                     capture_output=True, env=env, cwd=root, timeout=15)
             text = visible(result.stdout + result.stderr)
-            require(result.returncode != 0 and "Connecting local Jcode UI" not in text,
+            require(result.returncode != 0 and "Connecting local Kcode UI" not in text,
                     f"Unsupported local flag was not refused before SSH: {tail}\n{text}")
         print("PASS invalid missing/non-directory remote cwd and unsupported local flags rejected")
 
@@ -454,7 +454,7 @@ class HarnessSelfTests(unittest.TestCase):
     def test_owned_socket_observation_uses_only_private_temp_root(self):
         import socket
         with tempfile.TemporaryDirectory(prefix="jssh-", dir="/tmp") as root:
-            directory = Path(root) / "jcode-ssh-owned"
+            directory = Path(root) / "kcode-ssh-owned"
             directory.mkdir(mode=0o700)
             path = directory / "native.sock"
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
@@ -468,7 +468,7 @@ class HarnessSelfTests(unittest.TestCase):
         self.assertEqual(visible(b"\x1b]0;title\x07\x1b[31mSSH dev\x1b[0m sentinel"), "SSH dev sentinel")
 
     def test_remote_command_quotes_paths_and_preserves_target(self):
-        config = {"REMOTE_BINARY": "/remote/a'jcode", "CWD": "/workspace/a b'c", "SERVER_SOCKET": "/socket/a b"}
+        config = {"REMOTE_BINARY": "/remote/a'kcode", "CWD": "/workspace/a b'c", "SERVER_SOCKET": "/socket/a b"}
         argv = shlex.split(remote_command(config).split("exec ", 1)[1])
         self.assertEqual(argv[0], config["REMOTE_BINARY"])
         self.assertEqual(argv[argv.index("--cwd") + 1], config["CWD"])

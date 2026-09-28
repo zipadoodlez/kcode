@@ -67,7 +67,7 @@ port (it never opens a browser or reads credentials); the reproducible runner
 `python3 scripts/test_browser_handoff_live.py --tab-id <id>` resets and clears a
 disposable fixture tab and refuses a non-fixture one. In-crate ignored tests call
 the real `BrowserTool::execute` and need an existing `BROWSER_SESSION`; see
-`crates/jcode-app-core/src/tool/browser_fast_live_tests.rs`. Mock tests alone are
+`crates/kcode-app-core/src/tool/browser_fast_live_tests.rs`. Mock tests alone are
 not live evidence.
 
 The multi-backend *provider* protocol (Firefox Agent Bridge, CDP, WebDriver,

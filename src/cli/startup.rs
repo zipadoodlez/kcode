@@ -39,10 +39,10 @@ pub async fn run() -> Result<()> {
     // Prune stale per-session `.bak` recovery copies (never the transcripts
     // themselves) so the sessions directory does not grow without bound.
     std::thread::Builder::new()
-        .name("jcode-session-bak-prune".to_string())
+        .name("kcode-session-bak-prune".to_string())
         .spawn(crate::session::prune_old_session_backups)
         .ok();
-    logging::info("jcode starting");
+    logging::info("kcode starting");
 
     // Wire config-reload reactions without making config depend on auth/bus:
     // when the config cache reloads, invalidate the auth-status cache and
@@ -60,7 +60,7 @@ pub async fn run() -> Result<()> {
     );
 
     // Register externally-implemented provider runtimes with the base
-    // provider registry. These crates sit downstream of jcode-base (so
+    // provider registry. These crates sit downstream of kcode-base (so
     // provider edits do not rebuild the app spine), which means base cannot
     // name their concrete types; this composition root wires them up instead.
     register_external_provider_runtimes();
@@ -103,7 +103,7 @@ pub async fn run() -> Result<()> {
     Ok(())
 }
 
-/// Register provider runtimes that live downstream of `jcode-base` with the
+/// Register provider runtimes that live downstream of `kcode-base` with the
 /// base crate's external provider registry. Keep every downstream runtime
 /// registration in this one function so the composition-root wiring stays
 /// discoverable as more providers move out of the base crate.
@@ -111,39 +111,39 @@ pub fn register_external_provider_runtimes() {
     crate::provider::external::register_external_provider(
         crate::provider::external::GROK_BUILD_RUNTIME,
         || {
-            let mut process = jcode_provider_grok_build_runtime::GrokBuildProcess::from_env();
+            let mut process = kcode_provider_grok_build_runtime::GrokBuildProcess::from_env();
             process.command = crate::auth::grok_build::cli_path();
             std::sync::Arc::new(
-                jcode_provider_grok_build_runtime::GrokBuildProvider::with_process(process),
+                kcode_provider_grok_build_runtime::GrokBuildProvider::with_process(process),
             )
         },
     );
     crate::provider::external::register_external_provider(
         crate::provider::external::GEMINI_RUNTIME,
-        || std::sync::Arc::new(jcode_provider_gemini_runtime::GeminiProvider::new()),
+        || std::sync::Arc::new(kcode_provider_gemini_runtime::GeminiProvider::new()),
     );
     crate::provider::external::register_external_provider(
         crate::provider::external::CURSOR_RUNTIME,
-        || std::sync::Arc::new(jcode_provider_cursor_runtime::CursorCliProvider::new()),
+        || std::sync::Arc::new(kcode_provider_cursor_runtime::CursorCliProvider::new()),
     );
     crate::provider::external::register_external_provider(
         crate::provider::external::ANTIGRAVITY_RUNTIME,
-        || std::sync::Arc::new(jcode_provider_antigravity_runtime::AntigravityProvider::new()),
+        || std::sync::Arc::new(kcode_provider_antigravity_runtime::AntigravityProvider::new()),
     );
     crate::provider::external::register_external_provider(
         crate::provider::external::CLAUDE_CLI_RUNTIME,
-        || std::sync::Arc::new(jcode_provider_claude_cli_runtime::ClaudeProvider::new()),
+        || std::sync::Arc::new(kcode_provider_claude_cli_runtime::ClaudeProvider::new()),
     );
     crate::provider::external::register_external_provider(
         crate::provider::external::ANTHROPIC_RUNTIME,
-        || std::sync::Arc::new(jcode_provider_anthropic_runtime::AnthropicProvider::new()),
+        || std::sync::Arc::new(kcode_provider_anthropic_runtime::AnthropicProvider::new()),
     );
     // OpenRouter serves several identities (aggregator, pinned API-key
     // runtime, direct OpenAI-compatible profiles, named config profiles)
     // through one concrete type, so it registers a parameterized factory.
     crate::provider::external::register_openrouter_factory(|spec| {
         use crate::provider::external::OpenRouterRuntimeSpec;
-        use jcode_provider_openrouter_runtime::OpenRouterProvider;
+        use kcode_provider_openrouter_runtime::OpenRouterProvider;
         let provider: std::sync::Arc<dyn crate::provider::Provider> = match spec {
             OpenRouterRuntimeSpec::Default => std::sync::Arc::new(OpenRouterProvider::new()?),
             OpenRouterRuntimeSpec::OpenRouterApiKey => {
@@ -159,10 +159,10 @@ pub fn register_external_provider_runtimes() {
         Ok(provider)
     });
     crate::provider::external::register_profile_catalog_refresh(
-        jcode_provider_openrouter_runtime::maybe_schedule_openai_compatible_profile_catalog_refresh,
+        kcode_provider_openrouter_runtime::maybe_schedule_openai_compatible_profile_catalog_refresh,
     );
     crate::provider::external::register_standard_openrouter_catalog_refresh(
-        jcode_provider_openrouter_runtime::maybe_schedule_standard_openrouter_catalog_refresh,
+        kcode_provider_openrouter_runtime::maybe_schedule_standard_openrouter_catalog_refresh,
     );
     // API-backed OpenAI routes use Codex/platform credentials. The runtime is
     // still registered without them so browser-backed ChatGPT models remain
@@ -171,8 +171,8 @@ pub fn register_external_provider_runtimes() {
         crate::provider::external::OPENAI_RUNTIME,
         || {
             let provider = match crate::auth::codex::load_credentials() {
-                Ok(credentials) => jcode_provider_openai_runtime::OpenAIProvider::new(credentials),
-                Err(_) => jcode_provider_openai_runtime::OpenAIProvider::new_browser_only(),
+                Ok(credentials) => kcode_provider_openai_runtime::OpenAIProvider::new(credentials),
+                Err(_) => kcode_provider_openai_runtime::OpenAIProvider::new_browser_only(),
             };
             Some(std::sync::Arc::new(provider) as std::sync::Arc<dyn crate::provider::Provider>)
         },
@@ -185,9 +185,9 @@ pub fn register_external_provider_runtimes() {
         crate::provider::external::COPILOT_RUNTIME,
         || {
             let provider = std::sync::Arc::new(
-                jcode_provider_copilot_runtime::CopilotApiProvider::new().ok()?,
+                kcode_provider_copilot_runtime::CopilotApiProvider::new().ok()?,
             );
-            let eager_tier_detection = std::env::var("JCODE_NON_INTERACTIVE").is_err();
+            let eager_tier_detection = std::env::var("KCODE_NON_INTERACTIVE").is_err();
             if eager_tier_detection && tokio::runtime::Handle::try_current().is_ok() {
                 let p_clone = std::sync::Arc::clone(&provider);
                 tokio::spawn(async move {
@@ -214,7 +214,7 @@ fn parse_and_prepare_args(args: Args) -> Result<Args> {
     validate_remote_working_dir(args.remote_working_dir.as_deref())?;
 
     if args.trace {
-        crate::env::set_var("JCODE_TRACE", "1");
+        crate::env::set_var("KCODE_TRACE", "1");
     }
 
     if let Some(ref socket) = args.socket {
@@ -272,7 +272,7 @@ mod tests {
     #[test]
     fn parses_mcp_tool_exposure_flags() {
         let args = parse_args(&[
-            "jcode",
+            "kcode",
             "--mcp-tools",
             "deferred",
             "--mcp-tools-token-threshold",

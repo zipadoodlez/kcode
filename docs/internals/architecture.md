@@ -17,11 +17,11 @@ Socket and state locations:
 
 | path | what |
 |---|---|
-| `<runtime_dir>/jcode/jcode.sock` | main client socket |
-| `<runtime_dir>/jcode/` | also holds the debug socket |
+| `<runtime_dir>/kcode/kcode.sock` | main client socket |
+| `<runtime_dir>/kcode/` | also holds the debug socket |
 | `~/.kcode/servers.json` | server registry |
 
-`runtime_dir` is `JCODE_RUNTIME_DIR` if set, else `XDG_RUNTIME_DIR` (Linux,
+`runtime_dir` is `KCODE_RUNTIME_DIR` if set, else `XDG_RUNTIME_DIR` (Linux,
 normally `/run/user/$UID`), else `TMPDIR` on macOS, else a private `kcode-<user>`
 directory under the system temp dir.
 
@@ -59,7 +59,7 @@ A client sends its cwd on subscribe. Socket-forwarding wrappers can separate the
 two paths:
 
 ```sh
-kcode --socket /tmp/jcode.sock -C /local/checkout --remote-working-dir /remote/checkout
+kcode --socket /tmp/kcode.sock -C /local/checkout --remote-working-dir /remote/checkout
 ```
 
 `-C` must exist locally; `--remote-working-dir` must be an absolute path that

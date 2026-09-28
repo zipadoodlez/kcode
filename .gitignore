@@ -4,7 +4,7 @@ __pycache__/
 # Local onboarding sandbox + auth fixtures. May contain REAL OAuth tokens copied
 # from $HOME (see scripts/onboarding_sandbox.sh seed-real-logins). Never commit.
 /.tmp/
-/.jcode/generated-images/
+/.kcode/generated-images/
 
 # Stray experiment/debug artifacts at the repo root. Real assets live under
 # assets/, docs/, and tests/ and are committed explicitly.

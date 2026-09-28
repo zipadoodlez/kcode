@@ -31,7 +31,7 @@ fn private_directory() -> Result<tempfile::TempDir> {
     // tempfile's directory default is 0777 subject to umask, unlike its file
     // default. Set the creation mode, so there is no permissive chmod window.
     let directory = tempfile::Builder::new()
-        .prefix("jcode-ssh-")
+        .prefix("kcode-ssh-")
         .permissions(permissions.clone())
         .tempdir()?;
     // Restore owner access even under an unusually restrictive owner umask.
@@ -387,7 +387,7 @@ async fn read_handshake<R: AsyncBufRead + Unpin>(reader: &mut R) -> Result<Nativ
     let frame = read_bounded_line(reader).await?;
     let handshake: NativeHandshake =
         serde_json::from_slice(&frame).context("invalid native SSH handshake JSON")?;
-    if handshake.kind != "jcode-native-stdio" || handshake.protocol != PROTOCOL {
+    if handshake.kind != "kcode-native-stdio" || handshake.protocol != PROTOCOL {
         bail!(
             "unsupported native SSH protocol {} ({})",
             handshake.protocol,
@@ -525,9 +525,9 @@ async fn bridge_stream<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     let mut read = BufReader::new(read);
     verify_daemon_protocol(&mut read, &mut write).await?;
     let handshake = NativeHandshake {
-        kind: "jcode-native-stdio".into(),
+        kind: "kcode-native-stdio".into(),
         protocol: PROTOCOL,
-        version: jcode_build_meta::version().to_string(),
+        version: kcode_build_meta::version().to_string(),
         working_dir: std::env::current_dir()?.to_string_lossy().into_owned(),
         socket_path: socket.to_string_lossy().into_owned(),
     };
@@ -569,7 +569,7 @@ mod tests {
 
     fn hello() -> String {
         serde_json::to_string(&NativeHandshake {
-            kind: "jcode-native-stdio".into(),
+            kind: "kcode-native-stdio".into(),
             protocol: PROTOCOL,
             version: "test-build".into(),
             working_dir: "/remote/home".into(),
@@ -596,19 +596,19 @@ mod tests {
             "user name@host",
             "host\nother",
         ] {
-            assert!(SshOptions::new(host, "jcode").is_err(), "{host}");
+            assert!(SshOptions::new(host, "kcode").is_err(), "{host}");
         }
-        for host in ["jcode-dev", "user@host", "[::1]", "host.example"] {
-            assert!(SshOptions::new(host, "jcode").is_ok(), "{host}");
+        for host in ["kcode-dev", "user@host", "[::1]", "host.example"] {
+            assert!(SshOptions::new(host, "kcode").is_ok(), "{host}");
         }
-        for binary in ["", "--help", "jcode\nfalse"] {
+        for binary in ["", "--help", "kcode\nfalse"] {
             assert!(SshOptions::new("host", binary).is_err());
         }
     }
 
     #[test]
     fn command_is_owned_noninteractive_and_quotes_literal_paths() {
-        let mut options = SshOptions::new("user@jcode-dev", "/a path/jcode'quoted").unwrap();
+        let mut options = SshOptions::new("user@kcode-dev", "/a path/kcode'quoted").unwrap();
         options.daemon_socket = Some("/socket path/native'quoted".into());
         options.working_dir = Some("/workspace with 'quotes'".into());
         let command = options.command();
@@ -630,11 +630,11 @@ mod tests {
             assert!(args.iter().any(|s| s == required), "{required}");
         }
         let remote = args.last().unwrap();
-        assert!(remote.contains("exec '/a path/jcode'\\''quoted'"));
+        assert!(remote.contains("exec '/a path/kcode'\\''quoted'"));
         assert!(remote.contains("--socket '/socket path/native'\\''quoted'"));
         assert!(remote.contains("--cwd '/workspace with '\\''quotes'\\'''"));
         assert!(remote.ends_with("server stdio"));
-        assert_eq!(args[args.len() - 2], "user@jcode-dev");
+        assert_eq!(args[args.len() - 2], "user@kcode-dev");
     }
 
     #[tokio::test]
@@ -771,7 +771,7 @@ mod tests {
     #[tokio::test]
     async fn workspace_validation_rejects_empty_and_control_paths_before_ssh() {
         for path in ["", "bad\npath", "bad\0path"] {
-            let error = NativeSsh::connect_with_workspace("test", "jcode", None, Some(path))
+            let error = NativeSsh::connect_with_workspace("test", "kcode", None, Some(path))
                 .await
                 .err()
                 .expect("invalid path must fail");

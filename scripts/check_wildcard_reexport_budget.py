@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Enforce a ratcheting cross-crate wildcard re-export budget.
 
-Counts production Rust occurrences of `pub use jcode_<crate>::*;` (cross-crate
+Counts production Rust occurrences of `pub use kcode_<crate>::*;` (cross-crate
 wildcard re-exports). These re-exports erase crate boundaries: every symbol in
 the re-exported crate becomes reachable through the re-exporting crate, so new
 code silently couples across layers and edits to the re-exported crate rebuild
@@ -9,7 +9,7 @@ the whole spine.
 
 Module-internal wildcards (`pub use self::...`, `pub use super::...`,
 `pub use crate::...`, `pub use <module>::*` within a crate) are allowed; only
-`jcode_*` cross-crate wildcards are budgeted.
+`kcode_*` cross-crate wildcards are budgeted.
 
 Policy:
 - Existing files may not increase their count.
@@ -34,7 +34,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BASELINE_FILE = REPO_ROOT / "scripts" / "wildcard_reexport_budget.json"
 SCAN_ROOTS = (REPO_ROOT / "src", REPO_ROOT / "crates")
-PATTERN = re.compile(r"^\s*pub\s+use\s+(?:::)?jcode_[a-z0-9_]+(?:::[A-Za-z0-9_]+)*::\*\s*;")
+PATTERN = re.compile(r"^\s*pub\s+use\s+(?:::)?kcode_[a-z0-9_]+(?:::[A-Za-z0-9_]+)*::\*\s*;")
 
 
 def parse_args() -> argparse.Namespace:

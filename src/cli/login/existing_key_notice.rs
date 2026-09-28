@@ -8,7 +8,7 @@ use crate::provider_catalog::ResolvedOpenAiCompatibleProfile;
 /// Build the notice shown when a key is already configured, or `None` when
 /// nothing is configured yet.
 ///
-/// Without this the prompt looks identical whether jcode found an existing
+/// Without this the prompt looks identical whether kcode found an existing
 /// credential or not, so someone who wrote their provider env file by hand
 /// cannot tell the key was picked up, and reasonably reads the silent prompt as
 /// a hang (issue #660). Returning the text rather than printing it keeps the

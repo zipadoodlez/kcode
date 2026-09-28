@@ -297,9 +297,9 @@ Request:
 
 ```json
 {
-  "client_session_id": "jcode_session_123",
+  "client_session_id": "kcode_session_123",
   "browser_preference": "auto",
-  "isolation": "per_jcode_session",
+  "isolation": "per_kcode_session",
   "attach": "prefer",
   "persist": true,
   "metadata": {
@@ -317,7 +317,7 @@ Response:
   "browser_family": "firefox",
   "browser_label": "Firefox",
   "attached_to_existing_browser": true,
-  "isolation": "per_jcode_session",
+  "isolation": "per_kcode_session",
   "default_page_id": "page_1"
 }
 ```
@@ -405,7 +405,7 @@ Providers may use different internal representations, but `page.snapshot` should
 ```json
 {
   "snapshot": {
-    "format": "jcode.page_snapshot.v1",
+    "format": "kcode.page_snapshot.v1",
     "root": {
       "node_id": "n1",
       "role": "document",
@@ -609,7 +609,7 @@ The main `browser` tool should prefer the standard core and optional normalized 
 Provider-specific methods should only be used when:
 
 - the user explicitly asks for them
-- a jcode-side adapter knows how to use them safely
+- a kcode-side adapter knows how to use them safely
 - or a future advanced/debug mode is enabled
 
 ### Rule 4: provider-native passthrough is allowed, but should be explicit
@@ -801,7 +801,7 @@ These are intentionally left open for the next iteration.
 1. Should screenshots always be inline, or can providers return file/image handles?
 2. Should event streaming be required for advanced integrations?
 3. How much of raw HTML/DOM should be normalized versus returned as provider data?
-4. Should `page.snapshot` support multiple named formats beyond `jcode.page_snapshot.v1`?
+4. Should `page.snapshot` support multiple named formats beyond `kcode.page_snapshot.v1`?
 5. Should provider-specific methods be invokable through the same `browser` tool or only via debug mode?
 6. Should setup/install flows themselves be standardized beyond status and diagnostics?
 

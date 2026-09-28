@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Ratchet the shape of `App` while it is being re-cored.
 
-`App` (`crates/jcode-tui/src/tui/app.rs`) is the largest single cost in the
+`App` (`crates/kcode-tui/src/tui/app.rs`) is the largest single cost in the
 tree: ~310 fields in one struct and 57 separate `impl App` blocks spread over 53
 files. The re-core (`docs/todo.md`, "Re-core `App`") turns it into a coordinator
 holding named sub-structs, so the field count, the `impl App` block count, and
@@ -33,7 +33,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BASELINE_FILE = REPO_ROOT / "scripts" / "app_shape_budget.json"
-TUI_SRC = REPO_ROOT / "crates" / "jcode-tui" / "src"
+TUI_SRC = REPO_ROOT / "crates" / "kcode-tui" / "src"
 APP_FILE = TUI_SRC / "tui" / "app.rs"
 
 FIELD_START = re.compile(r"^\s*(?:pub(?:\s*\([^)]*\))?\s+)?[A-Za-z_][A-Za-z0-9_]*\s*:")

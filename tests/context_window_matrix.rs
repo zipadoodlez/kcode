@@ -6,7 +6,7 @@
 //! class of bug lives.
 //!
 //! Why this deserves its own suite: an over-reported window is a silent
-//! correctness bug, not a crash. jcode budgets prompts and triggers compaction
+//! correctness bug, not a crash. kcode budgets prompts and triggers compaction
 //! from `Provider::context_window()`. If that number is larger than what the
 //! endpoint actually serves, the request is built too big, the server truncates
 //! it, and the user sees a model that has "forgotten" the conversation while
@@ -31,7 +31,7 @@
 //!
 //! Everything here is offline and hermetic: no network, no live catalog.
 
-use jcode_provider_core::{
+use kcode_provider_core::{
     DEFAULT_CONTEXT_LIMIT, context_limit_for_model_with_provider,
     context_limit_for_model_with_provider_and_cache,
 };
@@ -42,7 +42,7 @@ use jcode_provider_core::{
 const SENTINEL_WINDOW: usize = 123_456;
 
 /// Models whose windows are resolved by static/catalog knowledge across the
-/// provider families jcode ships. Kept deliberately broad rather than exact:
+/// provider families kcode ships. Kept deliberately broad rather than exact:
 /// the invariant under test is "resolution produces a sane, positive window",
 /// not any single vendor's current number, so this does not churn on releases.
 fn representative_models() -> Vec<(&'static str, Option<&'static str>)> {
@@ -82,7 +82,7 @@ fn resolved_windows_are_always_plausible() {
 ///
 /// This is the single most important rule in the file. Configured/cached data
 /// is endpoint-specific ground truth; family heuristics are guesses. When a
-/// guess outranks ground truth, jcode over-budgets a real endpoint. Note the
+/// guess outranks ground truth, kcode over-budgets a real endpoint. Note the
 /// model ids below deliberately look like well-known models, because that name
 /// collision is exactly what caused #541.
 #[test]

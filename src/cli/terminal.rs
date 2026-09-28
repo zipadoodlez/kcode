@@ -10,7 +10,7 @@ pub struct TuiRuntimeState {
     focus_change: bool,
 }
 
-const INHERITED_MODES_ENV: &str = "JCODE_TUI_INHERITED_MODES";
+const INHERITED_MODES_ENV: &str = "KCODE_TUI_INHERITED_MODES";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct InheritedTerminalModes {
@@ -159,7 +159,7 @@ pub fn install_panic_hook() {
         if let Some(session_id) = get_current_session() {
             print_session_resume_hint(&session_id);
 
-            if std::env::var_os("JCODE_SSH_REMOTE").is_none()
+            if std::env::var_os("KCODE_SSH_REMOTE").is_none()
                 && let Ok(mut session) = session::Session::load(&session_id)
                 && should_record_panic_as_crash(&session.status)
             {
@@ -171,7 +171,7 @@ pub fn install_panic_hook() {
 }
 
 pub fn mark_current_session_crashed(message: String) {
-    if std::env::var_os("JCODE_SSH_REMOTE").is_some() {
+    if std::env::var_os("KCODE_SSH_REMOTE").is_some() {
         return;
     }
     if let Some(session_id) = get_current_session()
@@ -322,12 +322,12 @@ fn init_tui_terminal(inherited_terminal: bool) -> Result<ratatui::DefaultTermina
 }
 
 pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)> {
-    let is_resuming = std::env::var_os("JCODE_RESUMING").is_some();
+    let is_resuming = std::env::var_os("KCODE_RESUMING").is_some();
     let inherited_modes_raw = std::env::var(INHERITED_MODES_ENV).ok();
     let inherited_modes = inherited_modes_raw
         .as_deref()
         .and_then(InheritedTerminalModes::decode);
-    // JCODE_RESUMING describes the session lifecycle, but only a valid modes
+    // KCODE_RESUMING describes the session lifecycle, but only a valid modes
     // handoff proves the previous process deliberately left the terminal live
     // across exec. A restart used to restore the terminal before exec while the
     // new process still took the resume path, leaving it on the primary screen
@@ -337,11 +337,11 @@ pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)>
     // is safe to install before or after entering raw mode.
     crate::tui::palette_init::init_palette();
     let terminal = init_tui_terminal(inherited_terminal)?;
-    crate::tui::markdown::install_jcode_markdown_hooks();
+    crate::tui::markdown::install_kcode_markdown_hooks();
 
     let perf_policy = crate::perf::tui_policy();
     // These private handoff values apply only to this exec boundary. Avoid
-    // leaking them into tools or unrelated child jcode processes.
+    // leaking them into tools or unrelated child kcode processes.
     crate::env::remove_var(INHERITED_MODES_ENV);
 
     let fallback_modes = InheritedTerminalModes {
@@ -430,7 +430,7 @@ fn cleanup_tui_runtime(state: &TuiRuntimeState, restore_terminal: bool) {
         if state.keyboard_enhanced {
             tui::disable_keyboard_enhancement();
         }
-        jcode_tui_style::restore_terminal_quietly();
+        kcode_tui_style::restore_terminal_quietly();
     }
 }
 

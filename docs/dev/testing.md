@@ -3,19 +3,19 @@
 ## Running the suites
 
 `cargo test` runs the workspace. Target individual crates while iterating:
-`cargo test -p jcode-tui --lib`, `cargo test -p jcode-app-core --lib`, and so
+`cargo test -p kcode-tui --lib`, `cargo test -p kcode-app-core --lib`, and so
 on. The onboarding state-space invariants are also a guardrail gate; see
 [../internals/onboarding.md](../internals/onboarding.md).
 
-## Known flakiness: `jcode-tui` lib tests under parallel execution
+## Known flakiness: `kcode-tui` lib tests under parallel execution
 
-`cargo test -p jcode-tui --lib` fails 1-4 tests per run at the default thread
+`cargo test -p kcode-tui --lib` fails 1-4 tests per run at the default thread
 count, with a set that changes between runs. It is a parallelism race on
 process-global render state, not a logic bug: each test passes in isolation, and
 `--test-threads=1` passes the whole suite.
 
 Root cause: `create_test_app()` (and `create_named_provider_test_app`) in
-`crates/jcode-tui/src/tui/app/tests/support_failover/part_01.rs` calls
+`crates/kcode-tui/src/tui/app/tests/support_failover/part_01.rs` calls
 `clear_test_render_state_for_tests`, which wipes process-global flicker history,
 layout snapshots, status-area snapshots, copy targets, and scroll positions.
 Rendering tests guard that state with `render_state_test_lock()`, but
@@ -38,7 +38,7 @@ Recorded so a red run is not mistaken for a regression. Single-threaded to take
 the parallelism race above out of the picture:
 
 ```sh
-cargo test -p jcode-tui --test-threads=1
+cargo test -p kcode-tui --test-threads=1
 ```
 
 - `--lib`: 1966 passed, 27 failed, 17 ignored (2010 total, ~83s).
@@ -51,8 +51,8 @@ cargo test -p jcode-tui --test-threads=1
 The 27 `--lib` failures:
 
 ```text
-tui::app::helpers::helpers_tests::build_resume_command_uses_imported_jcode_session_for_claude_code
-tui::app::helpers::helpers_tests::build_resume_command_uses_imported_jcode_session_for_codex
+tui::app::helpers::helpers_tests::build_resume_command_uses_imported_kcode_session_for_claude_code
+tui::app::helpers::helpers_tests::build_resume_command_uses_imported_kcode_session_for_codex
 tui::app::tests::ancient_server_history_is_deferred_via_client_side_release_check
 tui::app::tests::recent_project_review_falls_back_cleanly_when_no_repo_is_known
 tui::app::tests::stale_server_history_is_deferred_before_remote_state_is_applied
@@ -88,7 +88,7 @@ The root crate has its own pre-existing set: `cargo test -p kcode --lib` fails
 B1/B2 fixed the two provider round-trip failures and added two tests. Sampled
 causes: stale expectations for removed or renamed surface, e.g.
 `login::next_step::tests::extracted_hints_match_the_strings_login_printed_before_extraction`
-wants "run jcode" where the code now prints "run kcode", and
+wants "run kcode" where the code now prints "run kcode", and
 `cli::args::tests::login_scriptable_flags_parse` parses a `--google-access-tier`
 flag that no longer exists after the Google login was cut. The `../todo.md`
 baseline bullet is the list to keep current.
@@ -97,7 +97,7 @@ baseline bullet is the list to keep current.
 
 Onboarding is easiest to iterate with an isolated sandbox, so repeated runs never
 touch real auth state. `scripts/onboarding_sandbox.sh` roots state under
-`JCODE_HOME` and `JCODE_RUNTIME_DIR`, so no real config, sockets, or trusted
+`KCODE_HOME` and `KCODE_RUNTIME_DIR`, so no real config, sockets, or trusted
 external-auth imports are reused, and one `reset` throws it all away.
 
 ```sh
@@ -109,7 +109,7 @@ scripts/onboarding_sandbox.sh kcode auth status      # run any kcode command in 
 ```
 
 Because a fresh sandbox has nothing to import, `seed-real-logins` copies your
-real external credential files into `$JCODE_HOME/external/<same relative path>`
+real external credential files into `$KCODE_HOME/external/<same relative path>`
 (and with `--with-transcripts`, your Codex/Claude transcripts), so detection and
 import behave as on a first-run machine that already has those tools. The copies
 are real tokens, so the sandbox stays local-only; your original `$HOME` files are
@@ -128,7 +128,7 @@ scripts/auth_fixture.sh list          # lower-level helper
 
 The fixture store defaults to `.tmp/auth-fixtures` (local developer state) and may
 hold real tokens, so do not commit or share it. Overrides:
-`JCODE_ONBOARDING_SANDBOX`, `JCODE_ONBOARDING_DIR`, `JCODE_AUTH_FIXTURE_DIR`.
+`KCODE_ONBOARDING_SANDBOX`, `KCODE_ONBOARDING_DIR`, `KCODE_AUTH_FIXTURE_DIR`.
 
 ### Headless screenshots
 

@@ -24,7 +24,7 @@ The jcode.sh account, subscription and hosted-model surface:
 - `/subscription`, `/subscribe`, `/hosted`, `/support`, and the hosted-model
   nudge
 - the `subscription_api`, `subscription_catalog`, `account_login`,
-  `provider/jcode`, `cli/account`, `jcode_device`, `subscribe_nudge` and
+  `provider/kcode`, `cli/account`, `kcode_device`, `subscribe_nudge` and
   `support` modules
 - the "Jcode subscription" pill in the login-import summary
 
@@ -33,12 +33,12 @@ The jcode.sh account, subscription and hosted-model surface:
 The fork cut ambient mode but left its CLI and transcript types behind. Now
 gone as well:
 
-- `kcode permissions` and the `jcode-tui-permissions` crate. With ambient mode
+- `kcode permissions` and the `kcode-tui-permissions` crate. With ambient mode
   removed, nothing ever enqueued a permission request, so the review TUI was
   unreachable.
 - The dangling `#[command(subcommand)]` and ambient doc comment on the
   `Permissions` variant, which had no subcommands.
-- `AmbientTranscript` and `SafetySystem::save_transcript` in `jcode-base` (zero
+- `AmbientTranscript` and `SafetySystem::save_transcript` in `kcode-base` (zero
   callers).
 
 ## Deliberately kept

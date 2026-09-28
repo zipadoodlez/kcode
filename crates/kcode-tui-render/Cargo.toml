@@ -1,0 +1,11 @@
+[package]
+name = "kcode-tui-render"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+kcode-tui-style = { path = "../kcode-tui-style" }
+ratatui = "0.30"
+unicode-width = "0.2"

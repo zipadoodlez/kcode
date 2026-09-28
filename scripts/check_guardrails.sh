@@ -101,7 +101,7 @@ run_ratchet "App shape ratchet" check_app_shape.py
 # invariant that nobody could see by reading one screen's code, so this gate is
 # cheap insurance against the whole class.
 run_gate "onboarding state-space invariants" \
-    cargo test --profile selfdev -p jcode-tui -j "$JOBS" onboarding_graph::
+    cargo test --profile selfdev -p kcode-tui -j "$JOBS" onboarding_graph::
 
 if $SKIP_SLOW; then
     :

@@ -1,15 +1,15 @@
 use anyhow::Result;
 use clap::Parser;
-use jcode::id::new_id;
-use jcode::message::{Message, ToolDefinition};
-use jcode::provider::{EventStream, Provider};
-use jcode::tool::{Registry, ToolContext, ToolExecutionMode};
+use kcode::id::new_id;
+use kcode::message::{Message, ToolDefinition};
+use kcode::provider::{EventStream, Provider};
+use kcode::tool::{Registry, ToolContext, ToolExecutionMode};
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Parser)]
-#[command(name = "jcode-harness")]
+#[command(name = "kcode-harness")]
 #[command(about = "Run a deterministic tool harness smoke test")]
 struct Args {
     /// Use an explicit working directory (defaults to a temp folder).
@@ -196,6 +196,6 @@ async fn main() -> Result<()> {
 
 fn create_temp_workspace() -> Result<PathBuf> {
     let mut path = std::env::temp_dir();
-    path.push(format!("jcode-harness-{}", new_id("run")));
+    path.push(format!("kcode-harness-{}", new_id("run")));
     Ok(path)
 }

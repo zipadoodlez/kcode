@@ -1,0 +1,16 @@
+[package]
+name = "kcode-transport"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Local IPC transport: a Unix socket behind one small Listener/Stream API"
+
+# Deliberately tiny. This exists so the harness API bridge can speak the
+# platform's local IPC without depending on `kcode-base`: the bridge is meant to
+# stay free of the application foundation, and duplicating 450 lines of named
+# pipe handling into it would have been the other way to get there.
+[dependencies]
+tokio = { version = "1", features = ["io-util", "net", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }

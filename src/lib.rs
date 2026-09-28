@@ -6,20 +6,20 @@
     clippy::useless_conversion
 )]
 
-//! Root `jcode` crate: the entrypoint + cli layer on top of the `jcode-tui`
-//! presentation crate (which in turn re-exports `jcode-app-core` and
-//! `jcode-base`).
+//! Root `kcode` crate: the entrypoint + cli layer on top of the `kcode-tui`
+//! presentation crate (which in turn re-exports `kcode-app-core` and
+//! `kcode-base`).
 //!
-//! The presentation modules (`tui`, `video_export`) live in `jcode-tui` and the
-//! non-presentation modules live in `jcode-app-core`; both are re-exported here
-//! via `pub use jcode_tui::*`, so existing `crate::<module>` paths (e.g.
+//! The presentation modules (`tui`, `video_export`) live in `kcode-tui` and the
+//! non-presentation modules live in `kcode-app-core`; both are re-exported here
+//! via `pub use kcode_tui::*`, so existing `crate::<module>` paths (e.g.
 //! `crate::config`, `crate::server`, `crate::tui`) keep resolving unchanged
 //! across the cli code that was not moved.
 
 // Re-export the presentation layer (and, transitively, the application core)
 // so `crate::tui`, `crate::video_export`, and `crate::<app-core module>` paths
 // resolve.
-pub use jcode_tui::*;
+pub use kcode_tui::*;
 
 // Cli + entrypoint layer (kept in the root crate).
 pub mod cli;

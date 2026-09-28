@@ -17,7 +17,7 @@ pub async fn run_restart_save_command(auto_restore: bool) -> Result<()> {
     if snapshot.sessions.is_empty() {
         println!("Saved empty reboot snapshot to {}", path.display());
         if auto_restore {
-            println!("Automatic restore is armed for the next plain `jcode` launch.");
+            println!("Automatic restore is armed for the next plain `kcode` launch.");
         }
         println!("\nNo active kcode windows were detected.");
         return Ok(());
@@ -40,7 +40,7 @@ pub async fn run_restart_save_command(auto_restore: bool) -> Result<()> {
         );
     }
     if auto_restore {
-        println!("\nAutomatic restore is armed for the next plain `jcode` launch.");
+        println!("\nAutomatic restore is armed for the next plain `kcode` launch.");
     }
     println!("\nAfter reboot, restore them with:\n  kcode restart restore");
 

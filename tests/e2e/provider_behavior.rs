@@ -24,7 +24,7 @@ async fn test_multi_turn_conversation() -> Result<()> {
         StreamEvent::SessionId("session-abc".to_string()),
     ]);
 
-    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
+    let provider: Arc<dyn kcode::provider::Provider> = Arc::new(provider);
     let registry = Registry::new(provider.clone()).await;
     let mut agent = Agent::new(provider, registry);
 
@@ -59,7 +59,7 @@ async fn test_token_usage() -> Result<()> {
         StreamEvent::SessionId("session-123".to_string()),
     ]);
 
-    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
+    let provider: Arc<dyn kcode::provider::Provider> = Arc::new(provider);
     let registry = Registry::new(provider.clone()).await;
     let mut agent = Agent::new(provider, registry);
 
@@ -83,7 +83,7 @@ async fn test_stream_error() -> Result<()> {
         },
     ]);
 
-    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
+    let provider: Arc<dyn kcode::provider::Provider> = Arc::new(provider);
     let registry = Registry::new(provider.clone()).await;
     let mut agent = Agent::new(provider, registry);
 
@@ -104,18 +104,18 @@ async fn test_stream_error() -> Result<()> {
 async fn test_socket_model_cycle_supported_models() -> Result<()> {
     let _env = setup_test_env()?;
     let runtime_dir = short_runtime_dir(format!(
-        "jcode-test-{}",
+        "kcode-test-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos()
     ));
     std::fs::create_dir_all(&runtime_dir)?;
-    let socket_path = runtime_dir.join("jcode.sock");
-    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+    let socket_path = runtime_dir.join("kcode.sock");
+    let debug_socket_path = runtime_dir.join("kcode-debug.sock");
 
     let provider = MockProvider::with_models(vec!["gpt-5.2-codex", "claude-opus-4-5-20251101"]);
-    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
+    let provider: Arc<dyn kcode::provider::Provider> = Arc::new(provider);
     let server_instance =
         server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
 
@@ -153,7 +153,7 @@ async fn test_socket_model_cycle_supported_models() -> Result<()> {
 async fn test_resume_restores_model_and_tool_history() -> Result<()> {
     let _env = setup_test_env()?;
     let runtime_dir = short_runtime_dir(format!(
-        "jcode-resume-test-{}",
+        "kcode-resume-test-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -164,20 +164,20 @@ async fn test_resume_restores_model_and_tool_history() -> Result<()> {
     let mut session = Session::create(None, Some("Resume Test".to_string()));
     session.model = Some("gpt-5.2-codex".to_string());
     session.add_message(
-        jcode::message::Role::User,
-        vec![jcode::message::ContentBlock::Text {
+        kcode::message::Role::User,
+        vec![kcode::message::ContentBlock::Text {
             text: "Run a tool".to_string(),
             cache_control: None,
         }],
     );
     session.add_message(
-        jcode::message::Role::Assistant,
+        kcode::message::Role::Assistant,
         vec![
-            jcode::message::ContentBlock::Text {
+            kcode::message::ContentBlock::Text {
                 text: "Running...".to_string(),
                 cache_control: None,
             },
-            jcode::message::ContentBlock::ToolUse {
+            kcode::message::ContentBlock::ToolUse {
                 id: "tool-1".to_string(),
                 name: "bash".to_string(),
                 input: serde_json::json!({"cmd": "echo hi"}),
@@ -186,8 +186,8 @@ async fn test_resume_restores_model_and_tool_history() -> Result<()> {
         ],
     );
     session.add_message(
-        jcode::message::Role::User,
-        vec![jcode::message::ContentBlock::ToolResult {
+        kcode::message::Role::User,
+        vec![kcode::message::ContentBlock::ToolResult {
             tool_use_id: "tool-1".to_string(),
             content: "hi\n".to_string(),
             is_error: None,
@@ -195,12 +195,12 @@ async fn test_resume_restores_model_and_tool_history() -> Result<()> {
     );
     session.save()?;
 
-    let socket_path = runtime_dir.join("jcode.sock");
-    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+    let socket_path = runtime_dir.join("kcode.sock");
+    let debug_socket_path = runtime_dir.join("kcode-debug.sock");
 
     // Default model = claude, resume should switch to gpt-5.2-codex
     let provider = MockProvider::with_models(vec!["claude-opus-4-5-20251101", "gpt-5.2-codex"]);
-    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
+    let provider: Arc<dyn kcode::provider::Provider> = Arc::new(provider);
     let server_instance =
         server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
     let server_handle = tokio::spawn(async move { server_instance.run().await });
@@ -252,7 +252,7 @@ async fn test_resume_restores_model_and_tool_history() -> Result<()> {
 async fn test_resume_session_with_local_history_uses_metadata_only_history() -> Result<()> {
     let _env = setup_test_env()?;
     let runtime_dir = short_runtime_dir(format!(
-        "jcode-target-subscribe-test-{}",
+        "kcode-target-subscribe-test-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -264,23 +264,23 @@ async fn test_resume_session_with_local_history_uses_metadata_only_history() -> 
     session.model = Some("model-a".to_string());
     session.provider_session_id = Some("provider-resume-123".to_string());
     session.add_message(
-        jcode::message::Role::User,
-        vec![jcode::message::ContentBlock::Text {
+        kcode::message::Role::User,
+        vec![kcode::message::ContentBlock::Text {
             text: "Existing local history".to_string(),
             cache_control: None,
         }],
     );
     session.add_message(
-        jcode::message::Role::Assistant,
-        vec![jcode::message::ContentBlock::Text {
+        kcode::message::Role::Assistant,
+        vec![kcode::message::ContentBlock::Text {
             text: "Existing assistant response".to_string(),
             cache_control: None,
         }],
     );
     session.save()?;
 
-    let socket_path = runtime_dir.join("jcode.sock");
-    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+    let socket_path = runtime_dir.join("kcode.sock");
+    let debug_socket_path = runtime_dir.join("kcode-debug.sock");
 
     let provider = Arc::new(MockProvider::with_models(vec!["model-a"]));
     provider.queue_response(vec![
@@ -290,7 +290,7 @@ async fn test_resume_session_with_local_history_uses_metadata_only_history() -> 
         },
     ]);
 
-    let provider_dyn: Arc<dyn jcode::provider::Provider> = provider.clone();
+    let provider_dyn: Arc<dyn kcode::provider::Provider> = provider.clone();
     let server_instance = server::Server::new_with_paths(
         provider_dyn,
         socket_path.clone(),
@@ -384,7 +384,7 @@ async fn test_resume_session_with_local_history_uses_metadata_only_history() -> 
         debug_run_command(debug_socket_path.clone(), "history", Some(&session.id))
             .await
             .unwrap_or_else(|err| format!("<history error: {err}>")),
-        std::env::var_os("JCODE_HOME")
+        std::env::var_os("KCODE_HOME")
             .and_then(|home| latest_log_excerpt(std::path::Path::new(&home)))
             .unwrap_or_else(|| "<no logs>".to_string())
     );
@@ -407,7 +407,7 @@ async fn test_resume_session_with_local_history_uses_metadata_only_history() -> 
 async fn test_resume_all_sessions_continues_interrupted_live_session() -> Result<()> {
     let _env = setup_test_env()?;
     let runtime_dir = short_runtime_dir(format!(
-        "jcode-resume-all-test-{}",
+        "kcode-resume-all-test-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -419,16 +419,16 @@ async fn test_resume_all_sessions_continues_interrupted_live_session() -> Result
     let mut session = Session::create(None, Some("Interrupted Session".to_string()));
     session.model = Some("model-a".to_string());
     session.add_message(
-        jcode::message::Role::User,
-        vec![jcode::message::ContentBlock::Text {
+        kcode::message::Role::User,
+        vec![kcode::message::ContentBlock::Text {
             text: "keep going on the migration".to_string(),
             cache_control: None,
         }],
     );
     session.save()?;
 
-    let socket_path = runtime_dir.join("jcode.sock");
-    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+    let socket_path = runtime_dir.join("kcode.sock");
+    let debug_socket_path = runtime_dir.join("kcode-debug.sock");
 
     let provider = MockProvider::with_models(vec!["model-a"]);
     provider.queue_response(vec![
@@ -437,7 +437,7 @@ async fn test_resume_all_sessions_continues_interrupted_live_session() -> Result
             stop_reason: Some("end_turn".to_string()),
         },
     ]);
-    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
+    let provider: Arc<dyn kcode::provider::Provider> = Arc::new(provider);
     let server_instance =
         server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
     let server_handle = tokio::spawn(async move { server_instance.run().await });
@@ -492,7 +492,7 @@ async fn test_resume_all_sessions_continues_interrupted_live_session() -> Result
 async fn test_resume_session_reports_reload_interruption_for_peer_sessions() -> Result<()> {
     let _env = setup_test_env()?;
     let runtime_dir = short_runtime_dir(format!(
-        "jcode-reload-interruption-test-{}",
+        "kcode-reload-interruption-test-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -503,8 +503,8 @@ async fn test_resume_session_reports_reload_interruption_for_peer_sessions() -> 
     let mut session = Session::create(None, Some("Reload Interrupted Session".to_string()));
     session.model = Some("model-a".to_string());
     session.add_message(
-        jcode::message::Role::User,
-        vec![jcode::message::ContentBlock::ToolResult {
+        kcode::message::Role::User,
+        vec![kcode::message::ContentBlock::ToolResult {
             tool_use_id: "tool_bash_1".to_string(),
             content: "[Tool 'bash' interrupted by server reload after 0.2s]".to_string(),
             is_error: Some(true),
@@ -512,11 +512,11 @@ async fn test_resume_session_reports_reload_interruption_for_peer_sessions() -> 
     );
     session.save()?;
 
-    let socket_path = runtime_dir.join("jcode.sock");
-    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+    let socket_path = runtime_dir.join("kcode.sock");
+    let debug_socket_path = runtime_dir.join("kcode-debug.sock");
 
     let provider = Arc::new(MockProvider::with_models(vec!["model-a"]));
-    let provider_dyn: Arc<dyn jcode::provider::Provider> = provider.clone();
+    let provider_dyn: Arc<dyn kcode::provider::Provider> = provider.clone();
     let server_instance = server::Server::new_with_paths(
         provider_dyn,
         socket_path.clone(),
@@ -567,18 +567,18 @@ async fn test_resume_session_reports_reload_interruption_for_peer_sessions() -> 
 async fn test_subscribe_selfdev_hint_marks_canary() -> Result<()> {
     let _env = setup_test_env()?;
     let runtime_dir = short_runtime_dir(format!(
-        "jcode-test-{}",
+        "kcode-test-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos()
     ));
     std::fs::create_dir_all(&runtime_dir)?;
-    let socket_path = runtime_dir.join("jcode.sock");
-    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+    let socket_path = runtime_dir.join("kcode.sock");
+    let debug_socket_path = runtime_dir.join("kcode-debug.sock");
 
     let provider = MockProvider::new();
-    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
+    let provider: Arc<dyn kcode::provider::Provider> = Arc::new(provider);
     let server_instance =
         server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
 
@@ -615,27 +615,27 @@ async fn test_subscribe_selfdev_hint_marks_canary() -> Result<()> {
 async fn test_subscribe_working_dir_without_selfdev_hint_stays_normal() -> Result<()> {
     let _env = setup_test_env()?;
     let runtime_dir = short_runtime_dir(format!(
-        "jcode-test-{}",
+        "kcode-test-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos()
     ));
     std::fs::create_dir_all(&runtime_dir)?;
-    let socket_path = runtime_dir.join("jcode.sock");
-    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+    let socket_path = runtime_dir.join("kcode.sock");
+    let debug_socket_path = runtime_dir.join("kcode-debug.sock");
 
     let fake_repo = tempfile::tempdir()?;
     std::fs::create_dir_all(fake_repo.path().join(".git"))?;
     std::fs::write(
         fake_repo.path().join("Cargo.toml"),
-        "[package]\nname = \"jcode\"\nversion = \"0.0.0\"\n",
+        "[package]\nname = \"kcode\"\nversion = \"0.0.0\"\n",
     )?;
     let nested_dir = fake_repo.path().join("nested").join("worktree");
     std::fs::create_dir_all(&nested_dir)?;
 
     let provider = MockProvider::new();
-    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
+    let provider: Arc<dyn kcode::provider::Provider> = Arc::new(provider);
     let server_instance =
         server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
 
@@ -678,15 +678,15 @@ async fn test_subscribe_working_dir_without_selfdev_hint_stays_normal() -> Resul
 async fn test_model_switch_resets_provider_session() -> Result<()> {
     let _env = setup_test_env()?;
     let runtime_dir = short_runtime_dir(format!(
-        "jcode-test-{}",
+        "kcode-test-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos()
     ));
     std::fs::create_dir_all(&runtime_dir)?;
-    let socket_path = runtime_dir.join("jcode.sock");
-    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+    let socket_path = runtime_dir.join("kcode.sock");
+    let debug_socket_path = runtime_dir.join("kcode-debug.sock");
 
     let provider = Arc::new(MockProvider::with_models(vec!["model-a", "model-b"]));
     provider.queue_response(vec![
@@ -703,7 +703,7 @@ async fn test_model_switch_resets_provider_session() -> Result<()> {
         },
     ]);
 
-    let provider_dyn: Arc<dyn jcode::provider::Provider> = provider.clone();
+    let provider_dyn: Arc<dyn kcode::provider::Provider> = provider.clone();
     let server_instance = server::Server::new_with_paths(
         provider_dyn,
         socket_path.clone(),
@@ -777,15 +777,15 @@ async fn test_model_switch_resets_provider_session() -> Result<()> {
 async fn test_model_switch_is_per_session() -> Result<()> {
     let _env = setup_test_env()?;
     let runtime_dir = short_runtime_dir(format!(
-        "jcode-test-{}",
+        "kcode-test-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos()
     ));
     std::fs::create_dir_all(&runtime_dir)?;
-    let socket_path = runtime_dir.join("jcode.sock");
-    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+    let socket_path = runtime_dir.join("kcode.sock");
+    let debug_socket_path = runtime_dir.join("kcode-debug.sock");
 
     let provider = Arc::new(MockProvider::with_models(vec!["model-a", "model-b"]));
     provider.queue_response(vec![
@@ -809,7 +809,7 @@ async fn test_model_switch_is_per_session() -> Result<()> {
         },
     ]);
 
-    let provider_dyn: Arc<dyn jcode::provider::Provider> = provider.clone();
+    let provider_dyn: Arc<dyn kcode::provider::Provider> = provider.clone();
     let server_instance = server::Server::new_with_paths(
         provider_dyn,
         socket_path.clone(),
@@ -883,7 +883,7 @@ async fn test_model_switch_is_per_session() -> Result<()> {
 }
 
 /// Test that the system prompt does NOT identify the agent as "Claude Code"
-/// The agent should identify as "jcode" or just a generic "coding assistant powered by Claude"
+/// The agent should identify as "kcode" or just a generic "coding assistant powered by Claude"
 #[tokio::test]
 async fn test_system_prompt_no_claude_code_identity() -> Result<()> {
     let _env = setup_test_env()?;
@@ -900,7 +900,7 @@ async fn test_system_prompt_no_claude_code_identity() -> Result<()> {
 
     // Keep a clone of Arc<MockProvider> before converting to Arc<dyn Provider>
     let provider_for_check = provider.clone();
-    let provider_dyn: Arc<dyn jcode::provider::Provider> = provider;
+    let provider_dyn: Arc<dyn kcode::provider::Provider> = provider;
     let registry = Registry::new(provider_dyn.clone()).await;
     let mut agent = Agent::new(provider_dyn, registry);
 
@@ -934,10 +934,10 @@ async fn test_system_prompt_no_claude_code_identity() -> Result<()> {
         identity_portion
     );
 
-    // Should identify as jcode
+    // Should identify as kcode
     assert!(
-        lower_identity.contains("jcode"),
-        "System prompt should identify as jcode. Found: {}",
+        lower_identity.contains("kcode"),
+        "System prompt should identify as kcode. Found: {}",
         identity_portion
     );
 

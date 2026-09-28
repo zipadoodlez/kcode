@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Generate a human-readable release notes body for a jcode release (issue #435).
+# Generate a human-readable release notes body for a kcode release (issue #435).
 #
 # Usage:
 #   scripts/generate_release_notes.sh <tag> [previous-tag]

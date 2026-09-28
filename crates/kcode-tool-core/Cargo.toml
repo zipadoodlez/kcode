@@ -1,0 +1,16 @@
+[package]
+name = "kcode-tool-core"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "kcode_tool_core"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+kcode-agent-runtime = { path = "../kcode-agent-runtime" }
+kcode-message-types = { path = "../kcode-message-types" }
+serde_json = "1"
+tokio = { version = "1", features = ["sync"] }

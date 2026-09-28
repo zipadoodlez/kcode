@@ -1,0 +1,18 @@
+[package]
+name = "kcode-protocol"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+kcode-config-types = { path = "../kcode-config-types" }
+kcode-message-types = { path = "../kcode-message-types" }
+kcode-plan = { path = "../kcode-plan" }
+kcode-provider-core = { path = "../kcode-provider-core" }
+kcode-session-types = { path = "../kcode-session-types" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+anyhow = "1"
+rand = "0.9"

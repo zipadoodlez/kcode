@@ -46,7 +46,7 @@ warmup miss is not a failure and there is no guaranteed speedup.
 openai_transport = "auto"   # auto | websocket | https
 ```
 
-Prewarming is on by default for native OpenAI WebSockets. `JCODE_OPENAI_PREWARM=0`
+Prewarming is on by default for native OpenAI WebSockets. `KCODE_OPENAI_PREWARM=0`
 (`false`/`off`) in the **server process** environment disables speculative warmup
 without disabling persistent WebSockets; `openai_transport = "https"` disables
 both. The provider's diagnostic summary reports `websocket_protocol=v2`, and
@@ -61,8 +61,8 @@ not implemented here.
 ## Tests
 
 ```sh
-cargo test -p jcode-provider-openai-runtime --lib -- --test-threads=1
-cargo test -p jcode-provider-openai-runtime --lib \
+cargo test -p kcode-provider-openai-runtime --lib -- --test-threads=1
+cargo test -p kcode-provider-openai-runtime --lib \
   live_openai_v2_prewarm_and_continuation -- --ignored --nocapture --test-threads=1
 ```
 

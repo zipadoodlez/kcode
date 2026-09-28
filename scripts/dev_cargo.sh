@@ -7,7 +7,7 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 # commands receive this wrapper's memory, linker, feature, and toolchain policy.
 # Exporting this recursion guard makes the final `cargo` invocation below bypass
 # that shim and resolve the real Cargo binary.
-export JCODE_IN_DEV_CARGO=1
+export KCODE_IN_DEV_CARGO=1
 
 # The exported BashTool shim survives `cd` and child shells. Do not redirect
 # Cargo back here when the caller has moved to a different checkout. Compare
@@ -19,7 +19,7 @@ esac
 
 # shellcheck source=scripts/remote_config.sh
 source "$repo_root/scripts/remote_config.sh"
-jcode_load_remote_config
+kcode_load_remote_config
 
 log() {
   printf 'dev_cargo: %s\n' "$*" >&2
@@ -35,13 +35,13 @@ rust_action_log_execution="local"
 cargo_gate_wait_ms=0
 
 start_rust_action_log() {
-  case "${JCODE_RUST_ACTION_LOG:-1}" in
+  case "${KCODE_RUST_ACTION_LOG:-1}" in
     0|false|no|off) return ;;
   esac
 
-  local state_root="${JCODE_HOME:-${HOME:+$HOME/.jcode}}"
-  [[ -n "$state_root" ]] || state_root="$repo_root/target/jcode-state"
-  rust_action_log_path="${JCODE_RUST_ACTION_LOG_PATH:-$state_root/logs/rust-actions.jsonl}"
+  local state_root="${KCODE_HOME:-${HOME:+$HOME/.kcode}}"
+  [[ -n "$state_root" ]] || state_root="$repo_root/target/kcode-state"
+  rust_action_log_path="${KCODE_RUST_ACTION_LOG_PATH:-$state_root/logs/rust-actions.jsonl}"
   rust_action_log_started_ns=$(date +%s%N)
   rust_action_log_started_at=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
   trap 'record_rust_action_log "$?"' EXIT
@@ -59,14 +59,14 @@ record_rust_action_log() {
   action="${cargo_argv[0]:-unknown}"
   mkdir -p "$(dirname "$rust_action_log_path")" 2>/dev/null || return 0
 
-  JCODE_LOG_STARTED_AT="$rust_action_log_started_at" \
-  JCODE_LOG_DURATION_MS="$duration_ms" \
-  JCODE_LOG_GATE_WAIT_MS="$cargo_gate_wait_ms" \
-  JCODE_LOG_EXIT_CODE="$exit_code" \
-  JCODE_LOG_ACTION="$action" \
-  JCODE_LOG_PROFILE="$profile" \
-  JCODE_LOG_REPO="$repo_root" \
-  JCODE_LOG_EXECUTION="$rust_action_log_execution" \
+  KCODE_LOG_STARTED_AT="$rust_action_log_started_at" \
+  KCODE_LOG_DURATION_MS="$duration_ms" \
+  KCODE_LOG_GATE_WAIT_MS="$cargo_gate_wait_ms" \
+  KCODE_LOG_EXIT_CODE="$exit_code" \
+  KCODE_LOG_ACTION="$action" \
+  KCODE_LOG_PROFILE="$profile" \
+  KCODE_LOG_REPO="$repo_root" \
+  KCODE_LOG_EXECUTION="$rust_action_log_execution" \
   python3 - "$rust_action_log_path" "${cargo_argv[@]}" <<'PY' || true
 import json
 import os
@@ -74,20 +74,20 @@ import sys
 
 path = sys.argv[1]
 record = {
-    "started_at": os.environ["JCODE_LOG_STARTED_AT"],
-    "duration_ms": int(os.environ["JCODE_LOG_DURATION_MS"]),
-    "gate_wait_ms": int(os.environ["JCODE_LOG_GATE_WAIT_MS"]),
+    "started_at": os.environ["KCODE_LOG_STARTED_AT"],
+    "duration_ms": int(os.environ["KCODE_LOG_DURATION_MS"]),
+    "gate_wait_ms": int(os.environ["KCODE_LOG_GATE_WAIT_MS"]),
     "execution_duration_ms": max(
         0,
-        int(os.environ["JCODE_LOG_DURATION_MS"])
-        - int(os.environ["JCODE_LOG_GATE_WAIT_MS"]),
+        int(os.environ["KCODE_LOG_DURATION_MS"])
+        - int(os.environ["KCODE_LOG_GATE_WAIT_MS"]),
     ),
-    "exit_code": int(os.environ["JCODE_LOG_EXIT_CODE"]),
-    "success": os.environ["JCODE_LOG_EXIT_CODE"] == "0",
-    "action": os.environ["JCODE_LOG_ACTION"],
-    "profile": os.environ["JCODE_LOG_PROFILE"],
-    "repository": os.environ["JCODE_LOG_REPO"],
-    "execution": os.environ["JCODE_LOG_EXECUTION"],
+    "exit_code": int(os.environ["KCODE_LOG_EXIT_CODE"]),
+    "success": os.environ["KCODE_LOG_EXIT_CODE"] == "0",
+    "action": os.environ["KCODE_LOG_ACTION"],
+    "profile": os.environ["KCODE_LOG_PROFILE"],
+    "repository": os.environ["KCODE_LOG_REPO"],
+    "execution": os.environ["KCODE_LOG_EXECUTION"],
     "argv": sys.argv[2:],
 }
 line = (json.dumps(record, separators=(",", ":")) + "\n").encode()
@@ -124,7 +124,7 @@ path_is_memory_backed() {
 }
 
 configure_build_tmpdir() {
-  local candidate="${JCODE_BUILD_TMPDIR:-}"
+  local candidate="${KCODE_BUILD_TMPDIR:-}"
   if [[ -n "$candidate" ]]; then
     build_tmpdir_status="explicit"
   elif [[ -n "${TMPDIR:-}" ]]; then
@@ -132,17 +132,17 @@ configure_build_tmpdir() {
     return
   elif ! path_is_memory_backed /tmp; then
     return
-  elif [[ -n "${JCODE_SCRATCH_DIR:-}" ]]; then
-    candidate="$JCODE_SCRATCH_DIR/cargo-tmp"
-    build_tmpdir_status="jcode-scratch"
-  elif [[ -n "${JCODE_HOME:-}" ]]; then
-    candidate="$JCODE_HOME/scratch/cargo-tmp"
-    build_tmpdir_status="jcode-home"
+  elif [[ -n "${KCODE_SCRATCH_DIR:-}" ]]; then
+    candidate="$KCODE_SCRATCH_DIR/cargo-tmp"
+    build_tmpdir_status="kcode-scratch"
+  elif [[ -n "${KCODE_HOME:-}" ]]; then
+    candidate="$KCODE_HOME/scratch/cargo-tmp"
+    build_tmpdir_status="kcode-home"
   elif [[ -n "${HOME:-}" ]]; then
-    candidate="$HOME/.jcode/scratch/cargo-tmp"
+    candidate="$HOME/.kcode/scratch/cargo-tmp"
     build_tmpdir_status="home-scratch"
   else
-    candidate="$repo_root/target/jcode-scratch/cargo-tmp"
+    candidate="$repo_root/target/kcode-scratch/cargo-tmp"
     build_tmpdir_status="target-scratch"
   fi
 
@@ -216,13 +216,13 @@ maybe_enable_sccache() {
   # sccache cannot cache incremental compilations, so for our default
   # incremental profiles it produces 0% hits while adding wrapper overhead and
   # misleading "enabled" status. Skip it for incremental builds unless the
-  # caller explicitly forces it via JCODE_SCCACHE=1/on/force.
-  local force_sccache="${JCODE_SCCACHE:-auto}"
+  # caller explicitly forces it via KCODE_SCCACHE=1/on/force.
+  local force_sccache="${KCODE_SCCACHE:-auto}"
   case "$force_sccache" in
     1|true|yes|on|force) force_sccache="1" ;;
     0|false|no|off|never)
-      sccache_status="disabled-by-jcode-sccache"
-      log "sccache disabled by JCODE_SCCACHE"
+      sccache_status="disabled-by-kcode-sccache"
+      log "sccache disabled by KCODE_SCCACHE"
       return
       ;;
     *) force_sccache="auto" ;;
@@ -244,7 +244,7 @@ maybe_enable_sccache() {
 
   if [[ "$force_sccache" != "1" ]] && build_is_incremental "$@"; then
     sccache_status="skipped-incremental"
-    log "sccache skipped for incremental build (it cannot cache incremental units; set JCODE_SCCACHE=on to force, or use a non-incremental profile)"
+    log "sccache skipped for incremental build (it cannot cache incremental units; set KCODE_SCCACHE=on to force, or use a non-incremental profile)"
     return
   fi
 
@@ -327,19 +327,19 @@ feature_args_from_profile() {
 }
 
 validate_feature_profile() {
-  local profile="${JCODE_DEV_FEATURE_PROFILE:-default}"
+  local profile="${KCODE_DEV_FEATURE_PROFILE:-default}"
   case "$profile" in
     ""|default|minimal|none|pdf|embeddings|full)
       ;;
     *)
-      printf 'error: unsupported JCODE_DEV_FEATURE_PROFILE=%s (expected default|minimal|pdf|embeddings|full)\n' "$profile" >&2
+      printf 'error: unsupported KCODE_DEV_FEATURE_PROFILE=%s (expected default|minimal|pdf|embeddings|full)\n' "$profile" >&2
       exit 1
       ;;
   esac
 }
 
 build_cargo_argv() {
-  local profile="${JCODE_DEV_FEATURE_PROFILE:-default}"
+  local profile="${KCODE_DEV_FEATURE_PROFILE:-default}"
   if [[ "$profile" == "default" || -z "$profile" ]]; then
     feature_profile_status="default"
     printf '%s\0' "$@"
@@ -431,7 +431,7 @@ selfdev_low_memory_default_needed() {
   swap_total_kib=$(meminfo_kib SwapTotal)
   [[ -n "$mem_total_kib" && -n "$mem_available_kib" && -n "$swap_total_kib" ]] || return 1
 
-  # On small no-swap machines, earlyoom can terminate the root jcode rustc
+  # On small no-swap machines, earlyoom can terminate the root kcode rustc
   # around 1-3 GiB RSS before the kernel OOM killer would report anything.
   # Keep this adaptive so larger workstations, and currently-idle smaller
   # workstations with enough headroom, retain the faster inherited selfdev
@@ -450,21 +450,21 @@ cpu_count() {
 # builds (e.g. several self-dev agents on one machine) self-throttle instead of
 # all assuming the full core count and tripping earlyoom/OOM.
 #
-# After the monolith was split into the jcode-base/app-core/tui/cli crate DAG,
-# the largest single rustc unit is jcode-base, which has grown back to a
+# After the monolith was split into the kcode-base/app-core/tui/cli crate DAG,
+# the largest single rustc unit is kcode-base, which has grown back to a
 # measured ~1.6 GiB RSS peak (selfdev profile, sampled VmRSS while building the
 # lib), down from the old 2.5-3 GiB monolith but above the original ~1.28 GiB
 # post-split figure. We budget ~1.75 GiB of currently-available memory per job:
 # a deliberate cushion above the measured peak (rustc's true VmHWM can exceed a
-# coarse sample, and jcode-base keeps growing) so a fresh build under load backs
+# coarse sample, and kcode-base keeps growing) so a fresh build under load backs
 # off before earlyoom SIGTERMs it. Clamp into [1, cpus]. On an idle 15 GiB
 # machine this still uses ~7 of 8 cores; under memory pressure a fresh build
-# backs off further. An explicit CARGO_BUILD_JOBS / JCODE_BUILD_JOBS always
+# backs off further. An explicit CARGO_BUILD_JOBS / KCODE_BUILD_JOBS always
 # wins. Linux reads MemAvailable; macOS conservatively sums reclaimable vm_stat
 # pages. Unsupported hosts and failed probes fall back to Cargo's configuration.
 select_build_jobs() {
   # Respect an explicit override from either env var.
-  local override="${JCODE_BUILD_JOBS:-${CARGO_BUILD_JOBS:-}}"
+  local override="${KCODE_BUILD_JOBS:-${CARGO_BUILD_JOBS:-}}"
   if [[ -n "$override" ]]; then
     if [[ "$override" =~ ^[0-9]+$ && "$override" -ge 1 ]]; then
       export CARGO_BUILD_JOBS="$override"
@@ -486,11 +486,11 @@ select_build_jobs() {
   cpus=$(cpu_count)
 
   # Per-job memory budget (MiB). Sized with a cushion above the largest measured
-  # rustc unit (jcode-base, ~1.6 GiB RSS sampled) so an idle machine uses nearly
+  # rustc unit (kcode-base, ~1.6 GiB RSS sampled) so an idle machine uses nearly
   # every core while a memory-pressured one backs off before earlyoom kills a
-  # build. Tunable per host via JCODE_BUILD_MIB_PER_JOB.
+  # build. Tunable per host via KCODE_BUILD_MIB_PER_JOB.
   mib_per_job_default=1792
-  mib_per_job="${JCODE_BUILD_MIB_PER_JOB:-$mib_per_job_default}"
+  mib_per_job="${KCODE_BUILD_MIB_PER_JOB:-$mib_per_job_default}"
   [[ "$mib_per_job" =~ ^[0-9]+$ && "$mib_per_job" -ge 256 ]] || mib_per_job="$mib_per_job_default"
 
   local mem_available_mib jobs_by_mem jobs
@@ -506,14 +506,14 @@ select_build_jobs() {
   export CARGO_BUILD_JOBS="$jobs"
   build_jobs_status="adaptive:${jobs} (cpus=${cpus}, mem_avail=${mem_available_mib}MiB, budget=${mib_per_job}MiB/job)"
   if (( jobs < cpus )); then
-    log "limiting cargo to ${jobs} job(s) under memory pressure (${mem_available_mib}MiB available, ~${mib_per_job}MiB/job); override with JCODE_BUILD_JOBS"
+    log "limiting cargo to ${jobs} job(s) under memory pressure (${mem_available_mib}MiB available, ~${mib_per_job}MiB/job); override with KCODE_BUILD_JOBS"
   fi
 }
 
-# Keep `jcode-build-meta`'s embedded git metadata in lockstep with HEAD without
+# Keep `kcode-build-meta`'s embedded git metadata in lockstep with HEAD without
 # making it watch `.git` mtimes.
 #
-# `jcode-build-meta/build.rs` deliberately does NOT declare `.git/HEAD`/`.git/index`
+# `kcode-build-meta/build.rs` deliberately does NOT declare `.git/HEAD`/`.git/index`
 # as `rerun-if-changed` inputs, because their mtimes change on every `git add`,
 # `git status`, commit, and concurrent-agent git op -- which would force a
 # full-tree recompile (base -> app-core -> tui -> cli) on every incremental
@@ -523,18 +523,18 @@ select_build_jobs() {
 # manually touched Cargo.toml.
 #
 # Instead, export the *value* of the current git hash/date. build.rs declares
-# `cargo:rerun-if-env-changed=JCODE_BUILD_GIT_HASH` (and _DATE), so cargo reruns
+# `cargo:rerun-if-env-changed=KCODE_BUILD_GIT_HASH` (and _DATE), so cargo reruns
 # the build script ONLY when these values change -- i.e. exactly when HEAD moves
 # -- and never on a bare `git add`/`status` or repeated builds on the same
 # commit. This keeps the embedded hash correct after every commit while keeping
 # same-commit incremental builds fully incremental. We intentionally do NOT
-# export JCODE_BUILD_GIT_DIRTY here: the dirty flag flips on every edit and would
+# export KCODE_BUILD_GIT_DIRTY here: the dirty flag flips on every edit and would
 # reintroduce per-build churn; the publish guard validates dirty builds via the
 # source fingerprint / mtime path instead of the embedded flag.
 export_git_build_metadata() {
   # Respect any value the caller already set (e.g. release/CI pipelines).
-  if [[ -n "${JCODE_BUILD_GIT_HASH:-}" ]]; then
-    git_meta_status="external:${JCODE_BUILD_GIT_HASH}"
+  if [[ -n "${KCODE_BUILD_GIT_HASH:-}" ]]; then
+    git_meta_status="external:${KCODE_BUILD_GIT_HASH}"
     return
   fi
   if ! command -v git >/dev/null 2>&1; then
@@ -547,10 +547,10 @@ export_git_build_metadata() {
     git_meta_status="no-head"
     return
   fi
-  export JCODE_BUILD_GIT_HASH="$hash"
+  export KCODE_BUILD_GIT_HASH="$hash"
   date="$(git -C "$repo_root" log -1 --format=%ci 2>/dev/null || true)"
   if [[ -n "$date" ]]; then
-    export JCODE_BUILD_GIT_DATE="$date"
+    export KCODE_BUILD_GIT_DATE="$date"
   fi
   git_meta_status="hash=${hash}"
 }
@@ -561,7 +561,7 @@ maybe_configure_low_memory_selfdev() {
     return
   fi
 
-  local mode="${JCODE_SELFDEV_LOW_MEMORY:-auto}"
+  local mode="${KCODE_SELFDEV_LOW_MEMORY:-auto}"
   case "$mode" in
     1|true|yes|on|force)
       ;;
@@ -576,7 +576,7 @@ maybe_configure_low_memory_selfdev() {
       fi
       ;;
     *)
-      printf 'error: unsupported JCODE_SELFDEV_LOW_MEMORY=%s (expected auto|on|off)\n' "$mode" >&2
+      printf 'error: unsupported KCODE_SELFDEV_LOW_MEMORY=%s (expected auto|on|off)\n' "$mode" >&2
       exit 1
       ;;
   esac
@@ -594,30 +594,30 @@ maybe_configure_low_memory_selfdev() {
 }
 
 # Enable rustc's parallel front-end (`-Zthreads`) for iterative dev/selfdev/test
-# builds. The jcode monoliths (jcode-base/app-core/tui) are ~80% single-threaded
+# builds. The kcode monoliths (kcode-base/app-core/tui) are ~80% single-threaded
 # front-end (type-check + borrow-check + monomorphization collection); at
 # opt-level 0 that front-end, not codegen, dominates wall time. The parallel
 # front-end is a nightly-only `-Z` flag, so this is gated on a nightly toolchain
 # being available and only applies to the unoptimized iteration profiles.
 #
 # Measured on this repo (Intel Ultra 7, 8 logical cores, selfdev profile):
-#   jcode-base clean recompile  25.3s -> 12.7s   (-Zthreads=4)
+#   kcode-base clean recompile  25.3s -> 12.7s   (-Zthreads=4)
 #   base-edit full-chain rebuild  ~16s -> ~10s
 # Cranelift was tried too and was *slower* here (16.5s) because the bottleneck is
 # the front-end, not codegen, so we deliberately do not enable it.
 #
 # Controls:
-#   JCODE_PARALLEL_FRONTEND=auto|0|1   (default auto)
-#   JCODE_FRONTEND_THREADS=<n>         (default 4; diminishing returns past 4)
-#   JCODE_DEV_TOOLCHAIN=<name>         (default: nightly when present)
+#   KCODE_PARALLEL_FRONTEND=auto|0|1   (default auto)
+#   KCODE_FRONTEND_THREADS=<n>         (default 4; diminishing returns past 4)
+#   KCODE_DEV_TOOLCHAIN=<name>         (default: nightly when present)
 parallel_frontend_status="disabled"
 parallel_frontend_toolchain=""
 
 dev_nightly_toolchain() {
   # Prefer an explicit override, else a `+toolchain` already on the argv, else
   # the first installed nightly toolchain.
-  if [[ -n "${JCODE_DEV_TOOLCHAIN:-}" ]]; then
-    printf '%s\n' "$JCODE_DEV_TOOLCHAIN"
+  if [[ -n "${KCODE_DEV_TOOLCHAIN:-}" ]]; then
+    printf '%s\n' "$KCODE_DEV_TOOLCHAIN"
     return 0
   fi
   local tc
@@ -628,7 +628,7 @@ dev_nightly_toolchain() {
 }
 
 configure_parallel_frontend() {
-  local requested="${JCODE_PARALLEL_FRONTEND:-auto}"
+  local requested="${KCODE_PARALLEL_FRONTEND:-auto}"
   local forced="false"
   case "$requested" in
     0|false|no|off)
@@ -650,7 +650,7 @@ configure_parallel_frontend() {
   # isolated `target/selfdev` dir that only this script + `selfdev build` use, so
   # adding `-Zthreads` to RUSTFLAGS (which changes cargo's unit fingerprint)
   # cannot thrash rust-analyzer's `target/debug` cache. Forcing the flag on
-  # (`JCODE_PARALLEL_FRONTEND=1`) opts dev/test in too, accepting that potential
+  # (`KCODE_PARALLEL_FRONTEND=1`) opts dev/test in too, accepting that potential
   # cache contention.
   local profile
   profile=$(selected_profile "$@")
@@ -694,7 +694,7 @@ configure_parallel_frontend() {
     return 0
   fi
 
-  local threads="${JCODE_FRONTEND_THREADS:-4}"
+  local threads="${KCODE_FRONTEND_THREADS:-4}"
   [[ "$threads" =~ ^[0-9]+$ && "$threads" -ge 1 ]] || threads=4
 
   parallel_frontend_toolchain="$tc"
@@ -705,13 +705,13 @@ configure_parallel_frontend() {
 }
 
 configure_linux_linker() {
-  local requested_mode="${JCODE_FAST_LINKER:-auto}"
+  local requested_mode="${KCODE_FAST_LINKER:-auto}"
   local mode="$requested_mode"
 
   case "$mode" in
     auto)
       # Prefer mold over lld: on this repo's large statically-linked binary
-      # (~300 MB .text), mold links the jcode bin in ~2.0s vs lld's ~2.9s
+      # (~300 MB .text), mold links the kcode bin in ~2.0s vs lld's ~2.9s
       # (measured, warm, selfdev profile). The bin relinks on every build, so
       # that ~0.8s is a per-build win. Both need clang as the linker driver.
       if command -v mold >/dev/null 2>&1 && command -v clang >/dev/null 2>&1; then
@@ -725,7 +725,7 @@ configure_linux_linker() {
     lld|mold|system)
       ;;
     *)
-      printf 'error: unsupported JCODE_FAST_LINKER=%s (expected auto|lld|mold|system)\n' "$mode" >&2
+      printf 'error: unsupported KCODE_FAST_LINKER=%s (expected auto|lld|mold|system)\n' "$mode" >&2
       exit 1
       ;;
   esac
@@ -759,11 +759,11 @@ configure_linux_linker() {
 }
 
 print_setup() {
-  if [[ -n "${JCODE_DEV_FEATURE_PROFILE:-}" && "${JCODE_DEV_FEATURE_PROFILE}" != "default" ]]; then
-    feature_profile_status="${JCODE_DEV_FEATURE_PROFILE}"
+  if [[ -n "${KCODE_DEV_FEATURE_PROFILE:-}" && "${KCODE_DEV_FEATURE_PROFILE}" != "default" ]]; then
+    feature_profile_status="${KCODE_DEV_FEATURE_PROFILE}"
   fi
-  local cargo_gate_mode="${JCODE_CARGO_GATE:-on}"
-  local cargo_gate_dir="${JCODE_CARGO_GATE_DIR:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}}"
+  local cargo_gate_mode="${KCODE_CARGO_GATE:-on}"
+  local cargo_gate_dir="${KCODE_CARGO_GATE_DIR:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}}"
   cat <<EOF
 repo_root=$repo_root
 os=$(uname -s)
@@ -774,12 +774,12 @@ parallel_frontend_status=$parallel_frontend_status
 build_jobs_status=$build_jobs_status
 cargo_build_jobs=${CARGO_BUILD_JOBS:-<unset>}
 cargo_gate_mode=$cargo_gate_mode
-cargo_gate_path=${JCODE_CARGO_GATE_PATH:-$cargo_gate_dir/jcode-cargo-build.lock}
+cargo_gate_path=${KCODE_CARGO_GATE_PATH:-$cargo_gate_dir/kcode-cargo-build.lock}
 build_tmpdir_status=$build_tmpdir_status
 tmpdir=${TMPDIR:-<unset>}
 feature_profile_status=$feature_profile_status
 git_meta_status=$git_meta_status
-build_git_hash=${JCODE_BUILD_GIT_HASH:-<unset>}
+build_git_hash=${KCODE_BUILD_GIT_HASH:-<unset>}
 rustc_wrapper=${RUSTC_WRAPPER:-<unset>}
 linker_mode=$selected_linker_mode
 linker_desc=${selected_linker_desc:-<none>}
@@ -789,7 +789,7 @@ EOF
 }
 
 remote_connect_timeout() {
-  local value="${JCODE_REMOTE_CONNECT_TIMEOUT:-5}"
+  local value="${KCODE_REMOTE_CONNECT_TIMEOUT:-5}"
   if [[ ! "$value" =~ ^[0-9]+$ || "$value" -lt 1 ]]; then
     value=5
   fi
@@ -800,7 +800,7 @@ remote_tcp_timeout() {
   # Bounded probe used the first time we contact a host (or after the recovery
   # window expires) so an unreachable host fails fast instead of waiting for
   # the full SSH ConnectTimeout. Accepts fractional seconds (GNU timeout).
-  local value="${JCODE_REMOTE_TCP_TIMEOUT:-1}"
+  local value="${KCODE_REMOTE_TCP_TIMEOUT:-1}"
   if [[ ! "$value" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
     value=1
   fi
@@ -811,7 +811,7 @@ remote_recovery_tcp_timeout() {
   # Shorter probe used while a host was recently seen down. An up host always
   # answers in a few ms, so this still detects recovery on the next build while
   # keeping per-build cost low during an outage.
-  local value="${JCODE_REMOTE_RECOVERY_TCP_TIMEOUT:-0.3}"
+  local value="${KCODE_REMOTE_RECOVERY_TCP_TIMEOUT:-0.3}"
   if [[ ! "$value" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
     value=0.3
   fi
@@ -823,7 +823,7 @@ remote_down_cache_ttl() {
   # timeout. Recovery is still detected on the very next build; this only
   # controls how long downtime builds stay cheap before reverting to the full
   # probe timeout. Set to 0 to always use the full timeout.
-  local value="${JCODE_REMOTE_DOWN_TTL:-300}"
+  local value="${KCODE_REMOTE_DOWN_TTL:-300}"
   if [[ ! "$value" =~ ^[0-9]+$ ]]; then
     value=300
   fi
@@ -831,14 +831,14 @@ remote_down_cache_ttl() {
 }
 
 remote_down_cache_path() {
-  local remote="${JCODE_REMOTE_HOST:-}"
+  local remote="${KCODE_REMOTE_HOST:-}"
   local key
   if command -v cksum >/dev/null 2>&1; then
     key="$(printf '%s' "$remote" | cksum | awk '{print $1}')"
   else
     key="${remote//[^A-Za-z0-9_-]/_}"
   fi
-  printf '%s/jcode-remote-down-%s\n' "${TMPDIR:-/tmp}" "$key"
+  printf '%s/kcode-remote-down-%s\n' "${TMPDIR:-/tmp}" "$key"
 }
 
 remote_down_cache_fresh() {
@@ -903,13 +903,13 @@ remote_tcp_reachable() {
 }
 
 remote_cargo_preflight() {
-  local remote="${JCODE_REMOTE_HOST:-}"
+  local remote="${KCODE_REMOTE_HOST:-}"
   if [[ -z "$remote" ]]; then
-    log "remote cargo requested but JCODE_REMOTE_HOST is not configured"
+    log "remote cargo requested but KCODE_REMOTE_HOST is not configured"
     return 1
   fi
 
-  local ssh_bin="${JCODE_REMOTE_SSH_BIN:-ssh}"
+  local ssh_bin="${KCODE_REMOTE_SSH_BIN:-ssh}"
   if ! command -v "$ssh_bin" >/dev/null 2>&1; then
     log "remote cargo requested but ssh binary is unavailable: $ssh_bin"
     return 1
@@ -927,8 +927,8 @@ remote_cargo_preflight() {
 
   # Fast TCP pre-probe to fail fast when the host is offline, unless the
   # connection is proxied (where a direct probe would be wrong) or explicitly
-  # disabled via JCODE_REMOTE_TCP_PROBE=0.
-  local tcp_probe="${JCODE_REMOTE_TCP_PROBE:-1}"
+  # disabled via KCODE_REMOTE_TCP_PROBE=0.
+  local tcp_probe="${KCODE_REMOTE_TCP_PROBE:-1}"
   case "$tcp_probe" in
     0|false|no|off) tcp_probe="0" ;;
     *) tcp_probe="1" ;;
@@ -948,15 +948,15 @@ remote_cargo_preflight() {
 
   local connect_timeout
   connect_timeout="$(remote_connect_timeout)"
-  local server_alive_interval="${JCODE_REMOTE_SERVER_ALIVE_INTERVAL:-10}"
-  local server_alive_count="${JCODE_REMOTE_SERVER_ALIVE_COUNT_MAX:-1}"
+  local server_alive_interval="${KCODE_REMOTE_SERVER_ALIVE_INTERVAL:-10}"
+  local server_alive_count="${KCODE_REMOTE_SERVER_ALIVE_COUNT_MAX:-1}"
   local output
   if ! output=$("$ssh_bin" \
     -o BatchMode=yes \
     -o ConnectTimeout="$connect_timeout" \
     -o ServerAliveInterval="$server_alive_interval" \
     -o ServerAliveCountMax="$server_alive_count" \
-    "$remote" "printf 'jcode-remote-ok\\n'" 2>&1); then
+    "$remote" "printf 'kcode-remote-ok\\n'" 2>&1); then
     log "remote cargo preflight failed for $remote after ~${connect_timeout}s: $output"
     record_remote_down
     return 1
@@ -966,7 +966,7 @@ remote_cargo_preflight() {
 }
 
 remote_cargo_fallback_mode() {
-  local mode="${JCODE_REMOTE_CARGO_FALLBACK:-local}"
+  local mode="${KCODE_REMOTE_CARGO_FALLBACK:-local}"
   case "$mode" in
     local|1|true|yes|on)
       printf 'local\n'
@@ -975,7 +975,7 @@ remote_cargo_fallback_mode() {
       printf 'error\n'
       ;;
     *)
-      printf 'error: unsupported JCODE_REMOTE_CARGO_FALLBACK=%s (expected local|error)\n' "$mode" >&2
+      printf 'error: unsupported KCODE_REMOTE_CARGO_FALLBACK=%s (expected local|error)\n' "$mode" >&2
       exit 2
       ;;
   esac
@@ -1014,15 +1014,15 @@ cargo_test_has_explicit_filter() {
 }
 
 run_local_cargo() {
-  if cargo_test_has_explicit_filter "${cargo_argv[@]}" && [[ "${JCODE_DEV_CARGO_ALLOW_ZERO_TESTS:-0}" != "1" ]]; then
+  if cargo_test_has_explicit_filter "${cargo_argv[@]}" && [[ "${KCODE_DEV_CARGO_ALLOW_ZERO_TESTS:-0}" != "1" ]]; then
     local output_file
-    output_file=$(mktemp "${TMPDIR:-/tmp}/jcode-dev-cargo.XXXXXX")
+    output_file=$(mktemp "${TMPDIR:-/tmp}/kcode-dev-cargo.XXXXXX")
     local status=0
     cargo "${cargo_argv[@]}" 2>&1 | tee "$output_file" || status=${PIPESTATUS[0]}
     if [[ "$status" -eq 0 ]] \
       && grep -qE '^running 0 tests$' "$output_file" \
       && ! grep -qE '^running [1-9][0-9]* tests$' "$output_file"; then
-      printf 'dev_cargo: explicit cargo test filter matched zero tests; check the test path/name or set JCODE_DEV_CARGO_ALLOW_ZERO_TESTS=1 to allow this intentionally\n' >&2
+      printf 'dev_cargo: explicit cargo test filter matched zero tests; check the test path/name or set KCODE_DEV_CARGO_ALLOW_ZERO_TESTS=1 to allow this intentionally\n' >&2
       rm -f "$output_file"
       return 97
     fi
@@ -1041,28 +1041,28 @@ cargo_action_needs_gate() {
 }
 
 # Cargo's own package-cache and target-dir locks only coordinate processes that
-# happen to share those exact directories. Jcode agents also build from scratch
+# happen to share those exact directories. Kcode agents also build from scratch
 # worktrees, different target directories, and different toolchains, so several
 # memory-heavy rustc processes can still run at once. On this 15 GiB development
 # machine that makes every build slower and can trigger earlyoom.
 #
-# Serialize compile-capable local Cargo actions across all jcode worktrees. A
+# Serialize compile-capable local Cargo actions across all kcode worktrees. A
 # single Cargo invocation can still use all jobs selected by select_build_jobs,
 # so this trades harmful process-level competition for useful crate-level
-# parallelism. Nested wrapper calls inherit JCODE_CARGO_GATE_HELD and cannot
-# deadlock. Set JCODE_CARGO_GATE=off for an intentional concurrency experiment.
+# parallelism. Nested wrapper calls inherit KCODE_CARGO_GATE_HELD and cannot
+# deadlock. Set KCODE_CARGO_GATE=off for an intentional concurrency experiment.
 acquire_cargo_gate() {
   cargo_gate_status="not-needed"
   cargo_gate_wait_ms=0
   cargo_action_needs_gate || return 0
 
-  case "${JCODE_CARGO_GATE:-on}" in
+  case "${KCODE_CARGO_GATE:-on}" in
     0|false|no|off|disabled)
       cargo_gate_status="disabled"
       return 0
       ;;
   esac
-  if [[ "${JCODE_CARGO_GATE_HELD:-0}" == "1" ]]; then
+  if [[ "${KCODE_CARGO_GATE_HELD:-0}" == "1" ]]; then
     cargo_gate_status="inherited"
     return 0
   fi
@@ -1073,9 +1073,9 @@ acquire_cargo_gate() {
   fi
 
   local gate_dir gate_path wait_started_ns wait_finished_ns waited_seconds
-  gate_dir="${JCODE_CARGO_GATE_DIR:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}}"
+  gate_dir="${KCODE_CARGO_GATE_DIR:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}}"
   mkdir -p "$gate_dir"
-  gate_path="${JCODE_CARGO_GATE_PATH:-$gate_dir/jcode-cargo-build.lock}"
+  gate_path="${KCODE_CARGO_GATE_PATH:-$gate_dir/kcode-cargo-build.lock}"
   exec {cargo_gate_fd}>"$gate_path"
   if ! flock -n "$cargo_gate_fd"; then
     log "waiting for the host-wide Cargo gate ($gate_path)"
@@ -1090,7 +1090,7 @@ acquire_cargo_gate() {
     wait_finished_ns=$(date +%s%N)
     cargo_gate_wait_ms=$(( (wait_finished_ns - wait_started_ns) / 1000000 ))
   fi
-  export JCODE_CARGO_GATE_HELD=1
+  export KCODE_CARGO_GATE_HELD=1
   cargo_gate_status="acquired"
   log "acquired host-wide Cargo gate (waited ${cargo_gate_wait_ms}ms)"
 }
@@ -1119,7 +1119,7 @@ done < <(build_cargo_argv "$@")
 
 start_rust_action_log
 
-if [[ "${JCODE_REMOTE_CARGO:-0}" == "1" ]]; then
+if [[ "${KCODE_REMOTE_CARGO:-0}" == "1" ]]; then
   if remote_cargo_preflight; then
     log "using remote cargo via scripts/remote_build.sh"
     rust_action_log_execution="remote"
@@ -1127,7 +1127,7 @@ if [[ "${JCODE_REMOTE_CARGO:-0}" == "1" ]]; then
     exit $?
   fi
   if [[ "$(remote_cargo_fallback_mode)" == "local" ]]; then
-    log "remote cargo unavailable; falling back to local cargo (set JCODE_REMOTE_CARGO_FALLBACK=error to fail instead)"
+    log "remote cargo unavailable; falling back to local cargo (set KCODE_REMOTE_CARGO_FALLBACK=error to fail instead)"
   else
     log "remote cargo unavailable and fallback disabled"
     exit 75
@@ -1135,7 +1135,7 @@ if [[ "${JCODE_REMOTE_CARGO:-0}" == "1" ]]; then
 fi
 
 acquire_cargo_gate
-# Size the in-process parallelism only after competing jcode Cargo processes
+# Size the in-process parallelism only after competing kcode Cargo processes
 # have drained. Measuring before the wait would preserve an unnecessarily low
 # one-job decision even after memory becomes available.
 select_build_jobs

@@ -1,16 +1,16 @@
 #!/bin/bash
-# Screenshot Watcher - monitors for jcode screenshot signals
+# Screenshot Watcher - monitors for kcode screenshot signals
 #
 # This script watches the signal directory and captures screenshots
-# when jcode signals that a specific UI state is ready.
+# when kcode signals that a specific UI state is ready.
 #
 # Usage: ./screenshot_watcher.sh [window_id]
 #
-# Start jcode with: /screenshot-mode on
+# Start kcode with: /screenshot-mode on
 
 set -e
 
-SIGNAL_DIR="${XDG_RUNTIME_DIR:-/tmp}/jcode-screenshots"
+SIGNAL_DIR="${XDG_RUNTIME_DIR:-/tmp}/kcode-screenshots"
 OUTPUT_DIR="$(dirname "$0")/../docs/screenshots"
 WINDOW_ID="${1:-}"
 
@@ -27,7 +27,7 @@ echo "   Output dir: $OUTPUT_DIR"
 echo "   Window ID: ${WINDOW_ID:-<focused>}"
 echo ""
 echo "Waiting for signals... (Ctrl+C to stop)"
-echo "Enable in jcode with: /screenshot-mode on"
+echo "Enable in kcode with: /screenshot-mode on"
 echo ""
 
 capture_signal() {

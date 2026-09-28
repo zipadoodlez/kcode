@@ -13,7 +13,7 @@ pub(super) fn local_endpoint_hint(provider_id: &str) -> String {
         "ollama" => "Next step: install a model with `ollama pull llama3.2`, then run \
              `kcode --provider ollama --model llama3.2 run 'hello'`."
             .to_string(),
-        "lmstudio" => "Next step: load a chat model in LM Studio's Local Server, then run jcode \
+        "lmstudio" => "Next step: load a chat model in LM Studio's Local Server, then run kcode \
              with that exact model id, for example \
              `kcode --provider lmstudio --model <model-id> run 'hello'`."
             .to_string(),

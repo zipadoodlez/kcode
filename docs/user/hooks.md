@@ -45,9 +45,9 @@ pre_tool_timeout_ms = 5000
 Every hook has an env override, which always wins. An **empty** env value
 disables the config-file hook:
 
-`JCODE_HOOK_TURN_START`, `JCODE_HOOK_TURN_END`, `JCODE_HOOK_SESSION_START`,
-`JCODE_HOOK_SESSION_END`, `JCODE_HOOK_PRE_TOOL`, `JCODE_HOOK_POST_TOOL`,
-`JCODE_HOOK_PRE_TOOL_TIMEOUT_MS`.
+`KCODE_HOOK_TURN_START`, `KCODE_HOOK_TURN_END`, `KCODE_HOOK_SESSION_START`,
+`KCODE_HOOK_SESSION_END`, `KCODE_HOOK_PRE_TOOL`, `KCODE_HOOK_POST_TOOL`,
+`KCODE_HOOK_PRE_TOOL_TIMEOUT_MS`.
 
 ### Common contract
 
@@ -58,11 +58,11 @@ disables the config-file hook:
 
 | variable | meaning |
 |---|---|
-| `JCODE_HOOK_EVENT` | `turn_start`, `turn_end`, `session_start`, `session_end`, `pre_tool`, `post_tool` |
-| `JCODE_HOOK_SESSION_ID` | the session the event belongs to |
-| `JCODE_HOOK_CWD` | session working directory |
-| `JCODE_HOOK_PAYLOAD` | JSON object mirroring all fields (capped at 16 KB) |
-| `JCODE_HOOKS_DISABLED` | always `1`; stops a hook that calls `kcode` from recursing |
+| `KCODE_HOOK_EVENT` | `turn_start`, `turn_end`, `session_start`, `session_end`, `pre_tool`, `post_tool` |
+| `KCODE_HOOK_SESSION_ID` | the session the event belongs to |
+| `KCODE_HOOK_CWD` | session working directory |
+| `KCODE_HOOK_PAYLOAD` | JSON object mirroring all fields (capped at 16 KB) |
+| `KCODE_HOOKS_DISABLED` | always `1`; stops a hook that calls `kcode` from recursing |
 
 Any variable a hook does not set is simply absent, so `"${VAR:-default}"` works.
 
@@ -85,8 +85,8 @@ slow the agent, and a failure is only logged.
 `pre_tool` runs **synchronously before every tool call** and can block it. It is
 the only hook that can affect the agent.
 
-- It receives `JCODE_HOOK_TOOL_NAME`, and the full tool input JSON on **stdin**
-  (also a 16 KB-truncated copy in `JCODE_HOOK_TOOL_INPUT`).
+- It receives `KCODE_HOOK_TOOL_NAME`, and the full tool input JSON on **stdin**
+  (also a 16 KB-truncated copy in `KCODE_HOOK_TOOL_INPUT`).
 - **Exit 0** - allow the call.
 - **Exit 2** - block the call. The hook's stderr (trimmed, capped at 2000 chars)
   is returned to the model as the tool error, so it can adapt.
@@ -104,7 +104,7 @@ it is your trust boundary, not kcode's.
 # ~/bin/kcode-tool-policy    stdin: tool input JSON
 input=$(cat)
 
-case "$JCODE_HOOK_TOOL_NAME" in
+case "$KCODE_HOOK_TOOL_NAME" in
   bash)
     if grep -qE 'rm -rf /([^a-zA-Z]|$)|mkfs|dd if=' <<<"$input"; then
       echo "blocked: destructive shell command" >&2   # goes back to the model
@@ -134,14 +134,14 @@ post_tool     = "~/bin/kcode-event-log"
 ```bash
 #!/usr/bin/env bash
 # ~/bin/kcode-notify
-if [ "$JCODE_HOOK_STATUS" = ok ]; then icon=ok; else icon=FAILED; fi
-notify-send "kcode $icon" "${JCODE_HOOK_LAST_ASSISTANT_TEXT:0:120}"
+if [ "$KCODE_HOOK_STATUS" = ok ]; then icon=ok; else icon=FAILED; fi
+notify-send "kcode $icon" "${KCODE_HOOK_LAST_ASSISTANT_TEXT:0:120}"
 ```
 
 ```bash
 #!/usr/bin/env bash
-# ~/bin/kcode-event-log - one script, fanned out by JCODE_HOOK_EVENT
-echo "$JCODE_HOOK_PAYLOAD" >> ~/.local/state/kcode-events.jsonl
+# ~/bin/kcode-event-log - one script, fanned out by KCODE_HOOK_EVENT
+echo "$KCODE_HOOK_PAYLOAD" >> ~/.local/state/kcode-events.jsonl
 ```
 
 ## Terminal hooks
@@ -157,7 +157,7 @@ spawn_hook = "tmux new-window"
 focus_hook = "~/bin/kcode-focus"
 ```
 
-Env overrides: `JCODE_SPAWN_HOOK`, `JCODE_FOCUS_HOOK` (empty disables).
+Env overrides: `KCODE_SPAWN_HOOK`, `KCODE_FOCUS_HOOK` (empty disables).
 
 ### `spawn_hook`
 
@@ -180,15 +180,15 @@ Metadata environment:
 
 | variable | meaning |
 |---|---|
-| `JCODE_SPAWN_KIND` | why: `swarm-agent`, `resume`, `selfdev`, `restart` |
-| `JCODE_SPAWN_SESSION_ID` | the session the window will run |
-| `JCODE_SPAWN_TITLE` | suggested window/tab title (session icon + name) |
-| `JCODE_SPAWN_CWD` | session working directory |
-| `JCODE_SPAWN_PROGRAM` | path of the kcode binary to execute |
-| `JCODE_SPAWN_COMMAND` | the full command line, shell-escaped, for launchers that take one shell string |
-| `JCODE_SPAWN_SWARM_ID` | (swarm spawns) the swarm the agent joins |
-| `JCODE_SPAWN_COORDINATOR_SESSION_ID` | (swarm spawns) the coordinator that requested it |
-| `JCODE_FRESH_SPAWN` | `1` when this is a fresh window handoff |
+| `KCODE_SPAWN_KIND` | why: `swarm-agent`, `resume`, `selfdev`, `restart` |
+| `KCODE_SPAWN_SESSION_ID` | the session the window will run |
+| `KCODE_SPAWN_TITLE` | suggested window/tab title (session icon + name) |
+| `KCODE_SPAWN_CWD` | session working directory |
+| `KCODE_SPAWN_PROGRAM` | path of the kcode binary to execute |
+| `KCODE_SPAWN_COMMAND` | the full command line, shell-escaped, for launchers that take one shell string |
+| `KCODE_SPAWN_SWARM_ID` | (swarm spawns) the swarm the agent joins |
+| `KCODE_SPAWN_COORDINATOR_SESSION_ID` | (swarm spawns) the coordinator that requested it |
+| `KCODE_FRESH_SPAWN` | `1` when this is a fresh window handoff |
 
 Examples:
 
@@ -208,22 +208,22 @@ A router script, for placement that depends on why the spawn happened:
 ```bash
 #!/usr/bin/env bash
 # ~/bin/kcode-spawn-router     argv: the kcode command to run
-case "$JCODE_SPAWN_KIND" in
+case "$KCODE_SPAWN_KIND" in
   swarm-agent)
-    tmux new-window -n "swarm:${JCODE_SPAWN_SWARM_ID:0:8}" "$@" 2>/dev/null \
+    tmux new-window -n "swarm:${KCODE_SPAWN_SWARM_ID:0:8}" "$@" 2>/dev/null \
       || tmux split-window "$@"
     ;;
   *)
-    kitty --title "$JCODE_SPAWN_TITLE" -e "$@" &
+    kitty --title "$KCODE_SPAWN_TITLE" -e "$@" &
     ;;
 esac
 ```
 
-Launchers that want a single shell string use `$JCODE_SPAWN_COMMAND`:
+Launchers that want a single shell string use `$KCODE_SPAWN_COMMAND`:
 
 ```bash
 #!/usr/bin/env bash
-zellij action new-pane -- bash -lc "$JCODE_SPAWN_COMMAND"
+zellij action new-pane -- bash -lc "$KCODE_SPAWN_COMMAND"
 ```
 
 ### `focus_hook`
@@ -234,9 +234,9 @@ multiplexers. A wrapper that owns placement should own focus too:
 
 ```bash
 #!/usr/bin/env bash
-# ~/bin/kcode-focus    env: JCODE_FOCUS_SESSION_ID, JCODE_FOCUS_TITLE
+# ~/bin/kcode-focus    env: KCODE_FOCUS_SESSION_ID, KCODE_FOCUS_TITLE
 tmux select-window -t "$(tmux list-windows -F '#{window_id} #{window_name}' \
-  | grep -F "$JCODE_FOCUS_TITLE" | head -1 | cut -d' ' -f1)"
+  | grep -F "$KCODE_FOCUS_TITLE" | head -1 | cut -d' ' -f1)"
 ```
 
 If the hook fails to start, kcode falls back to its built-in focus path.
@@ -249,10 +249,10 @@ connects later snapshots its own values and sends them to the server, and the
 server re-exports them when running a spawn hook - so the hook follows the
 terminal you are actually attached to, not the one the server started in.
 Multiplexers (tmux, zellij, screen), terminal emulators and the display server
-are covered, and the same values are also exposed as `JCODE_CLIENT_<NAME>`
+are covered, and the same values are also exposed as `KCODE_CLIENT_<NAME>`
 aliases for hooks that need to tell the two apart.
 
-Programmatic wrappers can set `JCODE_SPAWN_HOOK` in the environment of the
+Programmatic wrappers can set `KCODE_SPAWN_HOOK` in the environment of the
 `kcode` server they launch, and every headed spawn that server performs routes
 through the hook.
 
@@ -267,4 +267,4 @@ Real gaps in the hook surface, tracked in [../todo.md](../todo.md):
 - **Blocked tool calls are invisible to you.** `pre_tool` stderr goes to the
   model; nothing tells the user "your policy blocked 3 calls this session".
 - **Hook failures are log-only.** Observers log and drop.
-- **The env prefix is still `JCODE_`**, not `KCODE_` (see `todo.md`).
+- **The env prefix is still `KCODE_`**, not `KCODE_` (see `todo.md`).

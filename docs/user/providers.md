@@ -68,15 +68,15 @@ set the model explicitly.
 
 ### Experimental CLI providers
 
-- `cursor` - native HTTPS; model override `JCODE_CURSOR_MODEL`.
-- `copilot` - GitHub device flow; model override `JCODE_COPILOT_MODEL`.
+- `cursor` - native HTTPS; model override `KCODE_CURSOR_MODEL`.
+- `copilot` - GitHub device flow; model override `KCODE_COPILOT_MODEL`.
 - `antigravity` - native Google OAuth, no Antigravity install needed; model
-  override `JCODE_ANTIGRAVITY_MODEL`.
+  override `KCODE_ANTIGRAVITY_MODEL`.
 
 ### OpenAI endpoint override
 
 For API-key use you can retarget the Responses API base with
-`JCODE_OPENAI_API_BASE`, `OPENAI_BASE_URL`, or `OPENAI_API_BASE` (first set wins;
+`KCODE_OPENAI_API_BASE`, `OPENAI_BASE_URL`, or `OPENAI_API_BASE` (first set wins;
 an absolute `http(s)://` base ending in the API version). kcode appends
 `/responses` and derives the WebSocket and `/models` endpoints from it. The
 override is ignored in ChatGPT/Codex OAuth mode, and a malformed value is logged
@@ -128,10 +128,10 @@ Relevant environment:
 |---|---|
 | `AWS_BEARER_TOKEN_BEDROCK`, `AWS_REGION` | bearer-token auth |
 | `AWS_PROFILE` | IAM/SSO profile |
-| `JCODE_BEDROCK_PROFILE`, `JCODE_BEDROCK_REGION` | kcode-specific overrides |
-| `JCODE_BEDROCK_ENABLE=1` | opt in to instance/container metadata credentials |
-| `JCODE_BEDROCK_VALIDATE_STS=1` | validate with `sts:GetCallerIdentity` |
-| `JCODE_BEDROCK_MAX_TOKENS`, `_TEMPERATURE`, `_TOP_P`, `_STOP_SEQUENCES` | per-request parameters |
+| `KCODE_BEDROCK_PROFILE`, `KCODE_BEDROCK_REGION` | kcode-specific overrides |
+| `KCODE_BEDROCK_ENABLE=1` | opt in to instance/container metadata credentials |
+| `KCODE_BEDROCK_VALIDATE_STS=1` | validate with `sts:GetCallerIdentity` |
+| `KCODE_BEDROCK_MAX_TOKENS`, `_TEMPERATURE`, `_TOP_P`, `_STOP_SEQUENCES` | per-request parameters |
 
 Prefer an inference-profile ID such as `us.amazon.nova-2-lite-v1:0` over a bare
 foundation-model ID when both exist; some models only invoke through a profile.
@@ -166,7 +166,7 @@ on the first failure. It works for OpenAI-compatible providers and, on the
 `full` tier, the native Anthropic/OpenAI subscription and API-key paths.
 
 ```sh
-kcode provider-doctor cerebras --tier offline   # jcode wiring, no key, no spend
+kcode provider-doctor cerebras --tier offline   # kcode wiring, no key, no spend
 kcode provider-doctor cerebras --tier catalog   # live /models, needs key
 kcode provider-doctor cerebras --tier full      # real chat, stream, tools, spends
 kcode provider-doctor cerebras --model gpt-oss-120b --tier full --json
@@ -174,7 +174,7 @@ kcode provider-doctor cerebras --model gpt-oss-120b --tier full --json
 
 | tier | needs key | spends | adds |
 |---|---|---|---|
-| `offline` (jcode wiring) | no | no | picker rendering, catalog reload, fallback labeling, model-switch routing |
+| `offline` (kcode wiring) | no | no | picker rendering, catalog reload, fallback labeling, model-switch routing |
 | `catalog` (default) | yes | ~none | live `GET /models`: bad/missing key, dead endpoint, model absent from the live catalog |
 | `full` | yes | yes | real chat, streaming, the tool-call loop |
 

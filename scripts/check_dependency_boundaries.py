@@ -2,7 +2,7 @@
 """Check lightweight crate dependency boundaries.
 
 Type crates should remain data-contract crates. This guard intentionally starts
-small: it blocks direct dependencies from any `jcode-*-types` crate to root or
+small: it blocks direct dependencies from any `kcode-*-types` crate to root or
 runtime-heavy internal crates. It allows external dependencies for now, while
 making internal domain leaks visible and easy to extend.
 """
@@ -19,30 +19,30 @@ ROOT = Path(__file__).resolve().parents[1]
 # Internal crates that are allowed as dependencies of type crates.
 # Keep this list narrow. Add a crate only if it is itself a data-contract crate.
 ALLOWED_INTERNAL_TYPE_DEPS = {
-    "jcode-message-types",
+    "kcode-message-types",
 }
 
 # Internal crates that type crates must not depend on directly. Most are runtime,
-# provider, UI, storage, or root behavior crates. `jcode-core` is intentionally
+# provider, UI, storage, or root behavior crates. `kcode-core` is intentionally
 # blocked so it does not become the backdoor catch-all dependency for DTO crates.
 FORBIDDEN_INTERNAL_DEPS = {
-    "jcode",
-    "jcode-agent-runtime",
-    "jcode-core",
-    "jcode-embedding",
-    "jcode-pdf",
-    "jcode-plan",
-    "jcode-provider-core",
-    "jcode-provider-gemini",
-    "jcode-provider-metadata",
-    "jcode-provider-openrouter",
-    "jcode-protocol",
-    "jcode-terminal-launch",
-    "jcode-tui-core",
-    "jcode-tui-markdown",
-    "jcode-tui-mermaid",
-    "jcode-tui-render",
-    "jcode-tui-workspace",
+    "kcode",
+    "kcode-agent-runtime",
+    "kcode-core",
+    "kcode-embedding",
+    "kcode-pdf",
+    "kcode-plan",
+    "kcode-provider-core",
+    "kcode-provider-gemini",
+    "kcode-provider-metadata",
+    "kcode-provider-openrouter",
+    "kcode-protocol",
+    "kcode-terminal-launch",
+    "kcode-tui-core",
+    "kcode-tui-markdown",
+    "kcode-tui-mermaid",
+    "kcode-tui-render",
+    "kcode-tui-workspace",
 }
 
 
@@ -58,7 +58,7 @@ def cargo_metadata() -> dict:
 
 
 def is_type_crate(name: str) -> bool:
-    return name.startswith("jcode-") and name.endswith("-types")
+    return name.startswith("kcode-") and name.endswith("-types")
 
 
 def main() -> int:

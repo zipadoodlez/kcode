@@ -43,7 +43,7 @@ fn validate(args: &Args) -> Result<()> {
 pub(crate) async fn run(args: Args) -> Result<()> {
     validate(&args)?;
     let host = args.ssh.as_deref().expect("SSH dispatch requires a host");
-    let binary = args.ssh_binary.as_deref().unwrap_or("jcode");
+    let binary = args.ssh_binary.as_deref().unwrap_or("kcode");
     super::output::stderr_info(format!("Connecting local Kcode UI to {host} over SSH..."));
     let mut connection = super::ssh_transport::NativeSsh::connect_with_workspace(
         host,
@@ -53,13 +53,13 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     )
     .await?;
     let working_dir = connection.remote_working_dir().to_owned();
-    crate::env::set_var("JCODE_SSH_REMOTE", host);
-    crate::env::set_var("JCODE_SSH_BINARY", binary);
-    crate::env::set_var("JCODE_SSH_WORKING_DIR", &working_dir);
+    crate::env::set_var("KCODE_SSH_REMOTE", host);
+    crate::env::set_var("KCODE_SSH_BINARY", binary);
+    crate::env::set_var("KCODE_SSH_WORKING_DIR", &working_dir);
     if let Some(socket) = args.ssh_server_socket.as_deref() {
-        crate::env::set_var("JCODE_SSH_SERVER_SOCKET", socket);
+        crate::env::set_var("KCODE_SSH_SERVER_SOCKET", socket);
     } else {
-        crate::env::remove_var("JCODE_SSH_SERVER_SOCKET");
+        crate::env::remove_var("KCODE_SSH_SERVER_SOCKET");
     }
     crate::env::remove_var(crate::client_mode::CLIENT_SELFDEV_ENV);
     crate::server::set_socket_path(
@@ -102,12 +102,12 @@ fn quote(value: &str) -> String {
 
 /// Return a remote-aware resume command, never a local session lookup.
 pub(crate) fn resume_hint(session_id: &str) -> Option<String> {
-    let host = std::env::var("JCODE_SSH_REMOTE").ok()?;
-    let mut args = vec!["jcode".to_string(), "--ssh".to_string(), quote(&host)];
+    let host = std::env::var("KCODE_SSH_REMOTE").ok()?;
+    let mut args = vec!["kcode".to_string(), "--ssh".to_string(), quote(&host)];
     for (flag, variable) in [
-        ("--ssh-binary", "JCODE_SSH_BINARY"),
-        ("--ssh-server-socket", "JCODE_SSH_SERVER_SOCKET"),
-        ("--remote-working-dir", "JCODE_SSH_WORKING_DIR"),
+        ("--ssh-binary", "KCODE_SSH_BINARY"),
+        ("--ssh-server-socket", "KCODE_SSH_SERVER_SOCKET"),
+        ("--remote-working-dir", "KCODE_SSH_WORKING_DIR"),
     ] {
         if let Ok(value) = std::env::var(variable) {
             args.extend([flag.to_owned(), quote(&value)]);
@@ -125,8 +125,8 @@ mod tests {
     #[test]
     fn remote_modes_accept_explicit_remote_ids_without_local_lookup() {
         for argv in [
-            vec!["jcode", "--ssh", "dev"],
-            vec!["jcode", "--ssh", "dev", "--resume", "session_remote_123"],
+            vec!["kcode", "--ssh", "dev"],
+            vec!["kcode", "--ssh", "dev", "--resume", "session_remote_123"],
         ] {
             validate(&Args::try_parse_from(argv).unwrap()).unwrap();
         }
@@ -141,7 +141,7 @@ mod tests {
             vec!["--onboarding-sim"],
             vec!["--tools", "bash"],
         ] {
-            let mut argv = vec!["jcode", "--ssh", "dev"];
+            let mut argv = vec!["kcode", "--ssh", "dev"];
             argv.extend(tail);
             assert!(validate(&Args::try_parse_from(argv).unwrap()).is_err());
         }
@@ -151,18 +151,18 @@ mod tests {
     fn resume_hint_retains_remote_identity_and_quotes_paths() {
         let _lock = crate::storage::lock_test_env();
         let names = [
-            "JCODE_SSH_REMOTE",
-            "JCODE_SSH_BINARY",
-            "JCODE_SSH_WORKING_DIR",
-            "JCODE_SSH_SERVER_SOCKET",
+            "KCODE_SSH_REMOTE",
+            "KCODE_SSH_BINARY",
+            "KCODE_SSH_WORKING_DIR",
+            "KCODE_SSH_SERVER_SOCKET",
             crate::client_mode::CLIENT_SELFDEV_ENV,
         ];
         let previous: Vec<_> = names.iter().map(std::env::var_os).collect();
         for name in names {
             crate::env::remove_var(name);
         }
-        crate::env::set_var("JCODE_SSH_REMOTE", "dev");
-        crate::env::set_var("JCODE_SSH_WORKING_DIR", "/srv/sam's repo");
+        crate::env::set_var("KCODE_SSH_REMOTE", "dev");
+        crate::env::set_var("KCODE_SSH_WORKING_DIR", "/srv/sam's repo");
         let hint = resume_hint("session_remote_1").unwrap();
         assert!(hint.contains("--ssh 'dev'"));
         assert!(hint.contains("'/srv/sam'\\''s repo'"));

@@ -1,0 +1,12 @@
+[package]
+name = "kcode-provider-anthropic"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+kcode-schema-dialect = { path = "../kcode-schema-dialect" }
+kcode-logging = { path = "../kcode-logging" }
+kcode-message-types = { path = "../kcode-message-types" }
+kcode-provider-core = { path = "../kcode-provider-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

@@ -23,19 +23,19 @@ from browser_handoff_fixture import FixtureHandler, PAGES
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tab-id", type=int, required=True,
-                        help="Existing disposable tab showing a loopback Jcode fixture or about:blank")
+                        help="Existing disposable tab showing a loopback Kcode fixture or about:blank")
     args = parser.parse_args()
     if args.tab_id <= 0 or not os.environ.get("BROWSER_SESSION", "").strip():
         parser.error("A positive --tab-id and an existing BROWSER_SESSION are required")
     repo = Path(__file__).resolve().parents[1]
-    env = dict(os.environ, JCODE_BROWSER_HANDOFF_TEST_TAB_ID=str(args.tab_id),
-               JCODE_BROWSER_HANDOFF_TEST_BLOCKED_TAB_ID=str(args.tab_id),
-               JCODE_BROWSER_HANDOFF_TEST_TRACE="1")
+    env = dict(os.environ, KCODE_BROWSER_HANDOFF_TEST_TAB_ID=str(args.tab_id),
+               KCODE_BROWSER_HANDOFF_TEST_BLOCKED_TAB_ID=str(args.tab_id),
+               KCODE_BROWSER_HANDOFF_TEST_TRACE="1")
     # Finish compilation before acquiring the tab or starting its fixture. Cargo
     # may wait for another build's lock, which is not a live-test timeout.
-    print('JCODE_CHECKPOINT {"message":"Compiling live browser test harness once"}', flush=True)
+    print('KCODE_CHECKPOINT {"message":"Compiling live browser test harness once"}', flush=True)
     build = subprocess.run(
-        ["cargo", "test", "-p", "jcode-app-core", "--lib", "--no-run", "--message-format=json"],
+        ["cargo", "test", "-p", "kcode-app-core", "--lib", "--no-run", "--message-format=json"],
         cwd=repo, env=env, stdout=subprocess.PIPE, text=True, timeout=1800, check=False)
     executables = set()
     for line in build.stdout.splitlines():
@@ -48,26 +48,26 @@ def main():
                 print(rendered, file=sys.stderr, end="", flush=True)
         target = artifact.get("target", {})
         if (artifact.get("reason") == "compiler-artifact"
-                and target.get("name") == "jcode_app_core"
+                and target.get("name") == "kcode_app_core"
                 and "lib" in target.get("kind", [])
                 and artifact.get("profile", {}).get("test") is True
                 and artifact.get("executable")):
             executables.add(artifact["executable"])
     build.check_returncode()
     if len(executables) != 1:
-        parser.error("Expected exactly one jcode-app-core library test executable from Cargo")
+        parser.error("Expected exactly one kcode-app-core library test executable from Cargo")
     test_executable = executables.pop()
     if not Path(test_executable).is_file():
         parser.error("Cargo's library test executable is missing")
     runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
-    lock_fd = os.open(runtime / f"jcode-browser-acceptance-tab-{args.tab_id}.lock",
+    lock_fd = os.open(runtime / f"kcode-browser-acceptance-tab-{args.tab_id}.lock",
                       os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         os.close(lock_fd)
         parser.error("Another acceptance runner owns this disposable tab")
-    bridge = Path(os.environ.get("JCODE_HOME", str(Path.home() / ".jcode"))) / "browser/browser"
+    bridge = Path(os.environ.get("KCODE_HOME", str(Path.home() / ".kcode"))) / "browser/browser"
 
     def call(action, **params):
         result = subprocess.run([str(bridge), action, json.dumps(dict(params, tabId=args.tab_id))],
@@ -85,7 +85,7 @@ def main():
     url = urlsplit(original["url"])
     if original["url"] != "about:blank" and not (
             url.scheme in ("http", "https") and url.hostname in ("127.0.0.1", "localhost", "::1")
-            and original["title"] in ("Jcode isolated browser fixture", "Jev hybrid verified")):
+            and original["title"] in ("Kcode isolated browser fixture", "Jev hybrid verified")):
         parser.error("Refusing to replace a non-fixture tab. Prepare a disposable about:blank tab first.")
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
@@ -113,10 +113,10 @@ def main():
                 if time.monotonic() >= deadline:
                     raise RuntimeError("Local fixture did not finish navigation")
                 time.sleep(0.05)
-            print(f"JCODE_CHECKPOINT {json.dumps({'message': 'Running ' + name})}", flush=True)
+            print(f"KCODE_CHECKPOINT {json.dumps({'message': 'Running ' + name})}", flush=True)
             subprocess.run([test_executable, name, "--ignored", "--nocapture"], cwd=repo, env=env,
                            timeout=300, check=True)
-        print('JCODE_CHECKPOINT {"message":"All live browser handoff acceptance cases passed"}', flush=True)
+        print('KCODE_CHECKPOINT {"message":"All live browser handoff acceptance cases passed"}', flush=True)
     finally:
         # Leave no dead localhost fixture behind. This is only the explicitly
         # designated disposable test tab, never an arbitrary user browsing tab.

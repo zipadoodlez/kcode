@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-const FIXTURE_ENV: &str = "JCODE_NOTIFICATION_REAP_TEST_DIR";
+const FIXTURE_ENV: &str = "KCODE_NOTIFICATION_REAP_TEST_DIR";
 
 #[test]
 #[ignore = "entry point launched by the notification lifecycle tests"]
@@ -30,7 +30,7 @@ struct Probe {
 impl Probe {
     fn start(notifier_present: bool) -> Self {
         let dir = tempfile::Builder::new()
-            .prefix("jcode-notification-reaping-")
+            .prefix("kcode-notification-reaping-")
             .tempdir()
             .unwrap();
         let bin = dir.path().join("bin");
@@ -42,9 +42,9 @@ impl Probe {
             std::fs::write(
                 &script,
                 "#!/bin/sh\n\
-                 printf '%s\\n' \"$@\" > \"$JCODE_NOTIFICATION_REAP_TEST_DIR/children/$$\"\n\
-                 : > \"$JCODE_NOTIFICATION_REAP_TEST_DIR/ready/$$\"\n\
-                 while [ ! -e \"$JCODE_NOTIFICATION_REAP_TEST_DIR/release\" ]; do /bin/sleep 0.02; done\n",
+                 printf '%s\\n' \"$@\" > \"$KCODE_NOTIFICATION_REAP_TEST_DIR/children/$$\"\n\
+                 : > \"$KCODE_NOTIFICATION_REAP_TEST_DIR/ready/$$\"\n\
+                 while [ ! -e \"$KCODE_NOTIFICATION_REAP_TEST_DIR/release\" ]; do /bin/sleep 0.02; done\n",
             )
             .unwrap();
             std::fs::set_permissions(script, std::fs::Permissions::from_mode(0o700)).unwrap();
@@ -116,7 +116,7 @@ fn notification_children_are_reaped_without_blocking() {
             let entry = entry.unwrap();
             assert_eq!(
                 std::fs::read_to_string(entry.path()).unwrap(),
-                "--app-name=jcode\nreaping title\nreaping body\n"
+                "--app-name=kcode\nreaping title\nreaping body\n"
             );
             entry.file_name().to_str().unwrap().parse().unwrap()
         })

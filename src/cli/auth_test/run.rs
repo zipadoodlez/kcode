@@ -17,7 +17,7 @@ async fn maybe_run_auth_test_smoke(
             report.push_step(
                 kind.step_name(),
                 true,
-                "Skipped: the Cursor native agent transport is text-only in jcode (it does not \
+                "Skipped: the Cursor native agent transport is text-only in kcode (it does not \
                  expose tool calls over agent.v1.AgentService/Run). Basic provider smoke still \
                  validates chat."
                     .to_string(),
@@ -321,7 +321,7 @@ async fn audit_openrouter_context_windows(
 ) -> AuthTestContextAuditReport {
     use crate::provider::Provider as _;
 
-    let provider = match jcode_provider_openrouter_runtime::OpenRouterProvider::new() {
+    let provider = match kcode_provider_openrouter_runtime::OpenRouterProvider::new() {
         Ok(provider) => provider,
         Err(err) => {
             return AuthTestContextAuditReport {
@@ -743,14 +743,14 @@ fn persist_auth_test_live_verification_event(
             "tool_smoke" => {
                 let tool_smoke_skipped = auth_test_step_is_skipped(step);
                 if !tool_smoke_skipped {
-                    capabilities.push("real_jcode_tool_smoke");
+                    capabilities.push("real_kcode_tool_smoke");
                 }
                 expected.push(crate::live_tests::checkpoints::TOOL_CALL_PARSE);
                 expected.push(crate::live_tests::checkpoints::TOOL_EXECUTION_LOOP);
                 expected.push(crate::live_tests::checkpoints::TOOL_RESULT_FOLLOWUP);
-                expected.push(crate::live_tests::checkpoints::REAL_JCODE_TOOL_SMOKE);
+                expected.push(crate::live_tests::checkpoints::REAL_KCODE_TOOL_SMOKE);
                 let stage = auth_test_step_stage(
-                    crate::live_tests::checkpoints::REAL_JCODE_TOOL_SMOKE,
+                    crate::live_tests::checkpoints::REAL_KCODE_TOOL_SMOKE,
                     step,
                 )
                 .with_evidence("tool_name", serde_json::json!(AUTH_TEST_TOOL_NAME))
@@ -785,7 +785,7 @@ fn persist_auth_test_live_verification_event(
     let (coverage_provider_id, coverage_provider_label) =
         auth_test_coverage_provider_identity(report);
     let mut event = crate::live_tests::LiveVerificationEvent::new(
-        "auth_test_real_jcode_runtime",
+        "auth_test_real_kcode_runtime",
         coverage_provider_id,
         coverage_provider_label,
         crate::live_tests::LiveVerificationAuth::non_secret("auth-test", None::<String>),
@@ -808,7 +808,7 @@ fn persist_auth_test_live_verification_event(
 
 fn auth_test_coverage_provider_identity(report: &AuthTestProviderReport) -> (String, String) {
     if report.provider == "openai-compatible"
-        && let Ok(profile_name) = std::env::var("JCODE_NAMED_PROVIDER_PROFILE")
+        && let Ok(profile_name) = std::env::var("KCODE_NAMED_PROVIDER_PROFILE")
     {
         let profile_name = profile_name.trim();
         if !profile_name.is_empty() {
@@ -855,6 +855,6 @@ fn auth_test_tool_derived_stage(
 ) -> crate::live_tests::LiveVerificationStage {
     auth_test_step_stage(checkpoint, step).with_evidence(
         "derived_from",
-        serde_json::json!(crate::live_tests::checkpoints::REAL_JCODE_TOOL_SMOKE),
+        serde_json::json!(crate::live_tests::checkpoints::REAL_KCODE_TOOL_SMOKE),
     )
 }

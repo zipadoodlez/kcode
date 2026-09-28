@@ -1,0 +1,99 @@
+[package]
+name = "kcode-tui"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Presentation layer for kcode: the terminal UI (`tui`) and the offline replay
+# `video_export`, extracted out of the monolithic root `kcode` crate so they
+# compile as a separate rustc unit. This crate builds on top of the application
+# core (`kcode-app-core`) and re-exports it via `pub use kcode_app_core::*`, so
+# every existing `crate::<module>` path (e.g. `crate::config`, `crate::server`)
+# keeps resolving unchanged across the tui code that was moved here. The root
+# `kcode` crate (cli + bin) in turn re-exports this crate via
+# `pub use kcode_tui::*`.
+
+[lib]
+name = "kcode_tui"
+path = "src/lib.rs"
+
+[dependencies]
+# Application core (server, agent, provider, auth, session, tool, config, ...).
+# Re-exported via `pub use kcode_app_core::*` in lib.rs. default-features=false
+# so this crate (and ultimately the root crate) controls app-core's features.
+kcode-app-core = { path = "../kcode-app-core", default-features = false }
+
+# Async runtime
+tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+
+# Utilities
+anyhow = "1"
+libc = "0.2"
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1"
+dirs = "5"
+similar = "2"
+tempfile = "3"
+open = "5"
+
+# OAuth / hashing helpers used by the login + account UI
+base64 = "0.22"
+sha2 = "0.10"
+rand = "0.9.3"
+hex = "0.4"
+url = "2"
+urlencoding = "2"
+
+# TUI
+ratatui = "0.30"
+crossterm = { version = "0.29", features = ["event-stream"] }
+arboard = "3"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+unicode-width = "0.2"
+
+# Presentation-layer workspace crates
+kcode-build-meta = { path = "../kcode-build-meta" }
+kcode-logging = { path = "../kcode-logging" }
+kcode-core = { path = "../kcode-core" }
+kcode-fuzzy = { path = "../kcode-fuzzy" }
+kcode-config-types = { path = "../kcode-config-types" }
+kcode-session-types = { path = "../kcode-session-types" }
+kcode-provider-core = { path = "../kcode-provider-core" }
+kcode-tui-markdown = { path = "../kcode-tui-markdown" }
+kcode-tui-messages = { path = "../kcode-tui-messages" }
+kcode-tui-core = { path = "../kcode-tui-core" }
+kcode-tui-account-picker = { path = "../kcode-tui-account-picker" }
+kcode-tui-render = { path = "../kcode-tui-render" }
+kcode-tui-visual-debug = { path = "../kcode-tui-visual-debug" }
+kcode-tui-session-picker = { path = "../kcode-tui-session-picker", features = ["serde"] }
+kcode-tui-style = { path = "../kcode-tui-style" }
+kcode-tui-tool-display = { path = "../kcode-tui-tool-display" }
+kcode-tui-usage-overlay = { path = "../kcode-tui-usage-overlay" }
+kcode-terminal-image = { path = "../kcode-terminal-image" }
+kcode-tui-workspace = { path = "../kcode-tui-workspace" }
+
+[features]
+default = ["pdf", "bedrock"]
+# Forwarded to app-core (and onward to kcode-base) so the root crate's feature
+# set fully controls the optional stacks.
+pdf = ["kcode-app-core/pdf"]
+bedrock = ["kcode-app-core/bedrock"]
+linux-compat-vendored-openssl = ["kcode-app-core/linux-compat-vendored-openssl"]
+# Forwards the application core's `test-support` feature (and onward to
+# kcode-base) so downstream crates' test targets can reach the whole stack's
+# test helpers. Never enabled in normal (non-test) builds.
+test-support = ["kcode-app-core/test-support"]
+
+[dev-dependencies]
+# Enables the downstream test-support helpers for *this* crate's own test
+# target. Feature unification applies this only to test/bench/example builds.
+kcode-app-core = { path = "../kcode-app-core", default-features = false, features = ["test-support"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+global-hotkey = "0.7"

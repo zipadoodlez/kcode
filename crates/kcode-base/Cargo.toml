@@ -1,0 +1,137 @@
+[package]
+name = "kcode-base"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Foundational layer of the kcode application core: the downward-closed set of
+# modules (provider, auth, config, session, message, memory, ...)
+# that the server/tool/agent layer depends on. Split out of `kcode-app-core` so
+# the two halves compile as separate rustc units, halving peak compile memory.
+# `kcode-app-core` re-exports this crate (`pub use kcode_base::*`) so that every
+# existing `crate::<module>` path keeps resolving unchanged.
+
+[lib]
+name = "kcode_base"
+path = "src/lib.rs"
+
+[dependencies]
+
+# Async runtime
+tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "stream", "blocking", "charset", "http2", "system-proxy", "rustls-tls", "rustls-tls-native-roots"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+serde_yaml = "0.9"
+toml = "0.8"
+
+# File operations
+
+# Utilities
+dirs = "5"               # home directory
+anyhow = "1"
+libc = "0.2"             # Unix system calls (flock)
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+urlencoding = "2"        # URL encoding for web search
+uuid = { version = "1", features = ["v4", "v5"] }
+proctitle = "0.1"
+
+# Embeddings (local inference) - behind feature flag (163 crates, slow to compile)
+kcode-import-core = { path = "../kcode-import-core" }
+kcode-logging = { path = "../kcode-logging" }
+
+# OAuth
+base64 = "0.22"
+sha2 = "0.10"
+kcode-transport = { path = "../kcode-transport" }
+rand = "0.9.3"
+hex = "0.4"
+url = "2"
+open = "5"               # Open URLs in browser
+# Use rustls instead of native-tls so the whole binary stays OpenSSL-free
+# (required for the BoringSSL-backed websearch client to link; see GH #270).
+# azure 1.0 makes the reqwest TLS backend selectable; 0.24 hardcoded native-tls.
+azure_core = { version = "1.0", default-features = false, features = ["reqwest_rustls", "reqwest_deflate", "reqwest_gzip", "tokio"] }
+azure_identity = { version = "1.0", default-features = false, features = ["tokio"] }
+kcode-agent-runtime = { path = "../kcode-agent-runtime" }
+kcode-provider-metadata = { path = "../kcode-provider-metadata" }
+kcode-provider-env = { path = "../kcode-provider-env" }
+kcode-provider-core = { path = "../kcode-provider-core" }
+# default-features=false so this crate's `bedrock` feature (below) controls the
+# AWS SDK stack; the pure model-metadata/credential-detection layer is always on.
+kcode-provider-bedrock = { path = "../kcode-provider-bedrock", default-features = false }
+kcode-provider-antigravity = { path = "../kcode-provider-antigravity" }
+kcode-provider-copilot = { path = "../kcode-provider-copilot" }
+kcode-provider-openai = { path = "../kcode-provider-openai" }
+kcode-provider-openrouter = { path = "../kcode-provider-openrouter" }
+kcode-provider-gemini = { path = "../kcode-provider-gemini" }
+# NOTE: this foundation layer intentionally does NOT depend on any `kcode-tui-*`
+# crate. The two pure-data/string symbols it used to reach for (`ResumeTarget`,
+# `reasoning_line_markup`) were moved to `kcode-session-types` and
+# `kcode-render-core` respectively, so the layering inversion (foundation
+# depending on presentation) is gone.
+kcode-render-core = { path = "../kcode-render-core" }
+kcode-terminal-launch = { path = "../kcode-terminal-launch" }
+kcode-terminal-image = { path = "../kcode-terminal-image" }
+kcode-usage-types = { path = "../kcode-usage-types" }
+
+# Native microphone input is opt-in so CLI builds need no audio development libraries.
+
+# Streaming
+
+# Terminal I/O (event stream for interactive auth/secret prompts). NOTE: the
+# heavier presentation deps (ratatui widgets, arboard clipboard) were dropped
+# from this foundation layer; they are unused here and live only in `kcode-tui`.
+crossterm = { version = "0.29", features = ["event-stream"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }  # Only PNG/JPEG (skip avif/rav1e, exr, gif, tiff, etc)
+
+# NOTE: PDF text extraction (kcode-pdf) lives in the upper kcode-app-core crate
+# (tool/read.rs), not here.
+kcode-background-types = { path = "../kcode-background-types" }
+kcode-build-meta = { path = "../kcode-build-meta" }
+kcode-compaction-core = { path = "../kcode-compaction-core" }
+kcode-config-types = { path = "../kcode-config-types" }
+kcode-core = { path = "../kcode-core" }
+kcode-message-types = { path = "../kcode-message-types" }
+kcode-plan = { path = "../kcode-plan" }
+kcode-protocol = { path = "../kcode-protocol" }
+kcode-session-types = { path = "../kcode-session-types" }
+kcode-storage = { path = "../kcode-storage" }
+kcode-task-types = { path = "../kcode-task-types" }
+kcode-tool-core = { path = "../kcode-tool-core" }
+
+# Gzip decoding (used by provider import/helpers)
+tempfile = "3"
+qrcode = { version = "0.14.1", default-features = false }
+
+[features]
+default = ["bedrock"]
+# Compiles the in-crate test helpers (storage::lock_test_env,
+# auth::test_sandbox, bus::reset_models_updated_publish_state_for_tests, ...) as
+# `pub` so downstream crates' test targets can reach them. Enabled as a
+# dev-dependency feature by kcode-app-core / kcode / etc.; never in normal
+# (non-test) builds.
+test-support = []
+# Live AWS Bedrock support (the ~20-crate AWS SDK stack) lives in
+# kcode-provider-bedrock (aws-sdk); forward there. Without it the Bedrock
+# provider still compiles but live calls return an explanatory error.
+bedrock = ["kcode-provider-bedrock/aws-sdk"]
+
+[target.'cfg(target_os = "macos")'.dependencies]
+global-hotkey = "0.7"
+
+[dev-dependencies]
+# Dev-only cycle (cargo permits dev-dependencies on dependents): base's
+# MultiProvider routing tests exercise the real OpenRouter/OpenAI-compatible
+# runtime through the composition-root registry, exactly like the binary.
+kcode-provider-openrouter-runtime = { path = "../kcode-provider-openrouter-runtime" }
+# Paused-time (auto-advancing virtual clock) tests for the background stall watchdog.
+tokio = { version = "1", features = ["test-util"] }

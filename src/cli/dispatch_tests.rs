@@ -4,17 +4,17 @@ use crate::transport::Listener;
 #[test]
 fn only_file_controlled_debug_clients_need_parent_lifetime_binding() {
     let _lock = crate::storage::lock_test_env();
-    let previous = std::env::var_os("JCODE_DEBUG_CMD_PATH");
-    crate::env::remove_var("JCODE_DEBUG_CMD_PATH");
+    let previous = std::env::var_os("KCODE_DEBUG_CMD_PATH");
+    crate::env::remove_var("KCODE_DEBUG_CMD_PATH");
     assert!(!is_file_controlled_debug_client());
 
-    crate::env::set_var("JCODE_DEBUG_CMD_PATH", "/tmp/jcode-test-debug-command");
+    crate::env::set_var("KCODE_DEBUG_CMD_PATH", "/tmp/kcode-test-debug-command");
     assert!(is_file_controlled_debug_client());
 
     if let Some(previous) = previous {
-        crate::env::set_var("JCODE_DEBUG_CMD_PATH", previous);
+        crate::env::set_var("KCODE_DEBUG_CMD_PATH", previous);
     } else {
-        crate::env::remove_var("JCODE_DEBUG_CMD_PATH");
+        crate::env::remove_var("KCODE_DEBUG_CMD_PATH");
     }
 }
 
@@ -24,7 +24,7 @@ fn init_and_systemd_are_recognized_as_orphan_adopters() {
     assert!(is_orphan_adopter_name("init\n"));
     assert!(is_orphan_adopter_name("systemd\n"));
     assert!(!is_orphan_adopter_name("bash\n"));
-    assert!(!is_orphan_adopter_name("jcode\n"));
+    assert!(!is_orphan_adopter_name("kcode\n"));
 }
 
 #[test]
@@ -74,11 +74,11 @@ struct ReloadTestEnv {
 impl ReloadTestEnv {
     fn new() -> Self {
         let temp = tempfile::tempdir().expect("tempdir");
-        let socket_path = temp.path().join("jcode.sock");
-        let prev_socket = std::env::var_os("JCODE_SOCKET");
-        let prev_runtime = std::env::var_os("JCODE_RUNTIME_DIR");
+        let socket_path = temp.path().join("kcode.sock");
+        let prev_socket = std::env::var_os("KCODE_SOCKET");
+        let prev_runtime = std::env::var_os("KCODE_RUNTIME_DIR");
         crate::server::set_socket_path(socket_path.to_str().expect("utf8 socket path"));
-        crate::env::set_var("JCODE_RUNTIME_DIR", temp.path());
+        crate::env::set_var("KCODE_RUNTIME_DIR", temp.path());
         // Keep tempdir alive for the duration of the test helper.
         let _ = temp.keep();
         Self {
@@ -94,14 +94,14 @@ impl Drop for ReloadTestEnv {
         crate::server::clear_reload_marker();
         let _ = std::fs::remove_file(&self.socket_path);
         if let Some(prev_socket) = &self.prev_socket {
-            crate::env::set_var("JCODE_SOCKET", prev_socket);
+            crate::env::set_var("KCODE_SOCKET", prev_socket);
         } else {
-            crate::env::remove_var("JCODE_SOCKET");
+            crate::env::remove_var("KCODE_SOCKET");
         }
         if let Some(prev_runtime) = &self.prev_runtime {
-            crate::env::set_var("JCODE_RUNTIME_DIR", prev_runtime);
+            crate::env::set_var("KCODE_RUNTIME_DIR", prev_runtime);
         } else {
-            crate::env::remove_var("JCODE_RUNTIME_DIR");
+            crate::env::remove_var("KCODE_RUNTIME_DIR");
         }
     }
 }
@@ -109,7 +109,7 @@ impl Drop for ReloadTestEnv {
 #[test]
 fn spawn_lock_serializes_shared_server_bootstrap() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let socket_path = temp.path().join("jcode.sock");
+    let socket_path = temp.path().join("kcode.sock");
     let lock_path = spawn_lock_path(&socket_path);
 
     let first = try_acquire_spawn_lock(&lock_path)
@@ -138,7 +138,7 @@ fn spawn_lock_serializes_shared_server_bootstrap() {
 fn resolve_resume_id_imports_raw_codex_session_ids() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("tempdir");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let codex_dir = temp.path().join("external/.codex/sessions/2026/04/16");
     std::fs::create_dir_all(&codex_dir).expect("create codex dir");
@@ -159,16 +159,16 @@ fn resolve_resume_id_imports_raw_codex_session_ids() {
     let session = crate::session::Session::load(&resolved).expect("load imported session");
     assert_eq!(session.messages.len(), 2);
 
-    crate::env::remove_var("JCODE_HOME");
+    crate::env::remove_var("KCODE_HOME");
 }
 
 #[test]
 fn resume_failure_defers_to_server_during_reload_handoff() {
     // Issue #328: when `--resume <id>` cannot be resolved locally but a reload/
-    // update/restart handoff is in progress (JCODE_RESUMING set), we must defer
+    // update/restart handoff is in progress (KCODE_RESUMING set), we must defer
     // to the server instead of exiting with "No session found matching ...".
     let with_resuming = |key: &str| {
-        if key == "JCODE_RESUMING" {
+        if key == "KCODE_RESUMING" {
             Some(std::ffi::OsString::from("1"))
         } else {
             None
@@ -304,7 +304,7 @@ async fn wait_for_reloading_server_returns_true_for_live_listener() {
 #[tokio::test]
 async fn server_is_running_at_treats_live_listener_as_running_without_pong() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let socket_path = temp.path().join("jcode.sock");
+    let socket_path = temp.path().join("kcode.sock");
 
     let _listener = Listener::bind(&socket_path).expect("bind listener");
 

@@ -1,0 +1,13 @@
+[package]
+name = "kcode-tui-messages"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+kcode-config-types = { path = "../kcode-config-types" }
+kcode-message-types = { path = "../kcode-message-types" }
+kcode-session-types = { path = "../kcode-session-types" }
+kcode-tui-markdown = { path = "../kcode-tui-markdown" }
+ratatui = "0.30"
+serde_json = "1"

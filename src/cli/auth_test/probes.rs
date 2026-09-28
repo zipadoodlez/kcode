@@ -56,7 +56,7 @@ fn auth_state_label(state: crate::auth::AuthState) -> &'static str {
 /// "openai-compatible" for a profile the user named explicitly is what made
 /// #712 so hard to diagnose.
 fn probe_display_name(provider: crate::provider_catalog::LoginProviderDescriptor) -> String {
-    if let Ok(profile) = std::env::var("JCODE_NAMED_PROVIDER_PROFILE")
+    if let Ok(profile) = std::env::var("KCODE_NAMED_PROVIDER_PROFILE")
         && !profile.trim().is_empty()
         && provider.id == "openai-compatible"
     {

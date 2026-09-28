@@ -1,6 +1,6 @@
-# Releasing jcode
+# Releasing kcode
 
-jcode has two release paths: a fast local path for hotfixes, and CI for full releases.
+kcode has two release paths: a fast local path for hotfixes, and CI for full releases.
 
 ## Quick Release (local, ~2.5 minutes)
 
@@ -62,7 +62,7 @@ Tag push (v*)
           ├─► Generate and upload SHA256SUMS
           ├─► Publish the available release assets
           ├─► Update Homebrew formula (1jehuang/homebrew-jcode)
-          └─► Update AUR package (jcode-bin)
+          └─► Update AUR package (kcode-bin)
 ```
 
 Key design decisions:
@@ -79,7 +79,7 @@ Key design decisions:
 CI handles Homebrew and AUR updates automatically:
 
 - **Homebrew**: Updates `Formula/jcode.rb` in `1jehuang/homebrew-jcode` with new SHA256 hashes
-- **AUR**: Updates `PKGBUILD` and `.SRCINFO` in the `jcode-bin` AUR repo
+- **AUR**: Updates `PKGBUILD` and `.SRCINFO` in the `kcode-bin` AUR repo
 
 Both are triggered conditionally by the final `release` job. Homebrew updates only when all four Linux/macOS formula assets exist; AUR updates whenever Linux x86_64 exists.
 
@@ -132,7 +132,7 @@ Build takes ~5 minutes. Requires `clang`, `cmake`, `libxml2` (all available via 
 
 ### Why osxcross (not zigbuild)
 
-`cargo-zigbuild` can cross-compile pure Rust code to macOS, but jcode depends on crates that link against macOS system frameworks:
+`cargo-zigbuild` can cross-compile pure Rust code to macOS, but kcode depends on crates that link against macOS system frameworks:
 - `arboard` (clipboard) - links `AppKit`, `Foundation`
 - `native-tls` / `security-framework` - links `Security`, `SystemConfiguration`
 - `objc2` - links Objective-C runtime
@@ -149,7 +149,7 @@ These require actual macOS SDK headers and framework stubs, which osxcross provi
 | macOS aarch64 (cross) | ~3 min | ~2.5 min |
 | Both in parallel | ~3 min | ~2.5 min |
 
-The bottleneck is compiling jcode itself (120k lines of Rust). Dependencies are cached and don't need recompilation. The `build.rs` timestamp causes a full recompile of the main crate on every build.
+The bottleneck is compiling kcode itself (120k lines of Rust). Dependencies are cached and don't need recompilation. The `build.rs` timestamp causes a full recompile of the main crate on every build.
 
 ### Why not faster
 

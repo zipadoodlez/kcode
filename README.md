@@ -8,14 +8,14 @@ Terminal TUI · multi-provider · agentic tools · swarm coordination
 
 </div>
 
-kcode is jcode with a large amount of surface area removed. Same TUI, same
+kcode is kcode with a large amount of surface area removed. Same TUI, same
 multi-model support, same tools, minus the parts this fork does not want to
 carry. Roughly **241,000 lines across 1,079 files** of diagram rendering,
 memory, ambient mode, hosted models and platform clients were cut; see
 [what-was-removed.md](docs/what-was-removed.md) for the full record.
 
 kcode has its own repository and history and does **not** track upstream jcode
-commits. It inherits jcode's provider support and auth flows, which are the main
+commits. It inherits kcode's provider support and auth flows, which are the main
 thing to keep an eye on over time.
 
 ---
@@ -140,7 +140,7 @@ Global option: `-p/--provider <PROVIDER>` (see [Providers](#providers)).
 ### Interactive commands
 
 Slash commands inside the TUI. The registry lives in
-`crates/jcode-tui/src/tui/app/state_ui_input_helpers.rs` (`REGISTERED_COMMANDS`,
+`crates/kcode-tui/src/tui/app/state_ui_input_helpers.rs` (`REGISTERED_COMMANDS`,
 114 entries); these are grouped by function.
 
 **Help and meta**
@@ -268,7 +268,7 @@ locations, and per-provider notes.
 ### Tools
 
 Tools the agent can call. Implementations live in
-`crates/jcode-app-core/src/tool/`.
+`crates/kcode-app-core/src/tool/`.
 
 **Filesystem and shell:** `bash`, `read`, `write`, `edit`, `multiedit`,
 `patch`, `apply_patch`, `ls`, `glob`, `grep`, `agentgrep` (grep/find/outline/
@@ -277,7 +277,7 @@ trace modes), `open`, `bg`
 **Web:** `webfetch`, `websearch`
 
 **Agent and planning:** `todo`, `task`, `batch`, `swarm`, `communicate`,
-`skill` / `skill_manage`, `jcode_docs`
+`skill` / `skill_manage`, `kcode_docs`
 
 **Memory and retrieval:** `conversation_search`, `session_search`
 
@@ -292,25 +292,25 @@ trace modes), `open`, `bg`
 Main config: `~/.kcode/config.toml`. Sections include `[server]`,
 `[keybindings]`, `[display]`, plus provider, agent, hook,
 compaction, terminal, auto-review, and auto-judge configuration
-(`crates/jcode-config-types/src/lib.rs`).
+(`crates/kcode-config-types/src/lib.rs`).
 
 `~/.config/kcode/` holds app-owned state: `hotkey_usage.json`,
 `model_picker_usage.json`, `keybinding_proficiency.json`, `live-tests/`.
 
-Environment overrides (currently `JCODE_*`; see
+Environment overrides (currently `KCODE_*`; see
 [Status](#status-and-known-gaps)):
 
 | var | effect |
 |---|---|
-| `JCODE_HOME` | relocate the state dir (default `~/.kcode`) |
-| `JCODE_RUNTIME_DIR` | relocate sockets/durable state |
-| `JCODE_SWARM_MAX_CONCURRENT_AGENTS` | swarm concurrency |
-| `JCODE_TERMINAL`, `JCODE_SPAWN_HOOK`, `JCODE_FOCUS_HOOK`, `JCODE_HOOK_*` | terminal launch and hooks |
+| `KCODE_HOME` | relocate the state dir (default `~/.kcode`) |
+| `KCODE_RUNTIME_DIR` | relocate sockets/durable state |
+| `KCODE_SWARM_MAX_CONCURRENT_AGENTS` | swarm concurrency |
+| `KCODE_TERMINAL`, `KCODE_SPAWN_HOOK`, `KCODE_FOCUS_HOOK`, `KCODE_HOOK_*` | terminal launch and hooks |
 
 ### On-disk layout
 
 ```
-~/.kcode/                 state (JCODE_HOME)
+~/.kcode/                 state (KCODE_HOME)
 ├── config.toml           main configuration
 ├── servers.json          daemon registry
 ├── logs/                 run logs
@@ -319,13 +319,13 @@ Environment overrides (currently `JCODE_*`; see
 
 ~/.config/kcode/          app-owned UI state
 
-$XDG_RUNTIME_DIR/         sockets and ephemeral state (JCODE_RUNTIME_DIR)
+$XDG_RUNTIME_DIR/         sockets and ephemeral state (KCODE_RUNTIME_DIR)
 ├── kcode.sock            main daemon
 └── kcode-debug.sock      debug socket
 ```
 
 kcode keeps its own home, config, and sockets, so it does not collide with an
-installed jcode.
+installed kcode.
 
 ---
 
@@ -335,17 +335,17 @@ installed jcode.
 
 | crate | LOC | role |
 |---|---|---|
-| `jcode-tui` | 187 k | terminal UI: rendering, input, overlays, session UX |
-| `jcode-app-core` | 111 k | agent loop, tools, server, sessions, swarm |
-| `jcode-base` | 98 k | config, providers, message/auth core, MCP |
-| `jcode-provider-*-runtime` | ~35 k | per-provider wire protocols |
-| `jcode-provider-core` | 7.5 k | shared provider abstraction |
-| `jcode-tui-markdown` | 7.2 k | markdown rendering |
-| `jcode-plan` | 5.8 k | planning |
-| `jcode-protocol` | 5.6 k | client/server protocol |
-| `jcode-tui-render`, `jcode-render-core` | 9.5 k | render engine |
-| `jcode-config-types` | 2.2 k | configuration schema |
-| `jcode-storage`, `jcode-core` | 2.9 k | paths, fs, storage primitives |
+| `kcode-tui` | 187 k | terminal UI: rendering, input, overlays, session UX |
+| `kcode-app-core` | 111 k | agent loop, tools, server, sessions, swarm |
+| `kcode-base` | 98 k | config, providers, message/auth core, MCP |
+| `kcode-provider-*-runtime` | ~35 k | per-provider wire protocols |
+| `kcode-provider-core` | 7.5 k | shared provider abstraction |
+| `kcode-tui-markdown` | 7.2 k | markdown rendering |
+| `kcode-plan` | 5.8 k | planning |
+| `kcode-protocol` | 5.6 k | client/server protocol |
+| `kcode-tui-render`, `kcode-render-core` | 9.5 k | render engine |
+| `kcode-config-types` | 2.2 k | configuration schema |
+| `kcode-storage`, `kcode-core` | 2.9 k | paths, fs, storage primitives |
 
 Plus focused crates for compaction, command risk, import, logging, fuzzy
 matching, usage overlays, workspace, terminal images, swarm, sessions, tasks,
@@ -379,4 +379,4 @@ way around.
 
 ## Licence
 
-Inherited from jcode. See [LICENSE](LICENSE).
+Inherited from kcode. See [LICENSE](LICENSE).

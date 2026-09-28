@@ -1,0 +1,9 @@
+[package]
+name = "kcode-tui-style"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+kcode-logging = { path = "../kcode-logging" }
+ratatui = "0.30"

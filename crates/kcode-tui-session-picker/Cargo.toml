@@ -1,0 +1,15 @@
+[package]
+name = "kcode-tui-session-picker"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+kcode-message-types = { path = "../kcode-message-types" }
+kcode-session-types = { path = "../kcode-session-types" }
+serde = { version = "1", features = ["derive"], optional = true }
+
+[features]
+default = []
+serde = ["dep:serde"]

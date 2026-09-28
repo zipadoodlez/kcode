@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlsplit
 
 PAGES = {
-    "/": '<h1>Jcode browser handoff test</h1><p>Open Documentation to find browser controls.</p><a href="/docs">Documentation</a>',
+    "/": '<h1>Kcode browser handoff test</h1><p>Open Documentation to find browser controls.</p><a href="/docs">Documentation</a>',
     "/docs": '<h1>Documentation</h1><p>Choose the Browser controls section.</p><a href="/browser">Browser controls</a><a href="/">Home</a>',
     "/browser": '<h1>Browser controls</h1><p>Fast browser integration verified</p>',
     "/blocked": '<h1>Account verification</h1><label>Verification code <input autocomplete="one-time-code"></label><p>Wait for the user. Do not enter any code.</p>',
@@ -24,7 +24,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
         page = PAGES.get(urlsplit(self.path).path)
         body = (
             '<!doctype html><html><head><meta charset="utf-8">'
-            '<title>Jcode isolated browser fixture</title></head><body>'
+            '<title>Kcode isolated browser fixture</title></head><body>'
             + (page or "Not found") + "</body></html>"
         ).encode("utf-8")
         self.send_response(200 if page is not None else 404)

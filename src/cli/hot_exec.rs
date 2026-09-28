@@ -35,7 +35,7 @@ pub fn hot_restart(session_id: &str) -> Result<()> {
     let exe = std::env::current_exe()?;
 
     crate::logging::info(&format!("Restarting with current binary: {:?}", exe));
-    crate::env::set_var("JCODE_RESUMING", "1");
+    crate::env::set_var("KCODE_RESUMING", "1");
 
     let mut cmd = ProcessCommand::new(&exe);
     cmd.arg("--resume").arg(session_id).current_dir(&cwd);

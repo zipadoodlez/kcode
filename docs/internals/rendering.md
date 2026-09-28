@@ -6,20 +6,20 @@ compatibility, and the markdown parity contract.
 ## Colors
 
 The built-in palette is hand-tuned and fixed. `default_palette_is_frozen` in
-`crates/jcode-tui-style/src/palette.rs` holds a redundant copy of every value and
+`crates/kcode-tui-style/src/palette.rs` holds a redundant copy of every value and
 fails if one changes. Changing a default changes what every user sees on launch,
 so it must be a deliberate edit.
 
 Every color the TUI paints is one of ~22 named semantic roles (`ALL_ROLES`);
 widgets name a role, never an rgb value, and a CI guard
-(`crates/jcode-tui/tests/no_new_raw_rgb_literals.rs`) keeps it that way. Editing
+(`crates/kcode-tui/tests/no_new_raw_rgb_literals.rs`) keeps it that way. Editing
 every call site to retheme would be fragile, so substitution happens at the one
 point every color passes through, the rendered frame buffer.
-`adapt_buffer_for_display` (`crates/jcode-tui-style/src/display.rs`) has one job:
+`adapt_buffer_for_display` (`crates/kcode-tui-style/src/display.rs`) has one job:
 replace any buffer color equal to a role's default with that role's configured
 color. An unconfigured palette is a byte-identical no-op, guarded by tests.
 
-The theme is configuration, not detection. `display.theme` (or the `JCODE_THEME`
+The theme is configuration, not detection. `display.theme` (or the `KCODE_THEME`
 env override) selects `dark` (the default) or `light`; `light` installs the baked
 light palette (`Role::light_rgb`), which was generated once from the removed
 light terminal transform. There is no terminal background query. `light`
@@ -63,7 +63,7 @@ Changes apply immediately; no restart.
 
 ### Adding a role
 
-1. Add the variant to `Role` in `crates/jcode-tui-style/src/palette.rs`, list it
+1. Add the variant to `Role` in `crates/kcode-tui-style/src/palette.rs`, list it
    in `ALL_ROLES`, and give it a `key()` and a `default_rgb()` equal to today's
    hard-coded value.
 2. Name an existing slot in `default_slot_for`, so the role follows base16
@@ -76,7 +76,7 @@ Changes apply immediately; no restart.
 ## Terminal compatibility
 
 Color capability is detected once
-(`crates/jcode-tui-workspace/src/color_support.rs`): `COLORTERM=truecolor|24bit`,
+(`crates/kcode-tui-workspace/src/color_support.rs`): `COLORTERM=truecolor|24bit`,
 then `TERM_PROGRAM` (Ghostty, iTerm2, WezTerm, Warp, Alacritty, Hyper), then
 `TERM` (kitty/Ghostty/Alacritty, else 256-color). Outside truecolor, `rgb()`
 quantizes to the xterm-256 cube plus grayscale ramp, choosing the perceptually
@@ -84,7 +84,7 @@ nearest entry.
 
 On macOS, the VS Code integrated terminal and Apple Terminal are capped to 256
 colors even when they advertise truecolor: their GPU glyph atlas corrupts under
-heavy per-cell RGB churn (#330). Override with `JCODE_GLYPH_SAFE_MODE=on|off`.
+heavy per-cell RGB churn (#330). Override with `KCODE_GLYPH_SAFE_MODE=on|off`.
 
 Keyboard protocols and tmux are in [tui.md](../user/tui.md). On exit the TUI
 restores what it changed (kitty keyboard pop, tmux `modifyOtherKeys` reset).
@@ -101,4 +101,4 @@ The markdown renderer must match the reference renderer at four levels:
 Zero tolerance: any mismatch at a level is a failure, not "close enough". Fuzzed
 inputs use statistical bounds by the rule of three (no observed failure in n runs
 bounds the rate at roughly 3/n). Harness:
-`crates/jcode-tui-markdown/src/render_core_adapter_tests.rs`.
+`crates/kcode-tui-markdown/src/render_core_adapter_tests.rs`.

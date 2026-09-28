@@ -55,7 +55,7 @@ if [[ "${#tracked_files[@]}" -gt 0 ]]; then
     rg -n --color=never -e "$secret_regex" \
       --glob '!Cargo.lock' --glob '!*.snap' --glob '!*.png' --glob '!*.jpg' --glob '!*.jpeg' \
       --glob '!*.gif' --glob '!*.svg' --glob '!*.pdf' --glob '!*.woff' --glob '!*.woff2' --glob '!*.ttf' \
-      "${tracked_files[@]}" > /tmp/jcode-secret-scan.txt
+      "${tracked_files[@]}" > /tmp/kcode-secret-scan.txt
     scan_status=$?
   else
     scan_files=()
@@ -69,7 +69,7 @@ if [[ "${#tracked_files[@]}" -gt 0 ]]; then
       esac
     done
     if [[ "${#scan_files[@]}" -gt 0 ]]; then
-      grep -I -n -E "$secret_regex" "${scan_files[@]}" > /tmp/jcode-secret-scan.txt
+      grep -I -n -E "$secret_regex" "${scan_files[@]}" > /tmp/kcode-secret-scan.txt
       scan_status=$?
     fi
   fi
@@ -77,16 +77,16 @@ fi
 set -e
 
 if [[ "$scan_status" -gt 1 ]]; then
-  rm -f /tmp/jcode-secret-scan.txt
+  rm -f /tmp/kcode-secret-scan.txt
   die "secret scan failed to execute"
 fi
 
-if [[ -s /tmp/jcode-secret-scan.txt ]]; then
-  cat /tmp/jcode-secret-scan.txt
-  rm -f /tmp/jcode-secret-scan.txt
+if [[ -s /tmp/kcode-secret-scan.txt ]]; then
+  cat /tmp/kcode-secret-scan.txt
+  rm -f /tmp/kcode-secret-scan.txt
   die "potential secret material detected"
 fi
-rm -f /tmp/jcode-secret-scan.txt
+rm -f /tmp/kcode-secret-scan.txt
 
 echo "[2/3] Checking script permissions"
 if find scripts -type f -perm -0002 -print -quit | grep -q .; then

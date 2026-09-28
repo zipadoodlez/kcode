@@ -16,7 +16,7 @@ kcode --ssh dev --resume session_remote_id
 ```
 
 `dev` is an SSH config alias or `user@hostname`. `--ssh-binary /path/to/kcode`
-selects the remote executable (default `jcode`). With no `--remote-working-dir`,
+selects the remote executable (default `kcode`). With no `--remote-working-dir`,
 the remote daemon's working directory is used, never the local one. `--resume`
 takes an explicit remote session ID resolved on the remote server; local session
 lookup is never used. `--ssh` conflicts with `--socket`, and provider/tool
@@ -112,10 +112,10 @@ checks the actual daemon's native SSH capability, not just the client's version;
 an old shared daemon is refused, not silently reloaded or killed.
 
 To test alongside an existing daemon without disturbing it, start a matching
-daemon under a separate `JCODE_RUNTIME_DIR` and point
-`--ssh-server-socket /remote/runtime/jcode.sock` at it. A socket override alone
+daemon under a separate `KCODE_RUNTIME_DIR` and point
+`--ssh-server-socket /remote/runtime/kcode.sock` at it. A socket override alone
 does not isolate the daemon lock; a remote wrapper can export both
-`JCODE_RUNTIME_DIR` and `JCODE_SOCKET` before exec'ing the new binary.
+`KCODE_RUNTIME_DIR` and `KCODE_SOCKET` before exec'ing the new binary.
 
 ## Disconnect behavior
 
@@ -156,9 +156,9 @@ network access.
 
 | script | needs | covers |
 |---|---|---|
-| `tests/test_native_ssh_cli.py` | `JCODE_NATIVE_SSH_BINARY`, `JCODE_NATIVE_SSH_HOST`, `JCODE_NATIVE_SSH_REMOTE_BINARY`, `JCODE_NATIVE_SSH_CWD` | capability handshake, remote persistence and reattach, refusal of bad cwd/flags, remote history, socket and child cleanup |
-| `tests/test_native_ssh_login.py` | `JCODE_NATIVE_SSH_LOGIN=1` plus `JCODE_NATIVE_SSH_BINARY`, `JCODE_NATIVE_SSH_HOST`, `JCODE_NATIVE_SSH_CWD`, `JCODE_NATIVE_SSH_LOGIN_REMOTE_EXECUTABLE` | remote `/login` OAuth initiation and scoped cancellation |
-| `tests/test_native_ssh_import.py` | `JCODE_NATIVE_SSH_IMPORT=1` plus `JCODE_NATIVE_SSH_BINARY`, `JCODE_NATIVE_SSH_HOST`, `JCODE_NATIVE_SSH_CWD`, `JCODE_NATIVE_SSH_IMPORT_REMOTE_EXECUTABLE` | explicit import consent, transfer, no-overwrite, secret handling, cleanup |
+| `tests/test_native_ssh_cli.py` | `KCODE_NATIVE_SSH_BINARY`, `KCODE_NATIVE_SSH_HOST`, `KCODE_NATIVE_SSH_REMOTE_BINARY`, `KCODE_NATIVE_SSH_CWD` | capability handshake, remote persistence and reattach, refusal of bad cwd/flags, remote history, socket and child cleanup |
+| `tests/test_native_ssh_login.py` | `KCODE_NATIVE_SSH_LOGIN=1` plus `KCODE_NATIVE_SSH_BINARY`, `KCODE_NATIVE_SSH_HOST`, `KCODE_NATIVE_SSH_CWD`, `KCODE_NATIVE_SSH_LOGIN_REMOTE_EXECUTABLE` | remote `/login` OAuth initiation and scoped cancellation |
+| `tests/test_native_ssh_import.py` | `KCODE_NATIVE_SSH_IMPORT=1` plus `KCODE_NATIVE_SSH_BINARY`, `KCODE_NATIVE_SSH_HOST`, `KCODE_NATIVE_SSH_CWD`, `KCODE_NATIVE_SSH_IMPORT_REMOTE_EXECUTABLE` | explicit import consent, transfer, no-overwrite, secret handling, cleanup |
 
 The `*_REMOTE_EXECUTABLE` values must be absolute paths to the real remote ELF,
 not a wrapper. Each script accepts `--self-test` for offline harness safety
@@ -168,10 +168,10 @@ Targeted Rust suites:
 
 ```sh
 cargo test --lib cli::ssh
-cargo test -p jcode-protocol
-cargo test -p jcode-tui --lib ssh_remote -- --test-threads=1
-cargo test -p jcode-app-core --lib client_disconnect_cleanup -- --test-threads=1
-cargo test -p jcode-app-core --lib client_lifecycle -- --test-threads=1
+cargo test -p kcode-protocol
+cargo test -p kcode-tui --lib ssh_remote -- --test-threads=1
+cargo test -p kcode-app-core --lib client_disconnect_cleanup -- --test-threads=1
+cargo test -p kcode-app-core --lib client_lifecycle -- --test-threads=1
 cargo test --test e2e disconnect:: -- --test-threads=1
 ```
 

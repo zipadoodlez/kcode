@@ -22,7 +22,7 @@ scripts/security_preflight.sh
 
 ## Resolved
 
-- `RUSTSEC-2026-0217` (`tract-nnef`): fixed by moving `jcode-embedding` to
+- `RUSTSEC-2026-0217` (`tract-nnef`): fixed by moving `kcode-embedding` to
   `tract` 0.23 (the 0.21 line pinned an incompatible `half`).
 - `RUSTSEC-2024-0320` (`yaml-rust`): removed from the graph by trimming `syntect`
   features to built-in syntax/theme dumps.

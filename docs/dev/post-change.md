@@ -1,7 +1,7 @@
 # After a change
 
 There is no CI on this fork. The inherited GitHub Actions workflows were removed:
-they ran jcode's pipeline (Discord release announcements, Homebrew/AUR
+they ran kcode's pipeline (Discord release announcements, Homebrew/AUR
 publishing, PR-issue enforcement, Greptile labelling), none of which applies
 here. Nothing runs automatically now, so the gate below is it. Run it yourself,
 or tell an agent to run it, after a major change and before committing.
@@ -49,9 +49,9 @@ excluded from text diffs and union-merged on conflict (see `.gitattributes`).
 ## Tests
 
 `cargo test` runs the workspace; target a crate while iterating
-(`cargo test -p jcode-tui --lib`). The suite has pre-existing failures on this
+(`cargo test -p kcode-tui --lib`). The suite has pre-existing failures on this
 tree, so a red run is not automatically your change: see
-[testing.md](testing.md) for the known `jcode-tui` parallel-execution race and
+[testing.md](testing.md) for the known `kcode-tui` parallel-execution race and
 the `--test-threads=1` workaround, and check any suspect in isolation before
 blaming it. `scripts/test_ci_suites.py` runs the suites with per-suite timing if
 you want a readable local report.
@@ -59,7 +59,7 @@ you want a readable local report.
 ## Budget ratchets
 
 Several ratchets (`scripts/check_*`) are baselined to this fork's tree, so a
-red one is this fork's own drift rather than inherited jcode numbers. When
+red one is this fork's own drift rather than inherited kcode numbers. When
 growth is intentional, re-baseline the specific file with `--update` (or
 `--fix` above) in the same commit; otherwise fix it. Do not `--update` to
 silence a ratchet you did not mean to move.

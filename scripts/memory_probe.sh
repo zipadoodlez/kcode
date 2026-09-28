@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# memory_probe.sh - Reproducible memory probe harness for jcode TUI clients.
+# memory_probe.sh - Reproducible memory probe harness for kcode TUI clients.
 #
 # Spawns a headless tester TUI via the debug socket (tester:spawn) that resumes
 # a LARGE existing session, then records RSS/PSS/rss_anon at fixed phases:
@@ -23,13 +23,13 @@
 #   --session <id>    Session to resume (default: session_hog_1783086065415_4ad4ae66cd43dd5b)
 #   --idle-secs <n>   Idle wait before the idle phase (default: 30)
 #   --binary <path>   Client binary (default: ~/.local/bin/kcode)
-#   --jcode <path>    jcode CLI used for `jcode debug ...` (default: ~/.local/bin/kcode)
+#   --kcode <path>    kcode CLI used for `kcode debug ...` (default: ~/.local/bin/kcode)
 #   --cwd <path>      Working directory for the tester (default: $HOME)
 #   --skip-trim       Skip the forced-trim phase
 #   --keep            Do not stop the tester on exit (for manual inspection)
 #   -h | --help       Show this help
 #
-# Requirements: a running jcode server with the debug socket enabled, jq,
+# Requirements: a running kcode server with the debug socket enabled, jq,
 # and (for the trim phase) gdb. Trim prefers `sudo -n gdb` because
 # kernel.yama.ptrace_scope=1 blocks same-uid attach to non-children.
 
@@ -37,7 +37,7 @@ set -euo pipefail
 
 SESSION_ID="session_hog_1783086065415_4ad4ae66cd43dd5b"
 IDLE_SECS=30
-JCODE_BIN="${JCODE_BIN:-$HOME/.local/bin/kcode}"
+KCODE_BIN="${KCODE_BIN:-$HOME/.local/bin/kcode}"
 CLIENT_BIN="$HOME/.local/bin/kcode"
 TESTER_CWD="$HOME"
 SKIP_TRIM=0
@@ -50,7 +50,7 @@ while [[ $# -gt 0 ]]; do
         --session)   SESSION_ID="$2"; shift 2 ;;
         --idle-secs) IDLE_SECS="$2"; shift 2 ;;
         --binary)    CLIENT_BIN="$2"; shift 2 ;;
-        --jcode)     JCODE_BIN="$2"; shift 2 ;;
+        --kcode)     KCODE_BIN="$2"; shift 2 ;;
         --cwd)       TESTER_CWD="$2"; shift 2 ;;
         --skip-trim) SKIP_TRIM=1; shift ;;
         --keep)      KEEP_TESTER=1; shift ;;
@@ -63,13 +63,13 @@ log() { printf '[memory_probe] %s\n' "$*" >&2; }
 die() { log "FATAL: $*"; exit 1; }
 
 command -v jq >/dev/null || die "jq is required"
-[[ -x "$JCODE_BIN" ]] || die "jcode CLI not found at $JCODE_BIN"
+[[ -x "$KCODE_BIN" ]] || die "kcode CLI not found at $KCODE_BIN"
 [[ -x "$CLIENT_BIN" ]] || CLIENT_BIN="$(command -v kcode)" || die "client binary not found"
-[[ -f "$HOME/.jcode/sessions/${SESSION_ID}.json" ]] \
-    || log "WARN: $HOME/.jcode/sessions/${SESSION_ID}.json not found; resume may create a new session"
+[[ -f "$HOME/.kcode/sessions/${SESSION_ID}.json" ]] \
+    || log "WARN: $HOME/.kcode/sessions/${SESSION_ID}.json not found; resume may create a new session"
 
 RUN_ID="probe_$(date -u +%Y%m%dT%H%M%SZ)_$$"
-SESSION_FILE="$HOME/.jcode/sessions/${SESSION_ID}.json"
+SESSION_FILE="$HOME/.kcode/sessions/${SESSION_ID}.json"
 SESSION_BYTES=$(stat -c %s "$SESSION_FILE" 2>/dev/null || echo 0)
 
 TESTER_ID=""
@@ -82,7 +82,7 @@ SPAWN_EPOCH_MS=""
 cleanup() {
     local rc=$?
     if [[ -n "$TESTER_ID" && "$KEEP_TESTER" -ne 1 ]]; then
-        "$JCODE_BIN" debug "tester:${TESTER_ID}:stop" >/dev/null 2>&1 || true
+        "$KCODE_BIN" debug "tester:${TESTER_ID}:stop" >/dev/null 2>&1 || true
         log "stopped tester $TESTER_ID"
     elif [[ -n "$TESTER_ID" ]]; then
         log "kept tester $TESTER_ID (pid $TESTER_PID) running (--keep)"
@@ -197,7 +197,7 @@ emit_phase() { # phase proc_json client_json extras_json
     ts="$(now_ms)"
     elapsed_ms=$(( ts - SPAWN_EPOCH_MS ))
     jq -c -S -n \
-        --arg probe "jcode_memory_probe" \
+        --arg probe "kcode_memory_probe" \
         --arg schema "1" \
         --arg run_id "$RUN_ID" \
         --arg phase "$phase" \
@@ -242,7 +242,7 @@ force_trim() { # pid -> prints method used ("gdb_sudo" | "gdb" | "unavailable")
 # ===========================================================================
 # 1. Spawn headless tester resuming the target session.
 # ===========================================================================
-WRAPPER="$(mktemp /tmp/jcode_memory_probe_wrapper.XXXXXX.sh)"
+WRAPPER="$(mktemp /tmp/kcode_memory_probe_wrapper.XXXXXX.sh)"
 cat > "$WRAPPER" <<EOF
 #!/usr/bin/env bash
 exec "$CLIENT_BIN" --resume "$SESSION_ID" --no-update "\$@"
@@ -250,7 +250,7 @@ EOF
 chmod +x "$WRAPPER"
 
 log "spawning headless tester (binary wrapper resumes $SESSION_ID, ${SESSION_BYTES} byte session file)"
-SPAWN_OUT="$("$JCODE_BIN" debug "tester:spawn {\"binary\":\"$WRAPPER\",\"cwd\":\"$TESTER_CWD\",\"cols\":120,\"rows\":40}")" \
+SPAWN_OUT="$("$KCODE_BIN" debug "tester:spawn {\"binary\":\"$WRAPPER\",\"cwd\":\"$TESTER_CWD\",\"cols\":120,\"rows\":40}")" \
     || die "tester:spawn failed: $SPAWN_OUT"
 SPAWN_EPOCH_MS="$(now_ms)"
 TESTER_ID="$(jq -r '.id // empty' <<<"$SPAWN_OUT")"
@@ -258,7 +258,7 @@ TESTER_PID="$(jq -r '.pid // empty' <<<"$SPAWN_OUT")"
 [[ -n "$TESTER_ID" && -n "$TESTER_PID" ]] || die "could not parse tester:spawn response: $SPAWN_OUT"
 log "tester $TESTER_ID pid $TESTER_PID"
 
-TESTER_INFO="$("$JCODE_BIN" debug tester:list | jq -c --arg id "$TESTER_ID" '.[] | select(.id == $id)')"
+TESTER_INFO="$("$KCODE_BIN" debug tester:list | jq -c --arg id "$TESTER_ID" '.[] | select(.id == $id)')"
 CMD_PATH="$(jq -r '.debug_cmd_path' <<<"$TESTER_INFO")"
 RESP_PATH="$(jq -r '.debug_response_path' <<<"$TESTER_INFO")"
 [[ -n "$CMD_PATH" && -n "$RESP_PATH" ]] || die "could not resolve tester debug paths"

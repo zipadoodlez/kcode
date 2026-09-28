@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Headless E2E regression for the edit expand badge shortcut.
 
-This starts a real jcode TUI client inside a pseudo-terminal, prepares a real
+This starts a real kcode TUI client inside a pseudo-terminal, prepares a real
 rendered edit-diff expand-badge fixture through the client debug command, sends
 terminal key bytes to the PTY, and asserts the live TUI state changed.
 
-Run from repo root after building jcode:
+Run from repo root after building kcode:
   python3 tests/e2e/expand_badge_headless.py
 """
 
@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 
 RUNTIME_DIR = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
-SOCKET_PATH = os.path.join(RUNTIME_DIR, "jcode-debug.sock")
+SOCKET_PATH = os.path.join(RUNTIME_DIR, "kcode-debug.sock")
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -68,15 +68,15 @@ def drain_pty(master_fd):
 
 
 def main():
-    binary = os.environ.get("JCODE_E2E_BIN")
+    binary = os.environ.get("KCODE_E2E_BIN")
     if not binary:
         candidates = [
-            REPO / "target" / "selfdev" / "jcode",
-            Path.home() / ".jcode" / "builds" / "current" / "jcode",
+            REPO / "target" / "selfdev" / "kcode",
+            Path.home() / ".kcode" / "builds" / "current" / "kcode",
         ]
         binary = next((str(p) for p in candidates if p.exists()), None)
     if not binary:
-        raise SystemExit("No jcode binary found. Set JCODE_E2E_BIN or build first.")
+        raise SystemExit("No kcode binary found. Set KCODE_E2E_BIN or build first.")
 
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.connect(SOCKET_PATH)
@@ -94,7 +94,7 @@ def main():
         master_fd, slave_fd = pty.openpty()
         env = os.environ.copy()
         env.setdefault("TERM", "xterm-kitty")
-        env.setdefault("JCODE_CLIENT_SELFDEV_MODE", "1")
+        env.setdefault("KCODE_CLIENT_SELFDEV_MODE", "1")
         proc = subprocess.Popen(
             [binary, "self-dev", "--resume", session_id],
             stdin=slave_fd,

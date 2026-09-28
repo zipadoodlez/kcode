@@ -297,7 +297,7 @@ pub(super) async fn complete_scriptable_claude_login(
             status: "authenticated",
             provider: provider_id.to_string(),
             account_label: Some(account_label.clone()),
-            credentials_path: Some(auth::claude::jcode_path()?.display().to_string()),
+            credentials_path: Some(auth::claude::kcode_path()?.display().to_string()),
             email: profile_email.clone(),
         },
     )?;
@@ -306,7 +306,7 @@ pub(super) async fn complete_scriptable_claude_login(
         eprintln!(
             "Account '{}' stored at {}",
             account_label,
-            auth::claude::jcode_path()?.display()
+            auth::claude::kcode_path()?.display()
         );
         if let Some(email) = profile_email {
             eprintln!("Profile email: {}", email);
@@ -348,7 +348,7 @@ pub(super) async fn complete_scriptable_openai_login(
     .await?;
     auth::oauth::save_openai_tokens_for_account(&tokens, &account_label)?;
     clear_pending_login(&pending_path);
-    let credentials_path = crate::storage::jcode_dir()?.join("openai-auth.json");
+    let credentials_path = crate::storage::kcode_dir()?.join("openai-auth.json");
     emit_scriptable_auth_success(
         options.json,
         ScriptableAuthSuccess {
@@ -633,7 +633,7 @@ pub(super) fn cancel_scoped_pending_login(path: &Path) -> Result<()> {
 }
 
 pub(super) fn pending_login_dir() -> Result<PathBuf> {
-    Ok(crate::storage::jcode_dir()?.join("pending-login"))
+    Ok(crate::storage::kcode_dir()?.join("pending-login"))
 }
 
 pub(super) fn require_scriptable_input(

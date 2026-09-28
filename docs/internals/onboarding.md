@@ -40,7 +40,7 @@ that was never going to arrive.
 
 ## The state graph
 
-`crates/jcode-tui/src/tui/app/onboarding_graph.rs` declares the flow as data,
+`crates/kcode-tui/src/tui/app/onboarding_graph.rs` declares the flow as data,
 including states the flow always had but never modelled (`EnvBlocked`,
 `LoginFailed`, `CredRejected`), and `check_invariants` enforces properties over
 the whole graph rather than leaving them to review:
@@ -55,7 +55,7 @@ the whole graph rather than leaving them to review:
 - no effect targets a provider in `Rejected`.
 
 This runs locally via `scripts/check_guardrails.sh` (`onboarding state-space
-invariants`), and `crates/jcode-tui/src/tui/app/tests/onboarding_eval.rs` scores
+invariants`), and `crates/kcode-tui/src/tui/app/tests/onboarding_eval.rs` scores
 the flow's path budget. The graph's remaining follow-on work (extracting the
 transition table and an effect-interpreter split) is tracked in [../todo.md](../todo.md).
 

@@ -3,18 +3,18 @@
 
 Run offline: python3 tests/test_native_ssh_login.py --self-test
 Run live only after the coordinator deploys matching binaries:
-  JCODE_NATIVE_SSH_LOGIN=1 \\
-  JCODE_NATIVE_SSH_BINARY=/absolute/local/jcode \\
-  JCODE_NATIVE_SSH_HOST=explicit-verified-ec2-alias \\
-  JCODE_NATIVE_SSH_CWD=/home/ubuntu/jcode \\
-  JCODE_NATIVE_SSH_LOGIN_REMOTE_EXECUTABLE=/absolute/remote/ELF/jcode \\
+  KCODE_NATIVE_SSH_LOGIN=1 \\
+  KCODE_NATIVE_SSH_BINARY=/absolute/local/kcode \\
+  KCODE_NATIVE_SSH_HOST=explicit-verified-ec2-alias \\
+  KCODE_NATIVE_SSH_CWD=/home/ubuntu/kcode \\
+  KCODE_NATIVE_SSH_LOGIN_REMOTE_EXECUTABLE=/absolute/remote/ELF/kcode \\
     python3 tests/test_native_ssh_login.py
 
 No opt-in means no subprocess or network access. No builds, AWS API, installation,
 SSH configuration edits, browser opening, OAuth completion, or model prompts.
 The remote executable MUST be an actual ELF, not a wrapper that could reset HOME.
-We create our own private wrapper under ~/.cache/jcode-login-acceptance/, with an
-empty HOME, JCODE_HOME, runtime and explicit private server socket. The wrapper
+We create our own private wrapper under ~/.cache/kcode-login-acceptance/, with an
+empty HOME, KCODE_HOME, runtime and explicit private server socket. The wrapper
 executes the real CLI and rejects every completion except a synthetic localhost
 callback whose state demonstrably differs from the remote pending state. It also
 sets a closed loopback HTTP proxy as defense in depth, not as packet-capture proof.
@@ -72,7 +72,7 @@ import test_native_ssh_cli as native
 PREFIX = native.PREFIX
 require = native.require
 TIMEOUT = native.TIMEOUT
-INVALID_CODE_PREFIX = "JCODE_SSH_LOGIN_INVALID_"
+INVALID_CODE_PREFIX = "KCODE_SSH_LOGIN_INVALID_"
 CANCEL_COMPLETE = "Pending authorization was removed on the remote host."
 CREDENTIAL_NAMES = {
     "openai-auth.json", "claude-auth.json", "auth.json", ".credentials.json",
@@ -88,13 +88,13 @@ from urllib.parse import parse_qs, urlsplit
 root = pathlib.Path(ROOT)
 env = {
     "PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(root / "home"),
-    "USER": "jcode-login-acceptance", "LANG": "C.UTF-8", "TERM": "xterm-256color",
-    "JCODE_HOME": str(root / "jcode"), "JCODE_RUNTIME_DIR": str(root / "runtime"),
+    "USER": "kcode-login-acceptance", "LANG": "C.UTF-8", "TERM": "xterm-256color",
+    "KCODE_HOME": str(root / "kcode"), "KCODE_RUNTIME_DIR": str(root / "runtime"),
     "XDG_RUNTIME_DIR": str(root / "runtime"),
     "XDG_CONFIG_HOME": str(root / "home" / ".config"),
     "XDG_CACHE_HOME": str(root / "home" / ".cache"),
-    "JCODE_NO_BROWSER": "1", "NO_BROWSER": "1", "BROWSER": "/bin/false",
-    "JCODE_NO_TELEMETRY": "1", "DO_NOT_TRACK": "1", "JCODE_WAKE_MODE": "external",
+    "KCODE_NO_BROWSER": "1", "NO_BROWSER": "1", "BROWSER": "/bin/false",
+    "KCODE_NO_TELEMETRY": "1", "DO_NOT_TRACK": "1", "KCODE_WAKE_MODE": "external",
     "HTTP_PROXY": "http://127.0.0.1:9", "HTTPS_PROXY": "http://127.0.0.1:9",
     "ALL_PROXY": "http://127.0.0.1:9", "NO_PROXY": "",
 }
@@ -132,11 +132,11 @@ if "--callback-url" in args:
         parsed = urlsplit(payload.decode().strip())
         query = parse_qs(parsed.query, strict_parsing=True)
         states = [json.loads(p.read_text())["login"]["state"]
-                  for p in (root / "jcode" / "pending-login").rglob("openai.json")]
+                  for p in (root / "kcode" / "pending-login").rglob("openai.json")]
         if (len(payload) > 16384 or parsed.scheme != "http" or
             parsed.hostname not in ("localhost", "127.0.0.1") or parsed.path != "/auth/callback" or
             len(query.get("state", [])) != 1 or len(query.get("code", [])) != 1 or
-            not query["code"][0].startswith("JCODE_SSH_LOGIN_INVALID_") or not states or
+            not query["code"][0].startswith("KCODE_SSH_LOGIN_INVALID_") or not states or
             query["state"][0] in states):
             refuse()
     except (ValueError, KeyError, UnicodeError):
@@ -172,7 +172,7 @@ if record["operation"] == "start" and result.returncode == 0:
         else:
             # Claude's legacy URL state equals its verifier. Never persist the
             # URL or return the verifier separately as observation metadata.
-            login = json.loads((root / "jcode" / "pending-login" / "flows" /
+            login = json.loads((root / "kcode" / "pending-login" / "flows" /
                                 flow / "claude.json").read_text())["login"]
             query = parse_qs(urlsplit(url).query)
             challenge = base64.urlsafe_b64encode(hashlib.sha256(
@@ -190,7 +190,7 @@ sys.stderr.buffer.write(result.stderr)
 sys.exit(result.returncode)
 '''
 
-# Executed by the remote system Python, not by jcode. It observes only the fresh
+# Executed by the remote system Python, not by kcode. It observes only the fresh
 # acceptance root. No pending verifier or file content is sent back over SSH.
 REMOTE_CONTROL = r'''
 import base64, hashlib, json, os, pathlib, pwd, socket, stat, struct, tempfile, time
@@ -201,17 +201,17 @@ if operation == "create":
     assert executable.is_absolute() and executable.is_file() and os.access(executable, os.X_OK)
     with executable.open("rb") as source:
         assert source.read(4) == b"\x7fELF", "Expected actual ELF, not a remote HOME-overriding wrapper"
-    parent = pathlib.Path(pwd.getpwuid(os.getuid()).pw_dir) / ".cache" / "jcode-login-acceptance"
+    parent = pathlib.Path(pwd.getpwuid(os.getuid()).pw_dir) / ".cache" / "kcode-login-acceptance"
     parent.mkdir(parents=True, mode=0o700, exist_ok=True)
     root = pathlib.Path(tempfile.mkdtemp(prefix="run-", dir=parent))
-    for name in ("home", "jcode", "runtime"):
+    for name in ("home", "kcode", "runtime"):
         (root / name).mkdir(mode=0o700)
     (root / ".acceptance-owned").write_text(request["owner"])
-    wrapper = root / "remote-jcode"
+    wrapper = root / "remote-kcode"
     wrapper.write_text("#!/usr/bin/python3\nROOT = " + repr(str(root)) +
                        "\nEXECUTABLE = " + repr(str(executable)) + "\n" + request["wrapper"])
     wrapper.chmod(0o700)
-    pending = root / "jcode" / "pending-login"
+    pending = root / "kcode" / "pending-login"
     pending.mkdir(mode=0o700)
     # A disposable stand-in for another invocation's pending state.
     legacy = {"expires_at_ms": int(time.time() * 1000) + 3600000,
@@ -227,9 +227,9 @@ if operation == "create":
 else:
     root = pathlib.Path(request["root"])
     assert root.is_absolute() and root.name.startswith("run-")
-    assert root.parent.name == "jcode-login-acceptance"
+    assert root.parent.name == "kcode-login-acceptance"
     assert (root / ".acceptance-owned").read_text() == request["owner"]
-    pending = root / "jcode" / "pending-login"
+    pending = root / "kcode" / "pending-login"
     if operation == "cleanup_pending":
         for path in pending.rglob("*.json"):
             assert path.resolve().is_relative_to(root.resolve())
@@ -245,7 +245,7 @@ else:
                 continue
             item = json.loads(path.read_text())
             login = item["login"]
-            record = {"relative_path": str(path.relative_to(root / "jcode")),
+            record = {"relative_path": str(path.relative_to(root / "kcode")),
                       "mode": stat.S_IMODE(path.stat().st_mode), "provider": path.stem}
             if path.stem == "openai":
                 record.update(state=login["state"], redirect_uri=login["redirect_uri"],
@@ -293,7 +293,7 @@ else:
 
 def configured():
     if os.environ.get(PREFIX + "LOGIN") != "1":
-        print("SKIP native SSH login acceptance: set JCODE_NATIVE_SSH_LOGIN=1 explicitly")
+        print("SKIP native SSH login acceptance: set KCODE_NATIVE_SSH_LOGIN=1 explicitly")
         return None
     executable = os.environ.get(PREFIX + "LOGIN_REMOTE_EXECUTABLE", "")
     require(executable.startswith("/") and not any(ord(c) < 32 or ord(c) == 127 for c in executable),
@@ -575,20 +575,20 @@ def run_acceptance(config):
     print(json.dumps({"isolated_remote_root": config["ROOT"], "server_socket": config["SERVER_SOCKET"],
                       "owner": config["OWNER"], "cleanup": "coordinator owns isolated daemon/artifacts"}))
     try:
-        with tempfile.TemporaryDirectory(prefix="jcode-ssh-login-", dir=os.environ.get("JCODE_SCRATCH_DIR")) as root:
+        with tempfile.TemporaryDirectory(prefix="kcode-ssh-login-", dir=os.environ.get("KCODE_SCRATCH_DIR")) as root:
             root = Path(root)
-            for name in ("home", "jcode", "runtime"):
+            for name in ("home", "kcode", "runtime"):
                 (root / name).mkdir(mode=0o700)
             env = {key: value for key, value in os.environ.items()
                    if key in {"PATH", "USER", "LOGNAME", "LANG", "LC_ALL", "SSH_AUTH_SOCK", "SSH_AGENT_PID"}}
-            env.update(HOME=str(root / "home"), JCODE_HOME=str(root / "jcode"),
-                       JCODE_RUNTIME_DIR=str(root / "runtime"), XDG_RUNTIME_DIR=str(root / "runtime"),
+            env.update(HOME=str(root / "home"), KCODE_HOME=str(root / "kcode"),
+                       KCODE_RUNTIME_DIR=str(root / "runtime"), XDG_RUNTIME_DIR=str(root / "runtime"),
                        XDG_CONFIG_HOME=str(root / "home" / ".config"),
                        XDG_CACHE_HOME=str(root / "home" / ".cache"),
-                       JCODE_NO_BROWSER="1", NO_BROWSER="1", BROWSER="/bin/false",
-                       JCODE_NO_TELEMETRY="1", DO_NOT_TRACK="1", JCODE_WAKE_MODE="external",
+                       KCODE_NO_BROWSER="1", NO_BROWSER="1", BROWSER="/bin/false",
+                       KCODE_NO_TELEMETRY="1", DO_NOT_TRACK="1", KCODE_WAKE_MODE="external",
                        TERM="xterm-256color", NO_COLOR="0")
-            sentinel = "JCODE_SSH_LOGIN_CONTEXT_" + uuid.uuid4().hex
+            sentinel = "KCODE_SSH_LOGIN_CONTEXT_" + uuid.uuid4().hex
             instance = "ssh-login-acceptance-" + uuid.uuid4().hex
             with native.Bridge(config) as bridge:
                 header = bridge.handshake()
@@ -721,7 +721,7 @@ def run_acceptance(config):
                 tui.quit()
 
             assert_local_clean(root, needles)
-            native.assert_no_local_transcript(root / "jcode", session_id, sentinel)
+            native.assert_no_local_transcript(root / "kcode", session_id, sentinel)
             with native.Bridge(config) as bridge:
                 bridge.handshake()
                 history = bridge.subscribe(header["working_dir"], instance, session_id)
@@ -840,7 +840,7 @@ class HarnessSelfTests(unittest.TestCase):
         write.assert_not_called()
 
     def exercise_wrapper(self, root, flags, payload=b"", result=None, provider="openai"):
-        argv = ["remote-jcode", "login", "--provider", provider, "--flow-id", "test-flow", *flags]
+        argv = ["remote-kcode", "login", "--provider", provider, "--flow-id", "test-flow", *flags]
         result = result or subprocess.CompletedProcess([], 1, b"", b"OAuth state mismatch")
         stdout, stderr = io.BytesIO(), io.BytesIO()
         with mock.patch.object(sys, "argv", argv), \
@@ -859,7 +859,7 @@ class HarnessSelfTests(unittest.TestCase):
     def test_remote_wrapper_forwards_only_mismatched_synthetic_stdin(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            pending = root / "jcode" / "pending-login" / "flows" / "test-flow"
+            pending = root / "kcode" / "pending-login" / "flows" / "test-flow"
             pending.mkdir(parents=True)
             (pending / "openai.json").write_text(json.dumps({"login": {"state": "actual-remote-state"}}))
             callback, code = invalid_callback({"state": "actual-remote-state"})
@@ -872,18 +872,18 @@ class HarnessSelfTests(unittest.TestCase):
             self.assertTrue(json.loads(audit)["state_mismatch"])
             self.assertTrue(json.loads(audit)["mismatch_verified"])
             env = run.call_args.kwargs["env"]
-            self.assertEqual(env["JCODE_HOME"], str(root / "jcode"))
+            self.assertEqual(env["KCODE_HOME"], str(root / "kcode"))
             self.assertEqual(env["HOME"], str(root / "home"))
-            self.assertEqual(env["JCODE_NO_BROWSER"], "1")
+            self.assertEqual(env["KCODE_NO_BROWSER"], "1")
 
     def test_remote_wrapper_refuses_matching_state_real_code_and_inline_secrets(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            pending = root / "jcode" / "pending-login" / "flows" / "test-flow"
+            pending = root / "kcode" / "pending-login" / "flows" / "test-flow"
             pending.mkdir(parents=True)
             (pending / "openai.json").write_text(json.dumps({"login": {"state": "actual-remote-state"}}))
             cases = [
-                (["--callback-url", "-"], b"http://localhost:1455/auth/callback?code=JCODE_SSH_LOGIN_INVALID_test&state=actual-remote-state"),
+                (["--callback-url", "-"], b"http://localhost:1455/auth/callback?code=KCODE_SSH_LOGIN_INVALID_test&state=actual-remote-state"),
                 (["--callback-url", "-"], b"http://localhost:1455/auth/callback?code=real-auth-code&state=wrong"),
                 (["--callback-url", "secret-inline"], b""),
                 (["--auth-code", "-"], b""),
@@ -912,7 +912,7 @@ class HarnessSelfTests(unittest.TestCase):
         import base64
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            pending = root / "jcode" / "pending-login" / "flows" / "test-flow"
+            pending = root / "kcode" / "pending-login" / "flows" / "test-flow"
             pending.mkdir(parents=True)
             verifier = "synthetic-claude-verifier-never-print"
             challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
@@ -965,8 +965,8 @@ class HarnessSelfTests(unittest.TestCase):
 
     def test_remote_metadata_never_returns_verifier_and_detects_file_leaks(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "jcode-login-acceptance" / "run-test"
-            pending = root / "jcode" / "pending-login" / "flows" / "test-flow"
+            root = Path(directory) / "kcode-login-acceptance" / "run-test"
+            pending = root / "kcode" / "pending-login" / "flows" / "test-flow"
             pending.mkdir(parents=True)
             (root / ".acceptance-owned").write_text("owner")
             (pending / "openai.json").write_text(json.dumps({"login": {

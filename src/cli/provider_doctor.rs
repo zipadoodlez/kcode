@@ -5,7 +5,7 @@ use std::io::IsTerminal;
 use anyhow::{Context, Result, anyhow};
 
 use crate::live_tests::LiveVerificationStageStatus;
-use jcode_provider_doctor::{
+use kcode_provider_doctor::{
     DoctorReport, DoctorTier, NativeProviderKind, native_doctor_supports_provider,
     run_antigravity_native_e2e, run_claude_native_e2e, run_generic_native_e2e, run_provider_e2e,
 };
@@ -89,7 +89,7 @@ fn emit_report(report: &DoctorReport, emit_json: bool) {
     } else {
         let colorize = std::io::stdout().is_terminal()
             && std::env::var_os("NO_COLOR").is_none()
-            && std::env::var_os("JCODE_NO_COLOR").is_none();
+            && std::env::var_os("KCODE_NO_COLOR").is_none();
         print!("{}", format_report(report, colorize));
     }
 }
@@ -126,7 +126,7 @@ fn format_report(report: &DoctorReport, colorize: bool) -> String {
     ));
     out.push_str(&format!("Tier: {} ", report.tier.as_str()));
     out.push_str(match report.tier {
-        DoctorTier::Offline => "(no API key, no spend: validates jcode wiring only)\n",
+        DoctorTier::Offline => "(no API key, no spend: validates kcode wiring only)\n",
         DoctorTier::Catalog => "(API key, ~no spend: adds live catalog fetch)\n",
         DoctorTier::Full => "(API key, spends balance: chat + streaming + tools)\n",
     });
@@ -185,7 +185,7 @@ fn next_step_hint(checkpoint: &str) -> String {
         | cp::PICKER_LIVE_MODELS
         | cp::PICKER_FALLBACK_LABELING
         | cp::MODEL_SWITCH_ROUTE => {
-            "  Next: this is a jcode-side routing/picker bug for this provider. \
+            "  Next: this is a kcode-side routing/picker bug for this provider. \
              Please file an issue with this output."
         }
         cp::NON_STREAMING_CHAT_COMPLETION | cp::STREAMING_CHAT_COMPLETION => {
@@ -194,7 +194,7 @@ fn next_step_hint(checkpoint: &str) -> String {
         cp::TOOL_CALL_PARSE
         | cp::TOOL_EXECUTION_LOOP
         | cp::TOOL_RESULT_FOLLOWUP
-        | cp::REAL_JCODE_TOOL_SMOKE => {
+        | cp::REAL_KCODE_TOOL_SMOKE => {
             "  Next: this model did not produce a valid tool call. It may not support tools well."
         }
         _ => "",

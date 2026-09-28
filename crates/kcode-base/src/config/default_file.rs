@@ -1,0 +1,670 @@
+use super::*;
+use std::path::PathBuf;
+
+impl Config {
+    /// Create a default config file with comments
+    pub fn create_default_config_file() -> anyhow::Result<PathBuf> {
+        let path = Self::path().ok_or_else(|| anyhow::anyhow!("No config path"))?;
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        std::fs::write(&path, Self::default_config_file_contents())?;
+        Ok(path)
+    }
+
+    /// The commented config template written by [`Self::create_default_config_file`].
+    ///
+    /// Exposed separately so tests can check that the template we ship actually
+    /// parses and documents the options it claims to.
+    pub fn default_config_file_contents() -> String {
+        let default_content = r##"# kcode configuration file
+# Location: ~/.kcode/config.toml
+#
+# Environment variables override these settings.
+# Run `/config` in kcode to see current settings.
+
+[keybindings]
+# Scroll keys (vim-style by default)
+# Supports: ctrl, alt, shift modifiers + any key
+# Examples: "ctrl+k", "alt+j", "ctrl+shift+up", "pageup"
+scroll_up = "ctrl+k"
+scroll_down = "ctrl+j"
+scroll_page_up = "alt+u"
+scroll_page_down = "alt+d"
+
+# Model switching
+model_switch_next = "ctrl+tab"
+model_switch_prev = "ctrl+shift+tab"
+
+# Reasoning effort switching (OpenAI models)
+# Defaults: cmd+right / cmd+left on macOS, alt+right / alt+left elsewhere.
+# Alt/Option+Left/Right move by word in the input box.
+effort_increase = "@EFFORT_INCREASE@"
+effort_decrease = "@EFFORT_DECREASE@"
+
+# Centered mode toggle key
+centered_toggle = "alt+c"
+
+# Jump between user prompts
+# Ctrl+1..4 resizes the pinned side panel to 25/50/75/100%.
+# Ctrl+5..9 jumps by recency rank (5 = 5th most recent).
+scroll_prompt_up = "ctrl+["
+scroll_prompt_down = "ctrl+]"
+
+# Scroll bookmark toggle (stash position, jump to bottom, press again to return)
+scroll_bookmark = "ctrl+g"
+
+# Auto-poke toggle. Set "" to disable.
+auto_poke_toggle = "ctrl+p"
+
+# Optional fallback scroll bindings (useful on macOS terminals that forward Command)
+# Leave unset by default; on macOS Cmd+K / Cmd+J move up / down by prompt instead.
+scroll_up_fallback = ""
+scroll_down_fallback = ""
+
+# Workspace navigation (Niri-style)
+# Comma-separate multiple bindings to add aliases.
+workspace_left = "alt+h"
+workspace_down = "alt+j"
+workspace_up = "alt+k"
+workspace_right = "alt+l"
+
+# Pane / mode toggles
+side_panel_toggle = "alt+m"
+copy_selection_toggle = "alt+y"
+diagram_pane_toggle = "alt+t"
+typing_scroll_lock_toggle = "alt+s"
+diff_mode_cycle = "alt+g"
+info_widget_toggle = "alt+i"
+# Focus the inline swarm panel (list of agents this session manages). Press
+# again to cycle agents. While focused: alt+↑/↓ select, alt+o pops the agent
+# out to a new terminal, esc exits. Plain typing still goes to the chat input.
+# Active only with agents.swarm_spawn_mode = "inline".
+swarm_panel_focus = "alt+n"
+
+# Spawn a fresh kcode session in a new terminal window, reusing the current
+# session's working directory.
+# Default: Cmd+Shift+; on macOS, Alt+Shift+; elsewhere. Set "" to disable.
+# Note: some macOS terminals intercept Cmd combos; if so, pick another binding.
+# new_terminal = "cmd+shift+;"
+
+# Open the /resume session picker.
+# Default: Cmd+B on macOS, Alt+R on Linux. Set "" to disable.
+# open_resume = "cmd+b"
+
+# /resume picker Enter behavior. Options: "current-terminal" or "new-terminal".
+# By default Enter resumes in this terminal; Ctrl+Enter performs the alternate action.
+session_picker_enter = "current-terminal"
+
+[display]
+# Diff display mode: "off", "inline" (default), "full-inline", "pinned" (dedicated pane), or "file"
+diff_mode = "inline"
+
+# Center all content by default (default: false)
+centered = false
+
+# Pin the full session todo list to the top of the chat transcript while it
+# scrolls, like the sticky previous-prompt preview (default: false)
+# pin_todos = true
+
+# Wrap long lines in the pinned diff pane (default: true)
+# Set to false for horizontal scrolling instead of wrapping
+diff_line_wrap = true
+
+# Queue mode: wait until assistant is done before sending next message
+queue_mode = false
+
+# Automatically reload the remote server when a newer server binary is detected (default: true)
+auto_server_reload = true
+
+# Capture mouse events (enables scroll wheel; disables terminal text selection)
+mouse_capture = true
+
+# Enable debug socket for external control/testing (default: false)
+debug_socket = false
+
+# Render emoji in terminal-facing TUI and CLI output (default: true).
+# Set false here or set KCODE_NO_EMOJI=1 for ASCII fallbacks.
+emoji = true
+
+# Usage percentage wording: "left" (default) or "used".
+usage_display = "left"
+
+# Show thinking/reasoning content (default: true)
+show_thinking = true
+
+# How to display reasoning/thinking content: "off", "full", or "current".
+#   off     - never show reasoning
+#   full    - keep every reasoning trace in the transcript
+#   current - show only the live reasoning; collapse it once the model commits
+#             an assistant message or runs a tool, then show the next one
+# When unset, falls back to show_thinking (true => full, false => off).
+reasoning_display = "full"
+
+# Markdown spacing style: "compact" (chat/TUI) or "document" (docs-like)
+# markdown_spacing = "compact"
+
+# Render swarm/file-activity notifications in a compact single-line form
+# instead of the full multi-line card with diff preview (default: false)
+# compact_notifications = false
+
+# Show the full agentgrep tool output inline in the transcript instead of just
+# the one-line summary (default: false). Useful when you want to read search
+# results directly in the chat.
+# show_agentgrep_output = false
+
+# Show up to the last three non-empty lines of bash output beneath the tool
+# summary (default: false).
+# show_bash_output = false
+
+# Show the dimmed technical detail (command, file path, args) next to the
+# model-provided intent on tool rows (default: false). When false, tool rows
+# with an intent show just the intent; rows without an intent still show the
+# technical detail.
+# tool_call_details = false
+
+# Occasionally surface a "learn this keybinding" nudge (in a distinct color)
+# when you keep doing something the slow way (e.g. /resume) instead of using
+# its configured shortcut. Set false to disable all such hints (default: true).
+# keybinding_hints = true
+
+# Active sessions manager: pressing Left arrow on an empty input opens a
+# picker scoped to live (open) sessions, showing which are still working on a
+# response and which are ready for input (default: false). The /active
+# command is always available regardless of this setting.
+# active_sessions_manager = false
+
+# Include transcripts from other agent CLIs (Claude Code, Codex, Pi, OpenCode,
+# Cursor) in the session picker so they can be resumed or imported
+# (default: true). Set false to list only kcode's own sessions.
+# external_sessions = true
+
+# Status line (model/provider/context info below the input):
+#   "off" - never shown; the compact facts stack is used (default)
+#   "on"  - always visible
+# overscroll_status = "off"
+
+# Active redraw FPS (processing, streaming, spinners): 1-120 (default: 60)
+# Runtime policy may cap this lower on slower environments such as WSL/Windows Terminal.
+# redraw_fps = 60
+
+# Label shown for the Alt/Option modifier in copy badges.
+# Empty = auto ("⌥" on macOS, "Alt" elsewhere). Examples: "Option", "Alt", "⌥".
+# copy_badge_alt_label = ""
+
+# Color theme: "dark" (default) or "light".
+# theme = "dark"
+
+# base16 palette slots. A published base16 theme pasted here recolors the whole
+# TUI: roles default to these slots. `base00`..`base0f` are the standard names;
+# the friendly names (bg, red, blue, ...) work too.
+#
+# `/colors` lists the slots and which roles share each one, and
+# `/colors export` prints both sections for you.
+#
+# [display.palette]
+# base00 = "#1e1e2e"   # bg (unused by default)
+# base01 = "#232035"   # bg_alt        -> user_bg
+# base02 = "#3c3c50"   # bg_selection  -> selection_bg
+# base03 = "#646478"   # comment       -> dim, border
+# base04 = "#8c8c8c"   # fg_dim        -> system, queued
+# base05 = "#f5f5ff"   # fg            -> user_text, ai_text, header_name
+# base06 = "#ffffff"   # fg_bright (unused by default)
+# base07 = "#464650"   # bg_bright (unused by default)
+# base08 = "#ff6464"   # red           -> error
+# base09 = "#ffc107"   # orange        -> asap
+# base0a = "#ffc864"   # yellow        -> warning, pending
+# base0b = "#64c864"   # green         -> success, ai
+# base0c = "#8cb4ff"   # cyan          -> info, tool
+# base0d = "#8ab4f8"   # blue          -> user, file_link, header_session
+# base0e = "#ba8bff"   # purple        -> accent, header_icon
+# base0f = "#8c5a3c"   # brown (unused by default)
+
+# Per-role color overrides. Every TUI color with a role is configurable: the
+# roles below are substituted directly, and the ad hoc shades individual widgets
+# use carry no role and are left alone.
+#
+# `/colors` lists every role and `/colors export` prints this section for you.
+#
+# [display.colors]
+# user = "#8ab4f8"
+# ai = "#81c784"
+# accent = "#ba8bff"
+# success = "#64c864"
+# warning = "#ffc864"
+# error = "#ff6464"
+
+[features]
+# Check for and install updates during startup. Set to false for the persistent
+# equivalent of passing --no-update on every invocation.
+check_updates = true
+# Swarm: multi-session coordination features
+swarm = true
+# Auto-poke: automatically nudge the model to continue when it stops with
+# incomplete todos. /poke on and /poke off still override this per session.
+auto_poke = true
+# Inject timestamps into user messages and tool results sent to the model
+message_timestamps = true
+# Show an in-chat warning when a request misses the KV cache for a harness-caused
+# (avoidable) reason: system prompt, tool set, or message prefix changed. These
+# should essentially never happen and indicate a prefix-cache bug.
+kv_cache_miss_notices = true
+# Update channel: "stable" (releases only) or "main" (latest commits on push)
+# Set to "main" for bleeding edge updates every time code is pushed
+update_channel = "stable"
+
+[websearch]
+# Preferred websearch engine: "duckduckgo", "bing", or "searxng".
+engine = "duckduckgo"
+# Keyless HTML engines to try if the preferred engine fails. Default falls back to Bing HTML.
+fallback_engines = ["bing"]
+# Bring your own Bing Search API key for primary Bing searches. Prefer using an env var.
+# Fallback Bing searches intentionally use keyless HTML search.
+# bing_api_key_env = "KCODE_BING_API_KEY"
+# bing_api_key = ""
+# Bing market/region, for example "en-US" or "zh-CN".
+bing_market = "en-US"
+# SearXNG instance for the "searxng" engine. On some hosts (commonly Linux),
+# DuckDuckGo and Bing block scraped requests via TLS fingerprinting / IP
+# reputation and return an anti-bot page with no results. Pointing at a SearXNG
+# instance (self-hosted or trusted public) with the JSON format enabled avoids
+# this. Configure here or via the KCODE_SEARXNG_URL environment variable, then
+# set engine = "searxng" or add it to fallback_engines.
+# searxng_url = "https://searx.example.org"
+
+[tools]
+# Controls which built-in tools are sent to the model.
+# Profiles: "full" (default), "acp", "minimal"/"lite", or "none".
+# acp keeps core coding tools plus batch for generic ACP clients.
+# minimal keeps core coding tools only: bash, read, write, edit, multiedit,
+# apply_patch, patch, agentgrep, glob, grep, and ls.
+profile = "full"
+# Explicit allow-list. When non-empty, only these tools are exposed.
+# enabled = ["bash", "read", "write", "apply_patch", "agentgrep", "ls"]
+# All built-in tools are exposed by the full profile.
+# Use enabled = ["*"] to explicitly select the unrestricted full toolset.
+# Hide selected tools after applying the profile/allow-list.
+# disabled = ["browser", "swarm"]
+# Disable all built-in tools unless enabled is set.
+disable_base_tools = false
+# MCP tool exposure: "eager" sends every server tool definition, "deferred"
+# sends only fixed mcp_search/mcp_call tools, and "auto" switches to deferred
+# when the filtered MCP definitions exceed the token threshold below.
+# Env overrides: KCODE_MCP_TOOLS, KCODE_MCP_TOOLS_TOKEN_THRESHOLD.
+mcp_tools = "auto"
+mcp_tools_token_threshold = 8000
+
+[acp]
+# Agent Client Protocol adapter compatibility profile: standard, extended, or full.
+# standard emits only spec-compatible ACP messages.
+# extended/full additionally emit ignorable _jcode/* extension notifications.
+profile = "standard"
+# Tool profile requested when `kcode acp` starts the daemon itself.
+# Existing daemons keep their current server-wide tool config.
+tool_profile = "acp"
+
+[provider]
+# Default model (optional, uses provider default if not set)
+# Set via /model picker with Ctrl+B to save as default
+# default_model = "claude-opus-5"
+# Default provider (optional: claude|anthropic-api|openai|openai-api|copilot|openrouter|...)
+# When set, this provider is preferred on startup if available.
+#   claude        = Claude via OAuth/subscription (token in ~/.kcode/auth.json)
+#   anthropic-api = Claude via direct Anthropic API key (ANTHROPIC_API_KEY env
+#                   or ~/.config/kcode/anthropic.env). API-key mode does NOT fall
+#                   back to OAuth; configure the key first.
+# `claude` and `anthropic-api` are distinct providers with distinct credentials.
+# See docs/user/auth.md for where each credential lives.
+# default_provider = "copilot"
+# OpenAI reasoning effort (none|minimal|low|medium|high|xhigh|max)
+openai_reasoning_effort = "low"
+# Anthropic reasoning effort for Claude reasoning models (none|low|medium|high|xhigh|max)
+# xhigh needs Opus 4.7/4.8 or Fable 5; max needs an output_config effort model (Opus/Sonnet 4.6+).
+# Defaults to xhigh for Claude Opus 4.7/4.8 (high on older Opus) when unset; other models keep their own default.
+# anthropic_reasoning_effort = "medium"
+# OpenAI transport mode (auto|websocket|https)
+# openai_transport = "auto"
+# OpenAI service tier override (priority|flex|off)
+# Defaults to `priority` to match Codex /fast behavior for OpenAI OAuth
+# (higher speed, higher usage). Set to "off" (or "standard") to disable.
+openai_service_tier = "priority"
+# Preserve provider-native reasoning/thinking for future-turn context when supported.
+# Applies to OpenRouter, Anthropic, and OpenAI native reasoning replay. Display is separate.
+preserve_reasoning_context = true
+# Cross-provider failover when the same prompt would be resent elsewhere.
+# countdown = 3-second countdown before retrying on another provider; press Esc to cancel (default)
+# manual = show a notice and let you switch yourself
+# cross_provider_failover = "manual"
+# Try another account on the same provider before switching providers (default: true)
+# same_provider_account_failover = false
+cross_provider_failover = "countdown"
+# Copilot premium mode: "normal" (default), "one" (first msg only), "zero" (all free)
+# Set to "zero" if you have premium Copilot and want free requests
+# copilot_premium = "zero"
+# Only list these providers in the /model picker (issue #460). Entries match
+# provider labels ("openai", "anthropic", "copilot", "openrouter", ...), route
+# api methods ("claude-oauth", "openai-compatible:myprofile"), or bare
+# openai-compatible profile ids ("myprofile"). The active model's routes always
+# stay visible. Unset or empty = show everything.
+# model_picker_providers = ["myprofile", "openrouter"]
+# Max seconds to wait for streaming data before timing out a request with no
+# data received. Raise this for slow reasoning models (e.g. DeepSeek) that think
+# silently for minutes before emitting tokens. Default: 180.
+# Applies to every streaming provider path (OpenAI native, Anthropic, Copilot,
+# OpenRouter/OpenAI-compatible). The TUI's client-side stall guard also extends
+# to match this value. Also overridable per-launch via KCODE_STREAM_IDLE_TIMEOUT_SECS.
+# This is the base budget: high reasoning efforts scale it up automatically
+# (high 2x, xhigh 3x, max/swarm 4x) since they think silently for much longer.
+# stream_idle_timeout_secs = 600
+# Maximum attempts for transient 429/5xx/network failures, including the first
+# request. Retries honor Retry-After and use capped exponential backoff.
+# Env overrides: KCODE_MAX_RETRIES, KCODE_RETRY_BACKOFF_CAP_SECS.
+# max_retries = 8
+# retry_backoff_cap_secs = 30
+
+[server]
+# Who executes autonomous wake requests from background completion/stall,
+# swarm await completion, and communication delivery.
+# "internal" starts or interrupts turns in the daemon (default).
+# "external" emits typed wake_requested events for an operator to handle and
+# never starts a turn or injects into a running turn.
+# Env override: KCODE_WAKE_MODE
+wake_mode = "internal"
+
+[agents]
+# Swarm root settings and defaults for helper agents (workers, subagents, sidecars).
+# All keys are optional; the values below are the built-in defaults.
+#
+# Default model for spawned swarm/subagent sessions.
+# Leave unset (or "inherit"/"coordinator") so workers inherit the model of the
+# session that spawned them. Set a concrete model to change the worker default.
+# An explicit `model` in the swarm tool overrides this default for new workers.
+# Env override: KCODE_SWARM_MODEL
+# swarm_model = "inherit"
+#
+# Default reasoning effort for spawned swarm workers when the spawn call does
+# not pass an explicit `effort` ("low", "medium", "high", ...). Leave unset so
+# workers inherit the provider-wide reasoning effort.
+# Env override: KCODE_SWARM_EFFORT
+# swarm_effort = "medium"
+#
+# Root model reasoning while /effort swarm or /effort swarm-deep is selected.
+# These are independent of worker swarm_effort. Supported levels:
+# none|minimal|low|medium|high|xhigh|max. Unset/invalid = max (model maximum).
+# Providers map unsupported levels to their supported range.
+# Env overrides: KCODE_SWARM_ROOT_EFFORT, KCODE_SWARM_DEEP_ROOT_EFFORT
+swarm_root_effort = "max"
+swarm_deep_root_effort = "max"
+#
+# How swarm-created agents are spawned:
+#   "inline"   - in-process (no window), shown as a live gallery viewport in the coordinator (default)
+#   "visible"  - open a headed terminal window (alias: "headed")
+#   "headless" - create the worker in-process with no terminal window
+#   "auto"     - try visible first, fall back to headless if no window can open
+# The swarm tool's per-call `spawn_mode` overrides this when set.
+# Env override: KCODE_SWARM_SPAWN_MODE
+swarm_spawn_mode = "inline"
+#
+# Max live swarm worker agents in one swarm. This RAM-safety budget applies to
+# recursive ad hoc spawning and deep-mode run_plan parallelism. Completed/stopped
+# workers free their slots. 0 disables this guard and leaves only the absolute
+# per-swarm hard cap of 1000. Light mode uses a smaller fixed fan-out.
+# Env override: KCODE_SWARM_MAX_CONCURRENT_AGENTS
+swarm_max_concurrent_agents = 32
+#
+# Max percentage (1-90) of the chat height the inline swarm gallery band may use.
+# Unset = built-in default (40%). Lower values keep more transcript visible; set
+# near the minimum to collapse the gallery to a thin strip.
+# swarm_gallery_max_pct = 40
+#
+# Layout of the inline swarm strip above the status line:
+#   "vertical"   - one agent per row (session icon + status + task), capped to
+#                  a few rows with a "+N more" overflow marker (default)
+#   "horizontal" - all agents packed as chips on a single row
+# Env override: KCODE_SWARM_STRIP_LAYOUT
+# swarm_strip_layout = "vertical"
+#
+[terminal]
+# Without a hook, clients inside tmux automatically use a right-side pane.
+# Set KCODE_TERMINAL to force a supported terminal emulator instead.
+# External command that takes over headed session spawns (swarm agents,
+# resume-in-new-terminal, self-dev windows, restart restores).
+#
+# When set, kcode runs `<spawn_hook> <kcode-binary> <args...>` instead of
+# opening a terminal emulator itself. The hook receives KCODE_SPAWN_* env vars
+# describing the spawn so multiplexers/wrappers can decide where it appears:
+#   KCODE_SPAWN_KIND        - "swarm-agent", "resume", "selfdev", "restart", ...
+#   KCODE_SPAWN_SESSION_ID  - session the window will run
+#   KCODE_SPAWN_TITLE       - suggested window/tab title
+#   KCODE_SPAWN_CWD         - session working directory (also the hook's cwd)
+#   KCODE_SPAWN_PROGRAM     - kcode binary path
+#   KCODE_SPAWN_COMMAND     - full shell-escaped command line
+#   KCODE_SPAWN_SWARM_ID / KCODE_SPAWN_COORDINATOR_SESSION_ID (swarm spawns)
+# If the hook fails to start, kcode falls back to built-in terminal detection.
+# Env override: KCODE_SPAWN_HOOK (set empty to disable a config hook).
+#
+# Examples:
+#   spawn_hook = "tmux new-window"                # tmux window per agent
+#   spawn_hook = "kitty @ launch --type=tab --"   # kitty tab per agent
+#   spawn_hook = "~/bin/kcode-spawn-router"       # custom placement script
+# spawn_hook = ""
+#
+# External command used to focus/raise an existing session window, replacing
+# the built-in wmctrl/xdotool title search. Receives KCODE_FOCUS_SESSION_ID
+# and KCODE_FOCUS_TITLE env vars. Pair with spawn_hook so the program that
+# placed the window also brings it to the front.
+# Env override: KCODE_FOCUS_HOOK (set empty to disable a config hook).
+#
+# Example:
+#   focus_hook = "~/bin/kcode-focus-router"
+# focus_hook = ""
+#
+# macOS only: terminal that in-app session spawns open kcode into. One of:
+# ghostty, iterm2, wezterm, warp, alacritty, vscode, terminal (Apple Terminal).
+# Preferred over the legacy ~/.kcode/preferred_terminal.json file.
+# preferred = "ghostty"
+
+[notifications]
+# Desktop notifications for interactive sessions (macOS Notification Center /
+# Linux notify-send). Platform integrations (ntfy, email, chat bridges) are not
+# part of core; use a user-written bridge over the socket.
+#
+# Notify when an agent turn finishes. Fires only for long turns and, by
+# default, only while the terminal window is unfocused. The notification is a
+# compact summary: session name, duration, todo progress, and a snippet of the
+# final assistant message.
+# turn_complete = true
+# Minimum turn duration (seconds) before notifying (default: 120)
+# turn_complete_min_secs = 120
+# Lower threshold (seconds) when the session has todos, since todos indicate
+# task-style work worth reporting sooner (default: 30)
+# turn_complete_todo_min_secs = 30
+# Only notify while the terminal window is unfocused (default: true)
+# turn_complete_only_when_unfocused = true
+# macOS Notification Center sound played on completion (e.g. "Glass", "Ping",
+# "Hero"). Empty string disables the sound. Ignored on non-macOS. (default: "Glass")
+# turn_complete_sound = "Glass"
+
+[hooks]
+# Lifecycle hooks: external commands kcode runs at well-defined points so other
+# programs can observe or gate agent behavior. Commands are parsed shell-style
+# (quotes work) but executed directly, with KCODE_HOOK_* env vars describing
+# the event:
+#   KCODE_HOOK_EVENT       - "turn_start", "turn_end", "session_start",
+#                            "session_end", "pre_tool", "post_tool"
+#   KCODE_HOOK_SESSION_ID  - the session the event belongs to
+#   KCODE_HOOK_CWD         - session working directory (also the hook's cwd)
+#   KCODE_HOOK_PAYLOAD     - JSON mirror of all fields
+# Hook processes get KCODE_HOOKS_DISABLED=1 so nested kcode calls don't recurse.
+#
+# All hooks except pre_tool are observers: detached, fire-and-forget, failures
+# only logged. Env overrides: KCODE_HOOK_TURN_START, KCODE_HOOK_TURN_END,
+# KCODE_HOOK_SESSION_START, KCODE_HOOK_SESSION_END, KCODE_HOOK_PRE_TOOL,
+# KCODE_HOOK_POST_TOOL (set empty to disable a config hook).
+#
+# Runs when an agent turn begins, before the model starts generating and before
+# the first pre_tool. Lets integrations detect the agent is working during the
+# think/stream window before any tool call. Extra fields: KCODE_HOOK_MODEL,
+# KCODE_HOOK_SOURCE (always "chat").
+# turn_start = "~/bin/kcode-turn-start"
+#
+# Runs when an agent turn completes. Extra fields: KCODE_HOOK_STATUS
+# ("ok"/"error"), KCODE_HOOK_DURATION_MS, KCODE_HOOK_MODEL,
+# KCODE_HOOK_LAST_ASSISTANT_TEXT (first 4000 chars), KCODE_HOOK_ERROR.
+# turn_end = "~/bin/kcode-turn-notify"
+#
+# Runs when a session becomes active. Extra: KCODE_HOOK_SOURCE
+# ("create"/"attach"/"resume").
+# session_start = ""
+#
+# Runs when a session closes normally. Extra: KCODE_HOOK_SOURCE ("close").
+# session_end = ""
+#
+# Gate hook before every tool call. Receives KCODE_HOOK_TOOL_NAME and the tool
+# input JSON on stdin (truncated copy in KCODE_HOOK_TOOL_INPUT). Exit 0 allows
+# the call; exit 2 blocks it and stderr is shown to the model as the error;
+# any other outcome (other exits, timeout, missing binary) fails open.
+# pre_tool = "~/bin/kcode-tool-policy"
+#
+# Max milliseconds to wait for pre_tool before failing open (default: 5000).
+# pre_tool_timeout_ms = 5000
+#
+# Runs after each tool call. Extra fields: KCODE_HOOK_TOOL_NAME,
+# KCODE_HOOK_STATUS, KCODE_HOOK_DURATION_MS, KCODE_HOOK_OUTPUT_BYTES,
+# KCODE_HOOK_ERROR.
+# post_tool = ""
+
+[power]
+# Prevent automatic system sleep while any kcode session is actively working.
+# Linux also blocks lid-switch suspend. Windows still respects explicit lid-close
+# and power-button actions from your active power plan. The display may sleep.
+# The guard is held only for as long as work is in flight. (default: true)
+# Set KCODE_DISABLE_POWER_INHIBIT=1 to force-disable regardless of this setting.
+prevent_sleep_while_streaming = true
+
+	"##;
+
+        // Substitute platform-specific defaults from the keybinding registry.
+        let p = kcode_config_types::KeybindingPlatform::current();
+        let effort_increase =
+            kcode_config_types::default_binding("effort_increase", p).unwrap_or("alt+right");
+        let effort_decrease =
+            kcode_config_types::default_binding("effort_decrease", p).unwrap_or("alt+left");
+        default_content
+            .replace("@EFFORT_INCREASE@", effort_increase)
+            .replace("@EFFORT_DECREASE@", effort_decrease)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The shipped template is a hand-maintained string, so a typo in it ships
+    /// a config file that kcode itself cannot read. Parse it here.
+    #[test]
+    fn default_config_template_parses() {
+        let template = Config::default_config_file_contents();
+        let config =
+            toml::from_str::<Config>(&template).expect("the shipped config template must parse");
+        assert_eq!(config.tools.mcp_tools, McpToolsMode::Auto);
+        assert_eq!(config.tools.mcp_tools_token_threshold, 8_000);
+        assert!(
+            config.display.show_thinking,
+            "the shipped user config must request model reasoning"
+        );
+        assert_eq!(
+            config.display.reasoning_display(),
+            ReasoningDisplayMode::Full,
+            "the shipped user config must keep the full reasoning trace visible"
+        );
+    }
+
+    /// Colors are only discoverable if the template mentions them, since most
+    /// users read the generated config rather than the docs.
+    #[test]
+    fn default_config_template_documents_colors() {
+        let template = Config::default_config_file_contents();
+        assert!(
+            template.contains("[display.colors]"),
+            "the template should show how to configure colors"
+        );
+        assert!(
+            template.contains("/colors"),
+            "the template should point at the /colors command"
+        );
+    }
+
+    /// Uncommenting the documented color example must actually work, which is
+    /// the thing a user will literally do.
+    #[test]
+    fn documented_color_example_is_valid_when_uncommented() {
+        let template = Config::default_config_file_contents();
+        let start = template
+            .find("# [display.colors]")
+            .expect("template documents a colors section");
+        let example: String = template[start..]
+            .lines()
+            .take_while(|line| line.starts_with("# ") || line == &"#")
+            .map(|line| {
+                format!(
+                    "{}\n",
+                    line.trim_start_matches("# ").trim_start_matches('#')
+                )
+            })
+            .collect();
+
+        let parsed: Config = toml::from_str(&example).expect("uncommented example must parse");
+        assert!(
+            !parsed.display.colors.is_empty(),
+            "the example should set some colors, got {:?}",
+            parsed.display.colors
+        );
+        for (role, value) in &parsed.display.colors {
+            assert!(
+                kcode_config_types::DisplayConfig::default()
+                    .colors
+                    .is_empty(),
+                "colors should default to empty"
+            );
+            assert_eq!(value.len(), 7, "{role} example should be #rrggbb: {value}");
+        }
+    }
+
+    /// The same for the base16 palette example: uncommenting it must parse and
+    /// fill all sixteen slots.
+    #[test]
+    fn documented_palette_example_is_valid_when_uncommented() {
+        let template = Config::default_config_file_contents();
+        assert!(
+            template.contains("[display.palette]"),
+            "the template should show how to configure palette slots"
+        );
+        let start = template
+            .find("# [display.palette]")
+            .expect("template documents a palette section");
+        let example: String = template[start..]
+            .lines()
+            .take_while(|line| line.starts_with("# ") || line == &"#")
+            .map(|line| {
+                format!(
+                    "{}\n",
+                    line.trim_start_matches("# ").trim_start_matches('#')
+                )
+            })
+            .collect();
+
+        let parsed: Config = toml::from_str(&example).expect("uncommented example must parse");
+        assert_eq!(
+            parsed.display.palette.len(),
+            16,
+            "the example should set all sixteen slots, got {:?}",
+            parsed.display.palette
+        );
+        for (slot, value) in &parsed.display.palette {
+            assert_eq!(value.len(), 7, "{slot} example should be #rrggbb: {value}");
+        }
+    }
+}

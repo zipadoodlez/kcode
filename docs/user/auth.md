@@ -106,7 +106,7 @@ Two safety notes on foreign files:
    run `kcode auth-test --provider <id>` instead.
 
 For contributors: the single source of truth is `AuthStatus` in
-`crates/jcode-base/src/auth/mod.rs`; the route vocabulary shared by the runtime,
+`crates/kcode-base/src/auth/mod.rs`; the route vocabulary shared by the runtime,
 the CLI and model prefixes is centralized in
-`crates/jcode-provider-core/src/auth_mode.rs` (`AuthRoute`). Do not re-parse those
+`crates/kcode-provider-core/src/auth_mode.rs` (`AuthRoute`). Do not re-parse those
 strings by hand.

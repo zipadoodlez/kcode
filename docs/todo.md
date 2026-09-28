@@ -23,27 +23,24 @@ Cheap, and they unblock the rest.
 upstream to track; kcode is its own tree. What that decision unblocks, now
 actionable:
 
-- [x] **`KCODE_*` is the public env prefix (2026-09-28).** The process copies
-  every `KCODE_*` variable onto its `JCODE_*` twin at startup
-  (`crates/jcode-core/src/env.rs::adopt_kcode_env_prefix`, called first in
-  `src/main.rs`), so both spellings configure kcode and the public one wins when
-  both are set. State already lived in `~/.kcode`; the stale
-  `<runtime_dir>/jcode/` socket directory is now `<runtime_dir>/kcode/`. The
-  copy is direction-flippable, which is what keeps it alive across upgrades of
-  the installed package.
-- [ ] **Env literals: sweep to `KCODE_*` or declare them cosmetic.** Measured
-  2026-09-28: 397 distinct names, 3012 string literals (1101 in production code,
-  1911 in tests) across 280 Rust files, plus 58 non-Rust files (docs, scripts,
-  packaging). Nothing user-visible depends on the literals now that
-  `adopt_kcode_env_prefix` accepts the public spelling, so this is the same
-  shape as the crate-name call above: a mechanical rename with no functional
-  payoff. Needs a maintainer decision, and if it is a sweep, the startup copy
-  flips to `JCODE_*` → `KCODE_*` for one release.
-- [ ] **Crate names: pick (a) or (b), do not churn.** The workspace has 61
-  members and 60 of them are `jcode-*`; the root crate sets `[lib] name =
-  "jcode"` while its package is `kcode`. Either (a) rename the root `[lib]` to
-  `kcode` and leave the crate names, or (b) declare the crate names cosmetic and
-  change nothing. A mechanical rename of 60 crates has no functional payoff.
+- [x] **Env prefix renamed to `KCODE_*` (2026-09-28).** Every `JCODE_*`
+  occurrence in the tree is now `KCODE_*`: 377 files, 4368 occurrences, with no
+  compatibility alias. Stale `$HOME/.jcode` state paths in `scripts/` were fixed
+  at the same time, as was the `<runtime_dir>/kcode/` socket directory.
+- [x] **`jcode` renamed to `kcode` across the tree (2026-09-28).** 742 files
+  rewritten and 967 paths renamed: 60 crate directories, the root `[lib]`, the
+  `kcode-harness` bin target, the `.kcode/` project directory, and the
+  `agentgrep` tool (now `kgrep`) with its files. `Cargo.lock` regenerated.
+- [x] **Crate names: renamed, not declared cosmetic.** The earlier call was to
+  leave the 60 `jcode-*` crates alone. Reversed deliberately: consistency across
+  the tree is worth the diff, and the rename is mechanical.
+- [ ] **Deliberately still `jcode` (decided 2026-09-28).** These name the
+  upstream service or project rather than this binary, so the rename protects
+  them: the `jcode` provider id string and its `Jcode subscription` labels
+  (existing config and session data carry it), `jcode.sh` URLs, the
+  `1jehuang/jcode` repository and Homebrew tap references, the ACP `_jcode`
+  capability with its `_meta.jcode` keys, and `changelog/`. See
+  `docs/what-was-removed.md`.
 - **Ratchets: keep kcode's re-baselined numbers.** Decided. They measure this
   tree's drift, which is the point of a ratchet. Two things the decision
   surfaced were measured and are fixed below: the two size ratchets were never
@@ -62,8 +59,8 @@ actionable:
 Every gate was run rather than trusted, and three things the old text here said
 were wrong:
 
-- **Clippy was undercounted.** The old text said "3 lints in `jcode-base`, 3 in
-  `jcode-tui-workspace`, 1 in `jcode-compaction-core`" (7). The real run is
+- **Clippy was undercounted.** The old text said "3 lints in `kcode-base`, 3 in
+  `kcode-tui-workspace`, 1 in `kcode-compaction-core`" (7). The real run is
   **40 lints in 28 files across 12 crates**, because a `-D warnings` run stops
   at the first failing crate and only that crate's list had been read. Several
   are not hygiene but real smells: `src/cli/login.rs:862,892,903` "statement
@@ -71,7 +68,7 @@ were wrong:
   branch is empty", `comm_session.rs:550` "this lint expectation is unfulfilled"
   (a stale `#[expect]`), `browser_fast.rs:117,120` "`.fold` can be `any`".
 - **Two red ratchets were unrecorded.** `code_size_budget.json` fails on 37
-  files and `test_size_budget.json` on 19. Their baselines are jcode's numbers:
+  files and `test_size_budget.json` on 19. Their baselines are kcode's numbers:
   `client_lifecycle.rs` reads `3282 -> 3610`, and 3610 is what the file has been
   since before the fork cut, so those checks can never pass. A gate that cannot
   go green is a gate nobody reads, which is how they went unrecorded.
@@ -112,19 +109,19 @@ invisible because nothing ran them.
   wired into `check_guardrails.sh` rather than deleted. A re-baselined ratchet
   that never runs still guards nothing.
 - **The binary rename left broken references.** The fork renamed the root package
-  and bin to `kcode`, but scripts still invoked `--bin jcode`, `-p jcode`,
-  `target/{debug,release,selfdev}/jcode`, and a hardcoded
-  `~/.local/bin/jcode`. None of those resolve: the declared bins are `kcode`,
-  `test_api`, and `jcode-harness`. Worst case was `scripts/build_linux_compat.sh`,
-  which built `-p kcode --bin kcode` and then copied `.../release/jcode` into the
+  and bin to `kcode`, but scripts still invoked `--bin kcode`, `-p kcode`,
+  `target/{debug,release,selfdev}/kcode`, and a hardcoded
+  `~/.local/bin/kcode`. None of those resolve: the declared bins are `kcode`,
+  `test_api`, and `kcode-harness`. Worst case was `scripts/build_linux_compat.sh`,
+  which built `-p kcode --bin kcode` and then copied `.../release/kcode` into the
   benchmark artifact, so the Harbor path could not have been producing the
   binary it named. Fixed in `build_linux_compat.sh`, `quick-release.sh`,
   `test_fast.sh`, `test_auth_e2e.sh`, `auth_fixture.sh`, `onboarding_sandbox.sh`,
   `check_startup_budget.sh`, `real_provider_smoke.sh`, `agent_trace.sh`,
   `antigravity_live_coverage.sh`, `memory_probe.sh`, `bench_startup.py`,
   `profile_spawn.py`, plus the selfdev prompt (`selfdev_mode.txt` and its test)
-  and a rendered-command fixture in `ui_messages/tests.rs`. The `jcode-harness`
-  bin name and the `JCODE_*` env names are deliberately unchanged (the latter is
+  and a rendered-command fixture in `ui_messages/tests.rs`. The `kcode-harness`
+  bin name and the `KCODE_*` env names are deliberately unchanged (the latter is
   the env-prefix item above).
 
 ## 1. Shared shapes
@@ -160,7 +157,7 @@ before the shape is settled is churn.
     `ProviderChoice` resolved through the registry by `as_arg_value()`, plus
     `Auto` (B1 + B2, landed 2026-09-28).
   - `LoginProviderTarget` (14) and `RuntimeProviderId` (14) have identical
-    membership, and `crates/jcode-base/src/auth/integration.rs:54-69` is a
+    membership, and `crates/kcode-base/src/auth/integration.rs:54-69` is a
     14-arm 1:1 conversion between them (`Azure -> AzureOpenAi`,
     `OpenAiCompatible(_) -> OpenAiCompatible`). A 1:1 conversion between two
     enums is a proof that they are one concept written twice.
@@ -283,7 +280,7 @@ before the shape is settled is churn.
 - [ ] Provider cleanup keeps every provider reachable. No provider is deleted
   (maintainer decision 2026-09-27): every cut candidate backs a user-selectable
   provider (`ProviderChoice` exposes Cursor, Copilot, Antigravity, GrokBuild,
-  Bedrock; `provider-metadata` has 5 dependents). The 20 `jcode-provider-*`
+  Bedrock; `provider-metadata` has 5 dependents). The 20 `kcode-provider-*`
   crates (61.1k lines) stay. Cleanup is the identity unification above.
 - [ ] **Condense swarm/comm**: `SwarmState` (`server/state.rs:108`) is a real
   owner, so this is condensation. Member projection hand-written 4x
@@ -300,7 +297,7 @@ before the shape is settled is churn.
 
 Staged, each lands whole.
 
-- [ ] **Re-core `App`** (`crates/jcode-tui/src/tui/app.rs`): the largest single
+- [ ] **Re-core `App`** (`crates/kcode-tui/src/tui/app.rs`): the largest single
   cost in the tree, so the plan lives here in full now that `plans/` is gone.
 
   Evidence: `struct App` spans `app.rs:821-1501`, 285 fields (measured by
@@ -323,7 +320,7 @@ Staged, each lands whole.
     `scripts/app_shape_budget.json`) measures `app_fields`, `impl_app_blocks`,
     and `super_glob_imports` and refuses growth; wired into
     `scripts/check_guardrails.sh`. Baseline after Stage 1: `app_fields=308`,
-    `impl_app_blocks=57`, `super_glob_imports=124`. `cargo test -p jcode-tui`
+    `impl_app_blocks=57`, `super_glob_imports=124`. `cargo test -p kcode-tui`
     baseline in `dev/testing.md`.
 
   Cohesion (first cut, 2026-09-27): direct `self.<field>` reads per `impl App`
@@ -338,7 +335,7 @@ Staged, each lands whole.
   - Stage 1: one runtime axis. **Landed.** `is_remote` and `is_replay` are gone;
     `runtime_mode` is the single representation, written only through
     `App::set_runtime_mode` and read through `is_remote_client()` /
-    `is_replay_runtime()`. `cargo test -p jcode-tui --lib` is unchanged from the
+    `is_replay_runtime()`. `cargo test -p kcode-tui --lib` is unchanged from the
     baseline (1966 passed, same 27 failed), and `app_fields` fell 310 -> 308.
   - Stage 2: `CopySelection`. **Landed.** Eight `copy_selection_*` fields and
     their self-contained methods (`exit_mode`, `current_pane`, `normalized`,
@@ -544,7 +541,7 @@ Staged, each lands whole.
       (version + `context_revision` + split view). `app_fields` 231 -> 228 (four
       fields out, one `transcript` field in); `super_glob_imports` stayed at 124
       by importing explicitly instead of globbing. Verified: check, clippy, and
-      `cargo test -p jcode-tui --lib -- --test-threads=1` identical to the
+      `cargo test -p kcode-tui --lib -- --test-threads=1` identical to the
       baseline (1966 passed, the same 27 pre-existing failures); the gate is red
       only on the three recorded items.
     - **Stage 10b/10c, separate slices:** give the pinned background-task band
@@ -566,7 +563,7 @@ Staged, each lands whole.
       `background_tasks` field in, one `background_task_rows` field out),
       `impl_app_blocks` 57 and `super_glob_imports` 124 unchanged, so no
       re-baseline. `state_ui_messages.rs` 813 -> 690 lines. Verified:
-      `cargo test -p jcode-tui --lib -- --test-threads=1` identical to the
+      `cargo test -p kcode-tui --lib -- --test-threads=1` identical to the
       baseline (1966 passed, the same 27 pre-existing failures), check, clippy,
       fmt, and `check_app_shape.py` all green.
       **10c landed (overnight card writer).** `app/overnight_card.rs` holds
@@ -719,7 +716,7 @@ Staged, each lands whole.
     `remote/queue_recovery.rs`. Packing them into a struct keeps the duplication;
     the fix is one representation (a queue of outbound items carrying status and
     ack id) that deletes the conversions. Needs a fresh context; not a field-move.
-- [ ] **Split `handle_client`** (`crates/jcode-app-core/src/server/client_lifecycle.rs`).
+- [ ] **Split `handle_client`** (`crates/kcode-app-core/src/server/client_lifecycle.rs`).
   Researched 2026-09-28 by reading the function and its call sites, not
   estimated. The line count is real; the god-ness is not where the old one-liner
   put it, because the arms are already thin and mostly delegate.
@@ -795,7 +792,7 @@ Staged, each lands whole.
   (name, aliases, help, handler, remote-safe); fixes the `/help` gap and the
   dead SSH-block commands for free. Shares `commands_dispatch.rs` with the
   `App` re-core, so keep them in separate changes.
-- [ ] **The local in-process turn path** (`crates/jcode-tui/src/tui/app/local.rs`
+- [ ] **The local in-process turn path** (`crates/kcode-tui/src/tui/app/local.rs`
   and the orphaned `App::run`): `run` has zero callers; it was `pub`, so the
   compiler kept the whole subtree live. Deleting it alone surfaces ~41 items as
   dead and regresses the 0-warning baseline. It is the documented
@@ -803,7 +800,7 @@ Staged, each lands whole.
   `handle_bus_event`, `finish_turn`). Either delete it and drive tests through
   the remote path, or `#[cfg(test)]`-gate the transitive closure. Two turn
   implementations is the real smell.
-- [ ] (decision) **Re-core the SSH-login state** (`crates/jcode-tui/src/tui/app/auth_remote.rs`):
+- [ ] (decision) **Re-core the SSH-login state** (`crates/kcode-tui/src/tui/app/auth_remote.rs`):
   one flow tracked by five correlated fields (`phase`, `task`, `operation`,
   `input_kind`, `input`) with 12 guarded `.unwrap()`s. Target is two enums,
   `Stage` and `Activity` (two, because a background `Operation::Status` poll runs
@@ -811,7 +808,7 @@ Staged, each lands whole.
   the illegal combinations and the stringly-typed `input_kind`. In rep change
   only: keep the no-`Debug`/no-`Clone` secrecy property and the `Drop`
   cleanup semantics; a non-1:1 state is a stop-and-report, not a guess. Verify
-  with `cargo test -p jcode-tui auth_remote` (21 tests, security-focused).
+  with `cargo test -p kcode-tui auth_remote` (21 tests, security-focused).
   Confirm before touching credential code.
 
 ## 3. Spine
@@ -819,8 +816,8 @@ Staged, each lands whole.
 One direction, four items. Each depends on the previous being settled, and all
 are easier once phase 2 has shrunk the cross-crate surface.
 
-- [ ] **Crate spine** (`jcode-base` -> `jcode-app-core` -> `jcode-tui` -> root):
-  `pub use jcode_*::*` makes every module path global, so no call site names its
+- [ ] **Crate spine** (`kcode-base` -> `kcode-app-core` -> `kcode-tui` -> root):
+  `pub use kcode_*::*` makes every module path global, so no call site names its
   owning crate. `scripts/check_wildcard_reexport_budget.py` ratchets this
   (baseline 13, goal 0). Drive it to zero, or declare the layout cosmetic and
   collapse it.
@@ -843,12 +840,12 @@ tree first would just move that churn around.
   `remote_events_reload_04.rs` (~43%, header-phase table at 1038-1180).
 - [ ] Move subsystem code out of test files: `live_tests.rs` is a live-provider
   coverage ledger (21% tests), `provider_e2e.rs` (11% tests).
-- [ ] Pre-existing failures on this tree: `jcode-tui --lib` 27, `jcode-base --lib`
+- [ ] Pre-existing failures on this tree: `kcode-tui --lib` 27, `kcode-base --lib`
   15, root `kcode --lib` 10 of 195 (measured 2026-09-28; it was 12 of 193 at
   `6dff3825`, and B1/B2 cleared the two provider round-trip failures). Sampled
   root causes are stale expectations for removed or renamed surface:
   `login::next_step::tests::extracted_hints_match_the_strings_login_printed_before_extraction`
-  wants "run jcode" where the code now prints "run kcode", and
+  wants "run kcode" where the code now prints "run kcode", and
   `cli::args::tests::login_scriptable_flags_parse` parses a `--google-access-tier`
   flag that went with the Google login cut. Also math/LaTeX 15 and
   `test_lock_order` 1. Environmental, not regressions. Treat as the baseline; the
@@ -857,15 +854,15 @@ tree first would just move that churn around.
 
 ## 5. Hygiene, then packaging
 
-- [x] `JCODE_*` env vars: state dir is `~/.kcode`, the prefix is now accepted in
-  its `KCODE_*` spelling, and `<runtime_dir>/jcode/` is renamed (2026-09-28).
-  The remaining question is the internal literal sweep, tracked in §0.
+- [x] `KCODE_*` env vars: state dir is `~/.kcode`, every literal is now the
+  `KCODE_*` spelling, and `<runtime_dir>/kcode/` is renamed (2026-09-28). The
+  legacy-fallback removal is tracked in §0.
 - [ ] Unknown config sections are silently ignored, so older configs keep dead
   keys with no warning.
 - [x] **Self-dev tooling names the wrong package.** The prompt and
   `docs/dev/post-change.md` now name `-p kcode --bin kcode`, and the prompt no
   longer instructs the agent to call a tool this fork does not ship (fixed
-  2026-09-28, `crates/jcode-base/src/prompt/selfdev_mode.txt`). The `selfdev
+  2026-09-28, `crates/kcode-base/src/prompt/selfdev_mode.txt`). The `selfdev
   build` / `build-reload` tool still lives outside this repo and still targets
   upstream's `jcode`, so it remains unusable if something else supplies it. Not
   fixable here; the documented path is
@@ -889,7 +886,7 @@ tree first would just move that churn around.
   - **Documented harness (keep):** `onboarding_sandbox.sh`, `auth_fixture.sh`,
     `capture_onboarding.sh`, `bench_startup.py`, `check_startup_budget.sh`,
     `compile_time_probe.sh`, `compile_isolation_report.py`,
-    `jcode_harbor_agent.py`, `run_terminal_bench_harbor.sh`,
+    `kcode_harbor_agent.py`, `run_terminal_bench_harbor.sh`,
     `run_terminal_bench_campaign.py`, `run_terminal_bench_claude.sh`,
     `test_ci_suites.py`, `test_fast.sh`, `test_e2e.sh`, `test_auth_e2e.sh`,
     `real_provider_smoke.sh`, `analyze_runtime_memory_log.py`,
@@ -904,7 +901,7 @@ tree first would just move that churn around.
     `memory_regression_gate.sh`, `find_unlocked_env_tests.py`, `agent_trace.sh`,
     `clean_target.sh`. These are capability, not clutter, so they were not
     deleted; retest or drop them next pass. `memory_probe.sh` in particular still
-    hardcodes `$HOME/.jcode/sessions/`, which is the state-path half of the
+    hardcodes `$HOME/.kcode/sessions/`, which is the state-path half of the
     env-prefix item above.
   - **Deleted (19):** `analyze_root_crate.py` (planned a split that landed),
     `refactor_shadow.sh` and `refactor_phase1_verify.sh` (verifier pair for the
@@ -916,7 +913,7 @@ tree first would just move that churn around.
     `profile_remote_resume_burst.py`, `repro_expand_edit_shortcut.py`,
     `stress_test.py`, `stress_test_40.sh`, `verify_light_theme.py`,
     `bench_compile.sh` (duplicated `compile_time_probe.sh` and invoked the
-    removed `-p jcode --bin jcode`), `lib/configure_path.sh` (dead installer
+    removed `-p kcode --bin kcode`), `lib/configure_path.sh` (dead installer
     helper; the fork does not self-install), and
     `repro/tls-bad-record-mac/.gitignore` (empty fixture directory).
   - No `scripts/README.md`: the gate script is self-documenting and this list is

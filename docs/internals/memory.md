@@ -32,7 +32,7 @@ changed or was bypassed.
 
 | metric | budget | source |
 |---|---|---|
-| `highlight_cache_entries` | `<= 256` | `crates/jcode-tui-markdown/src/lib.rs` (`HIGHLIGHT_CACHE_LIMIT`) |
+| `highlight_cache_entries` | `<= 256` | `crates/kcode-tui-markdown/src/lib.rs` (`HIGHLIGHT_CACHE_LIMIT`) |
 
 If a hard cap changes: document the new limit and why, verify eviction still
 works, and confirm no unbounded growth path was introduced.

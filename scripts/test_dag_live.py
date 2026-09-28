@@ -2,7 +2,7 @@
 """Live deep-mode task-DAG run via the debug socket. Hunts for problems."""
 import socket, json, os, sys
 
-SOCK = f"/run/user/{os.getuid()}/jcode-debug.sock"
+SOCK = f"/run/user/{os.getuid()}/kcode-debug.sock"
 import time
 TEST_DIR = f"/tmp/dag-live-{int(time.time()*1000)}"
 

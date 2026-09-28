@@ -7,7 +7,7 @@ per-turn response statistics, and per-session edit counters.
 ## Route usage ledger
 
 The shared runtime attaches `usage: Option<ModelUsage>` to each
-`jcode-provider-core` `ModelRoute`. Routes travel in `comm_list_models` and in
+`kcode-provider-core` `ModelRoute`. Routes travel in `comm_list_models` and in
 pushed `model_usage_updated` events.
 
 ```json
@@ -31,7 +31,7 @@ pushed `model_usage_updated` events.
   `model_picker_usage.json` and measure picker selections, not requests.
 - Missing `usage` means unknown (including older servers), never "never used".
 
-The ledger is `model-usage-v1.sqlite3` under `JCODE_HOME` (`~/.kcode`). SQLite
+The ledger is `model-usage-v1.sqlite3` under `KCODE_HOME` (`~/.kcode`). SQLite
 serializes concurrent writers; the primary key combines durable session/input-turn
 ID with route identity, so continuations do not double-count. Reads never create
 or modify it. Recording is shared by streaming and blocking paths across desktop,
@@ -39,7 +39,7 @@ TUI, CLI, and swarm agents; debug sessions and hidden auxiliary calls are not
 counted, and a response is attributed to the model that served it. Older sessions
 cannot be backfilled: their messages store token counts but not route identity.
 
-`jcode_usage_types::compare_model_usage` orders routes best-first by tracked turn
+`kcode_usage_types::compare_model_usage` orders routes best-first by tracked turn
 count, last-used, historical selection count, then last-selected. Search
 relevance and explicit current/favorite policy rank ahead of it, with a stable
 model/route tie-break.
@@ -78,7 +78,7 @@ provider report's `extra_info`, so clients need not read the ledger directly.
 
 ## History response stats
 
-`HistoryMessage.response_stats` (`jcode_session_types::ResponseStats`) carries
+`HistoryMessage.response_stats` (`kcode_session_types::ResponseStats`) carries
 optional per-turn metrics; old history still deserializes and absent metrics are
 omitted from JSON.
 
@@ -114,7 +114,7 @@ MCP tools, and external editors do not. No repository git state is consulted.
 Failed or proposed edits add nothing, no-op edits add zero, and a partially
 successful multi-file tool still counts the mutations it performed.
 
-Counters live at `$JCODE_HOME/sessions/edit-stats/<session-id>.json` (default
+Counters live at `$KCODE_HOME/sessions/edit-stats/<session-id>.json` (default
 `~/.kcode`), serialized by a per-session file lock with atomic replacement. They
 survive compaction and are separate per agent even when agents share a worktree.
 When no counter exists, the first write seeds a best-effort estimate from older

@@ -8,70 +8,70 @@ autobins = false
 [workspace]
 members = [
     ".",
-    "crates/jcode-agent-runtime",
-    "crates/jcode-app-core",
-    "crates/jcode-base",
-    "crates/jcode-tui",
-    "crates/jcode-build-meta",
-    "crates/jcode-import-core",
-    "crates/jcode-pdf",
-    "crates/jcode-logging",
-    "crates/jcode-background-types",
-    "crates/jcode-compaction-core",
-    "crates/jcode-config-types",
-    "crates/jcode-command-risk",
-    "crates/jcode-core",
-    "crates/jcode-fuzzy",
-    "crates/jcode-message-types",
-    "crates/jcode-overnight-core",
-    "crates/jcode-plan",
-    "crates/jcode-swarm-core",
-    "crates/jcode-protocol",
-    "crates/jcode-session-types",
-    "crates/jcode-storage",
-    "crates/jcode-provider-metadata",
-    "crates/jcode-provider-env",
-    "crates/jcode-provider-core",
-    "crates/jcode-schema-dialect",
-    "crates/jcode-provider-bedrock",
-    "crates/jcode-provider-anthropic",
-    "crates/jcode-provider-antigravity",
-    "crates/jcode-provider-copilot",
-    "crates/jcode-provider-openrouter",
-    "crates/jcode-provider-openai",
-    "crates/jcode-provider-gemini",
-    "crates/jcode-provider-gemini-runtime",
-    "crates/jcode-provider-cursor-runtime",
-    "crates/jcode-provider-antigravity-runtime",
-    "crates/jcode-provider-copilot-runtime",
-    "crates/jcode-provider-claude-cli-runtime",
-    "crates/jcode-provider-openrouter-runtime",
-    "crates/jcode-provider-anthropic-runtime",
-    "crates/jcode-provider-openai-runtime",
-    "crates/jcode-provider-grok-build-runtime",
-    "crates/jcode-provider-doctor",
-    "crates/jcode-tui-markdown",
-    "crates/jcode-tui-messages",
-    "crates/jcode-usage-types",
-    "crates/jcode-tui-core",
-    "crates/jcode-task-types",
-    "crates/jcode-transport",
-    "crates/jcode-tool-core",
-    "crates/jcode-tui-account-picker",
-    "crates/jcode-tui-render",
-    "crates/jcode-tui-visual-debug",
-    "crates/jcode-tui-session-picker",
-    "crates/jcode-tui-style",
-    "crates/jcode-tui-tool-display",
-    "crates/jcode-tui-usage-overlay",
-    "crates/jcode-terminal-launch",
-    "crates/jcode-terminal-image",
-    "crates/jcode-tui-workspace",
-    "crates/jcode-render-core",
+    "crates/kcode-agent-runtime",
+    "crates/kcode-app-core",
+    "crates/kcode-base",
+    "crates/kcode-tui",
+    "crates/kcode-build-meta",
+    "crates/kcode-import-core",
+    "crates/kcode-pdf",
+    "crates/kcode-logging",
+    "crates/kcode-background-types",
+    "crates/kcode-compaction-core",
+    "crates/kcode-config-types",
+    "crates/kcode-command-risk",
+    "crates/kcode-core",
+    "crates/kcode-fuzzy",
+    "crates/kcode-message-types",
+    "crates/kcode-overnight-core",
+    "crates/kcode-plan",
+    "crates/kcode-swarm-core",
+    "crates/kcode-protocol",
+    "crates/kcode-session-types",
+    "crates/kcode-storage",
+    "crates/kcode-provider-metadata",
+    "crates/kcode-provider-env",
+    "crates/kcode-provider-core",
+    "crates/kcode-schema-dialect",
+    "crates/kcode-provider-bedrock",
+    "crates/kcode-provider-anthropic",
+    "crates/kcode-provider-antigravity",
+    "crates/kcode-provider-copilot",
+    "crates/kcode-provider-openrouter",
+    "crates/kcode-provider-openai",
+    "crates/kcode-provider-gemini",
+    "crates/kcode-provider-gemini-runtime",
+    "crates/kcode-provider-cursor-runtime",
+    "crates/kcode-provider-antigravity-runtime",
+    "crates/kcode-provider-copilot-runtime",
+    "crates/kcode-provider-claude-cli-runtime",
+    "crates/kcode-provider-openrouter-runtime",
+    "crates/kcode-provider-anthropic-runtime",
+    "crates/kcode-provider-openai-runtime",
+    "crates/kcode-provider-grok-build-runtime",
+    "crates/kcode-provider-doctor",
+    "crates/kcode-tui-markdown",
+    "crates/kcode-tui-messages",
+    "crates/kcode-usage-types",
+    "crates/kcode-tui-core",
+    "crates/kcode-task-types",
+    "crates/kcode-transport",
+    "crates/kcode-tool-core",
+    "crates/kcode-tui-account-picker",
+    "crates/kcode-tui-render",
+    "crates/kcode-tui-visual-debug",
+    "crates/kcode-tui-session-picker",
+    "crates/kcode-tui-style",
+    "crates/kcode-tui-tool-display",
+    "crates/kcode-tui-usage-overlay",
+    "crates/kcode-terminal-launch",
+    "crates/kcode-terminal-image",
+    "crates/kcode-tui-workspace",
+    "crates/kcode-render-core",
 ]
 
 [lib]
-name = "jcode"
+name = "kcode"
 path = "src/lib.rs"
 
 [[bin]]
@@ -83,7 +83,7 @@ name = "test_api"
 path = "src/bin/test_api.rs"
 
 [[bin]]
-name = "jcode-harness"
+name = "kcode-harness"
 path = "src/bin/harness.rs"
 
 [dependencies]
@@ -117,8 +117,8 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # OAuth
 open = "5"               # Open URLs in browser
-jcode-tui-style = { path = "crates/jcode-tui-style" }
-jcode-tui-session-picker = { path = "crates/jcode-tui-session-picker", features = ["serde"] }
+kcode-tui-style = { path = "crates/kcode-tui-style" }
+kcode-tui-session-picker = { path = "crates/kcode-tui-session-picker", features = ["serde"] }
 
 # Streaming
 tokio-stream = "0.1"
@@ -130,45 +130,45 @@ crossterm = { version = "0.29", features = ["event-stream"] }
 # Markdown & syntax highlighting
 
 # PDF parsing (behind feature flag)
-jcode-build-meta = { path = "crates/jcode-build-meta" }
+kcode-build-meta = { path = "crates/kcode-build-meta" }
 # Tiny leaf helpers (console/env/fs/id) used directly by the cli layer.
 # Presentation layer: the terminal UI (`tui`) + offline replay (`video_export`),
 # compiled as a separate rustc unit. It re-exports the application core
-# (`jcode-app-core`, which re-exports `jcode-base`), so the root crate (cli +
-# bin) re-exports everything via `pub use jcode_tui::*`. default-features=false
+# (`kcode-app-core`, which re-exports `kcode-base`), so the root crate (cli +
+# bin) re-exports everything via `pub use kcode_tui::*`. default-features=false
 # so the root feature set fully controls the downstream features (see
 # [features]).
-jcode-tui = { path = "crates/jcode-tui", default-features = false }
-# `jcode provider-doctor` / provider diagnostics; sits downstream of jcode-base
+kcode-tui = { path = "crates/kcode-tui", default-features = false }
+# `kcode provider-doctor` / provider diagnostics; sits downstream of kcode-base
 # so doctor edits do not rebuild the base -> app-core -> tui spine.
-jcode-provider-doctor = { path = "crates/jcode-provider-doctor" }
-# Gemini provider runtime; sits downstream of jcode-base so gemini edits do
+kcode-provider-doctor = { path = "crates/kcode-provider-doctor" }
+# Gemini provider runtime; sits downstream of kcode-base so gemini edits do
 # not rebuild the base -> app-core -> tui spine. Registered with the external
 # provider registry at startup (src/cli/startup.rs).
-jcode-provider-gemini-runtime = { path = "crates/jcode-provider-gemini-runtime" }
-jcode-provider-cursor-runtime = { path = "crates/jcode-provider-cursor-runtime" }
-jcode-provider-antigravity-runtime = { path = "crates/jcode-provider-antigravity-runtime" }
-jcode-provider-copilot-runtime = { path = "crates/jcode-provider-copilot-runtime" }
-jcode-provider-claude-cli-runtime = { path = "crates/jcode-provider-claude-cli-runtime" }
-jcode-provider-openrouter-runtime = { path = "crates/jcode-provider-openrouter-runtime" }
-jcode-provider-anthropic-runtime = { path = "crates/jcode-provider-anthropic-runtime" }
-jcode-provider-openai-runtime = { path = "crates/jcode-provider-openai-runtime" }
-jcode-provider-grok-build-runtime = { path = "crates/jcode-provider-grok-build-runtime" }
+kcode-provider-gemini-runtime = { path = "crates/kcode-provider-gemini-runtime" }
+kcode-provider-cursor-runtime = { path = "crates/kcode-provider-cursor-runtime" }
+kcode-provider-antigravity-runtime = { path = "crates/kcode-provider-antigravity-runtime" }
+kcode-provider-copilot-runtime = { path = "crates/kcode-provider-copilot-runtime" }
+kcode-provider-claude-cli-runtime = { path = "crates/kcode-provider-claude-cli-runtime" }
+kcode-provider-openrouter-runtime = { path = "crates/kcode-provider-openrouter-runtime" }
+kcode-provider-anthropic-runtime = { path = "crates/kcode-provider-anthropic-runtime" }
+kcode-provider-openai-runtime = { path = "crates/kcode-provider-openai-runtime" }
+kcode-provider-grok-build-runtime = { path = "crates/kcode-provider-grok-build-runtime" }
 
 # Archive extraction (for auto-update)
 tempfile = "3"
 
 [features]
-# Use `JCODE_DEV_FEATURE_PROFILE=minimal` for compile-speed probes that need
+# Use `KCODE_DEV_FEATURE_PROFILE=minimal` for compile-speed probes that need
 # to skip optional default feature stacks.
 default = ["pdf", "bedrock"]
-# Live AWS Bedrock support (the AWS SDK stack) lives in jcode-provider-bedrock;
-# forwards down through jcode-tui -> jcode-app-core -> jcode-base.
-bedrock = ["jcode-tui/bedrock"]
+# Live AWS Bedrock support (the AWS SDK stack) lives in kcode-provider-bedrock;
+# forwards down through kcode-tui -> kcode-app-core -> kcode-base.
+bedrock = ["kcode-tui/bedrock"]
 # Internal release feature: build a supported OpenSSL inside the CentOS 7
 # compatibility image while preserving the glibc 2.17 runtime baseline.
-linux-compat-vendored-openssl = ["jcode-tui/linux-compat-vendored-openssl"]
-pdf = ["jcode-tui/pdf"]
+linux-compat-vendored-openssl = ["kcode-tui/linux-compat-vendored-openssl"]
+pdf = ["kcode-tui/pdf"]
 
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -237,16 +237,16 @@ opt-level = 0
 # dependency-free code that rarely changes,
 # so keeping it fully optimized in dev/selfdev builds costs one compile and
 # removes visible input lag in unoptimized builds.
-[profile.dev.package."jcode-fuzzy"]
+[profile.dev.package."kcode-fuzzy"]
 opt-level = 3
 
-[profile.selfdev.package."jcode-fuzzy"]
+[profile.selfdev.package."kcode-fuzzy"]
 opt-level = 3
 
-[profile.test.package."jcode-fuzzy"]
+[profile.test.package."kcode-fuzzy"]
 opt-level = 3
 
-[profile.release.package."jcode-fuzzy"]
+[profile.release.package."kcode-fuzzy"]
 opt-level = 3
 
 # Keep the terminal render stack optimized even in dev/selfdev/test builds.
@@ -258,7 +258,7 @@ opt-level = 3
 # full frame to ~12ms p50 / 21ms p95, which reads as input-line lag while
 # streaming saturates the redraw loop. These are stable third-party crates
 # that almost never recompile, so pinning them is a one-time compile cost
-# (same rationale as jcode-fuzzy above).
+# (same rationale as kcode-fuzzy above).
 [profile.dev.package.ratatui]
 opt-level = 3
 [profile.selfdev.package.ratatui]
@@ -328,7 +328,7 @@ opt-level = 3
 # extracting text from attached PDFs. At opt-level = 0 that path is markedly
 # slower, and this is a stable third-party crate that almost never recompiles,
 # so pinning it to opt-level = 3 costs a one-time compile and is then reused
-# across every iterative kcode rebuild (same rationale as jcode-fuzzy above). It
+# across every iterative kcode rebuild (same rationale as kcode-fuzzy above). It
 # does NOT slow down recompiles of kcode's own crates.
 [profile.dev.package.ttf-parser]
 opt-level = 3
@@ -342,7 +342,7 @@ opt-level = 3
 # Inline transcript images decode (png/zune-jpeg/fdeflate/miniz_oxide), resize
 # (image), and base64-encode (kitty transmit) at draw time; at opt-level 0 a
 # single screenshot costs 100-200ms per decode/resize, which reads as input
-# lag. These are pure pixel crates with no jcode logic, so optimizing them
+# lag. These are pure pixel crates with no kcode logic, so optimizing them
 # does not hurt rebuild times for our own code.
 [profile.dev.package.image]
 opt-level = 3
@@ -404,12 +404,12 @@ codegen-units = 256
 async-stream = "0.3"
 # Used by tests/context_window_matrix.rs to assert the shared context-window
 # resolution invariants directly, without going through a live provider.
-jcode-provider-core = { path = "crates/jcode-provider-core" }
+kcode-provider-core = { path = "crates/kcode-provider-core" }
 # Enables the downstream test-support helpers (storage::lock_test_env,
 # auth::test_sandbox, bus::reset_models_updated_publish_state_for_tests, the
 # ExternalAuthReviewCandidate read accessors) for the root crate's own cli test
 # target. Feature unification applies this only to test/bench/example builds,
 # never to a normal `cargo build`/release binary.
-jcode-tui = { path = "crates/jcode-tui", default-features = false, features = ["test-support"] }
+kcode-tui = { path = "crates/kcode-tui", default-features = false, features = ["test-support"] }
 
 [build-dependencies]

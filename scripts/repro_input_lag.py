@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Reproduce and measure input-line lag in a freshly spawned jcode TUI.
+Reproduce and measure input-line lag in a freshly spawned kcode TUI.
 
 Why this exists
 ---------------
-Users report that a *newly spawned* jcode is laggy: the slash-command popup
+Users report that a *newly spawned* kcode is laggy: the slash-command popup
 stalls and each keystroke takes a visible moment to appear in the input line.
 Unit tests render synthetically and never observe the real
 "byte in -> repainted glyph out" latency of the live binary.
@@ -274,12 +274,12 @@ def launch_client(binary: str, env: dict, session_id: str,
     fcntl.ioctl(slave_fd, termios.TIOCSWINSZ,
                 struct.pack("HHHH", rows, cols, 0, 0))
     cenv = dict(env)
-    cenv["JCODE_DEBUG_CMD_PATH"] = str(cmd_path)
-    cenv["JCODE_DEBUG_RESPONSE_PATH"] = str(resp_path)
+    cenv["KCODE_DEBUG_CMD_PATH"] = str(cmd_path)
+    cenv["KCODE_DEBUG_RESPONSE_PATH"] = str(resp_path)
     cenv["TERM"] = "xterm-256color"
     proc = subprocess.Popen(
         [binary, "--no-update", "--no-selfdev",
-         "--socket", env["JCODE_SOCKET"], "--resume", session_id],
+         "--socket", env["KCODE_SOCKET"], "--resume", session_id],
         stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
         env=cenv, preexec_fn=os.setsid,
     )
@@ -436,9 +436,9 @@ def draw_stats_summary(cmd_path: Path, resp_path: Path) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    default_bin = REPO_ROOT / "target" / "selfdev" / "jcode"
+    default_bin = REPO_ROOT / "target" / "selfdev" / "kcode"
     if not default_bin.exists():
-        default_bin = Path.home() / ".jcode" / "builds" / "current" / "jcode"
+        default_bin = Path.home() / ".kcode" / "builds" / "current" / "kcode"
     ap.add_argument("--binary", default=str(default_bin))
     ap.add_argument("--json", action="store_true")
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -453,7 +453,7 @@ def main() -> int:
                          "letting startup work finish first")
     ap.add_argument("--background-clients", type=int, default=0,
                     help="spawn N extra live TUI clients first. Real users run "
-                         "many jcode windows at once, and each one repaints on a "
+                         "many kcode windows at once, and each one repaints on a "
                          "tick, so this reproduces the contention a lone client "
                          "never sees.")
     ap.add_argument("--no-idle-animation", action="store_true",
@@ -467,7 +467,7 @@ def main() -> int:
         print(f"binary not found: {binary}")
         return 3
 
-    root = Path(tempfile.mkdtemp(prefix="jcode-input-lag-"))
+    root = Path(tempfile.mkdtemp(prefix="kcode-input-lag-"))
     home, run = root / "home", root / "run"
     home.mkdir(parents=True)
     run.mkdir(parents=True)
@@ -477,39 +477,39 @@ def main() -> int:
         # Talk to whatever server the user already runs, with their real home,
         # config, sessions, and model catalog. This is the configuration the lag
         # report came from; the throwaway home is too clean to reproduce it.
-        real_runtime = Path(env.get("JCODE_RUNTIME_DIR")
+        real_runtime = Path(env.get("KCODE_RUNTIME_DIR")
                             or f"/run/user/{os.getuid()}")
-        env["JCODE_SOCKET"] = env.get("JCODE_SOCKET") or str(real_runtime / "jcode.sock")
-        env["JCODE_DEBUG_CONTROL"] = "1"
-        debug_sock = real_runtime / "jcode-debug.sock"
+        env["KCODE_SOCKET"] = env.get("KCODE_SOCKET") or str(real_runtime / "kcode.sock")
+        env["KCODE_DEBUG_CONTROL"] = "1"
+        debug_sock = real_runtime / "kcode-debug.sock"
     else:
-        env["JCODE_HOME"] = str(home)
-        env["JCODE_RUNTIME_DIR"] = str(run)
-        env["JCODE_SOCKET"] = str(run / "jcode.sock")
-        env["JCODE_NO_TELEMETRY"] = "1"
-        env["JCODE_DEBUG_CONTROL"] = "1"
-        env["JCODE_TEMP_SERVER"] = "1"
-        env["JCODE_SERVER_OWNER_PID"] = str(os.getpid())
+        env["KCODE_HOME"] = str(home)
+        env["KCODE_RUNTIME_DIR"] = str(run)
+        env["KCODE_SOCKET"] = str(run / "kcode.sock")
+        env["KCODE_NO_TELEMETRY"] = "1"
+        env["KCODE_DEBUG_CONTROL"] = "1"
+        env["KCODE_TEMP_SERVER"] = "1"
+        env["KCODE_SERVER_OWNER_PID"] = str(os.getpid())
         # The server refuses to boot without credentials. We never issue a real
         # request, so a dummy key keeps the throwaway home fully isolated.
         if not env.get("ANTHROPIC_API_KEY"):
             env["ANTHROPIC_API_KEY"] = "sk-ant-repro-input-lag"
-        debug_sock = run / "jcode-debug.sock"
+        debug_sock = run / "kcode-debug.sock"
     # Pin the theme so the client never issues an OSC 11 background query.
     # The client consumes that reply from stdin itself; a harness that also
     # answers it races the client and the leftover bytes get decoded as
     # composer keystrokes (observed as `]11;rgb:...` text in the input line),
     # which silently invalidates every measurement taken afterwards.
-    env["JCODE_THEME"] = "dark"
+    env["KCODE_THEME"] = "dark"
     if args.no_idle_animation:
-        env["JCODE_IDLE_ANIMATION"] = "false"
+        env["KCODE_IDLE_ANIMATION"] = "false"
     cmd_path, resp_path = run / "client_cmd", run / "client_resp"
 
     if not args.json:
-        print("== jcode input-lag repro ==")
+        print("== kcode input-lag repro ==")
         print(f"  binary : {binary}")
         print(f"  mode   : {'live (real server/home)' if args.live else 'isolated'}")
-        print(f"  socket : {env['JCODE_SOCKET']}")
+        print(f"  socket : {env['KCODE_SOCKET']}")
         print(f"  dbgsock: {debug_sock}")
 
     server_log = root / "server.log"
@@ -517,7 +517,7 @@ def main() -> int:
     if not args.live:
         server_log_fh = server_log.open("wb")
         server = subprocess.Popen(
-            [binary, "serve", "--socket", env["JCODE_SOCKET"], "--debug-socket",
+            [binary, "serve", "--socket", env["KCODE_SOCKET"], "--debug-socket",
              "--no-update", "--no-selfdev"],
             env=env, stdout=server_log_fh, stderr=subprocess.STDOUT,
             preexec_fn=os.setsid,
@@ -527,7 +527,7 @@ def main() -> int:
     result: dict = {"binary": binary}
     try:
         try:
-            wait_for_socket(Path(env["JCODE_SOCKET"]))
+            wait_for_socket(Path(env["KCODE_SOCKET"]))
         except RuntimeError:
             print("server never bound its socket; log tail:")
             try:

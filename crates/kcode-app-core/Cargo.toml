@@ -1,0 +1,123 @@
+[package]
+name = "kcode-app-core"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Application core for kcode: all non-presentation modules (server, agent,
+# provider, auth, session, tool, config, etc.) extracted out of the monolithic
+# root `kcode` crate so they compile as a separate rustc unit. The root `kcode`
+# crate (cli + tui + bin) re-exports this crate's modules via `pub use
+# kcode_app_core::*`, preserving every existing `crate::<module>` path.
+
+[lib]
+name = "kcode_app_core"
+path = "src/lib.rs"
+
+[dependencies]
+# that feature to kcode-base rather than depending on the backing crate directly.
+
+# Async runtime
+tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "blocking", "charset", "http2", "system-proxy", "rustls-tls", "rustls-tls-native-roots"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+
+# CLI
+
+# File operations
+glob = "0.3"
+similar = "2"            # diffing for edits
+
+# Utilities
+dirs = "5"               # home directory
+anyhow = "1"
+libc = "0.2"             # Unix system calls (flock)
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1"
+urlencoding = "2"        # URL encoding for web search
+uuid = { version = "1", features = ["v4", "v5"] }
+
+# Embeddings (local inference) live in kcode-base; this crate forwards the
+kcode-import-core = { path = "../kcode-import-core" }
+
+# OAuth
+base64 = "0.22"
+sha2 = "0.10"
+rand = "0.9.3"
+url = "2"
+open = "5"               # Open URLs in browser
+kcode-agent-runtime = { path = "../kcode-agent-runtime" }
+kcode-provider-core = { path = "../kcode-provider-core" }
+kcode-schema-dialect = { path = "../kcode-schema-dialect" }
+# NOTE: kcode-app-core does NOT depend on any kcode-tui-* crate. They were
+# unused dead dependency edges here (the TUI declares them itself). Removing
+# them stops a kcode-tui-* edit from cascading a recompile through app-core.
+kcode-terminal-image = { path = "../kcode-terminal-image" }
+
+# Streaming
+tokio-stream = "0.1"
+
+# TUI
+ratatui = "0.30"
+crossterm = { version = "0.29", features = ["event-stream"] }
+
+# Markdown & syntax highlighting
+unicode-width = "0.2"   # Unicode character display width
+
+# PDF parsing (behind feature flag)
+kcode-pdf = { path = "../kcode-pdf", optional = true }
+kcode-build-meta = { path = "../kcode-build-meta" }
+
+# Foundational layer (provider, auth, config, session, message, memory, ...).
+# Re-exported via `pub use kcode_base::*` in lib.rs. default-features=false so
+# this crate controls kcode-base's optional features (see [features] below).
+kcode-base = { path = "../kcode-base", default-features = false }
+kcode-command-risk = { path = "../kcode-command-risk" }
+kcode-core = { path = "../kcode-core" }
+kcode-message-types = { path = "../kcode-message-types" }
+kcode-overnight-core = { path = "../kcode-overnight-core" }
+kcode-plan = { path = "../kcode-plan" }
+kcode-swarm-core = { path = "../kcode-swarm-core" }
+kcode-session-types = { path = "../kcode-session-types" }
+kcode-task-types = { path = "../kcode-task-types" }
+kcode-tool-core = { path = "../kcode-tool-core" }
+
+# Archive extraction (for auto-update)
+flate2 = "1"
+tar = "0.4"
+tempfile = "3"
+# kgrep absorbs agentgrep's engine. Pinned to a revision that carries the
+# agentgrep MIT notice (LICENSE and NOTICE at 3ea9b3f, an ancestor of this rev).
+kgrep = { git = "https://github.com/zipadoodlez/kgrep.git", rev = "bc205e8362831ca234976bea44cf92b614950b5b" }
+
+[features]
+default = ["pdf", "bedrock"]
+# live AWS Bedrock support lives in kcode-base (provider/bedrock); forward there.
+bedrock = ["kcode-base/bedrock"]
+# Used only by the CentOS 7 portable Linux release build.
+linux-compat-vendored-openssl = []
+# PDF text extraction lives in this crate (tool/read.rs).
+pdf = ["dep:kcode-pdf"]
+# Compiles this crate's test-only helpers/accessors (e.g. the
+# ExternalAuthReviewCandidate read accessors) as `pub` and forwards
+# kcode-base's `test-support` so downstream crates' test targets can reach the
+# whole stack's helpers. Never enabled in normal (non-test) builds.
+test-support = ["kcode-base/test-support"]
+
+[dev-dependencies]
+# Used by async streaming tests (ambient/runner_tests, server/client_actions_tests).
+async-stream = "0.3"
+# Enables kcode-base's test-support helpers (storage::lock_test_env,
+# auth::test_sandbox, bus::reset_models_updated_publish_state_for_tests) for
+# *this* crate's own test target. Feature unification applies this only to
+# test/bench/example builds, not to a normal `cargo build`.
+kcode-base = { path = "../kcode-base", default-features = false, features = ["test-support"] }
+
