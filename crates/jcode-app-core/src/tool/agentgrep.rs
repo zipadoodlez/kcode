@@ -124,11 +124,11 @@ impl Tool for AgentGrepTool {
                 },
                 "max_regions": {
                     "type": "integer",
-                    "description": "Maximum number of match records to return. A coarse cap; prefer max_tokens for the size of the answer."
+                    "description": "Maximum number of match records to return. Prefer max_tokens for the size of the answer."
                 },
                 "max_tokens": {
                     "type": "integer",
-                    "description": "Maximum estimated tokens of match detail to return, across all files. The knob for the size of the answer: raise it to see more, or omit it for the default. Unused by outline."
+                    "description": "Maximum estimated tokens of detail to return. Raise it to see more. Outline ignores it."
                 },
                 "paths_only": {
                     "type": "boolean",
