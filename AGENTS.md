@@ -15,6 +15,9 @@
   the user asks you to review or integrate a PR or branch, you may inspect, test,
   and integrate that contribution regardless of author status. Do not pull in
   unrelated branches or merge a PR without user authorization.
+- **Do not "fix" the remaining `jcode` names** - some of them deliberately refer
+  to the upstream project or to the wire service, and the list is in
+  `docs/dev/post-change.md` under Names. Renaming those breaks compatibility.
 - **Run the local gate before committing** - this fork has no CI.
   `scripts/check_guardrails.sh` (format, compile, clippy, lock, guardrail checks)
   must pass. See `docs/dev/post-change.md`.

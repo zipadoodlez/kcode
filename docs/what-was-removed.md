@@ -47,7 +47,8 @@ gone as well:
 - `grok-build` - independent of the account surface.
 - The `jcode` provider id string, `jcode.sh` URLs, and the `_jcode` ACP
   capability: these name the *service*, not this binary, and removing them would
-  break wire compatibility.
+  break wire compatibility. The full list of names that stay is in
+  `docs/dev/post-change.md` under Names.
 
 ## Why docs for removed features do not live here
 

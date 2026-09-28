@@ -84,6 +84,27 @@ signal was dominated by code that is not a defect.
   is today; a doc that disagrees with the code is wrong.
 - **Introduced or removed a concept**: record it in `docs/todo.md`.
 
+## Names
+
+This tree uses two names on purpose. Before you "fix" one of them, know which
+kind it is:
+
+- **`kcode`** is this product: the binary, the crates, `KCODE_*` variables, the
+  `.kcode/` state and project directories, the tools.
+- **`jcode`** names the upstream project this fork came from, or the service it
+  still speaks to. These are correct and must stay:
+
+  | where | why |
+  | --- | --- |
+  | the `jcode` provider id, the `Jcode subscription` labels | existing config and session files carry the id |
+  | `jcode.sh` URLs, the `1jehuang/jcode` repo, the `1jehuang/homebrew-jcode` tap | upstream's service and repository, not ours |
+  | ACP `_jcode` capability, `_meta.jcode` keys | clients already speak these strings |
+  | `changelog/` entries | they record what shipped, and history is not rewritten |
+
+Everything else is `kcode`, and there is no compatibility alias for anything
+that was renamed: `JCODE_*` is not read, `.jcode/` is not consulted. Do not add
+a shim to soften that; the point of the rename is that one name means one thing.
+
 ## Environment
 
 Set `TMPDIR` to real disk, not tmpfs, for cargo builds: `ring` and `aws-lc-sys`

@@ -20,27 +20,8 @@ maintainer before work starts; everything else is actionable.
 Cheap, and they unblock the rest.
 
 **Fork policy decided (2026-09-28): diverged.** There is no rebase lane and no
-upstream to track; kcode is its own tree. What that decision unblocks, now
-actionable:
+upstream to track; kcode is its own tree. What that decision settled:
 
-- [x] **Env prefix renamed to `KCODE_*` (2026-09-28).** Every `JCODE_*`
-  occurrence in the tree is now `KCODE_*`: 377 files, 4368 occurrences, with no
-  compatibility alias. Stale `$HOME/.jcode` state paths in `scripts/` were fixed
-  at the same time, as was the `<runtime_dir>/kcode/` socket directory.
-- [x] **`jcode` renamed to `kcode` across the tree (2026-09-28).** 742 files
-  rewritten and 967 paths renamed: 60 crate directories, the root `[lib]`, the
-  `kcode-harness` bin target, the `.kcode/` project directory, and the
-  `kgrep` tool (now `kgrep`) with its files. `Cargo.lock` regenerated.
-- [x] **Crate names: renamed, not declared cosmetic.** The earlier call was to
-  leave the 60 `jcode-*` crates alone. Reversed deliberately: consistency across
-  the tree is worth the diff, and the rename is mechanical.
-- [ ] **Deliberately still `jcode` (decided 2026-09-28).** These name the
-  upstream service or project rather than this binary, so the rename protects
-  them: the `jcode` provider id string and its `Jcode subscription` labels
-  (existing config and session data carry it), `jcode.sh` URLs, the
-  `1jehuang/jcode` repository and Homebrew tap references, the ACP `_jcode`
-  capability with its `_meta.jcode` keys, and `changelog/`. See
-  `docs/what-was-removed.md`.
 - **Ratchets: keep kcode's re-baselined numbers.** Decided. They measure this
   tree's drift, which is the point of a ratchet. Two things the decision
   surfaced were measured and are fixed below: the two size ratchets were never
@@ -854,9 +835,6 @@ tree first would just move that churn around.
 
 ## 5. Hygiene, then packaging
 
-- [x] `KCODE_*` env vars: state dir is `~/.kcode`, every literal is now the
-  `KCODE_*` spelling, and `<runtime_dir>/kcode/` is renamed (2026-09-28). The
-  legacy-fallback removal is tracked in §0.
 - [ ] Unknown config sections are silently ignored, so older configs keep dead
   keys with no warning.
 - [x] **Self-dev tooling names the wrong package.** The prompt and
