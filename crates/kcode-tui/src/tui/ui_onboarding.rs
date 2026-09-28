@@ -475,37 +475,6 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
             push_esc_skip_hint(&mut lines, align);
             return lines;
         }
-        OnboardingWelcomeKind::ContinuePrompt {
-            cli_label,
-            yes_highlighted,
-            seconds_left,
-        } => {
-            lines.push(Line::from(""));
-            lines.push(
-                Line::from(Span::styled(
-                    format!("Continue where you left off in {cli_label}?"),
-                    Style::default()
-                        .fg(welcome_accent())
-                        .add_modifier(Modifier::BOLD),
-                ))
-                .alignment(align),
-            );
-            lines.push(Line::from(""));
-
-            // Rounded Yes/No pills; selection shown visually so the hint stays
-            // short. The countdown line below already explains the default.
-            lines.push(yes_no_pill_line(yes_highlighted, align));
-            lines.push(Line::from(""));
-            lines.push(
-                Line::from(Span::styled(
-                    format!("Opens the resume menu automatically in {seconds_left}s…"),
-                    Style::default().fg(dim_color()),
-                ))
-                .alignment(align),
-            );
-            push_esc_skip_hint(&mut lines, align);
-            return lines;
-        }
         OnboardingWelcomeKind::Suggestions => {}
     }
 

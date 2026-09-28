@@ -46,10 +46,6 @@ pub enum NodeId {
     LoginImport,
     /// Nothing importable and the default sign-in was declined or failed.
     LoginRecovery,
-    /// Legacy transient phase, auto-advances.
-    ModelSelect,
-    /// "Continue where you left off?" (legacy/replay path).
-    ContinuePrompt,
     /// Action picker: suggested review, or a blank session.
     StartChoice,
     /// Prompt suggestion cards; the resting state.
@@ -66,8 +62,6 @@ impl NodeId {
             NodeId::LoginOpenAi => "login_openai",
             NodeId::LoginImport => "login_import",
             NodeId::LoginRecovery => "login_recovery",
-            NodeId::ModelSelect => "model_select",
-            NodeId::ContinuePrompt => "continue_prompt",
             NodeId::StartChoice => "start_choice",
             NodeId::Suggestions => "suggestions",
             NodeId::Done => "done",
@@ -78,14 +72,12 @@ impl NodeId {
     /// automatically covered once added here (and the compiler forces that via
     /// the wildcard-free `label`/`props` matches).
     #[cfg(test)]
-    pub fn all() -> [NodeId; 9] {
+    pub fn all() -> [NodeId; 7] {
         [
             NodeId::Start,
             NodeId::LoginOpenAi,
             NodeId::LoginImport,
             NodeId::LoginRecovery,
-            NodeId::ModelSelect,
-            NodeId::ContinuePrompt,
             NodeId::StartChoice,
             NodeId::Suggestions,
             NodeId::Done,
@@ -107,15 +99,6 @@ pub struct NodeProps {
     pub is_ready: bool,
     /// No further onboarding transitions leave this node.
     pub is_terminal: bool,
-    /// The user never rests here: it auto-advances before a frame is drawn.
-    /// Transient nodes are exempt from the escape-hatch rule because there is
-    /// nothing to escape from, but they still must make progress.
-    pub is_transient: bool,
-    /// Retained only for replay/test fixtures; the live flow never enters it.
-    /// Exempt from reachability so the checker does not force us to invent a
-    /// fake entry edge, but flagged here so it is obvious this is dead weight
-    /// that should eventually be deleted.
-    pub is_legacy: bool,
 }
 
 /// Per-node properties. Wildcard-free: a new node must be classified here.
@@ -128,8 +111,6 @@ pub fn node_props(node: NodeId) -> NodeProps {
             has_default: false,
             is_ready: false,
             is_terminal: false,
-            is_transient: false,
-            is_legacy: false,
         },
         // Blocking environment problem (e.g. unwritable config dir). A failure,
         LoginOpenAi => NodeProps {
@@ -137,67 +118,36 @@ pub fn node_props(node: NodeId) -> NodeProps {
             has_default: false,
             is_ready: false,
             is_terminal: false,
-            is_transient: false,
-            is_legacy: false,
         },
         LoginImport => NodeProps {
             is_decision: true,
             has_default: true,
             is_ready: false,
             is_terminal: false,
-            is_transient: false,
-            is_legacy: false,
         },
         LoginRecovery => NodeProps {
             is_decision: true,
             has_default: false,
             is_ready: false,
             is_terminal: false,
-            is_transient: false,
-            is_legacy: false,
-        },
-        // Auto-advances before a frame is drawn, so the user never sits here.
-        ModelSelect => NodeProps {
-            is_decision: false,
-            has_default: true,
-            is_ready: false,
-            is_terminal: false,
-            is_transient: true,
-            is_legacy: false,
-        },
-        // Legacy: retained for replay/test fixtures. The live flow no longer
-        // enters it (see the OnboardingPhase::ContinuePrompt doc comment).
-        ContinuePrompt => NodeProps {
-            is_decision: true,
-            has_default: true,
-            is_ready: false,
-            is_terminal: false,
-            is_transient: false,
-            is_legacy: true,
         },
         StartChoice => NodeProps {
             is_decision: true,
             has_default: false,
             is_ready: true,
             is_terminal: false,
-            is_transient: false,
-            is_legacy: false,
         },
         Suggestions => NodeProps {
             is_decision: false,
             has_default: false,
             is_ready: true,
             is_terminal: true,
-            is_transient: false,
-            is_legacy: false,
         },
         Done => NodeProps {
             is_decision: false,
             has_default: false,
             is_ready: false,
             is_terminal: true,
-            is_transient: false,
-            is_legacy: false,
         },
     }
 }
@@ -238,7 +188,7 @@ pub fn graph() -> Vec<Edge> {
         },
         Edge {
             from: Start,
-            to: ModelSelect,
+            to: StartChoice,
             keystrokes: 0,
             is_escape: false,
         },
@@ -285,26 +235,6 @@ pub fn graph() -> Vec<Edge> {
             keystrokes: 1,
             is_escape: true,
         },
-        // ---- A login failed: every exit here must be actionable ----
-        // Try the method the environment probe says can actually work.
-        Edge {
-            from: ModelSelect,
-            to: StartChoice,
-            keystrokes: 0,
-            is_escape: false,
-        },
-        Edge {
-            from: ContinuePrompt,
-            to: StartChoice,
-            keystrokes: 1,
-            is_escape: false,
-        },
-        Edge {
-            from: ContinuePrompt,
-            to: Suggestions,
-            keystrokes: 1,
-            is_escape: true,
-        },
         // ---- Resting states ----
         Edge {
             from: StartChoice,
@@ -333,8 +263,6 @@ pub fn node_for_phase(phase: &super::onboarding_flow::OnboardingPhase) -> NodeId
         P::Login { import: Some(_) } => NodeId::LoginImport,
         P::Login { import: None } => NodeId::LoginRecovery,
         P::LoginOpenAi { .. } => NodeId::LoginOpenAi,
-        P::ModelSelect => NodeId::ModelSelect,
-        P::ContinuePrompt { .. } => NodeId::ContinuePrompt,
         P::StartChoice { .. } => NodeId::StartChoice,
         P::Suggestions => NodeId::Suggestions,
         P::Done => NodeId::Done,
@@ -389,11 +317,7 @@ pub fn check_invariants() -> Vec<Violation> {
 
         // 2. Escape hatch everywhere: from any node the user can sit on, there
         //    is a way into a usable (possibly degraded) app.
-        if !props.is_terminal
-            && !props.is_transient
-            && node != NodeId::Start
-            && !outs.iter().any(|e| e.is_escape)
-        {
+        if !props.is_terminal && node != NodeId::Start && !outs.iter().any(|e| e.is_escape) {
             violations.push(Violation {
                 invariant: "escape_hatch",
                 detail: format!("{} has no escape edge", node.label()),
@@ -402,22 +326,10 @@ pub fn check_invariants() -> Vec<Violation> {
 
         // 3. Reachability: every node except the virtual Start must be
         //    reachable, otherwise it is dead code that will rot.
-        if node != NodeId::Start && !props.is_legacy && !edges.iter().any(|e| e.to == node) {
+        if node != NodeId::Start && !edges.iter().any(|e| e.to == node) {
             violations.push(Violation {
                 invariant: "reachable",
                 detail: format!("{} is unreachable from any node", node.label()),
-            });
-        }
-        // A legacy node that became reachable again is no longer legacy, and
-        // silently keeping the exemption would hide a real screen from every
-        // other invariant.
-        if props.is_legacy && edges.iter().any(|e| e.to == node) {
-            violations.push(Violation {
-                invariant: "legacy_stays_unreachable",
-                detail: format!(
-                    "{} is marked legacy but something now routes into it; drop the flag",
-                    node.label()
-                ),
             });
         }
 
@@ -557,46 +469,6 @@ mod tests {
             .is_none(),
             "a node with no exits must be unable to reach a settled state"
         );
-    }
-
-    #[test]
-    fn invariant_exemptions_stay_narrow() {
-        // Two invariants have exemptions, and an exemption nobody polices is
-        // just a hole. Pin the exact set of exempt nodes so widening it is a
-        // deliberate, reviewed act rather than a quiet edit.
-        let transient: Vec<&str> = NodeId::all()
-            .into_iter()
-            .filter(|&n| node_props(n).is_transient)
-            .map(NodeId::label)
-            .collect();
-        assert_eq!(
-            transient,
-            vec!["model_select"],
-            "only genuinely auto-advancing screens may skip the escape-hatch rule"
-        );
-
-        let legacy: Vec<&str> = NodeId::all()
-            .into_iter()
-            .filter(|&n| node_props(n).is_legacy)
-            .map(NodeId::label)
-            .collect();
-        assert_eq!(
-            legacy,
-            vec!["continue_prompt"],
-            "only replay-fixture screens may skip the reachability rule"
-        );
-
-        // A transient node must still make progress, or it is a hang rather
-        // than a screen.
-        for node in NodeId::all() {
-            if node_props(node).is_transient {
-                assert!(
-                    graph().iter().any(|e| e.from == node),
-                    "{} auto-advances to nowhere",
-                    node.label()
-                );
-            }
-        }
     }
 
     #[test]

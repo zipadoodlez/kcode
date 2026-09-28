@@ -282,10 +282,7 @@ impl App {
     fn onboarding_sim_set_highlight(&mut self, yes: bool) {
         if let Some(flow) = self.onboarding_flow.as_mut() {
             match &mut flow.phase {
-                OnboardingPhase::LoginOpenAi { yes_highlighted }
-                | OnboardingPhase::ContinuePrompt {
-                    yes_highlighted, ..
-                } => {
+                OnboardingPhase::LoginOpenAi { yes_highlighted } => {
                     *yes_highlighted = yes;
                 }
                 OnboardingPhase::Login {

@@ -12,10 +12,10 @@
 //   cargo test -p kcode-tui onboarding_golden -- --nocapture
 
 // NOTE: This file is `include!`d into `crate::tui::app::tests`, which already
-// imports `ExternalCli`, `OnboardingFlow`, and `OnboardingPhase` via the
-// sibling `onboarding_flow.rs` include. To avoid duplicate-import errors we
-// reference types through fully-qualified paths / local aliases below instead
-// of adding module-level `use` statements.
+// imports `OnboardingFlow` and `OnboardingPhase` via the sibling
+// `onboarding_flow.rs` include. To avoid duplicate-import errors we reference
+// types through fully-qualified paths / local aliases below instead of adding
+// module-level `use` statements.
 
 /// Render the onboarding welcome screen for `app` into a fixed-size buffer and
 /// return the visible text, one line per row, trailing blank rows trimmed.
@@ -352,29 +352,6 @@ fn onboarding_golden_walks_every_phase() {
         assert!(text.contains("Import"), "import pill: {text}");
     }
 
-    // 4. Continue prompt (resume an external session).
-    {
-        let app = app_in_phase(OnboardingPhase::ContinuePrompt {
-            cli: ExternalCli::Codex,
-            yes_highlighted: true,
-            shown_at: std::time::Instant::now(),
-        });
-        let text = render_onboarding_text(&app, width, height);
-        dump("ContinuePrompt (Codex)", &text);
-        assert!(
-            text.contains("Continue where you left off in Codex?"),
-            "continue prompt: {text}"
-        );
-        assert!(
-            text.contains("\u{25D6} Yes \u{25D7}") && text.contains("\u{25D6} No \u{25D7}"),
-            "continue prompt Yes/No lozenge pills: {text}"
-        );
-        assert!(
-            text.contains("Opens the resume menu automatically in"),
-            "resume-menu hint: {text}"
-        );
-    }
-
     // 5. Suggestions (resting state).
     {
         let app = app_in_phase(OnboardingPhase::Suggestions);
@@ -485,15 +462,6 @@ fn onboarding_golden_walks_failure_and_async_states() {
         let text = render_onboarding_text(&app, width, height);
         assert_guided_polish("LoginOpenAi", &text);
     }
-    {
-        let app = app_in_phase(OnboardingPhase::ContinuePrompt {
-            cli: ExternalCli::Codex,
-            yes_highlighted: true,
-            shown_at: std::time::Instant::now(),
-        });
-        let text = render_onboarding_text(&app, width, height);
-        assert_guided_polish("ContinuePrompt", &text);
-    }
 }
 
 /// Generate a reviewable image for every state in the onboarding graph
@@ -588,16 +556,6 @@ fn onboarding_import_happy_path_images() {
         let mut app = app_in_phase(OnboardingPhase::Login { import: None });
         app.onboarding_import_error = Some("the saved credential was rejected".to_string());
         write_onboarding_svg(&output_dir, "cred-rejected.svg", &app, width, height);
-    }
-
-    // ---- continue_prompt (legacy): resume an external CLI session ----
-    {
-        let app = app_in_phase(OnboardingPhase::ContinuePrompt {
-            cli: ExternalCli::Codex,
-            yes_highlighted: true,
-            shown_at: std::time::Instant::now(),
-        });
-        write_onboarding_svg(&output_dir, "continue-prompt.svg", &app, width, height);
     }
 
     // ---- start_choice: the action-only picker overlay (full frame) ----

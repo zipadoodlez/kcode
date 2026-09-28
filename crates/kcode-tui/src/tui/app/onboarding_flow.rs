@@ -12,9 +12,6 @@
 //!   3. `Suggestions` - the existing prompt-suggestion cards. Reached when
 //!      they choose "Start a new session" or as the terminal resting state.
 //!
-//!   (`ContinuePrompt` is retained as a legacy phase for replay/test fixtures
-//!   but is no longer entered by the live flow.)
-//!
 //! Session history is intentionally excluded from onboarding and remains
 //! available later through `/resume`.
 
@@ -290,21 +287,6 @@ pub(crate) enum OnboardingPhase {
         /// Which option is highlighted (true = "Yes, log in to OpenAI").
         yes_highlighted: bool,
     },
-    /// Legacy phase kept for compatibility with older replay/test fixtures.
-    /// New onboarding skips explicit model selection and uses the default route;
-    /// users can still run `/model` later.
-    ModelSelect,
-    /// "Continue where you left off in <cli>?" Yes/No with a
-    /// [`DECISION_TIMEOUT`] countdown. Highlightable Yes/No selector to match
-    /// the import prompt; the default (and timeout choice) is "Yes" so the
-    /// resume menu opens unless the user declines.
-    ContinuePrompt {
-        cli: ExternalCli,
-        /// Which option is highlighted (true = "Yes, continue").
-        yes_highlighted: bool,
-        /// When the prompt was shown, for the countdown.
-        shown_at: Instant,
-    },
     /// Action-only picker offering the suggested review or a blank new session.
     StartChoice { shown_at: Instant },
     /// Existing prompt-suggestion cards (resting / "No" state).
@@ -378,12 +360,13 @@ pub(crate) struct OnboardingFlow {
 }
 
 impl OnboardingFlow {
-    /// Start the post-login flow. The app immediately advances this legacy
-    /// phase to continue/suggestions so first-run onboarding no longer blocks on
-    /// choosing a model.
+    /// Start the post-login flow: the first-run choice between a suggested
+    /// review and a blank session. There is no intervening model-selection step.
     pub(crate) fn begin() -> Self {
         Self {
-            phase: OnboardingPhase::ModelSelect,
+            phase: OnboardingPhase::StartChoice {
+                shown_at: Instant::now(),
+            },
         }
     }
 
@@ -409,22 +392,6 @@ impl OnboardingFlow {
         !matches!(self.phase, OnboardingPhase::Done)
     }
 
-    /// Seconds remaining on the longer [`DECISION_TIMEOUT`] yes/no phases
-    /// (login import walkthrough, continue prompt), if one is active.
-    pub(crate) fn decision_seconds_remaining(&self) -> Option<u64> {
-        match &self.phase {
-            OnboardingPhase::Login {
-                import: Some(review),
-            } => Some(review.seconds_remaining()),
-            OnboardingPhase::ContinuePrompt { shown_at, .. } => Some(
-                DECISION_TIMEOUT
-                    .saturating_sub(shown_at.elapsed())
-                    .as_secs(),
-            ),
-            _ => None,
-        }
-    }
-
     /// Whether a [`DECISION_TIMEOUT`] yes/no phase has elapsed and should
     /// auto-select its default.
     pub(crate) fn decision_timed_out(&self) -> bool {
@@ -432,9 +399,6 @@ impl OnboardingFlow {
             OnboardingPhase::Login {
                 import: Some(review),
             } => review.timed_out(),
-            OnboardingPhase::ContinuePrompt { shown_at, .. } => {
-                shown_at.elapsed() >= DECISION_TIMEOUT
-            }
             _ => false,
         }
     }
@@ -550,50 +514,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn flow_starts_at_model_select_and_is_active() {
-        let flow = OnboardingFlow::begin();
-        assert_eq!(flow.phase, OnboardingPhase::ModelSelect);
-        assert!(flow.is_active());
-    }
-
-    #[test]
     fn done_phase_is_inactive() {
         let flow = OnboardingFlow {
             phase: OnboardingPhase::Done,
         };
         assert!(!flow.is_active());
-    }
-
-    #[test]
-    fn continue_prompt_counts_down_and_times_out() {
-        let past = Instant::now() - (DECISION_TIMEOUT + Duration::from_secs(1));
-        let flow = OnboardingFlow {
-            phase: OnboardingPhase::ContinuePrompt {
-                cli: ExternalCli::Codex,
-                yes_highlighted: true,
-                shown_at: past,
-            },
-        };
-        // The continue prompt now shares the longer DECISION_TIMEOUT with the
-        // import prompt (not the short AUTO_ADVANCE).
-        assert_eq!(flow.decision_seconds_remaining(), Some(0));
-        assert!(flow.decision_timed_out());
-    }
-
-    #[test]
-    fn fresh_continue_prompt_has_remaining_time() {
-        let flow = OnboardingFlow {
-            phase: OnboardingPhase::ContinuePrompt {
-                cli: ExternalCli::ClaudeCode,
-                yes_highlighted: true,
-                shown_at: Instant::now(),
-            },
-        };
-        let remaining = flow.decision_seconds_remaining().unwrap();
-        assert!(
-            remaining >= DECISION_TIMEOUT.as_secs() - 2 && remaining <= DECISION_TIMEOUT.as_secs()
-        );
-        assert!(!flow.decision_timed_out());
     }
 
     #[test]

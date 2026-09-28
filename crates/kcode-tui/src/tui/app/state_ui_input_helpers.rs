@@ -1338,35 +1338,19 @@ impl App {
                     yes_highlighted: *yes_highlighted,
                 }
             }
-            Some(OnboardingPhase::ModelSelect) => OnboardingWelcomeKind::Suggestions,
-            Some(OnboardingPhase::ContinuePrompt {
-                cli,
-                yes_highlighted,
-                shown_at,
-            }) => {
-                let total = crate::tui::app::onboarding_flow::DECISION_TIMEOUT.as_secs();
-                let seconds_left = total.saturating_sub(shown_at.elapsed().as_secs());
-                OnboardingWelcomeKind::ContinuePrompt {
-                    cli_label: cli.label().to_string(),
-                    yes_highlighted: *yes_highlighted,
-                    seconds_left,
-                }
-            }
             _ => OnboardingWelcomeKind::Suggestions,
         }
     }
 
     /// Whether the guided onboarding flow is in a phase that should take over
-    /// the welcome screen body (login, OpenAI-login prompt, or continue prompt).
-    /// The transcript-pick phase uses the session-picker overlay instead, and
-    /// the suggestions phase is the default welcome body.
+    /// the welcome screen body (the login walkthrough or the OpenAI prompt).
+    /// The action picker uses the session-picker overlay instead, and the
+    /// suggestions phase is the default welcome body.
     fn onboarding_flow_drives_welcome(&self) -> bool {
         use crate::tui::app::onboarding_flow::OnboardingPhase;
         matches!(
             self.onboarding_phase(),
-            Some(OnboardingPhase::Login { .. })
-                | Some(OnboardingPhase::LoginOpenAi { .. })
-                | Some(OnboardingPhase::ContinuePrompt { .. })
+            Some(OnboardingPhase::Login { .. } | OnboardingPhase::LoginOpenAi { .. })
         )
     }
 

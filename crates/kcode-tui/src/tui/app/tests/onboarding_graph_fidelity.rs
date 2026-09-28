@@ -26,8 +26,8 @@ fn authenticated_start_lands_on_a_declared_edge() {
             "authenticated startup must rest on the action choice"
         );
         assert!(
-            transition_is_declared(NodeId::ModelSelect, NodeId::StartChoice),
-            "the flow leaves ModelSelect for StartChoice; the graph must declare that edge"
+            transition_is_declared(NodeId::Start, NodeId::StartChoice),
+            "an authenticated start lands on the action choice; the graph must declare that edge"
         );
     });
 }

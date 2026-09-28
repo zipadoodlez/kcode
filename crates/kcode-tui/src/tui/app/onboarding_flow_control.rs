@@ -215,7 +215,7 @@ impl App {
             return;
         }
         self.onboarding_flow = Some(OnboardingFlow::begin());
-        self.onboarding_after_model_select();
+        self.onboarding_open_start_choice();
     }
 
     /// Begin the guided flow at the in-TUI `Login` phase. Used on a fresh
@@ -268,7 +268,7 @@ impl App {
     }
 
     /// Advance out of a login phase once credentials are available, straight to
-    /// model selection. No-op unless the flow is in a login phase.
+    /// the first-run choice. No-op unless the flow is in a login phase.
     pub(super) fn onboarding_after_login(&mut self) {
         if !matches!(
             self.onboarding_phase(),
@@ -279,70 +279,10 @@ impl App {
         // The import (if any) has resolved; leave the progress state.
         self.onboarding_import_in_progress = None;
         self.onboarding_import_error = None;
-        self.set_onboarding_phase(OnboardingPhase::ModelSelect);
-        self.onboarding_after_model_select();
-    }
-
-    /// Advance out of model selection into the simple first-run choice: run the
-    /// suggested Git-based bug review or start with a blank new session.
-    pub(super) fn onboarding_after_model_select(&mut self) {
-        if !matches!(self.onboarding_phase(), Some(OnboardingPhase::ModelSelect)) {
-            return;
-        }
         self.onboarding_open_start_choice();
     }
 
-    /// Enter the "Continue where you left off?" phase. Highlightable Yes/No
-    /// with a [`DECISION_TIMEOUT`] countdown; the default (and timeout choice)
-    /// is "Yes" so the resume menu opens unless the user declines.
-    ///
-    /// Retained for the replay/test fixtures and the `ContinuePrompt` paths: it
-    /// is the only production construction site of that legacy phase, so
-    /// deleting it makes the compiler call the variant never constructed.
-    #[allow(dead_code)]
-    fn onboarding_enter_continue_prompt(&mut self, cli: ExternalCli) {
-        self.set_onboarding_phase(OnboardingPhase::ContinuePrompt {
-            cli,
-            yes_highlighted: true,
-            shown_at: Instant::now(),
-        });
-        // The continue prompt is rendered by the onboarding welcome screen
-        // (`onboarding_welcome_kind`) so it survives in remote mode.
-        self.update_onboarding_continue_prompt_status(cli);
-    }
-
-    /// Refresh the status notice with the continue-prompt countdown.
-    fn update_onboarding_continue_prompt_status(&mut self, cli: ExternalCli) {
-        let remaining = self
-            .onboarding_flow
-            .as_ref()
-            .and_then(OnboardingFlow::decision_seconds_remaining)
-            .unwrap_or(0);
-        self.set_status_notice(format!(
-            "Continue a session where you left off in {}? Opens the resume menu in {remaining}s (Yes/No)",
-            cli.label()
-        ));
-    }
-
-    /// Answer the continue prompt. `true` -> open the transcript picker;
-    /// `false` -> fall through to the suggestion cards.
-    pub(super) fn onboarding_answer_continue(&mut self, wants_continue: bool) {
-        let cli = match self.onboarding_phase() {
-            Some(OnboardingPhase::ContinuePrompt { cli, .. }) => *cli,
-            _ => return,
-        };
-        if wants_continue {
-            let _ = cli;
-            self.onboarding_open_start_choice();
-        } else {
-            self.onboarding_show_suggestions();
-        }
-    }
-
     /// Intercept keys for the guided onboarding welcome phases:
-    /// - `ModelSelect`: we tell the user to run /model; Enter is also a
-    ///   shortcut that opens the model picker from the welcome screen.
-    /// - `ContinuePrompt`: Y/Enter continues, N/Esc declines.
     /// - `LoginOpenAi`: Left/h -> Yes, Right/l -> No, toggle with
     ///   Up/Down/k/j/Tab; y/n commit directly, Enter/Space commit the
     ///   highlighted default (Yes -> OpenAI sign-in, No -> finish onboarding).
@@ -373,12 +313,7 @@ impl App {
             && self.account_picker.overlay.is_none()
             && matches!(
                 self.onboarding_phase(),
-                Some(
-                    OnboardingPhase::Login { .. }
-                        | OnboardingPhase::LoginOpenAi { .. }
-                        | OnboardingPhase::ModelSelect
-                        | OnboardingPhase::ContinuePrompt { .. }
-                )
+                Some(OnboardingPhase::Login { .. } | OnboardingPhase::LoginOpenAi { .. })
             )
         {
             self.onboarding_import_in_progress = None;
@@ -431,78 +366,6 @@ impl App {
                     return false;
                 }
                 self.handle_onboarding_login_openai_key(code)
-            }
-            Some(OnboardingPhase::ModelSelect) => match code {
-                // Enter opens the model picker, but only from the welcome
-                // screen. If a picker (or any inline overlay) is already open,
-                // let it handle Enter so the selection can commit.
-                KeyCode::Enter if self.inline_interactive_state.is_none() => {
-                    self.open_model_picker();
-                    true
-                }
-                _ => false,
-            },
-            Some(OnboardingPhase::ContinuePrompt { .. }) => {
-                self.handle_onboarding_continue_choice_key(code)
-            }
-            _ => false,
-        }
-    }
-
-    /// Handle a key while the "continue where you left off?" prompt is up.
-    /// Yes/No sit side by side (default highlight is "Yes"), matching the
-    /// import prompt:
-    ///   - Left / h  -> highlight "Yes"
-    ///   - Right / l -> highlight "No"
-    ///   - Up / Down / k / j / Tab -> toggle
-    ///   - y / Y -> continue;  n / N / Esc -> decline (both commit)
-    ///   - Enter / Space -> commit the highlighted choice
-    fn handle_onboarding_continue_choice_key(&mut self, code: KeyCode) -> bool {
-        let cli = match self.onboarding_phase() {
-            Some(OnboardingPhase::ContinuePrompt { cli, .. }) => *cli,
-            _ => return false,
-        };
-        let Some(flow) = self.onboarding_flow.as_mut() else {
-            return false;
-        };
-        let OnboardingPhase::ContinuePrompt {
-            yes_highlighted, ..
-        } = &mut flow.phase
-        else {
-            return false;
-        };
-        match code {
-            KeyCode::Left | KeyCode::Char('h') => {
-                *yes_highlighted = true;
-                self.update_onboarding_continue_prompt_status(cli);
-                true
-            }
-            KeyCode::Right | KeyCode::Char('l') => {
-                *yes_highlighted = false;
-                self.update_onboarding_continue_prompt_status(cli);
-                true
-            }
-            KeyCode::Up
-            | KeyCode::Down
-            | KeyCode::Char('k')
-            | KeyCode::Char('j')
-            | KeyCode::Tab => {
-                *yes_highlighted = !*yes_highlighted;
-                self.update_onboarding_continue_prompt_status(cli);
-                true
-            }
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
-                self.onboarding_answer_continue(true);
-                true
-            }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.onboarding_answer_continue(false);
-                true
-            }
-            KeyCode::Enter | KeyCode::Char(' ') => {
-                let wants_continue = *yes_highlighted;
-                self.onboarding_answer_continue(wants_continue);
-                true
             }
             _ => false,
         }
@@ -1646,19 +1509,6 @@ impl App {
                 }
                 // Keep the countdown notice fresh.
                 self.update_onboarding_import_review_status();
-                return true;
-            }
-            Some(OnboardingPhase::ContinuePrompt {
-                yes_highlighted,
-                cli,
-                ..
-            }) => {
-                if decision_timed_out {
-                    // Timeout default is the highlighted option (Yes by default).
-                    self.onboarding_answer_continue(yes_highlighted);
-                    return true;
-                }
-                self.update_onboarding_continue_prompt_status(cli);
                 return true;
             }
             _ => {}

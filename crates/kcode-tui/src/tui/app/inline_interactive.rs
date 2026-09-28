@@ -3751,8 +3751,9 @@ impl App {
                         } else {
                             format!("{} · {}", notice, route_detail)
                         });
-                        // First-run onboarding: a model choice advances the flow.
-                        self.onboarding_after_model_select();
+                        // First-run onboarding: the model choice was the last
+                        // step before the action picker.
+                        self.onboarding_open_start_choice();
                     }
                 }
             }

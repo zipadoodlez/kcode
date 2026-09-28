@@ -157,12 +157,11 @@ fn onboarding_strongest_model_only_runs_without_explicit_defaults() {
 }
 
 #[test]
-fn onboarding_begins_and_advances_past_model_select() {
+fn onboarding_begins_at_the_action_choice() {
     let mut app = create_test_app();
     app.onboarding_flow = None;
     app.begin_onboarding_flow();
-    // `begin_onboarding_flow` immediately advances past the legacy ModelSelect
-    // phase into the action-only start choice.
+    // An authenticated first run lands directly on the action-only choice.
     assert!(matches!(
         app.onboarding_phase(),
         Some(OnboardingPhase::StartChoice { .. })
@@ -317,14 +316,11 @@ fn login_phase_advances_to_model_select() {
             app.onboarding_phase(),
             Some(OnboardingPhase::Login { .. })
         ));
-        // After login we advance straight through model selection into the
-        // first-run start choice.
+        // After login we advance straight to the first-run start choice.
         app.onboarding_after_login();
         assert!(matches!(
             app.onboarding_phase(),
-            Some(OnboardingPhase::ModelSelect)
-                | Some(OnboardingPhase::Suggestions)
-                | Some(OnboardingPhase::StartChoice { .. })
+            Some(OnboardingPhase::Suggestions) | Some(OnboardingPhase::StartChoice { .. })
         ));
     });
 }
@@ -632,51 +628,7 @@ fn import_review_decline_all_falls_back_to_manual_login() {
 }
 
 #[test]
-fn answering_no_on_continue_prompt_shows_suggestions() {
-    with_temp_kcode_home(|| {
-        let mut app = onboarding_test_app();
-        if let Some(flow) = app.onboarding_flow.as_mut() {
-            flow.phase = OnboardingPhase::ContinuePrompt {
-                cli: ExternalCli::Codex,
-                yes_highlighted: true,
-                shown_at: std::time::Instant::now(),
-            };
-        }
-        app.onboarding_answer_continue(false);
-        assert!(matches!(
-            app.onboarding_phase(),
-            Some(OnboardingPhase::Suggestions)
-        ));
-        // No session picker overlay opened on the "No" path.
-        assert!(app.session_picker.overlay.is_none());
-    });
-}
-
-#[test]
-fn continue_prompt_key_y_consumes_and_advances() {
-    with_temp_kcode_home(|| {
-        let mut app = onboarding_test_app();
-        if let Some(flow) = app.onboarding_flow.as_mut() {
-            flow.phase = OnboardingPhase::ContinuePrompt {
-                cli: ExternalCli::ClaudeCode,
-                yes_highlighted: true,
-                shown_at: std::time::Instant::now(),
-            };
-        }
-        // 'Y' is consumed by the onboarding handler.
-        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Char('Y')));
-        // It either opened the picker (StartChoice) or fell back depending on
-        // whether transcripts exist in the temp home; either way it leaves
-        // ContinuePrompt.
-        assert!(!matches!(
-            app.onboarding_phase(),
-            Some(OnboardingPhase::ContinuePrompt { .. })
-        ));
-    });
-}
-
-#[test]
-fn continue_prompt_key_ignored_when_not_in_phase() {
+fn login_prompt_key_is_ignored_when_not_in_a_login_phase() {
     let mut app = create_test_app();
     app.onboarding_flow = None;
     assert!(!app.handle_onboarding_continue_prompt_key(KeyCode::Char('y')));
@@ -685,11 +637,7 @@ fn continue_prompt_key_ignored_when_not_in_phase() {
 #[test]
 fn onboarding_start_choice_is_action_only_and_defaults_to_review() {
     let mut app = onboarding_test_app();
-    if let Some(flow) = app.onboarding_flow.as_mut() {
-        flow.phase = OnboardingPhase::ModelSelect;
-    }
-
-    app.onboarding_after_model_select();
+    app.onboarding_open_start_choice();
 
     assert!(matches!(
         app.onboarding_phase(),
@@ -1232,16 +1180,6 @@ fn liveness_esc_always_exits_onboarding_from_every_guided_phase() {
                 "Login importing wait",
                 OnboardingPhase::Login { import: None },
                 true,
-            ),
-            ("ModelSelect", OnboardingPhase::ModelSelect, false),
-            (
-                "ContinuePrompt",
-                OnboardingPhase::ContinuePrompt {
-                    cli: ExternalCli::Codex,
-                    yes_highlighted: true,
-                    shown_at: std::time::Instant::now(),
-                },
-                false,
             ),
         ];
         for (label, phase, importing) in phases {
