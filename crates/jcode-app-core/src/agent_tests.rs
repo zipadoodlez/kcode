@@ -1002,11 +1002,6 @@ async fn agentgrep_is_exposed_by_default_and_can_be_explicitly_disabled() {
         "jcode_docs must be model-visible in regular sessions"
     );
     assert!(
-        !tool_names.iter().any(|name| name == "selfdev"),
-        "selfdev must not be model-visible in regular sessions"
-    );
-
-    assert!(
         definitions
             .iter()
             .any(|definition| definition.name == tool_name),
@@ -1024,8 +1019,9 @@ async fn agentgrep_is_exposed_by_default_and_can_be_explicitly_disabled() {
         .validate_tool_allowed("jcode_docs")
         .expect("jcode_docs must be executable in regular sessions");
     agent.set_canary("docs-tool-regression");
+    // No `selfdev` tool exists to assert on: the selfdev machinery and its tool
+    // were removed (c707cf13), so a canary session now only hides bundled docs.
     let definitions = agent.tool_definitions().await;
-    assert!(definitions.iter().any(|tool| tool.name == "selfdev"));
     assert!(
         !definitions.iter().any(|tool| tool.name == "jcode_docs"),
         "jcode_docs must not be model-visible in self-dev sessions"
