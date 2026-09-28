@@ -2,7 +2,7 @@ use super::commands::{REVIEW_PREFERRED_MODEL, active_session_id, active_working_
 use super::{App, DisplayMessage};
 use crate::id;
 use crate::message::{ContentBlock, Role, ToolCall};
-use crate::session::{Session, StoredMessage};
+use crate::session::{Session, SessionKind, StoredMessage};
 use std::time::Instant;
 
 fn review_session_read_only_guardrails() -> &'static str {
@@ -23,12 +23,21 @@ fn judge_session_visible_context_notice() -> &'static str {
 \n"
 }
 
-fn is_judge_session_title(title: Option<&str>) -> bool {
-    matches!(title, Some("judge" | "autojudge"))
+fn is_judge_kind(kind: SessionKind) -> bool {
+    kind == SessionKind::Judge
 }
 
-fn is_analysis_feedback_session_title(title: Option<&str>) -> bool {
-    matches!(title, Some("review" | "autoreview" | "judge" | "autojudge"))
+fn is_analysis_feedback_kind(kind: SessionKind) -> bool {
+    kind != SessionKind::Normal
+}
+
+/// Map a split label to the review kind it denotes.
+pub(super) fn review_kind_from_label(label: &str) -> SessionKind {
+    match label {
+        "review" | "autoreview" => SessionKind::Review,
+        "judge" | "autojudge" => SessionKind::Judge,
+        _ => SessionKind::Normal,
+    }
 }
 
 fn resolve_feedback_target_session_id(session_id: &str) -> String {
@@ -39,7 +48,7 @@ fn resolve_feedback_target_session_id(session_id: &str) -> String {
             break;
         };
 
-        if !is_analysis_feedback_session_title(session.title.as_deref()) {
+        if !is_analysis_feedback_kind(session.kind) {
             return current_id;
         }
 
@@ -248,9 +257,8 @@ fn build_judge_visible_transcript_messages(parent_session: &Session) -> Vec<Stor
     transcript
 }
 
-fn apply_judge_visible_context_if_needed(session: &mut Session, title_override: Option<&str>) {
-    let effective_title = title_override.or(session.title.as_deref());
-    if !is_judge_session_title(effective_title) {
+fn apply_judge_visible_context_if_needed(session: &mut Session, kind: SessionKind) {
+    if !is_judge_kind(kind) {
         return;
     }
 
@@ -619,12 +627,13 @@ fn current_judge_model_override() -> (Option<String>, Option<String>) {
 
 fn clone_session_for_review(
     app: &App,
-    session_title: &str,
+    kind: SessionKind,
     initial_model: String,
     provider_key_override: Option<String>,
 ) -> anyhow::Result<(String, String)> {
     let parent_session_id = current_feedback_target_session_id(app);
-    let mut child = Session::create(Some(parent_session_id), Some(session_title.to_string()));
+    let mut child = Session::create(Some(parent_session_id), None);
+    child.kind = kind;
     child.replace_messages(app.session.messages.clone());
     child.compaction = app.session.compaction.clone();
     child.working_dir = app.session.working_dir.clone();
@@ -663,7 +672,7 @@ pub(super) fn prepare_review_spawned_session(
     startup_message: String,
     model_override: Option<String>,
     provider_key_override: Option<String>,
-    title_override: Option<String>,
+    kind: SessionKind,
     parent_session_id_override: Option<String>,
 ) {
     if let Ok(mut session) = crate::session::Session::load(session_id) {
@@ -672,16 +681,14 @@ pub(super) fn prepare_review_spawned_session(
         if let Some(parent_session_id) = parent_session_id_override {
             session.parent_id = Some(parent_session_id);
         }
-        if let Some(title) = title_override.clone() {
-            session.title = Some(title);
-        }
+        session.kind = kind;
         if let Some(model) = model_override {
             session.model = Some(model);
         }
         if provider_key_override.is_some() {
             session.provider_key = provider_key_override;
         }
-        apply_judge_visible_context_if_needed(&mut session, title_override.as_deref());
+        apply_judge_visible_context_if_needed(&mut session, kind);
         let _ = session.save();
     }
     App::save_startup_message_for_session(session_id, startup_message);
@@ -749,7 +756,7 @@ pub(super) fn launch_forked_session_local(
 
 fn launch_review_window_local(
     app: &mut App,
-    session_title: &str,
+    kind: SessionKind,
     label: &str,
     startup_message: String,
     model_override: Option<String>,
@@ -758,18 +765,14 @@ fn launch_review_window_local(
     let initial_model = model_override
         .clone()
         .unwrap_or_else(|| current_autoreview_model_summary(app));
-    let (session_id, session_name) = clone_session_for_review(
-        app,
-        session_title,
-        initial_model,
-        provider_key_override.clone(),
-    )?;
+    let (session_id, session_name) =
+        clone_session_for_review(app, kind, initial_model, provider_key_override.clone())?;
     prepare_review_spawned_session(
         &session_id,
         startup_message,
         model_override,
         provider_key_override,
-        Some(session_title.to_string()),
+        kind,
         None,
     );
     let exe = super::launch_client_executable();
@@ -799,7 +802,7 @@ fn launch_autoreview_window_local(app: &mut App) -> anyhow::Result<bool> {
     let parent_session_id = current_feedback_target_session_id(app);
     launch_review_window_local(
         app,
-        "autoreview",
+        SessionKind::Review,
         "Autoreview",
         build_autoreview_startup_message(&parent_session_id),
         current_autoreview_model_override(),
@@ -812,7 +815,7 @@ fn launch_review_once_local(app: &mut App) -> anyhow::Result<bool> {
     let parent_session_id = current_feedback_target_session_id(app);
     launch_review_window_local(
         app,
-        "review",
+        SessionKind::Review,
         "Review",
         build_review_startup_message(&parent_session_id),
         model_override,
@@ -824,7 +827,7 @@ fn launch_autojudge_window_local(app: &mut App) -> anyhow::Result<bool> {
     let parent_session_id = current_feedback_target_session_id(app);
     launch_review_window_local(
         app,
-        "autojudge",
+        SessionKind::Judge,
         "Autojudge",
         build_autojudge_startup_message(&parent_session_id),
         current_autojudge_model_override(),
@@ -837,7 +840,7 @@ fn launch_judge_once_local(app: &mut App) -> anyhow::Result<bool> {
     let parent_session_id = current_feedback_target_session_id(app);
     launch_review_window_local(
         app,
-        "judge",
+        SessionKind::Judge,
         "Judge",
         build_judge_startup_message(&parent_session_id),
         model_override,

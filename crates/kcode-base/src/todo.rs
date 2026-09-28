@@ -879,11 +879,6 @@ pub fn todos_exist(session_id: &str) -> Result<bool> {
 pub fn save_todos(session_id: &str, todos: &[TodoItem]) -> Result<()> {
     let path = todo_path(session_id)?;
     storage::write_json_fast(&path, todos)?;
-    if let Err(error) = crate::recent_session_index::refresh_todo_title(session_id) {
-        crate::logging::warn(&format!(
-            "Failed to refresh indexed todo title for {session_id}: {error}"
-        ));
-    }
     Ok(())
 }
 
@@ -959,53 +954,6 @@ pub fn load_goals(session_id: &str) -> Result<Vec<TodoGoal>> {
     storage::read_json(&path).or_else(|_| Ok(Vec::new()))
 }
 
-/// Derive a concise session-title hint from the todo tool's persisted plan.
-///
-/// Todo groups are intended to name coherent goals, so the group containing the
-/// current (or latest incomplete) item is the strongest signal. Ungrouped plans
-/// fall back to the plan's user intention, then item text.
-pub fn derive_session_title(todos: &[TodoItem], plan: &TodoPlan) -> Option<String> {
-    fn non_empty(value: Option<&str>) -> Option<String> {
-        value
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-    }
-
-    let current = todos
-        .iter()
-        .rev()
-        .find(|todo| todo.status.eq_ignore_ascii_case("in_progress"))
-        .or_else(|| {
-            todos
-                .iter()
-                .rev()
-                .find(|todo| !todo.status.eq_ignore_ascii_case("completed"))
-        })
-        .or_else(|| todos.last());
-
-    if let Some(todo) = current {
-        if let Some(group) = non_empty(todo.group.as_deref()) {
-            return Some(group);
-        }
-
-        if let Some(user_intention) = non_empty(plan.user_intention.as_deref()) {
-            return Some(user_intention);
-        }
-
-        return non_empty(Some(&todo.content));
-    }
-
-    non_empty(plan.user_intention.as_deref())
-}
-
-/// Load todo state for a session and derive its best title hint.
-pub fn load_session_title(session_id: &str) -> Option<String> {
-    let todos = load_todos(session_id).ok()?;
-    let plan = load_plan(session_id).unwrap_or_default();
-    derive_session_title(&todos, &plan)
-}
-
 pub fn save_goals(session_id: &str, goals: &[TodoGoal]) -> Result<()> {
     let path = goals_path(session_id)?;
     storage::write_json_fast(&path, goals)
@@ -1031,11 +979,6 @@ pub fn load_plan(session_id: &str) -> Result<TodoPlan> {
 pub fn save_plan(session_id: &str, plan: &TodoPlan) -> Result<()> {
     let path = plan_path(session_id)?;
     storage::write_json_fast(&path, plan)?;
-    if let Err(error) = crate::recent_session_index::refresh_todo_title(session_id) {
-        crate::logging::warn(&format!(
-            "Failed to refresh indexed todo title for {session_id}: {error}"
-        ));
-    }
     Ok(())
 }
 
@@ -2109,52 +2052,6 @@ mod tests {
             &completed,
             &[],
         ));
-    }
-
-    #[test]
-    fn session_title_prefers_in_progress_todo_group() {
-        let todos = vec![
-            todo("old task", "pending", Some("Older goal")),
-            todo("current task", "in_progress", Some("Fix resume names")),
-            todo("later task", "pending", Some("Later goal")),
-        ];
-
-        assert_eq!(
-            derive_session_title(&todos, &TodoPlan::default()).as_deref(),
-            Some("Fix resume names")
-        );
-    }
-
-    #[test]
-    fn session_title_uses_latest_incomplete_group_when_nothing_is_active() {
-        let todos = vec![
-            todo("finished", "completed", Some("Old goal")),
-            todo("next", "pending", Some("Current goal")),
-        ];
-
-        assert_eq!(
-            derive_session_title(&todos, &TodoPlan::default()).as_deref(),
-            Some("Current goal")
-        );
-    }
-
-    #[test]
-    fn ungrouped_session_title_prefers_plan_intention_then_item_content() {
-        let todos = vec![todo("Run targeted tests", "in_progress", None)];
-        let plan = TodoPlan {
-            user_intention: Some("Keep resumed work easy to identify".to_string()),
-            understands_user_intent: Some(IntentUnderstanding::Clear),
-            ..Default::default()
-        };
-
-        assert_eq!(
-            derive_session_title(&todos, &plan).as_deref(),
-            Some("Keep resumed work easy to identify")
-        );
-        assert_eq!(
-            derive_session_title(&todos, &TodoPlan::default()).as_deref(),
-            Some("Run targeted tests")
-        );
     }
 
     #[test]

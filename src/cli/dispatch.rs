@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use super::args::{
     Args, AuthCommand, Command, ModelCommand, ProviderCommand, RestartCommand, ServerCommand,
-    SessionCommand, TranscriptModeArg,
+    TranscriptModeArg,
 };
 use crate::{agent, auth, build, provider, provider_catalog, server, session, startup_profile};
 
@@ -349,14 +349,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                     json,
                 })?;
             }
-        },
-        Some(Command::Session(subcmd)) => match subcmd {
-            SessionCommand::Rename {
-                session,
-                name,
-                clear,
-                json,
-            } => commands::run_session_rename_command(&session, name.as_deref(), clear, json)?,
         },
         Some(Command::Transcript {
             text,

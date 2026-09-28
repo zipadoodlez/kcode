@@ -69,47 +69,6 @@ fn derive_session_provider_key_keeps_openai_compatible_profile_namespace() {
 }
 
 #[test]
-fn rename_title_preserves_generated_title_for_clear() {
-    let mut session = Session::create_with_id(
-        "session_rename_clear_123".to_string(),
-        None,
-        Some("Generated first prompt title".to_string()),
-    );
-
-    assert_eq!(
-        session.display_title(),
-        Some("Generated first prompt title")
-    );
-    session.rename_title(Some("Custom planning name".to_string()));
-    assert_eq!(
-        session.title.as_deref(),
-        Some("Generated first prompt title")
-    );
-    assert_eq!(
-        session.custom_title.as_deref(),
-        Some("Custom planning name")
-    );
-    assert_eq!(session.display_title(), Some("Custom planning name"));
-
-    session.rename_title(None);
-    assert_eq!(
-        session.title.as_deref(),
-        Some("Generated first prompt title")
-    );
-    assert!(session.custom_title.is_none());
-    assert_eq!(
-        session.display_title(),
-        Some("Generated first prompt title")
-    );
-
-    session.custom_title = Some("   ".to_string());
-    assert_eq!(
-        session.display_title(),
-        Some("Generated first prompt title")
-    );
-}
-
-#[test]
 fn test_debug_memory_profile_reports_messages_and_provider_cache() {
     let mut session = Session::create_with_id(
         "session_memory_profile_test".to_string(),

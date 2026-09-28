@@ -1,6 +1,8 @@
+use super::SwarmMember;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::OnceCell;
+use tokio::sync::{OnceCell, RwLock};
 
 pub(crate) fn debug_control_allowed() -> bool {
     // Check config file setting
@@ -128,9 +130,55 @@ fn default_swarm_id_for_session(session_id: &str) -> Option<String> {
     }
 }
 
+/// Swarm id of the swarm `session_id` is currently a member of, if any.
+pub(crate) async fn member_swarm_id(
+    session_id: &str,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+) -> Option<String> {
+    let members = swarm_members.read().await;
+    members.get(session_id).and_then(|m| m.swarm_id.clone())
+}
+
+/// Display name of `session_id`'s swarm membership, if any.
+pub(crate) async fn member_friendly_name(
+    session_id: &str,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+) -> Option<String> {
+    let members = swarm_members.read().await;
+    members
+        .get(session_id)
+        .and_then(|member| member.friendly_name.clone())
+}
+
+/// Make a session id safe to use as a single path component: every character
+/// that is not ASCII alphanumeric, `-`, or `_` becomes `_`.
+pub(crate) fn sanitize_session_id(session_id: &str) -> String {
+    session_id
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod swarm_identity_tests {
-    use super::default_swarm_id_for_session;
+    use super::{default_swarm_id_for_session, sanitize_session_id};
+
+    #[test]
+    fn sanitize_session_id_strips_path_traversal_and_separators() {
+        // A malicious or merely unusual session id must never be able to escape
+        // the recovery directory or collide with sibling paths.
+        assert_eq!(sanitize_session_id("../../etc/passwd"), "______etc_passwd");
+        assert_eq!(sanitize_session_id("a/b\\c"), "a_b_c");
+        assert_eq!(sanitize_session_id("sess.with space"), "sess_with_space");
+        // Already-safe ids are preserved verbatim.
+        assert_eq!(sanitize_session_id("session-abc_123"), "session-abc_123");
+    }
 
     #[test]
     fn independent_root_sessions_have_distinct_swarm_ids() {

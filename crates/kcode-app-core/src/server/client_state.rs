@@ -1,4 +1,5 @@
 use super::ClientConnectionInfo;
+use super::SessionAgents;
 use super::server_has_newer_binary;
 use crate::agent::Agent;
 use crate::bus::Bus;
@@ -13,7 +14,6 @@ use anyhow::Result;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, LazyLock, Mutex as StdMutex};
 use std::time::{Duration, Instant};
-type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum HistoryPayloadMode {

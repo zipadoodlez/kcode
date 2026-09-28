@@ -296,7 +296,7 @@ async fn notify_auth_changed_emits_available_models_updated_after_provider_updat
     let registry = Registry::empty();
     let agent = Arc::new(Mutex::new(Agent::new(provider.clone(), registry)));
     let session_id = { agent.lock().await.session_id().to_string() };
-    let sessions: SessionAgents = Arc::new(RwLock::new(HashMap::from([(
+    let sessions: SessionAgents = Arc::new(tokio::sync::RwLock::new(HashMap::from([(
         "test-session".to_string(),
         Arc::clone(&agent),
     )])));
@@ -384,7 +384,7 @@ async fn notify_auth_changed_finishes_when_provider_work_finishes_without_deboun
     let registry = Registry::empty();
     let agent = Arc::new(Mutex::new(Agent::new(provider.clone(), registry)));
     let session_id = { agent.lock().await.session_id().to_string() };
-    let sessions: SessionAgents = Arc::new(RwLock::new(HashMap::from([(
+    let sessions: SessionAgents = Arc::new(tokio::sync::RwLock::new(HashMap::from([(
         "timed-session".to_string(),
         Arc::clone(&agent),
     )])));
@@ -432,7 +432,7 @@ async fn newer_auth_refresh_supersedes_older_final_completion_for_the_same_sessi
     let provider: Arc<dyn Provider> = Arc::new(provider_impl);
     let agent = Arc::new(Mutex::new(Agent::new(provider.clone(), Registry::empty())));
     let session_id = { agent.lock().await.session_id().to_string() };
-    let sessions: SessionAgents = Arc::new(RwLock::new(HashMap::from([(
+    let sessions: SessionAgents = Arc::new(tokio::sync::RwLock::new(HashMap::from([(
         "overlap-session".to_string(),
         Arc::clone(&agent),
     )])));
@@ -499,7 +499,7 @@ async fn notify_auth_changed_defers_busy_session_refresh_until_idle() {
     let current_session_id = { current_agent.lock().await.session_id().to_string() };
     let busy_agent = Arc::new(Mutex::new(Agent::new(busy_provider, registry)));
     let busy_guard = busy_agent.lock().await;
-    let sessions: SessionAgents = Arc::new(RwLock::new(HashMap::from([(
+    let sessions: SessionAgents = Arc::new(tokio::sync::RwLock::new(HashMap::from([(
         "busy-session".to_string(),
         Arc::clone(&busy_agent),
     )])));
@@ -577,7 +577,7 @@ async fn notify_auth_changed_with_azure_hint_applies_runtime_model_without_compl
     let registry = Registry::empty();
     let agent = Arc::new(Mutex::new(Agent::new(provider.clone(), registry)));
     let session_id = { agent.lock().await.session_id().to_string() };
-    let sessions: SessionAgents = Arc::new(RwLock::new(HashMap::from([(
+    let sessions: SessionAgents = Arc::new(tokio::sync::RwLock::new(HashMap::from([(
         "test-session".to_string(),
         Arc::clone(&agent),
     )])));
@@ -724,7 +724,7 @@ async fn notify_auth_changed_typed_cerebras_event_controls_user_visible_catalog_
     let registry = Registry::empty();
     let agent = Arc::new(Mutex::new(Agent::new(provider.clone(), registry)));
     let session_id = { agent.lock().await.session_id().to_string() };
-    let sessions: SessionAgents = Arc::new(RwLock::new(HashMap::from([(
+    let sessions: SessionAgents = Arc::new(tokio::sync::RwLock::new(HashMap::from([(
         "test-session".to_string(),
         Arc::clone(&agent),
     )])));
@@ -808,7 +808,7 @@ async fn notify_auth_changed_switches_from_stale_model_to_matching_provider_rout
     let registry = Registry::empty();
     let agent = Arc::new(Mutex::new(Agent::new(provider.clone(), registry)));
     let session_id = { agent.lock().await.session_id().to_string() };
-    let sessions: SessionAgents = Arc::new(RwLock::new(HashMap::from([(
+    let sessions: SessionAgents = Arc::new(tokio::sync::RwLock::new(HashMap::from([(
         "test-session".to_string(),
         Arc::clone(&agent),
     )])));
@@ -902,7 +902,7 @@ async fn onboarding_auth_refresh_prefers_global_gpt_5_6_route_over_fable() {
     let provider: Arc<dyn Provider> = provider;
     let agent = Arc::new(Mutex::new(Agent::new(provider.clone(), Registry::empty())));
     let session_id = { agent.lock().await.session_id().to_string() };
-    let sessions: SessionAgents = Arc::new(RwLock::new(HashMap::new()));
+    let sessions: SessionAgents = Arc::new(tokio::sync::RwLock::new(HashMap::new()));
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
     handle_notify_auth_changed(
@@ -960,7 +960,7 @@ async fn notify_auth_changed_does_not_override_manual_model_selected_during_refr
     let registry = Registry::empty();
     let agent = Arc::new(Mutex::new(Agent::new(provider.clone(), registry)));
     let session_id = { agent.lock().await.session_id().to_string() };
-    let sessions: SessionAgents = Arc::new(RwLock::new(HashMap::from([(
+    let sessions: SessionAgents = Arc::new(tokio::sync::RwLock::new(HashMap::from([(
         "test-session".to_string(),
         Arc::clone(&agent),
     )])));
@@ -1088,7 +1088,7 @@ async fn auth_model_first_prompt_e2e_state_space_is_bounded_by_selection_source(
         let registry = Registry::empty();
         let agent = Arc::new(Mutex::new(Agent::new(provider.clone(), registry)));
         let session_id = { agent.lock().await.session_id().to_string() };
-        let sessions: SessionAgents = Arc::new(RwLock::new(HashMap::from([(
+        let sessions: SessionAgents = Arc::new(tokio::sync::RwLock::new(HashMap::from([(
             format!("test-session-{}", scenario.name),
             Arc::clone(&agent),
         )])));
@@ -1262,7 +1262,7 @@ async fn notify_auth_changed_switches_only_current_session_model() {
     )));
     let current_session_id = { current_agent.lock().await.session_id().to_string() };
     let peer_agent = Arc::new(Mutex::new(Agent::new(peer_provider, registry)));
-    let sessions: SessionAgents = Arc::new(RwLock::new(HashMap::from([
+    let sessions: SessionAgents = Arc::new(tokio::sync::RwLock::new(HashMap::from([
         ("current-session".to_string(), Arc::clone(&current_agent)),
         ("peer-session".to_string(), Arc::clone(&peer_agent)),
     ])));

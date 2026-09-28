@@ -1,8 +1,8 @@
 use super::available_models_dedup::available_models_dedup_key;
 use super::client_actions::{
     AgentTaskContext, NotifySessionContext, handle_agent_task, handle_compact, handle_input_shell,
-    handle_notify_session, handle_rename_session, handle_run_subagent, handle_set_feature,
-    handle_set_subagent_model, handle_split, handle_stdin_response, handle_transfer,
+    handle_notify_session, handle_run_subagent, handle_set_feature, handle_set_subagent_model,
+    handle_split, handle_stdin_response, handle_transfer,
 };
 use super::client_comm::{
     handle_comm_channel_members, handle_comm_list, handle_comm_list_channels, handle_comm_message,
@@ -45,11 +45,12 @@ use super::provider_control::{
     try_available_models_updated_event,
 };
 use super::{
-    AwaitMembersRuntime, ClientConnectionInfo, ClientDebugState, FileTouchService,
-    SessionControlHandle, SessionInterruptQueues, SharedContext, SwarmEvent, SwarmMember,
-    SwarmMutationRuntime, VersionedPlan, format_structured_completion_report,
-    register_session_interrupt_queue, send_swarm_plan_to_session, truncate_detail,
-    update_member_status, update_member_status_with_report, update_member_status_with_report_tldr,
+    AwaitMembersRuntime, ChannelSubscriptions, ClientConnectionInfo, ClientDebugState,
+    FileTouchService, SessionAgents, SessionControlHandle, SessionInterruptQueues, SharedContext,
+    SwarmEvent, SwarmMember, SwarmMutationRuntime, VersionedPlan,
+    format_structured_completion_report, register_session_interrupt_queue,
+    send_swarm_plan_to_session, truncate_detail, update_member_status,
+    update_member_status_with_report, update_member_status_with_report_tldr,
 };
 use crate::agent::Agent;
 use crate::bus::{Bus, BusEvent};
@@ -71,8 +72,6 @@ use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 
-type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
-type ChannelSubscriptions = Arc<RwLock<HashMap<String, HashMap<String, HashSet<String>>>>>;
 const RELOAD_STARTING_GUARD_MAX_AGE: Duration = Duration::from_secs(30);
 const REQUEST_HANDLER_STALL_THRESHOLDS_MS: [u64; 3] = [2_000, 10_000, 60_000];
 
@@ -2008,28 +2007,6 @@ pub(super) async fn handle_client(
 
             Request::SetCompactionMode { id, mode } => {
                 handle_set_compaction_mode(id, mode, &agent, &client_event_tx).await;
-            }
-
-            Request::RenameSession { id, title } => {
-                if reject_if_agent_busy_for_request(
-                    id,
-                    "rename_session",
-                    &client_session_id,
-                    client_is_processing,
-                    &agent,
-                    &client_event_tx,
-                ) {
-                    continue;
-                }
-                handle_rename_session(
-                    id,
-                    title,
-                    &agent,
-                    &client_session_id,
-                    &swarm_members,
-                    &client_event_tx,
-                )
-                .await;
             }
 
             Request::NotifyAuthChanged {

@@ -1,36 +1,16 @@
 use super::live_turn::{LiveTurnSwarmContext, run_live_turn_if_idle};
 use super::{
-    ClientConnectionInfo, SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember,
-    fanout_session_event, queue_soft_interrupt_for_session, record_swarm_event, truncate_detail,
+    ChannelSubscriptions, ClientConnectionInfo, SessionAgents, SessionInterruptQueues, SwarmEvent,
+    SwarmEventType, SwarmMember, fanout_session_event, queue_soft_interrupt_for_session,
+    record_swarm_event, truncate_detail,
+    util::{member_friendly_name, member_swarm_id},
 };
-use crate::agent::Agent;
 use crate::protocol::{CommDeliveryMode, NotificationType, ServerEvent};
 use kcode_agent_runtime::SoftInterruptSource;
 use kcode_swarm_core::ChannelIndex;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
-
-type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
-type ChannelSubscriptions = Arc<RwLock<HashMap<String, HashMap<String, HashSet<String>>>>>;
-
-async fn swarm_id_for_session(
-    session_id: &str,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-) -> Option<String> {
-    let members = swarm_members.read().await;
-    members.get(session_id).and_then(|m| m.swarm_id.clone())
-}
-
-async fn friendly_name_for_session(
-    session_id: &str,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-) -> Option<String> {
-    let members = swarm_members.read().await;
-    members
-        .get(session_id)
-        .and_then(|member| member.friendly_name.clone())
-}
+use tokio::sync::{RwLock, broadcast, mpsc};
 
 async fn resolve_dm_target_session(
     target: &str,
@@ -152,10 +132,10 @@ pub(super) async fn handle_comm_message(
             ),
         ],
     );
-    let swarm_id = swarm_id_for_session(&from_session, swarm_members).await;
+    let swarm_id = member_swarm_id(&from_session, swarm_members).await;
 
     if let Some(swarm_id) = swarm_id {
-        let friendly_name = friendly_name_for_session(&from_session, swarm_members).await;
+        let friendly_name = member_friendly_name(&from_session, swarm_members).await;
 
         let swarm_session_ids: Vec<String> = {
             let swarms = swarms_by_id.read().await;

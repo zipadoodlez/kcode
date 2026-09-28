@@ -1,16 +1,13 @@
 use super::{
-    ClientConnectionInfo, FileTouchService, SwarmEvent, SwarmEventType, SwarmMember, SwarmState,
-    VersionedPlan, broadcast_swarm_plan, persist_swarm_state_for, record_swarm_event,
+    ClientConnectionInfo, FileTouchService, SessionAgents, SwarmEvent, SwarmEventType, SwarmMember,
+    SwarmState, VersionedPlan, broadcast_swarm_plan, persist_swarm_state_for, record_swarm_event,
 };
-use crate::agent::Agent;
 use crate::protocol::{
     AgentStatusSnapshot, NotificationType, PlanGraphStatus, ServerEvent, SessionActivitySnapshot,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
-
-type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
+use tokio::sync::{RwLock, broadcast, mpsc};
 
 pub(super) struct CommResyncPlanContext<'a> {
     pub(super) client_event_tx: &'a mpsc::UnboundedSender<ServerEvent>,

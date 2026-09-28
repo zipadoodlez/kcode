@@ -124,20 +124,44 @@ sites are conditional on platform, feature, or `cfg(test)` and stay as they are.
 
 One home per duplicated helper. Body hashes were compared for each of these:
 
-- [ ] `build_file_touch_preview` is byte-identical in three files, and so are
-  its two consts: `tool/write.rs:193,10-11`, `tool/edit.rs:213,10-11`,
-  `tool/apply_patch.rs:322,10-11` (~87 lines).
-- [ ] `SessionAgents` and `ChannelSubscriptions` are restated 32 times across
-  22 files while `server.rs:105-106` already declares both `pub(super)`. Import
-  them instead of re-declaring the type.
-- [ ] `swarm_id_for_session` (the async member lookup, not the identity fn at
-  `util.rs:113`) is byte-identical 3x: `client_comm_channels.rs:13`,
-  `client_comm_context.rs:12`, `client_comm_message.rs:17`. Same for
-  `friendly_name_for_session` 2x (`client_comm_context.rs:20`,
-  `client_comm_message.rs:25`).
-- [ ] `sanitize_session_id` 3x identical (`mission.rs:179`,
-  `durable_state.rs:14`, `reload_recovery.rs:54`). The home already exists; it
-  just needs widening, and `reload_recovery.rs:404`'s test moves with it.
+Landed 2026-09-29: `build_file_touch_preview` + its two consts moved to
+`kcode-base/src/bus.rs` beside `FileTouch` (three copies -> one);
+`SessionAgents`/`ChannelSubscriptions` now imported from `server.rs` in 22 files
+(30 restatements deleted, no unused-import fallout once clippy was asked); the
+async member lookups became `util::member_swarm_id` / `member_friendly_name`
+(5 copies -> 2, ending the name clash with the sync `swarm_id_for_session`);
+`sanitize_session_id` is one `pub(crate)` fn in `server/util.rs` (**4** copies
+existed, not 3: the ledger missed `session_recovery.rs`'s associated fn), with
+the reload_recovery test moved onto the shared fn.
+
+The label precedence collapsed to one rule (see the landed note below).
+
+Landed 2026-09-29: **a session is labelled by its name and nothing else.** The
+precedence rule (rename -> task/goal -> generated title) was stated three times
+(`process_title::terminal_display_title_for_id`, the TUI `update_terminal_title`,
+and `recent_session_index::RecentSession::display_title`) plus an omission in
+`Session::display_title`; it is gone. Every label surface (window title,
+`/resume`, picker rows, recent list) now calls `process_title::session_name(id)`:
+the memorable word, else the raw id. Deleted: `Session.custom_title` and
+`/rename` end to end (TUI command + help, `Request::RenameSession`,
+`ServerEvent::SessionRenamed`, `handle_rename_session`,
+`provider.rename_session_title`, the CLI `kcode session rename`, the
+`SessionRenamed` ACP arm), the task-title machinery
+(`todo::derive_session_title` / `load_session_title`, the recent-index
+`todo_title` column + `refresh_todo_title` + its callers, the TUI todo lookup),
+`Session::display_title` / `display_title_or_name`, `terminal_session_label`,
+`terminal_display_title_for_id`, `terminal_session_label_for_id`, and the
+duplicate `resumed_window_title` (the tui copy now delegates to app-core's).
+
+The review marker that had been smuggled through `title == "review" | "judge"`
+is now `Session.kind: SessionKind { Normal, Review, Judge }`, set where the tag
+was set and read in `commands_review`; `Session.title` survives as a plain
+description (import provenance, search detail) that no label consults.
+
+Also fixed the pre-existing breakage that had made `kcode-app-core` library
+tests uncompilable since `0472526c`: `session_search_index`'s test still called
+the deleted `TokenHashIndex::len`. That is why the crate's own test run is now
+possible at all.
 - [ ] `parse_meminfo_kb` 3x identical (`overnight.rs:595`, `perf.rs:282`, and
   `kcode-tui/src/tui/ui_frame_metrics.rs:916`, so this one is cross-crate).
 - [ ] `truncated_stream_payload_context` identical in both wire crates

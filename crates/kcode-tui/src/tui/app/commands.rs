@@ -20,6 +20,7 @@ pub(super) use super::commands_review::{
     launch_prompt_in_new_session_local, maybe_trigger_autojudge_local,
     maybe_trigger_autoreview_local, preferred_one_shot_review_override,
     prepare_review_spawned_session, queue_review_spawn_remote, reset_current_session,
+    review_kind_from_label,
 };
 pub(super) use super::todos_view::handle_todos_view_command;
 use super::{App, DisplayMessage, LocalRewindUndoSnapshot, ProcessingStatus};
@@ -1770,53 +1771,6 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
             name,
         )));
         app.set_status_notice("Bookmark removed");
-        return true;
-    }
-
-    if trimmed == "/rename" || trimmed.starts_with("/rename ") {
-        let title = trimmed.strip_prefix("/rename").unwrap_or_default().trim();
-        if title.is_empty() {
-            app.push_display_message(DisplayMessage::error(
-                "Usage: /rename <session name> or /rename --clear".to_string(),
-            ));
-            return true;
-        }
-
-        if title == "--clear" {
-            app.session.rename_title(None);
-            if let Err(e) = app.session.save() {
-                app.push_display_message(DisplayMessage::error(format!(
-                    "Failed to clear session name: {}",
-                    e
-                )));
-                return true;
-            }
-            crate::tui::session_picker::invalidate_session_list_cache();
-            app.update_terminal_title();
-            let name = app.session.display_title_or_name().to_string();
-            app.push_display_message(DisplayMessage::system(format!(
-                "Cleared custom name. Session title is now {}.",
-                name,
-            )));
-            app.set_status_notice("Session name cleared");
-            return true;
-        }
-
-        app.session.rename_title(Some(title.to_string()));
-        if let Err(e) = app.session.save() {
-            app.push_display_message(DisplayMessage::error(format!(
-                "Failed to rename session: {}",
-                e
-            )));
-            return true;
-        }
-        crate::tui::session_picker::invalidate_session_list_cache();
-        app.update_terminal_title();
-        app.push_display_message(DisplayMessage::system(format!(
-            "Renamed session to {}.",
-            title,
-        )));
-        app.set_status_notice("Session renamed");
         return true;
     }
 

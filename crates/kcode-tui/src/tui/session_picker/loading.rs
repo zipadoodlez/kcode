@@ -1218,8 +1218,6 @@ struct SessionSummary {
     parent_id: Option<String>,
     #[serde(default)]
     title: Option<String>,
-    #[serde(default)]
-    custom_title: Option<String>,
     created_at: chrono::DateTime<chrono::Utc>,
     updated_at: chrono::DateTime<chrono::Utc>,
     #[serde(default)]
@@ -1528,8 +1526,6 @@ struct SessionJournalSummaryMeta {
     parent_id: Option<String>,
     #[serde(default)]
     title: Option<String>,
-    #[serde(default)]
-    custom_title: Option<String>,
     updated_at: chrono::DateTime<chrono::Utc>,
     #[serde(default)]
     working_dir: Option<String>,
@@ -1579,7 +1575,6 @@ fn load_session_summary(path: &Path) -> Result<SessionSummary> {
                 Ok(entry) => {
                     summary.parent_id = entry.meta.parent_id;
                     summary.title = entry.meta.title;
-                    summary.custom_title = entry.meta.custom_title;
                     summary.updated_at = entry.meta.updated_at;
                     summary.last_active_at = entry.meta.last_active_at;
                     summary.working_dir = entry.meta.working_dir;
@@ -1717,13 +1712,7 @@ fn parse_kcode_session_info(
         session.model.as_deref(),
     );
 
-    let title = session
-        .custom_title
-        .or_else(|| {
-            crate::todo::load_session_title(stem).map(|title| truncate_title_text(&title, 72))
-        })
-        .or(session.title)
-        .unwrap_or_else(|| short_name.clone());
+    let title = short_name.clone();
     let search_index = build_search_index_from_summary(
         stem,
         &short_name,

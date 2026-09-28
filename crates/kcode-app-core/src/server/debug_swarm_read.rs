@@ -1,18 +1,14 @@
 use super::swarm_channels::list_channels_for_swarm;
 use super::{
-    FileTouchService, ServerIdentity, SharedContext, SwarmMember, SwarmState, VersionedPlan,
-    git_common_dir_for, swarm_id_for_dir,
+    ChannelSubscriptions, FileTouchService, ServerIdentity, SessionAgents, SharedContext,
+    SwarmMember, SwarmState, VersionedPlan, git_common_dir_for, swarm_id_for_dir,
 };
-use crate::agent::Agent;
 use crate::plan::{next_runnable_item_ids, summarize_plan_graph};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
-
-type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
-type ChannelSubscriptions = Arc<RwLock<HashMap<String, HashMap<String, HashSet<String>>>>>;
+use tokio::sync::RwLock;
 
 #[expect(
     clippy::too_many_arguments,

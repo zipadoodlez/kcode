@@ -1,12 +1,14 @@
 #![allow(clippy::await_holding_lock)]
 
 use super::*;
+use crate::agent::Agent;
 use crate::protocol::ServerEvent;
 use crate::provider::{EventStream, Provider};
 use crate::session::{Session, SessionStatus};
 use crate::tool::Registry;
 use async_trait::async_trait;
 use std::time::Instant;
+use tokio::sync::Mutex;
 use tokio::time::timeout;
 
 struct NoRequests;

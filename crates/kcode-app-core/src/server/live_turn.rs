@@ -15,17 +15,15 @@
 
 use super::client_lifecycle::process_locked_message_streaming_mpsc;
 use super::{
-    SwarmEvent, SwarmMember, session_event_fanout_sender, truncate_detail, update_member_status,
-    update_member_status_with_report,
+    SessionAgents, SwarmEvent, SwarmMember, session_event_fanout_sender, truncate_detail,
+    update_member_status, update_member_status_with_report,
 };
 use crate::agent::Agent;
 use crate::protocol::ServerEvent;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
-use tokio::sync::{Mutex, OwnedMutexGuard, RwLock, broadcast};
-
-type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
+use tokio::sync::{OwnedMutexGuard, RwLock, broadcast};
 
 /// Swarm bookkeeping handles needed to keep member status accurate around a
 /// server-initiated turn.

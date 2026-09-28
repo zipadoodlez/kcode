@@ -323,14 +323,6 @@ pub enum Request {
         mode: kcode_config_types::CompactionMode,
     },
 
-    /// Set or clear the active session's custom display title.
-    #[serde(rename = "rename_session")]
-    RenameSession {
-        id: u64,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        title: Option<String>,
-    },
-
     /// Split the current session — clone conversation into a new session
     #[serde(rename = "split")]
     Split { id: u64 },
@@ -1100,15 +1092,6 @@ pub enum ServerEvent {
     /// Server requests that this client/session close itself.
     #[serde(rename = "session_close_requested")]
     SessionCloseRequested { reason: String },
-
-    /// Session display title changed.
-    #[serde(rename = "session_renamed")]
-    SessionRenamed {
-        session_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        title: Option<String>,
-        display_title: String,
-    },
 
     /// Full conversation history (response to GetHistory)
     #[serde(rename = "history")]

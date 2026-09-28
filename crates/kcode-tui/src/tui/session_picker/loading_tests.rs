@@ -491,17 +491,17 @@ fn load_claude_code_preview_reads_only_tail_of_large_transcript() {
 }
 
 #[test]
-fn load_sessions_prefers_custom_title_over_generated_title() {
+fn load_sessions_labels_a_session_by_its_memorable_name() {
     let _env_lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("temp dir");
     let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
+    let session_id = "session_fox_1770000000000";
 
     let mut session = Session::create_with_id(
-        "session_customtitle_1770000000000".to_string(),
+        session_id.to_string(),
         None,
         Some("Generated first prompt".to_string()),
     );
-    session.rename_title(Some("Custom release planning".to_string()));
     session.append_stored_message(crate::session::StoredMessage {
         id: "msg1".to_string(),
         role: crate::message::Role::User,
@@ -520,115 +520,9 @@ fn load_sessions_prefers_custom_title_over_generated_title() {
     let sessions = load_sessions().expect("load sessions");
     let loaded = sessions
         .iter()
-        .find(|session| session.id == "session_customtitle_1770000000000")
-        .expect("custom title session present");
-    assert_eq!(loaded.title, "Custom release planning");
-    assert!(loaded.search_index.contains("custom release planning"));
-    assert!(!loaded.search_index.contains("generated first prompt"));
-}
-
-#[test]
-fn load_sessions_prefers_todo_group_over_generated_title() {
-    let _env_lock = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("temp dir");
-    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
-    let session_id = "session_todotitle_1770000000000";
-
-    let mut session = Session::create_with_id(
-        session_id.to_string(),
-        None,
-        Some("Generated first prompt".to_string()),
-    );
-    session.append_stored_message(crate::session::StoredMessage {
-        id: "msg1".to_string(),
-        role: crate::message::Role::User,
-        content: vec![crate::message::ContentBlock::Text {
-            text: "please improve the session picker".to_string(),
-            cache_control: None,
-        }],
-        display_role: None,
-        timestamp: None,
-        tool_duration_ms: None,
-        token_usage: None,
-    });
-    session.save().expect("save session");
-    crate::todo::save_todos(
-        session_id,
-        &[crate::todo::TodoItem {
-            content: "Wire todo title into picker".to_string(),
-            status: "in_progress".to_string(),
-            priority: "high".to_string(),
-            id: "wire-title".to_string(),
-            group: Some("Improve resume session names".to_string()),
-            confidence: Some(crate::todo::ConfidenceState::from_legacy_score(90)),
-            completion_confidence: None,
-            confidence_history: vec![crate::todo::ConfidenceState::from_legacy_score(90)],
-            blocked_by: Vec::new(),
-            assigned_to: None,
-        }],
-    )
-    .expect("save todos");
-    invalidate_session_list_cache();
-
-    let sessions = load_sessions().expect("load sessions");
-    let loaded = sessions
-        .iter()
         .find(|session| session.id == session_id)
-        .expect("todo-titled session present");
-    assert_eq!(loaded.title, "Improve resume session names");
-    assert!(loaded.search_index.contains("improve resume session names"));
-}
-
-#[test]
-fn load_sessions_keeps_custom_title_over_todo_group() {
-    let _env_lock = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("temp dir");
-    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
-    let session_id = "session_customtodotitle_1770000000000";
-
-    let mut session = Session::create_with_id(
-        session_id.to_string(),
-        None,
-        Some("Generated first prompt".to_string()),
-    );
-    session.rename_title(Some("Manual session title".to_string()));
-    session.append_stored_message(crate::session::StoredMessage {
-        id: "msg1".to_string(),
-        role: crate::message::Role::User,
-        content: vec![crate::message::ContentBlock::Text {
-            text: "please improve the session picker".to_string(),
-            cache_control: None,
-        }],
-        display_role: None,
-        timestamp: None,
-        tool_duration_ms: None,
-        token_usage: None,
-    });
-    session.save().expect("save session");
-    crate::todo::save_todos(
-        session_id,
-        &[crate::todo::TodoItem {
-            content: "Wire todo title into picker".to_string(),
-            status: "in_progress".to_string(),
-            priority: "high".to_string(),
-            id: "wire-title".to_string(),
-            group: Some("Automatic todo title".to_string()),
-            confidence: Some(crate::todo::ConfidenceState::from_legacy_score(90)),
-            completion_confidence: None,
-            confidence_history: vec![crate::todo::ConfidenceState::from_legacy_score(90)],
-            blocked_by: Vec::new(),
-            assigned_to: None,
-        }],
-    )
-    .expect("save todos");
-    invalidate_session_list_cache();
-
-    let sessions = load_sessions().expect("load sessions");
-    let loaded = sessions
-        .iter()
-        .find(|session| session.id == session_id)
-        .expect("custom todo-titled session present");
-    assert_eq!(loaded.title, "Manual session title");
+        .expect("session present");
+    assert_eq!(loaded.title, "fox");
 }
 
 #[test]

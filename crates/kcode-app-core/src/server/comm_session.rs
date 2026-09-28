@@ -5,15 +5,14 @@ use super::swarm_mutation_state::{
     request_key,
 };
 use super::{
-    SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember, SwarmState, VersionedPlan,
-    append_swarm_completion_report_instructions, broadcast_swarm_plan, broadcast_swarm_status,
-    create_headless_session, fanout_session_event, persist_swarm_state_for, record_swarm_event,
-    record_swarm_event_for_session, remove_background_tool_signal,
-    remove_session_channel_subscriptions, remove_session_from_swarm,
+    ChannelSubscriptions, SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmEventType,
+    SwarmMember, SwarmState, VersionedPlan, append_swarm_completion_report_instructions,
+    broadcast_swarm_plan, broadcast_swarm_status, create_headless_session, fanout_session_event,
+    persist_swarm_state_for, record_swarm_event, record_swarm_event_for_session,
+    remove_background_tool_signal, remove_session_channel_subscriptions, remove_session_from_swarm,
     remove_session_interrupt_queue, set_member_task_label, truncate_detail, update_member_status,
     update_member_status_with_report,
 };
-use crate::agent::Agent;
 use crate::config::SwarmSpawnMode;
 use crate::protocol::{NotificationType, ServerEvent};
 use crate::provider::Provider;
@@ -24,8 +23,6 @@ use std::sync::{Arc, Mutex as StdMutex, OnceLock, Weak};
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 
-type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
-type ChannelSubscriptions = Arc<RwLock<HashMap<String, HashMap<String, HashSet<String>>>>>;
 type ClientConnections = Arc<RwLock<HashMap<String, ClientConnectionInfo>>>;
 
 /// Serialize spawn admission through member registration within one swarm.

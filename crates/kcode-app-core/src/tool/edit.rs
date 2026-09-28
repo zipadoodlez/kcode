@@ -1,14 +1,11 @@
 use super::{Tool, ToolContext, ToolOutput};
-use crate::bus::{Bus, BusEvent, FileOp, FileTouch};
+use crate::bus::{Bus, BusEvent, FileOp, FileTouch, build_file_touch_preview};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use similar::{ChangeTag, TextDiff};
 use std::path::Path;
-
-const FILE_TOUCH_PREVIEW_MAX_LINES: usize = 6;
-const FILE_TOUCH_PREVIEW_MAX_BYTES: usize = 240;
 
 pub struct EditTool;
 
@@ -208,34 +205,6 @@ fn generate_diff(old: &str, new: &str, start_line: usize) -> String {
     } else {
         output.trim_end().to_string()
     }
-}
-
-fn build_file_touch_preview(diff: &str) -> Option<String> {
-    let trimmed = diff.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let mut lines = trimmed.lines();
-    let mut preview = lines
-        .by_ref()
-        .take(FILE_TOUCH_PREVIEW_MAX_LINES)
-        .collect::<Vec<_>>()
-        .join("\n");
-    let mut truncated = lines.next().is_some();
-
-    if preview.len() > FILE_TOUCH_PREVIEW_MAX_BYTES {
-        preview = crate::util::truncate_str(&preview, FILE_TOUCH_PREVIEW_MAX_BYTES)
-            .trim_end()
-            .to_string();
-        truncated = true;
-    }
-
-    if truncated {
-        preview.push_str("\n…");
-    }
-
-    Some(preview)
 }
 
 /// Extract lines around the edited region, returns (start_line, end_line, content)

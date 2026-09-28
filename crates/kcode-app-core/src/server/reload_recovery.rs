@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
+use super::util::sanitize_session_id;
+
 const PENDING_RECORD_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,19 +51,6 @@ pub(super) struct GarbageCollectionStats {
     pub removed: usize,
     pub retained: usize,
     pub errors: usize,
-}
-
-fn sanitize_session_id(session_id: &str) -> String {
-    session_id
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
-                ch
-            } else {
-                '_'
-            }
-        })
-        .collect()
 }
 
 fn recovery_dir() -> Result<PathBuf> {
@@ -398,17 +387,6 @@ mod tests {
             reconnect_notice: Some("reconnected".to_string()),
             continuation_message: message.to_string(),
         }
-    }
-
-    #[test]
-    fn sanitize_session_id_strips_path_traversal_and_separators() {
-        // A malicious or merely unusual session id must never be able to escape
-        // the recovery directory or collide with sibling paths.
-        assert_eq!(sanitize_session_id("../../etc/passwd"), "______etc_passwd");
-        assert_eq!(sanitize_session_id("a/b\\c"), "a_b_c");
-        assert_eq!(sanitize_session_id("sess.with space"), "sess_with_space");
-        // Already-safe ids are preserved verbatim.
-        assert_eq!(sanitize_session_id("session-abc_123"), "session-abc_123");
     }
 
     #[test]

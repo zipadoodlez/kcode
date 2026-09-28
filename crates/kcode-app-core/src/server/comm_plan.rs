@@ -3,20 +3,17 @@ use super::swarm_mutation_state::{
     request_key,
 };
 use super::{
-    SessionInterruptQueues, SharedContext, SwarmEvent, SwarmEventType, SwarmMember, SwarmState,
-    VersionedPlan, broadcast_swarm_plan, persist_swarm_state_for, queue_soft_interrupt_for_session,
-    record_swarm_event, summarize_plan_items,
+    SessionAgents, SessionInterruptQueues, SharedContext, SwarmEvent, SwarmEventType, SwarmMember,
+    SwarmState, VersionedPlan, broadcast_swarm_plan, persist_swarm_state_for,
+    queue_soft_interrupt_for_session, record_swarm_event, summarize_plan_items,
 };
-use crate::agent::Agent;
 use crate::plan::PlanItem;
 use crate::protocol::{NotificationType, ServerEvent};
 use kcode_agent_runtime::SoftInterruptSource;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
-
-type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
+use tokio::sync::{RwLock, broadcast, mpsc};
 
 /// Reject plans whose dependency graph contains a cycle. Cyclic items can never
 /// become runnable (`summarize_plan_graph` parks them in `blocked_ids` forever),

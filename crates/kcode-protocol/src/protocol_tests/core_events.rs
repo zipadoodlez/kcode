@@ -199,42 +199,6 @@ fn test_rewind_undo_request_roundtrip() -> Result<()> {
 }
 
 #[test]
-fn test_rename_session_request_roundtrip() -> Result<()> {
-    let req = Request::RenameSession {
-        id: 10,
-        title: Some("Release planning".to_string()),
-    };
-    let json = serde_json::to_string(&req)?;
-    assert!(json.contains("\"type\":\"rename_session\""));
-    assert!(json.contains("\"title\":\"Release planning\""));
-    let decoded = parse_request_json(&json)?;
-    assert_eq!(decoded.id(), 10);
-    let Request::RenameSession { title, .. } = decoded else {
-        return Err(anyhow!("wrong request type"));
-    };
-    assert_eq!(title.as_deref(), Some("Release planning"));
-    Ok(())
-}
-
-#[test]
-fn test_rename_session_clear_request_roundtrip_omits_title() -> Result<()> {
-    let req = Request::RenameSession {
-        id: 11,
-        title: None,
-    };
-    let json = serde_json::to_string(&req)?;
-    assert!(json.contains("\"type\":\"rename_session\""));
-    assert!(!json.contains("\"title\""));
-    let decoded = parse_request_json(&json)?;
-    assert_eq!(decoded.id(), 11);
-    let Request::RenameSession { title, .. } = decoded else {
-        return Err(anyhow!("wrong request type"));
-    };
-    assert!(title.is_none());
-    Ok(())
-}
-
-#[test]
 fn test_event_roundtrip() -> Result<()> {
     let event = ServerEvent::TextDelta {
         text: "hello".to_string(),
@@ -258,30 +222,6 @@ fn test_context_message_added_event_roundtrip() -> Result<()> {
         return Err(anyhow!("wrong event type"));
     };
     assert_eq!(id, 42);
-    Ok(())
-}
-
-#[test]
-fn test_session_renamed_event_roundtrip() -> Result<()> {
-    let event = ServerEvent::SessionRenamed {
-        session_id: "sess_123".to_string(),
-        title: Some("Release planning".to_string()),
-        display_title: "Release planning".to_string(),
-    };
-    let json = encode_event(&event);
-    assert!(json.contains("\"type\":\"session_renamed\""));
-    let decoded = parse_event_json(json.trim())?;
-    let ServerEvent::SessionRenamed {
-        session_id,
-        title,
-        display_title,
-    } = decoded
-    else {
-        return Err(anyhow!("wrong event type"));
-    };
-    assert_eq!(session_id, "sess_123");
-    assert_eq!(title.as_deref(), Some("Release planning"));
-    assert_eq!(display_title, "Release planning");
     Ok(())
 }
 

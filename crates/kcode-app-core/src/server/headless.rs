@@ -1,3 +1,4 @@
+use super::SessionAgents;
 use crate::agent::Agent;
 use crate::protocol::ServerEvent;
 use crate::provider::Provider;
@@ -12,7 +13,6 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
 
-type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
 #[expect(
     clippy::too_many_arguments,
     reason = "headless session creation wires provider, global session, swarm state, interrupts, and MCP pool together"

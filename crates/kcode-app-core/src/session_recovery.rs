@@ -14,6 +14,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
+use crate::server::util::sanitize_session_id;
+
 pub use crate::protocol::ReloadRecoveryDirective;
 
 /// Context saved before a reload, restored after restart.
@@ -35,21 +37,8 @@ pub struct ReloadContext {
 }
 
 impl ReloadContext {
-    fn sanitize_session_id(session_id: &str) -> String {
-        session_id
-            .chars()
-            .map(|ch| {
-                if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
-                    ch
-                } else {
-                    '_'
-                }
-            })
-            .collect()
-    }
-
     pub fn path_for_session(session_id: &str) -> Result<std::path::PathBuf> {
-        let sanitized = Self::sanitize_session_id(session_id);
+        let sanitized = sanitize_session_id(session_id);
         Ok(crate::storage::kcode_dir()?.join(format!("reload-context-{}.json", sanitized)))
     }
 

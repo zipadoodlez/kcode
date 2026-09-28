@@ -45,7 +45,7 @@ mod swarm;
 mod swarm_channels;
 mod swarm_mutation_state;
 mod swarm_persistence;
-mod util;
+pub(crate) mod util;
 
 pub(super) use self::await_members_state::AwaitMembersRuntime;
 use self::background_tasks::{

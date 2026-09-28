@@ -289,8 +289,7 @@ async fn retention_readiness_scorecard() {
     // D0: one prompt reaches a deterministic useful answer and creates durable
     // state that a return journey can benefit from.
     let mut d0 = Agent::new(provider.clone(), registry.clone());
-    d0.session
-        .rename_title(Some("Retention cohort project".to_string()));
+    d0.session.title = Some("Retention cohort project".to_string());
     d0.session.working_dir = Some("/synthetic/retention-project".to_string());
     d0.session.record_memory_injection(
         "cohort preference".to_string(),
@@ -327,7 +326,7 @@ async fn retention_readiness_scorecard() {
     // value that depends on BOTH earlier sessions.
     let persisted_d1 = Session::load(&session_id).expect("load D1 session");
     let d1_message_count = persisted_d1.messages.len();
-    let title_preserved = persisted_d1.custom_title.as_deref() == Some("Retention cohort project");
+    let title_preserved = persisted_d1.title.as_deref() == Some("Retention cohort project");
     let working_dir_preserved =
         persisted_d1.working_dir.as_deref() == Some("/synthetic/retention-project");
     let memory_marker_preserved = persisted_d1

@@ -17,8 +17,8 @@ use super::debug_swarm_read::maybe_handle_swarm_read_command;
 use super::debug_swarm_write::{DebugSwarmWriteContext, maybe_handle_swarm_write_command};
 use super::debug_testers::execute_tester_command;
 use super::{
-    FileTouchService, ServerIdentity, SharedContext, SwarmEvent, SwarmMember, VersionedPlan,
-    debug_control_allowed, fanout_session_event,
+    ChannelSubscriptions, FileTouchService, ServerIdentity, SharedContext, SwarmEvent, SwarmMember,
+    VersionedPlan, debug_control_allowed, fanout_session_event,
 };
 use crate::agent::Agent;
 use crate::protocol::{Request, ServerEvent, TranscriptMode, decode_request, encode_event};
@@ -31,8 +31,6 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
-
-type ChannelSubscriptions = Arc<RwLock<HashMap<String, HashMap<String, HashSet<String>>>>>;
 
 #[derive(Default)]
 pub(super) struct ClientDebugState {

@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::await_holding_lock))]
 
 use super::debug_jobs::{DebugJob, maybe_start_async_debug_job};
-use super::{ServerIdentity, SessionControlHandle, SessionInterruptQueues};
+use super::{ServerIdentity, SessionAgents, SessionControlHandle, SessionInterruptQueues};
 use crate::agent::Agent;
 use crate::mcp::McpConfig;
 use anyhow::Result;
@@ -10,8 +10,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, RwLock};
-
-type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
 
 #[derive(Clone)]
 pub(super) struct DebugInterruptContext {

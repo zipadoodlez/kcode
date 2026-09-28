@@ -125,7 +125,7 @@ fn recover_loaded_crashed_sessions(mut crashed: Vec<Session>) -> Result<Vec<Stri
         let new_id = format!("session_recovery_{}", crate::id::new_id("rec"));
         let mut new_session =
             Session::create_with_id(new_id.clone(), Some(old.id.clone()), old.title.clone());
-        new_session.custom_title = old.custom_title.clone();
+        new_session.kind = old.kind;
         new_session.working_dir = old.working_dir.clone();
         new_session.provider_key = old.provider_key.clone();
         new_session.route_api_method = old.route_api_method.clone();
@@ -519,7 +519,8 @@ fn session_matches_resume_title(session: &Session, normalized_query: &str) -> bo
     }
 
     session
-        .display_title()
+        .title
+        .as_deref()
         .map(normalize_resume_lookup_text)
         .is_some_and(|title| title == normalized_query || title.contains(normalized_query))
 }
@@ -657,7 +658,7 @@ mod batch_crash_tests {
     }
 
     #[test]
-    fn find_session_by_name_or_id_matches_custom_title() {
+    fn find_session_by_name_or_id_matches_generated_title() {
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::tempdir().expect("tempdir");
         crate::env::set_var("KCODE_HOME", temp.path());
@@ -669,15 +670,10 @@ mod batch_crash_tests {
             Some("Generated planning title".to_string()),
         );
         session.status = SessionStatus::Closed;
-        session.rename_title(Some("RenameTest".to_string()));
-        session.save().expect("save renamed session");
+        session.save().expect("save titled session");
 
         assert_eq!(
-            find_session_by_name_or_id("renametest").expect("resolve custom title"),
-            session_id
-        );
-        assert_eq!(
-            find_session_by_name_or_id("Rename").expect("resolve title fragment"),
+            find_session_by_name_or_id("planning").expect("resolve title fragment"),
             session_id
         );
 

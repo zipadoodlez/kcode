@@ -9,8 +9,8 @@ use super::swarm_mutation_state::{
     finish_request as finish_swarm_mutation_request, request_key as swarm_mutation_request_key,
 };
 use super::{
-    ClientConnectionInfo, SwarmEvent, SwarmEventType, SwarmMember, SwarmMutationRuntime,
-    SwarmState, SwarmTaskProgress, VersionedPlan, broadcast_swarm_plan,
+    ClientConnectionInfo, SessionAgents, SwarmEvent, SwarmEventType, SwarmMember,
+    SwarmMutationRuntime, SwarmState, SwarmTaskProgress, VersionedPlan, broadcast_swarm_plan,
     broadcast_swarm_plan_with_previous, broadcast_swarm_status, fanout_session_event,
     persist_swarm_state_for, queue_soft_interrupt_for_session, record_swarm_event,
     set_member_task_label, truncate_detail, update_member_status, update_member_status_with_report,
@@ -28,8 +28,6 @@ use kcode_agent_runtime::SoftInterruptSource;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc, watch};
-
-type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
 
 /// Eligible auto-assignment targets for a swarm task.
 ///

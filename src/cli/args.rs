@@ -295,10 +295,6 @@ pub(crate) enum Command {
     #[command(subcommand)]
     Provider(ProviderCommand),
 
-    /// Session management commands
-    #[command(subcommand)]
-    Session(SessionCommand),
-
     /// Inject externally transcribed text into the active Kcode TUI
     Transcript {
         /// Transcript text. If omitted, reads from stdin.
@@ -494,27 +490,6 @@ pub(crate) enum ModelCommand {
         /// Show provider/selection summary before the list
         #[arg(long)]
         verbose: bool,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-pub(crate) enum SessionCommand {
-    /// Rename a saved session's human-readable name/title
-    Rename {
-        /// Session ID or memorable short name, e.g. fox
-        session: String,
-
-        /// New session name/title
-        #[arg(required_unless_present = "clear")]
-        name: Option<String>,
-
-        /// Clear the custom session name/title
-        #[arg(long, conflicts_with = "name")]
-        clear: bool,
-
-        /// Emit JSON instead of human-readable output
-        #[arg(long)]
-        json: bool,
     },
 }
 

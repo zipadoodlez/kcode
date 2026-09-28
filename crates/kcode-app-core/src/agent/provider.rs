@@ -274,13 +274,6 @@ impl Agent {
         self.session.provider_key = provider_key;
     }
 
-    pub fn rename_session_title(&mut self, title: Option<String>) -> Result<String> {
-        self.session.rename_title(title);
-        self.log_env_snapshot("rename_session");
-        self.session.save()?;
-        Ok(self.session.display_title_or_name().to_string())
-    }
-
     pub fn autoreview_enabled(&self) -> Option<bool> {
         self.session.autoreview_enabled
     }

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use crate::prompt::MISSION_CONTINUATION_TEMPLATE;
+use crate::server::util::sanitize_session_id;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -174,19 +175,6 @@ fn mission_path(session_id: &str) -> Result<PathBuf> {
     Ok(crate::storage::kcode_dir()?
         .join("missions")
         .join(format!("{}.json", sanitize_session_id(session_id))))
-}
-
-fn sanitize_session_id(session_id: &str) -> String {
-    session_id
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect()
 }
 
 fn default_long_horizon_intent(objective: &str) -> String {

@@ -1,9 +1,6 @@
+use super::ChannelSubscriptions;
 use kcode_swarm_core::ChannelIndex;
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-type ChannelSubscriptions = Arc<RwLock<HashMap<String, HashMap<String, HashSet<String>>>>>;
+use std::collections::HashMap;
 
 async fn with_channel_index_mut(
     channel_subscriptions: &ChannelSubscriptions,

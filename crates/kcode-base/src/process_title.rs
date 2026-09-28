@@ -19,11 +19,6 @@ pub fn session_name(session_id: &str) -> String {
         .unwrap_or_else(|| session_id.to_string())
 }
 
-fn normalized_display_title(title: &str) -> Option<String> {
-    let normalized = title.split_whitespace().collect::<Vec<_>>().join(" ");
-    (!normalized.is_empty()).then_some(normalized)
-}
-
 fn capitalize_ascii_label(label: &str) -> String {
     let mut chars = label.chars();
     match chars.next() {
@@ -32,72 +27,24 @@ fn capitalize_ascii_label(label: &str) -> String {
     }
 }
 
-fn truncate_chars(text: &str, max_chars: usize) -> String {
-    let mut chars = text.chars();
-    let truncated: String = chars.by_ref().take(max_chars).collect();
-    if chars.next().is_some() {
-        format!("{}…", truncated)
-    } else {
-        truncated
+/// The terminal window label for a session: `kcode <Name>`, or
+/// `kcode/<server> <Name>` in a remote session. The session's name is its
+/// memorable word; there is no title layer.
+pub fn session_window_label(session_id: &str, server_name: Option<&str>) -> String {
+    let name = capitalize_ascii_label(&session_name(session_id));
+    match server_name.filter(|server| !server.is_empty() && !server.eq_ignore_ascii_case("kcode")) {
+        Some(server) => format!("kcode/{} {name}", server.to_lowercase()),
+        None => format!("kcode {name}"),
     }
-}
-
-pub fn terminal_session_label(session_name: &str, display_title: Option<&str>) -> String {
-    let fallback = capitalize_ascii_label(session_name);
-    let Some(title) = display_title.and_then(normalized_display_title) else {
-        return fallback;
-    };
-    if title.eq_ignore_ascii_case(session_name) || title.eq_ignore_ascii_case(&fallback) {
-        return fallback;
-    }
-    format!("{} ({})", truncate_chars(&title, 48), session_name)
-}
-
-/// Resolve the human-authored title used by terminal windows and `/resume`.
-/// Explicit renames win over todo/goal-derived titles, which win over the
-/// generated session title.
-pub fn terminal_display_title_for_id(session_id: &str) -> Option<String> {
-    crate::session::Session::load_startup_stub(session_id)
-        .ok()
-        .and_then(|session| {
-            session
-                .custom_title
-                .filter(|title| !title.trim().is_empty())
-                .or_else(|| crate::todo::load_session_title(session_id))
-                .or(session.title)
-        })
 }
 
 /// Build the deliberately minimal terminal window title. The emoji already
 /// identifies the session/connection, so do not repeat `kcode` or the memorable
 /// animal name in window chrome.
-pub fn terminal_window_title(
-    icon: &str,
-    display_title: Option<&str>,
-    fallback_label: Option<&str>,
-    is_selfdev: bool,
-) -> String {
-    let display_title = display_title
-        .and_then(normalized_display_title)
-        .map(|title| truncate_chars(&title, 48));
+pub fn terminal_window_title(icon: &str, label: &str, is_selfdev: bool) -> String {
     let suffix = if is_selfdev { " [self-dev]" } else { "" };
-    let title = match display_title {
-        Some(title) => format!("{icon} {title}{suffix}"),
-        None => match fallback_label.and_then(normalized_display_title) {
-            Some(label) => format!("{icon} {label}{suffix}"),
-            None => format!("{icon}{suffix}"),
-        },
-    };
+    let title = format!("{icon} {label}{suffix}");
     crate::output_style::terminal_text(&title).into_owned()
-}
-
-pub fn terminal_session_label_for_id(session_id: &str) -> String {
-    let session_name = session_name(session_id);
-    let display_title = terminal_display_title_for_id(session_id);
-    match display_title.as_deref() {
-        Some(title) => terminal_session_label(&session_name, Some(title)),
-        None => session_name,
-    }
 }
 
 pub fn set_title(title: impl AsRef<str>) {
@@ -150,111 +97,37 @@ pub fn set_client_remote_display_title(server_name: &str, session_name: &str, is
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::lock_test_env;
 
     #[test]
-    fn terminal_session_label_includes_custom_title_and_short_name() {
+    fn session_window_label_uses_the_memorable_name() {
+        assert_eq!(session_window_label("session_fox_123", None), "kcode Fox");
         assert_eq!(
-            terminal_session_label("fox", Some("Release planning")),
-            "Release planning (fox)"
-        );
-        assert_eq!(terminal_session_label("fox", Some("Fox")), "Fox");
-        assert_eq!(terminal_session_label("fox", None), "Fox");
-    }
-
-    #[test]
-    fn terminal_window_title_omits_product_and_animal_names() {
-        assert_eq!(
-            terminal_window_title(
-                "🐙",
-                Some("resume window title"),
-                Some("kcode Octopus"),
-                false
-            ),
-            "🐙 resume window title"
+            session_window_label("session_fox_123", Some("kcode")),
+            "kcode Fox"
         );
         assert_eq!(
-            terminal_window_title("🐙", None, Some("kcode Octopus"), false),
-            "🐙 kcode Octopus"
-        );
-        assert_eq!(
-            terminal_window_title(
-                "🐙",
-                Some("resume window title"),
-                Some("kcode Octopus"),
-                true
-            ),
-            "🐙 resume window title [self-dev]"
+            session_window_label("session_fox_123", Some("Harbor")),
+            "kcode/harbor Fox"
         );
     }
 
     #[test]
-    fn terminal_session_label_for_id_reads_custom_title_from_session() {
-        let _guard = lock_test_env();
-        let previous_home = std::env::var_os("KCODE_HOME");
-        let temp = tempfile::tempdir().expect("temp dir");
-        crate::env::set_var("KCODE_HOME", temp.path());
-
-        let mut session = crate::session::Session::create_with_id(
-            "session_fox_123".to_string(),
-            None,
-            Some("Generated title".to_string()),
-        );
-        session.rename_title(Some("Release planning".to_string()));
-        session.save().expect("save session");
-
+    fn session_window_label_falls_back_to_the_raw_id() {
         assert_eq!(
-            terminal_session_label_for_id("session_fox_123"),
-            "Release planning (fox)"
+            session_window_label("imported_codex_abc", None),
+            "kcode Imported_codex_abc"
         );
-
-        if let Some(previous_home) = previous_home {
-            crate::env::set_var("KCODE_HOME", previous_home);
-        } else {
-            crate::env::remove_var("KCODE_HOME");
-        }
     }
 
     #[test]
-    fn terminal_session_label_for_id_prefers_todo_title_over_generated_title() {
-        let _guard = lock_test_env();
-        let previous_home = std::env::var_os("KCODE_HOME");
-        let temp = tempfile::tempdir().expect("temp dir");
-        crate::env::set_var("KCODE_HOME", temp.path());
-
-        let session_id = "session_fox_456";
-        let mut session = crate::session::Session::create_with_id(
-            session_id.to_string(),
-            None,
-            Some("Generated title".to_string()),
-        );
-        session.save().expect("save session");
-        crate::todo::save_todos(
-            session_id,
-            &[crate::todo::TodoItem {
-                content: "Synchronize terminal window names".to_string(),
-                status: "in_progress".to_string(),
-                priority: "high".to_string(),
-                id: "window-title".to_string(),
-                group: Some("resume title sync".to_string()),
-                confidence: Some(crate::todo::ConfidenceState::Plausible),
-                completion_confidence: None,
-                confidence_history: Vec::new(),
-                blocked_by: Vec::new(),
-                assigned_to: None,
-            }],
-        )
-        .expect("save todos");
-
+    fn terminal_window_title_is_icon_plus_label() {
         assert_eq!(
-            terminal_session_label_for_id(session_id),
-            "resume title sync (fox)"
+            terminal_window_title("\u{1f419}", "kcode Fox", false),
+            "\u{1f419} kcode Fox"
         );
-
-        if let Some(previous_home) = previous_home {
-            crate::env::set_var("KCODE_HOME", previous_home);
-        } else {
-            crate::env::remove_var("KCODE_HOME");
-        }
+        assert_eq!(
+            terminal_window_title("\u{1f419}", "kcode/harbor Fox", true),
+            "\u{1f419} kcode/harbor Fox [self-dev]"
+        );
     }
 }

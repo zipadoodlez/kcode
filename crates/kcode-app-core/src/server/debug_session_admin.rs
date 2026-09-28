@@ -1,16 +1,13 @@
 use super::{
-    SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember, SwarmState, VersionedPlan,
-    broadcast_swarm_status, create_headless_session, persist_swarm_state_for, record_swarm_event,
-    remove_background_tool_signal, remove_session_interrupt_queue,
+    SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember, SwarmState,
+    VersionedPlan, broadcast_swarm_status, create_headless_session, persist_swarm_state_for,
+    record_swarm_event, remove_background_tool_signal, remove_session_interrupt_queue,
 };
-use crate::agent::Agent;
 use crate::provider::Provider;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock, broadcast};
-
-type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
+use tokio::sync::{RwLock, broadcast};
 
 fn parse_create_session_command(cmd: &str) -> Option<(Option<String>, bool)> {
     if cmd == "create_session" {

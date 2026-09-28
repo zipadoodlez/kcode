@@ -1846,26 +1846,6 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
-                if trimmed == "/rename" || trimmed.starts_with("/rename ") {
-                    let title = trimmed.strip_prefix("/rename").unwrap_or_default().trim();
-                    if title.is_empty() {
-                        app.push_display_message(DisplayMessage::error(
-                            "Usage: /rename <session name> or /rename --clear".to_string(),
-                        ));
-                        return Ok(());
-                    }
-
-                    if title == "--clear" {
-                        remote.rename_session(None).await?;
-                        app.set_status_notice("Clearing session name...");
-                        return Ok(());
-                    }
-
-                    remote.rename_session(Some(title.to_string())).await?;
-                    app.set_status_notice("Renaming session...");
-                    return Ok(());
-                }
-
                 if trimmed == "/transfer" {
                     if app.pending_split.transfer_request {
                         app.push_display_message(DisplayMessage::system(

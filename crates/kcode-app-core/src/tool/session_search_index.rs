@@ -529,7 +529,7 @@ mod tests {
         };
 
         let index = build_or_update(&index_path, &specs, &read).expect("build");
-        assert_eq!(index.len(), 2);
+        assert_eq!(index.entries.len(), 2);
         assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 2);
         assert_eq!(index.candidate_slots(&["needle".to_string()], 1), vec![0]);
 

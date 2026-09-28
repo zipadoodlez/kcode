@@ -22,7 +22,6 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::Debug { .. }) => "kcode debug".to_string(),
         Some(Command::Auth(_)) => "kcode auth".to_string(),
         Some(Command::Provider(_)) => "kcode provider".to_string(),
-        Some(Command::Session(_)) => "kcode session".to_string(),
         Some(Command::Transcript { .. }) => "kcode transcript".to_string(),
         Some(Command::Browser { .. }) => "kcode browser".to_string(),
         Some(Command::Model(_)) => "kcode model".to_string(),

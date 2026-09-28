@@ -1,6 +1,7 @@
 use super::{
-    ClientConnectionInfo, ClientDebugState, DebugJob, FileAccess, FileTouchService, ServerIdentity,
-    SessionInterruptQueues, SharedContext, SwarmEvent, SwarmMember, VersionedPlan,
+    ChannelSubscriptions, ClientConnectionInfo, ClientDebugState, DebugJob, FileAccess,
+    FileTouchService, ServerIdentity, SessionAgents, SessionInterruptQueues, SharedContext,
+    SwarmEvent, SwarmMember, VersionedPlan,
 };
 use crate::agent::Agent;
 use anyhow::Result;
@@ -9,9 +10,6 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
-
-type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
-type ChannelSubscriptions = Arc<RwLock<HashMap<String, HashMap<String, HashSet<String>>>>>;
 
 const MEMORY_INCIDENT_WINDOW_MS: u128 = 15 * 60 * 1_000;
 const MEMORY_WARNING_PSS_BYTES: u64 = 1024 * 1024 * 1024;

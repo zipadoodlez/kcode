@@ -765,16 +765,6 @@ impl RemoteConnection {
         self.send_request(request).await
     }
 
-    /// Set or clear the custom session display title on the server.
-    pub async fn rename_session(&mut self, title: Option<String>) -> Result<()> {
-        let request = Request::RenameSession {
-            id: self.next_request_id,
-            title,
-        };
-        self.next_request_id += 1;
-        self.send_request(request).await
-    }
-
     /// Inject externally transcribed text into the active remote TUI session.
     pub async fn send_transcript(
         &mut self,

@@ -3,15 +3,15 @@ use super::debug::{ClientConnectionInfo, ClientDebugState, handle_debug_client};
 use super::debug_jobs::DebugJob;
 use super::util::get_shared_mcp_pool;
 use super::{
-    AwaitMembersRuntime, FileTouchService, ServerIdentity, SessionInterruptQueues, SharedContext,
-    SwarmEvent, SwarmMutationRuntime, SwarmState,
+    AwaitMembersRuntime, ChannelSubscriptions, FileTouchService, ServerIdentity,
+    SessionInterruptQueues, SharedContext, SwarmEvent, SwarmMutationRuntime, SwarmState,
 };
 use crate::agent::Agent;
 use crate::protocol::ServerEvent;
 use crate::provider::Provider;
 use crate::transport::{Listener, Stream};
 use kcode_agent_runtime::InterruptSignal;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -19,8 +19,6 @@ use std::time::Instant;
 use tokio::sync::{Mutex, OnceCell, RwLock, broadcast};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
-
-type ChannelSubscriptions = Arc<RwLock<HashMap<String, HashMap<String, HashSet<String>>>>>;
 
 /// Owns every connection task spawned by a server runtime.
 ///

@@ -115,6 +115,39 @@ pub struct FileTouch {
     pub detail: Option<String>,
 }
 
+const FILE_TOUCH_PREVIEW_MAX_LINES: usize = 6;
+const FILE_TOUCH_PREVIEW_MAX_BYTES: usize = 240;
+
+/// Build the compact, already-truncated preview for `FileTouch::detail` from a
+/// diff string. Returns `None` when the diff has no content.
+pub fn build_file_touch_preview(diff: &str) -> Option<String> {
+    let trimmed = diff.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut lines = trimmed.lines();
+    let mut preview = lines
+        .by_ref()
+        .take(FILE_TOUCH_PREVIEW_MAX_LINES)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut truncated = lines.next().is_some();
+
+    if preview.len() > FILE_TOUCH_PREVIEW_MAX_BYTES {
+        preview = crate::util::truncate_str(&preview, FILE_TOUCH_PREVIEW_MAX_BYTES)
+            .trim_end()
+            .to_string();
+        truncated = true;
+    }
+
+    if truncated {
+        preview.push_str("\n…");
+    }
+
+    Some(preview)
+}
+
 /// Streaming output tail for a swarm worker session, used to render the inline
 /// swarm gallery's live viewports. The text is a short, already-truncated tail
 /// of the worker's in-progress assistant output (not the full transcript).

@@ -181,10 +181,10 @@ fn test_judge_startup_prompts_describe_visible_mirror_context() {
 #[test]
 fn test_prepare_review_spawned_session_uses_visible_transcript_for_judge_sessions() {
     with_temp_kcode_home(|| {
-        for title in ["judge", "autojudge"] {
-            let parent_id = format!("parent_{title}_visible_context");
-            let child_id = format!("child_{title}_visible_context");
-            let tool_id = format!("tool_{title}_visible_context");
+        for label in ["judge", "autojudge"] {
+            let parent_id = format!("parent_{label}_visible_context");
+            let child_id = format!("child_{label}_visible_context");
+            let tool_id = format!("tool_{label}_visible_context");
 
             let mut parent = crate::session::Session::create_with_id(
                 parent_id.clone(),
@@ -238,8 +238,9 @@ fn test_prepare_review_spawned_session_uses_visible_transcript_for_judge_session
             let mut child = crate::session::Session::create_with_id(
                 child_id.clone(),
                 Some(parent_id.clone()),
-                Some(title.to_string()),
+                None,
             );
+            child.kind = crate::session::SessionKind::Judge;
             child.replace_messages(parent.messages.clone());
             child.compaction = Some(crate::session::StoredCompactionState {
                 summary_text: "stale compaction".to_string(),
@@ -255,7 +256,7 @@ fn test_prepare_review_spawned_session_uses_visible_transcript_for_judge_session
                 super::commands::build_judge_startup_message(&parent_id),
                 None,
                 None,
-                Some(title.to_string()),
+                crate::session::SessionKind::Judge,
                 Some(parent_id.clone()),
             );
 
@@ -294,11 +295,13 @@ fn test_queue_autojudge_remote_targets_original_non_judge_session() {
         root.save().expect("save root session");
 
         let mut review =
-            crate::session::Session::create(Some(root.id.clone()), Some("review".to_string()));
+            crate::session::Session::create(Some(root.id.clone()), None);
+        review.kind = crate::session::SessionKind::Review;
         review.save().expect("save review session");
 
         let mut judge =
-            crate::session::Session::create(Some(review.id.clone()), Some("judge".to_string()));
+            crate::session::Session::create(Some(review.id.clone()), None);
+        judge.kind = crate::session::SessionKind::Judge;
         judge.save().expect("save judge session");
 
         app.session = judge.clone();

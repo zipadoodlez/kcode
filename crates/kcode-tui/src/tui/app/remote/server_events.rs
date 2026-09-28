@@ -1372,42 +1372,6 @@ pub(in crate::tui::app) fn handle_server_event(
             app.should_quit = true;
             true
         }
-        ServerEvent::SessionRenamed {
-            session_id,
-            title,
-            display_title,
-        } => {
-            crate::tui::session_picker::invalidate_session_list_cache();
-            let active_session_id = app
-                .resume_target_session_id()
-                .unwrap_or(app.session.id.as_str());
-            if active_session_id == session_id {
-                app.session.rename_title(title.clone());
-                if title.is_none()
-                    && app.session.title.is_none()
-                    && display_title != app.session.display_name()
-                {
-                    app.session.title = Some(display_title.clone());
-                }
-                app.update_terminal_title();
-                if title.is_some() {
-                    app.push_display_message(DisplayMessage::system(format!(
-                        "Renamed session to {}.",
-                        display_title
-                    )));
-                    app.set_status_notice("Session renamed");
-                } else {
-                    app.push_display_message(DisplayMessage::system(format!(
-                        "Cleared custom name. Session title is now {}.",
-                        display_title
-                    )));
-                    app.set_status_notice("Session name cleared");
-                }
-                true
-            } else {
-                false
-            }
-        }
         ServerEvent::Reloading { .. } => {
             app.append_reload_message("🔄 Server reload initiated...");
             // In-process server reloads (self-dev build-reload) keep the same
@@ -2646,7 +2610,10 @@ pub(in crate::tui::app) fn handle_server_event(
                     startup_message,
                     model_override,
                     provider_key_override,
-                    split_label.clone().map(|label| label.to_ascii_lowercase()),
+                    split_label
+                        .as_deref()
+                        .map(app_mod::commands::review_kind_from_label)
+                        .unwrap_or(crate::session::SessionKind::Normal),
                     parent_session_id_override,
                 );
             } else if let Some(startup_prompt) = startup_prompt {

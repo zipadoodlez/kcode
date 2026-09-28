@@ -2,10 +2,11 @@
 
 use super::client_lifecycle::process_message_streaming_mpsc;
 use super::{
-    ClientConnectionInfo, SessionInterruptQueues, SwarmEvent, SwarmMember, SwarmState,
-    VersionedPlan, broadcast_swarm_status, fanout_session_event, persist_swarm_state_for,
-    queue_soft_interrupt_for_session, remove_session_channel_subscriptions,
-    remove_session_from_swarm, swarm_id_for_session, truncate_detail, update_member_status,
+    ChannelSubscriptions, ClientConnectionInfo, SessionAgents, SessionInterruptQueues, SwarmEvent,
+    SwarmMember, SwarmState, VersionedPlan, broadcast_swarm_status, fanout_session_event,
+    persist_swarm_state_for, queue_soft_interrupt_for_session,
+    remove_session_channel_subscriptions, remove_session_from_swarm, swarm_id_for_session,
+    truncate_detail, update_member_status,
 };
 use crate::agent::Agent;
 use crate::protocol::{FeatureToggle, NotificationType, ServerEvent};
@@ -18,9 +19,6 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::process::Command;
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
-
-type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
-type ChannelSubscriptions = Arc<RwLock<HashMap<String, HashMap<String, HashSet<String>>>>>;
 
 const INPUT_SHELL_MAX_OUTPUT_LEN: usize = 30_000;
 
@@ -511,89 +509,6 @@ pub(super) async fn handle_set_feature(
             let _ = client_event_tx.send(ServerEvent::Done { id });
         }
     }
-}
-
-pub(super) async fn handle_rename_session(
-    id: u64,
-    title: Option<String>,
-    agent: &Arc<Mutex<Agent>>,
-    client_session_id: &str,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
-) {
-    let started = Instant::now();
-    let normalized_title = title
-        .as_deref()
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .map(ToOwned::to_owned);
-    crate::logging::event_info(
-        "SESSION_LIFECYCLE",
-        vec![
-            ("phase", "rename_start".to_string()),
-            ("request_id", id.to_string()),
-            ("session_id", client_session_id.to_string()),
-            (
-                "title_chars",
-                normalized_title
-                    .as_ref()
-                    .map(|title| title.chars().count().to_string())
-                    .unwrap_or_else(|| "0".to_string()),
-            ),
-        ],
-    );
-
-    let (renamed_session_id, display_title) = {
-        let mut agent_guard = agent.lock().await;
-        match agent_guard.rename_session_title(normalized_title.clone()) {
-            Ok(display_title) => (agent_guard.session_id().to_string(), display_title),
-            Err(error) => {
-                crate::logging::event_warn(
-                    "SESSION_LIFECYCLE",
-                    vec![
-                        ("phase", "rename_error".to_string()),
-                        ("request_id", id.to_string()),
-                        ("session_id", client_session_id.to_string()),
-                        ("error", crate::util::format_error_chain(&error)),
-                        ("elapsed_ms", started.elapsed().as_millis().to_string()),
-                    ],
-                );
-                let _ = client_event_tx.send(ServerEvent::Error {
-                    id,
-                    message: crate::util::format_error_chain(&error),
-                    retry_after_secs: None,
-                });
-                return;
-            }
-        }
-    };
-
-    crate::session_list_cache::invalidate();
-    let event = ServerEvent::SessionRenamed {
-        session_id: renamed_session_id.clone(),
-        title: normalized_title,
-        display_title,
-    };
-    let mut delivered =
-        fanout_session_event(swarm_members, &renamed_session_id, event.clone()).await;
-    if renamed_session_id != client_session_id {
-        delivered += fanout_session_event(swarm_members, client_session_id, event.clone()).await;
-    }
-    if delivered == 0 {
-        let _ = client_event_tx.send(event);
-    }
-    let _ = client_event_tx.send(ServerEvent::Done { id });
-    crate::logging::event_info(
-        "SESSION_LIFECYCLE",
-        vec![
-            ("phase", "rename_done".to_string()),
-            ("request_id", id.to_string()),
-            ("session_id", renamed_session_id),
-            ("client_session_id", client_session_id.to_string()),
-            ("delivered", delivered.to_string()),
-            ("elapsed_ms", started.elapsed().as_millis().to_string()),
-        ],
-    );
 }
 
 fn clone_split_session(

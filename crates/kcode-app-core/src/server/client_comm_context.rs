@@ -2,30 +2,13 @@ use super::debug::ClientConnectionInfo;
 use super::{
     FileTouchService, SharedContext, SwarmEvent, SwarmEventType, SwarmMember, fanout_session_event,
     record_swarm_event,
+    util::{member_friendly_name, member_swarm_id},
 };
 use crate::protocol::{AgentInfo, ContextEntry, NotificationType, ServerEvent};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{RwLock, broadcast, mpsc};
-
-async fn swarm_id_for_session(
-    session_id: &str,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-) -> Option<String> {
-    let members = swarm_members.read().await;
-    members.get(session_id).and_then(|m| m.swarm_id.clone())
-}
-
-async fn friendly_name_for_session(
-    session_id: &str,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-) -> Option<String> {
-    let members = swarm_members.read().await;
-    members
-        .get(session_id)
-        .and_then(|member| member.friendly_name.clone())
-}
 
 #[expect(
     clippy::too_many_arguments,
@@ -45,10 +28,10 @@ pub(super) async fn handle_comm_share(
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
 ) {
-    let swarm_id = swarm_id_for_session(&req_session_id, swarm_members).await;
+    let swarm_id = member_swarm_id(&req_session_id, swarm_members).await;
 
     if let Some(swarm_id) = swarm_id {
-        let friendly_name = friendly_name_for_session(&req_session_id, swarm_members).await;
+        let friendly_name = member_friendly_name(&req_session_id, swarm_members).await;
 
         {
             let mut ctx = shared_context.write().await;
@@ -171,7 +154,7 @@ pub(super) async fn handle_comm_read(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     shared_context: &Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
 ) {
-    let swarm_id = swarm_id_for_session(&req_session_id, swarm_members).await;
+    let swarm_id = member_swarm_id(&req_session_id, swarm_members).await;
 
     let entries = if let Some(swarm_id) = swarm_id {
         let ctx = shared_context.read().await;
@@ -223,7 +206,7 @@ pub(super) async fn handle_comm_list(
     sessions: &super::SessionAgents,
     client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
 ) {
-    let swarm_id = swarm_id_for_session(&req_session_id, swarm_members).await;
+    let swarm_id = member_swarm_id(&req_session_id, swarm_members).await;
 
     if let Some(swarm_id) = swarm_id {
         let swarm_session_ids: Vec<String> = {

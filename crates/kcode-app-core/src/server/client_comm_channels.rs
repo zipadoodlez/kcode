@@ -1,22 +1,12 @@
 use super::{
-    SwarmEvent, SwarmEventType, SwarmMember, record_swarm_event, subscribe_session_to_channel,
-    unsubscribe_session_from_channel,
+    ChannelSubscriptions, SwarmEvent, SwarmEventType, SwarmMember, record_swarm_event,
+    subscribe_session_to_channel, unsubscribe_session_from_channel, util::member_swarm_id,
 };
 use crate::protocol::{AgentInfo, ServerEvent, SwarmChannelInfo};
 use kcode_swarm_core::ChannelIndex;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast, mpsc};
-
-type ChannelSubscriptions = Arc<RwLock<HashMap<String, HashMap<String, HashSet<String>>>>>;
-
-async fn swarm_id_for_session(
-    session_id: &str,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-) -> Option<String> {
-    let members = swarm_members.read().await;
-    members.get(session_id).and_then(|m| m.swarm_id.clone())
-}
 
 pub(super) async fn handle_comm_list_channels(
     id: u64,
@@ -25,7 +15,7 @@ pub(super) async fn handle_comm_list_channels(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     channel_subscriptions: &ChannelSubscriptions,
 ) {
-    let swarm_id = swarm_id_for_session(&req_session_id, swarm_members).await;
+    let swarm_id = member_swarm_id(&req_session_id, swarm_members).await;
 
     if let Some(swarm_id) = swarm_id {
         let channels = {
@@ -65,7 +55,7 @@ pub(super) async fn handle_comm_channel_members(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     channel_subscriptions: &ChannelSubscriptions,
 ) {
-    let swarm_id = swarm_id_for_session(&req_session_id, swarm_members).await;
+    let swarm_id = member_swarm_id(&req_session_id, swarm_members).await;
 
     if let Some(swarm_id) = swarm_id {
         let member_ids: Vec<String> = {
@@ -129,7 +119,7 @@ pub(super) async fn handle_comm_subscribe_channel(
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
 ) {
     let started = std::time::Instant::now();
-    let swarm_id = swarm_id_for_session(&req_session_id, swarm_members).await;
+    let swarm_id = member_swarm_id(&req_session_id, swarm_members).await;
 
     if let Some(swarm_id) = swarm_id {
         crate::logging::event_info(
@@ -214,7 +204,7 @@ pub(super) async fn handle_comm_unsubscribe_channel(
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
 ) {
     let started = std::time::Instant::now();
-    let swarm_id = swarm_id_for_session(&req_session_id, swarm_members).await;
+    let swarm_id = member_swarm_id(&req_session_id, swarm_members).await;
 
     if let Some(swarm_id) = swarm_id {
         crate::logging::event_info(

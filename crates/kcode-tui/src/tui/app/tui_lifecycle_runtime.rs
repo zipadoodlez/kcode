@@ -65,37 +65,16 @@ impl App {
             return;
         }
         let session_id = self.active_client_session_id().unwrap_or(&self.session.id);
-        let session_name = crate::id::extract_session_name(session_id)
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| session_id.to_string());
-        let session_icon = crate::id::session_icon(&session_name);
-        // Keep the live terminal title aligned with /resume: an explicit rename
-        // wins, then the model's current todo/goal title, then the generated title.
-        let todo_title = self
-            .session
-            .custom_title
-            .is_none()
-            .then(|| crate::todo::load_session_title(session_id))
-            .flatten();
-        let display_title = self
-            .session
-            .custom_title
-            .as_deref()
-            .or(todo_title.as_deref())
-            .or(self.session.title.as_deref());
+        let session_name = crate::process_title::session_name(session_id);
         let is_canary = if self.is_remote_client() {
             self.server_info.is_canary.unwrap_or(self.session.is_canary)
         } else {
             self.session.is_canary
         };
         let server_name = self.server_info.short_name.as_deref().unwrap_or("kcode");
-        let icon = connection_type_icon(self.connection_type.as_deref()).unwrap_or(session_icon);
-        let session_label = crate::process_title::terminal_session_label(&session_name, None);
-        let fallback_label = if server_name.eq_ignore_ascii_case("kcode") {
-            format!("kcode {session_label}")
-        } else {
-            format!("kcode/{} {session_label}", server_name.to_lowercase())
-        };
+        let icon = connection_type_icon(self.connection_type.as_deref())
+            .unwrap_or_else(|| crate::id::session_icon(&session_name));
+        let label = crate::process_title::session_window_label(session_id, Some(server_name));
         if server_name.eq_ignore_ascii_case("kcode") {
             crate::process_title::set_client_display_title(&session_name, is_canary);
         } else {
@@ -105,12 +84,7 @@ impl App {
                 is_canary,
             );
         }
-        let window_title = crate::process_title::terminal_window_title(
-            icon,
-            display_title,
-            Some(&fallback_label),
-            is_canary,
-        );
+        let window_title = crate::process_title::terminal_window_title(icon, &label, is_canary);
         let _ = crossterm::execute!(
             std::io::stdout(),
             crossterm::terminal::SetTitle(window_title)
