@@ -396,6 +396,10 @@ fn handle_image_file(path: &Path, file_path: &str) -> Result<ToolOutput> {
         let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
         let display_note = if terminal_displayed {
             "Displayed in terminal. "
+        } else if ImageProtocol::sixel_needs_converter() {
+            // The terminal would show it; we only lack an encoder. Say so once per
+            // read rather than leaving a silent nothing.
+            "Not displayed: install ImageMagick to render images in this terminal. "
         } else {
             ""
         };
@@ -407,6 +411,8 @@ fn handle_image_file(path: &Path, file_path: &str) -> Result<ToolOutput> {
     } else {
         let display_note = if terminal_displayed {
             "\nDisplayed in terminal."
+        } else if ImageProtocol::sixel_needs_converter() {
+            "\nNot displayed: install ImageMagick to render images in this terminal."
         } else {
             ""
         };

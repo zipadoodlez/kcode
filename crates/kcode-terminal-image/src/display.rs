@@ -11,6 +11,9 @@ use std::process::Command;
 use std::sync::LazyLock;
 
 /// Cache whether ImageMagick is available for Sixel conversion
+// braid: probes only `convert`. An ImageMagick 7 install whose PATH has `magick`
+// without the compat symlink answers "no converter" despite having one. Surpassed
+// by probing both names and encoding with whichever answered.
 static HAS_IMAGEMAGICK: LazyLock<bool> = LazyLock::new(|| {
     Command::new("convert")
         .arg("--version")
@@ -76,13 +79,27 @@ impl ImageProtocol {
         Self::None
     }
 
+    /// True when the terminal renders sixel but kcode has no encoder for it, so
+    /// the image would appear if a converter (ImageMagick) were installed.
+    ///
+    /// This is the other half of a question [`detect_sixel`](Self::detect) used to
+    /// fuse: "does this terminal speak sixel" and "can we produce sixel". A caller
+    /// uses it to explain a silent nothing to a user whose terminal would work,
+    /// without prompting everyone on a text-only terminal.
+    pub fn sixel_needs_converter() -> bool {
+        !*HAS_IMAGEMAGICK && terminal_speaks_sixel()
+    }
+
     /// Detect if terminal supports Sixel graphics
     fn detect_sixel() -> bool {
-        // Only enable Sixel if we have ImageMagick to do the conversion
-        if !*HAS_IMAGEMAGICK {
-            return false;
-        }
+        // Sixel needs an encoder: kcode shells out to ImageMagick's `convert` to
+        // produce the sixel payload, so a terminal that speaks sixel still shows
+        // nothing without it. [`sixel_needs_converter`] reports that case.
+        *HAS_IMAGEMAGICK && terminal_speaks_sixel()
+    }
 
+    /// Whether `TERM`/`TERM_PROGRAM` name a terminal that renders sixel.
+    fn terminal_speaks_sixel() -> bool {
         if let Ok(term) = std::env::var("TERM") {
             let term_lower = term.to_lowercase();
             // Known Sixel-capable terminals
