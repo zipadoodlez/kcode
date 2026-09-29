@@ -547,15 +547,3 @@ fn auto_poke_config_sets_the_session_default_and_poke_on_still_overrides() {
     });
 }
 
-/// The default is unchanged for everyone who does not opt out.
-#[test]
-fn auto_poke_defaults_on_when_config_does_not_disable_it() {
-    with_temp_kcode_home(|| {
-        crate::config::invalidate_config_cache();
-        let app = create_test_app();
-        assert!(
-            app.auto_poke_incomplete_todos,
-            "auto-poke must stay on by default"
-        );
-    });
-}

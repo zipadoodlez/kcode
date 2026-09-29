@@ -892,7 +892,15 @@ fn test_background_task_markdown_is_suppressed_even_if_role_was_lost() {
     let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
     let text = render_and_snap(&app, &mut terminal);
 
-    assert!(!text.contains("╭") && !text.contains("594967sj63"));
+    // Assert on the message's own content, not on chrome: a bare `╭` used to be a
+    // proxy for "the markdown card did not render", but the empty screen draws a
+    // bordered info card of its own, which is unrelated to this suppression.
+    for marker in ["594967sj63", "Background task", "Full output"] {
+        assert!(
+            !text.contains(marker),
+            "suppressed background-task markdown rendered {marker:?}:\n{text}"
+        );
+    }
     assert!(app.display_messages().is_empty());
     assert_eq!(app.display_user_message_count(), 0);
 }
