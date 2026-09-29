@@ -17,6 +17,7 @@
     "crates/kcode-base/src/session_tests/cases.rs": 2623,
     "crates/kcode-plan/src/dag/tests.rs": 1392,
     "crates/kcode-provider-anthropic-runtime/src/anthropic_tests.rs": 2221,
+    "crates/kcode-provider-doctor/src/lifecycle_driver_tests.rs": 1980,
     "crates/kcode-provider-openrouter-runtime/src/openrouter_tests.rs": 3661,
     "crates/kcode-tui/src/tui/app/tests.rs": 1603,
     "crates/kcode-tui/src/tui/app/tests/commands_accounts_01/part_01.rs": 1654,

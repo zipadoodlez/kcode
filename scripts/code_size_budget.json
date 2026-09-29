@@ -33,7 +33,6 @@
     "crates/kcode-provider-anthropic-runtime/src/lib.rs": 2657,
     "crates/kcode-provider-bedrock/src/lib.rs": 1981,
     "crates/kcode-provider-core/src/lib.rs": 1735,
-    "crates/kcode-provider-doctor/src/lifecycle_driver.rs": 1980,
     "crates/kcode-provider-doctor/src/live_provider_probes.rs": 2027,
     "crates/kcode-provider-doctor/src/provider_e2e.rs": 2669,
     "crates/kcode-provider-gemini-runtime/src/lib.rs": 1222,

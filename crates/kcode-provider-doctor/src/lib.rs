@@ -7,7 +7,7 @@
 //!   drivers).
 //! - [`live_provider_probes`]: the live HTTP/native-runtime probes the doctor
 //!   drives (models fetch, chat, streaming, tool-call smokes).
-//! - `lifecycle_driver` (test-only): the auth-lifecycle contract driver and
+//! - `lifecycle_driver_tests` (test-only): the auth-lifecycle contract driver and
 //!   its provider matrices.
 
 pub mod live_provider_probes;
@@ -16,7 +16,7 @@ pub mod provider_e2e;
 // The driver's items are exercised only by its internal #[cfg(test)] tests;
 // nothing outside this crate consumes it.
 #[cfg(test)]
-mod lifecycle_driver;
+mod lifecycle_driver_tests;
 
 pub use provider_e2e::{
     DoctorCheck, DoctorReport, DoctorSpend, DoctorTier, NativeProviderKind,
