@@ -8,6 +8,7 @@ use crate::protocol::{
     HistoryMessage, ServerEvent, SessionActivitySnapshot, TokenUsageTotals, encode_event,
 };
 use crate::provider::Provider;
+use crate::server::reload_state::RELOAD_RESTORE_MARKER_MAX_AGE;
 use crate::session::{Session, SessionStatus};
 use crate::transport::WriteHalf;
 use anyhow::Result;
@@ -23,7 +24,6 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::{Mutex, RwLock};
 
 const ATTACH_MODEL_PREFETCH_DEBOUNCE_SECS: u64 = 15;
-const RELOAD_RESTORE_MARKER_MAX_AGE: Duration = Duration::from_secs(60);
 
 fn optional_token_usage_totals(totals: TokenUsageTotals) -> Option<TokenUsageTotals> {
     (totals.messages_with_token_usage > 0).then_some(totals)

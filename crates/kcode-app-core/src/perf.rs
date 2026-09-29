@@ -1,3 +1,4 @@
+use kcode_core::util::parse_meminfo_kb;
 use std::sync::OnceLock;
 
 pub struct SystemProfile {
@@ -276,11 +277,6 @@ fn detect_memory() -> (Option<u64>, Option<u64>) {
     }
 
     (available_kb.map(|k| k / 1024), total_kb.map(|k| k / 1024))
-}
-
-#[cfg(target_os = "linux")]
-fn parse_meminfo_kb(s: &str) -> Option<u64> {
-    s.split_whitespace().next()?.parse().ok()
 }
 
 #[cfg(target_os = "macos")]

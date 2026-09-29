@@ -5,6 +5,14 @@
     clippy::unnecessary_sort_by,
     clippy::useless_conversion
 )]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::await_holding_lock,
+        clippy::items_after_test_module,
+        clippy::assertions_on_constants
+    )
+)]
 // The `swarm` tool's `json!` parameter schema is large; the default macro
 // recursion limit (128) is exceeded once more properties are added.
 #![recursion_limit = "256"]

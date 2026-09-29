@@ -1,6 +1,6 @@
 use super::{
-    App, DisplayMessage, ProcessingStatus, handle_terminal_event_while_disconnected,
-    process_remote_followups,
+    App, DisplayMessage, ProcessingStatus, RELOAD_MARKER_MAX_AGE,
+    handle_terminal_event_while_disconnected, process_remote_followups,
 };
 use crate::session_recovery::ReloadContext;
 use crate::tui::app::PendingReloadReconnectStatus;
@@ -11,8 +11,6 @@ use futures::StreamExt;
 use ratatui::DefaultTerminal;
 use std::time::{Duration, Instant};
 use tokio::time::MissedTickBehavior;
-
-const RELOAD_MARKER_MAX_AGE: Duration = Duration::from_secs(30);
 
 #[derive(Default)]
 pub(in crate::tui::app) struct RemoteRunState {

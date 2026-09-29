@@ -1,6 +1,7 @@
 use anyhow::Result;
 use bytes::Bytes;
 use futures::Stream;
+use kcode_core::util::truncated_stream_payload_context;
 use kcode_message_types::StreamEvent;
 use serde_json::Value;
 use std::collections::VecDeque;
@@ -10,10 +11,6 @@ use std::task::{Context as TaskContext, Poll};
 use std::time::Instant;
 
 use crate::{PinSource, ProviderPin};
-
-fn truncated_stream_payload_context(data: &str) -> String {
-    kcode_core::util::truncate_str(&data.trim().replace('\n', "\\n"), 240).to_string()
-}
 
 /// Pop the next complete SSE event off the front of `buffer`.
 ///

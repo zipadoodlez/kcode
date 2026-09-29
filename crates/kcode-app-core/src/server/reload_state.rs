@@ -6,6 +6,9 @@ use std::time::Duration;
 #[cfg(target_os = "linux")]
 const RELOAD_HANDOFF_EVENT_POLL_MS: i32 = 100;
 
+/// How long a reload-restore marker stays valid when a client reattaches.
+pub const RELOAD_RESTORE_MARKER_MAX_AGE: Duration = Duration::from_secs(60);
+
 pub fn reload_marker_path() -> PathBuf {
     crate::storage::runtime_dir().join("kcode.reload")
 }

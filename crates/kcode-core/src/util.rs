@@ -396,3 +396,18 @@ mod tests {
 #[cfg(test)]
 #[path = "sse_stream_integrity_tests.rs"]
 mod sse_stream_integrity_tests;
+
+/// Parse the first whitespace-separated token of a `/proc/meminfo` value as
+/// kilobytes. Shared by the host and process memory readers in
+/// `kcode-app-core` and `kcode-tui`.
+pub fn parse_meminfo_kb(rest: &str) -> Option<u64> {
+    rest.split_whitespace().next()?.parse().ok()
+}
+
+/// Escape newlines and truncate a streamed payload for a diagnostic message.
+///
+/// Shared by the OpenAI and OpenRouter wire crates so their stream error
+/// context looks the same regardless of provider.
+pub fn truncated_stream_payload_context(data: &str) -> String {
+    truncate_str(&data.trim().replace('\n', "\\n"), 240).to_string()
+}

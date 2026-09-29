@@ -1,4 +1,5 @@
 use super::*;
+use kcode_core::util::parse_meminfo_kb;
 use serde::Serialize;
 use std::collections::{VecDeque, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
@@ -910,11 +911,6 @@ fn host_memory_mb() -> (Option<u64>, Option<u64>) {
 #[cfg(not(target_os = "linux"))]
 fn host_memory_mb() -> (Option<u64>, Option<u64>) {
     (None, None)
-}
-
-#[cfg(target_os = "linux")]
-fn parse_meminfo_kb(rest: &str) -> Option<u64> {
-    rest.split_whitespace().next()?.parse::<u64>().ok()
 }
 
 #[cfg(target_os = "linux")]

@@ -5,6 +5,7 @@ use crate::storage;
 use crate::tool::Registry;
 use anyhow::{Context, Result};
 use chrono::{Duration as ChronoDuration, Utc};
+use kcode_core::util::parse_meminfo_kb;
 use serde_json::{Value, json};
 use std::ffi::CString;
 use std::io::Write;
@@ -589,11 +590,6 @@ fn detect_memory() -> (Option<u64>, Option<u64>, Option<u64>, Option<u64>) {
     {
         (None, None, None, None)
     }
-}
-
-#[cfg(target_os = "linux")]
-fn parse_meminfo_kb(rest: &str) -> Option<u64> {
-    rest.split_whitespace().next()?.parse().ok()
 }
 
 fn detect_load() -> (Option<f64>, Option<usize>) {

@@ -2,6 +2,7 @@ use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use bytes::Bytes;
 use futures::Stream;
+use kcode_core::util::truncated_stream_payload_context;
 use kcode_message_types::{StreamEvent, sanitize_tool_id};
 use serde::Deserialize;
 use serde_json::Value;
@@ -15,10 +16,6 @@ const WEBSOCKET_FALLBACK_NOTICE: &str = "falling back from websockets to https t
 static FALLBACK_TOOL_CALL_COUNTER: AtomicU64 = AtomicU64::new(1);
 static RECOVERED_TEXT_WRAPPED_TOOL_CALLS: AtomicU64 = AtomicU64::new(0);
 static NORMALIZED_NULL_TOOL_ARGUMENTS: AtomicU64 = AtomicU64::new(0);
-
-fn truncated_stream_payload_context(data: &str) -> String {
-    kcode_core::util::truncate_str(&data.trim().replace("\n", "\\n"), 240).to_string()
-}
 
 fn is_structured_response_event(data: &str) -> bool {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(data) else {

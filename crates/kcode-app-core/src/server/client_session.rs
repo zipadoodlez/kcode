@@ -16,6 +16,7 @@ use crate::agent::Agent;
 use crate::message::ContentBlock;
 use crate::protocol::{NotificationType, ServerEvent};
 use crate::provider::Provider;
+use crate::server::reload_state::RELOAD_RESTORE_MARKER_MAX_AGE;
 use crate::tool::Registry;
 use crate::transport::WriteHalf;
 use anyhow::Result;
@@ -24,10 +25,8 @@ use kcode_agent_runtime::InterruptSignal;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
-
-const RELOAD_RESTORE_MARKER_MAX_AGE: Duration = Duration::from_secs(60);
 
 pub(super) fn session_was_interrupted_by_reload(agent: &Agent) -> bool {
     let messages = agent.messages();
