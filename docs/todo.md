@@ -530,6 +530,11 @@ tree first would just move that churn around.
 
 - [ ] Unknown config sections are silently ignored, so older configs keep dead
   keys with no warning.
+- [ ] A stale explicit key in `config.toml` silently beats a changed compiled
+  default, with no migration or warning, so the user keeps the old behavior and
+  cannot tell why.
+- [ ] Rename `crates/kcode-tui/src/tui/app/auth_remote/onboarding.rs`: it is the
+  remote-login first-attach import, not the welcome screen the name suggests.
 
 ## Anytime
 
