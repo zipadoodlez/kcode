@@ -471,21 +471,3 @@ pub fn highlight_file_lines(
 
     results
 }
-
-/// Placeholder for code blocks that are not visible
-/// Used by lazy rendering to avoid highlighting off-screen code
-pub(super) fn placeholder_code_block(code: &str, lang: Option<&str>) -> Vec<Line<'static>> {
-    let line_count = code.lines().count();
-    let lang_str = lang.unwrap_or("code");
-
-    // Return placeholder lines that will be replaced when visible
-    vec![Line::from(Span::styled(
-        format!("  [{} block: {} lines]", lang_str, line_count),
-        Style::default().fg(md_dim_color()).italic(),
-    ))]
-}
-
-/// Check if two ranges overlap
-pub(super) fn ranges_overlap(a: std::ops::Range<usize>, b: std::ops::Range<usize>) -> bool {
-    a.start < b.end && b.start < a.end
-}

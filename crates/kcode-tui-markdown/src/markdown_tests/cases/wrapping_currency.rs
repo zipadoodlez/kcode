@@ -11,44 +11,6 @@ fn test_center_aligned_wrap_balances_lines() {
 }
 
 #[test]
-fn test_lazy_rendering_visible_range() {
-    let md = "```rust\nfn main() {\n    println!(\"hello\");\n}\n```\n\nSome text\n\n```python\nprint('hi')\n```";
-
-    // Render with full visibility
-    let lines_full = render_markdown_lazy(md, Some(80), 0..100);
-
-    // Render with partial visibility (only first code block visible)
-    let lines_partial = render_markdown_lazy(md, Some(80), 0..5);
-
-    // Both should produce output
-    assert!(!lines_full.is_empty());
-    assert!(!lines_partial.is_empty());
-}
-
-#[test]
-fn test_lazy_rendering_matches_full_latex_output() {
-    let md = r"Inline $\alpha_2 + x^2$.
-
-$$\frac{x+1}{y}$$";
-    let full = lines_to_string(&render_markdown_with_width(md, Some(80)));
-    let lazy = lines_to_string(&render_markdown_lazy(md, Some(80), 0..100));
-
-    assert_eq!(lazy, full);
-    assert!(lazy.contains("α₂ + x²"), "{lazy}");
-    assert!(lazy.contains("─────"), "{lazy}");
-}
-
-#[test]
-fn test_ranges_overlap() {
-    assert!(ranges_overlap(0..10, 5..15));
-    assert!(ranges_overlap(5..15, 0..10));
-    assert!(!ranges_overlap(0..5, 10..15));
-    assert!(!ranges_overlap(10..15, 0..5));
-    assert!(ranges_overlap(0..10, 0..10)); // Same range
-    assert!(ranges_overlap(0..10, 5..6)); // Contained
-}
-
-#[test]
 fn test_highlight_cache_performance() {
     // First call should cache
     let code = "fn main() {\n    println!(\"hello\");\n}";

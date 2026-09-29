@@ -82,13 +82,10 @@ use context::{effective_markdown_spacing_mode, with_streaming_render_context};
 
 #[path = "markdown_render_full.rs"]
 mod render_full;
-#[path = "markdown_render_lazy.rs"]
-mod render_lazy;
 #[path = "markdown_render_support.rs"]
 mod render_support;
 
 pub use render_full::{render_markdown_with_width, thread_render_count};
-pub use render_lazy::render_markdown_lazy;
 pub use render_support::extract_copy_targets_from_rendered_lines;
 
 /// Reasoning-line markdown formatters and the zero-width sentinel they use.
@@ -109,10 +106,7 @@ pub use kcode_message_types::reasoning::{
 /// `kcode_tui_markdown::reasoning_summary_line_markup` path keeps working.
 pub use kcode_message_types::reasoning::reasoning_summary_line_markup;
 
-use render_support::{
-    highlight_code_cached, line_plain_text, placeholder_code_block, ranges_overlap,
-    render_table_aligned,
-};
+use render_support::{highlight_code_cached, line_plain_text, render_table_aligned};
 
 pub use render_support::{highlight_file_lines, highlight_line, render_table_with_width};
 
