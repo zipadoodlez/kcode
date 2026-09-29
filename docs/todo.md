@@ -31,6 +31,45 @@ maintainer before work starts; everything else is actionable.
   `docs/dev/post-change.md`). The ratchets fail when a tracked number improves
   without the baseline being updated, so they can only tighten.
 
+## Front line: get the suite to zero (do this first)
+
+Why this is first: today every change costs a compile plus a re-run to prove a
+failure was already there. Until the baseline is zero, no change can trust its
+own test result, and the failure list itself goes stale, which is why the
+numbers below come from different commits rather than one measurement.
+Nothing else is picked up until this is done.
+
+Steps:
+
+1. Measure fresh, per suite, and record one number per suite with its command
+   and the environment (machine, `--test-threads`). Keep the command in
+   `docs/dev/post-change.md` so the next measurement is one line.
+2. Triage each failure: **fix** (a stale expectation of removed or renamed
+   surface) or **delete** (it covers a removed feature, or asserts a pixel or
+   color the design no longer owns). §4 already sampled the causes as mostly
+   stale expectations.
+3. Drive each suite to zero, smallest first.
+4. Decide flaky tests explicitly. A time-sensitive assertion (the
+   `swarm_buffer` "next scheduled task in 4m" check, `smoothness_benchmark_*`)
+   is either made deterministic or deleted. A baseline that includes flakes
+   never holds.
+
+Last recorded numbers, all from different commits, so this is a list of
+snapshots and not a single baseline:
+
+| suite | command | last recorded |
+|---|---|---|
+| `kcode-tui --lib` | `cargo test -p kcode-tui --lib` | 38 failed / 1824 at `06ab4a0f`; 41 / 1809 after `516de13d` |
+| `kcode-app-core --lib` | `cargo test -p kcode-app-core --lib` | documented as 2; a `-- comm` filter run on 2026-09-29 showed 10, and the 4 `communicate_*` end-to-end `wait_for_member_status` timeouts were reproduced on base `d027c022`, so they are in the baseline, not a regression |
+| `kcode-base --lib` | `cargo test -p kcode-base --lib` | 4 |
+| root `kcode --lib` | `cargo test -p kcode --lib` | 10 of 195 at 2026-09-28 |
+| math/LaTeX, `test_lock_order` | see §4 | 15, and 1 |
+
+Root causes already diagnosed and non-flaky: the two in §4
+(`client_actions_tests.rs` swarm-id expectation and
+`communicate_tests/end_to_end.rs` cwd-sharing expectation), both from
+`a830fe18` moving swarm identity to `session:<id>`.
+
 ## Next up: the dead-weight pass tail
 
 The deletion pass landed 2026-09-29 (`516de13d`, `d0723556`, `7b2e3b7e`); what
@@ -219,6 +258,45 @@ before the shape is settled is churn.
   sites instead of passed. References: `internals/swarm.md`. Do this before
   splitting `handle_client`, whose request-context struct is designed to hold
   `SwarmState`.
+
+  - **Member status is typed end to end (landed 2026-09-29).**
+    `SwarmLifecycleStatus`, `SwarmRole`, and `SwarmMemberRecord` moved to
+    `kcode-session-types`; `SwarmMember`, `SwarmMemberStatus`, `AgentInfo`,
+    `AgentStatusSnapshot`, and `AwaitedMemberStatus` now carry the enum, and
+    the "active/dead/terminal/in-flight" sets are the enum's methods. The
+    durable `String` round-trip and the two `member_status_is_*` helpers are
+    gone. What remains of the member projection: the TUI still synthesizes
+    display words (`thinking`, `streaming`) into its own card's status; the
+    presentation predicate `kcode_tui_render::swarm_gallery::is_active_status`
+    still keys on those strings. Splitting lifecycle from display activity in
+    the TUI is the open behavior decision.
+
+  - [ ] **Member appearance follows the typed status** (planned 2026-09-29,
+    decisions confirmed). `kcode-tui-render` takes `SwarmLifecycleStatus` for
+    its member input (a new dependency on `kcode-session-types`, a data-only
+    crate), so the six string matches in `swarm_gallery.rs` (41 status literals
+    in production code, `is_active_status` at 12 call sites) become enum
+    matches. One module owns member appearance: accent, glyph, label, sort
+    rank, and an `is_working` predicate kept distinct from lifecycle
+    `is_active`, because a stalled node must not spin. The duplicate appearance
+    map `info_widget_swarm_background::swarm_status_style` is deleted. The
+    swarm-path `Color::Rgb` literals become `kcode_tui_style` role accessors so
+    `/colors` can recolor them; the small default shift for shades that are not
+    exact role defaults is accepted (decision). Confirmed color decisions:
+    adopt roles, accept the shift.
+  - [ ] **A stalled plan node is visible** (planned 2026-09-29). `running_stale`
+    is only ever a plan-item status. No member becomes it:
+    `recover_member_status` maps `Running` to `Crashed` and `Ready` to
+    `Stopped`, so the member enum's `RunningStale` is unreachable. Today
+    `info_widget_todos::normalize_plan_status_for_todo` folds `running_stale`
+    into `in_progress`, so a stalled node renders as a running one (`▶` amber,
+    `[doing]`), and `tui_state.rs` counts it in the progress bar's running
+    bucket. Give it its own display value and marker in the todo and plan
+    widgets: a distinct glyph and label, `warning_color()`, sorted with
+    `in_progress`. Decision: reuse `warning_color()`, distinguish by glyph and
+    label, no new palette role. Open sub-decision (lean: leave the count):
+    whether the swarm progress number also splits stalled out of its running
+    bucket.
 
 ## 2. God modules
 
@@ -431,7 +509,8 @@ are easier once phase 2 has shrunk the cross-crate surface.
 
 After the shape work, not before: the tree is coupled through `create_test_app`
 (771 edges), so shape changes are paid for in test churn. Replacing the include
-tree first would just move that churn around.
+tree first would just move that churn around. The failure rows below are the
+sampled causes; the Front line section owns driving them to zero.
 
 - [ ] Replace the `include!`-wired test tree with real modules: `app/tests.rs`
   `include!`s 55 files into one module (120 `include!` sites repo-wide), which is
@@ -494,9 +573,10 @@ Independent, no dependency on the phases above.
 - [ ] Not every color derives from a role. `configured_native_color`
   (`kcode-tui-style/src/palette.rs`) attributes a shade to a role only when it
   equals that role's default, so hardcoded `Color::Rgb(...)` shades pass through
-  and `/colors` cannot recolor them. Examples: `login_picker.rs`
-  `PANEL_BG`/`PANEL_BORDER`, `info_widget_swarm_gallery.rs`. Give each orphaned
-  shade a role, or mark it intentionally fixed.
+  and `/colors` cannot recolor them. `info_widget_swarm_gallery.rs` and the rest
+  of the swarm path are covered by the member-appearance item in §1; what
+  remains here is `login_picker.rs` `PANEL_BG`/`PANEL_BORDER` and any other
+  orphans. Give each shade a role, or mark it intentionally fixed.
 - [ ] Hooks are unobservable: no `/hooks`, no listing, no dry-run. A typo looks
   identical to a hook that does nothing.
 - [ ] Blocked calls are invisible: `pre_tool` stderr goes to the model, nothing
