@@ -653,6 +653,11 @@ pub(super) async fn handle_bus_event(
 /// no hint the server fell back to the session's currently active provider,
 /// mislabeling the catalog-refresh message ("OpenAI credentials are active"
 /// after an Anthropic API-key login) and skipping the post-login model switch.
+/// The catalog namespace to attribute an auth change to.
+///
+/// This is the third provider spelling: not the runtime key
+/// (`LoginProviderTarget::key()`) and not `descriptor.id` in the compatible
+/// case, where the namespace is the profile id. One question, one function.
 fn auth_provider_hint_for_login_provider(provider: &str) -> Option<&'static str> {
     let provider = provider.trim();
     // Azure's runtime id ("azure-openai") differs from its login descriptor id

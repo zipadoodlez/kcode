@@ -42,8 +42,11 @@ pub enum LoginProviderTarget {
 impl LoginProviderTarget {
     /// `KCODE_RUNTIME_PROVIDER` value / runtime identity for this provider.
     ///
-    /// This is the one vocabulary for "which runtime is active": `role.rs`'s
-    /// `RuntimeProviderKey` consumers and the auth-mode pin parser both read it.
+    /// This answers "which runtime is active". It is deliberately not the same
+    /// spelling as `descriptor.id` (the canonical registry name, e.g. `azure`
+    /// vs `azure-openai`, `anthropic-api` vs `claude-api`) nor as the auth-event
+    /// catalog namespace in the TUI, which for a compatible provider is its
+    /// profile id. Three readers, three questions; do not merge them.
     pub const fn key(self) -> &'static str {
         match self {
             Self::Claude => "claude",
