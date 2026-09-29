@@ -31,6 +31,51 @@ maintainer before work starts; everything else is actionable.
   `docs/dev/post-change.md`). The ratchets fail when a tracked number improves
   without the baseline being updated, so they can only tighten.
 
+## Cycle C: remove external-harness session import (next up)
+
+Scoped and agreed 2026-09-29, not started. It is the only committed item that
+deletes a whole crate and changes a tool's model-facing schema, so it runs alone,
+not merged with anything else.
+
+Cycles A and B are done and sit on branch `batch-ab-provider-onboarding` (not
+merged): -12,704 lines, the gate green, `kcode-tui --lib` improved against the
+branch point. Their full scoping notes, decisions, and run log are in
+`~/.kcode/scratch/batch.md`.
+
+- [ ] **Remove every way to read, import, or resume another harness's
+  sessions.** Present and re-verified 2026-09-29: `kcode-base/src/import.rs`
+  1,495 and `src/import_tests.rs` 1,144; `kcode-base/tests/claude_import_integration.rs`
+  379; `crates/kcode-import-core` (1,645 + `repo_ranking.rs` 519 + 412 test) and
+  its dependency edge, which also removes its `hex` and `sha2` deps if nothing
+  else uses them; the `import::` consumers in
+  `kcode-app-core/src/tool/session_search.rs`, including the model-facing
+  `include_external` (110, 201, 228, 375) and its
+  `all|kcode|claude|codex|pi|opencode|cursor` source enum; the
+  imported-session-id mapping in `kcode-base/src/session/crash.rs`;
+  `resolve_resume_target_to_kcode`, `import_external_resume_id`, and
+  `take_over_live_claude_session`.
+- **Boundary, verified: login import stays.** It lives in
+  `kcode-app-core/src/external_auth.rs` and never touches `import.rs`, whose
+  consumers are the session picker, session search, and crash recovery. Its
+  candidate discovery is `auth::external::unconsented_sources()` plus Codex
+  legacy auth and Cursor's vscdb token, so it reads auth files and the keychain,
+  and it reads no transcripts, so Cycle C can assume no transcript dependency.
+  A correction to the first scoping note is recorded in the batch file: that note
+  claimed the transcript-evidence helpers `external_transcripts_present` /
+  `external_oauth_present` served the kept path and stayed. They lived in
+  `onboarding_flow.rs`, were deleted with it, and never served `external_auth.rs`.
+- **Cost, stated once because it is more than resume:** the user also loses
+  searching and reading other harnesses' session history from inside kcode. Ruled
+  acceptable: a harness writes its own state into docs.
+- **Test scope:** `session_search`, `import_tests`, `crash`,
+  `claude_import_integration`. Expect a second attempt on compile errors from
+  removed APIs; that is why it runs alone.
+- **Ratchet:** `crates/kcode-base/src/import.rs` 1,495 is tracked in
+  `scripts/code_size_budget.json`. Re-record both size baselines in the same pass
+  as the deletion, since the ratchets fail on an unrecorded shrink.
+
+---
+
 ## 0. Deletion ledger (the line-count question, measured)
 
 Written because "over 500k lines, want under 200k" was a goal with no data
