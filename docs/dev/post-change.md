@@ -23,10 +23,16 @@ run, since the full gate uses them and dropping them can pass where it fails.
 
 It runs the old CI guardrail set locally: `cargo fmt --check`, `cargo clippy --
 -D warnings` (which also compiles every target), `Cargo.lock` freshness, the
-size, wildcard, and `App`-shape ratchets, crate dependency boundaries, and the
-the crate dependency boundaries.
+size, wildcard, and `App`-shape ratchets, and crate dependency boundaries.
 
 A compile or clippy failure is a real regression; do not commit past it.
+
+Clippy results are cached per crate, and `-- -D warnings` is not part of the
+cache key, so a passing gate can hide lints in any crate that did not recompile.
+For a change that spans several crates, or that is clearing lints, that makes
+the pass meaningless: run `cargo clean` once and then the full gate, and expect
+it to surface pre-existing lints in the crates you touched. Fix them in one
+pass, not one recompile at a time.
 
 ## Knowledge graph
 
@@ -56,7 +62,11 @@ excluded from text diffs and union-merged on conflict (see `.gitattributes`).
 
 `cargo test` runs the workspace; target a crate while iterating
 (`cargo test -p kcode-tui --lib`). The suite has pre-existing failures on this
-tree, so a red run is not automatically your change: see
+tree, so a red run is not automatically your change. It is also not a gate:
+nothing in `scripts/check_guardrails.sh` runs tests, and the whole `kcode-tui`
+lib suite fails 1-4 tests per run on the race below, so run the filter that
+matches your change and reserve `--test-threads=1` for when you need the whole
+crate. See
 [testing.md](testing.md) for the known `kcode-tui` parallel-execution race and
 the `--test-threads=1` workaround, and check any suspect in isolation before
 blaming it. `scripts/test_ci_suites.py` runs the suites with per-suite timing if
