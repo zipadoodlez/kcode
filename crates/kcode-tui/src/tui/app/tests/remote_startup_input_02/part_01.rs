@@ -884,17 +884,18 @@ fn test_ctrl_tab_toggles_queue_mode() {
 }
 
 #[test]
-fn test_auto_poke_starts_enabled_by_default() {
+fn test_auto_poke_starts_disabled_by_default() {
     let app = create_test_app();
 
-    assert!(app.auto_poke_incomplete_todos);
+    assert!(!app.auto_poke_incomplete_todos);
 }
 
 #[test]
 fn test_ctrl_p_toggles_auto_poke_locally() {
     let mut app = create_test_app();
 
-    assert!(app.auto_poke_incomplete_todos);
+    // Auto-poke starts off; the subject here is the toggle.
+    app.auto_poke_incomplete_todos = true;
 
     app.handle_key(KeyCode::Char('p'), KeyModifiers::CONTROL)
         .unwrap();

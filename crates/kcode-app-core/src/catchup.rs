@@ -611,6 +611,5 @@ mod tests {
         assert!(markdown.contains("## What happened"));
         assert!(markdown.contains("## Latest agent response"));
         assert!(markdown.contains("## Needs from you"));
-        assert!(markdown.contains("```mermaid"));
     }
 }

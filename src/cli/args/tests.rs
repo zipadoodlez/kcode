@@ -43,7 +43,6 @@ fn native_ssh_attach_arguments_parse_and_do_not_steal_local_socket() {
         "/run/native/kcode.sock",
         "--remote-working-dir",
         "/srv/project",
-        "self-dev",
     ])
     .unwrap();
     assert_eq!(args.ssh.as_deref(), Some("dev"));
@@ -404,14 +403,7 @@ fn login_scriptable_flags_parse() {
         other => panic!("unexpected command: {:?}", other),
     }
 
-    let args = Args::try_parse_from([
-        "kcode",
-        "login",
-        "--complete",
-        "--google-access-tier",
-        "readonly",
-    ])
-    .unwrap();
+    let args = Args::try_parse_from(["kcode", "login", "--complete"]).unwrap();
     match args.command {
         Some(Command::Login { complete, .. }) => {
             assert!(complete);

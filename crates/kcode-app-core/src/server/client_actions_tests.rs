@@ -446,7 +446,7 @@ async fn enabling_swarm_does_not_auto_elect_coordinator() {
             .get(session_id)
             .and_then(|member| member.swarm_id.clone())
             .as_deref(),
-        Some("/tmp/kcode-passive-swarm")
+        Some("session:session_test_swarm_toggle")
     );
     assert_eq!(
         swarm_members

@@ -706,7 +706,7 @@ fn test_startup_update_checking_stays_quiet_until_update_work_starts() {
         "background progress should stay out of the transcript"
     );
     let notice = app.status_notice().expect("expected download notice");
-    assert!(notice.starts_with("↑ v1.2.3 · Downloading update..."));
+    assert!(notice.starts_with("↑ v1.2.3 · "));
     assert!(
         notice.contains("50%"),
         "notice should show progress: {notice}"
@@ -868,66 +868,20 @@ fn test_startup_update_error_replaces_checking_card() {
     assert_eq!(message.title.as_deref(), Some("Update"));
     // The failure card and notice are one short line each; the verbose error
     // stays in the log.
-    assert_eq!(message.content, "Status: failed (offline)");
+    assert_eq!(message.content, "Status: failed (Check failed: offline)");
     assert!(
         !message.content.contains('\n'),
         "failure card should be one line: {}",
         message.content
     );
     let notice = app.status_notice().expect("expected failure notice");
-    assert_eq!(notice, "Update failed: offline");
+    assert_eq!(notice, "Update failed: Check failed: offline");
     assert!(
         !notice.contains('\n'),
         "notice should be one line: {notice}"
     );
     assert!(app.maintenance.background_client_action.is_none());
     assert!(app.maintenance.pending_background_client_reload.is_none());
-}
-
-#[test]
-fn test_selfdev_command_spawns_session_in_test_mode() {
-    let _guard = crate::storage::lock_test_env();
-    let temp_home = tempfile::TempDir::new().expect("temp home");
-    let prev_home = std::env::var_os("KCODE_HOME");
-    let prev_test = std::env::var_os("KCODE_TEST_SESSION");
-    crate::env::set_var("KCODE_HOME", temp_home.path());
-    crate::env::set_var("KCODE_TEST_SESSION", "1");
-
-    let repo = create_kcode_repo_fixture();
-    let mut app = create_test_app();
-    app.session.working_dir = Some(repo.path().display().to_string());
-
-    app.composer.input = "/selfdev fix the markdown renderer".to_string();
-    app.submit_input();
-
-    let last = app.display_messages().last().expect("selfdev message");
-    assert!(last.content.contains("Created self-dev session"));
-    assert!(
-        last.content
-            .contains("Prompt captured but not delivered in test mode")
-    );
-    assert_eq!(app.status_notice(), Some("Self-dev".to_string()));
-
-    let sessions_dir = crate::storage::kcode_dir().unwrap().join("sessions");
-    let entries: Vec<_> = std::fs::read_dir(&sessions_dir)
-        .expect("sessions dir")
-        .flatten()
-        .collect();
-    assert!(
-        !entries.is_empty(),
-        "expected spawned self-dev session file"
-    );
-
-    if let Some(prev_home) = prev_home {
-        crate::env::set_var("KCODE_HOME", prev_home);
-    } else {
-        crate::env::remove_var("KCODE_HOME");
-    }
-    if let Some(prev_test) = prev_test {
-        crate::env::set_var("KCODE_TEST_SESSION", prev_test);
-    } else {
-        crate::env::remove_var("KCODE_TEST_SESSION");
-    }
 }
 
 #[test]

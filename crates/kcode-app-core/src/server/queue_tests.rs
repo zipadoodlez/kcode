@@ -136,9 +136,13 @@ async fn queue_soft_interrupt_for_session_persists_when_live_queue_is_unavailabl
         let guard = agent.lock().await;
         guard.session_id().to_string()
     };
-    crate::session::Session::create_with_id(session_id.clone(), None, None)
-        .save()
-        .expect("save session snapshot");
+    crate::session::Session::create_with_id(
+        session_id.clone(),
+        None,
+        Some("queue persistence test".to_string()),
+    )
+    .save()
+    .expect("save session snapshot");
 
     let queues: SessionInterruptQueues = Arc::new(RwLock::new(HashMap::new()));
     let sessions = Arc::new(RwLock::new(HashMap::new()));

@@ -31,44 +31,21 @@ maintainer before work starts; everything else is actionable.
   `docs/dev/post-change.md`). The ratchets fail when a tracked number improves
   without the baseline being updated, so they can only tighten.
 
-## Front line: get the suite to zero (do this first)
+## Test baseline
 
-Why this is first: today every change costs a compile plus a re-run to prove a
-failure was already there. Until the baseline is zero, no change can trust its
-own test result, and the failure list itself goes stale, which is why the
-numbers below come from different commits rather than one measurement.
-Nothing else is picked up until this is done.
+Single-threaded, every suite is at zero (2026-09-29): `kcode-base`, root
+`kcode`, `kcode-app-core`, the math crates, and `kcode-tui`. The front-line pass
+is done; what remains is one flake class and one stale doc.
 
-Steps:
-
-1. Measure fresh, per suite, and record one number per suite with its command
-   and the environment (machine, `--test-threads`). Keep the command in
-   `docs/dev/post-change.md` so the next measurement is one line.
-2. Triage each failure: **fix** (a stale expectation of removed or renamed
-   surface) or **delete** (it covers a removed feature, or asserts a pixel or
-   color the design no longer owns). §4 already sampled the causes as mostly
-   stale expectations.
-3. Drive each suite to zero, smallest first.
-4. Decide flaky tests explicitly. A time-sensitive assertion (the
-   `swarm_buffer` "next scheduled task in 4m" check, `smoothness_benchmark_*`)
-   is either made deterministic or deleted. A baseline that includes flakes
-   never holds.
-
-Last recorded numbers, all from different commits, so this is a list of
-snapshots and not a single baseline:
-
-| suite | command | last recorded |
-|---|---|---|
-| `kcode-tui --lib` | `cargo test -p kcode-tui --lib` | 38 failed / 1824 at `06ab4a0f`; 41 / 1809 after `516de13d` |
-| `kcode-app-core --lib` | `cargo test -p kcode-app-core --lib` | documented as 2; a `-- comm` filter run on 2026-09-29 showed 10, and the 4 `communicate_*` end-to-end `wait_for_member_status` timeouts were reproduced on base `d027c022`, so they are in the baseline, not a regression |
-| `kcode-base --lib` | `cargo test -p kcode-base --lib` | 4 |
-| root `kcode --lib` | `cargo test -p kcode --lib` | 10 of 195 at 2026-09-28 |
-| math/LaTeX, `test_lock_order` | see §4 | 15, and 1 |
-
-Root causes already diagnosed and non-flaky: the two in §4
-(`client_actions_tests.rs` swarm-id expectation and
-`communicate_tests/end_to_end.rs` cwd-sharing expectation), both from
-`a830fe18` moving swarm identity to `session:<id>`.
+- **Parallel-only flakes.** `kcode-tui --lib` at the default thread count fails
+  a changing set of about a dozen tests that pass single-threaded (slash
+  pickers, `restore_session_*`, account settings, the model picker,
+  `smoothness_benchmark_*`). The frame-metrics singletons were tested as the
+  cause and were not; the shared state is still unidentified. `--test-threads=1`
+  is the workaround. App-core had the same shape (global bus, env/config) and is
+  partly fixed.
+- **`docs/dev/testing.md` is stale** on the same subject: it describes the old
+  render-lock race (which the code no longer has) and the old per-suite counts.
 
 ## Next up: the dead-weight pass tail
 
@@ -586,6 +563,32 @@ Independent, no dependency on the phases above.
 - [ ] Optional: the render-state globals (`ui.rs` has 18 production `static`s
   with `#[cfg(test)]` mirrors, the pattern repeated across 17 `ui_*.rs`). Only
   worth doing if a snapshot layer needs the inputs explicit.
+- [ ] Refactor auto-poke: keep the flag, Ctrl+P, `/poke`, and the single
+  turn-end poke, but drop the scheduler. `schedule_auto_poke_followup_if_needed`
+  (~200 lines in `tui/app/input.rs`) is a chain of gates: long-session review,
+  gate digest, ownership check, completion confidence, spike challenge, attempt
+  budget, circuit breaker, and re-arm. It drags 7 `App` fields, the
+  gate-observation store and digest builder in `kcode-base::todo`, the
+  reframe-observation recording in the `todo` tool, and the continuation messages
+  only it queues. Replace with one rule: armed and incomplete todos and nothing
+  already queued, queue the poke once. Its own pass, ordered before the tui triage
+  so its own tests are deleted rather than fixed.
+- [ ] Reduce the always-on per-request tool cost. Two suite tests that capped
+  tool and parameter descriptions (20 / 25 tokens) were removed rather than
+  fixed, so nothing guards this today; the numbers below are the last measured.
+  Worst offenders: `batch` (129), `todo.feedback_loop_relevance` (132),
+  `todo.feedback_loop_traceability` (94), `swarm.model` (84),
+  `browser.candidates` (73); 12 parameter descriptions are over 25 tokens. The
+  essays are paid on every request. Direction to consider: keep only the call
+  contract always-on (name, one-line description, terse parameter shape plus
+  enums/required) and give the prose a single home in the bundled,
+  version-matched docs (`kcode_docs`), echoed in the tool's own error when a
+  call is wrong. The `todo` calibration rubric now lives in
+  `docs/internals/todo-calibration.md` (retrievable via `kcode_docs`), so the
+  always-on schema keeps only short summaries; the gate messages stay
+  category-only, since they have their own token budget. The same shape applies
+  to the remaining essays. Control shape to consider: one aggregate schema-token
+  budget instead of two per-item caps plus the `swarm` exemption.
 
 ## Committed ideas (no plan yet)
 

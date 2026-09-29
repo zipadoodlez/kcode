@@ -654,6 +654,7 @@ fn test_loading_preview_refreshes_search_index_for_picker_filtering() {
     let sessions = load_sessions().expect("load sessions");
     let mut picker = SessionPicker::new(sessions);
 
+    picker.list_state.select(Some(0));
     picker.ensure_selected_preview_loaded();
 
     let selected_after = picker

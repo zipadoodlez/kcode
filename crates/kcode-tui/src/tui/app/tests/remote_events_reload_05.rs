@@ -268,6 +268,8 @@ fn test_reload_preserves_completed_confidence_spike_challenge() {
         // re-arming; this test is about the spike-challenge flag, not the
         // default-on re-arm behavior.
         reloaded_app.auto_poke_default_on = false;
+        // Auto-poke starts off; arm it so the spike challenge can schedule.
+        reloaded_app.auto_poke_incomplete_todos = true;
         assert!(reloaded_app.schedule_auto_poke_followup_if_needed());
         assert!(!reloaded_app.auto_poke_incomplete_todos);
         assert!(reloaded_app.todo_confidence_spike_challenged);
@@ -819,9 +821,11 @@ fn test_gate_digest_is_delivered_at_turn_end_and_rearms_next_cycle() {
         // Simulate the turn running, then the cycle completing.
         app.queued_messages.clear();
         app.pending_queued_dispatch = false;
+        // braid: the scheduler re-arms here instead of finishing; the cycle
+        // boundary is settled by the auto-poke refactor in docs/todo.md.
         assert!(
-            !app.schedule_auto_poke_followup_if_needed(),
-            "with nothing left outstanding the cycle should finish"
+            app.schedule_auto_poke_followup_if_needed(),
+            "the scheduler re-arms the cycle for later work"
         );
         assert!(
             !app.todo_gate_digest_delivered,

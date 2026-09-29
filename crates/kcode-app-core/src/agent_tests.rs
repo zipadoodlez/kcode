@@ -1190,7 +1190,7 @@ async fn restore_session_resets_runtime_interrupt_and_queue_state() {
     let mut restored_session = crate::session::Session::create_with_id(
         "session_restore_resets_runtime_state".to_string(),
         None,
-        None,
+        Some("restore reset test".to_string()),
     );
     restored_session.save().expect("save restored session");
 
@@ -1228,6 +1228,15 @@ async fn explicit_provider_pin_is_persisted_and_reapplied_on_restore() {
     let registry = Registry::new(provider_dyn.clone()).await;
     let mut agent = Agent::new(provider_dyn, registry);
 
+    // A real session has conversation content by the time a model is pinned;
+    // seed one so the snapshot exists to reload.
+    agent.session.add_message(
+        crate::message::Role::User,
+        vec![crate::message::ContentBlock::Text {
+            text: "pin a provider".to_string(),
+            cache_control: None,
+        }],
+    );
     agent
         .set_model("z-ai/glm-5.2@Novita")
         .expect("set explicitly pinned model");
@@ -1263,6 +1272,13 @@ async fn mark_closed_persists_soft_interrupts_for_restore_after_reload() {
     let registry = Registry::new(provider.clone()).await;
     let mut agent = Agent::new(provider.clone(), registry.clone());
     let session_id = agent.session_id().to_string();
+    agent.session.add_message(
+        crate::message::Role::User,
+        vec![crate::message::ContentBlock::Text {
+            text: "resume me".to_string(),
+            cache_control: None,
+        }],
+    );
     agent.session.save().expect("save active session");
     agent.queue_soft_interrupt(
         "resume me after reload".to_string(),

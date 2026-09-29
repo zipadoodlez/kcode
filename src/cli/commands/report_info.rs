@@ -187,8 +187,12 @@ fn build_auth_status_report() -> AuthStatusReport {
         })
         .collect::<Vec<_>>();
 
+    let any_available = reports
+        .iter()
+        .any(|report| report.status == auth_state_label(crate::auth::AuthState::Available));
+
     AuthStatusReport {
-        any_available: status.has_any_available(),
+        any_available,
         providers: reports,
     }
 }

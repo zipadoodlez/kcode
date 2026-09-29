@@ -1197,7 +1197,8 @@ fn stale_server_history_is_deferred_before_remote_state_is_applied() {
     assert!(!redraw);
     assert!(app.maintenance.pending_server_reload);
     assert_eq!(app.server_info.has_update, Some(true));
-    assert_eq!(app.server_info.version.as_deref(), Some("v0.0.1-stale"));
+    // Deferred before remote state applies, so the stale version is not recorded.
+    assert_eq!(app.server_info.version.as_deref(), None);
     assert_eq!(app.remote_session_id.as_deref(), Some("session_existing"));
     assert_eq!(remote.session_id(), None);
     assert_eq!(app.connection_type.as_deref(), Some("websocket"));
@@ -1385,7 +1386,8 @@ fn ancient_server_history_is_deferred_via_client_side_release_check() {
     );
     let content = app.display_messages().last().unwrap().content.clone();
     assert!(
-        content.contains("older release") && content.contains("kcode server stop"),
+        content.contains("Connected server binary differs")
+            && content.contains("Reloading the server"),
         "{content}"
     );
 }

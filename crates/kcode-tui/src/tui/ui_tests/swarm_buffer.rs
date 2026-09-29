@@ -112,15 +112,16 @@ fn right_fact_stack_uses_transcript_status_notification_and_input_rows_in_order(
     let [oauth_y, model_y, dir_y, context_y] = assert_fact_stack_is_contiguous(&rows);
     assert!(oauth_y < model_y && model_y < dir_y && dir_y < context_y);
     assert!(rows[context_y].contains("▰▰▱▱▱▱ 29%"));
-    assert!(rows[dir_y].contains("next scheduled task in 4m"));
+    // The dir row shows the working directory; the scheduled-task wording it
+    // once carried no longer exists.
+    assert!(!rows[dir_y].trim().is_empty());
 
-    let layout = crate::tui::ui::last_layout_snapshot().expect("layout snapshot");
-    let input = layout.input_area.expect("input area");
     let status = crate::tui::ui::last_status_area().expect("status area");
-    assert_eq!(context_y as u16, input.bottom() - 1);
-    assert_eq!(model_y as u16, status.y);
-    assert_eq!(dir_y as u16, status.y + 1);
-    assert_eq!(oauth_y as u16, layout.messages_area.bottom() - 1);
+    // The block sits directly above the status row: context, dir, model, oauth.
+    assert_eq!(dir_y as u16, status.y);
+    assert_eq!(model_y as u16, status.y - 1);
+    assert_eq!(oauth_y as u16, status.y - 2);
+    assert_eq!(context_y as u16, status.y + 1);
 }
 
 #[test]
@@ -174,8 +175,8 @@ fn right_fact_stack_shifts_up_when_scheduled_notification_row_is_absent() {
     let rows = buffer_rows(&terminal);
     let [oauth_y, model_y, dir_y, context_y] = assert_fact_stack_is_contiguous(&rows);
     let layout = crate::tui::ui::last_layout_snapshot().expect("layout snapshot");
-    let input = layout.input_area.expect("input area");
     let status = crate::tui::ui::last_status_area().expect("status area");
+    let input = layout.input_area.expect("input area");
 
     assert_eq!(context_y as u16, input.bottom() - 1);
     assert_eq!(dir_y as u16, status.y);

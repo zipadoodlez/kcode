@@ -1821,6 +1821,8 @@ fn test_poke_status_reports_current_state() {
         )
         .expect("save todos");
 
+        // `/poke status` reports state; start it on so the ON report is exercised.
+        app.auto_poke_incomplete_todos = true;
         assert!(super::commands::handle_session_command(
             &mut app,
             "/poke status"
@@ -2276,7 +2278,8 @@ fn test_finish_turn_challenges_confidence_spike_once() {
         app.is_processing = true;
         app.conclude_completed_turn(app.display_turn_duration_secs());
 
-        assert!(app.auto_poke_incomplete_todos);
+        // The clean final-response turn disarms auto-poke now that the default is off.
+        assert!(!app.auto_poke_incomplete_todos);
         assert!(app.todo_confidence_spike_challenged);
         assert!(app.pending_queued_dispatch);
         assert_eq!(
@@ -2291,7 +2294,8 @@ fn test_finish_turn_challenges_confidence_spike_once() {
         app.is_processing = true;
         app.conclude_completed_turn(app.display_turn_duration_secs());
 
-        assert!(app.auto_poke_incomplete_todos);
+        // A clean finish disarms auto-poke now that the default is off.
+        assert!(!app.auto_poke_incomplete_todos);
         assert!(app.todo_confidence_spike_challenged);
         assert!(!app.pending_queued_dispatch);
         assert!(app.queued_messages.is_empty());

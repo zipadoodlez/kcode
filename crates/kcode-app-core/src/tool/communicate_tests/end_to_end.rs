@@ -7,6 +7,7 @@ async fn communicate_list_and_await_members_work_end_to_end() {
     let _runtime = EnvGuard::set("KCODE_RUNTIME_DIR", runtime_dir.path());
     let _socket = EnvGuard::set("KCODE_SOCKET", &socket_path);
     let _debug = EnvGuard::set("KCODE_DEBUG_CONTROL", "1");
+    let _swarm = EnvGuard::set("KCODE_SWARM_ID", "swarm-test-list-await");
 
     let provider: Arc<dyn Provider> = Arc::new(DelayedTestProvider {
         delay: Duration::from_millis(300),
@@ -135,6 +136,7 @@ async fn communicate_await_members_background_returns_immediately_and_notifies()
     let _runtime = EnvGuard::set("KCODE_RUNTIME_DIR", runtime_dir.path());
     let _socket = EnvGuard::set("KCODE_SOCKET", &socket_path);
     let _debug = EnvGuard::set("KCODE_DEBUG_CONTROL", "1");
+    let _swarm = EnvGuard::set("KCODE_SWARM_ID", "swarm-test-await-bg");
 
     let provider: Arc<dyn Provider> = Arc::new(DelayedTestProvider {
         delay: Duration::from_millis(300),
@@ -293,6 +295,7 @@ async fn communicate_status_returns_busy_snapshot_for_running_member() {
     let _runtime = EnvGuard::set("KCODE_RUNTIME_DIR", runtime_dir.path());
     let _socket = EnvGuard::set("KCODE_SOCKET", &socket_path);
     let _debug = EnvGuard::set("KCODE_DEBUG_CONTROL", "1");
+    let _swarm = EnvGuard::set("KCODE_SWARM_ID", "swarm-test-status-busy");
 
     let provider: Arc<dyn Provider> = Arc::new(DelayedTestProvider {
         delay: Duration::from_millis(300),
@@ -555,6 +558,7 @@ async fn communicate_message_routes_as_dm_while_broadcast_targets_swarm() {
     let _runtime = EnvGuard::set("KCODE_RUNTIME_DIR", runtime_dir.path());
     let _socket = EnvGuard::set("KCODE_SOCKET", &socket_path);
     let _debug = EnvGuard::set("KCODE_DEBUG_CONTROL", "1");
+    let _swarm = EnvGuard::set("KCODE_SWARM_ID", "swarm-test-dm-broadcast");
 
     let provider: Arc<dyn Provider> = Arc::new(DelayedTestProvider {
         delay: Duration::from_millis(100),

@@ -97,7 +97,7 @@ fn create_visible_spawn_session(
     if selfdev_requested {
         session.set_canary("self-dev");
     }
-    session.save()?;
+    session.save_persistent()?;
 
     Ok((session.id.clone(), cwd))
 }

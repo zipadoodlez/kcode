@@ -329,7 +329,7 @@ fn test_handle_server_event_compaction_shows_completion_message_in_remote_mode()
     assert_eq!(last.role, "system");
     assert_eq!(
         last.content,
-        "📦 Context compacted (semantic) - older messages were summarized to stay within the context window.\n\nTook 1.5s · before ~12,345 tokens · now ~4,321 tokens (2.2% of window) · saved ~8,024 tokens · summarized 24 messages · summary 987 chars · kept 10 recent messages live"
+        "📦 Context compacted (automatic) - older messages were summarized to stay within the context window.\n\nTook 1.5s · before ~12,345 tokens · now ~4,321 tokens (2.2% of window) · saved ~8,024 tokens · summarized 24 messages · summary 987 chars · kept 10 recent messages live"
     );
 }
 
@@ -359,7 +359,7 @@ fn test_handle_server_event_compaction_mode_changed_updates_remote_mode() {
     );
 
     let last = app.display_messages().last().expect("missing response");
-    assert_eq!(last.content, "✓ Compaction mode → semantic");
+    assert_eq!(last.content, "✓ Compaction mode → proactive");
 }
 
 #[test]

@@ -1,7 +1,9 @@
 #[test]
 fn test_improve_mode_persists_in_session_file() {
     with_temp_kcode_home(|| {
-        let mut session = crate::session::Session::create(None, None);
+        // A title makes the session persist without a visible message.
+        let mut session =
+            crate::session::Session::create(None, Some("improve mode test".to_string()));
         session.improve_mode = Some(crate::session::SessionImproveMode::ImprovePlan);
         let session_id = session.id.clone();
         session.save().expect("save session");

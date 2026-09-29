@@ -170,6 +170,9 @@ impl ScopedEnvVar {
     fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
         let prev = std::env::var_os(key);
         crate::env::set_var(key, value);
+        // Config caches env-derived values; a scoped override must be visible
+        // while set and must not leak into the next test after it drops.
+        crate::config::invalidate_config_cache();
         Self { key, prev }
     }
 }
@@ -181,6 +184,7 @@ impl Drop for ScopedEnvVar {
         } else {
             crate::env::remove_var(self.key);
         }
+        crate::config::invalidate_config_cache();
     }
 }
 
@@ -324,6 +328,7 @@ fn persisted_headless_member(
 
 #[tokio::test]
 async fn background_task_wake_runs_live_session_immediately_when_idle() {
+    let _env_lock = crate::storage::lock_test_env();
     let provider = Arc::new(StreamingMockProvider::default());
     provider.queue_response(vec![
         StreamEvent::TextDelta("Build result processed.".to_string()),

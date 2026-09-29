@@ -372,6 +372,19 @@ impl Session {
     }
 
     pub fn save(&mut self) -> Result<()> {
+        self.save_inner(false)
+    }
+
+    /// Persist even when the lazy-save gate would skip an empty session.
+    ///
+    /// Used by callers that create a session with an explicit purpose -- a
+    /// spawned session a client must be able to attach to -- where "no visible
+    /// message yet" is not "nothing to save".
+    pub fn save_persistent(&mut self) -> Result<()> {
+        self.save_inner(true)
+    }
+
+    fn save_inner(&mut self, force: bool) -> Result<()> {
         self.updated_at = Utc::now();
         let path = session_path(&self.id)?;
         let journal_path = session_journal_path_from_snapshot(&path);
@@ -387,7 +400,8 @@ impl Session {
         // id find no file and silently treat the session as missing.
         // Parent linkage is also explicit state: an empty fork carries only a
         // hidden fork notice but must be loadable when its new client attaches.
-        if !self.persist_state.snapshot_exists
+        if !force
+            && !self.persist_state.snapshot_exists
             && !self
                 .messages
                 .iter()

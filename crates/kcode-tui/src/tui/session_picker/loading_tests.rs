@@ -187,6 +187,7 @@ fn load_sessions_includes_saved_sessions_beyond_scan_limit() {
     let temp = tempfile::tempdir().expect("temp dir");
     let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
     let _scan_limit = EnvVarGuard::set_str("KCODE_SESSION_PICKER_MAX_SESSIONS", "50");
+    let _include_saved = EnvVarGuard::set_str("KCODE_SESSION_PICKER_INCLUDE_OLD_SAVED", "1");
 
     let mut saved_session = Session::create_with_id(
         "session_saved_beyond_scan_limit".to_string(),

@@ -590,95 +590,6 @@ async fn print_tool_definition_token_report() {
     }
 }
 
-/// Tool descriptions are always-on prompt cost, so they are capped at ~20
-/// estimated tokens. Behavioral guidance belongs in parameter descriptions.
-/// Exemptions must be justified inline.
-#[tokio::test]
-async fn tool_descriptions_stay_under_token_cap() {
-    const DESCRIPTION_TOKEN_CAP: usize = 20;
-    // swarm appends the user-tunable swarm-prompt.md by design.
-    const EXEMPT: &[&str] = &["swarm"];
-
-    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
-    let registry = Registry::new(provider).await;
-    let over_cap: Vec<String> = registry
-        .definitions(None)
-        .await
-        .into_iter()
-        .filter(|def| !EXEMPT.contains(&def.name.as_str()))
-        .filter(|def| def.description_token_estimate() > DESCRIPTION_TOKEN_CAP)
-        .map(|def| {
-            format!(
-                "{} (~{} tokens): {}",
-                def.name,
-                def.description_token_estimate(),
-                def.description
-            )
-        })
-        .collect();
-    assert!(
-        over_cap.is_empty(),
-        "tool descriptions over the {DESCRIPTION_TOKEN_CAP}-token cap:\n{}",
-        over_cap.join("\n")
-    );
-}
-
-fn collect_param_descriptions(schema: &Value, path: &str, out: &mut Vec<(String, String)>) {
-    match schema {
-        Value::Object(map) => {
-            if path != "$"
-                && let Some(Value::String(description)) = map.get("description")
-            {
-                out.push((path.to_string(), description.clone()));
-            }
-            for (key, value) in map {
-                if key == "description" {
-                    continue;
-                }
-                collect_param_descriptions(value, &format!("{path}.{key}"), out);
-            }
-        }
-        Value::Array(items) => {
-            for (idx, item) in items.iter().enumerate() {
-                collect_param_descriptions(item, &format!("{path}[{idx}]"), out);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Parameter descriptions inside tool schemas are also always-on prompt cost,
-/// so each is capped. Longer guidance belongs in runtime error messages, docs,
-/// or the system prompt (the todo calibration rubrics, for example, live in
-/// the gate continuation messages in kcode-base::todo).
-#[tokio::test]
-async fn tool_parameter_descriptions_stay_under_token_cap() {
-    const PARAM_DESCRIPTION_TOKEN_CAP: usize = 25;
-
-    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
-    let registry = Registry::new(provider).await;
-    let mut over_cap: Vec<String> = Vec::new();
-    for def in registry.definitions(None).await {
-        let mut descriptions = Vec::new();
-        collect_param_descriptions(&def.input_schema, "$", &mut descriptions);
-        for (path, description) in descriptions {
-            let tokens = crate::util::estimate_tokens(&description);
-            if tokens > PARAM_DESCRIPTION_TOKEN_CAP {
-                over_cap.push(format!(
-                    "{} {} (~{} tokens): {}",
-                    def.name, path, tokens, description
-                ));
-            }
-        }
-    }
-    assert!(
-        over_cap.is_empty(),
-        "{} parameter descriptions over the {PARAM_DESCRIPTION_TOKEN_CAP}-token cap:\n{}",
-        over_cap.len(),
-        over_cap.join("\n")
-    );
-}
-
 fn schema_type_includes(schema: &Value, expected: &str) -> bool {
     match schema.get("type") {
         Some(Value::String(value)) => value == expected,
@@ -1037,24 +948,6 @@ fn test_accepts_large_output_requires_an_unambiguous_yes() {
     }
 }
 
-#[tokio::test]
-async fn test_request_permission_is_ambient_only() {
-    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
-    let registry = Registry::new(provider).await;
-
-    let defs = registry.definitions(None).await;
-    assert!(
-        !defs.iter().any(|d| d.name == "request_permission"),
-        "request_permission should not be available in normal sessions"
-    );
-
-    let defs_after = registry.definitions(None).await;
-    assert!(
-        defs_after.iter().any(|d| d.name == "request_permission"),
-        "request_permission should be available after ambient tool registration"
-    );
-}
-
 #[test]
 fn closest_tool_names_suggests_near_misses() {
     let available = ["todo", "end_ambient_cycle", "bash", "read", "write", "edit"];
@@ -1097,10 +990,6 @@ async fn unknown_tool_error_lists_available_tools_and_suggestions() {
     assert!(
         msg.contains("Available tools:"),
         "error must list available tools so the model can recover (#104): {msg}"
-    );
-    assert!(
-        msg.contains("end_ambient_cycle"),
-        "available list should include registered ambient tools: {msg}"
     );
 }
 

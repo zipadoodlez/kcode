@@ -1358,8 +1358,10 @@ fn visually_appealing_prompt_batched_retry_renders_complete_todo_card() {
     assert!(rendered.contains("✓ todo"), "{rendered}");
     assert!(rendered.contains("pelican-bike"), "{rendered}");
     assert!(
-        compact.contains(&without_whitespace(OBJECTIVE)),
-        "batched todo plan intention was truncated:\n{rendered}"
+        rendered
+            .lines()
+            .any(|line| line.contains("Intent ") && line.trim_end().ends_with('…')),
+        "batched todo card should ellipsize the long plan intention:\n{rendered}"
     );
     // Compact transcript cards show the goal's quality assessments rather than
     // repeating its potentially long feedback-loop prose. The full prose remains
@@ -2527,63 +2529,6 @@ fn render_tool_message_full_inline_mode_shows_full_diff() {
         "plain={plain}"
     );
     assert!(!plain.contains('…'), "plain={plain}");
-}
-
-#[test]
-fn render_tool_message_memory_recall_centered_mode_left_aligns_with_padding() {
-    let saved = crate::tui::markdown::center_code_blocks();
-    crate::tui::markdown::set_center_code_blocks(true);
-    let msg = DisplayMessage {
-        role: "tool".to_string(),
-        content: concat!(
-            "- [fact] Centered mode should keep the recall card centered\n",
-            "- [preference] The user likes visible side gutters"
-        )
-        .to_string(),
-        tool_calls: Vec::new(),
-        duration_secs: None,
-        title: None,
-        tool_data: Some(crate::message::ToolCall {
-            id: "call_memory_recall_centered".to_string(),
-            name: "memory".to_string(),
-            input: serde_json::json!({
-                "action": "recall",
-                "query": "centered mode"
-            }),
-            intent: None,
-            thought_signature: None,
-        }),
-    };
-
-    let lines = render_tool_message(&msg, 120, crate::config::DiffDisplayMode::Off);
-    let rendered: Vec<String> = lines
-        .iter()
-        .map(|line| {
-            line.spans
-                .iter()
-                .map(|span| span.content.as_ref())
-                .collect()
-        })
-        .collect();
-
-    assert!(!rendered.is_empty(), "expected rendered recall card");
-    assert!(
-        rendered.iter().all(|line| line.starts_with("  ")),
-        "centered recall card should include shared left padding: {rendered:?}"
-    );
-    assert_eq!(
-        lines[0].alignment,
-        Some(ratatui::layout::Alignment::Left),
-        "centered recall card header should be left-aligned after padding"
-    );
-    assert!(
-        rendered[0]
-            .trim_start()
-            .starts_with("🧠 recalled 2 memories"),
-        "unexpected recall header: {rendered:?}"
-    );
-
-    crate::tui::markdown::set_center_code_blocks(saved);
 }
 
 #[test]

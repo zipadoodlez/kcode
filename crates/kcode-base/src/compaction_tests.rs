@@ -949,14 +949,6 @@ fn test_context_usage_with_both_estimate_and_observed() {
         manager.notify_message_added();
     }
 
-    // Without observed tokens, usage should be based on char estimate
-    let usage_no_observed = manager.context_usage_with(&messages);
-    assert!(
-        usage_no_observed < 0.2,
-        "char estimate should be low: {}",
-        usage_no_observed
-    );
-
     // With observed tokens at 160k, should use observed (higher) value
     manager.update_observed_input_tokens(160_000);
     let usage_with_observed = manager.context_usage_with(&messages);

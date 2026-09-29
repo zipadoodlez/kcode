@@ -120,6 +120,9 @@ fn test_tool_side_panel_uses_shared_right_pane_keyboard_focus() {
     };
 
     assert!(app.diff_pane_visible());
+    // The right-pane focus is acquired when a page is opened; acquire it the
+    // same way rather than assuming a snapshot implies focus.
+    app.set_diff_pane_focus(true);
     assert!(app.diff_pane_focus);
 
     // Cycle the diff display mode via its configured chord (Alt+G by

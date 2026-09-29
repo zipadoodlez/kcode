@@ -7,6 +7,8 @@ use std::ffi::OsString;
 
 struct TestEnvGuard {
     prev_home: Option<OsString>,
+    prev_socket: Option<OsString>,
+    prev_runtime: Option<OsString>,
     _temp_home: tempfile::TempDir,
     _lock: std::sync::MutexGuard<'static, ()>,
 }
@@ -18,9 +20,18 @@ impl TestEnvGuard {
             .prefix("kcode-cli-restart-test-home-")
             .tempdir()?;
         let prev_home = std::env::var_os("KCODE_HOME");
+        let prev_socket = std::env::var_os("KCODE_SOCKET");
+        let prev_runtime = std::env::var_os("KCODE_RUNTIME_DIR");
         crate::env::set_var("KCODE_HOME", temp_home.path());
+        // Keep the debug client off any live shared daemon: point the socket into
+        // the sandbox so `connect_debug` fails and `run_restart_save_command`
+        // takes its local-snapshot fallback instead of a debug-control refusal.
+        crate::env::set_var("KCODE_SOCKET", temp_home.path().join("kcode.sock"));
+        crate::env::set_var("KCODE_RUNTIME_DIR", temp_home.path());
         Ok(Self {
             prev_home,
+            prev_socket,
+            prev_runtime,
             _temp_home: temp_home,
             _lock: lock,
         })
@@ -29,10 +40,16 @@ impl TestEnvGuard {
 
 impl Drop for TestEnvGuard {
     fn drop(&mut self) {
-        if let Some(prev_home) = &self.prev_home {
-            crate::env::set_var("KCODE_HOME", prev_home);
-        } else {
-            crate::env::remove_var("KCODE_HOME");
+        for (key, prev) in [
+            ("KCODE_HOME", &self.prev_home),
+            ("KCODE_SOCKET", &self.prev_socket),
+            ("KCODE_RUNTIME_DIR", &self.prev_runtime),
+        ] {
+            if let Some(prev) = prev {
+                crate::env::set_var(key, prev);
+            } else {
+                crate::env::remove_var(key);
+            }
         }
     }
 }

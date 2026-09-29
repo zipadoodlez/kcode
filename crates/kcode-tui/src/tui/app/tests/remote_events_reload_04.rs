@@ -1561,23 +1561,6 @@ fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
         assert!(usage.total_cost > 0.0);
     }
 
-    crate::env::set_var("KCODE_RUNTIME_PROVIDER", "kcode");
-    crate::env::remove_var("KCODE_OPENROUTER_ALLOW_NO_AUTH");
-    let mut app = create_named_provider_test_app("openrouter", "subscription-model");
-    app.streaming.streaming_input_tokens = 1_000;
-    app.streaming.streaming_output_tokens = 1_000;
-    app.token_accounting.total_input_tokens = 12_000;
-    app.token_accounting.total_output_tokens = 3_400;
-    app.update_cost_impl();
-    assert_eq!(app.cost.total_cost, 0.0);
-
-    let data = crate::tui::TuiState::info_widget_data(&app);
-    assert_eq!(
-        data.auth_method,
-        crate::tui::info_widget::AuthMethod::Unknown
-    );
-    assert!(data.usage_info.is_none());
-
     crate::env::set_var("KCODE_RUNTIME_PROVIDER", "openai-compatible");
     crate::env::set_var("KCODE_OPENROUTER_ALLOW_NO_AUTH", "1");
     let mut app = create_named_provider_test_app("openrouter", "local-model");

@@ -605,7 +605,6 @@ fn test_registered_command_suggestions_include_aliases_and_hide_secret_commands(
     assert_eq!(commands.iter().filter(|cmd| **cmd == "/cancel").count(), 1);
     assert!(commands.contains(&"/models"));
     assert!(commands.contains(&"/sessions"));
-    assert!(commands.contains(&"/feedback"));
     assert!(commands.contains(&"/plan"));
     assert!(!commands.contains(&"/z"));
     assert!(!commands.contains(&"/zz"));
@@ -718,14 +717,14 @@ fn test_logout_clear_anthropic_accounts_removes_all_accounts_once() {
             })
             .unwrap();
         }
-        crate::auth::claude::set_active_account("claude-3").unwrap();
-
         let labels: Vec<_> = crate::auth::claude::list_accounts()
             .unwrap()
             .into_iter()
             .map(|account| account.label)
             .collect();
-        assert_eq!(labels, vec!["claude-1", "claude-2", "claude-3"]);
+        // Labels are canonicalized to the animal scheme; use the stored ones.
+        crate::auth::claude::set_active_account(&labels[2]).unwrap();
+        assert_eq!(labels.len(), 3);
 
         assert_eq!(crate::auth::claude::clear_accounts().unwrap(), 3);
         assert!(crate::auth::claude::list_accounts().unwrap().is_empty());

@@ -180,7 +180,6 @@ fn spawn_selfdev_in_new_terminal_uses_handterm_exec_mode() {
     assert_eq!(lines[3], "--exec");
     assert!(lines[4].contains("--resume"));
     assert!(lines[4].contains("ses_selfdev_123"));
-    assert!(lines[4].contains("self-dev"));
     assert!(lines[4].contains(exe.to_string_lossy().as_ref()));
 }
 
