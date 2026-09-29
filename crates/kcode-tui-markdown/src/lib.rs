@@ -872,28 +872,25 @@ fn count_unescaped_double_dollar(line: &str) -> usize {
     count
 }
 
-fn raw_math_inline_span(math: &str) -> Span<'static> {
-    Span::styled(format!("${math}$"), Style::default().fg(math_inline_fg()))
+fn math_inline_span(math: &str) -> Span<'static> {
+    Span::styled(
+        kcode_render_core::render_inline_latex(math),
+        Style::default().fg(math_inline_fg()),
+    )
 }
 
-fn raw_math_display_lines(math: &str) -> Vec<Line<'static>> {
+fn math_display_lines(math: &str) -> Vec<Line<'static>> {
     let dim = Style::default().fg(md_dim_color());
-    let mut out = vec![Line::from(Span::styled("┌─ math (raw) ", dim)).left_aligned()];
-    out.push(Line::from(vec![
-        Span::styled("│ ", dim),
-        Span::styled("$$", Style::default().fg(math_fg())),
-    ]));
-    out.extend(math.lines().map(|line| {
-        Line::from(vec![
-            Span::styled("│ ", dim),
-            Span::styled(line.to_string(), Style::default().fg(math_fg())),
-        ])
-        .left_aligned()
-    }));
-    out.push(Line::from(vec![
-        Span::styled("│ ", dim),
-        Span::styled("$$", Style::default().fg(math_fg())),
-    ]));
+    let mut out = vec![Line::from(Span::styled("┌─ math ", dim)).left_aligned()];
+    for line in kcode_render_core::render_display_latex(math) {
+        out.push(
+            Line::from(vec![
+                Span::styled("│ ", dim),
+                Span::styled(line, Style::default().fg(math_fg())),
+            ])
+            .left_aligned(),
+        );
+    }
     out.push(Line::from(Span::styled("└─", dim)).left_aligned());
     out
 }

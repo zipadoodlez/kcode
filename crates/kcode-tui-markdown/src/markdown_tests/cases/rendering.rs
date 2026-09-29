@@ -1037,3 +1037,34 @@ fn test_reasoning_summary_line_markup_folds_to_single_dim_italic_trace() {
     }
     assert!(saw_marker, "summary marker '▸' must be visible: {lines:?}");
 }
+
+#[test]
+fn test_latex_delimiters_and_fenced_math_render_through_the_engine() {
+    // `\(...\)`, `\[...\]`, and fenced math are normalized by kcode-render-core
+    // before pulldown parses them, then rendered by the same engine that serves
+    // `$...$` / `$$...$$`.
+    let md = concat!(
+        "Area \\(\\pi a^2\\) inline.\n\n",
+        "\\[\\frac{x+1}{y}\\]\n\n",
+        "```math\n\\frac{a}{b}\n```\n",
+    );
+    let rendered = lines_to_string(&render_markdown(md));
+    assert!(rendered.contains("π a²"), "inline math: {rendered}");
+    assert!(rendered.contains("x+1"), "display math: {rendered}");
+    assert!(rendered.contains('─'), "display fraction bar: {rendered}");
+}
+
+#[test]
+fn test_display_math_is_stable_across_streaming_prefixes() {
+    let equation = concat!("Result:\n\n\\[\n", "\\frac{x+1}{y}\n=\n", "z\n\\]");
+    for end in equation
+        .char_indices()
+        .map(|(index, _)| index)
+        .chain(std::iter::once(equation.len()))
+    {
+        let prefix = &equation[..end];
+        let first = lines_to_string(&render_markdown(prefix));
+        let second = lines_to_string(&render_markdown(prefix));
+        assert_eq!(first, second, "nondeterministic at byte {end}");
+    }
+}

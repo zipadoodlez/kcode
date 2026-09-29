@@ -42,7 +42,6 @@ re-verified 2026-09-29 at `fba32bda` (`wc -l`).
 - [ ] Delete the dead local turn path: `app/local.rs` 584, `app/run_shell.rs`
   560, `app/event_wrappers.rs` 38, `app/overnight_card.rs` 183 (~1.3k with the
   partials). §0 "Bigger"; §2 owns it.
-- [ ] Decide the markdown renderer: `kcode-render-core` 3,825 + `kcode-tui-markdown/render_core_adapter.rs` 211 + its tests 584 ≈ 4,620. §0 "Bigger".
 - [ ] One home per duplicated helper: `parse_meminfo_kb` 3x,
   `truncated_stream_payload_context` 2x, the two reload-marker const pairs, and
   `now_ms` 3x (the last is a fix, not a move). §0's helper list has the sites.
@@ -90,7 +89,7 @@ lines.
 | cluster | lines | evidence | what holds its place | verdict |
 |---|---|---|---|---|
 | Dead local turn path | ~810 whole files (`local.rs` 590, `event_wrappers.rs` 38, `overnight_card.rs` 183) + ~30 partial items | `App::run` (`run_shell.rs:198`) has zero callers (live entry is `run_remote`, `tui_launch.rs:160`); cfg-ing it out yields exactly 48 `never used` items | tests drive `local::` from 8 files / 33 sites | delete after migrating those tests; ~1.5k with the partials |
-| Second markdown renderer | ~4,700 (`kcode-render-core` 4,542 + adapter 795) | `render_markdown_via_core` has only test callers; the TUI uses the legacy path (`ui_messages.rs:95`); the adapter's own doc says the legacy path "remains authoritative; this adapter is validated against it before any switchover" | `render-core` also supplies `reasoning_line_markup` to `kcode-base/src/session/render.rs` | a switchover, not a deletion: land it and delete the legacy path, or abandon it and delete the core |
+| Second markdown renderer | landed 2026-09-29 (was ~4,700) | `render_markdown_via_core` had only test callers; the adapter's own doc said the legacy path "remains authoritative" | the one live symbol was `reasoning_line_markup`; the rest was a parallel parser/model/wrap | resolved: deleted the parser/model/wrap (1,193) + adapter (795), moved reasoning to `kcode-message-types`, and wired the engine into the renderer. `kcode-render-core` is now only the LaTeX engine + normalization (2,220) |
 | Harnesses living in test files | ~3.7k | `[census]`: `live_tests.rs` 3,080 is `pub mod` production code consumed by `kcode-provider-doctor`; `smoothness_benchmark.rs` 332; `browser_fast_live_tests.rs` 250 | `live_tests` is genuinely production | move the non-test halves into modules; `live_tests` is a misnamed production module |
 | Duplicated tiny helpers | ~230, not the 500 first guessed | every family in the item list below was re-read and its bodies hash-compared; the census's `detect_*`/`generate_diff_*` rows were dropped as not-duplicates | 3-90 lines each, all with a home that already exists | one home each; see the item list |
 | Parallel persisted-state runtime | ~20, not 150 | read both files: the mechanism already lives in `server/durable_state.rs` (`load_json_state`, `save_json_state`, `hashed_request_key`, `state_dir`); only the 3-line `load_state`/`save_state` wrappers rhyme, and the payload, TTLs, and `is_stale` bodies differ | payload-specific | leave duplicated; a generic would weld two unrelated payloads together |
@@ -206,8 +205,6 @@ Bigger, each its own pass:
   live in `kcode-provider-doctor/src/`. §4 owns the test-tree item.
 - [ ] Delete the dead local turn path and migrate the 33 test call sites onto
   the remote path (~810-1,500 lines); §2 owns the local-turn-path item.
-- [ ] Decide the markdown renderer: finish the switchover or delete
-  `kcode-render-core` (~4,000 lines either way).
 
 ### What would settle the floor
 

@@ -6,6 +6,7 @@ pub fn render_markdown_lazy(
     visible_range: std::ops::Range<usize>,
 ) -> Vec<Line<'static>> {
     let text = escape_currency_dollars(text);
+    let text = kcode_render_core::normalize_latex_math(&text);
     let text = preserve_line_oriented_softbreaks(&text);
     let text = text.as_str();
     let mut lines: Vec<Line<'static>> = Vec::new();
@@ -477,7 +478,7 @@ pub fn render_markdown_lazy(
                     continue;
                 }
                 if in_table {
-                    current_cell.push_str(&format!("${math}$"));
+                    current_cell.push_str(&kcode_render_core::render_inline_latex(&math));
                 } else {
                     ensure_blockquote_prefix(&mut current_spans, blockquote_depth);
                     // Inline math must stay inline with the surrounding
@@ -485,7 +486,7 @@ pub fn render_markdown_lazy(
                     // Image mode use the Unicode span. Standalone `$...$`
                     // lines are already promoted to display math during
                     // preprocessing and take the image path there.
-                    current_spans.push(raw_math_inline_span(&math));
+                    current_spans.push(math_inline_span(&math));
                 }
             }
 
@@ -507,10 +508,10 @@ pub fn render_markdown_lazy(
                     ),
                 );
                 if in_table {
-                    current_cell.push_str(&format!("$${math}$$"));
+                    current_cell.push_str(&kcode_render_core::render_inline_latex(&math));
                 } else {
                     let block_start = lines.len();
-                    let rendered = raw_math_display_lines(&math);
+                    let rendered = math_display_lines(&math);
                     for line in rendered {
                         lines.push(with_blockquote_prefix(line, blockquote_depth));
                     }

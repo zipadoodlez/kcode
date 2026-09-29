@@ -1,7 +1,7 @@
 # Rendering
 
 How the TUI turns state into terminal output: the color pipeline, terminal
-compatibility, and the markdown parity contract.
+compatibility, and markdown and math rendering.
 
 ## Colors
 
@@ -89,16 +89,23 @@ heavy per-cell RGB churn (#330). Override with `KCODE_GLYPH_SAFE_MODE=on|off`.
 Keyboard protocols and tmux are in [tui.md](../user/tui.md). On exit the TUI
 restores what it changed (kitty keyboard pop, tmux `modifyOtherKeys` reset).
 
-## Markdown parity
+## Markdown and math
 
-The markdown renderer must match the reference renderer at four levels:
+One renderer, `crates/kcode-tui-markdown`, turns markdown into terminal lines.
 
-- **L1 content** - the visible text.
-- **L2 line structure** - line breaks and block boundaries.
-- **L3 wrapped layout** - output wrapped at widths 20, 40, and 80.
-- **L4 style invariants** - emphasis, code background, math styling.
+`crates/kcode-render-core` is the pure LaTeX half it calls, with no backend or
+document model:
 
-Zero tolerance: any mismatch at a level is a failure, not "close enough". Fuzzed
-inputs use statistical bounds by the rule of three (no observed failure in n runs
-bounds the rate at roughly 3/n). Harness:
-`crates/kcode-tui-markdown/src/render_core_adapter_tests.rs`.
+- `normalize_latex_math` rewrites the delimiter spellings pulldown-cmark does
+  not recognize (`\(...\)`, `\[...\]`, standalone display environments, and
+  fenced `math`/`latex`/`tex`/`katex`) into its `$`/`$$` form before parsing.
+- `render_inline_latex` / `render_display_latex` turn a math body into Unicode
+  (real fraction bars, roots, matrices, scripts) instead of raw source.
+
+Both forms reach the engine, `$...$` inline and `$$...$$` display, including
+inside table cells. The engine is pure, so its contract is unit-tested in
+`crates/kcode-render-core`; the renderer's integration is tested in
+`crates/kcode-tui-markdown/src/markdown_tests/cases/rendering.rs`.
+
+Normalization is deterministic for every streaming prefix, so a partially
+arrived equation stays stable until it completes.
