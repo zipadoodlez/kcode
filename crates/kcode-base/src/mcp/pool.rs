@@ -429,6 +429,9 @@ mod tests {
     use std::sync::Arc;
 
     #[tokio::test]
+    // The env lock must stay pinned for the whole test, and the test is async;
+    // holding it across the pool awaits is the point.
+    #[allow(clippy::await_holding_lock)]
     async fn issue_790_reload_reuses_default_config_directory() {
         let _guard = crate::storage::lock_test_env();
         let original_cwd = std::env::current_dir().expect("current cwd");

@@ -1,68 +1,7 @@
 use anyhow::Result;
 use kcode_provider_core::{ActiveProvider, provider_key};
 
-/// Stable product/runtime identity selected by login or provider initialization.
-///
-/// This intentionally differs from the lower-level [`ActiveProvider`] execution slot.
-/// For example Azure OpenAI currently reuses the OpenAI-compatible/OpenRouter HTTP
-/// transport, but its runtime identity is still Azure OpenAI.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RuntimeProviderId {
-    Claude,
-    ClaudeApiKey,
-    OpenAi,
-    OpenAiApiKey,
-    OpenRouter,
-    OpenAiCompatible,
-    AzureOpenAi,
-    Bedrock,
-    Cursor,
-    GrokBuild,
-    Copilot,
-    Gemini,
-    Antigravity,
-    AutoImport,
-}
-
-impl RuntimeProviderId {
-    pub const fn key(self) -> &'static str {
-        match self {
-            Self::Claude => "claude",
-            Self::ClaudeApiKey => "claude-api",
-            Self::OpenAi => "openai",
-            Self::OpenAiApiKey => "openai-api",
-            Self::OpenRouter => "openrouter",
-            Self::OpenAiCompatible => "openai-compatible",
-            Self::AzureOpenAi => "azure-openai",
-            Self::Bedrock => "bedrock",
-            Self::Cursor => "cursor",
-            Self::GrokBuild => "grok-build",
-            Self::Copilot => "copilot",
-            Self::Gemini => "gemini",
-            Self::Antigravity => "antigravity",
-            Self::AutoImport => "auto-import",
-        }
-    }
-
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Claude => "Anthropic/Claude",
-            Self::ClaudeApiKey => "Anthropic API",
-            Self::OpenAi => "OpenAI",
-            Self::OpenAiApiKey => "OpenAI API",
-            Self::OpenRouter => "OpenRouter",
-            Self::OpenAiCompatible => "OpenAI-compatible",
-            Self::AzureOpenAi => "Azure OpenAI",
-            Self::Bedrock => "AWS Bedrock",
-            Self::Cursor => "Cursor",
-            Self::GrokBuild => "Grok Build",
-            Self::Copilot => "GitHub Copilot",
-            Self::Gemini => "Gemini",
-            Self::Antigravity => "Antigravity",
-            Self::AutoImport => "Auto Import",
-        }
-    }
-}
+use crate::provider_catalog::{LoginProviderTarget, OPENAI_COMPAT_PROFILE};
 
 /// How model routing should be represented in the current process.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -103,15 +42,15 @@ impl RuntimeModelHint {
 /// Typed activation plan shared by CLI, TUI, and bootstrap code.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProviderActivation {
-    pub runtime_id: RuntimeProviderId,
+    pub identity: LoginProviderTarget,
     pub selection: RuntimeSelection,
     pub model_hint: Option<RuntimeModelHint>,
 }
 
 impl ProviderActivation {
-    pub fn new(runtime_id: RuntimeProviderId, selection: RuntimeSelection) -> Self {
+    pub fn new(identity: LoginProviderTarget, selection: RuntimeSelection) -> Self {
         Self {
-            runtime_id,
+            identity,
             selection,
             model_hint: None,
         }
@@ -122,16 +61,16 @@ impl ProviderActivation {
         self
     }
 
-    pub fn initial(runtime_id: RuntimeProviderId, active_provider: ActiveProvider) -> Self {
-        Self::new(runtime_id, RuntimeSelection::Initial(active_provider))
+    pub fn initial(identity: LoginProviderTarget, active_provider: ActiveProvider) -> Self {
+        Self::new(identity, RuntimeSelection::Initial(active_provider))
     }
 
-    pub fn unlocked(runtime_id: RuntimeProviderId, active_hint: Option<ActiveProvider>) -> Self {
-        Self::new(runtime_id, RuntimeSelection::Unlocked { active_hint })
+    pub fn unlocked(identity: LoginProviderTarget, active_hint: Option<ActiveProvider>) -> Self {
+        Self::new(identity, RuntimeSelection::Unlocked { active_hint })
     }
 
     pub fn azure_openai(model: Option<String>) -> Self {
-        let activation = Self::initial(RuntimeProviderId::AzureOpenAi, ActiveProvider::OpenRouter);
+        let activation = Self::initial(LoginProviderTarget::Azure, ActiveProvider::OpenRouter);
         if let Some(model) = model.filter(|value| !value.trim().is_empty()) {
             activation.with_model_hint("KCODE_OPENROUTER_MODEL", model)
         } else {
@@ -141,7 +80,7 @@ impl ProviderActivation {
 
     pub fn openai_compatible(model: Option<String>) -> Self {
         let activation = Self::initial(
-            RuntimeProviderId::OpenAiCompatible,
+            LoginProviderTarget::OpenAiCompatible(OPENAI_COMPAT_PROFILE),
             ActiveProvider::OpenRouter,
         );
         if let Some(model) = model.filter(|value| !value.trim().is_empty()) {
@@ -152,15 +91,15 @@ impl ProviderActivation {
     }
 
     pub fn apply_env(&self) -> Result<()> {
-        crate::env::set_var("KCODE_RUNTIME_PROVIDER", self.runtime_id.key());
-        match self.runtime_id {
-            RuntimeProviderId::OpenRouter => {
+        crate::env::set_var("KCODE_RUNTIME_PROVIDER", self.identity.key());
+        match self.identity {
+            LoginProviderTarget::OpenRouter => {
                 crate::env::set_var("KCODE_OPENROUTER_TRANSPORT_STATE", "openrouter-api-key")
             }
-            RuntimeProviderId::AzureOpenAi => {
+            LoginProviderTarget::Azure => {
                 crate::env::set_var("KCODE_OPENROUTER_TRANSPORT_STATE", "direct-api-key")
             }
-            RuntimeProviderId::OpenAiCompatible => {
+            LoginProviderTarget::OpenAiCompatible(_) => {
                 if std::env::var_os("KCODE_OPENROUTER_TRANSPORT_STATE").is_none() {
                     crate::env::set_var("KCODE_OPENROUTER_TRANSPORT_STATE", "direct-api-key");
                 }
@@ -200,9 +139,9 @@ impl ProviderActivation {
             .unwrap_or("");
         crate::logging::auth_event(
             "runtime_activation",
-            self.runtime_id.key(),
+            self.identity.key(),
             &[
-                ("label", self.runtime_id.label()),
+                ("label", self.identity.label()),
                 ("selection", self.selection.log_value()),
                 ("active_provider", active_key_for_log),
                 ("model_env", model_env),

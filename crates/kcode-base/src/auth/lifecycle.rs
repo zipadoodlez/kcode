@@ -1,6 +1,7 @@
 use crate::protocol::{AuthChanged, CatalogNamespace, RuntimeProviderKey};
 use crate::provider::ModelRoute;
-use crate::provider::activation::{ProviderActivation, RuntimeProviderId};
+use crate::provider::activation::ProviderActivation;
+use crate::provider_catalog::LoginProviderTarget;
 use kcode_provider_core::ActiveProvider;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -1132,21 +1133,28 @@ fn apply_auth_provider_runtime(provider_id: Option<&str>) -> Option<String> {
 }
 
 fn direct_provider_activation(provider_id: &str) -> Option<ProviderActivation> {
-    let (runtime_id, active) = match normalized_login_provider_id(provider_id)? {
-        "claude" => (RuntimeProviderId::Claude, ActiveProvider::Claude),
-        "claude-api" => (RuntimeProviderId::ClaudeApiKey, ActiveProvider::Claude),
-        "openai" => (RuntimeProviderId::OpenAi, ActiveProvider::OpenAI),
-        "openai-api" => (RuntimeProviderId::OpenAiApiKey, ActiveProvider::OpenAI),
-        "openrouter" => (RuntimeProviderId::OpenRouter, ActiveProvider::OpenRouter),
-        "bedrock" => (RuntimeProviderId::Bedrock, ActiveProvider::Bedrock),
-        "cursor" => (RuntimeProviderId::Cursor, ActiveProvider::Cursor),
-        "copilot" => (RuntimeProviderId::Copilot, ActiveProvider::Copilot),
-        "gemini" => (RuntimeProviderId::Gemini, ActiveProvider::Gemini),
-        "antigravity" => (RuntimeProviderId::Antigravity, ActiveProvider::Antigravity),
-        "grok-build" => (RuntimeProviderId::GrokBuild, ActiveProvider::OpenRouter),
-        _ => return None,
+    let identity = crate::provider_catalog::resolve_login_provider(provider_id)?.target;
+    // Identity comes from the registry; the execution slot is a separate
+    // concept (e.g. Grok Build runs on the OpenRouter slot), so it stays a
+    // local map. A `None` slot means the provider activates through a
+    // dedicated path that applies its own env first: Azure and the
+    // OpenAI-compatible profiles, plus auto-import, which has no runtime.
+    let active = match identity {
+        LoginProviderTarget::Claude | LoginProviderTarget::ClaudeApiKey => ActiveProvider::Claude,
+        LoginProviderTarget::OpenAi | LoginProviderTarget::OpenAiApiKey => ActiveProvider::OpenAI,
+        LoginProviderTarget::OpenRouter | LoginProviderTarget::GrokBuild => {
+            ActiveProvider::OpenRouter
+        }
+        LoginProviderTarget::Bedrock => ActiveProvider::Bedrock,
+        LoginProviderTarget::Cursor => ActiveProvider::Cursor,
+        LoginProviderTarget::Copilot => ActiveProvider::Copilot,
+        LoginProviderTarget::Gemini => ActiveProvider::Gemini,
+        LoginProviderTarget::Antigravity => ActiveProvider::Antigravity,
+        LoginProviderTarget::Azure
+        | LoginProviderTarget::OpenAiCompatible(_)
+        | LoginProviderTarget::AutoImport => return None,
     };
-    Some(ProviderActivation::initial(runtime_id, active))
+    Some(ProviderActivation::initial(identity, active))
 }
 
 pub fn model_switch_request_for_provider_id(

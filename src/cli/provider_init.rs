@@ -1206,357 +1206,336 @@ async fn init_provider_with_options(
         }
     };
 
-    let provider: Arc<dyn provider::Provider> = match choice {
-        ProviderChoice::Claude => {
-            ensure_claude_auth_allowed_for_explicit_choice()?;
-            init_notice("Using Claude as the initial provider (use /model to switch)");
-            select_initial_model_provider("claude");
-            Arc::new(provider::MultiProvider::with_preference_fast(false))
-        }
-        ProviderChoice::AnthropicApi => {
-            ensure_external_api_key_auth_allowed_for_explicit_choice("ANTHROPIC_API_KEY")?;
-            init_notice("Using Anthropic API key as the initial provider (use /model to switch)");
-            select_initial_model_provider("claude");
-            Arc::new(provider::MultiProvider::with_preference_fast(false))
-        }
-        ProviderChoice::ClaudeSubprocess => {
-            ensure_claude_auth_allowed_for_explicit_choice()?;
-            crate::logging::warn(
-                "Using --provider claude-subprocess is deprecated and will be removed. Prefer `--provider claude`.",
-            );
-            crate::env::set_var("KCODE_USE_CLAUDE_CLI", "1");
-            init_notice(
-                "Using deprecated Claude subprocess transport as the initial provider (legacy compatibility mode)",
-            );
-            select_initial_model_provider("claude");
-            Arc::new(provider::MultiProvider::with_preference_fast(false))
-        }
-        ProviderChoice::Openai => {
-            ensure_openai_auth_allowed_for_explicit_choice()?;
-            init_notice("Using OpenAI as the initial provider (use /model to switch)");
-            select_initial_model_provider("openai");
-            Arc::new(provider::MultiProvider::with_preference_fast(true))
-        }
-        ProviderChoice::OpenaiApi => {
-            ensure_external_api_key_auth_allowed_for_explicit_choice("OPENAI_API_KEY")?;
-            init_notice("Using OpenAI API key as the initial provider (use /model to switch)");
-            select_initial_model_provider("openai");
-            Arc::new(provider::MultiProvider::with_preference_fast(true))
-        }
-        ProviderChoice::Cursor => {
-            ensure_cursor_auth_allowed_for_explicit_choice()?;
-            init_notice("Using Cursor native HTTPS provider (experimental)");
-            clear_initial_model_provider();
-            crate::env::set_var("KCODE_ACTIVE_PROVIDER", "cursor");
-            Arc::new(kcode_provider_cursor_runtime::CursorCliProvider::new())
-        }
-        ProviderChoice::Copilot => {
-            ensure_copilot_auth_allowed_for_explicit_choice()?;
-            init_notice("Using GitHub Copilot API as the initial provider (use /model to switch)");
-            select_initial_model_provider("copilot");
-            Arc::new(provider::MultiProvider::new_fast())
-        }
-        ProviderChoice::Gemini => {
-            ensure_gemini_auth_allowed_for_explicit_choice()?;
-            if auth::gemini::has_api_key() {
+    // The deprecated `claude-subprocess` shares the Claude descriptor but needs
+    // its own env setup, so it is handled before the kind dispatch rather than
+    // as a registry kind.
+    let provider: Arc<dyn provider::Provider> = if matches!(
+        choice,
+        ProviderChoice::ClaudeSubprocess
+    ) {
+        ensure_claude_auth_allowed_for_explicit_choice()?;
+        crate::logging::warn(
+            "Using --provider claude-subprocess is deprecated and will be removed. Prefer `--provider claude`.",
+        );
+        crate::env::set_var("KCODE_USE_CLAUDE_CLI", "1");
+        init_notice(
+            "Using deprecated Claude subprocess transport as the initial provider (legacy compatibility mode)",
+        );
+        select_initial_model_provider("claude");
+        Arc::new(provider::MultiProvider::with_preference_fast(false))
+    } else {
+        match login_provider_for_choice(choice).map(|descriptor| descriptor.target) {
+            Some(LoginProviderTarget::Claude) => {
+                ensure_claude_auth_allowed_for_explicit_choice()?;
+                init_notice("Using Claude as the initial provider (use /model to switch)");
+                select_initial_model_provider("claude");
+                Arc::new(provider::MultiProvider::with_preference_fast(false))
+            }
+            Some(LoginProviderTarget::ClaudeApiKey) => {
+                ensure_external_api_key_auth_allowed_for_explicit_choice("ANTHROPIC_API_KEY")?;
                 init_notice(
-                    "Using Gemini provider (official Gemini Developer API key, generativelanguage.googleapis.com)",
+                    "Using Anthropic API key as the initial provider (use /model to switch)",
                 );
-            } else {
-                init_notice("Using Gemini provider (native Google Code Assist OAuth)");
+                select_initial_model_provider("claude");
+                Arc::new(provider::MultiProvider::with_preference_fast(false))
             }
-            clear_initial_model_provider();
-            crate::env::set_var("KCODE_ACTIVE_PROVIDER", "gemini");
-            Arc::new(kcode_provider_gemini_runtime::GeminiProvider::new())
-        }
-        ProviderChoice::GrokBuild => {
-            init_notice("Using Grok Build subscription via the authenticated Grok CLI");
-            clear_initial_model_provider();
-            crate::env::set_var("KCODE_ACTIVE_PROVIDER", "grok-build");
-            crate::provider::external::instantiate_external_provider(
-                crate::provider::external::GROK_BUILD_RUNTIME,
-            )
-            .ok_or_else(|| anyhow::anyhow!("Grok Build runtime is not registered"))?
-        }
-        ProviderChoice::Openrouter => {
-            ensure_external_api_key_auth_allowed_for_explicit_choice("OPENROUTER_API_KEY")?;
-            init_notice("Using OpenRouter as the initial provider (use /model to switch)");
-            select_initial_model_provider("openrouter");
-            Arc::new(provider::MultiProvider::new_fast())
-        }
-        ProviderChoice::Bedrock => {
-            init_notice("Using AWS Bedrock as the initial provider (use /model to switch)");
-            select_initial_model_provider("bedrock");
-            Arc::new(provider::MultiProvider::new_fast())
-        }
-        ProviderChoice::Azure => {
-            let model = crate::provider::activation::apply_azure_openai_runtime()?;
-            init_notice("Using Azure OpenAI as the initial provider (use /model to switch)");
-            let multi = provider::MultiProvider::new_fast();
-            if let Some(model) = model {
-                let _ = multi.set_model(&model);
+            Some(LoginProviderTarget::OpenAi) => {
+                ensure_openai_auth_allowed_for_explicit_choice()?;
+                init_notice("Using OpenAI as the initial provider (use /model to switch)");
+                select_initial_model_provider("openai");
+                Arc::new(provider::MultiProvider::with_preference_fast(true))
             }
-            Arc::new(multi)
-        }
-        ProviderChoice::Opencode
-        | ProviderChoice::OpencodeGo
-        | ProviderChoice::OrcaRouter
-        | ProviderChoice::Zai
-        | ProviderChoice::Ai302
-        | ProviderChoice::Baseten
-        | ProviderChoice::Conifer
-        | ProviderChoice::Cortecs
-        | ProviderChoice::Comtegra
-        | ProviderChoice::Deepseek
-        | ProviderChoice::Fpt
-        | ProviderChoice::Firmware
-        | ProviderChoice::HuggingFace
-        | ProviderChoice::MoonshotAi
-        | ProviderChoice::Kimi
-        | ProviderChoice::Nebius
-        | ProviderChoice::Scaleway
-        | ProviderChoice::Stackit
-        | ProviderChoice::Groq
-        | ProviderChoice::Mistral
-        | ProviderChoice::Perplexity
-        | ProviderChoice::TogetherAi
-        | ProviderChoice::Deepinfra
-        | ProviderChoice::Fireworks
-        | ProviderChoice::Novita
-        | ProviderChoice::Minimax
-        | ProviderChoice::Xai
-        | ProviderChoice::NvidiaNim
-        | ProviderChoice::XiaomiMimo
-        | ProviderChoice::MetaMuse
-        | ProviderChoice::Celeris
-        | ProviderChoice::Lmstudio
-        | ProviderChoice::Ollama
-        | ProviderChoice::Chutes
-        | ProviderChoice::Cerebras
-        | ProviderChoice::Belvedir
-        | ProviderChoice::AlibabaCodingPlan
-        | ProviderChoice::GeminiApi
-        | ProviderChoice::OpenaiCompatible => {
-            let profile = profile_for_choice(choice)
-                .ok_or_else(|| anyhow::anyhow!("missing provider profile for choice"))?;
-            if std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_none() {
-                // An explicit `--provider <compatible>` selection should win over
-                // any stale active-profile marker inherited from a previous
-                // bootstrap/login flow. Named provider profiles still take
-                // precedence when explicitly configured.
-                force_apply_openai_compatible_profile_env(Some(profile));
+            Some(LoginProviderTarget::OpenAiApiKey) => {
+                ensure_external_api_key_auth_allowed_for_explicit_choice("OPENAI_API_KEY")?;
+                init_notice("Using OpenAI API key as the initial provider (use /model to switch)");
+                select_initial_model_provider("openai");
+                Arc::new(provider::MultiProvider::with_preference_fast(true))
             }
-            let mut runtime_model_hint = None;
-            let display_name = if let Ok(named) = std::env::var("KCODE_NAMED_PROVIDER_PROFILE") {
-                if let Some(profile) = crate::config::config().providers.get(&named) {
-                    runtime_model_hint = profile.default_model.clone();
+            Some(LoginProviderTarget::Cursor) => {
+                ensure_cursor_auth_allowed_for_explicit_choice()?;
+                init_notice("Using Cursor native HTTPS provider (experimental)");
+                clear_initial_model_provider();
+                crate::env::set_var("KCODE_ACTIVE_PROVIDER", "cursor");
+                Arc::new(kcode_provider_cursor_runtime::CursorCliProvider::new())
+            }
+            Some(LoginProviderTarget::Copilot) => {
+                ensure_copilot_auth_allowed_for_explicit_choice()?;
+                init_notice(
+                    "Using GitHub Copilot API as the initial provider (use /model to switch)",
+                );
+                select_initial_model_provider("copilot");
+                Arc::new(provider::MultiProvider::new_fast())
+            }
+            Some(LoginProviderTarget::Gemini) => {
+                ensure_gemini_auth_allowed_for_explicit_choice()?;
+                if auth::gemini::has_api_key() {
+                    init_notice(
+                        "Using Gemini provider (official Gemini Developer API key, generativelanguage.googleapis.com)",
+                    );
+                } else {
+                    init_notice("Using Gemini provider (native Google Code Assist OAuth)");
                 }
-                named
-            } else {
-                let resolved = resolve_openai_compatible_profile(profile);
-                if resolved.requires_api_key {
-                    ensure_external_api_key_auth_allowed_for_explicit_choice(
-                        &resolved.api_key_env,
-                    )?;
+                clear_initial_model_provider();
+                crate::env::set_var("KCODE_ACTIVE_PROVIDER", "gemini");
+                Arc::new(kcode_provider_gemini_runtime::GeminiProvider::new())
+            }
+            Some(LoginProviderTarget::GrokBuild) => {
+                init_notice("Using Grok Build subscription via the authenticated Grok CLI");
+                clear_initial_model_provider();
+                crate::env::set_var("KCODE_ACTIVE_PROVIDER", "grok-build");
+                crate::provider::external::instantiate_external_provider(
+                    crate::provider::external::GROK_BUILD_RUNTIME,
+                )
+                .ok_or_else(|| anyhow::anyhow!("Grok Build runtime is not registered"))?
+            }
+            Some(LoginProviderTarget::OpenRouter) => {
+                ensure_external_api_key_auth_allowed_for_explicit_choice("OPENROUTER_API_KEY")?;
+                init_notice("Using OpenRouter as the initial provider (use /model to switch)");
+                select_initial_model_provider("openrouter");
+                Arc::new(provider::MultiProvider::new_fast())
+            }
+            Some(LoginProviderTarget::Bedrock) => {
+                init_notice("Using AWS Bedrock as the initial provider (use /model to switch)");
+                select_initial_model_provider("bedrock");
+                Arc::new(provider::MultiProvider::new_fast())
+            }
+            Some(LoginProviderTarget::Azure) => {
+                let model = crate::provider::activation::apply_azure_openai_runtime()?;
+                init_notice("Using Azure OpenAI as the initial provider (use /model to switch)");
+                let multi = provider::MultiProvider::new_fast();
+                if let Some(model) = model {
+                    let _ = multi.set_model(&model);
                 }
-                runtime_model_hint = resolved.default_model.clone();
-                resolved.display_name
-            };
-            init_notice(&format!(
-                "Using {} via OpenAI-compatible API as the initial provider",
-                display_name
-            ));
-            crate::provider::activation::apply_openai_compatible_runtime(runtime_model_hint)?;
-            if std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_some() {
-                let profile_name = std::env::var("KCODE_NAMED_PROVIDER_PROFILE")?;
-                let cfg = crate::config::config();
-                let profile = cfg.providers.get(&profile_name).ok_or_else(|| {
-                    anyhow::anyhow!("Unknown provider profile '{}'", profile_name)
-                })?;
-                Arc::new(
+                Arc::new(multi)
+            }
+            Some(LoginProviderTarget::OpenAiCompatible(profile)) => {
+                if std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_none() {
+                    // An explicit `--provider <compatible>` selection should win over
+                    // any stale active-profile marker inherited from a previous
+                    // bootstrap/login flow. Named provider profiles still take
+                    // precedence when explicitly configured.
+                    force_apply_openai_compatible_profile_env(Some(profile));
+                }
+                let mut runtime_model_hint = None;
+                let display_name = if let Ok(named) = std::env::var("KCODE_NAMED_PROVIDER_PROFILE")
+                {
+                    if let Some(profile) = crate::config::config().providers.get(&named) {
+                        runtime_model_hint = profile.default_model.clone();
+                    }
+                    named
+                } else {
+                    let resolved = resolve_openai_compatible_profile(profile);
+                    if resolved.requires_api_key {
+                        ensure_external_api_key_auth_allowed_for_explicit_choice(
+                            &resolved.api_key_env,
+                        )?;
+                    }
+                    runtime_model_hint = resolved.default_model.clone();
+                    resolved.display_name
+                };
+                init_notice(&format!(
+                    "Using {} via OpenAI-compatible API as the initial provider",
+                    display_name
+                ));
+                crate::provider::activation::apply_openai_compatible_runtime(runtime_model_hint)?;
+                if std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_some() {
+                    let profile_name = std::env::var("KCODE_NAMED_PROVIDER_PROFILE")?;
+                    let cfg = crate::config::config();
+                    let profile = cfg.providers.get(&profile_name).ok_or_else(|| {
+                        anyhow::anyhow!("Unknown provider profile '{}'", profile_name)
+                    })?;
+                    Arc::new(
                     kcode_provider_openrouter_runtime::OpenRouterProvider::new_named_openai_compatible(
                         &profile_name,
                         profile,
                     )?,
                 )
-            } else {
-                Arc::new(kcode_provider_openrouter_runtime::OpenRouterProvider::new()?)
+                } else {
+                    Arc::new(kcode_provider_openrouter_runtime::OpenRouterProvider::new()?)
+                }
             }
-        }
-        ProviderChoice::Antigravity => {
-            ensure_antigravity_auth_allowed_for_explicit_choice()?;
-            init_notice("Using Antigravity provider (experimental)");
-            clear_initial_model_provider();
-            crate::env::set_var("KCODE_ACTIVE_PROVIDER", "antigravity");
-            Arc::new(kcode_provider_antigravity_runtime::AntigravityProvider::new())
-        }
-        ProviderChoice::Auto => {
-            clear_initial_model_provider();
-            let auto_detect_start = std::time::Instant::now();
-            let mut availability = detect_auto_provider_flags().await;
-
-            let reviewed_external_auth = if !availability.has_any_provider() {
-                maybe_run_external_auth_auto_import_flow().await?.is_some()
-            } else {
-                false
-            };
-
-            if reviewed_external_auth {
-                availability = detect_auto_provider_flags().await;
+            Some(LoginProviderTarget::Antigravity) => {
+                ensure_antigravity_auth_allowed_for_explicit_choice()?;
+                init_notice("Using Antigravity provider (experimental)");
+                clear_initial_model_provider();
+                crate::env::set_var("KCODE_ACTIVE_PROVIDER", "antigravity");
+                Arc::new(kcode_provider_antigravity_runtime::AntigravityProvider::new())
             }
+            // `auto-import` is a registry target with no CLI choice; it is not
+            // selectable with `-p`.
+            Some(LoginProviderTarget::AutoImport) => {
+                anyhow::bail!("--provider auto-import is not selectable; use --provider auto");
+            }
+            // `auto` has no descriptor: it detects an available provider at runtime.
+            None => {
+                clear_initial_model_provider();
+                let auto_detect_start = std::time::Instant::now();
+                let mut availability = detect_auto_provider_flags().await;
 
-            let auto_detect_ms = auto_detect_start.elapsed().as_millis();
-
-            if !availability.has_any_provider() {
-                let supplemental_start = std::time::Instant::now();
-                let mut has_claude = availability.has_claude;
-                let mut has_openai = availability.has_openai;
-                let mut has_copilot = availability.has_copilot;
-                let has_antigravity = availability.has_antigravity;
-                let mut has_gemini = availability.has_gemini;
-                let mut has_cursor = availability.has_cursor;
-                let mut has_openrouter = availability.has_openrouter;
-                let mut has_other_provider = has_claude
-                    || has_copilot
-                    || has_antigravity
-                    || has_gemini
-                    || has_cursor
-                    || has_openrouter;
-
-                if !has_openai {
-                    has_openai = maybe_enable_legacy_codex_auth_for_auto(has_other_provider)?;
-                }
-                has_other_provider = has_openai
-                    || has_claude
-                    || has_copilot
-                    || has_antigravity
-                    || has_gemini
-                    || has_cursor
-                    || has_openrouter;
-
-                if !has_claude {
-                    has_claude =
-                        maybe_enable_claude_auth_for_auto(has_other_provider && !has_claude)?;
-                }
-                has_other_provider = has_openai
-                    || has_claude
-                    || has_copilot
-                    || has_antigravity
-                    || has_gemini
-                    || has_cursor
-                    || has_openrouter;
-
-                if !has_copilot {
-                    has_copilot =
-                        maybe_enable_copilot_auth_for_auto(has_other_provider && !has_copilot)?;
-                }
-                has_other_provider = has_openai
-                    || has_claude
-                    || has_copilot
-                    || has_antigravity
-                    || has_gemini
-                    || has_cursor
-                    || has_openrouter;
-
-                if !has_gemini {
-                    has_gemini =
-                        maybe_enable_gemini_auth_for_auto(has_other_provider && !has_gemini)?;
-                }
-                has_other_provider = has_openai
-                    || has_claude
-                    || has_copilot
-                    || has_antigravity
-                    || has_gemini
-                    || has_cursor
-                    || has_openrouter;
-
-                if !has_cursor {
-                    has_cursor =
-                        maybe_enable_cursor_auth_for_auto(has_other_provider && !has_cursor)?;
-                }
-
-                if !has_openrouter {
-                    has_openrouter = maybe_enable_config_default_provider_for_auto()?;
-                }
-
-                has_other_provider = has_openai
-                    || has_claude
-                    || has_copilot
-                    || has_antigravity
-                    || has_gemini
-                    || has_cursor
-                    || has_openrouter;
-
-                if !has_openrouter {
-                    has_openrouter = maybe_enable_external_api_key_auth_for_auto(
-                        has_other_provider && !has_openrouter,
-                    )?;
-                }
-
-                availability = AutoProviderAvailability {
-                    auth_status: auth::AuthStatus::check_fast(),
-                    has_claude,
-                    has_openai,
-                    has_copilot,
-                    has_antigravity,
-                    has_gemini,
-                    has_cursor,
-                    has_openrouter,
+                let reviewed_external_auth = if !availability.has_any_provider() {
+                    maybe_run_external_auth_auto_import_flow().await?.is_some()
+                } else {
+                    false
                 };
-                crate::logging::info(&format!(
-                    "[TIMING] auto_provider_bootstrap: detect={}ms, external_import={}, supplemental={}ms, final_has_any={}",
-                    auto_detect_ms,
-                    reviewed_external_auth,
-                    supplemental_start.elapsed().as_millis(),
-                    availability.has_any_provider()
-                ));
-            } else {
-                crate::logging::info(&format!(
-                    "[TIMING] auto_provider_bootstrap: detect={}ms, external_import={}, supplemental=skipped, final_has_any=true",
-                    auto_detect_ms, reviewed_external_auth
-                ));
-            }
 
-            if availability.has_any_provider() {
-                let multi = provider::MultiProvider::from_auth_status(availability.auth_status);
-                init_notice(&format!(
-                    "Using {} (use /model to switch models)",
-                    multi.name()
-                ));
-                crate::env::set_var("KCODE_ACTIVE_PROVIDER", multi.name().to_lowercase());
-                Arc::new(multi)
-            } else {
-                let non_interactive = std::env::var("KCODE_NON_INTERACTIVE").is_ok();
-                // Deferred-auth bootstrap: the interactive TUI server is spawned
-                // headless (KCODE_NON_INTERACTIVE) but the user logs in *inside*
-                // the TUI on a fresh install. Rather than bail, boot an empty
-                // MultiProvider with no configured credentials yet. The TUI's
-                // `/login` flow then activates a provider via the normal
-                // auth-changed path (MultiProvider::on_auth_changed hot-inits the
-                // newly logged-in provider). Only the actual TUI server opts in
-                // via KCODE_DEFERRED_AUTH_BOOTSTRAP, so `kcode run` and other
-                // genuinely headless callers still fail loudly.
-                if std::env::var_os("KCODE_DEFERRED_AUTH_BOOTSTRAP").is_some() {
-                    crate::logging::info(
-                        "No credentials configured; booting deferred-auth MultiProvider for the in-TUI login picker",
-                    );
+                if reviewed_external_auth {
+                    availability = detect_auto_provider_flags().await;
+                }
+
+                let auto_detect_ms = auto_detect_start.elapsed().as_millis();
+
+                if !availability.has_any_provider() {
+                    let supplemental_start = std::time::Instant::now();
+                    let mut has_claude = availability.has_claude;
+                    let mut has_openai = availability.has_openai;
+                    let mut has_copilot = availability.has_copilot;
+                    let has_antigravity = availability.has_antigravity;
+                    let mut has_gemini = availability.has_gemini;
+                    let mut has_cursor = availability.has_cursor;
+                    let mut has_openrouter = availability.has_openrouter;
+                    let mut has_other_provider = has_claude
+                        || has_copilot
+                        || has_antigravity
+                        || has_gemini
+                        || has_cursor
+                        || has_openrouter;
+
+                    if !has_openai {
+                        has_openai = maybe_enable_legacy_codex_auth_for_auto(has_other_provider)?;
+                    }
+                    has_other_provider = has_openai
+                        || has_claude
+                        || has_copilot
+                        || has_antigravity
+                        || has_gemini
+                        || has_cursor
+                        || has_openrouter;
+
+                    if !has_claude {
+                        has_claude =
+                            maybe_enable_claude_auth_for_auto(has_other_provider && !has_claude)?;
+                    }
+                    has_other_provider = has_openai
+                        || has_claude
+                        || has_copilot
+                        || has_antigravity
+                        || has_gemini
+                        || has_cursor
+                        || has_openrouter;
+
+                    if !has_copilot {
+                        has_copilot =
+                            maybe_enable_copilot_auth_for_auto(has_other_provider && !has_copilot)?;
+                    }
+                    has_other_provider = has_openai
+                        || has_claude
+                        || has_copilot
+                        || has_antigravity
+                        || has_gemini
+                        || has_cursor
+                        || has_openrouter;
+
+                    if !has_gemini {
+                        has_gemini =
+                            maybe_enable_gemini_auth_for_auto(has_other_provider && !has_gemini)?;
+                    }
+                    has_other_provider = has_openai
+                        || has_claude
+                        || has_copilot
+                        || has_antigravity
+                        || has_gemini
+                        || has_cursor
+                        || has_openrouter;
+
+                    if !has_cursor {
+                        has_cursor =
+                            maybe_enable_cursor_auth_for_auto(has_other_provider && !has_cursor)?;
+                    }
+
+                    if !has_openrouter {
+                        has_openrouter = maybe_enable_config_default_provider_for_auto()?;
+                    }
+
+                    has_other_provider = has_openai
+                        || has_claude
+                        || has_copilot
+                        || has_antigravity
+                        || has_gemini
+                        || has_cursor
+                        || has_openrouter;
+
+                    if !has_openrouter {
+                        has_openrouter = maybe_enable_external_api_key_auth_for_auto(
+                            has_other_provider && !has_openrouter,
+                        )?;
+                    }
+
+                    availability = AutoProviderAvailability {
+                        auth_status: auth::AuthStatus::check_fast(),
+                        has_claude,
+                        has_openai,
+                        has_copilot,
+                        has_antigravity,
+                        has_gemini,
+                        has_cursor,
+                        has_openrouter,
+                    };
+                    crate::logging::info(&format!(
+                        "[TIMING] auto_provider_bootstrap: detect={}ms, external_import={}, supplemental={}ms, final_has_any={}",
+                        auto_detect_ms,
+                        reviewed_external_auth,
+                        supplemental_start.elapsed().as_millis(),
+                        availability.has_any_provider()
+                    ));
+                } else {
+                    crate::logging::info(&format!(
+                        "[TIMING] auto_provider_bootstrap: detect={}ms, external_import={}, supplemental=skipped, final_has_any=true",
+                        auto_detect_ms, reviewed_external_auth
+                    ));
+                }
+
+                if availability.has_any_provider() {
                     let multi = provider::MultiProvider::from_auth_status(availability.auth_status);
+                    init_notice(&format!(
+                        "Using {} (use /model to switch models)",
+                        multi.name()
+                    ));
                     crate::env::set_var("KCODE_ACTIVE_PROVIDER", multi.name().to_lowercase());
                     Arc::new(multi)
-                } else if non_interactive {
-                    anyhow::bail!(
-                        "No credentials configured. Run 'kcode login' or set ANTHROPIC_API_KEY to authenticate."
-                    );
-                } else if !allow_login_bootstrap {
-                    anyhow::bail!(
-                        "No credentials configured for provider auto-detection; automatic login/bootstrap is disabled during validation."
-                    );
                 } else {
-                    let provider_desc = prompt_login_provider_selection(
-                        &crate::provider_catalog::auto_init_login_providers(),
-                        "No credentials found. Let's log in!\n\nChoose a provider:",
-                    )?;
-                    Box::pin(login_and_bootstrap_provider(provider_desc, None)).await?
+                    let non_interactive = std::env::var("KCODE_NON_INTERACTIVE").is_ok();
+                    // Deferred-auth bootstrap: the interactive TUI server is spawned
+                    // headless (KCODE_NON_INTERACTIVE) but the user logs in *inside*
+                    // the TUI on a fresh install. Rather than bail, boot an empty
+                    // MultiProvider with no configured credentials yet. The TUI's
+                    // `/login` flow then activates a provider via the normal
+                    // auth-changed path (MultiProvider::on_auth_changed hot-inits the
+                    // newly logged-in provider). Only the actual TUI server opts in
+                    // via KCODE_DEFERRED_AUTH_BOOTSTRAP, so `kcode run` and other
+                    // genuinely headless callers still fail loudly.
+                    if std::env::var_os("KCODE_DEFERRED_AUTH_BOOTSTRAP").is_some() {
+                        crate::logging::info(
+                            "No credentials configured; booting deferred-auth MultiProvider for the in-TUI login picker",
+                        );
+                        let multi =
+                            provider::MultiProvider::from_auth_status(availability.auth_status);
+                        crate::env::set_var("KCODE_ACTIVE_PROVIDER", multi.name().to_lowercase());
+                        Arc::new(multi)
+                    } else if non_interactive {
+                        anyhow::bail!(
+                            "No credentials configured. Run 'kcode login' or set ANTHROPIC_API_KEY to authenticate."
+                        );
+                    } else if !allow_login_bootstrap {
+                        anyhow::bail!(
+                            "No credentials configured for provider auto-detection; automatic login/bootstrap is disabled during validation."
+                        );
+                    } else {
+                        let provider_desc = prompt_login_provider_selection(
+                            &crate::provider_catalog::auto_init_login_providers(),
+                            "No credentials found. Let's log in!\n\nChoose a provider:",
+                        )?;
+                        Box::pin(login_and_bootstrap_provider(provider_desc, None)).await?
+                    }
                 }
             }
         }

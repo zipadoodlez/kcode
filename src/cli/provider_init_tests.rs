@@ -535,22 +535,13 @@ fn login_provider_choice_table_round_trips_catalog_providers() {
 }
 
 #[test]
-fn auth_integration_registry_matches_cli_choice_runtime_wiring() {
+fn catalog_providers_resolve_and_have_auth_status_method_detail() {
     for provider in provider_catalog::login_providers() {
-        let integration = crate::auth::integration::auth_provider_integration(provider.id)
-            .expect("catalog provider should have integration metadata");
-        assert_eq!(integration.descriptor, *provider);
-
-        if !matches!(
-            provider.target,
-            provider_catalog::LoginProviderTarget::AutoImport
-        ) {
-            assert!(
-                choice_for_login_provider(*provider).is_some(),
-                "provider {} is missing a CLI choice mapping",
-                provider.id
-            );
-        }
+        assert_eq!(
+            provider_catalog::resolve_login_provider(provider.id),
+            Some(*provider),
+            "catalog provider should resolve from its own id"
+        );
 
         let status = auth::AuthStatus::default();
         let assessment = status.assessment_for_provider(*provider);

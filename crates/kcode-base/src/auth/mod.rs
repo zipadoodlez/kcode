@@ -13,7 +13,6 @@ pub mod external;
 pub mod gemini;
 pub(crate) mod google_oauth;
 pub mod grok_build;
-pub mod integration;
 pub mod lifecycle;
 pub mod login_diagnostics;
 pub mod login_flows;
