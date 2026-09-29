@@ -1,9 +1,8 @@
 use anyhow::Result;
-use clap::ValueEnum;
 use serde::Serialize;
 use std::time::Duration;
 
-use crate::cli::provider_init::{self, ProviderChoice};
+use crate::cli::provider_init;
 
 const AUTH_DOCTOR_VALIDATION_TIMEOUT_SECS: u64 = 120;
 
@@ -387,13 +386,13 @@ pub(super) fn run_provider_list_command(emit_json: bool) -> Result<()> {
 }
 
 pub(super) async fn run_provider_current_command(
-    choice: &ProviderChoice,
+    choice: &str,
     model: Option<&str>,
     emit_json: bool,
 ) -> Result<()> {
     let provider = provider_init::init_provider_quiet(choice, model).await?;
     let report = ProviderCurrentReport {
-        requested_provider: choice.as_arg_value().to_string(),
+        requested_provider: choice.to_string(),
         requested_model: model.map(str::to_string),
         resolved_provider: crate::provider_catalog::runtime_provider_display_name(provider.name()),
         selected_model: provider.model(),
@@ -560,18 +559,13 @@ fn usage_provider_report(provider: &crate::usage::ProviderUsage) -> UsageProvide
     }
 }
 
-/// The provider ids `-p` accepts, which is every `ProviderChoice` resolved
-/// through the registry, plus `Auto`. Derived from the registry so the printed
-/// list cannot drift from the accepted set again.
+/// The provider ids `-p` accepts, derived from the registry so the printed
+/// list cannot drift from the accepted set.
 pub(super) fn list_cli_providers() -> Vec<ProviderListEntry> {
-    let registered = ProviderChoice::value_variants()
-        .iter()
-        .copied()
-        .filter_map(|choice| {
-            provider_init::login_provider_for_choice(&choice).map(|provider| (choice, provider))
-        })
-        .map(|(choice, provider)| ProviderListEntry {
-            id: choice.as_arg_value().to_string(),
+    let registered = provider_init::cli_provider_descriptors()
+        .into_iter()
+        .map(|provider| ProviderListEntry {
+            id: provider.id.to_string(),
             display_name: provider.display_name.to_string(),
             auth_kind: Some(provider.auth_kind.label().to_string()),
             recommended: provider.recommended,
@@ -583,10 +577,10 @@ pub(super) fn list_cli_providers() -> Vec<ProviderListEntry> {
             detail: Some(provider.menu_detail.to_string()),
         });
 
-    // `Auto` is the one accepted value with no registry descriptor.
+    // `auto` is the one accepted value with no registry descriptor.
     registered
         .chain(std::iter::once(ProviderListEntry {
-            id: ProviderChoice::Auto.as_arg_value().to_string(),
+            id: "auto".to_string(),
             display_name: "Auto-detect".to_string(),
             auth_kind: None,
             recommended: false,
@@ -628,22 +622,16 @@ mod tests {
     /// parsed).
     #[test]
     fn provider_list_ids_match_the_accepted_cli_values() {
-        use clap::ValueEnum;
-
         let printed: std::collections::BTreeSet<String> = list_cli_providers()
             .into_iter()
             .map(|provider| provider.id)
             .collect();
-        let accepted: std::collections::BTreeSet<String> = ProviderChoice::value_variants()
-            .iter()
-            .map(|choice| {
-                choice
-                    .to_possible_value()
-                    .expect("every ProviderChoice variant has a CLI value")
-                    .get_name()
-                    .to_string()
-            })
-            .collect();
+        let mut accepted: std::collections::BTreeSet<String> =
+            provider_init::cli_provider_descriptors()
+                .into_iter()
+                .map(|provider| provider.id.to_string())
+                .collect();
+        accepted.insert("auto".to_string());
 
         assert_eq!(printed, accepted);
     }
@@ -713,7 +701,7 @@ mod tests {
         );
 
         crate::cli::login::run_login(
-            &crate::cli::provider_init::ProviderChoice::Cerebras,
+            "cerebras",
             None,
             crate::cli::login::LoginOptions {
                 no_validate: true,

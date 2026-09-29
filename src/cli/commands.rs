@@ -182,7 +182,7 @@ pub fn run_provider_list_command(emit_json: bool) -> Result<()> {
 }
 
 pub async fn run_provider_current_command(
-    choice: &super::provider_init::ProviderChoice,
+    choice: &str,
     model: Option<&str>,
     emit_json: bool,
 ) -> Result<()> {
@@ -486,7 +486,7 @@ Re-run with `--force` if you really want to stop the server.";
 }
 
 pub async fn run_single_message_command(
-    choice: &super::provider_init::ProviderChoice,
+    choice: &str,
     model: Option<&str>,
     resume_session: Option<&str>,
     message: &str,
@@ -1366,7 +1366,7 @@ fn write_json_line(stdout: &mut impl Write, value: &impl Serialize) -> Result<()
 }
 
 pub async fn run_model_command(
-    choice: &super::provider_init::ProviderChoice,
+    choice: &str,
     model: Option<&str>,
     emit_json: bool,
     verbose: bool,
@@ -1395,7 +1395,7 @@ pub async fn run_model_command(
     }
 
     if emit_json {
-        let provider_label = super::provider_init::login_provider_for_choice(choice)
+        let provider_label = super::provider_init::login_provider_for_id(choice)
             .map(|provider| provider.display_name.to_string())
             .unwrap_or_else(|| {
                 crate::provider_catalog::runtime_provider_display_name(provider.name())
@@ -1484,28 +1484,22 @@ fn collect_cli_model_names(
 
 #[allow(deprecated)]
 fn filter_cli_model_routes_for_choice(
-    choice: &super::provider_init::ProviderChoice,
+    choice: &str,
     routes: &[crate::provider::ModelRoute],
 ) -> Vec<crate::provider::ModelRoute> {
-    use super::provider_init::ProviderChoice;
-
     let keep = |route: &&crate::provider::ModelRoute| match choice {
-        ProviderChoice::Claude | ProviderChoice::ClaudeSubprocess => {
-            route.api_method_kind().is_anthropic_credential_route()
-        }
-        ProviderChoice::Openai => {
+        "claude" | "claude-subprocess" => route.api_method_kind().is_anthropic_credential_route(),
+        "openai" => {
             let method = route.api_method_kind();
             matches!(method, crate::provider::ModelRouteApiMethod::OpenAIOAuth)
                 || matches!(method, crate::provider::ModelRouteApiMethod::Other(ref value) if value == "chatgpt-web")
         }
-        ProviderChoice::OpenaiApi => matches!(
+        "openai-api" => matches!(
             route.api_method_kind(),
             crate::provider::ModelRouteApiMethod::OpenAIApiKey
         ),
-        ProviderChoice::Openrouter | ProviderChoice::Azure => {
-            route.api_method_kind().is_openrouter()
-        }
-        ProviderChoice::Copilot => route.api_method_kind().is_copilot(),
+        "openrouter" | "azure" => route.api_method_kind().is_openrouter(),
+        "copilot" => route.api_method_kind().is_copilot(),
         _ => true,
     };
 

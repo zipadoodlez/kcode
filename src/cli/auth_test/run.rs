@@ -54,7 +54,7 @@ async fn maybe_run_auth_test_smoke(
 async fn maybe_run_auth_test_smoke_for_choice(
     report: &mut AuthTestProviderReport,
     kind: AuthTestSmokeKind,
-    choice: &super::provider_init::ProviderChoice,
+    choice: &str,
     model: Option<&str>,
     enabled: bool,
     prompt: &str,
@@ -116,11 +116,15 @@ async fn run_post_login_validation_inner(
     provider: crate::provider_catalog::LoginProviderDescriptor,
     verbose: bool,
 ) -> Result<()> {
-    let Some(choice) = super::provider_init::choice_for_login_provider(provider) else {
+    // Auto Import has no runtime of its own to validate.
+    if matches!(
+        provider.target,
+        crate::provider_catalog::LoginProviderTarget::AutoImport
+    ) {
         crate::logging::auth_event(
             "post_login_validation_skipped",
             provider.id,
-            &[("reason", "no_runtime_provider_choice")],
+            &[("reason", "no_runtime_provider")],
         );
         if verbose {
             eprintln!(
@@ -129,13 +133,14 @@ async fn run_post_login_validation_inner(
             );
         }
         return Ok(());
-    };
+    }
+    let choice = provider.id;
 
     super::provider_init::apply_login_provider_profile_env(provider);
     crate::logging::auth_event(
         "post_login_validation_started",
         provider.id,
-        &[("choice", choice.as_arg_value())],
+        &[("choice", choice)],
     );
 
     if verbose {
@@ -145,7 +150,7 @@ async fn run_post_login_validation_inner(
         );
     }
 
-    let report = if let Some(target) = AuthTestTarget::from_provider_choice(&choice) {
+    let report = if let Some(target) = AuthTestTarget::from_provider_choice(choice) {
         populate_auth_test_target_report(
             target,
             None,
@@ -159,14 +164,14 @@ async fn run_post_login_validation_inner(
     } else {
         populate_generic_auth_test_report(
             provider,
-            choice,
+            choice.to_string(),
             None,
             true,
             true,
             DEFAULT_AUTH_TEST_PROVIDER_PROMPT,
             DEFAULT_AUTH_TEST_TOOL_PROMPT,
             AuthTestProviderReport::new_generic(
-                choice.as_arg_value().to_string(),
+                choice.to_string(),
                 generic_credential_paths_for_provider(provider),
             ),
         )
@@ -179,7 +184,7 @@ async fn run_post_login_validation_inner(
         "post_login_validation_completed",
         provider.id,
         &[
-            ("choice", choice.as_arg_value()),
+            ("choice", choice),
             ("success", if report.success { "true" } else { "false" }),
             ("steps", step_count.as_str()),
         ],
@@ -190,17 +195,17 @@ async fn run_post_login_validation_inner(
 
     if report.success {
         Ok(())
-    } else if AuthTestTarget::from_provider_choice(&choice).is_some() {
+    } else if AuthTestTarget::from_provider_choice(choice).is_some() {
         anyhow::bail!(
             "Post-login validation failed for {}. Credentials were saved, but kcode could not verify runtime readiness. Re-run `kcode auth-test --provider {}` for details.",
             provider.display_name,
-            choice.as_arg_value()
+            choice
         )
     } else {
         anyhow::bail!(
             "Post-login validation failed for {}. Credentials were saved, but kcode could not verify runtime readiness. Re-test with `kcode --provider {} run \"Reply with exactly AUTH_TEST_OK and nothing else.\"` after fixing the provider/runtime.",
             provider.display_name,
-            choice.as_arg_value()
+            choice
         )
     }
 }
@@ -240,7 +245,7 @@ pub fn run_auth_test_coverage_command(
 }
 
 pub async fn run_auth_test_context_audit_command(
-    choice: &super::provider_init::ProviderChoice,
+    choice: &str,
     all_configured: bool,
     emit_json: bool,
     output_path: Option<&str>,
@@ -286,7 +291,7 @@ async fn run_context_audit_for_target(
                     | crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(_)
             );
             (
-                choice.as_arg_value().to_string(),
+                choice.to_string(),
                 provider.display_name.to_string(),
                 supports_openrouter_catalog,
             )
@@ -432,7 +437,7 @@ fn print_context_audit_reports(reports: &[AuthTestContextAuditReport]) {
     reason = "CLI auth-test entrypoint maps directly from command-line flags"
 )]
 pub async fn run_auth_test_command(
-    choice: &super::provider_init::ProviderChoice,
+    choice: &str,
     model: Option<&str>,
     login: bool,
     all_configured: bool,
@@ -463,7 +468,7 @@ pub async fn run_auth_test_command(
             }
             ResolvedAuthTestTarget::Generic { provider, choice } => {
                 let mut report = AuthTestProviderReport::new_generic(
-                    choice.as_arg_value().to_string(),
+                    choice.to_string(),
                     generic_credential_paths_for_provider(provider),
                 );
                 if login {
@@ -518,10 +523,10 @@ pub async fn run_auth_test_command(
 }
 
 pub(crate) fn resolve_auth_test_targets(
-    choice: &super::provider_init::ProviderChoice,
+    choice: &str,
     all_configured: bool,
 ) -> Result<Vec<ResolvedAuthTestTarget>> {
-    if all_configured || matches!(choice, super::provider_init::ProviderChoice::Auto) {
+    if all_configured || matches!(choice, "auto") {
         // Auth-test discovery must not run slow or blocking provider-global probes.
         // Generic OpenAI-compatible providers only need local env/config detection,
         // and detailed providers perform their own provider-specific checks later.
@@ -540,7 +545,7 @@ pub(crate) fn resolve_auth_test_targets(
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "Provider '{}' is not yet supported by `kcode auth-test`.",
-                choice.as_arg_value()
+                choice
             )
         })
 }
@@ -638,7 +643,7 @@ async fn populate_auth_test_target_report(
 )]
 async fn populate_generic_auth_test_report(
     provider: crate::provider_catalog::LoginProviderDescriptor,
-    choice: super::provider_init::ProviderChoice,
+    choice: String,
     model: Option<&str>,
     run_smoke: bool,
     run_tool_smoke: bool,

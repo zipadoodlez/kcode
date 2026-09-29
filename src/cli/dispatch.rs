@@ -12,7 +12,7 @@ use super::args::{
 use crate::{agent, auth, build, provider, provider_catalog, server, session, startup_profile};
 
 use super::{acp, commands, debug, login, output, provider_init, terminal, tui_launch};
-use provider_init::ProviderChoice;
+use String;
 
 #[cfg(any(target_os = "linux", test))]
 fn is_file_controlled_debug_client() -> bool {
@@ -97,7 +97,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         provider_catalog::apply_named_provider_profile_env(profile_name)?;
         crate::env::set_var("KCODE_PROVIDER_PROFILE_NAME", profile_name);
         crate::env::set_var("KCODE_PROVIDER_PROFILE_ACTIVE", "1");
-        args.provider = ProviderChoice::OpenaiCompatible;
+        args.provider = "openai-compatible".to_string();
     }
 
     if let Some(tool_profile) = args.tool_profile.as_deref() {
@@ -471,13 +471,13 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
 
 fn auth_doctor_provider_arg<'a>(
     positional_provider: Option<&'a str>,
-    global_provider: &'a ProviderChoice,
+    global_provider: &'a str,
 ) -> Option<&'a str> {
     positional_provider.or_else(|| {
-        if *global_provider == ProviderChoice::Auto {
+        if global_provider == "auto" {
             None
         } else {
-            Some(global_provider.as_arg_value())
+            Some(global_provider)
         }
     })
 }
@@ -569,9 +569,8 @@ fn map_transcript_mode(mode: TranscriptModeArg) -> crate::protocol::TranscriptMo
 async fn run_default_command(args: Args) -> Result<()> {
     startup_profile::mark("run_main_none_branch");
 
-    let explicit_provider_or_model = args.provider != ProviderChoice::Auto
-        || args.model.is_some()
-        || args.provider_profile.is_some();
+    let explicit_provider_or_model =
+        args.provider != "auto" || args.model.is_some() || args.provider_profile.is_some();
     let explicit_tool_options = args.tool_profile.is_some()
         || args.tools.is_some()
         || args.disabled_tools.is_some()
@@ -635,7 +634,7 @@ async fn run_default_command(args: Args) -> Result<()> {
         );
         output::stderr_info(format!(
             "Current server settings control `/model`. Restart server to apply: --provider {}{}",
-            args.provider.as_arg_value(),
+            args.provider,
             args.model
                 .as_ref()
                 .map(|m| format!(" --model {}", m))
@@ -853,9 +852,7 @@ async fn acquire_spawn_lock_or_wait(
     }
 }
 
-pub(crate) async fn maybe_prompt_server_bootstrap_login(
-    provider_choice: &ProviderChoice,
-) -> Result<()> {
+pub(crate) async fn maybe_prompt_server_bootstrap_login(provider_choice: &str) -> Result<()> {
     startup_profile::mark("cred_check_start");
 
     // Normal interactive launches configure a provider inside the TUI, and an
@@ -906,10 +903,10 @@ pub(crate) async fn maybe_prompt_server_bootstrap_login(
 }
 
 fn should_detect_cli_bootstrap_credentials(
-    provider_choice: &ProviderChoice,
+    provider_choice: &str,
     cli_bootstrap_requested: bool,
 ) -> bool {
-    cli_bootstrap_requested && *provider_choice == ProviderChoice::Auto
+    cli_bootstrap_requested && provider_choice == "auto"
 }
 
 struct BootstrapCredentialState {
@@ -933,7 +930,7 @@ async fn detect_bootstrap_credentials() -> BootstrapCredentialState {
 }
 
 pub(crate) async fn spawn_server(
-    provider_choice: &ProviderChoice,
+    provider_choice: &str,
     model: Option<&str>,
     provider_profile: Option<&str>,
 ) -> Result<()> {
@@ -941,7 +938,7 @@ pub(crate) async fn spawn_server(
 }
 
 async fn spawn_server_with_executable(
-    provider_choice: &ProviderChoice,
+    provider_choice: &str,
     model: Option<&str>,
     provider_profile: Option<&str>,
     executable: Option<std::path::PathBuf>,
@@ -980,7 +977,7 @@ async fn spawn_server_with_executable(
     if client_requested_selfdev {
         cmd.env("KCODE_DEBUG_CONTROL", "1");
     }
-    cmd.arg("--provider").arg(provider_choice.as_arg_value());
+    cmd.arg("--provider").arg(provider_choice);
     // The interactive TUI owns login. Let the spawned
     // server boot with a deferred (credential-less) provider when nothing is
     // configured yet, instead of bailing; the TUI activates a provider via the
@@ -1004,7 +1001,7 @@ async fn spawn_server_with_executable(
 }
 
 async fn run_server_keepalive(
-    provider_choice: &ProviderChoice,
+    provider_choice: &str,
     model: Option<&str>,
     provider_profile: Option<&str>,
 ) -> Result<()> {

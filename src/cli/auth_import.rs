@@ -1,14 +1,13 @@
 //! Private, bounded stdin receiver for explicitly approved credential transfers.
 //! There is deliberately no CLI export command that could print credentials.
-use super::provider_init::ProviderChoice;
 use crate::auth::transfer::{self, MAX_TRANSFER_BYTES, TransferProvider};
 use anyhow::Result;
 use std::io::IsTerminal;
 
-fn selected_provider(choice: &ProviderChoice) -> Result<TransferProvider, &'static str> {
+fn selected_provider(choice: &str) -> Result<TransferProvider, &'static str> {
     match choice {
-        ProviderChoice::Openai => Ok(TransferProvider::OpenAi),
-        ProviderChoice::Claude => Ok(TransferProvider::Claude),
+        "openai" => Ok(TransferProvider::OpenAi),
+        "claude" => Ok(TransferProvider::Claude),
         _ => Err("Credential import requires --provider openai or --provider claude"),
     }
 }
@@ -68,7 +67,7 @@ fn read_private_stdin() -> Result<Vec<u8>, &'static str> {
     }
 }
 
-pub(crate) fn run(choice: &ProviderChoice, json: bool) -> Result<()> {
+pub(crate) fn run(choice: &str, json: bool) -> Result<()> {
     let provider = selected_provider(choice);
     let provider_id = provider
         .as_ref()
@@ -110,14 +109,10 @@ mod tests {
 
     #[test]
     fn credential_import_requires_selected_supported_oauth_provider() {
-        assert!(selected_provider(&ProviderChoice::Openai).is_ok());
-        assert!(selected_provider(&ProviderChoice::Claude).is_ok());
-        for provider in [
-            ProviderChoice::Auto,
-            ProviderChoice::OpenaiApi,
-            ProviderChoice::Gemini,
-        ] {
-            assert!(selected_provider(&provider).is_err());
+        assert!(selected_provider("openai").is_ok());
+        assert!(selected_provider("claude").is_ok());
+        for provider in ["auto", "openai-api", "gemini"] {
+            assert!(selected_provider(provider).is_err());
         }
     }
 }

@@ -1,9 +1,6 @@
 use anyhow::Result;
 use kcode::auth::{AuthState, AuthStatus};
-use kcode::cli::provider_init::{
-    ProviderChoice, apply_login_provider_profile_env, choice_for_login_provider,
-    init_provider_for_validation,
-};
+use kcode::cli::provider_init::{apply_login_provider_profile_env, init_provider_for_validation};
 use kcode::provider::Provider;
 use kcode::provider_catalog::{
     LoginProviderDescriptor, LoginProviderTarget, OPENAI_COMPAT_PROFILE, OpenAiCompatibleProfile,
@@ -458,7 +455,7 @@ async fn provider_matrix_bootstrap_login_profile_survives_auto_daemon_state_spac
             );
             assert_runtime_profile_env(selected, &context);
 
-            let runtime = init_provider_for_validation(&ProviderChoice::Auto, None)
+            let runtime = init_provider_for_validation("auto", None)
                 .await
                 .unwrap_or_else(|err| panic!("auto daemon init failed for {context}: {err}"));
 
@@ -501,7 +498,7 @@ async fn provider_matrix_non_compatible_bootstrap_login_clears_stale_compatible_
 
         if seed_non_compatible_auto_auth(provider) {
             AuthStatus::invalidate_cache();
-            let runtime = init_provider_for_validation(&ProviderChoice::Auto, None)
+            let runtime = init_provider_for_validation("auto", None)
                 .await
                 .unwrap_or_else(|err| panic!("auto init failed for {context}: {err}"));
             // Auto-init may legitimately rediscover the stale compatible key file
@@ -539,10 +536,10 @@ async fn provider_matrix_concurrent_auto_init_preserves_bootstrap_compatible_pro
             provider.id, selected.id
         );
         let (a, b, c, d) = tokio::join!(
-            init_provider_for_validation(&ProviderChoice::Auto, None),
-            init_provider_for_validation(&ProviderChoice::Auto, None),
-            init_provider_for_validation(&ProviderChoice::Auto, None),
-            init_provider_for_validation(&ProviderChoice::Auto, None),
+            init_provider_for_validation("auto", None),
+            init_provider_for_validation("auto", None),
+            init_provider_for_validation("auto", None),
+            init_provider_for_validation("auto", None),
         );
         for result in [a, b, c, d] {
             result.unwrap_or_else(|err| panic!("auto init failed for {context}: {err}"));
@@ -570,8 +567,7 @@ async fn provider_matrix_explicit_compatible_choice_overrides_stale_active_profi
             .find(|candidate| login_provider_profile(*candidate).id != selected.id)
             .expect("stale compatible provider");
         let stale = login_provider_profile(stale_provider);
-        let choice = choice_for_login_provider(provider)
-            .unwrap_or_else(|| panic!("{} should map to a ProviderChoice", provider.id));
+        let choice = provider.id;
 
         let env = TestEnv::new()?;
         env.clear_profile_keys();
@@ -591,7 +587,7 @@ async fn provider_matrix_explicit_compatible_choice_overrides_stale_active_profi
         );
         assert_runtime_profile_env(stale, &context);
 
-        let runtime = init_provider_for_validation(&choice, None)
+        let runtime = init_provider_for_validation(choice, None)
             .await
             .unwrap_or_else(|err| panic!("explicit compatible init failed for {context}: {err}"));
 

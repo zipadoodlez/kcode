@@ -1,5 +1,4 @@
 use anyhow::Result;
-use clap::ValueEnum;
 use std::io::{self, Write};
 use std::sync::Arc;
 
@@ -22,216 +21,67 @@ use crate::external_auth::{
     can_prompt_for_external_auth, external_auth_blocked_message, prompt_to_trust_external_auth,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum ProviderChoice {
-    Claude,
-    #[value(alias = "claude-api", alias = "anthropic-key", alias = "claude-key")]
-    AnthropicApi,
-    #[deprecated(
-        note = "Claude Code CLI subprocess transport is deprecated; use ProviderChoice::Claude for native Anthropic OAuth/API transport"
-    )]
-    #[value(alias = "claude-subprocess", hide = true)]
-    ClaudeSubprocess,
-    Openai,
-    #[value(
-        alias = "openai-key",
-        alias = "openai-apikey",
-        alias = "openai-platform"
-    )]
-    OpenaiApi,
-    Openrouter,
-    #[value(name = "orcarouter", alias = "orca-router")]
-    OrcaRouter,
-    #[value(alias = "aws-bedrock", alias = "aws_bedrock")]
-    Bedrock,
-    #[value(alias = "azure-openai", alias = "aoai")]
-    Azure,
-    #[value(alias = "opencode-zen", alias = "zen")]
-    Opencode,
-    #[value(alias = "opencodego")]
-    OpencodeGo,
-    #[value(alias = "z.ai", alias = "z-ai", alias = "zai-coding")]
-    Zai,
-    #[value(
-        alias = "kimi-code",
-        alias = "kimi-coding",
-        alias = "kimi-coding-plan",
-        alias = "kimi-for-coding",
-        alias = "moonshot-coding"
-    )]
-    Kimi,
-    #[value(name = "302ai", alias = "302.ai", alias = "ai302")]
-    Ai302,
-    Baseten,
-    #[value(alias = "conifer-api")]
-    Conifer,
-    Cortecs,
-    #[value(alias = "cgc", alias = "comtegra-gpu-cloud")]
-    Comtegra,
-    Deepseek,
-    #[value(alias = "fpt-ai", alias = "fptcloud", alias = "fpt-cloud")]
-    Fpt,
-    Firmware,
-    #[value(name = "huggingface", alias = "hugging-face", alias = "hf")]
-    HuggingFace,
-    #[value(name = "moonshotai", alias = "moonshot", alias = "moonshot-ai")]
-    MoonshotAi,
-    Nebius,
-    Scaleway,
-    Stackit,
-    Groq,
-    #[value(alias = "mistralai")]
-    Mistral,
-    #[value(alias = "pplx")]
-    Perplexity,
-    #[value(name = "togetherai", alias = "together", alias = "together-ai")]
-    TogetherAi,
-    #[value(alias = "deep-infra")]
-    Deepinfra,
-    #[value(alias = "fireworks-ai", alias = "fireworks.ai")]
-    Fireworks,
-    #[value(alias = "novita-ai", alias = "novita.ai")]
-    Novita,
-    #[value(alias = "minimax-ai", alias = "minimaxi")]
-    Minimax,
-    #[value(alias = "x.ai", alias = "x-ai", alias = "grok")]
-    Xai,
-    /// Grok Build subscription via the authenticated Grok CLI ACP transport.
-    #[value(name = "grok-build")]
-    GrokBuild,
-    #[value(alias = "nvidia", alias = "nim")]
-    NvidiaNim,
-    #[value(alias = "xiaomi", alias = "mimo", alias = "xiaomi-mimo-api")]
-    XiaomiMimo,
-    #[value(
-        alias = "meta",
-        alias = "muse",
-        alias = "muse-spark",
-        alias = "meta-model-api",
-        alias = "meta-ai"
-    )]
-    MetaMuse,
-    #[value(alias = "celeris-ai", alias = "celeris1", alias = "celeris-1")]
-    Celeris,
-    #[value(alias = "lm-studio")]
-    Lmstudio,
-    Ollama,
-    Chutes,
-    #[value(alias = "cerebrascode", alias = "cerberascode")]
-    Cerebras,
-    #[value(alias = "belvedir.ai", alias = "belvedir-ai")]
-    Belvedir,
-    #[value(
-        alias = "bailian",
-        alias = "aliyun-bailian",
-        alias = "coding-plan",
-        alias = "alibaba-coding"
-    )]
-    AlibabaCodingPlan,
-    #[value(alias = "compat", alias = "custom")]
-    OpenaiCompatible,
-    Cursor,
-    Copilot,
-    Gemini,
-    #[value(
-        alias = "gemini-key",
-        alias = "gemini-apikey",
-        alias = "google-ai-studio",
-        alias = "ai-studio"
-    )]
-    GeminiApi,
-    Antigravity,
-    Auto,
+/// The `-p/--provider` parser: validates against the registry and returns the
+/// canonical id, so an alias (`together`, `z.ai`) becomes `togetherai`, `zai`.
+///
+/// The accepted set is exactly the registry ids and aliases plus the two
+/// CLI-only spellings, and `kcode provider list` prints the same set.
+pub fn provider_choice_value_parser() -> clap::builder::ValueParser {
+    clap::builder::ValueParser::new(parse_provider_choice)
 }
 
-impl ProviderChoice {
-    #[allow(deprecated)]
-    pub fn as_arg_value(&self) -> &'static str {
-        match self {
-            Self::Claude => "claude",
-            Self::AnthropicApi => "anthropic-api",
-            Self::ClaudeSubprocess => "claude-subprocess",
-            Self::Openai => "openai",
-            Self::OpenaiApi => "openai-api",
-            Self::Openrouter => "openrouter",
-            Self::OrcaRouter => "orcarouter",
-            Self::Bedrock => "bedrock",
-            Self::Azure => "azure",
-            Self::Opencode => "opencode",
-            Self::OpencodeGo => "opencode-go",
-            Self::Zai => "zai",
-            Self::Kimi => "kimi",
-            Self::Ai302 => "302ai",
-            Self::Baseten => "baseten",
-            Self::Conifer => "conifer",
-            Self::Cortecs => "cortecs",
-            Self::Comtegra => "comtegra",
-            Self::Deepseek => "deepseek",
-            Self::Fpt => "fpt",
-            Self::Firmware => "firmware",
-            Self::HuggingFace => "huggingface",
-            Self::MoonshotAi => "moonshotai",
-            Self::Nebius => "nebius",
-            Self::Scaleway => "scaleway",
-            Self::Stackit => "stackit",
-            Self::Groq => "groq",
-            Self::Mistral => "mistral",
-            Self::Perplexity => "perplexity",
-            Self::TogetherAi => "togetherai",
-            Self::Deepinfra => "deepinfra",
-            Self::Fireworks => "fireworks",
-            Self::Novita => "novita",
-            Self::Minimax => "minimax",
-            Self::Xai => "xai",
-            Self::GrokBuild => "grok-build",
-            Self::NvidiaNim => "nvidia-nim",
-            Self::XiaomiMimo => "xiaomi-mimo",
-            Self::MetaMuse => "meta-muse",
-            Self::Celeris => "celeris",
-            Self::Lmstudio => "lmstudio",
-            Self::Ollama => "ollama",
-            Self::Chutes => "chutes",
-            Self::Cerebras => "cerebras",
-            Self::Belvedir => "belvedir",
-            Self::AlibabaCodingPlan => "alibaba-coding-plan",
-            Self::OpenaiCompatible => "openai-compatible",
-            Self::Cursor => "cursor",
-            Self::Copilot => "copilot",
-            Self::Gemini => "gemini",
-            Self::GeminiApi => "gemini-api",
-            Self::Antigravity => "antigravity",
-            Self::Auto => "auto",
-        }
+fn parse_provider_choice(input: &str) -> Result<String, String> {
+    let trimmed = input.trim();
+    match trimmed {
+        // Neither has a provider runtime: `auto` detects one at startup, and
+        // `claude-subprocess` is the deprecated Claude transport spelling.
+        "auto" | "claude-subprocess" => return Ok(trimmed.to_string()),
+        _ => {}
     }
+
+    let Some(descriptor) = resolve_login_provider(trimmed) else {
+        return Err(format!(
+            "unknown provider '{input}'. Run `kcode provider list` to see the accepted ids."
+        ));
+    };
+    // `auto-import` is a login-surface entry, never a `-p` value.
+    if matches!(descriptor.target, LoginProviderTarget::AutoImport) {
+        return Err(format!(
+            "'{input}' is not a provider. Run `kcode provider list` to see the accepted ids."
+        ));
+    }
+    Ok(descriptor.id.to_string())
 }
 
-pub fn profile_for_choice(choice: &ProviderChoice) -> Option<OpenAiCompatibleProfile> {
-    match login_provider_for_choice(choice)?.target {
+/// Registry descriptors a `-p` value can select.
+///
+/// `auto-import` is the one descriptor with no runtime of its own: it is a
+/// login-surface entry, never a provider.
+pub fn cli_provider_descriptors() -> Vec<LoginProviderDescriptor> {
+    crate::provider_catalog::login_providers()
+        .iter()
+        .copied()
+        .filter(|descriptor| !matches!(descriptor.target, LoginProviderTarget::AutoImport))
+        .collect()
+}
+
+/// The registry descriptor for a `-p` value, aliases included.
+///
+/// `claude-subprocess` is the one value the registry does not carry: it is a
+/// deprecated alias that deliberately resolves to the `claude` descriptor.
+pub fn login_provider_for_id(provider_id: &str) -> Option<LoginProviderDescriptor> {
+    if provider_id == "claude-subprocess" {
+        return Some(crate::provider_catalog::CLAUDE_LOGIN_PROVIDER);
+    }
+    resolve_login_provider(provider_id)
+}
+
+/// The OpenAI-compatible profile a `-p` value selects, if any.
+pub fn profile_for_choice(provider_id: &str) -> Option<OpenAiCompatibleProfile> {
+    match login_provider_for_id(provider_id)?.target {
         LoginProviderTarget::OpenAiCompatible(profile) => Some(profile),
         _ => None,
     }
-}
-
-/// The registry descriptor for a CLI choice, by the choice's own arg value.
-///
-/// `claude-subprocess` is the one choice the registry does not carry: it is a
-/// deprecated alias that deliberately resolves to the `claude` descriptor.
-#[allow(deprecated)]
-pub fn login_provider_for_choice(choice: &ProviderChoice) -> Option<LoginProviderDescriptor> {
-    if matches!(choice, ProviderChoice::ClaudeSubprocess) {
-        return Some(crate::provider_catalog::CLAUDE_LOGIN_PROVIDER);
-    }
-    resolve_login_provider(choice.as_arg_value())
-}
-
-/// The CLI choice that selects a registry descriptor, by descriptor id.
-///
-/// Registry entries with no `-p` value (for example `auto-import`) have none.
-pub fn choice_for_login_provider(provider: LoginProviderDescriptor) -> Option<ProviderChoice> {
-    ProviderChoice::value_variants()
-        .iter()
-        .copied()
-        .find(|choice| choice.as_arg_value() == provider.id)
 }
 
 pub fn prompt_login_provider_selection(
@@ -1022,9 +872,9 @@ pub fn clear_initial_model_provider() {
 /// Pin it through the provider's credential-mode API
 /// so `--provider anthropic-api` cannot remain in Auto mode and prefer a stored
 /// Claude OAuth credential over `ANTHROPIC_API_KEY` (and likewise for OpenAI).
-fn explicit_credential_mode(choice: &ProviderChoice) -> Option<provider::CredentialMode> {
-    match choice {
-        ProviderChoice::AnthropicApi | ProviderChoice::OpenaiApi => {
+fn explicit_credential_mode(provider_id: &str) -> Option<provider::CredentialMode> {
+    match login_provider_for_id(provider_id)?.target {
+        LoginProviderTarget::ClaudeApiKey | LoginProviderTarget::OpenAiApiKey => {
             Some(provider::CredentialMode::ApiKey)
         }
         _ => None,
@@ -1147,29 +997,28 @@ pub fn save_named_api_key(env_file: &str, key_name: &str, key: &str) -> Result<(
 }
 
 pub async fn init_provider(
-    choice: &ProviderChoice,
+    provider_id: &str,
     model: Option<&str>,
 ) -> Result<Arc<dyn provider::Provider>> {
-    init_provider_with_options(choice, model, true, true).await
+    init_provider_with_options(provider_id, model, true, true).await
 }
 
 pub async fn init_provider_quiet(
-    choice: &ProviderChoice,
+    provider_id: &str,
     model: Option<&str>,
 ) -> Result<Arc<dyn provider::Provider>> {
-    init_provider_with_options(choice, model, false, true).await
+    init_provider_with_options(provider_id, model, false, true).await
 }
 
 pub async fn init_provider_for_validation(
-    choice: &ProviderChoice,
+    provider_id: &str,
     model: Option<&str>,
 ) -> Result<Arc<dyn provider::Provider>> {
-    init_provider_with_options(choice, model, false, false).await
+    init_provider_with_options(provider_id, model, false, false).await
 }
 
-#[allow(deprecated)]
 async fn init_provider_with_options(
-    choice: &ProviderChoice,
+    provider_id: &str,
     model: Option<&str>,
     show_init_messages: bool,
     allow_login_bootstrap: bool,
@@ -1193,7 +1042,7 @@ async fn init_provider_with_options(
     if std::env::var_os("KCODE_PROVIDER_PROFILE_ACTIVE").is_none()
         && std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_none()
     {
-        if let Some(profile) = profile_for_choice(choice) {
+        if let Some(profile) = profile_for_choice(provider_id) {
             apply_openai_compatible_profile_env(Some(profile));
         } else {
             apply_openai_compatible_profile_env(None);
@@ -1209,10 +1058,7 @@ async fn init_provider_with_options(
     // The deprecated `claude-subprocess` shares the Claude descriptor but needs
     // its own env setup, so it is handled before the kind dispatch rather than
     // as a registry kind.
-    let provider: Arc<dyn provider::Provider> = if matches!(
-        choice,
-        ProviderChoice::ClaudeSubprocess
-    ) {
+    let provider: Arc<dyn provider::Provider> = if provider_id == "claude-subprocess" {
         ensure_claude_auth_allowed_for_explicit_choice()?;
         crate::logging::warn(
             "Using --provider claude-subprocess is deprecated and will be removed. Prefer `--provider claude`.",
@@ -1224,7 +1070,7 @@ async fn init_provider_with_options(
         select_initial_model_provider("claude");
         Arc::new(provider::MultiProvider::with_preference_fast(false))
     } else {
-        match login_provider_for_choice(choice).map(|descriptor| descriptor.target) {
+        match login_provider_for_id(provider_id).map(|descriptor| descriptor.target) {
             Some(LoginProviderTarget::Claude) => {
                 ensure_claude_auth_allowed_for_explicit_choice()?;
                 init_notice("Using Claude as the initial provider (use /model to switch)");
@@ -1541,11 +1387,11 @@ async fn init_provider_with_options(
         }
     };
 
-    if let Some(mode) = explicit_credential_mode(choice) {
+    if let Some(mode) = explicit_credential_mode(provider_id) {
         provider.set_credential_mode(mode).map_err(|err| {
             anyhow::anyhow!(
                 "Failed to select the credential route for --provider {}: {err}",
-                choice.as_arg_value()
+                provider_id
             )
         })?;
     }
@@ -1553,7 +1399,7 @@ async fn init_provider_with_options(
     if std::env::var_os("KCODE_PROVIDER_PROFILE_ACTIVE").is_none()
         && std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_none()
         && model.is_none()
-        && let Some(profile) = profile_for_choice(choice)
+        && let Some(profile) = profile_for_choice(provider_id)
         && let Some(default_model) = resolved_profile_default_model(profile)
         && provider.set_model(&default_model).is_ok()
     {
@@ -1579,19 +1425,19 @@ async fn init_provider_with_options(
 }
 
 pub async fn init_provider_and_registry(
-    choice: &ProviderChoice,
+    provider_id: &str,
     model: Option<&str>,
 ) -> Result<(Arc<dyn provider::Provider>, tool::Registry)> {
-    let provider = init_provider(choice, model).await?;
+    let provider = init_provider(provider_id, model).await?;
     let registry = tool::Registry::new(provider.clone()).await;
     Ok((provider, registry))
 }
 
 pub async fn init_provider_and_registry_for_validation(
-    choice: &ProviderChoice,
+    provider_id: &str,
     model: Option<&str>,
 ) -> Result<(Arc<dyn provider::Provider>, tool::Registry)> {
-    let provider = init_provider_for_validation(choice, model).await?;
+    let provider = init_provider_for_validation(provider_id, model).await?;
     let registry = tool::Registry::new(provider.clone()).await;
     Ok((provider, registry))
 }

@@ -9,7 +9,7 @@ use crate::provider_catalog::{
     OpenAiCompatibleProfile, resolve_openai_compatible_profile,
 };
 
-use super::provider_init::{ProviderChoice, login_provider_for_choice, save_named_api_key};
+use super::provider_init::{login_provider_for_id, save_named_api_key};
 
 mod existing_key_notice;
 mod next_step;
@@ -182,13 +182,13 @@ struct ScriptableAuthSuccess {
 
 #[allow(deprecated)]
 pub async fn run_login(
-    choice: &ProviderChoice,
+    choice: &str,
     account_label: Option<&str>,
     options: LoginOptions,
 ) -> Result<()> {
     options.validate()?;
-    if let Some(provider) = login_provider_for_choice(choice) {
-        if matches!(choice, ProviderChoice::ClaudeSubprocess) {
+    if let Some(provider) = login_provider_for_id(choice) {
+        if matches!(choice, "claude-subprocess") {
             eprintln!(
                 "Warning: Claude subprocess transport is deprecated and will be removed. Direct Anthropic API is already the default for `--provider claude`."
             );
@@ -197,7 +197,7 @@ pub async fn run_login(
     }
 
     match choice {
-        ProviderChoice::Auto => {
+        "auto" => {
             if options.uses_scriptable_flow()? {
                 anyhow::bail!(
                     "Scriptable login flags require an explicit provider. Use `kcode login --provider <provider> ...`."

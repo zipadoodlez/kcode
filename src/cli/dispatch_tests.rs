@@ -29,12 +29,9 @@ fn init_and_systemd_are_recognized_as_orphan_adopters() {
 
 #[test]
 fn auth_doctor_provider_focus_uses_global_provider_when_positional_is_absent() {
+    assert_eq!(auth_doctor_provider_arg(None, "cerebras"), Some("cerebras"));
     assert_eq!(
-        auth_doctor_provider_arg(None, &ProviderChoice::Cerebras),
-        Some("cerebras")
-    );
-    assert_eq!(
-        auth_doctor_provider_arg(None, &ProviderChoice::Auto),
+        auth_doctor_provider_arg(None, "auto"),
         None,
         "auto should keep the default doctor behavior of checking configured providers"
     );
@@ -43,7 +40,7 @@ fn auth_doctor_provider_focus_uses_global_provider_when_positional_is_absent() {
 #[test]
 fn auth_doctor_positional_provider_wins_over_global_provider() {
     assert_eq!(
-        auth_doctor_provider_arg(Some("openai"), &ProviderChoice::Cerebras),
+        auth_doctor_provider_arg(Some("openai"), "cerebras"),
         Some("openai"),
         "`kcode --provider cerebras auth doctor openai` should diagnose the explicit positional provider"
     );
@@ -51,18 +48,9 @@ fn auth_doctor_positional_provider_wins_over_global_provider() {
 
 #[test]
 fn interactive_startup_skips_bootstrap_credential_detection() {
-    assert!(!should_detect_cli_bootstrap_credentials(
-        &ProviderChoice::Auto,
-        false
-    ));
-    assert!(!should_detect_cli_bootstrap_credentials(
-        &ProviderChoice::Openai,
-        true
-    ));
-    assert!(should_detect_cli_bootstrap_credentials(
-        &ProviderChoice::Auto,
-        true
-    ));
+    assert!(!should_detect_cli_bootstrap_credentials("auto", false));
+    assert!(!should_detect_cli_bootstrap_credentials("openai", true));
+    assert!(should_detect_cli_bootstrap_credentials("auto", true));
 }
 
 struct ReloadTestEnv {

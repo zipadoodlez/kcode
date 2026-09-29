@@ -3,7 +3,7 @@
 use anyhow::{Result, bail};
 
 use super::args::Args;
-use super::provider_init::ProviderChoice;
+use String;
 
 fn validate(args: &Args) -> Result<()> {
     match args.command {
@@ -20,7 +20,7 @@ fn validate(args: &Args) -> Result<()> {
             "--ssh --resume requires an explicit remote session ID; local session lookup is not used"
         )
     }
-    if args.provider != ProviderChoice::Auto
+    if args.provider != "auto"
         || args.model.is_some()
         || args.provider_profile.is_some()
         || args.tool_profile.is_some()

@@ -16,7 +16,7 @@ struct OpenAiCompatibleModelInfo {
 }
 
 pub(crate) async fn auth_test_choice_plan(
-    choice: &super::provider_init::ProviderChoice,
+    choice: &str,
     model: Option<&str>,
 ) -> Result<AuthTestChoicePlan> {
     if let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) {
@@ -42,15 +42,15 @@ pub(crate) async fn auth_test_choice_plan(
     Ok(AuthTestChoicePlan::Skip(format!(
         "Skipped: {} local endpoint reported no models. Re-run `kcode auth-test --provider {} --model <local-model>` or set a default model first.",
         resolved.display_name,
-        choice.as_arg_value()
+        choice
     )))
 }
 
 pub(crate) fn tool_smoke_skip_detail_for_choice(
-    choice: &super::provider_init::ProviderChoice,
+    choice: &str,
     model: Option<&str>,
 ) -> Option<String> {
-    if matches!(choice, super::provider_init::ProviderChoice::Cursor) {
+    if matches!(choice, "cursor") {
         return Some(
             "Skipped: the Cursor native agent transport is text-only in kcode (it does not expose \
              tool calls over agent.v1.AgentService/Run). Basic provider smoke still validates chat."
@@ -58,14 +58,14 @@ pub(crate) fn tool_smoke_skip_detail_for_choice(
         );
     }
 
-    if matches!(choice, super::provider_init::ProviderChoice::GrokBuild) {
+    if matches!(choice, "grok-build") {
         return Some(
             "Skipped: Grok Build executes its isolated ACP coding-tool loop internally; it does not expose Kcode tool calls for the outer auth-test harness. Basic provider smoke validates the subscription transport."
                 .to_string(),
         );
     }
 
-    if matches!(choice, super::provider_init::ProviderChoice::Fpt) {
+    if matches!(choice, "fpt") {
         let model = effective_openai_compatible_auth_test_model(
             crate::provider_catalog::FPT_PROFILE,
             model,
@@ -77,7 +77,7 @@ pub(crate) fn tool_smoke_skip_detail_for_choice(
         ));
     }
 
-    if !matches!(choice, super::provider_init::ProviderChoice::NvidiaNim) {
+    if !matches!(choice, "nvidia-nim") {
         return None;
     }
 
@@ -202,7 +202,7 @@ mod nvidia_nim_tool_smoke_tests {
     #[test]
     fn skips_kimi_k2_6_tool_smoke_for_nvidia_nim() {
         let detail = tool_smoke_skip_detail_for_choice(
-            &super::super::provider_init::ProviderChoice::NvidiaNim,
+            "nvidia-nim",
             Some("moonshotai/kimi-k2.6"),
         )
         .expect("kimi-k2.6 should skip NIM tool smoke");
@@ -215,7 +215,7 @@ mod nvidia_nim_tool_smoke_tests {
     fn allows_other_nvidia_nim_models_to_attempt_tool_smoke() {
         assert!(
             tool_smoke_skip_detail_for_choice(
-                &super::super::provider_init::ProviderChoice::NvidiaNim,
+                "nvidia-nim",
                 Some("nvidia/llama-3.1-nemotron-ultra-253b-v1"),
             )
             .is_none()
@@ -226,7 +226,7 @@ mod nvidia_nim_tool_smoke_tests {
     fn does_not_apply_nvidia_skip_to_other_providers() {
         assert!(
             tool_smoke_skip_detail_for_choice(
-                &super::super::provider_init::ProviderChoice::Groq,
+                "groq",
                 Some("moonshotai/kimi-k2.6"),
             )
             .is_none()
@@ -236,7 +236,7 @@ mod nvidia_nim_tool_smoke_tests {
     #[test]
     fn skips_fpt_tool_smoke_for_vllm_auto_tool_choice_gap() {
         let detail = tool_smoke_skip_detail_for_choice(
-            &super::super::provider_init::ProviderChoice::Fpt,
+            "fpt",
             Some("FPT.AI-KIE-v1.7"),
         )
         .expect("FPT should skip tool smoke when server-side auto tool parsing is unavailable");
@@ -250,14 +250,14 @@ mod nvidia_nim_tool_smoke_tests {
     fn allows_cerebras_models_to_attempt_tool_smoke() {
         assert!(
             tool_smoke_skip_detail_for_choice(
-                &super::super::provider_init::ProviderChoice::Cerebras,
+                "cerebras",
                 Some("gpt-oss-120b"),
             )
             .is_none()
         );
         assert!(
             tool_smoke_skip_detail_for_choice(
-                &super::super::provider_init::ProviderChoice::Cerebras,
+                "cerebras",
                 Some("zai-glm-4.7"),
             )
             .is_none()
@@ -266,25 +266,25 @@ mod nvidia_nim_tool_smoke_tests {
 }
 
 async fn run_provider_smoke_for_choice(
-    choice: &super::provider_init::ProviderChoice,
+    choice: &str,
     model: Option<&str>,
     prompt: &str,
 ) -> Result<String> {
     run_auth_test_with_retry(async || {
         let provider = super::provider_init::init_provider_for_validation(choice, model)
             .await
-            .with_context(|| format!("Failed to initialize {} provider", choice.as_arg_value()))?;
+            .with_context(|| format!("Failed to initialize {} provider", choice))?;
         let output = provider
             .complete_simple(prompt, "")
             .await
-            .with_context(|| format!("{} provider smoke prompt failed", choice.as_arg_value()))?;
+            .with_context(|| format!("{} provider smoke prompt failed", choice))?;
         Ok(output.trim().to_string())
     })
     .await
 }
 
 async fn run_provider_tool_smoke_for_choice(
-    choice: &super::provider_init::ProviderChoice,
+    choice: &str,
     model: Option<&str>,
     prompt: &str,
 ) -> Result<String> {
@@ -293,7 +293,7 @@ async fn run_provider_tool_smoke_for_choice(
             super::provider_init::init_provider_and_registry_for_validation(choice, model)
                 .await
                 .with_context(|| {
-                    format!("Failed to initialize {} provider", choice.as_arg_value())
+                    format!("Failed to initialize {} provider", choice)
                 })?;
         registry
             .register_mcp_tools(None, None, Some("auth-test".to_string()))
@@ -310,14 +310,14 @@ async fn run_provider_tool_smoke_for_choice(
         let output = agent.run_once_capture(prompt).await.with_context(|| {
             format!(
                 "{} tool-enabled smoke prompt failed during agent turn execution",
-                choice.as_arg_value()
+                choice
             )
         })?;
         validate_auth_test_tool_smoke_transcript(&agent.messages()[transcript_start..], &output)
             .with_context(|| {
                 format!(
                     "{} tool-enabled smoke prompt did not complete a valid real Kcode tool loop",
-                    choice.as_arg_value()
+                    choice
                 )
             })?;
 

@@ -163,7 +163,7 @@ fn configured_auth_test_targets_only_include_configured_supported_providers() {
     assert!(targets.contains(&ResolvedAuthTestTarget::Detailed(AuthTestTarget::Gemini)));
     assert!(targets.contains(&ResolvedAuthTestTarget::Generic {
         provider: crate::provider_catalog::OPENROUTER_LOGIN_PROVIDER,
-        choice: super::super::provider_init::ProviderChoice::Openrouter,
+        choice: "openrouter".to_string(),
     }));
 
     assert!(!targets.contains(&ResolvedAuthTestTarget::Detailed(AuthTestTarget::Openai)));
@@ -172,9 +172,7 @@ fn configured_auth_test_targets_only_include_configured_supported_providers() {
 
 #[test]
 fn explicit_supported_provider_maps_to_single_auth_target() {
-    let targets =
-        resolve_auth_test_targets(&super::super::provider_init::ProviderChoice::Gemini, false)
-            .expect("resolve target");
+    let targets = resolve_auth_test_targets("gemini", false).expect("resolve target");
     assert_eq!(
         targets,
         vec![ResolvedAuthTestTarget::Detailed(AuthTestTarget::Gemini)]
@@ -183,16 +181,12 @@ fn explicit_supported_provider_maps_to_single_auth_target() {
 
 #[test]
 fn explicit_generic_provider_maps_to_generic_auth_target() {
-    let targets = resolve_auth_test_targets(
-        &super::super::provider_init::ProviderChoice::Openrouter,
-        false,
-    )
-    .expect("resolve target");
+    let targets = resolve_auth_test_targets("openrouter", false).expect("resolve target");
     assert_eq!(
         targets,
         vec![ResolvedAuthTestTarget::Generic {
             provider: crate::provider_catalog::OPENROUTER_LOGIN_PROVIDER,
-            choice: super::super::provider_init::ProviderChoice::Openrouter,
+            choice: "openrouter".to_string(),
         }]
     );
 }
@@ -650,10 +644,7 @@ fn cli_provider_choice_filter_uses_typed_api_methods() {
         test_route("grok-code-fast-1", "Copilot", "copilot"),
     ];
 
-    let openai = filter_cli_model_routes_for_choice(
-        &super::super::provider_init::ProviderChoice::Openai,
-        &routes,
-    );
+    let openai = filter_cli_model_routes_for_choice("openai", &routes);
     assert_eq!(openai.len(), 2);
     assert!(openai.iter().any(|route| matches!(
         route.api_method_kind(),
@@ -666,10 +657,7 @@ fn cli_provider_choice_filter_uses_typed_api_methods() {
         )
     }));
 
-    let claude = filter_cli_model_routes_for_choice(
-        &super::super::provider_init::ProviderChoice::Claude,
-        &routes,
-    );
+    let claude = filter_cli_model_routes_for_choice("claude", &routes);
     assert_eq!(claude.len(), 2);
     assert!(
         claude
@@ -708,12 +696,9 @@ fn auth_test_retryable_error_detection_rejects_schema_errors() {
 
 #[tokio::test]
 async fn auth_test_choice_plan_preserves_explicit_model_for_local_provider() {
-    let plan = auth_test_choice_plan(
-        &super::super::provider_init::ProviderChoice::Ollama,
-        Some("llama3.2"),
-    )
-    .await
-    .expect("choice plan");
+    let plan = auth_test_choice_plan("ollama", Some("llama3.2"))
+        .await
+        .expect("choice plan");
 
     match plan {
         AuthTestChoicePlan::Run { model } => assert_eq!(model.as_deref(), Some("llama3.2")),
@@ -723,12 +708,9 @@ async fn auth_test_choice_plan_preserves_explicit_model_for_local_provider() {
 
 #[tokio::test]
 async fn auth_test_choice_plan_leaves_non_compat_provider_unchanged() {
-    let plan = auth_test_choice_plan(
-        &super::super::provider_init::ProviderChoice::Openrouter,
-        None,
-    )
-    .await
-    .expect("choice plan");
+    let plan = auth_test_choice_plan("openrouter", None)
+        .await
+        .expect("choice plan");
 
     match plan {
         AuthTestChoicePlan::Run { model } => assert!(model.is_none()),
@@ -756,12 +738,9 @@ async fn auth_test_choice_plan_discovers_model_for_local_custom_compat_endpoint(
     crate::env::remove_var("KCODE_OPENAI_COMPAT_LOCAL_ENABLED");
     crate::provider_catalog::apply_openai_compatible_profile_env(None);
 
-    let plan = auth_test_choice_plan(
-        &super::super::provider_init::ProviderChoice::OpenaiCompatible,
-        None,
-    )
-    .await
-    .expect("choice plan");
+    let plan = auth_test_choice_plan("openai-compatible", None)
+        .await
+        .expect("choice plan");
 
     match plan {
         AuthTestChoicePlan::Run { model } => assert_eq!(model.as_deref(), Some("llama3.2")),
@@ -807,12 +786,9 @@ async fn auth_test_choice_plan_discovers_model_for_hosted_custom_compat_endpoint
     );
     assert!(resolved.requires_api_key);
 
-    let plan = auth_test_choice_plan(
-        &super::super::provider_init::ProviderChoice::OpenaiCompatible,
-        None,
-    )
-    .await
-    .expect("choice plan");
+    let plan = auth_test_choice_plan("openai-compatible", None)
+        .await
+        .expect("choice plan");
 
     match plan {
         AuthTestChoicePlan::Run { model } => {
@@ -842,12 +818,9 @@ async fn auth_test_choice_plan_skips_local_custom_compat_endpoint_without_models
     crate::env::remove_var("KCODE_OPENAI_COMPAT_LOCAL_ENABLED");
     crate::provider_catalog::apply_openai_compatible_profile_env(None);
 
-    let plan = auth_test_choice_plan(
-        &super::super::provider_init::ProviderChoice::OpenaiCompatible,
-        None,
-    )
-    .await
-    .expect("choice plan");
+    let plan = auth_test_choice_plan("openai-compatible", None)
+        .await
+        .expect("choice plan");
 
     match plan {
         AuthTestChoicePlan::Run { model } => panic!("unexpected run plan: {model:?}"),

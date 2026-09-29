@@ -341,17 +341,13 @@ async fn scoped_cancel_requires_explicit_provider_and_flow() {
         flow_id: Some("safe".into()),
         ..Default::default()
     };
-    let error = run_login(&ProviderChoice::Auto, None, options)
-        .await
-        .unwrap_err();
+    let error = run_login("auto", None, options).await.unwrap_err();
     assert!(error.to_string().contains("explicit provider"));
     let options = LoginOptions {
         cancel: true,
         ..Default::default()
     };
-    let error = run_login(&ProviderChoice::Openai, None, options)
-        .await
-        .unwrap_err();
+    let error = run_login("openai", None, options).await.unwrap_err();
     assert!(error.to_string().contains("requires --flow-id"));
 }
 

@@ -1,7 +1,5 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
-use super::provider_init::ProviderChoice;
-
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum TranscriptModeArg {
     Insert,
@@ -25,9 +23,16 @@ pub(crate) enum ProviderAuthArg {
 #[command(version = kcode_build_meta::version())]
 #[command(about = "Kcode: a fast, focused coding agent")]
 pub(crate) struct Args {
-    /// Initial provider to use (kcode, claude, openai, openai-api, openrouter, azure, opencode, opencode-go, zai, 302ai, baseten, conifer, cortecs, comtegra, deepseek, fpt, firmware, huggingface, moonshotai, nebius, scaleway, stackit, groq, mistral, perplexity, togetherai, deepinfra, xai, grok-build, nvidia-nim, lmstudio, ollama, chutes, cerebras, alibaba-coding-plan, openai-compatible, cursor, copilot, gemini, antigravity, google, or auto-detect). Interactive sessions can switch providers with /model.
-    #[arg(short, long, default_value = "auto", global = true)]
-    pub(crate) provider: ProviderChoice,
+    /// Initial provider to use: an id from `kcode provider list`, or `auto` to
+    /// detect one. Interactive sessions can switch providers with /model.
+    #[arg(
+        short,
+        long,
+        default_value = "auto",
+        global = true,
+        value_parser = super::provider_init::provider_choice_value_parser()
+    )]
+    pub(crate) provider: String,
 
     /// Working directory for the local client process
     #[arg(short = 'C', long, global = true)]
@@ -184,8 +189,12 @@ pub(crate) enum Command {
         // sharing the id makes clap drop the flag inside `login` (so
         // `kcode login --provider x` errors) and propagate the global default
         // into this positional.
-        #[arg(value_enum, id = "login_provider", value_name = "PROVIDER")]
-        provider: Option<ProviderChoice>,
+        #[arg(
+            id = "login_provider",
+            value_name = "PROVIDER",
+            value_parser = super::provider_init::provider_choice_value_parser()
+        )]
+        provider: Option<String>,
 
         /// Account label for multi-account support (stored labels are auto-numbered)
         #[arg(long, short = 'a')]

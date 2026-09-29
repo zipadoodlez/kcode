@@ -77,10 +77,7 @@ pub async fn run() -> Result<()> {
     // TUI reconnect loop can request a replacement server via server_spawn
     // without referencing cli.
     crate::server_spawn::register_default_server_spawner(Box::new(|| {
-        Box::pin(async {
-            dispatch::spawn_server(&crate::cli::provider_init::ProviderChoice::Auto, None, None)
-                .await
-        })
+        Box::pin(async { dispatch::spawn_server("auto", None, None).await })
     }));
 
     crate::tui::keybind::log_keybinding_default_warnings();
