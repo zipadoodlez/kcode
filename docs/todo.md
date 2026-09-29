@@ -22,15 +22,14 @@ maintainer before work starts; everything else is actionable.
 - **No provider is deleted** (maintainer decision 2026-09-27): every cut
   candidate backs a user-selectable provider. Cleanup is identity unification
   (below), not removal.
-- **Gate is wired and green.** `scripts/check_guardrails.sh` runs nine steps:
+- **Gate is wired and green.** `scripts/check_guardrails.sh` runs eight steps:
   `cargo fmt --check`, `cargo clippy -- -D warnings` (which also compiles every
   target), `Cargo.lock` freshness, the code-size, test-size, wildcard-reexport,
-  and `App`-shape ratchets, crate dependency boundaries, and the six onboarding
-  state-space invariant tests. Audited 2026-09-28: it had fourteen steps; five
-  were deleted as redundant or as counts that could not make the distinction
-  their rule needed (see `docs/dev/post-change.md`). The ratchets now fail when
-  a tracked number improves without the baseline being updated, so they can only
-  tighten.
+  and `App`-shape ratchets, and crate dependency boundaries. Audited
+  2026-09-28: it had fourteen steps; five were deleted as redundant or as counts
+  that could not make the distinction their rule needed (see
+  `docs/dev/post-change.md`). The ratchets fail when a tracked number improves
+  without the baseline being updated, so they can only tighten.
 
 ## 0. Deletion ledger (the line-count question, measured)
 
@@ -67,10 +66,9 @@ lines.
 |---|---|---|---|---|
 | Dead local turn path | ~810 whole files (`local.rs` 590, `event_wrappers.rs` 38, `overnight_card.rs` 183) + ~30 partial items | `App::run` (`run_shell.rs:198`) has zero callers (live entry is `run_remote`, `tui_launch.rs:160`); cfg-ing it out yields exactly 48 `never used` items | tests drive `local::` from 8 files / 33 sites | delete after migrating those tests; ~1.5k with the partials |
 | Second markdown renderer | ~4,700 (`kcode-render-core` 4,542 + adapter 795) | `render_markdown_via_core` has only test callers; the TUI uses the legacy path (`ui_messages.rs:95`); the adapter's own doc says the legacy path "remains authoritative; this adapter is validated against it before any switchover" | `render-core` also supplies `reasoning_line_markup` to `kcode-base/src/session/render.rs` | a switchover, not a deletion: land it and delete the legacy path, or abandon it and delete the core |
-| Harnesses living in test files | ~7k | `[census]`: `live_tests.rs` 3,080 is `pub mod` production code consumed by `kcode-provider-doctor`; `onboarding_eval.rs` 3,294 embeds a metrics framework; `smoothness_benchmark.rs` 332; `browser_fast_live_tests.rs` 250 | `live_tests` is genuinely production | move the non-test halves into modules; `live_tests` is a misnamed production module |
+| Harnesses living in test files | ~3.7k | `[census]`: `live_tests.rs` 3,080 is `pub mod` production code consumed by `kcode-provider-doctor`; `smoothness_benchmark.rs` 332; `browser_fast_live_tests.rs` 250 | `live_tests` is genuinely production | move the non-test halves into modules; `live_tests` is a misnamed production module |
 | Duplicated tiny helpers | ~230, not the 500 first guessed | every family in the item list below was re-read and its bodies hash-compared; the census's `detect_*`/`generate_diff_*` rows were dropped as not-duplicates | 3-90 lines each, all with a home that already exists | one home each; see the item list |
 | Parallel persisted-state runtime | ~20, not 150 | read both files: the mechanism already lives in `server/durable_state.rs` (`load_json_state`, `save_json_state`, `hashed_request_key`, `state_dir`); only the 3-line `load_state`/`save_state` wrappers rhyme, and the payload, TTLs, and `is_stale` bodies differ | payload-specific | leave duplicated; a generic would weld two unrelated payloads together |
-| `ui_prefs` module + empty `provider/fingerprint.rs` | ~31 | verified: `ui_prefs` is declared, has zero references, and carries `#![allow(dead_code)]`; `fingerprint.rs` is a whitespace-only file with a `mod` declaration | nothing | delete |
 | Provider wire/runtime split, provider catalog | 0 deletable | `[census]`: runtime crates re-export the wire crates rather than reimplementing them; the catalog is single-source in `kcode-provider-metadata`, re-exported by `kcode-base` | real protocol/transport separation | keep; §1's B3-B5 is identity, not data |
 | Provider trait test doubles | 0 deletable, a per-file tax | 45 files `impl …Provider for`, many of them `_tests.rs`; the trait has ~50 methods | test doubles need the shape | same trade as `TestState` in §2 |
 | Test near-duplicates | small, unverified | `[census]` found only 13 cross-file duplicated test function names | — | §4's "~40% near-dup" figures were *per file* and were **not** re-derived this pass |
@@ -89,13 +87,8 @@ about -150 lines. The rest, each re-read and verified before it was written
 down; rows I did not personally re-check say `[census]`.
 
 Dead weight. The census listed five things here; verification found most of them
-live: `onboarding_graph::{graph,node_props,check_invariants,min_keystrokes_to}`
-are what the gate's six onboarding tests run, and `ImportReview::{position,
-current_checked}` are asserted in `tests/onboarding_flow.rs`. Landed 2026-09-28:
-`ImportReview::current` and `set_swarm_panel_focus` (10 lines, both hidden by
-`#[allow(dead_code)]`). `onboarding_enter_continue_prompt` is deliberately kept —
-it is the only production constructor of the legacy `ContinuePrompt` phase, so
-deleting it makes the compiler report the variant as never constructed (tested).
+live. Landed 2026-09-28: `set_swarm_panel_focus` (10 lines, hidden by
+`#[allow(dead_code)]`).
 
 The `#[allow(dead_code)]` sweep is done (2026-09-28). Each unconditional site was
 stripped and clippy asked what it hid:
@@ -104,21 +97,18 @@ stripped and clippy asked what it hid:
   only, so the field is renamed `_sleep_assertion` (matching the `_marker`
   beside it) and the attribute is gone, not the field.
 - `session_search_index.rs:216` hid `len`/`is_empty` with no caller; deleted.
-- `onboarding_flow.rs` and `info_widget_swarm_gallery.rs:454` hid items only tests
-  use; they now say `#[cfg(test)]`, and the gallery's now-test-only import moved
-  with it.
+- `info_widget_swarm_gallery.rs:454` hid items only tests use; it now says
+  `#[cfg(test)]`, and its now-test-only import moved with it.
 - `tests/smoothness_benchmark.rs` hid an unused debug helper; deleted. That
   attribute was *not* redundant, contrary to the first reading.
-- `tests/onboarding_eval.rs` and `examples/swarm_agent_count.rs` were redundant:
-  both annotated items are read or used. Attributes deleted.
+- `examples/swarm_agent_count.rs` was redundant: both annotated items are read or
+  used. Attributes deleted.
 - `tool/open.rs:478` was not redundant either: the struct is used only by a
   `cfg(not(target_os = "macos"))` function, so the attribute is now
   `cfg_attr(target_os = "macos", allow(dead_code))`.
-- `onboarding_flow_control.rs:308` stays, with the reason written down: the only
-  production constructor of the legacy `ContinuePrompt` phase.
 
-One unconditional `#[allow(dead_code)]` remains, that last one. The `cfg_attr`
-sites are conditional on platform, feature, or `cfg(test)` and stay as they are.
+No unconditional `#[allow(dead_code)]` remains. The `cfg_attr` sites are
+conditional on platform, feature, or `cfg(test)` and stay as they are.
 
 - [ ] The dead local turn path (~810-1,500 lines); §2 owns it.
 
@@ -170,8 +160,6 @@ possible at all.
 - [ ] Two const pairs: `RELOAD_MARKER_MAX_AGE` = 30s twice (`app/remote.rs:67`,
   `app/remote/reconnect.rs:15`); `RELOAD_RESTORE_MARKER_MAX_AGE` = 60s twice
   (`client_state.rs:26`, `client_session.rs:31`).
-- [ ] `external_home_path` 2x `[census]` (`onboarding_flow.rs:539`,
-  `onboarding_repair.rs:96`).
 - [ ] `now_ms` 3x in `app/` (`observe.rs:242`, `split_view.rs:295`,
   `todos_view.rs:566`) plus a fourth in `kcode-base/src/side_panel.rs:557`.
   Deliberately left: the existing clock home is
@@ -189,7 +177,7 @@ not one concept.
 Bigger, each its own pass:
 
 - [ ] Move the non-test halves out of the test tree (`live_tests.rs`,
-  `onboarding_eval.rs`, `smoothness_benchmark.rs`); §4 owns the test-tree item.
+  `smoothness_benchmark.rs`); §4 owns the test-tree item.
 - [ ] Delete the dead local turn path and migrate the 33 test call sites onto
   the remote path (~810-1,500 lines); §2 owns the local-turn-path item.
 - [ ] Decide the markdown renderer: finish the switchover or delete
@@ -305,7 +293,7 @@ Staged, each lands whole.
 
   Target: `App` becomes a coordinator holding named sub-structs, and each
   sub-struct owns the methods that touch only it. The pattern is already in tree
-  (`impl OnboardingFlow`, `impl RemoteLogin`). Renaming `self.scroll_offset` to
+  (`impl RemoteLogin`). Renaming `self.scroll_offset` to
   `self.viewport.offset` is churn unless the methods move with the fields; that
   move is the point. Group names come from the `TuiState` trait's own section
   headers. Order is isolation first, coupling last. Re-measure cohesion before
@@ -502,12 +490,11 @@ After the shape work, not before: the tree is coupled through `create_test_app`
 tree first would just move that churn around.
 
 - [ ] Replace the `include!`-wired test tree with real modules: `app/tests.rs`
-  `include!`s 62 files into one module (126 `include!` sites repo-wide), which is
+  `include!`s 55 files into one module (120 `include!` sites repo-wide), which is
   why helper collisions and `use super::*` are everywhere.
-- [ ] Condense near-duplicate tables: `onboarding_eval.rs` (nine unrolled
-  `meta_tierN` tests, liveness logic triplicated at 2672-2736 and 3174-3293),
-  `state_model_poke_03.rs` (~40% near-dup pairs), `session_tests/cases.rs` (~51%),
-  `remote_events_reload_04.rs` (~43%, header-phase table at 1038-1180). The
+- [ ] Condense near-duplicate tables: `state_model_poke_03.rs` (~40% near-dup
+  pairs), `session_tests/cases.rs` (~51%), `remote_events_reload_04.rs` (~43%,
+  header-phase table at 1038-1180). The
   percentages are per file and were not re-derived by the §0 census, which found
   only 13 cross-file duplicated test names; re-measure before treating them as
   targets.
@@ -521,9 +508,9 @@ tree first would just move that churn around.
   `ensure_test_kcode_home_if_unset`, `empty_swarm_status_state`,
   `load_auth_file_renames_existing_labels_to_animal_scheme`,
   `test_mask_email_censors_local_part`, `routes` (2 each).
-- [ ] Pre-existing failures on this tree: `kcode-tui --lib` 27, `kcode-base --lib`
-  15, root `kcode --lib` 10 of 195 (measured 2026-09-28; it was 12 of 193 at
-  `6dff3825`). Sampled root causes are stale expectations for removed or renamed
+- [ ] Pre-existing failures on this tree: `kcode-tui --lib` 37 (measured
+  2026-09-29 at `cd795377`; the earlier 27 had drifted), `kcode-base --lib` 4 (was
+  15), root `kcode --lib` 10 of 195 (last measured 2026-09-28). Sampled root causes are stale expectations for removed or renamed
   surface. Also math/LaTeX 15 and `test_lock_order` 1. Environmental, not
   regressions. Treat as the baseline; the suite still covers removed features and
   brittle pixel/color assertions, so collapse or delete rather than maintain.
