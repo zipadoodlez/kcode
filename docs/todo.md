@@ -15,39 +15,6 @@ An item carries a compact evidence line so it can be picked up without
 re-deriving why it exists. An item marked `(decision)` needs a call from the
 maintainer before work starts; everything else is actionable.
 
-## Landed 2026-09-29: the local-turn-path excision (`516de13d`, `d0723556`, `7b2e3b7e`)
-
-`App::run` had zero callers and the live entry is `run_remote`, so the whole
-in-process turn runtime behind it is gone. Deleted: `App::run`; `turn.rs`
-(`run_turn_interactive`, 1,390 lines) and `turn_memory.rs`; `local.rs` with
-its local-only bus handler and helpers; `input.rs::process_queued_messages`;
-the compaction/payload retry quartet in `model_context.rs`; the local transfer
-implementation; the sync debug-command poll; the local branch of
-`start_visible_overnight_turn`; and the helper cascade the compiler surfaced.
-
-Two placements survived. `handle_ui_activity` and `remote::handle_bus_event`
-(plus the login auth-hint helpers) now live together in
-`remote/bus_events.rs`, re-exported so callers keep the `remote::` path. The
-passive overnight card refresh moved into `remote::handle_tick`, which is the
-live loop that can reach it. Dead helpers the test harness still needs to set
-up live behavior are `#[cfg(test)]`-gated; the rest are deleted.
-
-Tests were split by whether their behavior still exists: the two reload tick
-tests call `maybe_finish_background_client_reload`, the scroll guard and the
-background-activity/model-refresh/git tests call the remote handlers with a
-dummy connection, and the local-runtime-only tests (local background-task
-notifications, the Cerebras/auth catalog bus lifecycle, local transfer, the
-local system-prompt split) are deleted with their handler.
-
-Ratchets recorded: code-size tracked files 73 -> 72 (`turn.rs` retired),
-app-shape 197/55/120 -> 194/53/118, and `remote.rs` 2,098 -> 1,963.
-
-## Next up: the dead-weight pass tail
-
-The provider-catalog batch's remaining items are small and independent (`§5`
-hygiene nits, the `auth_remote/onboarding.rs` rename). The dead-weight pass
-itself is now landed except those nits.
-
 ## Standing decisions
 
 - **Fork policy: diverged.** No rebase lane and no upstream to track; kcode is
@@ -64,31 +31,13 @@ itself is now landed except those nits.
   `docs/dev/post-change.md`). The ratchets fail when a tracked number improves
   without the baseline being updated, so they can only tighten.
 
-## Next batch: the dead-weight pass (next up)
+## Next up: the dead-weight pass tail
 
-Scoped 2026-09-29 as the tail of the provider-catalog batch that landed on
-`batch-ab-provider-onboarding`. Deletion and one-home work with no switchover,
-so it shares one build and one end-of-batch gate. The items and their evidence
-already sit in §0 and §3; this section is the running order, with counts
-re-verified 2026-09-29 at `fba32bda` (`wc -l`).
+The deletion pass landed 2026-09-29 (`516de13d`, `d0723556`, `7b2e3b7e`); what
+remains is small and independent.
 
-- [x] **Finish the local-turn-path excision** (landed 2026-09-29, `516de13d`,
-  `d0723556`, `7b2e3b7e`) — see "Landed" at the top of this file.
-- [x] **One home per duplicated helper** (landed 2026-09-29, `9a83ad59`):
-  `parse_meminfo_kb` 3x and `truncated_stream_payload_context` 2x moved to
-  `kcode-core::util` (no new dependency edge), and the two reload-marker ages
-  collapsed. `now_ms` deliberately left: folding it onto the test clock changes
-  behavior under the test clock and needs its own verification.
-- [x] **Wildcard re-export ratchet** (decided 2026-09-29): the 13 wildcard
-  re-exports are declared cosmetic for this batch. Driving them to 0 is the §3
-  crate-spine pass, not this one; that pass decides whether the `kcode-base`
-  shims stay.
-- [x] **`smoothness_benchmark.rs`** (re-read 2026-09-29): it is all test code
-  (three `#[test]` fns, no production half), included by the `include!` test
-  tree. There is nothing to move out; it is touched only by the §4
-  `include!`-to-module conversion. Item closed.
-- [ ] Optional tail: §5 hygiene nits are small and independent (config
-  warnings, the `auth_remote/onboarding.rs` rename).
+- [ ] Optional tail: §5 hygiene nits (config warnings, the
+  `auth_remote/onboarding.rs` rename).
 
 Not this batch: the `include!` test-tree replacement (§4) is paid for in test
 churn, so it follows the shape work, and the God-module re-cores (§2) are their
@@ -173,7 +122,6 @@ stripped and clippy asked what it hid:
 No unconditional `#[allow(dead_code)]` remains. The `cfg_attr` sites are
 conditional on platform, feature, or `cfg(test)` and stay as they are.
 
-- [x] The dead local turn path (landed 2026-09-29; ~3.8k lines).
 
 One home per duplicated helper. Body hashes were compared for each of these:
 
@@ -242,8 +190,6 @@ Bigger, each its own pass:
 - [ ] Move `smoothness_benchmark.rs` (313) out of `app/tests/`; the two
   provider-doctor halves (`live_provider_probes.rs`, `provider_e2e.rs`) already
   live in `kcode-provider-doctor/src/`. §4 owns the test-tree item.
-- [x] Delete the dead local turn path and migrate the test call sites onto the
-  remote path (landed 2026-09-29; ~3.8k lines removed).
 
 ### What would settle the floor
 
@@ -453,10 +399,9 @@ Staged, each lands whole.
   (name, aliases, help, handler, remote-safe); fixes the `/help` gap and the
   dead SSH-block commands for free. Shares `commands_dispatch.rs` with the
   `App` re-core, so keep them in separate changes.
-- [x] **The local in-process turn path** (landed 2026-09-29, `516de13d`): the
-  orphaned `App::run` and its whole subtree are deleted, so the server agent
-  loop is the one turn implementation. The `AppRuntimeMode::TestHarness` axis
-  survives but is now only a marker; collapsing it is its own decision.
+- [ ] (decision) **Collapse `AppRuntimeMode::TestHarness`**: the local turn
+  path is deleted (`516de13d`), so the axis is only a marker now. Decide whether
+  it survives.
 - [ ] (decision) **Re-core the SSH-login state** (`crates/kcode-tui/src/tui/app/auth_remote.rs`):
   one flow tracked by five correlated fields (`phase`, `task`, `operation`,
   `input_kind`, `input`) with 12 guarded `.unwrap()`s. Target is two enums,
