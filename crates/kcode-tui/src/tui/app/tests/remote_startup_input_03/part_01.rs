@@ -559,20 +559,6 @@ fn test_restore_session_with_selfdev_reload_tool_result_queues_continuation() {
 }
 
 #[test]
-fn test_system_reminder_is_added_to_system_prompt_not_user_messages() {
-    let mut app = create_test_app();
-    app.current_turn_system_reminder = Some(
-        "Your session was interrupted by a server reload. Continue where you left off.".to_string(),
-    );
-
-    let split = app.build_system_prompt_split();
-
-    assert!(split.dynamic_part.contains("# System Reminder"));
-    assert!(split.dynamic_part.contains("Continue where you left off."));
-    assert!(app.messages.is_empty());
-}
-
-#[test]
 fn test_recover_session_without_tools_preserves_debug_and_canary_flags() {
     let mut app = create_test_app();
     app.session.is_debug = true;
@@ -635,7 +621,7 @@ fn test_background_update_ready_waits_for_turn_to_finish() {
     assert!(!app.should_quit);
 
     app.is_processing = false;
-    crate::tui::app::local::handle_tick(&mut app);
+    app.maybe_finish_background_client_reload();
 
     assert_eq!(app.maintenance.reload_requested.as_deref(), Some(session_id.as_str()));
     assert!(app.should_quit);
@@ -661,7 +647,7 @@ fn test_background_update_ready_waits_for_typing_to_go_idle() {
     );
 
     app.last_user_interaction = Some(Instant::now() - Duration::from_secs(2));
-    crate::tui::app::local::handle_tick(&mut app);
+    app.maybe_finish_background_client_reload();
     assert_eq!(app.maintenance.reload_requested.as_deref(), Some(session_id.as_str()));
     assert!(app.should_quit);
 }

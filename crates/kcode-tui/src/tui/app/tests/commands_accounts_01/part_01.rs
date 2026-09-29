@@ -1315,6 +1315,7 @@ fn submit_git_command_and_wait_for_response(app: &mut App) {
     app.submit_input();
 
     rt.block_on(async {
+        let mut remote = crate::tui::backend::RemoteConnection::dummy();
         loop {
             let event = tokio::time::timeout(std::time::Duration::from_secs(2), bus_rx.recv())
                 .await
@@ -1325,7 +1326,7 @@ fn submit_git_command_and_wait_for_response(app: &mut App) {
                 crate::bus::BusEvent::GitStatusCompleted(completed)
                     if completed.session_id == expected_session_id
             );
-            super::local::handle_bus_event(app, Ok(event));
+            super::remote::handle_bus_event(app, &mut remote, Ok(event)).await;
             if saw_completion_for_app {
                 break;
             }

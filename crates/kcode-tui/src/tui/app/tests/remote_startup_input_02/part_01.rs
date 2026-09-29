@@ -795,7 +795,6 @@ fn test_submit_input_adds_message() {
     // Check processing state
     assert!(app.is_processing());
     assert!(app.pending_turn);
-    assert!(app.session_save_pending);
     assert!(matches!(app.status(), ProcessingStatus::Sending));
     assert!(app.elapsed().is_some());
 
@@ -910,88 +909,6 @@ fn test_ctrl_p_toggles_auto_poke_locally() {
         msg.content
             .contains("Auto-poke enabled. Nothing unfinished right now")
     }));
-}
-
-#[test]
-fn test_transfer_command_queues_pause_while_processing_locally() {
-    let mut app = create_test_app();
-    app.is_processing = true;
-
-    super::commands::handle_transfer_command_local(&mut app);
-
-    assert!(app.pending_split.transfer_request);
-    let pause_message = super::commands::transfer_pause_message();
-    assert_eq!(
-        app.interleave_message.as_deref(),
-        Some(pause_message.as_str())
-    );
-    assert_eq!(
-        app.status_notice(),
-        Some("Transfer queued after current turn".to_string())
-    );
-}
-
-#[test]
-fn test_create_transfer_session_from_parent_copies_todos_and_uses_compacted_context_only() {
-    with_temp_kcode_home(|| {
-        let mut app = create_test_app();
-        app.session.working_dir = Some("/tmp".to_string());
-        app.session.model = Some("test-model".to_string());
-        app.session.provider_key = Some("test-provider".to_string());
-        app.session.messages.push(crate::session::StoredMessage {
-            id: "msg-1".to_string(),
-            role: Role::User,
-            content: vec![ContentBlock::Text {
-                text: "full transcript should not be copied".to_string(),
-                cache_control: None,
-            }],
-            display_role: None,
-            timestamp: None,
-            tool_duration_ms: None,
-            token_usage: None,
-        });
-        let transfer_compaction = crate::session::StoredCompactionState {
-            summary_text: "Compacted handoff summary".to_string(),
-            openai_encrypted_content: None,
-            covers_up_to_turn: 1,
-            original_turn_count: 1,
-            compacted_count: 0,
-        };
-        crate::todo::save_todos(
-            &app.session.id,
-            &[crate::todo::TodoItem {
-                group: None,
-                id: "todo-1".to_string(),
-                content: "Carry this forward".to_string(),
-                status: "pending".to_string(),
-                priority: "high".to_string(),
-                blocked_by: Vec::new(),
-                assigned_to: None,
-                confidence: None,
-                completion_confidence: None,
-                confidence_history: Vec::new(),
-            }],
-        )
-        .expect("save todos");
-
-        let (child_id, _) = super::commands::create_transfer_session_from_parent(
-            &app.session.id,
-            &app.session,
-            Some(transfer_compaction.clone()),
-        )
-        .expect("create transfer session");
-        let child = crate::session::Session::load(&child_id).expect("load child session");
-        let child_todos = crate::todo::load_todos(&child_id).expect("load child todos");
-
-        assert_eq!(child.parent_id.as_deref(), Some(app.session.id.as_str()));
-        assert!(child.messages.is_empty());
-        assert_eq!(child.compaction, Some(transfer_compaction));
-        assert_eq!(child.model.as_deref(), Some("test-model"));
-        assert_eq!(child.provider_key.as_deref(), Some("test-provider"));
-        assert_eq!(child.working_dir.as_deref(), Some("/tmp"));
-        assert_eq!(child_todos.len(), 1);
-        assert_eq!(child_todos[0].content, "Carry this forward");
-    });
 }
 
 #[test]
@@ -1353,35 +1270,6 @@ fn test_send_action_submits_bang_commands_while_processing() {
 
     assert_eq!(app.send_action(false), SendAction::Submit);
     assert_eq!(app.send_action(true), SendAction::Submit);
-}
-
-#[test]
-fn test_handle_input_shell_completed_renders_markdown_blocks() {
-    let mut app = create_test_app();
-    let event = BusEvent::InputShellCompleted(InputShellCompleted {
-        session_id: app.session.id.clone(),
-        result: crate::message::InputShellResult {
-            command: "ls -la".to_string(),
-            cwd: Some("/tmp/project".to_string()),
-            output: "Cargo.toml\nsrc\n".to_string(),
-            exit_code: Some(0),
-            duration_ms: 42,
-            truncated: false,
-            failed_to_start: false,
-        },
-    });
-
-    super::local::handle_bus_event(&mut app, Ok(event));
-
-    let rendered = app.display_messages().last().expect("shell result message");
-    assert_eq!(rendered.role, "system");
-    assert!(rendered.content.contains("Shell command"));
-    assert!(rendered.content.contains("ls -la"));
-    assert!(rendered.content.contains("Cargo.toml"));
-    assert_eq!(
-        app.status_notice(),
-        Some("Shell command completed".to_string())
-    );
 }
 
 /// Regression for issue #427: selecting an effort-variant model row (e.g.

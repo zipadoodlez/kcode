@@ -78,13 +78,14 @@ fn test_refresh_model_list_command_shows_summary_and_status_notice() {
     ));
 
     rt.block_on(async {
+        let mut remote = crate::tui::backend::RemoteConnection::dummy();
         loop {
             let event = tokio::time::timeout(std::time::Duration::from_secs(2), bus_rx.recv())
                 .await
                 .expect("timed out waiting for model refresh bus event")
                 .expect("bus should stay open");
             let saw_completion = matches!(event, crate::bus::BusEvent::ModelRefreshCompleted(_));
-            super::local::handle_bus_event(&mut app, Ok(event));
+            super::remote::handle_bus_event(&mut app, &mut remote, Ok(event)).await;
             if saw_completion {
                 break;
             }

@@ -964,10 +964,12 @@ fn test_mouse_scroll_animation_preserves_side_pane_scroll_sensitivity() {
         "one wheel notch should drain the full side-pane scroll amount"
     );
 
-    let _ = crate::tui::app::local::handle_tick(&mut app);
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+    let _ = rt.block_on(crate::tui::app::remote::handle_tick(&mut app, &mut remote));
     assert_eq!(app.diff_pane_scroll, 8);
 
-    crate::tui::app::local::handle_tick(&mut app);
+    let _ = rt.block_on(crate::tui::app::remote::handle_tick(&mut app, &mut remote));
     assert_eq!(
         app.diff_pane_scroll, 8,
         "ticks should not add extra scroll after the wheel notch drained"
