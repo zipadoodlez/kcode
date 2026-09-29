@@ -15,6 +15,45 @@ An item carries a compact evidence line so it can be picked up without
 re-deriving why it exists. An item marked `(decision)` needs a call from the
 maintainer before work starts; everything else is actionable.
 
+## Next up: finish the local-turn-path excision (do this first)
+
+Started 2026-09-29. `App::run` has zero callers and the live entry is
+`run_remote`, but `local` is only partly dead: `handle_bus_event` and
+`handle_ui_activity` are used by the live remote path and stay.
+
+**Landed 2026-09-29 (`45396ee9`):** one home for the completed-turn tail.
+`App::conclude_completed_turn` (in `turn_notify.rs`) holds the end-of-turn
+sequence; the live remote turn-complete arm and `local::finish_turn` both call
+it, and the 13 tests that drove `local::finish_turn` now drive the live method.
+So the tests no longer depend on the dead path.
+
+Remaining, in order:
+
+- [ ] **Re-point the two reload tick tests** to the live method: replace
+  `local::handle_tick(&mut app)` with `app.maybe_finish_background_client_reload()`
+  in `test_background_update_ready_waits_for_turn_to_finish` and
+  `test_background_update_ready_waits_for_typing_to_go_idle`
+  (`tests/remote_startup_input_03/part_01.rs`).
+- [ ] **Decide the scroll test (decision).**
+  `test_mouse_scroll_animation_preserves_side_pane_scroll_sensitivity`
+  (`tests/state_model_poke_01/part_01.rs`) calls `local::handle_tick` twice as an
+  idempotence guard: after a wheel notch sets the pane scroll, the ticks must not
+  move it again. There is no distinct live "side-pane scroll animation" method;
+  the live tick is `remote::handle_tick(app, remote)`, which is async and needs a
+  dummy connection.
+  - **(a) chosen lean:** call the live `remote::handle_tick` with
+    `RemoteConnection::dummy()` + a runtime, keeping the guard. About 4 lines.
+  - (b) drop the two tick calls and keep only the wheel assertion; loses the
+    guard.
+- [ ] **Delete the dead half:** `local::{finish_turn, handle_tick,
+  handle_terminal_event, process_turn_with_input}`, `App::run`
+  (`run_shell.rs:198-309`), and the `process_turn_with_input` wrapper in
+  `event_wrappers.rs` (keep its `handle_server_event`, and keep `run_remote` plus
+  the live helpers in `run_shell.rs`).
+- [ ] **Delete the helper cascade** (~48 private items that only the removed
+  functions used), so clippy `-D warnings` stays green.
+- [ ] Gate. Expect a size-ratchet shrink to record.
+
 ## Standing decisions
 
 - **Fork policy: diverged.** No rebase lane and no upstream to track; kcode is
@@ -39,14 +78,9 @@ so it shares one build and one end-of-batch gate. The items and their evidence
 already sit in §0 and §3; this section is the running order, with counts
 re-verified 2026-09-29 at `fba32bda` (`wc -l`).
 
-- [ ] Delete the dead local turn path: `app/local.rs` 584, `app/run_shell.rs`
-  560, `app/event_wrappers.rs` 38, `app/overnight_card.rs` 183 (~1.3k with the
-  partials). §0 "Bigger"; §2 owns it.
-  - Approach chosen 2026-09-29: **excise the dead turn closure** (`App::run`,
-    `process_turn_with_input`, `handle_tick`, `handle_terminal_event`,
-    `finish_turn`), keep the `local` helpers the remote path shares
-    (`handle_ui_activity`, `handle_bus_event`), and rewire the 33 test sites.
-    Note: `local` is only partly dead.
+- [ ] **Finish the local-turn-path excision** — see "Next up" at the top of this
+  file. It is the first item and carries the running order; it is the last
+  unlanded piece of this batch.
 - [x] **One home per duplicated helper** (landed 2026-09-29, `9a83ad59`):
   `parse_meminfo_kb` 3x and `truncated_stream_payload_context` 2x moved to
   `kcode-core::util` (no new dependency edge), and the two reload-marker ages
