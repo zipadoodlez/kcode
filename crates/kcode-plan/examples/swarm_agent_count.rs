@@ -21,7 +21,7 @@ use std::collections::{HashMap, HashSet};
 use kcode_plan::dag::sim::deep_artifact;
 use kcode_plan::dag::{
     HandoffArtifact, Mode, NodeKind, NodeSpec, TaskGraph, complete_node, dispatch, expand_node,
-    fail_node, inject_from_gate, ready_nodes, seed,
+    inject_from_gate, ready_nodes, seed,
 };
 
 /// What a scripted worker decides to do with a dispatched node.
@@ -30,7 +30,6 @@ enum Act {
     Complete,
     Expand(Vec<NodeSpec>),
     InjectGap(Vec<NodeSpec>),
-    Fail,
 }
 
 /// A scenario is a mode, a seed, and a per-node behaviour script (by node id).
@@ -130,7 +129,6 @@ fn measure(scn: &Scenario) -> Measured {
                     m.gaps_injected += nodes.len();
                     inject_from_gate(&mut g, &id, &worker, nodes).map(|_| ())
                 }
-                Act::Fail => fail_node(&mut g, &id, &worker),
             };
             if let Err(err) = step {
                 eprintln!("scenario step on '{id}' failed: {err}");

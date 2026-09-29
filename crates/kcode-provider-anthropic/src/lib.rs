@@ -913,7 +913,7 @@ mod cache_prefix_invariant_tests {
 
     use super::*;
     use crate::test_support::text_msg;
-    use kcode_message_types::{ContentBlock, Message, Role};
+    use kcode_message_types::{Message, Role};
 
     /// A realistic warm conversation: user/assistant turns ending on a user message.
     fn base_conversation() -> Vec<Message> {
