@@ -42,12 +42,24 @@ re-verified 2026-09-29 at `fba32bda` (`wc -l`).
 - [ ] Delete the dead local turn path: `app/local.rs` 584, `app/run_shell.rs`
   560, `app/event_wrappers.rs` 38, `app/overnight_card.rs` 183 (~1.3k with the
   partials). §0 "Bigger"; §2 owns it.
-- [ ] One home per duplicated helper: `parse_meminfo_kb` 3x,
-  `truncated_stream_payload_context` 2x, the two reload-marker const pairs, and
-  `now_ms` 3x (the last is a fix, not a move). §0's helper list has the sites.
-- [ ] Drive the wildcard re-export ratchet to 0, or declare the crate-spine
-  layout cosmetic and collapse it (§3).
-- [ ] Move `smoothness_benchmark.rs` 313 out of `app/tests/` (§4).
+  - Approach chosen 2026-09-29: **excise the dead turn closure** (`App::run`,
+    `process_turn_with_input`, `handle_tick`, `handle_terminal_event`,
+    `finish_turn`), keep the `local` helpers the remote path shares
+    (`handle_ui_activity`, `handle_bus_event`), and rewire the 33 test sites.
+    Note: `local` is only partly dead.
+- [x] **One home per duplicated helper** (landed 2026-09-29, `9a83ad59`):
+  `parse_meminfo_kb` 3x and `truncated_stream_payload_context` 2x moved to
+  `kcode-core::util` (no new dependency edge), and the two reload-marker ages
+  collapsed. `now_ms` deliberately left: folding it onto the test clock changes
+  behavior under the test clock and needs its own verification.
+- [x] **Wildcard re-export ratchet** (decided 2026-09-29): the 13 wildcard
+  re-exports are declared cosmetic for this batch. Driving them to 0 is the §3
+  crate-spine pass, not this one; that pass decides whether the `kcode-base`
+  shims stay.
+- [x] **`smoothness_benchmark.rs`** (re-read 2026-09-29): it is all test code
+  (three `#[test]` fns, no production half), included by the `include!` test
+  tree. There is nothing to move out; it is touched only by the §4
+  `include!`-to-module conversion. Item closed.
 - [ ] Optional tail: §5 hygiene nits are small and independent (config
   warnings, the `auth_remote/onboarding.rs` rename).
 
@@ -89,7 +101,7 @@ lines.
 | cluster | lines | evidence | what holds its place | verdict |
 |---|---|---|---|---|
 | Dead local turn path | ~810 whole files (`local.rs` 590, `event_wrappers.rs` 38, `overnight_card.rs` 183) + ~30 partial items | `App::run` (`run_shell.rs:198`) has zero callers (live entry is `run_remote`, `tui_launch.rs:160`); cfg-ing it out yields exactly 48 `never used` items | tests drive `local::` from 8 files / 33 sites | delete after migrating those tests; ~1.5k with the partials |
-| Second markdown renderer | landed 2026-09-29 (was ~4,700) | `render_markdown_via_core` had only test callers; the adapter's own doc said the legacy path "remains authoritative" | the one live symbol was `reasoning_line_markup`; the rest was a parallel parser/model/wrap | resolved: deleted the parser/model/wrap (1,193) + adapter (795), moved reasoning to `kcode-message-types`, and wired the engine into the renderer. `kcode-render-core` is now only the LaTeX engine + normalization (2,220) |
+| Second markdown renderer | landed 2026-09-29 (was ~4,700) | `render_markdown_via_core` had only test callers; the adapter's own doc said the legacy path "remains authoritative" | the one live symbol was `reasoning_line_markup`; the rest was a parallel parser/model/wrap | resolved: deleted the parser/model/wrap (1,193) + adapter (795), moved reasoning to `kcode-message-types`, and wired the engine into the renderer. `kcode-render-core` is now only the LaTeX engine + normalization (2,220). A follow-up (`e27d287a`) deleted the unwired `render_markdown_lazy` copy (983), which the streaming path never called |
 | Harnesses living in test files | ~3.7k | `[census]`: `live_tests.rs` 3,080 is `pub mod` production code consumed by `kcode-provider-doctor`; `smoothness_benchmark.rs` 332; `browser_fast_live_tests.rs` 250 | `live_tests` is genuinely production | move the non-test halves into modules; `live_tests` is a misnamed production module |
 | Duplicated tiny helpers | ~230, not the 500 first guessed | every family in the item list below was re-read and its bodies hash-compared; the census's `detect_*`/`generate_diff_*` rows were dropped as not-duplicates | 3-90 lines each, all with a home that already exists | one home each; see the item list |
 | Parallel persisted-state runtime | ~20, not 150 | read both files: the mechanism already lives in `server/durable_state.rs` (`load_json_state`, `save_json_state`, `hashed_request_key`, `state_dir`); only the 3-line `load_state`/`save_state` wrappers rhyme, and the payload, TTLs, and `is_stale` bodies differ | payload-specific | leave duplicated; a generic would weld two unrelated payloads together |
