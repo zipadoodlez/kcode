@@ -197,69 +197,18 @@ those run, "the floor is ~450-500k" is an estimate, not a measurement, and
 Widest representation first, while the tree is still quiet. Sweeping call sites
 before the shape is settled is churn.
 
-- [ ] **One provider catalog, stated once.** The catalog is stated five times
-  over, and one identity enum twice. Measured by reading each table:
-
-  - `ProviderChoice` and its `#[value(alias = ..)]` attributes: 53 variants,
-    `src/cli/provider_init.rs`.
-  - `ProviderChoice::as_arg_value()`: 53 arms.
-  - `LOGIN_PROVIDERS: [LoginProviderDescriptor; 52]` plus 52 constants:
-    `provider-metadata/src/catalog.rs`, 1,284 lines.
-  - `list_cli_providers()`: was a hand-typed 26-element array; now derived.
-  - `LoginProviderTarget` (14) and `RuntimeProviderId` (14) have identical
-    membership, and `crates/kcode-base/src/auth/integration.rs:54-69` is a
-    14-arm 1:1 conversion between them. A 1:1 conversion between two enums is a
-    proof they are one concept written twice.
-  - `as_arg_value()` and `descriptor.id` agree on 51 of 52 (the exception is the
-    deprecated `claude-subprocess`, which deliberately points at the `claude`
-    descriptor), so the pairing is derivable, i.e. pure duplication.
-  - The `-p` value was a fourth spelling that disagreed for four providers
-    (`Ai302`, `HuggingFace`, `MoonshotAi`, `TogetherAi`); fixed by pinning
-    `#[value(name = ..)]` to `as_arg_value()` with the old spellings as aliases.
-
-  Landed: B1 (`provider list` derives from the registry; the 26-entry array is
-  gone) and B2 (the 51-pair pairing table deleted; `OrcaRouter` added, closing
-  the last "offered on every login surface with no `-p` value" gap; both red
-  round-trip tests now green). What remains, each lands whole:
-
-  - B3: **Collapse the 38-variant arm** in `init_provider_with_options` (the
-    "is profile-backed" list) onto the predicate that already exists one screen
-    away, `profile_for_choice` (`provider_init.rs:207`), so the next provider
-    needs no arm.
-  - B4: **One identity enum.** Delete `RuntimeProviderId`'s 14-arm bridge.
-    Preferred shape: keep `ProviderActivation` free of the profile payload and
-    give the descriptor a `runtime_key()` accessor. `--` read `activation.rs`'s
-    consumers before committing.
-  - B5: **The registry drives the clap values.** Delete the 53 variants, their
-    aliases, and `as_arg_value()`; build `PossibleValuesParser` from the
-    registry with `PossibleValue::new(id).help(display_name).alias(..)` and
-    `.hide(true)` for the deprecated one, which keeps `--help` and completions.
-    Then `-p` accepts exactly what `provider list` prints, by construction.
-    About 250 `ProviderChoice::` sites in 16 files, 49 of them in
-    `provider_init_tests.rs`. Last and alone, gated on the provider-doctor
-    suite (this is the stage that can drop an accepted value by accident).
-
-  Not doing, with reasons: not merging `ActiveProvider` (execution slot,
-  many-to-one, already proven by `ConfigProviderSelection::active_provider`), not
-  merging `ModelRouteApiMethod` (routing is not identity), not touching
-  `ProviderAvailability`'s 9 bools (~30 sites, the win does not pay).
-
-  Open question, not a claim: `fallback_sequence`
-  (`provider-core/src/selection.rs:315`) is a hand-written 8x8 failover table,
-  8 arms each restating one priority order with the active provider moved first.
+- [ ] **`fallback_sequence` failover table** (open question, not a claim):
+  `provider-core/src/selection.rs:315` is a hand-written 8x8 failover table, 8
+  arms each restating one priority order with the active provider moved first.
   The Claude and OpenAI arms omit `Antigravity`, the other six include it.
   Deliberate frontier-pair policy or an omission? Unread: the failover call
   path. If it is "active first, then a canonical order", the ~80-line table
   collapses to two lines.
 
-  Done when: adding a provider is 1 file plus a registry line, the `-p` accepted
-  set equals the `provider list` printed set (true since B1), and no pairing
-  table exists (true since B2).
 - [ ] Provider cleanup keeps every provider reachable. No provider is deleted
-  (see Standing decisions): `ProviderChoice` exposes Cursor, Copilot,
-  Antigravity, GrokBuild, Bedrock; `provider-metadata` has 5 dependents, so the
-  20 `kcode-provider-*` crates (61.1k lines) stay. Cleanup is the identity
-  unification above.
+  (see Standing decisions): the catalog exposes Cursor, Copilot, Antigravity,
+  GrokBuild, Bedrock; `provider-metadata` has 5 dependents, so the 20
+  `kcode-provider-*` crates (61.1k lines) stay.
 - [ ] **Condense swarm/comm**: `SwarmState` (`server/state.rs:108`) is a real
   owner, so this is condensation. Member projection hand-written 4x
   (`AgentInfo`, `SwarmMemberStatus`, `MemberStatic`); status vocabulary diverged
