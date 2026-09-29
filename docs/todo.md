@@ -38,16 +38,17 @@ deletes a whole crate and changes a tool's model-facing schema, so it runs alone
 not merged with anything else.
 
 Cycles A and B are done and sit on branch `batch-ab-provider-onboarding` (not
-merged): -12,704 lines, the gate green, `kcode-tui --lib` improved against the
+merged): -12,672 lines, the gate green, `kcode-tui --lib` improved against the
 branch point. Their full scoping notes, decisions, and run log are in
 `~/.kcode/scratch/batch.md`.
 
 - [ ] **Remove every way to read, import, or resume another harness's
   sessions.** Present and re-verified 2026-09-29: `kcode-base/src/import.rs`
-  1,495 and `src/import_tests.rs` 1,144; `kcode-base/tests/claude_import_integration.rs`
-  379; `crates/kcode-import-core` (1,645 + `repo_ranking.rs` 519 + 412 test) and
-  its dependency edge, which also removes its `hex` and `sha2` deps if nothing
-  else uses them; the `import::` consumers in
+  1,495 and `src/import_tests.rs` 1,144;
+  `kcode-base/tests/claude_import_integration.rs` 379;
+  `crates/kcode-import-core` (1,645 + `repo_ranking.rs` 519 + 412 test) and its
+  dependency edge, which also removes its `hex` and `sha2` deps if nothing else
+  uses them; the `import::` consumers in
   `kcode-app-core/src/tool/session_search.rs`, including the model-facing
   `include_external` (110, 201, 228, 375) and its
   `all|kcode|claude|codex|pi|opencode|cursor` source enum; the
@@ -70,9 +71,11 @@ branch point. Their full scoping notes, decisions, and run log are in
 - **Test scope:** `session_search`, `import_tests`, `crash`,
   `claude_import_integration`. Expect a second attempt on compile errors from
   removed APIs; that is why it runs alone.
-- **Ratchet:** `crates/kcode-base/src/import.rs` 1,495 is tracked in
-  `scripts/code_size_budget.json`. Re-record both size baselines in the same pass
-  as the deletion, since the ratchets fail on an unrecorded shrink.
+- **Ratchet:** `crates/kcode-base/src/import.rs` 1,495 is the only tracked file
+  this deletes, in `scripts/code_size_budget.json`; `import_tests.rs` and
+  `kcode-import-core` are not tracked. Re-record the baseline in the same pass,
+  since the ratchet fails on an unrecorded shrink, and check the test-size
+  baseline for any tracked test file the deletion shrinks.
 
 ---
 
