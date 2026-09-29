@@ -293,10 +293,9 @@ before the shape is settled is churn.
     `[doing]`), and `tui_state.rs` counts it in the progress bar's running
     bucket. Give it its own display value and marker in the todo and plan
     widgets: a distinct glyph and label, `warning_color()`, sorted with
-    `in_progress`. Decision: reuse `warning_color()`, distinguish by glyph and
-    label, no new palette role. Open sub-decision (lean: leave the count):
-    whether the swarm progress number also splits stalled out of its running
-    bucket.
+    `in_progress`. Decisions: reuse `warning_color()` and distinguish by glyph
+    and label, no new palette role; leave the progress number's count as is, so
+    only the per-node marker changes and stalled stays in the running bucket.
 
 ## 2. God modules
 
