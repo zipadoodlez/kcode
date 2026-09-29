@@ -95,22 +95,28 @@ pub fn is_transient_transport_error(error_str: &str) -> bool {
 /// stream timeouts) and must keep doing so separately: folding them in here would
 /// make every provider retry on another provider's failure text.
 pub fn is_retryable_provider_error(error_str: &str) -> bool {
+    // HTTP reason phrases arrive title-cased ("502 Bad Gateway"), so match on a
+    // lowercased copy like `is_transient_transport_error` does.
+    let lower = error_str.to_ascii_lowercase();
     is_transient_transport_error(error_str)
         // Server errors (5xx), including the overloaded shortcut.
-        || error_str.contains("500 internal server error")
-        || error_str.contains("502 bad gateway")
-        || error_str.contains("503 service unavailable")
-        || error_str.contains("504 gateway timeout")
-        || error_str.contains("overloaded")
+        || lower.contains("500 internal server error")
+        || lower.contains("502 bad gateway")
+        || lower.contains("503 service unavailable")
+        || lower.contains("504 gateway timeout")
+        || lower.contains("overloaded")
         // Rate limiting (429).
-        || error_str.contains("429 too many requests")
-        || error_str.contains("rate limit")
-        || error_str.contains("rate_limit")
+        || lower.contains("429 too many requests")
+        || lower.contains("rate limit")
+        || lower.contains("rate_limit")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{is_transient_transport_error, send_with_initial_response_timeout};
+    use super::{
+        is_retryable_provider_error, is_transient_transport_error,
+        send_with_initial_response_timeout,
+    };
     use std::io::Read;
     use std::net::TcpListener;
     use std::sync::mpsc;
@@ -221,5 +227,28 @@ mod tests {
         ));
         // Also test the identifier in isolation (case-insensitive)
         assert!(is_transient_transport_error("stream_read_error"));
+    }
+
+    /// The shared classifier is the contract providers delegate to, so pin the
+    /// case-insensitive direction: HTTP reason phrases arrive title-cased.
+    #[test]
+    fn shared_retryable_classifier_matches_case_variants() {
+        for error in [
+            "502 Bad Gateway",
+            "503 Service Unavailable",
+            "504 Gateway Timeout",
+            "429 Too Many Requests",
+            "Rate Limit Exceeded",
+            "server overloaded",
+        ] {
+            assert!(
+                is_retryable_provider_error(error),
+                "should be retryable: {error}"
+            );
+        }
+        assert!(!is_retryable_provider_error("invalid api key"));
+        assert!(!is_retryable_provider_error(
+            "400 Bad Request: model does not exist"
+        ));
     }
 }
