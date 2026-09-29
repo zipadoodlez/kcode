@@ -87,32 +87,27 @@ mod render_lazy;
 #[path = "markdown_render_support.rs"]
 mod render_support;
 
-mod render_core_adapter;
-pub use render_core_adapter::{
-    document_to_lines, render_markdown_via_core, render_markdown_via_core_wrapped,
-    styled_line_to_line,
-};
-
 pub use render_full::{render_markdown_with_width, thread_render_count};
 pub use render_lazy::render_markdown_lazy;
 pub use render_support::extract_copy_targets_from_rendered_lines;
 
 /// Reasoning-line markdown formatters and the zero-width sentinel they use.
 ///
-/// These pure-string helpers were moved to `kcode-render-core` so the
-/// foundation/streaming layer can format reasoning without depending on any
-/// `kcode-tui-*` crate. Re-exported here so existing
+/// These pure-string helpers live in `kcode-message-types`, the leaf types
+/// crate both this renderer and the streaming layer already depend on.
+/// Re-exported here so existing
 /// `kcode_tui_markdown::{reasoning_line_markup, reasoning_partial_markup,
 /// REASONING_SENTINEL}` paths keep working.
-pub use kcode_render_core::{REASONING_SENTINEL, reasoning_line_markup, reasoning_partial_markup};
+pub use kcode_message_types::reasoning::{
+    REASONING_SENTINEL, reasoning_line_markup, reasoning_partial_markup,
+};
 
 /// One-line collapsed reasoning summary markup (e.g. `▸ thought (3 lines)`).
 ///
-/// Moved to `kcode-render-core` (pure/backend-neutral) so the foundation/
-/// streaming layer can format it without depending on any `kcode-tui-*` crate.
+/// Lives in `kcode-message-types` with the rest of the reasoning formatting.
 /// Re-exported here so the existing
 /// `kcode_tui_markdown::reasoning_summary_line_markup` path keeps working.
-pub use kcode_render_core::reasoning_summary_line_markup;
+pub use kcode_message_types::reasoning::reasoning_summary_line_markup;
 
 use render_support::{
     highlight_code_cached, line_plain_text, placeholder_code_block, ranges_overlap,

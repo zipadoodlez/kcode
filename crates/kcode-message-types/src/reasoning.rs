@@ -2,9 +2,9 @@
 //!
 //! Pure string helpers shared by the server/streaming path and the TUI renderer
 //! so the wrapping/escaping rules stay in lockstep with the renderer that
-//! consumes them. These live in `kcode-render-core` (a backend-neutral, pure
-//! crate) rather than in `kcode-tui-markdown` so the foundation/streaming layer
-//! can format reasoning lines without depending on any `kcode-tui-*` crate.
+//! consumes them. They live here, in the leaf types crate both sides already
+//! depend on, so the foundation/streaming layer can format reasoning lines
+//! without reaching for any `kcode-tui-*` crate.
 
 /// Invisible separator placed just inside both ends of an emphasis run so the
 /// flanking `*` are always adjacent to non-whitespace (see
@@ -104,11 +104,6 @@ pub fn reasoning_partial_markup(line: &str) -> String {
 /// reasoning block down to a single trace line when the transcript is
 /// re-rendered from history in `current` reasoning-display mode (so reloaded /
 /// resumed sessions match the live collapse instead of replaying every line).
-///
-/// Lives here (a backend-neutral, pure crate) rather than in `kcode-tui-markdown`
-/// so the foundation/streaming layer can format the summary without depending on
-/// any `kcode-tui-*` crate. Re-exported from `kcode-tui-markdown` for the
-/// existing `kcode_tui_markdown::reasoning_summary_line_markup` path.
 pub fn reasoning_summary_line_markup(line_count: usize) -> String {
     let label = match line_count {
         0 | 1 => "▸ thought".to_string(),

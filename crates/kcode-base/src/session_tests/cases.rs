@@ -1428,7 +1428,7 @@ fn test_render_messages_renders_reasoning_before_answer_in_stored_order() {
     // ToolUse]` (see agent/turn_loops.rs push order). On resume/re-render the
     // reasoning must still appear *before* the answer text to match the live
     // streaming order, even though the Text block is stored first.
-    use kcode_render_core::REASONING_SENTINEL;
+    use kcode_message_types::reasoning::REASONING_SENTINEL;
 
     let _env_lock = lock_env();
     let _mode = EnvVarGuard::set("KCODE_REASONING_DISPLAY", "full");
@@ -1471,7 +1471,7 @@ fn test_render_messages_renders_reasoning_before_answer_in_stored_order() {
 
 #[test]
 fn test_render_messages_renders_persisted_reasoning() {
-    use kcode_render_core::REASONING_SENTINEL;
+    use kcode_message_types::reasoning::REASONING_SENTINEL;
 
     let _env_lock = lock_env();
     let _mode = EnvVarGuard::set("KCODE_REASONING_DISPLAY", "full");
@@ -1520,7 +1520,7 @@ fn test_render_messages_renders_persisted_reasoning() {
 
 #[test]
 fn test_render_messages_renders_legacy_reasoning_variant() {
-    use kcode_render_core::REASONING_SENTINEL;
+    use kcode_message_types::reasoning::REASONING_SENTINEL;
 
     let _env_lock = lock_env();
     let _mode = EnvVarGuard::set("KCODE_REASONING_DISPLAY", "full");
@@ -1552,7 +1552,7 @@ fn test_render_messages_renders_legacy_reasoning_variant() {
 
 #[test]
 fn test_render_messages_hides_persisted_reasoning_in_current_mode() {
-    use kcode_render_core::REASONING_SENTINEL;
+    use kcode_message_types::reasoning::REASONING_SENTINEL;
 
     let _env_lock = lock_env();
     let _mode = EnvVarGuard::set("KCODE_REASONING_DISPLAY", "current");
@@ -1599,7 +1599,7 @@ fn test_render_messages_hides_persisted_reasoning_in_current_mode() {
 
 #[test]
 fn test_render_messages_hides_persisted_reasoning_in_off_mode() {
-    use kcode_render_core::REASONING_SENTINEL;
+    use kcode_message_types::reasoning::REASONING_SENTINEL;
 
     let _env_lock = lock_env();
     let _mode = EnvVarGuard::set("KCODE_REASONING_DISPLAY", "off");

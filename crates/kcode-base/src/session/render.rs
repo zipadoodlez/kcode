@@ -42,7 +42,7 @@ fn format_reasoning_markup(text: &str) -> String {
     }
     let mut out = String::new();
     for line in text.split('\n') {
-        out.push_str(&kcode_render_core::reasoning_line_markup(line));
+        out.push_str(&kcode_message_types::reasoning::reasoning_line_markup(line));
     }
     // Blank line terminates the reasoning block.
     out.push('\n');

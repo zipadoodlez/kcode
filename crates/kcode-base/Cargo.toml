@@ -74,9 +74,8 @@ kcode-provider-gemini = { path = "../kcode-provider-gemini" }
 # NOTE: this foundation layer intentionally does NOT depend on any `kcode-tui-*`
 # crate. The two pure-data/string symbols it used to reach for (`ResumeTarget`,
 # `reasoning_line_markup`) were moved to `kcode-session-types` and
-# `kcode-render-core` respectively, so the layering inversion (foundation
+# `kcode-message-types` respectively, so the layering inversion (foundation
 # depending on presentation) is gone.
-kcode-render-core = { path = "../kcode-render-core" }
 kcode-terminal-launch = { path = "../kcode-terminal-launch" }
 kcode-terminal-image = { path = "../kcode-terminal-image" }
 kcode-usage-types = { path = "../kcode-usage-types" }

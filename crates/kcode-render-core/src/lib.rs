@@ -1,42 +1,17 @@
 //! # kcode-render-core
 //!
-//! Backend-neutral document/render model shared by kcode's front-ends (the
-//! ratatui TUI and the desktop GPU UI).
+//! Backend-neutral LaTeX math for the TUI markdown renderer.
 //!
-//! The pipeline is split at the seam where backends actually differ:
+//! [`math`] turns a TeX math body into terminal-friendly Unicode, inline and
+//! display. [`preprocess`] normalizes the delimiter spellings pulldown-cmark
+//! does not recognize (`\(...\)`, `\[...\]`, standalone display environments,
+//! and fenced `math`/`latex`/`tex`/`katex` blocks) into its `$`/`$$` form so the
+//! ordinary markdown parser can see them.
 //!
-//! ```text
-//!   text ─▶ parse_markdown ─▶ Document (neutral blocks/spans) ─▶ wrap ─▶ adapter ─▶ backend draw
-//! ```
-//!
-//! Everything up to and including wrapping is shared here. Each front-end owns
-//! only a thin adapter: it resolves [`model::StyleRole`] to concrete colors and
-//! turns [`model::StyledLine`]s into its own draw primitives (`ratatui::Line`
-//! for the TUI, glyph runs for the desktop), and supplies a
-//! [`wrap::WidthMeasure`] for its width units.
-//!
-//! This model is extracted from the *working* TUI markdown renderer
-//! (`kcode-tui-markdown`); that renderer remains authoritative until this core
-//! reaches parity, after which front-ends migrate onto it.
+//! Both halves are pure: no ratatui, no document model, no backend palette.
 
-pub mod markdown;
 pub mod math;
-pub mod model;
 pub mod preprocess;
-pub mod reasoning;
-pub mod wrap;
 
-pub use markdown::parse_markdown;
 pub use math::{render_display_latex, render_inline_latex};
-pub use model::{
-    Alignment, Block, BlockKind, Document, FillRole, StyleRole, StyledLine, StyledSpan, TextAttrs,
-};
 pub use preprocess::{escape_currency_dollars, normalize_latex_math};
-pub use reasoning::{
-    REASONING_SENTINEL, reasoning_line_content, reasoning_line_markup, reasoning_partial_markup,
-    reasoning_summary_line_markup,
-};
-pub use wrap::{ColumnWidth, WidthMeasure, wrap_line, wrap_lines};
-
-#[cfg(test)]
-mod tests;

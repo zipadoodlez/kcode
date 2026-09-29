@@ -1,7 +1,4 @@
-use kcode_render_core::{
-    BlockKind, StyleRole, normalize_latex_math, parse_markdown, render_display_latex,
-    render_inline_latex,
-};
+use kcode_render_core::{normalize_latex_math, render_display_latex, render_inline_latex};
 use unicode_width::UnicodeWidthStr;
 
 fn assert_visible_and_deterministic(source: &str) {
@@ -449,73 +446,5 @@ fn environment_normalization_handles_nesting_and_mismatches() {
         r"\begin{unknown}x\end{unknown}",
     ] {
         assert_eq!(normalize_latex_math(source), source, "{source}");
-    }
-}
-
-#[test]
-fn markdown_pipeline_preserves_structure_and_math_roles() {
-    let markdown = concat!(
-        "Price: $35.00 and inline \\(x_2 + \\alpha\\).\n\n",
-        "\\[\\frac{x+1}{y}\\]\n\n",
-        "```rust\nlet literal = r\"\\(x\\)\";\n```\n"
-    );
-    let doc = parse_markdown(markdown);
-    assert!(
-        doc.blocks
-            .iter()
-            .any(|block| block.kind == BlockKind::Paragraph)
-    );
-    let display = doc
-        .blocks
-        .iter()
-        .find(|block| block.kind == BlockKind::MathDisplay)
-        .expect("display math block");
-    assert!(
-        display
-            .lines
-            .iter()
-            .all(|line| line.spans.iter().all(|span| span.role == StyleRole::Math))
-    );
-    assert!(
-        display
-            .lines
-            .iter()
-            .any(|line| line.plain_text().contains('─'))
-    );
-
-    let all_text = doc
-        .blocks
-        .iter()
-        .flat_map(|block| &block.lines)
-        .map(|line| line.plain_text())
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(all_text.contains("$35.00"), "{all_text}");
-    assert!(all_text.contains("x₂ + α"), "{all_text}");
-    assert!(all_text.contains(r"\(x\)"), "{all_text}");
-}
-
-#[test]
-fn markdown_container_matrix_has_backend_neutral_parity() {
-    let containers = [
-        r"Inline \(\alpha_2 + x^2\).",
-        r"\[\frac{x+1}{y}\]",
-        "```math\n\\frac{x+1}{y}\n```",
-        "~~~latex\n\\begin{bmatrix}a & b \\\\ c & d\\end{bmatrix}\n~~~",
-        r"\begin{align*}x &= 1 \\ y &= 2\end{align*}",
-    ];
-    for markdown in containers {
-        let first = parse_markdown(markdown);
-        let second = parse_markdown(markdown);
-        assert_eq!(first, second, "{markdown}");
-        assert!(
-            first
-                .blocks
-                .iter()
-                .flat_map(|block| &block.lines)
-                .flat_map(|line| &line.spans)
-                .any(|span| span.role == StyleRole::Math),
-            "{markdown}: {first:?}"
-        );
     }
 }

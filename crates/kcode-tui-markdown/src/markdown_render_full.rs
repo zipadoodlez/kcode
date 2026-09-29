@@ -57,7 +57,7 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
     let mut table_rows: Vec<Vec<String>> = Vec::new();
     // Per-column alignment from the delimiter row. Carried so a numeric column
     // the author right-aligned is not silently re-read as left-aligned.
-    let mut table_alignments: Vec<kcode_render_core::Alignment> = Vec::new();
+    let mut table_alignments: Vec<crate::types::Alignment> = Vec::new();
     let mut current_cell = String::new();
     let mut _is_header_row = false;
 
@@ -782,9 +782,9 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
                 table_alignments = aligns
                     .iter()
                     .map(|align| match align {
-                        pulldown_cmark::Alignment::Right => kcode_render_core::Alignment::Right,
-                        pulldown_cmark::Alignment::Center => kcode_render_core::Alignment::Center,
-                        _ => kcode_render_core::Alignment::Left,
+                        pulldown_cmark::Alignment::Right => crate::types::Alignment::Right,
+                        pulldown_cmark::Alignment::Center => crate::types::Alignment::Center,
+                        _ => crate::types::Alignment::Left,
                     })
                     .collect();
                 dbg_tables += 1;

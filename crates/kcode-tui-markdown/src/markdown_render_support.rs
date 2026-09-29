@@ -129,7 +129,7 @@ fn strip_blockquote_gutter(text: &str) -> &str {
 pub(super) fn render_table_aligned(
     rows: &[Vec<String>],
     max_width: Option<usize>,
-    alignments: &[kcode_render_core::Alignment],
+    alignments: &[crate::types::Alignment],
 ) -> Vec<Line<'static>> {
     if rows.is_empty() {
         return vec![];
@@ -215,13 +215,13 @@ pub(super) fn render_table_aligned(
                 let text_width = UnicodeWidthStr::width(display_text);
                 let pad = col_width.saturating_sub(text_width);
                 let padded = match alignments.get(i).copied().unwrap_or_default() {
-                    kcode_render_core::Alignment::Left => {
+                    crate::types::Alignment::Left => {
                         format!("{}{}", display_text, " ".repeat(pad))
                     }
-                    kcode_render_core::Alignment::Right => {
+                    crate::types::Alignment::Right => {
                         format!("{}{}", " ".repeat(pad), display_text)
                     }
-                    kcode_render_core::Alignment::Center => {
+                    crate::types::Alignment::Center => {
                         let left = pad / 2;
                         format!(
                             "{}{}{}",

@@ -1,5 +1,14 @@
 use serde::Serialize;
 
+/// Horizontal alignment for a rendered line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Alignment {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize)]
 pub enum MarkdownSpacingMode {
     #[default]
