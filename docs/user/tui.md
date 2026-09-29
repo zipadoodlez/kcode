@@ -54,9 +54,8 @@ session_picker_enter = "current-terminal"   # or "new-terminal" to swap
 ```
 
 Resuming **in the current terminal** switches the current workspace/client to
-that session. Importable external sessions are converted to kcode sessions
-first. If several are selected, only the first is resumed in place and the UI
-says so; the picker closes once the resume is queued.
+that session. If several are selected, only the first is resumed in place and
+the UI says so; the picker closes once the resume is queued.
 
 Opening **in a new terminal** gives each selected target its own terminal when
 possible, or prints `kcode --resume <id>` commands when terminal launch is
