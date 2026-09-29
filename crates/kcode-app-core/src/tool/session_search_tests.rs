@@ -198,7 +198,6 @@ fn bench_real_session_search_corpus() {
         .expect("kcode dir")
         .join("sessions");
     let mut options = SearchOptions::for_test("benchmark-current-session");
-    options.include_external = false;
     options.max_scan_sessions = 1000;
 
     for query in ["session_search", "optimization", "nonexistentneedle123"] {
@@ -215,29 +214,6 @@ fn bench_real_session_search_corpus() {
             start.elapsed().as_millis(),
             report.scanned_kcode_sessions,
             report.candidate_kcode_sessions,
-            report.results.len(),
-            report.truncated
-        );
-    }
-
-    // Repeat with external sources included; on real machines the external
-    // stores (codex/claude/etc.) are the dominant IO cost.
-    options.include_external = true;
-    for query in ["session_search", "nonexistentneedle123"] {
-        let start = Instant::now();
-        let report = search_sessions_blocking(
-            &sessions_dir,
-            &QueryProfile::new(query),
-            &options,
-            "benchmark-log-session",
-        )
-        .expect("search succeeds");
-        eprintln!(
-            "BENCH_EXTERNAL query={query} elapsed_ms={} scanned_kcode={} scanned_external={} sources={:?} results={} truncated={}",
-            start.elapsed().as_millis(),
-            report.scanned_kcode_sessions,
-            report.scanned_external_sessions,
-            report.external_sources,
             report.results.len(),
             report.truncated
         );
@@ -533,125 +509,6 @@ fn context_expansion_returns_neighboring_messages_without_matching_hit() {
         assert_eq!(results[0].context.len(), 2);
         assert!(results[0].context[0].text.contains("context-before-line"));
         assert!(results[0].context[1].text.contains("context-after-line"));
-    });
-}
-
-#[test]
-fn external_codex_sessions_are_searchable_without_kcode_session_dir() {
-    with_temp_home(|home| {
-        let codex_dir = home.join("external/.codex/sessions/2026/05/01");
-        std::fs::create_dir_all(&codex_dir).expect("create codex dir");
-        let lines = [
-            json!({
-                "type": "session_meta",
-                "payload": {
-                    "id": "codex-test",
-                    "timestamp": "2026-05-01T00:00:00Z",
-                    "cwd": "/tmp/external-project"
-                }
-            }),
-            json!({
-                "type": "message",
-                "id": "m1",
-                "role": "user",
-                "timestamp": "2026-05-01T00:01:00Z",
-                "content": [{"type": "input_text", "text": "external before context"}]
-            }),
-            json!({
-                "type": "message",
-                "id": "m2",
-                "role": "assistant",
-                "timestamp": "2026-05-01T00:02:00Z",
-                "content": [{"type": "output_text", "text": "external-codex-needle answer"}]
-            }),
-            json!({
-                "type": "message",
-                "id": "m3",
-                "role": "user",
-                "timestamp": "2026-05-01T00:03:00Z",
-                "content": [{"type": "input_text", "text": "external after context"}]
-            }),
-        ];
-        let body = lines
-            .iter()
-            .map(|line| serde_json::to_string(line).expect("serialize codex line"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        std::fs::write(codex_dir.join("codex-test.jsonl"), body).expect("write codex jsonl");
-        std::fs::remove_dir_all(home.join("sessions")).expect("remove kcode sessions dir");
-
-        let mut options = SearchOptions::for_test("current-session");
-        options.source_filter = Some("codex".to_string());
-        options.context_before = 1;
-        options.context_after = 1;
-        let report = run_report(home, "external-codex-needle", &options);
-
-        assert_eq!(report.scanned_kcode_sessions, 0);
-        assert!(report.scanned_external_sessions >= 1);
-        assert_eq!(report.external_sources, vec!["codex"]);
-        assert_eq!(report.results.len(), 1);
-        let result = &report.results[0];
-        assert_eq!(result.source, "codex");
-        assert_eq!(result.session_id, "codex:codex-test");
-        assert_eq!(result.working_dir.as_deref(), Some("/tmp/external-project"));
-        assert_eq!(result.message_id.as_deref(), Some("m2"));
-        assert!(
-            result
-                .context
-                .iter()
-                .any(|line| line.text.contains("external before context"))
-        );
-        assert!(
-            result
-                .context
-                .iter()
-                .any(|line| line.text.contains("external after context"))
-        );
-    });
-}
-
-#[test]
-fn external_cursor_sessions_are_searchable_without_kcode_session_dir() {
-    with_temp_home(|home| {
-        let session_id = "11111111-2222-3333-4444-555555555555";
-        let cursor_dir = home.join(format!(
-            "external/.cursor/projects/tmp-proj/agent-transcripts/{session_id}"
-        ));
-        std::fs::create_dir_all(&cursor_dir).expect("create cursor dir");
-        let lines = [
-            json!({
-                "role": "user",
-                "message": {"content": [{"type": "text", "text": "cursor before context"}]}
-            }),
-            json!({
-                "role": "assistant",
-                "message": {"content": [{"type": "text", "text": "external-cursor-needle answer"}]}
-            }),
-            json!({
-                "role": "user",
-                "message": {"content": [{"type": "text", "text": "cursor after context"}]}
-            }),
-        ];
-        let body = lines
-            .iter()
-            .map(|line| serde_json::to_string(line).expect("serialize cursor line"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        std::fs::write(cursor_dir.join(format!("{session_id}.jsonl")), body)
-            .expect("write cursor jsonl");
-        std::fs::remove_dir_all(home.join("sessions")).expect("remove kcode sessions dir");
-
-        let mut options = SearchOptions::for_test("current-session");
-        options.source_filter = Some("cursor".to_string());
-        let report = run_report(home, "external-cursor-needle", &options);
-
-        assert_eq!(report.scanned_kcode_sessions, 0);
-        assert!(report.scanned_external_sessions >= 1);
-        assert_eq!(report.external_sources, vec!["cursor"]);
-        assert_eq!(report.results.len(), 1);
-        let result = &report.results[0];
-        assert_eq!(result.source, "cursor");
-        assert_eq!(result.session_id, format!("cursor:{session_id}"));
     });
 }
 

@@ -720,8 +720,6 @@ pub struct SessionSearchReport {
     pub results: Vec<SessionSearchResult>,
     pub scanned_kcode_sessions: usize,
     pub candidate_kcode_sessions: usize,
-    pub scanned_external_sessions: usize,
-    pub external_sources: Vec<&'static str>,
     pub read_errors: usize,
     pub parse_errors: usize,
     pub truncated: bool,
@@ -730,7 +728,6 @@ pub struct SessionSearchReport {
 #[derive(Debug, Clone, Copy)]
 pub struct SessionSearchRenderOptions {
     pub include_current: bool,
-    pub include_external: bool,
     pub include_tools: bool,
     pub include_system: bool,
     pub max_per_session: usize,
@@ -750,29 +747,18 @@ pub fn format_session_search_results(
     );
 
     output.push_str(&format!(
-        "_Defaults: current session {}, external sources {}, tool calls/results {}, system reminders {}. Max per session: {}._\n\n",
+        "_Defaults: current session {}, tool calls/results {}, system reminders {}. Max per session: {}._\n\n",
         if options.include_current { "included" } else { "excluded" },
-        if options.include_external { "included" } else { "hidden" },
         if options.include_tools { "included" } else { "hidden" },
         if options.include_system { "included" } else { "hidden" },
         options.max_per_session,
     ));
 
     output.push_str(&format!(
-        "_Scanned: {} Kcode sessions ({} candidates), {} external sessions{}{}._\n\n",
+        "_Scanned: {} Kcode sessions ({} candidates){}._\n\n",
         report.scanned_kcode_sessions,
         report.candidate_kcode_sessions,
-        report.scanned_external_sessions,
-        if report.external_sources.is_empty() {
-            String::new()
-        } else {
-            format!(" from {}", report.external_sources.join(", "))
-        },
-        if report.truncated {
-            "; scan truncated"
-        } else {
-            ""
-        },
+        if report.truncated { "; scan truncated" } else { "" },
     ));
 
     for (i, result) in results.iter().enumerate() {

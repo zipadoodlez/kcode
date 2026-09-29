@@ -14,11 +14,6 @@ use crate::storage;
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
-use kcode_import_core::{
-    ExternalMessageRecord, ExternalSessionRecord, ImportCoreResult, collect_recent_files_recursive,
-    load_claude_external_messages, load_codex_external_session, load_cursor_external_session,
-    load_opencode_external_session, load_pi_external_session,
-};
 use kcode_session_types::{
     SessionSearchContextLine as ResultContextLine, SessionSearchQueryProfile as QueryProfile,
     SessionSearchRenderOptions, SessionSearchReport as SearchReport,
@@ -30,7 +25,6 @@ use kcode_session_types::{
     session_search_format_datetime as format_datetime,
     session_search_path_matches_query as path_matches_query,
     session_search_raw_matches_query as raw_matches_query,
-    session_search_truncate_title_text as truncate_title_text,
     session_search_working_dir_matches as working_dir_matches,
 };
 use serde::Deserialize;
@@ -102,19 +96,13 @@ struct SearchInput {
     /// Restrict Kcode sessions by canary flag.
     #[serde(default)]
     canary: Option<bool>,
-    /// Restrict source: kcode, claude, codex, pi, opencode, cursor, or all.
-    #[serde(default)]
-    source: Option<String>,
-    /// Include external session sources discovered by the session picker. Defaults to true.
-    #[serde(default)]
-    include_external: Option<bool>,
     /// Number of preceding messages to include around each hit.
     #[serde(default)]
     context_before: Option<i64>,
     /// Number of following messages to include around each hit.
     #[serde(default)]
     context_after: Option<i64>,
-    /// Bound the number of recent sessions scanned per source.
+    /// Bound the number of recent sessions scanned.
     #[serde(default)]
     max_scan_sessions: Option<i64>,
     /// Scan every available Kcode session instead of the recent indexed subset.
@@ -138,7 +126,6 @@ impl Default for SessionSearchTool {
 
 /// Warm the recent-session search indexes in the background so the first
 /// interactive `session_search` call does not pay the cold indexing cost.
-/// Covers the kcode store plus the external stores (claude/codex/pi/cursor).
 pub fn spawn_recent_index_warmup() {
     tokio::task::spawn_blocking(|| {
         let start = std::time::Instant::now();
@@ -159,31 +146,8 @@ pub fn spawn_recent_index_warmup() {
             0
         });
 
-        let mut external_count = 0usize;
-        for (source, root_relative) in [
-            ("codex", ".codex/sessions"),
-            ("pi", ".pi/agent/sessions"),
-            ("cursor", ".cursor/projects"),
-        ] {
-            let Ok(root) = crate::storage::user_home_path(root_relative) else {
-                continue;
-            };
-            if !root.exists() {
-                continue;
-            }
-            let paths = collect_recent_files_recursive(&root, "jsonl", DEFAULT_MAX_SCAN_SESSIONS);
-            external_count += paths.len();
-            let _ = external_index_candidate_paths(source, &paths, &empty_query);
-        }
-        if let Ok(sessions) =
-            crate::import::list_claude_code_sessions_lazy(DEFAULT_MAX_SCAN_SESSIONS)
-        {
-            external_count += sessions.len();
-            let _ = claude_index_candidates(&sessions, &empty_query);
-        }
-
         crate::logging::info(&format!(
-            "Session search index warmup completed for {kcode_count} kcode + {external_count} external session(s) in {}ms",
+            "Session search index warmup completed for {kcode_count} kcode session(s) in {}ms",
             start.elapsed().as_millis()
         ));
     });
@@ -198,11 +162,9 @@ struct SearchOptions {
     include_current: bool,
     include_tools: bool,
     include_system: bool,
-    include_external: bool,
     role_filter: Option<RoleFilter>,
     provider_filter: Option<String>,
     model_filter: Option<String>,
-    source_filter: Option<String>,
     saved_filter: Option<bool>,
     debug_filter: Option<bool>,
     canary_filter: Option<bool>,
@@ -225,11 +187,9 @@ impl SearchOptions {
             include_current: false,
             include_tools: false,
             include_system: false,
-            include_external: true,
             role_filter: None,
             provider_filter: None,
             model_filter: None,
-            source_filter: None,
             saved_filter: None,
             debug_filter: None,
             canary_filter: None,
@@ -341,7 +301,7 @@ impl Tool for SessionSearchTool {
                 },
                 "provider": {
                     "type": "string",
-                    "description": "Restrict by provider/source substring, e.g. openai, claude, codex, pi, opencode, cursor."
+                    "description": "Restrict by provider key substring, e.g. openai, anthropic, google."
                 },
                 "model": {
                     "type": "string",
@@ -367,15 +327,6 @@ impl Tool for SessionSearchTool {
                     "type": "boolean",
                     "description": "Restrict Kcode sessions by canary flag."
                 },
-                "source": {
-                    "type": "string",
-                    "enum": ["all", "kcode", "claude", "codex", "pi", "opencode", "cursor"],
-                    "description": "Restrict session source. Defaults to all available sources."
-                },
-                "include_external": {
-                    "type": "boolean",
-                    "description": "Include external session sources discovered by the session picker. Defaults to true."
-                },
                 "context_before": {
                     "type": "integer",
                     "minimum": 0,
@@ -392,7 +343,7 @@ impl Tool for SessionSearchTool {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": MAX_MAX_SCAN_SESSIONS,
-                    "description": "Bound the number of recent sessions scanned per source."
+                    "description": "Bound the number of recent sessions scanned."
                 },
                 "exhaustive": {
                     "type": "boolean",
@@ -461,10 +412,6 @@ impl Tool for SessionSearchTool {
             Ok(value) => value,
             Err(message) => return Ok(ToolOutput::new(message).with_title("session_search")),
         };
-        let source_filter = match normalize_source_filter(params.source.as_deref()) {
-            Ok(value) => value,
-            Err(message) => return Ok(ToolOutput::new(message).with_title("session_search")),
-        };
         let after = match parse_datetime_filter(params.after.as_deref(), "after") {
             Ok(value) => value,
             Err(message) => return Ok(ToolOutput::new(message).with_title("session_search")),
@@ -496,11 +443,9 @@ impl Tool for SessionSearchTool {
             include_current: params.include_current.unwrap_or(false),
             include_tools: params.include_tools.unwrap_or(false),
             include_system: params.include_system.unwrap_or(false),
-            include_external: params.include_external.unwrap_or(true),
             role_filter,
             provider_filter: normalize_optional_filter(params.provider),
             model_filter: normalize_optional_filter(params.model),
-            source_filter,
             saved_filter: params.saved,
             debug_filter: params.debug,
             canary_filter: params.canary,
@@ -567,22 +512,6 @@ fn normalize_optional_filter(raw: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn normalize_source_filter(raw: Option<&str>) -> std::result::Result<Option<String>, String> {
-    let Some(source) = raw.map(str::trim).filter(|source| !source.is_empty()) else {
-        return Ok(None);
-    };
-    let normalized = source.to_ascii_lowercase();
-    match normalized.as_str() {
-        "all" => Ok(None),
-        "kcode" | "claude" | "claude-code" | "codex" | "pi" | "opencode" | "cursor" => {
-            Ok(Some(normalized.replace("claude-code", "claude")))
-        }
-        _ => Err(format!(
-            "source must be one of all, kcode, claude, codex, pi, opencode, or cursor; received {source}."
-        )),
-    }
-}
-
 fn parse_datetime_filter(
     raw: Option<&str>,
     name: &str,
@@ -617,87 +546,73 @@ fn search_sessions_blocking(
         return Ok(report);
     }
 
-    if source_matches_filter("kcode", options) {
-        let collection = collect_session_files(sessions_dir, options.max_scan_sessions)?;
-        report.truncated |= collection.truncated;
-        let mut files = collection.files;
+    let collection = collect_session_files(sessions_dir, options.max_scan_sessions)?;
+    report.truncated |= collection.truncated;
+    let mut files = collection.files;
+    if !files.is_empty() {
+        files.sort_unstable_by(|a, b| b.mtime.cmp(&a.mtime));
+        report.scanned_kcode_sessions = files.len();
+
+        if !options.include_current {
+            files.retain(|candidate| candidate.session_id_hint != options.current_session_id);
+        }
+
         if !files.is_empty() {
-            files.sort_unstable_by(|a, b| b.mtime.cmp(&a.mtime));
-            report.scanned_kcode_sessions = files.len();
-
-            if !options.include_current {
-                files.retain(|candidate| candidate.session_id_hint != options.current_session_id);
-            }
-
-            if !files.is_empty() {
-                let using_index = !options.exhaustive;
-                let mut candidates = if options.exhaustive {
-                    let raw_filter_outcomes = filter_candidates_parallel(&files, query);
-                    report.read_errors += raw_filter_outcomes
-                        .iter()
-                        .map(|outcome| outcome.read_errors)
-                        .sum::<usize>();
-                    raw_filter_outcomes
-                        .into_iter()
-                        .flat_map(|outcome| outcome.candidates)
-                        .collect()
-                } else {
-                    match kcode_index_candidates(&files, query) {
-                        Ok(candidates) => candidates,
-                        Err(err) => {
-                            crate::logging::warn(&format!(
-                                "session_search index unavailable; falling back to raw scan: {err}"
-                            ));
-                            let raw_filter_outcomes = filter_candidates_parallel(&files, query);
-                            report.read_errors += raw_filter_outcomes
-                                .iter()
-                                .map(|outcome| outcome.read_errors)
-                                .sum::<usize>();
-                            raw_filter_outcomes
-                                .into_iter()
-                                .flat_map(|outcome| outcome.candidates)
-                                .collect()
-                        }
-                    }
-                };
-                candidates.sort_unstable_by(|a, b| b.mtime.cmp(&a.mtime));
-                report.candidate_kcode_sessions = candidates.len();
-                if using_index {
-                    let indexed_budget = indexed_candidate_budget(options);
-                    if candidates.len() > indexed_budget {
-                        candidates.truncate(indexed_budget);
-                        report.truncated = true;
+            let using_index = !options.exhaustive;
+            let mut candidates = if options.exhaustive {
+                let raw_filter_outcomes = filter_candidates_parallel(&files, query);
+                report.read_errors += raw_filter_outcomes
+                    .iter()
+                    .map(|outcome| outcome.read_errors)
+                    .sum::<usize>();
+                raw_filter_outcomes
+                    .into_iter()
+                    .flat_map(|outcome| outcome.candidates)
+                    .collect()
+            } else {
+                match kcode_index_candidates(&files, query) {
+                    Ok(candidates) => candidates,
+                    Err(err) => {
+                        crate::logging::warn(&format!(
+                            "session_search index unavailable; falling back to raw scan: {err}"
+                        ));
+                        let raw_filter_outcomes = filter_candidates_parallel(&files, query);
+                        report.read_errors += raw_filter_outcomes
+                            .iter()
+                            .map(|outcome| outcome.read_errors)
+                            .sum::<usize>();
+                        raw_filter_outcomes
+                            .into_iter()
+                            .flat_map(|outcome| outcome.candidates)
+                            .collect()
                     }
                 }
-                if candidates.len() > MAX_DESERIALIZE {
-                    candidates.truncate(MAX_DESERIALIZE);
+            };
+            candidates.sort_unstable_by(|a, b| b.mtime.cmp(&a.mtime));
+            report.candidate_kcode_sessions = candidates.len();
+            if using_index {
+                let indexed_budget = indexed_candidate_budget(options);
+                if candidates.len() > indexed_budget {
+                    candidates.truncate(indexed_budget);
                     report.truncated = true;
                 }
-
-                let search_outcomes = score_candidates_parallel(&candidates, query, options);
-                report.parse_errors += search_outcomes
-                    .iter()
-                    .map(|outcome| outcome.parse_errors)
-                    .sum::<usize>();
-                report.results.extend(
-                    search_outcomes
-                        .into_iter()
-                        .flat_map(|outcome| outcome.results),
-                );
             }
-        }
-    }
+            if candidates.len() > MAX_DESERIALIZE {
+                candidates.truncate(MAX_DESERIALIZE);
+                report.truncated = true;
+            }
 
-    if options.include_external {
-        let external_report = search_external_sessions(query, options);
-        report.scanned_external_sessions += external_report.scanned_external_sessions;
-        report
-            .external_sources
-            .extend(external_report.external_sources);
-        report.read_errors += external_report.read_errors;
-        report.parse_errors += external_report.parse_errors;
-        report.truncated |= external_report.truncated;
-        report.results.extend(external_report.results);
+            let search_outcomes = score_candidates_parallel(&candidates, query, options);
+            report.parse_errors += search_outcomes
+                .iter()
+                .map(|outcome| outcome.parse_errors)
+                .sum::<usize>();
+            report.results.extend(
+                search_outcomes
+                    .into_iter()
+                    .flat_map(|outcome| outcome.results),
+            );
+        }
     }
 
     if report.read_errors > 0 || report.parse_errors > 0 {
@@ -973,531 +888,6 @@ fn score_candidates_parallel(
     })
 }
 
-fn search_external_sessions(query: &QueryProfile, options: &SearchOptions) -> SearchReport {
-    let mut report = SearchReport::default();
-    let mut records = Vec::new();
-
-    if source_matches_filter("claude", options)
-        && let Ok(sessions) =
-            crate::import::list_claude_code_sessions_lazy(options.max_scan_sessions)
-    {
-        report.external_sources.push("claude");
-        let sessions: Vec<_> = sessions
-            .into_iter()
-            .take(options.max_scan_sessions)
-            .collect();
-        let mut candidates = claude_index_candidates(&sessions, query);
-        if !options.exhaustive {
-            let budget = indexed_candidate_budget(options);
-            if candidates.len() > budget {
-                candidates.truncate(budget);
-                report.truncated = true;
-            }
-        }
-        records.extend(load_claude_candidates_parallel(&candidates, query, options));
-    }
-
-    collect_external_jsonl_source(
-        &mut records,
-        &mut report,
-        "codex",
-        ".codex/sessions",
-        query,
-        options,
-        load_codex_external_session,
-    );
-    collect_external_jsonl_source(
-        &mut records,
-        &mut report,
-        "pi",
-        ".pi/agent/sessions",
-        query,
-        options,
-        load_pi_external_session,
-    );
-    collect_opencode_external_sessions(&mut records, &mut report, options);
-    collect_external_jsonl_source(
-        &mut records,
-        &mut report,
-        "cursor",
-        ".cursor/projects",
-        query,
-        options,
-        load_cursor_external_session,
-    );
-
-    if records.len() > options.max_scan_sessions.saturating_mul(5) {
-        records.truncate(options.max_scan_sessions.saturating_mul(5));
-        report.truncated = true;
-    }
-
-    report.scanned_external_sessions = records.len();
-    for record in records {
-        append_external_session_results(&mut report.results, &record, query, options);
-    }
-    report.external_sources.sort_unstable();
-    report.external_sources.dedup();
-    report
-}
-
-fn collect_external_jsonl_source(
-    records: &mut Vec<ExternalSessionRecord>,
-    report: &mut SearchReport,
-    source: &'static str,
-    root_relative: &str,
-    query: &QueryProfile,
-    options: &SearchOptions,
-    loader: fn(&Path, bool) -> ImportCoreResult<Option<ExternalSessionRecord>>,
-) {
-    if !source_matches_filter(source, options) {
-        return;
-    }
-    let Ok(root) = crate::storage::user_home_path(root_relative) else {
-        return;
-    };
-    if !root.exists() {
-        return;
-    }
-    report.external_sources.push(source);
-    let paths = collect_recent_files_recursive(&root, "jsonl", options.max_scan_sessions);
-    let mut candidates = external_index_candidate_paths(source, &paths, query);
-    // Like the kcode path, cap how many candidate files get fully parsed.
-    // Candidates arrive most-recent-first; exhaustive mode skips the cap.
-    if !options.exhaustive {
-        let budget = indexed_candidate_budget(options);
-        if candidates.len() > budget {
-            candidates.truncate(budget);
-            report.truncated = true;
-        }
-    }
-    let outcomes = load_external_candidates_parallel(&candidates, query, options, loader);
-    for outcome in outcomes {
-        report.parse_errors += outcome.parse_errors;
-        records.extend(outcome.records);
-    }
-}
-
-/// Narrow `paths` to plausible matches using the per-source incremental
-/// index. Falls back to scanning everything if the index cannot be built.
-/// Candidates are still re-verified against the real file contents, so index
-/// hash collisions cannot produce wrong results.
-fn external_index_candidate_paths(
-    source: &'static str,
-    paths: &[PathBuf],
-    query: &QueryProfile,
-) -> Vec<PathBuf> {
-    let index = index_dir()
-        .map(|dir| dir.join(format!("session_search_{source}_index_v2.bin")))
-        .and_then(|index_path| {
-            let specs: Vec<IndexFileSpec> = paths
-                .iter()
-                .map(|path| {
-                    let (mtime_ms, size) = session_search_index::stat_ms_size(path);
-                    IndexFileSpec {
-                        key: path.to_string_lossy().into_owned(),
-                        mtime_ms,
-                        size,
-                    }
-                })
-                .collect();
-            session_search_index::build_or_update(&index_path, &specs, &|slot| {
-                let path = &paths[slot];
-                std::fs::read(path).ok().map(|raw| {
-                    let path_text = path.to_string_lossy();
-                    let mut text = String::with_capacity(path_text.len() + 1 + raw.len());
-                    text.push_str(&path_text);
-                    text.push(' ');
-                    text.push_str(&String::from_utf8_lossy(&raw));
-                    text
-                })
-            })
-        });
-
-    match index {
-        Ok(index) => index
-            .candidate_slots(&query.terms, query.min_term_matches)
-            .into_iter()
-            .filter_map(|slot| paths.get(slot).cloned())
-            .collect(),
-        Err(err) => {
-            crate::logging::warn(&format!(
-                "session_search {source} index unavailable; scanning all files: {err}"
-            ));
-            paths.to_vec()
-        }
-    }
-}
-
-#[derive(Default)]
-struct ExternalLoadOutcome {
-    records: Vec<ExternalSessionRecord>,
-    parse_errors: usize,
-}
-
-/// Pre-filter and load external session files in parallel. External stores
-/// like `~/.codex/sessions` can hold gigabytes of JSONL, so scanning them on a
-/// single thread dominates search latency.
-fn load_external_candidates_parallel(
-    paths: &[PathBuf],
-    query: &QueryProfile,
-    options: &SearchOptions,
-    loader: fn(&Path, bool) -> ImportCoreResult<Option<ExternalSessionRecord>>,
-) -> Vec<ExternalLoadOutcome> {
-    if paths.is_empty() {
-        return Vec::new();
-    }
-    let thread_count = SCAN_THREADS.min(paths.len());
-    let chunk_size = paths.len().div_ceil(thread_count);
-
-    std::thread::scope(|scope| {
-        let mut handles = Vec::new();
-        for chunk in paths.chunks(chunk_size) {
-            handles.push(scope.spawn(move || {
-                let mut outcome = ExternalLoadOutcome::default();
-                for path in chunk {
-                    if !external_path_or_raw_matches_query(path, query) {
-                        continue;
-                    }
-                    match loader(path, options.include_tools) {
-                        Ok(Some(record)) => outcome.records.push(record),
-                        Ok(None) => {}
-                        Err(_) => outcome.parse_errors += 1,
-                    }
-                }
-                outcome
-            }));
-        }
-        handles
-            .into_iter()
-            .map(|handle| match handle.join() {
-                Ok(outcome) => outcome,
-                Err(_) => {
-                    crate::logging::warn(
-                        "session_search external scan worker panicked; skipping that worker's sessions",
-                    );
-                    ExternalLoadOutcome::default()
-                }
-            })
-            .collect()
-    })
-}
-
-/// Narrow claude sessions to plausible matches with the incremental index.
-/// Indexed text includes the session metadata (id, prompt, summary, project)
-/// so metadata-only matches keep working.
-fn claude_index_candidates(
-    sessions: &[kcode_import_core::ClaudeCodeSessionInfo],
-    query: &QueryProfile,
-) -> Vec<kcode_import_core::ClaudeCodeSessionInfo> {
-    let index = index_dir()
-        .map(|dir| dir.join("session_search_claude_index_v2.bin"))
-        .and_then(|index_path| {
-            let specs: Vec<IndexFileSpec> = sessions
-                .iter()
-                .map(|session| {
-                    let (mtime_ms, size) =
-                        session_search_index::stat_ms_size(Path::new(&session.full_path));
-                    IndexFileSpec {
-                        key: session.full_path.clone(),
-                        mtime_ms,
-                        size,
-                    }
-                })
-                .collect();
-            session_search_index::build_or_update(&index_path, &specs, &|slot| {
-                let session = &sessions[slot];
-                let raw = std::fs::read(&session.full_path).unwrap_or_default();
-                let mut text = String::with_capacity(raw.len() + 256);
-                text.push_str(&session.full_path);
-                text.push(' ');
-                text.push_str(&session.session_id);
-                text.push(' ');
-                text.push_str(&session.first_prompt);
-                if let Some(summary) = &session.summary {
-                    text.push(' ');
-                    text.push_str(summary);
-                }
-                if let Some(project) = &session.project_path {
-                    text.push(' ');
-                    text.push_str(project);
-                }
-                text.push(' ');
-                text.push_str(&String::from_utf8_lossy(&raw));
-                Some(text)
-            })
-        });
-
-    match index {
-        Ok(index) => index
-            .candidate_slots(&query.terms, query.min_term_matches)
-            .into_iter()
-            .filter_map(|slot| sessions.get(slot).cloned())
-            .collect(),
-        Err(err) => {
-            crate::logging::warn(&format!(
-                "session_search claude index unavailable; scanning all files: {err}"
-            ));
-            sessions.to_vec()
-        }
-    }
-}
-
-/// Pre-filter and load Claude Code session files in parallel, mirroring the
-/// JSONL source scan above.
-fn load_claude_candidates_parallel(
-    sessions: &[kcode_import_core::ClaudeCodeSessionInfo],
-    query: &QueryProfile,
-    options: &SearchOptions,
-) -> Vec<ExternalSessionRecord> {
-    if sessions.is_empty() {
-        return Vec::new();
-    }
-    let thread_count = SCAN_THREADS.min(sessions.len());
-    let chunk_size = sessions.len().div_ceil(thread_count);
-
-    std::thread::scope(|scope| {
-        let mut handles = Vec::new();
-        for chunk in sessions.chunks(chunk_size) {
-            handles.push(scope.spawn(move || {
-                let mut records = Vec::new();
-                for session in chunk {
-                    let path = PathBuf::from(&session.full_path);
-                    if !external_path_or_raw_matches_query(&path, query)
-                        && !external_text_matches_query(&session.session_id, query)
-                        && !external_text_matches_query(&session.first_prompt, query)
-                        && !session
-                            .summary
-                            .as_deref()
-                            .is_some_and(|summary| external_text_matches_query(summary, query))
-                        && !session
-                            .project_path
-                            .as_deref()
-                            .is_some_and(|project| external_text_matches_query(project, query))
-                    {
-                        continue;
-                    }
-                    let messages = load_claude_external_messages(&path, options.include_tools);
-                    let created_at = session.created.unwrap_or_else(Utc::now);
-                    let updated_at = session.modified.or(session.created).unwrap_or(created_at);
-                    let title = session
-                        .summary
-                        .clone()
-                        .filter(|summary| !summary.trim().is_empty())
-                        .unwrap_or_else(|| truncate_title_text(&session.first_prompt, 72));
-                    records.push(ExternalSessionRecord {
-                        source: "claude",
-                        session_id: session.session_id.clone(),
-                        short_name: Some(format!(
-                            "claude {}",
-                            kcode_core::util::truncate_str(&session.session_id, 8)
-                        )),
-                        title: Some(title),
-                        working_dir: session.project_path.clone(),
-                        provider_key: Some("claude-code".to_string()),
-                        model: None,
-                        created_at,
-                        updated_at,
-                        path,
-                        messages,
-                    });
-                }
-                records
-            }));
-        }
-        handles
-            .into_iter()
-            .flat_map(|handle| match handle.join() {
-                Ok(records) => records,
-                Err(_) => {
-                    crate::logging::warn(
-                        "session_search claude scan worker panicked; skipping that worker's sessions",
-                    );
-                    Vec::new()
-                }
-            })
-            .collect()
-    })
-}
-
-fn external_path_or_raw_matches_query(path: &Path, query: &QueryProfile) -> bool {
-    if path_matches_query(&path.to_string_lossy(), query) {
-        return true;
-    }
-    std::fs::read(path)
-        .map(|raw| raw_matches_query(&raw, query))
-        .unwrap_or(false)
-}
-
-fn external_text_matches_query(text: &str, query: &QueryProfile) -> bool {
-    kcode_session_types::normalized_session_search_text_matches(&text.to_lowercase(), query)
-}
-
-fn collect_opencode_external_sessions(
-    records: &mut Vec<ExternalSessionRecord>,
-    report: &mut SearchReport,
-    options: &SearchOptions,
-) {
-    if !source_matches_filter("opencode", options) {
-        return;
-    }
-    let Ok(root) = crate::storage::user_home_path(".local/share/opencode/storage/session") else {
-        return;
-    };
-    if !root.exists() {
-        return;
-    }
-    report.external_sources.push("opencode");
-    let Ok(messages_base) = crate::storage::user_home_path(".local/share/opencode/storage/message")
-    else {
-        return;
-    };
-    let Ok(parts_base) = crate::storage::user_home_path(".local/share/opencode/storage/part")
-    else {
-        return;
-    };
-    for path in collect_recent_files_recursive(&root, "json", options.max_scan_sessions) {
-        match load_opencode_external_session(
-            &path,
-            &messages_base,
-            &parts_base,
-            options.include_tools,
-            options.max_scan_sessions,
-        ) {
-            Ok(Some(record)) => records.push(record),
-            Ok(None) => {}
-            Err(_) => report.parse_errors += 1,
-        }
-    }
-}
-
-fn append_external_session_results(
-    results: &mut Vec<SearchResult>,
-    session: &ExternalSessionRecord,
-    query: &QueryProfile,
-    options: &SearchOptions,
-) {
-    if !external_session_matches_filters(session, options) {
-        return;
-    }
-    if let Some(filter) = options.working_dir_filter.as_deref()
-        && !session
-            .working_dir
-            .as_deref()
-            .is_some_and(|working_dir| working_dir_matches(working_dir, filter))
-    {
-        return;
-    }
-
-    if role_filter_allows_metadata(options)
-        && session_datetime_matches(session.updated_at, options.after, options.before)
-        && let Some(match_score) = score_message_match(&external_metadata_text(session), query)
-    {
-        results.push(SearchResult {
-            source: session.source.to_string(),
-            session_id: format!("{}:{}", session.source, session.session_id),
-            short_name: session.short_name.clone(),
-            title: session.title.clone(),
-            working_dir: session.working_dir.clone(),
-            provider_key: session.provider_key.clone(),
-            model: session.model.clone(),
-            updated_at: session.updated_at,
-            kind: SearchResultKind::Metadata,
-            role: "metadata".to_string(),
-            message_index: None,
-            message_id: None,
-            message_timestamp: None,
-            snippet: match_score.snippet,
-            score: match_score.score + 1.5,
-            matched_terms: match_score.matched_terms,
-            exact_match: match_score.exact_match,
-            context: Vec::new(),
-        });
-    }
-
-    for (message_index, msg) in session.messages.iter().enumerate() {
-        if !role_filter_allows_external_message(&msg.role, options) {
-            continue;
-        }
-        if !session_datetime_matches(
-            msg.timestamp.unwrap_or(session.updated_at),
-            options.after,
-            options.before,
-        ) {
-            continue;
-        }
-        let Some(match_score) = score_message_match(&msg.text, query) else {
-            continue;
-        };
-        results.push(SearchResult {
-            source: session.source.to_string(),
-            session_id: format!("{}:{}", session.source, session.session_id),
-            short_name: session.short_name.clone(),
-            title: session.title.clone(),
-            working_dir: session.working_dir.clone(),
-            provider_key: session.provider_key.clone(),
-            model: session.model.clone(),
-            updated_at: session.updated_at,
-            kind: SearchResultKind::Message,
-            role: msg.role.clone(),
-            message_index: Some(message_index),
-            message_id: msg.id.clone(),
-            message_timestamp: msg.timestamp,
-            snippet: match_score.snippet,
-            score: match_score.score,
-            matched_terms: match_score.matched_terms,
-            exact_match: match_score.exact_match,
-            context: build_external_context(&session.messages, message_index, options),
-        });
-    }
-}
-
-fn external_metadata_text(session: &ExternalSessionRecord) -> String {
-    let mut fields = vec![
-        format!("Source: {}", session.source),
-        format!("Session ID: {}:{}", session.source, session.session_id),
-        format!("Created: {}", format_datetime(session.created_at)),
-        format!("Updated: {}", format_datetime(session.updated_at)),
-        format!("Path: {}", session.path.display()),
-    ];
-    if let Some(title) = &session.title {
-        fields.push(format!("Title: {title}"));
-    }
-    if let Some(working_dir) = &session.working_dir {
-        fields.push(format!("Working directory: {working_dir}"));
-    }
-    if let Some(provider_key) = &session.provider_key {
-        fields.push(format!("Provider: {provider_key}"));
-    }
-    if let Some(model) = &session.model {
-        fields.push(format!("Model: {model}"));
-    }
-    fields.join("\n")
-}
-
-fn build_external_context(
-    messages: &[ExternalMessageRecord],
-    hit_index: usize,
-    options: &SearchOptions,
-) -> Vec<ResultContextLine> {
-    if options.context_before == 0 && options.context_after == 0 {
-        return Vec::new();
-    }
-    let start = hit_index.saturating_sub(options.context_before);
-    let end = (hit_index + options.context_after + 1).min(messages.len());
-    (start..end)
-        .filter(|&idx| idx != hit_index)
-        .filter_map(|idx| {
-            let msg = &messages[idx];
-            (!msg.text.trim().is_empty()).then(|| ResultContextLine {
-                message_index: idx,
-                role: msg.role.clone(),
-                timestamp: msg.timestamp,
-                text: truncate_context_text(&msg.text),
-            })
-        })
-        .collect()
-}
-
 fn append_session_results(
     results: &mut Vec<SearchResult>,
     session: &Session,
@@ -1630,19 +1020,8 @@ fn metadata_text(session: &Session) -> String {
     fields.join("\n")
 }
 
-fn source_matches_filter(source: &str, options: &SearchOptions) -> bool {
-    options
-        .source_filter
-        .as_deref()
-        .map(|filter| source.eq_ignore_ascii_case(filter))
-        .unwrap_or(true)
-}
-
 fn kcode_session_matches_filters(session: &Session, options: &SearchOptions) -> bool {
-    if !source_matches_filter("kcode", options) {
-        return false;
-    }
-    if !provider_matches(session.provider_key.as_deref(), "kcode", options) {
+    if !provider_matches(session.provider_key.as_deref(), options) {
         return false;
     }
     if !field_filter_matches(session.model.as_deref(), options.model_filter.as_deref()) {
@@ -1669,33 +1048,11 @@ fn kcode_session_matches_filters(session: &Session, options: &SearchOptions) -> 
     true
 }
 
-fn external_session_matches_filters(
-    session: &ExternalSessionRecord,
-    options: &SearchOptions,
-) -> bool {
-    if !source_matches_filter(session.source, options) {
-        return false;
-    }
-    if !provider_matches(session.provider_key.as_deref(), session.source, options) {
-        return false;
-    }
-    if !field_filter_matches(session.model.as_deref(), options.model_filter.as_deref()) {
-        return false;
-    }
-    if options.saved_filter == Some(true)
-        || options.debug_filter == Some(true)
-        || options.canary_filter == Some(true)
-    {
-        return false;
-    }
-    true
-}
-
-fn provider_matches(provider_key: Option<&str>, source: &str, options: &SearchOptions) -> bool {
+fn provider_matches(provider_key: Option<&str>, options: &SearchOptions) -> bool {
     let Some(filter) = options.provider_filter.as_deref() else {
         return true;
     };
-    field_filter_matches(provider_key, Some(filter)) || source.to_ascii_lowercase().contains(filter)
+    field_filter_matches(provider_key, Some(filter))
 }
 
 fn role_filter_allows_metadata(options: &SearchOptions) -> bool {
@@ -1712,17 +1069,6 @@ fn role_filter_allows_message(msg: &StoredMessage, options: &SearchOptions) -> b
     match role_filter {
         RoleFilter::User => msg.role == crate::message::Role::User,
         RoleFilter::Assistant => msg.role == crate::message::Role::Assistant,
-        RoleFilter::Metadata => false,
-    }
-}
-
-fn role_filter_allows_external_message(role: &str, options: &SearchOptions) -> bool {
-    let Some(role_filter) = options.role_filter else {
-        return true;
-    };
-    match role_filter {
-        RoleFilter::User => role.eq_ignore_ascii_case("user"),
-        RoleFilter::Assistant => role.eq_ignore_ascii_case("assistant"),
         RoleFilter::Metadata => false,
     }
 }
@@ -1865,7 +1211,6 @@ fn group_and_limit_results(
 fn render_options(options: &SearchOptions) -> SessionSearchRenderOptions {
     SessionSearchRenderOptions {
         include_current: options.include_current,
-        include_external: options.include_external,
         include_tools: options.include_tools,
         include_system: options.include_system,
         max_per_session: options.max_per_session,
