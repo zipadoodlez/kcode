@@ -31,6 +31,31 @@ maintainer before work starts; everything else is actionable.
   `docs/dev/post-change.md`). The ratchets fail when a tracked number improves
   without the baseline being updated, so they can only tighten.
 
+## Next batch: the dead-weight pass (next up)
+
+Scoped 2026-09-29 as the tail of the provider-catalog batch that landed on
+`batch-ab-provider-onboarding`. Deletion and one-home work with no switchover,
+so it shares one build and one end-of-batch gate. The items and their evidence
+already sit in §0 and §3; this section is the running order, with counts
+re-verified 2026-09-29 at `fba32bda` (`wc -l`).
+
+- [ ] Delete the dead local turn path: `app/local.rs` 584, `app/run_shell.rs`
+  560, `app/event_wrappers.rs` 38, `app/overnight_card.rs` 183 (~1.3k with the
+  partials). §0 "Bigger"; §2 owns it.
+- [ ] Decide the markdown renderer: `kcode-render-core` 3,825 + `kcode-tui-markdown/render_core_adapter.rs` 211 + its tests 584 ≈ 4,620. §0 "Bigger".
+- [ ] One home per duplicated helper: `parse_meminfo_kb` 3x,
+  `truncated_stream_payload_context` 2x, the two reload-marker const pairs, and
+  `now_ms` 3x (the last is a fix, not a move). §0's helper list has the sites.
+- [ ] Drive the wildcard re-export ratchet to 0, or declare the crate-spine
+  layout cosmetic and collapse it (§3).
+- [ ] Move `smoothness_benchmark.rs` 313 out of `app/tests/` (§4).
+- [ ] Optional tail: §5 hygiene nits are small and independent (config
+  warnings, the `auth_remote/onboarding.rs` rename).
+
+Not this batch: the `include!` test-tree replacement (§4) is paid for in test
+churn, so it follows the shape work, and the God-module re-cores (§2) are their
+own passes.
+
 ## 0. Deletion ledger (the line-count question, measured)
 
 Written because "over 500k lines, want under 200k" was a goal with no data
@@ -176,8 +201,9 @@ not one concept.
 
 Bigger, each its own pass:
 
-- [ ] Move the non-test halves out of the test tree (`live_tests.rs`,
-  `smoothness_benchmark.rs`); §4 owns the test-tree item.
+- [ ] Move `smoothness_benchmark.rs` (313) out of `app/tests/`; the two
+  provider-doctor halves (`live_provider_probes.rs`, `provider_e2e.rs`) already
+  live in `kcode-provider-doctor/src/`. §4 owns the test-tree item.
 - [ ] Delete the dead local turn path and migrate the 33 test call sites onto
   the remote path (~810-1,500 lines); §2 owns the local-turn-path item.
 - [ ] Decide the markdown renderer: finish the switchover or delete
@@ -439,8 +465,9 @@ tree first would just move that churn around.
   percentages are per file and were not re-derived by the §0 census, which found
   only 13 cross-file duplicated test names; re-measure before treating them as
   targets.
-- [ ] Move subsystem code out of test files: `live_tests.rs` is a live-provider
-  coverage ledger (21% tests), `provider_e2e.rs` (11% tests).
+- [ ] Move subsystem code out of test files: `smoothness_benchmark.rs` (313)
+  remains under `app/tests/`. The old `live_tests.rs` / `provider_e2e.rs` rows
+  are stale: both already live under `kcode-provider-doctor/src/`.
 - [ ] One home per duplicated test helper `[census]`; 13 names are defined in
   more than one file, with `lock_env` (7 files) and `test_agent`, `ctx` (4 each)
   the worst: `configured_swarm_root_effort_reads_real_config` (3),
