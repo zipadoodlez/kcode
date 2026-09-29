@@ -1,8 +1,6 @@
 use crate::protocol::{AuthChanged, CatalogNamespace, RuntimeProviderKey};
 use crate::provider::ModelRoute;
-use crate::provider::activation::ProviderActivation;
-use crate::provider_catalog::LoginProviderTarget;
-use kcode_provider_core::ActiveProvider;
+use crate::provider::activation::direct_provider_activation;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AuthActivationRequest {
@@ -1130,31 +1128,6 @@ fn apply_auth_provider_runtime(provider_id: Option<&str>) -> Option<String> {
         }
         _ => None,
     }
-}
-
-fn direct_provider_activation(provider_id: &str) -> Option<ProviderActivation> {
-    let identity = crate::provider_catalog::resolve_login_provider(provider_id)?.target;
-    // Identity comes from the registry; the execution slot is a separate
-    // concept (e.g. Grok Build runs on the OpenRouter slot), so it stays a
-    // local map. A `None` slot means the provider activates through a
-    // dedicated path that applies its own env first: Azure and the
-    // OpenAI-compatible profiles, plus auto-import, which has no runtime.
-    let active = match identity {
-        LoginProviderTarget::Claude | LoginProviderTarget::ClaudeApiKey => ActiveProvider::Claude,
-        LoginProviderTarget::OpenAi | LoginProviderTarget::OpenAiApiKey => ActiveProvider::OpenAI,
-        LoginProviderTarget::OpenRouter | LoginProviderTarget::GrokBuild => {
-            ActiveProvider::OpenRouter
-        }
-        LoginProviderTarget::Bedrock => ActiveProvider::Bedrock,
-        LoginProviderTarget::Cursor => ActiveProvider::Cursor,
-        LoginProviderTarget::Copilot => ActiveProvider::Copilot,
-        LoginProviderTarget::Gemini => ActiveProvider::Gemini,
-        LoginProviderTarget::Antigravity => ActiveProvider::Antigravity,
-        LoginProviderTarget::Azure
-        | LoginProviderTarget::OpenAiCompatible(_)
-        | LoginProviderTarget::AutoImport => return None,
-    };
-    Some(ProviderActivation::initial(identity, active))
 }
 
 pub fn model_switch_request_for_provider_id(

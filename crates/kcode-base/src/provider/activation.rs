@@ -185,6 +185,32 @@ pub fn apply_openai_compatible_runtime(default_model: Option<String>) -> Result<
     ProviderActivation::openai_compatible(default_model).apply_env()
 }
 
+/// Activation for a provider selected directly by id, when it has one.
+///
+/// Identity comes from the registry; the execution slot is a separate concept
+/// (Grok Build runs on the OpenRouter slot). `None` means the provider
+/// activates through a dedicated path that applies its own env first (Azure,
+/// the OpenAI-compatible profiles) or has no runtime at all (auto-import).
+pub(crate) fn direct_provider_activation(provider_id: &str) -> Option<ProviderActivation> {
+    let identity = crate::provider_catalog::resolve_login_provider(provider_id)?.target;
+    let active = match identity {
+        LoginProviderTarget::Claude | LoginProviderTarget::ClaudeApiKey => ActiveProvider::Claude,
+        LoginProviderTarget::OpenAi | LoginProviderTarget::OpenAiApiKey => ActiveProvider::OpenAI,
+        LoginProviderTarget::OpenRouter | LoginProviderTarget::GrokBuild => {
+            ActiveProvider::OpenRouter
+        }
+        LoginProviderTarget::Bedrock => ActiveProvider::Bedrock,
+        LoginProviderTarget::Cursor => ActiveProvider::Cursor,
+        LoginProviderTarget::Copilot => ActiveProvider::Copilot,
+        LoginProviderTarget::Gemini => ActiveProvider::Gemini,
+        LoginProviderTarget::Antigravity => ActiveProvider::Antigravity,
+        LoginProviderTarget::Azure
+        | LoginProviderTarget::OpenAiCompatible(_)
+        | LoginProviderTarget::AutoImport => return None,
+    };
+    Some(ProviderActivation::initial(identity, active))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
