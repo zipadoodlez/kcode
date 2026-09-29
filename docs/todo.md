@@ -508,12 +508,18 @@ tree first would just move that churn around.
   `ensure_test_kcode_home_if_unset`, `empty_swarm_status_state`,
   `load_auth_file_renames_existing_labels_to_animal_scheme`,
   `test_mask_email_censors_local_part`, `routes` (2 each).
-- [ ] Pre-existing failures on this tree: `kcode-tui --lib` 37 (measured
-  2026-09-29 at `cd795377`; the earlier 27 had drifted), `kcode-base --lib` 4 (was
-  15), root `kcode --lib` 10 of 195 (last measured 2026-09-28). Sampled root causes are stale expectations for removed or renamed
-  surface. Also math/LaTeX 15 and `test_lock_order` 1. Environmental, not
-  regressions. Treat as the baseline; the suite still covers removed features and
-  brittle pixel/color assertions, so collapse or delete rather than maintain.
+- [ ] Pre-existing failures on this tree: `kcode-tui --lib` 38 failed / 1824
+  passed at `06ab4a0f` (measured 2026-09-29; earlier 37 at `cd795377` and 27
+  before that had drifted). After the local-turn-path deletion it is 41/1809,
+  and the difference is flakiness, not regression: the four failures unique to
+  the new tree (`slash_provider_test_coverage_*`, `slash_session(s)_alias_*`)
+  pass in isolation, and `smoothness_benchmark_mid_transcript_growth_settles_quickly`
+  only failed on the base run. `kcode-base --lib` 4 (was 15), root `kcode --lib`
+  10 of 195 (last measured 2026-09-28). Sampled root causes are stale
+  expectations for removed or renamed surface. Also math/LaTeX 15 and
+  `test_lock_order` 1. Environmental, not regressions. Treat as the baseline; the
+  suite still covers removed features and brittle pixel/color assertions, so
+  collapse or delete rather than maintain.
 - [ ] `kcode-app-core --lib` also has two failures with one root cause,
   diagnosed 2026-09-28: `client_actions_tests.rs:441` still asserts the member's
   `swarm_id` equals its working dir, and `communicate_tests/end_to_end.rs:587`

@@ -27,7 +27,7 @@
     "crates/kcode-tui/src/tui/app/tests/remote_startup_input_03/part_01.rs": 1232,
     "crates/kcode-tui/src/tui/app/tests/scroll_copy_02/part_01.rs": 1766,
     "crates/kcode-tui/src/tui/app/tests/scroll_copy_03.rs": 1587,
-    "crates/kcode-tui/src/tui/app/tests/state_model_poke_03.rs": 2496,
+    "crates/kcode-tui/src/tui/app/tests/state_model_poke_03.rs": 2484,
     "crates/kcode-tui/src/tui/info_widget_tests.rs": 1354,
     "crates/kcode-tui/src/tui/session_picker_tests.rs": 2232,
     "crates/kcode-tui/src/tui/ui_messages/tests.rs": 2822,

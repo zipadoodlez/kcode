@@ -1310,7 +1310,6 @@ fn submit_git_command_and_wait_for_response(app: &mut App) {
     let _guard = rt.enter();
     let mut bus_rx = crate::bus::Bus::global().subscribe();
     while bus_rx.try_recv().is_ok() {}
-
     app.composer.input = "/git".to_string();
     app.submit_input();
 
