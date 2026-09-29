@@ -3250,6 +3250,7 @@ dependencies = [
  "kcode-message-types",
  "memchr",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3271,7 +3272,7 @@ name = "kcode-swarm-core"
 version = "0.1.0"
 dependencies = [
  "kcode-plan",
- "serde",
+ "kcode-session-types",
 ]
 
 [[package]]

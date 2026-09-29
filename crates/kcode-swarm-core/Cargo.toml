@@ -6,4 +6,4 @@ publish = false
 
 [dependencies]
 kcode-plan = { path = "../kcode-plan" }
-serde = { version = "1", features = ["derive"] }
+kcode-session-types = { path = "../kcode-session-types" }
