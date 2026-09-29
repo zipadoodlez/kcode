@@ -219,9 +219,7 @@ impl SessionPicker {
         // `SessionStatus::Active` alone cannot.
         let is_current = self.session_is_current(session);
         let live_badge = if self.session_is_live(session) {
-            if session.source == SessionSource::ClaudeCode {
-                Some(("●", asap_color(), "live Claude".to_string()))
-            } else if self.session_is_streaming(session) {
+            if self.session_is_streaming(session) {
                 let label = match self.session_streaming_duration(session) {
                     Some(elapsed) => format!("working {}", format_short_duration(elapsed)),
                     None => "working".to_string(),
@@ -285,14 +283,6 @@ impl SessionPicker {
             line1_spans.push(Span::styled("  \"".to_string(), label_style));
             line1_spans.extend(Self::highlight_spans(label, &highlight_tokens, label_style));
             line1_spans.push(Span::styled("\"".to_string(), label_style));
-        }
-        if let Some(source_badge) = session.source.badge() {
-            line1_spans.push(Span::styled(
-                format!("  {}", source_badge),
-                Style::default()
-                    .fg(asap_color())
-                    .add_modifier(Modifier::BOLD),
-            ));
         }
         if in_batch_restore {
             line1_spans.push(Span::styled(
@@ -625,7 +615,7 @@ impl SessionPicker {
 
         title_parts.push(Span::styled(" ", Style::default()));
 
-        let mut help = if self.loading_message.is_some() {
+        let help = if self.loading_message.is_some() {
             " Esc cancel ".to_string()
         } else if self.search_active {
             " type to filter · Ctrl+J/K or ↑↓ nav · Ctrl+W word-del · Esc cancel ".to_string()
@@ -639,10 +629,6 @@ impl SessionPicker {
                 }
             }
         };
-        if self.selected_live_claude_target().is_some() && !self.search_active {
-            help = format!(" T take over live Claude ·{}", help);
-        }
-
         let border_dim: Color = dim_color();
         let border_focus: Color = kcode_tui_style::theme::border_color();
         let border_color = if self.focus == PaneFocus::Sessions {

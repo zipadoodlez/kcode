@@ -13,7 +13,6 @@ members = [
     "crates/kcode-base",
     "crates/kcode-tui",
     "crates/kcode-build-meta",
-    "crates/kcode-import-core",
     "crates/kcode-pdf",
     "crates/kcode-logging",
     "crates/kcode-background-types",

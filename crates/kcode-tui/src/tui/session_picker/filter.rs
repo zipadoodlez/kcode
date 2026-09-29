@@ -127,33 +127,6 @@ impl SessionPicker {
             .collect()
     }
 
-    pub(super) fn session_is_claude_code(session: &SessionInfo) -> bool {
-        kcode_tui_session_picker::session_is_claude_code(session.source, &session.id)
-    }
-
-    pub(super) fn session_is_codex(session: &SessionInfo) -> bool {
-        kcode_tui_session_picker::session_is_codex(session.source, session.model.as_deref())
-    }
-
-    pub(super) fn session_is_pi(session: &SessionInfo) -> bool {
-        kcode_tui_session_picker::session_is_pi(
-            session.source,
-            session.provider_key.as_deref(),
-            session.model.as_deref(),
-        )
-    }
-
-    pub(super) fn session_is_open_code(session: &SessionInfo) -> bool {
-        kcode_tui_session_picker::session_is_open_code(
-            session.source,
-            session.provider_key.as_deref(),
-        )
-    }
-
-    pub(super) fn session_is_cursor(session: &SessionInfo) -> bool {
-        kcode_tui_session_picker::session_is_cursor(session.source, session.provider_key.as_deref())
-    }
-
     fn session_matches_filter_mode(
         &self,
         session: &SessionInfo,
@@ -165,18 +138,6 @@ impl SessionPicker {
             SessionFilterMode::CatchUp => session.needs_catchup,
             SessionFilterMode::Saved => session.saved,
             SessionFilterMode::Active => self.session_is_live(session),
-            SessionFilterMode::ClaudeCode => Self::session_is_claude_code(session),
-            SessionFilterMode::Codex => Self::session_is_codex(session),
-            SessionFilterMode::Pi => Self::session_is_pi(session),
-            SessionFilterMode::OpenCode => Self::session_is_open_code(session),
-            SessionFilterMode::Cursor => Self::session_is_cursor(session),
-            SessionFilterMode::ExternalClis => {
-                Self::session_is_codex(session)
-                    || Self::session_is_claude_code(session)
-                    || Self::session_is_pi(session)
-                    || Self::session_is_open_code(session)
-                    || Self::session_is_cursor(session)
-            }
         }
     }
 

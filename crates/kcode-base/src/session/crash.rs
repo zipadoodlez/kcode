@@ -525,44 +525,13 @@ fn session_matches_resume_title(session: &Session, normalized_query: &str) -> bo
         .is_some_and(|title| title == normalized_query || title.contains(normalized_query))
 }
 
-/// Given a *bare* external provider id, return the id of a locally-imported
-/// snapshot (`imported_<tool>_<id>`) if one already exists on disk.
-///
-/// External CLI sessions (OpenCode, Codex, Claude Code) are imported into the
-/// kcode store under a stable `imported_<tool>_<provider_id>` stem. Resuming the
-/// full imported id always works, but a *bare* provider id (e.g. the OpenCode
-/// `ses_...` shown in the resume picker / reload handoff) previously only
-/// resolved by re-importing from the external tool's own storage. Once the user
-/// removed or reinstalled that tool, the re-import failed and resume hard-exited
-/// with "No session found matching 'ses_...'" even though the imported snapshot
-/// was still sitting in `~/.kcode/sessions` (issue #336).
-///
-/// Pi sessions are intentionally excluded: their imported id is a hash of the
-/// session *path*, not the provider id, so there is no bare-id mapping.
-fn resolve_imported_snapshot_id(provider_id: &str) -> Option<String> {
-    // Don't double-prefix an id that is already an imported stem.
-    if provider_id.starts_with("imported_") {
-        return None;
-    }
-
-    [
-        crate::import::imported_opencode_session_id(provider_id),
-        crate::import::imported_codex_session_id(provider_id),
-        crate::import::imported_claude_code_session_id(provider_id),
-        crate::import::imported_cursor_session_id(provider_id),
-    ]
-    .into_iter()
-    .find(|candidate| session_exists(candidate))
-}
-
 /// Find a session by ID, memorable name, generated title, or custom rename.
 /// If the input doesn't load as a full session ID, scan recent session snapshots
 /// and return the newest matching short name/title.
 /// Returns the full session ID if found.
 pub fn find_session_by_name_or_id(name_or_id: &str) -> Result<String> {
-    // Try loading directly first so stable imported IDs like `imported_codex_*`
-    // or other explicit session ids can be resumed without going through the
-    // short-name matcher.
+    // Try loading directly first so an explicit session id can be resumed
+    // without going through the short-name matcher.
     match Session::load(name_or_id) {
         Ok(_) => return Ok(name_or_id.to_string()),
         Err(e) => {
@@ -574,15 +543,6 @@ pub fn find_session_by_name_or_id(name_or_id: &str) -> Result<String> {
                 );
             }
         }
-    }
-
-    // A *bare* external provider id (e.g. an OpenCode `ses_...` or a Codex/Claude
-    // session id) may already have a locally-imported snapshot stored under an
-    // `imported_<tool>_<id>` stem. Resolve to that snapshot before falling back to
-    // re-importing from the external tool's storage, which fails outright once the
-    // user has removed/reinstalled that tool (issue #336).
-    if let Some(imported_id) = resolve_imported_snapshot_id(name_or_id) {
-        return Ok(imported_id);
     }
 
     // Otherwise, search for a session with matching short name or title.
@@ -699,40 +659,7 @@ mod batch_crash_tests {
         Ok(())
     }
 
-    /// Regression test for issue #336: resuming a *bare* external provider id
-    /// (e.g. an OpenCode `ses_...`) must resolve to its already-imported local
-    /// snapshot even when the external tool's storage has been removed, instead
-    /// of hard-failing with "No session found matching 'ses_...'".
-    #[test]
-    fn find_session_by_name_or_id_resolves_bare_opencode_id_to_imported_snapshot()
-    -> anyhow::Result<()> {
-        let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::tempdir()?;
-        crate::env::set_var("KCODE_HOME", temp.path());
-
-        let provider_id = "ses_2c72f8f4cffee6Qh7GId7D81Se";
-        let imported_id = crate::import::imported_opencode_session_id(provider_id);
-        let mut session = Session::create_with_id(
-            imported_id.clone(),
-            None,
-            Some("Analyzing /provider routing".to_string()),
-        );
-        session.status = SessionStatus::Closed;
-        session.provider_session_id = Some(provider_id.to_string());
-        session.provider_key = Some("opencode".to_string());
-        session.save()?;
-
-        // No external OpenCode store exists under KCODE_HOME/external, so the only
-        // way to resolve the bare id is via the local imported snapshot.
-        let resolved = find_session_by_name_or_id(provider_id)?;
-        assert_eq!(resolved, imported_id);
-
-        crate::env::remove_var("KCODE_HOME");
-        Ok(())
-    }
-
-    /// A bare provider id that has *no* imported snapshot on disk must still fail
-    /// (so the caller can fall back to external re-import or surface an error).
+    /// An unknown bare id must still fail so the caller can surface an error.
     #[test]
     fn find_session_by_name_or_id_bare_id_without_snapshot_still_errors() -> anyhow::Result<()> {
         let _guard = crate::storage::lock_test_env();

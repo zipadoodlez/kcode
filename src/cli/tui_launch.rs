@@ -225,252 +225,71 @@ pub use crate::session_launch::{
 };
 
 pub fn list_sessions() -> Result<()> {
-    fn build_resume_target_command(
-        exe: &std::path::Path,
-        target: &kcode_tui_session_picker::ResumeTarget,
-    ) -> (std::path::PathBuf, Vec<String>) {
-        match target {
-            kcode_tui_session_picker::ResumeTarget::KcodeSession { session_id } => (
-                exe.to_path_buf(),
-                vec!["--resume".to_string(), session_id.clone()],
-            ),
-            kcode_tui_session_picker::ResumeTarget::ClaudeCodeSession { session_id, .. } => (
-                exe.to_path_buf(),
-                vec![
-                    "--resume".to_string(),
-                    crate::import::imported_claude_code_session_id(session_id),
-                ],
-            ),
-            kcode_tui_session_picker::ResumeTarget::CodexSession { session_id, .. } => (
-                exe.to_path_buf(),
-                vec![
-                    "--resume".to_string(),
-                    crate::import::imported_codex_session_id(session_id),
-                ],
-            ),
-            kcode_tui_session_picker::ResumeTarget::PiSession { session_path } => (
-                exe.to_path_buf(),
-                vec![
-                    "--resume".to_string(),
-                    crate::import::imported_pi_session_id(session_path),
-                ],
-            ),
-            kcode_tui_session_picker::ResumeTarget::OpenCodeSession { session_id, .. } => (
-                exe.to_path_buf(),
-                vec![
-                    "--resume".to_string(),
-                    crate::import::imported_opencode_session_id(session_id),
-                ],
-            ),
-            kcode_tui_session_picker::ResumeTarget::CursorSession { session_id, .. } => (
-                exe.to_path_buf(),
-                vec![
-                    "--resume".to_string(),
-                    crate::import::imported_cursor_session_id(session_id),
-                ],
-            ),
+    fn session_cwd(session_id: &str) -> std::path::PathBuf {
+        let mut cwd = std::env::current_dir().unwrap_or_default();
+        if let Ok(sess) = session::Session::load(session_id)
+            && let Some(dir) = sess.working_dir.as_deref()
+            && std::path::Path::new(dir).is_dir()
+        {
+            cwd = std::path::PathBuf::from(dir);
         }
+        cwd
     }
 
-    fn command_display(program: &std::path::Path, args: &[String]) -> String {
-        std::iter::once(program.to_string_lossy().to_string())
-            .chain(args.iter().cloned())
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
+    fn spawn_many(exe: &std::path::Path, ids: &[String]) -> Result<()> {
+        let mut spawned = 0usize;
+        let mut warned_no_terminal = false;
+        for session_id in ids {
+            let cwd = session_cwd(session_id);
+            match spawn_resume_in_new_terminal(exe, session_id, &cwd) {
+                Ok(true) => spawned += 1,
+                Ok(false) => {
+                    if !warned_no_terminal {
+                        eprintln!(
+                            "No supported terminal emulator found. Run these commands manually:"
+                        );
+                        warned_no_terminal = true;
+                    }
+                    eprintln!("  kcode --resume {}", session_id);
+                }
+                Err(e) => {
+                    eprintln!("Failed to spawn session {}: {}", session_id, e);
+                }
+            }
+        }
 
-    fn spawn_target_in_new_terminal(
-        target: &kcode_tui_session_picker::ResumeTarget,
-        exe: &std::path::Path,
-        cwd: &std::path::Path,
-    ) -> Result<bool> {
-        let (program, args) = build_resume_target_command(exe, target);
-        let title = match target {
-            kcode_tui_session_picker::ResumeTarget::KcodeSession { session_id } => {
-                resumed_window_title(session_id)
-            }
-            kcode_tui_session_picker::ResumeTarget::ClaudeCodeSession { session_id, .. } => {
-                format!("🧵 Claude Code {}", &session_id[..session_id.len().min(8)])
-            }
-            kcode_tui_session_picker::ResumeTarget::CodexSession { session_id, .. } => {
-                format!("🧠 Codex {}", &session_id[..session_id.len().min(8)])
-            }
-            kcode_tui_session_picker::ResumeTarget::PiSession { session_path } => {
-                format!(
-                    "π Pi {}",
-                    std::path::Path::new(session_path)
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("session")
-                )
-            }
-            kcode_tui_session_picker::ResumeTarget::OpenCodeSession { session_id, .. } => {
-                format!("◌ OpenCode {}", &session_id[..session_id.len().min(8)])
-            }
-            kcode_tui_session_picker::ResumeTarget::CursorSession { session_id, .. } => {
-                format!("▮ Cursor {}", &session_id[..session_id.len().min(8)])
-            }
-        };
-        let title = crate::output_style::terminal_text(&title).into_owned();
-        let command = crate::terminal_launch::TerminalCommand::new(program, args).title(title);
-        crate::terminal_launch::spawn_command_in_new_terminal(&command, cwd)
+        if spawned == 0 && warned_no_terminal {
+            return Ok(());
+        }
+        if spawned == 0 {
+            anyhow::bail!("Failed to spawn any selected sessions");
+        }
+        Ok(())
     }
 
     match tui::session_picker::pick_session()? {
-        Some(tui::session_picker::PickerResult::TakeOverClaude(target)) => {
-            let resolved_target = crate::import::take_over_live_claude_session(&target)?;
-            let kcode_tui_session_picker::ResumeTarget::KcodeSession { session_id } =
-                &resolved_target
-            else {
-                anyhow::bail!("Claude takeover did not produce a Kcode session");
-            };
-            let exe = std::env::current_exe()?;
-            let mut session_cwd = std::env::current_dir()?;
-            if let Ok(sess) = session::Session::load(session_id)
-                && let Some(dir) = sess.working_dir.as_deref()
-                && std::path::Path::new(dir).is_dir()
-            {
-                session_cwd = std::path::PathBuf::from(dir);
-            }
-            let (program, args) = build_resume_target_command(&exe, &resolved_target);
-            let err = crate::platform::replace_process(
-                ProcessCommand::new(&program)
-                    .args(&args)
-                    .current_dir(session_cwd),
-            );
-            Err(anyhow::anyhow!("Failed to exec {:?}: {}", program, err))
-        }
         Some(
-            tui::session_picker::PickerResult::Selected(targets)
-            | tui::session_picker::PickerResult::SelectedInCurrentTerminal(targets),
+            tui::session_picker::PickerResult::Selected(ids)
+            | tui::session_picker::PickerResult::SelectedInCurrentTerminal(ids),
         ) => {
             let exe = std::env::current_exe()?;
-            let cwd = std::env::current_dir()?;
-
-            if targets.len() == 1 {
-                let target = &targets[0];
-                let resolved_target = crate::import::resolve_resume_target_to_kcode(target)?;
-                let mut session_cwd = cwd.clone();
-                if let kcode_tui_session_picker::ResumeTarget::KcodeSession { session_id } =
-                    &resolved_target
-                    && let Ok(sess) = session::Session::load(session_id)
-                    && let Some(dir) = sess.working_dir.as_deref()
-                    && std::path::Path::new(dir).is_dir()
-                {
-                    session_cwd = std::path::PathBuf::from(dir);
-                }
-                let (program, args) = build_resume_target_command(&exe, &resolved_target);
+            if ids.len() == 1 {
+                let session_id = &ids[0];
+                let cwd = session_cwd(session_id);
                 let err = crate::platform::replace_process(
-                    ProcessCommand::new(&program)
-                        .args(&args)
-                        .current_dir(session_cwd),
+                    ProcessCommand::new(&exe)
+                        .arg("--resume")
+                        .arg(session_id)
+                        .current_dir(cwd),
                 );
-
-                Err(anyhow::anyhow!("Failed to exec {:?}: {}", program, err))
+                Err(anyhow::anyhow!("Failed to exec {:?}: {}", exe, err))
             } else {
-                let mut spawned = 0usize;
-                let mut warned_no_terminal = false;
-
-                for target in targets {
-                    let resolved_target =
-                        match crate::import::resolve_resume_target_to_kcode(&target) {
-                            Ok(target) => target,
-                            Err(e) => {
-                                eprintln!("Failed to import selected session: {}", e);
-                                continue;
-                            }
-                        };
-                    let mut session_cwd = cwd.clone();
-                    if let kcode_tui_session_picker::ResumeTarget::KcodeSession { session_id } =
-                        &resolved_target
-                        && let Ok(sess) = session::Session::load(session_id)
-                        && let Some(dir) = sess.working_dir.as_deref()
-                        && std::path::Path::new(dir).is_dir()
-                    {
-                        session_cwd = std::path::PathBuf::from(dir);
-                    }
-
-                    match spawn_target_in_new_terminal(&resolved_target, &exe, &session_cwd) {
-                        Ok(true) => spawned += 1,
-                        Ok(false) => {
-                            if !warned_no_terminal {
-                                eprintln!(
-                                    "No supported terminal emulator found. Run these commands manually:"
-                                );
-                                warned_no_terminal = true;
-                            }
-                            let (program, args) =
-                                build_resume_target_command(&exe, &resolved_target);
-                            eprintln!("  {}", command_display(&program, &args));
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to spawn selected session: {}", e);
-                        }
-                    }
-                }
-
-                if spawned == 0 && warned_no_terminal {
-                    return Ok(());
-                }
-
-                if spawned == 0 {
-                    anyhow::bail!("Failed to spawn any selected sessions");
-                }
-
-                Ok(())
+                spawn_many(&exe, &ids)
             }
         }
-        Some(tui::session_picker::PickerResult::SelectedInNewTerminal(targets)) => {
+        Some(tui::session_picker::PickerResult::SelectedInNewTerminal(ids)) => {
             let exe = std::env::current_exe()?;
-            let cwd = std::env::current_dir()?;
-            let mut spawned = 0usize;
-            let mut warned_no_terminal = false;
-
-            for target in targets {
-                let resolved_target = match crate::import::resolve_resume_target_to_kcode(&target) {
-                    Ok(target) => target,
-                    Err(e) => {
-                        eprintln!("Failed to import selected session: {}", e);
-                        continue;
-                    }
-                };
-                let mut session_cwd = cwd.clone();
-                if let kcode_tui_session_picker::ResumeTarget::KcodeSession { session_id } =
-                    &resolved_target
-                    && let Ok(sess) = session::Session::load(session_id)
-                    && let Some(dir) = sess.working_dir.as_deref()
-                    && std::path::Path::new(dir).is_dir()
-                {
-                    session_cwd = std::path::PathBuf::from(dir);
-                }
-
-                match spawn_target_in_new_terminal(&resolved_target, &exe, &session_cwd) {
-                    Ok(true) => spawned += 1,
-                    Ok(false) => {
-                        if !warned_no_terminal {
-                            eprintln!(
-                                "No supported terminal emulator found. Run these commands manually:"
-                            );
-                            warned_no_terminal = true;
-                        }
-                        let (program, args) = build_resume_target_command(&exe, &resolved_target);
-                        eprintln!("  {}", command_display(&program, &args));
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to spawn selected session: {}", e);
-                    }
-                }
-            }
-
-            if spawned == 0 && warned_no_terminal {
-                return Ok(());
-            }
-
-            if spawned == 0 {
-                anyhow::bail!("Failed to spawn any selected sessions");
-            }
-
-            Ok(())
+            spawn_many(&exe, &ids)
         }
         Some(tui::session_picker::PickerResult::RestoreCrashedGroup(session_ids)) => {
             let recovered = session::recover_crashed_sessions_by_ids(&session_ids)?;

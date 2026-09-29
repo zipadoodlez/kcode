@@ -2658,7 +2658,6 @@ dependencies = [
  "kcode-build-meta",
  "kcode-command-risk",
  "kcode-core",
- "kcode-import-core",
  "kcode-message-types",
  "kcode-overnight-core",
  "kcode-pdf",
@@ -2679,7 +2678,6 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "similar",
  "tar",
  "tempfile",
@@ -2721,7 +2719,6 @@ dependencies = [
  "kcode-compaction-core",
  "kcode-config-types",
  "kcode-core",
- "kcode-import-core",
  "kcode-logging",
  "kcode-message-types",
  "kcode-plan",
@@ -2806,18 +2803,6 @@ dependencies = [
 [[package]]
 name = "kcode-fuzzy"
 version = "0.1.0"
-
-[[package]]
-name = "kcode-import-core"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "hex",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
-]
 
 [[package]]
 name = "kcode-logging"

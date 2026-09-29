@@ -3,49 +3,6 @@ use kcode_message_types::{ContentBlock, Message, Role, ToolCall};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-/// Identifies a session to resume, across the agent backends kcode can import
-/// from. This is pure data (only ids/paths) with no UI dependency; it lives in
-/// `kcode-session-types` so the foundation/import layer can match on it without
-/// depending on any `kcode-tui-*` crate. The session-picker UI re-exports it.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ResumeTarget {
-    KcodeSession {
-        session_id: String,
-    },
-    ClaudeCodeSession {
-        session_id: String,
-        session_path: String,
-    },
-    CodexSession {
-        session_id: String,
-        session_path: String,
-    },
-    PiSession {
-        session_path: String,
-    },
-    OpenCodeSession {
-        session_id: String,
-        session_path: String,
-    },
-    CursorSession {
-        session_id: String,
-        session_path: String,
-    },
-}
-
-impl ResumeTarget {
-    pub fn stable_id(&self) -> &str {
-        match self {
-            Self::KcodeSession { session_id } => session_id,
-            Self::ClaudeCodeSession { session_id, .. } => session_id,
-            Self::CodexSession { session_id, .. } => session_id,
-            Self::PiSession { session_path } => session_path,
-            Self::OpenCodeSession { session_id, .. } => session_id,
-            Self::CursorSession { session_id, .. } => session_id,
-        }
-    }
-}
-
 /// Durable usage for one user turn, summed across its assistant/tool rounds.
 /// Input is the raw provider-reported count, not normalized across providers.
 /// Cache reads may be included in input (OpenAI) or separate (Anthropic).
@@ -758,7 +715,11 @@ pub fn format_session_search_results(
         "_Scanned: {} Kcode sessions ({} candidates){}._\n\n",
         report.scanned_kcode_sessions,
         report.candidate_kcode_sessions,
-        if report.truncated { "; scan truncated" } else { "" },
+        if report.truncated {
+            "; scan truncated"
+        } else {
+            ""
+        },
     ));
 
     for (i, result) in results.iter().enumerate() {
@@ -1048,7 +1009,7 @@ mod session_search_tests {
         ));
         assert!(session_search_working_dir_matches(
             "/workspace/kcode",
-            "jcode"
+            "kcode"
         ));
         assert!(!session_search_working_dir_matches(
             "/workspace/kcode",

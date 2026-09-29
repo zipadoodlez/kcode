@@ -1,6 +1,4 @@
-use super::{
-    PickerItem, PreviewMessage, ResumeTarget, ServerGroup, SessionInfo, SessionPicker, SessionRef,
-};
+use super::{PickerItem, PreviewMessage, ServerGroup, SessionInfo, SessionPicker, SessionRef};
 
 pub(super) fn debug_memory_profile(picker: &SessionPicker) -> serde_json::Value {
     let items_estimate_bytes: usize = picker.items.iter().map(estimate_picker_item_bytes).sum();
@@ -39,11 +37,6 @@ pub(super) fn debug_memory_profile(picker: &SessionPicker) -> serde_json::Value 
         .as_ref()
         .map(|message| message.capacity())
         .unwrap_or(0);
-    let pending_claude_takeover_bytes = picker
-        .pending_claude_takeover
-        .as_ref()
-        .map(estimate_resume_target_bytes)
-        .unwrap_or(0);
     let total_estimate_bytes = items_estimate_bytes
         + visible_sessions_estimate_bytes
         + all_sessions_estimate_bytes
@@ -53,8 +46,7 @@ pub(super) fn debug_memory_profile(picker: &SessionPicker) -> serde_json::Value 
         + crashed_session_ids_estimate_bytes
         + selected_session_ids_estimate_bytes
         + search_query_bytes
-        + loading_message_bytes
-        + pending_claude_takeover_bytes;
+        + loading_message_bytes;
 
     serde_json::json!({
         "items_count": picker.items.len(),
@@ -66,7 +58,6 @@ pub(super) fn debug_memory_profile(picker: &SessionPicker) -> serde_json::Value 
         "selected_session_ids_count": picker.selected_session_ids.len(),
         "search_query_bytes": search_query_bytes,
         "loading_message_bytes": loading_message_bytes,
-        "pending_claude_takeover_bytes": pending_claude_takeover_bytes,
         "items_estimate_bytes": items_estimate_bytes,
         "visible_sessions_estimate_bytes": visible_sessions_estimate_bytes,
         "all_sessions_estimate_bytes": all_sessions_estimate_bytes,
@@ -87,29 +78,6 @@ fn estimate_preview_message_bytes(message: &PreviewMessage) -> usize {
     message.role.capacity() + message.content.capacity()
 }
 
-fn estimate_resume_target_bytes(value: &ResumeTarget) -> usize {
-    match value {
-        ResumeTarget::KcodeSession { session_id } => session_id.capacity(),
-        ResumeTarget::ClaudeCodeSession {
-            session_id,
-            session_path,
-        }
-        | ResumeTarget::CodexSession {
-            session_id,
-            session_path,
-        }
-        | ResumeTarget::OpenCodeSession {
-            session_id,
-            session_path,
-        }
-        | ResumeTarget::CursorSession {
-            session_id,
-            session_path,
-        } => session_id.capacity() + session_path.capacity(),
-        ResumeTarget::PiSession { session_path } => session_path.capacity(),
-    }
-}
-
 fn estimate_session_info_bytes(info: &SessionInfo) -> usize {
     info.id.capacity()
         + estimate_optional_string_bytes(&info.parent_id)
@@ -128,8 +96,6 @@ fn estimate_session_info_bytes(info: &SessionInfo) -> usize {
         + info.search_index.capacity()
         + estimate_optional_string_bytes(&info.server_name)
         + estimate_optional_string_bytes(&info.server_icon)
-        + estimate_resume_target_bytes(&info.resume_target)
-        + estimate_optional_string_bytes(&info.external_path)
 }
 
 fn estimate_server_group_bytes(group: &ServerGroup) -> usize {

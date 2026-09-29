@@ -5,7 +5,6 @@ pub(crate) mod model_names;
 
 use crate::todo::TodoItem;
 use crate::tui::info_widget::GitInfo;
-use crate::tui::session_picker::ResumeTarget;
 use crossterm::event::{KeyCode, KeyModifiers};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -627,69 +626,11 @@ fn command_display(program: &Path, args: &[String]) -> String {
         .join(" ")
 }
 
-pub(super) fn build_resume_command(
-    target: &ResumeTarget,
-    socket: Option<&str>,
-) -> (PathBuf, Vec<String>, String) {
-    match target {
-        ResumeTarget::KcodeSession { session_id } => {
-            let exe = launch_client_executable();
-            let args = resume_invocation_args(session_id, socket);
-            let title = resumed_window_title(session_id);
-            (exe, args, title)
-        }
-        ResumeTarget::ClaudeCodeSession { session_id, .. } => {
-            let exe = launch_client_executable();
-            let imported_id = crate::import::imported_claude_code_session_id(session_id);
-            let args = resume_invocation_args(&imported_id, socket);
-            let title = format!(
-                "🧵 Claude Code {}",
-                kcode_core::util::truncate_str(session_id, 8)
-            );
-            (exe, args, title)
-        }
-        ResumeTarget::CodexSession { session_id, .. } => {
-            let exe = launch_client_executable();
-            let imported_id = crate::import::imported_codex_session_id(session_id);
-            let args = resume_invocation_args(&imported_id, socket);
-            let title = format!("🧠 Codex {}", kcode_core::util::truncate_str(session_id, 8));
-            (exe, args, title)
-        }
-        ResumeTarget::PiSession { session_path } => {
-            let exe = launch_client_executable();
-            let imported_id = crate::import::imported_pi_session_id(session_path);
-            let args = resume_invocation_args(&imported_id, socket);
-            let title = format!(
-                "π Pi {}",
-                Path::new(session_path)
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("session")
-            );
-            (exe, args, title)
-        }
-        ResumeTarget::OpenCodeSession { session_id, .. } => {
-            let exe = launch_client_executable();
-            let imported_id = crate::import::imported_opencode_session_id(session_id);
-            let args = resume_invocation_args(&imported_id, socket);
-            let title = format!(
-                "◌ OpenCode {}",
-                kcode_core::util::truncate_str(session_id, 8)
-            );
-            (exe, args, title)
-        }
-        ResumeTarget::CursorSession { session_id, .. } => {
-            let exe = launch_client_executable();
-            let imported_id = crate::import::imported_cursor_session_id(session_id);
-            let args = resume_invocation_args(&imported_id, socket);
-            let title = format!("▮ Cursor {}", kcode_core::util::truncate_str(session_id, 8));
-            (exe, args, title)
-        }
-    }
-}
-
-pub(super) fn resume_target_manual_command(target: &ResumeTarget, socket: Option<&str>) -> String {
-    let (exe, args, _) = build_resume_command(target, socket);
+/// The command a user can paste to resume `session_id` when no terminal
+/// emulator could be spawned.
+pub(super) fn resume_manual_command(session_id: &str, socket: Option<&str>) -> String {
+    let exe = launch_client_executable();
+    let args = resume_invocation_args(session_id, socket);
     command_display(&exe, &args)
 }
 
@@ -708,15 +649,6 @@ fn spawn_command_in_new_terminal(
     let command = crate::terminal_launch::TerminalCommand::new(program, args.to_vec())
         .title(title.to_string());
     crate::terminal_launch::spawn_command_in_new_terminal(&command, cwd)
-}
-
-pub(super) fn spawn_resume_target_in_new_terminal(
-    target: &ResumeTarget,
-    cwd: &Path,
-    socket: Option<&str>,
-) -> anyhow::Result<bool> {
-    let (program, args, title) = build_resume_command(target, socket);
-    spawn_command_in_new_terminal(&program, &args, &title, cwd)
 }
 
 /// Build the terminal command used to spawn a brand-new kcode session.

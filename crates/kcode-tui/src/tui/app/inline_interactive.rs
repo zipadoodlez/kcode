@@ -1,5 +1,12 @@
 use super::*;
-use crate::tui::session_picker::{self, OverlayAction, PickerResult, ResumeTarget, SessionPicker};
+use crate::tui::session_picker::{self, OverlayAction, PickerResult, SessionPicker};
+
+/// Display name for a session id: its memorable name, else the raw id.
+fn session_display_name(session_id: &str) -> String {
+    crate::id::extract_session_name(session_id)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| session_id.to_string())
+}
 use crate::tui::{
     AccountPickerAction, InlineInteractiveState, PickerAction, PickerEntry, PickerKind,
     PickerOption,
@@ -2609,36 +2616,29 @@ impl App {
         self.start_session_picker_load();
     }
 
-    pub(super) fn handle_session_picker_selection(&mut self, targets: &[ResumeTarget]) {
+    pub(super) fn handle_session_picker_selection(&mut self, ids: &[String]) {
         if super::commands_dispatch::ssh_local_action_blocked(
             self,
             "Opening local session terminals",
         ) {
             return;
         }
-        if targets.is_empty() {
+        if ids.is_empty() {
             return;
         }
 
         if self.session_picker.mode == SessionPickerMode::CatchUp {
             let current_session_id = super::commands::active_session_id(self);
-            let mut names = Vec::with_capacity(targets.len());
-            for target in targets {
-                let ResumeTarget::KcodeSession { session_id } = target else {
-                    continue;
-                };
+            let mut names = Vec::with_capacity(ids.len());
+            for session_id in ids {
                 let queue_position = catchup_queue_position(&current_session_id, session_id);
                 self.catchup.queue(
-                    session_id.to_string(),
+                    session_id.clone(),
                     Some(current_session_id.clone()),
                     queue_position,
                     true,
                 );
-                names.push(
-                    crate::id::extract_session_name(session_id)
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| session_id.to_string()),
-                );
+                names.push(session_display_name(session_id));
             }
 
             if names.len() == 1 {
@@ -2646,14 +2646,14 @@ impl App {
                     "Queued Catch Up for {}.",
                     names[0],
                 )));
-                self.set_status_notice(format!("Catch Up → {}", names[0]));
+                self.set_status_notice(format!("Catch Up \u{2192} {}", names[0]));
             } else {
                 self.push_display_message(DisplayMessage::system(format!(
                     "Queued Catch Up for {} sessions: {}.",
                     names.len(),
                     names.join(", "),
                 )));
-                self.set_status_notice(format!("Catch Up → {} sessions", names.len()));
+                self.set_status_notice(format!("Catch Up \u{2192} {} sessions", names.len()));
             }
             return;
         }
@@ -2662,13 +2662,13 @@ impl App {
         let socket = std::env::var("KCODE_SOCKET").ok();
         let mut spawned = 0usize;
         let mut failed = Vec::new();
-        let mut names = Vec::with_capacity(targets.len());
+        let mut names = Vec::with_capacity(ids.len());
 
-        for target in targets {
+        for session_id in ids {
             let mut cwd = default_cwd.clone();
             if let Some(picker_cell) = self.session_picker.overlay.as_ref() {
                 let picker = picker_cell.borrow();
-                if let Some(session) = picker.session_for_target(target)
+                if let Some(session) = picker.session_by_id(session_id)
                     && let Some(dir) = session.working_dir.as_deref()
                     && std::path::Path::new(dir).is_dir()
                 {
@@ -2676,61 +2676,25 @@ impl App {
                 }
             }
 
-            let name = match target {
-                ResumeTarget::KcodeSession { session_id } => {
-                    crate::id::extract_session_name(session_id)
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| session_id.to_string())
-                }
-                ResumeTarget::ClaudeCodeSession { session_id, .. } => {
-                    format!(
-                        "Claude Code {}",
-                        kcode_core::util::truncate_str(session_id, 8)
-                    )
-                }
-                ResumeTarget::CodexSession { session_id, .. } => {
-                    format!("Codex {}", kcode_core::util::truncate_str(session_id, 8))
-                }
-                ResumeTarget::PiSession { session_path } => std::path::Path::new(session_path)
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("Pi session")
-                    .to_string(),
-                ResumeTarget::OpenCodeSession { session_id, .. } => {
-                    format!("OpenCode {}", kcode_core::util::truncate_str(session_id, 8))
-                }
-                ResumeTarget::CursorSession { session_id, .. } => {
-                    format!("Cursor {}", kcode_core::util::truncate_str(session_id, 8))
-                }
-            };
-            let resolved_target = match crate::import::resolve_resume_target_to_kcode(target) {
-                Ok(target) => target,
-                Err(err) => {
-                    failed.push(format!("failed to import {}: {}", name, err));
-                    continue;
-                }
-            };
-
-            match spawn_resume_target_in_new_terminal(&resolved_target, &cwd, socket.as_deref()) {
+            let name = session_display_name(session_id);
+            let exe = super::helpers::launch_client_executable();
+            match super::helpers::spawn_in_new_terminal(&exe, session_id, &cwd, socket.as_deref()) {
                 Ok(true) => {
                     spawned += 1;
                     names.push(name);
                 }
                 Ok(false) | Err(_) => {
-                    // No terminal emulator could be spawned. For a single kcode
+                    // No terminal emulator could be spawned. For a single
                     // session, fall back to resuming in the current terminal
                     // instead of dead-ending with a manual command (issue #203).
-                    if targets.len() == 1
-                        && spawned == 0
-                        && matches!(resolved_target, ResumeTarget::KcodeSession { .. })
-                    {
+                    if ids.len() == 1 && spawned == 0 {
                         self.handle_session_picker_current_terminal_selection(
-                            std::slice::from_ref(target),
+                            std::slice::from_ref(session_id),
                         );
                         return;
                     }
-                    failed.push(resume_target_manual_command(
-                        &resolved_target,
+                    failed.push(super::helpers::resume_manual_command(
+                        session_id,
                         socket.as_deref(),
                     ));
                 }
@@ -2773,124 +2737,36 @@ impl App {
         }
     }
 
-    pub(super) fn handle_session_picker_current_terminal_selection(
-        &mut self,
-        targets: &[ResumeTarget],
-    ) {
+    pub(super) fn handle_session_picker_current_terminal_selection(&mut self, ids: &[String]) {
         if super::commands_dispatch::ssh_local_action_blocked(self, "Importing local sessions") {
             return;
         }
-        let Some(target) = targets.first() else {
+        let Some(session_id) = ids.first() else {
             return;
         };
-
-        let name = match target {
-            ResumeTarget::KcodeSession { session_id } => {
-                crate::id::extract_session_name(session_id)
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| session_id.to_string())
-            }
-            ResumeTarget::ClaudeCodeSession { session_id, .. } => {
-                format!(
-                    "Claude Code {}",
-                    kcode_core::util::truncate_str(session_id, 8)
-                )
-            }
-            ResumeTarget::CodexSession { session_id, .. } => {
-                format!("Codex {}", kcode_core::util::truncate_str(session_id, 8))
-            }
-            ResumeTarget::PiSession { session_path } => std::path::Path::new(session_path)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("Pi session")
-                .to_string(),
-            ResumeTarget::OpenCodeSession { session_id, .. } => {
-                format!("OpenCode {}", kcode_core::util::truncate_str(session_id, 8))
-            }
-            ResumeTarget::CursorSession { session_id, .. } => {
-                format!("Cursor {}", kcode_core::util::truncate_str(session_id, 8))
-            }
-        };
-
-        let resolved_target = match crate::import::resolve_resume_target_to_kcode(target) {
-            Ok(target) => target,
-            Err(err) => {
-                self.push_display_message(DisplayMessage::error(format!(
-                    "Failed to import {}: {}",
-                    name, err
-                )));
-                return;
-            }
-        };
-
-        let ResumeTarget::KcodeSession { session_id } = resolved_target else {
-            self.push_display_message(DisplayMessage::error(format!(
-                "Cannot resume {} in the current terminal.",
-                name
-            )));
-            return;
-        };
+        let name = session_display_name(session_id);
 
         // Selecting the session we are already in (visible in the Active view,
         // labeled "current") should simply close the picker, not re-resume.
-        if session_id == super::commands::active_session_id(self) {
+        if *session_id == super::commands::active_session_id(self) {
             self.session_picker.overlay = None;
             self.session_picker.mode = SessionPickerMode::Resume;
             self.set_status_notice("Already in this session");
             return;
         }
 
-        if targets.len() > 1 {
+        if ids.len() > 1 {
             self.push_display_message(DisplayMessage::system(format!(
                 "Selected {} sessions; resuming {} in this terminal.",
-                targets.len(),
+                ids.len(),
                 name
             )));
         }
-        self.workspace_client.queue_resume_session(session_id);
+        self.workspace_client
+            .queue_resume_session(session_id.clone());
         self.session_picker.overlay = None;
         self.session_picker.mode = SessionPickerMode::Resume;
-        self.set_status_notice(format!("Switching → {}", name));
-    }
-
-    fn handle_live_claude_takeover(&mut self, target: &ResumeTarget) -> bool {
-        if super::commands_dispatch::ssh_local_action_blocked(self, "Local Claude takeover") {
-            return false;
-        }
-        let ResumeTarget::ClaudeCodeSession { session_id, .. } = target else {
-            self.push_display_message(DisplayMessage::error(
-                "Live takeover is only available for Claude Code sessions.",
-            ));
-            return false;
-        };
-        let display_id = kcode_core::util::truncate_str(session_id, 8);
-        self.set_status_notice(format!("Preparing Claude takeover → {display_id}"));
-
-        let resolved = match crate::import::take_over_live_claude_session(target) {
-            Ok(target) => target,
-            Err(err) => {
-                self.push_display_message(DisplayMessage::error(format!(
-                    "Claude takeover failed: {err}"
-                )));
-                self.set_status_notice("Claude takeover did not complete");
-                return false;
-            }
-        };
-        let ResumeTarget::KcodeSession { session_id } = resolved else {
-            self.push_display_message(DisplayMessage::error(
-                "Claude takeover did not produce a Kcode session.",
-            ));
-            return false;
-        };
-
-        self.push_display_message(DisplayMessage::system(format!(
-            "Claude Code exited and its transcript was prepared as {session_id}."
-        )));
-        self.workspace_client.queue_resume_session(session_id);
-        self.session_picker.overlay = None;
-        self.session_picker.mode = SessionPickerMode::Resume;
-        self.set_status_notice(format!("Taking over Claude → {display_id}"));
-        true
+        self.set_status_notice(format!("Switching \u{2192} {}", name));
     }
 
     pub(super) fn handle_batch_crash_restore(&mut self, session_ids: &[String]) {
@@ -2946,9 +2822,7 @@ impl App {
         // Single recovered session that could not get a new terminal: resume it
         // in the current terminal instead of forcing a manual command (#203).
         if spawned == 0 && recovered.len() == 1 && failed.len() == 1 {
-            self.handle_session_picker_current_terminal_selection(&[ResumeTarget::KcodeSession {
-                session_id: recovered[0].clone(),
-            }]);
+            self.handle_session_picker_current_terminal_selection(&[recovered[0].clone()]);
             return;
         }
         if spawned > 0 && failed.is_empty() {
@@ -3018,9 +2892,6 @@ impl App {
                 } else {
                     self.handle_session_picker_current_terminal_selection(&ids);
                 }
-            }
-            OverlayAction::Selected(PickerResult::TakeOverClaude(target)) => {
-                let _ = self.handle_live_claude_takeover(&target);
             }
             OverlayAction::Selected(PickerResult::RestoreCrashedGroup(session_ids)) => {
                 self.handle_batch_crash_restore(&session_ids);

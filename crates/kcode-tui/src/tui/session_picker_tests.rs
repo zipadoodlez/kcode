@@ -92,11 +92,6 @@ fn make_session_with_flags(
         search_index,
         server_name: None,
         server_icon: None,
-        source: SessionSource::Kcode,
-        resume_target: ResumeTarget::KcodeSession {
-            session_id: id.to_string(),
-        },
-        external_path: None,
     }
 }
 
@@ -131,7 +126,6 @@ fn benchmark_real_resume_first_render_reports_timings() {
         (
             session.id.clone(),
             session.title.clone(),
-            session.external_path.clone(),
             session.messages_preview.len(),
         )
     });
@@ -732,41 +726,19 @@ fn benchmark_resume_search_reports_incremental_timings() {
 }
 
 #[test]
-fn test_filter_mode_cycles_through_requested_session_sources() {
+fn test_filter_mode_cycles_through_local_views() {
     let mut saved = make_session("session_saved", "saved", false, SessionStatus::Closed);
     saved.saved = true;
     saved.needs_catchup = true;
+    let other = make_session("session_other", "other", false, SessionStatus::Closed);
 
-    let mut claude_code = make_session("claude:demo", "claude-code", false, SessionStatus::Closed);
-    claude_code.source = SessionSource::ClaudeCode;
-    claude_code.resume_target = ResumeTarget::ClaudeCodeSession {
-        session_id: "claude-session-demo".to_string(),
-        session_path: "/tmp/claude-session-demo.jsonl".to_string(),
-    };
-
-    let mut codex = make_session("session_codex", "codex", false, SessionStatus::Closed);
-    codex.model = Some("gpt-5.3-codex".to_string());
-    codex.source = SessionSource::Codex;
-
-    let mut pi = make_session("session_pi", "pi", false, SessionStatus::Closed);
-    pi.provider_key = Some("pi".to_string());
-    pi.source = SessionSource::Pi;
-
-    let mut opencode = make_session("session_opencode", "opencode", false, SessionStatus::Closed);
-    opencode.provider_key = Some("opencode".to_string());
-    opencode.source = SessionSource::OpenCode;
-
-    let mut cursor = make_session("session_cursor", "cursor", false, SessionStatus::Closed);
-    cursor.provider_key = Some("cursor".to_string());
-    cursor.source = SessionSource::Cursor;
-
-    let mut picker = SessionPicker::new(vec![saved, claude_code, codex, pi, opencode, cursor]);
+    let mut picker = SessionPicker::new(vec![saved, other]);
     picker.all_sessions[0].working_dir = Some("/work/project".to_string());
     picker.set_current_dir(Some("/work/project/".to_string()));
     picker.rebuild_items();
 
     assert_eq!(picker.filter_mode, SessionFilterMode::All);
-    assert_eq!(picker.visible_sessions.len(), 6);
+    assert_eq!(picker.visible_sessions.len(), 2);
 
     picker.cycle_filter_mode();
     assert_eq!(picker.filter_mode, SessionFilterMode::CurrentDir);
@@ -799,53 +771,8 @@ fn test_filter_mode_cycles_through_requested_session_sources() {
     assert_eq!(picker.visible_sessions.len(), 0);
 
     picker.cycle_filter_mode();
-    assert_eq!(picker.filter_mode, SessionFilterMode::ClaudeCode);
-    assert_eq!(picker.visible_sessions.len(), 1);
-    assert!(
-        picker
-            .visible_session_iter()
-            .all(SessionPicker::session_is_claude_code)
-    );
-
-    picker.cycle_filter_mode();
-    assert_eq!(picker.filter_mode, SessionFilterMode::Codex);
-    assert_eq!(picker.visible_sessions.len(), 1);
-    assert!(
-        picker
-            .visible_session_iter()
-            .all(SessionPicker::session_is_codex)
-    );
-
-    picker.cycle_filter_mode();
-    assert_eq!(picker.filter_mode, SessionFilterMode::Pi);
-    assert_eq!(picker.visible_sessions.len(), 1);
-    assert!(
-        picker
-            .visible_session_iter()
-            .all(SessionPicker::session_is_pi)
-    );
-
-    picker.cycle_filter_mode();
-    assert_eq!(picker.filter_mode, SessionFilterMode::OpenCode);
-    assert_eq!(picker.visible_sessions.len(), 1);
-    assert!(
-        picker
-            .visible_session_iter()
-            .all(SessionPicker::session_is_open_code)
-    );
-
-    picker.cycle_filter_mode();
-    assert_eq!(picker.filter_mode, SessionFilterMode::Cursor);
-    assert_eq!(picker.visible_sessions.len(), 1);
-    assert!(
-        picker
-            .visible_session_iter()
-            .all(SessionPicker::session_is_cursor)
-    );
-
-    picker.cycle_filter_mode();
     assert_eq!(picker.filter_mode, SessionFilterMode::All);
-    assert_eq!(picker.visible_sessions.len(), 6);
+    assert_eq!(picker.visible_sessions.len(), 2);
 }
 
 #[test]
@@ -978,95 +905,6 @@ fn test_active_rows_render_working_and_ready_badges() {
     );
 }
 
-fn make_claude_session(session_id: &str) -> SessionInfo {
-    let mut session = make_session(
-        &format!("claude:{session_id}"),
-        "claude live",
-        false,
-        SessionStatus::Closed,
-    );
-    session.source = SessionSource::ClaudeCode;
-    session.provider_key = Some("claude-code".to_string());
-    session.resume_target = ResumeTarget::ClaudeCodeSession {
-        session_id: session_id.to_string(),
-        session_path: format!("/tmp/{session_id}.jsonl"),
-    };
-    session
-}
-
-#[test]
-fn live_claude_takeover_requires_explicit_key_and_confirmation() {
-    let session = make_claude_session("claude-live-id");
-    let target = session.resume_target.clone();
-    let mut picker = SessionPicker::new(vec![session]);
-    picker.set_live_presence_for_test(vec![live_presence("claude:claude-live-id", false)]);
-
-    // Ordinary Enter remains an ordinary resume and never implies takeover.
-    let ordinary = picker
-        .handle_overlay_key(KeyCode::Enter, KeyModifiers::empty())
-        .unwrap();
-    assert!(matches!(
-        ordinary,
-        OverlayAction::Selected(PickerResult::SelectedInCurrentTerminal(_))
-            | OverlayAction::Selected(PickerResult::SelectedInNewTerminal(_))
-    ));
-    assert!(!picker.claude_takeover_confirmation_active_for_test());
-
-    assert!(matches!(
-        picker
-            .handle_overlay_key(KeyCode::Char('T'), KeyModifiers::empty())
-            .unwrap(),
-        OverlayAction::Continue
-    ));
-    assert!(picker.claude_takeover_confirmation_active_for_test());
-
-    // Cancellation does not emit an action.
-    assert!(matches!(
-        picker
-            .handle_overlay_key(KeyCode::Esc, KeyModifiers::empty())
-            .unwrap(),
-        OverlayAction::Continue
-    ));
-    assert!(!picker.claude_takeover_confirmation_active_for_test());
-
-    picker
-        .handle_overlay_key(KeyCode::Char('T'), KeyModifiers::empty())
-        .unwrap();
-    let confirmed = picker
-        .handle_overlay_key(KeyCode::Enter, KeyModifiers::empty())
-        .unwrap();
-    assert!(matches!(
-        confirmed,
-        OverlayAction::Selected(PickerResult::TakeOverClaude(actual)) if actual == target
-    ));
-}
-
-#[test]
-fn live_claude_row_is_labeled_and_closed_claude_cannot_take_over() {
-    let mut live = make_claude_session("live-row");
-    let mut closed = make_claude_session("closed-row");
-    live.last_message_time = Utc::now();
-    closed.last_message_time = Utc::now() - ChronoDuration::minutes(1);
-    let mut picker = SessionPicker::new(vec![live.clone(), closed]);
-    picker.set_live_presence_for_test(vec![live_presence("claude:live-row", false)]);
-
-    let rendered = picker
-        .render_session_item_lines(&live, false)
-        .iter()
-        .map(line_text)
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(rendered.contains("live Claude"), "rendered row: {rendered}");
-
-    picker
-        .handle_overlay_key(KeyCode::Down, KeyModifiers::empty())
-        .unwrap();
-    picker
-        .handle_overlay_key(KeyCode::Char('T'), KeyModifiers::empty())
-        .unwrap();
-    assert!(!picker.claude_takeover_confirmation_active_for_test());
-}
-
 #[test]
 fn test_current_session_row_is_labeled() {
     let session = make_session("session_self", "self", false, SessionStatus::Active);
@@ -1118,14 +956,7 @@ fn test_space_selects_multiple_sessions_and_enter_returns_them() {
         OverlayAction::Selected(PickerResult::SelectedInCurrentTerminal(ids)) => {
             assert_eq!(
                 ids,
-                vec![
-                    ResumeTarget::KcodeSession {
-                        session_id: "session_newer".to_string(),
-                    },
-                    ResumeTarget::KcodeSession {
-                        session_id: "session_older".to_string(),
-                    }
-                ]
+                vec!["session_newer".to_string(), "session_older".to_string()]
             );
         }
         other => panic!("expected selected sessions, got {other:?}"),
@@ -1139,14 +970,7 @@ fn test_space_selects_multiple_sessions_and_enter_returns_them() {
         OverlayAction::Selected(PickerResult::SelectedInNewTerminal(ids)) => {
             assert_eq!(
                 ids,
-                vec![
-                    ResumeTarget::KcodeSession {
-                        session_id: "session_newer".to_string(),
-                    },
-                    ResumeTarget::KcodeSession {
-                        session_id: "session_older".to_string(),
-                    }
-                ]
+                vec!["session_newer".to_string(), "session_older".to_string()]
             );
         }
         other => panic!("expected alternate selected sessions, got {other:?}"),
@@ -1224,55 +1048,18 @@ fn test_keyboard_scroll_uses_sessions_focus_for_paging() {
 }
 
 #[test]
-fn external_filter_picks_latest_visible_transcript() {
+fn latest_visible_session_id_tracks_most_recent() {
     let now = Utc::now();
-
-    let mut older = make_session("codex_older", "older", false, SessionStatus::Closed);
-    older.source = SessionSource::Codex;
-    older.model = Some("gpt-5-codex".to_string());
+    let mut older = make_session("session_older", "older", false, SessionStatus::Closed);
     older.last_active_at = Some(now - ChronoDuration::minutes(30));
-    older.resume_target = ResumeTarget::CodexSession {
-        session_id: "codex_older".to_string(),
-        session_path: "/tmp/codex_older.jsonl".to_string(),
-    };
-
-    let mut newer = make_session("codex_newer", "newer", false, SessionStatus::Closed);
-    newer.source = SessionSource::Codex;
-    newer.model = Some("gpt-5-codex".to_string());
+    let mut newer = make_session("session_newer", "newer", false, SessionStatus::Closed);
     newer.last_active_at = Some(now - ChronoDuration::minutes(2));
-    newer.resume_target = ResumeTarget::CodexSession {
-        session_id: "codex_newer".to_string(),
-        session_path: "/tmp/codex_newer.jsonl".to_string(),
-    };
 
-    // A non-Codex session that must be filtered out.
-    let kcode = make_session("kcode_one", "kcode", false, SessionStatus::Closed);
-
-    let mut picker = SessionPicker::new(vec![older, kcode, newer]);
-    picker.activate_external_cli_filter(SessionFilterMode::Codex);
-
-    assert_eq!(picker.visible_session_count(), 2);
-
-    let latest = picker
-        .latest_visible_resume_target()
-        .expect("latest visible target");
+    let picker = SessionPicker::new(vec![older, newer]);
     assert_eq!(
-        latest,
-        ResumeTarget::CodexSession {
-            session_id: "codex_newer".to_string(),
-            session_path: "/tmp/codex_newer.jsonl".to_string(),
-        }
+        picker.latest_visible_session_id().as_deref(),
+        Some("session_newer")
     );
-}
-
-#[test]
-fn external_filter_with_no_matches_has_no_target() {
-    let kcode = make_session("kcode_only", "kcode", false, SessionStatus::Closed);
-    let mut picker = SessionPicker::new(vec![kcode]);
-    picker.activate_external_cli_filter(SessionFilterMode::ClaudeCode);
-
-    assert_eq!(picker.visible_session_count(), 0);
-    assert!(picker.latest_visible_resume_target().is_none());
 }
 
 #[test]

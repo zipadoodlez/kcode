@@ -31,11 +31,6 @@ fn session_picker_resume_action_keeps_overlay_open() {
                 search_index: "keep-open keep open".to_string(),
                 server_name: None,
                 server_icon: None,
-                source: crate::tui::session_picker::SessionSource::Kcode,
-                resume_target: crate::tui::session_picker::ResumeTarget::KcodeSession {
-                    session_id: "session_keep_open".to_string(),
-                },
-                external_path: None,
             },
         ]),
     ));
@@ -82,11 +77,6 @@ fn session_picker_enter_queues_current_terminal_resume_and_closes_overlay() {
                 search_index: "here".to_string(),
                 server_name: None,
                 server_icon: None,
-                source: crate::tui::session_picker::SessionSource::Kcode,
-                resume_target: crate::tui::session_picker::ResumeTarget::KcodeSession {
-                    session_id: "session_here_123".to_string(),
-                },
-                external_path: None,
             },
         ]),
     ));
@@ -362,7 +352,7 @@ fn slash_provider_test_coverage_overlay_scrolls_with_mouse_wheel() {
 
 #[test]
 fn session_picker_preview_wheel_uses_shared_scroll_momentum() {
-    use crate::tui::session_picker::{PreviewMessage, SessionInfo, SessionSource};
+    use crate::tui::session_picker::{PreviewMessage, SessionInfo};
     // Build a session whose preview overflows a small pane so it can scroll.
     let mut messages = Vec::new();
     for i in 0..40 {
@@ -408,11 +398,6 @@ fn session_picker_preview_wheel_uses_shared_scroll_momentum() {
         search_index: "scroll".to_string(),
         server_name: None,
         server_icon: None,
-        source: SessionSource::Kcode,
-        resume_target: crate::tui::session_picker::ResumeTarget::KcodeSession {
-            session_id: "session_scroll".to_string(),
-        },
-        external_path: None,
     };
 
     let mut picker = crate::tui::session_picker::SessionPicker::new(vec![session]);

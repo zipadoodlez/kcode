@@ -176,11 +176,6 @@ reasoning_display = "full"
 # command is always available regardless of this setting.
 # active_sessions_manager = false
 
-# Include transcripts from other agent CLIs (Claude Code, Codex, Pi, OpenCode,
-# Cursor) in the session picker so they can be resumed or imported
-# (default: true). Set false to list only kcode's own sessions.
-# external_sessions = true
-
 # Status line (model/provider/context info below the input):
 #   "on"  - always visible (default)
 #   "off" - never shown; the compact facts stack is used

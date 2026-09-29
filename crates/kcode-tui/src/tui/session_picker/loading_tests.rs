@@ -126,11 +126,6 @@ fn cached_grouped_sessions_round_trip_from_disk() {
         search_index: "cache test".to_string(),
         server_name: None,
         server_icon: None,
-        source: SessionSource::Kcode,
-        resume_target: ResumeTarget::KcodeSession {
-            session_id: "session_cache_test_1770000000000".to_string(),
-        },
-        external_path: None,
     };
     let cache = GroupedSessionListDiskCache {
         version: SESSION_LIST_DISK_CACHE_VERSION,
@@ -138,7 +133,6 @@ fn cached_grouped_sessions_round_trip_from_disk() {
         sessions_dir,
         scan_limit: session_scan_limit(),
         include_old_saved_sessions: include_old_saved_sessions_on_initial_load(),
-        external_sessions: include_external_sessions(),
         server_groups: Vec::new(),
         orphan_sessions: vec![session],
     };
@@ -150,344 +144,6 @@ fn cached_grouped_sessions_round_trip_from_disk() {
     assert_eq!(orphans.len(), 1);
     assert_eq!(orphans[0].id, "session_cache_test_1770000000000");
     assert_eq!(orphans[0].title, "Cache test");
-}
-
-#[test]
-fn load_sessions_includes_claude_code_sessions_from_external_home() {
-    let _env_lock = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("temp dir");
-    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
-
-    let project_dir = temp.path().join("external/.claude/projects/demo-project");
-    std::fs::create_dir_all(&project_dir).expect("create project dir");
-
-    let transcript_path = project_dir.join("claude-session-123.jsonl");
-    std::fs::write(
-        &transcript_path,
-        concat!(
-            "{\"type\":\"user\",\"uuid\":\"u1\",\"message\":{\"role\":\"user\",\"content\":\"Investigate the login bug\"}}\n",
-            "{\"type\":\"assistant\",\"uuid\":\"a1\",\"parentUuid\":\"u1\",\"message\":{\"role\":\"assistant\",\"content\":\"I can help with that.\"}}\n"
-        ),
-    )
-    .expect("write transcript");
-
-    std::fs::write(
-        project_dir.join("sessions-index.json"),
-        format!(
-            concat!(
-                "{{\"version\":1,\"entries\":[",
-                "{{\"sessionId\":\"claude-session-123\",",
-                "\"fullPath\":\"{}\",",
-                "\"firstPrompt\":\"Investigate the login bug\",",
-                "\"summary\":\"Investigate the login bug\",",
-                "\"messageCount\":2,",
-                "\"created\":\"2026-04-04T12:00:00Z\",",
-                "\"modified\":\"2026-04-04T12:05:00Z\",",
-                "\"projectPath\":\"/tmp/demo-project\"",
-                "}}]}}"
-            ),
-            transcript_path.display()
-        ),
-    )
-    .expect("write index");
-
-    let sessions = load_sessions().expect("load sessions");
-    let session = sessions
-        .iter()
-        .find(|session| {
-            matches!(
-                session.resume_target,
-                ResumeTarget::ClaudeCodeSession { .. }
-            )
-        })
-        .expect("claude session present");
-
-    assert_eq!(session.source, SessionSource::ClaudeCode);
-    assert_eq!(session.id, "claude:claude-session-123");
-    assert_eq!(session.short_name, "demo-project");
-    assert_eq!(session.title, "Investigate the login bug");
-    assert_eq!(session.message_count, 2);
-    assert_eq!(session.working_dir.as_deref(), Some("/tmp/demo-project"));
-}
-
-/// End-to-end counterpart to the unit tests above (issue #674): with
-/// `external_sessions` off, a discoverable Claude Code transcript must not
-/// appear in the picker, while kcode's own sessions still do.
-#[test]
-fn load_sessions_hides_external_sessions_when_opted_out() {
-    let _env_lock = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("temp dir");
-    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
-    let _opt_out = EnvVarGuard::set_str("KCODE_EXTERNAL_SESSIONS", "0");
-    crate::config::Config::invalidate_cache();
-    invalidate_session_list_cache();
-
-    let project_dir = temp.path().join("external/.claude/projects/demo-project");
-    std::fs::create_dir_all(&project_dir).expect("create project dir");
-    let transcript_path = project_dir.join("claude-session-456.jsonl");
-    std::fs::write(
-        &transcript_path,
-        "{\"type\":\"user\",\"uuid\":\"u1\",\"message\":{\"role\":\"user\",\"content\":\"hidden\"}}\n",
-    )
-    .expect("write transcript");
-    std::fs::write(
-        project_dir.join("sessions-index.json"),
-        format!(
-            concat!(
-                "{{\"version\":1,\"entries\":[",
-                "{{\"sessionId\":\"claude-session-456\",",
-                "\"fullPath\":\"{}\",",
-                "\"firstPrompt\":\"hidden\",",
-                "\"summary\":\"hidden\",",
-                "\"messageCount\":1,",
-                "\"created\":\"2026-04-04T12:00:00Z\",",
-                "\"modified\":\"2026-04-04T12:05:00Z\",",
-                "\"projectPath\":\"/tmp/demo-project\"",
-                "}}]}}"
-            ),
-            transcript_path.display()
-        ),
-    )
-    .expect("write index");
-
-    let sessions = load_sessions().expect("load sessions");
-    assert!(
-        !sessions
-            .iter()
-            .any(|session| session.source != SessionSource::Kcode),
-        "external sessions must be hidden when display.external_sessions is false"
-    );
-
-    // And they come back when the opt-out is lifted.
-    drop(_opt_out);
-    crate::config::Config::invalidate_cache();
-    invalidate_session_list_cache();
-    let sessions = load_sessions().expect("load sessions");
-    assert!(
-        sessions
-            .iter()
-            .any(|session| session.source == SessionSource::ClaudeCode),
-        "external sessions must return when the opt-out is lifted"
-    );
-}
-
-#[test]
-fn load_claude_code_preview_reads_transcript_messages() {
-    let _env_lock = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("temp dir");
-    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
-
-    let project_dir = temp.path().join("external/.claude/projects/demo-project");
-    std::fs::create_dir_all(&project_dir).expect("create project dir");
-
-    let transcript_path = project_dir.join("claude-session-456.jsonl");
-    std::fs::write(
-        &transcript_path,
-        concat!(
-            "{\"type\":\"user\",\"uuid\":\"u1\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Fix the flaky test\"}]}}\n",
-            "{\"type\":\"assistant\",\"uuid\":\"a1\",\"parentUuid\":\"u1\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"I found the race condition\"}]}}\n"
-        ),
-    )
-    .expect("write transcript");
-
-    std::fs::write(
-        project_dir.join("sessions-index.json"),
-        format!(
-            concat!(
-                "{{\"version\":1,\"entries\":[",
-                "{{\"sessionId\":\"claude-session-456\",",
-                "\"fullPath\":\"{}\",",
-                "\"firstPrompt\":\"Fix the flaky test\",",
-                "\"messageCount\":2,",
-                "\"created\":\"2026-04-04T12:00:00Z\",",
-                "\"modified\":\"2026-04-04T12:05:00Z\"",
-                "}}]}}"
-            ),
-            transcript_path.display()
-        ),
-    )
-    .expect("write index");
-
-    let preview = load_claude_code_preview("claude-session-456").expect("preview");
-    assert_eq!(preview.len(), 2);
-    assert_eq!(preview[0].role, "user");
-    assert!(preview[0].content.contains("Fix the flaky test"));
-    assert_eq!(preview[1].role, "assistant");
-    assert!(preview[1].content.contains("I found the race condition"));
-}
-
-#[test]
-fn load_sessions_includes_modern_codex_sessions() {
-    let _env_lock = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("temp dir");
-    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
-
-    let codex_dir = temp.path().join("external/.codex/sessions/2026/04/05");
-    std::fs::create_dir_all(&codex_dir).expect("create codex dir");
-
-    let transcript_path = codex_dir.join("rollout-2026-04-05T19-00-00-test.jsonl");
-    std::fs::write(
-        &transcript_path,
-        concat!(
-            "{\"timestamp\":\"2026-04-05T19:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"019d-codex-test\",\"timestamp\":\"2026-04-05T18:59:00Z\",\"cwd\":\"/tmp/codex-demo\",\"source\":\"cli\"}}\n",
-            "{\"timestamp\":\"2026-04-05T19:00:01Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"# AGENTS.md instructions for /tmp/codex-demo\\n\\n<INSTRUCTIONS>ignored</INSTRUCTIONS>\"}]}}\n",
-            "{\"timestamp\":\"2026-04-05T19:00:03Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Fix the OpenAI usage widget\"}]}}\n",
-            "{\"timestamp\":\"2026-04-05T19:00:05Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"I found the issue.\"}]}}\n"
-        ),
-    )
-    .expect("write codex transcript");
-
-    let sessions = load_sessions().expect("load sessions");
-    let session = sessions
-        .iter()
-        .find(|session| matches!(session.resume_target, ResumeTarget::CodexSession { .. }))
-        .expect("codex session present");
-
-    assert_eq!(session.source, SessionSource::Codex);
-    assert_eq!(session.id, "codex:019d-codex-test");
-    assert_eq!(session.title, "Codex session 019d-cod");
-    assert_eq!(session.message_count, 0);
-    assert_eq!(session.user_message_count, 0);
-    assert_eq!(session.assistant_message_count, 0);
-    assert_eq!(session.working_dir.as_deref(), Some("/tmp/codex-demo"));
-}
-
-#[test]
-fn load_codex_preview_preserves_blank_line_between_tool_transcript_and_followup_prose() {
-    let temp = tempfile::tempdir().expect("temp dir");
-    let transcript_path = temp.path().join("codex-preview.jsonl");
-    std::fs::write(
-        &transcript_path,
-        concat!(
-            "{\"timestamp\":\"2026-04-10T19:05:54.536Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"019d-preview-test\",\"timestamp\":\"2026-04-10T19:05:54.536Z\"}}\n",
-            "{\"timestamp\":\"2026-04-10T19:05:55.000Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[",
-            "{\"type\":\"output_text\",\"text\":\"I’m cleaning up the last leftover warning from the reverted experiment, then I’ll commit the second pass as the debounced large-swarm snapshot optimization.\\n  ✓ batch 3 calls · 174 tok\\n    ✓ apply_patch src/server/swarm.rs (30 lines) · 10 tok\\n    ✓ bash $ cargo fmt --all · 27 tok\\n    ✓ bash $ git add … status broadcasts\"},",
-            "{\"type\":\"output_text\",\"text\":\"I landed the second pass as commit 158f6ac, and I’m not stopping there.\"}",
-            "]}}\n"
-        ),
-    )
-    .expect("write codex transcript");
-
-    let preview = load_codex_preview_from_path(&transcript_path).expect("preview");
-    assert_eq!(preview.len(), 1);
-    assert_eq!(preview[0].role, "assistant");
-    assert!(
-        preview[0].content.contains(
-            "✓ bash $ git add … status broadcasts\n\nI landed the second pass as commit 158f6ac"
-        ),
-        "preview content should preserve a blank line between tool transcript and followup prose: {:?}",
-        preview[0].content
-    );
-}
-
-#[test]
-fn load_codex_preview_reads_only_tail_of_large_transcript() {
-    // A transcript far larger than the tail cap should still produce a preview
-    // of the most-recent messages, parsed from only the tail slice. This is the
-    // regression guard for the picker-navigation lag: previews must not depend
-    // on parsing the whole (multi-MB) file.
-    let temp = tempfile::tempdir().expect("temp dir");
-    let transcript_path = temp.path().join("rollout-big.jsonl");
-
-    let mut contents = String::new();
-    // session_meta header line (always skipped).
-    contents.push_str(
-        "{\"timestamp\":\"2026-04-10T19:05:54.536Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"019d-big\"}}\n",
-    );
-    // Padding messages near the head that must NOT appear in the preview once
-    // the file exceeds the tail cap.
-    for i in 0..50_000 {
-        contents.push_str(&format!(
-            "{{\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{{\"type\":\"output_text\",\"text\":\"old padding message {i} aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}]}}}}\n",
-        ));
-    }
-    assert!(
-        contents.len() as u64 > EXTERNAL_PREVIEW_TAIL_BYTES,
-        "test transcript must exceed the tail cap"
-    );
-    // Distinctive recent messages at the very end.
-    contents.push_str(
-        "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"RECENT_USER_MARKER\"}]}}\n",
-    );
-    contents.push_str(
-        "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"RECENT_ASSISTANT_MARKER\"}]}}\n",
-    );
-    std::fs::write(&transcript_path, &contents).expect("write big transcript");
-
-    let preview = load_codex_preview_from_path(&transcript_path).expect("preview");
-    // Preview is capped at 20 messages.
-    assert!(
-        preview.len() <= 20,
-        "preview should be capped, got {}",
-        preview.len()
-    );
-    // The most-recent markers must be present.
-    let last_two = &preview[preview.len().saturating_sub(2)..];
-    assert!(
-        last_two
-            .iter()
-            .any(|m| m.content.contains("RECENT_USER_MARKER"))
-    );
-    assert!(
-        last_two
-            .iter()
-            .any(|m| m.content.contains("RECENT_ASSISTANT_MARKER"))
-    );
-    // The head padding must have been skipped (not parsed from the tail slice).
-    assert!(
-        !preview
-            .iter()
-            .any(|m| m.content.contains("old padding message 0 ")),
-        "head messages should not appear when only the tail is read"
-    );
-}
-
-#[test]
-fn load_claude_code_preview_reads_only_tail_of_large_transcript() {
-    let temp = tempfile::tempdir().expect("temp dir");
-    let transcript_path = temp.path().join("claude-big.jsonl");
-
-    let mut contents = String::new();
-    for i in 0..50_000 {
-        contents.push_str(&format!(
-            "{{\"type\":\"assistant\",\"uuid\":\"a{i}\",\"message\":{{\"role\":\"assistant\",\"content\":[{{\"type\":\"text\",\"text\":\"old padding message {i} bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}}]}}}}\n",
-        ));
-    }
-    assert!(
-        contents.len() as u64 > EXTERNAL_PREVIEW_TAIL_BYTES,
-        "test transcript must exceed the tail cap"
-    );
-    contents.push_str(
-        "{\"type\":\"user\",\"uuid\":\"u_last\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"RECENT_USER_MARKER\"}]}}\n",
-    );
-    contents.push_str(
-        "{\"type\":\"assistant\",\"uuid\":\"a_last\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"RECENT_ASSISTANT_MARKER\"}]}}\n",
-    );
-    std::fs::write(&transcript_path, &contents).expect("write big transcript");
-
-    let preview = load_claude_code_preview_from_path(&transcript_path).expect("preview");
-    assert!(
-        preview.len() <= 20,
-        "preview should be capped, got {}",
-        preview.len()
-    );
-    let last_two = &preview[preview.len().saturating_sub(2)..];
-    assert!(
-        last_two
-            .iter()
-            .any(|m| m.content.contains("RECENT_USER_MARKER"))
-    );
-    assert!(
-        last_two
-            .iter()
-            .any(|m| m.content.contains("RECENT_ASSISTANT_MARKER"))
-    );
-    assert!(
-        !preview
-            .iter()
-            .any(|m| m.content.contains("old padding message 0 ")),
-        "head messages should not appear when only the tail is read"
-    );
 }
 
 #[test]
@@ -771,80 +427,6 @@ fn raw_search_excerpt_samples_suffix_of_one_long_message_without_splitting_utf8(
 }
 
 #[test]
-fn session_matches_query_searches_external_codex_transcript_contents() {
-    let _env_lock = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("temp dir");
-    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
-
-    let codex_dir = temp.path().join("external/.codex/sessions/2026/04/19");
-    std::fs::create_dir_all(&codex_dir).expect("create codex dir");
-
-    let transcript_path = codex_dir.join("transcript-search.jsonl");
-    std::fs::write(
-        &transcript_path,
-        concat!(
-            "{\"timestamp\":\"2026-04-19T04:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"codex-transcript-search\",\"timestamp\":\"2026-04-19T03:59:00Z\",\"cwd\":\"/tmp/codex-search\"}}\n",
-            "{\"timestamp\":\"2026-04-19T04:00:01Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"the kiwi comet bug is only mentioned in transcript content\"}]}}\n"
-        ),
-    )
-    .expect("write codex transcript");
-
-    let sessions = load_sessions().expect("load sessions");
-    let loaded = sessions
-        .iter()
-        .find(|candidate| candidate.id == "codex:codex-transcript-search")
-        .expect("codex session present");
-
-    assert!(!loaded.search_index.contains("kiwi comet"));
-    assert!(loaded.messages_preview.is_empty());
-    assert!(session_matches_query(loaded, "kiwi comet"));
-    assert!(!session_matches_query(loaded, "dragonfruit meteor"));
-}
-
-#[test]
-fn load_sessions_surfaces_external_cursor_transcript() {
-    let _env_lock = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("temp dir");
-    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
-    // The session list cache is process-global; clear it before and after so this
-    // test neither reads a stale list nor leaves our sandboxed entries behind for
-    // adjacent tests (e.g. the disk-cache round-trip test).
-    invalidate_session_list_cache();
-
-    let session_id = "abcdef01-2345-6789-abcd-ef0123456789";
-    let cursor_dir = temp.path().join(format!(
-        "external/.cursor/projects/Users-demo-proj/agent-transcripts/{session_id}"
-    ));
-    std::fs::create_dir_all(&cursor_dir).expect("create cursor dir");
-    std::fs::write(
-        cursor_dir.join(format!("{session_id}.jsonl")),
-        concat!(
-            "{\"role\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"resume my cursor work\"}]}}\n",
-            "{\"role\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"resuming now\"}]}}\n",
-        ),
-    )
-    .expect("write cursor transcript");
-
-    let sessions = load_sessions().expect("load sessions");
-    let loaded = sessions
-        .iter()
-        .find(|candidate| candidate.id == format!("cursor:{session_id}"))
-        .expect("cursor session present in /resume list");
-
-    assert_eq!(loaded.source, SessionSource::Cursor);
-    assert_eq!(loaded.provider_key.as_deref(), Some("cursor"));
-    assert!(matches!(
-        &loaded.resume_target,
-        ResumeTarget::CursorSession { session_id: id, .. } if id == session_id
-    ));
-    assert_eq!(
-        loaded.first_user_prompt.as_deref(),
-        Some("resume my cursor work")
-    );
-    invalidate_session_list_cache();
-}
-
-#[test]
 #[ignore = "developer benchmark: times real /resume loading phases"]
 fn benchmark_real_resume_loading_phases() {
     invalidate_session_list_cache();
@@ -864,7 +446,6 @@ fn benchmark_real_resume_loading_phases() {
 
     let mut sessions = Vec::new();
     let mut skipped_empty = 0usize;
-    let mut skipped_imported = 0usize;
     let mut summary_errors = 0usize;
     let phase_start = std::time::Instant::now();
     for stem in &candidates {
@@ -873,14 +454,6 @@ fn benchmark_real_resume_loading_phases() {
             if !session_snapshot_or_journal_has_saved_metadata(&saved) {
                 continue;
             }
-        }
-        if stem.starts_with("imported_cc_")
-            || stem.starts_with("imported_codex_")
-            || stem.starts_with("imported_pi_")
-            || stem.starts_with("imported_opencode_")
-        {
-            skipped_imported += 1;
-            continue;
         }
 
         let path = sessions_dir.join(format!("{stem}.json"));
@@ -893,22 +466,6 @@ fn benchmark_real_resume_loading_phases() {
         }
     }
     let kcode_summary_elapsed = phase_start.elapsed();
-
-    let phase_start = std::time::Instant::now();
-    let claude = load_external_claude_code_sessions(scan_limit);
-    let claude_elapsed = phase_start.elapsed();
-
-    let phase_start = std::time::Instant::now();
-    let codex = load_external_codex_sessions(scan_limit);
-    let codex_elapsed = phase_start.elapsed();
-
-    let phase_start = std::time::Instant::now();
-    let pi = load_external_pi_sessions(scan_limit);
-    let pi_elapsed = phase_start.elapsed();
-
-    let phase_start = std::time::Instant::now();
-    let opencode = load_external_opencode_sessions(scan_limit);
-    let opencode_elapsed = phase_start.elapsed();
 
     let phase_start = std::time::Instant::now();
     let all_sessions = load_sessions().expect("load sessions");
@@ -936,8 +493,7 @@ fn benchmark_real_resume_loading_phases() {
         concat!(
             "real resume phases: scan_limit={} candidate_limit={} snapshot_count={} ",
             "candidate_count={} collect_candidates={}ms ",
-            "kcode_summary={}ms kcode_loaded={} skipped_empty={} skipped_imported={} summary_errors={} ",
-            "external_claude={}ms/{} external_codex={}ms/{} external_pi={}ms/{} external_opencode={}ms/{} ",
+            "kcode_summary={}ms kcode_loaded={} skipped_empty={} summary_errors={} ",
             "load_sessions={}ms/{} load_sessions_grouped={}ms groups={} orphans={}"
         ),
         scan_limit,
@@ -948,16 +504,7 @@ fn benchmark_real_resume_loading_phases() {
         kcode_summary_elapsed.as_millis(),
         sessions.len(),
         skipped_empty,
-        skipped_imported,
         summary_errors,
-        claude_elapsed.as_millis(),
-        claude.len(),
-        codex_elapsed.as_millis(),
-        codex.len(),
-        pi_elapsed.as_millis(),
-        pi.len(),
-        opencode_elapsed.as_millis(),
-        opencode.len(),
         load_sessions_elapsed.as_millis(),
         all_sessions.len(),
         grouped_elapsed.as_millis(),
@@ -1055,59 +602,6 @@ fn benchmark_resume_loading_reports_timings() {
         load_elapsed.as_millis(),
         group_elapsed.as_millis(),
         sessions.len()
-    );
-}
-
-#[test]
-fn scoped_loader_returns_only_codex_sessions() {
-    let _env_lock = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("temp dir");
-    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
-
-    // A Codex transcript that the scoped picker should surface.
-    let codex_dir = temp.path().join("external/.codex/sessions/2026/05/01");
-    std::fs::create_dir_all(&codex_dir).expect("create codex dir");
-    std::fs::write(
-        codex_dir.join("rollout-2026-05-01T10-00-00-test.jsonl"),
-        "{\"timestamp\":\"2026-05-01T10:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"codex-onboarding-test\",\"timestamp\":\"2026-05-01T09:59:00Z\",\"cwd\":\"/tmp/codex-onboard\"}}\n",
-    )
-    .expect("write codex transcript");
-
-    // A kcode session that must NOT appear in the scoped Codex view (the whole
-    // point of the scoped loader is to skip parsing these).
-    let mut kcode_session = Session::create_with_id(
-        "session_onboarding_kcode_1780000000000".to_string(),
-        Some("/tmp/kcode-onboard".to_string()),
-        Some("Kcode Onboarding".to_string()),
-    );
-    kcode_session.append_stored_message(crate::session::StoredMessage {
-        id: "msg-1".to_string(),
-        role: crate::message::Role::User,
-        content: vec![crate::message::ContentBlock::Text {
-            text: "should not show in the codex scoped view".to_string(),
-            cache_control: None,
-        }],
-        display_role: None,
-        timestamp: None,
-        tool_duration_ms: None,
-        token_usage: None,
-    });
-    kcode_session.save().expect("save kcode session");
-
-    let (groups, orphans) = load_external_sessions_grouped(load_external_codex_sessions);
-    assert!(groups.is_empty(), "scoped loader produces only orphans");
-    assert!(
-        orphans
-            .iter()
-            .any(|s| s.id == "codex:codex-onboarding-test"),
-        "expected codex transcript in the scoped load: {:?}",
-        orphans.iter().map(|s| &s.id).collect::<Vec<_>>()
-    );
-    assert!(
-        orphans
-            .iter()
-            .all(|s| matches!(s.resume_target, ResumeTarget::CodexSession { .. })),
-        "scoped Codex load must not include kcode/other-CLI sessions"
     );
 }
 
@@ -1281,75 +775,4 @@ fn session_matches_picker_query_requires_all_tokens_order_independent() {
     assert!(!session_matches_picker_query(loaded, "deploy staging"));
     // Empty query matches everything.
     assert!(session_matches_picker_query(loaded, "   "));
-}
-
-/// Regression tests for issue #674: the picker must be able to list only
-/// kcode's own sessions, and toggling that must not be masked by either cache.
-mod external_session_opt_out {
-    use super::super::{GroupedSessionListDiskCache, session_list_disk_cache_is_usable};
-    use std::path::{Path, PathBuf};
-
-    fn disk_cache(dir: &Path, external_sessions: bool) -> GroupedSessionListDiskCache {
-        GroupedSessionListDiskCache {
-            version: super::super::SESSION_LIST_DISK_CACHE_VERSION,
-            generated_at: chrono::Utc::now(),
-            sessions_dir: dir.to_path_buf(),
-            scan_limit: 50,
-            include_old_saved_sessions: super::super::include_old_saved_sessions_on_initial_load(),
-            external_sessions,
-            server_groups: Vec::new(),
-            orphan_sessions: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn disk_cache_written_with_externals_is_rejected_after_opting_out() {
-        let dir = PathBuf::from("/tmp/kcode-test-sessions");
-        let cache = disk_cache(&dir, true);
-
-        assert!(
-            session_list_disk_cache_is_usable(&cache, &dir, 50, true),
-            "same setting -> reusable"
-        );
-        assert!(
-            !session_list_disk_cache_is_usable(&cache, &dir, 50, false),
-            "opting out must not be served a cache that still contains other CLIs' sessions"
-        );
-    }
-
-    #[test]
-    fn disk_cache_written_without_externals_is_rejected_after_opting_back_in() {
-        let dir = PathBuf::from("/tmp/kcode-test-sessions");
-        let cache = disk_cache(&dir, false);
-
-        assert!(session_list_disk_cache_is_usable(&cache, &dir, 50, false));
-        assert!(
-            !session_list_disk_cache_is_usable(&cache, &dir, 50, true),
-            "opting back in must trigger a rescan"
-        );
-    }
-
-    /// An older cache file has no `external_sessions` field; it was written
-    /// with externals included, so it must deserialize that way.
-    #[test]
-    fn legacy_disk_cache_without_the_field_defaults_to_externals_included() {
-        let json = serde_json::json!({
-            "version": super::super::SESSION_LIST_DISK_CACHE_VERSION,
-            "generated_at": chrono::Utc::now(),
-            "sessions_dir": "/tmp/kcode-test-sessions",
-            "scan_limit": 50,
-            "include_old_saved_sessions": false,
-            "server_groups": [],
-            "orphan_sessions": []
-        });
-        let cache: GroupedSessionListDiskCache =
-            serde_json::from_value(json).expect("legacy cache must still parse");
-        assert!(cache.external_sessions);
-    }
-
-    /// The config default must keep today's behavior (externals shown).
-    #[test]
-    fn external_sessions_default_is_on() {
-        assert!(kcode_config_types::DisplayConfig::default().external_sessions);
-    }
 }

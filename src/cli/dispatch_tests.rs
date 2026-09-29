@@ -135,34 +135,6 @@ fn spawn_lock_serializes_shared_server_bootstrap() {
 }
 
 #[test]
-fn resolve_resume_id_imports_raw_codex_session_ids() {
-    let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("tempdir");
-    crate::env::set_var("KCODE_HOME", temp.path());
-
-    let codex_dir = temp.path().join("external/.codex/sessions/2026/04/16");
-    std::fs::create_dir_all(&codex_dir).expect("create codex dir");
-    std::fs::write(
-            codex_dir.join("rollout.jsonl"),
-            concat!(
-                "{\"timestamp\":\"2026-04-16T10:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"codex-cli-resume-test\",\"timestamp\":\"2026-04-16T09:59:00Z\",\"cwd\":\"/tmp/codex-cli-resume\"}}\n",
-                "{\"timestamp\":\"2026-04-16T10:00:01Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Resume this Codex session\"}]}}\n",
-                "{\"timestamp\":\"2026-04-16T10:00:02Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Imported\"}]}}\n"
-            ),
-        )
-        .expect("write codex transcript");
-
-    let resolved = resolve_resume_id("codex-cli-resume-test").expect("resolve codex id");
-    let imported_id = crate::import::imported_codex_session_id("codex-cli-resume-test");
-    assert_eq!(resolved, imported_id);
-
-    let session = crate::session::Session::load(&resolved).expect("load imported session");
-    assert_eq!(session.messages.len(), 2);
-
-    crate::env::remove_var("KCODE_HOME");
-}
-
-#[test]
 fn resume_failure_defers_to_server_during_reload_handoff() {
     // Issue #328: when `--resume <id>` cannot be resolved locally but a reload/
     // update/restart handoff is in progress (KCODE_RESUMING set), we must defer

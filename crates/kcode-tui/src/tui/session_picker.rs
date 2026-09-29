@@ -9,7 +9,7 @@ use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use kcode_session_types::SessionStatus;
 use kcode_tui_style::theme::{
-    accent_color, ai_color, asap_color, border_color, error_color, header_name_color, queued_color,
+    accent_color, ai_color, asap_color, border_color, error_color, queued_color,
     selection_bg_color, success_color, warning_color,
 };
 use ratatui::{
@@ -24,8 +24,7 @@ use std::io::IsTerminal;
 use std::time::Duration;
 
 pub use kcode_tui_session_picker::{
-    PickerItem, PreviewMessage, ResumeTarget, ServerGroup, SessionFilterMode, SessionInfo,
-    SessionSource,
+    PickerItem, PreviewMessage, ServerGroup, SessionFilterMode, SessionInfo,
 };
 
 /// App-side session-picker UI state: the open overlay, its mode, and the pending
@@ -59,12 +58,9 @@ const MAX_SESSION_SCAN_LIMIT: usize = 10_000;
 
 #[derive(Clone, Debug)]
 pub enum PickerResult {
-    Selected(Vec<ResumeTarget>),
-    SelectedInCurrentTerminal(Vec<ResumeTarget>),
-    SelectedInNewTerminal(Vec<ResumeTarget>),
-    /// The user explicitly confirmed handing a live Claude Code process over
-    /// to Kcode. This is never emitted by ordinary Enter/resume behavior.
-    TakeOverClaude(ResumeTarget),
+    Selected(Vec<String>),
+    SelectedInCurrentTerminal(Vec<String>),
+    SelectedInNewTerminal(Vec<String>),
     RestoreCrashedGroup(Vec<String>),
 }
 
@@ -284,10 +280,6 @@ pub struct SessionPicker {
     /// ID of the session the picker was opened from, labeled "current" in the
     /// list so the user can orient themselves in the Active view.
     current_session_id: Option<String>,
-    /// Explicit Claude takeover confirmation. Merely detecting or selecting a
-    /// live Claude session never stops it; only confirming this prompt emits
-    /// `PickerResult::TakeOverClaude`.
-    pending_claude_takeover: Option<ResumeTarget>,
 }
 
 impl SessionPicker {
@@ -332,7 +324,6 @@ impl SessionPicker {
             live_presence: std::collections::HashMap::new(),
             live_presence_refreshed_at: None,
             current_session_id: None,
-            pending_claude_takeover: None,
         };
         picker.refresh_live_presence();
         picker.rebuild_items();
@@ -374,7 +365,6 @@ impl SessionPicker {
             live_presence: std::collections::HashMap::new(),
             live_presence_refreshed_at: None,
             current_session_id: None,
-            pending_claude_takeover: None,
         }
     }
 
@@ -448,7 +438,6 @@ impl SessionPicker {
             live_presence: std::collections::HashMap::new(),
             live_presence_refreshed_at: None,
             current_session_id: None,
-            pending_claude_takeover: None,
         };
         picker.refresh_live_presence();
         picker.rebuild_items();
@@ -500,21 +489,6 @@ impl SessionPicker {
             .into_iter()
             .map(|presence| (presence.session_id.clone(), presence))
             .collect();
-        if let Ok(sessions) = crate::claude_live::live_claude_sessions() {
-            for session in sessions {
-                let session_id = format!("claude:{}", session.session_id);
-                self.live_presence.insert(
-                    session_id.clone(),
-                    crate::session::SessionPresence {
-                        session_id,
-                        pid: session.pid,
-                        streaming: false,
-                        streaming_since: None,
-                        internal: false,
-                    },
-                );
-            }
-        }
         self.live_presence_refreshed_at = Some(std::time::Instant::now());
     }
 
@@ -545,50 +519,6 @@ impl SessionPicker {
     /// Whether the session has a live process right now.
     pub(super) fn session_is_live(&self, session: &SessionInfo) -> bool {
         self.live_presence.contains_key(&session.id)
-    }
-
-    fn selected_live_claude_target(&self) -> Option<ResumeTarget> {
-        let session = self.selected_session()?;
-        if session.source != SessionSource::ClaudeCode || !self.session_is_live(session) {
-            return None;
-        }
-        Some(session.resume_target.clone())
-    }
-
-    fn begin_claude_takeover_confirmation(&mut self) -> bool {
-        let Some(target) = self.selected_live_claude_target() else {
-            return false;
-        };
-        self.pending_claude_takeover = Some(target);
-        true
-    }
-
-    fn handle_claude_takeover_confirmation_key(
-        &mut self,
-        code: KeyCode,
-        modifiers: KeyModifiers,
-    ) -> Option<OverlayAction> {
-        self.pending_claude_takeover.as_ref()?;
-        if code == KeyCode::Char('c') && modifiers.contains(KeyModifiers::CONTROL) {
-            self.pending_claude_takeover = None;
-            return Some(OverlayAction::Close);
-        }
-        Some(match code {
-            KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
-                let target = self.pending_claude_takeover.take()?;
-                OverlayAction::Selected(PickerResult::TakeOverClaude(target))
-            }
-            KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Char('q') => {
-                self.pending_claude_takeover = None;
-                OverlayAction::Continue
-            }
-            _ => OverlayAction::Continue,
-        })
-    }
-
-    #[cfg(test)]
-    pub(crate) fn claude_takeover_confirmation_active_for_test(&self) -> bool {
-        self.pending_claude_takeover.is_some()
     }
 
     /// Whether the session's live process is streaming a model response.
@@ -737,13 +667,13 @@ impl SessionPicker {
             .count()
     }
 
-    /// Resume target for the most recently active visible session.
-    pub fn latest_visible_resume_target(&self) -> Option<ResumeTarget> {
+    /// Id of the most recently active visible session.
+    pub fn latest_visible_session_id(&self) -> Option<String> {
         self.visible_sessions
             .iter()
             .filter_map(|session_ref| self.session_by_ref(*session_ref))
             .max_by_key(|session| session.last_active_at.unwrap_or(session.last_message_time))
-            .map(|session| session.resume_target.clone())
+            .map(|session| session.id.clone())
     }
 
     pub fn selected_session(&self) -> Option<&SessionInfo> {
@@ -757,26 +687,26 @@ impl SessionPicker {
         })
     }
 
-    pub fn session_for_target(&self, target: &ResumeTarget) -> Option<&SessionInfo> {
+    pub fn session_by_id(&self, id: &str) -> Option<&SessionInfo> {
         self.visible_sessions
             .iter()
             .filter_map(|session_ref| self.session_by_ref(*session_ref))
-            .find(|session| &session.resume_target == target)
+            .find(|session| session.id == id)
     }
 
-    fn selection_or_current_targets(&self) -> Vec<ResumeTarget> {
+    fn selection_or_current_ids(&self) -> Vec<String> {
         if !self.selected_session_ids.is_empty() {
             return self
                 .visible_sessions
                 .iter()
                 .filter_map(|session_ref| self.session_by_ref(*session_ref))
                 .filter(|session| self.selected_session_ids.contains(&session.id))
-                .map(|session| session.resume_target.clone())
+                .map(|session| session.id.clone())
                 .collect();
         }
 
         self.selected_session()
-            .map(|session| vec![session.resume_target.clone()])
+            .map(|session| vec![session.id.clone()])
             .unwrap_or_default()
     }
 
@@ -874,45 +804,15 @@ impl SessionPicker {
             .filter_map(|session_ref| self.session_by_ref(*session_ref))
     }
 
-    /// Test-only accessor: the source classification of every currently visible
-    /// session. Used by tests to assert the combined external-CLI
-    /// picker surfaces both Codex and Claude Code transcripts.
+    /// Test-only accessor for the currently visible sessions.
     #[cfg(test)]
     pub(crate) fn visible_session_iter_for_test(&self) -> impl Iterator<Item = &SessionInfo> + '_ {
         self.visible_session_iter()
     }
 
-    fn load_preview_for_target(
-        resume_target: ResumeTarget,
-        external_path: Option<String>,
-    ) -> Option<Vec<PreviewMessage>> {
-        match resume_target {
-            ResumeTarget::KcodeSession { session_id } => {
-                let Ok(session) = Session::load(&session_id) else {
-                    return None;
-                };
-                Some(build_messages_preview(&session))
-            }
-            ResumeTarget::ClaudeCodeSession { session_id, .. } => external_path
-                .as_deref()
-                .and_then(|path| {
-                    loading::load_claude_code_preview_from_path(std::path::Path::new(path))
-                })
-                .or_else(|| loading::load_claude_code_preview(&session_id)),
-            ResumeTarget::CodexSession { session_id, .. } => external_path
-                .as_deref()
-                .and_then(|path| loading::load_codex_preview_from_path(std::path::Path::new(path)))
-                .or_else(|| loading::load_codex_preview(&session_id)),
-            ResumeTarget::PiSession { session_path } => {
-                loading::load_pi_preview_from_path(std::path::Path::new(&session_path))
-            }
-            ResumeTarget::OpenCodeSession { .. } => external_path.as_deref().and_then(|path| {
-                loading::load_opencode_preview_from_path(std::path::Path::new(path))
-            }),
-            ResumeTarget::CursorSession { .. } => external_path.as_deref().and_then(|path| {
-                loading::load_cursor_preview_from_path(std::path::Path::new(path))
-            }),
-        }
+    fn load_preview_for_session(session_id: &str) -> Option<Vec<PreviewMessage>> {
+        let session = Session::load(session_id).ok()?;
+        Some(build_messages_preview(&session))
     }
 
     fn apply_session_preview(&mut self, session_id: &str, preview: Vec<PreviewMessage>) {
@@ -980,15 +880,7 @@ impl SessionPicker {
             return;
         }
 
-        let Some((cache_session_id, resume_target, external_path)) =
-            self.session_by_ref(session_ref).map(|s| {
-                (
-                    s.id.clone(),
-                    s.resume_target.clone(),
-                    s.external_path.clone(),
-                )
-            })
-        else {
+        let Some(cache_session_id) = self.session_by_ref(session_ref).map(|s| s.id.clone()) else {
             return;
         };
 
@@ -1006,7 +898,7 @@ impl SessionPicker {
         let _ = std::thread::Builder::new()
             .name("kcode-session-preview-loader".to_string())
             .spawn(move || {
-                let preview = Self::load_preview_for_target(resume_target, external_path);
+                let preview = Self::load_preview_for_session(&cache_session_id);
                 let _ = tx.send(preview);
             });
         self.pending_preview_load = Some(PendingSessionPreviewLoad {
@@ -1020,18 +912,10 @@ impl SessionPicker {
         let Some(session_ref) = self.selected_session_ref() else {
             return;
         };
-        let Some((session_id, resume_target, external_path)) =
-            self.session_by_ref(session_ref).map(|s| {
-                (
-                    s.id.clone(),
-                    s.resume_target.clone(),
-                    s.external_path.clone(),
-                )
-            })
-        else {
+        let Some(session_id) = self.session_by_ref(session_ref).map(|s| s.id.clone()) else {
             return;
         };
-        if let Some(preview) = Self::load_preview_for_target(resume_target, external_path) {
+        if let Some(preview) = Self::load_preview_for_session(&session_id) {
             self.apply_session_preview(&session_id, preview);
         }
     }
@@ -1083,10 +967,10 @@ impl SessionPicker {
                     self.search_query.clear();
                     self.rebuild_items();
                 } else {
-                    let targets = self.selection_or_current_targets();
-                    if !targets.is_empty() {
+                    let ids = self.selection_or_current_ids();
+                    if !ids.is_empty() {
                         return Ok(OverlayAction::Selected(
-                            self.selection_result_for_enter(targets, modifiers),
+                            self.selection_result_for_enter(ids, modifiers),
                         ));
                     }
                 }
@@ -1138,7 +1022,7 @@ impl SessionPicker {
 
     /// Handle a key event when used as an overlay inside the main TUI.
     /// Returns:
-    /// - `Some(PickerResult::Selected(targets))` if user selected one or more sessions
+    /// - `Some(PickerResult::Selected(ids))` if user selected one or more sessions
     /// - `Some(PickerResult::RestoreCrashedGroup)` if user chose crash-group restore
     /// - `None` if the overlay should close (Esc/q/Ctrl+C)
     /// - The method returns `Ok(true)` to keep the overlay open (still navigating)
@@ -1147,9 +1031,6 @@ impl SessionPicker {
         code: KeyCode,
         modifiers: KeyModifiers,
     ) -> Result<OverlayAction> {
-        if let Some(action) = self.handle_claude_takeover_confirmation_key(code, modifiers) {
-            return Ok(action);
-        }
         if self.loading_message.is_some() {
             return match code {
                 KeyCode::Esc | KeyCode::Char('q') => Ok(OverlayAction::Close),
@@ -1178,10 +1059,10 @@ impl SessionPicker {
                 self.toggle_selected_session();
             }
             KeyCode::Enter => {
-                let targets = self.selection_or_current_targets();
-                if !targets.is_empty() {
+                let ids = self.selection_or_current_ids();
+                if !ids.is_empty() {
                     return Ok(OverlayAction::Selected(
-                        self.selection_result_for_enter(targets, modifiers),
+                        self.selection_result_for_enter(ids, modifiers),
                     ));
                 }
             }
@@ -1197,9 +1078,6 @@ impl SessionPicker {
             }
             KeyCode::Char('d') => {
                 self.toggle_test_sessions();
-            }
-            KeyCode::Char('T') => {
-                self.begin_claude_takeover_confirmation();
             }
             KeyCode::Char('s') => {
                 self.cycle_filter_mode();
@@ -1220,7 +1098,7 @@ impl SessionPicker {
 
     fn selection_result_for_enter(
         &self,
-        targets: Vec<ResumeTarget>,
+        ids: Vec<String>,
         modifiers: KeyModifiers,
     ) -> PickerResult {
         let configured = crate::config::config().keybindings.session_picker_enter;
@@ -1231,10 +1109,10 @@ impl SessionPicker {
         };
         match action {
             crate::config::SessionPickerResumeAction::NewTerminal => {
-                PickerResult::SelectedInNewTerminal(targets)
+                PickerResult::SelectedInNewTerminal(ids)
             }
             crate::config::SessionPickerResumeAction::CurrentTerminal => {
-                PickerResult::SelectedInCurrentTerminal(targets)
+                PickerResult::SelectedInCurrentTerminal(ids)
             }
         }
     }
@@ -2072,61 +1950,6 @@ impl SessionPicker {
 
         self.render_session_list(frame, chunks[0]);
         self.render_preview(frame, chunks[1]);
-        self.render_claude_takeover_confirmation(frame);
-    }
-
-    fn render_claude_takeover_confirmation(&self, frame: &mut Frame) {
-        let Some(target) = self.pending_claude_takeover.as_ref() else {
-            return;
-        };
-        let ResumeTarget::ClaudeCodeSession { session_id, .. } = target else {
-            return;
-        };
-        let frame_area = frame.area();
-        if frame_area.width < 8 || frame_area.height < 5 {
-            return;
-        }
-        let width = frame_area.width.saturating_sub(4).min(74);
-        let height = frame_area.height.saturating_sub(2).min(8);
-        let area = Rect {
-            x: frame_area.x + frame_area.width.saturating_sub(width) / 2,
-            y: frame_area.y + frame_area.height.saturating_sub(height) / 2,
-            width,
-            height,
-        };
-        frame.render_widget(Clear, area);
-        let body = vec![
-            Line::from(Span::styled(
-                format!(
-                    "Take over live Claude session {}?",
-                    kcode_core::util::truncate_str(session_id, 12)
-                ),
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::from(""),
-            Line::from(Span::styled(
-                "Kcode will prepare the transcript first, then ask Claude to exit.",
-                Style::default().fg(header_name_color()),
-            )),
-            Line::from(Span::styled(
-                "Enter/Y confirm · Esc/N cancel",
-                Style::default()
-                    .fg(queued_color())
-                    .add_modifier(Modifier::BOLD),
-            )),
-        ];
-        let modal = Paragraph::new(body)
-            .block(
-                Block::default()
-                    .title(" Explicit Claude takeover ")
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(queued_color())),
-            )
-            .wrap(ratatui::widgets::Wrap { trim: false });
-        frame.render_widget(modal, area);
     }
 
     /// Run the interactive picker, returns selected session ID or None if cancelled

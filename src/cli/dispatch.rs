@@ -554,13 +554,7 @@ where
 }
 
 fn resolve_resume_id(resume_id: &str) -> Result<String> {
-    match session::find_session_by_name_or_id(resume_id) {
-        Ok(full_id) => Ok(full_id),
-        Err(native_err) => match crate::import::import_external_resume_id(resume_id)? {
-            Some(imported_id) => Ok(imported_id),
-            None => Err(native_err),
-        },
-    }
+    session::find_session_by_name_or_id(resume_id)
 }
 
 fn map_transcript_mode(mode: TranscriptModeArg) -> crate::protocol::TranscriptMode {

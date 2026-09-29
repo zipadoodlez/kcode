@@ -1,10 +1,9 @@
 use super::{
-    build_resume_command, effort_display_label, effort_display_label_with_root,
-    extract_bracketed_system_message, inferred_reasoning_efforts, partition_queued_messages,
-    resume_invocation_args, resumed_window_title,
+    effort_display_label, effort_display_label_with_root, extract_bracketed_system_message,
+    inferred_reasoning_efforts, partition_queued_messages, resume_invocation_args,
+    resumed_window_title,
 };
 use crate::terminal_launch::{detected_resume_terminal, shell_command};
-use crate::tui::session_picker::ResumeTarget;
 
 struct EnvVarGuard {
     key: &'static str,
@@ -283,78 +282,6 @@ fn resume_invocation_args_omits_blank_socket() {
             "ses_123".to_string()
         ]
     );
-}
-
-/// Pin KCODE_HOME to a tempdir containing a `builds/current/kcode` binary so
-/// `launch_client_executable()` resolves deterministically, independent of
-/// whether the developer machine has a published local build channel and of
-/// other tests mutating KCODE_HOME in parallel. Returns the guards that keep
-/// the environment pinned for the duration of the test.
-fn pinned_resume_test_home() -> (
-    std::sync::MutexGuard<'static, ()>,
-    tempfile::TempDir,
-    EnvVarGuard,
-) {
-    let env_lock = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("tempdir");
-    let current = temp.path().join("builds").join("current");
-    std::fs::create_dir_all(&current).expect("create builds/current");
-    std::fs::write(current.join("kcode"), b"#!/bin/sh\n").expect("write fake kcode binary");
-    let home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
-    (env_lock, temp, home)
-}
-
-#[test]
-fn build_resume_command_uses_imported_kcode_session_for_claude_code() {
-    let _pinned = pinned_resume_test_home();
-    let (program, args, title) = build_resume_command(
-        &ResumeTarget::ClaudeCodeSession {
-            session_id: "claude-session-123".to_string(),
-            session_path: "/tmp/claude-session-123.jsonl".to_string(),
-        },
-        None,
-    );
-
-    assert_eq!(
-        program.file_name().and_then(|name| name.to_str()),
-        Some("kcode")
-    );
-    assert_eq!(
-        args,
-        vec![
-            "--fresh-spawn".to_string(),
-            "--resume".to_string(),
-            crate::import::imported_claude_code_session_id("claude-session-123")
-        ]
-    );
-    assert!(title.contains("Claude Code"));
-    assert!(title.contains("claude-s"));
-}
-
-#[test]
-fn build_resume_command_uses_imported_kcode_session_for_codex() {
-    let _pinned = pinned_resume_test_home();
-    let (program, args, title) = build_resume_command(
-        &ResumeTarget::CodexSession {
-            session_id: "codex-session-123".to_string(),
-            session_path: "/tmp/codex-session-123.jsonl".to_string(),
-        },
-        None,
-    );
-
-    assert_eq!(
-        program.file_name().and_then(|name| name.to_str()),
-        Some("kcode")
-    );
-    assert_eq!(
-        args,
-        vec![
-            "--fresh-spawn".to_string(),
-            "--resume".to_string(),
-            crate::import::imported_codex_session_id("codex-session-123")
-        ]
-    );
-    assert!(title.contains("Codex"));
 }
 
 #[test]

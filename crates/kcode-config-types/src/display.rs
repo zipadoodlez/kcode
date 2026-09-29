@@ -96,12 +96,6 @@ pub struct DisplayConfig {
     /// command works regardless of this setting.
     #[serde(default)]
     pub active_sessions_manager: bool,
-    /// Include transcripts discovered from other agent CLIs (Claude Code,
-    /// Codex, Pi, OpenCode, Cursor) in the session picker so they can be
-    /// resumed or imported (default: true). Set false to show only kcode's own
-    /// sessions (issue #674).
-    #[serde(default = "default_true")]
-    pub external_sessions: bool,
     /// Usage percentage wording: "left" (default) or "used".
     pub usage_display: String,
     /// Whether to show the status line below the input (off/on, default: off).
@@ -139,7 +133,6 @@ impl Default for DisplayConfig {
             theme: String::new(),
             colors: std::collections::BTreeMap::new(),
             active_sessions_manager: false,
-            external_sessions: true,
             usage_display: "left".to_string(),
             overscroll_status: OverscrollStatusMode::default(),
         }

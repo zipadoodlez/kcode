@@ -44,8 +44,6 @@ urlencoding = "2"        # URL encoding for web search
 uuid = { version = "1", features = ["v4", "v5"] }
 proctitle = "0.1"
 
-# Embeddings (local inference) - behind feature flag (163 crates, slow to compile)
-kcode-import-core = { path = "../kcode-import-core" }
 kcode-logging = { path = "../kcode-logging" }
 
 # OAuth
