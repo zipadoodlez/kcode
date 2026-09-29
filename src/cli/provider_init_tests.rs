@@ -228,57 +228,32 @@ requires_api_key = false
 }
 
 #[test]
-fn test_server_bootstrap_login_selection_preserves_order() {
-    let providers = provider_catalog::server_bootstrap_login_providers();
-    assert_eq!(
-        resolve_login_selection("1", &providers).map(|provider| provider.id),
-        Some("claude")
-    );
-    assert_eq!(
-        resolve_login_selection("2", &providers).map(|provider| provider.id),
-        Some("anthropic-api")
-    );
-    assert_eq!(
-        resolve_login_selection("4", &providers).map(|provider| provider.id),
-        Some("kcode")
-    );
-    assert_eq!(
-        resolve_login_selection("5", &providers).map(|provider| provider.id),
-        Some("copilot")
-    );
-}
-
-#[test]
-fn test_auto_init_login_selection_preserves_order() {
-    let providers = provider_catalog::auto_init_login_providers();
-    assert_eq!(
-        resolve_login_selection("1", &providers).map(|provider| provider.id),
-        Some("claude")
-    );
-    assert_eq!(
-        resolve_login_selection("2", &providers).map(|provider| provider.id),
-        Some("anthropic-api")
-    );
-    assert_eq!(
-        resolve_login_selection("11", &providers).map(|provider| provider.id),
-        Some("alibaba-coding-plan")
-    );
-    assert_eq!(
-        resolve_login_selection("12", &providers).map(|provider| provider.id),
-        Some("cursor")
-    );
-    assert_eq!(
-        resolve_login_selection("13", &providers).map(|provider| provider.id),
-        Some("copilot")
-    );
-    assert_eq!(
-        resolve_login_selection("14", &providers).map(|provider| provider.id),
-        Some("gemini")
-    );
-    assert_eq!(
-        resolve_login_selection("15", &providers).map(|provider| provider.id),
-        Some("antigravity")
-    );
+fn login_selection_follows_the_surface_order() {
+    for providers in [
+        provider_catalog::server_bootstrap_login_providers(),
+        provider_catalog::auto_init_login_providers(),
+    ] {
+        for (index, provider) in providers.iter().enumerate() {
+            assert_eq!(
+                resolve_login_selection(&(index + 1).to_string(), &providers).map(|p| p.id),
+                Some(provider.id),
+                "1-based selection {} should resolve to {}",
+                index + 1,
+                provider.id
+            );
+            assert_eq!(
+                resolve_login_selection(provider.id, &providers).map(|p| p.id),
+                Some(provider.id),
+                "selecting {} by id should find it in the same list",
+                provider.id
+            );
+        }
+        assert_eq!(resolve_login_selection("0", &providers), None);
+        assert_eq!(
+            resolve_login_selection(&(providers.len() + 1).to_string(), &providers),
+            None
+        );
+    }
 }
 
 #[test]
