@@ -21,36 +21,41 @@ use crate::external_auth::{
     can_prompt_for_external_auth, external_auth_blocked_message, prompt_to_trust_external_auth,
 };
 
-/// The `-p/--provider` parser: validates against the registry and returns the
-/// canonical id, so an alias (`together`, `z.ai`) becomes `togetherai`, `zai`.
-///
-/// The accepted set is exactly the registry ids and aliases plus the two
-/// CLI-only spellings, and `kcode provider list` prints the same set.
+/// The `-p/--provider` values, built from the registry so the accepted set is
+/// exactly the ids and aliases `kcode provider list` prints, plus the two
+/// CLI-only spellings. clap uses these for validation, `--help`, and shell
+/// completions; `canonical_provider_id` normalizes what is parsed.
 pub fn provider_choice_value_parser() -> clap::builder::ValueParser {
-    clap::builder::ValueParser::new(parse_provider_choice)
+    use clap::builder::{PossibleValue, PossibleValuesParser};
+
+    let mut values: Vec<PossibleValue> = cli_provider_descriptors()
+        .iter()
+        .map(|descriptor| {
+            let mut value = PossibleValue::new(descriptor.id).help(descriptor.display_name);
+            for alias in descriptor.aliases {
+                value = value.alias(*alias);
+            }
+            value
+        })
+        .collect();
+    // `auto` has no registry descriptor: it detects a usable provider at runtime.
+    values.push(PossibleValue::new("auto").help("Auto-detect an available provider"));
+    // Deprecated alias kept hidden for compatibility with existing scripts.
+    values.push(PossibleValue::new("claude-subprocess").hide(true));
+
+    PossibleValuesParser::new(values).into()
 }
 
-fn parse_provider_choice(input: &str) -> Result<String, String> {
-    let trimmed = input.trim();
-    match trimmed {
-        // Neither has a provider runtime: `auto` detects one at startup, and
-        // `claude-subprocess` is the deprecated Claude transport spelling.
-        "auto" | "claude-subprocess" => return Ok(trimmed.to_string()),
-        _ => {}
+/// Canonical provider id for a parsed `-p` value, applied once at the CLI
+/// boundary: an alias (`together`, `z.ai`) becomes `togetherai`, `zai`.
+/// `auto` and the deprecated `claude-subprocess` pass through unchanged.
+pub fn canonical_provider_id(provider_id: &str) -> String {
+    match provider_id {
+        "auto" | "claude-subprocess" => provider_id.to_string(),
+        other => resolve_login_provider(other)
+            .map(|descriptor| descriptor.id.to_string())
+            .unwrap_or_else(|| other.to_string()),
     }
-
-    let Some(descriptor) = resolve_login_provider(trimmed) else {
-        return Err(format!(
-            "unknown provider '{input}'. Run `kcode provider list` to see the accepted ids."
-        ));
-    };
-    // `auto-import` is a login-surface entry, never a `-p` value.
-    if matches!(descriptor.target, LoginProviderTarget::AutoImport) {
-        return Err(format!(
-            "'{input}' is not a provider. Run `kcode provider list` to see the accepted ids."
-        ));
-    }
-    Ok(descriptor.id.to_string())
 }
 
 /// Registry descriptors a `-p` value can select.

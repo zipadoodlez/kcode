@@ -97,61 +97,52 @@ fn server_start_and_internal_keepalive_parse() {
     ));
 }
 
-#[test]
-fn test_provider_choice_aliases_parse() {
-    let args = Args::try_parse_from(["kcode", "--provider", "z.ai", "run", "smoke"]).unwrap();
-    assert_eq!(args.provider, "zai");
-
-    let args =
-        Args::try_parse_from(["kcode", "--provider", "kimi-for-coding", "run", "smoke"]).unwrap();
-    assert_eq!(args.provider, "kimi");
-
-    let args =
-        Args::try_parse_from(["kcode", "--provider", "cerebrascode", "run", "smoke"]).unwrap();
-    assert_eq!(args.provider, "cerebras");
-
-    let args = Args::try_parse_from(["kcode", "--provider", "compat", "run", "smoke"]).unwrap();
-    assert_eq!(args.provider, "openai-compatible");
-
-    let args = Args::try_parse_from(["kcode", "--provider", "bailian", "run", "smoke"]).unwrap();
-    assert_eq!(args.provider, "alibaba-coding-plan");
-
-    let args = Args::try_parse_from(["kcode", "--provider", "together", "run", "smoke"]).unwrap();
-    assert_eq!(args.provider, "togetherai");
-
-    let args = Args::try_parse_from(["kcode", "--provider", "grok", "run", "smoke"]).unwrap();
-    assert_eq!(args.provider, "xai");
-
-    let args = Args::try_parse_from(["kcode", "--provider", "grok-build"]).unwrap();
-    assert_eq!(args.provider, "grok-build");
-
-    let args = Args::try_parse_from(["kcode", "--provider", "cgc", "run", "smoke"]).unwrap();
-    assert_eq!(args.provider, "comtegra");
+/// `-p` parses aliases; `canonical_provider_id` (applied once at the CLI
+/// boundary) turns them into the registry id.
+fn canonical_choice(spelling: &str) -> String {
+    let args = Args::try_parse_from(["kcode", "--provider", spelling, "run", "smoke"])
+        .unwrap_or_else(|err| panic!("`-p {spelling}` should parse: {err}"));
+    crate::cli::provider_init::canonical_provider_id(&args.provider)
 }
 
-/// Four providers used to expose clap's implicit kebab case as the `-p` value
-/// while `as_arg_value()` (and the registry id) said otherwise, so `provider
-/// list` printed an id that did not parse. The canonical spelling must parse,
-/// and the spelling that used to work must keep working as an alias.
 #[test]
-fn provider_choice_value_names_match_as_arg_value_and_keep_old_spellings() {
-    for (canonical, previous, expected) in [
-        ("302ai", "ai302", "302ai"),
-        ("huggingface", "hugging-face", "huggingface"),
-        ("moonshotai", "moonshot-ai", "moonshotai"),
-        ("togetherai", "together-ai", "togetherai"),
+fn test_provider_choice_aliases_parse() {
+    for (spelling, canonical) in [
+        ("z.ai", "zai"),
+        ("kimi-for-coding", "kimi"),
+        ("cerebrascode", "cerebras"),
+        ("compat", "openai-compatible"),
+        ("bailian", "alibaba-coding-plan"),
+        ("together", "togetherai"),
+        ("grok", "xai"),
+        ("grok-build", "grok-build"),
+        ("cgc", "comtegra"),
     ] {
-        assert_eq!(expected, canonical);
+        assert_eq!(
+            canonical_choice(spelling),
+            canonical,
+            "`-p {spelling}` should select {canonical:?}"
+        );
+    }
+}
+
+#[test]
+fn provider_choice_value_names_match_registry_ids_and_keep_old_spellings() {
+    for (canonical, previous) in [
+        ("302ai", "ai302"),
+        ("huggingface", "hugging-face"),
+        ("moonshotai", "moonshot-ai"),
+        ("togetherai", "together-ai"),
+    ] {
         for spelling in [canonical, previous] {
-            let args = Args::try_parse_from(["kcode", "--provider", spelling]).unwrap();
             assert_eq!(
-                args.provider, expected,
-                "`-p {spelling}` should select {expected:?}"
+                canonical_choice(spelling),
+                canonical,
+                "`-p {spelling}` should select {canonical:?}"
             );
         }
     }
 }
-
 #[test]
 fn serve_server_name_option_parses() {
     let args =

@@ -12,10 +12,22 @@ fn sync_output_style_from_config() {
     crate::output_style::set_emoji_enabled(crate::config::config().display.emoji);
 }
 
+/// `-p` accepts registry aliases; normalize them to canonical ids once, at the
+/// CLI boundary, so every consumer sees the same spelling.
+fn canonicalize_provider_args(args: &mut Args) {
+    args.provider = super::provider_init::canonical_provider_id(&args.provider);
+    if let Some(Command::Login { provider, .. }) = args.command.as_mut()
+        && let Some(provider) = provider.as_mut()
+    {
+        *provider = super::provider_init::canonical_provider_id(provider);
+    }
+}
+
 pub async fn run() -> Result<()> {
     // Parse once, before startup side effects. Invalid arguments and --help
     // must not harden credential files or create configuration state.
-    let args = Args::parse();
+    let mut args = Args::parse();
+    canonicalize_provider_args(&mut args);
     // Credential import must refuse existing stores without normal startup
     // hardening, migrations, or provider discovery touching them.
     if args.ssh.is_none()
@@ -264,6 +276,23 @@ mod tests {
 
     fn parse_args(argv: &[&str]) -> Args {
         Args::parse_from(argv)
+    }
+
+    #[test]
+    fn provider_alias_is_canonicalized_at_the_cli_boundary() {
+        let mut args = parse_args(&["kcode", "--provider", "z.ai"]);
+        assert_eq!(args.provider, "z.ai", "clap keeps the parsed spelling");
+        canonicalize_provider_args(&mut args);
+        assert_eq!(args.provider, "zai");
+
+        let mut args = parse_args(&["kcode", "login", "together"]);
+        canonicalize_provider_args(&mut args);
+        match args.command {
+            Some(crate::cli::args::Command::Login { provider, .. }) => {
+                assert_eq!(provider.as_deref(), Some("togetherai"));
+            }
+            other => panic!("expected login command, got {other:?}"),
+        }
     }
 
     #[test]
