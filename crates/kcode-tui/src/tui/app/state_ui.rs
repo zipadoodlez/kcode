@@ -26,16 +26,6 @@ pub(super) struct RestoredReloadInput {
 }
 
 impl App {
-    pub(super) fn append_live_inline_images(
-        &mut self,
-        images: Vec<crate::session::RenderedImage>,
-    ) -> bool {
-        if images.is_empty() {
-            return false;
-        }
-        true
-    }
-
     pub(super) fn active_client_session_id(&self) -> Option<&str> {
         if self.is_remote_client() {
             self.remote_session_id.as_deref()
@@ -771,13 +761,6 @@ impl App {
     }
 
     // ==================== Debug Socket Methods ====================
-
-    /// Broadcast a debug event to connected clients (if debug socket enabled)
-    pub(super) fn broadcast_debug(&self, event: backend::DebugEvent) {
-        if let Some(ref tx) = self.debug_tx {
-            let _ = tx.send(event); // Ignore errors (no receivers)
-        }
-    }
 
     /// Create a full state snapshot for debug socket
     pub fn create_debug_snapshot(&self) -> backend::DebugEvent {

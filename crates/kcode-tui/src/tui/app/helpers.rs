@@ -238,6 +238,7 @@ pub(super) fn is_context_limit_error(error: &str) -> bool {
 /// rejection. This is distinct from a token-context overflow: it is driven by
 /// the serialized request body size (dominated by inline base64 images), so it
 /// is recovered by stripping oversized images rather than by token compaction.
+#[cfg(test)]
 pub(super) fn is_request_payload_too_large_error(error: &str) -> bool {
     crate::compaction::is_request_payload_too_large_error(error)
 }

@@ -166,18 +166,6 @@ impl Transcript {
         true
     }
 
-    /// Write a finished tool's output into the card that carries its call id.
-    /// Returns false when no card matches (the tool never got a transcript row).
-    pub(super) fn replace_tool_output(&mut self, tool_call_id: &str, content: String) -> bool {
-        let Some(message) = self.messages.iter_mut().rev().find(|message| {
-            message.tool_data.as_ref().map(|tool| tool.id.as_str()) == Some(tool_call_id)
-        }) else {
-            return false;
-        };
-        message.content = content;
-        true
-    }
-
     /// Recompute the memoized counters from the messages.
     fn recount(&mut self) {
         self.user_message_count = self

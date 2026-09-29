@@ -885,32 +885,6 @@ pub(super) fn queue_autojudge_remote(app: &mut App) {
     );
 }
 
-pub(super) fn maybe_trigger_autoreview_local(app: &mut App) {
-    if !app.autoreview_enabled || app.is_remote_client() || app.is_replay_runtime() {
-        return;
-    }
-    if let Err(error) = launch_autoreview_window_local(app) {
-        app.push_display_message(DisplayMessage::error(format!(
-            "Failed to launch autoreview: {}",
-            error
-        )));
-        app.set_status_notice("Autoreview launch failed");
-    }
-}
-
-pub(super) fn maybe_trigger_autojudge_local(app: &mut App) {
-    if !app.autojudge_enabled || app.is_remote_client() || app.is_replay_runtime() {
-        return;
-    }
-    if let Err(error) = launch_autojudge_window_local(app) {
-        app.push_display_message(DisplayMessage::error(format!(
-            "Failed to launch autojudge: {}",
-            error
-        )));
-        app.set_status_notice("Autojudge launch failed");
-    }
-}
-
 pub(super) fn handle_review_command_local(app: &mut App, trimmed: &str) -> bool {
     if !trimmed.starts_with("/review") {
         return false;

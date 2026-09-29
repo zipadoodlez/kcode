@@ -2,24 +2,23 @@ use super::DisplayMessageRoleExt;
 use super::keybind::Keybinds;
 use super::markdown::IncrementalMarkdownRenderer;
 use super::stream_buffer::StreamBuffer;
-use crate::bus::{Bus, BusEvent, LoginCompleted, ToolEvent, ToolStatus};
+use crate::bus::{Bus, BusEvent, LoginCompleted};
 use crate::compaction::CompactionEvent;
 use crate::config::config;
 use crate::id;
 use crate::mcp::McpManager;
 use crate::message::{
-    ContentBlock, Message, Role, StreamEvent, TOOL_OUTPUT_MISSING_TEXT, ToolCall, ToolDefinition,
+    ContentBlock, Message, Role, StreamEvent, TOOL_OUTPUT_MISSING_TEXT, ToolCall,
 };
 use crate::provider::Provider;
 use crate::runtime_memory_log::RuntimeMemoryLogController;
 use crate::session::{Session, StoredMessage};
 use crate::skill::SkillRegistry;
-use crate::tool::{Registry, ToolContext};
+use crate::tool::Registry;
 use anyhow::Result;
 use auth::PendingLogin;
 use crossterm::event::{
-    Event, EventStream, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
-    MouseEventKind,
+    EventStream, KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use debug::DebugTrace;
 use futures::StreamExt;
@@ -29,8 +28,9 @@ use kcode_tui_messages::DisplayMessage;
 use ratatui::DefaultTerminal;
 use std::cell::RefCell;
 use std::collections::HashSet;
-use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
+use std::hash::Hash;
+#[cfg(test)]
+use std::hash::Hasher;
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -71,7 +71,6 @@ mod idle_heap_release;
 mod inline_interactive;
 mod input;
 mod input_help;
-mod local;
 mod misc_ui;
 mod model_context;
 mod navigation;
@@ -105,8 +104,6 @@ mod transcript;
 mod tui_lifecycle;
 mod tui_lifecycle_runtime;
 mod tui_state;
-mod turn;
-mod turn_memory;
 mod turn_notify;
 mod viewport;
 
@@ -134,10 +131,6 @@ struct PendingRemoteMessage {
     auto_retry: bool,
     retry_attempts: u8,
     retry_at: Option<Instant>,
-}
-
-struct PendingLocalTransfer {
-    receiver: mpsc::Receiver<anyhow::Result<PreparedTransferSession>>,
 }
 
 /// A reasoning trace anchored in the transcript during the current turn
@@ -305,12 +298,6 @@ struct ModelPickerCache {
 struct ModelPickerRoutesResult {
     routes: Vec<crate::provider::ModelRoute>,
     routes_ms: u128,
-}
-
-#[derive(Debug, Clone)]
-struct PreparedTransferSession {
-    session_id: String,
-    session_name: String,
 }
 
 /// An interactive "switch to the next best model/method and resend" offer shown
@@ -945,7 +932,6 @@ pub struct App {
     // Accepted with the same key as the fallback offer.
     pending_merge_offer: Option<PendingMergeOffer>,
     // Local session file write to flush once the first "sending" frame is visible.
-    session_save_pending: bool,
     // Tool calls detected during streaming (shown in real-time with details)
     streaming_tool_calls: Vec<ToolCall>,
     // Assistant transcript messages committed during the current provider
@@ -992,8 +978,6 @@ pub struct App {
     copy_badge_ui: CopyBadgeUiState,
     // Modal in-app selection/copy state for the chat viewport.
     copy_selection: copy_selection::CopySelection,
-    // Debug socket broadcast channel (if enabled)
-    debug_tx: Option<tokio::sync::broadcast::Sender<super::backend::DebugEvent>>,
     // Remote provider info (set when running in remote mode)
     remote_client_instance_id: String,
     remote_provider_name: Option<String>,
@@ -1183,7 +1167,6 @@ pub struct App {
     /// (split, transfer, review, or workspace add). See `pending_split.rs`.
     pending_split: pending_split::PendingSplit,
     // Local transfer preparation currently running in the background.
-    pending_local_transfer: Option<PendingLocalTransfer>,
     // Queue mode: if true, Enter during processing queues; if false, Enter queues to send next
     // Toggle with Ctrl+Tab or Ctrl+T
     queue_mode: bool,
@@ -1338,6 +1321,7 @@ impl App {
     const KV_CACHE_MIN_MISSED_TOKENS: u64 = 1_024;
     const KV_CACHE_MAX_MISS_SAMPLES: usize = 12;
 
+    #[cfg(test)]
     pub(super) fn begin_kv_cache_request(
         &mut self,
         messages: &[Message],
@@ -2081,6 +2065,7 @@ impl App {
         }
     }
 
+    #[cfg(test)]
     fn kv_cache_request_signature(
         messages: &[Message],
         tools: &[ToolDefinition],
@@ -2140,17 +2125,20 @@ impl App {
     }
 }
 
+#[cfg(test)]
 fn stable_hash_str(value: &str) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     value.hash(&mut hasher);
     hasher.finish()
 }
 
+#[cfg(test)]
 fn stable_hash_json<T: serde::Serialize + ?Sized>(value: &T) -> u64 {
     let encoded = serde_json::to_string(value).unwrap_or_default();
     stable_hash_str(&encoded)
 }
 
+#[cfg(test)]
 fn stable_json_len<T: serde::Serialize + ?Sized>(value: &T) -> usize {
     serde_json::to_string(value)
         .map(|encoded| encoded.len())
@@ -2162,8 +2150,12 @@ fn stable_json_len<T: serde::Serialize + ?Sized>(value: &T) -> usize {
 // `kcode-app-core::agent::kv_cache_request_event` hash messages identically.
 // If the two projections drift, remote sessions report false
 // `harness:_prefix_changed` KV-cache misses.
+#[cfg(test)]
+use crate::message::ToolDefinition;
+#[cfg(test)]
 use crate::message::{cache_relevant_message_value, cache_relevant_messages};
 
+#[cfg(test)]
 fn message_hashes(messages: &[Message]) -> Vec<u64> {
     messages
         .iter()

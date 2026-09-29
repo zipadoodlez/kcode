@@ -256,32 +256,6 @@ impl App {
         }
     }
 
-    /// Check if approaching context limit and show warning
-    pub(super) fn check_context_warning(&mut self, input_tokens: u64) {
-        let usage_percent = (input_tokens as f64 / self.context_limit as f64) * 100.0;
-
-        // Warn at 70%, 80%, 90%
-        if !self.context_warning_shown && usage_percent >= 70.0 {
-            let warning = format!(
-                "\n⚠️  Context usage: {:.0}% ({}/{}k tokens) - compaction approaching\n\n",
-                usage_percent,
-                input_tokens / 1000,
-                self.context_limit / 1000
-            );
-            self.append_streaming_text(&warning);
-            self.context_warning_shown = true;
-        } else if self.context_warning_shown && usage_percent >= 80.0 {
-            // Reset to show 80% warning
-            if usage_percent < 85.0 {
-                let warning = format!(
-                    "\n⚠️  Context usage: {:.0}% - compaction imminent\n\n",
-                    usage_percent
-                );
-                self.append_streaming_text(&warning);
-            }
-        }
-    }
-
     /// Get context usage as percentage
     pub fn context_usage_percent(&self) -> f64 {
         self.current_stream_context_tokens()

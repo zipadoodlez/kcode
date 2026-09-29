@@ -2,8 +2,7 @@
 
 use super::{
     App, ContentBlock, DisplayMessage, Message, ProcessingStatus, Role, SendAction, commands,
-    ctrl_bracket_fallback_to_esc, is_context_limit_error, is_request_payload_too_large_error,
-    remote,
+    ctrl_bracket_fallback_to_esc, remote,
 };
 use crate::bus::{
     Bus, BusEvent, ClipboardPasteCompleted, ClipboardPasteContent, ClipboardPasteKind,
@@ -12,8 +11,7 @@ use crate::bus::{
 use crate::util::truncate_str;
 use anyhow::Result;
 use base64::Engine;
-use crossterm::event::{EventStream, KeyCode, KeyEvent, KeyModifiers};
-use ratatui::DefaultTerminal;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
@@ -73,15 +71,6 @@ fn mission_turn_reminder(session_id: &str) -> Option<String> {
         .map_err(|err| crate::logging::warn(&format!("failed to load active mission: {err}")))
         .ok()
         .flatten()
-}
-
-fn merge_turn_reminders(a: Option<String>, b: Option<String>) -> Option<String> {
-    match (a, b) {
-        (Some(a), Some(b)) => Some(format!("{}\n\n{}", a, b)),
-        (Some(a), None) => Some(a),
-        (None, Some(b)) => Some(b),
-        (None, None) => None,
-    }
 }
 
 pub(super) fn extract_input_shell_command(input: &str) -> Option<&str> {
@@ -2287,6 +2276,7 @@ pub(super) fn handle_navigation_shortcuts(
     false
 }
 
+#[cfg(test)]
 pub(super) fn is_scroll_only_key(app: &App, code: KeyCode, modifiers: KeyModifiers) -> bool {
     let mut code = code;
     let mut modifiers = modifiers;
@@ -3875,8 +3865,6 @@ impl App {
             });
             self.session.add_message(Role::User, blocks);
         }
-        self.session_save_pending = true;
-
         // A fresh user turn supersedes any post-error fallback offer from the
         // previous turn; drop it so a stale keypress can't switch+resend.
         self.clear_pending_fallback_offer();
@@ -3911,134 +3899,6 @@ impl App {
         self.processing_started = Some(Instant::now());
         self.visible_turn_started = Some(Instant::now());
         self.pending_turn = true;
-    }
-
-    /// Process all queued messages (combined into a single request)
-    /// Loops until queue is empty (in case more messages are queued during processing)
-    pub(super) async fn process_queued_messages(
-        &mut self,
-        terminal: &mut DefaultTerminal,
-        event_stream: &mut EventStream,
-    ) {
-        while !self.queued_messages.is_empty() || !self.hidden_queued_system_messages.is_empty() {
-            // Combine all currently queued messages into one, treating [SYSTEM: ...]
-            // startup continuations as system reminders rather than user turns.
-            let queued_messages = std::mem::take(&mut self.queued_messages);
-            let hidden_reminders = std::mem::take(&mut self.hidden_queued_system_messages);
-            let (messages, reminder, display_system_messages) =
-                super::helpers::partition_queued_messages(queued_messages, hidden_reminders);
-            let combined = messages.join("\n\n");
-            let has_combined = !combined.is_empty();
-            let preserve_visible_turn = super::commands::queued_messages_are_only_pokes(&messages);
-
-            self.commit_pending_streaming_assistant_message();
-
-            for msg in display_system_messages {
-                self.push_display_message(DisplayMessage::system(msg));
-            }
-
-            for msg in &messages {
-                if !super::commands::is_poke_message(msg) {
-                    self.push_display_message(DisplayMessage::user(msg.clone()));
-                }
-            }
-
-            self.current_turn_system_reminder =
-                merge_turn_reminders(reminder, mission_turn_reminder(&self.session.id));
-
-            if has_combined {
-                self.add_provider_message(Message::user(&combined));
-                self.session.add_message(
-                    Role::User,
-                    vec![ContentBlock::Text {
-                        text: combined.clone(),
-                        cache_control: None,
-                    }],
-                );
-            }
-            self.session_save_pending = true;
-            self.clear_streaming_render_state();
-            self.stream_buffer.clear();
-            self.reasoning.thought_line_inserted = false;
-            self.reasoning.thinking_prefix_emitted = false;
-            self.reasoning.thinking_buffer.clear();
-            self.streaming_tool_calls.clear();
-            self.streaming.streaming_input_tokens = 0;
-            self.streaming.streaming_output_tokens = 0;
-            self.streaming.streaming_cache_read_tokens = None;
-            self.streaming.streaming_cache_creation_tokens = None;
-            self.kv_cache.current_api_usage_recorded = false;
-            self.upstream_provider = None;
-            self.status_detail = None;
-            self.streaming.streaming_tps_start = None;
-            self.streaming.streaming_tps_elapsed = Duration::ZERO;
-            self.streaming.streaming_tps_collect_output = false;
-            self.streaming.streaming_total_output_tokens = 0;
-            self.streaming.streaming_tps_observed_output_tokens = 0;
-            self.streaming.streaming_tps_observed_elapsed = Duration::ZERO;
-            self.processing_started = Some(Instant::now());
-            if has_combined {
-                if preserve_visible_turn {
-                    self.visible_turn_started.get_or_insert_with(Instant::now);
-                } else {
-                    self.visible_turn_started = Some(Instant::now());
-                }
-            }
-            self.is_processing = true;
-            self.status = ProcessingStatus::Sending;
-
-            match self
-                .run_turn_interactive(terminal, event_stream, None)
-                .await
-            {
-                Ok(()) => {
-                    self.last_stream_error = None;
-                    self.last_submitted_input = None;
-                }
-                Err(e) => {
-                    let err_str = crate::util::format_error_chain(&e);
-                    if is_request_payload_too_large_error(&err_str) {
-                        if !self
-                            .try_recover_payload_too_large_and_retry(terminal, event_stream)
-                            .await
-                        {
-                            self.handle_turn_error(err_str);
-                        }
-                    } else if is_context_limit_error(&err_str) {
-                        if self
-                            .try_auto_compact_and_retry(terminal, event_stream)
-                            .await
-                        {
-                            // Successfully recovered
-                        } else {
-                            self.handle_turn_error(err_str);
-                        }
-                    } else {
-                        self.handle_turn_error(err_str);
-                    }
-                }
-            }
-            self.current_turn_system_reminder = None;
-            // Loop will check if more messages were queued during this turn
-        }
-    }
-
-    pub(super) fn flush_pending_session_save(&mut self) {
-        if !self.session_save_pending {
-            return;
-        }
-
-        match self.session.save() {
-            Ok(()) => {
-                self.session_save_pending = false;
-            }
-            Err(error) => {
-                crate::logging::warn(&format!(
-                    "Failed to persist pending session save for {}: {}",
-                    self.session.id, error
-                ));
-            }
-        }
     }
 }
 

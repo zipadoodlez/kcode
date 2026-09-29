@@ -474,24 +474,6 @@ impl App {
         format!("ERR: unknown step '{}'", trimmed)
     }
 
-    pub(in crate::tui::app) fn check_debug_command(&mut self) -> Option<String> {
-        let cmd_path = debug_cmd_path();
-        if let Ok(cmd) = std::fs::read_to_string(&cmd_path) {
-            // Remove command file immediately
-            let _ = std::fs::remove_file(&cmd_path);
-            let cmd = cmd.trim();
-
-            self.debug_trace.record("cmd", cmd.to_string());
-
-            let response = self.handle_debug_command(cmd);
-
-            // Write response
-            let _ = std::fs::write(debug_response_path(), &response);
-            return Some(response);
-        }
-        None
-    }
-
     pub(in crate::tui::app) fn parse_key_spec(
         &self,
         key_spec: &str,

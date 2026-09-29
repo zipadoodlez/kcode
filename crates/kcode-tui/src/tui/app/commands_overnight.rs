@@ -1,13 +1,9 @@
 use super::overnight_card::upsert_card;
-use super::{
-    App, DisplayMessage, OvernightAutoPokeFingerprint, OvernightAutoPokeState, ProcessingStatus,
-};
-use crate::message::{ContentBlock, Message, Role};
+use super::{App, DisplayMessage, OvernightAutoPokeFingerprint, OvernightAutoPokeState};
 use crate::overnight::{OvernightCommand, OvernightRunStatus, OvernightStartOptions};
 use crate::provider::Provider;
 use chrono::Utc;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 const OVERNIGHT_STALL_LIMIT: u8 = 3;
 const OVERNIGHT_ERROR_LIMIT: u8 = 2;
@@ -33,7 +29,6 @@ pub(super) fn handle_overnight_command(app: &mut App, trimmed: &str) -> bool {
                 .filter(|path| path.is_dir())
                 .or_else(|| std::env::current_dir().ok());
             let provider = overnight_provider_for_app(app);
-            let visible_provider = provider.clone();
             let options = OvernightStartOptions {
                 duration,
                 mission,
@@ -49,10 +44,8 @@ pub(super) fn handle_overnight_command(app: &mut App, trimmed: &str) -> bool {
                     app.enable_overnight_auto_poke(&manifest);
                     upsert_card(app, &manifest);
                     if let Some(prompt) = launch.initial_prompt {
-                        if !app.is_remote_client() {
-                            app.provider = visible_provider;
-                        }
-                        start_visible_overnight_turn(app, prompt);
+                        app.commit_pending_streaming_assistant_message();
+                        app.queued_messages.push(prompt);
                         app.set_status_notice("Overnight started in current session");
                     } else {
                         app.set_status_notice("Overnight started");
@@ -68,52 +61,6 @@ pub(super) fn handle_overnight_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     true
-}
-
-fn start_visible_overnight_turn(app: &mut App, content: String) {
-    if app.is_remote_client() {
-        app.commit_pending_streaming_assistant_message();
-        app.queued_messages.push(content);
-        app.set_status_notice("Overnight queued in current remote session");
-        return;
-    }
-
-    app.commit_pending_streaming_assistant_message();
-    app.add_provider_message(Message::user(&content));
-    app.session.add_message(
-        Role::User,
-        vec![ContentBlock::Text {
-            text: content,
-            cache_control: None,
-        }],
-    );
-    let _ = app.session.save();
-
-    app.is_processing = true;
-    app.status = ProcessingStatus::Sending;
-    app.clear_streaming_render_state();
-    app.stream_buffer.clear();
-    app.reasoning.thought_line_inserted = false;
-    app.reasoning.thinking_prefix_emitted = false;
-    app.reasoning.thinking_buffer.clear();
-    app.streaming_tool_calls.clear();
-    app.batch_progress = None;
-    app.streaming.streaming_input_tokens = 0;
-    app.streaming.streaming_output_tokens = 0;
-    app.streaming.streaming_cache_read_tokens = None;
-    app.streaming.streaming_cache_creation_tokens = None;
-    app.kv_cache.current_api_usage_recorded = false;
-    app.upstream_provider = None;
-    app.status_detail = None;
-    app.streaming.streaming_tps_start = None;
-    app.streaming.streaming_tps_elapsed = Duration::ZERO;
-    app.streaming.streaming_tps_collect_output = false;
-    app.streaming.streaming_total_output_tokens = 0;
-    app.streaming.streaming_tps_observed_output_tokens = 0;
-    app.streaming.streaming_tps_observed_elapsed = Duration::ZERO;
-    app.processing_started = Some(Instant::now());
-    app.visible_turn_started = Some(Instant::now());
-    app.pending_turn = true;
 }
 
 fn show_overnight_help(app: &mut App) {

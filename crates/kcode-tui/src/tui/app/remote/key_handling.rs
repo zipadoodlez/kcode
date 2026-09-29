@@ -1079,7 +1079,7 @@ async fn handle_remote_key_internal(
                         app.remote_available_entries.clone(),
                         app.remote_model_options.clone(),
                     ));
-                    super::super::local::handle_ui_activity(
+                    super::handle_ui_activity(
                         app,
                         crate::bus::UiActivity::catalog(
                             app.remote_session_id

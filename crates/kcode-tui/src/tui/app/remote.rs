@@ -6,8 +6,8 @@ use super::{
     SendAction, ctrl_bracket_fallback_to_esc, input, parse_rate_limit_error,
     remote_notifications::present_swarm_notification, spawn_in_new_terminal,
 };
-use crate::bus::BusEvent;
-use crate::message::ToolCall;
+use crate::bus::{BusEvent, UiActivity, UiActivityKind};
+use crate::message::{ToolCall, parse_background_task_progress_notification_markdown};
 use crate::protocol::{ServerEvent, TranscriptMode};
 use crate::tui::backend::{RemoteConnection, RemoteDisconnectReason, RemoteEventState, RemoteRead};
 use anyhow::Result;
@@ -134,6 +134,7 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
     needs_redraw |= app.refresh_pinned_todos_if_needed();
     needs_redraw |= app.background_tasks.prune_irrelevant();
     needs_redraw |= app.refresh_side_panel_linked_content_if_due();
+    needs_redraw |= super::overnight_card::refresh_if_due(app);
     needs_redraw |= app.poll_model_picker_load();
     needs_redraw |= app.poll_session_picker_load();
     needs_redraw |= app.poll_session_picker_presence();
@@ -598,7 +599,7 @@ pub(super) async fn handle_bus_event(
             app.handle_model_refresh_completed(result);
             true
         }
-        Ok(BusEvent::UiActivity(activity)) => super::local::handle_ui_activity(app, activity),
+        Ok(BusEvent::UiActivity(activity)) => handle_ui_activity(app, activity),
         Ok(BusEvent::GitStatusCompleted(result)) => {
             super::commands::handle_git_status_completed(app, result);
             true
@@ -641,6 +642,45 @@ pub(super) async fn handle_bus_event(
         }
         _ => false,
     }
+}
+
+/// Apply a bus `UiActivity` to the client's visible state.
+///
+/// Activities for another session are dropped. Background work contributes to
+/// the background-task band, auth/catalog work contributes a transcript line
+/// (catalog progress updates an existing row instead), and any `status_notice`
+/// is applied. Returns whether the app changed, so the caller can redraw.
+pub(super) fn handle_ui_activity(app: &mut App, activity: UiActivity) -> bool {
+    let Some(session_id) = app.active_client_session_id() else {
+        return false;
+    };
+    if !activity.is_visible_to_session(session_id) {
+        return false;
+    }
+
+    match activity.kind {
+        UiActivityKind::Background => {
+            if !app.background_tasks.upsert_started(&activity.message) {
+                app.push_display_message(DisplayMessage::background_task(activity.message.clone()))
+            }
+        }
+        UiActivityKind::Auth | UiActivityKind::Catalog => {
+            if activity.message.trim().is_empty() {
+                // Status-only lifecycle updates should not leave blank transcript
+                // entries.
+            } else if activity.kind == UiActivityKind::Catalog
+                && parse_background_task_progress_notification_markdown(&activity.message).is_some()
+            {
+                app.background_tasks.upsert_progress(&activity.message);
+            } else {
+                app.push_display_message(DisplayMessage::system(activity.message.clone()))
+            }
+        }
+    }
+    if let Some(status_notice) = activity.status_notice {
+        app.set_status_notice(status_notice);
+    }
+    true
 }
 
 /// Resolve the canonical auth provider id the server uses to attribute an

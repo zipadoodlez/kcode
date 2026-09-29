@@ -215,15 +215,6 @@ impl App {
         true
     }
 
-    pub(super) fn refresh_todos_view_now(&mut self) -> bool {
-        if !self.todos_view.enabled {
-            return false;
-        }
-        let changed = self.refresh_todos_view_cache(true);
-        self.refresh_todos_view_page();
-        changed
-    }
-
     fn refresh_todos_view_page(&mut self) {
         if !self.todos_view.enabled {
             return;

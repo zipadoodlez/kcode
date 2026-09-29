@@ -96,6 +96,7 @@ impl App {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn replace_latest_tool_display_message(
         &mut self,
         tool_call_id: &str,

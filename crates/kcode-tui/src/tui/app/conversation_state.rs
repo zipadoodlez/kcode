@@ -272,6 +272,7 @@ impl App {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn apply_openai_native_compaction(
         &mut self,
         encrypted_content: String,
@@ -314,63 +315,6 @@ impl App {
         self.invalidate_kv_cache_after_compaction();
         self.session.save()?;
         Ok(())
-    }
-
-    pub(super) fn messages_for_provider(&mut self) -> (Vec<Message>, Option<CompactionEvent>) {
-        self.ensure_provider_messages_hydrated();
-
-        if self.is_remote_client() {
-            return (self.messages.clone(), None);
-        }
-        let base_messages = self.materialized_provider_messages();
-        if !self.provider.supports_compaction() && self.session.compaction.is_none() {
-            return (base_messages, None);
-        }
-        let compaction = self.registry.compaction();
-        match compaction.try_write() {
-            Ok(mut manager) => {
-                let discarded_oversized_native =
-                    manager.discard_oversized_openai_native_compaction();
-                if self.provider.uses_kcode_compaction() {
-                    let action = manager.ensure_context_fits(&base_messages, self.provider.clone());
-                    match action {
-                        crate::compaction::CompactionAction::BackgroundStarted { trigger } => {
-                            self.push_display_message(DisplayMessage::system(
-                                Self::format_compaction_started_message(&trigger),
-                            ));
-                            self.set_status_notice("Compacting context");
-                        }
-                        crate::compaction::CompactionAction::HardCompacted(_) => {}
-                        crate::compaction::CompactionAction::None => {}
-                    }
-                }
-                let messages = manager.messages_for_api_with(&base_messages);
-                let event = manager.take_compaction_event();
-                if event.is_some() || discarded_oversized_native {
-                    self.sync_session_compaction_state_from_manager(&manager);
-                }
-                (messages, event)
-            }
-            Err(_) => (base_messages, None),
-        }
-    }
-
-    pub(super) fn poll_compaction_completion(&mut self) -> bool {
-        if self.is_remote_client()
-            || (!self.provider.supports_compaction() && self.session.compaction.is_none())
-        {
-            return false;
-        }
-        let provider_messages = self.materialized_provider_messages();
-        let compaction = self.registry.compaction();
-        if let Ok(mut manager) = compaction.try_write()
-            && let Some(event) = manager.poll_compaction_event_with(&provider_messages)
-        {
-            self.sync_session_compaction_state_from_manager(&manager);
-            self.handle_compaction_event(event);
-            return true;
-        }
-        false
     }
 
     pub(super) fn handle_compaction_event(&mut self, event: CompactionEvent) {
