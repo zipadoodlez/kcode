@@ -1137,13 +1137,7 @@ pub(in crate::tui::app) fn handle_server_event(
                     "client_turn_completed",
                     std::time::Duration::from_secs(30),
                 );
-                auto_poked = app.schedule_turn_end_followups();
-                if !auto_poked {
-                    app.clear_visible_turn_started();
-                    if app.queued_messages.is_empty() {
-                        app.maybe_notify_turn_complete(turn_duration_secs);
-                    }
-                }
+                auto_poked = app.conclude_completed_turn(turn_duration_secs);
             } else if app.is_processing {
                 let is_stale = app.current_message_id.is_some_and(|mid| id < mid);
                 if is_stale {

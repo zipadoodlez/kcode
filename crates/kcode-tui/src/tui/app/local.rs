@@ -573,12 +573,6 @@ pub(super) fn finish_turn(app: &mut App) {
     app.reasoning.thinking_prefix_emitted = false;
     app.reasoning.thinking_buffer.clear();
     app.note_runtime_memory_event_force("turn_completed", "local_turn_finished");
-    let followup_scheduled = app.schedule_turn_end_followups();
-    if !followup_scheduled {
-        app.clear_visible_turn_started();
-        if !app.pending_queued_dispatch && app.queued_messages.is_empty() {
-            app.maybe_notify_turn_complete(turn_duration_secs);
-        }
-    }
+    let _ = app.conclude_completed_turn(turn_duration_secs);
     let _ = super::commands::maybe_begin_pending_local_transfer(app);
 }

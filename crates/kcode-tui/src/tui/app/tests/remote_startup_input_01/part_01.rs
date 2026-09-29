@@ -4,7 +4,7 @@ fn test_finish_turn_without_followup_clears_visible_turn_started() {
     app.is_processing = true;
     app.visible_turn_started = Some(Instant::now() - Duration::from_secs(15));
 
-    super::local::finish_turn(&mut app);
+    app.conclude_completed_turn(app.display_turn_duration_secs());
 
     assert!(app.visible_turn_started.is_none());
 }
@@ -33,7 +33,7 @@ fn test_finish_turn_does_not_duplicate_existing_poke_followup() {
         app.auto_poke_incomplete_todos = true;
         app.is_processing = true;
         app.queued_messages.push("existing poke".to_string());
-        super::local::finish_turn(&mut app);
+        app.conclude_completed_turn(app.display_turn_duration_secs());
 
         assert_eq!(app.queued_messages(), &["existing poke"]);
     });

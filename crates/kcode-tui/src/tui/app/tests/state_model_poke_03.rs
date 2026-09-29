@@ -2481,7 +2481,7 @@ fn test_poke_queues_when_turn_is_in_progress() {
         )
         .expect("save updated todos");
 
-        super::local::finish_turn(&mut app);
+        app.conclude_completed_turn(app.display_turn_duration_secs());
 
         assert!(app.pending_queued_dispatch);
         assert_eq!(app.queued_messages().len(), 1);
@@ -2535,7 +2535,7 @@ fn test_finish_turn_auto_pokes_again_when_todos_remain() {
 
         app.auto_poke_incomplete_todos = true;
         app.is_processing = true;
-        super::local::finish_turn(&mut app);
+        app.conclude_completed_turn(app.display_turn_duration_secs());
 
         assert!(app.pending_queued_dispatch);
         assert_eq!(app.queued_messages().len(), 1);
@@ -2600,7 +2600,7 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
 
         app.auto_poke_incomplete_todos = true;
         app.is_processing = true;
-        super::local::finish_turn(&mut app);
+        app.conclude_completed_turn(app.display_turn_duration_secs());
 
         assert!(app.auto_poke_incomplete_todos);
         assert!(app.pending_queued_dispatch);
@@ -2630,7 +2630,7 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
         app.queued_messages.clear();
         app.pending_queued_dispatch = false;
         app.is_processing = true;
-        super::local::finish_turn(&mut app);
+        app.conclude_completed_turn(app.display_turn_duration_secs());
         assert!(app.auto_poke_incomplete_todos);
         assert!(app.pending_queued_dispatch);
         assert_eq!(app.queued_messages.len(), 1);
@@ -2657,7 +2657,7 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
         app.queued_messages.clear();
         app.pending_queued_dispatch = false;
         app.is_processing = true;
-        super::local::finish_turn(&mut app);
+        app.conclude_completed_turn(app.display_turn_duration_secs());
         // Auto-poke is default-on, so a completed cycle re-arms for the next
         // batch of work rather than silently switching the feature off.
         assert_eq!(app.auto_poke_incomplete_todos, app.auto_poke_default_on);
@@ -2677,7 +2677,7 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
         app.queued_messages.clear();
         app.pending_queued_dispatch = false;
         app.is_processing = true;
-        super::local::finish_turn(&mut app);
+        app.conclude_completed_turn(app.display_turn_duration_secs());
         assert!(!app.pending_queued_dispatch);
         assert!(app.queued_messages.is_empty());
     });
@@ -2763,7 +2763,7 @@ fn test_finish_turn_challenges_confidence_spike_once() {
 
         app.auto_poke_incomplete_todos = true;
         app.is_processing = true;
-        super::local::finish_turn(&mut app);
+        app.conclude_completed_turn(app.display_turn_duration_secs());
 
         assert!(app.auto_poke_incomplete_todos);
         assert!(app.todo_confidence_spike_challenged);
@@ -2782,7 +2782,7 @@ fn test_finish_turn_challenges_confidence_spike_once() {
         app.queued_messages.clear();
         app.pending_queued_dispatch = false;
         app.is_processing = true;
-        super::local::finish_turn(&mut app);
+        app.conclude_completed_turn(app.display_turn_duration_secs());
 
         assert!(app.auto_poke_incomplete_todos);
         assert!(app.todo_confidence_spike_challenged);
@@ -2797,7 +2797,7 @@ fn test_finish_turn_challenges_confidence_spike_once() {
         app.queued_messages.clear();
         app.pending_queued_dispatch = false;
         app.is_processing = true;
-        super::local::finish_turn(&mut app);
+        app.conclude_completed_turn(app.display_turn_duration_secs());
 
         assert!(app.auto_poke_incomplete_todos);
         assert!(app.todo_confidence_spike_challenged);
@@ -2850,7 +2850,7 @@ fn test_finish_turn_without_auto_poke_does_not_queue_confidence_summary() {
 
         app.auto_poke_incomplete_todos = false;
         app.is_processing = true;
-        super::local::finish_turn(&mut app);
+        app.conclude_completed_turn(app.display_turn_duration_secs());
 
         assert!(!app.pending_queued_dispatch);
         assert!(app.queued_messages().is_empty());
@@ -2888,7 +2888,7 @@ fn test_finish_turn_auto_poke_preserves_visible_turn_started() {
         app.is_processing = true;
         app.visible_turn_started = Some(started);
 
-        super::local::finish_turn(&mut app);
+        app.conclude_completed_turn(app.display_turn_duration_secs());
 
         assert_eq!(app.visible_turn_started, Some(started));
         assert!(app.pending_queued_dispatch);
