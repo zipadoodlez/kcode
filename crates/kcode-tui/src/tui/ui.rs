@@ -1,6 +1,6 @@
 #![cfg_attr(
     test,
-    expect(
+    allow(
         clippy::items_after_test_module,
         clippy::let_and_return,
         clippy::missing_const_for_thread_local,
