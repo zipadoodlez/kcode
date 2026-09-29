@@ -15,44 +15,38 @@ An item carries a compact evidence line so it can be picked up without
 re-deriving why it exists. An item marked `(decision)` needs a call from the
 maintainer before work starts; everything else is actionable.
 
-## Next up: finish the local-turn-path excision (do this first)
+## Landed 2026-09-29: the local-turn-path excision (`516de13d`, `d0723556`, `7b2e3b7e`)
 
-Started 2026-09-29. `App::run` has zero callers and the live entry is
-`run_remote`, but `local` is only partly dead: `handle_bus_event` and
-`handle_ui_activity` are used by the live remote path and stay.
+`App::run` had zero callers and the live entry is `run_remote`, so the whole
+in-process turn runtime behind it is gone. Deleted: `App::run`; `turn.rs`
+(`run_turn_interactive`, 1,390 lines) and `turn_memory.rs`; `local.rs` with
+its local-only bus handler and helpers; `input.rs::process_queued_messages`;
+the compaction/payload retry quartet in `model_context.rs`; the local transfer
+implementation; the sync debug-command poll; the local branch of
+`start_visible_overnight_turn`; and the helper cascade the compiler surfaced.
 
-**Landed 2026-09-29 (`45396ee9`):** one home for the completed-turn tail.
-`App::conclude_completed_turn` (in `turn_notify.rs`) holds the end-of-turn
-sequence; the live remote turn-complete arm and `local::finish_turn` both call
-it, and the 13 tests that drove `local::finish_turn` now drive the live method.
-So the tests no longer depend on the dead path.
+Two placements survived. `handle_ui_activity` and `remote::handle_bus_event`
+(plus the login auth-hint helpers) now live together in
+`remote/bus_events.rs`, re-exported so callers keep the `remote::` path. The
+passive overnight card refresh moved into `remote::handle_tick`, which is the
+live loop that can reach it. Dead helpers the test harness still needs to set
+up live behavior are `#[cfg(test)]`-gated; the rest are deleted.
 
-Remaining, in order:
+Tests were split by whether their behavior still exists: the two reload tick
+tests call `maybe_finish_background_client_reload`, the scroll guard and the
+background-activity/model-refresh/git tests call the remote handlers with a
+dummy connection, and the local-runtime-only tests (local background-task
+notifications, the Cerebras/auth catalog bus lifecycle, local transfer, the
+local system-prompt split) are deleted with their handler.
 
-- [ ] **Re-point the two reload tick tests** to the live method: replace
-  `local::handle_tick(&mut app)` with `app.maybe_finish_background_client_reload()`
-  in `test_background_update_ready_waits_for_turn_to_finish` and
-  `test_background_update_ready_waits_for_typing_to_go_idle`
-  (`tests/remote_startup_input_03/part_01.rs`).
-- [ ] **Decide the scroll test (decision).**
-  `test_mouse_scroll_animation_preserves_side_pane_scroll_sensitivity`
-  (`tests/state_model_poke_01/part_01.rs`) calls `local::handle_tick` twice as an
-  idempotence guard: after a wheel notch sets the pane scroll, the ticks must not
-  move it again. There is no distinct live "side-pane scroll animation" method;
-  the live tick is `remote::handle_tick(app, remote)`, which is async and needs a
-  dummy connection.
-  - **(a) chosen lean:** call the live `remote::handle_tick` with
-    `RemoteConnection::dummy()` + a runtime, keeping the guard. About 4 lines.
-  - (b) drop the two tick calls and keep only the wheel assertion; loses the
-    guard.
-- [ ] **Delete the dead half:** `local::{finish_turn, handle_tick,
-  handle_terminal_event, process_turn_with_input}`, `App::run`
-  (`run_shell.rs:198-309`), and the `process_turn_with_input` wrapper in
-  `event_wrappers.rs` (keep its `handle_server_event`, and keep `run_remote` plus
-  the live helpers in `run_shell.rs`).
-- [ ] **Delete the helper cascade** (~48 private items that only the removed
-  functions used), so clippy `-D warnings` stays green.
-- [ ] Gate. Expect a size-ratchet shrink to record.
+Ratchets recorded: code-size tracked files 73 -> 72 (`turn.rs` retired),
+app-shape 197/55/120 -> 194/53/118, and `remote.rs` 2,098 -> 1,963.
+
+## Next up: the dead-weight pass tail
+
+The provider-catalog batch's remaining items are small and independent (`§5`
+hygiene nits, the `auth_remote/onboarding.rs` rename). The dead-weight pass
+itself is now landed except those nits.
 
 ## Standing decisions
 
@@ -78,9 +72,8 @@ so it shares one build and one end-of-batch gate. The items and their evidence
 already sit in §0 and §3; this section is the running order, with counts
 re-verified 2026-09-29 at `fba32bda` (`wc -l`).
 
-- [ ] **Finish the local-turn-path excision** — see "Next up" at the top of this
-  file. It is the first item and carries the running order; it is the last
-  unlanded piece of this batch.
+- [x] **Finish the local-turn-path excision** (landed 2026-09-29, `516de13d`,
+  `d0723556`, `7b2e3b7e`) — see "Landed" at the top of this file.
 - [x] **One home per duplicated helper** (landed 2026-09-29, `9a83ad59`):
   `parse_meminfo_kb` 3x and `truncated_stream_payload_context` 2x moved to
   `kcode-core::util` (no new dependency edge), and the two reload-marker ages
@@ -134,7 +127,7 @@ lines.
 
 | cluster | lines | evidence | what holds its place | verdict |
 |---|---|---|---|---|
-| Dead local turn path | ~810 whole files (`local.rs` 590, `event_wrappers.rs` 38, `overnight_card.rs` 183) + ~30 partial items | `App::run` (`run_shell.rs:198`) has zero callers (live entry is `run_remote`, `tui_launch.rs:160`); cfg-ing it out yields exactly 48 `never used` items | tests drive `local::` from 8 files / 33 sites | delete after migrating those tests; ~1.5k with the partials |
+| Dead local turn path | landed 2026-09-29 (~3.8k, not 810) | `App::run` (`run_shell.rs:198`) had zero callers (live entry is `run_remote`, `tui_launch.rs:160`); deleting it reached `turn.rs` (1,390), `turn_memory.rs`, `local.rs`, `process_queued_messages`, the model-context retry quartet, the local transfer path, and the helper cascade | the ~810 estimate counted only `local.rs` + `event_wrappers.rs` + `overnight_card.rs`; the whole dead engine was larger | deleted in `516de13d` / `d0723556` / `7b2e3b7e` |
 | Second markdown renderer | landed 2026-09-29 (was ~4,700) | `render_markdown_via_core` had only test callers; the adapter's own doc said the legacy path "remains authoritative" | the one live symbol was `reasoning_line_markup`; the rest was a parallel parser/model/wrap | resolved: deleted the parser/model/wrap (1,193) + adapter (795), moved reasoning to `kcode-message-types`, and wired the engine into the renderer. `kcode-render-core` is now only the LaTeX engine + normalization (2,220). A follow-up (`e27d287a`) deleted the unwired `render_markdown_lazy` copy (983), which the streaming path never called |
 | Harnesses living in test files | ~3.7k | `[census]`: `live_tests.rs` 3,080 is `pub mod` production code consumed by `kcode-provider-doctor`; `smoothness_benchmark.rs` 332; `browser_fast_live_tests.rs` 250 | `live_tests` is genuinely production | move the non-test halves into modules; `live_tests` is a misnamed production module |
 | Duplicated tiny helpers | ~230, not the 500 first guessed | every family in the item list below was re-read and its bodies hash-compared; the census's `detect_*`/`generate_diff_*` rows were dropped as not-duplicates | 3-90 lines each, all with a home that already exists | one home each; see the item list |
@@ -180,7 +173,7 @@ stripped and clippy asked what it hid:
 No unconditional `#[allow(dead_code)]` remains. The `cfg_attr` sites are
 conditional on platform, feature, or `cfg(test)` and stay as they are.
 
-- [ ] The dead local turn path (~810-1,500 lines); §2 owns it.
+- [x] The dead local turn path (landed 2026-09-29; ~3.8k lines).
 
 One home per duplicated helper. Body hashes were compared for each of these:
 
@@ -249,8 +242,8 @@ Bigger, each its own pass:
 - [ ] Move `smoothness_benchmark.rs` (313) out of `app/tests/`; the two
   provider-doctor halves (`live_provider_probes.rs`, `provider_e2e.rs`) already
   live in `kcode-provider-doctor/src/`. §4 owns the test-tree item.
-- [ ] Delete the dead local turn path and migrate the 33 test call sites onto
-  the remote path (~810-1,500 lines); §2 owns the local-turn-path item.
+- [x] Delete the dead local turn path and migrate the test call sites onto the
+  remote path (landed 2026-09-29; ~3.8k lines removed).
 
 ### What would settle the floor
 
@@ -346,7 +339,7 @@ Staged, each lands whole.
     `App`. Deleting it is a trade, decided last, once `App` is cheap to
     construct.
 
-  Out of scope: `handle_client`, the local turn path, provider identity, and the
+  Out of scope: `handle_client`, provider identity, and the
   crate spine are separate items.
 
   Done when: the field count and `impl App` count fall monotonically
@@ -460,14 +453,10 @@ Staged, each lands whole.
   (name, aliases, help, handler, remote-safe); fixes the `/help` gap and the
   dead SSH-block commands for free. Shares `commands_dispatch.rs` with the
   `App` re-core, so keep them in separate changes.
-- [ ] **The local in-process turn path** (`crates/kcode-tui/src/tui/app/local.rs`
-  and the orphaned `App::run`): `run` has zero callers; it was `pub`, so the
-  compiler kept the whole subtree live. Deleting it alone surfaces ~41 items as
-  dead and regresses the 0-warning baseline. It is the documented
-  `AppRuntimeMode::TestHarness` path (tests call `local::handle_tick`,
-  `handle_bus_event`, `finish_turn`). Either delete it and drive tests through
-  the remote path, or `#[cfg(test)]`-gate the transitive closure. Two turn
-  implementations is the real smell.
+- [x] **The local in-process turn path** (landed 2026-09-29, `516de13d`): the
+  orphaned `App::run` and its whole subtree are deleted, so the server agent
+  loop is the one turn implementation. The `AppRuntimeMode::TestHarness` axis
+  survives but is now only a marker; collapsing it is its own decision.
 - [ ] (decision) **Re-core the SSH-login state** (`crates/kcode-tui/src/tui/app/auth_remote.rs`):
   one flow tracked by five correlated fields (`phase`, `task`, `operation`,
   `input_kind`, `input`) with 12 guarded `.unwrap()`s. Target is two enums,
