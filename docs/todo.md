@@ -35,17 +35,33 @@ maintainer before work starts; everything else is actionable.
 
 Single-threaded, every suite is at zero (2026-09-29): `kcode-base`, root
 `kcode`, `kcode-app-core`, the math crates, and `kcode-tui`. The front-line pass
-is done; what remains is one flake class and one stale doc.
+is done; what remains is the one parallel-execution flake class below.
 
 - **Parallel-only flakes.** `kcode-tui --lib` at the default thread count fails
   a changing set of about a dozen tests that pass single-threaded (slash
   pickers, `restore_session_*`, account settings, the model picker,
-  `smoothness_benchmark_*`). The frame-metrics singletons were tested as the
-  cause and were not; the shared state is still unidentified. `--test-threads=1`
-  is the workaround. App-core had the same shape (global bus, env/config) and is
-  partly fixed.
-- **`docs/dev/testing.md` is stale** on the same subject: it describes the old
-  render-lock race (which the code no longer has) and the old per-suite counts.
+  `smoothness_benchmark_*`, `*_server_history_*`, `terminal_setup_*`). Root
+  cause identified 2026-09-30: tests read configuration from process-global
+  sources that other tests mutate concurrently, and the readers never take the
+  `lock_test_env()` that the mutators hold. The live channels are `KCODE_HOME`
+  (session save/restore and the config cache resolve through whatever home is
+  set when they run), the `KCODE_SSH_REMOTE` / `KCODE_SSH_*` / `KCODE_MODEL` /
+  `KCODE_PROVIDER` / `KCODE_RUNTIME_PROVIDER` family read at dispatch time by
+  `tui::is_ssh_remote()` and friends, and ambient `KCODE_*` in the shell.
+  Proven by `KCODE_SSH_REMOTE=test-remote <test> --exact` flipping a passing
+  test to failing. App-core had the same shape (global bus, env/config) and is
+  partly fixed. `--test-threads=1` is the workaround; serializing the readers on
+  the same lock deadlocks or makes the suite >10 minutes, so the durable fix is
+  to stop routing test configuration through the process environment.
+- **A rare fork/PTY hang.** `terminal_setup_command.rs`'s
+  `decode_key_event_via_pty` forks the multithreaded test process and runs
+  crossterm in the child. Seen twice: the child wedges and the parent blocks on
+  its result pipe forever (killing a CI job). Not reproduced on demand in 20+
+  runs; it needs a concurrent lock held at fork time. Spawning a fresh process
+  instead of forking would remove it. `docs/dev/testing.md` covers the class.
+- **`docs/dev/testing.md` updated** on the same subject: it now describes the
+  env/config-cache race above and the current zero single-threaded baseline,
+  instead of the deleted render-lock race and the old per-suite counts.
 
 ## Next up: the dead-weight pass tail
 

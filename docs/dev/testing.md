@@ -8,88 +8,55 @@ on.
 
 ## Known flakiness: `kcode-tui` lib tests under parallel execution
 
-`cargo test -p kcode-tui --lib` fails 1-4 tests per run at the default thread
-count, with a set that changes between runs. It is a parallelism race on
-process-global render state, not a logic bug: each test passes in isolation, and
-`--test-threads=1` passes the whole suite.
+`cargo test -p kcode-tui --lib` fails a handful of tests per run at the default
+thread count, with a set that changes between runs. It is a race on
+process-global state, not a logic bug: each failure passes in isolation, and
+`--test-threads=1` passes the whole suite. This is the last known flake class;
+`../todo.md` tracks it.
 
-Root cause: `create_test_app()` (and `create_named_provider_test_app`) in
-`crates/kcode-tui/src/tui/app/tests/support/part_01.rs` calls
-`clear_test_render_state_for_tests`, which wipes process-global flicker history,
-layout snapshots, status-area snapshots, copy targets, and scroll positions.
-Rendering tests guard that state with `render_state_test_lock()`, but
-`create_test_app` clears it *without* the lock, so any of its ~810 call sites can
-reset a concurrently running render test mid-assertion.
+Root cause: tests read configuration from process-global sources that other
+tests mutate concurrently. The live channels are:
 
-Taking the lock inside `create_test_app` fixes it but serializes all ~810 call
-sites (suite runtime ~12s to >10 minutes), so it was measured and reverted. The
-fix is to stop sharing the state: make render state thread-local (production has
-one render thread, so behavior is unchanged), or have `create_test_app` skip the
-clear entirely after auditing which tests rely on it. A `--test-threads=1` run is
-the workaround until then.
+- **`KCODE_HOME`.** `create_test_app()` installs a per-process test home, and
+  `with_temp_kcode_home()` swaps in a tempdir for one test's duration. Session
+  save/restore and the config cache resolve through whichever value is in the
+  environment at the moment they run, so a test that saves a session can restore
+  from a home another test just switched to.
+- **`KCODE_SSH_REMOTE` and the other `KCODE_SSH_*` / `KCODE_MODEL` /
+  `KCODE_PROVIDER` / `KCODE_RUNTIME_PROVIDER` variables.** `tui::is_ssh_remote()`
+  is read at dispatch time, so a concurrent test that set `KCODE_SSH_REMOTE`
+  flips `/resume`, `/model`, and `/terminal-setup` into remote mode for
+  everyone. Reproduce with
+  `KCODE_SSH_REMOTE=test-remote <test-binary> <test> --exact`.
+- **The ambient environment.** `KCODE_OPENROUTER_*` and other `KCODE_*`
+  variables in the shell are read as configuration too, so a run started from a
+  kcode shell can fail tests that pass under a clean environment.
+
+Env-mutating tests hold `storage::lock_test_env()` for their whole body, but the
+readers never take it, so the exclusion buys nothing against a concurrent
+reader. Making readers guard the same lock serializes the suite
+(`create_test_app` alone is ~810 call sites; measured at >10 minutes) and can
+deadlock with worker threads that read the same accessors, so it is not a
+drop-in fix. The workarounds are `--test-threads=1` for a full run and a clean
+environment; the durable fix is to stop routing test configuration through the
+process environment.
+
+The old render-lock story no longer applies: `clear_test_render_state_for_tests`
+takes `render_state_test_lock` reentrantly (via `with_render_state_lock`), and
+the frame-metrics singletons were ruled out as the cause. `smoothness_benchmark_*`
+is timing-sensitive and can still report a stray blink under load.
 
 If a run fails after a `cargo` SIGTERM under memory pressure, that is a different
 failure (the compiler was killed), not this race.
 
-## Baseline failures on this tree (2026-09-27)
+## Baselines
 
-Recorded so a red run is not mistaken for a regression. Single-threaded to take
-the parallelism race above out of the picture:
+Single-threaded, every suite is at zero (2026-09-29); `../todo.md` holds the list
+to keep current. For `kcode-tui`:
 
 ```sh
-cargo test -p kcode-tui --test-threads=1
+cargo test -p kcode-tui --lib -- --test-threads=1
 ```
-
-- `--lib`: 1966 passed, 27 failed, 17 ignored (2010 total, ~83s).
-- Integration targets, run by name (cargo stops at the first failing target when
-  run as one command): `glyph_safe_wire` 2/2, `no_new_raw_rgb_literals` 1/1,
-  `width_stable_glyphs` 1/1, `test_lock_order` 2/3
-  (`inline_images_persistence_locks_env_before_render`, "regression target must
-  exist").
-
-The 27 `--lib` failures:
-
-```text
-tui::app::helpers::helpers_tests::build_resume_command_uses_imported_kcode_session_for_claude_code
-tui::app::helpers::helpers_tests::build_resume_command_uses_imported_kcode_session_for_codex
-tui::app::tests::ancient_server_history_is_deferred_via_client_side_release_check
-tui::app::tests::recent_project_review_falls_back_cleanly_when_no_repo_is_known
-tui::app::tests::stale_server_history_is_deferred_before_remote_state_is_applied
-tui::app::tests::test_account_switch_shorthand_switches_openai_account_by_label
-tui::app::tests::test_changelog_overlay_mouse_drag_release_copies_text
-tui::app::tests::test_gate_digest_is_delivered_at_turn_end_and_rearms_next_cycle
-tui::app::tests::test_handle_server_event_compaction_mode_changed_updates_remote_mode
-tui::app::tests::test_handle_server_event_compaction_shows_completion_message_in_remote_mode
-tui::app::tests::test_improve_mode_persists_in_session_file
-tui::app::tests::test_info_widget_local_direct_api_runtime_shows_cost_based_usage
-tui::app::tests::test_input_composer_drag_selects_and_copies_typed_text
-tui::app::tests::test_input_composer_drag_then_release_copies_via_full_mouse_path
-tui::app::tests::test_logout_clear_anthropic_accounts_removes_all_accounts_once
-tui::app::tests::test_prepare_review_spawned_session_uses_visible_transcript_for_judge_sessions
-tui::app::tests::test_registered_command_suggestions_include_aliases_and_hide_secret_commands
-tui::app::tests::test_selfdev_command_spawns_session_in_test_mode
-tui::app::tests::test_startup_update_checking_stays_quiet_until_update_work_starts
-tui::app::tests::test_startup_update_error_replaces_checking_card
-tui::app::tests::test_tool_side_panel_uses_shared_right_pane_keyboard_focus
-tui::session_picker::loading::tests::load_sessions_includes_saved_sessions_beyond_scan_limit
-tui::session_picker::tests::test_loading_preview_refreshes_search_index_for_picker_filtering
-tui::ui::messages::tests::render_tool_message_memory_recall_centered_mode_left_aligns_with_padding
-tui::ui::messages::tests::visually_appealing_prompt_batched_retry_renders_complete_todo_card
-tui::ui::tests::swarm_buffer::right_fact_stack_uses_transcript_status_notification_and_input_rows_in_order
-```
-
-The `App` re-core changes shape, not behavior, so this set should only shrink.
-`scripts/check_app_shape.py` ratchets the shape itself; see `../todo.md`.
-
-The root crate has its own pre-existing set: `cargo test -p kcode --lib` fails
-10 of 195 (185 passed), measured 2026-09-28. It was 12 of 193 at `6dff3825`;
-B1/B2 fixed the two provider round-trip failures and added two tests. Sampled
-causes: stale expectations for removed or renamed surface, e.g.
-`login::next_step::tests::extracted_hints_match_the_strings_login_printed_before_extraction`
-wants "run kcode" where the code now prints "run kcode", and
-`cli::args::tests::login_scriptable_flags_parse` parses a `--google-access-tier`
-flag that no longer exists after the Google login was cut. The `../todo.md`
-baseline bullet is the list to keep current.
 
 ## Auth fixtures
 
