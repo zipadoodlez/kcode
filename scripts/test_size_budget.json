@@ -10,7 +10,7 @@
     "crates/kcode-app-core/src/tool/bash_tests.rs": 1222,
     "crates/kcode-app-core/src/tool/communicate_tests.rs": 1876,
     "crates/kcode-app-core/src/tool/tests.rs": 1757,
-    "crates/kcode-base/src/config_tests.rs": 1359,
+    "crates/kcode-base/src/config_tests.rs": 1336,
     "crates/kcode-base/src/live_tests.rs": 3080,
     "crates/kcode-base/src/provider/tests/model_resolution.rs": 2435,
     "crates/kcode-base/src/provider_catalog_tests.rs": 1335,
