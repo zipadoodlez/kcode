@@ -79,20 +79,17 @@ impl MultiProvider {
                 Err(err) => {
                     let summary =
                         maybe_annotate_limit_summary(provider, Self::summarize_error(&err));
-                    let decision = Self::classify_failover_error(&err);
                     crate::logging::info(&format!(
-                        "Same-provider account {} failed{}: {} (failover={} decision={})",
+                        "Same-provider account {} failed{}: {}",
                         alternative_label,
                         mode.log_suffix(),
-                        summary,
-                        decision.should_failover(),
-                        decision.as_str()
+                        summary
                     ));
                     notes.push(format!(
                         "{} account {}: {}",
                         provider_label, alternative_label, summary
                     ));
-                    if decision.should_mark_provider_unavailable() {
+                    if super::account_failover::error_looks_like_usage_limit(&summary) {
                         record_provider_unavailable_for_account(provider_key, &summary);
                     }
                 }

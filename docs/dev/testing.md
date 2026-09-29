@@ -14,7 +14,7 @@ process-global render state, not a logic bug: each test passes in isolation, and
 `--test-threads=1` passes the whole suite.
 
 Root cause: `create_test_app()` (and `create_named_provider_test_app`) in
-`crates/kcode-tui/src/tui/app/tests/support_failover/part_01.rs` calls
+`crates/kcode-tui/src/tui/app/tests/support/part_01.rs` calls
 `clear_test_render_state_for_tests`, which wipes process-global flicker history,
 layout snapshots, status-area snapshots, copy targets, and scroll positions.
 Rendering tests guard that state with `render_state_test_lock()`, but

@@ -104,7 +104,6 @@ pub(super) fn handle_tick(app: &mut App) -> bool {
     needs_redraw |= super::overnight_card::refresh_if_due(app);
     needs_redraw |= super::commands::poll_local_transfer_prepare(app);
     needs_redraw |= super::commands::maybe_begin_pending_local_transfer(app);
-    needs_redraw |= app.maybe_progress_provider_failover_countdown();
     app.check_debug_command();
     needs_redraw |= app.refresh_keybindings_if_config_reloaded();
     needs_redraw |= app.maybe_finish_background_client_reload();

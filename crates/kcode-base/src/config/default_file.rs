@@ -328,13 +328,8 @@ openai_service_tier = "priority"
 # Preserve provider-native reasoning/thinking for future-turn context when supported.
 # Applies to OpenRouter, Anthropic, and OpenAI native reasoning replay. Display is separate.
 preserve_reasoning_context = true
-# Cross-provider failover when the same prompt would be resent elsewhere.
-# countdown = 3-second countdown before retrying on another provider; press Esc to cancel (default)
-# manual = show a notice and let you switch yourself
-# cross_provider_failover = "manual"
-# Try another account on the same provider before switching providers (default: true)
+# Try another account on the same provider before giving up (default: true)
 # same_provider_account_failover = false
-cross_provider_failover = "countdown"
 # Copilot premium mode: "normal" (default), "one" (first msg only), "zero" (all free)
 # Set to "zero" if you have premium Copilot and want free requests
 # copilot_premium = "zero"

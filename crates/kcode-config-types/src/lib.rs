@@ -254,35 +254,6 @@ impl std::fmt::Display for UpdateChannel {
     }
 }
 
-/// Cross-provider failover behavior when the same input would be resent elsewhere.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum CrossProviderFailoverMode {
-    /// Show a 3-second cancelable countdown, then resend on another provider.
-    #[default]
-    Countdown,
-    /// Do not resend the prompt to another provider automatically.
-    #[serde(alias = "off", alias = "false", alias = "disabled", alias = "none")]
-    Manual,
-}
-
-impl CrossProviderFailoverMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Manual => "manual",
-            Self::Countdown => "countdown",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "manual" | "off" | "false" | "disabled" | "none" => Some(Self::Manual),
-            "countdown" | "auto" | "automatic" => Some(Self::Countdown),
-            _ => None,
-        }
-    }
-}
-
 /// Compaction configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -1077,8 +1048,6 @@ pub struct ProviderConfig {
     pub openai_native_compaction_threshold_tokens: usize,
     /// Preserve provider-native reasoning/thinking items for future-turn context when supported.
     pub preserve_reasoning_context: bool,
-    /// How to handle cross-provider failover when the same input would be resent elsewhere.
-    pub cross_provider_failover: CrossProviderFailoverMode,
     /// Whether kcode should automatically try another account on the same provider
     /// before falling back to a different provider.
     pub same_provider_account_failover: bool,
@@ -1126,7 +1095,6 @@ impl Default for ProviderConfig {
             openai_native_compaction_mode: "auto".to_string(),
             openai_native_compaction_threshold_tokens: 200_000,
             preserve_reasoning_context: true,
-            cross_provider_failover: CrossProviderFailoverMode::Countdown,
             same_provider_account_failover: true,
             copilot_premium: None,
             gemini_force_oauth: false,

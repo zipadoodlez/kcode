@@ -5,12 +5,11 @@
 
 pub use kcode_config_types::{
     AgentsConfig, AuthConfig, AutoJudgeConfig, AutoReviewConfig, CompactionConfig, CompactionMode,
-    CrossProviderFailoverMode, DiffDisplayMode, DisplayConfig, FeatureConfig, HookCommands,
-    HooksConfig, KeybindingsConfig, MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig,
-    NamedProviderModelConfig, NamedProviderType, NativeScrollbarConfig, NotificationsConfig,
-    OverscrollStatusMode, PowerConfig, ProviderConfig, ReasoningDisplayMode,
-    SessionPickerResumeAction, SwarmSpawnMode, SwarmStripLayout, TerminalConfig, UpdateChannel,
-    WebSearchConfig, WebSearchEngine,
+    DiffDisplayMode, DisplayConfig, FeatureConfig, HookCommands, HooksConfig, KeybindingsConfig,
+    MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig, NamedProviderModelConfig,
+    NamedProviderType, NativeScrollbarConfig, NotificationsConfig, OverscrollStatusMode,
+    PowerConfig, ProviderConfig, ReasoningDisplayMode, SessionPickerResumeAction, SwarmSpawnMode,
+    SwarmStripLayout, TerminalConfig, UpdateChannel, WebSearchConfig, WebSearchEngine,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -51,7 +50,6 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "GOOGLE_CLOUD_PROJECT",
     "GOOGLE_CLOUD_PROJECT_ID",
     "KCODE_WAKE_MODE",
-    "KCODE_CROSS_PROVIDER_FAILOVER",
     "KCODE_DEBUG_SOCKET",
     "KCODE_DEFAULT_REASONING_DISPLAY",
     "KCODE_DIFF_LINE_WRAP",

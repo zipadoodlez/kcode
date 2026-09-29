@@ -197,14 +197,6 @@ those run, "the floor is ~450-500k" is an estimate, not a measurement, and
 Widest representation first, while the tree is still quiet. Sweeping call sites
 before the shape is settled is churn.
 
-- [ ] **`fallback_sequence` failover table** (open question, not a claim):
-  `provider-core/src/selection.rs:315` is a hand-written 8x8 failover table, 8
-  arms each restating one priority order with the active provider moved first.
-  The Claude and OpenAI arms omit `Antigravity`, the other six include it.
-  Deliberate frontier-pair policy or an omission? Unread: the failover call
-  path. If it is "active first, then a canonical order", the ~80-line table
-  collapses to two lines.
-
 - [ ] Provider cleanup keeps every provider reachable. No provider is deleted
   (see Standing decisions): the catalog exposes Cursor, Copilot, Antigravity,
   GrokBuild, Bedrock; `provider-metadata` has 5 dependents, so the 20

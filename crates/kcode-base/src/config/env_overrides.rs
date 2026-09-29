@@ -537,11 +537,6 @@ impl Config {
                 self.provider.preserve_reasoning_context = parsed;
             }
         }
-        if let Ok(v) = std::env::var("KCODE_CROSS_PROVIDER_FAILOVER") {
-            if let Some(mode) = CrossProviderFailoverMode::parse(&v) {
-                self.provider.cross_provider_failover = mode;
-            }
-        }
         if let Ok(v) = std::env::var("KCODE_SAME_PROVIDER_ACCOUNT_FAILOVER") {
             if let Some(enabled) = parse_env_bool(&v) {
                 self.provider.same_provider_account_failover = enabled;

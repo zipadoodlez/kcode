@@ -363,87 +363,6 @@ fn should_replace_duplicate_route(existing: &ModelRoute, candidate: &ModelRoute)
     !existing_profile_scoped && candidate_profile_scoped
 }
 
-pub fn fallback_sequence(active: ActiveProvider) -> Vec<ActiveProvider> {
-    match active {
-        ActiveProvider::Claude => vec![
-            ActiveProvider::Claude,
-            ActiveProvider::OpenAI,
-            ActiveProvider::Copilot,
-            ActiveProvider::Gemini,
-            ActiveProvider::Cursor,
-            ActiveProvider::Bedrock,
-            ActiveProvider::OpenRouter,
-        ],
-        ActiveProvider::OpenAI => vec![
-            ActiveProvider::OpenAI,
-            ActiveProvider::Claude,
-            ActiveProvider::Copilot,
-            ActiveProvider::Gemini,
-            ActiveProvider::Cursor,
-            ActiveProvider::Bedrock,
-            ActiveProvider::OpenRouter,
-        ],
-        ActiveProvider::Copilot => vec![
-            ActiveProvider::Copilot,
-            ActiveProvider::Claude,
-            ActiveProvider::OpenAI,
-            ActiveProvider::Antigravity,
-            ActiveProvider::Gemini,
-            ActiveProvider::Cursor,
-            ActiveProvider::Bedrock,
-            ActiveProvider::OpenRouter,
-        ],
-        ActiveProvider::Antigravity => vec![
-            ActiveProvider::Antigravity,
-            ActiveProvider::Claude,
-            ActiveProvider::OpenAI,
-            ActiveProvider::Copilot,
-            ActiveProvider::Gemini,
-            ActiveProvider::Cursor,
-            ActiveProvider::Bedrock,
-            ActiveProvider::OpenRouter,
-        ],
-        ActiveProvider::Gemini => vec![
-            ActiveProvider::Gemini,
-            ActiveProvider::Claude,
-            ActiveProvider::OpenAI,
-            ActiveProvider::Antigravity,
-            ActiveProvider::Copilot,
-            ActiveProvider::Cursor,
-            ActiveProvider::Bedrock,
-            ActiveProvider::OpenRouter,
-        ],
-        ActiveProvider::Cursor => vec![
-            ActiveProvider::Cursor,
-            ActiveProvider::Claude,
-            ActiveProvider::OpenAI,
-            ActiveProvider::Copilot,
-            ActiveProvider::Antigravity,
-            ActiveProvider::Gemini,
-            ActiveProvider::OpenRouter,
-        ],
-        ActiveProvider::Bedrock => vec![
-            ActiveProvider::Bedrock,
-            ActiveProvider::Claude,
-            ActiveProvider::OpenAI,
-            ActiveProvider::Copilot,
-            ActiveProvider::Antigravity,
-            ActiveProvider::Gemini,
-            ActiveProvider::Cursor,
-            ActiveProvider::OpenRouter,
-        ],
-        ActiveProvider::OpenRouter => vec![
-            ActiveProvider::OpenRouter,
-            ActiveProvider::Claude,
-            ActiveProvider::OpenAI,
-            ActiveProvider::Copilot,
-            ActiveProvider::Antigravity,
-            ActiveProvider::Gemini,
-            ActiveProvider::Cursor,
-        ],
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -758,14 +677,6 @@ mod tests {
             ..ProviderAvailability::default()
         });
         assert_eq!(provider, ActiveProvider::Claude);
-    }
-
-    #[test]
-    fn fallback_sequence_keeps_active_first() {
-        let sequence = fallback_sequence(ActiveProvider::OpenRouter);
-        assert_eq!(sequence.first(), Some(&ActiveProvider::OpenRouter));
-        assert!(sequence.contains(&ActiveProvider::Claude));
-        assert!(sequence.contains(&ActiveProvider::Cursor));
     }
 
     /// Regression: `--provider antigravity` (and the other direct runtimes)

@@ -1,70 +1,4 @@
 #[test]
-fn test_fallback_sequence_includes_all_providers() {
-    assert_eq!(
-        MultiProvider::fallback_sequence(ActiveProvider::Claude),
-        vec![
-            ActiveProvider::Claude,
-            ActiveProvider::OpenAI,
-            ActiveProvider::Copilot,
-            ActiveProvider::Gemini,
-            ActiveProvider::Cursor,
-            ActiveProvider::Bedrock,
-            ActiveProvider::OpenRouter,
-        ]
-    );
-    assert_eq!(
-        MultiProvider::fallback_sequence(ActiveProvider::OpenAI),
-        vec![
-            ActiveProvider::OpenAI,
-            ActiveProvider::Claude,
-            ActiveProvider::Copilot,
-            ActiveProvider::Gemini,
-            ActiveProvider::Cursor,
-            ActiveProvider::Bedrock,
-            ActiveProvider::OpenRouter,
-        ]
-    );
-    assert_eq!(
-        MultiProvider::fallback_sequence(ActiveProvider::Copilot),
-        vec![
-            ActiveProvider::Copilot,
-            ActiveProvider::Claude,
-            ActiveProvider::OpenAI,
-            ActiveProvider::Antigravity,
-            ActiveProvider::Gemini,
-            ActiveProvider::Cursor,
-            ActiveProvider::Bedrock,
-            ActiveProvider::OpenRouter,
-        ]
-    );
-    assert_eq!(
-        MultiProvider::fallback_sequence(ActiveProvider::Gemini),
-        vec![
-            ActiveProvider::Gemini,
-            ActiveProvider::Claude,
-            ActiveProvider::OpenAI,
-            ActiveProvider::Antigravity,
-            ActiveProvider::Copilot,
-            ActiveProvider::Cursor,
-            ActiveProvider::Bedrock,
-            ActiveProvider::OpenRouter,
-        ]
-    );
-    assert_eq!(
-        MultiProvider::fallback_sequence(ActiveProvider::OpenRouter),
-        vec![
-            ActiveProvider::OpenRouter,
-            ActiveProvider::Claude,
-            ActiveProvider::OpenAI,
-            ActiveProvider::Copilot,
-            ActiveProvider::Antigravity,
-            ActiveProvider::Gemini,
-            ActiveProvider::Cursor,
-        ]
-    );
-}
-
-#[test]
 fn test_parse_provider_hint_supports_known_values() {
     assert_eq!(
         MultiProvider::parse_provider_hint("claude"),
@@ -236,59 +170,6 @@ fn test_auto_default_prefers_copilot_when_zero_premium_mode_enabled() {
 }
 
 #[test]
-fn test_should_failover_on_403_forbidden() {
-    let err = anyhow::anyhow!(
-        "Copilot token exchange failed (HTTP 403 Forbidden): not accessible by integration"
-    );
-    assert!(MultiProvider::classify_failover_error(&err).should_failover());
-}
-
-#[test]
-fn test_should_failover_on_token_exchange_failed() {
-    let msg = r#"Copilot token exchange failed (HTTP 403 Forbidden): {"error_details":{"title":"Contact Support"}}"#;
-    let err = anyhow::anyhow!("{}", msg);
-    assert!(MultiProvider::classify_failover_error(&err).should_failover());
-}
-
-#[test]
-fn test_should_failover_on_access_denied() {
-    let err = anyhow::anyhow!("Access denied: account suspended");
-    assert!(MultiProvider::classify_failover_error(&err).should_failover());
-}
-
-#[test]
-fn test_should_failover_when_status_code_starts_message() {
-    let err = anyhow::anyhow!("401 unauthorized");
-    assert!(MultiProvider::classify_failover_error(&err).should_failover());
-    assert_eq!(
-        MultiProvider::classify_failover_error(&err),
-        FailoverDecision::RetryAndMarkUnavailable
-    );
-}
-
-#[test]
-fn test_should_not_failover_on_non_independent_status_digits() {
-    let err = anyhow::anyhow!("backend returned code 14290");
-    assert!(!MultiProvider::classify_failover_error(&err).should_failover());
-}
-
-#[test]
-fn test_context_limit_error_fails_over_without_marking_provider_unavailable() {
-    let err = anyhow::anyhow!("Context length exceeded maximum context window");
-    assert!(MultiProvider::classify_failover_error(&err).should_failover());
-    assert_eq!(
-        MultiProvider::classify_failover_error(&err),
-        FailoverDecision::RetryNextProvider
-    );
-}
-
-#[test]
-fn test_should_not_failover_on_generic_error() {
-    let err = anyhow::anyhow!("Connection timed out");
-    assert!(!MultiProvider::classify_failover_error(&err).should_failover());
-}
-
-#[test]
 fn test_no_provider_error_mentions_tokens_and_details() {
     let provider = MultiProvider {
         claude: RwLock::new(None),
@@ -314,17 +195,18 @@ fn test_no_provider_error_mentions_tokens_and_details() {
         "GitHub Copilot: not configured".to_string(),
     ]);
     let text = err.to_string();
-    assert!(text.contains("No tokens/providers left"));
+    assert!(text.contains("Provider unavailable"));
     assert!(text.contains("OpenAI: rate limited"));
     assert!(text.contains("GitHub Copilot: not configured"));
+    assert!(text.contains("Switch with `/model`"));
 }
 
 /// Regression for issue #358: after switching to a direct OpenAI-compatible
 /// profile (e.g. `minimax:MiniMax-M3`), the OpenRouter slot's configured check
 /// must see the *active profile runtime*, not just the real-OpenRouter slot.
 /// With no OPENROUTER_API_KEY, the old check reported "not configured" and the
-/// failover loop silently rerouted the request to another provider (the user
-/// saw an OpenAI token refresh against api.openai.com).
+/// request was rerouted to another provider (the user saw an OpenAI token
+/// refresh against api.openai.com).
 #[test]
 fn test_active_compat_profile_counts_as_configured_openrouter_slot() {
     with_clean_provider_test_env(|| {

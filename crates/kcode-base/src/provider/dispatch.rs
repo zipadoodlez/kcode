@@ -18,42 +18,9 @@ impl CompletionMode<'_> {
             CompletionMode::Split { .. } => " (split)",
         }
     }
-
-    pub(super) fn switch_log_prefix(self) -> &'static str {
-        match self {
-            CompletionMode::Unified { .. } => "Auto-fallback",
-            CompletionMode::Split { .. } => "Auto-fallback (split)",
-        }
-    }
 }
 
 impl MultiProvider {
-    pub(super) fn estimate_request_input(
-        messages: &[Message],
-        tools: &[ToolDefinition],
-        mode: CompletionMode<'_>,
-    ) -> (usize, usize) {
-        let mut chars = serde_json::to_string(messages)
-            .map(|value| value.len())
-            .unwrap_or(0)
-            + serde_json::to_string(tools)
-                .map(|value| value.len())
-                .unwrap_or(0);
-        match mode {
-            CompletionMode::Unified { system } => {
-                chars += system.len();
-            }
-            CompletionMode::Split {
-                system_static,
-                system_dynamic,
-            } => {
-                chars += system_static.len() + system_dynamic.len();
-            }
-        }
-        let tokens = chars / 4;
-        (chars, tokens)
-    }
-
     pub(super) async fn complete_on_provider(
         &self,
         provider: ActiveProvider,

@@ -1,34 +1,3 @@
-#[test]
-fn test_cancel_pending_provider_failover_clears_countdown() {
-    with_temp_kcode_home(|| {
-        write_test_config("[provider]\ncross_provider_failover = \"countdown\"\n");
-        let (mut app, _active_provider) = create_switchable_test_app("claude");
-        let prompt = crate::provider::ProviderFailoverPrompt {
-            from_provider: "claude".to_string(),
-            from_label: "Anthropic".to_string(),
-            to_provider: "openai".to_string(),
-            to_label: "OpenAI".to_string(),
-            reason: "OAuth usage exhausted".to_string(),
-            estimated_input_chars: 16_000,
-            estimated_input_tokens: 4_000,
-        };
-
-        app.handle_turn_error(failover_error_message(&prompt));
-        assert!(app.pending_provider_failover.is_some());
-
-        app.cancel_pending_provider_failover("Provider auto-switch canceled");
-
-        assert!(app.pending_provider_failover.is_none());
-        let last = app.transcript.messages().last().expect("display message");
-        assert_eq!(last.role, "system");
-        assert!(last.content.contains("Canceled provider auto-switch"));
-        assert!(
-            last.content
-                .contains("cross_provider_failover = \"manual\"")
-        );
-    });
-}
-
 #[derive(Clone)]
 struct FastMockProvider {
     service_tier: StdArc<StdMutex<Option<String>>>,
@@ -67,61 +36,6 @@ impl Provider for FastMockProvider {
         *self.service_tier.lock().unwrap() = normalized;
         Ok(())
     }
-}
-
-#[derive(Clone)]
-struct SwitchableMockProvider {
-    active_provider: StdArc<StdMutex<String>>,
-}
-
-#[async_trait::async_trait]
-impl Provider for SwitchableMockProvider {
-    async fn complete(
-        &self,
-        _messages: &[Message],
-        _tools: &[crate::message::ToolDefinition],
-        _system: &str,
-        _resume_session_id: Option<&str>,
-    ) -> Result<crate::provider::EventStream> {
-        unimplemented!("SwitchableMockProvider")
-    }
-
-    fn name(&self) -> &str {
-        "switchable-mock"
-    }
-
-    fn model(&self) -> String {
-        match self.active_provider.lock().unwrap().as_str() {
-            "openai" => "gpt-test".to_string(),
-            _ => "claude-test".to_string(),
-        }
-    }
-
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
-
-    fn switch_active_provider_to(&self, provider: &str) -> Result<()> {
-        *self.active_provider.lock().unwrap() = provider.to_string();
-        Ok(())
-    }
-}
-
-fn create_switchable_test_app(initial_provider: &str) -> (App, StdArc<StdMutex<String>>) {
-    ensure_test_kcode_home_if_unset();
-    clear_persisted_test_ui_state();
-    crate::tui::ui::clear_test_render_state_for_tests();
-
-    let active_provider = StdArc::new(StdMutex::new(initial_provider.to_string()));
-    let provider: Arc<dyn Provider> = Arc::new(SwitchableMockProvider {
-        active_provider: active_provider.clone(),
-    });
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let registry = rt.block_on(crate::tool::Registry::new(provider.clone()));
-    let mut app = App::new_for_test_harness(provider, registry);
-    app.queue_mode = false;
-    app.diff_mode = crate::config::DiffDisplayMode::Inline;
-    (app, active_provider)
 }
 
 #[derive(Clone)]
@@ -518,19 +432,6 @@ fn create_failing_model_switch_test_app() -> App {
     app.queue_mode = false;
     app.diff_mode = crate::config::DiffDisplayMode::Inline;
     app
-}
-
-fn write_test_config(contents: &str) {
-    let path = crate::config::Config::path().expect("config path");
-    std::fs::create_dir_all(path.parent().expect("config dir")).expect("config dir");
-    std::fs::write(path, contents).expect("write config");
-}
-
-fn failover_error_message(prompt: &crate::provider::ProviderFailoverPrompt) -> String {
-    format!(
-        "[kcode-provider-failover]{}\nignored",
-        serde_json::to_string(prompt).expect("serialize failover prompt")
-    )
 }
 
 fn create_fast_test_app() -> App {

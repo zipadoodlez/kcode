@@ -1,6 +1,6 @@
 #![cfg_attr(test, allow(clippy::clone_on_copy))]
-include!("tests/support_failover/part_01.rs");
-include!("tests/support_failover/part_02.rs");
+include!("tests/support/part_01.rs");
+include!("tests/support/part_02.rs");
 include!("tests/commands_accounts_01/part_01.rs");
 include!("tests/commands_accounts_01/part_02.rs");
 include!("tests/commands_accounts_02/part_01.rs");

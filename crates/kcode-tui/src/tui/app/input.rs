@@ -3037,16 +3037,6 @@ impl App {
             return Ok(());
         }
 
-        if self.pending_provider_failover.is_some() && !self.is_processing {
-            if code == KeyCode::Esc {
-                self.cancel_pending_provider_failover("Provider auto-switch canceled");
-                return Ok(());
-            }
-            if !is_scroll_only_key(self, code, modifiers) {
-                self.cancel_pending_provider_failover("Provider auto-switch canceled");
-            }
-        }
-
         // Accept an armed post-error fallback offer: switch to the next best
         // model/auth-method and resend the failed turn.
         if self.pending_fallback_offer.is_some()

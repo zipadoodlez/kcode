@@ -79,7 +79,6 @@ impl Config {
 - OpenAI service tier: {}
 - OpenAI native compaction: {}
 - OpenAI native compaction threshold ratio: {:.2}
-- Cross-provider failover: {}
 
 **Agent models:**
 - Swarm / subagent: {}
@@ -210,7 +209,6 @@ impl Config {
                 .unwrap_or("(default)"),
             self.provider.openai_native_compaction_mode.as_str(),
             self.provider.openai_native_compaction_threshold_tokens,
-            self.provider.cross_provider_failover.as_str(),
             self.agents
                 .swarm_model
                 .as_deref()

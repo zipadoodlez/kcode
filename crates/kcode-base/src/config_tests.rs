@@ -863,31 +863,8 @@ fn display_emoji_defaults_on_and_deserializes_off() {
 }
 
 #[test]
-fn test_provider_failover_defaults_match_new_behavior() {
-    let provider = Config::default().provider;
-    assert_eq!(
-        provider.cross_provider_failover,
-        super::CrossProviderFailoverMode::Countdown
-    );
-    assert!(provider.same_provider_account_failover);
-}
-
-#[test]
-fn test_provider_failover_disabled_aliases_parse_as_manual() {
-    for value in ["off", "false", "disabled", "none"] {
-        let cfg: Config = toml::from_str(&format!(
-            "[provider]\ncross_provider_failover = \"{value}\"\n"
-        ))
-        .unwrap_or_else(|error| panic!("{value} should parse: {error}"));
-        assert_eq!(
-            cfg.provider.cross_provider_failover,
-            super::CrossProviderFailoverMode::Manual
-        );
-        assert_eq!(
-            super::CrossProviderFailoverMode::parse(value),
-            Some(super::CrossProviderFailoverMode::Manual)
-        );
-    }
+fn same_provider_account_failover_defaults_on() {
+    assert!(Config::default().provider.same_provider_account_failover);
 }
 
 #[test]

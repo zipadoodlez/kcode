@@ -313,19 +313,12 @@ struct PreparedTransferSession {
     session_name: String,
 }
 
-#[derive(Debug, Clone)]
-struct PendingProviderFailover {
-    prompt: crate::provider::ProviderFailoverPrompt,
-    deadline: Instant,
-}
-
 /// An interactive "switch to the next best model/method and resend" offer shown
 /// after a provider turn error (auth failure, broken API key, rate limit, etc.).
 ///
-/// Unlike [`PendingProviderFailover`], this is a manual, keypress-activated
-/// affordance and can switch between *auth methods on the same provider* (e.g.
-/// fall back from a broken `claude-api` key to a working `claude-oauth` login),
-/// which is exactly the case automatic cross-provider failover cannot handle.
+/// This is a manual, keypress-activated affordance and can switch between *auth
+/// methods on the same provider* (e.g. fall back from a broken `claude-api` key
+/// to a working `claude-oauth` login).
 #[derive(Debug, Clone)]
 struct PendingFallbackOffer {
     /// The route selection to apply when the user accepts the offer.
@@ -941,8 +934,6 @@ pub struct App {
     consecutive_guardrail_stops: u8,
     // When armed by /overnight, automatically continue guarded follow-up turns until wake/wrap.
     overnight_auto_poke: Option<OvernightAutoPokeState>,
-    // Pending cross-provider resend after a failover warning/countdown.
-    pending_provider_failover: Option<PendingProviderFailover>,
     // Interactive "switch to next best model/method and resend" offer surfaced
     // after a provider turn error; accepted with a keypress.
     pending_fallback_offer: Option<PendingFallbackOffer>,

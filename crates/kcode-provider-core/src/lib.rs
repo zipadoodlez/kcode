@@ -2,7 +2,6 @@ pub mod anthropic;
 pub mod attempt_tracker;
 pub mod auth_mode;
 pub mod catalog_refresh;
-pub mod failover;
 pub mod fallback_pick;
 pub mod fingerprint;
 pub mod model_id;
@@ -29,10 +28,6 @@ pub use auth_mode::{
     runtime_env_pinned_mode,
 };
 pub use catalog_refresh::{ModelCatalogRefreshSummary, summarize_model_catalog_refresh};
-pub use failover::{
-    FailoverDecision, ProviderFailoverPrompt, classify_failover_error_message,
-    parse_failover_prompt_message,
-};
 pub use fallback_pick::{
     FallbackPickOptions, error_looks_like_credential_failure, pick_next_fallback_route,
     pick_next_fallback_route_with_options,
@@ -53,9 +48,9 @@ pub use reasoning::{
 };
 pub use selection::{
     ActiveProvider, ProviderAvailability, auto_default_provider, cli_provider_arg_for_session_key,
-    dedupe_model_routes, explicit_model_provider_prefix, fallback_sequence,
-    model_name_for_provider, own_model_id, parse_provider_hint, provider_from_model_key,
-    provider_key, provider_label, simple_model_routes, strip_own_model_prefix,
+    dedupe_model_routes, explicit_model_provider_prefix, model_name_for_provider, own_model_id,
+    parse_provider_hint, provider_from_model_key, provider_key, provider_label,
+    simple_model_routes, strip_own_model_prefix,
 };
 
 use anyhow::Result;

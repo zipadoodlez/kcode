@@ -11,7 +11,6 @@ pub mod copilot;
 pub mod cursor;
 mod dispatch;
 pub mod external;
-mod failover;
 pub mod gemini;
 mod image_clamp;
 pub mod model_cache;
@@ -28,6 +27,7 @@ mod selection;
 mod startup;
 mod state;
 mod stream_timeout;
+mod unavailable;
 
 use crate::auth;
 use crate::message::{Message, ToolDefinition};
@@ -38,8 +38,6 @@ use account_failover::{
 };
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
-#[cfg(test)]
-use kcode_provider_core::FailoverDecision;
 use registry::ProviderRegistry;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
@@ -68,7 +66,6 @@ pub use kcode_provider_core::{
     normalize_model_route_provider_label, pick_next_fallback_route,
     pick_next_fallback_route_with_options,
 };
-pub use kcode_provider_core::{ProviderFailoverPrompt, parse_failover_prompt_message};
 pub use route_builders::{
     build_anthropic_oauth_route, build_chatgpt_web_route, build_copilot_route,
     build_openai_api_key_route, build_openai_oauth_route, build_openrouter_auto_route,
@@ -601,7 +598,12 @@ impl MultiProvider {
         entry
     }
 
-    async fn complete_with_failover(
+    /// Complete on the active provider, rotating once to another account of the
+    /// same provider when the failure looks like a usage limit.
+    ///
+    /// There is deliberately no cross-provider failover: a provider kcode cannot
+    /// absorb is reported to the caller, which tells the user how to switch.
+    async fn complete_with_account_failover(
         &self,
         messages: &[Message],
         tools: &[ToolDefinition],
@@ -626,155 +628,54 @@ impl MultiProvider {
         let messages: &[Message] = clamped_messages.as_deref().unwrap_or(messages);
 
         let active = self.active_provider();
-        let sequence = Self::fallback_sequence(active);
-        let mut notes: Vec<String> = Vec::new();
-        let mut failover_reason: Option<String> = None;
-        let (estimated_input_chars, estimated_input_tokens) =
-            Self::estimate_request_input(messages, tools, mode);
+        let key = Self::provider_key(active);
+        let label = Self::provider_label(active);
 
-        for candidate in sequence {
-            let label = Self::provider_label(candidate);
-            let key = Self::provider_key(candidate);
-
-            if candidate != active && failover_reason.is_some() {
-                let prompt = self.build_failover_prompt(
+        let attempt = match mode {
+            CompletionMode::Unified { system } => {
+                self.complete_on_provider(active, messages, tools, system, resume_session_id)
+                    .await
+            }
+            CompletionMode::Split {
+                system_static,
+                system_dynamic,
+            } => {
+                self.complete_split_on_provider(
                     active,
-                    candidate,
-                    failover_reason
-                        .clone()
-                        .unwrap_or_else(|| "provider unavailable".to_string()),
-                    estimated_input_chars,
-                    estimated_input_tokens,
-                );
-                return Err(anyhow::anyhow!(prompt.to_error_message()));
-            }
-
-            if !self.provider_is_configured(candidate) {
-                let note = format!("{}: not configured", label);
-                if candidate == active {
-                    crate::logging::warn(&format!(
-                        "Failover{}: skipping active provider {} (not configured)",
-                        mode.log_suffix(),
-                        label
-                    ));
-                }
-                notes.push(note);
-                continue;
-            }
-
-            if let Some(detail) = provider_unavailability_detail_for_account(key) {
-                let note = format!("{}: {}", label, detail);
-                if candidate == active {
-                    crate::logging::warn(&format!(
-                        "Failover{}: skipping active provider {} - {}",
-                        mode.log_suffix(),
-                        label,
-                        detail
-                    ));
-                    failover_reason = Some(detail.clone());
-                }
-                notes.push(note);
-                continue;
-            }
-
-            if let Some(reason) = self.provider_precheck_unavailable_reason(candidate) {
-                let note = format!("{}: {}", label, reason);
-                if candidate == active {
-                    crate::logging::warn(&format!(
-                        "Failover{}: skipping active provider {} - {}",
-                        mode.log_suffix(),
-                        label,
-                        reason
-                    ));
-                    failover_reason = Some(reason.clone());
-                }
-                notes.push(note);
-                record_provider_unavailable_for_account(key, &reason);
-                continue;
-            }
-
-            let attempt = match mode {
-                CompletionMode::Unified { system } => {
-                    self.complete_on_provider(candidate, messages, tools, system, resume_session_id)
-                        .await
-                }
-                CompletionMode::Split {
+                    messages,
+                    tools,
                     system_static,
                     system_dynamic,
-                } => {
-                    self.complete_split_on_provider(
-                        candidate,
-                        messages,
-                        tools,
-                        system_static,
-                        system_dynamic,
-                        resume_session_id,
-                    )
-                    .await
-                }
-            };
+                    resume_session_id,
+                )
+                .await
+            }
+        };
 
-            match attempt {
-                Ok(stream) => {
-                    clear_provider_unavailable_for_account(key);
-                    self.record_provider_activity(candidate);
-                    if candidate != active {
-                        self.set_active_provider(candidate);
-                        let from_label = Self::provider_label(active);
-                        let to_label = Self::provider_label(candidate);
-                        crate::logging::info(&format!(
-                            "{}: switched from {} to {}",
-                            mode.switch_log_prefix(),
-                            from_label,
-                            to_label
-                        ));
-                        self.startup_notices
-                            .write()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner())
-                            .push(format!(
-                                "⚡ Auto-fallback: {} unavailable, switched to {}",
-                                from_label, to_label
-                            ));
-                    }
+        match attempt {
+            Ok(stream) => {
+                clear_provider_unavailable_for_account(key);
+                self.record_provider_activity(active);
+                Ok(stream)
+            }
+            Err(err) => {
+                let summary = maybe_annotate_limit_summary(active, Self::summarize_error(&err));
+                crate::logging::info(&format!("Provider {} failed: {}", label, summary));
+                let mut notes = vec![format!("{label}: {summary}")];
+
+                if account_failover::error_looks_like_usage_limit(&summary)
+                    && let Some(stream) = self
+                        .try_same_provider_account_failover(
+                            active, messages, tools, mode, &summary, &mut notes,
+                        )
+                        .await?
+                {
                     return Ok(stream);
                 }
-                Err(err) => {
-                    let summary =
-                        maybe_annotate_limit_summary(candidate, Self::summarize_error(&err));
-                    let decision = Self::classify_failover_error(&err);
-                    crate::logging::info(&format!(
-                        "Provider {} failed{}: {} (failover={} decision={})",
-                        label,
-                        mode.log_suffix(),
-                        summary,
-                        decision.should_failover(),
-                        decision.as_str()
-                    ));
-                    notes.push(format!("{}: {}", label, summary));
-                    if decision.should_failover() {
-                        if decision.should_mark_provider_unavailable() {
-                            record_provider_unavailable_for_account(key, &summary);
-                        }
-                        if candidate == active
-                            && let Some(stream) = self
-                                .try_same_provider_account_failover(
-                                    candidate, messages, tools, mode, &summary, &mut notes,
-                                )
-                                .await?
-                        {
-                            return Ok(stream);
-                        }
-                        if candidate == active {
-                            failover_reason = Some(summary);
-                        }
-                    } else {
-                        return Err(err);
-                    }
-                }
+
+                Err(self.no_provider_available_error(&notes))
             }
         }
-
-        Err(self.no_provider_available_error(&notes))
     }
 
     /// Record which login/credential just served a request in the
@@ -791,8 +692,8 @@ impl MultiProvider {
     /// Ledger source key for the credential `provider` will use right now.
     /// Mirrors `active_resolved_credential` for the dual-auth providers and
     /// the runtime profile resolution for the OpenRouter slot, but resolves
-    /// against the *passed* provider so failover candidates attribute
-    /// correctly even before `set_active_provider` runs.
+    /// against the *passed* provider so an account rotation attributes to the
+    /// provider it actually used.
     fn activity_source_key(&self, provider: ActiveProvider) -> String {
         match provider {
             ActiveProvider::Claude => {
@@ -1694,7 +1595,7 @@ impl Provider for MultiProvider {
         system: &str,
         resume_session_id: Option<&str>,
     ) -> Result<EventStream> {
-        self.complete_with_failover(
+        self.complete_with_account_failover(
             messages,
             tools,
             CompletionMode::Unified { system },
@@ -1712,7 +1613,7 @@ impl Provider for MultiProvider {
         system_dynamic: &str,
         resume_session_id: Option<&str>,
     ) -> Result<EventStream> {
-        self.complete_with_failover(
+        self.complete_with_account_failover(
             messages,
             tools,
             CompletionMode::Split {

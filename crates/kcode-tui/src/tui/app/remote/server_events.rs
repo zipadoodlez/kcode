@@ -1225,8 +1225,6 @@ pub(in crate::tui::app) fn handle_server_event(
                     return false;
                 }
             }
-            let is_failover_prompt =
-                crate::provider::parse_failover_prompt_message(&message).is_some();
             // Snapshot the failed turn's payload before the cleanup below (and
             // the retry-budget bookkeeping) clears it, so a fallback offer
             // armed at a terminal no-retry point can resend it after the user
@@ -1342,8 +1340,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 );
                 return false;
             }
-            if !is_failover_prompt && !app.schedule_pending_remote_retry("⚠ Remote request failed.")
-            {
+            if !app.schedule_pending_remote_retry("⚠ Remote request failed.") {
                 app.clear_pending_remote_retry();
                 // No automatic retry will resend this turn, so restore the prompt the
                 // user typed back into the input box instead of dropping it.
