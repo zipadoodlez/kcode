@@ -2439,7 +2439,7 @@ fn test_overnight_help_command_is_handled() {
 }
 
 #[test]
-fn test_overnight_start_runs_as_visible_local_turn() {
+fn test_overnight_start_queues_initial_prompt() {
     with_temp_kcode_home(|| {
         let mut app = create_test_app();
         assert!(super::commands::handle_session_command(
@@ -2448,27 +2448,15 @@ fn test_overnight_start_runs_as_visible_local_turn() {
         ));
 
         assert!(
-            app.pending_turn,
-            "local overnight should start a visible turn"
+            !app.queued_messages.is_empty(),
+            "overnight start queues the coordinator prompt for the live turn path"
         );
         assert!(
-            app.is_processing,
-            "local overnight should enter processing state"
+            app.queued_messages
+                .iter()
+                .any(|message| message.contains("visible Overnight Coordinator")),
+            "the queued prompt is the coordinator startup message"
         );
-        assert!(
-            app.queued_messages.is_empty(),
-            "local overnight should not use remote queue"
-        );
-        let last_message = app
-            .session
-            .messages
-            .last()
-            .expect("overnight prompt message");
-        assert!(last_message.content.iter().any(|block| matches!(
-            block,
-            crate::message::ContentBlock::Text { text, .. }
-                if text.contains("visible Overnight Coordinator")
-        )));
     });
 }
 

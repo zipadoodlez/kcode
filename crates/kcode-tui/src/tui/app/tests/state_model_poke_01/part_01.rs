@@ -965,11 +965,12 @@ fn test_mouse_scroll_animation_preserves_side_pane_scroll_sensitivity() {
     );
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let mut remote = crate::tui::backend::RemoteConnection::dummy();
-    let _ = rt.block_on(crate::tui::app::remote::handle_tick(&mut app, &mut remote));
-    assert_eq!(app.diff_pane_scroll, 8);
-
-    let _ = rt.block_on(crate::tui::app::remote::handle_tick(&mut app, &mut remote));
+    rt.block_on(async {
+        let mut remote = crate::tui::backend::RemoteConnection::dummy();
+        let _ = crate::tui::app::remote::handle_tick(&mut app, &mut remote).await;
+        assert_eq!(app.diff_pane_scroll, 8);
+        let _ = crate::tui::app::remote::handle_tick(&mut app, &mut remote).await;
+    });
     assert_eq!(
         app.diff_pane_scroll, 8,
         "ticks should not add extra scroll after the wheel notch drained"

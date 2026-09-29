@@ -2,14 +2,16 @@
 fn test_background_task_started_activity_creates_running_row_without_card() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let mut remote = crate::tui::backend::RemoteConnection::dummy();
     let event = BusEvent::UiActivity(crate::bus::UiActivity::background(
         Some(app.session.id.clone()),
         "**Background task started** `bgstarted` · `cargo test`\n\nKcode is running this in the background. Progress, checkpoints, and completion will appear here.",
         Some("Background task started · cargo test"),
     ));
 
-    let _ = rt.block_on(super::remote::handle_bus_event(&mut app, &mut remote, Ok(event)));
+    rt.block_on(async {
+        let mut remote = crate::tui::backend::RemoteConnection::dummy();
+        let _ = super::remote::handle_bus_event(&mut app, &mut remote, Ok(event)).await;
+    });
 
     assert!(app.display_messages().is_empty());
     assert_eq!(
