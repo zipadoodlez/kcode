@@ -345,7 +345,9 @@ impl App {
                     .map(|i| crate::protocol::SwarmMemberStatus {
                         session_id: format!("session_{:02}", i),
                         friendly_name: Some(names[i % names.len()].to_string()),
-                        status: statuses[i % statuses.len()].to_string(),
+                        status: crate::protocol::SwarmLifecycleStatus::from(
+                            statuses[i % statuses.len()],
+                        ),
                         detail: Some(format!("task {}", i + 1)),
                         task_label: None,
                         role: if i == 0 {
@@ -434,12 +436,18 @@ impl App {
                         session_id: self.session.id.clone(),
                         friendly_name: Some(self.session.display_name().to_string()),
                         status: match &self.status {
-                            ProcessingStatus::Idle => "ready".to_string(),
-                            ProcessingStatus::Sending | ProcessingStatus::Connecting(_) => "running".to_string(),
-                            ProcessingStatus::Thinking(_) => "thinking".to_string(),
-                            ProcessingStatus::Streaming => "running".to_string(),
-                            ProcessingStatus::WaitingForNetwork { .. } => "waiting_network".to_string(),
-                            ProcessingStatus::RunningTool(_) => "running".to_string(),
+                            ProcessingStatus::Idle => crate::protocol::SwarmLifecycleStatus::Ready,
+                            ProcessingStatus::Sending | ProcessingStatus::Connecting(_) => {
+                                crate::protocol::SwarmLifecycleStatus::Running
+                            }
+                            ProcessingStatus::Thinking(_) => crate::protocol::SwarmLifecycleStatus::Running,
+                            ProcessingStatus::Streaming => crate::protocol::SwarmLifecycleStatus::Running,
+                            ProcessingStatus::WaitingForNetwork { .. } => {
+                                crate::protocol::SwarmLifecycleStatus::Other(
+                                    "waiting_network".to_string(),
+                                )
+                            }
+                            ProcessingStatus::RunningTool(_) => crate::protocol::SwarmLifecycleStatus::Running,
                         },
                         detail: self.subagent_status.clone(),
                         task_label: None,

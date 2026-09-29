@@ -1,5 +1,6 @@
 use super::SessionAgents;
 use crate::agent::Agent;
+use crate::protocol::SwarmLifecycleStatus;
 use crate::server::reload_recovery::ReloadRecoveryRole;
 use crate::server::{SwarmEvent, SwarmEventType, SwarmMember};
 use crate::session_recovery::ReloadContext;
@@ -268,7 +269,7 @@ async fn persist_reload_recovery_intents(
         );
         members
             .iter()
-            .filter(|(_, member)| member.status == "running")
+            .filter(|(_, member)| member.status == SwarmLifecycleStatus::Running)
             .map(|(session_id, member)| (session_id.clone(), member.is_headless))
             .collect()
     };
@@ -392,7 +393,7 @@ async fn graceful_shutdown_sessions_with_timeout(
         let members = swarm_members.read().await;
         members
             .iter()
-            .filter(|(_, m)| m.status == "running")
+            .filter(|(_, m)| m.status == SwarmLifecycleStatus::Running)
             .map(|(id, _)| id.clone())
             .collect()
     };
@@ -488,7 +489,7 @@ async fn graceful_shutdown_sessions_with_timeout(
                 .filter(|id| {
                     members
                         .get(*id)
-                        .map(|m| m.status == "running")
+                        .map(|m| m.status == SwarmLifecycleStatus::Running)
                         .unwrap_or(false)
                 })
                 .cloned()

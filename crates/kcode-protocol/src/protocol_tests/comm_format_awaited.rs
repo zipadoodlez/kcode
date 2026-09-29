@@ -2,7 +2,11 @@ fn awaited_member(session_id: &str, done: bool) -> AwaitedMemberStatus {
     AwaitedMemberStatus {
         session_id: session_id.to_string(),
         friendly_name: Some(session_id.to_string()),
-        status: if done { "completed" } else { "running" }.to_string(),
+        status: if done {
+            crate::SwarmLifecycleStatus::Completed
+        } else {
+            crate::SwarmLifecycleStatus::Running
+        },
         done,
         completion_report: None,
     }

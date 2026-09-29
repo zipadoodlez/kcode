@@ -86,7 +86,7 @@ fn swarm_spinner_redraw_active(state: &dyn TuiState) -> bool {
         && state
             .inline_swarm_members()
             .iter()
-            .any(|m| kcode_tui_render::swarm_gallery::is_active_status(&m.status))
+            .any(|m| kcode_tui_render::swarm_gallery::is_active_status(m.status.as_str()))
 }
 
 /// Whether the open `/resume` picker is showing at least one running session.

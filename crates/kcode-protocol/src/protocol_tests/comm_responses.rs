@@ -162,7 +162,7 @@ fn test_comm_members_roundtrip_includes_status() -> Result<()> {
             session_id: "sess-peer".to_string(),
             friendly_name: Some("bear".to_string()),
             files_touched: vec!["src/main.rs".to_string()],
-            status: Some("running".to_string()),
+            status: Some(crate::SwarmLifecycleStatus::Running),
             detail: Some("working on tests".to_string()),
             role: Some("agent".to_string()),
             is_headless: Some(true),
@@ -185,7 +185,7 @@ fn test_comm_members_roundtrip_includes_status() -> Result<()> {
     assert_eq!(id, 9);
     assert_eq!(members.len(), 1);
     assert_eq!(members[0].friendly_name.as_deref(), Some("bear"));
-    assert_eq!(members[0].status.as_deref(), Some("running"));
+    assert_eq!(members[0].status, Some(crate::SwarmLifecycleStatus::Running));
     assert_eq!(members[0].detail.as_deref(), Some("working on tests"));
     assert_eq!(members[0].is_headless, Some(true));
     assert_eq!(
@@ -224,7 +224,7 @@ fn test_comm_status_response_roundtrip() -> Result<()> {
             session_id: "sess-peer".to_string(),
             friendly_name: Some("bear".to_string()),
             swarm_id: Some("swarm-test".to_string()),
-            status: Some("running".to_string()),
+            status: Some(crate::SwarmLifecycleStatus::Running),
             detail: Some("working on tests".to_string()),
             role: Some("agent".to_string()),
             is_headless: Some(true),

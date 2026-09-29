@@ -103,7 +103,7 @@ fn test_swarm_member(session_id: &str, status: &str) -> SwarmMember {
         working_dir: None,
         swarm_id: Some("swarm-test".to_string()),
         swarm_enabled: true,
-        status: status.to_string(),
+        status: status.into(),
         detail: None,
         task_label: None,
         friendly_name: Some(session_id.to_string()),

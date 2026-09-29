@@ -3,6 +3,7 @@ use super::{
     VersionedPlan, broadcast_swarm_status, create_headless_session, persist_swarm_state_for,
     record_swarm_event, remove_background_tool_signal, remove_session_interrupt_queue,
 };
+use crate::protocol::SwarmLifecycleStatus;
 use crate::provider::Provider;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -137,8 +138,8 @@ pub(super) async fn maybe_handle_session_admin_command(
                 friendly_name.clone(),
                 Some(swarm_id.clone()),
                 SwarmEventType::StatusChange {
-                    old_status: "ready".to_string(),
-                    new_status: "stopped".to_string(),
+                    old_status: SwarmLifecycleStatus::Ready,
+                    new_status: SwarmLifecycleStatus::Stopped,
                 },
             )
             .await;

@@ -1,5 +1,6 @@
 use super::*;
 use crate::message::{ContentBlock, Message, StreamEvent, ToolDefinition};
+use crate::protocol::SwarmLifecycleStatus;
 use crate::provider::{EventStream, Provider};
 use async_trait::async_trait;
 use futures::stream;
@@ -1014,7 +1015,7 @@ async fn client_initiated_turn_fans_out_stream_and_terminal_events_to_live_attac
             working_dir: None,
             swarm_id: None,
             swarm_enabled: false,
-            status: "ready".to_string(),
+            status: SwarmLifecycleStatus::Ready,
             detail: None,
             task_label: None,
             friendly_name: None,

@@ -103,6 +103,7 @@ mod transcript_routing_tests {
         resolve_transcript_target_session,
     };
     use crate::protocol::ServerEvent;
+    use crate::protocol::SwarmLifecycleStatus;
     use crate::server::SwarmMember;
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -119,7 +120,7 @@ mod transcript_routing_tests {
             working_dir: None,
             swarm_id: None,
             swarm_enabled: false,
-            status: "ready".to_string(),
+            status: SwarmLifecycleStatus::Ready,
             detail: None,
             friendly_name: None,
             report_back_to_session_id: None,

@@ -1,4 +1,5 @@
 use super::*;
+use crate::protocol::SwarmLifecycleStatus;
 use anyhow::{Result, anyhow};
 
 #[test]
@@ -320,7 +321,7 @@ fn handle_reload_queues_signal_for_canary_session() -> Result<()> {
                     working_dir: None,
                     swarm_id: None,
                     swarm_enabled: false,
-                    status: "ready".to_string(),
+                    status: SwarmLifecycleStatus::Ready,
                     detail: None,
                     task_label: None,
                     friendly_name: Some("trigger".to_string()),
@@ -345,7 +346,7 @@ fn handle_reload_queues_signal_for_canary_session() -> Result<()> {
                     working_dir: None,
                     swarm_id: None,
                     swarm_enabled: false,
-                    status: "ready".to_string(),
+                    status: SwarmLifecycleStatus::Ready,
                     detail: None,
                     task_label: None,
                     friendly_name: Some("peer".to_string()),

@@ -14,6 +14,7 @@ use super::{
 };
 use crate::agent::Agent;
 use crate::message::ContentBlock;
+use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{NotificationType, ServerEvent};
 use crate::provider::Provider;
 use crate::server::reload_state::RELOAD_RESTORE_MARKER_MAX_AGE;
@@ -270,7 +271,7 @@ pub(super) async fn handle_clear_session(
     .await;
     update_member_status(
         &new_id,
-        "ready",
+        SwarmLifecycleStatus::Ready,
         None,
         swarm_members,
         swarms_by_id,
@@ -389,7 +390,7 @@ async fn ensure_client_swarm_member(
                     working_dir: working_dir.clone(),
                     swarm_id: derived_swarm_id.clone(),
                     swarm_enabled,
-                    status: "ready".to_string(),
+                    status: SwarmLifecycleStatus::Ready,
                     detail: None,
                     task_label: None,
                     friendly_name: member_name.clone(),
@@ -873,7 +874,7 @@ pub(super) async fn handle_subscribe(
     if subscribe_should_mark_ready(client_session_id, swarm_members).await {
         update_member_status(
             client_session_id,
-            "ready",
+            SwarmLifecycleStatus::Ready,
             None,
             swarm_members,
             swarms_by_id,
@@ -917,7 +918,7 @@ async fn subscribe_should_mark_ready(
     let members = swarm_members.read().await;
     members
         .get(client_session_id)
-        .is_none_or(|member| member.status != "running")
+        .is_none_or(|member| member.status != SwarmLifecycleStatus::Running)
 }
 
 async fn rename_swarm_member_session(
@@ -934,7 +935,7 @@ async fn rename_swarm_member_session(
         let renamed_swarm_id = members.remove(old_session_id).and_then(|mut member| {
             let swarm_id = member.swarm_id.clone();
             member.session_id = new_session_id.to_string();
-            member.status = "ready".to_string();
+            member.status = SwarmLifecycleStatus::Ready;
             member.detail = None;
             members.insert(new_session_id.to_string(), member);
             swarm_id
@@ -1638,7 +1639,7 @@ pub(super) async fn handle_resume_session(
             }
             update_member_status(
                 &session_id,
-                "ready",
+                SwarmLifecycleStatus::Ready,
                 None,
                 swarm_members,
                 swarms_by_id,

@@ -428,7 +428,7 @@ async fn build_server_memory_incident_payload(
         }
         *population
             .status_counts
-            .entry(member.status.clone())
+            .entry(member.status.to_string())
             .or_insert(0) += 1;
     }
     drop(members);
@@ -1130,7 +1130,7 @@ fn estimate_client_connection_bytes(info: &ClientConnectionInfo) -> usize {
 
 fn estimate_swarm_member_bytes(member: &SwarmMember) -> usize {
     member.session_id.len()
-        + member.status.len()
+        + member.status.as_str().len()
         + member.detail.as_ref().map(|value| value.len()).unwrap_or(0)
         + member
             .friendly_name

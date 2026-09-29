@@ -4,6 +4,7 @@ use super::{
     SwarmMember, SwarmState, VersionedPlan, git_common_dir_for, swarm_id_for_dir,
 };
 use crate::plan::{next_runnable_item_ids, summarize_plan_graph};
+use crate::protocol::SwarmLifecycleStatus;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -88,7 +89,7 @@ pub(super) async fn maybe_handle_swarm_read_command(
                 .iter()
                 .filter_map(|session_id| members.get(session_id))
                 .map(|member| {
-                    *status_counts.entry(member.status.clone()).or_default() += 1;
+                    *status_counts.entry(member.status.to_string()).or_default() += 1;
                     if member.is_headless {
                         headless_count += 1;
                     }
@@ -719,7 +720,7 @@ pub(super) async fn maybe_handle_swarm_read_command(
             };
 
             let is_processing = member_info
-                .map(|m| m.status == "running")
+                .map(|m| m.status == SwarmLifecycleStatus::Running)
                 .unwrap_or(agent_state.is_none());
 
             serde_json::json!({

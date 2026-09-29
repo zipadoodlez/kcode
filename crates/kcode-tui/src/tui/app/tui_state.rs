@@ -1298,82 +1298,81 @@ impl crate::tui::TuiState for App {
         let swarm_info = if self.swarm_enabled {
             let subagent_status = self.subagent_status.clone();
             let mut members: Vec<crate::protocol::SwarmMemberStatus> = Vec::new();
-            let (session_count, client_count, session_names, has_activity) =
-                if self.is_remote_client() {
-                    // The compact swarm widget renders at most three rows. Keep the
-                    // complete snapshot in `swarm.members`, but do not clone
-                    // every historical member (including large detail/todo payloads)
-                    // on every frame just to discard almost all of them below.
-                    let has_members = !self.swarm.members.is_empty();
-                    let session_names = if has_members {
-                        Vec::new()
-                    } else {
-                        self.server_info.sessions.iter().take(3).cloned().collect()
-                    };
-                    members = self.swarm.members.iter().take(3).cloned().collect();
-                    let session_count = if has_members {
-                        self.swarm.members.len()
-                    } else {
-                        self.server_info.sessions.len()
-                    };
-                    let has_activity = self
-                        .swarm
-                        .members
-                        .iter()
-                        .any(|m| m.status != "ready" || m.detail.is_some());
-                    (
-                        session_count,
-                        self.server_info.client_count,
-                        session_names,
-                        has_activity,
-                    )
+            let (session_count, client_count, session_names, has_activity) = if self
+                .is_remote_client()
+            {
+                // The compact swarm widget renders at most three rows. Keep the
+                // complete snapshot in `swarm.members`, but do not clone
+                // every historical member (including large detail/todo payloads)
+                // on every frame just to discard almost all of them below.
+                let has_members = !self.swarm.members.is_empty();
+                let session_names = if has_members {
+                    Vec::new()
                 } else {
-                    let (status, detail) = match &self.status {
-                        ProcessingStatus::Idle => ("ready".to_string(), None),
-                        ProcessingStatus::Sending => {
-                            ("running".to_string(), Some("sending".to_string()))
-                        }
-                        ProcessingStatus::Connecting(phase) => {
-                            ("running".to_string(), Some(phase.to_string()))
-                        }
-                        ProcessingStatus::Thinking(_) => ("thinking".to_string(), None),
-                        ProcessingStatus::Streaming => {
-                            ("running".to_string(), Some("streaming".to_string()))
-                        }
-                        ProcessingStatus::WaitingForNetwork { listener } => {
-                            ("waiting_network".to_string(), Some(listener.clone()))
-                        }
-                        ProcessingStatus::RunningTool(name) => {
-                            ("running".to_string(), Some(format!("tool: {}", name)))
-                        }
-                    };
-                    let detail = subagent_status.clone().or(detail);
-                    let has_activity = status != "ready" || detail.is_some();
-                    if has_activity {
-                        members.push(crate::protocol::SwarmMemberStatus {
-                            session_id: self.session.id.clone(),
-                            friendly_name: Some(self.session.display_name().to_string()),
-                            status,
-                            detail,
-                            task_label: None,
-                            role: None,
-                            is_headless: Some(false),
-                            live_attachments: Some(1),
-                            status_age_secs: Some(0),
-                            output_tail: None,
-                            report_back_to_session_id: None,
-                            todo_progress: None,
-                            todo_items: Vec::new(),
-                            runtime: crate::protocol::SwarmMemberRuntime::default(),
-                        });
-                    }
-                    (
-                        1,
-                        None,
-                        vec![self.session.display_name().to_string()],
-                        has_activity,
-                    )
+                    self.server_info.sessions.iter().take(3).cloned().collect()
                 };
+                members = self.swarm.members.iter().take(3).cloned().collect();
+                let session_count = if has_members {
+                    self.swarm.members.len()
+                } else {
+                    self.server_info.sessions.len()
+                };
+                let has_activity = self.swarm.members.iter().any(|m| {
+                    m.status != crate::protocol::SwarmLifecycleStatus::Ready || m.detail.is_some()
+                });
+                (
+                    session_count,
+                    self.server_info.client_count,
+                    session_names,
+                    has_activity,
+                )
+            } else {
+                let (status, detail) = match &self.status {
+                    ProcessingStatus::Idle => ("ready".to_string(), None),
+                    ProcessingStatus::Sending => {
+                        ("running".to_string(), Some("sending".to_string()))
+                    }
+                    ProcessingStatus::Connecting(phase) => {
+                        ("running".to_string(), Some(phase.to_string()))
+                    }
+                    ProcessingStatus::Thinking(_) => ("thinking".to_string(), None),
+                    ProcessingStatus::Streaming => {
+                        ("running".to_string(), Some("streaming".to_string()))
+                    }
+                    ProcessingStatus::WaitingForNetwork { listener } => {
+                        ("waiting_network".to_string(), Some(listener.clone()))
+                    }
+                    ProcessingStatus::RunningTool(name) => {
+                        ("running".to_string(), Some(format!("tool: {}", name)))
+                    }
+                };
+                let detail = subagent_status.clone().or(detail);
+                let has_activity = status != "ready" || detail.is_some();
+                if has_activity {
+                    members.push(crate::protocol::SwarmMemberStatus {
+                        session_id: self.session.id.clone(),
+                        friendly_name: Some(self.session.display_name().to_string()),
+                        status: crate::protocol::SwarmLifecycleStatus::from(status),
+                        detail,
+                        task_label: None,
+                        role: None,
+                        is_headless: Some(false),
+                        live_attachments: Some(1),
+                        status_age_secs: Some(0),
+                        output_tail: None,
+                        report_back_to_session_id: None,
+                        todo_progress: None,
+                        todo_items: Vec::new(),
+                        runtime: crate::protocol::SwarmMemberRuntime::default(),
+                    });
+                }
+                (
+                    1,
+                    None,
+                    vec![self.session.display_name().to_string()],
+                    has_activity,
+                )
+            };
 
             // Dock data: the agents this session actually manages (spawn
             // subtree), the shared panel selection/focus, and plan progress.
@@ -2191,7 +2190,7 @@ mod inline_swarm_subtree_tests {
         SwarmMemberStatus {
             session_id: id.to_string(),
             friendly_name: Some(id.to_string()),
-            status: "running".to_string(),
+            status: crate::protocol::SwarmLifecycleStatus::Running,
             detail: None,
             task_label: None,
             role: None,

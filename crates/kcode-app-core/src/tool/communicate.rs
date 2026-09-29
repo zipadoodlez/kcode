@@ -3,6 +3,7 @@
 use super::{Tool, ToolContext, ToolOutput};
 use crate::background::TaskResult;
 use crate::plan::PlanItem;
+use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{
     AgentInfo, AgentStatusSnapshot, AwaitedMemberStatus, CommDeliveryMode, ContextEntry,
     HistoryMessage, PlanGraphStatus, Request, ServerEvent, SwarmChannelInfo, TaskGraphNodeSpec,
@@ -212,10 +213,10 @@ async fn fetch_swarm_members(session_id: &str) -> Result<Vec<AgentInfo>> {
 }
 
 fn swarm_member_is_in_flight(member: &AgentInfo) -> bool {
-    matches!(
-        member.status.as_deref(),
-        Some("queued" | "running" | "running_stale")
-    )
+    member
+        .status
+        .as_ref()
+        .is_some_and(|status| status.is_in_flight())
 }
 
 fn coordination_in_flight_count(
@@ -1131,7 +1132,7 @@ fn detect_credential_failure_wave(
         if !swarm_member_is_drivable_worker(member, coordinator_session_id) {
             continue;
         }
-        if member.status.as_deref() != Some("failed") {
+        if member.status.as_ref() != Some(&SwarmLifecycleStatus::Failed) {
             continue;
         }
         let Some(detail) = member.detail.as_deref() else {
@@ -2472,7 +2473,11 @@ impl Tool for CommunicateTool {
                         } else {
                             for member in members {
                                 let name = member.friendly_name.unwrap_or(member.session_id);
-                                let status = member.status.unwrap_or_else(|| "unknown".to_string());
+                                let status = member
+                                    .status
+                                    .as_ref()
+                                    .map_or("unknown", |s| s.as_str())
+                                    .to_string();
                                 output.push_str(&format!("  {} ({})\n", name, status));
                             }
                         }

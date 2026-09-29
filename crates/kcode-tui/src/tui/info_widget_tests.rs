@@ -848,7 +848,7 @@ fn managed_member(id: &str, status: &str, role: Option<&str>) -> SwarmMemberStat
     SwarmMemberStatus {
         session_id: id.to_string(),
         friendly_name: Some(id.to_string()),
-        status: status.to_string(),
+        status: status.into(),
         detail: None,
         task_label: None,
         role: role.map(str::to_string),
@@ -929,7 +929,7 @@ fn swarm_widget_renders_member_roles_and_details() {
                 SwarmMemberStatus {
                     session_id: "coord-12345678".to_string(),
                     friendly_name: Some("coord".to_string()),
-                    status: "running".to_string(),
+                    status: "running".into(),
                     detail: Some("orchestrating patch".to_string()),
                     task_label: None,
                     role: Some("coordinator".to_string()),
@@ -945,7 +945,7 @@ fn swarm_widget_renders_member_roles_and_details() {
                 SwarmMemberStatus {
                     session_id: "tree-12345678".to_string(),
                     friendly_name: Some("trees".to_string()),
-                    status: "ready".to_string(),
+                    status: "ready".into(),
                     detail: Some("worktree synced".to_string()),
                     task_label: None,
                     role: Some("agent".to_string()),
@@ -1005,7 +1005,7 @@ fn swarm_widget_handles_empty_swarm_and_zero_area_without_panic() {
     member_data.swarm_info.as_mut().unwrap().members = vec![SwarmMemberStatus {
         session_id: "abc".to_string(),
         friendly_name: None,
-        status: "running".to_string(),
+        status: "running".into(),
         detail: None,
         task_label: None,
         role: None,
@@ -1028,7 +1028,7 @@ fn swarm_widget_caps_member_rows_for_large_swarms() {
         .map(|i| SwarmMemberStatus {
             session_id: format!("session-{i:04}"),
             friendly_name: Some(format!("worker-{i}")),
-            status: "running".to_string(),
+            status: "running".into(),
             detail: Some("very long detail text that should be truncated".repeat(4)),
             task_label: None,
             role: None,

@@ -2,6 +2,7 @@ use super::{
     graceful_shutdown_sessions, graceful_shutdown_sessions_with_timeout,
     persist_reload_recovery_intents, receive_reload_signal,
 };
+use crate::protocol::SwarmLifecycleStatus;
 use crate::server::{ReloadSignal, SwarmEvent, SwarmEventType, SwarmMember};
 use kcode_agent_runtime::InterruptSignal;
 use std::collections::HashMap;
@@ -15,7 +16,7 @@ fn set_member_status(members: &mut HashMap<String, SwarmMember>, session_id: &st
         "missing test member {session_id}"
     );
     if let Some(member) = members.get_mut(session_id) {
-        member.status = status.to_string();
+        member.status = status.into();
     }
 }
 
@@ -28,7 +29,7 @@ fn member(session_id: &str, status: &str) -> SwarmMember {
         working_dir: None,
         swarm_id: None,
         swarm_enabled: false,
-        status: status.to_string(),
+        status: status.into(),
         detail: None,
         task_label: None,
         friendly_name: None,
@@ -179,8 +180,8 @@ async fn graceful_shutdown_sessions_signals_all_running_sessions_including_initi
             session_name: None,
             swarm_id: None,
             event: SwarmEventType::StatusChange {
-                old_status: "running".to_string(),
-                new_status: "ready".to_string(),
+                old_status: SwarmLifecycleStatus::Running,
+                new_status: SwarmLifecycleStatus::Ready,
             },
             timestamp: Instant::now(),
             absolute_time: std::time::SystemTime::now(),
@@ -191,8 +192,8 @@ async fn graceful_shutdown_sessions_signals_all_running_sessions_including_initi
             session_name: None,
             swarm_id: None,
             event: SwarmEventType::StatusChange {
-                old_status: "running".to_string(),
-                new_status: "ready".to_string(),
+                old_status: SwarmLifecycleStatus::Running,
+                new_status: SwarmLifecycleStatus::Ready,
             },
             timestamp: Instant::now(),
             absolute_time: std::time::SystemTime::now(),
@@ -249,8 +250,8 @@ async fn graceful_shutdown_sessions_does_not_wait_for_triggering_session_checkpo
             session_name: None,
             swarm_id: None,
             event: SwarmEventType::StatusChange {
-                old_status: "running".to_string(),
-                new_status: "ready".to_string(),
+                old_status: SwarmLifecycleStatus::Running,
+                new_status: SwarmLifecycleStatus::Ready,
             },
             timestamp: Instant::now(),
             absolute_time: std::time::SystemTime::now(),
@@ -287,7 +288,7 @@ async fn graceful_shutdown_sessions_does_not_wait_for_triggering_session_checkpo
             .get("initiator")
             .expect("initiator")
             .status,
-        "running",
+        SwarmLifecycleStatus::Running,
         "initiator may remain running without blocking reload"
     );
 }
@@ -403,8 +404,8 @@ async fn graceful_shutdown_sessions_waits_until_target_status_change_arrives() {
         session_name: None,
         swarm_id: None,
         event: SwarmEventType::StatusChange {
-            old_status: "running".to_string(),
-            new_status: "ready".to_string(),
+            old_status: SwarmLifecycleStatus::Running,
+            new_status: SwarmLifecycleStatus::Ready,
         },
         timestamp: Instant::now(),
         absolute_time: std::time::SystemTime::now(),
@@ -456,8 +457,8 @@ async fn graceful_shutdown_sessions_ignores_unrelated_events_until_target_leaves
         session_name: None,
         swarm_id: None,
         event: SwarmEventType::StatusChange {
-            old_status: "running".to_string(),
-            new_status: "ready".to_string(),
+            old_status: SwarmLifecycleStatus::Running,
+            new_status: SwarmLifecycleStatus::Ready,
         },
         timestamp: Instant::now(),
         absolute_time: std::time::SystemTime::now(),
@@ -480,8 +481,8 @@ async fn graceful_shutdown_sessions_ignores_unrelated_events_until_target_leaves
         session_name: None,
         swarm_id: None,
         event: SwarmEventType::StatusChange {
-            old_status: "running".to_string(),
-            new_status: "stopped".to_string(),
+            old_status: SwarmLifecycleStatus::Running,
+            new_status: SwarmLifecycleStatus::Stopped,
         },
         timestamp: Instant::now(),
         absolute_time: std::time::SystemTime::now(),
@@ -613,8 +614,8 @@ async fn graceful_shutdown_sessions_times_out_on_partial_checkpoint() {
             session_name: None,
             swarm_id: None,
             event: SwarmEventType::StatusChange {
-                old_status: "running".to_string(),
-                new_status: "ready".to_string(),
+                old_status: SwarmLifecycleStatus::Running,
+                new_status: SwarmLifecycleStatus::Ready,
             },
             timestamp: Instant::now(),
             absolute_time: std::time::SystemTime::now(),
@@ -644,7 +645,7 @@ async fn graceful_shutdown_sessions_times_out_on_partial_checkpoint() {
     );
     assert_eq!(
         swarm_members.read().await.get("slow").expect("slow").status,
-        "running",
+        SwarmLifecycleStatus::Running,
         "the laggard session may remain running without blocking reload past the deadline"
     );
 }

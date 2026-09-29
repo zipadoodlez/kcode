@@ -4,6 +4,7 @@ use super::await_members_state::{
 };
 use super::{AwaitMembersRuntime, SwarmEvent, SwarmMember};
 use crate::bus::{Bus, BusEvent, SwarmAwaitCompleted, UiActivity};
+use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{AwaitedMemberStatus, ServerEvent, format_comm_awaited_members_with_reports};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -51,9 +52,13 @@ pub(super) async fn awaited_member_statuses(
                         member.latest_completion_report.clone(),
                     )
                 })
-                .unwrap_or((None, "unknown".to_string(), None));
-            let done = target_status.contains(&status)
-                || (status == "unknown"
+                .unwrap_or((
+                    None,
+                    SwarmLifecycleStatus::Other("unknown".to_string()),
+                    None,
+                ));
+            let done = target_status.iter().any(|t| t == status.as_str())
+                || (status.as_str() == "unknown"
                     && (target_status.contains(&"stopped".to_string())
                         || target_status.contains(&"completed".to_string())));
             AwaitedMemberStatus {

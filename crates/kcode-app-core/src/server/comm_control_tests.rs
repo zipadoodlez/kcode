@@ -59,7 +59,7 @@ fn member(session_id: &str, swarm_id: &str, status: &str) -> SwarmMember {
         working_dir: None,
         swarm_id: Some(swarm_id.to_string()),
         swarm_enabled: true,
-        status: status.to_string(),
+        status: status.into(),
         detail: None,
         friendly_name: Some(session_id.to_string()),
         report_back_to_session_id: None,
@@ -143,6 +143,7 @@ async fn test_agent() -> Arc<Mutex<Agent>> {
     Arc::new(Mutex::new(Agent::new(provider, registry)))
 }
 
+use crate::protocol::SwarmLifecycleStatus;
 include!("comm_control_tests/assign_task.rs");
 include!("comm_control_tests/assign_blocked.rs");
 include!("comm_control_tests/assign_double.rs");

@@ -33,7 +33,7 @@ async fn await_members_returns_persisted_final_response_after_reload_retry() {
                     members: vec![crate::protocol::AwaitedMemberStatus {
                         session_id: "peer-1".to_string(),
                         friendly_name: Some("peer-1".to_string()),
-                        status: "completed".to_string(),
+                        status: SwarmLifecycleStatus::Completed,
                         done: true,
                         completion_report: None,
                     }],
@@ -130,7 +130,7 @@ async fn await_members_ignores_persisted_final_when_requested_member_is_queued_a
                     members: vec![crate::protocol::AwaitedMemberStatus {
                         session_id: peer.to_string(),
                         friendly_name: Some(peer.to_string()),
-                        status: "completed".to_string(),
+                        status: SwarmLifecycleStatus::Completed,
                         done: true,
                         completion_report: None,
                     }],
@@ -182,14 +182,14 @@ async fn await_members_ignores_persisted_final_when_requested_member_is_queued_a
 
     {
         let mut members = swarm_members.write().await;
-        members.get_mut(peer).expect("peer exists").status = "completed".to_string();
+        members.get_mut(peer).expect("peer exists").status = SwarmLifecycleStatus::Completed;
     }
     let _ = swarm_event_tx.send(swarm_event(
         peer,
         swarm_id,
         SwarmEventType::StatusChange {
-            old_status: "queued".to_string(),
-            new_status: "completed".to_string(),
+            old_status: SwarmLifecycleStatus::Queued,
+            new_status: SwarmLifecycleStatus::Completed,
         },
     ));
 

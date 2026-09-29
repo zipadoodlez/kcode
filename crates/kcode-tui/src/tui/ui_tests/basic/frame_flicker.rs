@@ -126,7 +126,7 @@ fn test_active_swarm_spinner_keeps_redrawing_at_deep_idle() {
         crate::protocol::SwarmMemberStatus {
             session_id: format!("session-{status}"),
             friendly_name: Some("worker".to_string()),
-            status: status.to_string(),
+            status: status.into(),
             detail: None,
             task_label: None,
             role: None,

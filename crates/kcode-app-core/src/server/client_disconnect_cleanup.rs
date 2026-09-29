@@ -5,6 +5,7 @@ use super::{
     remove_session_from_swarm, remove_session_interrupt_queue, unregister_session_event_sender,
     update_member_status,
 };
+use crate::protocol::SwarmLifecycleStatus;
 use anyhow::Result;
 use kcode_agent_runtime::InterruptSignal;
 use std::collections::{HashMap, HashSet};
@@ -257,13 +258,18 @@ pub(super) async fn cleanup_client_connection(
 
     {
         let (status, detail) = match disposition {
-            DisconnectDisposition::Closed => ("stopped", Some("disconnected".to_string())),
-            DisconnectDisposition::Crashed => {
-                ("crashed", Some("disconnect while running".to_string()))
-            }
-            DisconnectDisposition::Reloading => {
-                ("stopped", Some("server reload in progress".to_string()))
-            }
+            DisconnectDisposition::Closed => (
+                SwarmLifecycleStatus::Stopped,
+                Some("disconnected".to_string()),
+            ),
+            DisconnectDisposition::Crashed => (
+                SwarmLifecycleStatus::Crashed,
+                Some("disconnect while running".to_string()),
+            ),
+            DisconnectDisposition::Reloading => (
+                SwarmLifecycleStatus::Stopped,
+                Some("server reload in progress".to_string()),
+            ),
         };
         update_member_status(
             client_session_id,

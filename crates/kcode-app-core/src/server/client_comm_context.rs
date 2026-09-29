@@ -224,7 +224,7 @@ pub(super) async fn handle_comm_list(
             session_id: String,
             friendly_name: Option<String>,
             files: Vec<String>,
-            status: String,
+            status: crate::protocol::SwarmLifecycleStatus,
             detail: Option<String>,
             task_label: Option<String>,
             role: String,
@@ -272,7 +272,7 @@ pub(super) async fn handle_comm_list(
         for m in statics {
             let extras = super::comm_sync::member_runtime_extras(
                 &m.session_id,
-                m.status == "running",
+                m.status == crate::protocol::SwarmLifecycleStatus::Running,
                 sessions,
                 client_connections,
             )

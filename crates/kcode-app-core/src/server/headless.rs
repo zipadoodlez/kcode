@@ -1,6 +1,7 @@
 use super::SessionAgents;
 use crate::agent::Agent;
 use crate::protocol::ServerEvent;
+use crate::protocol::SwarmLifecycleStatus;
 use crate::provider::Provider;
 use crate::server::{
     SessionInterruptQueues, SwarmMember, VersionedPlan, broadcast_swarm_status,
@@ -223,7 +224,7 @@ pub(super) async fn create_headless_session(
                 working_dir: working_dir.clone(),
                 swarm_id: swarm_id.clone(),
                 swarm_enabled,
-                status: "ready".to_string(),
+                status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 task_label: None,
                 friendly_name: Some(friendly_name.clone()),

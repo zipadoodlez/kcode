@@ -56,7 +56,7 @@ fn contended_data() -> InfoWidgetData {
                 crate::protocol::SwarmMemberStatus {
                     session_id: "worker-1".to_string(),
                     friendly_name: Some("worker-1".to_string()),
-                    status: "running".to_string(),
+                    status: "running".into(),
                     detail: None,
                     task_label: None,
                     role: Some("coordinator".to_string()),
@@ -72,7 +72,7 @@ fn contended_data() -> InfoWidgetData {
                 crate::protocol::SwarmMemberStatus {
                     session_id: "worker-2".to_string(),
                     friendly_name: Some("worker-2".to_string()),
-                    status: "blocked".to_string(),
+                    status: "blocked".into(),
                     detail: None,
                     task_label: None,
                     role: None,

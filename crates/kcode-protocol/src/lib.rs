@@ -19,6 +19,7 @@ pub use notifications::{FeatureToggle, NotificationType};
 use kcode_message_types::BatchProgress;
 use kcode_message_types::{InputShellResult, ToolCall};
 use kcode_plan::{PlanItem, VersionedPlan, next_runnable_item_ids, summarize_plan_graph};
+pub use kcode_session_types::SwarmLifecycleStatus;
 pub use side_panel::{
     PersistedSidePanelPage, PersistedSidePanelState, SidePanelPage, SidePanelPageFormat,
     SidePanelPageSource, SidePanelSnapshot, snapshot_is_empty,
@@ -224,7 +225,7 @@ pub struct AgentInfo {
     pub files_touched: Vec<String>,
     /// Current lifecycle status (ready, running, completed, failed, stopped, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status: Option<String>,
+    pub status: Option<SwarmLifecycleStatus>,
     /// Optional status detail (current task, error, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
@@ -299,7 +300,7 @@ pub struct AgentStatusSnapshot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swarm_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status: Option<String>,
+    pub status: Option<SwarmLifecycleStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -458,7 +459,7 @@ pub struct SwarmMemberStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub friendly_name: Option<String>,
     /// Lifecycle status (ready, running, completed, failed, stopped, etc.)
-    pub status: String,
+    pub status: SwarmLifecycleStatus,
     /// Optional detail (task, error, etc.)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
@@ -568,7 +569,7 @@ pub struct AwaitedMemberStatus {
     pub session_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub friendly_name: Option<String>,
-    pub status: String,
+    pub status: SwarmLifecycleStatus,
     /// Whether this member reached the target status
     pub done: bool,
     /// Latest structured completion report submitted by this member, if any.

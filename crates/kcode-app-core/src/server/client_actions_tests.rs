@@ -6,6 +6,7 @@ use super::{
 };
 use crate::agent::Agent;
 use crate::message::{ContentBlock, Message, Role, StreamEvent, ToolDefinition};
+use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{FeatureToggle, ServerEvent};
 use crate::provider::{EventStream, Provider};
 use crate::server::{ClientConnectionInfo, SwarmMember};
@@ -388,7 +389,7 @@ async fn enabling_swarm_does_not_auto_elect_coordinator() {
             working_dir: Some(PathBuf::from("/tmp/kcode-passive-swarm")),
             swarm_id: None,
             swarm_enabled: false,
-            status: "ready".to_string(),
+            status: SwarmLifecycleStatus::Ready,
             detail: None,
             task_label: None,
             friendly_name: Some("duck".to_string()),
@@ -512,7 +513,7 @@ async fn notify_session_runs_scheduled_task_immediately_for_idle_live_session() 
             working_dir: None,
             swarm_id: None,
             swarm_enabled: false,
-            status: "ready".to_string(),
+            status: SwarmLifecycleStatus::Ready,
             detail: None,
             task_label: None,
             friendly_name: Some("otter".to_string()),
@@ -630,7 +631,7 @@ async fn notify_session_queues_soft_interrupt_when_live_session_is_busy() {
             working_dir: None,
             swarm_id: None,
             swarm_enabled: false,
-            status: "running".to_string(),
+            status: SwarmLifecycleStatus::Running,
             detail: None,
             task_label: None,
             friendly_name: Some("otter".to_string()),
@@ -716,7 +717,7 @@ fn live_member(session_id: &str) -> (SwarmMember, mpsc::UnboundedReceiver<Server
         working_dir: None,
         swarm_id: None,
         swarm_enabled: false,
-        status: "ready".to_string(),
+        status: SwarmLifecycleStatus::Ready,
         detail: None,
         task_label: None,
         friendly_name: Some("otter".to_string()),

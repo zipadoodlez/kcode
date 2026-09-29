@@ -81,6 +81,7 @@ use self::swarm_persistence::{
 use self::util::get_shared_mcp_pool;
 use crate::agent::Agent;
 use crate::bus::{Bus, BusEvent};
+use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{NotificationType, ServerEvent};
 use crate::provider::Provider;
 use crate::runtime_memory_log::{
@@ -167,8 +168,7 @@ async fn prune_expired_terminal_swarm_members(
         let removed_swarm_id = {
             let mut members = swarm_state.members.write().await;
             let still_expired = members.get(&session_id).is_some_and(|member| {
-                swarm::member_status_is_terminal(&member.status)
-                    && member.last_status_change.elapsed() >= retention
+                member.status.is_terminal() && member.last_status_change.elapsed() >= retention
             });
             if still_expired {
                 members
@@ -245,8 +245,7 @@ async fn reap_idle_spawned_workers(
             members.get(&session_id).is_some_and(|member| {
                 member.report_back_to_session_id.is_some()
                     && member.role != "coordinator"
-                    && (member.status == "ready"
-                        || swarm::member_status_is_terminal(&member.status))
+                    && (member.status == SwarmLifecycleStatus::Ready || member.status.is_terminal())
                     && member.last_status_change.elapsed() >= idle_after
             })
         };
@@ -334,11 +333,15 @@ pub(super) async fn remove_persisted_swarm_state_for(swarm_id: &str, swarm_state
     let _ = remove_swarm_state_if_version(swarm_id, &file_version);
 }
 
-fn headless_member_should_restore(status: &str, is_headless: bool) -> bool {
+fn headless_member_should_restore(status: &SwarmLifecycleStatus, is_headless: bool) -> bool {
     is_headless
         && !matches!(
             status,
-            "ready" | "completed" | "done" | "failed" | "stopped"
+            SwarmLifecycleStatus::Ready
+                | SwarmLifecycleStatus::Completed
+                | SwarmLifecycleStatus::Done
+                | SwarmLifecycleStatus::Failed
+                | SwarmLifecycleStatus::Stopped
         )
 }
 
@@ -881,7 +884,7 @@ impl Server {
                     ));
                     update_member_status(
                         &session_id,
-                        "failed",
+                        SwarmLifecycleStatus::Failed,
                         Some(truncate_detail(&error.to_string(), 120)),
                         &self.swarm_state.members,
                         &self.swarm_state.swarms_by_id,
@@ -981,7 +984,7 @@ impl Server {
                 stats.skipped += 1;
                 update_member_status(
                     &session_id,
-                    "ready",
+                    SwarmLifecycleStatus::Ready,
                     None,
                     &self.swarm_state.members,
                     &self.swarm_state.swarms_by_id,
@@ -1049,7 +1052,7 @@ impl Server {
                 }
                 update_member_status(
                     &session_id,
-                    "running",
+                    SwarmLifecycleStatus::Running,
                     Some("resuming after reload".to_string()),
                     &recover_swarm_members,
                     &recover_swarms_by_id,
@@ -1112,7 +1115,7 @@ impl Server {
                             "resumed",
                             "continuation dispatched successfully",
                         );
-                        ("ready", None)
+                        (SwarmLifecycleStatus::Ready, None)
                     }
                     Err(error) => {
                         if let Some(reload_id) = recovery_reload_id.as_deref() {
@@ -1132,7 +1135,10 @@ impl Server {
                             "failed",
                             &error.to_string(),
                         );
-                        ("failed", Some(truncate_detail(&error.to_string(), 120)))
+                        (
+                            SwarmLifecycleStatus::Failed,
+                            Some(truncate_detail(&error.to_string(), 120)),
+                        )
                     }
                 };
                 update_member_status(
@@ -1816,7 +1822,9 @@ impl Server {
         swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     ) -> bool {
         let members = swarm_members.read().await;
-        members.values().any(|member| member.status == "running")
+        members
+            .values()
+            .any(|member| member.status == SwarmLifecycleStatus::Running)
     }
 
     /// Monitor the global Bus for FileTouch events and detect conflicts

@@ -68,27 +68,27 @@ async fn await_members_includes_late_joiners_when_watching_swarm() {
         members
             .get_mut(initial_peer)
             .expect("initial peer exists")
-            .status = "completed".to_string();
+            .status = SwarmLifecycleStatus::Completed;
     }
     let _ = swarm_event_tx.send(swarm_event(
         initial_peer,
         swarm_id,
         SwarmEventType::StatusChange {
-            old_status: "running".to_string(),
-            new_status: "completed".to_string(),
+            old_status: SwarmLifecycleStatus::Running,
+            new_status: SwarmLifecycleStatus::Completed,
         },
     ));
 
     {
         let mut members = swarm_members.write().await;
-        members.get_mut(late_peer).expect("late peer exists").status = "completed".to_string();
+        members.get_mut(late_peer).expect("late peer exists").status = SwarmLifecycleStatus::Completed;
     }
     let _ = swarm_event_tx.send(swarm_event(
         late_peer,
         swarm_id,
         SwarmEventType::StatusChange {
-            old_status: "running".to_string(),
-            new_status: "completed".to_string(),
+            old_status: SwarmLifecycleStatus::Running,
+            new_status: SwarmLifecycleStatus::Completed,
         },
     ));
 

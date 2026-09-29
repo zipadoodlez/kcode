@@ -20,6 +20,7 @@ use super::{
 };
 use crate::agent::Agent;
 use crate::protocol::ServerEvent;
+use crate::protocol::SwarmLifecycleStatus;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -102,7 +103,7 @@ pub(super) async fn spawn_tracked_live_turn(
 ) {
     update_member_status(
         session_id,
-        "running",
+        SwarmLifecycleStatus::Running,
         status_detail,
         &swarm.members,
         &swarm.swarms_by_id,
@@ -150,7 +151,7 @@ pub(super) async fn spawn_tracked_live_turn(
             Ok(()) => {
                 update_member_status_with_report(
                     &session_id,
-                    "ready",
+                    SwarmLifecycleStatus::Ready,
                     None,
                     completion_report,
                     &swarm.members,
@@ -169,7 +170,7 @@ pub(super) async fn spawn_tracked_live_turn(
                 ));
                 update_member_status(
                     &session_id,
-                    "failed",
+                    SwarmLifecycleStatus::Failed,
                     Some(truncate_detail(&error.to_string(), 120)),
                     &swarm.members,
                     &swarm.swarms_by_id,

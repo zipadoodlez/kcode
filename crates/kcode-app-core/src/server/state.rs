@@ -1,10 +1,10 @@
 use crate::bus::FileOp;
 use crate::plan::VersionedPlan;
-use crate::protocol::ServerEvent;
+use crate::protocol::{ServerEvent, SwarmLifecycleStatus};
 use kcode_agent_runtime::{
     InterruptSignal, SoftInterruptMessage, SoftInterruptQueue, SoftInterruptSource,
 };
-use kcode_swarm_core::{SwarmLifecycleStatus, SwarmMemberRecord, SwarmRole};
+use kcode_swarm_core::{SwarmMemberRecord, SwarmRole};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -201,7 +201,7 @@ pub struct SwarmMember {
     /// Whether swarm coordination is enabled for this member
     pub swarm_enabled: bool,
     /// Lifecycle status (ready, running, completed, failed, stopped, etc.)
-    pub status: String,
+    pub status: SwarmLifecycleStatus,
     /// Optional detail (current task, error, etc.)
     pub detail: Option<String>,
     /// Stable, human-readable label of the task/role this member was spawned
@@ -246,7 +246,7 @@ impl SwarmMember {
             working_dir: self.working_dir.clone(),
             swarm_id: self.swarm_id.clone(),
             swarm_enabled: self.swarm_enabled,
-            status: SwarmLifecycleStatus::from(self.status.clone()),
+            status: self.status.clone(),
             detail: self.detail.clone(),
             task_label: self.task_label.clone(),
             friendly_name: self.friendly_name.clone(),
@@ -278,13 +278,13 @@ impl SwarmMember {
             working_dir: record.working_dir,
             swarm_id: record.swarm_id,
             swarm_enabled: record.swarm_enabled,
-            status: record.status.as_str().into_owned(),
+            status: record.status,
             detail: record.detail,
             task_label: record.task_label,
             friendly_name: record.friendly_name,
             report_back_to_session_id: record.report_back_to_session_id,
             latest_completion_report: record.latest_completion_report,
-            role: record.role.as_str().into_owned(),
+            role: record.role.as_str().to_string(),
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: record.is_headless,
@@ -340,8 +340,8 @@ pub enum SwarmEventType {
     ContextUpdate { swarm_id: String, key: String },
     /// Session status changed
     StatusChange {
-        old_status: String,
-        new_status: String,
+        old_status: SwarmLifecycleStatus,
+        new_status: SwarmLifecycleStatus,
     },
     /// Session joined/left swarm
     MemberChange {

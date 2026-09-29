@@ -245,14 +245,14 @@ fn test_comm_await_members_response_roundtrip() -> Result<()> {
             AwaitedMemberStatus {
                 session_id: "sess_a".to_string(),
                 friendly_name: Some("fox".to_string()),
-                status: "completed".to_string(),
+                status: crate::SwarmLifecycleStatus::Completed,
                 done: true,
                 completion_report: None,
             },
             AwaitedMemberStatus {
                 session_id: "sess_b".to_string(),
                 friendly_name: Some("wolf".to_string()),
-                status: "stopped".to_string(),
+                status: crate::SwarmLifecycleStatus::Stopped,
                 done: true,
                 completion_report: None,
             },
@@ -278,7 +278,7 @@ fn test_comm_await_members_response_roundtrip() -> Result<()> {
     assert_eq!(members.len(), 2);
     assert_eq!(members[0].friendly_name.as_deref(), Some("fox"));
     assert!(members[0].done);
-    assert_eq!(members[1].status, "stopped");
+    assert_eq!(members[1].status, crate::SwarmLifecycleStatus::Stopped);
     assert!(summary.contains("fox"));
     Ok(())
 }

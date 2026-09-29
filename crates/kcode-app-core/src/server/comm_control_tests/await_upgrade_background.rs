@@ -92,22 +92,22 @@ async fn await_members_blocking_to_background_upgrade_survives_waiter_disconnect
         peer,
         swarm_id,
         SwarmEventType::StatusChange {
-            old_status: "running".to_string(),
-            new_status: "working".to_string(),
+            old_status: SwarmLifecycleStatus::Running,
+            new_status: SwarmLifecycleStatus::Other("working".to_string()),
         },
     ));
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     {
         let mut members = swarm_members.write().await;
-        members.get_mut(peer).expect("peer exists").status = "completed".to_string();
+        members.get_mut(peer).expect("peer exists").status = SwarmLifecycleStatus::Completed;
     }
     let _ = swarm_event_tx.send(swarm_event(
         peer,
         swarm_id,
         SwarmEventType::StatusChange {
-            old_status: "running".to_string(),
-            new_status: "completed".to_string(),
+            old_status: SwarmLifecycleStatus::Running,
+            new_status: SwarmLifecycleStatus::Completed,
         },
     ));
 

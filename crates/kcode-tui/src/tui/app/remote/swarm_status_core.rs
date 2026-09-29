@@ -97,7 +97,7 @@ pub(in crate::tui::app) fn swarm_status_transition_notice(
             // New member: spawning is user/agent initiated and already visible.
             continue;
         };
-        if let Some(transition) = classify(prev_status, &member.status) {
+        if let Some(transition) = classify(prev_status, member.status.as_str()) {
             match buckets.iter_mut().find(|(t, _)| *t == transition) {
                 Some((_, names)) => names.push(member_label(member)),
                 None => buckets.push((transition, vec![member_label(member)])),
@@ -116,7 +116,10 @@ pub(in crate::tui::app) fn swarm_status_transition_notice(
 
     // Tail: the same "M/N active" tally the strip shows, or a wrap-up line
     // when nothing is working anymore.
-    let active = next.iter().filter(|m| is_active_status(&m.status)).count();
+    let active = next
+        .iter()
+        .filter(|m| is_active_status(m.status.as_str()))
+        .count();
     segments.push(if active > 0 {
         format!("{active}/{} active", next.len())
     } else {
@@ -135,7 +138,7 @@ mod tests {
         SwarmMemberStatus {
             session_id: id.to_string(),
             friendly_name: Some(id.to_string()),
-            status: status.to_string(),
+            status: status.into(),
             detail: None,
             task_label: None,
             role: None,

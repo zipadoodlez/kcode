@@ -14,6 +14,7 @@ use super::{
     update_member_status_with_report,
 };
 use crate::config::SwarmSpawnMode;
+use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{NotificationType, ServerEvent};
 use crate::provider::Provider;
 use crate::session::Session;
@@ -487,9 +488,15 @@ async fn register_visible_spawned_member(
         .map(|name| name.to_string())
         .unwrap_or_else(|| session_id.to_string());
     let (status, detail) = if has_startup_message {
-        ("running".to_string(), Some("startup queued".to_string()))
+        (
+            SwarmLifecycleStatus::Running,
+            Some("startup queued".to_string()),
+        )
     } else {
-        ("spawned".to_string(), Some("launching client".to_string()))
+        (
+            SwarmLifecycleStatus::Spawned,
+            Some("launching client".to_string()),
+        )
     };
 
     {
@@ -782,7 +789,7 @@ pub(super) async fn spawn_swarm_agent(
             tokio::spawn(async move {
                 update_member_status(
                     &sid_clone,
-                    "running",
+                    SwarmLifecycleStatus::Running,
                     Some(truncate_detail(&initial_msg, 120)),
                     &swarm_members2,
                     &swarms_by_id2,
@@ -814,8 +821,11 @@ pub(super) async fn spawn_swarm_agent(
                     None
                 };
                 let (new_status, new_detail) = match result {
-                    Ok(()) => ("ready", None),
-                    Err(ref error) => ("failed", Some(truncate_detail(&error.to_string(), 120))),
+                    Ok(()) => (SwarmLifecycleStatus::Ready, None),
+                    Err(ref error) => (
+                        SwarmLifecycleStatus::Failed,
+                        Some(truncate_detail(&error.to_string(), 120)),
+                    ),
                 };
                 update_member_status_with_report(
                     &sid_clone,
@@ -1217,13 +1227,6 @@ async fn resolve_stop_target_session(
     }
 }
 
-fn swarm_member_status_is_stale_for_coordination(status: &str) -> bool {
-    matches!(
-        status,
-        "crashed" | "failed" | "stopped" | "closed" | "disconnected"
-    )
-}
-
 #[allow(clippy::too_many_arguments)]
 async fn ensure_spawn_coordinator_swarm(
     id: u64,
@@ -1296,7 +1299,7 @@ async fn ensure_spawn_coordinator_swarm(
                 let unreachable = member.event_tx.is_closed()
                     && member.event_txs.values().all(|tx| tx.is_closed());
                 member.swarm_id.as_deref() == swarm_id.as_deref()
-                    && !swarm_member_status_is_stale_for_coordination(&member.status)
+                    && !member.status.is_dead()
                     && !unreachable
             })
         });

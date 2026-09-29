@@ -25,6 +25,7 @@ use super::{
     update_member_status_with_report_tldr,
 };
 use crate::config::SwarmSpawnMode;
+use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{Request, ServerEvent};
 use crate::provider::Provider;
 use anyhow::Result;
@@ -582,7 +583,7 @@ pub(super) async fn handle_lightweight_control_request(
             follow_up,
             tldr,
         } => {
-            let status = status.unwrap_or_else(|| "ready".to_string());
+            let status = SwarmLifecycleStatus::from(status.unwrap_or_else(|| "ready".to_string()));
             let report = format_structured_completion_report(
                 &message,
                 validation.as_deref(),
@@ -591,7 +592,7 @@ pub(super) async fn handle_lightweight_control_request(
             let detail = Some(truncate_detail(&message, 160));
             update_member_status_with_report_tldr(
                 &req_session_id,
-                &status,
+                status.clone(),
                 detail,
                 Some(report.clone()),
                 tldr,
@@ -604,7 +605,7 @@ pub(super) async fn handle_lightweight_control_request(
             .await;
             let _ = client_event_tx.send(ServerEvent::CommReportResponse {
                 id,
-                status,
+                status: status.to_string(),
                 message: "Report recorded and delivered to the coordinator when applicable."
                     .to_string(),
             });

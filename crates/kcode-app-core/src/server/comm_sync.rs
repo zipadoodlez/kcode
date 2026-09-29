@@ -2,6 +2,7 @@ use super::{
     ClientConnectionInfo, FileTouchService, SessionAgents, SwarmEvent, SwarmEventType, SwarmMember,
     SwarmState, VersionedPlan, broadcast_swarm_plan, persist_swarm_state_for, record_swarm_event,
 };
+use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{
     AgentStatusSnapshot, NotificationType, PlanGraphStatus, ServerEvent, SessionActivitySnapshot,
 };
@@ -288,7 +289,11 @@ pub(super) async fn handle_comm_status(
 
         let activity = {
             let connections = client_connections.read().await;
-            live_activity_snapshot(&connections, &target_session, member.status == "running")
+            live_activity_snapshot(
+                &connections,
+                &target_session,
+                member.status == SwarmLifecycleStatus::Running,
+            )
         };
 
         let (provider_name, provider_model) = {

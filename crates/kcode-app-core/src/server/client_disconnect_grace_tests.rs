@@ -3,6 +3,7 @@
 use super::*;
 use crate::agent::Agent;
 use crate::protocol::ServerEvent;
+use crate::protocol::SwarmLifecycleStatus;
 use crate::provider::{EventStream, Provider};
 use crate::session::{Session, SessionStatus};
 use crate::tool::Registry;
@@ -85,7 +86,7 @@ impl Fixture {
                 working_dir: None,
                 swarm_id: None,
                 swarm_enabled: false,
-                status: "ready".into(),
+                status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 task_label: None,
                 friendly_name: None,

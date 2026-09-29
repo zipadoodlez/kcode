@@ -1,6 +1,7 @@
 use super::{handle_comm_list, handle_comm_message};
 use crate::agent::Agent;
 use crate::message::{Message, ToolDefinition};
+use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{CommDeliveryMode, NotificationType, ServerEvent};
 use crate::provider::{EventStream, Provider};
 use crate::server::{ClientConnectionInfo, SessionInterruptQueues, SwarmEvent, SwarmMember};
@@ -73,7 +74,7 @@ async fn comm_message_default_does_not_queue_soft_interrupt_for_connected_sessio
                 working_dir: None,
                 swarm_id: Some(swarm_id.clone()),
                 swarm_enabled: true,
-                status: "ready".to_string(),
+                status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("falcon".to_string()),
                 report_back_to_session_id: None,
@@ -98,7 +99,7 @@ async fn comm_message_default_does_not_queue_soft_interrupt_for_connected_sessio
                 working_dir: None,
                 swarm_id: Some(swarm_id.clone()),
                 swarm_enabled: true,
-                status: "ready".to_string(),
+                status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("bear".to_string()),
                 report_back_to_session_id: None,
@@ -237,7 +238,7 @@ async fn comm_message_with_wake_queues_soft_interrupt_for_busy_connected_session
                 working_dir: None,
                 swarm_id: Some(swarm_id.clone()),
                 swarm_enabled: true,
-                status: "ready".to_string(),
+                status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("falcon".to_string()),
                 report_back_to_session_id: None,
@@ -262,7 +263,7 @@ async fn comm_message_with_wake_queues_soft_interrupt_for_busy_connected_session
                 working_dir: None,
                 swarm_id: Some(swarm_id.clone()),
                 swarm_enabled: true,
-                status: "ready".to_string(),
+                status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("bear".to_string()),
                 report_back_to_session_id: None,
@@ -390,7 +391,7 @@ async fn comm_list_includes_member_status_and_detail() {
                 working_dir: None,
                 swarm_id: Some(swarm_id.clone()),
                 swarm_enabled: true,
-                status: "ready".to_string(),
+                status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("falcon".to_string()),
                 report_back_to_session_id: None,
@@ -415,7 +416,7 @@ async fn comm_list_includes_member_status_and_detail() {
                 working_dir: None,
                 swarm_id: Some(swarm_id.clone()),
                 swarm_enabled: true,
-                status: "running".to_string(),
+                status: SwarmLifecycleStatus::Running,
                 detail: Some("working on tests".to_string()),
                 friendly_name: Some("bear".to_string()),
                 report_back_to_session_id: None,
@@ -462,7 +463,7 @@ async fn comm_list_includes_member_status_and_detail() {
                 .into_iter()
                 .find(|member| member.friendly_name.as_deref() == Some("bear"))
                 .expect("peer entry present");
-            assert_eq!(peer.status.as_deref(), Some("running"));
+            assert_eq!(peer.status, Some(SwarmLifecycleStatus::Running));
             assert_eq!(peer.detail.as_deref(), Some("working on tests"));
         }
         other => panic!("unexpected response: {other:?}"),
@@ -498,7 +499,7 @@ async fn comm_message_accepts_friendly_name_dm_target() {
                 working_dir: None,
                 swarm_id: Some(swarm_id.clone()),
                 swarm_enabled: true,
-                status: "ready".to_string(),
+                status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("falcon".to_string()),
                 report_back_to_session_id: None,
@@ -523,7 +524,7 @@ async fn comm_message_accepts_friendly_name_dm_target() {
                 working_dir: None,
                 swarm_id: Some(swarm_id.clone()),
                 swarm_enabled: true,
-                status: "ready".to_string(),
+                status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("bear".to_string()),
                 report_back_to_session_id: None,
@@ -633,7 +634,7 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
                 working_dir: None,
                 swarm_id: Some(swarm_id.clone()),
                 swarm_enabled: true,
-                status: "ready".to_string(),
+                status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("falcon".to_string()),
                 report_back_to_session_id: None,
@@ -658,7 +659,7 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
                 working_dir: None,
                 swarm_id: Some(swarm_id.clone()),
                 swarm_enabled: true,
-                status: "ready".to_string(),
+                status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("bear".to_string()),
                 report_back_to_session_id: None,
@@ -683,7 +684,7 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
                 working_dir: None,
                 swarm_id: Some(swarm_id.clone()),
                 swarm_enabled: true,
-                status: "ready".to_string(),
+                status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("bear".to_string()),
                 report_back_to_session_id: None,
@@ -770,7 +771,7 @@ async fn comm_broadcast_reaches_only_senders_spawned_subtree() {
                 working_dir: None,
                 swarm_id: Some(swarm_id.to_string()),
                 swarm_enabled: true,
-                status: "ready".to_string(),
+                status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some(session_id.to_string()),
                 report_back_to_session_id: report_back_to.map(str::to_string),

@@ -9,6 +9,7 @@ use super::{
     truncate_detail, update_member_status,
 };
 use crate::agent::Agent;
+use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{FeatureToggle, NotificationType, ServerEvent};
 use crate::session::Session;
 use crate::util::truncate_str;
@@ -980,7 +981,7 @@ pub(super) async fn handle_agent_task(
 ) {
     update_member_status(
         client_session_id,
-        "running",
+        SwarmLifecycleStatus::Running,
         Some(truncate_detail(&task, 120)),
         ctx.swarm_members,
         ctx.swarms_by_id,
@@ -1002,7 +1003,7 @@ pub(super) async fn handle_agent_task(
         Ok(()) => {
             update_member_status(
                 client_session_id,
-                "completed",
+                SwarmLifecycleStatus::Completed,
                 None,
                 ctx.swarm_members,
                 ctx.swarms_by_id,
@@ -1016,7 +1017,7 @@ pub(super) async fn handle_agent_task(
         Err(e) => {
             update_member_status(
                 client_session_id,
-                "failed",
+                SwarmLifecycleStatus::Failed,
                 Some(truncate_detail(&e.to_string(), 120)),
                 ctx.swarm_members,
                 ctx.swarms_by_id,

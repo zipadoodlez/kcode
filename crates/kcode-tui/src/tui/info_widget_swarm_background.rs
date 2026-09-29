@@ -99,7 +99,7 @@ fn swarm_member_line(member: &SwarmMemberStatus, max_width: usize) -> Line<'stat
     }
     let role_prefix = swarm_role_prefix(member);
     let line_text = truncate_smart(&format!("{} {}{}", name, member.status, detail), max_width);
-    let (color, icon) = swarm_status_style(&member.status);
+    let (color, icon) = swarm_status_style(member.status.as_str());
     Line::from(vec![
         Span::styled(
             role_prefix.to_string(),

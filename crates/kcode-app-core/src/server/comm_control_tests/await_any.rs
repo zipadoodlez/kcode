@@ -45,14 +45,14 @@ async fn await_members_any_mode_returns_after_first_match() {
 
     {
         let mut members = swarm_members.write().await;
-        members.get_mut(peer_a).expect("peer a exists").status = "completed".to_string();
+        members.get_mut(peer_a).expect("peer a exists").status = SwarmLifecycleStatus::Completed;
     }
     let _ = swarm_event_tx.send(swarm_event(
         peer_a,
         swarm_id,
         SwarmEventType::StatusChange {
-            old_status: "running".to_string(),
-            new_status: "completed".to_string(),
+            old_status: SwarmLifecycleStatus::Running,
+            new_status: SwarmLifecycleStatus::Completed,
         },
     ));
 

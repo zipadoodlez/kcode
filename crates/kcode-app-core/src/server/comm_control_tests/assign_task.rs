@@ -103,7 +103,7 @@ async fn assign_task_without_task_id_picks_highest_priority_runnable_task() {
     let members = swarm_members.read().await;
     let worker_member = members.get(worker).expect("worker member exists");
     assert_eq!(
-        worker_member.status, "queued",
+        worker_member.status, SwarmLifecycleStatus::Queued,
         "assigned worker should stop looking completed/ready before async execution starts"
     );
 }
@@ -186,7 +186,7 @@ async fn assign_task_marks_completed_worker_queued_before_returning() {
 
     let members = swarm_members.read().await;
     let worker_member = members.get(worker).expect("worker member exists");
-    assert_eq!(worker_member.status, "queued");
+    assert_eq!(worker_member.status, SwarmLifecycleStatus::Queued);
     assert!(
         worker_member
             .detail

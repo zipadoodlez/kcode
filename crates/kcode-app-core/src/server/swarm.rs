@@ -4,7 +4,7 @@ use super::{SwarmEvent, SwarmEventType, SwarmMember, SwarmState, VersionedPlan};
 use super::{persist_swarm_state_for, remove_persisted_swarm_state_for};
 use crate::agent::Agent;
 use crate::plan::{PlanItem, newly_ready_item_ids};
-use crate::protocol::{NotificationType, ServerEvent};
+use crate::protocol::{NotificationType, ServerEvent, SwarmLifecycleStatus};
 use crate::session::Session;
 use anyhow::Result;
 use futures::future::try_join_all;
@@ -212,21 +212,11 @@ pub(super) fn swarm_status_broadcast_terminal_retention() -> Duration {
 /// plus terminal members whose status changed recently enough that clients may
 /// still want to announce or display the transition.
 pub(super) fn member_in_status_broadcast(member: &SwarmMember, retention: Duration) -> bool {
-    !member_status_is_terminal(&member.status) || member.last_status_change.elapsed() < retention
-}
-
-/// Terminal members are historical records, not live agents. They remain
-/// visible temporarily for reports and diagnostics but must not consume the
-/// runaway-prevention spawn budget.
-pub(super) fn member_status_is_terminal(status: &str) -> bool {
-    matches!(
-        status,
-        "completed" | "done" | "failed" | "stopped" | "crashed" | "closed" | "disconnected"
-    )
+    !member.status.is_terminal() || member.last_status_change.elapsed() < retention
 }
 
 pub(super) fn member_consumes_swarm_capacity(member: &SwarmMember) -> bool {
-    !member_status_is_terminal(&member.status)
+    !member.status.is_terminal()
 }
 
 pub(super) fn expired_terminal_member_ids(
@@ -235,17 +225,10 @@ pub(super) fn expired_terminal_member_ids(
 ) -> Vec<String> {
     members
         .values()
-        .filter(|member| member_status_is_terminal(&member.status))
+        .filter(|member| member.status.is_terminal())
         .filter(|member| member.last_status_change.elapsed() >= retention)
         .map(|member| member.session_id.clone())
         .collect()
-}
-
-/// Lifecycle statuses that mean a member can no longer drive an assignment:
-/// the session's agent loop is gone, so no heartbeat or turn end will ever
-/// arrive for tasks it holds.
-pub(super) fn member_status_is_dead(status: &str) -> bool {
-    matches!(status, "failed" | "stopped" | "crashed")
 }
 
 /// How long a finished spawned worker may sit idle before the server reaps it
@@ -278,7 +261,9 @@ pub(super) fn idle_spawned_worker_reap_candidates(
         .values()
         .filter(|member| member.report_back_to_session_id.is_some())
         .filter(|member| member.role != "coordinator")
-        .filter(|member| member.status == "ready" || member_status_is_terminal(&member.status))
+        .filter(|member| {
+            member.status == SwarmLifecycleStatus::Ready || member.status.is_terminal()
+        })
         .filter(|member| member.last_status_change.elapsed() >= idle_after)
         .map(|member| member.session_id.clone())
         .collect()
@@ -640,7 +625,7 @@ pub(super) async fn refresh_swarm_task_staleness(
                 let assignee_is_dead = match members.get(assignee) {
                     None => true,
                     Some(member) => {
-                        member_status_is_dead(&member.status)
+                        member.status.is_dead()
                             && member.last_status_change.elapsed() >= salvage_grace
                     }
                 };
@@ -1284,7 +1269,7 @@ pub(super) async fn record_swarm_event_for_session(
 )]
 pub(super) async fn update_member_status(
     session_id: &str,
-    status: &str,
+    status: SwarmLifecycleStatus,
     detail: Option<String>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
@@ -1312,7 +1297,7 @@ pub(super) async fn update_member_status(
 )]
 pub(super) async fn update_member_status_with_report(
     session_id: &str,
-    status: &str,
+    status: SwarmLifecycleStatus,
     detail: Option<String>,
     completion_report: Option<String>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
@@ -1342,7 +1327,7 @@ pub(super) async fn update_member_status_with_report(
 )]
 pub(super) async fn update_member_status_with_report_tldr(
     session_id: &str,
-    status: &str,
+    status: SwarmLifecycleStatus,
     detail: Option<String>,
     completion_report: Option<String>,
     report_tldr: Option<String>,
@@ -1373,27 +1358,21 @@ pub(super) async fn update_member_status_with_report_tldr(
             let member_changed = status_changed || detail_changed || report_changed;
             if status_changed {
                 member.last_status_change = Instant::now();
-                if matches!(status, "running" | "streaming" | "thinking") {
+                if status.is_active() {
                     member.runtime.elapsed_secs = None;
-                } else if matches!(
-                    previous_status.as_str(),
-                    "running" | "streaming" | "thinking"
-                ) {
+                } else if previous_status.is_active() {
                     member.runtime.elapsed_secs = Some(member.joined_at.elapsed().as_secs());
                 }
             }
             let name = member.friendly_name.clone();
             let is_headless = member.is_headless;
             let report_back_to_session_id = member.report_back_to_session_id.clone();
-            member.status = status.to_string();
+            member.status = status.clone();
             member.detail = detail;
             // Clear any live output tail when the worker reaches a terminal or
             // idle state so the inline gallery viewport doesn't keep showing
             // stale in-progress text after the turn finishes.
-            if matches!(
-                status,
-                "ready" | "completed" | "done" | "failed" | "crashed" | "stopped"
-            ) {
+            if status.is_terminal() || matches!(status, SwarmLifecycleStatus::Ready) {
                 member.output_tail = None;
             }
             if completion_report.is_some() {
@@ -1409,7 +1388,15 @@ pub(super) async fn update_member_status_with_report_tldr(
                 report_back_to_session_id,
             )
         } else {
-            (None, None, false, false, String::new(), false, None)
+            (
+                None,
+                None,
+                false,
+                false,
+                SwarmLifecycleStatus::Ready,
+                false,
+                None,
+            )
         }
     };
     if let Some(ref id) = swarm_id {
@@ -1422,7 +1409,7 @@ pub(super) async fn update_member_status_with_report_tldr(
             vec![
                 ("session_id", session_id.to_string()),
                 ("swarm_id", id.clone()),
-                ("old_status", old_status.clone()),
+                ("old_status", old_status.to_string()),
                 ("new_status", status.to_string()),
                 ("status_changed", status_changed.to_string()),
                 ("detail_present", detail_present.to_string()),
@@ -1452,7 +1439,7 @@ pub(super) async fn update_member_status_with_report_tldr(
                 Some(id.clone()),
                 SwarmEventType::StatusChange {
                     old_status: old_status.clone(),
-                    new_status: status.to_string(),
+                    new_status: status.clone(),
                 },
             )
             .await;
@@ -1461,19 +1448,20 @@ pub(super) async fn update_member_status_with_report_tldr(
         broadcast_swarm_status(id, swarm_members, swarms_by_id).await;
 
         let should_notify_coordinator = status_changed
-            && ((status == "completed")
+            && ((status == SwarmLifecycleStatus::Completed)
                 || (report_back_to_session_id.is_some()
-                    && old_status == "running"
-                    && matches!(status, "ready" | "failed" | "stopped"))
+                    && old_status == SwarmLifecycleStatus::Running
+                    && matches!(
+                        status,
+                        SwarmLifecycleStatus::Ready
+                            | SwarmLifecycleStatus::Failed
+                            | SwarmLifecycleStatus::Stopped
+                    ))
                 // A crash is never routine: notify whoever is responsible
                 // (owner, else coordinator) whenever a member dies while it
                 // was doing or holding work, so worker deaths cannot pass
                 // silently.
-                || (status == "crashed"
-                    && matches!(
-                        old_status.as_str(),
-                        "running" | "running_stale" | "queued"
-                    )));
+                || (status == SwarmLifecycleStatus::Crashed && old_status.is_in_flight()));
         if should_notify_coordinator {
             let fallback_coordinator_id =
                 if report_back_to_session_id.as_deref() == Some(session_id) {
@@ -1497,8 +1485,11 @@ pub(super) async fn update_member_status_with_report_tldr(
                 let name = agent_name
                     .as_deref()
                     .unwrap_or(&session_id[..8.min(session_id.len())]);
-                let msg =
-                    completion_notification_message(name, status, completion_report.as_deref());
+                let msg = completion_notification_message(
+                    name,
+                    status.as_str(),
+                    completion_report.as_deref(),
+                );
                 let _ = fanout_session_event(
                     swarm_members,
                     &recipient_session_id,
@@ -1721,13 +1712,13 @@ fn parse_swarm_tasks(text: &str) -> Vec<SwarmTaskSpec> {
 mod tests {
     use super::{
         broadcast_swarm_plan, broadcast_swarm_plan_with_previous, broadcast_swarm_status,
-        member_in_status_broadcast, member_status_is_dead, now_unix_ms, parse_swarm_tasks,
-        refresh_swarm_task_staleness, remove_session_from_swarm,
-        salvage_assignments_of_dead_member, swarm_ancestors, swarm_is_self_or_ancestor,
-        swarm_spawn_depth, touch_swarm_task_progress, update_member_status,
-        update_member_status_with_report,
+        member_in_status_broadcast, now_unix_ms, parse_swarm_tasks, refresh_swarm_task_staleness,
+        remove_session_from_swarm, salvage_assignments_of_dead_member, swarm_ancestors,
+        swarm_is_self_or_ancestor, swarm_spawn_depth, touch_swarm_task_progress,
+        update_member_status, update_member_status_with_report,
     };
     use crate::plan::PlanItem;
+    use crate::protocol::SwarmLifecycleStatus;
     use crate::protocol::{NotificationType, ServerEvent};
     use crate::server::{SwarmMember, VersionedPlan};
     use kcode_swarm_core::{
@@ -1810,7 +1801,7 @@ mod tests {
                 working_dir: None,
                 swarm_id: Some("swarm-1".to_string()),
                 swarm_enabled: true,
-                status: "ready".to_string(),
+                status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 task_label: None,
                 friendly_name: Some(session_id.to_string()),
@@ -1844,32 +1835,32 @@ mod tests {
 
         // Finished spawned worker, idle past the window: reapable.
         let mut reapable = member_with_parent("reapable", Some("coord"));
-        reapable.status = "ready".to_string();
+        reapable.status = SwarmLifecycleStatus::Ready;
         reapable.last_status_change = old;
 
         // Terminal-status spawned worker: reapable.
         let mut stopped = member_with_parent("stopped", Some("coord"));
-        stopped.status = "completed".to_string();
+        stopped.status = SwarmLifecycleStatus::Completed;
         stopped.last_status_change = old;
 
         // Same shape but user-created (no spawner): never reaped.
         let mut user_owned = member_with_parent("user-owned", None);
-        user_owned.status = "ready".to_string();
+        user_owned.status = SwarmLifecycleStatus::Ready;
         user_owned.last_status_change = old;
 
         // Spawned but still running: not reaped.
         let mut running = member_with_parent("running", Some("coord"));
-        running.status = "running".to_string();
+        running.status = SwarmLifecycleStatus::Running;
         running.last_status_change = old;
 
         // Spawned and finished, but recently: not reaped yet.
         let mut fresh = member_with_parent("fresh", Some("coord"));
-        fresh.status = "ready".to_string();
+        fresh.status = SwarmLifecycleStatus::Ready;
 
         // Spawned coordinator (sub-swarm manager): never reaped by role.
         let mut sub_coordinator = member_with_parent("sub-coord", Some("coord"));
         sub_coordinator.role = "coordinator".to_string();
-        sub_coordinator.status = "ready".to_string();
+        sub_coordinator.status = SwarmLifecycleStatus::Ready;
         sub_coordinator.last_status_change = old;
 
         let members: HashMap<String, SwarmMember> = [
@@ -1922,11 +1913,11 @@ mod tests {
         assert!(member_in_status_broadcast(&live, retention));
 
         let (mut fresh_terminal, _rx) = swarm_member("fresh", "agent", false);
-        fresh_terminal.status = "completed".to_string();
+        fresh_terminal.status = SwarmLifecycleStatus::Completed;
         assert!(member_in_status_broadcast(&fresh_terminal, retention));
 
         let (mut stale_terminal, _rx) = swarm_member("stale", "agent", false);
-        stale_terminal.status = "stopped".to_string();
+        stale_terminal.status = SwarmLifecycleStatus::Stopped;
         stale_terminal.last_status_change = Instant::now() - Duration::from_secs(901);
         assert!(!member_in_status_broadcast(&stale_terminal, retention));
 
@@ -2230,7 +2221,8 @@ mod tests {
         // immediate broadcast while A is parked between snapshot and send.
         {
             let mut members = swarm_members.write().await;
-            members.get_mut("worker").expect("worker member").status = "running".to_string();
+            members.get_mut("worker").expect("worker member").status =
+                SwarmLifecycleStatus::Running;
         }
         broadcast_swarm_status("swarm-1", &swarm_members, &swarms_by_id).await;
 
@@ -2248,7 +2240,7 @@ mod tests {
         }
         assert_eq!(
             statuses,
-            vec!["running".to_string(), "ready".to_string()],
+            vec![SwarmLifecycleStatus::Running, SwarmLifecycleStatus::Ready],
             "expected status inversion (new-then-old) on one member channel; \
              if this fails with the correct order, the snapshot-vs-send race \
              may have been fixed (update the wiring audit)"
@@ -2527,7 +2519,7 @@ mod tests {
 
         let (coord, mut coord_rx) = swarm_member("coord", "coordinator", false);
         let (mut worker, _worker_rx) = swarm_member("worker", "agent", true);
-        worker.status = "running".to_string();
+        worker.status = SwarmLifecycleStatus::Running;
         worker.detail = Some("doing task".to_string());
         worker.report_back_to_session_id = Some("coord".to_string());
         {
@@ -2538,7 +2530,7 @@ mod tests {
 
         update_member_status(
             "worker",
-            "ready",
+            SwarmLifecycleStatus::Ready,
             None,
             &swarm_members,
             &swarms_by_id,
@@ -2577,7 +2569,7 @@ mod tests {
 
         update_member_status(
             "worker",
-            "running",
+            SwarmLifecycleStatus::Running,
             None,
             &swarm_members,
             &swarms_by_id,
@@ -2602,7 +2594,7 @@ mod tests {
         }
         update_member_status(
             "worker",
-            "completed",
+            SwarmLifecycleStatus::Completed,
             None,
             &swarm_members,
             &swarms_by_id,
@@ -2645,7 +2637,7 @@ mod tests {
         let (coord, mut coord_rx) = swarm_member("coord", "coordinator", false);
         let (owner, mut owner_rx) = swarm_member("owner", "agent", false);
         let (mut worker, _worker_rx) = swarm_member("worker", "agent", true);
-        worker.status = "running".to_string();
+        worker.status = SwarmLifecycleStatus::Running;
         worker.detail = Some("doing task".to_string());
         worker.report_back_to_session_id = Some("owner".to_string());
         {
@@ -2657,7 +2649,7 @@ mod tests {
 
         update_member_status(
             "worker",
-            "ready",
+            SwarmLifecycleStatus::Ready,
             None,
             &swarm_members,
             &swarms_by_id,
@@ -2701,7 +2693,7 @@ mod tests {
 
         let (coord, mut coord_rx) = swarm_member("coord", "coordinator", false);
         let (mut worker, _worker_rx) = swarm_member("worker", "agent", true);
-        worker.status = "running".to_string();
+        worker.status = SwarmLifecycleStatus::Running;
         worker.report_back_to_session_id = Some("coord".to_string());
         {
             let mut members = swarm_members.write().await;
@@ -2711,7 +2703,7 @@ mod tests {
 
         update_member_status_with_report(
             "worker",
-            "ready",
+            SwarmLifecycleStatus::Ready,
             None,
             Some("Validated the parser and all tests passed.".to_string()),
             &swarm_members,
@@ -2752,7 +2744,7 @@ mod tests {
 
         update_member_status(
             "worker",
-            "ready",
+            SwarmLifecycleStatus::Ready,
             None,
             &swarm_members,
             &swarms_by_id,
@@ -2766,7 +2758,7 @@ mod tests {
 
         update_member_status(
             "worker",
-            "busy",
+            SwarmLifecycleStatus::Other("busy".to_string()),
             Some("working".to_string()),
             &swarm_members,
             &swarms_by_id,
@@ -2780,7 +2772,7 @@ mod tests {
             worker_rx.try_recv(),
             Ok(ServerEvent::SwarmStatus { members }) if members.len() == 1
                 && members[0].session_id == "worker"
-                && members[0].status == "busy"
+                && members[0].status == SwarmLifecycleStatus::Other("busy".to_string())
                 && members[0].detail.as_deref() == Some("working")
         ));
     }
@@ -2872,16 +2864,6 @@ mod tests {
             Some("checkpoint saved")
         );
         assert!(progress.stale_since_unix_ms.is_none());
-    }
-
-    #[test]
-    fn member_status_is_dead_matches_terminal_non_success_states() {
-        for status in ["failed", "stopped", "crashed"] {
-            assert!(member_status_is_dead(status), "{status} should be dead");
-        }
-        for status in ["ready", "running", "running_stale", "queued", "completed"] {
-            assert!(!member_status_is_dead(status), "{status} should be alive");
-        }
     }
 
     fn running_plan_assigned_to(
@@ -3101,7 +3083,7 @@ mod tests {
             progress.last_heartbeat_unix_ms = Some(now_unix_ms());
         }
         let (mut worker, _worker_rx) = swarm_member("worker", "agent", true);
-        worker.status = "crashed".to_string();
+        worker.status = SwarmLifecycleStatus::Crashed;
         worker.last_status_change = Instant::now();
         swarm_members
             .write()
@@ -3131,7 +3113,7 @@ mod tests {
         )])));
         let (owner, mut owner_rx) = swarm_member("owner", "coordinator", false);
         let (mut worker, _worker_rx) = swarm_member("worker", "agent", true);
-        worker.status = "running".to_string();
+        worker.status = SwarmLifecycleStatus::Running;
         worker.report_back_to_session_id = Some("owner".to_string());
         {
             let mut members = swarm_members.write().await;
@@ -3141,7 +3123,7 @@ mod tests {
 
         update_member_status(
             "worker",
-            "crashed",
+            SwarmLifecycleStatus::Crashed,
             Some("client disconnected while processing".to_string()),
             &swarm_members,
             &swarms_by_id,

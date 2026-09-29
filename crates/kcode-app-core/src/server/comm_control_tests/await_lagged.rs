@@ -55,15 +55,15 @@ async fn await_members_watcher_survives_broadcast_lag() {
     // parked watcher observes RecvError::Lagged instead of the actual events.
     {
         let mut members = swarm_members.write().await;
-        members.get_mut(peer).expect("peer exists").status = "completed".to_string();
+        members.get_mut(peer).expect("peer exists").status = SwarmLifecycleStatus::Completed;
     }
     for _ in 0..4 {
         let _ = swarm_event_tx.send(swarm_event(
             peer,
             swarm_id,
             SwarmEventType::StatusChange {
-                old_status: "running".to_string(),
-                new_status: "completed".to_string(),
+                old_status: SwarmLifecycleStatus::Running,
+                new_status: SwarmLifecycleStatus::Completed,
             },
         ));
     }

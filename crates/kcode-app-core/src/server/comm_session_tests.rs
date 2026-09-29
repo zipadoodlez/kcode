@@ -8,6 +8,7 @@ use super::{
 };
 use crate::agent::Agent;
 use crate::message::{Message, ToolDefinition};
+use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{NotificationType, ServerEvent};
 use crate::provider::{EventStream, Provider};
 use crate::server::{SwarmEventType, SwarmMember, VersionedPlan};
@@ -57,7 +58,7 @@ fn member(
             working_dir: None,
             swarm_id: swarm_id.map(|id| id.to_string()),
             swarm_enabled: true,
-            status: "ready".to_string(),
+            status: SwarmLifecycleStatus::Ready,
             detail: None,
             friendly_name: Some(session_id.to_string()),
             report_back_to_session_id: None,
@@ -215,7 +216,7 @@ async fn register_visible_spawned_member_marks_startup_as_running() {
 
     let members = swarm_members.read().await;
     let member = members.get("child-1").expect("spawned member should exist");
-    assert_eq!(member.status, "running");
+    assert_eq!(member.status, SwarmLifecycleStatus::Running);
     assert_eq!(member.detail.as_deref(), Some("startup queued"));
     assert_eq!(member.swarm_id.as_deref(), Some("swarm-1"));
     assert_eq!(
@@ -1087,9 +1088,9 @@ async fn terminal_members_do_not_consume_spawn_capacity() {
             let id = format!("historical-{idx}");
             let (mut historical, _rx) = member(&id, Some("swarm-1"), "agent");
             historical.status = if idx % 2 == 0 {
-                "completed".to_string()
+                SwarmLifecycleStatus::Completed
             } else {
-                "stopped".to_string()
+                SwarmLifecycleStatus::Stopped
             };
             historical.latest_completion_report = Some(format!("report {idx}"));
             historical.report_back_to_session_id = Some("root".to_string());

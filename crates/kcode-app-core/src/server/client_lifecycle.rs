@@ -55,6 +55,7 @@ use super::{
 use crate::agent::Agent;
 use crate::bus::{Bus, BusEvent};
 use crate::id;
+use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{Request, ServerEvent, decode_request, encode_event};
 use crate::provider::Provider;
 use crate::tool::Registry;
@@ -2640,7 +2641,7 @@ pub(super) async fn handle_client(
                 follow_up,
                 tldr,
             } => {
-                let status = status.unwrap_or_else(|| "ready".to_string());
+                let status = SwarmLifecycleStatus::from(status.unwrap_or_else(|| "ready".to_string()));
                 let report = format_structured_completion_report(
                     &message,
                     validation.as_deref(),
@@ -2649,7 +2650,7 @@ pub(super) async fn handle_client(
                 let detail = Some(truncate_detail(&message, 160));
                 update_member_status_with_report_tldr(
                     &req_session_id,
-                    &status,
+                    status.clone(),
                     detail,
                     Some(report),
                     tldr,
@@ -2662,7 +2663,7 @@ pub(super) async fn handle_client(
                 .await;
                 let _ = client_event_tx.send(ServerEvent::CommReportResponse {
                     id,
-                    status,
+                    status: status.to_string(),
                     message: "Report recorded and delivered to the coordinator when applicable."
                         .to_string(),
                 });
@@ -3024,7 +3025,7 @@ async fn record_processing_completion(
             if let Some(session_id) = done_session {
                 update_member_status_with_report(
                     session_id,
-                    "ready",
+                    SwarmLifecycleStatus::Ready,
                     None,
                     completion_report,
                     swarm.members,
@@ -3040,7 +3041,7 @@ async fn record_processing_completion(
             if let Some(session_id) = done_session {
                 update_member_status(
                     session_id,
-                    "failed",
+                    SwarmLifecycleStatus::Failed,
                     Some(truncate_detail(&e.to_string(), 120)),
                     swarm.members,
                     swarm.swarms_by_id,
@@ -3171,7 +3172,7 @@ async fn start_processing_message(
 
     update_member_status(
         client_session_id,
-        "running",
+        SwarmLifecycleStatus::Running,
         Some(truncate_detail(&content, 120)),
         swarm.members,
         swarm.swarms_by_id,
@@ -3338,7 +3339,7 @@ async fn cancel_processing_message(
         if let Some(session_id) = state.session_id.take() {
             update_member_status(
                 &session_id,
-                "stopped",
+                SwarmLifecycleStatus::Stopped,
                 Some("cancelled".to_string()),
                 swarm.members,
                 swarm.swarms_by_id,
@@ -3406,7 +3407,7 @@ async fn cancel_processing_message(
             .unwrap_or_else(|| session_control.session_id.clone());
         update_member_status(
             &status_session_id,
-            "stopped",
+            SwarmLifecycleStatus::Stopped,
             Some("cancelled".to_string()),
             swarm.members,
             swarm.swarms_by_id,

@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use kcode_message_types::{ContentBlock, Message, Role, ToolCall};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -933,11 +932,11 @@ pub enum SwarmRole {
 }
 
 impl SwarmRole {
-    pub fn as_str(&self) -> Cow<'_, str> {
+    pub fn as_str(&self) -> &str {
         match self {
-            Self::Agent => Cow::Borrowed("agent"),
-            Self::Coordinator => Cow::Borrowed("coordinator"),
-            Self::Other(value) => Cow::Borrowed(value.as_str()),
+            Self::Agent => "agent",
+            Self::Coordinator => "coordinator",
+            Self::Other(value) => value.as_str(),
         }
     }
 }
@@ -957,7 +956,7 @@ impl Serialize for SwarmRole {
     where
         S: Serializer,
     {
-        serializer.serialize_str(self.as_str().as_ref())
+        serializer.serialize_str(self.as_str())
     }
 }
 
@@ -991,22 +990,22 @@ pub enum SwarmLifecycleStatus {
 }
 
 impl SwarmLifecycleStatus {
-    pub fn as_str(&self) -> Cow<'_, str> {
+    pub fn as_str(&self) -> &str {
         match self {
-            Self::Spawned => Cow::Borrowed("spawned"),
-            Self::Ready => Cow::Borrowed("ready"),
-            Self::Running => Cow::Borrowed("running"),
-            Self::RunningStale => Cow::Borrowed("running_stale"),
-            Self::Completed => Cow::Borrowed("completed"),
-            Self::Done => Cow::Borrowed("done"),
-            Self::Failed => Cow::Borrowed("failed"),
-            Self::Stopped => Cow::Borrowed("stopped"),
-            Self::Crashed => Cow::Borrowed("crashed"),
-            Self::Queued => Cow::Borrowed("queued"),
-            Self::Blocked => Cow::Borrowed("blocked"),
-            Self::Pending => Cow::Borrowed("pending"),
-            Self::Todo => Cow::Borrowed("todo"),
-            Self::Other(value) => Cow::Borrowed(value.as_str()),
+            Self::Spawned => "spawned",
+            Self::Ready => "ready",
+            Self::Running => "running",
+            Self::RunningStale => "running_stale",
+            Self::Completed => "completed",
+            Self::Done => "done",
+            Self::Failed => "failed",
+            Self::Stopped => "stopped",
+            Self::Crashed => "crashed",
+            Self::Queued => "queued",
+            Self::Blocked => "blocked",
+            Self::Pending => "pending",
+            Self::Todo => "todo",
+            Self::Other(value) => value.as_str(),
         }
     }
 
@@ -1057,12 +1056,24 @@ impl From<String> for SwarmLifecycleStatus {
     }
 }
 
+impl From<&str> for SwarmLifecycleStatus {
+    fn from(value: &str) -> Self {
+        Self::from(value.to_string())
+    }
+}
+
+impl std::fmt::Display for SwarmLifecycleStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 impl Serialize for SwarmLifecycleStatus {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        serializer.serialize_str(self.as_str().as_ref())
+        serializer.serialize_str(self.as_str())
     }
 }
 

@@ -67,8 +67,8 @@ pub fn comm_cleanup_candidate_session_ids(
         .filter(|member| {
             member
                 .status
-                .as_deref()
-                .is_some_and(|status| status_filter.contains(status))
+                .as_ref()
+                .is_some_and(|status| status_filter.contains(status.as_str()))
         })
         .filter(|member| {
             force || member.report_back_to_session_id.as_deref() == Some(owner_session_id)
@@ -148,7 +148,7 @@ pub fn format_comm_members(current_session_id: &str, members: &[AgentInfo]) -> S
             let session = &member.session_id;
             let role = member.role.as_deref().unwrap_or("agent");
             let files = member.files_touched.join(", ");
-            let status = member.status.as_deref().unwrap_or("unknown");
+            let status = member.status.as_ref().map_or("unknown", |s| s.as_str());
             let is_me = session == current_session_id;
             let role_label = if role != "agent" {
                 format!(" [{}]", role)
@@ -363,7 +363,7 @@ pub fn format_comm_status_snapshot(snapshot: &AgentStatusSnapshot) -> String {
         .friendly_name
         .as_deref()
         .unwrap_or(&snapshot.session_id);
-    let status = snapshot.status.as_deref().unwrap_or("unknown");
+    let status = snapshot.status.as_ref().map_or("unknown", |s| s.as_str());
     let mut output = format!(
         "Status snapshot for {} ({})\n\n",
         target, snapshot.session_id

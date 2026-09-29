@@ -1,6 +1,7 @@
 #![allow(clippy::await_holding_lock)]
 use super::*;
 use crate::message::{Message, ToolDefinition};
+use crate::protocol::SwarmLifecycleStatus;
 use crate::provider::EventStream;
 use async_trait::async_trait;
 
@@ -157,7 +158,7 @@ async fn target_subscribe_busy_live_agent_uses_member_root_without_waiting() {
             working_dir: Some("/workspace/busy-original".into()),
             swarm_id: None,
             swarm_enabled: false,
-            status: "running".into(),
+            status: SwarmLifecycleStatus::Running,
             detail: None,
             task_label: None,
             friendly_name: None,

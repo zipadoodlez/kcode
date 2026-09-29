@@ -63,7 +63,7 @@ async fn communicate_list_and_await_members_work_end_to_end() {
         .iter()
         .find(|member| member.session_id == peer_session)
         .expect("peer should be listed while running");
-    assert_eq!(running_peer.status.as_deref(), Some("running"));
+    assert_eq!(running_peer.status, Some(SwarmLifecycleStatus::Running));
 
     // Legacy background=false input is upgraded to a durable asynchronous wait.
     let await_output = tokio::time::timeout(
@@ -121,7 +121,7 @@ async fn communicate_list_and_await_members_work_end_to_end() {
         .iter()
         .find(|member| member.session_id == peer_session)
         .expect("peer should still be listed when ready");
-    assert_eq!(ready_peer.status.as_deref(), Some("ready"));
+    assert_eq!(ready_peer.status, Some(SwarmLifecycleStatus::Ready));
 
     server_task.abort();
 }
@@ -338,7 +338,7 @@ async fn communicate_status_returns_busy_snapshot_for_running_member() {
         .await
         .expect("comm_status should succeed while peer is busy");
     assert_eq!(snapshot.session_id, peer_session);
-    assert_eq!(snapshot.status.as_deref(), Some("running"));
+    assert_eq!(snapshot.status, Some(SwarmLifecycleStatus::Running));
     assert!(
         snapshot
             .activity

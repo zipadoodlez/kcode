@@ -1,4 +1,5 @@
 use super::*;
+use crate::protocol::SwarmLifecycleStatus;
 use std::time::{Duration, Instant};
 
 struct EnvGuard {
@@ -81,7 +82,7 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
         working_dir: Some(PathBuf::from("/tmp/swarm-alpha")),
         swarm_id: Some("swarm-alpha".to_string()),
         swarm_enabled: true,
-        status: "running".to_string(),
+        status: SwarmLifecycleStatus::Running,
         detail: Some("writing tests".to_string()),
         friendly_name: Some("fox".to_string()),
         report_back_to_session_id: Some("session-2".to_string()),
@@ -129,7 +130,7 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
         recovered_member.report_back_to_session_id.as_deref(),
         Some("session-2")
     );
-    assert_eq!(recovered_member.status, "crashed");
+    assert_eq!(recovered_member.status, SwarmLifecycleStatus::Crashed);
     assert_eq!(
         recovered_member.detail.as_deref(),
         Some("writing tests (recovered after reload while running)")
@@ -156,7 +157,7 @@ fn ready_headless_member_with_report_stops_without_losing_report() {
         working_dir: Some(PathBuf::from("/tmp/swarm-gamma")),
         swarm_id: Some("swarm-gamma".to_string()),
         swarm_enabled: true,
-        status: "ready".to_string(),
+        status: SwarmLifecycleStatus::Ready,
         detail: None,
         friendly_name: Some("pig".to_string()),
         report_back_to_session_id: Some("session-coordinator".to_string()),
@@ -176,7 +177,7 @@ fn ready_headless_member_with_report_stops_without_losing_report() {
     let loaded = load_runtime_state();
 
     let recovered = loaded.members.get("session-ready").expect("member");
-    assert_eq!(recovered.status, "stopped");
+    assert_eq!(recovered.status, SwarmLifecycleStatus::Stopped);
     assert_eq!(
         recovered.detail.as_deref(),
         Some("idle worker not restored after server restart")
@@ -200,7 +201,7 @@ fn ready_detached_client_stops_on_reload_until_it_reattaches() {
         working_dir: Some(PathBuf::from("/tmp/swarm-client")),
         swarm_id: Some("swarm-client".to_string()),
         swarm_enabled: true,
-        status: "ready".to_string(),
+        status: SwarmLifecycleStatus::Ready,
         detail: None,
         friendly_name: Some("finch".to_string()),
         report_back_to_session_id: None,
@@ -219,7 +220,7 @@ fn ready_detached_client_stops_on_reload_until_it_reattaches() {
     persist_swarm_state("swarm-client", None, None, &members);
     let loaded = load_runtime_state();
     let recovered = loaded.members.get("session-detached").expect("member");
-    assert_eq!(recovered.status, "stopped");
+    assert_eq!(recovered.status, SwarmLifecycleStatus::Stopped);
     assert_eq!(
         recovered.detail.as_deref(),
         Some("client not attached after server restart")
@@ -286,7 +287,7 @@ fn terminal_member_retention_preserves_recent_reports_and_prunes_expired_records
         working_dir: Some(PathBuf::from("/tmp/swarm-terminal")),
         swarm_id: Some("swarm-terminal".to_string()),
         swarm_enabled: true,
-        status: "completed".to_string(),
+        status: SwarmLifecycleStatus::Completed,
         detail: Some("done".to_string()),
         friendly_name: Some("otter".to_string()),
         report_back_to_session_id: Some("session-coordinator".to_string()),
@@ -334,7 +335,7 @@ fn legacy_terminal_member_uses_snapshot_time_as_retention_fallback() {
         working_dir: None,
         swarm_id: Some("swarm-legacy".to_string()),
         swarm_enabled: true,
-        status: "failed".to_string(),
+        status: SwarmLifecycleStatus::Failed,
         detail: Some("old failure".to_string()),
         friendly_name: Some("badger".to_string()),
         report_back_to_session_id: None,
@@ -375,7 +376,7 @@ fn recovery_induced_terminal_status_starts_retention_at_load_time() {
         working_dir: None,
         swarm_id: Some("swarm-recovery".to_string()),
         swarm_enabled: true,
-        status: "ready".to_string(),
+        status: SwarmLifecycleStatus::Ready,
         detail: None,
         friendly_name: Some("hare".to_string()),
         report_back_to_session_id: None,
@@ -401,7 +402,7 @@ fn recovery_induced_terminal_status_starts_retention_at_load_time() {
         Duration::from_secs(24 * 60 * 60),
     )
     .expect("recovery-induced terminal status should receive a fresh retention window");
-    assert_eq!(recovered.status, "stopped");
+    assert_eq!(recovered.status, SwarmLifecycleStatus::Stopped);
     assert!(recovered.last_status_change.elapsed() < Duration::from_secs(1));
 }
 
@@ -417,7 +418,7 @@ fn startup_gc_removes_expired_terminal_members_from_durable_snapshot() {
         working_dir: None,
         swarm_id: Some("swarm-expired".to_string()),
         swarm_enabled: true,
-        status: "completed".to_string(),
+        status: SwarmLifecycleStatus::Completed,
         detail: None,
         friendly_name: Some("fox".to_string()),
         report_back_to_session_id: None,
@@ -1052,7 +1053,7 @@ fn persisted_swarm_state_without_plan_still_restores_coordinator_and_members() {
         working_dir: Some(PathBuf::from("/tmp/swarm-gamma")),
         swarm_id: Some("swarm-gamma".to_string()),
         swarm_enabled: true,
-        status: "ready".to_string(),
+        status: SwarmLifecycleStatus::Ready,
         detail: None,
         friendly_name: Some("owl".to_string()),
         report_back_to_session_id: None,

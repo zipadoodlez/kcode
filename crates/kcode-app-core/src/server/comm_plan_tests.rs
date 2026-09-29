@@ -9,6 +9,7 @@
 use super::{handle_comm_approve_plan, handle_comm_propose_plan, plan_cycle_error};
 use crate::plan::PlanItem;
 use crate::protocol::ServerEvent;
+use crate::protocol::SwarmLifecycleStatus;
 use crate::server::{SharedContext, SwarmEvent, SwarmMember, SwarmMutationRuntime, VersionedPlan};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -56,7 +57,7 @@ fn member(session_id: &str, swarm_id: &str, role: &str) -> SwarmMember {
         working_dir: None,
         swarm_id: Some(swarm_id.to_string()),
         swarm_enabled: true,
-        status: "ready".to_string(),
+        status: SwarmLifecycleStatus::Ready,
         detail: None,
         friendly_name: Some(session_id.to_string()),
         report_back_to_session_id: None,

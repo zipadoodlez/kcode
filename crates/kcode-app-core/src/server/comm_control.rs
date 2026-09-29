@@ -23,6 +23,7 @@ use crate::plan::{
     next_unassigned_runnable_item_id, task_control_action_allows_status, task_control_status_error,
     task_control_target_item_id,
 };
+use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{NotificationType, PlanGraphStatus, ServerEvent};
 use kcode_agent_runtime::SoftInterruptSource;
 use std::collections::{HashMap, HashSet};
@@ -539,8 +540,16 @@ async fn resolve_assignment_target_session(
             .get(&right.session_id)
             .copied()
             .unwrap_or(0);
-        let left_rank = if left.status == "ready" { 0 } else { 1 };
-        let right_rank = if right.status == "ready" { 0 } else { 1 };
+        let left_rank = if left.status == SwarmLifecycleStatus::Ready {
+            0
+        } else {
+            1
+        };
+        let right_rank = if right.status == SwarmLifecycleStatus::Ready {
+            0
+        } else {
+            1
+        };
         left_load
             .cmp(&right_load)
             .then_with(|| left_rank.cmp(&right_rank))
@@ -619,7 +628,7 @@ async fn next_runnable_task_id_reclaiming_stranded(
     // Snapshot member liveness first so the plans write lock is not held
     // across the members read lock (avoids lock-order inversions with paths
     // that lock members before plans).
-    let member_statuses: HashMap<String, String> = {
+    let member_statuses: HashMap<String, SwarmLifecycleStatus> = {
         let members = swarm_members.read().await;
         members
             .values()
@@ -629,7 +638,7 @@ async fn next_runnable_task_id_reclaiming_stranded(
     };
     let assignee_is_dead = move |session_id: &str| -> bool {
         match member_statuses.get(session_id) {
-            Some(status) => matches!(status.as_str(), "failed" | "stopped" | "crashed"),
+            Some(status) => status.is_dead(),
             // Not a member of this swarm anymore: nothing can drive it.
             None => true,
         }
@@ -738,8 +747,16 @@ async fn resolve_assignment_target_for_task(
             .get(&right.session_id)
             .copied()
             .unwrap_or(0);
-        let left_rank = if left.status == "ready" { 0 } else { 1 };
-        let right_rank = if right.status == "ready" { 0 } else { 1 };
+        let left_rank = if left.status == SwarmLifecycleStatus::Ready {
+            0
+        } else {
+            1
+        };
+        let right_rank = if right.status == SwarmLifecycleStatus::Ready {
+            0
+        } else {
+            1
+        };
         right_carry
             .cmp(&left_carry)
             .then_with(|| right_meta.cmp(&left_meta))
@@ -811,7 +828,7 @@ fn spawn_assigned_task_run(
         set_member_task_label(&target_session, &assignment_text, &swarm_members).await;
         update_member_status(
             &target_session,
-            "running",
+            SwarmLifecycleStatus::Running,
             Some(truncate_detail(&assignment_text, 120)),
             &swarm_members,
             &swarms_by_id,
@@ -1028,7 +1045,7 @@ fn spawn_assigned_task_run(
                 // "completed" worker is reusable for the requeued node.
                 update_member_status_with_report(
                     &target_session,
-                    "completed",
+                    SwarmLifecycleStatus::Completed,
                     None,
                     completion_report,
                     &swarm_members,
@@ -1076,7 +1093,7 @@ fn spawn_assigned_task_run(
                 .await;
                 update_member_status(
                     &target_session,
-                    "failed",
+                    SwarmLifecycleStatus::Failed,
                     Some(truncate_detail(&error.to_string(), 120)),
                     &swarm_members,
                     &swarms_by_id,
@@ -1177,7 +1194,7 @@ fn task_progress_event_sender(
                 if let Some(detail) = detail {
                     update_member_status(
                         &session_id,
-                        "running",
+                        SwarmLifecycleStatus::Running,
                         Some(truncate_detail(&detail, 120)),
                         &swarm_members,
                         &swarms_by_id,
@@ -1737,7 +1754,7 @@ async fn handle_comm_assign_task_with_mode(
     set_member_task_label(&target_session, &assignment_text, swarm_members).await;
     update_member_status(
         &target_session,
-        "queued",
+        SwarmLifecycleStatus::Queued,
         Some(truncate_detail(&assignment_text, 120)),
         swarm_members,
         swarms_by_id,

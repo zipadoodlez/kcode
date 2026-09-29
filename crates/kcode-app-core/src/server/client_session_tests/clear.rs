@@ -1,4 +1,5 @@
 use super::*;
+use crate::protocol::SwarmLifecycleStatus;
 use anyhow::{Result, anyhow};
 
 #[tokio::test]
@@ -123,7 +124,7 @@ async fn handle_clear_session_replaces_runtime_handles_and_updates_shutdown_regi
         .get(&client_session_id)
         .expect("replacement session should remain registered for swarm tools");
     assert!(replacement_member.swarm_enabled);
-    assert_eq!(replacement_member.status, "ready");
+    assert_eq!(replacement_member.status, SwarmLifecycleStatus::Ready);
     assert_ne!(replacement_member.swarm_id.as_deref(), Some("swarm-test"));
     let replacement_swarm_id = replacement_member
         .swarm_id

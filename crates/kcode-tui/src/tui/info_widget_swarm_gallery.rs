@@ -81,7 +81,7 @@ pub(crate) fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMe
         .map(|member| GalleryMember {
             label: member_label(member),
             icon: member_icon(member),
-            status: member.status.clone(),
+            status: member.status.to_string(),
             task: member.task_label.clone(),
             role: member.role.clone(),
             body: member_body(member),
@@ -174,7 +174,7 @@ pub(crate) fn render_swarm_page_lines(
         .unwrap_or(0);
     let active = members
         .iter()
-        .filter(|member| is_active_status(&member.status))
+        .filter(|member| is_active_status(member.status.as_str()))
         .count();
 
     let mut out = vec![Line::from(vec![
@@ -386,13 +386,13 @@ fn render_swarm_tree_row(
             Style::default().fg(Color::Rgb(255, 200, 100)),
         ),
         Span::styled(
-            format!("{} ", status_glyph(&member.status, spinner_frame)),
-            Style::default().fg(status_accent(&member.status)),
+            format!("{} ", status_glyph(member.status.as_str(), spinner_frame)),
+            Style::default().fg(status_accent(member.status.as_str())),
         ),
         Span::styled(
             label,
             Style::default()
-                .fg(status_accent(&member.status))
+                .fg(status_accent(member.status.as_str()))
                 .add_modifier(if selected {
                     Modifier::BOLD
                 } else {
@@ -594,7 +594,7 @@ mod tests {
         SwarmMemberStatus {
             session_id: id.to_string(),
             friendly_name: Some(id.to_string()),
-            status: status.to_string(),
+            status: status.into(),
             detail: detail.map(str::to_string),
             task_label: None,
             role: role.map(str::to_string),

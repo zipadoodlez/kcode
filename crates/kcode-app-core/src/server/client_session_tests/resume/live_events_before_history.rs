@@ -55,7 +55,7 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
             working_dir: None,
             swarm_id: None,
             swarm_enabled: false,
-            status: "ready".to_string(),
+            status: SwarmLifecycleStatus::Ready,
             detail: None,
             task_label: None,
             friendly_name: Some("restore".to_string()),

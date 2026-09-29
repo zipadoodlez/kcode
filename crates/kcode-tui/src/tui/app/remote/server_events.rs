@@ -2485,8 +2485,8 @@ pub(in crate::tui::app) fn handle_server_event(
                     .find(|member| member.session_id == from_session)
                     .cloned()
                 {
-                    if matches!(member.status.as_str(), "running" | "streaming" | "thinking") {
-                        member.status = "completed".to_string();
+                    if member.status.is_active() {
+                        member.status = crate::protocol::SwarmLifecycleStatus::Completed;
                     }
                     if let Some(snapshot) = crate::tui::ui::encode_swarm_agent_snapshot(&member) {
                         app.push_display_message(DisplayMessage::swarm(

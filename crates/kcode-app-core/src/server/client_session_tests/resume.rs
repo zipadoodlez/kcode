@@ -23,6 +23,7 @@ fn test_writer() -> Result<(Arc<Mutex<WriteHalf>>, crate::transport::Stream)> {
     Ok((Arc::new(Mutex::new(writer_half)), stream_b))
 }
 
+use crate::protocol::SwarmLifecycleStatus;
 include!("resume/multiple_live_attach.rs");
 include!("resume/busy_existing_attach.rs");
 include!("resume/reconnect_takeover_with_history.rs");

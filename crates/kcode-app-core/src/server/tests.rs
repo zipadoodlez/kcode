@@ -11,6 +11,7 @@ use crate::bus::{
     FileTouch,
 };
 use crate::message::{Message, Role, StreamEvent, ToolDefinition};
+use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{NotificationType, ServerEvent};
 use crate::provider::{EventStream, Provider};
 use crate::session_recovery::ReloadContext;
@@ -273,7 +274,7 @@ fn attached_swarm_member(
         working_dir: None,
         swarm_id: None,
         swarm_enabled: false,
-        status: "ready".to_string(),
+        status: SwarmLifecycleStatus::Ready,
         detail: None,
         friendly_name: Some("otter".to_string()),
         report_back_to_session_id: None,
@@ -304,7 +305,7 @@ fn persisted_headless_member(
         working_dir: None,
         swarm_id: Some(swarm_id.to_string()),
         swarm_enabled: true,
-        status: status.to_string(),
+        status: status.into(),
         detail: Some(detail.to_string()),
         friendly_name: Some(session_id.to_string()),
         report_back_to_session_id: None,
@@ -598,7 +599,7 @@ async fn wake_turn_holds_reservation_until_terminal_status_is_published() {
         .await
         .get(&session_id)
         .map(|m| m.status.clone());
-    assert_eq!(status.as_deref(), Some("ready"));
+    assert_eq!(status, Some(SwarmLifecycleStatus::Ready));
     drop(reacquired);
 }
 
@@ -652,7 +653,7 @@ async fn wake_turn_tracks_member_status_and_emits_terminal_done() {
                 let members = swarm_members.read().await;
                 if members
                     .get(&session_id)
-                    .is_some_and(|member| member.status == "running")
+                    .is_some_and(|member| member.status == SwarmLifecycleStatus::Running)
                 {
                     return true;
                 }
@@ -687,7 +688,7 @@ async fn wake_turn_tracks_member_status_and_emits_terminal_done() {
             {
                 let members = swarm_members.read().await;
                 if let Some(member) = members.get(&session_id)
-                    && member.status == "ready"
+                    && member.status == SwarmLifecycleStatus::Ready
                 {
                     return (
                         member.status.clone(),
@@ -700,7 +701,7 @@ async fn wake_turn_tracks_member_status_and_emits_terminal_done() {
     })
     .await
     .expect("member should return to ready after the wake turn");
-    assert_eq!(final_status, "ready");
+    assert_eq!(final_status, SwarmLifecycleStatus::Ready);
     assert!(
         report.is_some_and(|report| report.contains("Wake turn finished.")),
         "completion report should capture the wake turn's assistant text"

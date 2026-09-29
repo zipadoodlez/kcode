@@ -143,8 +143,7 @@ async fn assign_task_to_client_attached_session_skips_server_side_run() {
     // (complete_node) or the coordinator.
     crate::server::swarm::update_member_status_with_report(
         worker,
-        "ready",
-        None,
+        SwarmLifecycleStatus::Ready,        None,
         Some("finished my turn".to_string()),
         &swarm_members,
         &swarms_by_id,
@@ -181,6 +180,6 @@ async fn assign_task_to_client_attached_session_skips_server_side_run() {
             "plan must not be terminal while the assigned task is still queued"
         );
         let members = swarm_members.read().await;
-        assert_eq!(members[worker].status, "ready");
+        assert_eq!(members[worker].status, SwarmLifecycleStatus::Ready);
     }
 }

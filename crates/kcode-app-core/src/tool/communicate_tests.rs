@@ -7,6 +7,7 @@ use super::{
     swarm_member_is_in_flight,
 };
 use crate::message::{Message, StreamEvent, ToolDefinition};
+use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{
     AgentInfo, AgentStatusSnapshot, AwaitedMemberStatus, HistoryMessage, NotificationType, Request,
     ServerEvent, SessionActivitySnapshot, ToolCallSummary,
@@ -794,7 +795,7 @@ fn in_flight_slot_accounting_counts_queued_workers_not_coordinator() {
             session_id: "coord".to_string(),
             friendly_name: None,
             files_touched: Vec::new(),
-            status: Some("running".to_string()),
+            status: Some(SwarmLifecycleStatus::Running),
             detail: None,
             role: Some("coordinator".to_string()),
             is_headless: Some(false),
@@ -808,7 +809,7 @@ fn in_flight_slot_accounting_counts_queued_workers_not_coordinator() {
             session_id: "worker-queued".to_string(),
             friendly_name: None,
             files_touched: Vec::new(),
-            status: Some("queued".to_string()),
+            status: Some(SwarmLifecycleStatus::Queued),
             detail: None,
             role: Some("agent".to_string()),
             is_headless: Some(true),
@@ -822,7 +823,7 @@ fn in_flight_slot_accounting_counts_queued_workers_not_coordinator() {
             session_id: "worker-ready".to_string(),
             friendly_name: None,
             files_touched: Vec::new(),
-            status: Some("ready".to_string()),
+            status: Some(SwarmLifecycleStatus::Ready),
             detail: None,
             role: Some("agent".to_string()),
             is_headless: Some(true),
@@ -867,7 +868,7 @@ fn in_flight_count_excludes_foreign_queued_session() {
     let members = vec![
         AgentInfo {
             session_id: "coord".to_string(),
-            status: Some("running".to_string()),
+            status: Some(SwarmLifecycleStatus::Running),
             role: Some("coordinator".to_string()),
             is_headless: Some(false),
             report_back_to_session_id: None,
@@ -875,7 +876,7 @@ fn in_flight_count_excludes_foreign_queued_session() {
         },
         AgentInfo {
             session_id: "foreign-human".to_string(),
-            status: Some("queued".to_string()),
+            status: Some(SwarmLifecycleStatus::Queued),
             role: Some("agent".to_string()),
             is_headless: Some(false),
             // Not owned by coord, and a live client is attached.
@@ -929,7 +930,7 @@ fn format_awaited_members_includes_completion_reports() {
     let members = vec![AwaitedMemberStatus {
         session_id: "session_worker".to_string(),
         friendly_name: Some("worker".to_string()),
-        status: "ready".to_string(),
+        status: SwarmLifecycleStatus::Ready,
         done: true,
         completion_report: Some("Structured report wins.".to_string()),
     }];
@@ -1654,7 +1655,8 @@ async fn wait_for_member_status(
         if members
             .iter()
             .find(|member| member.session_id == target_session)
-            .and_then(|member| member.status.as_deref())
+            .and_then(|member| member.status.as_ref())
+            .map(|status| status.as_str())
             == Some(expected_status)
         {
             return Ok(members);
@@ -1702,7 +1704,7 @@ fn default_await_members_targets_include_ready() {
 fn credential_failed_worker(session_id: &str, detail: &str, age_secs: u64) -> AgentInfo {
     AgentInfo {
         session_id: session_id.to_string(),
-        status: Some("failed".to_string()),
+        status: Some(SwarmLifecycleStatus::Failed),
         detail: Some(detail.to_string()),
         role: Some("agent".to_string()),
         is_headless: Some(true),
@@ -1721,7 +1723,7 @@ fn credential_failure_wave_detected_for_recent_auth_failed_workers() {
     let members = vec![
         AgentInfo {
             session_id: "coord".to_string(),
-            status: Some("running".to_string()),
+            status: Some(SwarmLifecycleStatus::Running),
             role: Some("coordinator".to_string()),
             ..Default::default()
         },
