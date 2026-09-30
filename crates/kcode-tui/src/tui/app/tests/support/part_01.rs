@@ -410,17 +410,6 @@ fn with_reasoning_current_home<T>(f: impl FnOnce() -> T) -> T {
     })
 }
 
-fn create_kcode_repo_fixture() -> tempfile::TempDir {
-    let temp = tempfile::TempDir::new().expect("temp repo");
-    std::fs::create_dir_all(temp.path().join(".git")).expect("git dir");
-    std::fs::write(
-        temp.path().join("Cargo.toml"),
-        "[package]\nname = \"kcode\"\nversion = \"0.1.0\"\n",
-    )
-    .expect("cargo toml");
-    temp
-}
-
 fn create_real_git_repo_fixture() -> tempfile::TempDir {
     let temp = tempfile::tempdir().expect("tempdir");
     std::process::Command::new("git")
