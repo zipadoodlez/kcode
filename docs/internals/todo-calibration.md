@@ -9,7 +9,8 @@ read on demand.
 Build a requirement inventory from the request: outcomes, deliverables,
 constraints, prohibited actions, integration paths, edge cases, and necessary
 follow-through. Make the plan and its stated user intention represent every
-material item. Do not ask the user; resolve the ambiguity yourself.
+material item. Resolve what you can yourself; ask only when a decision is
+genuinely the user's to make.
 
 ## Feedback-loop relevance
 
