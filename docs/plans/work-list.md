@@ -85,22 +85,10 @@ code cannot tell you:
     file. Whether that session is alive and busy is live server state that dies
     with the process. Today one member record welds the two, and most of the four
     duplicated member shapes come from that weld.
-13. **One JSON object per line, and no new language.** The file is JSON Lines:
-    one task per line, flat, with the optional `parent`. Every insert, claim and
-    close is a one-line diff, which is what makes the deletes reviewable in git.
-    The array form is rejected because a comma rides on the previous line, so an
-    insert touches two. The human read is a rendering the tool prints and
-    `/todos` shows, and kgrep will index entry lines directly, so the format is
-    not bent for a generic ctags regex.
-    TSV loses because it has no lists, so `blocked_by` needs a comma convention
-    and prose needs an escape rule, which is a spec to invent. TOML and YAML lose
-    because an entry is a block, so adding a task is a multi-line diff and moving
-    one is a cut and paste. All four parsers are already in `kcode-base`, so this
-    is a shape decision, not a dependency one.
-14. **The entry shape.** `id`, `content`, optional `parent`, optional
-    `blocked_by`, optional `assigned_to`, optional `note`. `status` is derived
-    (open, blocked, or claimed), and `priority`, `group`, `subsystem` and
-    `file_scope` have no reader, so they are not stored.
+13. **The file is JSON Lines, one task per line**, flat. Each entry is `id`,
+    `content`, optional `parent`, optional `blocked_by`, optional `assigned_to`,
+    optional `note`. `status` is derived, and `priority`, `group`, `subsystem`
+    and `file_scope` are not stored.
 
 ## Open
 
@@ -152,7 +140,7 @@ when `main..HEAD` is non-zero is what keeps that visible.
 keyed by entry id, which is the durable/live seam (12). Two landings: the merge
 with no behavior change, then the field drops (`group`, `subsystem`,
 `file_scope`, and the unused status vocabulary). Deletes the plan's item copy and
-three status helpers. The fields are settled (14), so this is unblocked.
+three status helpers. The fields are settled (13), so this is unblocked.
 
 **B. The file is the list.** The `todo` tool reads and writes the repo file,
 `docs/todo.md` becomes its first user, and `/todos` and the widget render from it.
