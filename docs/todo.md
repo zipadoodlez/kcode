@@ -606,6 +606,46 @@ Independent, no dependency on the phases above.
   to the remaining essays. Control shape to consider: one aggregate schema-token
   budget instead of two per-item caps plus the `swarm` exemption.
 
+## kgrep discoverability
+
+Findings 2026-09-29 from a question session, no code changed; source
+`kgrep-use.md` (repo root, untracked). The inbound alias layer works (`grep`,
+`file_grep`, `Grep` -> `kgrep`; `pattern`/`include` params), but the outbound
+discovery layer does not: no text surface connects a model's "search = grep or
+rg" prior to the tool it should call, and the name is the strongest cue it has.
+Ordered by leverage.
+
+- [ ] Steer search in the system prompt. `kcode-base/src/prompt/system_prompt.md`
+  names `todo`, `open`, `panel`, and skills, and never a search tool, though the
+  policy precedent exists. One line naming `kgrep` and ruling out `rg`, `grep`,
+  `find` reaches every provider and closes the `bash` escape hatch: `rg` is
+  absent on this machine, so `rg -n p .` exits 127 with empty stdout that reads
+  as "no matches" (it produced one wrong conclusion already).
+- [ ] State capability and status in the tool description. `tool/kgrep.rs`
+  advertises only "Search code and file names. Defaults to grep mode when mode is
+  omitted." No regex, glob filter, type filter, find, outline, or trace; no "only
+  search tool"; no ripgrep (the word appears only in a nested param at
+  `kgrep.rs:119`).
+- [ ] (decision) Remove the stale `grep`/`glob` residue, or rebind the curated
+  `Grep`. Ghosts: `OAUTH_BUILTIN_LOCAL_TOOLS` in `kcode-provider-anthropic`
+  (`has_backing(["grep"])` never matches, so the curated "built on ripgrep"
+  definition is dropped and the OAuth route sees a literal `kgrep`), the `acp.rs`
+  mapping of `glob`/`grep` beside `kgrep`, and `config/default_file.rs`'s doc;
+  the real minimal profile (`config.rs`) lists neither. Caution: the curated
+  schema advertises `output_mode`, `-A`/`-B`/`-C`, `head_limit`, `offset`,
+  `multiline`, none of which `KgrepInput` accepts, so a naive rebind fails calls.
+  `oauth_format_tools_drops_builtins_missing_from_registry` enforces the drop.
+- [ ] (decision) Rename or alias `kgrep`. Highest leverage and highest blast
+  radius: config enabled lists, permissions, ACP, ~50 quoted call sites. The name
+  is deliberate branding (`zipadoodlez/kgrep`): `4c4ff04c` removed the native
+  tools, `3f854de3` aliased grep to agentgrep, `83b66064` renamed it to kgrep.
+  Settle branding before touching the alias.
+
+Side finding, resolved (do not re-litigate): LaTeX math already renders at HEAD.
+The engine (`kcode-render-core/src/math.rs`) is wired in at `41771c58`; the
+running binary `cd795377` predates that wiring, so the raw `$math$` / `math
+(raw)` box in that session was a stale install, not a bug.
+
 ## Committed ideas (no plan yet)
 
 - [ ] The axis kcode owns: as a subtraction fork on MIT code, only what kcode
