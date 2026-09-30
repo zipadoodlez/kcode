@@ -1,7 +1,8 @@
 # Work list
 
-Status: destination agreed 2026-10-01; the roadmap is not written yet. This
-absorbs the todo rework that landed 2026-09-30, and git has that history.
+Status: destination agreed 2026-10-01 on branch `work-list`; the roadmap is
+written and stage A is next. This absorbs the todo rework that landed
+2026-09-30, and git has that history.
 
 ## Destination
 
@@ -67,9 +68,10 @@ code cannot tell you:
 8. **One item type**, in `kcode-task-types`, the crate whose name is the concept.
    `PlanItem` and `TodoItem` collapse into it, which deletes the plan's copy and
    the comment that claims the two are separate.
-9. **Every session works from a file from turn one.** No solo path, because a
-   swarm is only the case where more than one session holds entries in one file.
-   Rigor stays the existing deep/light preset, so a solo session pays no gate or
+9. **Every session works from a file from turn one.** There is one mode axis:
+   the work. "Regular" is not a mode, it is a swarm with one member, and a swarm
+   is only the case where more than one session holds entries in one file. Rigor
+   stays the existing deep/light preset, so a solo session pays no gate or
    artifact cost.
 10. **Hierarchy is one optional `parent` field on a flat list**, while blocking
     is order, so they are two fields. A parent is work: it owns the integration
@@ -83,14 +85,20 @@ code cannot tell you:
     file. Whether that session is alive and busy is live server state that dies
     with the process. Today one member record welds the two, and most of the four
     duplicated member shapes come from that weld.
-13. **No new language.** The file reuses the JSON the tree already reads and
-    writes. It is stored flat and rendered as a tree by the tool.
+13. **One JSON object per line, and no new language.** The file is JSON Lines:
+    one task per line, flat, with the optional `parent`. Every insert, claim and
+    close is a one-line diff, which is what makes the deletes reviewable in git.
+    A marked-up text format needs a parser, a spec and escaping rules for
+    something serde already does. The human read is a rendering the tool prints
+    and `/todos` shows, and kgrep will index entry lines directly, so the format
+    is not bent for a generic ctags regex.
+14. **The entry shape.** `id`, `content`, optional `parent`, optional
+    `blocked_by`, optional `assigned_to`, optional `note`. `status` is derived
+    (open, blocked, or claimed), and `priority`, `group`, `subsystem` and
+    `file_scope` have no reader, so they are not stored.
 
 ## Open
 
-- The exact fields. Proposed minimum: `content`, `id`, `blocked_by`,
-  `assigned_to`, one note line. `status` is derivable (open, blocked, claimed),
-  and `priority`, `group`, `subsystem`, `file_scope` have no reader yet.
 - Whether a row carries the check that proves it done, or only the commit does.
   This is the one surviving idea of the deleted rubric: name the check, report
   its result.
@@ -129,16 +137,17 @@ Widest shared shape first, so no stage sweeps call sites a later stage reshapes.
 Each stage lands whole, proven by the gate and, where behavior moves, one
 `kcode run` probe against its own socket.
 
-**Prerequisite, a decision: where does work land.** `main`, or a branch with a
-merge-back. The file lives in the repo, so a session on a stale branch reads a
-stale list. The `(decision)` item in `todo.md` settles this.
+**Prerequisite, decided 2026-10-01: work lands on the `work-list` branch**, and
+a stage merges back when it lands. The file lives in the repo, so a session on a
+stale branch reads a stale list; the `todo.md` Anytime item's session-start line
+when `main..HEAD` is non-zero is what keeps that visible.
 
 **A. One durable item type.** `PlanItem` and `TodoItem` merge into
 `kcode-task-types`, and live execution status leaves the type for runtime state
 keyed by entry id, which is the durable/live seam (12). Two landings: the merge
 with no behavior change, then the field drops (`group`, `subsystem`,
 `file_scope`, and the unused status vocabulary). Deletes the plan's item copy and
-three status helpers. Gated by the field question in Open.
+three status helpers. The fields are settled (14), so this is unblocked.
 
 **B. The file is the list.** The `todo` tool reads and writes the repo file,
 `docs/todo.md` becomes its first user, and `/todos` and the widget render from it.
