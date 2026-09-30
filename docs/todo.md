@@ -85,19 +85,12 @@ both environmental, and `docs/dev/testing.md` owns the detail:
 Widest representation first, while the tree is still quiet. Sweeping call sites
 before the shape is settled is churn.
 
-- [ ] **Condense swarm/comm**: `SwarmState` (`server/state.rs`) is a real owner,
-  so this is condensation. Member projection hand-written 4x (`AgentInfo`,
-  `SwarmMemberStatus`, `MemberStatic`); status vocabulary diverged
-  (`SwarmLifecycleStatus` lacks `streaming`/`thinking`; the "active" set is
-  re-spelled in 9 places with 3 different sets; 134 string-match sites);
-  coordination state unowned (`SwarmMutationRuntime`, `AwaitMembersRuntime`, two
-  global claim maps); channel subs across two locks; `SwarmState` rebuilt at ~31
-  sites instead of passed. References: `internals/swarm.md`. This is the trunk of
-  the work-list project (`plans/work-list.md`): the swarm becomes one executor of
-  the repo's list of open work, so coordination state needs one owner before the
-  list can be written from it. Do this before
-  splitting `handle_client`, whose request-context struct is designed to hold
-  `SwarmState`.
+- [ ] **Condense swarm/comm** (`plans/work-list.md` stage C): `SwarmState`
+  (`server/state.rs`) becomes the swarm's owner, passed instead of rebuilt at 31
+  sites, and membership is read from the work list instead of stored. The design,
+  the measurements, and why the swarm is one executor of that list are in
+  `plans/work-list.md`. References: `internals/swarm.md`. Do this before splitting
+  `handle_client`, whose request-context struct is designed to hold `SwarmState`.
 
   Member status is typed end to end (`SwarmLifecycleStatus`, `SwarmRole`, and
   `SwarmMemberRecord` moved to `kcode-session-types`, landed 2026-09-29). What
@@ -367,14 +360,12 @@ would just move that churn around.
   default, with no migration or warning, so the user keeps the old behavior and
   cannot tell why.
 
-## Todo refactor (phase 2)
+## Work list (phase 2)
 
-Phase 1 landed 2026-09-30: the enforcement tier is gone, the poke is identified
-by shape, and the `todo` schema is a five-field display (`id`, `content`,
-`status`, `priority`, optional `group`). Phase 2 is the work list, and it has
-outgrown this section: the destination, the reason the tier must not return, and
-the settled decisions are in `plans/work-list.md`, whose roadmap is not written
-yet. The A/B probe recipe is `dev/todo-rework-ab-probe.md`.
+Phase 1 landed 2026-09-30: the enforcement tier is gone and the poke is
+identified by shape. Phase 2 is the work list, one task: `plans/work-list.md`
+holds the destination, the reason the tier must not return, and the roadmap. The
+A/B probe recipe is `dev/todo-rework-ab-probe.md`.
 
 - [ ] Live check owed from step 2: the poke now reaches the model as a system
   reminder rather than as user content. One isolated `kcode run` with auto-poke

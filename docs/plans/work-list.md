@@ -125,4 +125,47 @@ code cannot tell you:
 
 ## Roadmap
 
-Not written yet. Next.
+Widest shared shape first, so no stage sweeps call sites a later stage reshapes.
+Each stage lands whole, proven by the gate and, where behavior moves, one
+`kcode run` probe against its own socket.
+
+**Prerequisite, a decision: where does work land.** `main`, or a branch with a
+merge-back. The file lives in the repo, so a session on a stale branch reads a
+stale list. The `(decision)` item in `todo.md` settles this.
+
+**A. One durable item type.** `PlanItem` and `TodoItem` merge into
+`kcode-task-types`, and live execution status leaves the type for runtime state
+keyed by entry id, which is the durable/live seam (12). Two landings: the merge
+with no behavior change, then the field drops (`group`, `subsystem`,
+`file_scope`, and the unused status vocabulary). Deletes the plan's item copy and
+three status helpers. Gated by the field question in Open.
+
+**B. The file is the list.** The `todo` tool reads and writes the repo file,
+`docs/todo.md` becomes its first user, and `/todos` and the widget render from it.
+Deletes the per-session todo JSON. Gated by the file's name and home, and by
+whether a row carries its check.
+
+**C. The swarm reads and writes the file.** The plan is derived from the file's
+entries and their `parent` and `blocked_by` fields, membership and the coordinator
+are computed from it, and the parent guard becomes the tool's check. Deletes
+`NodeKind`, the `coordinators` map, any stored swarm id, and the 31
+`SwarmState { .. }` rebuilds, because the state gets one owner. This is `todo.md`
+§1, and it absorbs that item's two sub-items: member appearance follows the typed
+status, and a stalled plan node is visible. Gated by A and B.
+
+**D. Delete what the file makes redundant.** The topic channels and the
+shared-context key-value store, the removal `internals/swarm.md` recorded as
+pending and never did, plus any member projection the derived membership replaces.
+
+**E. The server shape.** `ClientContext` for `handle_client`'s 28 arguments,
+folding swarm ownership in, naming the prologue, moving the largest arms out, and
+the turn-lifecycle locals. This is `todo.md` §2's H1 to H5 in order, and H2 is
+gated on C.
+
+**F. `tool/communicate.rs`.** Split the 3369 lines along the seams it already has
+(swarm coordination, the run-plan driver, capacity cleanup, and the formatters
+around `execute`), which is cheaper once C has given the state one owner.
+
+Order is not payoff order. A is invisible and unblocks B and C; C is the largest
+and the only one that needs the swarm running to prove; F is a mechanical split
+that gets cheaper the longer it waits.
