@@ -100,6 +100,13 @@ duplicated member shapes come from that weld.
     only while two sessions hold entries under one parent.
 12. **No new language.** The file reuses the JSON the tree already reads and
     writes. Nesting is stored flat and rendered as a tree by the tool.
+13. **Closing is one operation, for every entry.** The holder produces the result
+    the entry owes and the tool removes the row. A parent's result is its
+    children's results integrated, a leaf's is its own work, and nothing else
+    differs. There is no composite/atomic kind: having children is read from the
+    `parent` field, so the plan's `NodeKind` is a second copy of that fact and
+    goes. The single enforcement is that a parent's row cannot be removed while a
+    row still names it as parent, which needs no status tracking.
 
 ## Open
 
@@ -117,6 +124,9 @@ duplicated member shapes come from that weld.
 - Whether line order in the file means anything, such as priority.
 - What a running swarm shows in the file while a node is in flight, and what a
   stalled node shows.
+- Whether a drop leaves anything behind. Removal cannot distinguish "finished"
+  from "abandoned", and a gate naming its scope cannot see that one item was
+  dropped rather than done. Today only the commit message records the difference.
 
 ## Harvest from wayfinder (Matt Pocock)
 
