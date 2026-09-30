@@ -93,52 +93,6 @@ fn kv_cache_widget_shows_session_hit_ratio() {
 }
 
 #[test]
-fn todos_widgets_show_item_and_aggregate_confidence() {
-    let data = InfoWidgetData {
-        todos: vec![
-            crate::todo::TodoItem {
-                group: None,
-                id: "todo-1".to_string(),
-                content: "Validate confidence UI".to_string(),
-                status: "in_progress".to_string(),
-                priority: "high".to_string(),
-                confidence: Some(crate::todo::ConfidenceState::from_legacy_score(80)),
-                completion_confidence: None,
-                confidence_history: Vec::new(),
-                blocked_by: Vec::new(),
-                assigned_to: None,
-            },
-            crate::todo::TodoItem {
-                group: None,
-                id: "todo-2".to_string(),
-                content: "Ship completed item".to_string(),
-                status: "completed".to_string(),
-                priority: "medium".to_string(),
-                confidence: Some(crate::todo::ConfidenceState::from_legacy_score(70)),
-                completion_confidence: Some(crate::todo::ConfidenceState::from_legacy_score(95)),
-                confidence_history: Vec::new(),
-                blocked_by: Vec::new(),
-                assigned_to: None,
-            },
-        ],
-        ..Default::default()
-    };
-
-    let normal_text = lines_text(&render_todos_widget(&data, Rect::new(0, 0, 80, 8)));
-    assert!(normal_text.contains("plausible"));
-    assert!(normal_text.contains("plausible"));
-    assert!(normal_text.contains("plausible"));
-
-    let expanded_text = lines_text(&render_todos_expanded(&data, Rect::new(0, 0, 80, 8)));
-    assert!(expanded_text.contains("plausible"));
-    assert!(expanded_text.contains("plausible"));
-    assert!(expanded_text.contains("plausible"));
-
-    let compact_text = lines_text(&render_todos_compact(&data, Rect::new(0, 0, 80, 2)));
-    assert!(compact_text.contains("plausible"));
-}
-
-#[test]
 fn todos_widgets_render_group_headers_when_groups_present() {
     let mk = |group: Option<&str>, id: &str, status: &str| crate::todo::TodoItem {
         group: group.map(|g| g.to_string()),
@@ -178,44 +132,6 @@ fn todos_widgets_render_group_headers_when_groups_present() {
     let other_idx = expanded.find("Other").unwrap();
     assert!(opt_idx < fix_idx, "first-seen group order: {expanded}");
     assert!(fix_idx < other_idx, "ungrouped bucket last: {expanded}");
-}
-
-#[test]
-fn task_group_headers_render_their_own_weighted_confidence() {
-    let mk = |group: &str, id: &str, priority: &str, confidence: u8| crate::todo::TodoItem {
-        group: Some(group.to_string()),
-        id: id.to_string(),
-        content: format!("task {id}"),
-        status: "pending".to_string(),
-        priority: priority.to_string(),
-        confidence: Some(crate::todo::ConfidenceState::from_legacy_score(confidence)),
-        completion_confidence: None,
-        confidence_history: Vec::new(),
-        blocked_by: Vec::new(),
-        assigned_to: None,
-    };
-    let data = InfoWidgetData {
-        todos: vec![
-            mk("high confidence", "a", "high", 100),
-            mk("high confidence", "b", "low", 40),
-            mk("lower confidence", "c", "medium", 60),
-        ],
-        ..Default::default()
-    };
-
-    for text in [
-        lines_text_concat(&render_todos_widget(&data, Rect::new(0, 0, 90, 10))),
-        lines_text_concat(&render_todos_expanded(&data, Rect::new(0, 0, 90, 14))),
-    ] {
-        assert!(
-            text.contains("high confidence 0/2 · confidence plausible"),
-            "weighted group confidence missing: {text}"
-        );
-        assert!(
-            text.contains("lower confidence 0/1 · confidence plausible"),
-            "group-scoped confidence missing: {text}"
-        );
-    }
 }
 
 #[test]
@@ -455,79 +371,6 @@ fn lines_text_concat(lines: &[ratatui::text::Line<'_>]) -> String {
 }
 
 #[test]
-fn flat_todo_list_shows_feedback_loop_assessments_on_header_in_all_widget_sizes() {
-    let data = InfoWidgetData {
-        todos: vec![
-            todo_item("a", "optimize grep", "in_progress", None),
-            todo_item("b", "add bench", "pending", None),
-        ],
-        todo_goals: vec![crate::todo::TodoGoal {
-            group: None,
-            closed_feedback_loop: Some(crate::todo::FeedbackLoopState::from_legacy_score(85)),
-            feedback_loop_relevance: Some(crate::todo::FeedbackLoopRelevance::Representative),
-            feedback_loop_coverage: Some(crate::todo::FeedbackLoopCoverage::MainPaths),
-            ..Default::default()
-        }],
-        ..Default::default()
-    };
-    for text in [
-        lines_text_concat(&render_todos_widget(&data, Rect::new(0, 0, 70, 8))),
-        lines_text_concat(&render_todos_expanded(&data, Rect::new(0, 0, 70, 14))),
-        lines_text_concat(&render_todos_compact(&data, Rect::new(0, 0, 70, 3))),
-    ] {
-        assert!(
-            text.contains("loop strong/representative/main_paths"),
-            "loop suffix missing: {text}"
-        );
-    }
-}
-
-#[test]
-fn grouped_todos_show_closed_feedback_loop_on_their_group_headers() {
-    let data = InfoWidgetData {
-        todos: vec![
-            todo_item("a", "speed up search", "in_progress", Some("optimize grep")),
-            todo_item("b", "sketch layout", "pending", Some("onboarding design")),
-        ],
-        todo_goals: vec![
-            crate::todo::TodoGoal {
-                group: Some("optimize grep".to_string()),
-                closed_feedback_loop: Some(crate::todo::FeedbackLoopState::from_legacy_score(90)),
-                ..Default::default()
-            },
-            crate::todo::TodoGoal {
-                group: Some("onboarding design".to_string()),
-                closed_feedback_loop: Some(crate::todo::FeedbackLoopState::from_legacy_score(20)),
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
-    for text in [
-        lines_text_concat(&render_todos_widget(&data, Rect::new(0, 0, 70, 10))),
-        lines_text_concat(&render_todos_expanded(&data, Rect::new(0, 0, 70, 14))),
-    ] {
-        assert!(text.contains("loop strong"), "group loop missing: {text}");
-        assert!(text.contains("loop weak"), "low group loop missing: {text}");
-    }
-}
-
-#[test]
-fn todos_without_goals_render_no_loop_suffix() {
-    let data = InfoWidgetData {
-        todos: vec![todo_item("a", "do a thing", "pending", None)],
-        ..Default::default()
-    };
-    for text in [
-        lines_text_concat(&render_todos_widget(&data, Rect::new(0, 0, 70, 8))),
-        lines_text_concat(&render_todos_expanded(&data, Rect::new(0, 0, 70, 14))),
-        lines_text_concat(&render_todos_compact(&data, Rect::new(0, 0, 70, 3))),
-    ] {
-        assert!(!text.contains("loop "), "unexpected loop suffix: {text}");
-    }
-}
-
-#[test]
 fn loop_suffix_renders_safely_at_tiny_sizes() {
     let data = InfoWidgetData {
         todos: vec![todo_item(
@@ -536,11 +379,6 @@ fn loop_suffix_renders_safely_at_tiny_sizes() {
             "in_progress",
             Some("a very long group name that must truncate"),
         )],
-        todo_goals: vec![crate::todo::TodoGoal {
-            group: Some("a very long group name that must truncate".to_string()),
-            closed_feedback_loop: Some(crate::todo::FeedbackLoopState::from_legacy_score(100)),
-            ..Default::default()
-        }],
         ..Default::default()
     };
     for (w, h) in [(0, 0), (1, 1), (5, 2), (12, 4), (200, 50)] {

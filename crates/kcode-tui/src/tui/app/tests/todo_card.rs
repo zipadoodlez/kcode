@@ -285,7 +285,6 @@ fn pinned_todos_are_omitted_from_info_widgets() {
 
     let info = app.info_widget_data();
     assert!(info.todos.is_empty());
-    assert!(info.todo_goals.is_empty());
     assert!(!info.has_data_for(crate::tui::info_widget::WidgetKind::Todos));
 
     crate::todo::save_todos(&session_id, &[]).unwrap();

@@ -1903,17 +1903,9 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
             todo_lines.push_str("- none\n");
         } else {
             for todo in todos.iter().take(8) {
-                let (confidence_label, confidence) = if todo.status == "completed" {
-                    ("done", todo.completion_confidence.or(todo.confidence))
-                } else {
-                    ("confidence", todo.confidence)
-                };
-                let confidence = confidence
-                    .map(|state| state.as_str().to_string())
-                    .unwrap_or_else(|| "?".to_string());
                 todo_lines.push_str(&format!(
-                    "- [{}|{}|{} {}] {}\n",
-                    todo.status, todo.priority, confidence_label, confidence, todo.content
+                    "- [{}|{}] {}\n",
+                    todo.status, todo.priority, todo.content
                 ));
             }
             if todos.len() > 8 {

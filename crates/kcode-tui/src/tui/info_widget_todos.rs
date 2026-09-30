@@ -1,7 +1,7 @@
 use super::*;
 use kcode_tui_style::theme::{
-    border_color, dim_color, error_color, header_name_color, pending_color, success_color,
-    tool_color, warning_color,
+    border_color, error_color, header_name_color, pending_color, success_color, tool_color,
+    warning_color,
 };
 
 /// Below this many todos we always render an exact 1:1 pip per todo,
@@ -29,9 +29,7 @@ pub(crate) fn swarm_plan_todos(items: &[crate::plan::PlanItem]) -> Vec<crate::to
             group: None,
             blocked_by: item.blocked_by.clone(),
             assigned_to: item.assigned_to.clone(),
-            confidence: None,
-            completion_confidence: None,
-            confidence_history: Vec::new(),
+            ..Default::default()
         })
         .collect()
 }
@@ -52,22 +50,6 @@ fn normalize_plan_status_for_todo(status: &str) -> String {
     }
 }
 
-fn todo_confidence_weight(priority: &str) -> u32 {
-    match priority {
-        "high" => 3,
-        "medium" => 2,
-        _ => 1,
-    }
-}
-
-fn todo_display_confidence(todo: &crate::todo::TodoItem) -> Option<crate::todo::ConfidenceState> {
-    if todo.status == "completed" {
-        todo.completion_confidence.or(todo.confidence)
-    } else {
-        todo.confidence
-    }
-}
-
 /// True when the list still has work worth drawing. A fully completed or
 /// cancelled list is not shown: the widget draws whatever the model last wrote,
 /// so a finished plan would otherwise sit on screen until the model happened to
@@ -77,144 +59,6 @@ pub(crate) fn has_open_items(todos: &[crate::todo::TodoItem]) -> bool {
         !crate::todo::todo_status_is_completed(&todo.status)
             && !crate::todo::todo_status_is_cancelled(&todo.status)
     })
-}
-
-fn aggregate_todo_confidence<'a>(
-    todos: impl IntoIterator<Item = &'a crate::todo::TodoItem>,
-) -> Option<crate::todo::ConfidenceState> {
-    let mut weighted_sum = 0u32;
-    let mut total_weight = 0u32;
-    for todo in todos.into_iter().filter(|todo| todo.status != "cancelled") {
-        let Some(state) = todo_display_confidence(todo) else {
-            continue;
-        };
-        let weight = todo_confidence_weight(&todo.priority);
-        weighted_sum += u32::from(state.legacy_score()) * weight;
-        total_weight += weight;
-    }
-    if total_weight == 0 {
-        None
-    } else {
-        Some(crate::todo::ConfidenceState::from_legacy_score(
-            ((weighted_sum + total_weight / 2) / total_weight) as u8,
-        ))
-    }
-}
-
-fn confidence_style(state: Option<crate::todo::ConfidenceState>) -> Style {
-    use crate::todo::ConfidenceState;
-    let color = match state {
-        Some(ConfidenceState::Validated | ConfidenceState::Verified) => success_color(),
-        Some(ConfidenceState::Plausible) => warning_color(),
-        Some(ConfidenceState::Speculative) => error_color(),
-        None => border_color(),
-    };
-    Style::default().fg(color)
-}
-
-fn confidence_label(state: Option<crate::todo::ConfidenceState>) -> String {
-    state
-        .map(|state| state.as_str().to_string())
-        .unwrap_or_else(|| "?".to_string())
-}
-
-/// Find the goal assessment recorded for a todo group (`None` = the
-/// ungrouped/flat list). Group labels are compared after trimming, matching
-/// how the todo tool normalizes them.
-fn goal_for_group<'a>(
-    goals: &'a [crate::todo::TodoGoal],
-    group: Option<&str>,
-) -> Option<&'a crate::todo::TodoGoal> {
-    let key = group.map(str::trim).filter(|group| !group.is_empty());
-    goals.iter().find(|goal| {
-        goal.group
-            .as_deref()
-            .map(str::trim)
-            .filter(|group| !group.is_empty())
-            == key
-    })
-}
-
-/// Color for a closed feedback loop score: green when progress has a credible
-/// metric to iterate against, red when it is low (below the reframe-nudge
-/// threshold), amber in between.
-fn loop_style(state: crate::todo::FeedbackLoopState) -> Style {
-    use crate::todo::FeedbackLoopState;
-    let color = if state >= FeedbackLoopState::Closed {
-        success_color()
-    } else if state >= FeedbackLoopState::Strong {
-        warning_color()
-    } else {
-        error_color()
-    };
-    Style::default().fg(color)
-}
-
-/// Append a compact suffix describing a goal's feedback-loop assessments.
-fn push_goal_loop_suffix(spans: &mut Vec<Span<'static>>, goal: &crate::todo::TodoGoal) {
-    if goal.closed_feedback_loop.is_none()
-        && goal.feedback_loop_relevance.is_none()
-        && goal.feedback_loop_coverage.is_none()
-        && goal.feedback_loop_traceability.is_none()
-    {
-        return;
-    }
-    spans.push(Span::styled(" · ", Style::default().fg(dim_color())));
-    spans.push(Span::styled("loop ", Style::default().fg(pending_color())));
-    let mut separator = false;
-    if let Some(state) = goal.closed_feedback_loop {
-        spans.push(Span::styled(state.as_str().to_string(), loop_style(state)));
-        separator = true;
-    }
-    for value in [
-        goal.feedback_loop_relevance.map(|state| state.as_str()),
-        goal.feedback_loop_coverage.map(|state| state.as_str()),
-        goal.feedback_loop_traceability.map(|state| state.as_str()),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        if separator {
-            spans.push(Span::styled("/", Style::default().fg(dim_color())));
-        }
-        spans.push(Span::styled(
-            value.to_string(),
-            Style::default().fg(pending_color()),
-        ));
-        separator = true;
-    }
-}
-
-/// Display width of the suffix `push_goal_loop_suffix` would render for this
-/// goal (0 when it renders nothing), so header truncation can reserve room.
-fn goal_loop_suffix_width(goal: &crate::todo::TodoGoal) -> u16 {
-    let states = [
-        goal.closed_feedback_loop.map(|state| state.as_str()),
-        goal.feedback_loop_relevance.map(|state| state.as_str()),
-        goal.feedback_loop_coverage.map(|state| state.as_str()),
-        goal.feedback_loop_traceability.map(|state| state.as_str()),
-    ];
-    let values: Vec<&str> = states.into_iter().flatten().collect();
-    if values.is_empty() {
-        0
-    } else {
-        3 + "loop ".len() as u16
-            + values.iter().map(|value| value.len() as u16).sum::<u16>()
-            + values.len().saturating_sub(1) as u16
-    }
-}
-
-fn todo_confidence_suffix_width(todo: &crate::todo::TodoItem) -> u16 {
-    3 + confidence_label(todo_display_confidence(todo)).len() as u16
-}
-
-fn push_todo_confidence_suffix(spans: &mut Vec<Span<'static>>, todo: &crate::todo::TodoItem) {
-    let score = todo_display_confidence(todo);
-    spans.push(Span::styled(" · ", Style::default().fg(dim_color())));
-    spans.push(Span::styled(
-        confidence_label(score),
-        confidence_style(score),
-    ));
 }
 
 /// Build a compact pip-dot status meter for a set of todos.
@@ -296,31 +140,6 @@ fn push_todo_pips(spans: &mut Vec<Span<'static>>, data: &InfoWidgetData, width_p
     }
 }
 
-fn aggregate_confidence_suffix_width(score: Option<crate::todo::ConfidenceState>) -> u16 {
-    match score {
-        Some(score) => 3 + "confidence ".len() as u16 + confidence_label(Some(score)).len() as u16,
-        None => 0,
-    }
-}
-
-fn push_aggregate_confidence_suffix(
-    spans: &mut Vec<Span<'static>>,
-    score: Option<crate::todo::ConfidenceState>,
-) {
-    let Some(score) = score else {
-        return;
-    };
-    spans.push(Span::styled(" · ", Style::default().fg(border_color())));
-    spans.push(Span::styled(
-        "confidence ",
-        Style::default().fg(pending_color()),
-    ));
-    spans.push(Span::styled(
-        confidence_label(Some(score)),
-        confidence_style(Some(score)),
-    ));
-}
-
 /// Normalize a todo's group label, treating empty/whitespace as ungrouped.
 fn todo_group_key(todo: &crate::todo::TodoItem) -> Option<String> {
     todo.group
@@ -374,33 +193,22 @@ fn push_group_header(
     lines: &mut Vec<Line<'static>>,
     name: &str,
     items: &[&crate::todo::TodoItem],
-    goal: Option<&crate::todo::TodoGoal>,
     inner: Rect,
 ) {
     let total = items.len();
     let completed = items.iter().filter(|t| t.status == "completed").count();
     let counter = format!(" {}/{}", completed, total);
-    let confidence = aggregate_todo_confidence(items.iter().copied());
-    let confidence_width = aggregate_confidence_suffix_width(confidence);
-    let loop_width = goal.map(goal_loop_suffix_width).unwrap_or(0);
-    let max_name = inner
-        .width
-        .saturating_sub(counter.len() as u16 + confidence_width + loop_width)
-        .max(4) as usize;
+    let max_name = inner.width.saturating_sub(counter.len() as u16).max(4) as usize;
     let highlight = items.iter().any(|t| t.status == "in_progress");
     let name_style = if highlight {
         Style::default().fg(warning_color()).bold()
     } else {
         Style::default().fg(header_name_color()).bold()
     };
-    let mut spans = vec![
+    let spans = vec![
         Span::styled(truncate_smart(name, max_name), name_style),
         Span::styled(counter, Style::default().fg(tool_color())),
     ];
-    push_aggregate_confidence_suffix(&mut spans, confidence);
-    if let Some(goal) = goal {
-        push_goal_loop_suffix(&mut spans, goal);
-    }
     lines.push(Line::from(spans));
 }
 
@@ -441,11 +249,7 @@ fn push_todo_item_line(
         ""
     };
 
-    let reserved = indent as u16
-        + 3
-        + priority_marker.0.len() as u16
-        + suffix.len() as u16
-        + todo_confidence_suffix_width(todo);
+    let reserved = indent as u16 + 3 + priority_marker.0.len() as u16 + suffix.len() as u16;
     let max_len = inner.width.saturating_sub(reserved) as usize;
     let content = truncate_smart(&todo.content, max_len);
 
@@ -474,7 +278,6 @@ fn push_todo_item_line(
         ));
     }
     spans.push(Span::styled(content, Style::default().fg(text_color)));
-    push_todo_confidence_suffix(&mut spans, todo);
     if !suffix.is_empty() {
         spans.push(Span::styled(
             suffix.to_string(),
@@ -489,7 +292,6 @@ fn push_todo_item_line(
 /// of todo items actually shown (so callers can render a "+N more" footer).
 fn render_grouped_todo_lines(
     groups: &[(Option<String>, Vec<&crate::todo::TodoItem>)],
-    goals: &[crate::todo::TodoGoal],
     inner: Rect,
     show_priority_marker: bool,
     max_lines: usize,
@@ -501,8 +303,7 @@ fn render_grouped_todo_lines(
             break;
         }
         let header_name = group.as_deref().unwrap_or("Other");
-        let goal = goal_for_group(goals, group.as_deref());
-        push_group_header(&mut lines, header_name, items, goal, inner);
+        push_group_header(&mut lines, header_name, items, inner);
         for todo in sort_todos_by_status(items) {
             if lines.len() >= max_lines {
                 break;
@@ -556,7 +357,6 @@ pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
     ];
     let pip_budget = (inner.width.saturating_sub(12) / 2).clamp(0, 10) as usize;
     push_todo_pips(&mut header, data, pip_budget);
-    push_aggregate_confidence_suffix(&mut header, aggregate_todo_confidence(&data.todos));
 
     let available_lines = inner.height.saturating_sub(1) as usize; // Account for header
     let budget = available_lines.clamp(1, 5);
@@ -564,8 +364,7 @@ pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
     // Grouped layout when any todo declares a group; otherwise the flat list.
     if let Some(groups) = grouped_todos(&data.todos) {
         lines.push(Line::from(header));
-        let (group_lines, shown) =
-            render_grouped_todo_lines(&groups, &data.todo_goals, inner, false, budget);
+        let (group_lines, shown) = render_grouped_todo_lines(&groups, inner, false, budget);
         lines.extend(group_lines);
         if total > shown {
             lines.push(Line::from(vec![Span::styled(
@@ -576,11 +375,6 @@ pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         return lines;
     }
 
-    // Flat list: the whole list is one implicit goal, so its feedback-loop score
-    // (if recorded) lives on the header line.
-    if let Some(goal) = goal_for_group(&data.todo_goals, None) {
-        push_goal_loop_suffix(&mut header, goal);
-    }
     lines.push(Line::from(header));
 
     // Sort todos: in_progress first, then pending, then completed
@@ -637,15 +431,13 @@ pub(super) fn render_todos_expanded(data: &InfoWidgetData, inner: Rect) -> Vec<L
     ];
     let pip_budget = (inner.width.saturating_sub(12) / 2).clamp(0, 14) as usize;
     push_todo_pips(&mut header, data, pip_budget);
-    push_aggregate_confidence_suffix(&mut header, aggregate_todo_confidence(&data.todos));
 
     let available_lines = MAX_TODO_LINES.saturating_sub(1); // Account for header
 
     // Grouped layout when any todo declares a group; otherwise the flat list.
     if let Some(groups) = grouped_todos(&data.todos) {
         lines.push(Line::from(header));
-        let (group_lines, shown) =
-            render_grouped_todo_lines(&groups, &data.todo_goals, inner, true, available_lines);
+        let (group_lines, shown) = render_grouped_todo_lines(&groups, inner, true, available_lines);
         lines.extend(group_lines);
         if total > shown {
             lines.push(Line::from(vec![Span::styled(
@@ -656,11 +448,6 @@ pub(super) fn render_todos_expanded(data: &InfoWidgetData, inner: Rect) -> Vec<L
         return lines;
     }
 
-    // Flat list: the whole list is one implicit goal, so its feedback-loop score
-    // (if recorded) lives on the header line.
-    if let Some(goal) = goal_for_group(&data.todo_goals, None) {
-        push_goal_loop_suffix(&mut header, goal);
-    }
     lines.push(Line::from(header));
 
     // Sort todos: in_progress first, then pending, then completed
@@ -712,7 +499,7 @@ pub(super) fn render_todos_compact(data: &InfoWidgetData, _inner: Rect) -> Vec<L
         }
     }
     let pending = total.saturating_sub(completed);
-    let mut summary = vec![
+    let summary = vec![
         Span::styled(
             format!("{} total", total),
             Style::default().fg(pending_color()),
@@ -728,10 +515,6 @@ pub(super) fn render_todos_compact(data: &InfoWidgetData, _inner: Rect) -> Vec<L
             Style::default().fg(pending_color()),
         ),
     ];
-    push_aggregate_confidence_suffix(&mut summary, aggregate_todo_confidence(&data.todos));
-    if let Some(goal) = goal_for_group(&data.todo_goals, None) {
-        push_goal_loop_suffix(&mut summary, goal);
-    }
 
     vec![
         Line::from(vec![Span::styled(

@@ -100,11 +100,8 @@ impl App {
         }
         let session_id = self.active_client_session_id().map(str::to_string);
         let todos = load_current_session_todos(session_id.as_deref());
-        let goals = load_current_session_goals(session_id.as_deref());
-        let plan = load_current_session_plan(session_id.as_deref());
-        let content = todo_card_payload_json(&todos, &plan, &goals);
-        self.todos_view.card_rendered_hash =
-            hash_todos_payload(session_id.as_deref(), &todos, &plan, &goals);
+        let content = todo_card_payload_json(&todos);
+        self.todos_view.card_rendered_hash = hash_todos_payload(session_id.as_deref(), &todos);
 
         if let Some(idx) = self.latest_todo_card_index() {
             if idx + 1 == self.transcript.messages().len() {
@@ -128,14 +125,12 @@ impl App {
         };
         let session_id = self.active_client_session_id().map(str::to_string);
         let todos = load_current_session_todos(session_id.as_deref());
-        let goals = load_current_session_goals(session_id.as_deref());
-        let plan = load_current_session_plan(session_id.as_deref());
-        let next_hash = hash_todos_payload(session_id.as_deref(), &todos, &plan, &goals);
+        let next_hash = hash_todos_payload(session_id.as_deref(), &todos);
         if next_hash == self.todos_view.card_rendered_hash {
             return false;
         }
         self.todos_view.card_rendered_hash = next_hash;
-        let content = todo_card_payload_json(&todos, &plan, &goals);
+        let content = todo_card_payload_json(&todos);
         self.replace_display_message_content(idx, content)
     }
 
@@ -171,16 +166,14 @@ impl App {
             }
             return false;
         }
-        let goals = load_current_session_goals(session_id.as_deref());
-        let plan = load_current_session_plan(session_id.as_deref());
-        let next_hash = hash_todos_payload(session_id.as_deref(), &todos, &plan, &goals);
+        let next_hash = hash_todos_payload(session_id.as_deref(), &todos);
         if next_hash == self.todos_view.pinned_rendered_hash
             && self.todos_view.pinned_payload.is_some()
         {
             return false;
         }
         self.todos_view.pinned_rendered_hash = next_hash;
-        self.todos_view.pinned_payload = Some(todo_card_payload_json(&todos, &plan, &goals));
+        self.todos_view.pinned_payload = Some(todo_card_payload_json(&todos));
         true
     }
 
@@ -235,14 +228,12 @@ impl App {
         }
         let session_id = self.active_client_session_id();
         let todos = load_current_session_todos(session_id);
-        let goals = load_current_session_goals(session_id);
-        let plan = load_current_session_plan(session_id);
-        let next_hash = hash_todos_payload(session_id, &todos, &plan, &goals);
+        let next_hash = hash_todos_payload(session_id, &todos);
         if !force && self.todos_view.rendered_hash == next_hash {
             return false;
         }
 
-        self.todos_view.markdown = build_todos_view_markdown(session_id, &todos, &plan, &goals);
+        self.todos_view.markdown = build_todos_view_markdown(session_id, &todos);
         self.todos_view.updated_at_ms = now_ms();
         self.todos_view.rendered_hash = next_hash;
         true
@@ -362,39 +353,12 @@ fn load_current_session_todos(session_id: Option<&str>) -> Vec<TodoItem> {
     crate::todo::load_todos(session_id).unwrap_or_default()
 }
 
-fn load_current_session_goals(session_id: Option<&str>) -> Vec<crate::todo::TodoGoal> {
-    let Some(session_id) = session_id else {
-        return Vec::new();
-    };
-    crate::todo::load_goals(session_id).unwrap_or_default()
+fn todo_card_payload_json(todos: &[TodoItem]) -> String {
+    serde_json::to_string(&serde_json::json!({ "todos": todos }))
+        .unwrap_or_else(|_| r#"{"todos":[]}"#.to_string())
 }
 
-fn load_current_session_plan(session_id: Option<&str>) -> crate::todo::TodoPlan {
-    let Some(session_id) = session_id else {
-        return crate::todo::TodoPlan::default();
-    };
-    crate::todo::load_plan(session_id).unwrap_or_default()
-}
-
-fn todo_card_payload_json(
-    todos: &[TodoItem],
-    plan: &crate::todo::TodoPlan,
-    goals: &[crate::todo::TodoGoal],
-) -> String {
-    serde_json::to_string(&serde_json::json!({
-        "todos": todos,
-        "plan": plan,
-        "goals": goals,
-    }))
-    .unwrap_or_else(|_| r#"{"todos":[],"goals":[]}"#.to_string())
-}
-
-fn build_todos_view_markdown(
-    _session_id: Option<&str>,
-    todos: &[TodoItem],
-    _plan: &crate::todo::TodoPlan,
-    _goals: &[crate::todo::TodoGoal],
-) -> String {
+fn build_todos_view_markdown(_session_id: Option<&str>, todos: &[TodoItem]) -> String {
     if todos.is_empty() {
         return "# Todos\n\nNo todos saved yet for this session.\n".to_string();
     }
@@ -515,12 +479,7 @@ fn priority_rank(priority: &str) -> u8 {
     }
 }
 
-fn hash_todos_payload(
-    session_id: Option<&str>,
-    todos: &[TodoItem],
-    plan: &crate::todo::TodoPlan,
-    goals: &[crate::todo::TodoGoal],
-) -> u64 {
+fn hash_todos_payload(session_id: Option<&str>, todos: &[TodoItem]) -> u64 {
     let mut hasher = DefaultHasher::new();
     session_id.hash(&mut hasher);
     for todo in todos {
@@ -529,23 +488,7 @@ fn hash_todos_payload(
         todo.status.hash(&mut hasher);
         todo.priority.hash(&mut hasher);
         todo.group.hash(&mut hasher);
-        todo.confidence.hash(&mut hasher);
-        todo.completion_confidence.hash(&mut hasher);
         todo.blocked_by.hash(&mut hasher);
-        todo.assigned_to.hash(&mut hasher);
-    }
-    plan.user_intention.hash(&mut hasher);
-    plan.understands_user_intent.hash(&mut hasher);
-    for goal in goals {
-        goal.group.hash(&mut hasher);
-        goal.closed_feedback_loop.hash(&mut hasher);
-        goal.feedback_loop.hash(&mut hasher);
-        goal.feedback_loop_relevance.hash(&mut hasher);
-        goal.feedback_loop_coverage.hash(&mut hasher);
-        goal.feedback_loop_traceability.hash(&mut hasher);
-        goal.delivery_state.hash(&mut hasher);
-        goal.difficulty.hash(&mut hasher);
-        goal.autonomy.hash(&mut hasher);
     }
     hasher.finish()
 }
@@ -564,15 +507,6 @@ fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Plan-level intent used by the view tests.
-    fn plan() -> crate::todo::TodoPlan {
-        crate::todo::TodoPlan {
-            user_intention: Some("make navigation feel immediate".to_string()),
-            understands_user_intent: Some(crate::todo::IntentUnderstanding::from_legacy_score(96)),
-            ..Default::default()
-        }
-    }
 
     fn todo(
         id: &str,
@@ -618,7 +552,7 @@ mod tests {
             ),
         ];
 
-        let markdown = build_todos_view_markdown(Some("session_test"), &todos, &plan(), &[]);
+        let markdown = build_todos_view_markdown(Some("session_test"), &todos);
 
         assert!(markdown.contains("**1/2 completed** (50%) · 1 doing · 0 pending"));
         assert!(markdown.contains("- [doing] Validate confidence side panel"));
@@ -639,9 +573,9 @@ mod tests {
             Some(80),
             None,
         )];
-        let before = hash_todos_payload(Some("session_test"), &todos, &plan(), &[]);
+        let before = hash_todos_payload(Some("session_test"), &todos);
         todos[0].confidence = Some(crate::todo::ConfidenceState::Validated);
-        let after = hash_todos_payload(Some("session_test"), &todos, &plan(), &[]);
+        let after = hash_todos_payload(Some("session_test"), &todos);
 
         assert_ne!(before, after);
     }
@@ -681,22 +615,7 @@ mod tests {
                 None,
             ));
         }
-        let markdown = build_todos_view_markdown(
-            Some("session_test"),
-            &todos,
-            &plan(),
-            &[crate::todo::TodoGoal {
-                group: Some("optimize rendering".to_string()),
-                closed_feedback_loop: Some(crate::todo::FeedbackLoopState::from_legacy_score(90)),
-                feedback_loop: Some(
-                    "run the frame benchmark and compare p95 frame time".to_string(),
-                ),
-                feedback_loop_relevance: Some(crate::todo::FeedbackLoopRelevance::Representative),
-                feedback_loop_coverage: Some(crate::todo::FeedbackLoopCoverage::MainPaths),
-                delivery_state: Some(crate::todo::DeliveryState::from_legacy_score(85)),
-                ..Default::default()
-            }],
-        );
+        let markdown = build_todos_view_markdown(Some("session_test"), &todos);
 
         assert!(markdown.contains("_(optimize rendering)_"), "{markdown}");
         assert!(!markdown.contains("Feedback loop:"), "{markdown}");
@@ -707,54 +626,9 @@ mod tests {
     #[test]
     fn todos_view_hash_changes_when_group_changes() {
         let mut todos = vec![todo("g", "Group hash", "pending", "high", Some(80), None)];
-        let before = hash_todos_payload(Some("session_test"), &todos, &plan(), &[]);
+        let before = hash_todos_payload(Some("session_test"), &todos);
         todos[0].group = Some("rendering".to_string());
-        let after = hash_todos_payload(Some("session_test"), &todos, &plan(), &[]);
-        assert_ne!(before, after);
-    }
-
-    #[test]
-    fn todos_view_hash_changes_when_goals_change() {
-        let todos = vec![todo("g", "Goal hash", "pending", "high", Some(80), None)];
-        let before = hash_todos_payload(Some("session_test"), &todos, &plan(), &[]);
-        let goals = vec![crate::todo::TodoGoal {
-            closed_feedback_loop: Some(crate::todo::FeedbackLoopState::from_legacy_score(30)),
-            ..Default::default()
-        }];
-        let after = hash_todos_payload(Some("session_test"), &todos, &plan(), &goals);
-        assert_ne!(before, after);
-    }
-
-    #[test]
-    fn todos_view_hash_changes_when_feedback_loop_changes() {
-        let todos = vec![todo("g", "Goal hash", "pending", "high", Some(80), None)];
-        let mut goals = vec![crate::todo::TodoGoal {
-            feedback_loop: Some("run test A".to_string()),
-            ..Default::default()
-        }];
-        let before = hash_todos_payload(Some("session_test"), &todos, &plan(), &goals);
-        goals[0].feedback_loop = Some("run test B".to_string());
-        let after = hash_todos_payload(Some("session_test"), &todos, &plan(), &goals);
-        assert_ne!(before, after);
-    }
-
-    #[test]
-    fn todos_view_hash_changes_when_user_intention_changes() {
-        let todos = vec![todo("g", "Goal hash", "pending", "high", Some(80), None)];
-        let mut current = plan();
-        let before = hash_todos_payload(Some("session_test"), &todos, &current, &[]);
-        current.user_intention = Some("increase clarity".to_string());
-        let after = hash_todos_payload(Some("session_test"), &todos, &current, &[]);
-        assert_ne!(before, after);
-    }
-
-    #[test]
-    fn todos_view_hash_changes_when_intent_understanding_changes() {
-        let todos = vec![todo("g", "Goal hash", "pending", "high", Some(80), None)];
-        let mut current = plan();
-        let before = hash_todos_payload(Some("session_test"), &todos, &current, &[]);
-        current.understands_user_intent = Some(crate::todo::IntentUnderstanding::Complete);
-        let after = hash_todos_payload(Some("session_test"), &todos, &current, &[]);
+        let after = hash_todos_payload(Some("session_test"), &todos);
         assert_ne!(before, after);
     }
 }

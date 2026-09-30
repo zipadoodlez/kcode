@@ -1234,20 +1234,16 @@ impl crate::tui::TuiState for App {
         let session_id = self.active_client_session_id();
 
         let todos_are_swarm_plan = self.swarm_enabled && !self.swarm.plan_items.is_empty();
-        let (todos, todo_goals) =
-            if crate::config::config().display.pin_todos && !todos_are_swarm_plan {
-                // The pinned band is the single source of truth while enabled. Do
-                // not duplicate the same session todos in a margin or overview
-                // info widget.
-                (Vec::new(), Vec::new())
-            } else if todos_are_swarm_plan {
-                (
-                    crate::tui::info_widget::swarm_plan_todos(&self.swarm.plan_items),
-                    Vec::new(),
-                )
-            } else {
-                gather_todos_and_goals_for_session(session_id)
-            };
+        let todos = if crate::config::config().display.pin_todos && !todos_are_swarm_plan {
+            // The pinned band is the single source of truth while enabled. Do
+            // not duplicate the same session todos in a margin or overview
+            // info widget.
+            Vec::new()
+        } else if todos_are_swarm_plan {
+            crate::tui::info_widget::swarm_plan_todos(&self.swarm.plan_items)
+        } else {
+            gather_todos_for_session(session_id)
+        };
 
         let context_snapshot = self.context_snapshot();
         let context_info = if let Some(context_info) = context_snapshot.info.clone() {
@@ -1523,7 +1519,6 @@ impl crate::tui::TuiState for App {
 
         crate::tui::info_widget::InfoWidgetData {
             todos,
-            todo_goals,
             todos_are_swarm_plan,
             context_info,
             context_info_stale: !context_snapshot.fresh,

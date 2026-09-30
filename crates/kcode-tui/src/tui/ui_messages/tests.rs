@@ -1,9 +1,6 @@
 use super::*;
 use crate::tui::color_support::rgb;
 
-/// Continuation text a tool result may carry. The card renders whatever a tool
-/// returns, so the exact wording is not what these tests are about.
-
 fn extract_line_text(line: &Line<'_>) -> String {
     line.spans
         .iter()

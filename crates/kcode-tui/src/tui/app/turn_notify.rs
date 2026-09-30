@@ -318,13 +318,7 @@ fn todo_work_line(todos: &[TodoItem]) -> Option<String> {
 
     let mut parts = Vec::new();
     if let Some(done) = last_done {
-        let mut seg = format!("✓ {}", clip_todo(&done.content));
-        if let Some(conf) = done.completion_confidence
-            && conf == crate::todo::ConfidenceState::Speculative
-        {
-            seg.push_str(&format!(" (low conf: {})", conf.as_str()));
-        }
-        parts.push(seg);
+        parts.push(format!("✓ {}", clip_todo(&done.content)));
     }
     if let Some(next) = in_progress {
         parts.push(format!("→ {}", clip_todo(&next.content)));
@@ -473,15 +467,6 @@ mod tests {
         let n = build_turn_notification(None, 200.0, &todos, None);
         assert_eq!(n.subtitle.as_deref(), Some("0/2 todos · 1 blocked"));
         assert_eq!(n.body, "⊘ deploy needs run migration");
-    }
-
-    #[test]
-    fn low_confidence_completion_is_flagged() {
-        let mut done = todo_named("risky refactor", "completed", &[]);
-        done.completion_confidence = Some(crate::todo::ConfidenceState::from_legacy_score(35));
-        let n = build_turn_notification(None, 200.0, &[done], None);
-        assert_eq!(n.subtitle.as_deref(), Some("✓ all 1 todos"));
-        assert_eq!(n.body, "✓ risky refactor (low conf: speculative)");
     }
 
     #[test]
