@@ -18,6 +18,11 @@ kcode has its own repository and history and does **not** track upstream jcode
 commits. It inherits jcode's provider support and auth flows, which are the main
 thing to keep an eye on over time.
 
+On MIT code, a subtraction fork can only own what it *adds*. What kcode adds is
+verifiability and package-manager ownership: reproducible builds, no
+self-modification, no telemetry, permission-gated by default, and performance
+claims that ship with a runnable script and its raw artifacts in-repo.
+
 ---
 
 ## Contents

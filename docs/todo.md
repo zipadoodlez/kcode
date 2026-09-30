@@ -329,9 +329,6 @@ are easier once §2 has shrunk the cross-crate surface.
   owning crate. `scripts/check_wildcard_reexport_budget.py` ratchets this
   (baseline 13, goal 0). Drive it to zero, or declare the layout cosmetic and
   collapse it.
-- [ ] **Dependency diet**: 654 lock packages for a terminal agent.
-- [ ] Compile-time isolation: the workspace recompiles far more than it should.
-  Same spine as the crate-spine item above.
 
 ## 4. Tests
 
@@ -380,12 +377,6 @@ is `dev/todo-rework-ab-probe.md`.
   armed, on a task that leaves items open, must show the model continuing rather
   than only replying. The fallback if it chats instead is in the internals doc
   (Step 2).
-- [ ] Later, recorded as the desired final state in the internals doc: the list
-  becomes a repository artifact (one markdown file in the working tree, written
-  by the tool and readable by the maintainer, shared across sessions) and the
-  automation that advances it writes each item's named check and its observed
-  result into that file. Not planned yet; it has open design questions (which
-  repository, two sessions in one repository, mid-session edits).
 
 ## Anytime
 
@@ -419,12 +410,6 @@ Independent, no dependency on the phases above.
   identical to a hook that does nothing.
 - [ ] Blocked calls are invisible: `pre_tool` stderr goes to the model, nothing
   tells the user; hook failures are logged and dropped.
-- [ ] Optional: per-provider crate shape is non-uniform (6 providers ship a wire
-  crate plus a `-runtime` sibling; 3 are runtime-only; `bedrock` is wire-only).
-  Uniformity win at a possible compile-time cost; removes no provider.
-- [ ] Optional: the render-state globals (`ui.rs` has 18 production `static`s
-  with `#[cfg(test)]` mirrors, the pattern repeated across 17 `ui_*.rs`). Only
-  worth doing if a snapshot layer needs the inputs explicit.
 - [ ] Reduce the always-on per-request tool cost. Two suite tests that capped
   tool and parameter descriptions (20 / 25 tokens) were removed rather than
   fixed, so nothing guards this today; re-measure before acting. Direction to
@@ -433,19 +418,3 @@ Independent, no dependency on the phases above.
   the bundled, version-matched docs (`kcode_docs`), echoed in the tool's own
   error when a call is wrong. Control shape to consider: one aggregate
   schema-token budget instead of per-item caps plus the `swarm` exemption.
-
-## Committed ideas (no plan yet)
-
-- [ ] The axis kcode owns: as a subtraction fork on MIT code, only what kcode
-  *adds* is ownable. Leading candidate: verifiability plus package-manager
-  ownership (reproducible builds, no self-modification, no telemetry,
-  permission-gated by default, every performance claim shipped with a runnable
-  script and raw artifacts in-repo).
-
-## Spec (not a checklist)
-
-`plans/browser-provider-protocol.md`: draft spec, no implementation, under
-`plans/` so the bundled `kcode_docs` corpus (`build.rs` skips `plans/` and
-`proposals/`) no longer serves it to the model as a description of the tree.
-Tighten the core method set and the normalized `page.snapshot` format before
-building an adapter.
