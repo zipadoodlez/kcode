@@ -5,7 +5,10 @@ the enforcement tier was actually buying. Written for the todo enforcement
 removal (`internals/todo-enforcement-removal.md`), but the recipe works for any
 behavioral A/B on this tree.
 
-Delete this file once the rework lands.
+Phase 1 has landed, so the pre-change side now comes from the sha you choose,
+not from a checkout that still has the tier. The comparison was not run before
+the landing, and it is still worth running: whether the nudge bought verification
+is what stage 5 (a recorded check per item) has to replace.
 
 ## What is being compared
 
@@ -14,8 +17,8 @@ are open. The question the comparison answers is whether that nudge buys
 **verification** (the model names a check and reports its result) or only
 **turns** (the model continues but still does not verify).
 
-That question is only answerable while both builds exist. Once step 3 drops the
-schema fields, the pre-change state survives only in git history.
+That question needs both builds, and after step 3 the pre-change state survives
+only in git history, so the `before` side is a worktree at a sha before it.
 
 ## Route A: two cargo builds (recommended)
 

@@ -108,6 +108,11 @@ is a five-field display (`id`, `content`, `status`, `priority`, optional `group`
 with no assessments. Intent, resolved decisions, and the final state:
 `internals/todo-enforcement-removal.md`.
 
+- [ ] Live check owed from step 2: the poke now reaches the model as a system
+  reminder rather than as user content. One isolated `kcode run` with auto-poke
+  armed, on a task that leaves items open, must show the model continuing rather
+  than only replying. The fallback if it chats instead is in the internals doc
+  (Step 2).
 - [ ] Later, recorded as the desired final state in the internals doc: the list
   becomes a repository artifact (one markdown file in the working tree, written
   by the tool and readable by the maintainer, shared across sessions) and the

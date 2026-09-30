@@ -7,16 +7,16 @@ below, not yet planned. The six decisions are resolved below.
 
 The todo list is a display of the plan. The client must not enforce it.
 
-- **Weak self-assessment must not drive the model onward.** Today the ladder
-  does exactly that: on a weak score it queues a hidden continuation that says
+- **Weak self-assessment must not drive the model onward.** The deleted ladder
+  did exactly that: on a weak score it queued a hidden continuation that said
   "do more validation ... do not reply or wait for the user". The wanted
   behavior is that the model may stop and ask, and that a weak assessment is
-  visible to the user. Deleting the ladder serves this; keeping it fights it.
+  visible to the user. Deleting the ladder served this; keeping it fought it.
 - **The poke is opt-in.** `features.auto_poke` defaults to false
-  (`kconfig-types/src/lib.rs:952`) and the ladder is initialised from it
-  (`tui_lifecycle.rs:428`). Nothing here changes the default experience.
-- **Keep:** the `todo` tool, its fields, `/poke`, Ctrl+P, the flag, and the
-  guardrail breaker. Capability is fixed; only the enforcement goes.
+  (`kconfig-types/src/lib.rs:952`) and the ladder was initialised from it
+  (`tui_lifecycle.rs:428`). Nothing here changed the default experience.
+- **Kept:** the `todo` tool, its fields, `/poke`, Ctrl+P, the flag, and the
+  guardrail breaker. Capability is fixed; only the enforcement went.
 
 ## End state (implemented in step 1)
 
@@ -45,7 +45,7 @@ Kept deliberately, and why:
 
 - The pure predicates the todo card still calls (`feedback_loop_*_passes`,
   `intent_understanding_passes`, `required_*`). Deleting them now would force
-  the card to be rewritten in the same landing; step 3 removes the fields they
+  the card to be rewritten in the same landing; step 3 removed the fields they
   read and the predicates with them.
 - The message constants and the text classifier. `is_auto_poke_message` listed
   every spelling so a transcript resumed from an older session rendered those
@@ -160,7 +160,7 @@ is in the file" rather than "the model said so". A session starting cold can
 then see what was verified and when, which is the anti-drift property: status
 carries its own evidence and lives where the work lives.
 
-What this changes about the stages above: step 3 still deletes the eight scored
+What this changes about the stages above: step 3 deleted the eight scored
 dimensions, both confidence fields, and the plan fields. The one idea worth
 carrying forward from that rubric is "name the check", and today it survives as
 step 3's single line in the tool description. Stage 5 is where it becomes a

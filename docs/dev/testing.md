@@ -51,11 +51,11 @@ failure (the compiler was killed), not this race.
 
 ## Baselines
 
-Single-threaded, every suite is at zero (2026-09-29) except one pre-existing
-failure, `kcode-tui --lib`
+Single-threaded, every suite is at zero (2026-09-29). `kcode-tui --lib`
 `test_remote_fallback_provider_suggestions_normalize_bare_openai_openrouter_routes`
-(found 2026-09-30, fails at `4ef8c3e1` too). `../todo.md` holds the list to keep
-current. For `kcode-tui`:
+was recorded here as a pre-existing failure on 2026-09-30; it is the ambient
+`KCODE_*` read above, not drift, and passes with those unset. `../todo.md` holds
+the list to keep current. For `kcode-tui`:
 
 ```sh
 cargo test -p kcode-tui --lib -- --test-threads=1

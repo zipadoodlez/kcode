@@ -61,15 +61,15 @@ excluded from text diffs and union-merged on conflict (see `.gitattributes`).
 ## Tests
 
 `cargo test` runs the workspace; target a crate while iterating
-(`cargo test -p kcode-tui --lib`). The suite has pre-existing failures on this
-tree, so a red run is not automatically your change. It is also not a gate:
-nothing in `scripts/check_guardrails.sh` runs tests, and the whole `kcode-tui`
-lib suite fails 1-4 tests per run on the race below, so run the filter that
-matches your change and reserve `--test-threads=1` for when you need the whole
-crate. See
-[testing.md](testing.md) for the known `kcode-tui` parallel-execution race and
-the `--test-threads=1` workaround, and check any suspect in isolation before
-blaming it. `scripts/test_ci_suites.py` runs the suites with per-suite timing if
+(`cargo test -p kcode-tui --lib`). On a clean environment the suites are at
+zero, but a red run is not automatically your change: an ambient `KCODE_*` in
+the shell is read as configuration, and the whole `kcode-tui` lib suite fails
+1-4 tests per run on the race below. It is also not a gate: nothing in
+`scripts/check_guardrails.sh` runs tests, so run the filter that matches your
+change and reserve `--test-threads=1` for when you need the whole crate. See
+[testing.md](testing.md) for the known `kcode-tui` parallel-execution race, the
+ambient `KCODE_*` channel, and the `--test-threads=1` workaround, and check any
+suspect in isolation before blaming it. `scripts/test_ci_suites.py` runs the suites with per-suite timing if
 you want a readable local report.
 
 ## Budget ratchets
