@@ -94,7 +94,7 @@ Not this batch: the `include!` test-tree replacement (§4) is paid for in test
 churn, so it follows the shape work, and the God-module re-cores (§2) are their
 own passes.
 
-## Todo refactor (step 1 landed 2026-09-30; steps 2-3 remain)
+## Todo refactor (steps 1-2 landed 2026-09-30; step 3 remains)
 
 Delete the todo enforcement tier; keep the tool, its fields, Ctrl+P, and
 `/poke`. A weak self-assessment must not drive the model onward, and the ladder
@@ -111,17 +111,19 @@ intent, the resolved decisions, and the corrections the pass found:
   armed: exactly one poke, none repeated on the unchanged list, and no removed
   message in the stored session. Decisions 1, 5 and 6 landed with it, as did
   dropping `plan.user_intention` and `auto_poke_default_on`.
-- [ ] Step 2: replace the synthetic-text classifier with a marker on the queued
-  item (`is_auto_poke_message`, `auto_poke_display_summary`, the 22 legacy
-  constants). They match our own messages by literal text, which is why every
-  reword added a constant. The fresh tests for the poke and the marker belong
-  here, because step 1 deleted the tests covering the removed behavior.
+- [x] Step 2: the poke is identified by shape, not by its text (`6a5c2238`). It
+  is queued wrapped as `[SYSTEM: ...]`, which the partitioner turns into a
+  reminder-only turn. `kcode-base/src/todo.rs` 576 -> 249, `observe.rs` 284 ->
+  217; the 22 constants, the classifier and its four call sites, a dead observe
+  notice, and the partition's display list are gone. One live check remains for
+  the maintainer's next build: the poke now reaches the model as a system
+  reminder, so confirm in one isolated `kcode run` that the model acts on it
+  rather than only replying.
 - [ ] Step 3, unblocked: shrink the `todo` schema to a display
   (`id`/`content`/`status`/`priority`/`group`), dropping `plan`, `goals` and both
   confidence fields. 1,086 always-on tokens today, behind only `swarm` (2,210).
   Also edits `kcode-task-types/src/lib.rs`, the score rendering in
   `tui/ui_messages.rs`, the extra storage paths, the pass predicates, and
-  `internals/todo-calibration.md`.
   `internals/todo-calibration.md`.
 - [ ] Later, recorded as the desired final state in the internals doc: the list
   becomes a repository artifact (one markdown file in the working tree, written

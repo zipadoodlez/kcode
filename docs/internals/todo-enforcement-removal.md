@@ -1,7 +1,7 @@
 # Todo enforcement removal
 
-Status: step 1 landed (2026-09-30), step 2 next, step 3 now unblocked. The six
-decisions are resolved below.
+Status: steps 1 and 2 landed (2026-09-30), step 3 next. The six decisions are
+resolved below.
 
 ## Intent
 
@@ -47,10 +47,11 @@ Kept deliberately, and why:
   `intent_understanding_passes`, `required_*`). Deleting them now would force
   the card to be rewritten in the same landing; step 3 removes the fields they
   read and the predicates with them.
-- The message constants and the text classifier. `is_auto_poke_message` lists
-  every spelling so a transcript resumed from an older session renders those
+- The message constants and the text classifier. `is_auto_poke_message` listed
+  every spelling so a transcript resumed from an older session rendered those
   continuations as system notices rather than as the user's own prompts. Step 2
-  replaces the matching and deletes the group.
+  replaced the matching with the queue's `[SYSTEM: ...]` shape and deleted the
+  group.
 - `AUTO_POKE_DECISION action=queue_continuation`, so the probe's poke count
   works on both sides.
 
@@ -77,30 +78,36 @@ unchanged list, and the stored session contains none of the removed messages.
 `test_remote_fallback_provider_suggestions_normalize_bare_openai_openrouter_routes`,
 fails identically at `4ef8c3e1` without this change.
 
+## Step 2 landed (2026-09-30)
+
+The poke is queued wrapped as `[SYSTEM: ...]`, the outbound queue's existing
+convention. `partition_queued_messages` turns that into a reminder-only turn, so
+the model reads it as a system reminder with no user content, and the stored
+message is empty, which the history renderer already skips.
+
+Deleted: `is_auto_poke_message`, `auto_poke_display_summary`, the 22 message
+constants and the retention note (`kcode-base/src/todo.rs` 576 -> 249), the
+classifier's four call sites (three in `session/render.rs`, one in
+`render/response_stats.rs`, plus `overnight_card.rs`), `note_todo_gate_result`
+and `todo_gate_notice` with their caller (`observe.rs` 284 -> 217),
+`queued_messages_are_only_pokes`, the two poke branches in the dispatch, and the
+third return value of `partition_queued_messages`. A queued system message is no
+longer displayed at all, because whoever queues it shows its own notice.
+
+Kept and re-homed: `queued_system_message` beside its parser in `helpers.rs`,
+and `queue_poke_message` beside the other poke helpers in `commands.rs`.
+
+Cost, deliberate: a session persisted before this change holds tier messages as
+plain user-role content, and resumed history now renders those as if the user
+wrote them. Only pre-change data is affected.
+
+Unverified by static checks, and the one thing to confirm on a live build: the
+poke's channel changed from user content to a system reminder. One isolated
+`kcode run` with auto-poke armed, on a task that leaves items open, must show
+the model continuing rather than only replying. If it chats instead, the
+fallback is to queue the poke as user content with exactly one text constant.
+
 ## Remaining work
-
-### Step 2: replace the text classifier with a marker
-
-`is_auto_poke_message` and `auto_poke_display_summary` decide whether a queued
-message is ours by matching its text, which is why every reword added a
-constant. The one poke that survives is still persisted as a `Role::User` turn,
-so the recognition still matters: without it a reload, resume or remote attach
-renders the poke as the user's own prompt.
-
-Give the outbound queue item a kind, set when the poke is enqueued, and move
-these four call sites onto it:
-
-- `kcode-base/src/session/render.rs` (restored-history rendering)
-- `kcode-tui/src/tui/app/overnight_card.rs` (the live card path)
-- `kcode-tui/src/tui/app/commands.rs::is_poke_message`
-- `kcode-tui/src/tui/app/commands.rs::queued_messages_are_only_pokes`, which
-  `remote.rs` uses to preserve the visible turn
-
-Then delete the classifier, `auto_poke_display_summary`, and every
-`PRE_*`/`LEGACY_*`/`LABELED_*` constant together with the retention note above
-them in `kcode-base/src/todo.rs`. This is where the fresh tests for the poke and
-the marker belong, because step 1 deleted the tests that covered the removed
-behavior.
 
 ### Step 3: shrink the `todo` schema to a display
 
