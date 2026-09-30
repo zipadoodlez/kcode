@@ -701,9 +701,6 @@ fn test_improve_status_summarizes_current_todos() {
                     priority: "high".to_string(),
                     blocked_by: Vec::new(),
                     assigned_to: None,
-                    confidence: Some(crate::todo::ConfidenceState::from_legacy_score(82)),
-                    completion_confidence: None,
-                    confidence_history: Vec::new(),
                 },
                 crate::todo::TodoItem {
                     group: None,
@@ -713,9 +710,6 @@ fn test_improve_status_summarizes_current_todos() {
                     priority: "medium".to_string(),
                     blocked_by: Vec::new(),
                     assigned_to: None,
-                    confidence: None,
-                    completion_confidence: None,
-                    confidence_history: Vec::new(),
                 },
             ],
         )
@@ -735,7 +729,6 @@ fn test_improve_status_summarizes_current_todos() {
                 .contains("1 incomplete · 1 completed · 0 cancelled")
         );
         assert!(msg.content.contains("Profile startup path"));
-        assert!(msg.content.contains("confidence plausible"));
     });
 }
 
@@ -806,9 +799,6 @@ fn test_improve_resume_uses_saved_mode_and_current_todos() {
                 priority: "high".to_string(),
                 blocked_by: Vec::new(),
                 assigned_to: None,
-                confidence: None,
-                completion_confidence: None,
-                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");

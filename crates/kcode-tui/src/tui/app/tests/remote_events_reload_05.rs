@@ -374,7 +374,6 @@ fn auto_poke_does_not_repeat_until_incomplete_todos_change() {
             content: content.to_string(),
             status: "pending".to_string(),
             priority: "high".to_string(),
-            confidence: Some(crate::todo::ConfidenceState::from_legacy_score(80)),
             ..Default::default()
         };
 

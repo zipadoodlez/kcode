@@ -94,41 +94,16 @@ Not this batch: the `include!` test-tree replacement (§4) is paid for in test
 churn, so it follows the shape work, and the God-module re-cores (§2) are their
 own passes.
 
-## Todo refactor (steps 1-2 landed 2026-09-30; step 3 remains)
+## Todo refactor (phase 1 landed 2026-09-30; phase 2 remains)
 
 Delete the todo enforcement tier; keep the tool, its fields, Ctrl+P, and
 `/poke`. A weak self-assessment must not drive the model onward, and the ladder
-does exactly that today; the wanted behavior is that the model may stop and ask.
-The tier is duplicated, TUI and headless. Full touch inventory, the corrected
-intent, the resolved decisions, and the corrections the pass found:
+did exactly that; the wanted behavior is that the model may stop and ask. Phase 1
+is done: the tier is gone, the poke is identified by shape, and the `todo` schema
+is a five-field display (`id`, `content`, `status`, `priority`, optional `group`)
+with no assessments. Intent, resolved decisions, and the final state:
 `internals/todo-enforcement-removal.md`.
 
-- [x] Step 1: the enforcement tier is gone and one poke remains. The TUI ladder's
-  248 lines are a 57-line function, and three headless loops are one decision
-  function. `kcode-base/src/todo.rs` 2085 -> 576 and out of the size budget;
-  `app-core/tool/todo.rs` 2274 -> 1715; `src/cli/commands.rs` 1515 -> 1281; `App`
-  fields 194 -> 188. Runtime check on an isolated `kcode run` with auto-poke
-  armed: exactly one poke, none repeated on the unchanged list, and no removed
-  message in the stored session. Decisions 1, 5 and 6 landed with it, as did
-  dropping `plan.user_intention` and `auto_poke_default_on`.
-- [x] Step 2: the poke is identified by shape, not by its text (`6a5c2238`). It
-  is queued wrapped as `[SYSTEM: ...]`, which the partitioner turns into a
-  reminder-only turn. `kcode-base/src/todo.rs` 576 -> 249, `observe.rs` 284 ->
-  217; the 22 constants, the classifier and its four call sites, a dead observe
-  notice, and the partition's display list are gone. One live check remains for
-  the maintainer's next build: the poke now reaches the model as a system
-  reminder, so confirm in one isolated `kcode run` that the model acts on it
-  rather than only replying.
-- [ ] Step 3, in progress (paused 2026-09-30): shrink the `todo` schema to a
-  display. Landed: the tool writes and advertises five fields and its description
-  carries decision 4's line (`59c40abb`); the card, the widget, the todos view,
-  the state snapshot, the turn notification and the todo-change list no longer
-  read goals, plan or confidence (uncommitted). Remaining, in order: six red
-  `kcode-tui` test expectations, then the types in
-  `kcode-task-types/src/lib.rs`, the goals/plan storage and pass predicates in
-  `kcode-base/src/todo.rs`, the `TodoItem` fixtures, and
-  `internals/todo-calibration.md`. The exact list, with the fix for each red
-  test, is the landing note in the internals doc.
 - [ ] Later, recorded as the desired final state in the internals doc: the list
   becomes a repository artifact (one markdown file in the working tree, written
   by the tool and readable by the maintainer, shared across sessions) and the
@@ -136,8 +111,8 @@ intent, the resolved decisions, and the corrections the pass found:
   result into that file. Not planned yet; it has open design questions (which
   repository, two sessions in one repository, mid-session edits).
 
-Gate: three ratcheted files shrink, so each landing ends with
-`scripts/check_guardrails.sh --fix`. Step 1's A/B probe recipe, for comparing
+Gate: ratcheted files shrink, so each landing ends with
+`scripts/check_guardrails.sh --fix`. The A/B probe recipe for comparing
 verification and poke count before and after: `dev/todo-rework-ab-probe.md`.
 
 ## 0. Deletion ledger (the line-count question, measured)
@@ -650,17 +625,17 @@ Independent, no dependency on the phases above.
 - [ ] Reduce the always-on per-request tool cost. Two suite tests that capped
   tool and parameter descriptions (20 / 25 tokens) were removed rather than
   fixed, so nothing guards this today; the numbers below are the last measured.
-  Worst offenders: `batch` (129), `todo.feedback_loop_relevance` (132),
-  `todo.feedback_loop_traceability` (94), `swarm.model` (84),
+  Worst offenders: `batch` (129), `swarm.model` (84),
   `browser.candidates` (73); 12 parameter descriptions are over 25 tokens. The
+  `todo` schema's two worst offenders (`todo.feedback_loop_relevance` 132,
+  `todo.feedback_loop_traceability` 94) went with the assessment fields (todo
+  step 3), leaving that tool near 120 tokens total. The
   essays are paid on every request. Direction to consider: keep only the call
   contract always-on (name, one-line description, terse parameter shape plus
   enums/required) and give the prose a single home in the bundled,
   version-matched docs (`kcode_docs`), echoed in the tool's own error when a
-  call is wrong. The `todo` calibration rubric now lives in
-  `docs/internals/todo-calibration.md` (retrievable via `kcode_docs`), so the
-  always-on schema keeps only short summaries. The gate messages that had their
-  own token budget are gone with the enforcement tier (todo step 1). The same
+  call is wrong. The gate messages that had their own token budget are gone with
+  the enforcement tier (todo step 1). The same
   shape applies to the remaining essays. Control shape to consider: one
   aggregate schema-token budget instead of two per-item caps plus the `swarm`
   exemption.

@@ -796,9 +796,6 @@ fn test_context_command_reports_session_context_snapshot() {
                 priority: "high".to_string(),
                 blocked_by: Vec::new(),
                 assigned_to: None,
-                confidence: Some(crate::todo::ConfidenceState::from_legacy_score(77)),
-                completion_confidence: None,
-                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");
@@ -818,7 +815,7 @@ fn test_context_command_reports_session_context_snapshot() {
         assert!(msg.content.contains("Todos"));
         assert!(msg.content.contains("Side Panel"));
         assert!(msg.content.contains("Inspect context summary"));
-        assert!(msg.content.contains("[pending|high|confidence plausible]"));
+        assert!(msg.content.contains("[pending|high]"));
         assert!(msg.content.contains("active skill: debug"));
         assert!(msg.content.contains("queue mode: on"));
     });

@@ -1,7 +1,7 @@
 # Todo enforcement removal
 
-Status: steps 1 and 2 landed (2026-09-30), step 3 next. The six decisions are
-resolved below.
+Status: phase 1 (steps 1-3) landed 2026-09-30. Phase 2 (stages 4-5) is recorded
+below, not yet planned. The six decisions are resolved below.
 
 ## Intent
 
@@ -107,48 +107,26 @@ poke's channel changed from user content to a system reminder. One isolated
 the model continuing rather than only replying. If it chats instead, the
 fallback is to queue the poke as user content with exactly one text constant.
 
-## Remaining work
+## Step 3 landed (2026-09-30): the `todo` schema is a display
 
-### Step 3: shrink the `todo` schema to a display
-
-`id`/`content`/`status`/`priority`/`group`, dropping `plan`, `goals`,
-`confidence` and `completion_confidence`: 1,086 always-on tokens to roughly 120.
-
-**Landed so far (2026-09-30, committed `59c40abb` plus an uncommitted display
-pass):** the tool advertises and writes five fields (`id`, `content`, `status`,
-`priority`, optional `group`), with `id`/`content`/`status`/`priority` required,
-and its description carries decision 4's line. Its merge machinery for goals,
-plan and confidence histories is deleted (1708 -> 352 lines), and a write that
-still carries the retired fields is ignored rather than rejected. The card
-carries tasks only (3864 -> 3038), and the widget, the todos view, the state
-snapshot, the turn notification and the todo-change list no longer read goals,
-plan or confidence. Remaining work in this step:
-
-- **Six test expectations and fixtures are red** in `kcode-tui`; each asserts
-  behaviour this step removed. They are the immediate next action, listed in the
-  landing note below rather than fixed here.
-- `crates/kcode-task-types/src/lib.rs`: delete `TodoGoal`, `TodoPlan`, their
-  change and field types, the enums only they used (`IntentUnderstanding`,
-  `FeedbackLoopState`, `DeliveryState`, `Difficulty`, `Autonomy`,
-  `IterationMaturity`, `FeedbackLoopRelevance`, `FeedbackLoopCoverage`,
-  `FeedbackLoopTraceability`), `ConfidenceState`, and `TodoItem`'s three
-  confidence fields.
-- `kcode-base/src/todo.rs`: delete the goals and plan storage, the pass
-  predicates, and the shrunk re-export list.
-- Fixtures that construct `TodoItem` with the confidence fields (the `todo()`
-  helpers in `todos_view.rs`, `turn_notify.rs`, `info_widget_tests.rs`,
-  `ui_todo_changes.rs`) need `..Default::default()` or the fields dropped.
-- Delete `internals/todo-calibration.md` and its `kcode-docs` path; re-measure
-  the always-on tool cost in `../todo.md` §5, whose two worst offenders
-  (`todo.feedback_loop_relevance`, `todo.feedback_loop_traceability`) are gone.
+Five fields - `id`, `content`, `status`, `priority`, optional `group` - with the
+first four required, and decision 4's line in the description. 1,086 always-on
+tokens to roughly 120. `plan`, `goals`, `confidence` and `completion_confidence`
+are gone from the tool, the card, the widget, the todos view, the state snapshot,
+the turn notification, the improve/refactor status reports and the todo-change
+list; `TodoGoal`/`TodoPlan` and the ten assessment enums they used are deleted, so
+`TodoItem` keeps the display fields plus the two the swarm plan projection needs
+(`blocked_by`, `assigned_to`). A write that still carries the retired fields is
+ignored rather than rejected, and `internals/todo-calibration.md` is deleted with
+them; the surviving idea is the description's one line, name the check that proves
+an item done and report its result.
 
 Two process findings from this step, both worth keeping:
 
-- **`cargo clippy -- -D warnings` in the gate does not compile test code**, so a
-  test-only breakage passes the gate. Run
-  `cargo clippy -p <crate> --all-targets` and the suite itself before calling a
-  landing done. One failure below was introduced in step 2 and stayed invisible
-  through the gate plus a `cargo check --all-targets` run.
+- **The gate compiles test code (`--all-targets`) but never runs it**, so a
+  test-only assertion breakage passes the gate. Run the suite itself before
+  calling a landing done. Two failures here were introduced in earlier steps and
+  stayed invisible through the gate.
 - **Beware of deleting by block scan.** Two of the edits here silently removed
   one line past the intended block (an `impl` opener, then a `fn` signature),
   because a scan that ends at the first column-zero `}` starts counting before
@@ -160,31 +138,6 @@ Two process findings from this step, both worth keeping:
 The before/after probe recipe for comparing verification and poke count across
 the rework lives in `dev/todo-rework-ab-probe.md`; this doc does not duplicate
 it.
-
-## Step 3 landing note (in progress, 2026-09-30)
-
-State of the tree when this pass paused: `cargo check --all-targets` and
-`cargo clippy --all-targets` are clean over the four crates, the whole guardrail
-gate is green, and `kcode-tui --lib` single-threaded is **1800 passed, 7 failed**
-(the run before the last display edits; those edits only removed readers, so the
-count stands unless a fixture below changed). Six are this pass's, one is the
-pre-existing failure recorded in `../todo.md`.
-
-The six, each asserting behaviour this step deleted, with the fix each needs:
-
-| Test | Asserts | Fix |
-|---|---|---|
-| `refresh_todo_card_updates_content_when_goal_scores_change` (`tests/todo_card.rs:164`) | the card payload still contains `"closed_feedback_loop"` | delete: the payload carries tasks only |
-| `refresh_todo_card_updates_content_when_todos_change` (`tests/todo_card.rs:104`) | the payload contains `"goals"` | drop that one assertion; the rest of the test still holds |
-| `test_context_command_reports_session_context_snapshot` (`tests/state_model_poke_02/part_01.rs:821`) | the snapshot prints `[pending\|high\|confidence plausible]` | expect `[pending\|high]` |
-| `test_remote_non_retryable_error_stops_auto_poke_after_short_retry_budget` (`tests/remote_events_reload_04.rs:301`) | the queue is empty after the error clears auto-poke | the fixture pushes the poke as literal text; queue it with `commands::queue_poke_message` as production does. This one is a step-2 miss |
-| `todos_view_hash_changes_when_confidence_changes` (`todos_view.rs`) | the card hash moves when `confidence` changes | delete: the hash no longer covers a removed field |
-| `todos_widgets_render_group_headers_when_groups_present` (`info_widget_tests.rs:124`) | the group header shows `1/2 · confidence plausible` | drop that assertion; the header shows the counter |
-
-The last attempt to apply these aborted on its first assertion (the fixture text
-it searched for spans lines and had already been reformatted), so none of the
-six were applied. They are the first thing to do when work resumes, before the
-types are deleted.
 
 ## Desired final state (recorded 2026-09-30, not yet planned)
 

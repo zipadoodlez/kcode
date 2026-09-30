@@ -26,9 +26,6 @@ fn todo(id: &str, status: &str) -> crate::todo::TodoItem {
         id: id.to_string(),
         blocked_by: Vec::new(),
         assigned_to: None,
-        confidence: None,
-        completion_confidence: None,
-        confidence_history: Vec::new(),
     }
 }
 

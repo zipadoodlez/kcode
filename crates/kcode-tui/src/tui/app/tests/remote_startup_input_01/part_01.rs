@@ -23,9 +23,6 @@ fn test_finish_turn_does_not_duplicate_existing_poke_followup() {
                 priority: "high".to_string(),
                 blocked_by: Vec::new(),
                 assigned_to: None,
-                confidence: None,
-                completion_confidence: None,
-                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");

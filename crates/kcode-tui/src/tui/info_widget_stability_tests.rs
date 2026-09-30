@@ -27,9 +27,6 @@ fn rich_data() -> InfoWidgetData {
                 id: "t1".to_string(),
                 blocked_by: Vec::new(),
                 assigned_to: None,
-                confidence: None,
-                completion_confidence: None,
-                confidence_history: Vec::new(),
             },
             crate::todo::TodoItem {
                 group: None,
@@ -39,9 +36,6 @@ fn rich_data() -> InfoWidgetData {
                 id: "t2".to_string(),
                 blocked_by: Vec::new(),
                 assigned_to: None,
-                confidence: None,
-                completion_confidence: None,
-                confidence_history: Vec::new(),
             },
         ],
         background_info: Some(BackgroundInfo {

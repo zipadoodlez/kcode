@@ -29,8 +29,8 @@ pub(super) struct TurnNotification {
 }
 
 impl App {
-    /// Conclude a *completed* turn: run the end-of-turn followups (auto-poke
-    /// and the confidence checks), and when none was queued, retire the
+    /// Conclude a *completed* turn: run the end-of-turn followup (auto-poke)
+    /// and, when it queued nothing, retire the
     /// visible-turn marker and post the completion notice.
     ///
     /// Shared by the live remote turn-complete arm and the turn-lifecycle
@@ -421,9 +421,6 @@ mod tests {
             priority: "medium".to_string(),
             id: content.to_string(),
             group: None,
-            confidence: None,
-            completion_confidence: None,
-            confidence_history: Vec::new(),
             blocked_by: blocked_by.iter().map(|s| s.to_string()).collect(),
             assigned_to: None,
         }

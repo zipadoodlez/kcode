@@ -1781,9 +1781,6 @@ fn test_poke_arms_auto_poke_until_todos_are_done() {
                 priority: "high".to_string(),
                 blocked_by: Vec::new(),
                 assigned_to: None,
-                confidence: None,
-                completion_confidence: None,
-                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");
@@ -1814,9 +1811,6 @@ fn test_poke_status_reports_current_state() {
                 priority: "high".to_string(),
                 blocked_by: Vec::new(),
                 assigned_to: None,
-                confidence: None,
-                completion_confidence: None,
-                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");
@@ -1839,7 +1833,7 @@ fn test_poke_status_reports_current_state() {
             super::commands::build_poke_message(&super::commands::incomplete_poke_todos(&app));
         super::commands::queue_poke_message(&mut app, poke);
         app.hidden_queued_system_messages.push(
-            "All todos are done. Todo confidence summary:\n- Weighted completion confidence: 80%."
+            "You have 1 incomplete todo. Continue working, or update the todo tool."
                 .to_string(),
         );
 
@@ -1869,9 +1863,6 @@ fn test_poke_off_disarms_and_clears_queued_followup() {
                 priority: "high".to_string(),
                 blocked_by: Vec::new(),
                 assigned_to: None,
-                confidence: None,
-                completion_confidence: None,
-                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");
@@ -1921,9 +1912,6 @@ fn test_poke_queues_when_turn_is_in_progress() {
                 priority: "high".to_string(),
                 blocked_by: Vec::new(),
                 assigned_to: None,
-                confidence: None,
-                completion_confidence: None,
-                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");
@@ -1957,9 +1945,6 @@ fn test_poke_queues_when_turn_is_in_progress() {
                     priority: "high".to_string(),
                     blocked_by: Vec::new(),
                     assigned_to: None,
-                    confidence: None,
-                    completion_confidence: None,
-                    confidence_history: Vec::new(),
                 },
                 crate::todo::TodoItem {
                     group: None,
@@ -1969,9 +1954,6 @@ fn test_poke_queues_when_turn_is_in_progress() {
                     priority: "medium".to_string(),
                     blocked_by: Vec::new(),
                     assigned_to: None,
-                    confidence: None,
-                    completion_confidence: None,
-                    confidence_history: Vec::new(),
                 },
             ],
         )
@@ -2022,9 +2004,6 @@ fn test_finish_turn_auto_pokes_again_when_todos_remain() {
                 priority: "high".to_string(),
                 blocked_by: Vec::new(),
                 assigned_to: None,
-                confidence: None,
-                completion_confidence: None,
-                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");
@@ -2040,7 +2019,7 @@ fn test_finish_turn_auto_pokes_again_when_todos_remain() {
 }
 
 #[test]
-fn test_finish_turn_without_auto_poke_does_not_queue_confidence_summary() {
+fn test_finish_turn_without_auto_poke_queues_nothing() {
     with_temp_kcode_home(|| {
         let mut app = create_test_app();
         crate::todo::save_todos(
@@ -2053,9 +2032,6 @@ fn test_finish_turn_without_auto_poke_does_not_queue_confidence_summary() {
                 priority: "high".to_string(),
                 blocked_by: Vec::new(),
                 assigned_to: None,
-                confidence: Some(crate::todo::ConfidenceState::from_legacy_score(90)),
-                completion_confidence: Some(crate::todo::ConfidenceState::from_legacy_score(90)),
-                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");
@@ -2066,11 +2042,6 @@ fn test_finish_turn_without_auto_poke_does_not_queue_confidence_summary() {
 
         assert!(!app.pending_queued_dispatch);
         assert!(app.queued_messages().is_empty());
-        assert!(
-            !app.display_messages()
-                .iter()
-                .any(|msg| msg.content.contains("confidence summary"))
-        );
     });
 }
 
@@ -2088,9 +2059,6 @@ fn test_finish_turn_auto_poke_preserves_visible_turn_started() {
                 priority: "high".to_string(),
                 blocked_by: Vec::new(),
                 assigned_to: None,
-                confidence: None,
-                completion_confidence: None,
-                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");

@@ -100,9 +100,6 @@ fn todos_widgets_render_group_headers_when_groups_present() {
         content: format!("task {id}"),
         status: status.to_string(),
         priority: "medium".to_string(),
-        confidence: Some(crate::todo::ConfidenceState::from_legacy_score(80)),
-        completion_confidence: None,
-        confidence_history: Vec::new(),
         blocked_by: Vec::new(),
         assigned_to: None,
     };
@@ -121,10 +118,6 @@ fn todos_widgets_render_group_headers_when_groups_present() {
     // and the ungrouped bucket renders under "Other".
     assert!(expanded.contains("optimize rendering"), "{expanded}");
     assert!(expanded.contains("1/2"), "{expanded}");
-    assert!(
-        expanded.contains("1/2 · confidence plausible"),
-        "group confidence missing: {expanded}"
-    );
     assert!(expanded.contains("fix scrollback"), "{expanded}");
     assert!(expanded.contains("Other"), "{expanded}");
     let opt_idx = expanded.find("optimize rendering").unwrap();
@@ -142,9 +135,6 @@ fn todos_widgets_stay_flat_without_groups() {
         content: format!("task {id}"),
         status: status.to_string(),
         priority: "medium".to_string(),
-        confidence: Some(crate::todo::ConfidenceState::from_legacy_score(80)),
-        completion_confidence: None,
-        confidence_history: Vec::new(),
         blocked_by: Vec::new(),
         assigned_to: None,
     };
@@ -164,9 +154,6 @@ fn todos_widget_renders_exact_pips_for_small_lists() {
         content: format!("item {status}"),
         status: status.to_string(),
         priority: "medium".to_string(),
-        confidence: Some(crate::todo::ConfidenceState::from_legacy_score(80)),
-        completion_confidence: None,
-        confidence_history: Vec::new(),
         blocked_by: Vec::new(),
         assigned_to: None,
     };
@@ -349,9 +336,6 @@ fn todo_item(id: &str, content: &str, status: &str, group: Option<&str>) -> crat
         group: group.map(|g| g.to_string()),
         blocked_by: Vec::new(),
         assigned_to: None,
-        confidence: Some(crate::todo::ConfidenceState::from_legacy_score(80)),
-        completion_confidence: None,
-        confidence_history: Vec::new(),
     }
 }
 
@@ -1059,9 +1043,6 @@ fn placements_never_include_border_only_widgets() {
             id: "todo-1".to_string(),
             blocked_by: Vec::new(),
             assigned_to: None,
-            confidence: None,
-            completion_confidence: None,
-            confidence_history: Vec::new(),
         }],
         queue_mode: Some(true),
         swarm_info: Some(SwarmInfo {

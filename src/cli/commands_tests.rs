@@ -3,7 +3,6 @@ use crate::auth::{AuthState, AuthStatus, ProviderAuth};
 use crate::message::{Message, StreamEvent, ToolDefinition};
 use crate::provider::ModelRoute;
 use crate::provider::{EventStream, Provider};
-use crate::todo::ConfidenceState;
 use crate::tool::Registry;
 use async_trait::async_trait;
 use std::io::{Read, Write};
@@ -258,20 +257,12 @@ fn cli_route_display_uses_typed_api_methods() {
     );
 }
 
-fn test_todo(
-    id: &str,
-    status: &str,
-    priority: &str,
-    confidence: Option<ConfidenceState>,
-    completion_confidence: Option<ConfidenceState>,
-) -> crate::todo::TodoItem {
+fn test_todo(id: &str, status: &str, priority: &str) -> crate::todo::TodoItem {
     crate::todo::TodoItem {
         id: id.to_string(),
         content: format!("todo {id}"),
         status: status.to_string(),
         priority: priority.to_string(),
-        confidence,
-        completion_confidence,
         ..Default::default()
     }
 }
@@ -288,13 +279,13 @@ fn incomplete_poke_todos_treats_status_synonyms_and_case_as_finished() {
         "canceled",
     ] {
         assert!(
-            incomplete_poke_todos(vec![test_todo("a", status, "high", None, None)]).is_empty(),
+            incomplete_poke_todos(vec![test_todo("a", status, "high")]).is_empty(),
             "status {status:?} must not count as open work"
         );
     }
     for status in ["pending", "in_progress", "in progress", "blocked"] {
         assert_eq!(
-            incomplete_poke_todos(vec![test_todo("a", status, "high", None, None)]).len(),
+            incomplete_poke_todos(vec![test_todo("a", status, "high")]).len(),
             1,
             "status {status:?} must count as open work"
         );

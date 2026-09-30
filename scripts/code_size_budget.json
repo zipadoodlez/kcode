@@ -42,7 +42,7 @@
     "crates/kcode-terminal-launch/src/lib.rs": 1561,
     "crates/kcode-tui-core/src/keybind.rs": 1205,
     "crates/kcode-tui-render/src/swarm_gallery.rs": 3100,
-    "crates/kcode-tui/src/tui/app.rs": 2148,
+    "crates/kcode-tui/src/tui/app.rs": 2147,
     "crates/kcode-tui/src/tui/app/auth.rs": 2948,
     "crates/kcode-tui/src/tui/app/auth_account_picker.rs": 1287,
     "crates/kcode-tui/src/tui/app/commands.rs": 3013,

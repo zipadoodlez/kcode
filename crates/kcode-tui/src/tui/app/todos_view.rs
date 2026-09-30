@@ -508,24 +508,13 @@ fn now_ms() -> u64 {
 mod tests {
     use super::*;
 
-    fn todo(
-        id: &str,
-        content: &str,
-        status: &str,
-        priority: &str,
-        confidence: Option<u8>,
-        completion_confidence: Option<u8>,
-    ) -> TodoItem {
+    fn todo(id: &str, content: &str, status: &str, priority: &str) -> TodoItem {
         TodoItem {
             id: id.to_string(),
             content: content.to_string(),
             status: status.to_string(),
             priority: priority.to_string(),
             group: None,
-            confidence: confidence.map(crate::todo::ConfidenceState::from_legacy_score),
-            completion_confidence: completion_confidence
-                .map(crate::todo::ConfidenceState::from_legacy_score),
-            confidence_history: Vec::new(),
             blocked_by: Vec::new(),
             assigned_to: None,
         }
@@ -539,17 +528,8 @@ mod tests {
                 "Validate confidence side panel",
                 "in_progress",
                 "high",
-                Some(80),
-                None,
             ),
-            todo(
-                "todo-2",
-                "Finish completed item",
-                "completed",
-                "medium",
-                Some(70),
-                Some(95),
-            ),
+            todo("todo-2", "Finish completed item", "completed", "medium"),
         ];
 
         let markdown = build_todos_view_markdown(Some("session_test"), &todos);
@@ -557,52 +537,19 @@ mod tests {
         assert!(markdown.contains("**1/2 completed** (50%) · 1 doing · 0 pending"));
         assert!(markdown.contains("- [doing] Validate confidence side panel"));
         assert!(markdown.contains("- [done] Finish completed item"));
-        assert!(!markdown.contains("  - confidence:"));
-        assert!(!markdown.contains("completion confidence:"));
         assert!(!markdown.contains("Session ID"));
         assert!(markdown.contains("Use `/todos` for full details."));
     }
 
     #[test]
-    fn todos_view_hash_changes_when_confidence_changes() {
-        let mut todos = vec![todo(
-            "todo-1",
-            "Track confidence hash",
-            "pending",
-            "high",
-            Some(80),
-            None,
-        )];
-        let before = hash_todos_payload(Some("session_test"), &todos);
-        todos[0].confidence = Some(crate::todo::ConfidenceState::Validated);
-        let after = hash_todos_payload(Some("session_test"), &todos);
-
-        assert_ne!(before, after);
-    }
-
-    #[test]
     fn todos_view_markdown_is_bounded_and_keeps_group_context() {
-        let mut grouped_a = todo(
-            "g1",
-            "Cut frame allocs",
-            "in_progress",
-            "high",
-            Some(80),
-            None,
-        );
+        let mut grouped_a = todo("g1", "Cut frame allocs", "in_progress", "high");
         grouped_a.group = Some("optimize rendering".to_string());
-        let mut grouped_b = todo(
-            "g2",
-            "Batch draw calls",
-            "completed",
-            "medium",
-            Some(70),
-            Some(90),
-        );
+        let mut grouped_b = todo("g2", "Batch draw calls", "completed", "medium");
         grouped_b.group = Some("optimize rendering".to_string());
-        let mut other = todo("o1", "Fix scrollback", "pending", "low", Some(60), None);
+        let mut other = todo("o1", "Fix scrollback", "pending", "low");
         other.group = Some("scrollback".to_string());
-        let ungrouped = todo("u1", "Misc cleanup", "pending", "low", Some(60), None);
+        let ungrouped = todo("u1", "Misc cleanup", "pending", "low");
 
         let mut todos = vec![grouped_a, grouped_b, other, ungrouped];
         for index in 0..8 {
@@ -611,8 +558,6 @@ mod tests {
                 &format!("Extra item {index}"),
                 "pending",
                 "low",
-                Some(60),
-                None,
             ));
         }
         let markdown = build_todos_view_markdown(Some("session_test"), &todos);
@@ -625,7 +570,7 @@ mod tests {
 
     #[test]
     fn todos_view_hash_changes_when_group_changes() {
-        let mut todos = vec![todo("g", "Group hash", "pending", "high", Some(80), None)];
+        let mut todos = vec![todo("g", "Group hash", "pending", "high")];
         let before = hash_todos_payload(Some("session_test"), &todos);
         todos[0].group = Some("rendering".to_string());
         let after = hash_todos_payload(Some("session_test"), &todos);

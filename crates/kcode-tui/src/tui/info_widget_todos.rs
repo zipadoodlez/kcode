@@ -29,7 +29,6 @@ pub(crate) fn swarm_plan_todos(items: &[crate::plan::PlanItem]) -> Vec<crate::to
             group: None,
             blocked_by: item.blocked_by.clone(),
             assigned_to: item.assigned_to.clone(),
-            ..Default::default()
         })
         .collect()
 }

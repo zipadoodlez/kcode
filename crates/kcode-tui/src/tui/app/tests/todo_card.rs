@@ -85,9 +85,6 @@ fn refresh_todo_card_updates_content_when_todos_change() {
         status: status.to_string(),
         priority: "high".to_string(),
         group: None,
-        confidence: Some(crate::todo::ConfidenceState::from_legacy_score(70)),
-        completion_confidence: None,
-        confidence_history: Vec::new(),
         blocked_by: Vec::new(),
         assigned_to: None,
     };
@@ -101,7 +98,6 @@ fn refresh_todo_card_updates_content_when_todos_change() {
         .find(|m| m.role == "todos")
         .expect("todo card pushed");
     assert!(card.content.contains("write the card"));
-    assert!(card.content.contains("\"goals\""));
 
     // Unchanged todos: refresh is a no-op.
     assert!(!app.refresh_todo_card_if_needed());
@@ -120,68 +116,6 @@ fn refresh_todo_card_updates_content_when_todos_change() {
     let _ = crate::todo::save_todos(&session_id, &[]);
 }
 
-#[test]
-fn refresh_todo_card_updates_content_when_goal_scores_change() {
-    let _env_lock = crate::storage::lock_test_env();
-    let mut app = create_test_app();
-    let session_id = app.session.id.clone();
-    let todos = [crate::todo::TodoItem {
-        id: "t1".to_string(),
-        content: "render scores".to_string(),
-        status: "in_progress".to_string(),
-        priority: "high".to_string(),
-        group: None,
-        confidence: Some(crate::todo::ConfidenceState::from_legacy_score(80)),
-        completion_confidence: None,
-        confidence_history: Vec::new(),
-        blocked_by: Vec::new(),
-        assigned_to: None,
-    }];
-    let goal = |score| crate::todo::TodoGoal {
-        group: None,
-        closed_feedback_loop: Some(crate::todo::FeedbackLoopState::from_legacy_score(score)),
-        feedback_loop: Some("inspect the frame".to_string()),
-        delivery_state: Some(crate::todo::DeliveryState::from_legacy_score(90)),
-        ..Default::default()
-    };
-
-    let plan = crate::todo::TodoPlan {
-        user_intention: Some("keep the plan state visible".to_string()),
-        understands_user_intent: Some(crate::todo::IntentUnderstanding::from_legacy_score(95)),
-        ..Default::default()
-    };
-
-    crate::todo::save_todos(&session_id, &todos).unwrap();
-    crate::todo::save_goals(&session_id, &[goal(70)]).unwrap();
-    crate::todo::save_plan(&session_id, &plan).unwrap();
-    app.toggle_todo_card();
-    let card = app
-        .transcript
-        .messages()
-        .iter()
-        .find(|message| message.role == "todos")
-        .expect("todo card pushed");
-    assert!(card.content.contains("\"closed_feedback_loop\":\"usable\""));
-    assert!(
-        card.content
-            .contains("\"understands_user_intent\":\"partial\"")
-    );
-
-    crate::todo::save_goals(&session_id, &[goal(95)]).unwrap();
-    assert!(app.refresh_todo_card_if_needed());
-    let card = app
-        .transcript
-        .messages()
-        .iter()
-        .find(|message| message.role == "todos")
-        .expect("todo card still present");
-    assert!(card.content.contains("\"closed_feedback_loop\":\"strong\""));
-
-    let _ = crate::todo::save_todos(&session_id, &[]);
-    let _ = crate::todo::save_goals(&session_id, &[]);
-    let _ = crate::todo::save_plan(&session_id, &crate::todo::TodoPlan::default());
-}
-
 /// Simple todo used by the pinned-band tests.
 fn pinned_band_todo(id: &str, content: &str, status: &str) -> crate::todo::TodoItem {
     crate::todo::TodoItem {
@@ -190,9 +124,6 @@ fn pinned_band_todo(id: &str, content: &str, status: &str) -> crate::todo::TodoI
         status: status.to_string(),
         priority: "high".to_string(),
         group: None,
-        confidence: Some(crate::todo::ConfidenceState::from_legacy_score(80)),
-        completion_confidence: None,
-        confidence_history: Vec::new(),
         blocked_by: Vec::new(),
         assigned_to: None,
     }
