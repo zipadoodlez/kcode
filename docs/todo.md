@@ -371,11 +371,10 @@ would just move that churn around.
 
 Phase 1 landed 2026-09-30: the enforcement tier is gone, the poke is identified
 by shape, and the `todo` schema is a five-field display (`id`, `content`,
-`status`, `priority`, optional `group`). Intent, resolved decisions, and the
-landed record are in `internals/todo-enforcement-removal.md`; the A/B probe
-recipe is `dev/todo-rework-ab-probe.md`. Phase 2 is the work list, and it has
-outgrown this section: destination and settled decisions are in
-`plans/work-list.md`, and its roadmap is not written yet.
+`status`, `priority`, optional `group`). Phase 2 is the work list, and it has
+outgrown this section: the destination, the reason the tier must not return, and
+the settled decisions are in `plans/work-list.md`, whose roadmap is not written
+yet. The A/B probe recipe is `dev/todo-rework-ab-probe.md`.
 
 - [ ] Live check owed from step 2: the poke now reaches the model as a system
   reminder rather than as user content. One isolated `kcode run` with auto-poke

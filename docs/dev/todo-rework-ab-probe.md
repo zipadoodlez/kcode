@@ -2,13 +2,11 @@
 
 How to build the pre-change and post-change `kcode` side by side and compare what
 the enforcement tier was actually buying. Written for the todo enforcement
-removal (`internals/todo-enforcement-removal.md`), but the recipe works for any
-behavioral A/B on this tree.
-
+removal (2026-09-30), and the recipe works for any behavioral A/B on this tree.
 Phase 1 has landed, so the pre-change side now comes from the sha you choose,
 not from a checkout that still has the tier. The comparison was not run before
 the landing, and it is still worth running: whether the nudge bought verification
-is what stage 5 (a recorded check per item) has to replace.
+is what the per-item check left open in `plans/work-list.md` has to replace.
 
 ## What is being compared
 

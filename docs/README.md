@@ -60,7 +60,6 @@ not fit its row is a doc in the wrong place.
 | `internals/rendering.md` | colors and markdown | roles, and terminal compatibility |
 | `internals/memory.md` | the memory subsystem | budget and the incident runbook |
 | `internals/usage.md` | usage and statistics | what the ledgers mean |
-| `internals/todo-enforcement-removal.md` | why the tier went | decisions, rejected alternatives, the landed record; the final state moved to `plans/work-list.md` |
 | `dev/post-change.md` | what to do after a change | the gate, the graph, the naming rules |
 | `dev/testing.md` | running the suites | the failure classes and their causes |
 | `dev/benchmarking.md` | measuring | recipes and the measured budgets |

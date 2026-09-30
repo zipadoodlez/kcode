@@ -27,6 +27,10 @@ size, wildcard, and `App`-shape ratchets, and crate dependency boundaries.
 
 A compile or clippy failure is a real regression; do not commit past it.
 
+Compiling is not running. The gate builds every target but executes no test, so
+a test-only breakage passes it; run the suite (`testing.md`) before calling a
+landing done.
+
 Clippy results are cached per crate, and `-- -D warnings` is not part of the
 cache key, so a passing gate can hide lints in any crate that did not recompile.
 For a change that spans several crates, or that is clearing lints, that makes

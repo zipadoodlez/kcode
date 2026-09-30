@@ -1,9 +1,8 @@
 # Work list
 
 Status: destination agreed 2026-10-01. The roadmap is not written yet. This
-supersedes the "Desired final state" section of
-`internals/todo-enforcement-removal.md`, which scoped the same idea to the todo
-feature alone.
+absorbs the todo rework that landed 2026-09-30; the reason the enforcement tier
+was removed is kept below, and git has the rest of that history.
 
 ## Destination
 
@@ -28,6 +27,29 @@ The plan and the todo item are the same five fields (`content`, `status`, `id`,
 carries a comment claiming they are "intentionally separate: plan data is shared
 at the server/swarm level, while todos remain session-local". That premise is
 what this project deletes.
+
+## Why the tier must not come back
+
+The `todo` tool used to enforce. It stored a plan with goals, a per-item
+confidence score, and a per-item check, scored them at turn end, and queued a
+hidden continuation telling the model to keep going and not to ask the user.
+That was deleted 2026-09-30, and the reasons are not rediscoverable from the
+code:
+
+- **A self-rubric cannot catch the failure it is named after.** The model scores
+  its own understanding of the request, and the same misunderstanding that drops
+  a requirement rates the understanding as clear.
+- **A weak self-assessment must not drive the model onward.** The wanted
+  behavior is that the model may stop and ask, and that the weakness is visible
+  to the user rather than acted on by the harness.
+- **The poke is opt-in.** `features.auto_poke` defaults to false, and that does
+  not change here.
+- **Capability was fixed, only enforcement went.** The tool, `/poke`, Ctrl+P,
+  the flag, and the guardrail breaker were all kept on purpose.
+
+The one idea that survived is now a line in the tool description: name the check
+that proves the item is done, and report its actual result. That is the seed of
+the open question above about whether a row carries its check.
 
 ## Settled
 
