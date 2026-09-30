@@ -7,9 +7,11 @@ was removed is kept below, and git has the rest of that history.
 ## Destination
 
 One list, one task type, one writer. A file in the repo holds the open work, the
-`todo` tool shows the slice in play, and every session is a member of its repo's
-list from its first turn. A swarm is what that list is called when more than one
-member works it, so there is no second container and no "not in a swarm" state.
+`todo` tool shows the slice in play, and every session works from its repo's file
+starting with its first turn. An entry may record which session holds it. A swarm
+is the name for the case where more than one session holds entries in one file,
+so there is no second container and no state where a session is not working from
+a file.
 
 The list is the contract the swarm and the solo session both serve. It is not
 hand-authored: the human reads it and asks the model to change it.
@@ -75,11 +77,17 @@ the open question above about whether a row carries its check.
    session pays no gate or artifact cost.
 8. **The file must be readable and diff-stable.** It does not have to be pleasant
    to hand-edit, because it is never hand-authored.
-9. **Every session is a member of its list from turn one.** One container, no
-   solo path, because today's solo path re-derives what the swarm path owns and
-   that duplication is most of the state work in `todo.md` §1. A swarm is the
-   name for the list with more than one member, and the display stays hidden
-   while a list has one member and no edges.
+9. **Every session works from a file from turn one.** The file has entries, not
+   members. An entry may record which session holds it, and that claim is the
+   only thing that makes a session a member. There is no solo path and no swarm
+   path, because a swarm is just the case where more than one session holds
+   entries in the same file. Today's solo path re-derives what the swarm path
+   owns, and that duplication is most of the state work in `todo.md` §1.
+
+The seam that falls out: who holds an entry is durable and lives in the file,
+while whether that session is alive and busy is live server state that dies with
+the process. Today one member record welds the two, and most of the four
+duplicated member shapes come from that weld.
 
 ## Open
 
