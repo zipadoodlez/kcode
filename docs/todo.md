@@ -1,57 +1,7 @@
 # Todo
 
-The one list of outstanding work. Tick an item when it lands and delete it; git
-has the history. Longer designs live in the doc an item links to. A quoted count
-is a measurement as of the date given; re-derive it rather than trust it. An item
-marked `(decision)` needs a call from the maintainer first.
-
-Order is by what unblocks what, not payoff: shared representations sit under many
-call sites, so settle the shape before sweeping sites. Which shapes those are is a
-`graphify god_nodes` query.
-
-## Standing decisions
-
-- **Fork policy: diverged.** No rebase lane and no upstream to track; the ratchets
-  measure this tree's drift.
-- **No provider is deleted** (2026-09-27): every cut candidate backs a
-  user-selectable provider. Cleanup is identity unification (§1), not removal.
-- **Gate: `scripts/check_guardrails.sh`, no CI.** The script is the list of gates,
-  so read it rather than a copy. Its ratchets only tighten, so a landing that
-  shrinks a tracked number ends with `--fix`.
-- **Search tool: `kgrep`, one name** (2026-09-30). The grep prior is met by the
-  inbound alias in `kcode-tool-core::resolve_tool_name` (which stays; it also
-  carries OAuth's `file_grep`/`Grep` and `functions.*`), not a second advertised
-  name, and a canonical-vs-advertised map was rejected as a name to keep in sync.
-  Trap guard: shell `rg`/`grep`/`find` are ruled out in one prompt line because
-  `rg` is absent, so a shell search returns empty and reads as no matches. Revisit
-  only on a dirty live probe: one `kcode run` that forces a search, read the first
-  tool call. Clean is weak evidence; deepseek and xiaomi-mimo carry less of the
-  grep prior than the Claude/OpenAI families.
-
-## Test baseline
-
-Single-threaded every suite is at zero (2026-09-29). Two environmental failure
-classes remain; `dev/testing.md` owns the detail.
-
-- **Parallel-only flakes.** `kcode-tui --lib` at the default thread count fails a
-  changing set of about a dozen tests that pass single-threaded. Cause
-  (2026-09-30): tests read configuration from process-global sources that other
-  tests mutate, and the readers never take the `lock_test_env()` the mutators
-  hold. Live channels: `KCODE_HOME` (session save/restore and the config cache
-  resolve through whatever home is set when they run), the `KCODE_SSH_REMOTE` /
-  `KCODE_SSH_*` / `KCODE_MODEL` / `KCODE_PROVIDER` / `KCODE_RUNTIME_PROVIDER`
-  family read at dispatch by `tui::is_ssh_remote()`, and ambient `KCODE_*`.
-  Proven by `KCODE_SSH_REMOTE=test-remote <test> --exact` flipping a pass to a
-  fail. App-core had the same shape and is partly fixed. `--test-threads=1` is the
-  workaround; serializing the readers on that lock deadlocks or makes the suite
-  >10 minutes, so the durable fix is to stop routing test configuration through
-  the process environment. A run started inside a kcode shell inherits the active
-  provider profile as `KCODE_*`; unset every `KCODE_*` before believing a failure.
-- **A rare fork/PTY hang.** `terminal_setup_command.rs`'s
-  `decode_key_event_via_pty` forks the multithreaded test process and runs
-  crossterm in the child; seen twice, the child wedges and the parent blocks on
-  its result pipe forever. Needs a concurrent lock held at fork time; not
-  reproduced in 20+ runs. Spawning a fresh process instead of forking removes it.
+Outstanding work, in the order that unblocks the most. See `README.md` for the
+conventions.
 
 ## 1. Shared shapes
 

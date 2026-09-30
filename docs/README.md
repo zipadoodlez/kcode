@@ -18,12 +18,14 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
   from the tree with a search, it does not belong here: state the why, the trap,
   the contract, the measurement, or the recipe, and nothing else. A fact that is
   absent cannot go stale. If a doc and the code disagree, the doc is wrong.
-- **`todo.md` is the one home for outstanding work.** The checklist item and its
-  design live in the same entry, so finishing something is one edit in one file.
-  Superseded items are deleted, not archived: git has the history. A design too
-  large to inline there - a full protocol or interface spec for something not
-  yet built - goes in `plans/`, which `build.rs` keeps out of the bundled
-  `kcode_docs` corpus so the model never reads it as a description of the tree.
+- **`todo.md` is the one home for outstanding work**, in the order that unblocks
+  the most. The design lives in the entry when it is short, and in the doc the
+  item links to when it is not: a design too large to inline - a full protocol or
+  interface spec for something not yet built - goes in `plans/`, which `build.rs`
+  keeps out of the bundled `kcode_docs` corpus so the model never reads it as a
+  description of the tree. Superseded items are deleted, not archived: git has the
+  history. An item marked `(decision)` waits on a call from the maintainer; the
+  rest are actionable.
 - **Prefer one good doc over three thin ones.** If two docs would share a
   header structure, they are one doc.
 - **No marketing.** State what a thing does and what it costs.

@@ -11,8 +11,9 @@ on.
 `cargo test -p kcode-tui --lib` fails a handful of tests per run at the default
 thread count, with a set that changes between runs. It is a race on
 process-global state, not a logic bug: each failure passes in isolation, and
-`--test-threads=1` passes the whole suite. This is the last known flake class;
-`../todo.md` tracks it.
+`--test-threads=1` passes the whole suite. This is the last known logic flake
+class; `AGENTS.md` carries the one-line version for a session that just saw a
+failure.
 
 Root cause: tests read configuration from process-global sources that other
 tests mutate concurrently. The live channels are:
@@ -34,7 +35,8 @@ tests mutate concurrently. The live channels are:
 
 Env-mutating tests hold `storage::lock_test_env()` for their whole body, but the
 readers never take it, so the exclusion buys nothing against a concurrent
-reader. Making readers guard the same lock serializes the suite
+reader. App-core had the same shape (a global bus, and env/config read at
+dispatch) and is partly fixed. Making readers guard the same lock serializes the suite
 (`create_test_app` alone is ~810 call sites; measured at >10 minutes) and can
 deadlock with worker threads that read the same accessors, so it is not a
 drop-in fix. The workarounds are `--test-threads=1` for a full run and a clean
@@ -49,13 +51,21 @@ is timing-sensitive and can still report a stray blink under load.
 If a run fails after a `cargo` SIGTERM under memory pressure, that is a different
 failure (the compiler was killed), not this race.
 
+## A rare fork hang
+
+`terminal_setup_command.rs`'s `decode_key_event_via_pty` forks the multithreaded
+test process and runs crossterm in the child. Seen twice: the child wedges and the
+parent blocks on its result pipe forever, so the run neither passes nor fails. It
+needs a concurrent lock held at fork time and does not reproduce on demand (20+
+clean runs). Spawning a fresh process instead of forking removes the class.
+
 ## Baselines
 
 Single-threaded, every suite is at zero (2026-09-29). `kcode-tui --lib`
 `test_remote_fallback_provider_suggestions_normalize_bare_openai_openrouter_routes`
 was recorded here as a pre-existing failure on 2026-09-30; it is the ambient
-`KCODE_*` read above, not drift, and passes with those unset. `../todo.md` holds
-the list to keep current. For `kcode-tui`:
+`KCODE_*` read above, not drift, and passes with those unset. This section is the
+list; keep it current here. For `kcode-tui`:
 
 ```sh
 cargo test -p kcode-tui --lib -- --test-threads=1

@@ -360,6 +360,10 @@ impl ToolOutput {
 /// This lives in `kcode-tool-core` (rather than the tool `Registry`) so that
 /// low-level crates such as config can normalize tool names without depending
 /// on the full tool subsystem.
+///
+/// One advertised name per tool. The grep prior is met here rather than by
+/// advertising a second name: a canonical-vs-advertised map was rejected as a
+/// dual name that has to stay in sync.
 pub fn resolve_tool_name(name: &str) -> &str {
     // Some function-calling APIs expose a recipient such as `functions.bash`.
     // Models occasionally preserve that transport namespace when constructing
