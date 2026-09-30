@@ -1,6 +1,8 @@
 //! Regression tests for static-model / live-catalog merge behavior
 //! across built-in and user-declared OpenAI-compatible provider profiles.
 
+#![allow(clippy::await_holding_lock)]
+
 use crate::tests::{ENV_LOCK, EnvVarGuard};
 
 /// Minimal one-shot `/models` endpoint: serves `body` to the first request.

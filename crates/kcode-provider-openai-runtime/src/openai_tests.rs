@@ -1,4 +1,8 @@
-#![allow(clippy::collapsible_match)]
+#![allow(
+    clippy::collapsible_match,
+    clippy::await_holding_lock,
+    clippy::result_large_err
+)]
 
 use super::*;
 use anyhow::Result;
