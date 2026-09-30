@@ -425,6 +425,32 @@ pub fn render_swarm_gallery(
     out
 }
 
+/// Split a string into chunks that each fit within `max_width` display columns,
+/// respecting multi-column characters (CJK characters take 2 columns, etc.).
+pub fn split_by_display_width(s: &str, max_width: usize) -> Vec<String> {
+    use unicode_width::UnicodeWidthChar;
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    let mut current_width = 0usize;
+
+    for ch in s.chars() {
+        let cw = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if current_width + cw > max_width && !current.is_empty() {
+            chunks.push(std::mem::take(&mut current));
+            current_width = 0;
+        }
+        current.push(ch);
+        current_width += cw;
+    }
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+    if chunks.is_empty() {
+        chunks.push(String::new());
+    }
+    chunks
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -606,30 +632,4 @@ mod tests {
     fn plain(line: &Line<'static>) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
     }
-}
-
-/// Split a string into chunks that each fit within `max_width` display columns,
-/// respecting multi-column characters (CJK characters take 2 columns, etc.).
-pub fn split_by_display_width(s: &str, max_width: usize) -> Vec<String> {
-    use unicode_width::UnicodeWidthChar;
-    let mut chunks = Vec::new();
-    let mut current = String::new();
-    let mut current_width = 0usize;
-
-    for ch in s.chars() {
-        let cw = UnicodeWidthChar::width(ch).unwrap_or(0);
-        if current_width + cw > max_width && !current.is_empty() {
-            chunks.push(std::mem::take(&mut current));
-            current_width = 0;
-        }
-        current.push(ch);
-        current_width += cw;
-    }
-    if !current.is_empty() {
-        chunks.push(current);
-    }
-    if chunks.is_empty() {
-        chunks.push(String::new());
-    }
-    chunks
 }
