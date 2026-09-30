@@ -8,6 +8,11 @@ roles are scheduler policy, not user-facing roles.
 The graph is a single server-owned, versioned object (`kcode-plan`'s
 `VersionedPlan`). Agents mutate it only through validated ops.
 
+The swarm is one executor of the repo's work list (`plans/work-list.md`). The
+list is the shared contract; this engine's plan is its execution state, and the
+durable plan carries work while a swarm is in flight. The write path for the
+list is not built yet.
+
 ## Two modes: deep and light
 
 One engine, two presets. Both use the same DAG data model and scheduler; only the

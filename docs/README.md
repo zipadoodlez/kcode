@@ -43,6 +43,7 @@ not fit its row is a doc in the wrong place.
 |---|---|---|
 | `todo.md` | the order of work | open items with their design; landed items deleted |
 | `what-was-removed.md` | why this fork looks nothing like upstream | the two cuts and what was deliberately kept |
+| `plans/work-list.md` | the destination for the work list | one list, one task type, one writer; the swarm as one executor; not served to the model |
 | `plans/browser-provider-protocol.md` | a design for work not yet built | the protocol; not served to the model |
 | `user/cli.md` | the non-interactive surface | flags a wrapper needs and their traps |
 | `user/tui.md` | terminal input, picker, panels | input mechanics and their terminal quirks |
@@ -52,14 +53,14 @@ not fit its row is a doc in the wrong place.
 | `user/auth.md` | where credentials live | the two-path model, traps, the import sources |
 | `user/ssh.md` | remote attach | the security and disconnect contract, verification |
 | `internals/architecture.md` | the runtime shape | server/client/session model, paths, lifecycle |
-| `internals/swarm.md` | coordinated agents | the DAG, gates, member semantics |
+| `internals/swarm.md` | coordinated agents | the DAG, gates, member semantics; one executor of the work list |
 | `internals/browser.md` | the browser tool | what it does and what is not live evidence |
 | `internals/websocket.md` | OpenAI WebSocket transport | the wire contract with the peer |
 | `internals/soft-interrupt.md` | interrupting a turn | the stop semantics |
 | `internals/rendering.md` | colors and markdown | roles, and terminal compatibility |
 | `internals/memory.md` | the memory subsystem | budget and the incident runbook |
 | `internals/usage.md` | usage and statistics | what the ledgers mean |
-| `internals/todo-enforcement-removal.md` | why the tier went | decisions, rejected alternatives, the landed record |
+| `internals/todo-enforcement-removal.md` | why the tier went | decisions, rejected alternatives, the landed record; the final state moved to `plans/work-list.md` |
 | `dev/post-change.md` | what to do after a change | the gate, the graph, the naming rules |
 | `dev/testing.md` | running the suites | the failure classes and their causes |
 | `dev/benchmarking.md` | measuring | recipes and the measured budgets |

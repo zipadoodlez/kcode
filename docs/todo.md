@@ -92,7 +92,10 @@ before the shape is settled is churn.
   re-spelled in 9 places with 3 different sets; 134 string-match sites);
   coordination state unowned (`SwarmMutationRuntime`, `AwaitMembersRuntime`, two
   global claim maps); channel subs across two locks; `SwarmState` rebuilt at ~31
-  sites instead of passed. References: `internals/swarm.md`. Do this before
+  sites instead of passed. References: `internals/swarm.md`. This is the trunk of
+  the work-list project (`plans/work-list.md`): the swarm becomes one executor of
+  the repo's list of open work, so coordination state needs one owner before the
+  list can be written from it. Do this before
   splitting `handle_client`, whose request-context struct is designed to hold
   `SwarmState`.
 
@@ -369,8 +372,10 @@ would just move that churn around.
 Phase 1 landed 2026-09-30: the enforcement tier is gone, the poke is identified
 by shape, and the `todo` schema is a five-field display (`id`, `content`,
 `status`, `priority`, optional `group`). Intent, resolved decisions, and the
-final state are in `internals/todo-enforcement-removal.md`; the A/B probe recipe
-is `dev/todo-rework-ab-probe.md`.
+landed record are in `internals/todo-enforcement-removal.md`; the A/B probe
+recipe is `dev/todo-rework-ab-probe.md`. Phase 2 is the work list, and it has
+outgrown this section: destination and settled decisions are in
+`plans/work-list.md`, and its roadmap is not written yet.
 
 - [ ] Live check owed from step 2: the poke now reaches the model as a system
   reminder rather than as user content. One isolated `kcode run` with auto-poke
