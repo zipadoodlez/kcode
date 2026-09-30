@@ -33,19 +33,6 @@ use std::time::Instant;
 pub(super) const REVIEW_PREFERRED_MODEL: &str = "gpt-5.5";
 const POKE_OFF_UI_HINT: &str = "/poke off to stop.";
 
-const TODO_COMPLETION_CONTINUATION_MESSAGE: &str =
-    crate::todo::TODO_COMPLETION_CONTINUATION_MESSAGE;
-const TODO_CONFIDENCE_SPIKE_CONTINUATION_MESSAGE: &str =
-    crate::todo::TODO_CONFIDENCE_SPIKE_CONTINUATION_MESSAGE;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct TodoConfidenceSummary {
-    pub completion_average: Option<u8>,
-    pub completion_confidence_needs_validation: bool,
-    pub confidence_spike_detected: bool,
-    pub needs_more_work: bool,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum PokeCommand {
     Trigger,
@@ -78,25 +65,15 @@ pub(super) fn is_poke_message(message: &str) -> bool {
     crate::todo::is_auto_poke_message(message)
 }
 
-pub(super) fn is_todo_confidence_summary_message(message: &str) -> bool {
-    message.starts_with(TODO_COMPLETION_CONTINUATION_MESSAGE)
-        || message.starts_with(TODO_CONFIDENCE_SPIKE_CONTINUATION_MESSAGE)
-        || message.starts_with("All todos are done. Todo confidence summary:")
-}
-
 pub(super) fn queued_messages_are_only_pokes(messages: &[String]) -> bool {
     !messages.is_empty() && messages.iter().all(|message| is_poke_message(message))
 }
 
 pub(super) fn clear_queued_poke_messages(app: &mut App) -> usize {
-    let before_queued = app.queued_messages.len();
+    let before = app.queued_messages.len();
     app.queued_messages
         .retain(|message| !is_poke_message(message));
-    let before_hidden = app.hidden_queued_system_messages.len();
-    app.hidden_queued_system_messages
-        .retain(|message| !is_todo_confidence_summary_message(message));
-    let removed = before_queued.saturating_sub(app.queued_messages.len())
-        + before_hidden.saturating_sub(app.hidden_queued_system_messages.len());
+    let removed = before.saturating_sub(app.queued_messages.len());
     if removed > 0 && !app.has_queued_followups() {
         app.pending_queued_dispatch = false;
     }
@@ -106,15 +83,7 @@ pub(super) fn clear_queued_poke_messages(app: &mut App) -> usize {
 pub(super) fn disable_auto_poke(app: &mut App) -> usize {
     let cleared = clear_queued_poke_messages(app);
     app.auto_poke_incomplete_todos = false;
-    // Disarming is explicit (/poke off) or a circuit breaker; either way it must
-    // stick for the rest of the session instead of being re-armed by the
-    // default-on re-arm in `schedule_auto_poke_followup_if_needed`.
-    app.auto_poke_default_on = false;
-    app.todo_confidence_spike_challenged = false;
-    app.todo_completion_gate_attempts = 0;
     app.last_auto_poke_fingerprint = None;
-    app.last_todo_ownership_fingerprint = None;
-    app.todo_gate_digest_delivered = false;
     cleared
 }
 
@@ -241,15 +210,7 @@ pub(super) fn poke_triggered_display_message(incomplete_count: usize) -> String 
 pub(super) fn activate_auto_poke(app: &mut App) -> PokeActivation {
     let incomplete = incomplete_poke_todos(app);
     app.auto_poke_incomplete_todos = true;
-    // Explicitly turning poke on also restores default-on re-arming.
-    app.auto_poke_default_on = true;
-    app.todo_confidence_spike_challenged = false;
-    app.todo_completion_gate_attempts = 0;
     app.last_auto_poke_fingerprint = None;
-    app.last_todo_ownership_fingerprint = None;
-    // Re-arming starts a fresh review cycle, so the deferred quality digest is
-    // eligible to be delivered again for the upcoming work.
-    app.todo_gate_digest_delivered = false;
     // Re-arming is an explicit user action: give the guardrail circuit
     // breaker its full budget again (the user likely rephrased the task).
     app.consecutive_guardrail_stops = 0;
@@ -350,11 +311,7 @@ pub(super) fn poke_status_message(app: &App) -> String {
     let queued_followup = app
         .queued_messages
         .iter()
-        .any(|message| is_poke_message(message))
-        || app
-            .hidden_queued_system_messages
-            .iter()
-            .any(|message| is_todo_confidence_summary_message(message));
+        .any(|message| is_poke_message(message));
     let mut message = format!(
         "Auto-poke: {}. {} incomplete todo{}.",
         if app.auto_poke_incomplete_todos {
@@ -2206,7 +2163,8 @@ pub(super) fn poke_todos(app: &App) -> Vec<crate::todo::TodoItem> {
 }
 
 pub(super) fn is_incomplete_poke_todo(todo: &crate::todo::TodoItem) -> bool {
-    todo.status != "completed" && todo.status != "cancelled"
+    !crate::todo::todo_status_is_completed(&todo.status)
+        && !crate::todo::todo_status_is_cancelled(&todo.status)
 }
 
 pub(super) fn incomplete_poke_todos(app: &App) -> Vec<crate::todo::TodoItem> {
@@ -2218,85 +2176,6 @@ pub(super) fn incomplete_poke_todos(app: &App) -> Vec<crate::todo::TodoItem> {
 
 pub(super) fn build_poke_message(incomplete: &[crate::todo::TodoItem]) -> String {
     crate::todo::build_auto_poke_message(incomplete.len())
-}
-
-fn todo_confidence_weight(priority: &str) -> u32 {
-    match priority {
-        "high" => 3,
-        "medium" => 2,
-        _ => 1,
-    }
-}
-
-fn weighted_confidence_average(scores: impl IntoIterator<Item = (u8, u32)>) -> Option<u8> {
-    let mut weighted_sum = 0u32;
-    let mut total_weight = 0u32;
-    for (score, weight) in scores {
-        weighted_sum += u32::from(score) * weight;
-        total_weight += weight;
-    }
-    if total_weight == 0 {
-        None
-    } else {
-        Some(((weighted_sum + total_weight / 2) / total_weight) as u8)
-    }
-}
-
-pub(super) fn build_todo_confidence_summary_message(todos: &[crate::todo::TodoItem]) -> String {
-    let summary = todo_confidence_summary(todos);
-    if summary.confidence_spike_detected && !summary.completion_confidence_needs_validation {
-        crate::todo::build_todo_confidence_spike_continuation_message(todos)
-    } else {
-        crate::todo::build_todo_completion_continuation_message(todos)
-    }
-}
-
-pub(super) fn todo_confidence_summary(todos: &[crate::todo::TodoItem]) -> TodoConfidenceSummary {
-    let completed: Vec<&crate::todo::TodoItem> = todos
-        .iter()
-        .filter(|todo| todo.status == "completed")
-        .collect();
-    let completion_states: Vec<(&crate::todo::TodoItem, crate::todo::ConfidenceState, u32)> =
-        completed
-            .iter()
-            .filter_map(|todo| {
-                todo.completion_confidence
-                    .map(|state| (*todo, state, todo_confidence_weight(&todo.priority)))
-            })
-            .collect();
-    let completion_average = weighted_confidence_average(
-        completion_states
-            .iter()
-            .map(|(_, state, weight)| (state.legacy_score(), *weight)),
-    );
-    let missing_completion_confidence = completed
-        .iter()
-        .filter(|todo| todo.completion_confidence.is_none())
-        .count();
-    let below_threshold_count = completion_states
-        .iter()
-        .filter(|(_, state, _)| !crate::todo::completion_confidence_passes(Some(*state)))
-        .count();
-    let completion_confidence_needs_validation = completion_average.is_none()
-        || missing_completion_confidence > 0
-        || below_threshold_count > 0;
-    let confidence_spike_detected = !crate::todo::spike_completed_todos(todos).is_empty();
-    let needs_more_work = completion_confidence_needs_validation || confidence_spike_detected;
-
-    TodoConfidenceSummary {
-        completion_average,
-        completion_confidence_needs_validation,
-        confidence_spike_detected,
-        needs_more_work,
-    }
-}
-
-pub(super) fn format_todo_completion_confidence(summary: TodoConfidenceSummary) -> String {
-    summary
-        .completion_average
-        .map(crate::todo::ConfidenceState::from_legacy_score)
-        .map(|state| state.as_str().to_string())
-        .unwrap_or_else(|| "unknown".to_string())
 }
 
 pub(super) fn active_working_dir(app: &App) -> Option<std::path::PathBuf> {

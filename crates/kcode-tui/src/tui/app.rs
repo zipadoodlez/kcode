@@ -879,32 +879,8 @@ pub struct App {
     last_api_response: state_ui_runtime::LastApiResponse,
     // Pending turn to process (allows UI to redraw before processing starts)
     pending_turn: bool,
-    // When armed by /poke, automatically continue prompting until todos are complete.
+    // When armed, automatically continue prompting while todos are incomplete.
     auto_poke_incomplete_todos: bool,
-    /// Whether auto-poke is on by default for this session (`features.auto_poke`).
-    /// When true, finishing a poke cycle (all todos complete, or a turn with no
-    /// todo list at all) must leave auto-poke armed for the next batch of work;
-    /// otherwise the default-on feature would silently switch itself off after
-    /// the first turn and never poke again. Explicit `/poke off` still wins.
-    auto_poke_default_on: bool,
-    /// Whether the current auto-poke cycle has already challenged an abrupt
-    /// final confidence increase. Low or missing completion confidence keeps
-    /// retrying, but a spike gets one dedicated independent-validation turn.
-    todo_confidence_spike_challenged: bool,
-    /// Whether this turn's deferred quality-check digest has already been
-    /// delivered. The digest asks the model to verify weak points, so re-asking
-    /// after it has done so would loop; one delivery per turn is the contract.
-    todo_gate_digest_delivered: bool,
-    /// How many completion-confidence gate nudges the current auto-poke cycle
-    /// has sent. Without a budget, a model that stops updating its todos gets
-    /// nudged on every turn forever, silently burning an API call per tick.
-    todo_completion_gate_attempts: u8,
-    /// Last session/todo/goal state challenged by the ownership gate. Repeating
-    /// the same check cannot resolve an external blocker or stale assessment.
-    last_todo_ownership_fingerprint: Option<String>,
-    /// Whether the clean completion handoff has already requested a user-facing
-    /// final response for the current todo cycle.
-    todo_final_response_requested: bool,
     /// Exact continuation sent for the last incomplete todo state. An unchanged
     /// list must not trigger another automatic turn: the agent may be parked on
     /// a worker, wake, or human decision, and repeated pokes cannot help.
@@ -1298,11 +1274,6 @@ impl App {
     const AUTO_RETRY_BASE_DELAY_SECS: u64 = 2;
     const AUTO_RETRY_MAX_ATTEMPTS: u8 = 3;
     /// Budget for completion-confidence gate nudges per auto-poke cycle.
-    /// Observed live: a session that stopped updating its todos was re-nudged
-    /// with the same hidden continuation every ~5 seconds indefinitely, one
-    /// full API call per nudge. The counter resets whenever a nudge actually
-    /// changes the stored todos (progress) or auto-poke is re-armed.
-    const TODO_COMPLETION_GATE_MAX_ATTEMPTS: u8 = 5;
     /// Consecutive guardrail/refusal-stopped turns tolerated before automatic
     /// continuation paths (auto-poke, overnight poke) are stopped. Guardrail
     /// refusals are deterministic for the same request, so re-poking the same

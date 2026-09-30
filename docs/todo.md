@@ -50,6 +50,12 @@ Single-threaded, every suite is at zero (2026-09-29): `kcode-base`, root
 `kcode`, `kcode-app-core`, the math crates, and `kcode-tui`. The front-line pass
 is done; what remains is the one parallel-execution flake class below.
 
+- **One single-threaded failure exists** (found 2026-09-30 while landing the todo
+  step 1): `kcode-tui --lib`
+  `test_remote_fallback_provider_suggestions_normalize_bare_openai_openrouter_routes`
+  fails at `4ef8c3e1` both with and without that change, so it is a pre-existing
+  count rather than drift. Re-measured numbers then: `kcode-base` 1102/0, root
+  `kcode` 180/0, `kcode-app-core` 998/0, `kcode-tui` 1830/1.
 - **Parallel-only flakes.** `kcode-tui --lib` at the default thread count fails
   a changing set of about a dozen tests that pass single-threaded (slash
   pickers, `restore_session_*`, account settings, the model picker,
@@ -88,26 +94,38 @@ Not this batch: the `include!` test-tree replacement (§4) is paid for in test
 churn, so it follows the shape work, and the God-module re-cores (§2) are their
 own passes.
 
-## Todo refactor (incomplete: 6 decisions open)
+## Todo refactor (step 1 landed 2026-09-30; steps 2-3 remain)
 
 Delete the todo enforcement tier; keep the tool, its fields, Ctrl+P, and
 `/poke`. A weak self-assessment must not drive the model onward, and the ladder
 does exactly that today; the wanted behavior is that the model may stop and ask.
 The tier is duplicated, TUI and headless. Full touch inventory, the corrected
-intent, and all six decisions: `internals/todo-enforcement-removal.md`.
+intent, the resolved decisions, and the corrections the pass found:
+`internals/todo-enforcement-removal.md`.
 
-- [ ] Step 1: delete the enforcement tier and keep one poke. The TUI ladder plus
-  the headless copy in `src/cli/commands.rs` (~340 lines).
-- [ ] Step 2, same change: delete the synthetic-text classifier
-  (`is_auto_poke_message`, `auto_poke_display_summary`, the 22 legacy
+- [x] Step 1: the enforcement tier is gone and one poke remains. The TUI ladder's
+  248 lines are a 57-line function, and three headless loops are one decision
+  function. `kcode-base/src/todo.rs` 2085 -> 576 and out of the size budget;
+  `app-core/tool/todo.rs` 2274 -> 1715; `src/cli/commands.rs` 1515 -> 1281; `App`
+  fields 194 -> 188. Runtime check on an isolated `kcode run` with auto-poke
+  armed: exactly one poke, none repeated on the unchanged list, and no removed
+  message in the stored session. Decisions 1, 5 and 6 landed with it, as did
+  dropping `plan.user_intention` and `auto_poke_default_on`.
+- [ ] Step 2: replace the synthetic-text classifier with a marker on the queued
+  item (`is_auto_poke_message`, `auto_poke_display_summary`, the 22 legacy
   constants). They match our own messages by literal text, which is why every
-  reword added a constant.
-- [ ] Step 3, blocked: shrink the `todo` schema to a display. 1,086 always-on
-  tokens today (~490 of rubric prose), behind only `swarm` (2,210).
+  reword added a constant. The fresh tests for the poke and the marker belong
+  here, because step 1 deleted the tests covering the removed behavior.
+- [ ] Step 3, unblocked: shrink the `todo` schema to a display
+  (`id`/`content`/`status`/`priority`/`group`), dropping `plan`, `goals` and both
+  confidence fields. 1,086 always-on tokens today, behind only `swarm` (2,210).
+  Also edits `kcode-task-types/src/lib.rs`, the score rendering in
+  `tui/ui_messages.rs`, the extra storage paths, the pass predicates, and
+  `internals/todo-calibration.md`.
 
-Decisions, gating step 3 and the headless path but not steps 1-2: the six listed
-in the doc. Gate: three ratcheted files shrink, so the pass ends with
-`scripts/check_guardrails.sh --fix`.
+Gate: three ratcheted files shrink, so each landing ends with
+`scripts/check_guardrails.sh --fix`. Step 1's A/B probe recipe, for comparing
+verification and poke count before and after: `dev/todo-rework-ab-probe.md`.
 
 ## 0. Deletion ledger (the line-count question, measured)
 
