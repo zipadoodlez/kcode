@@ -1,8 +1,7 @@
 # Work list
 
-Status: destination agreed 2026-10-01 on branch `work-list`; the roadmap is
-written and stage A is next. This absorbs the todo rework that landed
-2026-09-30, and git has that history.
+Status: destination agreed 2026-10-01, work on branch `work-list`. Tick a step
+when it lands and delete it; git has the history. `todo.md` points here.
 
 ## Destination
 
@@ -10,41 +9,17 @@ One list, one task type, one writer. A file in the repo holds the open work and
 every session works from it starting at its first turn. An entry may record which
 session holds it, and a swarm is the name for the case where more than one
 session holds entries in one file, so there is no second container and no state
-where a session is not working from a file.
+where a session is not working from a file. A person reads it and asks the model
+to change it. The tool is the only writer.
 
-A person reads the file and asks the model to change it. The tool is the only
-writer.
+Three lists exist today: `docs/todo.md`, the per-session todo JSON, and the swarm
+plan (`kcode-plan`'s `PlanItem`), which the TUI already draws as todos
+(`info_widget_todos.rs`). `kcode-plan/src/lib.rs` calls the last two
+"intentionally separate"; that premise is what this project deletes.
 
-## What it replaces
+## Rules
 
-Three lists exist today.
-
-- `docs/todo.md`: the real one, edited by the model with its text tool.
-- The per-session todo file (JSON, one per session), written by the `todo` tool.
-- The swarm plan (`kcode-plan`'s `PlanItem`), server-owned, drawn as todos by the
-  TUI (`info_widget_todos.rs`).
-
-`kcode-plan/src/lib.rs` says the plan and the todo are "intentionally separate:
-plan data is shared at the server/swarm level, while todos remain session-local".
-That premise is what this project deletes.
-
-## Why the tier must not come back
-
-The `todo` tool used to enforce: it stored goals, a per-item confidence score and
-a per-item check, scored them at turn end, and queued a hidden continuation
-telling the model to keep going. That was deleted 2026-09-30, for reasons the
-code cannot tell you:
-
-- A self-rubric cannot catch the failure it is named after. The same
-  misunderstanding that drops a requirement rates the understanding as clear.
-- A weak self-assessment must not drive the model onward. The model may stop and
-  ask, and the weakness belongs in its own message, not in a harness that acts on
-  it.
-- The poke is opt-in (`features.auto_poke` defaults to false) and stays opt-in.
-- Capability was fixed, only enforcement went: the tool, `/poke`, Ctrl+P, the
-  flag, and the guardrail breaker were all kept on purpose.
-
-## Settled
+Settled 2026-10-01. Not steps; what every step has to satisfy.
 
 1. **One file per repo, and it supersedes `docs/todo.md`.** Work with no repo
    uses the same format in a scratch location tied to the session.
@@ -66,55 +41,105 @@ code cannot tell you:
    `assigned_to` before any work, so an unclaimed row is free. Many claimers,
    one writer.
 8. **One item type**, in `kcode-task-types`, the crate whose name is the concept.
-   `PlanItem` and `TodoItem` collapse into it, which deletes the plan's copy and
-   the comment that claims the two are separate.
 9. **Every session works from a file from turn one.** There is one mode axis:
-   the work. "Regular" is not a mode, it is a swarm with one member, and a swarm
-   is only the case where more than one session holds entries in one file. Rigor
-   stays the existing deep/light preset, so a solo session pays no gate or
-   artifact cost.
+   the work. "Regular" is not a mode, it is a swarm with one member. Rigor stays
+   the existing deep/light preset, so a solo session pays no gate or artifact
+   cost.
 10. **Hierarchy is one optional `parent` field on a flat list**, while blocking
     is order, so they are two fields. A parent is work: it owns the integration
-    of its children, which is what makes two sessions on two subtasks a swarm,
-    and its row is the integration reminder. `group` is deleted, because the
-    parent chain is the grouping.
+    of its children, and its row is the integration reminder that keeps it in the
+    file until that integration is done. `group` is deleted, because the parent
+    chain is the grouping.
 11. **Membership and the coordinator are derived, never stored.** The holder of a
     parent coordinates the holders of its children, which deletes the
     `coordinators` map and any swarm id.
 12. **The durable/live seam.** Who holds an entry is durable and lives in the
     file. Whether that session is alive and busy is live server state that dies
-    with the process. Today one member record welds the two, and most of the four
-    duplicated member shapes come from that weld.
+    with the process. Today one member record welds the two.
 13. **The file is JSON Lines, one task per line**, flat. Each entry is `id`,
     `content`, optional `parent`, optional `blocked_by`, optional `assigned_to`,
     optional `note`. `status` is derived, and `priority`, `group`, `subsystem`
     and `file_scope` are not stored.
-14. **The check is a rule, not a field.** The close action already requires a
-    nonempty result, and the tool description already says to name the check that
-    proves the item done and report its result. That is the whole rule, in one
-    home, with nothing for the harness to judge. Cost: a skipped check shows only
-    in the commit that removes the row.
+14. **The check is a rule, not a field.** The close action requires a nonempty
+    result, and the tool description names the check and asks for its actual
+    result. Nothing for the harness to judge. A skipped check shows only in the
+    commit.
+15. **Refer to a task by its words when talking to the user**, while the file
+    keys on `id`, and resolve one decision per planning session.
 
-## Open
+Why the tier must not come back: a self-rubric cannot catch the failure it is
+named after, a weak self-assessment must not drive the model onward, the poke is
+opt-in (`features.auto_poke` defaults false), and only enforcement was removed
+(the tool, `/poke`, Ctrl+P, the flag and the guardrail breaker were kept).
 
-- Whether the file grows a "not yet specified" section and an "out of scope"
-  section, both from wayfinder. `docs/todo.md` already half-has the first.
-- Where the file lives and what it is called. `docs/todo.md` is the incumbent.
-- "Where does work land" (`main` directly, or a branch: the `(decision)` item in
-  `todo.md`) is now a prerequisite, because a session on a stale branch reads a
-  stale list.
-- Who writes when the working directory is remote, since the server is the only
-  writer and the file lives in the working tree.
-- Whether a supertask's row stays when its last child is removed. Decision 10
-  says it stays, because the integration is still owed.
-- Whether line order means anything, such as priority.
-- What a running swarm shows in the file while a node is in flight, and what a
-  stalled node shows.
-- Two wayfinder habits worth adopting: refer to a task by its words when talking
-  to the user, while the file still keys on `id`; and resolve one decision per
-  planning session.
+## Checklist
 
-## Surface (measured 2026-10-01)
+Widest shared shape first, so no step sweeps call sites a later step reshapes.
+Every step lands whole, proven by the gate and, where behavior moves, one
+`kcode run` probe against its own socket.
+
+### A. One durable item type
+
+Unblocked. 120 `PlanItem` refs, 134 `TodoItem` refs, 57 files, 115 struct
+literals, so a union merge cannot avoid touching the literals.
+
+- [ ] **A1, mechanical.** One definition, `TaskItem` in `kcode-task-types`, with
+  `PlanItem` and `TodoItem` as temporary aliases, all 115 literal sites updated,
+  and test fixtures on `..Default::default()` so the next field change costs no
+  fixture edits.
+- [ ] **A2, behavioral.** Drop `group`, `subsystem`, `file_scope`, and move
+  `status` out of the type into live session state (rule 12).
+
+### B. The file is the list
+
+- [ ] **(decide)** the file's name and home. `docs/todo.md` is the incumbent.
+- [ ] **(decide)** whether the file grows a "not yet specified" section and an
+  "out of scope" section, both from wayfinder.
+- [ ] **(decide)** whether line order means anything, such as priority.
+- [ ] **(decide)** who writes when the working directory is remote, since the
+  server is the only writer and the file lives in the working tree.
+- [ ] **B1.** The `todo` tool reads and writes the repo file, `docs/todo.md`
+  becomes its first user, `/todos` and the widget render from it, and the
+  per-session todo JSON is deleted.
+
+Gated by A, and by the two decisions above.
+
+### C. The swarm reads and writes the file
+
+- [ ] **(decide)** what a running swarm shows in the file while a node is in
+  flight, and what a stalled node shows.
+- [ ] **C1.** The plan is derived from the file's entries and their `parent` and
+  `blocked_by` fields, membership and the coordinator are computed from it, and
+  the parent guard (rule 6) becomes the tool's check.
+- [ ] **C2.** Delete `NodeKind`, the `coordinators` map, any stored swarm id, and
+  the 31 `SwarmState { .. }` rebuilds, because the state gets one owner.
+- [ ] **C3.** The two sub-items currently in `todo.md` §1: member appearance
+  follows the typed status, and a stalled plan node is visible.
+
+Gated by A and B.
+
+### D. Delete what the file makes redundant
+
+- [ ] **D1.** The topic channels and the shared-context key-value store, the
+  removal `internals/swarm.md` recorded as pending and never did, plus any member
+  projection the derived membership replaces.
+
+Gated by C.
+
+### E. The server shape
+
+- [ ] **E1.** `ClientContext` for `handle_client`'s 28 arguments.
+- [ ] **E2.** Fold swarm ownership in, which is gated on C.
+- [ ] **E3.** Name the prologue, move the largest arms out, and settle the
+  turn-lifecycle locals. `todo.md` §2's H1 to H5 in order.
+
+### F. `tool/communicate.rs`
+
+- [ ] **F1.** Split the 3369 lines along the seams it already has: swarm
+  coordination, the run-plan driver, capacity cleanup, and the formatters around
+  `execute`. Cheaper once C has given the state one owner.
+
+## Evidence (measured 2026-10-01)
 
 - `PlanItem` and `TodoItem`: the same five fields, plus `subsystem` and
   `file_scope` on one, `group` on the other.
@@ -126,50 +151,3 @@ code cannot tell you:
   `MemberStatic`, `SwarmMember`).
 - Topic channels and the shared-context key-value store are documented as
   deprecated in `internals/swarm.md` and were never removed.
-
-## Roadmap
-
-Widest shared shape first, so no stage sweeps call sites a later stage reshapes.
-Each stage lands whole, proven by the gate and, where behavior moves, one
-`kcode run` probe against its own socket.
-
-**Prerequisite, decided 2026-10-01: work lands on the `work-list` branch**, and
-a stage merges back when it lands. The file lives in the repo, so a session on a
-stale branch reads a stale list; the `todo.md` Anytime item's session-start line
-when `main..HEAD` is non-zero is what keeps that visible.
-
-**A. One durable item type.** `PlanItem` and `TodoItem` merge into
-`kcode-task-types`, and live execution status leaves the type for runtime state
-keyed by entry id, which is the durable/live seam (12). Two landings: the merge
-with no behavior change, then the field drops (`group`, `subsystem`,
-`file_scope`, and the unused status vocabulary). Deletes the plan's item copy and
-three status helpers. The fields are settled (13), so this is unblocked.
-
-**B. The file is the list.** The `todo` tool reads and writes the repo file,
-`docs/todo.md` becomes its first user, and `/todos` and the widget render from it.
-Deletes the per-session todo JSON. Gated by the file's name and home.
-
-**C. The swarm reads and writes the file.** The plan is derived from the file's
-entries and their `parent` and `blocked_by` fields, membership and the coordinator
-are computed from it, and the parent guard becomes the tool's check. Deletes
-`NodeKind`, the `coordinators` map, any stored swarm id, and the 31
-`SwarmState { .. }` rebuilds, because the state gets one owner. This is `todo.md`
-§1, and it absorbs that item's two sub-items: member appearance follows the typed
-status, and a stalled plan node is visible. Gated by A and B.
-
-**D. Delete what the file makes redundant.** The topic channels and the
-shared-context key-value store, the removal `internals/swarm.md` recorded as
-pending and never did, plus any member projection the derived membership replaces.
-
-**E. The server shape.** `ClientContext` for `handle_client`'s 28 arguments,
-folding swarm ownership in, naming the prologue, moving the largest arms out, and
-the turn-lifecycle locals. This is `todo.md` §2's H1 to H5 in order, and H2 is
-gated on C.
-
-**F. `tool/communicate.rs`.** Split the 3369 lines along the seams it already has
-(swarm coordination, the run-plan driver, capacity cleanup, and the formatters
-around `execute`), which is cheaper once C has given the state one owner.
-
-Order is not payoff order. A is invisible and unblocks B and C; C is the largest
-and the only one that needs the swarm running to prove; F is a mechanical split
-that gets cheaper the longer it waits.
