@@ -40,6 +40,12 @@ the session, and it is read in exactly one place, the loop's decision about who
 supplies the next turn. Stored nowhere, and read anywhere else, it becomes the mode
 boundary this model deleted.
 
+Controlling a session you are not sitting in is attaching to it, and the server
+already does the flip: a client attaching sets that member's `is_headless` to false,
+so the run stops supplying turns and starts offering them, and detaching puts it
+back. Without a client the levers are the run's: message it, stop it, wake it,
+retry it, reassign or replace its work, and watch it through its status events.
+
 A run adjusts by editing rows, since it has no plan of its own to mutate. It adds
 work under the row it came from, leaves notes, clears a blocker that no longer
 blocks, retypes a row whose kind was wrong, and closes what it holds. Picking is a
@@ -86,8 +92,11 @@ Every step lands whole, proven by the gate and, where behavior moves, one
   forbid it today: `filter_swarm_agent_candidates` skips `req_session_id`, and
   `is_drivable_auto_worker` accepts only headless workers or ones the requester
   owns. Delivery is already generic, since a member is driven by a message that
-  wakes it. Prove with one test that a one-member run drives its own session to a
-  node.
+  wakes it. To a session with a human this is an offer, not a wake: the only turn
+  the run adds there is a continuation it takes while a granted scope still has
+  ready rows and the session is idle, which is the thing the client poke does
+  badly today. Prove with one test that a one-member run drives its own session to
+  a node, and one that an attended session is continued only under a grant.
 - [ ] **0.2. Delete the client poke.** With dispatch covering it, the TUI's
   auto-poke machine goes: `auto_poke_incomplete_todos`,
   `last_auto_poke_fingerprint`, `total_pokes_sent`, `morning_report_poked`,
