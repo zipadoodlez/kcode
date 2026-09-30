@@ -88,6 +88,18 @@ The seam that falls out: who holds an entry is durable and lives in the file,
 while whether that session is alive and busy is live server state that dies with
 the process. Today one member record welds the two, and most of the four
 duplicated member shapes come from that weld.
+10. **Hierarchy is one optional `parent` field on a flat list**, one entry per
+    line. Parenting means containment and blocking means order, so they are two
+    different fields. A parent is work: it owns the integration of its children,
+    which is what makes "two sessions on two subtasks" a swarm, and its row is
+    the integration reminder that keeps it in the file. `group` is deleted,
+    because the parent chain is the grouping.
+11. **Membership and the coordinator are derived from the parent chain, never
+    stored.** The holder of a parent coordinates the holders of its children.
+    That deletes the `coordinators` map and any swarm id, since a swarm exists
+    only while two sessions hold entries under one parent.
+12. **No new language.** The file reuses the JSON the tree already reads and
+    writes. Nesting is stored flat and rendered as a tree by the tool.
 
 ## Open
 
@@ -100,6 +112,9 @@ duplicated member shapes come from that weld.
 - "Where does work land" (the `(decision)` item in `todo.md`: `main` directly, or
   a branch) becomes a prerequisite: a session on a stale branch reads a stale
   list.
+- Whether a supertask's row stays when its last child is removed. The rule
+  above says it stays, because the integration is still owed.
+- Whether line order in the file means anything, such as priority.
 - What a running swarm shows in the file while a node is in flight, and what a
   stalled node shows.
 
