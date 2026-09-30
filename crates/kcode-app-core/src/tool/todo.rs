@@ -48,7 +48,7 @@ struct TodoInput {
 ///
 /// The write rules live here rather than in the schema: a close needs a result
 /// that says what proves the task done, and a parent's row cannot go while a
-/// child names it. See `docs/plans/work-list.md`, rules 3 to 6.
+/// child names it. See `docs/plans/work-list.md`, rules 3 and 4.
 fn apply(input: &TodoInput, rows: &mut Vec<TaskItem>, session_id: &str) -> Result<()> {
     match input.action.unwrap_or(Action::List) {
         Action::List => {}

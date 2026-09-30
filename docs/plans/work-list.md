@@ -3,166 +3,71 @@
 Work on branch `work-list`. `docs/todo.md` points here. Tick a step when it lands
 and delete it; git has the history.
 
-## Destination
+## The model
 
-One file holds the open work. One item type, one writer, one way work gets done:
-a **run** over the rows.
+One file holds the open work: rows of `id`, `content`, optional `kind`, `parent`,
+`blocked_by`, `assigned_to`, `note`. A row is free or held, and there is nothing
+else about it.
 
-A row is durable: `id`, `content`, optional `kind`, `parent`, `blocked_by`,
-`assigned_to`, `note`. A run is live: it holds the rows it is working plus the
-gates the machinery inserts, and it dies with the process. The run uses the row's
-`id` as its node id, so nothing maps between the two and nothing is named twice.
+A **run** is a session working the rows it holds. A swarm is a count, not a mode:
+one member and eight are the same code. Membership, the coordinator, liveness, and
+the ready set are derived, never stored.
 
-A swarm is not a mode, it is the count. A run with one member and a run with
-eight are the same code. Nothing declares a swarm: no start event, no coordinator
-object, no swarm id. Membership and the coordinator are derived from who holds
-what.
+Rows become nodes once, when a run takes them. Three things cross back, and only
+these: a claim, a note, a close. The close carries the record, so the durable
+target and the machine-readable parts travel together, and nothing durable lives in
+the run. Gates are the one node with no row, and when a gate finds work, that work
+becomes a row.
 
-Rows become nodes once, when a run takes them: `kind`, `blocked_by` to
-`depends_on`, `parent`, and position as priority. Three things cross back, and
-only these: a claim, a note, a close. The close payload is the record, carrying
-the durable target (commit, file, or decision) and the machine-readable parts
-such as validation and what was not checked. Kill the process and the work is
-untouched, because none of it was in the file.
+**What a run may do on its own initiative stops at what it holds. What the user's
+session may do does not.** The session the user is talking to changes any row,
+including taking one that another session holds, and that session finds out on its
+next write. A claim is a convenience, never a lock against the user.
 
-Gates are the one node with no row. The machinery inserts them and names them
-itself, and when a gate finds work, that work becomes a row.
+A run continues while a row in its scope is ready, and ends when none is. It yields
+when only a person can unblock it, and a row assigned to a person with rows blocked
+by it is what we call a decision. A run with no instruction proposes a scope, names
+the rows, and stops at that boundary. A bound on a run is a run property, never a
+row field, and the default is none because the scope is what stops it.
 
-## The two kinds of session
+A swarm member has no human, so the run supplies every turn. A session with a human
+never has turns taken from it: dispatch offers it rows at a turn boundary, and the
+session claims one when it picks it up, so an offered row is never stranded. That
+predicate is the only difference between today's poke and today's dispatch.
 
-A swarm member has no human, so the run supplies every turn: dispatch wakes it,
-it works, it closes, and it ends when nothing it can reach is ready. Autonomy
-needs that stop condition, or it is a loop rather than autonomy.
-
-A session with a human never has turns taken from it: dispatch offers it rows, at
-a turn boundary and only when it has nothing else to do, and the session claims
-one when it picks it up. The claim is always the worker's act, never the run's,
-so an offered row is never stranded by somebody walking away.
-
-`is_headless` decides which of the two a session is, and it is a property of the
-session, not a mode of the run. That predicate is the whole difference between
-today's two mechanisms, the client-side poke and the server-side dispatch.
-
-## How long a run goes on
-
-A run continues while a row it can reach is ready, and ends when none is. That is
-the only stop rule and it is checkable: no ready row means nothing to do.
-
-What it can reach is its scope, never the whole file. The user's instruction sets
-that scope, and a run given no instruction proposes one, names the rows it will
-work, and stops at that boundary. A woken member is bounded by the row or subtree
-it was handed. Without a scope, a session with a human and two hundred open rows
-would work forever.
-
-The scope is structural, not a promise. A run works the rows it holds, plus rows
-it creates under them, and it may not claim outside that set. So a run with
-nothing held has nothing to loop over, and it takes another turn on its own only
-while something in its scope is still ready. Eagerness therefore has exactly one
-outlet, the claim, which is one visible act over named ids and is as easy to undo
-as it was to make.
-
-It also ends by yielding when the only thing that would unblock it is a person.
-That needs no field: a row whose `assigned_to` names a person and whose
-`blocked_by` names the rows waiting on it is what stops the loop, and that is what
-we already call a decision.
-
-A session with a human is its own stop. The human's prompt always wins at a turn
-boundary, and the run resumes offering when that session is idle again, so the
-user's hand is the control, continuously, and no switch decides whether the loop
-may continue. An unattended run reports when it yields, and the report is the same
-terminal event a tracked turn already fans out.
-
-A bound on a run is a run property, never a row field: the loop's ceiling (turns,
-rows, or a deadline) belongs with the run, beside the concurrency limit
-`run_plan` already takes. The default is none, and the work boundary above is
-what normally stops it. It will exist for cost, not for correctness.
-
-The poke's switch and its repeat cap have a replacement that is strictly better.
-The poke repeated blindly because it could not tell whether another nudge would
-help, so it needed a fingerprint and a cap and a default of off. A run knows what
-is ready and when it is blocked.
-
-## What a run may change
-
-The plan has no mutation surface of its own. A run adjusts itself by editing
-rows: adding work it found under the row it came from, leaving a note, clearing a
-blocker that no longer blocks, retyping a row whose kind was wrong, and closing
-what it holds. There is no reorder act, because picking a row is a claim and
-position only sets the default.
-
-A run may touch the rows it holds. Rows held by another session, rows assigned to
-a person, and rows outside its scope are refused. Closing is always allowed on
-what it holds, provided the result says what happened, so a drop is "dropped
-because X" and a split is "split into a, b, c" with the children added underneath.
-The parent guard is what makes integration real: a parent stays until its children
-are gone.
-
-Rewriting the wording of a row it has not done yet is allowed, because planning is
-what that is, but never silently. The note or the result says what changed, and
-the file's history still has the wording it replaced.
+A run adjusts by editing rows, since it has no plan of its own to mutate. It adds
+work under the row it came from, leaves notes, clears a blocker that no longer
+blocks, retypes a row whose kind was wrong, and closes what it holds. Picking is a
+claim and not a move, so there is no reorder act. A close always states its
+outcome, so a drop is "dropped because X" and a split is "split into a, b, c" with
+the children added underneath.
 
 ## Rules
 
-Settled 2026-10-01. Not steps; what every step has to satisfy.
-
-1. **One file per repo, `tasks.jsonl` at the repo root, and it supersedes
-   `docs/todo.md`.** The home is found from git, not from the working directory, so
-   a session in `crates/foo` reads the same list; work with no repo uses the same
-   basename in a session scratch location. The file lives in the server's working
-   directory, so a remote attach writes the remote checkout and git carries it
-   back.
-2. **Never hand-authored.** The tool owns the write protocol and re-reads the
-   file before each write, so a human edit is an input, not a conflict.
-3. **One close action, for every entry.** The holder produces the result the
-   entry owes and the row is removed. A parent's result is its children's
-   results integrated, a leaf's is its own work, and nothing else differs.
-   Closing can also add: work that reveals work goes in with the same `add`
-   action, and rule 6 makes a task's spawns land before its close.
-4. **There is no completed state.** A row goes when its result is durable: for
-   code, the commit that lands the work, with the delete in the same commit; for
-   an exploration or a decision, after the result is written somewhere durable.
-   The close names that place, so a row whose work had no code still has a home.
-5. **A drop is a completion whose result says so.** One precondition, a nonempty
-   result. `cancelled` is not a state, so the four-word status vocabulary and its
-   helpers (`canonical_todo_status`, `todo_status_is_completed`,
-   `todo_status_is_cancelled`) go with it.
-6. **A parent's row cannot go while a child names it.** That is the only
-   enforcement, and it needs no status tracking.
-7. **The server is the only writer.** Agents claim a row by setting
-   `assigned_to` before any work, so an unclaimed row is free. Many claimers,
-   one writer. A claim rides the work's commit, so the tree is dirty from claim
-   to landing.
-8. **One item type**, in `kcode-task-types`, the crate whose name is the concept.
-9. **The run is the only way work gets done.** Everything that executes work is a
-   run over rows, with one member or several, and no branch anywhere asks which.
-   `is_headless` decides who supplies a turn, and the loop ends when nothing it can
-   reach is ready, or when only a person can unblock it. No switch, no repeat cap.
-10. **Hierarchy is one optional `parent` field on a flat list**, while blocking
-    is order, so they are two fields. A parent's row stays after its children are
-    gone, because the integration is still owed. `group` is deleted, because the
-    parent chain is the grouping.
-11. **Membership and the coordinator are derived, never stored.** The holder of a
-    parent coordinates the holders of its children, which deletes the
-    `coordinators` map and any swarm id.
-12. **The durable/live seam.** Who holds an entry is durable and lives in the
-    file. Whether that session is alive and busy is live server state that dies
-    with the process. A run never holds durable truth. Today one member record
-    welds the two.
-13. **The file is JSON Lines, one task per line**, flat: `id`, `content`,
-    optional `kind`, optional `parent`, `blocked_by`, `assigned_to`, `note`. A row
-    is a task and the only row kind, so a note that is not a task is a doc.
-    Nothing else is stored: not `status`, `priority`, `group`, `subsystem` or
-    `file_scope`, and line order promises nothing. A row reads as open, blocked,
-    or claimed from its own fields.
-14. **A row with no `kind` is not seedable.** It can be listed and edited, but a
-    run may not guess whether the work is an investigation or a change, because
-    the guess decides the artifact and the gate. Typing it once records it.
-15. **The check is a rule, not a field.** The close action requires a nonempty
-    result, and the tool description names the check and asks for its actual
-    result. Nothing for the harness to judge. A skipped check shows only in the
-    commit.
-16. **Refer to a task by its words when talking to the user.** The file keys on
-    `id`; the conversation does not.
+1. **One file per repo**, `tasks.jsonl` at the root, found from git so a session in
+   `crates/foo` reads the same list; outside a repo, a session scratch location.
+2. **The tool is the only writer.** It owns the write protocol and re-reads the file
+   before each write, so a human edit is an input, not a conflict. A claim rides the
+   work's commit.
+3. **One close action, with a nonempty result.** A parent's result is its children
+   integrated, a leaf's is its own work, and a parent's row cannot go while a child
+   names it.
+4. **There is no completed state.** A row goes when its result is durable, and the
+   close names that place. A drop is a completion whose result says so, so
+   `cancelled` is not a state.
+5. **One item type**, in `kcode-task-types`, the crate whose name is the concept.
+6. **Hierarchy is `parent`, blocking is `blocked_by`,** two fields because they are
+   two facts. `group` is deleted, since the parent chain is the grouping.
+7. **The file stores those fields and nothing else:** no `status`, `priority`,
+   `group`, `subsystem` or `file_scope`, and line order promises nothing. Position
+   is the default order, and a row reads as open, blocked, or claimed from its own
+   fields.
+8. **A row with no `kind` is not seedable.** Typing it once records it, because the
+   kind decides the artifact and the gate and may not be guessed.
+9. **The check is a rule, not a field.** The close requires a nonempty result and the
+   tool description names the check; a skipped check shows only in the commit.
+10. **Refer to a task by its words with the user.** The file keys on `id`; the
+    conversation does not.
 
 ## Steps
 

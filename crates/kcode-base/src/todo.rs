@@ -9,7 +9,7 @@ use std::sync::{LazyLock, Mutex};
 pub use kcode_task_types::TaskItem;
 
 /// The file that holds a repo's open work, one JSON object per line, at the repo
-/// root. See `docs/plans/work-list.md` (rule 13).
+/// root. See `docs/plans/work-list.md` (rule 7).
 const WORK_LIST_FILE: &str = "tasks.jsonl";
 
 /// Return the canonical todo status for model-written status vocabulary.
