@@ -126,20 +126,20 @@ Every step lands whole, proven by the gate and, where behavior moves, one
   turn-terminal path, so the loop is the session's own turns. Prove: a session
   holding a ready row is continued, one holding a blocked row is not, one holding
   nothing is not, and a row it already worked in this run is not picked again.
-  Landed: the loop and its pick are in, off unless
+  Landed: the loop and its pick are in, with the run's own bound in place: a row
+  worked once in the run is not picked again, so a row left open ends the run
+  instead of spinning it (`TurnSeed` carries the row id into the loop's `worked`
+  set, which the pick skips). It is off unless
   `features.auto_poke` is on and only for attended sessions, because a member is
   driven by its plan until rows seed a run. The proof left is the loop end to end
-  rather than the pick alone. Owed, and the first is the dangerous one: the pick
-  repeats a row the run already worked, because only a close removes a row, so an
-  unclosed row spins the loop forever; the run bound above is what stops it. Read
-  against rule 11: the config flag is a stand-in for the permission, and
-  `may_continue_on_its_own` fuses the permission with having a human and is read at
-  two sites (`live_turn.rs:158`, `:280`) where the model names one. The user's
-  words cannot yet grant it for one run, a headless member is excluded where rule 11
-  says it holds the permission inherently, and "typing always wins" cannot hold
-  while the loop holds the agent's `OwnedMutexGuard` across every turn
-  (`live_turn.rs:187-285`), so a user's message waits for the whole run instead of
-  stopping it.
+  rather than the pick alone. Owed, read against rule 11: the config flag is a
+  stand-in for the permission, and `may_continue_on_its_own` fuses the permission
+  with having a human and is read at two sites (`live_turn.rs:215`, `:347`) where
+  the model names one. The user's words cannot yet grant it for one run, a headless
+  member is excluded where rule 11 says it holds the permission inherently, and
+  "typing always wins" cannot hold while the loop holds the agent's
+  `OwnedMutexGuard` across every turn (`live_turn.rs:244-352`), so a user's message
+  waits for the whole run instead of stopping it.
 - [ ] **0.2. Delete the client poke**, which this replaces. With the server
   continuing a session that holds ready rows, the TUI's auto-poke machine goes:
   `auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`, `total_pokes_sent`,

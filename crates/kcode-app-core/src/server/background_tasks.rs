@@ -1,4 +1,4 @@
-use super::live_turn::{LiveTurnSwarmContext, run_live_turn_if_idle};
+use super::live_turn::{LiveTurnSwarmContext, TurnSeed, run_live_turn_if_idle};
 use super::state::SwarmEvent;
 use super::{
     SessionAgents, SessionInterruptQueues, SwarmMember, fanout_session_event,
@@ -86,10 +86,13 @@ pub(super) async fn dispatch_background_task_completion(
         .await
         && !run_live_turn_if_idle(
             &task.session_id,
-            &notification,
-            Some(
-                "A background task for this session just finished. Review the completion message and continue if useful."
-                    .to_string(),
+            TurnSeed::asked(
+                &notification,
+                Some(
+                    "A background task for this session just finished. Review the completion message and continue if useful."
+                        .to_string(),
+                ),
+                None,
             ),
             sessions,
             LiveTurnSwarmContext::new(
@@ -173,10 +176,13 @@ pub(super) async fn dispatch_background_task_stalled(
         .await
         && !run_live_turn_if_idle(
             &task.session_id,
-            &notification,
-            Some(
-                "A background task for this session has produced no output or progress for its stall window. Inspect it and decide whether to keep waiting, fix it, or cancel it."
-                    .to_string(),
+            TurnSeed::asked(
+                &notification,
+                Some(
+                    "A background task for this session has produced no output or progress for its stall window. Inspect it and decide whether to keep waiting, fix it, or cancel it."
+                        .to_string(),
+                ),
+                None,
             ),
             sessions,
             LiveTurnSwarmContext::new(
@@ -264,10 +270,13 @@ pub(super) async fn dispatch_swarm_await_completion(
 
     if !run_live_turn_if_idle(
         &event.session_id,
-        &event.notification,
-        Some(
-            "A swarm await you started just resolved. Review the result and continue if useful."
-                .to_string(),
+        TurnSeed::asked(
+            &event.notification,
+            Some(
+                "A swarm await you started just resolved. Review the result and continue if useful."
+                    .to_string(),
+            ),
+            None,
         ),
         sessions,
         LiveTurnSwarmContext::new(

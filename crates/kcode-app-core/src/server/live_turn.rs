@@ -57,6 +57,56 @@ impl LiveTurnSwarmContext {
     }
 }
 
+/// One turn of a run: what the session is asked, how it is presented, and the row
+/// it is working when it came from the list.
+///
+/// The row id is what lets a run tell a row it already worked from one it has not,
+/// which is the run's whole bound: only a close removes a row, so a row left open
+/// would otherwise be picked again forever.
+pub(super) struct TurnSeed {
+    pub message: String,
+    pub system_reminder: Option<String>,
+    pub display_role: Option<crate::session::StoredDisplayRole>,
+    pub row_id: Option<String>,
+    /// Short label for the member status while this turn runs.
+    pub detail: Option<String>,
+}
+
+impl TurnSeed {
+    /// A turn asked for in words: a client message, a wake, a system notice.
+    pub(super) fn asked(
+        message: &str,
+        system_reminder: Option<String>,
+        display_role: Option<crate::session::StoredDisplayRole>,
+    ) -> Self {
+        let detail = Some(truncate_detail(message, 120)).filter(|detail| !detail.is_empty());
+        Self {
+            message: message.to_string(),
+            system_reminder,
+            display_role,
+            row_id: None,
+            detail,
+        }
+    }
+
+    /// The next row this run works, as the turn that asks for it. The payload is
+    /// the row's own words.
+    fn row(row: &TaskItem) -> Self {
+        Self {
+            message: row_turn_message(row),
+            system_reminder: None,
+            display_role: None,
+            row_id: Some(row.id.clone()),
+            detail: None,
+        }
+    }
+
+    pub(super) fn with_detail(mut self, detail: Option<String>) -> Self {
+        self.detail = detail;
+        self
+    }
+}
+
 /// Reserve the live agent for `session_id` when the session has at least one
 /// live client attachment and its agent is currently idle.
 ///
@@ -109,14 +159,21 @@ async fn may_continue_on_its_own(session_id: &str, swarm: &LiveTurnSwarmContext)
 }
 
 /// The next row this session holds and may work: file order, held by it, with every
-/// blocker already gone.
+/// blocker already gone and not already worked in this run.
 ///
 /// Readiness is a join against the file rather than something a row says about
 /// itself, because a blocker that closes is deleted and its id is left behind.
-fn next_held_ready_row<'a>(rows: &'a [TaskItem], session_id: &str) -> Option<&'a TaskItem> {
+/// `worked` is the run's own record, so a row left open stops the run instead of
+/// being picked again and again.
+fn next_held_ready_row<'a>(
+    rows: &'a [TaskItem],
+    session_id: &str,
+    worked: &HashSet<String>,
+) -> Option<&'a TaskItem> {
     let present: HashSet<&str> = rows.iter().map(|row| row.id.as_str()).collect();
     rows.iter().find(|row| {
         row.assigned_to.as_deref() == Some(session_id)
+            && !worked.contains(&row.id)
             && row
                 .blocked_by
                 .iter()
@@ -137,11 +194,11 @@ fn row_turn_message(row: &TaskItem) -> String {
     message
 }
 
-/// The next row this session holds, as the message that asks for it.
-fn next_row_turn(agent: &Agent, session_id: &str) -> Option<String> {
+/// The next row this session holds, as the turn that asks for it.
+fn next_row_turn(agent: &Agent, session_id: &str, worked: &HashSet<String>) -> Option<TurnSeed> {
     let working_dir = agent.working_dir().map(PathBuf::from);
     let rows = load_tasks(working_dir.as_deref(), session_id).ok()?;
-    next_held_ready_row(&rows, session_id).map(row_turn_message)
+    next_held_ready_row(&rows, session_id, worked).map(TurnSeed::row)
 }
 
 /// Continue a session with the next row it holds, when it is allowed to keep going
@@ -168,14 +225,14 @@ pub(super) async fn continue_with_next_row(
     let Ok(rows) = load_tasks(working_dir.as_deref(), session_id) else {
         return false;
     };
-    let Some(row) = next_held_ready_row(&rows, session_id) else {
+    let Some(row) = next_held_ready_row(&rows, session_id, &HashSet::new()) else {
         return false;
     };
-    let message = row_turn_message(row);
-    run_live_turn_if_idle(session_id, &message, None, sessions, swarm).await
+    let seed = TurnSeed::row(row);
+    run_live_turn_if_idle(session_id, seed, sessions, swarm).await
 }
 
-/// Spawn `message` as a full tracked turn in a live session.
+/// Spawn `seed` as a full tracked turn in a live session.
 ///
 /// Mirrors the client-initiated turn lifecycle: the swarm member is marked
 /// `running` before the turn starts and `ready` (with a completion report) or
@@ -185,16 +242,13 @@ pub(super) async fn continue_with_next_row(
 pub(super) async fn spawn_tracked_live_turn(
     session_id: &str,
     mut agent: OwnedMutexGuard<Agent>,
-    message: String,
-    system_reminder: Option<String>,
-    display_role: Option<crate::session::StoredDisplayRole>,
-    status_detail: Option<String>,
+    seed: TurnSeed,
     swarm: LiveTurnSwarmContext,
 ) {
     update_member_status(
         session_id,
         SwarmLifecycleStatus::Running,
-        status_detail,
+        seed.detail.clone(),
         &swarm.members,
         &swarm.swarms_by_id,
         Some(&swarm.event_history),
@@ -210,8 +264,21 @@ pub(super) async fn spawn_tracked_live_turn(
         // holds while it may keep going on its own. The reservation is held across
         // the whole loop, so a wake cannot interleave, and each turn's terminal
         // status is published before the loop asks for the next row.
-        let mut next = Some((message, system_reminder, display_role));
-        while let Some((message, system_reminder, display_role)) = next {
+        //
+        // `worked` is the loop's stop: a row worked once in this run is not picked
+        // again, so a row left open ends the run instead of spinning it.
+        let mut worked: HashSet<String> = HashSet::new();
+        let mut next = Some(seed);
+        while let Some(seed) = next {
+            if let Some(row_id) = seed.row_id.clone() {
+                worked.insert(row_id);
+            }
+            let TurnSeed {
+                message,
+                system_reminder,
+                display_role,
+                ..
+            } = seed;
             let start_message_index = agent.message_count();
             let result = if let Some(display_role) = display_role {
                 agent
@@ -280,35 +347,24 @@ pub(super) async fn spawn_tracked_live_turn(
             if !may_continue_on_its_own(&session_id, &swarm).await {
                 break;
             }
-            next = next_row_turn(&agent, &session_id).map(|message| (message, None, None));
+            next = next_row_turn(&agent, &session_id, &worked);
         }
         drop(agent);
     });
 }
 
-/// Run `message` immediately as a tracked turn if the session is live and
-/// idle. Returns `true` when the turn was started.
+/// Run the turn `seed` describes immediately if the session is live and idle.
+/// Returns `true` when the turn was started.
 pub(super) async fn run_live_turn_if_idle(
     session_id: &str,
-    message: &str,
-    system_reminder: Option<String>,
+    seed: TurnSeed,
     sessions: &SessionAgents,
     swarm: LiveTurnSwarmContext,
 ) -> bool {
     let Some(agent) = idle_live_agent(session_id, sessions, &swarm.members).await else {
         return false;
     };
-    let detail = Some(truncate_detail(message, 120)).filter(|detail| !detail.is_empty());
-    spawn_tracked_live_turn(
-        session_id,
-        agent,
-        message.to_string(),
-        system_reminder,
-        None,
-        detail,
-        swarm,
-    )
-    .await;
+    spawn_tracked_live_turn(session_id, agent, seed, swarm).await;
     true
 }
 
@@ -321,17 +377,12 @@ pub(super) async fn run_live_system_turn_if_idle(
     let Some(agent) = idle_live_agent(session_id, sessions, &swarm.members).await else {
         return false;
     };
-    let detail = Some(truncate_detail(message, 120)).filter(|detail| !detail.is_empty());
-    spawn_tracked_live_turn(
-        session_id,
-        agent,
-        message.to_string(),
+    let seed = TurnSeed::asked(
+        message,
         None,
         Some(crate::session::StoredDisplayRole::System),
-        detail,
-        swarm,
-    )
-    .await;
+    );
+    spawn_tracked_live_turn(session_id, agent, seed, swarm).await;
     true
 }
 
@@ -358,7 +409,7 @@ mod tests {
             row("t4", Some("other"), &[]),
         ];
         // t2 is held but still blocked by an open t1, and t4 is somebody else's.
-        let picked = next_held_ready_row(&rows, "me").expect("a held ready row");
+        let picked = next_held_ready_row(&rows, "me", &HashSet::new()).expect("a held ready row");
         assert_eq!(picked.id, "t3");
     }
 
@@ -366,7 +417,7 @@ mod tests {
     fn a_closed_blocker_is_gone_and_its_row_becomes_ready() {
         let rows = vec![row("t2", Some("me"), &["t1"])];
         assert_eq!(
-            next_held_ready_row(&rows, "me").map(|row| row.id.as_str()),
+            next_held_ready_row(&rows, "me", &HashSet::new()).map(|row| row.id.as_str()),
             Some("t2")
         );
     }
@@ -374,7 +425,24 @@ mod tests {
     #[test]
     fn holding_nothing_ready_continues_nothing() {
         let rows = vec![row("t1", None, &[]), row("t2", Some("me"), &["t1"])];
-        assert!(next_held_ready_row(&rows, "me").is_none());
+        assert!(next_held_ready_row(&rows, "me", &HashSet::new()).is_none());
+    }
+
+    /// Only a close removes a row, so without this the loop picks the same row
+    /// again on every turn until something else stops it.
+    #[test]
+    fn a_row_the_run_already_worked_ends_it() {
+        let rows = vec![row("t3", Some("me"), &[])];
+        let worked: HashSet<String> = ["t3".to_string()].into_iter().collect();
+        assert!(next_held_ready_row(&rows, "me", &worked).is_none());
+    }
+
+    #[test]
+    fn a_worked_row_steps_aside_for_the_next_one() {
+        let rows = vec![row("t3", Some("me"), &[]), row("t4", Some("me"), &[])];
+        let worked: HashSet<String> = ["t3".to_string()].into_iter().collect();
+        let picked = next_held_ready_row(&rows, "me", &worked).expect("the row after t3");
+        assert_eq!(picked.id, "t4");
     }
 
     #[test]

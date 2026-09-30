@@ -870,10 +870,8 @@ pub(super) async fn handle_resume_all_sessions(
         super::live_turn::spawn_tracked_live_turn(
             &session_id,
             agent_guard,
-            String::new(),
-            Some(reminder),
-            None,
-            Some("resuming interrupted session".to_string()),
+            super::live_turn::TurnSeed::asked("", Some(reminder), None)
+                .with_detail(Some("resuming interrupted session".to_string())),
             super::live_turn::LiveTurnSwarmContext::new(
                 swarm_members,
                 swarms_by_id,

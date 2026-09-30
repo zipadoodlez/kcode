@@ -564,8 +564,7 @@ async fn wake_turn_holds_reservation_until_terminal_status_is_published() {
 
     let started = super::live_turn::run_live_turn_if_idle(
         &session_id,
-        "first wake",
-        None,
+        super::live_turn::TurnSeed::asked("first wake", None, None),
         &sessions,
         ctx.clone(),
     )
@@ -637,8 +636,11 @@ async fn wake_turn_tracks_member_status_and_emits_terminal_done() {
 
     let started = super::live_turn::run_live_turn_if_idle(
         &session_id,
-        "DM from coordinator: please respond",
-        Some("You received a direct swarm message.".to_string()),
+        super::live_turn::TurnSeed::asked(
+            "DM from coordinator: please respond",
+            Some("You received a direct swarm message.".to_string()),
+            None,
+        ),
         &sessions,
         super::live_turn::LiveTurnSwarmContext::new(
             &swarm_members,
