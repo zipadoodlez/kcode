@@ -88,52 +88,26 @@ Not this batch: the `include!` test-tree replacement (§4) is paid for in test
 churn, so it follows the shape work, and the God-module re-cores (§2) are their
 own passes.
 
-## Todo refactor (incomplete: 4 decisions open)
+## Todo refactor (incomplete: 6 decisions open)
 
-The todo list mirrors work that already exists, and the client polices it with a
-gate ladder plus a self-reported rubric. The intended end state is a display
-plus one turn-end poke. Keep the tool, its fields, Ctrl+P, and `/poke`;
-only the enforcement surface goes. Steps 1-2 do not depend on the open
-decisions; step 3 is what they gate.
+Delete the todo enforcement tier; keep the tool, its fields, Ctrl+P, and
+`/poke`. A weak self-assessment must not drive the model onward, and the ladder
+does exactly that today; the wanted behavior is that the model may stop and ask.
+The tier is duplicated, TUI and headless. Full touch inventory, the corrected
+intent, and all six decisions: `internals/todo-enforcement-removal.md`.
 
-- [ ] Step 1: delete the enforcement tier and keep one poke. The gate chain in
-  `schedule_auto_poke_followup_if_needed` and
-  `deliver_deferred_gate_digest_if_needed` (~187 lines, `tui/app/input.rs`); the
-  digest builder, the `GateObservation` store, the ownership/completion/spike
-  continuation builders, long-session review state and
-  `take_long_session_review_if_due` (`kcode-base/src/todo.rs`);
-  `record_reframe_observations` (`kcode-app-core/src/tool/todo.rs`); and the five
-  gate-only `App` fields (`todo_confidence_spike_challenged`,
-  `todo_gate_digest_delivered`, `todo_completion_gate_attempts`,
-  `last_todo_ownership_fingerprint`, `todo_final_response_requested`). Keep the
-  arm flag, `auto_poke_default_on`, `last_auto_poke_fingerprint`, and the
-  guardrail breaker. Result: armed, some todo open, nothing already queued, list
-  changed since the last poke -> queue the one poke.
-- [ ] Step 2, same change: delete the synthetic-text classifier.
-  `is_auto_poke_message` (35 arms), `auto_poke_display_summary` (26 arms), and
-  the 22 `PRE_*`/`LEGACY_*` constants match our own messages by literal text,
-  which is why every reword added a constant. Keep one way to recognise the
-  poke; pre-change transcripts may render a few `[auto] ...` lines as user text.
-- [ ] Step 3, blocked on the decisions below: shrink the `todo` schema to a
-  display. It is 1,086 always-on tokens today (~490 of rubric prose), behind
-  only `swarm` (2,210). A display schema (`id`/`content`/`status`/`priority`/
-  `group`) lands near 150.
+- [ ] Step 1: delete the enforcement tier and keep one poke. The TUI ladder plus
+  the headless copy in `src/cli/commands.rs` (~340 lines).
+- [ ] Step 2, same change: delete the synthetic-text classifier
+  (`is_auto_poke_message`, `auto_poke_display_summary`, the 22 legacy
+  constants). They match our own messages by literal text, which is why every
+  reword added a constant.
+- [ ] Step 3, blocked: shrink the `todo` schema to a display. 1,086 always-on
+  tokens today (~490 of rubric prose), behind only `swarm` (2,210).
 
-Decisions open, gating step 3 and not steps 1-2:
-
-1. The severe-intent write-time interrupt: step 1 deletes it with the recorder.
-   Keep it as one exception, or let it go?
-2. The eight-dimension goal rubric: keep as model guidance, or drop?
-3. `completion_confidence`: after step 1 its only reader is the widget label.
-   Collapse it onto `confidence`?
-4. A when-to-write trigger for the model: nothing, or one line in the tool
-   description?
-
-Gate: steps 1-2 shrink `kcode-base/src/todo.rs` (2085) and
-`kcode-app-core/src/tool/todo.rs` (2274), both ratcheted, and a ratchet fails on
-an unrecorded improvement, so the pass ends with
-`scripts/check_guardrails.sh --fix`. The tier's tests are deleted with it, not
-fixed.
+Decisions, gating step 3 and the headless path but not steps 1-2: the six listed
+in the doc. Gate: three ratcheted files shrink, so the pass ends with
+`scripts/check_guardrails.sh --fix`.
 
 ## 0. Deletion ledger (the line-count question, measured)
 

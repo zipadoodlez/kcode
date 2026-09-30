@@ -1,0 +1,127 @@
+# Todo enforcement removal
+
+Status: planned, incomplete. Steps 1-2 are actionable; step 3 is blocked on the
+decisions below.
+
+## Intent
+
+The todo list is a display of the plan. The client must not enforce it.
+
+- **Weak self-assessment must not drive the model onward.** Today the ladder
+  does exactly that: on a weak score it queues a hidden continuation that says
+  "do more validation ... do not reply or wait for the user". The wanted
+  behavior is that the model may stop and ask, and that a weak assessment is
+  visible to the user. Deleting the ladder serves this; keeping it fights it.
+- **The poke is opt-in.** `features.auto_poke` defaults to false
+  (`kconfig-types/src/lib.rs:952`) and the ladder is initialised from it
+  (`tui_lifecycle.rs:428`). Nothing here changes the default experience.
+- **Keep:** the `todo` tool, its fields, `/poke`, Ctrl+P, the flag, and the
+  guardrail breaker. Capability is fixed; only the enforcement goes.
+
+## The tier is duplicated
+
+Removing only the TUI copy leaves the behavior in headless runs.
+
+- TUI: `crates/kcode-tui/src/tui/app/input.rs`.
+- Headless `kcode run`: `src/cli/commands.rs`, roughly 340 lines.
+
+Both go in the same change.
+
+## Touch inventory
+
+### `crates/kcode-base/src/todo.rs` (2085, ratcheted): the home
+
+Delete: `GateObservationKind`, `GateObservation`, `append_gate_observations`,
+`load_gate_observations`, `clear_gate_observations`, `TODO_GATE_DIGEST_PREFIX`
+(+ `PRE_COMPACT`, `LABELED`), `build_gate_digest`,
+`observation_score_later_cleared`; `TODO_LONG_SESSION_REVIEW_MESSAGE` (+
+`PRE_*`), `TodoReviewState`, `todo_review_path`, `update_todo_review_cycle`,
+`take_long_session_review_if_due`; `build_todo_ownership_continuation_message`,
+`build_todo_completion_continuation_message`,
+`build_todo_confidence_spike_continuation_message` with their `PRE_*`/`LEGACY_*`
+constants; `TODO_CONFIDENCE_SPIKE_LEVELS`, `spike_completed_todos`;
+`TODO_INTENT_UNDERSTANDING_CONTINUATION_MESSAGE` (decision 1);
+`completed_groups_have_sufficient_delivery` and the delivery helpers if nothing
+else reads them; `is_auto_poke_message`, `auto_poke_display_summary`, and every
+`PRE_*`/`LEGACY_*`/`LABELED_*` constant.
+
+Keep: `build_auto_poke_message`, `TodoItem`/`TodoGoal`/`TodoPlan` plus their
+load/save, the confidence types (decision 3), and the canonical status helpers.
+
+### `crates/kcode-tui/src/tui/app/input.rs`
+
+Delete the ladder body of `schedule_auto_poke_followup_if_needed` and
+`deliver_deferred_gate_digest_if_needed`. Keep `schedule_turn_end_followups`,
+the guardrail breaker, and the one poke.
+
+### `crates/kcode-tui/src/tui/app/commands.rs`
+
+Delete `TodoConfidenceSummary`, `todo_confidence_summary`,
+`build_todo_confidence_summary_message`, `format_todo_completion_confidence`,
+and the `is_auto_poke_message` use.
+
+### `crates/kcode-tui/src/tui/app.rs`
+
+Delete the five gate-only fields: `todo_confidence_spike_challenged`,
+`todo_gate_digest_delivered`, `todo_completion_gate_attempts`,
+`last_todo_ownership_fingerprint`, `todo_final_response_requested`.
+
+### Classifier users (step 2)
+
+`crates/kcode-tui/src/tui/app/overnight_card.rs`,
+`crates/kcode-base/src/session/render.rs`.
+
+### `crates/kcode-app-core/src/tool/todo.rs` (2274, ratcheted)
+
+Delete `record_reframe_observations` and its gate imports, the
+`append_gate_observations` call, and the `update_todo_review_cycle` call.
+
+### `src/cli/commands.rs` (1515, ratcheted)
+
+Delete `run_command_auto_poke_enabled`, `run_command_auto_poke_max_turns`,
+`run_command_auto_poke_limit_reached`, `take_run_gate_digest`,
+`take_run_gate_digest_if_turn_ended`, `build_run_auto_poke_follow_up_from_todos`,
+`build_run_todo_validation_message`, and the two `*_with_auto_poke` loops. If
+headless poking is still wanted, reduce them to a plain poke loop with no gates
+(decision 5).
+
+### Keep, small edits (flag and plumbing only)
+
+`kcode-config-types/src/lib.rs`; `kcode-base/src/config/{default_file,
+display_summary,env_overrides}.rs`; `kcode-tui/src/tui/keybind.rs`,
+`tui/app/input_help.rs`, `tui/app/hotkey_feedback.rs`,
+`tui/app/commands_overnight.rs`, `tui/app/remote*`, `tui/app/turn_notify.rs`,
+`tui/app/model_context.rs`, `tui/app/observe.rs`, `tui/app/tui_lifecycle.rs`.
+
+### Tests deleted with the tier, not fixed
+
+`src/cli/commands_tests.rs`; `tui/app/tests/state_model_poke_03.rs`,
+`tui/app/tests/remote_events_reload_01/02/04/05`,
+`tui/app/tests/remote_startup_input_01/02`,
+`tui/app/tests/scroll_copy_01/part_02`, `tui/app/tests/support/part_01.rs`;
+`tui/app/commands_tests.rs`; `tui/ui_messages/tests.rs`;
+`kcode-base/src/session_tests/cases.rs`; inline `#[cfg(test)]` modules in
+`kcode-base/src/todo.rs`, `tui/app/input.rs`, `app-core/tool/todo.rs`, and
+`config_tests.rs`.
+
+### Ratchet
+
+Three ratcheted files shrink: `kcode-base/src/todo.rs` (2085),
+`kcode-app-core/src/tool/todo.rs` (2274), and `src/cli/commands.rs` (1515). A
+ratchet fails on an unrecorded improvement, so the pass ends with
+`scripts/check_guardrails.sh --fix` to rebaseline. That is the "intentional
+cleanup" the policy names.
+
+## Decisions open
+
+1. The severe-intent write-time interrupt: step 1 deletes it with the recorder.
+   Keep it as one exception, or let it go?
+2. The eight-dimension goal rubric: keep as model guidance, or drop?
+3. `completion_confidence`: after step 1 its only reader is the widget label.
+   Collapse it onto `confidence`?
+4. A when-to-write trigger for the model: nothing, or one line in the tool
+   description?
+5. Headless `kcode run`: keep a plain poke loop with no gates, or drop
+   auto-poke there too?
+6. A weak self-assessment: surface it to the user as a visible notice, or say
+   nothing at all?
