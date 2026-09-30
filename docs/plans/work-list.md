@@ -88,10 +88,15 @@ code cannot tell you:
 13. **One JSON object per line, and no new language.** The file is JSON Lines:
     one task per line, flat, with the optional `parent`. Every insert, claim and
     close is a one-line diff, which is what makes the deletes reviewable in git.
-    A marked-up text format needs a parser, a spec and escaping rules for
-    something serde already does. The human read is a rendering the tool prints
-    and `/todos` shows, and kgrep will index entry lines directly, so the format
-    is not bent for a generic ctags regex.
+    The array form is rejected because a comma rides on the previous line, so an
+    insert touches two. The human read is a rendering the tool prints and
+    `/todos` shows, and kgrep will index entry lines directly, so the format is
+    not bent for a generic ctags regex.
+    TSV loses because it has no lists, so `blocked_by` needs a comma convention
+    and prose needs an escape rule, which is a spec to invent. TOML and YAML lose
+    because an entry is a block, so adding a task is a multi-line diff and moving
+    one is a cut and paste. All four parsers are already in `kcode-base`, so this
+    is a shape decision, not a dependency one.
 14. **The entry shape.** `id`, `content`, optional `parent`, optional
     `blocked_by`, optional `assigned_to`, optional `note`. `status` is derived
     (open, blocked, or claimed), and `priority`, `group`, `subsystem` and
