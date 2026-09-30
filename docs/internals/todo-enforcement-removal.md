@@ -18,6 +18,33 @@ The todo list is a display of the plan. The client must not enforce it.
 - **Keep:** the `todo` tool, its fields, `/poke`, Ctrl+P, the flag, and the
   guardrail breaker. Capability is fixed; only the enforcement goes.
 
+## Steps
+
+1. Delete the enforcement tier, keep one poke. The TUI ladder and the headless
+   copy, every continuation they queue, the digest, the observation store, the
+   review cycle, the ownership/confidence/spike checks, the five gate-only `App`
+   fields, and `record_reframe_observations`.
+2. In the same change, delete the synthetic-text classifier.
+3. Blocked on the decisions: shrink the `todo` schema to a display
+   (`id`/`content`/`status`/`priority`/`group`), from 1,086 always-on tokens to
+   roughly 150.
+
+## End state
+
+```
+turn ends
+  ├─ guardrail-refused turns > 2?   → stop, tell the user   (kept)
+  ├─ auto-poke armed?                no  → nothing
+  ├─ any todo open?                  no  → nothing
+  ├─ a follow-up already queued?     yes → nothing
+  ├─ list unchanged since last poke? yes → nothing
+  └─ queue the one message:
+     "You have N incomplete todo(s). Continue working, or update the todo tool."
+```
+
+No digest, no ownership or confidence check, no budget, no final-response
+handoff. Six injected messages become one.
+
 ## The tier is duplicated
 
 Removing only the TUI copy leaves the behavior in headless runs.
@@ -36,7 +63,7 @@ Delete: `GateObservationKind`, `GateObservation`, `append_gate_observations`,
 (+ `PRE_COMPACT`, `LABELED`), `build_gate_digest`,
 `observation_score_later_cleared`; `TODO_LONG_SESSION_REVIEW_MESSAGE` (+
 `PRE_*`), `TodoReviewState`, `todo_review_path`, `update_todo_review_cycle`,
-`take_long_session_review_if_due`; `build_todo_ownership_continuation_message`,
+`take_long_session_review_if_due`, `TODO_LONG_SESSION_REVIEW_AFTER`; `build_todo_ownership_continuation_message`,
 `build_todo_completion_continuation_message`,
 `build_todo_confidence_spike_continuation_message` with their `PRE_*`/`LEGACY_*`
 constants; `TODO_CONFIDENCE_SPIKE_LEVELS`, `spike_completed_todos`;
@@ -111,6 +138,17 @@ Three ratcheted files shrink: `kcode-base/src/todo.rs` (2085),
 ratchet fails on an unrecorded improvement, so the pass ends with
 `scripts/check_guardrails.sh --fix` to rebaseline. That is the "intentional
 cleanup" the policy names.
+
+## Validation
+
+The result is judged against behavior, not vibes, and the tier is opt-in, so a
+before/after probe is cheap. Run one live probe per provider on a task that
+forces both a search and a verification, and record whether the model finished
+the work and reported a concrete check. If the probe shows the model stops
+verifying, the fallback is one line in the tool description or the system
+prompt: *"For each goal, name the check that proves it is done and report its
+actual result."* That is a replace-the-nudge option, not part of the plan until
+the probe asks for it.
 
 ## Decisions open
 
