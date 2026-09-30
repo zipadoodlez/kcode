@@ -48,6 +48,12 @@ today's two mechanisms, the client-side poke and the server-side dispatch.
 A run continues while a row it can reach is ready, and ends when none is. That is
 the only stop rule and it is checkable: no ready row means nothing to do.
 
+What it can reach is its scope, never the whole file. The user's instruction sets
+that scope, and a run given no instruction proposes one, names the rows it will
+work, and stops at that boundary. A woken member is bounded by the row or subtree
+it was handed. Without a scope, a session with a human and two hundred open rows
+would work forever.
+
 It also ends by yielding when the only thing that would unblock it is a person.
 That needs no field: a row whose `assigned_to` names a person and whose
 `blocked_by` names the rows waiting on it is what stops the loop, and that is what
