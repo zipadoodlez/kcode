@@ -283,11 +283,8 @@ fn todo_change_lines(
     if tools_ui::canonical_tool_name(&tc.name) != "todo" {
         return Vec::new();
     }
-    let Some(next) = super::todo_changes::todos_from_tool_input(tc) else {
-        return Vec::new();
-    };
     let prev = super::todo_changes::previous_todos(messages, abs_idx);
-    super::todo_changes::render_todo_change_lines(prev.as_deref(), &next, width)
+    super::todo_changes::render_todo_change_lines(prev.as_deref(), tc, width)
 }
 
 #[expect(

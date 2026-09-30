@@ -148,6 +148,8 @@ pub fn apply_task_graph(plan: &mut VersionedPlan, graph: &TaskGraph) {
             blocked_by: node.depends_on.clone(),
             assigned_to: node.owner.clone(),
             group: None,
+            parent: prev.and_then(|p| p.parent.clone()),
+            note: prev.and_then(|p| p.note.clone()),
         });
         node_meta.insert(
             node.id.clone(),

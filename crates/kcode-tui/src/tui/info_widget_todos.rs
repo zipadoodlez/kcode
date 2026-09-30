@@ -26,11 +26,10 @@ pub(crate) fn swarm_plan_todos(items: &[crate::plan::TaskItem]) -> Vec<crate::to
             status: normalize_plan_status_for_todo(&item.status),
             priority: item.priority.clone(),
             id: item.id.clone(),
-            group: None,
             blocked_by: item.blocked_by.clone(),
             assigned_to: item.assigned_to.clone(),
-            subsystem: None,
-            file_scope: Vec::new(),
+            parent: item.parent.clone(),
+            ..Default::default()
         })
         .collect()
 }

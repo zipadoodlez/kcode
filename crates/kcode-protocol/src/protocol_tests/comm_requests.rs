@@ -8,11 +8,9 @@ fn test_comm_propose_plan_roundtrip() -> Result<()> {
             status: "pending".to_string(),
             priority: "high".to_string(),
             id: "p1".to_string(),
-            subsystem: None,
-            file_scope: Vec::new(),
             blocked_by: vec!["p0".to_string()],
             assigned_to: Some("sess_b".to_string()),
-                        group: None,
+            ..Default::default()
         }],
     };
     let json = serde_json::to_string(&req)?;

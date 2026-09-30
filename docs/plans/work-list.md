@@ -84,9 +84,6 @@ Every step lands whole, proven by the gate and, where behavior moves, one
 
 ### B. The file is the list
 
-- [ ] **B1.** The `todo` tool's action set becomes add, claim, close: close
-  requires a nonempty result and removes the row (rules 3 to 5), so `status`
-  loses its writer and the poke counts open rows.
 - [ ] **B2.** This repo's own list migrates: `docs/todo.md` becomes the first
   content of `tasks.jsonl`, its standing decisions move to
   `docs/what-was-removed.md`, and the twelve references follow.

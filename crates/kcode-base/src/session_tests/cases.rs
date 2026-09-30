@@ -1231,11 +1231,7 @@ fn test_redacted_for_export_redacts_replay_events() -> Result<()> {
             status: "pending".to_string(),
             priority: "high".to_string(),
             id: "task-1".to_string(),
-            subsystem: None,
-            file_scope: Vec::new(),
-            blocked_by: vec![],
-            assigned_to: None,
-            group: None,
+            ..Default::default()
         }],
         vec![],
         Some("ANTHROPIC_API_KEY=sk-ant-secret-value".to_string()),

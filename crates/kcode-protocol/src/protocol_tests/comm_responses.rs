@@ -8,11 +8,7 @@ fn test_swarm_plan_event_roundtrip_with_summary() -> Result<()> {
             status: "queued".to_string(),
             priority: "high".to_string(),
             id: "task-1".to_string(),
-            subsystem: None,
-            file_scope: Vec::new(),
-            blocked_by: vec![],
-            assigned_to: None,
-                        group: None,
+            ..Default::default()
         }],
         participants: vec!["session_fox".to_string()],
         reason: Some("task_completed".to_string()),

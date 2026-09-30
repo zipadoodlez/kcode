@@ -210,6 +210,13 @@ pub struct TaskItem {
     /// steered into a new area, start a new group instead of renaming.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+    /// The task this one is part of, if any. A parent is work: its result is its
+    /// children's results integrated, and its row stays until that is done.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    /// One line on where the work got to, for whoever picks it up next.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subsystem: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
