@@ -108,8 +108,9 @@ code cannot tell you:
 - Whether line order means anything, such as priority.
 - What a running swarm shows in the file while a node is in flight, and what a
   stalled node shows.
-- Two wayfinder habits worth adopting: refer to a task by its name, and resolve
-  one decision per planning session.
+- Two wayfinder habits worth adopting: refer to a task by its words when talking
+  to the user, while the file still keys on `id`; and resolve one decision per
+  planning session.
 
 ## Surface (measured 2026-10-01)
 
