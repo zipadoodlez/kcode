@@ -27,13 +27,6 @@ call sites, so settle the shape before sweeping sites. Which shapes those are is
   only on a dirty live probe: one `kcode run` that forces a search, read the first
   tool call. Clean is weak evidence; deepseek and xiaomi-mimo carry less of the
   grep prior than the Claude/OpenAI families.
-- **The 200k line goal is off the table** (2026-09-28, four census passes).
-  Production is ~353k lines, so deleting every test line still leaves 353k, and
-  the measured deletable pool was ~15-25k. Not duplicates, so not re-litigated:
-  the provider wire/runtime split and the persisted-state runtime. The floor could
-  be settled by three unrun measurements: `pub` reachability across crates (the
-  compiler cannot flag it), a byte-level pairwise diff of provider impls, and
-  per-file near-duplication inside the test tree.
 
 ## Test baseline
 

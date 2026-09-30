@@ -15,6 +15,12 @@
   the user asks you to review or integrate a PR or branch, you may inspect, test,
   and integrate that contribution regardless of author status. Do not pull in
   unrelated branches or merge a PR without user authorization.
+- **This fork tracks no upstream** - there is no rebase lane and nothing to fetch
+  from `jcode`; the ratchets measure this tree's drift.
+- **No provider is deleted** - every cut candidate backs a user-selectable
+  provider, so cleanup there is identity unification, not removal.
+- **Line count is not a goal** - a smaller tree is a side effect of better
+  placement, never a target; the census that closed the question is in git.
 - **Do not "fix" the remaining `jcode` names** - some of them deliberately refer
   to the upstream project or to the wire service, and the list is in
   `docs/dev/post-change.md` under Names. Renaming those breaks compatibility.
@@ -27,7 +33,10 @@
   `cargo clippy -p <crate> --all-targets --all-features -- -D warnings` - and
   save the full run for the push. Keep `--all-targets --all-features` on the
   narrow run: dropping them can pass where the full gate fails. Do not add test
-  suites beyond what the change can affect. See `docs/dev/post-change.md`.
+  suites beyond what the change can affect. The suite is at zero single-threaded;
+  at the default thread count about a dozen tests flake on process-global
+  `KCODE_*` configuration, so re-run a failure with `--test-threads=1` before
+  believing it. See `docs/dev/post-change.md` and `docs/dev/testing.md`.
 - **Keep the knowledge graph current** - `graphify-out/` is a local cache and is
   not tracked: it is derived, and its content depends on the environment, so a
   committed copy would be neither reproducible nor current. Build it once per
@@ -35,7 +44,9 @@
   it after each commit (incremental, no API key; no-op when graphify is absent).
   `scripts/setup_git_hooks.sh` points git at the hooks once per clone. For
   codebase questions prefer `graphify query "<question>"` over grepping raw
-  files. See `docs/dev/post-change.md`.
+  files. Search with `kgrep`: shell `rg`/`grep`/`find` are ruled out on purpose,
+  and `rg` is absent, so a shell search returns empty and reads as no matches.
+  See `docs/dev/post-change.md`.
 
 ## Install Notes
 - kcode does not install, update, or repoint itself. The OS package manager owns
