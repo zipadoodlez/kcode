@@ -30,6 +30,8 @@ Settled 2026-10-01. Not steps; what every step has to satisfy.
 3. **One close action, for every entry.** The holder produces the result the
    entry owes and the row is removed. A parent's result is its children's
    results integrated, a leaf's is its own work, and nothing else differs.
+   Closing can also add: work that reveals work goes in with the same `add`
+   action, and rule 6 makes a task's spawns land before its close.
 4. **There is no completed state.** A row goes when its result is durable: for
    code, the commit that lands the work, with the delete in the same commit; for
    a decision or an exploration, after the result is written somewhere durable.
@@ -61,8 +63,11 @@ Settled 2026-10-01. Not steps; what every step has to satisfy.
 13. **The file is JSON Lines, one task per line**, flat. Each entry is `id`,
     `content`, optional `parent`, optional `blocked_by`, optional `assigned_to`,
     optional `note`. `status` is derived, and `priority`, `group`, `subsystem`
-    and `file_scope` are not stored. There is one row kind: a fog or
-    out-of-scope note is doc-shaped, so it earns no row and no section.
+    and `file_scope` are not stored. There is one row kind: a task whose job is
+    to search is a row like any other, while a fog or out-of-scope note is
+    doc-shaped, so it earns no row and no section. An out-of-scope finding is a
+    result ("searched, and this is out of scope because ..."), which rule 5
+    already records in the commit.
 14. **The check is a rule, not a field.** The close action requires a nonempty
     result, and the tool description names the check and asks for its actual
     result. Nothing for the harness to judge. A skipped check shows only in the
