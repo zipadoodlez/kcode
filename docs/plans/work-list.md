@@ -46,6 +46,15 @@ so the run stops supplying turns and starts offering them, and detaching puts it
 back. Without a client the levers are the run's: message it, stop it, wake it,
 retry it, reassign or replace its work, and watch it through its status events.
 
+Handing a row over is only a message. The run picks a row and a session, delivers a
+message naming the row and asking for the work, and the row's own words plus the
+kind are the whole payload. If nobody is attached to that session the server starts
+a turn for it there and then, which is what a member always was; if a person is
+attached, the message waits for a turn boundary and is only ever sent while that
+session holds rows that are ready. Nothing is queued, nothing is transferred but
+words, and the message is the entire mechanism. A row whose note cannot stand alone
+is a row that cannot be handed over.
+
 A run adjusts by editing rows, since it has no plan of its own to mutate. It adds
 work under the row it came from, leaves notes, clears a blocker that no longer
 blocks, retypes a row whose kind was wrong, and closes what it holds. Picking is a
