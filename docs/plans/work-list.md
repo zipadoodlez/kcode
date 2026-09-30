@@ -30,6 +30,14 @@ by it is what we call a decision. A run with no instruction proposes a scope, na
 the rows, and stops at that boundary. A bound on a run is a run property, never a
 row field, and the default is none because the scope is what stops it.
 
+Continuing on its own is a permission, not a consequence of holding rows. Holding a
+row says who owes the work, not that the run may take another turn. The default is
+off, so a session stops at the end of its turn unless it was allowed to keep going,
+and the permission is read in the one place that decides the next turn. The user's
+words can grant it for one run, which is what "work the list until it is done"
+means. A headless member holds the permission inherently, because that is what it
+was spawned for.
+
 A swarm member has no human, so the run supplies every turn. A session with a human
 never has turns taken from it: dispatch offers it rows at a turn boundary, and the
 session claims one when it picks it up, so an offered row is never stranded. That
@@ -89,6 +97,11 @@ the children added underneath.
    tool description names the check; a skipped check shows only in the commit.
 10. **Refer to a task by its words with the user.** The file keys on `id`; the
     conversation does not.
+11. **Continuing unattended is a permission, default off.** Holding a row says who
+    owes it, not that a session may take another turn. A turn can grant it for one
+    run, a headless member holds it inherently, and it is read where the next turn is
+    decided. Typing always wins, so the stop lever for a session with a human is the
+    user's next turn.
 
 ## Steps
 
