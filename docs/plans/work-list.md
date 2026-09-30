@@ -89,12 +89,14 @@ code cannot tell you:
     `content`, optional `parent`, optional `blocked_by`, optional `assigned_to`,
     optional `note`. `status` is derived, and `priority`, `group`, `subsystem`
     and `file_scope` are not stored.
+14. **The check is a rule, not a field.** The close action already requires a
+    nonempty result, and the tool description already says to name the check that
+    proves the item done and report its result. That is the whole rule, in one
+    home, with nothing for the harness to judge. Cost: a skipped check shows only
+    in the commit that removes the row.
 
 ## Open
 
-- Whether a row carries the check that proves it done, or only the commit does.
-  This is the one surviving idea of the deleted rubric: name the check, report
-  its result.
 - Whether the file grows a "not yet specified" section and an "out of scope"
   section, both from wayfinder. `docs/todo.md` already half-has the first.
 - Where the file lives and what it is called. `docs/todo.md` is the incumbent.
@@ -145,8 +147,7 @@ three status helpers. The fields are settled (13), so this is unblocked.
 
 **B. The file is the list.** The `todo` tool reads and writes the repo file,
 `docs/todo.md` becomes its first user, and `/todos` and the widget render from it.
-Deletes the per-session todo JSON. Gated by the file's name and home, and by
-whether a row carries its check.
+Deletes the per-session todo JSON. Gated by the file's name and home.
 
 **C. The swarm reads and writes the file.** The plan is derived from the file's
 entries and their `parent` and `blocked_by` fields, membership and the coordinator
