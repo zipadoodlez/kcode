@@ -107,6 +107,14 @@ duplicated member shapes come from that weld.
     `parent` field, so the plan's `NodeKind` is a second copy of that fact and
     goes. The single enforcement is that a parent's row cannot be removed while a
     row still names it as parent, which needs no status tracking.
+14. **A drop is a completion whose result says so.** One close action, one
+    precondition: a nonempty result naming what happened and why. Neither case
+    shows in the file, because both remove the row. The distinction survives
+    where results live: the commit for durable work, and the running plan's
+    artifacts for a live gate. Consequence: `cancelled` stops being a state, so
+    the four-word status vocabulary and its helpers (`canonical_todo_status`,
+    `todo_status_is_completed`, `todo_status_is_cancelled`) go with it. Cost,
+    deliberate: a cold session sees a drop only in the commit.
 
 ## Open
 
@@ -124,9 +132,6 @@ duplicated member shapes come from that weld.
 - Whether line order in the file means anything, such as priority.
 - What a running swarm shows in the file while a node is in flight, and what a
   stalled node shows.
-- Whether a drop leaves anything behind. Removal cannot distinguish "finished"
-  from "abandoned", and a gate naming its scope cannot see that one item was
-  dropped rather than done. Today only the commit message records the difference.
 
 ## Harvest from wayfinder (Matt Pocock)
 
