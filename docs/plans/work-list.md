@@ -21,8 +21,10 @@ lives in three places.
 
 Settled 2026-10-01. Not steps; what every step has to satisfy.
 
-1. **One file per repo, and it supersedes `docs/todo.md`.** Work with no repo
-   uses the same format in a scratch location tied to the session.
+1. **One file per repo, `tasks.jsonl` at the repo root, and it supersedes
+   `docs/todo.md`.** The home is found from git, not from the working directory,
+   so a session started in `crates/foo` reads the same list. Work with no repo
+   uses the same basename in a scratch location tied to the session.
 2. **Never hand-authored.** The tool owns the write protocol and re-reads the
    file before each write, so a human edit is an input, not a conflict.
 3. **One close action, for every entry.** The holder produces the result the
@@ -80,15 +82,17 @@ Every step lands whole, proven by the gate and, where behavior moves, one
 
 ### B. The file is the list
 
-- [ ] **(decide)** the file's name and home. `docs/todo.md` is the incumbent.
 - [ ] **(decide)** whether the file grows a "not yet specified" section and an
   "out of scope" section, both from wayfinder.
 - [ ] **(decide)** whether line order means anything, such as priority.
 - [ ] **(decide)** who writes when the working directory is remote, since the
   server is the only writer and the file lives in the working tree.
-- [ ] **B1.** The `todo` tool reads and writes the repo file, `docs/todo.md`
-  becomes its first user, `/todos` and the widget render from it, and the
-  per-session todo JSON is deleted.
+- [ ] **B1.** The `todo` tool reads and writes `tasks.jsonl`, this repo's
+  `docs/todo.md` becomes its first content, `/todos` and the widget render from
+  it, the per-session todo JSON is deleted, and the twelve references to
+  `docs/todo.md` move to the new path (`README.md`, `docs/README.md` four times,
+  `hooks.md`, `dev/testing.md`, `dev/benchmarking.md`, `dev/post-change.md`, the
+  browser plan, one comment in `kcode-tui/src/tui/mod.rs`).
 - [ ] **B2.** Drop `group` and `status` from the type. B1 gives `parent`, which
   is what `group` was grouping by, and the close action is what makes a
   completed row unrepresentable rather than stored.
