@@ -94,7 +94,7 @@ fn kv_cache_widget_shows_session_hit_ratio() {
 
 #[test]
 fn todos_widgets_render_group_headers_when_groups_present() {
-    let mk = |group: Option<&str>, id: &str, status: &str| crate::todo::TodoItem {
+    let mk = |group: Option<&str>, id: &str, status: &str| crate::todo::TaskItem {
         group: group.map(|g| g.to_string()),
         id: id.to_string(),
         content: format!("task {id}"),
@@ -128,7 +128,7 @@ fn todos_widgets_render_group_headers_when_groups_present() {
 
 #[test]
 fn todos_widgets_stay_flat_without_groups() {
-    let mk = |id: &str, status: &str| crate::todo::TodoItem {
+    let mk = |id: &str, status: &str| crate::todo::TaskItem {
         id: id.to_string(),
         content: format!("task {id}"),
         status: status.to_string(),
@@ -145,7 +145,7 @@ fn todos_widgets_stay_flat_without_groups() {
 
 #[test]
 fn todos_widget_renders_exact_pips_for_small_lists() {
-    let mk = |status: &str| crate::todo::TodoItem {
+    let mk = |status: &str| crate::todo::TaskItem {
         id: status.to_string(),
         content: format!("item {status}"),
         status: status.to_string(),
@@ -186,8 +186,8 @@ fn todos_widget_renders_exact_pips_for_small_lists() {
     assert!(!all.contains('░'), "old empty bar should be gone: {all}");
 }
 
-fn plan_item(id: &str, status: &str) -> crate::plan::PlanItem {
-    crate::plan::PlanItem {
+fn plan_item(id: &str, status: &str) -> crate::plan::TaskItem {
+    crate::plan::TaskItem {
         content: format!("task {id}"),
         status: status.to_string(),
         priority: "medium".to_string(),
@@ -273,7 +273,7 @@ fn swarm_plan_running_items_render_before_completed_in_large_plans() {
     // 120-item deep plan: 100 completed, 1 running near the end, rest queued.
     // The running item must be visible in the small line budget instead of
     // hiding behind the "+N more" footer.
-    let mut items: Vec<crate::plan::PlanItem> = (0..100)
+    let mut items: Vec<crate::plan::TaskItem> = (0..100)
         .map(|i| plan_item(&format!("done-{i}"), "completed"))
         .collect();
     items.push(plan_item("hot-task", "running"));
@@ -319,8 +319,8 @@ fn todo_widget_header_says_plan_when_showing_swarm_plan_projection() {
     assert!(text.contains("Todos"), "todos header missing: {text}");
 }
 
-fn todo_item(id: &str, content: &str, status: &str, group: Option<&str>) -> crate::todo::TodoItem {
-    crate::todo::TodoItem {
+fn todo_item(id: &str, content: &str, status: &str, group: Option<&str>) -> crate::todo::TaskItem {
+    crate::todo::TaskItem {
         content: content.to_string(),
         status: status.to_string(),
         priority: "medium".to_string(),
@@ -384,7 +384,7 @@ fn swarm_plan_gate_items_render_like_normal_items() {
 #[test]
 fn swarm_plan_todos_render_safely_at_extreme_sizes() {
     // Panic-safety sweep: long ids, wide glyphs, huge plans, tiny rects.
-    let mut items: Vec<crate::plan::PlanItem> = (0..300)
+    let mut items: Vec<crate::plan::TaskItem> = (0..300)
         .map(|i| {
             let mut item = plan_item(
                 &format!("very-long-node-id-{i}::gate::retry::{}", "x".repeat(80)),
@@ -1026,7 +1026,7 @@ fn placements_never_include_border_only_widgets() {
             total_chars: 40_000,
             ..Default::default()
         }),
-        todos: vec![crate::todo::TodoItem {
+        todos: vec![crate::todo::TaskItem {
             content: "ship patch".to_string(),
             status: "in_progress".to_string(),
             priority: "high".to_string(),

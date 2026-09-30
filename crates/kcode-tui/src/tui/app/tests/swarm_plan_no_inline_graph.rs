@@ -7,7 +7,7 @@ fn swarm_plan_updates_state_without_adding_an_inline_diagram() {
     remote.mark_history_loaded();
     let message_count = app.display_messages().len();
 
-    let item = crate::plan::PlanItem {
+    let item = crate::plan::TaskItem {
         content: "write a haiku".to_string(),
         status: "running".to_string(),
         priority: "high".to_string(),

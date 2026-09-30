@@ -3,7 +3,7 @@ use super::state::{MAX_EVENT_HISTORY, fanout_session_event};
 use super::{SwarmEvent, SwarmEventType, SwarmMember, SwarmState, VersionedPlan};
 use super::{persist_swarm_state_for, remove_persisted_swarm_state_for};
 use crate::agent::Agent;
-use crate::plan::{PlanItem, newly_ready_item_ids};
+use crate::plan::{TaskItem, newly_ready_item_ids};
 use crate::protocol::{NotificationType, ServerEvent, SwarmLifecycleStatus};
 use crate::session::Session;
 use anyhow::Result;
@@ -815,14 +815,14 @@ pub(super) async fn broadcast_swarm_plan(
 pub(super) async fn broadcast_swarm_plan_with_previous(
     swarm_id: &str,
     reason: Option<String>,
-    previous_items: Option<&[PlanItem]>,
+    previous_items: Option<&[TaskItem]>,
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
 ) {
     let (version, items, summary, mut participants): (
         u64,
-        Vec<PlanItem>,
+        Vec<TaskItem>,
         crate::protocol::PlanGraphStatus,
         Vec<String>,
     ) = {
@@ -1717,7 +1717,7 @@ mod tests {
         swarm_is_self_or_ancestor, swarm_spawn_depth, touch_swarm_task_progress,
         update_member_status, update_member_status_with_report,
     };
-    use crate::plan::PlanItem;
+    use crate::plan::TaskItem;
     use crate::protocol::SwarmLifecycleStatus;
     use crate::protocol::{NotificationType, ServerEvent};
     use crate::server::{SwarmMember, VersionedPlan};
@@ -1729,8 +1729,8 @@ mod tests {
     use std::time::{Duration, Instant};
     use tokio::sync::{RwLock, mpsc};
 
-    fn plan_item(id: &str, content: &str) -> PlanItem {
-        PlanItem {
+    fn plan_item(id: &str, content: &str) -> TaskItem {
+        TaskItem {
             content: content.to_string(),
             status: "pending".to_string(),
             priority: "medium".to_string(),
@@ -1966,14 +1966,14 @@ mod tests {
             "swarm-1".to_string(),
             VersionedPlan {
                 items: vec![
-                    PlanItem {
+                    TaskItem {
                         content: "setup".to_string(),
                         status: "completed".to_string(),
                         priority: "high".to_string(),
                         id: "setup".to_string(),
                         ..Default::default()
                     },
-                    PlanItem {
+                    TaskItem {
                         content: "follow-up".to_string(),
                         status: "queued".to_string(),
                         priority: "high".to_string(),
@@ -1996,7 +1996,7 @@ mod tests {
             HashSet::from(["worker".to_string()]),
         )])));
         let previous_items = vec![
-            PlanItem {
+            TaskItem {
                 content: "setup".to_string(),
                 status: "running".to_string(),
                 priority: "high".to_string(),
@@ -2004,7 +2004,7 @@ mod tests {
                 assigned_to: Some("worker".to_string()),
                 ..Default::default()
             },
-            PlanItem {
+            TaskItem {
                 content: "follow-up".to_string(),
                 status: "queued".to_string(),
                 priority: "high".to_string(),
@@ -2305,7 +2305,7 @@ mod tests {
         let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
             "swarm-1".to_string(),
             VersionedPlan {
-                items: vec![PlanItem {
+                items: vec![TaskItem {
                     content: "task".to_string(),
                     status: "pending".to_string(),
                     priority: "medium".to_string(),
@@ -2776,7 +2776,7 @@ mod tests {
         let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
             "swarm-1".to_string(),
             VersionedPlan {
-                items: vec![PlanItem {
+                items: vec![TaskItem {
                     content: "task".to_string(),
                     status: "running".to_string(),
                     priority: "medium".to_string(),
@@ -2857,7 +2857,7 @@ mod tests {
         Arc::new(RwLock::new(HashMap::from([(
             "swarm-1".to_string(),
             VersionedPlan {
-                items: vec![PlanItem {
+                items: vec![TaskItem {
                     content: "task".to_string(),
                     status: "running".to_string(),
                     priority: "medium".to_string(),

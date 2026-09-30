@@ -81,7 +81,7 @@ fn test_remote_auto_poke_followup_preserves_visible_timer_and_stays_hidden() {
 
         crate::todo::save_todos(
             &app.session.id,
-            &[crate::todo::TodoItem {
+            &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),
                 content: "Continue working".to_string(),
                 status: "pending".to_string(),
@@ -130,7 +130,7 @@ fn test_remote_poke_status_and_off_update_state() {
 
         crate::todo::save_todos(
             &app.session.id,
-            &[crate::todo::TodoItem {
+            &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),
                 content: "Continue working".to_string(),
                 status: "pending".to_string(),

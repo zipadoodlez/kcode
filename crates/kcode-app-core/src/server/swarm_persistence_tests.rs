@@ -36,7 +36,7 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
     plans.insert(
         "swarm-alpha".to_string(),
         VersionedPlan {
-            items: vec![crate::plan::PlanItem {
+            items: vec![crate::plan::TaskItem {
                 content: "do thing".to_string(),
                 status: "running".to_string(),
                 priority: "high".to_string(),
@@ -227,7 +227,7 @@ fn ready_detached_client_stops_on_reload_until_it_reattaches() {
 
 #[test]
 fn dormant_plan_expiry_preserves_active_work_and_prunes_old_unassigned_graphs() {
-    let item = |status: &str, assigned_to: Option<&str>| crate::plan::PlanItem {
+    let item = |status: &str, assigned_to: Option<&str>| crate::plan::TaskItem {
         content: "task".to_string(),
         status: status.to_string(),
         priority: "medium".to_string(),
@@ -501,7 +501,7 @@ fn deep_plan_mode_and_node_meta_round_trip() {
 
     let plan = VersionedPlan {
         items: vec![
-            crate::plan::PlanItem {
+            crate::plan::TaskItem {
                 content: "explore X".to_string(),
                 status: "completed".to_string(),
                 priority: "high".to_string(),
@@ -509,7 +509,7 @@ fn deep_plan_mode_and_node_meta_round_trip() {
                 assigned_to: Some("session-1".to_string()),
                 ..Default::default()
             },
-            crate::plan::PlanItem {
+            crate::plan::TaskItem {
                 content: "gate".to_string(),
                 status: "queued".to_string(),
                 priority: "medium".to_string(),
@@ -592,7 +592,7 @@ fn gate_debt_and_artifact_hydration_survive_reload() {
     })
     .unwrap();
 
-    let item = |id: &str, status: &str, blocked_by: Vec<String>| crate::plan::PlanItem {
+    let item = |id: &str, status: &str, blocked_by: Vec<String>| crate::plan::TaskItem {
         content: format!("work on {id}"),
         status: status.to_string(),
         priority: "medium".to_string(),
@@ -836,7 +836,7 @@ async fn stale_persist_cannot_regress_newer_plan_version() {
 
     let mut plan = VersionedPlan::new();
     plan.version = 5;
-    plan.items = vec![crate::plan::PlanItem {
+    plan.items = vec![crate::plan::TaskItem {
         content: "task one".to_string(),
         status: "queued".to_string(),
         priority: "medium".to_string(),

@@ -693,14 +693,14 @@ fn test_improve_status_summarizes_current_todos() {
         crate::todo::save_todos(
             &app.session.id,
             &[
-                crate::todo::TodoItem {
+                crate::todo::TaskItem {
                     id: "one".to_string(),
                     content: "Profile startup path".to_string(),
                     status: "in_progress".to_string(),
                     priority: "high".to_string(),
                     ..Default::default()
                 },
-                crate::todo::TodoItem {
+                crate::todo::TaskItem {
                     id: "two".to_string(),
                     content: "Add regression test".to_string(),
                     status: "completed".to_string(),
@@ -787,7 +787,7 @@ fn test_improve_resume_uses_saved_mode_and_current_todos() {
         app.session.save().expect("save session");
         crate::todo::save_todos(
             &app.session.id,
-            &[crate::todo::TodoItem {
+            &[crate::todo::TaskItem {
                 id: "resume1".to_string(),
                 content: "Refactor command parsing".to_string(),
                 status: "in_progress".to_string(),

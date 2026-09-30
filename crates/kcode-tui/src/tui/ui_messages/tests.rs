@@ -1820,7 +1820,7 @@ fn render_overnight_message_uses_rounded_progress_card() {
 fn batched_retry_renders_the_todo_card_from_a_nested_call() {
     // A todo call nested inside a batch result must still render as a card,
     // including when the batch carries other subcalls beside it.
-    let todos = vec![crate::todo::TodoItem {
+    let todos = vec![crate::todo::TaskItem {
         id: "inspect".to_string(),
         content: "Inspect the starter project".to_string(),
         status: "in_progress".to_string(),

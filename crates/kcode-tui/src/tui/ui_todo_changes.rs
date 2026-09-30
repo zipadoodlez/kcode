@@ -16,7 +16,7 @@
 
 use super::*;
 use crate::message::ToolCall;
-use crate::todo::TodoItem;
+use crate::todo::TaskItem;
 use kcode_tui_style::theme::{
     ai_text, border_color, error_color, header_name_color, pending_color, success_color,
     tool_color, warning_color,
@@ -30,12 +30,12 @@ const MAX_CHANGE_LINES: usize = 6;
 
 /// Parse the todo list a `todo` tool call wrote. Returns `None` for read calls
 /// (no `todos` argument) or when the payload cannot be parsed for display.
-pub(super) fn todos_from_tool_input(tc: &ToolCall) -> Option<Vec<TodoItem>> {
+pub(super) fn todos_from_tool_input(tc: &ToolCall) -> Option<Vec<TaskItem>> {
     let todos = tc.input.get("todos")?;
     if todos.is_null() {
         return None;
     }
-    serde_json::from_value::<Vec<TodoItem>>(todos.clone()).ok()
+    serde_json::from_value::<Vec<TaskItem>>(todos.clone()).ok()
 }
 
 /// Find the todo list written by the most recent `todo` tool message before
@@ -44,7 +44,7 @@ pub(super) fn todos_from_tool_input(tc: &ToolCall) -> Option<Vec<TodoItem>> {
 pub(super) fn previous_todos(
     messages: &[DisplayMessage],
     current_abs_idx: usize,
-) -> Option<Vec<TodoItem>> {
+) -> Option<Vec<TaskItem>> {
     let end = current_abs_idx.min(messages.len());
     messages[..end]
         .iter()
@@ -93,11 +93,11 @@ impl TodoDiff {
     }
 }
 
-fn blocked_of(todo: &TodoItem) -> bool {
+fn blocked_of(todo: &TaskItem) -> bool {
     !todo.blocked_by.is_empty()
 }
 
-fn compute_diff(prev: Option<&[TodoItem]>, next: &[TodoItem]) -> TodoDiff {
+fn compute_diff(prev: Option<&[TaskItem]>, next: &[TaskItem]) -> TodoDiff {
     let mut diff = TodoDiff {
         is_first: prev.is_none(),
         total: next.len(),
@@ -252,8 +252,8 @@ fn change_line(change: &TodoChange, indent: &str, width: u16) -> Line<'static> {
 /// Build the delta lines to inject below a `todo` tool message. Returns an empty
 /// vec when nothing meaningful changed (reads, no-op writes).
 pub(super) fn render_todo_change_lines(
-    prev: Option<&[TodoItem]>,
-    next: &[TodoItem],
+    prev: Option<&[TaskItem]>,
+    next: &[TaskItem],
     width: u16,
 ) -> Vec<Line<'static>> {
     let diff = compute_diff(prev, next);
@@ -307,8 +307,8 @@ pub(super) fn render_todo_change_lines(
 mod tests {
     use super::*;
 
-    fn todo(id: &str, content: &str, status: &str) -> TodoItem {
-        TodoItem {
+    fn todo(id: &str, content: &str, status: &str) -> TaskItem {
+        TaskItem {
             id: id.to_string(),
             content: content.to_string(),
             status: status.to_string(),
@@ -384,7 +384,7 @@ mod tests {
 
     #[test]
     fn change_block_caps_at_max_lines() {
-        let next: Vec<TodoItem> = (0..10)
+        let next: Vec<TaskItem> = (0..10)
             .map(|i| todo(&i.to_string(), &format!("item {i}"), "pending"))
             .collect();
         let lines = render_todo_change_lines(None, &next, 80);

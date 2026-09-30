@@ -2,7 +2,7 @@ use crate::storage;
 use anyhow::Result;
 use std::path::PathBuf;
 
-pub use kcode_task_types::TodoItem;
+pub use kcode_task_types::TaskItem;
 
 /// Return the canonical todo status for model-written status vocabulary.
 ///
@@ -51,7 +51,7 @@ pub fn build_auto_poke_message(incomplete_count: usize) -> String {
     )
 }
 
-pub fn load_todos(session_id: &str) -> Result<Vec<TodoItem>> {
+pub fn load_todos(session_id: &str) -> Result<Vec<TaskItem>> {
     let path = todo_path(session_id)?;
     if !path.exists() {
         return Ok(Vec::new());
@@ -63,7 +63,7 @@ pub fn todos_exist(session_id: &str) -> Result<bool> {
     Ok(todo_path(session_id)?.exists())
 }
 
-pub fn save_todos(session_id: &str, todos: &[TodoItem]) -> Result<()> {
+pub fn save_todos(session_id: &str, todos: &[TaskItem]) -> Result<()> {
     let path = todo_path(session_id)?;
     storage::write_json_fast(&path, todos)?;
     Ok(())

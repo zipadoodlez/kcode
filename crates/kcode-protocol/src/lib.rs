@@ -18,7 +18,7 @@ pub use notifications::{FeatureToggle, NotificationType};
 
 use kcode_message_types::BatchProgress;
 use kcode_message_types::{InputShellResult, ToolCall};
-use kcode_plan::{PlanItem, VersionedPlan, next_runnable_item_ids, summarize_plan_graph};
+use kcode_plan::{TaskItem, VersionedPlan, next_runnable_item_ids, summarize_plan_graph};
 pub use kcode_session_types::SwarmLifecycleStatus;
 pub use side_panel::{
     PersistedSidePanelPage, PersistedSidePanelState, SidePanelPage, SidePanelPageFormat,

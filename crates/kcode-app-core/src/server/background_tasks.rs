@@ -555,7 +555,7 @@ const SWARM_TOOL_INTENT_CAP: usize = 120;
 /// boundary. Prefers showing the active window: everything from the first
 /// non-completed item onward, then backfills with the most recent completed
 /// items if there is room left in the cap.
-fn compact_todo_items(todos: &[crate::todo::TodoItem]) -> Vec<crate::protocol::SwarmTodoItem> {
+fn compact_todo_items(todos: &[crate::todo::TaskItem]) -> Vec<crate::protocol::SwarmTodoItem> {
     let first_open = todos
         .iter()
         .position(|t| t.status != "completed")

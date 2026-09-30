@@ -1,11 +1,11 @@
-use crate::plan::PlanItem;
+use crate::plan::TaskItem;
 use crate::protocol::PlanGraphStatus;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct RemoteSwarmPlanSnapshot {
     pub swarm_id: String,
     pub version: u64,
-    pub items: Vec<PlanItem>,
+    pub items: Vec<TaskItem>,
     pub participants: Vec<String>,
     pub reason: Option<String>,
     pub summary: Option<PlanGraphStatus>,
@@ -80,11 +80,11 @@ impl RemoteSwarmPlanSnapshot {
 #[cfg(test)]
 mod tests {
     use super::RemoteSwarmPlanSnapshot;
-    use crate::plan::PlanItem;
+    use crate::plan::TaskItem;
     use crate::protocol::PlanGraphStatus;
 
-    fn plan_item(id: &str, status: &str) -> PlanItem {
-        PlanItem {
+    fn plan_item(id: &str, status: &str) -> TaskItem {
+        TaskItem {
             content: format!("task {id}"),
             status: status.to_string(),
             priority: "normal".to_string(),
@@ -93,7 +93,7 @@ mod tests {
         }
     }
 
-    fn snapshot(items: Vec<PlanItem>, summary: Option<PlanGraphStatus>) -> RemoteSwarmPlanSnapshot {
+    fn snapshot(items: Vec<TaskItem>, summary: Option<PlanGraphStatus>) -> RemoteSwarmPlanSnapshot {
         let version = summary.as_ref().map(|s| s.version).unwrap_or(0);
         RemoteSwarmPlanSnapshot {
             swarm_id: "swarm-a".to_string(),
@@ -127,7 +127,7 @@ mod tests {
         }
     }
 
-    fn fixture_items() -> Vec<PlanItem> {
+    fn fixture_items() -> Vec<TaskItem> {
         vec![
             plan_item("task-1", "completed"),
             plan_item("task-2", "pending"),

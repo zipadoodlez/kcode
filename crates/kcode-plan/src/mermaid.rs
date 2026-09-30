@@ -10,7 +10,7 @@
 //!
 //! This module only builds mermaid source; callers decide when to render it.
 
-use crate::{PlanItem, summarize_plan_graph};
+use crate::{TaskItem, summarize_plan_graph};
 use std::collections::{HashMap, HashSet};
 
 /// Max tasks drawn before the graph is truncated with a summary node.
@@ -37,7 +37,7 @@ const LR_MAX_DEPTH: usize = 8;
 /// is empty. Node styling encodes scheduler status (done/active/failed/
 /// blocked/pending), gate nodes (`*::gate`) render as hexagons, and edges
 /// follow `blocked_by` dependencies.
-pub fn swarm_plan_mermaid(items: &[PlanItem]) -> Option<String> {
+pub fn swarm_plan_mermaid(items: &[TaskItem]) -> Option<String> {
     if items.is_empty() {
         return None;
     }
@@ -73,7 +73,7 @@ pub fn swarm_plan_mermaid(items: &[PlanItem]) -> Option<String> {
     // When the plan is over the cap, drop completed tasks first: they are the
     // least interesting nodes, and a long-running plan otherwise fills the
     // whole graph with stale green boxes while live work gets truncated.
-    let shown: Vec<&PlanItem> = if items.len() <= MAX_GRAPH_NODES {
+    let shown: Vec<&TaskItem> = if items.len() <= MAX_GRAPH_NODES {
         items.iter().collect()
     } else {
         let mut keep: Vec<usize> = (0..items.len())
@@ -206,7 +206,7 @@ pub fn swarm_plan_mermaid(items: &[PlanItem]) -> Option<String> {
 /// it simple; drawn graphs are capped at [`MAX_GRAPH_NODES`], and cycles
 /// terminate via the pass bound.
 fn longest_path_len(
-    shown: &[&PlanItem],
+    shown: &[&TaskItem],
     node_ids: &HashMap<&str, String>,
     edges: &[(String, String)],
 ) -> usize {
@@ -247,7 +247,7 @@ fn node_id(raw: &str) -> String {
 }
 
 /// Node label: status glyph + truncated content + optional short assignee.
-fn node_label(item: &PlanItem, class: &str) -> String {
+fn node_label(item: &TaskItem, class: &str) -> String {
     let glyph = match class {
         "done" => "✓",
         "active" => "▶",
@@ -312,8 +312,8 @@ fn sanitize_label(text: &str) -> String {
 mod tests {
     use super::*;
 
-    fn item(id: &str, content: &str, status: &str, blocked_by: &[&str]) -> PlanItem {
-        PlanItem {
+    fn item(id: &str, content: &str, status: &str, blocked_by: &[&str]) -> TaskItem {
+        TaskItem {
             content: content.to_string(),
             status: status.to_string(),
             priority: "normal".to_string(),
@@ -437,7 +437,7 @@ mod tests {
 
     #[test]
     fn small_graphs_stay_td_large_or_wide_fan_in_switch_to_lr() {
-        let small: Vec<PlanItem> = (0..5)
+        let small: Vec<TaskItem> = (0..5)
             .map(|i| item(&format!("s{i}"), &format!("task {i}"), "queued", &[]))
             .collect();
         assert!(
@@ -461,7 +461,7 @@ mod tests {
 
         // Large but structureless (no edges at all): LR would pack one long
         // row, so flat lists stay TD.
-        let flat: Vec<PlanItem> = (0..15)
+        let flat: Vec<TaskItem> = (0..15)
             .map(|i| item(&format!("f{i}"), &format!("task {i}"), "queued", &[]))
             .collect();
         assert!(
@@ -473,7 +473,7 @@ mod tests {
 
         // Large but chain-shaped (depth > LR_MAX_DEPTH): LR would render one
         // endless horizontal row, so deep chains stay TD.
-        let chain: Vec<PlanItem> = (0..15usize)
+        let chain: Vec<TaskItem> = (0..15usize)
             .map(|i| {
                 let dep = format!("c{}", i.saturating_sub(1));
                 let deps: Vec<&str> = if i == 0 { vec![] } else { vec![dep.as_str()] };
@@ -488,7 +488,7 @@ mod tests {
         );
 
         // 6 nodes but one gate collecting 5 deps: fan-in forces LR.
-        let mut wide: Vec<PlanItem> = (0..5)
+        let mut wide: Vec<TaskItem> = (0..5)
             .map(|i| item(&format!("w{i}"), &format!("task {i}"), "completed", &[]))
             .collect();
         let deps: Vec<String> = (0..5).map(|i| format!("w{i}")).collect();
@@ -525,7 +525,7 @@ mod tests {
     fn oversized_plans_truncate_dropping_done_first_with_linked_summary_node() {
         // 25 completed + 15 queued: the queued (live) tasks must all survive
         // truncation, completed ones fill the remaining slots.
-        let mut items: Vec<PlanItem> = (0..25)
+        let mut items: Vec<TaskItem> = (0..25)
             .map(|i| {
                 item(
                     &format!("d{i}"),

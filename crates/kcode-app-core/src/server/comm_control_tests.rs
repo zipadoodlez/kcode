@@ -1,7 +1,7 @@
 use super::{handle_comm_assign_next, handle_comm_assign_task, handle_comm_task_control};
 use crate::agent::Agent;
 use crate::message::{Message, StreamEvent, ToolDefinition};
-use crate::plan::PlanItem;
+use crate::plan::TaskItem;
 use crate::protocol::ServerEvent;
 use crate::provider::{EventStream, Provider};
 use crate::server::comm_await::{CommAwaitMembersContext, handle_comm_await_members};
@@ -86,8 +86,8 @@ fn owned_member(session_id: &str, swarm_id: &str, status: &str, owner: &str) -> 
     m
 }
 
-fn plan_item(id: &str, status: &str, priority: &str, blocked_by: &[&str]) -> PlanItem {
-    PlanItem {
+fn plan_item(id: &str, status: &str, priority: &str, blocked_by: &[&str]) -> TaskItem {
+    TaskItem {
         content: format!("task {id}"),
         status: status.to_string(),
         priority: priority.to_string(),

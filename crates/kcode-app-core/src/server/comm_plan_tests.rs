@@ -7,7 +7,7 @@
 //! acyclicity too.
 
 use super::{handle_comm_approve_plan, handle_comm_propose_plan, plan_cycle_error};
-use crate::plan::PlanItem;
+use crate::plan::TaskItem;
 use crate::protocol::ServerEvent;
 use crate::protocol::SwarmLifecycleStatus;
 use crate::server::{SharedContext, SwarmEvent, SwarmMember, SwarmMutationRuntime, VersionedPlan};
@@ -74,8 +74,8 @@ fn member(session_id: &str, swarm_id: &str, role: &str) -> SwarmMember {
     }
 }
 
-fn plan_item(id: &str, blocked_by: &[&str]) -> PlanItem {
-    PlanItem {
+fn plan_item(id: &str, blocked_by: &[&str]) -> TaskItem {
+    TaskItem {
         content: format!("task {id}"),
         status: "pending".to_string(),
         priority: "medium".to_string(),
@@ -148,7 +148,7 @@ fn plan_fixture(swarm_id: &str, coord: &str, worker: &str) -> PlanFixture {
 }
 
 impl PlanFixture {
-    async fn propose(&self, from: &str, items: Vec<PlanItem>) {
+    async fn propose(&self, from: &str, items: Vec<TaskItem>) {
         handle_comm_propose_plan(
             1,
             from.to_string(),

@@ -1434,7 +1434,7 @@ request in this new forked session, using the inherited conversation only as con
         &mut self,
         swarm_id: String,
         version: u64,
-        items: Vec<crate::plan::PlanItem>,
+        items: Vec<crate::plan::TaskItem>,
         participants: Vec<String>,
         reason: Option<String>,
     ) {

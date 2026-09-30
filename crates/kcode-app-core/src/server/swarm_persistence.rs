@@ -111,7 +111,7 @@ struct PersistedSwarmState {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct PersistedVersionedPlan {
-    items: Vec<crate::plan::PlanItem>,
+    items: Vec<crate::plan::TaskItem>,
     version: u64,
     participants: Vec<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]

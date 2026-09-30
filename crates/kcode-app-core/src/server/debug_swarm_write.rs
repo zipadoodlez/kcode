@@ -1,5 +1,5 @@
 use super::{SharedContext, SwarmMember, SwarmState, VersionedPlan, persist_swarm_state_for};
-use crate::plan::PlanItem;
+use crate::plan::TaskItem;
 use crate::protocol::{NotificationType, ServerEvent};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -386,7 +386,7 @@ pub(super) async fn maybe_handle_swarm_write_command(
                     proposer_session
                 )),
                 Some(proposal) => {
-                    if let Ok(items) = serde_json::from_str::<Vec<PlanItem>>(&proposal) {
+                    if let Ok(items) = serde_json::from_str::<Vec<TaskItem>>(&proposal) {
                         let version = {
                             let mut plans = ctx.swarm_plans.write().await;
                             let versioned_plan = plans
@@ -428,7 +428,7 @@ pub(super) async fn maybe_handle_swarm_write_command(
                         ))
                     } else {
                         Err(anyhow::anyhow!(
-                            "Failed to parse plan proposal as Vec<PlanItem>"
+                            "Failed to parse plan proposal as Vec<TaskItem>"
                         ))
                     }
                 }

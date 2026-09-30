@@ -7,7 +7,7 @@
 //! default it fires only while the terminal window is unfocused.
 
 use super::App;
-use crate::todo::TodoItem;
+use crate::todo::TaskItem;
 #[cfg(any(target_os = "macos", test))]
 use base64::Engine as _;
 #[cfg(target_os = "macos")]
@@ -213,7 +213,7 @@ fn iterm_notification_sequence(notification: &TurnNotification) -> String {
     format!("\x1b]9;{text}\x07")
 }
 
-fn load_session_todos(session_id: &str) -> Vec<TodoItem> {
+fn load_session_todos(session_id: &str) -> Vec<TaskItem> {
     crate::todo::load_todos(session_id).unwrap_or_default()
 }
 
@@ -228,7 +228,7 @@ fn load_session_todos(session_id: &str) -> Vec<TodoItem> {
 pub(super) fn build_turn_notification(
     session_name: Option<&str>,
     duration_secs: f32,
-    todos: &[TodoItem],
+    todos: &[TaskItem],
     last_assistant_text: Option<&str>,
 ) -> TurnNotification {
     let mut title = String::from("kcode");
@@ -265,7 +265,7 @@ pub(super) fn build_turn_notification(
 }
 
 /// "3/5 todos" plus "· 1 blocked" when relevant; None when no todos exist.
-fn todo_progress_line(todos: &[TodoItem]) -> Option<String> {
+fn todo_progress_line(todos: &[TaskItem]) -> Option<String> {
     if todos.is_empty() {
         return None;
     }
@@ -289,7 +289,7 @@ fn todo_progress_line(todos: &[TodoItem]) -> Option<String> {
 /// Names the salient todo work for the body: a blocker if one is the reason the
 /// turn stopped, otherwise the most recently completed item and what's next.
 /// Returns None when there are no todos (caller falls back to the snippet).
-fn todo_work_line(todos: &[TodoItem]) -> Option<String> {
+fn todo_work_line(todos: &[TaskItem]) -> Option<String> {
     if todos.is_empty() {
         return None;
     }
@@ -336,7 +336,7 @@ fn todo_work_line(todos: &[TodoItem]) -> Option<String> {
     }
 }
 
-fn resolve_todo_title(todos: &[TodoItem], id: &str) -> Option<String> {
+fn resolve_todo_title(todos: &[TaskItem], id: &str) -> Option<String> {
     todos.iter().find(|t| t.id == id).map(|t| t.content.clone())
 }
 
@@ -406,7 +406,7 @@ fn format_duration_compact(secs: f32) -> String {
 mod tests {
     use super::*;
 
-    fn todo(status: &str, blocked: bool) -> TodoItem {
+    fn todo(status: &str, blocked: bool) -> TaskItem {
         todo_named("x", status, &[]).tap(|t| {
             if blocked {
                 t.blocked_by = vec!["other".to_string()];
@@ -414,8 +414,8 @@ mod tests {
         })
     }
 
-    fn todo_named(content: &str, status: &str, blocked_by: &[&str]) -> TodoItem {
-        TodoItem {
+    fn todo_named(content: &str, status: &str, blocked_by: &[&str]) -> TaskItem {
+        TaskItem {
             content: content.to_string(),
             status: status.to_string(),
             priority: "medium".to_string(),
@@ -431,7 +431,7 @@ mod tests {
             self
         }
     }
-    impl Tap for TodoItem {}
+    impl Tap for TaskItem {}
 
     #[test]
     fn title_includes_session_and_compact_duration() {

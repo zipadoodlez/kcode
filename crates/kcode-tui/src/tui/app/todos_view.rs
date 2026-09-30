@@ -1,6 +1,6 @@
 use super::App;
 use crate::side_panel::SidePanelPage;
-use crate::todo::TodoItem;
+use crate::todo::TaskItem;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::time::Instant;
@@ -346,19 +346,19 @@ pub(super) fn handle_todos_view_command(app: &mut App, trimmed: &str) -> bool {
     true
 }
 
-fn load_current_session_todos(session_id: Option<&str>) -> Vec<TodoItem> {
+fn load_current_session_todos(session_id: Option<&str>) -> Vec<TaskItem> {
     let Some(session_id) = session_id else {
         return Vec::new();
     };
     crate::todo::load_todos(session_id).unwrap_or_default()
 }
 
-fn todo_card_payload_json(todos: &[TodoItem]) -> String {
+fn todo_card_payload_json(todos: &[TaskItem]) -> String {
     serde_json::to_string(&serde_json::json!({ "todos": todos }))
         .unwrap_or_else(|_| r#"{"todos":[]}"#.to_string())
 }
 
-fn build_todos_view_markdown(_session_id: Option<&str>, todos: &[TodoItem]) -> String {
+fn build_todos_view_markdown(_session_id: Option<&str>, todos: &[TaskItem]) -> String {
     if todos.is_empty() {
         return "# Todos\n\nNo todos saved yet for this session.\n".to_string();
     }
@@ -432,7 +432,7 @@ fn build_todos_view_markdown(_session_id: Option<&str>, todos: &[TodoItem]) -> S
     markdown
 }
 
-fn format_todo_compact_markdown(todo: &TodoItem) -> String {
+fn format_todo_compact_markdown(todo: &TaskItem) -> String {
     let group = todo
         .group
         .as_deref()
@@ -448,8 +448,8 @@ fn format_todo_compact_markdown(todo: &TodoItem) -> String {
     )
 }
 
-fn sorted_todos_for_status<'a>(todos: &'a [TodoItem], status: &str) -> Vec<&'a TodoItem> {
-    let mut items: Vec<&TodoItem> = todos.iter().filter(|todo| todo.status == status).collect();
+fn sorted_todos_for_status<'a>(todos: &'a [TaskItem], status: &str) -> Vec<&'a TaskItem> {
+    let mut items: Vec<&TaskItem> = todos.iter().filter(|todo| todo.status == status).collect();
     items.sort_by(|a, b| {
         priority_rank(&a.priority)
             .cmp(&priority_rank(&b.priority))
@@ -479,7 +479,7 @@ fn priority_rank(priority: &str) -> u8 {
     }
 }
 
-fn hash_todos_payload(session_id: Option<&str>, todos: &[TodoItem]) -> u64 {
+fn hash_todos_payload(session_id: Option<&str>, todos: &[TaskItem]) -> u64 {
     let mut hasher = DefaultHasher::new();
     session_id.hash(&mut hasher);
     for todo in todos {
@@ -508,8 +508,8 @@ fn now_ms() -> u64 {
 mod tests {
     use super::*;
 
-    fn todo(id: &str, content: &str, status: &str, priority: &str) -> TodoItem {
-        TodoItem {
+    fn todo(id: &str, content: &str, status: &str, priority: &str) -> TaskItem {
+        TaskItem {
             id: id.to_string(),
             content: content.to_string(),
             status: status.to_string(),

@@ -257,8 +257,8 @@ fn cli_route_display_uses_typed_api_methods() {
     );
 }
 
-fn test_todo(id: &str, status: &str, priority: &str) -> crate::todo::TodoItem {
-    crate::todo::TodoItem {
+fn test_todo(id: &str, status: &str, priority: &str) -> crate::todo::TaskItem {
+    crate::todo::TaskItem {
         id: id.to_string(),
         content: format!("todo {id}"),
         status: status.to_string(),

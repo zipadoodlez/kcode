@@ -30,7 +30,7 @@ use super::workspace_map::VisibleWorkspaceRow;
 use crate::prompt::ContextInfo;
 use crate::protocol::SwarmMemberStatus;
 use crate::provider::DEFAULT_CONTEXT_LIMIT;
-use crate::todo::TodoItem;
+use crate::todo::TaskItem;
 use ratatui::{
     prelude::*,
     widgets::{Block, BorderType, Borders, Paragraph},
@@ -486,7 +486,7 @@ const PAGE_SWITCH_SECONDS: u64 = 30;
 /// Data to display in the info widget
 #[derive(Debug, Default, Clone)]
 pub struct InfoWidgetData {
-    pub todos: Vec<TodoItem>,
+    pub todos: Vec<TaskItem>,
     /// True when `todos` is actually a projection of the shared swarm plan
     /// (task DAG) rather than this session's private todo list. The widget
     /// renders a "Plan" header instead of "Todos" so the two are not

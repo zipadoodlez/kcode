@@ -3,7 +3,7 @@
 mod clipboard_helper;
 pub(crate) mod model_names;
 
-use crate::todo::TodoItem;
+use crate::todo::TaskItem;
 use crate::tui::info_widget::GitInfo;
 use crossterm::event::{KeyCode, KeyModifiers};
 use std::path::{Path, PathBuf};
@@ -20,7 +20,7 @@ static GIT_INFO_CACHE: Mutex<Option<GitInfoCacheEntry>> = Mutex::new(None);
 /// the list. Module-level so the app can force a refresh the moment it persists
 /// a todo write locally, instead of showing the previous list until the TTL
 /// lapses.
-type TodosCacheEntry = (std::time::Instant, Vec<TodoItem>, bool);
+type TodosCacheEntry = (std::time::Instant, Vec<TaskItem>, bool);
 type TodosCache = std::collections::HashMap<String, TodosCacheEntry>;
 static TODOS_CACHE: std::sync::LazyLock<Mutex<TodosCache>> =
     std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
@@ -966,7 +966,7 @@ pub(super) fn gather_git_info() -> Option<GitInfo> {
 
 /// Fetch a session's todos through a stale-while-revalidate cache, so the info
 /// widget renders the list without a disk read on every frame.
-pub(super) fn gather_todos_for_session(session_id: Option<&str>) -> Vec<TodoItem> {
+pub(super) fn gather_todos_for_session(session_id: Option<&str>) -> Vec<TaskItem> {
     if crate::tui::is_ssh_remote() {
         return Vec::new();
     }
@@ -978,7 +978,7 @@ pub(super) fn gather_todos_for_session(session_id: Option<&str>) -> Vec<TodoItem
         return Vec::new();
     };
 
-    fn fetch(session_id: &str) -> Vec<TodoItem> {
+    fn fetch(session_id: &str) -> Vec<TaskItem> {
         crate::todo::load_todos(session_id).unwrap_or_default()
     }
 

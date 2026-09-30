@@ -674,7 +674,7 @@ enum HeadlessPoke {
     BudgetExhausted { count: usize, max_turns: usize },
 }
 
-fn run_todos(session_id: &str) -> Vec<crate::todo::TodoItem> {
+fn run_todos(session_id: &str) -> Vec<crate::todo::TaskItem> {
     crate::todo::load_todos(session_id).unwrap_or_default()
 }
 
@@ -683,7 +683,7 @@ fn run_todos(session_id: &str) -> Vec<crate::todo::TodoItem> {
 /// Uses the canonical status helpers so persisted spellings the tool used to
 /// accept ("done", "Finished", " DONE ") count as finished, the same way the
 /// todo tool's own readers do.
-fn incomplete_poke_todos(todos: Vec<crate::todo::TodoItem>) -> Vec<crate::todo::TodoItem> {
+fn incomplete_poke_todos(todos: Vec<crate::todo::TaskItem>) -> Vec<crate::todo::TaskItem> {
     todos
         .into_iter()
         .filter(|todo| {

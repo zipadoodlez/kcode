@@ -290,7 +290,7 @@ fn test_repeated_guardrail_refusals_stop_auto_poke_loop() {
 
         crate::todo::save_todos(
             &app.session.id,
-            &[crate::todo::TodoItem {
+            &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),
                 content: "Never-finishing task".to_string(),
                 status: "in_progress".to_string(),
@@ -369,7 +369,7 @@ fn auto_poke_does_not_repeat_until_incomplete_todos_change() {
     with_temp_kcode_home(|| {
         let mut app = create_test_app();
         app.auto_poke_incomplete_todos = true;
-        let pending = |content: &str| crate::todo::TodoItem {
+        let pending = |content: &str| crate::todo::TaskItem {
             id: "todo-1".to_string(),
             content: content.to_string(),
             status: "pending".to_string(),

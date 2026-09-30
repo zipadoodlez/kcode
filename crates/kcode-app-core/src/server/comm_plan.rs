@@ -7,7 +7,7 @@ use super::{
     SwarmState, VersionedPlan, broadcast_swarm_plan, persist_swarm_state_for,
     queue_soft_interrupt_for_session, record_swarm_event, summarize_plan_items,
 };
-use crate::plan::PlanItem;
+use crate::plan::TaskItem;
 use crate::protocol::{NotificationType, ServerEvent};
 use kcode_agent_runtime::SoftInterruptSource;
 use std::collections::{HashMap, HashSet};
@@ -21,7 +21,7 @@ use tokio::sync::{RwLock, broadcast, mpsc};
 /// mirrors the acyclicity validation `kcode_plan::dag::seed`/`expand` already
 /// enforce on the task-graph paths. Returns a user-facing error naming the
 /// cyclic item ids, or `None` when the graph is a valid DAG.
-fn plan_cycle_error(items: &[PlanItem]) -> Option<String> {
+fn plan_cycle_error(items: &[TaskItem]) -> Option<String> {
     let cycle_ids = crate::plan::cycle_item_ids(items);
     if cycle_ids.is_empty() {
         return None;
@@ -40,7 +40,7 @@ fn plan_cycle_error(items: &[PlanItem]) -> Option<String> {
 pub(super) async fn handle_comm_propose_plan(
     id: u64,
     req_session_id: String,
-    items: Vec<PlanItem>,
+    items: Vec<TaskItem>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
@@ -385,7 +385,7 @@ pub(super) async fn handle_comm_approve_plan(
         }
     };
 
-    if let Ok(items) = serde_json::from_str::<Vec<PlanItem>>(&proposal) {
+    if let Ok(items) = serde_json::from_str::<Vec<TaskItem>>(&proposal) {
         let existing_count = swarm_plans
             .read()
             .await
@@ -414,7 +414,7 @@ pub(super) async fn handle_comm_approve_plan(
         // proposal pending for the proposer to fix and re-propose.
         let merged_cycle_error = {
             let plans = swarm_plans.read().await;
-            let mut merged: Vec<PlanItem> = plans
+            let mut merged: Vec<TaskItem> = plans
                 .get(&swarm_id)
                 .map(|plan| plan.items.clone())
                 .unwrap_or_default();

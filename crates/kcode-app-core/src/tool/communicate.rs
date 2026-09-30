@@ -2,7 +2,7 @@
 
 use super::{Tool, ToolContext, ToolOutput};
 use crate::background::TaskResult;
-use crate::plan::PlanItem;
+use crate::plan::TaskItem;
 use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{
     AgentInfo, AgentStatusSnapshot, AwaitedMemberStatus, CommDeliveryMode, ContextEntry,
@@ -1842,7 +1842,7 @@ struct CommunicateInput {
     #[serde(default)]
     prefer_spawn: Option<bool>,
     #[serde(default)]
-    plan_items: Option<Vec<PlanItem>>,
+    plan_items: Option<Vec<TaskItem>>,
     #[serde(default)]
     node_id: Option<String>,
     #[serde(default)]

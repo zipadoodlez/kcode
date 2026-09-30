@@ -469,7 +469,7 @@ pub enum Request {
     CommProposePlan {
         id: u64,
         session_id: String,
-        items: Vec<PlanItem>,
+        items: Vec<TaskItem>,
     },
 
     /// Approve a plan proposal (coordinator only)
@@ -921,7 +921,7 @@ pub enum ServerEvent {
     SwarmPlan {
         swarm_id: String,
         version: u64,
-        items: Vec<PlanItem>,
+        items: Vec<TaskItem>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         participants: Vec<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -937,7 +937,7 @@ pub enum ServerEvent {
         proposer_session: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         proposer_name: Option<String>,
-        items: Vec<PlanItem>,
+        items: Vec<TaskItem>,
         summary: String,
         proposal_key: String,
     },

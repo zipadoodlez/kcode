@@ -18,10 +18,10 @@ const EXACT_PIP_FLOOR: usize = 12;
 /// Without normalization, `running` plan tasks render as open `○` items and
 /// sort *after* completed work, so large plans hide all live activity behind
 /// the "+N more" footer.
-pub(crate) fn swarm_plan_todos(items: &[crate::plan::PlanItem]) -> Vec<crate::todo::TodoItem> {
+pub(crate) fn swarm_plan_todos(items: &[crate::plan::TaskItem]) -> Vec<crate::todo::TaskItem> {
     items
         .iter()
-        .map(|item| crate::todo::TodoItem {
+        .map(|item| crate::todo::TaskItem {
             content: item.content.clone(),
             status: normalize_plan_status_for_todo(&item.status),
             priority: item.priority.clone(),
@@ -55,7 +55,7 @@ fn normalize_plan_status_for_todo(status: &str) -> String {
 /// cancelled list is not shown: the widget draws whatever the model last wrote,
 /// so a finished plan would otherwise sit on screen until the model happened to
 /// clear it.
-pub(crate) fn has_open_items(todos: &[crate::todo::TodoItem]) -> bool {
+pub(crate) fn has_open_items(todos: &[crate::todo::TaskItem]) -> bool {
     todos.iter().any(|todo| {
         !crate::todo::todo_status_is_completed(&todo.status)
             && !crate::todo::todo_status_is_cancelled(&todo.status)
@@ -142,7 +142,7 @@ fn push_todo_pips(spans: &mut Vec<Span<'static>>, data: &InfoWidgetData, width_p
 }
 
 /// Normalize a todo's group label, treating empty/whitespace as ungrouped.
-fn todo_group_key(todo: &crate::todo::TodoItem) -> Option<String> {
+fn todo_group_key(todo: &crate::todo::TaskItem) -> Option<String> {
     todo.group
         .as_deref()
         .map(str::trim)
@@ -154,12 +154,12 @@ fn todo_group_key(todo: &crate::todo::TodoItem) -> Option<String> {
 /// appear. Ungrouped items collapse into a trailing `None` bucket. Returns
 /// `None` when no todo declares a group, so callers fall back to the flat list.
 fn grouped_todos(
-    todos: &[crate::todo::TodoItem],
-) -> Option<Vec<(Option<String>, Vec<&crate::todo::TodoItem>)>> {
+    todos: &[crate::todo::TaskItem],
+) -> Option<Vec<(Option<String>, Vec<&crate::todo::TaskItem>)>> {
     if !todos.iter().any(|todo| todo_group_key(todo).is_some()) {
         return None;
     }
-    let mut groups: Vec<(Option<String>, Vec<&crate::todo::TodoItem>)> = Vec::new();
+    let mut groups: Vec<(Option<String>, Vec<&crate::todo::TaskItem>)> = Vec::new();
     for todo in todos {
         let key = todo_group_key(todo);
         if let Some(entry) = groups.iter_mut().find(|(existing, _)| *existing == key) {
@@ -184,8 +184,8 @@ fn status_sort_rank(status: &str) -> u8 {
     }
 }
 
-fn sort_todos_by_status<'a>(todos: &[&'a crate::todo::TodoItem]) -> Vec<&'a crate::todo::TodoItem> {
-    let mut sorted: Vec<&crate::todo::TodoItem> = todos.to_vec();
+fn sort_todos_by_status<'a>(todos: &[&'a crate::todo::TaskItem]) -> Vec<&'a crate::todo::TaskItem> {
+    let mut sorted: Vec<&crate::todo::TaskItem> = todos.to_vec();
     sorted.sort_by(|a, b| status_sort_rank(&a.status).cmp(&status_sort_rank(&b.status)));
     sorted
 }
@@ -193,7 +193,7 @@ fn sort_todos_by_status<'a>(todos: &[&'a crate::todo::TodoItem]) -> Vec<&'a crat
 fn push_group_header(
     lines: &mut Vec<Line<'static>>,
     name: &str,
-    items: &[&crate::todo::TodoItem],
+    items: &[&crate::todo::TaskItem],
     inner: Rect,
 ) {
     let total = items.len();
@@ -218,7 +218,7 @@ fn push_group_header(
 /// used when items sit under a group header.
 fn push_todo_item_line(
     lines: &mut Vec<Line<'static>>,
-    todo: &crate::todo::TodoItem,
+    todo: &crate::todo::TaskItem,
     inner: Rect,
     show_priority_marker: bool,
     indent: usize,
@@ -292,7 +292,7 @@ fn push_todo_item_line(
 /// both group headers and item rows. Returns the rendered lines plus the number
 /// of todo items actually shown (so callers can render a "+N more" footer).
 fn render_grouped_todo_lines(
-    groups: &[(Option<String>, Vec<&crate::todo::TodoItem>)],
+    groups: &[(Option<String>, Vec<&crate::todo::TaskItem>)],
     inner: Rect,
     show_priority_marker: bool,
     max_lines: usize,
@@ -379,7 +379,7 @@ pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
     lines.push(Line::from(header));
 
     // Sort todos: in_progress first, then pending, then completed
-    let mut sorted_todos: Vec<&crate::todo::TodoItem> = data.todos.iter().collect();
+    let mut sorted_todos: Vec<&crate::todo::TaskItem> = data.todos.iter().collect();
     sorted_todos.sort_by(|a, b| status_sort_rank(&a.status).cmp(&status_sort_rank(&b.status)));
 
     // Render todos (limit based on available height)
@@ -452,7 +452,7 @@ pub(super) fn render_todos_expanded(data: &InfoWidgetData, inner: Rect) -> Vec<L
     lines.push(Line::from(header));
 
     // Sort todos: in_progress first, then pending, then completed
-    let mut sorted_todos: Vec<&crate::todo::TodoItem> = data.todos.iter().collect();
+    let mut sorted_todos: Vec<&crate::todo::TaskItem> = data.todos.iter().collect();
     sorted_todos.sort_by(|a, b| status_sort_rank(&a.status).cmp(&status_sort_rank(&b.status)));
 
     // Render todos with priority colors

@@ -298,7 +298,7 @@ fn test_remote_escape_interrupt_disables_auto_poke_while_processing() {
     super::commands::queue_poke_message(
         &mut app,
         super::commands::build_poke_message(&[
-            crate::todo::TodoItem {
+            crate::todo::TaskItem {
                 id: "todo-1".to_string(),
                 content: "keep going".to_string(),
                 status: "pending".to_string(),

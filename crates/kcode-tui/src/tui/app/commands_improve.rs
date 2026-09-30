@@ -294,7 +294,7 @@ pub(super) fn refactor_stop_prompt() -> String {
 
 pub(super) fn build_improve_resume_prompt(
     mode: ImproveMode,
-    incomplete: &[&crate::todo::TodoItem],
+    incomplete: &[&crate::todo::TaskItem],
 ) -> String {
     if incomplete.is_empty() {
         return match mode {
@@ -341,7 +341,7 @@ pub(super) fn build_improve_resume_prompt(
 
 pub(super) fn build_refactor_resume_prompt(
     mode: ImproveMode,
-    incomplete: &[&crate::todo::TodoItem],
+    incomplete: &[&crate::todo::TaskItem],
 ) -> String {
     if incomplete.is_empty() {
         return match mode {

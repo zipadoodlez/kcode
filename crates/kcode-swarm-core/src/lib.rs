@@ -1,4 +1,4 @@
-use kcode_plan::PlanItem;
+use kcode_plan::TaskItem;
 use std::collections::{HashMap, HashSet};
 
 pub use kcode_session_types::{SwarmLifecycleStatus, SwarmMemberRecord, SwarmRole};
@@ -455,7 +455,7 @@ pub fn truncate_detail(text: &str, max_len: usize) -> String {
     out
 }
 
-pub fn summarize_plan_items(items: &[PlanItem], max_items: usize) -> String {
+pub fn summarize_plan_items(items: &[TaskItem], max_items: usize) -> String {
     if items.is_empty() {
         return "no items".to_string();
     }
@@ -474,8 +474,8 @@ pub fn summarize_plan_items(items: &[PlanItem], max_items: usize) -> String {
 mod tests {
     use super::*;
 
-    fn plan_item(id: &str, content: &str) -> PlanItem {
-        PlanItem {
+    fn plan_item(id: &str, content: &str) -> TaskItem {
+        TaskItem {
             id: id.to_string(),
             content: content.to_string(),
             status: "queued".to_string(),

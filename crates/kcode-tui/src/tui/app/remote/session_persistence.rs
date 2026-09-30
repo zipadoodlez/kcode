@@ -30,7 +30,7 @@ pub(super) fn persist_swarm_plan_snapshot(
     app: &mut App,
     swarm_id: String,
     version: u64,
-    items: Vec<crate::plan::PlanItem>,
+    items: Vec<crate::plan::TaskItem>,
     participants: Vec<String>,
     reason: Option<String>,
 ) {

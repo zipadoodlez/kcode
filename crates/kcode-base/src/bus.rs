@@ -1,6 +1,6 @@
 use crate::message::ToolCall;
 use crate::side_panel::SidePanelSnapshot;
-use crate::todo::TodoItem;
+use crate::todo::TaskItem;
 pub use kcode_background_types::{
     BackgroundTaskCompleted, BackgroundTaskProgress, BackgroundTaskProgressEvent,
     BackgroundTaskProgressKind, BackgroundTaskProgressSource, BackgroundTaskStalled,
@@ -45,7 +45,7 @@ pub struct ToolEvent {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TodoEvent {
     pub session_id: String,
-    pub todos: Vec<TodoItem>,
+    pub todos: Vec<TaskItem>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

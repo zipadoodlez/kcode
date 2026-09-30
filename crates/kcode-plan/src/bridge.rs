@@ -9,7 +9,7 @@
 //! reuses the existing persistence/broadcast/scheduler machinery.
 
 use crate::dag::{HandoffArtifact, Mode, NodeKind, NodeOrigin, NodeStatus, TaskGraph, TaskNode};
-use crate::{NodeMeta, PlanItem, VersionedPlan};
+use crate::{NodeMeta, TaskItem, VersionedPlan};
 
 /// Parse a mode string ("deep"/"light"); unknown values fall back to light.
 pub fn parse_mode(mode: &str) -> Mode {
@@ -125,7 +125,7 @@ pub fn apply_task_graph(plan: &mut VersionedPlan, graph: &TaskGraph) {
     plan.mode = mode_str(graph.mode).to_string();
 
     // Index prior items to retain non-engine fields.
-    let prior: std::collections::HashMap<String, PlanItem> = plan
+    let prior: std::collections::HashMap<String, TaskItem> = plan
         .items
         .iter()
         .map(|item| (item.id.clone(), item.clone()))
@@ -136,7 +136,7 @@ pub fn apply_task_graph(plan: &mut VersionedPlan, graph: &TaskGraph) {
 
     for node in graph.nodes() {
         let prev = prior.get(&node.id);
-        items.push(PlanItem {
+        items.push(TaskItem {
             content: node.content.clone(),
             status: status_to_plan(node.status).to_string(),
             priority: prev
@@ -323,8 +323,8 @@ mod tests {
     use super::*;
     use crate::dag::{NodeSpec, complete_node, dispatch, expand_node, seed};
 
-    fn plan_item(id: &str, status: &str) -> PlanItem {
-        PlanItem {
+    fn plan_item(id: &str, status: &str) -> TaskItem {
+        TaskItem {
             content: format!("task {id}"),
             status: status.to_string(),
             priority: "medium".to_string(),
@@ -339,7 +339,7 @@ mod tests {
         plan.mode = "deep".to_string();
         plan.items = vec![
             plan_item("a", "completed"),
-            PlanItem {
+            TaskItem {
                 blocked_by: vec!["a".to_string()],
                 ..plan_item("b", "queued")
             },
@@ -445,7 +445,7 @@ mod tests {
         let mut plan = VersionedPlan::new();
         plan.items = vec![
             plan_item("dep", "completed"),
-            PlanItem {
+            TaskItem {
                 blocked_by: vec!["dep".to_string()],
                 ..plan_item("task", "queued")
             },
@@ -481,7 +481,7 @@ mod tests {
         let mut plan = VersionedPlan::new();
         plan.items = vec![
             plan_item("dep", "running"),
-            PlanItem {
+            TaskItem {
                 blocked_by: vec!["dep".to_string()],
                 ..plan_item("task", "queued")
             },

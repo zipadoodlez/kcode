@@ -15,7 +15,7 @@ fn test_finish_turn_does_not_duplicate_existing_poke_followup() {
         let mut app = create_test_app();
         crate::todo::save_todos(
             &app.session.id,
-            &[crate::todo::TodoItem {
+            &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),
                 content: "Keep going".to_string(),
                 status: "pending".to_string(),

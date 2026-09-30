@@ -19,14 +19,14 @@ fn rich_data() -> InfoWidgetData {
         model: Some("gpt-test".to_string()),
         queue_mode: Some(true),
         todos: vec![
-            crate::todo::TodoItem {
+            crate::todo::TaskItem {
                 content: "first task".to_string(),
                 status: "in_progress".to_string(),
                 priority: "high".to_string(),
                 id: "t1".to_string(),
                 ..Default::default()
             },
-            crate::todo::TodoItem {
+            crate::todo::TaskItem {
                 content: "second task".to_string(),
                 status: "pending".to_string(),
                 priority: "medium".to_string(),

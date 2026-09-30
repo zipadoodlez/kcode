@@ -1,6 +1,6 @@
 use super::{Tool, ToolContext, ToolOutput};
 use crate::bus::{Bus, BusEvent, TodoEvent};
-use crate::todo::{TodoItem, load_todos, save_todos};
+use crate::todo::{TaskItem, load_todos, save_todos};
 use anyhow::{Result, bail};
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -16,7 +16,7 @@ impl TodoTool {
 
 #[derive(Debug, Deserialize)]
 struct TodoInput {
-    todos: Option<Vec<TodoItem>>,
+    todos: Option<Vec<TaskItem>>,
 }
 
 fn parse_todo_input(input: Value) -> Result<TodoInput> {
@@ -34,7 +34,7 @@ fn parse_todo_input(input: Value) -> Result<TodoInput> {
     Ok(params)
 }
 
-fn build_todo_output(todos: Vec<TodoItem>) -> Result<ToolOutput> {
+fn build_todo_output(todos: Vec<TaskItem>) -> Result<ToolOutput> {
     let remaining = todos
         .iter()
         .filter(|todo| todo.status != "completed")

@@ -3,7 +3,7 @@ fn test_swarm_plan_event_roundtrip_with_summary() -> Result<()> {
     let event = ServerEvent::SwarmPlan {
         swarm_id: "swarm_123".to_string(),
         version: 7,
-        items: vec![PlanItem {
+        items: vec![TaskItem {
             content: "Investigate planner state".to_string(),
             status: "queued".to_string(),
             priority: "high".to_string(),

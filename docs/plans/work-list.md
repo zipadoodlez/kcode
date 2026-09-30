@@ -13,9 +13,9 @@ where a session is not working from a file. A person reads it and asks the model
 to change it. The tool is the only writer.
 
 Three lists exist today: `docs/todo.md`, the per-session todo JSON, and the swarm
-plan (`kcode-plan`'s `PlanItem`), which the TUI already draws as todos
-(`info_widget_todos.rs`). `kcode-plan/src/lib.rs` calls the last two
-"intentionally separate"; that premise is what this project deletes.
+plan, which the TUI already draws as todos (`info_widget_todos.rs`). The plan and
+the todo tool now share one type, `TaskItem`; what is left is that the list itself
+lives in three places.
 
 ## Rules
 
@@ -78,11 +78,6 @@ Widest shared shape first, so no step sweeps call sites a later step reshapes.
 Every step lands whole, proven by the gate and, where behavior moves, one
 `kcode run` probe against its own socket.
 
-### A. One durable item type
-
-- [ ] **A2, behavioral.** Drop `group`, `subsystem`, `file_scope`, and move
-  `status` out of the type into live session state (rule 12).
-
 ### B. The file is the list
 
 - [ ] **(decide)** the file's name and home. `docs/todo.md` is the incumbent.
@@ -94,6 +89,9 @@ Every step lands whole, proven by the gate and, where behavior moves, one
 - [ ] **B1.** The `todo` tool reads and writes the repo file, `docs/todo.md`
   becomes its first user, `/todos` and the widget render from it, and the
   per-session todo JSON is deleted.
+- [ ] **B2.** Drop `group` and `status` from the type. B1 gives `parent`, which
+  is what `group` was grouping by, and the close action is what makes a
+  completed row unrepresentable rather than stored.
 
 Gated by A, and by the two decisions above.
 
@@ -108,6 +106,10 @@ Gated by A, and by the two decisions above.
   the 31 `SwarmState { .. }` rebuilds, because the state gets one owner.
 - [ ] **C3.** The two sub-items currently in `todo.md` §1: member appearance
   follows the typed status, and a stalled plan node is visible.
+- [ ] **C4.** Move `subsystem` and `file_scope` off the shared type into the
+  plan's own per-item state. They are the scheduler's inputs (assignment
+  affinity matches them against a worker's metadata), not list fields, and
+  `SwarmPlanItemSpec` already carries them on the plan side.
 
 Gated by A and B.
 
@@ -142,8 +144,10 @@ Gated by C.
 
 ## Evidence (measured 2026-10-01)
 
-- `PlanItem` and `TodoItem`: the same five fields, plus `subsystem` and
-  `file_scope` on one, `group` on the other.
+- One type, `TaskItem` in `kcode-task-types`, behind the `todo` tool and the
+  plan. It still carries four fields the list will not store: `status`, `group`,
+  `subsystem`, and `file_scope`, dropped in B2 and C4 once their replacements
+  exist.
 - `SwarmState`: 67 references, 31 `SwarmState { .. }` rebuild sites.
 - `tool/communicate.rs` 3369, `server/swarm.rs` 3146, `server/comm_control.rs`
   2640, `client_lifecycle.rs` 3584, `server/state.rs` 762 lines.

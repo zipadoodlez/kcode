@@ -14,10 +14,9 @@ pub mod mermaid;
 
 /// A swarm plan item: the same task type the `todo` tool and the work list use.
 ///
-/// This used to be a separate struct with the same shape as `TodoItem`. The
-/// definition now lives in `kcode-task-types`, and this alias retires when the
-/// call sites are renamed.
-pub use kcode_task_types::TaskItem as PlanItem;
+/// The definition lives in `kcode-task-types`, because the plan, the `todo`
+/// tool, and the list file all read and write the same entries.
+pub use kcode_task_types::TaskItem;
 
 /// Durable progress associated with a swarm plan task.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -98,7 +97,7 @@ pub struct SwarmExecutionState {
 
 /// Per-node task-DAG metadata, stored as a side map on `VersionedPlan` keyed by
 /// plan item id. This mirrors the `task_progress` side-map pattern so existing
-/// `PlanItem` construction sites stay unchanged while the DAG engine gains the
+/// `TaskItem` construction sites stay unchanged while the DAG engine gains the
 /// extra structure it needs (composite/gate mechanics + typed artifacts).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeMeta {
@@ -116,7 +115,7 @@ pub struct NodeMeta {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_gate: bool,
     /// The agent that planned this node's decomposition (composite owner). Kept
-    /// separately from `PlanItem.assigned_to` so a re-queued composite can be
+    /// separately from `TaskItem.assigned_to` so a re-queued composite can be
     /// auto-scheduled (assigned_to cleared) while still preferring its original
     /// planner for the synthesis step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -135,7 +134,7 @@ pub struct NodeMeta {
 /// Versioned shared swarm plan state.
 #[derive(Clone, Debug)]
 pub struct VersionedPlan {
-    pub items: Vec<PlanItem>,
+    pub items: Vec<TaskItem>,
     pub version: u64,
     /// Session ids that should receive this plan's updates.
     pub participants: HashSet<String>,
@@ -164,7 +163,7 @@ impl VersionedPlan {
     /// task ids no longer exist. Plan updates are snapshots, not an append-only
     /// log, so retaining progress or DAG metadata for removed items leaks state
     /// across every subsequent persistence and broadcast.
-    pub fn replace_items(&mut self, items: Vec<PlanItem>) {
+    pub fn replace_items(&mut self, items: Vec<TaskItem>) {
         self.items = items;
         self.prune_side_maps();
     }
@@ -417,7 +416,7 @@ pub fn priority_rank(priority: &str) -> u8 {
     }
 }
 
-pub fn completed_item_ids(items: &[PlanItem]) -> HashSet<String> {
+pub fn completed_item_ids(items: &[TaskItem]) -> HashSet<String> {
     items
         .iter()
         .filter(|item| is_completed_status(&item.status))
@@ -426,7 +425,7 @@ pub fn completed_item_ids(items: &[PlanItem]) -> HashSet<String> {
 }
 
 pub fn unresolved_dependencies<'a>(
-    item: &'a PlanItem,
+    item: &'a TaskItem,
     known_ids: &HashSet<&'a str>,
     completed_ids: &HashSet<&str>,
 ) -> Vec<String> {
@@ -437,7 +436,7 @@ pub fn unresolved_dependencies<'a>(
         .collect()
 }
 
-pub fn missing_dependencies<'a>(item: &'a PlanItem, known_ids: &HashSet<&'a str>) -> Vec<String> {
+pub fn missing_dependencies<'a>(item: &'a TaskItem, known_ids: &HashSet<&'a str>) -> Vec<String> {
     item.blocked_by
         .iter()
         .filter(|dep| !known_ids.contains(dep.as_str()))
@@ -446,7 +445,7 @@ pub fn missing_dependencies<'a>(item: &'a PlanItem, known_ids: &HashSet<&'a str>
 }
 
 pub fn is_unblocked<'a>(
-    item: &'a PlanItem,
+    item: &'a TaskItem,
     known_ids: &HashSet<&'a str>,
     completed_ids: &HashSet<&str>,
 ) -> bool {
@@ -454,7 +453,7 @@ pub fn is_unblocked<'a>(
         && unresolved_dependencies(item, known_ids, completed_ids).is_empty()
 }
 
-pub fn cycle_item_ids(items: &[PlanItem]) -> Vec<String> {
+pub fn cycle_item_ids(items: &[TaskItem]) -> Vec<String> {
     let item_ids: HashSet<&str> = items.iter().map(|item| item.id.as_str()).collect();
     let mut indegree: HashMap<&str, usize> = HashMap::new();
     let mut dependents: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -507,7 +506,7 @@ pub fn cycle_item_ids(items: &[PlanItem]) -> Vec<String> {
     cycle_ids
 }
 
-pub fn summarize_plan_graph(items: &[PlanItem]) -> PlanGraphSummary {
+pub fn summarize_plan_graph(items: &[TaskItem]) -> PlanGraphSummary {
     let known_ids: HashSet<&str> = items.iter().map(|item| item.id.as_str()).collect();
     let completed_ids = completed_item_ids(items);
     let completed_refs: HashSet<&str> = completed_ids.iter().map(String::as_str).collect();
@@ -569,9 +568,9 @@ pub fn summarize_plan_graph(items: &[PlanItem]) -> PlanGraphSummary {
     }
 }
 
-pub fn next_runnable_item_ids(items: &[PlanItem], limit: Option<usize>) -> Vec<String> {
+pub fn next_runnable_item_ids(items: &[TaskItem], limit: Option<usize>) -> Vec<String> {
     let ready_ids: HashSet<String> = summarize_plan_graph(items).ready_ids.into_iter().collect();
-    let mut ready_items: Vec<&PlanItem> = items
+    let mut ready_items: Vec<&TaskItem> = items
         .iter()
         .filter(|item| ready_ids.contains(&item.id))
         .collect();
@@ -676,11 +675,11 @@ pub fn reclaim_stranded_assignment(plan: &mut VersionedPlan, task_id: &str) -> b
 }
 
 pub fn task_control_target_item_id(
-    items: &[PlanItem],
+    items: &[TaskItem],
     target_session: &str,
     action: TaskControlAction,
 ) -> Result<String, String> {
-    let mut candidates: Vec<&PlanItem> = items
+    let mut candidates: Vec<&TaskItem> = items
         .iter()
         .filter(|item| item.assigned_to.as_deref() == Some(target_session))
         .filter(|item| task_control_action_allows_status(action, &item.status))
@@ -816,7 +815,7 @@ pub fn assignment_affinities_for_task(
     })
 }
 
-pub fn newly_ready_item_ids(before: &[PlanItem], after: &[PlanItem]) -> Vec<String> {
+pub fn newly_ready_item_ids(before: &[TaskItem], after: &[TaskItem]) -> Vec<String> {
     let before_ready: HashSet<String> =
         summarize_plan_graph(before).ready_ids.into_iter().collect();
     let mut after_ready = summarize_plan_graph(after).ready_ids;
@@ -828,8 +827,8 @@ pub fn newly_ready_item_ids(before: &[PlanItem], after: &[PlanItem]) -> Vec<Stri
 mod tests {
     use super::*;
 
-    fn item(id: &str, status: &str, blocked_by: &[&str]) -> PlanItem {
-        PlanItem {
+    fn item(id: &str, status: &str, blocked_by: &[&str]) -> TaskItem {
+        TaskItem {
             id: id.to_string(),
             content: id.to_string(),
             status: status.to_string(),
@@ -954,11 +953,11 @@ mod tests {
         let items = vec![
             item("done", "completed", &[]),
             item("b", "queued", &["done"]),
-            PlanItem {
+            TaskItem {
                 priority: "low".to_string(),
                 ..item("c", "queued", &["done"])
             },
-            PlanItem {
+            TaskItem {
                 priority: "high".to_string(),
                 ..item("a", "queued", &["done"])
             },
@@ -972,15 +971,15 @@ mod tests {
     fn assignment_loads_ignore_terminal_tasks() {
         let plan = VersionedPlan {
             items: vec![
-                PlanItem {
+                TaskItem {
                     assigned_to: Some("agent-a".to_string()),
                     ..item("active", "queued", &[])
                 },
-                PlanItem {
+                TaskItem {
                     assigned_to: Some("agent-a".to_string()),
                     ..item("done", "completed", &[])
                 },
-                PlanItem {
+                TaskItem {
                     assigned_to: Some("agent-b".to_string()),
                     ..item("running", "running", &[])
                 },
@@ -995,11 +994,11 @@ mod tests {
     #[test]
     fn task_control_target_prefers_active_assignment_and_rejects_ambiguous_matches() {
         let items = vec![
-            PlanItem {
+            TaskItem {
                 assigned_to: Some("agent-a".to_string()),
                 ..item("queued", "queued", &[])
             },
-            PlanItem {
+            TaskItem {
                 assigned_to: Some("agent-a".to_string()),
                 ..item("running", "running", &[])
             },
@@ -1011,11 +1010,11 @@ mod tests {
         );
 
         let ambiguous = vec![
-            PlanItem {
+            TaskItem {
                 assigned_to: Some("agent-a".to_string()),
                 ..item("one", "queued", &[])
             },
-            PlanItem {
+            TaskItem {
                 assigned_to: Some("agent-a".to_string()),
                 ..item("two", "queued", &[])
             },
@@ -1032,7 +1031,7 @@ mod tests {
         let plan = VersionedPlan {
             items: vec![
                 item("done", "completed", &[]),
-                PlanItem {
+                TaskItem {
                     assigned_to: Some("agent-a".to_string()),
                     ..item("assigned", "queued", &["done"])
                 },
@@ -1056,19 +1055,19 @@ mod tests {
     fn assignment_affinities_count_dependency_and_metadata_carryover() {
         let mut plan = VersionedPlan {
             items: vec![
-                PlanItem {
+                TaskItem {
                     assigned_to: Some("agent-a".to_string()),
                     subsystem: Some("ui".to_string()),
                     file_scope: vec!["src/tui.rs".to_string()],
                     ..item("dep", "completed", &[])
                 },
-                PlanItem {
+                TaskItem {
                     assigned_to: Some("agent-b".to_string()),
                     subsystem: Some("ui".to_string()),
                     file_scope: vec!["src/tui.rs".to_string()],
                     ..item("sibling", "queued", &[])
                 },
-                PlanItem {
+                TaskItem {
                     subsystem: Some("ui".to_string()),
                     file_scope: vec!["src/tui.rs".to_string()],
                     ..item("target", "queued", &["dep"])

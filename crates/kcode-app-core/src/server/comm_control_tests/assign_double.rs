@@ -123,7 +123,7 @@ fn double_assign_fixture(
     requester: &str,
     holder: &str,
     intruder: &str,
-    contested: PlanItem,
+    contested: TaskItem,
     progress: crate::server::SwarmTaskProgress,
 ) -> (
     Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>,

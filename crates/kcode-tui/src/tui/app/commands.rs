@@ -2160,16 +2160,16 @@ pub(super) fn active_session_id(app: &App) -> String {
     }
 }
 
-pub(super) fn poke_todos(app: &App) -> Vec<crate::todo::TodoItem> {
+pub(super) fn poke_todos(app: &App) -> Vec<crate::todo::TaskItem> {
     crate::todo::load_todos(&active_session_id(app)).unwrap_or_default()
 }
 
-pub(super) fn is_incomplete_poke_todo(todo: &crate::todo::TodoItem) -> bool {
+pub(super) fn is_incomplete_poke_todo(todo: &crate::todo::TaskItem) -> bool {
     !crate::todo::todo_status_is_completed(&todo.status)
         && !crate::todo::todo_status_is_cancelled(&todo.status)
 }
 
-pub(super) fn incomplete_poke_todos(app: &App) -> Vec<crate::todo::TodoItem> {
+pub(super) fn incomplete_poke_todos(app: &App) -> Vec<crate::todo::TaskItem> {
     poke_todos(app)
         .into_iter()
         .filter(is_incomplete_poke_todo)
@@ -2186,7 +2186,7 @@ pub(super) fn queue_poke_message(app: &mut App, message: String) {
         .push(super::helpers::queued_system_message(&message));
 }
 
-pub(super) fn build_poke_message(incomplete: &[crate::todo::TodoItem]) -> String {
+pub(super) fn build_poke_message(incomplete: &[crate::todo::TaskItem]) -> String {
     crate::todo::build_auto_poke_message(incomplete.len())
 }
 

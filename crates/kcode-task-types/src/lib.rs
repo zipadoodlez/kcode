@@ -197,8 +197,8 @@ fn default_pending_status() -> String {
 /// One entry of a repo's work list: the single task type behind the `todo` tool,
 /// the swarm plan, and the list file.
 ///
-/// `TodoItem` and `PlanItem` were separate structs of the same shape. This is
-/// that shape once, and both names alias it until the call sites are renamed.
+/// There used to be two of these, `TodoItem` and `PlanItem`, with the same
+/// shape and a comment claiming they were separate. This is them once.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskItem {
     pub content: String,
@@ -219,9 +219,6 @@ pub struct TaskItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assigned_to: Option<String>,
 }
-
-/// Retired name, kept as an alias for the `todo` call sites.
-pub use self::TaskItem as TodoItem;
 
 use std::collections::HashMap;
 

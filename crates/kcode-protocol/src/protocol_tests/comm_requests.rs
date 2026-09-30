@@ -3,7 +3,7 @@ fn test_comm_propose_plan_roundtrip() -> Result<()> {
     let req = Request::CommProposePlan {
         id: 42,
         session_id: "sess_a".to_string(),
-        items: vec![PlanItem {
+        items: vec![TaskItem {
             content: "Refactor parser".to_string(),
             status: "pending".to_string(),
             priority: "high".to_string(),

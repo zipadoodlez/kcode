@@ -1226,7 +1226,7 @@ fn test_redacted_for_export_redacts_replay_events() -> Result<()> {
     session.record_swarm_plan_event(
         "swarm_test".to_string(),
         1,
-        vec![crate::plan::PlanItem {
+        vec![crate::plan::TaskItem {
             content: "OPENROUTER_API_KEY=sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789".to_string(),
             status: "pending".to_string(),
             priority: "high".to_string(),

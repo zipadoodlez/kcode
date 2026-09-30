@@ -17,8 +17,8 @@ use crate::tui::info_widget::{
     UsageProvider,
 };
 
-fn todo(id: &str, status: &str) -> crate::todo::TodoItem {
-    crate::todo::TodoItem {
+fn todo(id: &str, status: &str) -> crate::todo::TaskItem {
+    crate::todo::TaskItem {
         content: format!("task {id}"),
         status: status.to_string(),
         priority: "high".to_string(),

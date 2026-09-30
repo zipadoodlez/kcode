@@ -897,9 +897,9 @@ pub(crate) fn render_overnight_message(
 enum TodoCardPayload {
     Current {
         #[serde(default)]
-        todos: Vec<crate::todo::TodoItem>,
+        todos: Vec<crate::todo::TaskItem>,
     },
-    Legacy(Vec<crate::todo::TodoItem>),
+    Legacy(Vec<crate::todo::TaskItem>),
 }
 
 // Todo cards sit directly on the terminal background, so the global
@@ -915,7 +915,7 @@ fn todo_meta_color() -> Color {
 }
 
 impl TodoCardPayload {
-    fn into_todos(self) -> Vec<crate::todo::TodoItem> {
+    fn into_todos(self) -> Vec<crate::todo::TaskItem> {
         match self {
             Self::Current { todos } | Self::Legacy(todos) => todos,
         }
@@ -923,7 +923,7 @@ impl TodoCardPayload {
 }
 
 struct ParsedTodoToolOutput {
-    todos: Vec<crate::todo::TodoItem>,
+    todos: Vec<crate::todo::TaskItem>,
 }
 
 fn parse_todo_tool_output(content: &str) -> Option<ParsedTodoToolOutput> {
@@ -932,7 +932,7 @@ fn parse_todo_tool_output(content: &str) -> Option<ParsedTodoToolOutput> {
     // structured payload parser so a valid todo result still renders as a card.
     let content = strip_todo_tool_output_headers(content);
     let todos = serde_json::Deserializer::from_str(content)
-        .into_iter::<Vec<crate::todo::TodoItem>>()
+        .into_iter::<Vec<crate::todo::TaskItem>>()
         .next()?
         .ok()?;
     Some(ParsedTodoToolOutput { todos })
@@ -1020,7 +1020,7 @@ pub(crate) fn render_todos_message(
     } else {
         // Partition into first-seen-order groups (ungrouped bucket last). When
         // no todo declares a group, keep a flat list without headers.
-        let group_of = |todo: &crate::todo::TodoItem| -> Option<String> {
+        let group_of = |todo: &crate::todo::TaskItem| -> Option<String> {
             todo.group
                 .as_deref()
                 .map(str::trim)
@@ -1029,7 +1029,7 @@ pub(crate) fn render_todos_message(
         };
         let has_groups = todos.iter().any(|t| group_of(t).is_some());
         if has_groups {
-            let mut groups: Vec<(Option<String>, Vec<&crate::todo::TodoItem>)> = Vec::new();
+            let mut groups: Vec<(Option<String>, Vec<&crate::todo::TaskItem>)> = Vec::new();
             for todo in &todos {
                 let key = group_of(todo);
                 if let Some(entry) = groups.iter_mut().find(|(existing, _)| *existing == key) {
@@ -1084,7 +1084,7 @@ fn todo_card_line(
 
 fn push_todo_status_pips<'a>(
     spans: &mut Vec<Span<'static>>,
-    todos: impl IntoIterator<Item = &'a crate::todo::TodoItem>,
+    todos: impl IntoIterator<Item = &'a crate::todo::TaskItem>,
     max_pips: usize,
 ) {
     let (completed, in_progress, total) =
@@ -1138,7 +1138,7 @@ fn push_todo_status_pips<'a>(
 }
 
 fn render_todo_status_header<'a>(
-    todos: impl IntoIterator<Item = &'a crate::todo::TodoItem>,
+    todos: impl IntoIterator<Item = &'a crate::todo::TaskItem>,
     base_indent: &str,
     inner_width: usize,
 ) -> Line<'static> {
@@ -1149,7 +1149,7 @@ fn render_todo_status_header<'a>(
 
 fn render_todo_group_header(
     label: &str,
-    todos: &[&crate::todo::TodoItem],
+    todos: &[&crate::todo::TaskItem],
     base_indent: &str,
     inner_width: usize,
 ) -> Line<'static> {
@@ -1168,7 +1168,7 @@ fn render_todo_group_header(
 }
 
 fn render_todo_card_item_line(
-    todo: &crate::todo::TodoItem,
+    todo: &crate::todo::TaskItem,
     base_indent: &str,
     inner_width: usize,
 ) -> Line<'static> {

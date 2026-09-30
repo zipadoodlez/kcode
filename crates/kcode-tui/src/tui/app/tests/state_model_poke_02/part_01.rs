@@ -788,7 +788,7 @@ fn test_context_command_reports_session_context_snapshot() {
         };
         crate::todo::save_todos(
             &app.session.id,
-            &[crate::todo::TodoItem {
+            &[crate::todo::TaskItem {
                 id: "one".to_string(),
                 content: "Inspect context summary".to_string(),
                 status: "pending".to_string(),
