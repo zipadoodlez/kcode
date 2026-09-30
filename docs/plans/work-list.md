@@ -80,8 +80,9 @@ the children added underneath.
    two facts. `group` is deleted, since the parent chain is the grouping.
 7. **The file stores those fields and nothing else:** no `status`, `priority`,
    `group`, `subsystem` or `file_scope`, and line order promises nothing. Position
-   is the default order, and a row reads as open, blocked, or claimed from its own
-   fields.
+   is the default order. A row reads as claimed from `assigned_to`, and as ready only
+   against the file, since a blocker that closes is deleted and its id is left
+   behind in `blocked_by`.
 8. **A row with no `kind` is not seedable.** Typing it once records it, because the
    kind decides the artifact and the gate and may not be guessed.
 9. **The check is a rule, not a field.** The close requires a nonempty result and the
@@ -97,20 +98,25 @@ Every step lands whole, proven by the gate and, where behavior moves, one
 
 ### 0. One way work gets done
 
-- [ ] **0.1. A run can hand work to the session that is asking.** Two lines
-  forbid it today: `filter_swarm_agent_candidates` skips `req_session_id`, and
-  `is_drivable_auto_worker` accepts only headless workers or ones the requester
-  owns. Delivery is already generic, since a member is driven by a message that
-  wakes it. To a session with a human this is an offer, not a wake: the only turn
-  the run adds there is a continuation it takes while a granted scope still has
-  ready rows and the session is idle, which is the thing the client poke does
-  badly today. Prove with one test that a one-member run drives its own session to
-  a node, and one that an attended session is continued only under a grant.
-- [ ] **0.2. Delete the client poke.** With dispatch covering it, the TUI's
-  auto-poke machine goes: `auto_poke_incomplete_todos`,
-  `last_auto_poke_fingerprint`, `total_pokes_sent`, `morning_report_poked`,
-  `final_wrap_poked`, `overnight_auto_poke`, its keybinding toggle, its overlay
-  line, and its tests. The toggle defaults off today, so nothing is lost.
+- [ ] **0.1. A session that holds ready rows keeps going without a client nudge.**
+  The blocker I first named here was wrong. The auto-pick filter does not stop
+  this, because an explicit `target_session` bypasses it, and `run_plan`'s loop
+  already drives members, but only ones it owns, and it stalls with "assigned to a
+  session run_plan cannot drive" on the rest. What is actually missing is the
+  continuation: when a session is idle and attached and holds a row whose blockers
+  are all gone, the server starts one tracked turn naming that row, and takes
+  another when that turn ends, until it holds nothing ready. Home: beside
+  `idle_live_agent` and `spawn_tracked_live_turn` in `live_turn.rs`, which already
+  provide the idle guard and the externally started turn. Trigger: the
+  turn-terminal path, so the loop is the session's own turns. Prove: a session
+  holding a ready row is continued, one holding a blocked row is not, one holding
+  nothing is not.
+- [ ] **0.2. Delete the client poke**, which this replaces. With the server
+  continuing a session that holds ready rows, the TUI's auto-poke machine goes:
+  `auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`, `total_pokes_sent`,
+  `morning_report_poked`, `final_wrap_poked`, `overnight_auto_poke`, its keybinding
+  toggle, its overlay line, its tests, and `build_auto_poke_message` in the store
+  crate. The toggle defaults off today, so nothing is lost.
 - [ ] **0.3. Rows are the run's seed source** (this is C1). `kind` rides on the
   row, the node id is the row id, `blocked_by` becomes `depends_on`, position is
   priority, and gates get engine names. Testable against a scratch repo, so it
