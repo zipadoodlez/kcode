@@ -5,28 +5,24 @@ when it lands and delete it; git has the history. `todo.md` points here.
 
 ## Destination
 
-One list, one task type, one writer. A file in the repo holds the open work and
-every session works from it starting at its first turn. An entry may record which
-session holds it, and a swarm is the name for the case where more than one
-session holds entries in one file, so there is no second container and no state
-where a session is not working from a file. A person reads it and asks the model
-to change it. The tool is the only writer.
+One list, one task type, one writer. A file in the repo holds the open work,
+every session works from it starting at its first turn, and a swarm is the name
+for the case where more than one session holds entries in one file.
 
 Three lists exist today: `docs/todo.md`, the per-session todo JSON, and the swarm
-plan, which the TUI already draws as todos (`info_widget_todos.rs`). The plan and
-the todo tool now share one type, `TaskItem`; what is left is that the list itself
-lives in three places.
+plan, which the TUI already draws as todos (`info_widget_todos.rs`). They now share
+one type, `TaskItem`; what is left is that the list itself lives in three places.
 
 ## Rules
 
 Settled 2026-10-01. Not steps; what every step has to satisfy.
 
 1. **One file per repo, `tasks.jsonl` at the repo root, and it supersedes
-   `docs/todo.md`.** The home is found from git, not from the working directory,
-   so a session started in `crates/foo` reads the same list. Work with no repo
-   uses the same basename in a scratch location tied to the session. The file
-   lives in the server's working directory, so a remote attach writes the remote
-   checkout and git carries it to the client's side; no separate write path.
+   `docs/todo.md`.** The home is found from git, not from the working directory, so
+   a session in `crates/foo` reads the same list; work with no repo uses the same
+   basename in a session scratch location. The file lives in the server's working
+   directory, so a remote attach writes the remote checkout and git carries it
+   back.
 2. **Never hand-authored.** The tool owns the write protocol and re-reads the
    file before each write, so a human edit is an input, not a conflict.
 3. **One close action, for every entry.** The holder produces the result the
@@ -53,30 +49,27 @@ Settled 2026-10-01. Not steps; what every step has to satisfy.
    the existing deep/light preset, so a solo session pays no gate or artifact
    cost.
 10. **Hierarchy is one optional `parent` field on a flat list**, while blocking
-    is order, so they are two fields. A parent is work: it owns the integration
-    of its children, and its row is the integration reminder that keeps it in the
-    file until that integration is done. `group` is deleted, because the parent
-    chain is the grouping.
+    is order, so they are two fields. A parent's row stays after its children are
+    gone, because the integration is still owed. `group` is deleted, because the
+    parent chain is the grouping.
 11. **Membership and the coordinator are derived, never stored.** The holder of a
     parent coordinates the holders of its children, which deletes the
     `coordinators` map and any swarm id.
 12. **The durable/live seam.** Who holds an entry is durable and lives in the
     file. Whether that session is alive and busy is live server state that dies
     with the process. Today one member record welds the two.
-13. **The file is JSON Lines, one task per line**, flat. Each entry is `id`,
-    `content`, optional `parent`, optional `blocked_by`, optional `assigned_to`,
-    optional `note`. `status` is derived, and `priority`, `group`, `subsystem`
-    and `file_scope` are not stored. There is one row kind: a task whose job is
-    to search is a row like any other, while a fog or out-of-scope note is
-    doc-shaped, so it earns no row and no section. An out-of-scope finding is a
-    result ("searched, and this is out of scope because ..."), which rule 5
-    already records in the commit. Line order carries no promise.
+13. **The file is JSON Lines, one task per line**, flat: `id`, `content`,
+    optional `parent`, `blocked_by`, `assigned_to`, `note`. A row is a task and
+    the only row kind, so a note that is not a task is a doc. Nothing else is
+    stored: not `status`, `priority`, `group`, `subsystem` or `file_scope`, and
+    line order promises nothing. A row reads as open, blocked, or claimed from
+    its own fields.
 14. **The check is a rule, not a field.** The close action requires a nonempty
     result, and the tool description names the check and asks for its actual
     result. Nothing for the harness to judge. A skipped check shows only in the
     commit.
-15. **Refer to a task by its words when talking to the user**, while the file
-    keys on `id`, and resolve one decision per planning session.
+15. **Refer to a task by its words when talking to the user.** The file keys on
+    `id`; the conversation does not.
 
 Why the tier must not come back: a self-rubric cannot catch the failure it is
 named after, a weak self-assessment must not drive the model onward, the poke is
@@ -91,16 +84,13 @@ Every step lands whole, proven by the gate and, where behavior moves, one
 
 ### B. The file is the list
 
-- [ ] **B1.** The `todo` tool reads and writes `tasks.jsonl` and its action set
+- [ ] **B1.** The `todo` tool reads and writes `tasks.jsonl`, and its action set
   becomes add, claim, close: close requires a nonempty result and removes the row
-  (rules 3 to 5), so `status` loses its writer and the poke counts open rows
-  instead of incomplete statuses. This repo's `docs/todo.md` becomes the file's
-  first content and its standing decisions move to `docs/what-was-removed.md`,
-  which already holds what this fork deliberately kept; the old per-session JSON
-  is deleted with no import. `/todos` and the widget render from the file, and the
-  twelve references to `docs/todo.md` move to the new path (`README.md`,
-  `docs/README.md` four times, `hooks.md`, `dev/testing.md`, `dev/benchmarking.md`,
-  `dev/post-change.md`, the browser plan, one comment in `kcode-tui/src/tui/mod.rs`).
+  (rules 3 to 5), so `status` loses its writer and the poke counts open rows. This
+  repo's `docs/todo.md` becomes the file's first content, its standing decisions
+  move to `docs/what-was-removed.md`, and the old per-session JSON is deleted with
+  no import. `/todos` and the widget render from the file, and the twelve
+  `docs/todo.md` references move with it.
 - [ ] **B2.** Drop `group` and `status` from the type. B1 gives `parent`, which
   is what `group` was grouping by, and the close action is what makes a
   completed row unrepresentable rather than stored.
@@ -152,11 +142,9 @@ Gated by C.
 
 ### G. Close out
 
-- [ ] **G1.** Restore the two size ratchets in `scripts/check_guardrails.sh`,
-  paused for this project, and re-baseline both with `--update`. Paused because
-  a type merge and a file rewrite move lines between files faster than a
-  per-commit baseline can follow, and the ratchet only tightens, so raising a
-  baseline mid-project would leave a looser cap behind.
+- [ ] **G1.** Restore the two size ratchets in `scripts/check_guardrails.sh` and
+  re-baseline both with `--update`. They are paused, with the reason at the call
+  site.
 
 ## Evidence (measured 2026-10-01)
 
@@ -164,9 +152,9 @@ Gated by C.
   plan. It still carries four fields the list will not store: `status`, `group`,
   `subsystem`, and `file_scope`, dropped in B2 and C4 once their replacements
   exist.
-- `SwarmState`: 67 references, 31 `SwarmState { .. }` rebuild sites.
-- `tool/communicate.rs` 3369, `server/swarm.rs` 3146, `server/comm_control.rs`
-  2640, `client_lifecycle.rs` 3584, `server/state.rs` 762 lines.
+- `SwarmState`: 67 references, 31 `SwarmState { .. }` rebuild sites. Then
+  `communicate.rs` 3369, `swarm.rs` 3146, `comm_control.rs` 2640,
+  `client_lifecycle.rs` 3584, `state.rs` 762 lines.
 - `SwarmMember` is the sixth most connected node in the tree (180 edges), and the
   member projection is hand-written four times (`AgentInfo`, `SwarmMemberStatus`,
   `MemberStatic`, `SwarmMember`).
