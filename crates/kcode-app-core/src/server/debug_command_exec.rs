@@ -721,7 +721,10 @@ mod tests {
         );
         agent.lock().await.set_canary("self-dev");
         assert_eq!(agent.lock().await.debug_context().await["mode"], "cli");
-        assert_eq!(agent.lock().await.debug_context().await["tools_locked"], false);
+        assert_eq!(
+            agent.lock().await.debug_context().await["tools_locked"],
+            false
+        );
     }
 
     #[tokio::test]

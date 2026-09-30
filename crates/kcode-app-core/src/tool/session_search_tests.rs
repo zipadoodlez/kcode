@@ -286,12 +286,12 @@ fn metadata_is_searchable_and_returned_with_locator() {
 fn system_reminders_are_hidden_by_default_and_opt_in_searchable() {
     with_temp_home(|home| {
         // Both messages below are system-ish, so they are not "visible conversation"
-    // content; an explicit title keeps the session persisted for the search.
-    let mut session = Session::create_with_id(
-        "system-session".to_string(),
-        None,
-        Some("system search test".to_string()),
-    );
+        // content; an explicit title keeps the session persisted for the search.
+        let mut session = Session::create_with_id(
+            "system-session".to_string(),
+            None,
+            Some("system search test".to_string()),
+        );
         session.working_dir = Some("/tmp/project".to_string());
         session.add_message(
             Role::User,
