@@ -61,7 +61,8 @@ Settled 2026-10-01. Not steps; what every step has to satisfy.
 13. **The file is JSON Lines, one task per line**, flat. Each entry is `id`,
     `content`, optional `parent`, optional `blocked_by`, optional `assigned_to`,
     optional `note`. `status` is derived, and `priority`, `group`, `subsystem`
-    and `file_scope` are not stored.
+    and `file_scope` are not stored. There is one row kind: a fog or
+    out-of-scope note is doc-shaped, so it earns no row and no section.
 14. **The check is a rule, not a field.** The close action requires a nonempty
     result, and the tool description names the check and asks for its actual
     result. Nothing for the harness to judge. A skipped check shows only in the
@@ -82,9 +83,10 @@ Every step lands whole, proven by the gate and, where behavior moves, one
 
 ### B. The file is the list
 
-- [ ] **(decide)** whether the file grows a "not yet specified" section and an
-  "out of scope" section, both from wayfinder.
 - [ ] **(decide)** whether line order means anything, such as priority.
+- [ ] **(decide)** where the standing decisions at the top of `docs/todo.md` go.
+  The file is not prose any more, and those are boundaries rather than tasks, so
+  they are not rows.
 - [ ] **(decide)** who writes when the working directory is remote, since the
   server is the only writer and the file lives in the working tree.
 - [ ] **(decide)** whether a claim is committed. The file is tracked, so claiming
