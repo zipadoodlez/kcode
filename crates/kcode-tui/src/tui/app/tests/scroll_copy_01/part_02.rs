@@ -295,8 +295,9 @@ fn test_remote_escape_interrupt_disables_auto_poke_while_processing() {
 
     app.is_processing = true;
     app.auto_poke_incomplete_todos = true;
-    app.queued_messages
-        .push(super::commands::build_poke_message(&[
+    super::commands::queue_poke_message(
+        &mut app,
+        super::commands::build_poke_message(&[
             crate::todo::TodoItem {
                 group: None,
                 id: "todo-1".to_string(),
@@ -309,7 +310,8 @@ fn test_remote_escape_interrupt_disables_auto_poke_while_processing() {
                 completion_confidence: None,
                 confidence_history: Vec::new(),
             },
-        ]));
+        ]),
+    );
 
     rt.block_on(app.handle_remote_key(KeyCode::Esc, KeyModifiers::empty(), &mut remote))
         .unwrap();

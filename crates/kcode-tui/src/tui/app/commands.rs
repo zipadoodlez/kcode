@@ -61,18 +61,17 @@ pub(super) fn parse_poke_command(trimmed: &str) -> Option<Result<PokeCommand, St
     }
 }
 
-pub(super) fn is_poke_message(message: &str) -> bool {
-    crate::todo::is_auto_poke_message(message)
-}
-
-pub(super) fn queued_messages_are_only_pokes(messages: &[String]) -> bool {
-    !messages.is_empty() && messages.iter().all(|message| is_poke_message(message))
+/// Whether a queued message is one the client wrote for the model rather than
+/// the user's own text. The poke is queued wrapped as a system message, so this
+/// asks about the shape rather than about the wording.
+pub(super) fn is_queued_system_message(message: &str) -> bool {
+    super::helpers::extract_bracketed_system_message(message).is_some()
 }
 
 pub(super) fn clear_queued_poke_messages(app: &mut App) -> usize {
     let before = app.queued_messages.len();
     app.queued_messages
-        .retain(|message| !is_poke_message(message));
+        .retain(|message| !is_queued_system_message(message));
     let removed = before.saturating_sub(app.queued_messages.len());
     if removed > 0 && !app.has_queued_followups() {
         app.pending_queued_dispatch = false;
@@ -253,12 +252,15 @@ pub(super) fn activate_auto_poke_local(app: &mut App) {
             )));
 
             app.add_provider_message(Message::user(&poke_msg));
-            app.session.add_message(
+            // The model reads this as the harness talking, so history must not
+            // render it as the user's own prompt.
+            app.session.add_message_with_display_role(
                 Role::User,
                 vec![ContentBlock::Text {
                     text: poke_msg,
                     cache_control: None,
                 }],
+                Some(crate::session::StoredDisplayRole::System),
             );
             let _ = app.session.save();
 
@@ -311,7 +313,7 @@ pub(super) fn poke_status_message(app: &App) -> String {
     let queued_followup = app
         .queued_messages
         .iter()
-        .any(|message| is_poke_message(message));
+        .any(|message| is_queued_system_message(message));
     let mut message = format!(
         "Auto-poke: {}. {} incomplete todo{}.",
         if app.auto_poke_incomplete_todos {
@@ -2172,6 +2174,16 @@ pub(super) fn incomplete_poke_todos(app: &App) -> Vec<crate::todo::TodoItem> {
         .into_iter()
         .filter(is_incomplete_poke_todo)
         .collect()
+}
+
+/// Queue one poke for the model.
+///
+/// Wrapped, so the queue sends it as a system reminder: the model reads it as
+/// harness text, and neither the live transcript nor a resumed session shows it
+/// as the user's own prompt.
+pub(super) fn queue_poke_message(app: &mut App, message: String) {
+    app.queued_messages
+        .push(super::helpers::queued_system_message(&message));
 }
 
 pub(super) fn build_poke_message(incomplete: &[crate::todo::TodoItem]) -> String {

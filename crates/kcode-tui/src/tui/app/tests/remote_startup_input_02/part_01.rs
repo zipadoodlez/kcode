@@ -1040,8 +1040,9 @@ fn test_escape_interrupt_disables_auto_poke_while_processing() {
     let mut app = create_test_app();
     app.is_processing = true;
     app.auto_poke_incomplete_todos = true;
-    app.queued_messages
-        .push(super::commands::build_poke_message(&[
+    super::commands::queue_poke_message(
+        &mut app,
+        super::commands::build_poke_message(&[
             crate::todo::TodoItem {
                 group: None,
                 id: "todo-1".to_string(),
@@ -1054,7 +1055,8 @@ fn test_escape_interrupt_disables_auto_poke_while_processing() {
                 completion_confidence: None,
                 confidence_history: Vec::new(),
             },
-        ]));
+        ]),
+    );
 
     app.handle_key(KeyCode::Esc, KeyModifiers::empty()).unwrap();
 

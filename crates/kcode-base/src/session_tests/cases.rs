@@ -1344,11 +1344,12 @@ fn legacy_scheduled_task_message_renders_as_system() {
 }
 
 #[test]
-fn test_render_messages_shows_auto_poke_continuations_as_system_not_user() {
-    // Regression: incomplete-todo and private-quality continuations are persisted as
-    // Role::User so the model continues the turn, but the live UI hides them.
-    // On reload/resume/remote attach the renderer must not resurrect them as
-    // the user's last prompt.
+fn test_render_messages_hides_a_synthesized_turn_from_the_user_prompt_history() {
+    // Regression: a harness turn (the auto-poke) is persisted as a `Role::User`
+    // message with no user content of its own and a system display role, because
+    // the model must continue the turn while the live UI hides it. On
+    // reload/resume/remote attach the renderer must not resurrect it as the
+    // user's own prompt.
     let mut session = Session::create_with_id(
         "session_render_auto_poke_test".to_string(),
         None,
@@ -1369,19 +1370,13 @@ fn test_render_messages_shows_auto_poke_continuations_as_system_not_user() {
             cache_control: None,
         }],
     );
-    session.add_message(
+    session.add_message_with_display_role(
         Role::User,
         vec![ContentBlock::Text {
-            text: crate::todo::build_auto_poke_message(2),
+            text: String::new(),
             cache_control: None,
         }],
-    );
-    session.add_message(
-        Role::User,
-        vec![ContentBlock::Text {
-            text: crate::todo::TODO_COMPLETION_CONTINUATION_MESSAGE.to_string(),
-            cache_control: None,
-        }],
+        Some(StoredDisplayRole::System),
     );
 
     let rendered = render_messages(&session);
@@ -1396,29 +1391,13 @@ fn test_render_messages_shows_auto_poke_continuations_as_system_not_user() {
     );
     assert_eq!(user_messages[0].content, "please fix the login bug");
 
-    let system_contents: Vec<_> = rendered
-        .iter()
-        .filter(|message| message.role == "system")
-        .map(|message| message.content.as_str())
-        .collect();
+    // The poke carries no user content, so it renders as nothing at all: the
+    // model-facing text stays out of the transcript and out of the prompt list.
     assert!(
-        system_contents
+        !rendered
             .iter()
-            .any(|content| content.contains("incomplete todo")),
-        "auto-poke continuation should render as system: {rendered:?}"
-    );
-    assert!(
-        system_contents
-            .iter()
-            .any(|content| content.contains("Double-checking confidence")),
-        "quality continuation should render as a short system notice: {rendered:?}"
-    );
-    // The model-facing instruction text stays out of the transcript.
-    assert!(
-        !system_contents
-            .iter()
-            .any(|content| content.contains("Validate the completed result")),
-        "quality continuation leaked model-facing instructions: {rendered:?}"
+            .any(|message| message.content.contains("incomplete todo")),
+        "the synthesized turn must not be rendered: {rendered:?}"
     );
 }
 

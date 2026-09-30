@@ -135,18 +135,7 @@ fn display_message_from_stored_message(
                 if crate::session::is_scheduled_task_message(message) {
                     return Some(DisplayMessage::system(text));
                 }
-                // Synthetic auto-poke continuations are persisted as user
-                // turns for the model but must not display as user prompts.
-                if crate::todo::is_auto_poke_message(&text) {
-                    // Gate continuations are written for the model; the user
-                    // only needs to know the check happened.
-                    match crate::todo::auto_poke_display_summary(&text) {
-                        Some(summary) => Some(DisplayMessage::system(summary.to_string())),
-                        None => Some(DisplayMessage::system(text)),
-                    }
-                } else {
-                    Some(DisplayMessage::user(text))
-                }
+                Some(DisplayMessage::user(text))
             }
             Role::Assistant => Some(DisplayMessage::assistant(text)),
         },

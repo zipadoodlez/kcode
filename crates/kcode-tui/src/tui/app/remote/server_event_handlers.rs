@@ -42,7 +42,6 @@ pub(super) fn handle_tool_done(
         title: None,
         tool_data: Some(tool_call.clone()),
     });
-    app.note_todo_gate_result(&tool_call, &output, error.is_some());
     if is_batch {
         app.batch_progress = None;
     }

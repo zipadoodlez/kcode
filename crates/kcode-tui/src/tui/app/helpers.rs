@@ -141,6 +141,15 @@ pub(super) struct CachedContextSnapshot {
     pub snapshot: crate::tui::ContextSnapshot,
 }
 
+/// Wrap harness-authored text for the outbound queue.
+///
+/// `partition_queued_messages` turns this into a reminder-only turn: the model
+/// reads the text as a system reminder, and it never becomes user content or a
+/// displayed message. Whoever queues it shows the user its own notice.
+pub(super) fn queued_system_message(text: &str) -> String {
+    format!("[SYSTEM: {text}]")
+}
+
 pub(super) fn extract_bracketed_system_message(message: &str) -> Option<String> {
     let trimmed = message.trim();
     let body = trimmed.strip_prefix("[SYSTEM:")?.trim_start();
@@ -156,18 +165,22 @@ pub(super) fn launch_client_executable() -> PathBuf {
     std::env::current_exe().unwrap_or_else(|_| PathBuf::from("kcode"))
 }
 
+/// Split the outbound queue into the user text to send and the system reminders
+/// that travel with it.
+///
+/// A message wrapped by `queued_system_message` is harness text: it becomes a
+/// reminder on the wire and never user content, and it is not displayed, because
+/// whoever queued it already showed the user its own notice.
 pub(super) fn partition_queued_messages(
     messages: Vec<String>,
     reminders: Vec<String>,
-) -> (Vec<String>, Option<String>, Vec<String>) {
+) -> (Vec<String>, Option<String>) {
     let mut user_messages = Vec::new();
-    let mut display_system_messages = Vec::new();
     let mut reminder_parts = reminders;
 
     for message in messages {
         if let Some(system_message) = extract_bracketed_system_message(&message) {
-            reminder_parts.push(system_message.clone());
-            display_system_messages.push(system_message);
+            reminder_parts.push(system_message);
         } else {
             user_messages.push(message);
         }
@@ -179,7 +192,7 @@ pub(super) fn partition_queued_messages(
         Some(reminder_parts.join("\n\n"))
     };
 
-    (user_messages, reminder, display_system_messages)
+    (user_messages, reminder)
 }
 
 #[cfg(target_os = "macos")]

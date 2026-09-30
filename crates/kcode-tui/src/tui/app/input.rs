@@ -1673,7 +1673,7 @@ impl App {
             self.pending_turn,
         ));
         self.last_auto_poke_fingerprint = Some(fingerprint);
-        self.queued_messages.push(poke_message);
+        super::commands::queue_poke_message(self, poke_message);
         self.pending_queued_dispatch = true;
         true
     }
@@ -2656,7 +2656,7 @@ pub(super) fn handle_basic_key(app: &mut App, code: KeyCode) -> bool {
                     || app
                         .queued_messages
                         .iter()
-                        .any(|message| super::commands::is_poke_message(message));
+                        .any(|message| super::commands::is_queued_system_message(message));
                 app.cancel_requested = true;
                 app.interleave_message = None;
                 app.interleave_images.clear();

@@ -1,6 +1,10 @@
 use super::*;
 use crate::tui::color_support::rgb;
 
+/// Continuation text a tool result may carry. The card renders whatever a tool
+/// returns, so the exact wording is not what these tests are about.
+const CONTINUATION_TEXT: &str = "[auto] Your feedback loop isn't good enough. Think about what feedback loops you need. Make sure the todo is up to date.";
+
 fn extract_line_text(line: &Line<'_>) -> String {
     line.spans
         .iter()
@@ -904,7 +908,7 @@ fn render_todo_tool_result_uses_borderless_card_with_goal_scores() {
         "[todo] [tool timing: start=2026-07-13T19:51:50.261Z finish=2026-07-13T19:51:50.265Z duration=4ms] {}\n\nGoals:\n{}\n\n{}",
         serde_json::to_string_pretty(&todos).unwrap(),
         serde_json::to_string_pretty(&goals).unwrap(),
-        crate::todo::TODO_CLOSED_FEEDBACK_LOOP_CONTINUATION_MESSAGE
+        CONTINUATION_TEXT
     );
     let msg = DisplayMessage {
         role: "tool".to_string(),
@@ -991,7 +995,7 @@ fn render_todo_quality_gate_retry_shows_only_changed_goal_fields() {
         serde_json::to_string_pretty(&todos).unwrap(),
         serde_json::to_string_pretty(&vec![after]).unwrap(),
         serde_json::to_string_pretty(&updates).unwrap(),
-        crate::todo::TODO_CLOSED_FEEDBACK_LOOP_CONTINUATION_MESSAGE,
+        CONTINUATION_TEXT,
     );
     let msg = DisplayMessage {
         role: "tool".to_string(),
@@ -1238,7 +1242,7 @@ fn unbiased_visual_prompt_retry_renders_complete_feedback_change() {
             ..Default::default()
         },
         "Make a pelican riding a bike animation that clearly works in a browser",
-        Some(crate::todo::TODO_CLOSED_FEEDBACK_LOOP_CONTINUATION_MESSAGE),
+        Some(CONTINUATION_TEXT),
         Some(crate::message::ToolCall {
             id: "call_initial_todo".to_string(),
             name: "todo".to_string(),
@@ -1404,7 +1408,7 @@ fn render_ownership_gated_todo_result_keeps_the_full_card() {
         "{}\n\nGoals:\n{}\n\n{}",
         serde_json::to_string_pretty(&todos).unwrap(),
         serde_json::to_string_pretty(&goals).unwrap(),
-        crate::todo::TODO_OWNERSHIP_CONTINUATION_MESSAGE
+        CONTINUATION_TEXT
     );
     let msg = DisplayMessage {
         role: "tool".to_string(),

@@ -7,7 +7,6 @@ fn is_user_prompt(message: &StoredMessage) -> bool {
     matches!(message.role, Role::User)
         && message.display_role.is_none()
         && !super::is_internal_system_reminder(message)
-        && !super::is_auto_poke_user_message(message)
         && !super::super::is_scheduled_task_message(message)
         && message.content.iter().any(|block| match block {
             ContentBlock::Text { text, .. } => {

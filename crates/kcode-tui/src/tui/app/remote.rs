@@ -254,7 +254,7 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
     if !app.is_processing && !app.queued_messages.is_empty() {
         let queued_messages = std::mem::take(&mut app.queued_messages);
         let hidden_reminders = std::mem::take(&mut app.hidden_queued_system_messages);
-        let (messages, reminder, display_system_messages) =
+        let (messages, reminder) =
             super::helpers::partition_queued_messages(queued_messages, hidden_reminders);
         let combined = messages.join("\n\n");
         let auto_retry = reminder.is_some() && messages.is_empty();
@@ -262,9 +262,6 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
             "Sending queued continuation message ({} chars)",
             combined.len()
         ));
-        for msg in display_system_messages {
-            app.push_display_message(DisplayMessage::system(msg));
-        }
         for msg in &messages {
             app.push_display_message(DisplayMessage::user(msg.clone()));
         }
@@ -1298,25 +1295,15 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
     } else if !app.queued_messages.is_empty() {
         let queued_messages = std::mem::take(&mut app.queued_messages);
         let hidden_reminders = std::mem::take(&mut app.hidden_queued_system_messages);
-        let (messages, reminder, display_system_messages) =
+        let (messages, reminder) =
             super::helpers::partition_queued_messages(queued_messages, hidden_reminders);
         let combined = messages.join("\n\n");
-        let preserve_visible_turn = super::commands::queued_messages_are_only_pokes(&messages);
         let auto_retry = reminder.is_some() && messages.is_empty();
-        for msg in display_system_messages {
-            app.push_display_message(DisplayMessage::system(msg));
-        }
         for msg in &messages {
-            if !super::commands::is_poke_message(msg) {
-                app.push_display_message(DisplayMessage::user(msg.clone()));
-            }
+            app.push_display_message(DisplayMessage::user(msg.clone()));
         }
         if !combined.is_empty() {
-            if preserve_visible_turn {
-                app.visible_turn_started.get_or_insert_with(Instant::now);
-            } else {
-                app.visible_turn_started = Some(Instant::now());
-            }
+            app.visible_turn_started = Some(Instant::now());
         }
         if begin_remote_send(
             app,

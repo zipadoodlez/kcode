@@ -1,4 +1,4 @@
-use super::{App, DisplayMessage};
+use super::App;
 use crate::message::ToolCall;
 use crate::side_panel::SidePanelPage;
 
@@ -135,19 +135,6 @@ impl App {
         }
     }
 
-    /// Surface private todo quality-gate decisions to the user without exposing
-    /// their numeric thresholds to the model or the transcript.
-    pub(super) fn note_todo_gate_result(
-        &mut self,
-        tool_call: &ToolCall,
-        output: &str,
-        is_error: bool,
-    ) {
-        if let Some(notice) = todo_gate_notice(&tool_call.name, output, is_error) {
-            self.push_display_message(DisplayMessage::system(notice));
-        }
-    }
-
     fn refresh_observe_page(&mut self) {
         if !self.observe.enabled {
             return;
@@ -160,23 +147,6 @@ impl App {
             focus_observe,
         );
         self.apply_side_panel_snapshot(snapshot);
-    }
-}
-
-fn todo_gate_notice(name: &str, output: &str, is_error: bool) -> Option<&'static str> {
-    let name = name.to_ascii_lowercase();
-    if !matches!(name.as_str(), "todo" | "todowrite" | "todo_write") {
-        return None;
-    }
-
-    if output.contains(crate::todo::TODO_OWNERSHIP_CONTINUATION_MESSAGE) {
-        Some("🔍 Checking the delivery state of the finished work...")
-    } else if !is_error
-        && output.contains(crate::todo::TODO_CLOSED_FEEDBACK_LOOP_CONTINUATION_MESSAGE)
-    {
-        Some("🔍 Asking for a stronger way to verify this work...")
-    } else {
-        None
     }
 }
 
@@ -244,41 +214,4 @@ fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|dur| dur.as_millis() as u64)
         .unwrap_or(0)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn todo_gate_notices_are_user_visible_without_private_thresholds() {
-        let ownership = todo_gate_notice(
-            "todo",
-            crate::todo::TODO_OWNERSHIP_CONTINUATION_MESSAGE,
-            false,
-        )
-        .expect("ownership gate should produce a notice");
-        let feedback = todo_gate_notice(
-            "todo",
-            crate::todo::TODO_CLOSED_FEEDBACK_LOOP_CONTINUATION_MESSAGE,
-            false,
-        )
-        .expect("closed feedback loop gate should produce a notice");
-
-        // Assert the *intent* of each notice rather than incidental phrasing:
-        // these strings get reworded, and 7a5ad004f changed "follow through"
-        // to "owned end to end" without updating this test, turning it red on
-        // master. What must hold is that each gate names what is being checked.
-        assert!(
-            ownership.contains("delivery state"),
-            "ownership notice should say what is being checked: {ownership}"
-        );
-        assert!(
-            feedback.contains("verify"),
-            "feedback-loop notice should say what is being checked: {feedback}"
-        );
-        assert!(!ownership.chars().any(|ch| ch.is_ascii_digit()));
-        assert!(!feedback.chars().any(|ch| ch.is_ascii_digit()));
-        assert!(todo_gate_notice("bash", ownership, true).is_none());
-    }
 }

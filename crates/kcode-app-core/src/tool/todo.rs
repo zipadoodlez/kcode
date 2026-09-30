@@ -1389,7 +1389,7 @@ mod tests {
         crate::env::set_var("KCODE_HOME", dir.path());
         let session = "ownership-save-before-turn-gate";
 
-        let output = TodoTool::new()
+        TodoTool::new()
             .execute(
                 json!({
                     "todos": [{
@@ -1431,13 +1431,6 @@ mod tests {
         assert_eq!(
             saved_goal.feedback_loop_coverage,
             Some(crate::todo::FeedbackLoopCoverage::Narrow)
-        );
-        assert!(
-            !output
-                .output
-                .contains(crate::todo::TODO_OWNERSHIP_CONTINUATION_MESSAGE),
-            "ownership is enforced after the turn, not by rejecting the write: {}",
-            output.output
         );
 
         match previous_home {

@@ -218,45 +218,6 @@ fn test_save_input_for_reload_persists_inflight_queued_continuation() {
     );
 }
 
-fn save_blocked_ownership_fixture(session_id: &str) {
-    crate::todo::save_todos(
-        session_id,
-        &[crate::todo::TodoItem {
-            id: "usb".to_string(),
-            content: "Verify installer USB".to_string(),
-            status: "completed".to_string(),
-            confidence: Some(crate::todo::ConfidenceState::Verified),
-            completion_confidence: Some(crate::todo::ConfidenceState::Verified),
-            confidence_history: vec![crate::todo::ConfidenceState::Verified],
-            ..Default::default()
-        }],
-    )
-    .unwrap();
-    crate::todo::save_goals(
-        session_id,
-        &[crate::todo::TodoGoal {
-            difficulty: Some(crate::todo::Difficulty::Involved),
-            delivery_state: Some(crate::todo::DeliveryState::WorkflowValidated),
-            autonomy: Some(crate::todo::Autonomy::NecessaryFollowthrough),
-            iteration_maturity: Some(crate::todo::IterationMaturity::ConstraintsExhausted),
-            stopping_evidence: Some("USB read-back passed. Target laptop is unavailable.".into()),
-            feedback_loop_relevance: Some(crate::todo::FeedbackLoopRelevance::Representative),
-            feedback_loop_coverage: Some(crate::todo::FeedbackLoopCoverage::MainPaths),
-            feedback_loop_traceability: Some(crate::todo::FeedbackLoopTraceability::Partial),
-            ..Default::default()
-        }],
-    )
-    .unwrap();
-}
-
-fn dispatch_ownership_followup(app: &mut App) {
-    assert!(app.schedule_auto_poke_followup_if_needed());
-    assert_eq!(app.queued_messages.len(), 1);
-    assert!(app.queued_messages[0].starts_with(crate::todo::TODO_OWNERSHIP_CONTINUATION_MESSAGE));
-    app.queued_messages.clear();
-    app.pending_queued_dispatch = false;
-}
-
 #[test]
 fn test_save_input_for_reload_removes_stale_file_when_state_is_empty() {
     let mut app = create_test_app();
@@ -419,6 +380,10 @@ fn auto_poke_does_not_repeat_until_incomplete_todos_change() {
 
         crate::todo::save_todos(&app.session.id, &[pending("Wait for worker")]).expect("save");
         assert!(app.schedule_auto_poke_followup_if_needed());
+        assert!(
+            super::commands::is_queued_system_message(&app.queued_messages[0]),
+            "the ladder must queue the poke as a system message, not as user text"
+        );
 
         // Simulate dispatch and completion of the automatically poked turn.
         app.queued_messages.clear();

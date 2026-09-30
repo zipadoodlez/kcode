@@ -2562,7 +2562,7 @@ async fn handle_remote_key_internal(
                     || app
                         .queued_messages
                         .iter()
-                        .any(|message| app_mod::commands::is_poke_message(message));
+                        .any(|message| app_mod::commands::is_queued_system_message(message));
                 remote.cancel_with_reason("keyboard_escape").await?;
                 if disabled_auto_poke {
                     app_mod::commands::disable_auto_poke(app);

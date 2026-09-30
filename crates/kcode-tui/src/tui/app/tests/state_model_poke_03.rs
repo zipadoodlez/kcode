@@ -1835,10 +1835,9 @@ fn test_poke_status_reports_current_state() {
 
         app.auto_poke_incomplete_todos = true;
         app.is_processing = true;
-        app.queued_messages
-            .push(super::commands::build_poke_message(
-                &super::commands::incomplete_poke_todos(&app),
-            ));
+        let poke =
+            super::commands::build_poke_message(&super::commands::incomplete_poke_todos(&app));
+        super::commands::queue_poke_message(&mut app, poke);
         app.hidden_queued_system_messages.push(
             "All todos are done. Todo confidence summary:\n- Weighted completion confidence: 80%."
                 .to_string(),
@@ -1879,10 +1878,9 @@ fn test_poke_off_disarms_and_clears_queued_followup() {
 
         app.auto_poke_incomplete_todos = true;
         app.pending_queued_dispatch = true;
-        app.queued_messages
-            .push(super::commands::build_poke_message(
-                &super::commands::incomplete_poke_todos(&app),
-            ));
+        let poke =
+            super::commands::build_poke_message(&super::commands::incomplete_poke_todos(&app));
+        super::commands::queue_poke_message(&mut app, poke);
         // A hidden reminder that is not a poke must survive `/poke off`.
         app.hidden_queued_system_messages
             .push("unrelated hidden reminder".to_string());
