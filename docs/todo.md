@@ -122,6 +122,13 @@ intent, the resolved decisions, and the corrections the pass found:
   Also edits `kcode-task-types/src/lib.rs`, the score rendering in
   `tui/ui_messages.rs`, the extra storage paths, the pass predicates, and
   `internals/todo-calibration.md`.
+  `internals/todo-calibration.md`.
+- [ ] Later, recorded as the desired final state in the internals doc: the list
+  becomes a repository artifact (one markdown file in the working tree, written
+  by the tool and readable by the maintainer, shared across sessions) and the
+  automation that advances it writes each item's named check and its observed
+  result into that file. Not planned yet; it has open design questions (which
+  repository, two sessions in one repository, mid-session edits).
 
 Gate: three ratcheted files shrink, so each landing ends with
 `scripts/check_guardrails.sh --fix`. Step 1's A/B probe recipe, for comparing

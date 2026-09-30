@@ -125,6 +125,69 @@ The before/after probe recipe for comparing verification and poke count across
 the rework lives in `dev/todo-rework-ab-probe.md`; this doc does not duplicate
 it.
 
+## Desired final state (recorded 2026-09-30, not yet planned)
+
+The maintainer's target for the todo feature, two stages past this rework.
+Taken together they are what "the todo list is a display of the plan" becomes
+when the display is a file a person can read.
+
+**Stage 4: the list is a repository artifact.** One markdown file in the working
+tree, written by the todo tool and readable and editable by the maintainer,
+shared across sessions instead of one JSON file per session, versioned in git.
+The widget and `/todos` read that file. `AGENTS.md` points at it so a session
+starting cold finds the list without being told. This removes the duplication
+that exists today between the session list and `docs/todo.md` by making them the
+same artifact.
+
+**Stage 5: the automation that advances the list writes to it.** Each item can
+name the check that proves it, and turn-end work records the check's actual
+result in the file, so `completed` means "the named check passed, and its output
+is in the file" rather than "the model said so". A session starting cold can
+then see what was verified and when, which is the anti-drift property: status
+carries its own evidence and lives where the work lives.
+
+What this changes about the stages above: step 3 still deletes the eight scored
+dimensions, both confidence fields, and the plan fields. The one idea worth
+carrying forward from that rubric is "name the check", and today it survives as
+step 3's single line in the tool description. Stage 5 is where it becomes a
+field again, at the item level, paired with a recorded result. It is not the
+rubric returning: a rubric was a number the model wrote and the harness
+thresholded, while this is a command whose output gets recorded.
+
+Open questions for stage 4, deliberately not answered here: which repository and
+branch a list belongs to, what two sessions working in one repository do, who
+wins when the maintainer edits the file mid-session, and whether the per-session
+file survives at all.
+
+Constraints the maintainer settled on 2026-09-30, which narrow those questions:
+
+- **The list is never hand-authored.** The human role is reading it and asking
+  the model to change it, never writing it directly. So the tool can own the
+  file outright: the write protocol is the tool's alone, and a human edit is just
+  an input the tool re-reads on its next write. That removes the two-writer
+  precedence problem, and it means the format only has to be readable and
+  diff-stable, not pleasant to hand-edit.
+- **A completed item is deleted**, as `docs/todo.md` already does ("Tick an item
+  when it lands and delete it; git has the history"). So the durable record of
+  what was done is the commit and the diff, and stage 5's recorded check matters
+  while an item is open. The natural home for it at completion is the commit
+  message the item's work lands in.
+
+That also shrinks stage 5's scope: with completed items deleted, the list only
+ever holds open work, so the anti-drift burden is "an open item that is actually
+done", and not "a log whose entries have gone stale".
+
+Phase split, as agreed: **phase 1 is steps 1-3**, all deletions. **Phase 2 is
+stages 4-5**, both additions, with stage 6 following from stage 4. Do not start
+phase 2 in phase 1's changes.
+
+One constraint step 3 must respect, found while writing this: `TodoItem` is not
+only the todo tool's type. It is also the display type for swarm plan items,
+which `info_widget_todos::swarm_plan_todos` builds from `plan::PlanItem` and
+which carry `blocked_by` and `assigned_to`, fields the todo tool never writes.
+Shrinking `TodoItem` to the five display fields therefore needs either a separate
+type for the plan display or those two fields kept on the shared one.
+
 ## Decisions resolved (2026-09-30)
 
 1. **Drop it.** The recorder goes, and so does the nudge. Its own text said
