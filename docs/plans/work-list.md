@@ -132,7 +132,10 @@ Every step lands whole, proven by the gate and, where behavior moves, one
   `auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`, `total_pokes_sent`,
   `morning_report_poked`, `final_wrap_poked`, `overnight_auto_poke`, its keybinding
   toggle, its overlay line, its tests, and `build_auto_poke_message` in the store
-  crate. The toggle defaults off today, so nothing is lost.
+  crate. The toggle defaults off today, so nothing is lost. The command-line
+  variant (`src/cli/commands.rs`, the `_with_auto_poke` run paths and
+  `run_command_auto_poke_max_turns`) waits for 0.3, because a plan-driven member
+  must not be driven twice, and a headless run has no plan until rows seed one.
 - [ ] **0.3. Rows are the run's seed source** (this is C1). `kind` rides on the
   row, the node id is the row id, `blocked_by` becomes `depends_on`, position is
   priority, and gates get engine names. Testable against a scratch repo, so it

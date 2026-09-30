@@ -15,6 +15,10 @@ exist; the plan does not seed from it yet.
 
 ## Two modes: deep and light
 
+Whether this axis still does anything is open. `Mode::is_deep` has no production
+caller and gates are inserted unconditionally, so either it is residue or this
+description is stale. See step 0.4 in `plans/work-list.md`.
+
 One engine, two presets. Both use the same DAG data model and scheduler; only the
 rigor machinery and the member cap differ.
 

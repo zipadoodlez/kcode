@@ -5,12 +5,12 @@ conventions.
 
 ## 1. Shared shapes
 
-- [ ] **Condense swarm/comm** (`plans/work-list.md` stage C): `SwarmState`
-  (`server/state.rs`) becomes the swarm's owner, passed instead of rebuilt at 31
-  sites, and membership is read from the work list rather than stored. Design and
-  measurements: `plans/work-list.md`; model: `internals/swarm.md`. Do it before
-  splitting `handle_client`, whose request context is designed to hold
-  `SwarmState`.
+- [ ] **Condense swarm/comm** (`plans/work-list.md` steps 0.3 and 0.4): the state
+  gets one owner instead of being rebuilt at 31 sites, and membership is derived
+  from the file rather than stored, so the swarm id and the coordinator map go.
+  Design and measurements: `plans/work-list.md`; engine: `internals/swarm.md`. Do
+  it before splitting `handle_client`, whose request context is designed to hold
+  that state.
   - [ ] **Member appearance follows the typed status** (decided 2026-09-29).
     `kcode-tui-render` takes `SwarmLifecycleStatus` (a new dependency on the
     data-only `kcode-session-types`), so the string matches in `swarm_gallery.rs`
