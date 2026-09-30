@@ -41,9 +41,13 @@ means. A headless member holds the permission inherently, because that is what i
 was spawned for.
 
 A swarm member has no human, so the run supplies every turn. A session with a human
-never has turns taken from it: dispatch offers it rows at a turn boundary, and the
-session claims one when it picks it up, so an offered row is never stranded. That
-is one mechanism with two triggers, a schedule and a person, not two mechanisms.
+never has turns taken from it: a turn that wants the agent owns it the moment the run
+gives it up, and the run gives it up before it looks for the next row, so a person
+typing between turns takes it and the run ends there. A row is therefore never
+*offered*, because an offer is state the file cannot hold: the row is already
+assigned, the loop picks it, and the only thing an offer would add is a second
+in-memory copy of the list. Stored nowhere, read in the one place the next turn is
+decided, which is the loop.
 
 Having a human is derived from live state that already exists, a client attached to
 the session, and it is read in exactly one place, the loop's decision about who
@@ -137,11 +141,10 @@ Every step lands whole, proven by the gate and, where behavior moves, one
   config flag is a stand-in for the permission, and `may_continue_on_its_own` fuses
   the permission with having a human and is read at two sites (`live_turn.rs:215`,
   `:347`) where the model names one. The user's words cannot yet grant it for one
-  run, a headless member is excluded where rule 11 says it holds the permission
-  inherently, and
-  "typing always wins" cannot hold while the loop holds the agent's
-  `OwnedMutexGuard` across every turn (`live_turn.rs:244-352`), so a user's message
-  waits for the whole run instead of stopping it.
+  run, and a headless member is excluded where rule 11 says it holds the permission
+  inherently, which is 0.3's business: a member is still driven by its plan. "Typing
+  always wins" holds now: the reservation is given up before the next row is looked
+  for, so a turn already waiting for the agent takes it and the run ends there.
 - [ ] **0.2. Delete the client poke**, which this replaces. With the server
   continuing a session that holds ready rows, the TUI's auto-poke machine goes:
   `auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`, `total_pokes_sent`,
@@ -160,6 +163,18 @@ Every step lands whole, proven by the gate and, where behavior moves, one
   is the row id, the file's `blocked_by` is the node's dependency edge (rules 6 and
   7 name it; there is no rename), position is priority, and gates get engine names.
   Testable against a scratch repo, so it needs no migration.
+- [ ] **0.3's `kind` is the engine's word, stored once on the row.** `bridge.rs`
+  already owns the only vocabulary (`parse_kind` reads it, `kind_str` writes it), so
+  a row holds that word and the store learns no enum and takes no dependency on the
+  engine (rule 5). The one change is that `parse_kind` stops guessing: it defaults an
+  unknown word to `Explore`, which is what rule 8 forbids, so absent or unrecognised
+  has to mean the row is not seedable. Gate kinds are never typed on a row, since a
+  gate is the one node with no row.
+- [ ] `assigned_to` stays an opaque holder string, with no marker for a person. The
+  mechanism never needs one: a holder naming no live session is never picked by any
+  session, so a person-held row is inert by construction, and a claim whose session
+  died is what `run_plan` already reports as a stall. Only the narration has to tell
+  them apart, and the string is the narration (rule 10).
 - [ ] **(decide)** what a running run shows in the file while a node is in
   flight, and what a stalled node shows. The row's `note` is the durable half of
   `SwarmTaskProgress.last_detail`; one of the two has to win.
@@ -169,23 +184,11 @@ Every step lands whole, proven by the gate and, where behavior moves, one
   Either the live graph is the gate's input and the persisted plan carries those
   nodes until the run closes, which is two durable stores while a run runs, or
   the gate reads something else.
-- [ ] **(decide)** the `kind` vocabulary and its engine mapping. A row's `kind`
-  decides its artifact and its gate (rule 8), and `TaskItem` has no `kind` field
-  today, so 0.3 cannot land without it: the values, whether they are `kcode-plan`'s
-  `NodeKind` by name as "gates get engine names" suggests, and what a gate's row
-  says when gates are the one node with no row.
-- [ ] **(decide)** whether a session with a human is *given* a ready row as a
-  server-started turn, which is 0.1's landed shape and shows up as a synthetic user
-  message, or *offered* it at a turn boundary to claim when it picks it up, which is
-  what the model says. They are not one mechanism, and only the offer answers
-  "typing always wins".
-- [ ] **(decide)** how a row names a person. `assigned_to` holds a session id and
-  the tool defaults it to the writer's session, so no reader can tell a live holder
-  from a human the run must yield on, which is the model's "decision".
-- [ ] **0.4. The cuts the run makes redundant**: the wire node spec and its kind
-  parse and default, the `coordinators` map, any stored swarm id, the 31
+- [ ] **0.4. The cuts the run makes redundant**: the wire node spec, the
+  `coordinators` map, any stored swarm id, the 31
   `SwarmState { .. }` rebuild sites, and the `Synthesize` kind, reachable only
-  through the wire kind parse this step deletes. The deep/light flag is not residue,
+  through the wire spec this step deletes. `parse_kind`/`kind_str` stay, since they
+  are what reads a row's kind. The deep/light flag is not residue,
   as `internals/swarm.md` says: there is no `Mode::is_deep`, and `requires_gates`
   guards gate insertion (`kcode-plan/src/dag/ops.rs:67`, `:308`), gate-pass
   validation (`:401`) and artifact validation (`:709`), while

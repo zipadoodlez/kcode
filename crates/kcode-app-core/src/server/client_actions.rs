@@ -816,7 +816,7 @@ pub(super) async fn handle_resume_all_sessions(
         let members = swarm_members.read().await;
         members
             .iter()
-            .filter(|(_, member)| !member.event_txs.is_empty() || !member.event_tx.is_closed())
+            .filter(|(_, member)| member.is_attended())
             .map(|(session_id, _)| session_id.clone())
             .collect()
     };
@@ -869,6 +869,7 @@ pub(super) async fn handle_resume_all_sessions(
 
         super::live_turn::spawn_tracked_live_turn(
             &session_id,
+            sessions,
             agent_guard,
             super::live_turn::TurnSeed::asked("", Some(reminder), None)
                 .with_detail(Some("resuming interrupted session".to_string())),

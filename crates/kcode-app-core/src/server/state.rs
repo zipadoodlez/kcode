@@ -257,6 +257,12 @@ impl SwarmMember {
         }
     }
 
+    /// Whether at least one client is attached: one map entry per live connection,
+    /// and the single legacy sender counts while its receiver is still open.
+    pub fn is_attended(&self) -> bool {
+        !self.event_txs.is_empty() || !self.event_tx.is_closed()
+    }
+
     pub fn live_attachments(&self) -> Vec<LiveSessionAttachment> {
         self.event_txs
             .iter()

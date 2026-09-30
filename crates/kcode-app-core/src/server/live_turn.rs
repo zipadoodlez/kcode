@@ -23,7 +23,7 @@ use crate::protocol::ServerEvent;
 use crate::protocol::SwarmLifecycleStatus;
 use crate::todo::{TaskItem, load_tasks};
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use tokio::sync::{OwnedMutexGuard, RwLock, broadcast};
@@ -123,14 +123,13 @@ pub(super) async fn idle_live_agent(
         guard.get(session_id).cloned()
     }?;
 
-    let has_live_attachments = {
+    let attended = {
         let members = swarm_members.read().await;
         members
             .get(session_id)
-            .map(|member| !member.event_txs.is_empty() || !member.event_tx.is_closed())
-            .unwrap_or(false)
+            .is_some_and(SwarmMember::is_attended)
     };
-    if !has_live_attachments {
+    if !attended {
         return None;
     }
 
@@ -151,7 +150,7 @@ async fn may_continue_on_its_own(session_id: &str, swarm: &LiveTurnSwarmContext)
     let (headless, attached) = {
         let members = swarm.members.read().await;
         match members.get(session_id) {
-            Some(member) => (member.is_headless, !member.event_txs.is_empty()),
+            Some(member) => (member.is_headless, member.is_attended()),
             None => (false, false),
         }
     };
@@ -195,9 +194,12 @@ fn row_turn_message(row: &TaskItem) -> String {
 }
 
 /// The next row this session holds, as the turn that asks for it.
-fn next_row_turn(agent: &Agent, session_id: &str, worked: &HashSet<String>) -> Option<TurnSeed> {
-    let working_dir = agent.working_dir().map(PathBuf::from);
-    let rows = load_tasks(working_dir.as_deref(), session_id).ok()?;
+fn next_row_turn(
+    working_dir: Option<&Path>,
+    session_id: &str,
+    worked: &HashSet<String>,
+) -> Option<TurnSeed> {
+    let rows = load_tasks(working_dir, session_id).ok()?;
     next_held_ready_row(&rows, session_id, worked).map(TurnSeed::row)
 }
 
@@ -238,10 +240,13 @@ pub(super) async fn continue_with_next_row(
 /// `running` before the turn starts and `ready` (with a completion report) or
 /// `failed` when it finishes. A synthetic terminal `Done { id: 0 }` (or
 /// `Error { id: 0, .. }`) is fanned out to attached clients so their UI can
-/// finish rendering the externally started turn.
+/// finish rendering the externally started turn. When the session holds a ready
+/// row it may keep going on its own, the turn is one of a run: the next row is
+/// taken after this one, until none is left.
 pub(super) async fn spawn_tracked_live_turn(
     session_id: &str,
-    mut agent: OwnedMutexGuard<Agent>,
+    sessions: &SessionAgents,
+    agent: OwnedMutexGuard<Agent>,
     seed: TurnSeed,
     swarm: LiveTurnSwarmContext,
 ) {
@@ -258,19 +263,31 @@ pub(super) async fn spawn_tracked_live_turn(
     .await;
 
     let event_tx = session_event_fanout_sender(session_id.to_string(), Arc::clone(&swarm.members));
+    let sessions = Arc::clone(sessions);
     let session_id = session_id.to_string();
     tokio::spawn(async move {
         // A session's own turns are the loop: after each one, take the next row it
-        // holds while it may keep going on its own. The reservation is held across
-        // the whole loop, so a wake cannot interleave, and each turn's terminal
-        // status is published before the loop asks for the next row.
+        // holds while it may keep going on its own.
+        //
+        // The reservation is given up between turns, before the next row is even
+        // looked for, on purpose: releasing it hands the permit to a turn that is
+        // already waiting for it, and the file read in between yields, so a person
+        // typing takes the agent and this run ends instead of their message
+        // queueing behind it. Each turn's terminal status is published before the
+        // release, so a later turn's `running` cannot be overwritten by this one's
+        // `ready`.
         //
         // `worked` is the loop's stop: a row worked once in this run is not picked
         // again, so a row left open ends the run instead of spinning it.
         let mut worked: HashSet<String> = HashSet::new();
-        let mut next = Some(seed);
-        while let Some(seed) = next {
-            if let Some(row_id) = seed.row_id.clone() {
+        // The working directory is fixed for the run, so the pick does not need the
+        // agent, which it cannot hold between turns.
+        let working_dir = agent.working_dir().map(PathBuf::from);
+        let mut held = Some(agent);
+        let mut seed = Some(seed);
+        while let (Some(agent), Some(next)) = (held.take(), seed.take()) {
+            let mut agent = agent;
+            if let Some(row_id) = next.row_id.clone() {
                 worked.insert(row_id);
             }
             let TurnSeed {
@@ -278,7 +295,7 @@ pub(super) async fn spawn_tracked_live_turn(
                 system_reminder,
                 display_role,
                 ..
-            } = seed;
+            } = next;
             let start_message_index = agent.message_count();
             let result = if let Some(display_role) = display_role {
                 agent
@@ -347,9 +364,16 @@ pub(super) async fn spawn_tracked_live_turn(
             if !may_continue_on_its_own(&session_id, &swarm).await {
                 break;
             }
-            next = next_row_turn(&agent, &session_id, &worked);
+            // Give the agent up before looking for more work: if a person or another
+            // turn wants it, they get it and this run ends here.
+            drop(agent);
+            let Some(next_seed) = next_row_turn(working_dir.as_deref(), &session_id, &worked)
+            else {
+                break;
+            };
+            seed = Some(next_seed);
+            held = idle_live_agent(&session_id, &sessions, &swarm.members).await;
         }
-        drop(agent);
     });
 }
 
@@ -364,7 +388,7 @@ pub(super) async fn run_live_turn_if_idle(
     let Some(agent) = idle_live_agent(session_id, sessions, &swarm.members).await else {
         return false;
     };
-    spawn_tracked_live_turn(session_id, agent, seed, swarm).await;
+    spawn_tracked_live_turn(session_id, sessions, agent, seed, swarm).await;
     true
 }
 
@@ -382,7 +406,7 @@ pub(super) async fn run_live_system_turn_if_idle(
         None,
         Some(crate::session::StoredDisplayRole::System),
     );
-    spawn_tracked_live_turn(session_id, agent, seed, swarm).await;
+    spawn_tracked_live_turn(session_id, sessions, agent, seed, swarm).await;
     true
 }
 
