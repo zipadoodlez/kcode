@@ -1840,7 +1840,7 @@ fn tool_title(name: &str) -> String {
         "read" => "Reading file".to_string(),
         "write" => "Writing file".to_string(),
         "edit" | "multiedit" | "patch" | "apply_patch" => "Editing files".to_string(),
-        "kgrep" | "grep" | "glob" | "ls" => "Searching workspace".to_string(),
+        "kgrep" | "ls" => "Searching workspace".to_string(),
         "webfetch" | "websearch" => "Fetching web content".to_string(),
         other => other.replace('_', " "),
     }
@@ -1851,7 +1851,7 @@ pub(crate) fn tool_kind(name: &str) -> &'static str {
         "read" => "read",
         "write" | "edit" | "multiedit" | "patch" | "apply_patch" => "edit",
         "bash" | "bg" | "selfdev" => "execute",
-        "kgrep" | "grep" | "glob" | "ls" | "session_search" | "conversation_search" => "search",
+        "kgrep" | "ls" | "session_search" | "conversation_search" => "search",
         "webfetch" | "websearch" | "codesearch" => "fetch",
         _ => "other",
     }

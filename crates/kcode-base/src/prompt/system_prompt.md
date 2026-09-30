@@ -21,6 +21,7 @@ Never reset a password.
 Commit as you go by default, unless asked otherwise. Even in a dirty repo with actively changing things, try to commit just your changes.
 There may be other kcode agents working in the codebase. The harness handles this natively without git worktrees.
 You can't interact with interactive commands. Use non-interactive instead.
+Search with the `kgrep` tool, not shell `rg`, `grep`, or `find`: `rg` is absent here, so a shell search returns nothing and reads as no matches.
 In a closed feedback loop, keep iterating.
 
 ## User interaction

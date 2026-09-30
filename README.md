@@ -291,7 +291,7 @@ Tools the agent can call. Implementations live in
 `crates/kcode-app-core/src/tool/`.
 
 **Filesystem and shell:** `bash`, `read`, `write`, `edit`, `multiedit`,
-`patch`, `apply_patch`, `ls`, `glob`, `grep`, `kgrep` (grep/find/outline/
+`patch`, `apply_patch`, `ls`, `kgrep` (grep/find/outline/
 trace modes), `open`, `bg`
 
 **Web:** `webfetch`, `websearch`

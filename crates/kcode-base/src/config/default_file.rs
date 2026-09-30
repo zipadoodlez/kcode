@@ -274,7 +274,7 @@ bing_market = "en-US"
 # Profiles: "full" (default), "acp", "minimal"/"lite", or "none".
 # acp keeps core coding tools plus batch for generic ACP clients.
 # minimal keeps core coding tools only: bash, read, write, edit, multiedit,
-# apply_patch, patch, kgrep, glob, grep, and ls.
+# apply_patch, patch, kgrep, and ls.
 profile = "full"
 # Explicit allow-list. When non-empty, only these tools are exposed.
 # enabled = ["bash", "read", "write", "apply_patch", "kgrep", "ls"]

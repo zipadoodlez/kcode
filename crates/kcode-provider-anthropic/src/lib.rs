@@ -408,15 +408,7 @@ pub fn format_content_blocks(blocks: &[ContentBlock], is_oauth: bool) -> Vec<Api
 /// real schema under the remapped name keeps the two in sync by construction.
 /// `bash` is likewise forwarded: its curated schema omitted timeout units and
 /// execution options (#1223). Only its OAuth name changes, not its definition.
-const OAUTH_BUILTIN_LOCAL_TOOLS: &[&str] = &[
-    "subagent",
-    "edit",
-    "glob",
-    "grep",
-    "read",
-    "skill_manage",
-    "write",
-];
+const OAUTH_BUILTIN_LOCAL_TOOLS: &[&str] = &["subagent", "edit", "read", "skill_manage", "write"];
 
 /// Normalize a tool schema for Anthropic's `input_schema`.
 ///
@@ -466,24 +458,6 @@ pub fn format_tools(tools: &[ToolDefinition], is_oauth: bool, cache_ttl_1h: bool
                     name: "Edit".to_string(),
                     description: "Performs exact string replacements in files.".to_string(),
                     input_schema: json!({"type":"object","properties":{"file_path":{"type":"string"},"old_string":{"type":"string"},"new_string":{"type":"string"},"replace_all":{"type":"boolean","default":false}},"required":["file_path","old_string","new_string"],"additionalProperties":false}),
-                    cache_control: None,
-                },
-            ),
-            (
-                &["glob"],
-                ApiTool {
-                    name: "Glob".to_string(),
-                    description: "Fast file pattern matching tool.".to_string(),
-                    input_schema: json!({"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string"}},"required":["pattern"],"additionalProperties":false}),
-                    cache_control: None,
-                },
-            ),
-            (
-                &["grep"],
-                ApiTool {
-                    name: "Grep".to_string(),
-                    description: "A powerful search tool built on ripgrep.".to_string(),
-                    input_schema: json!({"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string"},"glob":{"type":"string"},"output_mode":{"type":"string","enum":["content","files_with_matches","count"]},"-B":{"type":"number"},"-A":{"type":"number"},"-C":{"type":"number"},"context":{"type":"number"},"-n":{"type":"boolean"},"-i":{"type":"boolean"},"type":{"type":"string"},"head_limit":{"type":"number"},"offset":{"type":"number"},"multiline":{"type":"boolean"}},"required":["pattern"],"additionalProperties":false}),
                     cache_control: None,
                 },
             ),

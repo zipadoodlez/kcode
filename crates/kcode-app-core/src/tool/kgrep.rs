@@ -76,7 +76,7 @@ impl Tool for KgrepTool {
     }
 
     fn description(&self) -> &str {
-        "Search code and file names. Defaults to grep mode when mode is omitted."
+        "Search code and file names; the only search tool (no grep, glob, or rg). Modes: grep (literal, or regex with regex=true; glob and type filters), find (file names), outline (one file), trace (relationship DSL)."
     }
 
     fn parameters_schema(&self) -> Value {
