@@ -29,7 +29,7 @@
     "crates/kcode-tui/src/tui/app/tests/state_model_poke_03.rs": 2204,
     "crates/kcode-tui/src/tui/info_widget_tests.rs": 1354,
     "crates/kcode-tui/src/tui/session_picker_tests.rs": 2233,
-    "crates/kcode-tui/src/tui/ui_messages/tests.rs": 2771,
+    "crates/kcode-tui/src/tui/ui_messages/tests.rs": 1873,
     "crates/kcode-tui/src/tui/ui_tests/prepare.rs": 1285,
     "crates/kcode-tui/src/tui/ui_tests/tools.rs": 1419
   },

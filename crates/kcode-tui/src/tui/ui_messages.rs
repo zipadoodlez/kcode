@@ -898,10 +898,6 @@ enum TodoCardPayload {
     Current {
         #[serde(default)]
         todos: Vec<crate::todo::TodoItem>,
-        #[serde(default)]
-        plan: crate::todo::TodoPlan,
-        #[serde(default)]
-        goals: Vec<crate::todo::TodoGoal>,
     },
     Legacy(Vec<crate::todo::TodoItem>),
 }
@@ -914,51 +910,20 @@ fn todo_group_color() -> Color {
     file_link_color()
 }
 
-fn todo_label_color() -> Color {
-    pending_color()
-}
-
 fn todo_meta_color() -> Color {
     pending_color()
 }
 
-fn todo_score_color() -> Color {
-    ai_color()
-}
-
-fn todo_warning_color() -> Color {
-    warning_color()
-}
-
-fn todo_failure_color() -> Color {
-    error_color()
-}
-
-fn todo_confidence_color() -> Color {
-    info_color()
-}
-
 impl TodoCardPayload {
-    fn into_parts(
-        self,
-    ) -> (
-        Vec<crate::todo::TodoItem>,
-        crate::todo::TodoPlan,
-        Vec<crate::todo::TodoGoal>,
-    ) {
+    fn into_todos(self) -> Vec<crate::todo::TodoItem> {
         match self {
-            Self::Current { todos, plan, goals } => (todos, plan, goals),
-            Self::Legacy(todos) => (todos, crate::todo::TodoPlan::default(), Vec::new()),
+            Self::Current { todos } | Self::Legacy(todos) => todos,
         }
     }
 }
 
 struct ParsedTodoToolOutput {
     todos: Vec<crate::todo::TodoItem>,
-    plan: crate::todo::TodoPlan,
-    goals: Vec<crate::todo::TodoGoal>,
-    plan_update: Option<crate::todo::TodoPlanChange>,
-    goal_updates: Vec<crate::todo::TodoGoalChange>,
 }
 
 fn parse_todo_tool_output(content: &str) -> Option<ParsedTodoToolOutput> {
@@ -966,66 +931,11 @@ fn parse_todo_tool_output(content: &str) -> Option<ParsedTodoToolOutput> {
     // they reach this renderer. Keep that transport metadata outside the
     // structured payload parser so a valid todo result still renders as a card.
     let content = strip_todo_tool_output_headers(content);
-    let mut todo_stream =
-        serde_json::Deserializer::from_str(content).into_iter::<Vec<crate::todo::TodoItem>>();
-    let todos = todo_stream.next()?.ok()?;
-    let mut remainder = content.get(todo_stream.byte_offset()..)?.trim_start();
-    let plan = if let Some(plan_json) = remainder.strip_prefix("Plan:") {
-        let mut plan_stream = serde_json::Deserializer::from_str(plan_json.trim_start())
-            .into_iter::<crate::todo::TodoPlan>();
-        let plan = plan_stream.next().and_then(Result::ok).unwrap_or_default();
-        remainder = plan_json
-            .trim_start()
-            .get(plan_stream.byte_offset()..)
-            .unwrap_or_default()
-            .trim_start();
-        plan
-    } else {
-        crate::todo::TodoPlan::default()
-    };
-    let goals = if let Some(goal_json) = remainder.strip_prefix("Goals:") {
-        let mut goal_stream = serde_json::Deserializer::from_str(goal_json.trim_start())
-            .into_iter::<Vec<crate::todo::TodoGoal>>();
-        let goals = goal_stream.next().and_then(Result::ok).unwrap_or_default();
-        remainder = goal_json
-            .trim_start()
-            .get(goal_stream.byte_offset()..)
-            .unwrap_or_default()
-            .trim_start();
-        goals
-    } else {
-        Vec::new()
-    };
-    let plan_update = if let Some(update_json) = remainder.strip_prefix("Plan updates:") {
-        let mut update_stream = serde_json::Deserializer::from_str(update_json.trim_start())
-            .into_iter::<crate::todo::TodoPlanChange>();
-        let update = update_stream.next().and_then(Result::ok);
-        remainder = update_json
-            .trim_start()
-            .get(update_stream.byte_offset()..)
-            .unwrap_or_default()
-            .trim_start();
-        update
-    } else {
-        None
-    };
-    let goal_updates = if let Some(update_json) = remainder.strip_prefix("Goal updates:") {
-        let mut update_stream = serde_json::Deserializer::from_str(update_json.trim_start())
-            .into_iter::<Vec<crate::todo::TodoGoalChange>>();
-        update_stream
-            .next()
-            .and_then(Result::ok)
-            .unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-    Some(ParsedTodoToolOutput {
-        todos,
-        plan,
-        goals,
-        plan_update,
-        goal_updates,
-    })
+    let todos = serde_json::Deserializer::from_str(content)
+        .into_iter::<Vec<crate::todo::TodoItem>>()
+        .next()?
+        .ok()?;
+    Some(ParsedTodoToolOutput { todos })
 }
 
 fn strip_todo_tool_output_headers(content: &str) -> &str {
@@ -1084,7 +994,7 @@ pub(crate) fn render_todos_message(
     let Ok(payload) = serde_json::from_str::<TodoCardPayload>(&msg.content) else {
         return render_system_message(msg, width, diff_mode);
     };
-    let (todos, plan, goals) = payload.into_parts();
+    let todos = payload.into_todos();
 
     let centered = markdown::center_code_blocks();
     let meta_style = Style::default().fg(todo_meta_color());
@@ -1096,13 +1006,8 @@ pub(crate) fn render_todos_message(
     .max(1);
     let base_indent = if centered { "" } else { "  " };
     let inner_width = card_width.saturating_sub(base_indent.width()).max(1);
-    // Long assessment prose is useful in a wide transcript, but wrapping it
-    // with a hanging label quickly overwhelms the actual task list in a narrow
-    // terminal. Keep those details to one ellipsized line at small widths.
-    let compact_details = inner_width < 72;
 
     let mut lines = Vec::new();
-    push_todo_plan_details(&mut lines, &plan, base_indent, inner_width, compact_details);
     if todos.is_empty() {
         lines.push(todo_card_line(
             vec![Span::styled(
@@ -1136,28 +1041,22 @@ pub(crate) fn render_todos_message(
             groups.sort_by_key(|(key, _)| key.is_none());
             for (group, items) in &groups {
                 let label = group.as_deref().unwrap_or("other");
-                let goal = todo_card_goal_for_group(&goals, group.as_deref());
-                lines.push(render_todo_goal_header(
+                lines.push(render_todo_group_header(
                     label,
                     items,
                     base_indent,
                     inner_width,
                 ));
-                push_todo_goal_details(&mut lines, goal, base_indent, inner_width, compact_details);
                 for todo in items {
                     lines.push(render_todo_card_item_line(todo, base_indent, inner_width));
                 }
             }
         } else {
-            let goal = todo_card_goal_for_group(&goals, None);
             lines.push(render_todo_status_header(
                 todos.iter(),
                 base_indent,
                 inner_width,
             ));
-            if goal.is_some() {
-                push_todo_goal_details(&mut lines, goal, base_indent, inner_width, compact_details);
-            }
             for todo in &todos {
                 lines.push(render_todo_card_item_line(todo, base_indent, inner_width));
             }
@@ -1181,123 +1080,6 @@ fn todo_card_line(
         &Line::from(prefixed),
         inner_width.saturating_add(base_indent.width()),
     )
-}
-
-fn todo_card_goal_for_group<'a>(
-    goals: &'a [crate::todo::TodoGoal],
-    group: Option<&str>,
-) -> Option<&'a crate::todo::TodoGoal> {
-    let key = group.map(str::trim).filter(|value| !value.is_empty());
-    goals.iter().find(|goal| {
-        goal.group
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            == key
-    })
-}
-
-fn todo_goal_score_spans(goal: &crate::todo::TodoGoal) -> Vec<Span<'static>> {
-    let mut spans = Vec::new();
-    let mut states: Vec<(&str, String, Color)> = Vec::new();
-    if !crate::todo::feedback_loop_passes(goal.closed_feedback_loop) {
-        let (state, color) = goal.closed_feedback_loop.map_or_else(
-            || ("missing".to_string(), todo_failure_color()),
-            |state| {
-                let color = if state <= crate::todo::FeedbackLoopState::Weak {
-                    todo_failure_color()
-                } else {
-                    todo_warning_color()
-                };
-                (state.as_str().to_string(), color)
-            },
-        );
-        states.push(("Closed feedback loop", state, color));
-    }
-    if !crate::todo::feedback_loop_relevance_passes(goal) {
-        let (state, color) = goal.feedback_loop_relevance.map_or_else(
-            || ("missing".to_string(), todo_failure_color()),
-            |state| {
-                let color = if state == crate::todo::FeedbackLoopRelevance::Indirect {
-                    todo_failure_color()
-                } else {
-                    todo_warning_color()
-                };
-                (state.as_str().to_string(), color)
-            },
-        );
-        states.push(("Relevance", state, color));
-    }
-    if !crate::todo::feedback_loop_coverage_passes(goal) {
-        let (state, color) = goal.feedback_loop_coverage.map_or_else(
-            || ("missing".to_string(), todo_failure_color()),
-            |state| {
-                let color = if state == crate::todo::FeedbackLoopCoverage::Narrow {
-                    todo_failure_color()
-                } else {
-                    todo_warning_color()
-                };
-                (state.as_str().to_string(), color)
-            },
-        );
-        states.push(("Coverage", state, color));
-    }
-    if !crate::todo::feedback_loop_traceability_passes(goal) {
-        let (state, color) = goal.feedback_loop_traceability.map_or_else(
-            || ("missing".to_string(), todo_failure_color()),
-            |state| {
-                let color = if state == crate::todo::FeedbackLoopTraceability::Unmapped {
-                    todo_failure_color()
-                } else {
-                    todo_warning_color()
-                };
-                (state.as_str().to_string(), color)
-            },
-        );
-        states.push(("Traceability", state, color));
-    }
-
-    if states.is_empty() {
-        spans.push(Span::styled(
-            "✓ All quality gates passing",
-            Style::default().fg(todo_score_color()),
-        ));
-    }
-
-    for (index, (label, state, color)) in states.into_iter().enumerate() {
-        if index > 0 {
-            spans.push(Span::styled(" · ", Style::default().fg(dim_color())));
-        }
-        spans.push(Span::styled(
-            format!("{} ", label),
-            Style::default().fg(todo_label_color()),
-        ));
-        spans.push(Span::styled(state, Style::default().fg(color)));
-    }
-
-    // Delivery is progress toward the outcome, not a quality gate. Keep it
-    // visible and visually separate from failures so it cannot read as one.
-    if let Some(state) = goal.delivery_state {
-        if !spans.is_empty() {
-            spans.push(Span::styled(" · ", Style::default().fg(dim_color())));
-        }
-        spans.push(Span::styled(
-            "Delivery ",
-            Style::default().fg(todo_label_color()),
-        ));
-        let color = if state >= crate::todo::DeliveryState::WorkflowValidated {
-            todo_score_color()
-        } else if state == crate::todo::DeliveryState::Integrated {
-            todo_warning_color()
-        } else {
-            todo_failure_color()
-        };
-        spans.push(Span::styled(
-            state.as_str().to_string(),
-            Style::default().fg(color),
-        ));
-    }
-    spans
 }
 
 fn push_todo_status_pips<'a>(
@@ -1365,7 +1147,7 @@ fn render_todo_status_header<'a>(
     todo_card_line(spans, base_indent, inner_width)
 }
 
-fn render_todo_goal_header(
+fn render_todo_group_header(
     label: &str,
     todos: &[&crate::todo::TodoItem],
     base_indent: &str,
@@ -1383,582 +1165,6 @@ fn render_todo_goal_header(
         inner_width.saturating_sub(label_width + 2),
     );
     todo_card_line(spans, base_indent, inner_width)
-}
-
-fn wrap_todo_detail(value: &str, width: usize) -> Vec<String> {
-    let width = width.max(1);
-    let mut chunks = Vec::new();
-    let mut current = String::new();
-
-    for word in value.split_whitespace() {
-        let word_width = word.width();
-        if !current.is_empty() && current.width() + 1 + word_width <= width {
-            current.push(' ');
-            current.push_str(word);
-            continue;
-        }
-        if current.is_empty() && word_width <= width {
-            current.push_str(word);
-            continue;
-        }
-        if !current.is_empty() {
-            chunks.push(std::mem::take(&mut current));
-        }
-        if word_width <= width {
-            current.push_str(word);
-            continue;
-        }
-        let mut word_chunks = split_by_display_width(word, width).into_iter().peekable();
-        while let Some(chunk) = word_chunks.next() {
-            if word_chunks.peek().is_some() {
-                chunks.push(chunk);
-            } else {
-                current = chunk;
-            }
-        }
-    }
-    if !current.is_empty() {
-        chunks.push(current);
-    }
-    chunks
-}
-
-/// Plan-level assessment lines shown once above the todo groups.
-fn push_todo_plan_details(
-    lines: &mut Vec<Line<'static>>,
-    plan: &crate::todo::TodoPlan,
-    base_indent: &str,
-    inner_width: usize,
-    compact_details: bool,
-) {
-    let intention = plan
-        .user_intention
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    if let Some(state) = plan.understands_user_intent {
-        let state_color = match state {
-            crate::todo::IntentUnderstanding::Uncertain => todo_failure_color(),
-            crate::todo::IntentUnderstanding::Partial => todo_warning_color(),
-            crate::todo::IntentUnderstanding::Clear
-            | crate::todo::IntentUnderstanding::Complete => todo_score_color(),
-        };
-        let mut spans = vec![
-            Span::styled("Intent ", Style::default().fg(todo_label_color())),
-            Span::styled(state.as_str().to_string(), Style::default().fg(state_color)),
-            Span::styled(": ", Style::default().fg(todo_label_color())),
-        ];
-        if let Some(intention) = intention {
-            spans.push(Span::styled(
-                intention.to_string(),
-                Style::default().fg(todo_meta_color()),
-            ));
-        }
-        lines.push(todo_card_line(spans, base_indent, inner_width));
-    } else if let Some(intention) = intention {
-        push_todo_detail(
-            lines,
-            "Intent",
-            intention,
-            base_indent,
-            inner_width,
-            compact_details,
-        );
-    }
-}
-
-fn push_todo_detail(
-    lines: &mut Vec<Line<'static>>,
-    label: &str,
-    value: &str,
-    base_indent: &str,
-    inner_width: usize,
-    compact: bool,
-) {
-    if !compact {
-        push_todo_wrapped_detail(lines, label, value, base_indent, inner_width);
-        return;
-    }
-
-    let prefix = format!("  {} · ", label);
-    lines.push(todo_card_line(
-        vec![
-            Span::styled(prefix, Style::default().fg(todo_label_color())),
-            Span::styled(value.to_string(), Style::default().fg(todo_meta_color())),
-        ],
-        base_indent,
-        inner_width,
-    ));
-}
-
-/// Wrap one labeled detail line to the card width.
-fn push_todo_wrapped_detail(
-    lines: &mut Vec<Line<'static>>,
-    label: &str,
-    value: &str,
-    base_indent: &str,
-    inner_width: usize,
-) {
-    let prefix = format!("  {} · ", label);
-    let prefix_width = prefix.width();
-    let available = inner_width.saturating_sub(prefix_width).max(1);
-    for (index, chunk) in wrap_todo_detail(value, available).into_iter().enumerate() {
-        lines.push(todo_card_line(
-            vec![
-                Span::styled(
-                    if index == 0 {
-                        prefix.clone()
-                    } else {
-                        " ".repeat(prefix_width)
-                    },
-                    Style::default().fg(todo_label_color()),
-                ),
-                Span::styled(chunk, Style::default().fg(todo_meta_color())),
-            ],
-            base_indent,
-            inner_width,
-        ));
-    }
-}
-
-fn push_todo_goal_details(
-    lines: &mut Vec<Line<'static>>,
-    goal: Option<&crate::todo::TodoGoal>,
-    base_indent: &str,
-    inner_width: usize,
-    _compact_details: bool,
-) {
-    let Some(goal) = goal else {
-        return;
-    };
-    let scores = todo_goal_score_spans(goal);
-    if !scores.is_empty() {
-        let score_width = Line::from(scores.clone()).width();
-        let score_count = usize::from(!crate::todo::feedback_loop_passes(
-            goal.closed_feedback_loop,
-        )) + usize::from(!crate::todo::feedback_loop_relevance_passes(goal))
-            + usize::from(!crate::todo::feedback_loop_coverage_passes(goal))
-            + usize::from(!crate::todo::feedback_loop_traceability_passes(goal))
-            + usize::from(goal.delivery_state.is_some());
-        if score_width > inner_width.saturating_sub(2) && score_count > 1 {
-            let mut states: Vec<(&str, String)> = Vec::new();
-            if !crate::todo::feedback_loop_passes(goal.closed_feedback_loop) {
-                states.push((
-                    "Closed feedback loop",
-                    goal.closed_feedback_loop
-                        .map(|state| state.as_str())
-                        .unwrap_or("missing")
-                        .to_string(),
-                ));
-            }
-            if !crate::todo::feedback_loop_relevance_passes(goal) {
-                states.push((
-                    "Relevance",
-                    goal.feedback_loop_relevance
-                        .map(|state| state.as_str())
-                        .unwrap_or("missing")
-                        .to_string(),
-                ));
-            }
-            if !crate::todo::feedback_loop_coverage_passes(goal) {
-                states.push((
-                    "Coverage",
-                    goal.feedback_loop_coverage
-                        .map(|state| state.as_str())
-                        .unwrap_or("missing")
-                        .to_string(),
-                ));
-            }
-            if !crate::todo::feedback_loop_traceability_passes(goal) {
-                states.push((
-                    "Traceability",
-                    goal.feedback_loop_traceability
-                        .map(|state| state.as_str())
-                        .unwrap_or("missing")
-                        .to_string(),
-                ));
-            }
-            if let Some(state) = goal.delivery_state {
-                states.push(("Delivery", state.as_str().to_string()));
-            }
-            for (label, state) in states {
-                let mut spans = vec![Span::raw("  ")];
-                spans.push(Span::styled(
-                    format!("{} ", label),
-                    Style::default().fg(todo_label_color()),
-                ));
-                let color = if label == "Delivery" {
-                    match crate::todo::DeliveryState::parse(&state) {
-                        Some(value) if value >= crate::todo::DeliveryState::WorkflowValidated => {
-                            todo_score_color()
-                        }
-                        Some(crate::todo::DeliveryState::Integrated) => todo_warning_color(),
-                        _ => todo_failure_color(),
-                    }
-                } else if matches!(
-                    state.as_str(),
-                    "missing" | "absent" | "weak" | "indirect" | "narrow" | "unmapped"
-                ) {
-                    todo_failure_color()
-                } else {
-                    todo_warning_color()
-                };
-                spans.push(Span::styled(state, Style::default().fg(color)));
-                lines.push(todo_card_line(spans, base_indent, inner_width));
-            }
-        } else {
-            let mut spans = vec![Span::raw("  ")];
-            spans.extend(scores);
-            lines.push(todo_card_line(spans, base_indent, inner_width));
-        }
-    }
-}
-
-/// Concise refinement card for assessment-only todo writes: the plan-level
-/// intent change first, then any per-goal quality updates.
-fn render_todo_assessment_updates(
-    plan_update: Option<&crate::todo::TodoPlanChange>,
-    goal_updates: &[crate::todo::TodoGoalChange],
-    width: u16,
-) -> Vec<Line<'static>> {
-    let mut lines = render_todo_plan_update(plan_update, width);
-    lines.extend(render_todo_goal_updates(goal_updates, width));
-    lines
-}
-
-fn render_todo_plan_update(
-    plan_update: Option<&crate::todo::TodoPlanChange>,
-    width: u16,
-) -> Vec<Line<'static>> {
-    let Some(update) = plan_update else {
-        return Vec::new();
-    };
-    let intent_is_unclear = !crate::todo::intent_understanding_passes(
-        update
-            .after
-            .as_ref()
-            .and_then(|plan| plan.understands_user_intent),
-    );
-    if !update
-        .fields
-        .contains(&crate::todo::TodoPlanField::UnderstandsUserIntent)
-        && !(intent_is_unclear
-            && update
-                .fields
-                .contains(&crate::todo::TodoPlanField::UserIntention))
-    {
-        return Vec::new();
-    }
-    let centered = markdown::center_code_blocks();
-    let card_width = if centered {
-        (width.saturating_sub(4) as usize).min(120)
-    } else {
-        (width.saturating_sub(2) as usize).min(100)
-    }
-    .max(1);
-    let base_indent = if centered { "" } else { "  " };
-    let inner_width = card_width.saturating_sub(base_indent.width()).max(1);
-    let mut lines = vec![todo_card_line(
-        vec![
-            Span::styled("Plan", Style::default().fg(todo_group_color()).bold()),
-            Span::styled("  updated", Style::default().fg(todo_meta_color())),
-        ],
-        base_indent,
-        inner_width,
-    )];
-
-    for field in &update.fields {
-        match field {
-            crate::todo::TodoPlanField::UnderstandsUserIntent => push_todo_score_update(
-                &mut lines,
-                "Understands user intent",
-                update
-                    .before
-                    .as_ref()
-                    .and_then(|plan| plan.understands_user_intent)
-                    .map(|state| state.as_str().to_string()),
-                update
-                    .after
-                    .as_ref()
-                    .and_then(|plan| plan.understands_user_intent)
-                    .map(|state| state.as_str().to_string()),
-                base_indent,
-                inner_width,
-            ),
-            crate::todo::TodoPlanField::UserIntention if intent_is_unclear => {
-                push_todo_text_update(
-                    &mut lines,
-                    "User intention",
-                    update
-                        .after
-                        .as_ref()
-                        .and_then(|plan| plan.user_intention.as_deref()),
-                    base_indent,
-                    inner_width,
-                )
-            }
-            crate::todo::TodoPlanField::UserIntention => {}
-        }
-    }
-
-    if centered {
-        left_pad_lines_for_centered_mode(&mut lines, width);
-    }
-    lines
-}
-
-fn render_todo_goal_updates(
-    updates: &[crate::todo::TodoGoalChange],
-    width: u16,
-) -> Vec<Line<'static>> {
-    let centered = markdown::center_code_blocks();
-    let card_width = if centered {
-        (width.saturating_sub(4) as usize).min(120)
-    } else {
-        (width.saturating_sub(2) as usize).min(100)
-    }
-    .max(1);
-    let base_indent = if centered { "" } else { "  " };
-    let inner_width = card_width.saturating_sub(base_indent.width()).max(1);
-    let mut lines = Vec::new();
-
-    for update in updates {
-        // Narrative assessment fields remain available in the dedicated todos
-        // view. Inline tool cards only show the compact state transitions so a
-        // long feedback loop or stopping rationale cannot dominate the chat.
-        let visible_fields = update.fields.iter().filter(|field| {
-            !matches!(
-                field,
-                crate::todo::TodoGoalField::FeedbackLoop
-                    | crate::todo::TodoGoalField::StoppingEvidence
-            )
-        });
-        if visible_fields.clone().next().is_none() {
-            continue;
-        }
-        let goal = update.after.as_ref().or(update.before.as_ref());
-        let label = goal
-            .and_then(|goal| goal.group.as_deref())
-            .map(str::trim)
-            .filter(|group| !group.is_empty())
-            .unwrap_or("Goal");
-        lines.push(todo_card_line(
-            vec![
-                Span::styled(
-                    label.to_string(),
-                    Style::default().fg(todo_group_color()).bold(),
-                ),
-                Span::styled("  updated", Style::default().fg(todo_meta_color())),
-            ],
-            base_indent,
-            inner_width,
-        ));
-
-        for field in visible_fields {
-            match field {
-                crate::todo::TodoGoalField::ClosedFeedbackLoop => push_todo_score_update(
-                    &mut lines,
-                    "Closed feedback loop",
-                    update
-                        .before
-                        .as_ref()
-                        .and_then(|goal| goal.closed_feedback_loop)
-                        .map(|state| state.as_str().to_string()),
-                    update
-                        .after
-                        .as_ref()
-                        .and_then(|goal| goal.closed_feedback_loop)
-                        .map(|state| state.as_str().to_string()),
-                    base_indent,
-                    inner_width,
-                ),
-                crate::todo::TodoGoalField::FeedbackLoopRelevance => push_todo_score_update(
-                    &mut lines,
-                    "Feedback-loop relevance",
-                    update
-                        .before
-                        .as_ref()
-                        .and_then(|goal| goal.feedback_loop_relevance)
-                        .map(|state| state.as_str().to_string()),
-                    update
-                        .after
-                        .as_ref()
-                        .and_then(|goal| goal.feedback_loop_relevance)
-                        .map(|state| state.as_str().to_string()),
-                    base_indent,
-                    inner_width,
-                ),
-                crate::todo::TodoGoalField::FeedbackLoopCoverage => push_todo_score_update(
-                    &mut lines,
-                    "Feedback-loop coverage",
-                    update
-                        .before
-                        .as_ref()
-                        .and_then(|goal| goal.feedback_loop_coverage)
-                        .map(|state| state.as_str().to_string()),
-                    update
-                        .after
-                        .as_ref()
-                        .and_then(|goal| goal.feedback_loop_coverage)
-                        .map(|state| state.as_str().to_string()),
-                    base_indent,
-                    inner_width,
-                ),
-                crate::todo::TodoGoalField::FeedbackLoopTraceability => push_todo_score_update(
-                    &mut lines,
-                    "Feedback-loop traceability",
-                    update
-                        .before
-                        .as_ref()
-                        .and_then(|goal| goal.feedback_loop_traceability)
-                        .map(|state| state.as_str().to_string()),
-                    update
-                        .after
-                        .as_ref()
-                        .and_then(|goal| goal.feedback_loop_traceability)
-                        .map(|state| state.as_str().to_string()),
-                    base_indent,
-                    inner_width,
-                ),
-                crate::todo::TodoGoalField::DeliveryState => push_todo_score_update(
-                    &mut lines,
-                    "Delivery",
-                    update
-                        .before
-                        .as_ref()
-                        .and_then(|goal| goal.delivery_state)
-                        .map(|state| state.as_str().to_string()),
-                    update
-                        .after
-                        .as_ref()
-                        .and_then(|goal| goal.delivery_state)
-                        .map(|state| state.as_str().to_string()),
-                    base_indent,
-                    inner_width,
-                ),
-                crate::todo::TodoGoalField::Autonomy => push_todo_score_update(
-                    &mut lines,
-                    "Autonomy",
-                    update
-                        .before
-                        .as_ref()
-                        .and_then(|goal| goal.autonomy)
-                        .map(|state| state.as_str().to_string()),
-                    update
-                        .after
-                        .as_ref()
-                        .and_then(|goal| goal.autonomy)
-                        .map(|state| state.as_str().to_string()),
-                    base_indent,
-                    inner_width,
-                ),
-                crate::todo::TodoGoalField::IterationMaturity => push_todo_score_update(
-                    &mut lines,
-                    "Iteration",
-                    update
-                        .before
-                        .as_ref()
-                        .and_then(|goal| goal.iteration_maturity)
-                        .map(|state| state.as_str().to_string()),
-                    update
-                        .after
-                        .as_ref()
-                        .and_then(|goal| goal.iteration_maturity)
-                        .map(|state| state.as_str().to_string()),
-                    base_indent,
-                    inner_width,
-                ),
-                crate::todo::TodoGoalField::FeedbackLoop
-                | crate::todo::TodoGoalField::StoppingEvidence => unreachable!(),
-            }
-        }
-    }
-
-    if centered {
-        left_pad_lines_for_centered_mode(&mut lines, width);
-    }
-    lines
-}
-
-fn push_todo_score_update(
-    lines: &mut Vec<Line<'static>>,
-    label: &str,
-    before: Option<String>,
-    after: Option<String>,
-    base_indent: &str,
-    inner_width: usize,
-) {
-    let mut spans = vec![
-        Span::raw("  "),
-        Span::styled(
-            format!("{} ", label),
-            Style::default().fg(todo_label_color()),
-        ),
-    ];
-    match (before, after) {
-        (Some(before), Some(after)) => {
-            spans.push(Span::styled(before, Style::default().fg(todo_meta_color())));
-            spans.push(Span::styled(" → ", Style::default().fg(todo_label_color())));
-            spans.push(Span::styled(after, Style::default().fg(todo_score_color())));
-        }
-        (None, Some(after)) => {
-            spans.push(Span::styled(after, Style::default().fg(todo_score_color())))
-        }
-        (_, None) => spans.push(Span::styled(
-            "cleared",
-            Style::default().fg(todo_meta_color()),
-        )),
-    }
-    lines.push(todo_card_line(spans, base_indent, inner_width));
-}
-
-fn push_todo_text_update(
-    lines: &mut Vec<Line<'static>>,
-    label: &str,
-    after: Option<&str>,
-    base_indent: &str,
-    inner_width: usize,
-) {
-    let value = after.map(str::trim).filter(|value| !value.is_empty());
-    let prefix = format!("  {} · ", label);
-    let prefix_width = prefix.width();
-    let available = inner_width.saturating_sub(prefix_width).max(1);
-    let chunks = value
-        .map(|value| wrap_todo_detail(value, available))
-        .filter(|chunks| !chunks.is_empty())
-        .unwrap_or_else(|| vec!["cleared".to_string()]);
-    for (index, chunk) in chunks.into_iter().enumerate() {
-        lines.push(todo_card_line(
-            vec![
-                Span::styled(
-                    if index == 0 {
-                        prefix.clone()
-                    } else {
-                        " ".repeat(prefix_width)
-                    },
-                    Style::default().fg(todo_label_color()),
-                ),
-                Span::styled(chunk, Style::default().fg(todo_meta_color())),
-            ],
-            base_indent,
-            inner_width,
-        ));
-    }
-}
-
-fn todo_card_confidence_label(todo: &crate::todo::TodoItem) -> Option<String> {
-    if todo.status == "completed"
-        && let (Some(planning), Some(completed)) = (todo.confidence, todo.completion_confidence)
-        && planning != completed
-    {
-        return Some(format!("{}→{}", planning.as_str(), completed.as_str()));
-    }
-    let state = if todo.status == "completed" {
-        todo.completion_confidence.or(todo.confidence)
-    } else {
-        todo.confidence
-    };
-    state.map(|state| state.as_str().to_string())
 }
 
 fn render_todo_card_item_line(
@@ -1983,17 +1189,11 @@ fn render_todo_card_item_line(
         "in_progress" => user_text(),
         _ => header_name_color(),
     };
-    let mut spans = vec![
+    let spans = vec![
         Span::raw("  "),
         Span::styled(format!("{} ", glyph), Style::default().fg(glyph_color)),
         Span::styled(todo.content.clone(), Style::default().fg(text_color)),
     ];
-    if let Some(label) = todo_card_confidence_label(todo) {
-        spans.push(Span::styled(
-            format!(" · {}", label),
-            Style::default().fg(todo_confidence_color()),
-        ));
-    }
     todo_card_line(spans, base_indent, inner_width)
 }
 
@@ -3330,29 +2530,17 @@ pub(crate) fn render_tool_message(
         && !tools_ui::tool_output_looks_failed(&msg.content)
         && let Some(parsed) = parse_todo_tool_output(&msg.content)
     {
-        if !parsed.goal_updates.is_empty() || parsed.plan_update.is_some() {
-            return render_todo_assessment_updates(
-                parsed.plan_update.as_ref(),
-                &parsed.goal_updates,
-                width,
-            );
-        }
         // An empty todo read (the model probing the list before planning) has
         // nothing to show. Rendering the "No tasks yet" placeholder card there
         // just adds transcript noise, so collapse it to a compact line.
-        if parsed.todos.is_empty() && parsed.goals.is_empty() {
+        if parsed.todos.is_empty() {
             return vec![Line::from(vec![
                 Span::raw("  "),
                 Span::styled("todo", Style::default().fg(todo_meta_color())),
                 Span::styled("  no tasks", Style::default().fg(dim_color())),
             ])];
         }
-        let payload = serde_json::json!({
-            "todos": parsed.todos,
-            "plan": parsed.plan,
-            "goals": parsed.goals,
-        })
-        .to_string();
+        let payload = serde_json::json!({ "todos": parsed.todos }).to_string();
         return render_todos_message(
             &DisplayMessage::todos(payload),
             width,
@@ -3656,26 +2844,12 @@ pub(crate) fn render_tool_message(
                 && let Some(parsed) = parse_todo_tool_output(&result.content)
             {
                 let nested_width = row_width.saturating_sub(4).max(1).min(u16::MAX as usize) as u16;
-                let mut todo_lines =
-                    if parsed.goal_updates.is_empty() && parsed.plan_update.is_none() {
-                        let payload = serde_json::json!({
-                            "todos": parsed.todos,
-                            "plan": parsed.plan,
-                            "goals": parsed.goals,
-                        })
-                        .to_string();
-                        render_todos_message(
-                            &DisplayMessage::todos(payload),
-                            nested_width,
-                            crate::config::DiffDisplayMode::Off,
-                        )
-                    } else {
-                        render_todo_assessment_updates(
-                            parsed.plan_update.as_ref(),
-                            &parsed.goal_updates,
-                            nested_width,
-                        )
-                    };
+                let payload = serde_json::json!({ "todos": parsed.todos }).to_string();
+                let mut todo_lines = render_todos_message(
+                    &DisplayMessage::todos(payload),
+                    nested_width,
+                    crate::config::DiffDisplayMode::Off,
+                );
                 for line in &mut todo_lines {
                     line.spans.insert(0, Span::raw("    "));
                 }
