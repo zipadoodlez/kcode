@@ -7,8 +7,9 @@ was removed is kept below, and git has the rest of that history.
 ## Destination
 
 One list, one task type, one writer. A file in the repo holds the open work, the
-`todo` tool shows the slice in play, and a swarm is the only kind of executor,
-with one member by default.
+`todo` tool shows the slice in play, and every session is a member of its repo's
+list from its first turn. A swarm is what that list is called when more than one
+member works it, so there is no second container and no "not in a swarm" state.
 
 The list is the contract the swarm and the solo session both serve. It is not
 hand-authored: the human reads it and asks the model to change it.
@@ -74,6 +75,11 @@ the open question above about whether a row carries its check.
    session pays no gate or artifact cost.
 8. **The file must be readable and diff-stable.** It does not have to be pleasant
    to hand-edit, because it is never hand-authored.
+9. **Every session is a member of its list from turn one.** One container, no
+   solo path, because today's solo path re-derives what the swarm path owns and
+   that duplication is most of the state work in `todo.md` §1. A swarm is the
+   name for the list with more than one member, and the display stays hidden
+   while a list has one member and no edges.
 
 ## Open
 
