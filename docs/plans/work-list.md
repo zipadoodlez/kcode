@@ -54,6 +54,13 @@ work, and stops at that boundary. A woken member is bounded by the row or subtre
 it was handed. Without a scope, a session with a human and two hundred open rows
 would work forever.
 
+The scope is structural, not a promise. A run works the rows it holds, plus rows
+it creates under them, and it may not claim outside that set. So a run with
+nothing held has nothing to loop over, and it takes another turn on its own only
+while something in its scope is still ready. Eagerness therefore has exactly one
+outlet, the claim, which is one visible act over named ids and is as easy to undo
+as it was to make.
+
 It also ends by yielding when the only thing that would unblock it is a person.
 That needs no field: a row whose `assigned_to` names a person and whose
 `blocked_by` names the rows waiting on it is what stops the loop, and that is what
