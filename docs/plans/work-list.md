@@ -43,6 +43,32 @@ so an offered row is never stranded by somebody walking away.
 session, not a mode of the run. That predicate is the whole difference between
 today's two mechanisms, the client-side poke and the server-side dispatch.
 
+## How long a run goes on
+
+A run continues while a row it can reach is ready, and ends when none is. That is
+the only stop rule and it is checkable: no ready row means nothing to do.
+
+It also ends by yielding when the only thing that would unblock it is a person.
+That needs no field: a row whose `assigned_to` names a person and whose
+`blocked_by` names the rows waiting on it is what stops the loop, and that is what
+we already call a decision.
+
+A session with a human is its own stop. The human's prompt always wins at a turn
+boundary, and the run resumes offering when that session is idle again, so the
+user's hand is the control, continuously, and no switch decides whether the loop
+may continue. An unattended run reports when it yields, and the report is the same
+terminal event a tracked turn already fans out.
+
+A bound on a run is a run property, never a row field: the loop's ceiling (turns,
+rows, or a deadline) belongs with the run, beside the concurrency limit
+`run_plan` already takes. The default is none, and the work boundary above is
+what normally stops it. It will exist for cost, not for correctness.
+
+The poke's switch and its repeat cap have a replacement that is strictly better.
+The poke repeated blindly because it could not tell whether another nudge would
+help, so it needed a fingerprint and a cap and a default of off. A run knows what
+is ready and when it is blocked.
+
 ## Rules
 
 Settled 2026-10-01. Not steps; what every step has to satisfy.
@@ -77,7 +103,8 @@ Settled 2026-10-01. Not steps; what every step has to satisfy.
 8. **One item type**, in `kcode-task-types`, the crate whose name is the concept.
 9. **The run is the only way work gets done.** Everything that executes work is a
    run over rows, with one member or several, and no branch anywhere asks which.
-   `is_headless` decides who supplies a turn.
+   `is_headless` decides who supplies a turn, and the loop ends when nothing it can
+   reach is ready, or when only a person can unblock it. No switch, no repeat cap.
 10. **Hierarchy is one optional `parent` field on a flat list**, while blocking
     is order, so they are two fields. A parent's row stays after its children are
     gone, because the integration is still owed. `group` is deleted, because the
