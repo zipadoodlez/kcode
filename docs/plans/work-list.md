@@ -111,6 +111,12 @@ Gated by the five decisions above.
 
 - [ ] **(decide)** what a running swarm shows in the file while a node is in
   flight, and what a stalled node shows.
+- [ ] **(decide)** where a running swarm's finished-but-not-yet-integrated nodes
+  live. The file deletes a row when its result is durable, but a deep gate must
+  name every done node in its scope by id, and a swarm that resumes after a
+  restart needs them too. Either the live graph is the gate's input and the
+  persisted plan carries those nodes until the swarm closes, which is two durable
+  stores while a swarm runs, or the gate reads something else.
 - [ ] **C1.** The plan is derived from the file's entries and their `parent` and
   `blocked_by` fields, membership and the coordinator are computed from it, and
   the parent guard (rule 6) becomes the tool's check.
