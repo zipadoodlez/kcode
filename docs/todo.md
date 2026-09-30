@@ -609,6 +609,19 @@ sampled causes; the Front line section owns driving them to zero.
 
 Independent, no dependency on the phases above.
 
+- [ ] **(decision)** Where does work land: `main` directly, or a branch with a
+  merge-back step? Two days and 85 commits went onto
+  `batch-ab-provider-onboarding` (created 2026-09-29 05:16 from `cd795377`,
+  merged by fast-forward 2026-10-01) while `main` did not move, and nothing
+  noticed. Nothing was lost, since `main` held zero commits the branch lacked,
+  but "is `main` green?" could not be answered from `main`, the pushed branch
+  was the first visibility GitHub had, and the tree's uncommitted `pkgver` bump
+  targeted a two-day-old HEAD. `AGENTS.md` says work on your own branch and
+  stops there; this fork has no CI and no PR gate, and the 233 merge commits in
+  `main`'s history show merge-back was the practice until this stretch. Pick
+  one, then make it visible: if branches stay, a post-commit or session-start
+  line when `git rev-list --count main..HEAD` is non-zero. The two hooks in
+  `.githooks/` are graphify's and stay out of it.
 - [ ] Not every color derives from a role. `configured_native_color`
   (`kcode-tui-style/src/palette.rs`) attributes a shade to a role only when it
   equals that role's default, so hardcoded `Color::Rgb(...)` shades pass through
