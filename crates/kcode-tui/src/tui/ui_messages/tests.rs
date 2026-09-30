@@ -1754,69 +1754,6 @@ fn render_empty_todo_tool_result_collapses_to_compact_line() {
 }
 
 #[test]
-fn render_overnight_message_uses_rounded_progress_card() {
-    let card = crate::overnight::OvernightProgressCard {
-        run_id: "overnight_1234567890abcdef".to_string(),
-        status: "running".to_string(),
-        phase: "running".to_string(),
-        coordinator_session_id: "session_coord".to_string(),
-        coordinator_session_name: "Overnight coordinator".to_string(),
-        elapsed_label: "2h 15m".to_string(),
-        target_duration_label: "7h".to_string(),
-        progress_percent: 32.0,
-        target_wake_at: "2026-05-01T15:00:00Z".to_string(),
-        time_relation: "target in 4h 45m".to_string(),
-        last_activity_label: "4m ago".to_string(),
-        next_prompt_label: "handoff mode in 4h 15m or after current turn".to_string(),
-        usage_risk: "medium".to_string(),
-        usage_confidence: "low".to_string(),
-        usage_projection: "projected 48% to 76%".to_string(),
-        resources_summary: "RAM 62%, load 2.4/8, battery 80% discharging, disk 52.0 GB free"
-            .to_string(),
-        latest_event_kind: Some("coordinator_turn_completed".to_string()),
-        latest_event_summary: Some("Coordinator turn completed".to_string()),
-        task_summary: crate::overnight::OvernightTaskCardSummary {
-            total: 4,
-            counts: crate::overnight::OvernightTaskStatusCounts {
-                completed: 2,
-                active: 1,
-                blocked: 0,
-                deferred: 1,
-                failed: 0,
-                skipped: 0,
-                unknown: 0,
-            },
-            validated: 2,
-            high_risk: 0,
-            latest_title: Some("Verify provider reload".to_string()),
-            latest_status: Some("active".to_string()),
-        },
-        active_task_title: Some("Verify provider reload".to_string()),
-        review_path: "/tmp/overnight/review.html".to_string(),
-        log_path: "/tmp/overnight/run.log".to_string(),
-        run_dir: "/tmp/overnight".to_string(),
-        completed_at: None,
-    };
-    let msg = DisplayMessage::overnight(serde_json::to_string(&card).unwrap());
-
-    let lines = render_overnight_message(&msg, 100, crate::config::DiffDisplayMode::Off);
-    let plain = lines
-        .iter()
-        .map(extract_line_text)
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    assert!(plain.contains("overnight · running"));
-    assert!(plain.contains("█"));
-    assert!(plain.contains("░"));
-    assert!(plain.contains("32%"));
-    assert!(plain.contains("2 complete, 1 active, 0 blocked, 1 deferred"));
-    assert!(plain.contains("Verify provider reload"));
-    assert!(plain.contains("medium risk"));
-    assert!(plain.contains("review.html"));
-}
-
-#[test]
 fn batched_retry_renders_the_todo_card_from_a_nested_call() {
     // A todo call nested inside a batch result must still render as a card,
     // including when the batch carries other subcalls beside it.

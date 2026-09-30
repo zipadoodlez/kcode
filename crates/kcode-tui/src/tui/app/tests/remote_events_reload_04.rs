@@ -2402,7 +2402,6 @@ fn test_credential_failure_breaker_trips_after_consecutive_auth_errors() {
         !app.auto_poke_incomplete_todos,
         "breaker must disable auto-poke"
     );
-    assert!(app.overnight_auto_poke.is_none());
     assert_eq!(app.consecutive_credential_failures, 0);
     assert!(
         app.display_messages()

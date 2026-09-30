@@ -55,7 +55,6 @@ mod commands;
 mod commands_colors;
 mod commands_dispatch;
 mod commands_improve;
-mod commands_overnight;
 mod commands_plan;
 mod commands_review;
 mod composer;
@@ -75,7 +74,6 @@ mod misc_ui;
 mod model_context;
 mod navigation;
 mod observe;
-mod overnight_card;
 mod pending_split;
 mod prompt_history;
 mod reasoning;
@@ -593,34 +591,6 @@ pub(super) struct HistoryScrollAnchor {
     pub base_total: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct OvernightAutoPokeFingerprint {
-    pub run_id: String,
-    pub status: String,
-    pub last_activity_at: String,
-    pub events_len: usize,
-    pub task_total: usize,
-    pub task_completed: usize,
-    pub task_active: usize,
-    pub task_blocked: usize,
-    pub task_validated: usize,
-    pub session_message_count: usize,
-    pub review_notes_mtime: Option<u64>,
-    pub validation_files: usize,
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct OvernightAutoPokeState {
-    pub run_id: String,
-    pub last_fingerprint: OvernightAutoPokeFingerprint,
-    pub stalled_turns: u8,
-    pub error_turns: u8,
-    pub total_pokes_sent: u16,
-    pub diagnostic_sent: bool,
-    pub morning_report_poked: bool,
-    pub final_wrap_poked: bool,
-}
-
 #[derive(Clone, Debug, Default)]
 struct CommandCandidatesCache {
     candidates: Vec<(String, &'static str)>,
@@ -890,13 +860,11 @@ pub struct App {
     /// update `consecutive_guardrail_stops`.
     turn_guardrail_stopped: bool,
     /// Consecutive turns that ended in a provider guardrail/refusal stop.
-    /// Auto-poke and overnight poke must stop re-sending after a few of
+    /// Auto-poke must stop re-sending after a few of
     /// these: the same request refused once is almost always refused again,
     /// so blindly poking loops forever (observed live: one refused API call
     /// every ~7s until manually interrupted).
     consecutive_guardrail_stops: u8,
-    // When armed by /overnight, automatically continue guarded follow-up turns until wake/wrap.
-    overnight_auto_poke: Option<OvernightAutoPokeState>,
     // Interactive "switch to next best model/method and resend" offer surfaced
     // after a provider turn error; accepted with a keypress.
     pending_fallback_offer: Option<PendingFallbackOffer>,
@@ -1211,8 +1179,6 @@ pub struct App {
     account_picker: auth::AccountPickerState,
     /// Usage overlay and whether a usage refresh request is in flight.
     usage: super::usage_overlay::UsageOverlayState,
-    /// Passive overnight progress card: its transcript row and poll throttle.
-    overnight_card: overnight_card::OvernightCard,
     /// Per-client Niri-style workspace navigation state. Previously a process
     /// global; now owned per App instance.
     workspace_client: super::workspace_client::WorkspaceClientState,
@@ -1274,14 +1240,14 @@ impl App {
     const AUTO_RETRY_BASE_DELAY_SECS: u64 = 2;
     const AUTO_RETRY_MAX_ATTEMPTS: u8 = 3;
     /// Consecutive guardrail/refusal-stopped turns tolerated before automatic
-    /// continuation paths (auto-poke, overnight poke) are stopped. Guardrail
+    /// continuation paths (auto-poke) are stopped. Guardrail
     /// refusals are deterministic for the same request, so re-poking the same
     /// session just burns one refused API call per poke forever (observed
     /// live: refusal + auto-poke alternating every ~7s until interrupted).
     const GUARDRAIL_STOP_MAX_CONSECUTIVE: u8 = 2;
     /// Circuit breaker for credential failures: once this many consecutive
     /// turn errors classify as credential/auth failures, every automatic
-    /// resend path (auto-retry, auto-poke, overnight poke, queued follow-ups)
+    /// resend path (auto-retry, auto-poke, queued follow-ups)
     /// is stopped until auth changes or a turn succeeds. Telemetry showed
     /// runaway sessions logging thousands of 401s at one failed turn per
     /// retry (18k in one session) because retry loops kept resending against

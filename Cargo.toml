@@ -22,7 +22,6 @@ members = [
     "crates/kcode-core",
     "crates/kcode-fuzzy",
     "crates/kcode-message-types",
-    "crates/kcode-overnight-core",
     "crates/kcode-plan",
     "crates/kcode-swarm-core",
     "crates/kcode-protocol",

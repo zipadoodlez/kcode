@@ -2659,7 +2659,6 @@ dependencies = [
  "kcode-command-risk",
  "kcode-core",
  "kcode-message-types",
- "kcode-overnight-core",
  "kcode-pdf",
  "kcode-plan",
  "kcode-provider-core",
@@ -2816,15 +2815,6 @@ dependencies = [
 
 [[package]]
 name = "kcode-message-types"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "kcode-overnight-core"
 version = "0.1.0"
 dependencies = [
  "chrono",

@@ -600,11 +600,7 @@ pub(super) fn handle_cancel_command(app: &mut App, trimmed: &str) -> bool {
         app.interleave_images.clear();
         app.pending_soft_interrupts.clear();
         app.pending_soft_interrupt_requests.clear();
-        if app.cancel_overnight_for_interrupt() {
-            app.set_status_notice("Interrupting... Overnight cancelled");
-        } else {
-            app.set_status_notice("Interrupting...");
-        }
+        app.set_status_notice("Interrupting...");
     } else if pending_retry {
         app.clear_pending_remote_retry();
         if matches!(app.status, ProcessingStatus::WaitingForNetwork { .. }) {
@@ -1390,7 +1386,6 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         || handle_subagent_command(app, trimmed)
         || handle_observe_command(app, trimmed)
         || handle_todos_view_command(app, trimmed)
-        || super::commands_overnight::handle_overnight_command(app, trimmed)
         || super::split_view::handle_split_view_command(app, trimmed)
         || handle_btw_command(app, trimmed)
         || handle_fork_command(app, trimmed)

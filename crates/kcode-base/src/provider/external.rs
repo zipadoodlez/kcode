@@ -10,7 +10,7 @@
 //!
 //! This is deliberately a process-global registry rather than constructor
 //! injection: `MultiProvider` is constructed from many call sites (startup,
-//! post-auth hot-init, TUI onboarding/overnight flows), and threading factories
+//! post-auth hot-init, TUI onboarding flows), and threading factories
 //! through each would couple all of them to the full provider set. The
 //! registry is written once at startup and read-only afterwards.
 

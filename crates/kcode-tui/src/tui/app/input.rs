@@ -1574,7 +1574,7 @@ impl App {
 
     /// Folds this turn's guardrail-stop flag into the consecutive counter.
     /// Call once per finished turn, before scheduling automatic follow-ups.
-    /// Returns true when automatic continuation (auto-poke/overnight poke)
+    /// Returns true when automatic continuation (auto-poke)
     /// must stop because the provider keeps refusing: a guardrail refusal is
     /// deterministic for the same request, so re-poking loops forever
     /// (observed live as one refused API call per auto-poke, every ~7s).
@@ -1588,18 +1588,17 @@ impl App {
         self.consecutive_guardrail_stops >= Self::GUARDRAIL_STOP_MAX_CONSECUTIVE
     }
 
-    /// Disarm auto-poke and overnight poke after repeated guardrail refusals
-    /// and tell the user why, instead of silently re-sending the refused
-    /// request on every turn end.
+    /// Disarm auto-poke after repeated guardrail refusals and tell the user
+    /// why, instead of silently re-sending the refused request on every turn
+    /// end.
     pub(super) fn stop_auto_continuation_after_guardrail(&mut self) {
-        let had_overnight = self.overnight_auto_poke.take().is_some();
-        if !self.auto_poke_incomplete_todos && !had_overnight {
+        if !self.auto_poke_incomplete_todos {
             return;
         }
         let cleared = super::commands::disable_auto_poke(self);
         crate::logging::warn(&format!(
-            "Stopping auto-poke after {} consecutive provider guardrail stops (cleared {} queued poke message(s), overnight={})",
-            self.consecutive_guardrail_stops, cleared, had_overnight
+            "Stopping auto-poke after {} consecutive provider guardrail stops (cleared {} queued poke message(s))",
+            self.consecutive_guardrail_stops, cleared
         ));
         self.push_display_message(DisplayMessage::system(format!(
             "🛑 The provider refused {} turns in a row, so we stopped poking. The same request will keep getting refused. Rephrase or narrow the task, then /poke to resume.",
@@ -1609,15 +1608,14 @@ impl App {
     }
 
     /// Turn-end entry point for automatic continuations. Applies the
-    /// guardrail circuit breaker first, then tries auto-poke and overnight
-    /// poke scheduling. Returns true when a follow-up was queued.
+    /// guardrail circuit breaker first, then tries the auto-poke schedule.
+    /// Returns true when a follow-up was queued.
     pub(super) fn schedule_turn_end_followups(&mut self) -> bool {
         if self.guardrail_stops_exhausted_at_turn_end() {
             self.stop_auto_continuation_after_guardrail();
             return false;
         }
         self.schedule_auto_poke_followup_if_needed()
-            || self.schedule_overnight_poke_followup_if_needed()
     }
 
     /// Queue the one auto-poke continuation when armed and open work remains.
@@ -2511,11 +2509,7 @@ pub(super) fn handle_global_control_shortcuts(app: &mut App, code: KeyCode) -> b
                 app.interleave_images.clear();
                 app.pending_soft_interrupts.clear();
                 app.pending_soft_interrupt_requests.clear();
-                if app.cancel_overnight_for_interrupt() {
-                    app.set_status_notice("Interrupting... Overnight cancelled");
-                } else {
-                    app.set_status_notice("Interrupting...");
-                }
+                app.set_status_notice("Interrupting...");
             } else {
                 app.handle_quit_request();
             }
@@ -2662,16 +2656,9 @@ pub(super) fn handle_basic_key(app: &mut App, code: KeyCode) -> bool {
                 app.interleave_images.clear();
                 app.pending_soft_interrupts.clear();
                 app.pending_soft_interrupt_requests.clear();
-                let cancelled_overnight = app.cancel_overnight_for_interrupt();
                 if disabled_auto_poke {
                     super::commands::disable_auto_poke(app);
-                    if cancelled_overnight {
-                        app.set_status_notice("Interrupting... Auto-poke OFF, overnight cancelled");
-                    } else {
-                        app.set_status_notice("Interrupting... Auto-poke OFF");
-                    }
-                } else if cancelled_overnight {
-                    app.set_status_notice("Interrupting... Overnight cancelled");
+                    app.set_status_notice("Interrupting... Auto-poke OFF");
                 } else {
                     app.set_status_notice("Interrupting...");
                 }

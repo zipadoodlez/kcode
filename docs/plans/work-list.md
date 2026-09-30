@@ -38,7 +38,11 @@ off, so a session stops at the end of its turn unless it was allowed to keep goi
 and the permission is read in the one place that decides the next turn. The user's
 words can grant it for one run, which is what "work the list until it is done"
 means. A headless member holds the permission inherently, because that is what it
-was spawned for.
+was spawned for. A long unattended run is therefore not a kind of run: it is this
+permission held while a long list drains, and there is nothing else to build for it.
+(The overnight subsystem, which was a second run with its own crate, supervisor,
+durable store, UI and preflight, was deleted on that ground on 2026-10-01; its
+preflight is now a decision in `docs/todo.md`.)
 
 A swarm member has no human, so the run supplies every turn. A session with a human
 never has turns taken from it: a turn that wants the agent owns it the moment the run
@@ -148,15 +152,12 @@ Every step lands whole, proven by the gate and, where behavior moves, one
 - [ ] **0.2. Delete the client poke**, which this replaces. With the server
   continuing a session that holds ready rows, the TUI's auto-poke machine goes:
   `auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`, `total_pokes_sent`,
-  `morning_report_poked`, `final_wrap_poked`, `overnight_auto_poke`, its keybinding
-  toggle, its overlay line, its tests, and `build_auto_poke_message` in the store
-  crate. The toggle defaults off today, so nothing is lost. Two cuts in that list
-  are not free: `overnight_auto_poke` is the overnight run's own continuation, which
-  `/overnight` starts, so the cut has to say what drives an overnight run once the
-  server loop is the only continuation; and `build_auto_poke_message` is still
-  called by the command-line paths this step defers
-  (`src/cli/commands.rs:719`), so it goes with them, not here. The command-line
-  variant (`src/cli/commands.rs`, the `_with_auto_poke` run paths and
+  `morning_report_poked`, `final_wrap_poked`, its keybinding toggle, its overlay
+  line, its tests, and `build_auto_poke_message` in the store crate. The toggle
+  defaults off today, so nothing is lost. One cut in that list is not free:
+  `build_auto_poke_message` is still called by the command-line paths this step
+  defers (`src/cli/commands.rs:719`), so it goes with them, not here. The
+  command-line variant (`src/cli/commands.rs`, the `_with_auto_poke` run paths and
   `run_command_auto_poke_max_turns`) waits for 0.3, because a plan-driven member
   must not be driven twice, and a headless run has no plan until rows seed one.
 - [ ] **0.3. Rows are the run's seed source.** `kind` rides on the row, the node id

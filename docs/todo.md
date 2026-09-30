@@ -222,6 +222,12 @@ destination, the roadmap, and why the tier must not return; the A/B probe recipe
 
 ## Anytime
 
+- [ ] **(decision)** The long unattended run has no preflight. Deleting the overnight
+  subsystem (2026-10-01) took its checks with it: battery, free memory, free disk,
+  and a projection of whether the provider quota lasts the run. Under the new model
+  those are not a mode, but they are still the difference between a night's work and
+  a night's spend on a dead provider. Decide where a check belongs, if anywhere:
+  before the permission is granted, or as a warning the grant prints.
 - [ ] **(decision)** Where does work land: `main`, or a branch with a merge-back?
   Two days and 85 commits went onto `batch-ab-provider-onboarding` while `main` did
   not move and nothing noticed; nothing was lost, but "is `main` green?" could not

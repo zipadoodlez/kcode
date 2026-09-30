@@ -1031,7 +1031,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 .filter(|r| !r.trim().is_empty())
                 .unwrap_or("guardrail");
             // Mark the turn so the Done handler can count consecutive
-            // guardrail stops and stop auto-poke/overnight loops that would
+            // guardrail stops and stop the auto-poke loop that would
             // otherwise re-send the refused request forever.
             app.turn_guardrail_stopped = true;
             // Plain text prefix: U+1F6E1 shield renders poorly in some
@@ -1321,13 +1321,6 @@ pub(in crate::tui::app) fn handle_server_event(
                 // Terminal: no retry will fire. Offer a one-keypress switch to
                 // the next best model/auth-method (e.g. an expired OAuth login
                 // -> a working provider) with the failed payload staged.
-                app.offer_fallback_after_error_with_payload(
-                    &message,
-                    failed_fallback_payload.clone(),
-                );
-                return false;
-            }
-            if app.stop_overnight_auto_poke_for_non_retryable_error(&message) {
                 app.offer_fallback_after_error_with_payload(
                     &message,
                     failed_fallback_payload.clone(),

@@ -66,19 +66,6 @@ impl DisplayMessage {
         }
     }
 
-    /// Create a display-only overnight progress card. This is shown in the
-    /// transcript UI but is not part of provider/model context.
-    pub fn overnight(content: impl Into<String>) -> Self {
-        Self {
-            role: "overnight".to_string(),
-            content: content.into(),
-            tool_calls: Vec::new(),
-            duration_secs: None,
-            title: Some("Overnight".to_string()),
-            tool_data: None,
-        }
-    }
-
     /// Create a display-only inline todo-list card. The content is either the
     /// legacy JSON array of todo items or an object containing `todos` and
     /// goal-level assessments in `goals`. Shown in the transcript UI but not

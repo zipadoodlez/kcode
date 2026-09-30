@@ -160,7 +160,6 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     ),
     RegisteredCommand::public("/goals", "Legacy alias for /initiatives"),
     RegisteredCommand::public("/swarm", "Toggle swarm feature"),
-    RegisteredCommand::public("/overnight", "Run a supervised overnight coordinator"),
     RegisteredCommand::public("/context", "Show the full session context snapshot"),
     RegisteredCommand::public(
         "/skills",
@@ -903,25 +902,6 @@ impl App {
                     ("/swarm on".into(), "Enable swarm for this session"),
                     ("/swarm off".into(), "Disable swarm for this session"),
                     ("/swarm status".into(), "Show swarm feature status"),
-                ],
-            );
-        }
-
-        if prefix.starts_with("/overnight ") {
-            return self.rank_suggestions(
-                input,
-                vec![
-                    (
-                        "/overnight 7".into(),
-                        "Start a 7-hour supervised overnight run",
-                    ),
-                    (
-                        "/overnight status".into(),
-                        "Show latest overnight run status",
-                    ),
-                    ("/overnight log".into(), "Show recent overnight events"),
-                    ("/overnight review".into(), "Open the generated review page"),
-                    ("/overnight cancel".into(), "Request overnight cancellation"),
                 ],
             );
         }

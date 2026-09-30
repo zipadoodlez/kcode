@@ -312,7 +312,6 @@ impl App {
         } else {
             0
         };
-        self.overnight_auto_poke = None;
 
         // Report the streak explicitly so "breaker tripped on a dead
         // credential" is distinguishable from a transient blip.
@@ -426,7 +425,6 @@ impl App {
             last_auto_poke_fingerprint: None,
             turn_guardrail_stopped: false,
             consecutive_guardrail_stops: 0,
-            overnight_auto_poke: None,
             pending_fallback_offer: None,
             pending_fallback_resend: None,
             pending_merge_offer: None,
@@ -565,7 +563,6 @@ impl App {
             login_picker_overlay: None,
             account_picker: Default::default(),
             usage: Default::default(),
-            overnight_card: Default::default(),
             workspace_client: crate::tui::workspace_client::WorkspaceClientState::default(),
             prompt_history: Default::default(),
         };
@@ -695,7 +692,6 @@ impl App {
             last_auto_poke_fingerprint: None,
             turn_guardrail_stopped: false,
             consecutive_guardrail_stops: 0,
-            overnight_auto_poke: None,
             pending_fallback_offer: None,
             pending_fallback_resend: None,
             pending_merge_offer: None,
@@ -835,7 +831,6 @@ impl App {
             login_picker_overlay: None,
             account_picker: Default::default(),
             usage: Default::default(),
-            overnight_card: Default::default(),
             workspace_client: crate::tui::workspace_client::WorkspaceClientState::default(),
             prompt_history: Default::default(),
         };

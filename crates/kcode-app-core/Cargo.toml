@@ -79,7 +79,6 @@ kcode-base = { path = "../kcode-base", default-features = false }
 kcode-command-risk = { path = "../kcode-command-risk" }
 kcode-core = { path = "../kcode-core" }
 kcode-message-types = { path = "../kcode-message-types" }
-kcode-overnight-core = { path = "../kcode-overnight-core" }
 kcode-plan = { path = "../kcode-plan" }
 kcode-swarm-core = { path = "../kcode-swarm-core" }
 kcode-session-types = { path = "../kcode-session-types" }
