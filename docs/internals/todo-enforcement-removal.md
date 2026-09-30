@@ -18,18 +18,7 @@ The todo list is a display of the plan. The client must not enforce it.
 - **Keep:** the `todo` tool, its fields, `/poke`, Ctrl+P, the flag, and the
   guardrail breaker. Capability is fixed; only the enforcement goes.
 
-## Steps
-
-1. Delete the enforcement tier, keep one poke. The TUI ladder and the headless
-   copy, every continuation they queue, the digest, the observation store, the
-   review cycle, the ownership/confidence/spike checks, the five gate-only `App`
-   fields, and `record_reframe_observations`.
-2. In the same change, delete the synthetic-text classifier.
-3. Blocked on the decisions: shrink the `todo` schema to a display
-   (`id`/`content`/`status`/`priority`/`group`), from 1,086 always-on tokens to
-   roughly 150.
-
-## End state
+## End state (implemented in step 1)
 
 ```
 turn ends
@@ -43,126 +32,98 @@ turn ends
 ```
 
 No digest, no ownership or confidence check, no budget, no final-response
-handoff. Six injected messages become one.
+handoff. Six injected messages are one, and none of them judges the work.
 
-## The tier is duplicated
+## Step 1 landed (2026-09-30)
 
-Removing only the TUI copy leaves the behavior in headless runs.
+Enforcement deleted, schema untouched, display untouched. `App` loses six
+fields, `kcode-base/src/todo.rs` drops from 2085 lines to 576 and out of the
+size budget, `app-core/tool/todo.rs` 2274 -> 1715, `src/cli/commands.rs`
+1515 -> 1281, and the TUI ladder's 248 lines become a 57-line function.
 
-- TUI: `crates/kcode-tui/src/tui/app/input.rs`.
-- Headless `kcode run`: `src/cli/commands.rs`, roughly 340 lines.
+Kept deliberately, and why:
 
-Both go in the same change.
+- The pure predicates the todo card still calls (`feedback_loop_*_passes`,
+  `intent_understanding_passes`, `required_*`). Deleting them now would force
+  the card to be rewritten in the same landing; step 3 removes the fields they
+  read and the predicates with them.
+- The message constants and the text classifier. `is_auto_poke_message` lists
+  every spelling so a transcript resumed from an older session renders those
+  continuations as system notices rather than as the user's own prompts. Step 2
+  replaces the matching and deletes the group.
+- `AUTO_POKE_DECISION action=queue_continuation`, so the probe's poke count
+  works on both sides.
 
-## Touch inventory
+Corrections to this doc's original inventory, found while making the change:
 
-### `crates/kcode-base/src/todo.rs` (2085, ratcheted): the home
+- Headless has **three** poke loops, not two: `plain`, `capture` and `ndjson`.
+  The last also emitted gate-shaped JSON events; it now emits `auto_poke` and
+  `auto_poke_stopped` only. `scripts/kcode_harbor_agent.py`, the only in-repo
+  consumer of that stream, reads only `type == "done"`.
+- Step 3 also edits `crates/kcode-task-types/src/lib.rs`, where the todo types
+  actually live, plus the re-export at `kcode-base/src/todo.rs:29`.
+- `tui/ui_messages.rs` renders the goal scores through the same pass predicates
+  the gate used, so the card is coupled to the gate.
+- The enumerated test files could not all be deleted whole.
+  `tui/app/tests/support/part_01.rs` holds helpers every sibling include needs,
+  and `ui_messages/tests.rs` and `session_tests/cases.rs` still compile and
+  still cover the kept display. What went is the tests that referenced removed
+  symbols, per file.
 
-Delete: `GateObservationKind`, `GateObservation`, `append_gate_observations`,
-`load_gate_observations`, `clear_gate_observations`, `TODO_GATE_DIGEST_PREFIX`
-(+ `PRE_COMPACT`, `LABELED`), `build_gate_digest`,
-`observation_score_later_cleared`; `TODO_LONG_SESSION_REVIEW_MESSAGE` (+
-`PRE_*`), `TodoReviewState`, `todo_review_path`, `update_todo_review_cycle`,
-`take_long_session_review_if_due`, `TODO_LONG_SESSION_REVIEW_AFTER`; `build_todo_ownership_continuation_message`,
-`build_todo_completion_continuation_message`,
-`build_todo_confidence_spike_continuation_message` with their `PRE_*`/`LEGACY_*`
-constants; `TODO_CONFIDENCE_SPIKE_LEVELS`, `spike_completed_todos`;
-`TODO_INTENT_UNDERSTANDING_CONTINUATION_MESSAGE` (decision 1);
-`completed_groups_have_sufficient_delivery` and the delivery helpers if nothing
-else reads them; `is_auto_poke_message`, `auto_poke_display_summary`, and every
-`PRE_*`/`LEGACY_*`/`LABELED_*` constant.
+Runtime check, one isolated `kcode run` with auto-poke armed on a task that
+leaves two todos open: exactly one poke was sent, no second poke followed on the
+unchanged list, and the stored session contains none of the removed messages.
+`kcode-tui --lib` is 1830 passed / 1 failed, and that failure,
+`test_remote_fallback_provider_suggestions_normalize_bare_openai_openrouter_routes`,
+fails identically at `4ef8c3e1` without this change.
 
-Keep: `build_auto_poke_message`, `TodoItem`/`TodoGoal`/`TodoPlan` plus their
-load/save, the confidence types (decision 3), and the canonical status helpers.
+## Remaining work
 
-### `crates/kcode-tui/src/tui/app/input.rs`
+### Step 2: replace the text classifier with a marker
 
-Delete the ladder body of `schedule_auto_poke_followup_if_needed` and
-`deliver_deferred_gate_digest_if_needed`. Keep `schedule_turn_end_followups`,
-the guardrail breaker, and the one poke.
+`is_auto_poke_message` and `auto_poke_display_summary` decide whether a queued
+message is ours by matching its text, which is why every reword added a
+constant. The one poke that survives is still persisted as a `Role::User` turn,
+so the recognition still matters: without it a reload, resume or remote attach
+renders the poke as the user's own prompt.
 
-### `crates/kcode-tui/src/tui/app/commands.rs`
+Give the outbound queue item a kind, set when the poke is enqueued, and move
+these four call sites onto it:
 
-Delete `TodoConfidenceSummary`, `todo_confidence_summary`,
-`build_todo_confidence_summary_message`, `format_todo_completion_confidence`,
-and the `is_auto_poke_message` use.
+- `kcode-base/src/session/render.rs` (restored-history rendering)
+- `kcode-tui/src/tui/app/overnight_card.rs` (the live card path)
+- `kcode-tui/src/tui/app/commands.rs::is_poke_message`
+- `kcode-tui/src/tui/app/commands.rs::queued_messages_are_only_pokes`, which
+  `remote.rs` uses to preserve the visible turn
 
-### `crates/kcode-tui/src/tui/app.rs`
+Then delete the classifier, `auto_poke_display_summary`, and every
+`PRE_*`/`LEGACY_*`/`LABELED_*` constant together with the retention note above
+them in `kcode-base/src/todo.rs`. This is where the fresh tests for the poke and
+the marker belong, because step 1 deleted the tests that covered the removed
+behavior.
 
-Delete the five gate-only fields: `todo_confidence_spike_challenged`,
-`todo_gate_digest_delivered`, `todo_completion_gate_attempts`,
-`last_todo_ownership_fingerprint`, `todo_final_response_requested`.
+### Step 3: shrink the `todo` schema to a display
 
-### Classifier users (step 2)
+`id`/`content`/`status`/`priority`/`group`, dropping `plan`, `goals`,
+`confidence` and `completion_confidence`: 1,086 always-on tokens to roughly 120.
 
-`crates/kcode-tui/src/tui/app/overnight_card.rs`,
-`crates/kcode-base/src/session/render.rs`.
+Surfaces:
 
-### `crates/kcode-app-core/src/tool/todo.rs` (2274, ratcheted)
-
-Delete `record_reframe_observations` and its gate imports, the
-`append_gate_observations` call, and the `update_todo_review_cycle` call.
-
-### `src/cli/commands.rs` (1515, ratcheted)
-
-Delete `run_command_auto_poke_enabled`, `run_command_auto_poke_max_turns`,
-`run_command_auto_poke_limit_reached`, `take_run_gate_digest`,
-`take_run_gate_digest_if_turn_ended`, `build_run_auto_poke_follow_up_from_todos`,
-`build_run_todo_validation_message`, and the two `*_with_auto_poke` loops. If
-headless poking is still wanted, reduce them to a plain poke loop with no gates
-(decision 5).
-
-### Keep, small edits (flag and plumbing only)
-
-`kcode-config-types/src/lib.rs`; `kcode-base/src/config/{default_file,
-display_summary,env_overrides}.rs`; `kcode-tui/src/tui/keybind.rs`,
-`tui/app/input_help.rs`, `tui/app/hotkey_feedback.rs`,
-`tui/app/commands_overnight.rs`, `tui/app/remote*`, `tui/app/turn_notify.rs`,
-`tui/app/model_context.rs`, `tui/app/observe.rs`, `tui/app/tui_lifecycle.rs`.
-
-### Tests deleted with the tier, not fixed
-
-`src/cli/commands_tests.rs`; `tui/app/tests/state_model_poke_03.rs`,
-`tui/app/tests/remote_events_reload_01/02/04/05`,
-`tui/app/tests/remote_startup_input_01/02`,
-`tui/app/tests/scroll_copy_01/part_02`, `tui/app/tests/support/part_01.rs`;
-`tui/app/commands_tests.rs`; `tui/ui_messages/tests.rs`;
-`kcode-base/src/session_tests/cases.rs`; inline `#[cfg(test)]` modules in
-`kcode-base/src/todo.rs`, `tui/app/input.rs`, `app-core/tool/todo.rs`, and
-`config_tests.rs`.
-
-### Ratchet
-
-Three ratcheted files shrink: `kcode-base/src/todo.rs` (2085),
-`kcode-app-core/src/tool/todo.rs` (2274), and `src/cli/commands.rs` (1515). A
-ratchet fails on an unrecorded improvement, so the pass ends with
-`scripts/check_guardrails.sh --fix` to rebaseline. That is the "intentional
-cleanup" the policy names.
+- `crates/kcode-task-types/src/lib.rs`: `TodoGoal`, `TodoPlan` and their four
+  change types.
+- `kcode-base/src/todo.rs`: the pass predicates, the goals and plan storage, the
+  type re-export, and the score history helpers.
+- `tui/ui_messages.rs`: the score rendering and the predicates it calls.
+- The plan and goal threading in `todos_view.rs`, `helpers.rs`, the desktop card
+  payload, and `src/cli/commands.rs`.
+- The tool description gains decision 4's line; `internals/todo-calibration.md`
+  and its `kcode-docs` path go with the fields.
 
 ## Validation
 
-The result is judged against behavior, not vibes, and the tier is opt-in, so a
-before/after probe is cheap. Run one live probe per provider on a task that
-forces both a search and a verification, and record whether the model finished
-the work and reported a concrete check. If the probe shows the model stops
-verifying, the fallback is one line in the tool description or the system
-prompt: *"For each goal, name the check that proves it is done and report its
-actual result."* That is a replace-the-nudge option, not part of the plan until
-the probe asks for it.
-
-## Decisions open
-
-1. The severe-intent write-time interrupt: step 1 deletes it with the recorder.
-   Keep it as one exception, or let it go?
-2. The eight-dimension goal rubric: keep as model guidance, or drop?
-3. `completion_confidence`: after step 1 its only reader is the widget label.
-   Collapse it onto `confidence`?
-4. A when-to-write trigger for the model: nothing, or one line in the tool
-   description?
-5. Headless `kcode run`: keep a plain poke loop with no gates, or drop
-   auto-poke there too?
-6. A weak self-assessment: surface it to the user as a visible notice, or say
-   nothing at all?
+The before/after probe recipe for comparing verification and poke count across
+the rework lives in `dev/todo-rework-ab-probe.md`; this doc does not duplicate
+it.
 
 ## Decisions resolved (2026-09-30)
 
@@ -198,45 +159,3 @@ Two more decisions taken during the pass, both capacity cuts:
   config default" from "armed by `/poke on`" across the cycle boundary. With one
   poke there is no cycle, so armed is one bool, and `last_auto_poke_fingerprint`
   is the loop guard.
-
-## Step 1 landed (2026-09-30)
-
-Enforcement deleted, schema untouched, display untouched. `App` loses six
-fields, `kcode-base/src/todo.rs` drops from 2085 lines to 576 and out of the
-size budget, `app-core/tool/todo.rs` 2274 -> 1715, `src/cli/commands.rs`
-1515 -> 1281, and the TUI ladder's 248 lines become a 57-line function.
-
-What step 1 kept, deliberately:
-
-- The pure predicates the todo card still calls (`feedback_loop_*_passes`,
-  `intent_understanding_passes`, `required_*`). Deleting them now would force
-  the card to be rewritten in the same landing; step 3 removes the fields they
-  read and the predicates with them.
-- The message constants and the text classifier. `is_auto_poke_message` lists
-  every spelling so a transcript resumed from an older session renders those
-  continuations as system notices rather than as the user's own prompts. Step 2
-  replaces the matching with a marker on the queued item and deletes the group.
-- `AUTO_POKE_DECISION action=queue_continuation`, so the A/B count metric in
-  `dev/todo-rework-ab-probe.md` works on both sides.
-
-Corrections to this doc's touch inventory, found while making the change:
-
-- Headless has **three** poke loops, not two: `plain`, `capture`, and
-  `ndjson`. The last one also emitted gate-shaped JSON events; it now emits
-  `auto_poke` and `auto_poke_stopped` only. `scripts/kcode_harbor_agent.py`, the
-  only in-repo consumer of that stream, reads only `type == "done"`.
-- Step 3 also edits `crates/kcode-task-types/src/lib.rs` (the `Todo` types and
-  their re-export at `kcode-base/src/todo.rs:29`), which the inventory omitted.
-- `tui/ui_messages.rs` renders the goal scores through the same pass predicates
-  the gate used, so it is coupled to the gate and is a step-3 surface.
-- The enumerated test files could not all be deleted whole: `support/part_01.rs`
-  holds helpers every sibling test includes, and `ui_messages/tests.rs` and
-  `session_tests/cases.rs` still compile and still cover the kept display. What
-  was deleted is the tests that referenced removed symbols, per file.
-
-Runtime check, one isolated `kcode run` with auto-poke armed on a task that
-leaves two todos open: exactly one poke was sent, no second poke followed on the
-unchanged list, and the stored session contains none of the removed messages.
-The TUI suite is 1830 passed / 1 failed, the failure being
-`test_remote_fallback_provider_suggestions_normalize_bare_openai_openrouter_routes`,
-which fails identically at `4ef8c3e1` without this change.

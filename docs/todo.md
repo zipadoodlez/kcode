@@ -565,6 +565,9 @@ sampled causes; the Front line section owns driving them to zero.
   percentages are per file and were not re-derived by the §0 census, which found
   only 13 cross-file duplicated test names; re-measure before treating them as
   targets.
+  The todo step 1 (2026-09-30) shrank the first two of those files by deleting
+  the tests for the removed tier, so both need re-measuring before they are
+  ranked here again.
 - [ ] Move subsystem code out of test files: `smoothness_benchmark.rs` (313)
   remains under `app/tests/`. The old `live_tests.rs` / `provider_e2e.rs` rows
   are stale: both already live under `kcode-provider-doctor/src/`.
@@ -643,10 +646,11 @@ Independent, no dependency on the phases above.
   version-matched docs (`kcode_docs`), echoed in the tool's own error when a
   call is wrong. The `todo` calibration rubric now lives in
   `docs/internals/todo-calibration.md` (retrievable via `kcode_docs`), so the
-  always-on schema keeps only short summaries; the gate messages stay
-  category-only, since they have their own token budget. The same shape applies
-  to the remaining essays. Control shape to consider: one aggregate schema-token
-  budget instead of two per-item caps plus the `swarm` exemption.
+  always-on schema keeps only short summaries. The gate messages that had their
+  own token budget are gone with the enforcement tier (todo step 1). The same
+  shape applies to the remaining essays. Control shape to consider: one
+  aggregate schema-token budget instead of two per-item caps plus the `swarm`
+  exemption.
 
 ## Committed ideas (no plan yet)
 

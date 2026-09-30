@@ -29,15 +29,16 @@ Only the first part is required, but the order holds.
    unfinished." beats "Auto-poke: 5 incomplete todos."
 6. **Warnings explain the consequence, then what to do.** "We stopped poking
    because it wasn't making progress. Review the remaining todos." Not "Gate
-   exhausted after N attempts."
+   exhausted after N attempts" or `AUTO_POKE_DECISION action=idle
+   reason=gate_budget_exhausted`. Log lines keep the internal names.
 
 ## Examples
 
 | before | after |
 |---|---|
 | `👉 Auto-poking: 5 incomplete todos. /poke off to stop.` | `👉 5 incomplete todos. We poked it for you. /poke off to stop.` |
-| `Auto-poking: todos complete; sending confidence summary follow-up.` | `Todos are done. Asking the agent for a final confidence check.` |
-| `⚠️ Todo completion gate: validation still failing after repeated nudges. Auto-poke stopped; review the remaining todos manually.` | `⚠️ We poked the agent several times but it stopped making progress. Giving up; review the remaining todos yourself.` |
+| `Auto-poke halted: provider guardrail stop x3, circuit breaker open.` | `🛑 The provider refused 3 turns in a row, so we stopped poking. The same request will keep getting refused. Rephrase or narrow the task, then /poke to resume.` |
+| `Overnight auto-poke: stalled_turns=4 >= limit 4; review_path=…` | `🛑 Overnight auto-poke stopped after 4 consecutive no-progress turns. Review <path> before continuing manually.` |
 
 ## Out of scope
 
