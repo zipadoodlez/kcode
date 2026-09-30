@@ -28,7 +28,9 @@ A run continues while a row in its scope is ready, and ends when none is. It yie
 when only a person can unblock it, and a row assigned to a person with rows blocked
 by it is what we call a decision. A run with no instruction proposes a scope, names
 the rows, and stops at that boundary. A bound on a run is a run property, never a
-row field, and the default is none because the scope is what stops it.
+row field, and the default is none. The scope stops the run, but only because a row
+worked once in a run is not picked again there: a row left open and unblocked ends
+that run instead of spinning on it.
 
 Continuing on its own is a permission, not a consequence of holding rows. Holding a
 row says who owes the work, not that the run may take another turn. The default is
@@ -123,23 +125,39 @@ Every step lands whole, proven by the gate and, where behavior moves, one
   provide the idle guard and the externally started turn. Trigger: the
   turn-terminal path, so the loop is the session's own turns. Prove: a session
   holding a ready row is continued, one holding a blocked row is not, one holding
-  nothing is not. Landed: the loop and its pick are in, off unless
+  nothing is not, and a row it already worked in this run is not picked again.
+  Landed: the loop and its pick are in, off unless
   `features.auto_poke` is on and only for attended sessions, because a member is
   driven by its plan until rows seed a run. The proof left is the loop end to end
-  rather than the pick alone.
+  rather than the pick alone. Owed, and the first is the dangerous one: the pick
+  repeats a row the run already worked, because only a close removes a row, so an
+  unclosed row spins the loop forever; the run bound above is what stops it. Read
+  against rule 11: the config flag is a stand-in for the permission, and
+  `may_continue_on_its_own` fuses the permission with having a human and is read at
+  two sites (`live_turn.rs:158`, `:280`) where the model names one. The user's
+  words cannot yet grant it for one run, a headless member is excluded where rule 11
+  says it holds the permission inherently, and "typing always wins" cannot hold
+  while the loop holds the agent's `OwnedMutexGuard` across every turn
+  (`live_turn.rs:187-285`), so a user's message waits for the whole run instead of
+  stopping it.
 - [ ] **0.2. Delete the client poke**, which this replaces. With the server
   continuing a session that holds ready rows, the TUI's auto-poke machine goes:
   `auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`, `total_pokes_sent`,
   `morning_report_poked`, `final_wrap_poked`, `overnight_auto_poke`, its keybinding
   toggle, its overlay line, its tests, and `build_auto_poke_message` in the store
-  crate. The toggle defaults off today, so nothing is lost. The command-line
+  crate. The toggle defaults off today, so nothing is lost. Two cuts in that list
+  are not free: `overnight_auto_poke` is the overnight run's own continuation, which
+  `/overnight` starts, so the cut has to say what drives an overnight run once the
+  server loop is the only continuation; and `build_auto_poke_message` is still
+  called by the command-line paths this step defers
+  (`src/cli/commands.rs:719`), so it goes with them, not here. The command-line
   variant (`src/cli/commands.rs`, the `_with_auto_poke` run paths and
   `run_command_auto_poke_max_turns`) waits for 0.3, because a plan-driven member
   must not be driven twice, and a headless run has no plan until rows seed one.
-- [ ] **0.3. Rows are the run's seed source** (this is C1). `kind` rides on the
-  row, the node id is the row id, `blocked_by` becomes `depends_on`, position is
-  priority, and gates get engine names. Testable against a scratch repo, so it
-  needs no migration.
+- [ ] **0.3. Rows are the run's seed source.** `kind` rides on the row, the node id
+  is the row id, the file's `blocked_by` is the node's dependency edge (rules 6 and
+  7 name it; there is no rename), position is priority, and gates get engine names.
+  Testable against a scratch repo, so it needs no migration.
 - [ ] **(decide)** what a running run shows in the file while a node is in
   flight, and what a stalled node shows. The row's `note` is the durable half of
   `SwarmTaskProgress.last_detail`; one of the two has to win.
@@ -149,15 +167,31 @@ Every step lands whole, proven by the gate and, where behavior moves, one
   Either the live graph is the gate's input and the persisted plan carries those
   nodes until the run closes, which is two durable stores while a run runs, or
   the gate reads something else.
-- [ ] **0.4. The cuts the run makes redundant** (this is C2, plus the mode
-  residue): the wire node spec and its kind parse and default, the `coordinators`
-  map, any stored swarm id, the 31 `SwarmState { .. }` rebuild sites, and the
-  `Synthesize` kind that no production code can reach. The deep/light flag comes
-  too, once we know what still keys on it: `Mode::is_deep` has no production
-  caller and gates are inserted unconditionally, while `internals/swarm.md`
-  describes deep as a preset with real differences, so the flag is either residue
-  or the doc is stale. The `session_effort` side-table, whose only stated job is
-  to default that flag, goes with it.
+- [ ] **(decide)** the `kind` vocabulary and its engine mapping. A row's `kind`
+  decides its artifact and its gate (rule 8), and `TaskItem` has no `kind` field
+  today, so 0.3 cannot land without it: the values, whether they are `kcode-plan`'s
+  `NodeKind` by name as "gates get engine names" suggests, and what a gate's row
+  says when gates are the one node with no row.
+- [ ] **(decide)** whether a session with a human is *given* a ready row as a
+  server-started turn, which is 0.1's landed shape and shows up as a synthetic user
+  message, or *offered* it at a turn boundary to claim when it picks it up, which is
+  what the model says. They are not one mechanism, and only the offer answers
+  "typing always wins".
+- [ ] **(decide)** how a row names a person. `assigned_to` holds a session id and
+  the tool defaults it to the writer's session, so no reader can tell a live holder
+  from a human the run must yield on, which is the model's "decision".
+- [ ] **0.4. The cuts the run makes redundant**: the wire node spec and its kind
+  parse and default, the `coordinators` map, any stored swarm id, the 31
+  `SwarmState { .. }` rebuild sites, and the `Synthesize` kind, reachable only
+  through the wire kind parse this step deletes. The deep/light flag is not residue,
+  as `internals/swarm.md` says: there is no `Mode::is_deep`, and `requires_gates`
+  guards gate insertion (`kcode-plan/src/dag/ops.rs:67`, `:308`), gate-pass
+  validation (`:401`) and artifact validation (`:709`), while
+  `parse_mode(..) == Mode::Deep` gates deep-participant graph driving
+  (`server/comm_control.rs:2625`). It goes only once the row model owns gates and
+  the recursion rule, which is `session_effort`'s second job:
+  `server/comm_session.rs:1332` reads the root's effort to allow recursive
+  spawning, so that rule needs a home before the side-table goes.
 
 ### B. The file is the list
 

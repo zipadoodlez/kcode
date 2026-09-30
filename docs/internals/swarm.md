@@ -15,9 +15,11 @@ exist; the plan does not seed from it yet.
 
 ## Two modes: deep and light
 
-Whether this axis still does anything is open. `Mode::is_deep` has no production
-caller and gates are inserted unconditionally, so either it is residue or this
-description is stale. See step 0.4 in `plans/work-list.md`.
+Whether this axis survives is open, but it does work today: `Mode::requires_gates`
+gates gate insertion, gate-pass validation and artifact validation in
+`kcode-plan/src/dag/ops.rs`, and the plan's mode gates whether a non-root member
+may drive its own task graph (`server/comm_control.rs`). See step 0.4 in
+`plans/work-list.md`.
 
 One engine, two presets. Both use the same DAG data model and scheduler; only the
 rigor machinery and the member cap differ.
