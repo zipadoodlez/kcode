@@ -14,8 +14,8 @@ profiles in [providers.md](providers.md), credentials in [auth.md](auth.md),
 
 ## Environment variables
 
-Every setting that has an environment variable is named `KCODE_*`. There is no
-`KCODE_*` spelling.
+Every setting that has an environment variable is named `KCODE_*`. The legacy
+`JCODE_*` spelling is not read; see `dev/post-change.md` under Names.
 
 The three that matter most:
 

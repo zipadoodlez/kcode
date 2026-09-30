@@ -1,6 +1,8 @@
 # Browser Provider Protocol
 
-Status: draft
+Status: draft. A design for work not yet built, tracked by `todo.md`
+(section "Spec (not a checklist)"). Not part of the bundled `kcode_docs`
+corpus, so it is never served as a description of the tree.
 Owner: kcode
 Audience: kcode core, browser bridge authors, adapter authors
 

@@ -7,6 +7,7 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 - `user/` - how to use kcode: install, commands, configuration, providers.
 - `internals/` - how kcode works: architecture, subsystems, protocols.
 - `dev/` - contributor process: testing, benchmarking, dependency hygiene.
+- `plans/` - designs for work not yet built. Not part of the bundled corpus.
 - `todo.md` - outstanding work: the checklist, with each item's design inline.
 
 ## Conventions
@@ -17,8 +18,10 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
   the code disagree, the doc is wrong.
 - **`todo.md` is the one home for outstanding work.** The checklist item and its
   design live in the same entry, so finishing something is one edit in one file.
-  There is no separate plans directory; superseded items are deleted, not
-  archived: git has the history.
+  Superseded items are deleted, not archived: git has the history. A design too
+  large to inline there - a full protocol or interface spec for something not
+  yet built - goes in `plans/`, which `build.rs` keeps out of the bundled
+  `kcode_docs` corpus so the model never reads it as a description of the tree.
 - **Prefer one good doc over three thin ones.** If two docs would share a
   header structure, they are one doc.
 - **No marketing.** State what a thing does and what it costs.

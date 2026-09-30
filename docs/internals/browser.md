@@ -72,4 +72,4 @@ not live evidence.
 
 The multi-backend *provider* protocol (Firefox Agent Bridge, CDP, WebDriver,
 Safari adapters) is a design, not implemented here; see
-[browser-provider-protocol.md](browser-provider-protocol.md).
+[plans/browser-provider-protocol.md](../plans/browser-provider-protocol.md).

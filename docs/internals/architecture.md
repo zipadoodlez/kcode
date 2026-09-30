@@ -17,8 +17,8 @@ Socket and state locations:
 
 | path | what |
 |---|---|
-| `<runtime_dir>/kcode/kcode.sock` | main client socket |
-| `<runtime_dir>/kcode/` | also holds the debug socket |
+| `<runtime_dir>/kcode.sock` | main client socket, or `KCODE_SOCKET` |
+| `<runtime_dir>/kcode-debug.sock` | debug socket |
 | `~/.kcode/servers.json` | server registry |
 
 `runtime_dir` is `KCODE_RUNTIME_DIR` if set, else `XDG_RUNTIME_DIR` (Linux,

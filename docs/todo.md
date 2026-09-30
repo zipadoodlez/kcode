@@ -672,6 +672,8 @@ Independent, no dependency on the phases above.
 
 ## Spec (not a checklist)
 
-`internals/browser-provider-protocol.md`: draft spec, no implementation. Tighten
-the core method set and the normalized `page.snapshot` format before building an
-adapter.
+`plans/browser-provider-protocol.md`: draft spec, no implementation, and now
+under `plans/` so the bundled `kcode_docs` corpus (`build.rs` skips `plans/` and
+`proposals/`) no longer serves it to the model as a description of the tree.
+Tighten the core method set and the normalized `page.snapshot` format before
+building an adapter.

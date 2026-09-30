@@ -1,7 +1,7 @@
 # TUI
 
 The terminal UI. This covers input and the session picker; color roles live in
-`internals/rendering.md` and desktop panels in `internals/panels.md`.
+`internals/rendering.md` and desktop panels in `internals/architecture.m
 
 ## Multi-line input
 
