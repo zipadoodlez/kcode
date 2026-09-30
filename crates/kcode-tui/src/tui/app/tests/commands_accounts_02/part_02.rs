@@ -129,7 +129,7 @@ fn test_refactor_plan_command_is_plan_only_and_accepts_focus() {
 fn test_refactor_status_summarizes_current_todos() {
     with_temp_kcode_home(|| {
         let mut app = create_test_app();
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[
                 crate::todo::TaskItem {
@@ -173,7 +173,7 @@ fn test_refactor_resume_uses_saved_mode_and_current_todos() {
         let mut app = create_test_app();
         app.session.improve_mode = Some(crate::session::SessionImproveMode::RefactorRun);
         app.session.save().expect("save session");
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[crate::todo::TaskItem {
                 id: "resume1".to_string(),

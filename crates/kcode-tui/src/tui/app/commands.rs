@@ -2161,7 +2161,11 @@ pub(super) fn active_session_id(app: &App) -> String {
 }
 
 pub(super) fn poke_todos(app: &App) -> Vec<crate::todo::TaskItem> {
-    crate::todo::load_todos(&active_session_id(app)).unwrap_or_default()
+    crate::todo::load_tasks(
+        app.session.working_dir.as_deref().map(std::path::Path::new),
+        &active_session_id(app),
+    )
+    .unwrap_or_default()
 }
 
 pub(super) fn is_incomplete_poke_todo(todo: &crate::todo::TaskItem) -> bool {

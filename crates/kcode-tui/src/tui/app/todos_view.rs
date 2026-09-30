@@ -99,7 +99,13 @@ impl App {
             return;
         }
         let session_id = self.active_client_session_id().map(str::to_string);
-        let todos = load_current_session_todos(session_id.as_deref());
+        let todos = load_current_session_todos(
+            self.session
+                .working_dir
+                .as_deref()
+                .map(std::path::Path::new),
+            session_id.as_deref(),
+        );
         let content = todo_card_payload_json(&todos);
         self.todos_view.card_rendered_hash = hash_todos_payload(session_id.as_deref(), &todos);
 
@@ -124,7 +130,13 @@ impl App {
             return false;
         };
         let session_id = self.active_client_session_id().map(str::to_string);
-        let todos = load_current_session_todos(session_id.as_deref());
+        let todos = load_current_session_todos(
+            self.session
+                .working_dir
+                .as_deref()
+                .map(std::path::Path::new),
+            session_id.as_deref(),
+        );
         let next_hash = hash_todos_payload(session_id.as_deref(), &todos);
         if next_hash == self.todos_view.card_rendered_hash {
             return false;
@@ -157,7 +169,13 @@ impl App {
         }
         self.todos_view.pinned_checked_at = Some(Instant::now());
         let session_id = self.active_client_session_id().map(str::to_string);
-        let todos = load_current_session_todos(session_id.as_deref());
+        let todos = load_current_session_todos(
+            self.session
+                .working_dir
+                .as_deref()
+                .map(std::path::Path::new),
+            session_id.as_deref(),
+        );
         if todos.is_empty() {
             if self.todos_view.pinned_payload.is_some() {
                 self.todos_view.pinned_payload = None;
@@ -227,7 +245,13 @@ impl App {
             return false;
         }
         let session_id = self.active_client_session_id();
-        let todos = load_current_session_todos(session_id);
+        let todos = load_current_session_todos(
+            self.session
+                .working_dir
+                .as_deref()
+                .map(std::path::Path::new),
+            session_id,
+        );
         let next_hash = hash_todos_payload(session_id, &todos);
         if !force && self.todos_view.rendered_hash == next_hash {
             return false;
@@ -346,11 +370,14 @@ pub(super) fn handle_todos_view_command(app: &mut App, trimmed: &str) -> bool {
     true
 }
 
-fn load_current_session_todos(session_id: Option<&str>) -> Vec<TaskItem> {
+fn load_current_session_todos(
+    working_dir: Option<&std::path::Path>,
+    session_id: Option<&str>,
+) -> Vec<TaskItem> {
     let Some(session_id) = session_id else {
         return Vec::new();
     };
-    crate::todo::load_todos(session_id).unwrap_or_default()
+    crate::todo::load_tasks(working_dir, session_id).unwrap_or_default()
 }
 
 fn todo_card_payload_json(todos: &[TaskItem]) -> String {

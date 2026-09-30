@@ -786,7 +786,7 @@ fn test_context_command_reports_session_context_snapshot() {
                 updated_at_ms: 0,
             }],
         };
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[crate::todo::TaskItem {
                 id: "one".to_string(),

@@ -288,7 +288,7 @@ fn test_repeated_guardrail_refusals_stop_auto_poke_loop() {
         app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
         app.auto_poke_incomplete_todos = true;
 
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),
@@ -377,7 +377,7 @@ fn auto_poke_does_not_repeat_until_incomplete_todos_change() {
             ..Default::default()
         };
 
-        crate::todo::save_todos(&app.session.id, &[pending("Wait for worker")]).expect("save");
+        crate::todo::save_tasks(None, &app.session.id, &[pending("Wait for worker")]).expect("save");
         assert!(app.schedule_auto_poke_followup_if_needed());
         assert!(
             super::commands::is_queued_system_message(&app.queued_messages[0]),
@@ -392,7 +392,7 @@ fn auto_poke_does_not_repeat_until_incomplete_todos_change() {
             "an unchanged list must not consume another model turn"
         );
 
-        crate::todo::save_todos(&app.session.id, &[pending("Review worker result")])
+        crate::todo::save_tasks(None, &app.session.id, &[pending("Review worker result")])
             .expect("update");
         assert!(
             app.schedule_auto_poke_followup_if_needed(),
@@ -401,9 +401,9 @@ fn auto_poke_does_not_repeat_until_incomplete_todos_change() {
 
         app.queued_messages.clear();
         app.pending_queued_dispatch = false;
-        crate::todo::save_todos(&app.session.id, &[]).expect("finish cycle");
+        crate::todo::save_tasks(None, &app.session.id, &[]).expect("finish cycle");
         assert!(!app.schedule_auto_poke_followup_if_needed());
-        crate::todo::save_todos(&app.session.id, &[pending("Review worker result")])
+        crate::todo::save_tasks(None, &app.session.id, &[pending("Review worker result")])
             .expect("start equivalent new cycle");
         assert!(
             app.schedule_auto_poke_followup_if_needed(),

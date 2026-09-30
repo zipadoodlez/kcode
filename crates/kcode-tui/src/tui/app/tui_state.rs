@@ -1242,7 +1242,13 @@ impl crate::tui::TuiState for App {
         } else if todos_are_swarm_plan {
             crate::tui::info_widget::swarm_plan_todos(&self.swarm.plan_items)
         } else {
-            gather_todos_for_session(session_id)
+            gather_todos_for_session(
+                self.session
+                    .working_dir
+                    .as_deref()
+                    .map(std::path::Path::new),
+                session_id,
+            )
         };
 
         let context_snapshot = self.context_snapshot();

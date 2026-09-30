@@ -69,7 +69,15 @@ impl App {
 
         let todos = self
             .active_client_session_id()
-            .map(load_session_todos)
+            .map(|id| {
+                load_session_todos(
+                    self.session
+                        .working_dir
+                        .as_deref()
+                        .map(std::path::Path::new),
+                    id,
+                )
+            })
             .unwrap_or_default();
         let threshold = if todos.is_empty() {
             cfg.turn_complete_min_secs
@@ -213,8 +221,8 @@ fn iterm_notification_sequence(notification: &TurnNotification) -> String {
     format!("\x1b]9;{text}\x07")
 }
 
-fn load_session_todos(session_id: &str) -> Vec<TaskItem> {
-    crate::todo::load_todos(session_id).unwrap_or_default()
+fn load_session_todos(working_dir: Option<&std::path::Path>, session_id: &str) -> Vec<TaskItem> {
+    crate::todo::load_tasks(working_dir, session_id).unwrap_or_default()
 }
 
 /// Build the compact notification. Kept free of `App` for testability.

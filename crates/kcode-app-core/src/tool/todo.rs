@@ -1,6 +1,6 @@
 use super::{Tool, ToolContext, ToolOutput};
 use crate::bus::{Bus, BusEvent, TodoEvent};
-use crate::todo::{TaskItem, load_todos, save_todos};
+use crate::todo::{TaskItem, load_tasks, save_tasks};
 use anyhow::{Result, bail};
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -152,14 +152,17 @@ impl Tool for TodoTool {
         let is_write = params.todos.is_some();
         let operation = if is_write { "write" } else { "read" };
         let result = match params.todos {
-            Some(todos) => save_todos(&ctx.session_id, &todos).and_then(|()| {
-                Bus::global().publish(BusEvent::TodoUpdated(TodoEvent {
-                    session_id: ctx.session_id.clone(),
-                    todos: todos.clone(),
-                }));
-                build_todo_output(todos)
-            }),
-            None => load_todos(&ctx.session_id).and_then(build_todo_output),
+            Some(todos) => save_tasks(ctx.working_dir.as_deref(), &ctx.session_id, &todos)
+                .and_then(|()| {
+                    Bus::global().publish(BusEvent::TodoUpdated(TodoEvent {
+                        session_id: ctx.session_id.clone(),
+                        todos: todos.clone(),
+                    }));
+                    build_todo_output(todos)
+                }),
+            None => {
+                load_tasks(ctx.working_dir.as_deref(), &ctx.session_id).and_then(build_todo_output)
+            }
         };
         result.map_err(|err| {
             crate::logging::warn(&format!(
@@ -341,7 +344,7 @@ mod tests {
             .await
             .expect("a write carrying retired fields must still succeed");
 
-        let stored = load_todos(session).expect("todos");
+        let stored = load_tasks(None, session).expect("todos");
         assert_eq!(stored.len(), 1);
         assert_eq!(stored[0].status, "pending");
 

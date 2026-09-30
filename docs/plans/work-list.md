@@ -84,16 +84,16 @@ Every step lands whole, proven by the gate and, where behavior moves, one
 
 ### B. The file is the list
 
-- [ ] **B1.** The `todo` tool reads and writes `tasks.jsonl`, and its action set
-  becomes add, claim, close: close requires a nonempty result and removes the row
-  (rules 3 to 5), so `status` loses its writer and the poke counts open rows. This
-  repo's `docs/todo.md` becomes the file's first content, its standing decisions
-  move to `docs/what-was-removed.md`, and the old per-session JSON is deleted with
-  no import. `/todos` and the widget render from the file, and the twelve
-  `docs/todo.md` references move with it.
-- [ ] **B2.** Drop `group` and `status` from the type. B1 gives `parent`, which
-  is what `group` was grouping by, and the close action is what makes a
-  completed row unrepresentable rather than stored.
+- [ ] **B1.** The `todo` tool's action set becomes add, claim, close: close
+  requires a nonempty result and removes the row (rules 3 to 5), so `status`
+  loses its writer and the poke counts open rows.
+- [ ] **B2.** This repo's own list migrates: `docs/todo.md` becomes the first
+  content of `tasks.jsonl`, its standing decisions move to
+  `docs/what-was-removed.md`, and the twelve references follow.
+- [ ] **B3.** Drop `group` and `status` from the type, once the file's `parent`
+  field and the close action exist: `parent` is what `group` was grouping by, and
+  the close action is what makes a completed row unrepresentable rather than
+  stored.
 
 ### C. The swarm reads and writes the file
 
@@ -116,6 +116,11 @@ Every step lands whole, proven by the gate and, where behavior moves, one
   plan's own per-item state. They are the scheduler's inputs (assignment
   affinity matches them against a worker's metadata), not list fields, and
   `SwarmPlanItemSpec` already carries them on the plan side.
+
+- [ ] **C5.** The client renders the list from server events instead of reading
+  the file itself. Today it resolves the repo from its own working directory,
+  which is the same thing for a local session and the wrong repo for a remote
+  attach.
 
 Gated by B.
 

@@ -2160,7 +2160,11 @@ async fn handle_remote_key_internal(
                                 .remote_session_id
                                 .clone()
                                 .unwrap_or_else(|| app.session.id.clone());
-                            let todos = crate::todo::load_todos(&session_id).unwrap_or_default();
+                            let todos = crate::todo::load_tasks(
+                                app.session.working_dir.as_deref().map(std::path::Path::new),
+                                &session_id,
+                            )
+                            .unwrap_or_default();
                             let incomplete: Vec<_> = todos
                                 .iter()
                                 .filter(|todo| {
@@ -2228,7 +2232,11 @@ async fn handle_remote_key_internal(
                                 .remote_session_id
                                 .clone()
                                 .unwrap_or_else(|| app.session.id.clone());
-                            let todos = crate::todo::load_todos(&session_id).unwrap_or_default();
+                            let todos = crate::todo::load_tasks(
+                                app.session.working_dir.as_deref().map(std::path::Path::new),
+                                &session_id,
+                            )
+                            .unwrap_or_default();
                             let has_incomplete = todos.iter().any(|todo| {
                                 todo.status != "completed" && todo.status != "cancelled"
                             });
@@ -2342,7 +2350,11 @@ async fn handle_remote_key_internal(
                                 .remote_session_id
                                 .clone()
                                 .unwrap_or_else(|| app.session.id.clone());
-                            let todos = crate::todo::load_todos(&session_id).unwrap_or_default();
+                            let todos = crate::todo::load_tasks(
+                                app.session.working_dir.as_deref().map(std::path::Path::new),
+                                &session_id,
+                            )
+                            .unwrap_or_default();
                             let incomplete: Vec<_> = todos
                                 .iter()
                                 .filter(|todo| {
@@ -2410,7 +2422,11 @@ async fn handle_remote_key_internal(
                                 .remote_session_id
                                 .clone()
                                 .unwrap_or_else(|| app.session.id.clone());
-                            let todos = crate::todo::load_todos(&session_id).unwrap_or_default();
+                            let todos = crate::todo::load_tasks(
+                                app.session.working_dir.as_deref().map(std::path::Path::new),
+                                &session_id,
+                            )
+                            .unwrap_or_default();
                             let has_incomplete = todos.iter().any(|todo| {
                                 todo.status != "completed" && todo.status != "cancelled"
                             });

@@ -850,6 +850,9 @@ impl App {
     pub fn new_for_test_harness(provider: Arc<dyn Provider>, registry: Registry) -> Self {
         let mut app = Self::new(provider, registry);
         app.set_runtime_mode(AppRuntimeMode::TestHarness);
+        // No working directory, so the work list resolves to the session-scoped
+        // file under KCODE_HOME instead of whatever repo `cargo test` runs in.
+        app.session.working_dir = None;
         app
     }
 

@@ -13,7 +13,7 @@ fn test_finish_turn_without_followup_clears_visible_turn_started() {
 fn test_finish_turn_does_not_duplicate_existing_poke_followup() {
     with_temp_kcode_home(|| {
         let mut app = create_test_app();
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),

@@ -6,7 +6,7 @@ fn test_remote_poke_queues_when_turn_is_in_progress() {
         let _guard = rt.enter();
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),
@@ -43,7 +43,7 @@ fn test_remote_poke_queues_when_turn_is_in_progress() {
                 .contains("Poke queued. We'll re-check for unfinished todos after this turn")
         }));
 
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[
                 crate::todo::TaskItem {
@@ -137,7 +137,7 @@ fn test_remote_interrupted_auto_poke_requeues_after_deferred_poke() {
         let _guard = rt.enter();
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),

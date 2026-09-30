@@ -79,7 +79,7 @@ fn test_remote_auto_poke_followup_preserves_visible_timer_and_stays_hidden() {
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
         remote.mark_history_loaded();
 
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),
@@ -128,7 +128,7 @@ fn test_remote_poke_status_and_off_update_state() {
         let _guard = rt.enter();
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),

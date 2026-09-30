@@ -87,7 +87,7 @@ fn refresh_todo_card_updates_content_when_todos_change() {
         ..Default::default()
     };
 
-    crate::todo::save_todos(&session_id, &[todo("write the card", "pending")]).unwrap();
+    crate::todo::save_tasks(None, &session_id, &[todo("write the card", "pending")]).unwrap();
     app.toggle_todo_card();
     let card = app
         .transcript
@@ -100,7 +100,7 @@ fn refresh_todo_card_updates_content_when_todos_change() {
     // Unchanged todos: refresh is a no-op.
     assert!(!app.refresh_todo_card_if_needed());
 
-    crate::todo::save_todos(&session_id, &[todo("write the card", "completed")]).unwrap();
+    crate::todo::save_tasks(None, &session_id, &[todo("write the card", "completed")]).unwrap();
     assert!(app.refresh_todo_card_if_needed());
     let card = app
         .transcript
@@ -111,7 +111,7 @@ fn refresh_todo_card_updates_content_when_todos_change() {
     assert!(card.content.contains("completed"));
 
     // Cleanup the persisted todo file for this throwaway session.
-    let _ = crate::todo::save_todos(&session_id, &[]);
+    let _ = crate::todo::save_tasks(None, &session_id, &[]);
 }
 
 /// Simple todo used by the pinned-band tests.
@@ -161,13 +161,13 @@ fn pinned_todos_payload_stays_empty_when_config_off() {
     let _pin_guard = PinTodosEnvGuard::disable();
     let mut app = create_test_app();
     let session_id = app.session.id.clone();
-    crate::todo::save_todos(&session_id, &[pinned_band_todo("t1", "pin me", "pending")]).unwrap();
+    crate::todo::save_tasks(None, &session_id, &[pinned_band_todo("t1", "pin me", "pending")]).unwrap();
 
     // display.pin_todos defaults to false: no payload, no redraw churn.
     assert!(!app.refresh_pinned_todos_if_needed());
     assert!(app.todos_view.pinned_payload_ref().is_none());
 
-    let _ = crate::todo::save_todos(&session_id, &[]);
+    let _ = crate::todo::save_tasks(None, &session_id, &[]);
 }
 
 #[test]
@@ -181,7 +181,7 @@ fn pinned_todos_payload_refreshes_and_clears_with_config_and_todos() {
     app.refresh_pinned_todos_now();
     assert!(app.todos_view.pinned_payload_ref().is_none());
 
-    crate::todo::save_todos(&session_id, &[pinned_band_todo("t1", "pin me", "pending")]).unwrap();
+    crate::todo::save_tasks(None, &session_id, &[pinned_band_todo("t1", "pin me", "pending")]).unwrap();
     app.refresh_pinned_todos_now();
     let payload = app
         .todos_view
@@ -193,7 +193,7 @@ fn pinned_todos_payload_refreshes_and_clears_with_config_and_todos() {
     assert!(!app.refresh_pinned_todos_if_needed());
 
     // Todos cleared: payload clears too.
-    crate::todo::save_todos(&session_id, &[]).unwrap();
+    crate::todo::save_tasks(None, &session_id, &[]).unwrap();
     app.refresh_pinned_todos_now();
     assert!(app.todos_view.pinned_payload_ref().is_none());
 }
@@ -204,7 +204,7 @@ fn pinned_todos_are_omitted_from_info_widgets() {
     let _pin = PinTodosEnvGuard::enable();
     let app = create_test_app();
     let session_id = app.session.id.clone();
-    crate::todo::save_todos(
+    crate::todo::save_tasks(None, 
         &session_id,
         &[pinned_band_todo("t1", "only in pinned band", "pending")],
     )
@@ -214,7 +214,7 @@ fn pinned_todos_are_omitted_from_info_widgets() {
     assert!(info.todos.is_empty());
     assert!(!info.has_data_for(crate::tui::info_widget::WidgetKind::Todos));
 
-    crate::todo::save_todos(&session_id, &[]).unwrap();
+    crate::todo::save_tasks(None, &session_id, &[]).unwrap();
 }
 
 #[test]
@@ -223,7 +223,7 @@ fn pinned_todos_hide_todo_tool_messages_from_the_transcript() {
     let _pin = PinTodosEnvGuard::enable();
     let mut app = create_test_app();
     let session_id = app.session.id.clone();
-    crate::todo::save_todos(
+    crate::todo::save_tasks(None, 
         &session_id,
         &[pinned_band_todo("pinned", "PINNED_ONLY", "in_progress")],
     )
@@ -258,7 +258,7 @@ fn pinned_todos_hide_todo_tool_messages_from_the_transcript() {
     let transcript = render_and_snap(&app, &mut terminal);
     assert!(!transcript.contains("duplicate todo transcript card"));
     assert!(transcript.contains("PINNED_ONLY"), "{transcript}");
-    let _ = crate::todo::save_todos(&session_id, &[]);
+    let _ = crate::todo::save_tasks(None, &session_id, &[]);
 }
 
 #[test]
@@ -268,7 +268,7 @@ fn pinned_todo_band_renders_below_sticky_prompt_without_separator() {
     let _pin = PinTodosEnvGuard::enable();
     let mut app = create_test_app();
     let session_id = app.session.id.clone();
-    crate::todo::save_todos(
+    crate::todo::save_tasks(None, 
         &session_id,
         &[pinned_band_todo("t1", "pinned band item", "in_progress")],
     )
@@ -336,7 +336,7 @@ fn pinned_todo_band_renders_below_sticky_prompt_without_separator() {
         text
     );
 
-    let _ = crate::todo::save_todos(&session_id, &[]);
+    let _ = crate::todo::save_tasks(None, &session_id, &[]);
 }
 
 #[test]

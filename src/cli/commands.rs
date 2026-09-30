@@ -674,8 +674,11 @@ enum HeadlessPoke {
     BudgetExhausted { count: usize, max_turns: usize },
 }
 
-fn run_todos(session_id: &str) -> Vec<crate::todo::TaskItem> {
-    crate::todo::load_todos(session_id).unwrap_or_default()
+fn run_todos(
+    working_dir: Option<&std::path::Path>,
+    session_id: &str,
+) -> Vec<crate::todo::TaskItem> {
+    crate::todo::load_tasks(working_dir, session_id).unwrap_or_default()
 }
 
 /// The open todos that justify a poke.
@@ -699,6 +702,7 @@ fn incomplete_poke_todos(todos: Vec<crate::todo::TaskItem>) -> Vec<crate::todo::
 /// message) are gone, so it enforces nothing. `last_poke` is the loop guard,
 /// matching the TUI: an unchanged list is never poked twice.
 fn next_headless_poke(
+    working_dir: Option<&std::path::Path>,
     session_id: &str,
     last_poke: &mut Option<String>,
     turns_completed: usize,
@@ -707,7 +711,7 @@ fn next_headless_poke(
     if !run_command_auto_poke_enabled() {
         return None;
     }
-    let incomplete = incomplete_poke_todos(run_todos(session_id));
+    let incomplete = incomplete_poke_todos(run_todos(working_dir, session_id));
     if incomplete.is_empty() {
         *last_poke = None;
         return None;
@@ -742,6 +746,7 @@ async fn run_single_message_command_plain_with_auto_poke(
         agent.run_once(&next_message).await?;
         turns_completed += 1;
         match next_headless_poke(
+            agent.working_dir().map(std::path::Path::new),
             agent.session_id(),
             &mut last_poke,
             turns_completed,
@@ -778,6 +783,7 @@ async fn run_single_message_command_capture_with_auto_poke(
         outputs.push(agent.run_once_capture(&next_message).await?);
         turns_completed += 1;
         match next_headless_poke(
+            agent.working_dir().map(std::path::Path::new),
             agent.session_id(),
             &mut last_poke,
             turns_completed,
@@ -871,7 +877,13 @@ async fn run_single_message_command_ndjson(
             break;
         }
         turns_completed += 1;
-        match next_headless_poke(&session_id, &mut last_poke, turns_completed, max_turns) {
+        match next_headless_poke(
+            agent.working_dir().map(std::path::Path::new),
+            &session_id,
+            &mut last_poke,
+            turns_completed,
+            max_turns,
+        ) {
             Some(HeadlessPoke::Poke { count, message }) => {
                 next_message = message;
                 write_json_line(

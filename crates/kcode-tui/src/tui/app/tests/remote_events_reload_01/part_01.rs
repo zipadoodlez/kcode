@@ -1212,7 +1212,7 @@ fn test_remote_done_auto_pokes_again_when_todos_remain() {
         let _guard = rt.enter();
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),

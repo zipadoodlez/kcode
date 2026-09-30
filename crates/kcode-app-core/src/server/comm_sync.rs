@@ -121,13 +121,24 @@ pub(super) async fn member_runtime_extras(
         std::time::Duration::from_secs(SWARM_LIST_TOKEN_WINDOW_SECS),
     );
 
-    let (todos_completed, todos_total) = match crate::todo::load_todos(session_id) {
-        Ok(todos) if !todos.is_empty() => {
-            let completed = todos.iter().filter(|t| t.status == "completed").count();
-            (Some(completed), Some(todos.len()))
-        }
-        _ => (None, None),
+    // The list is per repo now, so a member's progress comes from the repo the
+    // member works in. `Agent::working_dir` is where the tool already got it.
+    let working_dir = {
+        let agent_sessions = sessions.read().await;
+        agent_sessions
+            .get(session_id)
+            .and_then(|agent| agent.try_lock().ok())
+            .and_then(|agent| agent.working_dir().map(std::path::PathBuf::from))
     };
+
+    let (todos_completed, todos_total) =
+        match crate::todo::load_tasks(working_dir.as_deref(), session_id) {
+            Ok(todos) if !todos.is_empty() => {
+                let completed = todos.iter().filter(|t| t.status == "completed").count();
+                (Some(completed), Some(todos.len()))
+            }
+            _ => (None, None),
+        };
 
     MemberRuntimeExtras {
         activity,

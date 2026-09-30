@@ -1771,7 +1771,7 @@ fn test_transcript_path_command_reports_current_session_file() {
 fn test_poke_arms_auto_poke_until_todos_are_done() {
     with_temp_kcode_home(|| {
         let mut app = create_test_app();
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),
@@ -1799,7 +1799,7 @@ fn test_poke_arms_auto_poke_until_todos_are_done() {
 fn test_poke_status_reports_current_state() {
     with_temp_kcode_home(|| {
         let mut app = create_test_app();
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),
@@ -1849,7 +1849,7 @@ fn test_poke_status_reports_current_state() {
 fn test_poke_off_disarms_and_clears_queued_followup() {
     with_temp_kcode_home(|| {
         let mut app = create_test_app();
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),
@@ -1896,7 +1896,7 @@ fn test_poke_off_disarms_and_clears_queued_followup() {
 fn test_poke_queues_when_turn_is_in_progress() {
     with_temp_kcode_home(|| {
         let mut app = create_test_app();
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),
@@ -1926,7 +1926,7 @@ fn test_poke_queues_when_turn_is_in_progress() {
                 .contains("Poke queued. We'll re-check for unfinished todos after this turn")
         }));
 
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[
                 crate::todo::TaskItem {
@@ -1982,7 +1982,7 @@ fn test_btw_forks_even_when_turn_is_in_progress() {
 fn test_finish_turn_auto_pokes_again_when_todos_remain() {
     with_temp_kcode_home(|| {
         let mut app = create_test_app();
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),
@@ -2008,7 +2008,7 @@ fn test_finish_turn_auto_pokes_again_when_todos_remain() {
 fn test_finish_turn_without_auto_poke_queues_nothing() {
     with_temp_kcode_home(|| {
         let mut app = create_test_app();
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),
@@ -2033,7 +2033,7 @@ fn test_finish_turn_without_auto_poke_queues_nothing() {
 fn test_finish_turn_auto_poke_preserves_visible_turn_started() {
     with_temp_kcode_home(|| {
         let mut app = create_test_app();
-        crate::todo::save_todos(
+        crate::todo::save_tasks(None, 
             &app.session.id,
             &[crate::todo::TaskItem {
                 id: "todo-1".to_string(),

@@ -89,12 +89,6 @@ pub fn start_overnight_run(options: OvernightStartOptions) -> Result<OvernightLa
     }
     child.save()?;
 
-    if !options.use_current_session
-        && let Ok(todos) = crate::todo::load_todos(&options.parent_session.id)
-    {
-        let _ = crate::todo::save_todos(&coordinator_session_id, &todos);
-    }
-
     let manifest = OvernightManifest {
         version: OVERNIGHT_VERSION,
         run_id: run_id.clone(),

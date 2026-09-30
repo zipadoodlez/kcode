@@ -455,7 +455,11 @@ pub(super) fn interrupt_and_queue_synthetic_message(
 
 pub(super) fn format_improve_status(app: &App) -> String {
     let session_id = active_session_id(app);
-    let todos = crate::todo::load_todos(&session_id).unwrap_or_default();
+    let todos = crate::todo::load_tasks(
+        app.session.working_dir.as_deref().map(std::path::Path::new),
+        &session_id,
+    )
+    .unwrap_or_default();
     let completed = todos.iter().filter(|t| t.status == "completed").count();
     let cancelled = todos.iter().filter(|t| t.status == "cancelled").count();
     let incomplete: Vec<_> = todos
@@ -518,7 +522,11 @@ pub(super) fn format_improve_status(app: &App) -> String {
 
 pub(super) fn format_refactor_status(app: &App) -> String {
     let session_id = active_session_id(app);
-    let todos = crate::todo::load_todos(&session_id).unwrap_or_default();
+    let todos = crate::todo::load_tasks(
+        app.session.working_dir.as_deref().map(std::path::Path::new),
+        &session_id,
+    )
+    .unwrap_or_default();
     let completed = todos.iter().filter(|t| t.status == "completed").count();
     let cancelled = todos.iter().filter(|t| t.status == "cancelled").count();
     let incomplete: Vec<_> = todos
@@ -583,7 +591,11 @@ pub(super) fn handle_improve_command_local(app: &mut App, command: ImproveComman
     match command {
         ImproveCommand::Resume => {
             let session_id = active_session_id(app);
-            let todos = crate::todo::load_todos(&session_id).unwrap_or_default();
+            let todos = crate::todo::load_tasks(
+                app.session.working_dir.as_deref().map(std::path::Path::new),
+                &session_id,
+            )
+            .unwrap_or_default();
             let incomplete: Vec<_> = todos
                 .iter()
                 .filter(|todo| todo.status != "completed" && todo.status != "cancelled")
@@ -620,7 +632,11 @@ pub(super) fn handle_improve_command_local(app: &mut App, command: ImproveComman
         }
         ImproveCommand::Stop => {
             let session_id = active_session_id(app);
-            let todos = crate::todo::load_todos(&session_id).unwrap_or_default();
+            let todos = crate::todo::load_tasks(
+                app.session.working_dir.as_deref().map(std::path::Path::new),
+                &session_id,
+            )
+            .unwrap_or_default();
             let has_incomplete = todos
                 .iter()
                 .any(|todo| todo.status != "completed" && todo.status != "cancelled");
@@ -680,7 +696,11 @@ pub(super) fn handle_refactor_command_local(app: &mut App, command: RefactorComm
     match command {
         RefactorCommand::Resume => {
             let session_id = active_session_id(app);
-            let todos = crate::todo::load_todos(&session_id).unwrap_or_default();
+            let todos = crate::todo::load_tasks(
+                app.session.working_dir.as_deref().map(std::path::Path::new),
+                &session_id,
+            )
+            .unwrap_or_default();
             let incomplete: Vec<_> = todos
                 .iter()
                 .filter(|todo| todo.status != "completed" && todo.status != "cancelled")
@@ -717,7 +737,11 @@ pub(super) fn handle_refactor_command_local(app: &mut App, command: RefactorComm
         }
         RefactorCommand::Stop => {
             let session_id = active_session_id(app);
-            let todos = crate::todo::load_todos(&session_id).unwrap_or_default();
+            let todos = crate::todo::load_tasks(
+                app.session.working_dir.as_deref().map(std::path::Path::new),
+                &session_id,
+            )
+            .unwrap_or_default();
             let has_incomplete = todos
                 .iter()
                 .any(|todo| todo.status != "completed" && todo.status != "cancelled");

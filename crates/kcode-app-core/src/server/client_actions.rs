@@ -563,7 +563,6 @@ fn create_transfer_child_session(
     parent: &Session,
     compaction: Option<crate::session::StoredCompactionState>,
 ) -> anyhow::Result<(String, String)> {
-    let todos = crate::todo::load_todos(parent_session_id).unwrap_or_default();
     let mut child = Session::create(Some(parent_session_id.to_string()), None);
     child.messages.clear();
     child.compaction = compaction;
@@ -580,7 +579,6 @@ fn create_transfer_child_session(
     child.provider_session_id = None;
     child.status = crate::session::SessionStatus::Closed;
     child.save()?;
-    crate::todo::save_todos(&child.id, &todos)?;
     Ok((child.id.clone(), child.display_name().to_string()))
 }
 

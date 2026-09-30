@@ -966,7 +966,10 @@ pub(super) fn gather_git_info() -> Option<GitInfo> {
 
 /// Fetch a session's todos through a stale-while-revalidate cache, so the info
 /// widget renders the list without a disk read on every frame.
-pub(super) fn gather_todos_for_session(session_id: Option<&str>) -> Vec<TaskItem> {
+pub(super) fn gather_todos_for_session(
+    working_dir: Option<&std::path::Path>,
+    session_id: Option<&str>,
+) -> Vec<TaskItem> {
     if crate::tui::is_ssh_remote() {
         return Vec::new();
     }
@@ -978,8 +981,10 @@ pub(super) fn gather_todos_for_session(session_id: Option<&str>) -> Vec<TaskItem
         return Vec::new();
     };
 
-    fn fetch(session_id: &str) -> Vec<TaskItem> {
-        crate::todo::load_todos(session_id).unwrap_or_default()
+    let working_dir = working_dir.map(std::path::Path::to_path_buf);
+
+    fn fetch(working_dir: Option<&std::path::Path>, session_id: &str) -> Vec<TaskItem> {
+        crate::todo::load_tasks(working_dir, session_id).unwrap_or_default()
     }
 
     if let Ok(mut cache) = TODOS_CACHE.lock() {
@@ -990,8 +995,9 @@ pub(super) fn gather_todos_for_session(session_id: Option<&str>) -> Vec<TaskItem
             let stale = todos.clone();
             *refreshing = true;
             let session_id = session_id.to_string();
+            let working_dir = working_dir.clone();
             std::thread::spawn(move || {
-                let todos = fetch(&session_id);
+                let todos = fetch(working_dir.as_deref(), &session_id);
                 if let Ok(mut cache) = TODOS_CACHE.lock() {
                     cache.insert(session_id, (Instant::now(), todos, false));
                 }
@@ -1008,8 +1014,9 @@ pub(super) fn gather_todos_for_session(session_id: Option<&str>) -> Vec<TaskItem
                 true,
             ),
         );
+        let working_dir = working_dir.clone();
         std::thread::spawn(move || {
-            let todos = fetch(&session_id);
+            let todos = fetch(working_dir.as_deref(), &session_id);
             if let Ok(mut cache) = TODOS_CACHE.lock() {
                 cache.insert(session_id, (Instant::now(), todos, false));
             }
