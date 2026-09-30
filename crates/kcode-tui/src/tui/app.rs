@@ -1212,7 +1212,7 @@ pub struct App {
     /// Pending login flow: if set, next input is intercepted as OAuth code or API key
     pending_login: Option<PendingLogin>,
     remote_login: Option<auth_remote::RemoteLogin>,
-    remote_login_onboarding: auth_remote::Onboarding,
+    remote_login_first_attach: auth_remote::FirstAttachImport,
     /// Pending SSH remote target prompt. Stores the friendly remote name.
     pending_ssh_remote_name: Option<String>,
     /// Time of the last mouse-wheel notch, used only to scale how many lines a

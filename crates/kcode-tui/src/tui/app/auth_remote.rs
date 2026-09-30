@@ -1,8 +1,8 @@
 //! SSH-native login. Local credentials are accessed only after explicit import consent.
 mod command;
-mod onboarding;
+mod first_attach_import;
 mod picker;
-pub(super) use onboarding::Onboarding;
+pub(super) use first_attach_import::FirstAttachImport;
 #[cfg(test)]
 mod tests;
 use super::{App, DisplayMessage, PendingLogin};
@@ -78,7 +78,7 @@ impl App {
             return true;
         }
         // An explicit login takes precedence over the startup suggestion.
-        self.remote_login_onboarding.dismiss();
+        self.remote_login_first_attach.dismiss();
         let words: Vec<_> = input.split_whitespace().collect();
         let importing = words.get(1) == Some(&"--import-local");
         let provider = words.get(if importing { 2 } else { 1 }).copied();

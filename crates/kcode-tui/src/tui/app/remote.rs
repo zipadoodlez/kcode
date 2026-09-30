@@ -105,7 +105,7 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
     needs_redraw |= app.poll_ssh_login(remote).await;
     // The SSH first-attach import offer is remote-login, not welcome-screen
     // onboarding: it probes the remote server's logins and offers to import them.
-    needs_redraw |= app.poll_ssh_login_onboarding();
+    needs_redraw |= app.poll_ssh_login_first_attach();
     needs_redraw |= app.redraw.flush_pending_resize_redraw();
     app.maybe_capture_runtime_memory_heartbeat();
     app.maybe_release_idle_heap();
