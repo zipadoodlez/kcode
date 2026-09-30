@@ -715,6 +715,164 @@ async fn wake_turn_tracks_member_status_and_emits_terminal_done() {
     );
 }
 
+/// One row of the fixture's work list: `(id, held by someone else, blockers)`.
+type RowSpec<'a> = (&'a str, bool, &'a [&'a str]);
+
+/// A live, attended session with `auto_poke` on and a work list of its own.
+struct LiveRun {
+    session_id: String,
+    sessions: super::SessionAgents,
+    events: mpsc::UnboundedReceiver<ServerEvent>,
+    ctx: super::live_turn::LiveTurnSwarmContext,
+    _home: tempfile::TempDir,
+    _env: EnvGuard,
+    _auto_poke: ScopedEnvVar,
+    /// Declared last so it outlives both env guards, which is what serializes them.
+    _env_lock: std::sync::MutexGuard<'static, ()>,
+}
+
+impl LiveRun {
+    /// Start a run and count the turns it takes: one terminal `Done` per turn, and
+    /// the run has to go quiet after the last one.
+    async fn turns(&mut self, seed: &str) -> usize {
+        let started = super::live_turn::run_live_turn_if_idle(
+            &self.session_id,
+            super::live_turn::TurnSeed::asked(seed, None, None),
+            &self.sessions,
+            self.ctx.clone(),
+        )
+        .await;
+        assert!(started, "an idle attached session takes the run");
+        let mut turns = 0;
+        while turns < 8 {
+            match timeout(Duration::from_secs(1), self.events.recv()).await {
+                Ok(Some(ServerEvent::Done { .. })) => turns += 1,
+                Ok(Some(_)) => continue,
+                Ok(None) => panic!("member event stream closed"),
+                // A second of quiet after the last turn is the run ending.
+                Err(_) => return turns,
+            }
+        }
+        panic!("the run did not stop: {turns} turns and counting");
+    }
+}
+
+/// A session with `rows` in its work list and `responses` queued from the model.
+async fn live_run(rows: &[RowSpec<'_>], responses: usize) -> LiveRun {
+    let env_lock = crate::storage::lock_test_env();
+    let home = tempfile::tempdir().expect("temp dir");
+    let env = configure_test_env(&home);
+    let auto_poke = ScopedEnvVar::set("KCODE_AUTO_POKE", "true");
+
+    let provider = Arc::new(StreamingMockProvider::default());
+    for _ in 0..responses {
+        provider.queue_response(vec![
+            StreamEvent::TextDelta("done".to_string()),
+            StreamEvent::MessageEnd { stop_reason: None },
+        ]);
+    }
+    // A repo of its own, so the list the run reads is this repo's `tasks.jsonl`
+    // (rule 1) and never the machine's.
+    let repo = home.path().join("repo");
+    std::fs::create_dir_all(&repo).expect("repo dir");
+    assert!(
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&repo)
+            .status()
+            .expect("git init")
+            .success(),
+        "git init"
+    );
+    let registry = Registry::new(provider.clone()).await;
+    let agent = Arc::new(Mutex::new(Agent::new_with_initial_working_dir(
+        provider,
+        registry,
+        Some(repo.to_str().expect("utf-8 repo path")),
+    )));
+    let session_id = agent.lock().await.session_id().to_string();
+
+    let rows: Vec<crate::todo::TaskItem> = rows
+        .iter()
+        .map(|(id, foreign, blocked_by)| crate::todo::TaskItem {
+            id: (*id).to_string(),
+            content: format!("row {id}"),
+            assigned_to: Some(if *foreign {
+                "someone-else".to_string()
+            } else {
+                session_id.clone()
+            }),
+            blocked_by: blocked_by.iter().map(|id| (*id).to_string()).collect(),
+            ..Default::default()
+        })
+        .collect();
+    if !rows.is_empty() {
+        crate::todo::save_tasks(Some(&repo), &session_id, &rows).expect("write the work list");
+    }
+
+    let sessions = Arc::new(RwLock::new(HashMap::from([(session_id.clone(), agent)])));
+    let (member_event_tx, events) = mpsc::unbounded_channel();
+    let swarm_members = Arc::new(RwLock::new(HashMap::from([(
+        session_id.clone(),
+        attached_swarm_member(&session_id, member_event_tx.clone()),
+    )])));
+    // What a real client attach does. It is the `event_txs` entry, not the single
+    // legacy sender, that tells the loop a person is sitting in the session.
+    super::register_session_event_sender(
+        &swarm_members,
+        &session_id,
+        "test-connection",
+        member_event_tx,
+    )
+    .await;
+    let (swarms_by_id, event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
+    let ctx = super::live_turn::LiveTurnSwarmContext::new(
+        &swarm_members,
+        &swarms_by_id,
+        &event_history,
+        &event_counter,
+        &swarm_event_tx,
+    );
+
+    LiveRun {
+        session_id,
+        sessions,
+        events,
+        ctx,
+        _home: home,
+        _env: env,
+        _auto_poke: auto_poke,
+        _env_lock: env_lock,
+    }
+}
+
+/// The seed turn plus one per held row, and then it stops. Nothing closes the rows,
+/// so the stop is the run's own bound: without it the run would pick `t1` again on
+/// the fifth turn and go on paying for it.
+#[tokio::test]
+async fn a_run_works_every_ready_row_it_holds_and_then_stops() {
+    let mut run = live_run(&[("t1", false, &[]), ("t2", false, &[])], 6).await;
+    assert_eq!(
+        run.turns("start").await,
+        3,
+        "the seed turn plus one per row"
+    );
+}
+
+/// A blocker that is still open in the file keeps its row out of the run, and a row
+/// held by someone else is never this session's to work.
+#[tokio::test]
+async fn a_run_leaves_a_row_whose_blocker_is_still_open() {
+    let mut run = live_run(&[("t0", true, &[]), ("t1", false, &["t0"])], 4).await;
+    assert_eq!(run.turns("start").await, 1, "the seed turn alone");
+}
+
+#[tokio::test]
+async fn a_run_with_nothing_ready_takes_its_one_turn() {
+    let mut run = live_run(&[], 2).await;
+    assert_eq!(run.turns("start").await, 1, "the seed turn alone");
+}
+
 #[tokio::test]
 async fn background_task_notify_without_wake_does_not_queue_soft_interrupt() {
     let provider: Arc<dyn Provider> = Arc::new(StreamingMockProvider::default());

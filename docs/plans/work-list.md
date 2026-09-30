@@ -129,14 +129,16 @@ Every step lands whole, proven by the gate and, where behavior moves, one
   Landed: the loop and its pick are in, with the run's own bound in place: a row
   worked once in the run is not picked again, so a row left open ends the run
   instead of spinning it (`TurnSeed` carries the row id into the loop's `worked`
-  set, which the pick skips). It is off unless
-  `features.auto_poke` is on and only for attended sessions, because a member is
-  driven by its plan until rows seed a run. The proof left is the loop end to end
-  rather than the pick alone. Owed, read against rule 11: the config flag is a
-  stand-in for the permission, and `may_continue_on_its_own` fuses the permission
-  with having a human and is read at two sites (`live_turn.rs:215`, `:347`) where
-  the model names one. The user's words cannot yet grant it for one run, a headless
-  member is excluded where rule 11 says it holds the permission inherently, and
+  set, which the pick skips). The loop end to end is proven in `server/tests.rs`:
+  a session holding two ready rows takes three turns and then stops, a row whose
+  blocker is still open is left alone, and nothing ready takes one turn. It is off
+  unless `features.auto_poke` is on and only for attended sessions, because a member
+  is driven by its plan until rows seed a run. Owed, read against rule 11: the
+  config flag is a stand-in for the permission, and `may_continue_on_its_own` fuses
+  the permission with having a human and is read at two sites (`live_turn.rs:215`,
+  `:347`) where the model names one. The user's words cannot yet grant it for one
+  run, a headless member is excluded where rule 11 says it holds the permission
+  inherently, and
   "typing always wins" cannot hold while the loop holds the agent's
   `OwnedMutexGuard` across every turn (`live_turn.rs:244-352`), so a user's message
   waits for the whole run instead of stopping it.
