@@ -87,17 +87,25 @@ Every step lands whole, proven by the gate and, where behavior moves, one
 - [ ] **(decide)** whether line order means anything, such as priority.
 - [ ] **(decide)** who writes when the working directory is remote, since the
   server is the only writer and the file lives in the working tree.
-- [ ] **B1.** The `todo` tool reads and writes `tasks.jsonl`, this repo's
-  `docs/todo.md` becomes its first content, `/todos` and the widget render from
-  it, the per-session todo JSON is deleted, and the twelve references to
-  `docs/todo.md` move to the new path (`README.md`, `docs/README.md` four times,
-  `hooks.md`, `dev/testing.md`, `dev/benchmarking.md`, `dev/post-change.md`, the
-  browser plan, one comment in `kcode-tui/src/tui/mod.rs`).
+- [ ] **(decide)** whether a claim is committed. The file is tracked, so claiming
+  a row edits the working tree and leaves it dirty until the work lands; either
+  the claim rides the work's commit, or the tree sits dirty mid-task.
+- [ ] **(decide)** what happens to the per-session todo JSON's existing content
+  when B1 stops reading it: imported once into the repo file, or dropped.
+- [ ] **B1.** The `todo` tool reads and writes `tasks.jsonl` and its action set
+  becomes add, claim, close: close requires a nonempty result and removes the row
+  (rules 3 to 5), so `status` loses its writer and the poke counts open rows
+  instead of incomplete statuses. This repo's `docs/todo.md` becomes the file's
+  first content, `/todos` and the widget render from it, the per-session todo
+  JSON is deleted, and the twelve references to `docs/todo.md` move to the new
+  path (`README.md`, `docs/README.md` four times, `hooks.md`, `dev/testing.md`,
+  `dev/benchmarking.md`, `dev/post-change.md`, the browser plan, one comment in
+  `kcode-tui/src/tui/mod.rs`).
 - [ ] **B2.** Drop `group` and `status` from the type. B1 gives `parent`, which
   is what `group` was grouping by, and the close action is what makes a
   completed row unrepresentable rather than stored.
 
-Gated by A, and by the two decisions above.
+Gated by the five decisions above.
 
 ### C. The swarm reads and writes the file
 
@@ -115,7 +123,7 @@ Gated by A, and by the two decisions above.
   affinity matches them against a worker's metadata), not list fields, and
   `SwarmPlanItemSpec` already carries them on the plan side.
 
-Gated by A and B.
+Gated by B.
 
 ### D. Delete what the file makes redundant
 
