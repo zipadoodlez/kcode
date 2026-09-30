@@ -50,11 +50,15 @@ Single-threaded, every suite is at zero (2026-09-29): `kcode-base`, root
 `kcode`, `kcode-app-core`, the math crates, and `kcode-tui`. The front-line pass
 is done; what remains is the one parallel-execution flake class below.
 
-- **One single-threaded failure exists** (found 2026-09-30 while landing the todo
-  step 1): `kcode-tui --lib`
+- **The one recorded failure was the ambient-env read, not drift.** `kcode-tui
+  --lib`
   `test_remote_fallback_provider_suggestions_normalize_bare_openai_openrouter_routes`
-  fails at `4ef8c3e1` both with and without that change, so it is a pre-existing
-  count rather than drift. Re-measured numbers then: `kcode-base` 1102/0, root
+  was recorded here on 2026-09-30 (found landing the todo step 1, failing at
+  `4ef8c3e1` both with and without that change). Re-checked 2026-09-30 with every
+  `KCODE_*` unset: it passes, and so does the rest of the suite. `kcode` exports
+  its active provider profile as `KCODE_*` at startup, so a run from inside a
+  kcode shell inherits it and the suite reads it as configuration. Keep the
+  numbers below as the pre-correction measurement: `kcode-base` 1102/0, root
   `kcode` 180/0, `kcode-app-core` 998/0, `kcode-tui` 1830/1.
 - **Parallel-only flakes.** `kcode-tui --lib` at the default thread count fails
   a changing set of about a dozen tests that pass single-threaded (slash
