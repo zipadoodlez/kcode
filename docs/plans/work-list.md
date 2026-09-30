@@ -82,6 +82,25 @@ The poke repeated blindly because it could not tell whether another nudge would
 help, so it needed a fingerprint and a cap and a default of off. A run knows what
 is ready and when it is blocked.
 
+## What a run may change
+
+The plan has no mutation surface of its own. A run adjusts itself by editing
+rows: adding work it found under the row it came from, leaving a note, clearing a
+blocker that no longer blocks, retyping a row whose kind was wrong, and closing
+what it holds. There is no reorder act, because picking a row is a claim and
+position only sets the default.
+
+A run may touch the rows it holds. Rows held by another session, rows assigned to
+a person, and rows outside its scope are refused. Closing is always allowed on
+what it holds, provided the result says what happened, so a drop is "dropped
+because X" and a split is "split into a, b, c" with the children added underneath.
+The parent guard is what makes integration real: a parent stays until its children
+are gone.
+
+Rewriting the wording of a row it has not done yet is allowed, because planning is
+what that is, but never silently. The note or the result says what changed, and
+the file's history still has the wording it replaced.
+
 ## Rules
 
 Settled 2026-10-01. Not steps; what every step has to satisfy.
