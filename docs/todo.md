@@ -119,12 +119,16 @@ intent, the resolved decisions, and the corrections the pass found:
   the maintainer's next build: the poke now reaches the model as a system
   reminder, so confirm in one isolated `kcode run` that the model acts on it
   rather than only replying.
-- [ ] Step 3, unblocked: shrink the `todo` schema to a display
-  (`id`/`content`/`status`/`priority`/`group`), dropping `plan`, `goals` and both
-  confidence fields. 1,086 always-on tokens today, behind only `swarm` (2,210).
-  Also edits `kcode-task-types/src/lib.rs`, the score rendering in
-  `tui/ui_messages.rs`, the extra storage paths, the pass predicates, and
-  `internals/todo-calibration.md`.
+- [ ] Step 3, in progress (paused 2026-09-30): shrink the `todo` schema to a
+  display. Landed: the tool writes and advertises five fields and its description
+  carries decision 4's line (`59c40abb`); the card, the widget, the todos view,
+  the state snapshot, the turn notification and the todo-change list no longer
+  read goals, plan or confidence (uncommitted). Remaining, in order: six red
+  `kcode-tui` test expectations, then the types in
+  `kcode-task-types/src/lib.rs`, the goals/plan storage and pass predicates in
+  `kcode-base/src/todo.rs`, the `TodoItem` fixtures, and
+  `internals/todo-calibration.md`. The exact list, with the fix for each red
+  test, is the landing note in the internals doc.
 - [ ] Later, recorded as the desired final state in the internals doc: the list
   becomes a repository artifact (one markdown file in the working tree, written
   by the tool and readable by the maintainer, shared across sessions) and the
