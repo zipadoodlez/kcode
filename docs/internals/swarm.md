@@ -10,8 +10,8 @@ The graph is a single server-owned, versioned object (`kcode-plan`'s
 
 The swarm is one executor of the repo's work list (`plans/work-list.md`). The
 list is the shared contract; this engine's plan is its execution state, and the
-durable plan carries work while a swarm is in flight. The write path for the
-list is not built yet.
+durable plan carries work while a run is in flight. The list's store and tool
+exist; the plan does not seed from it yet.
 
 ## Two modes: deep and light
 

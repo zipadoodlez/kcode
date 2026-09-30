@@ -45,7 +45,7 @@ not fit its row is a doc in the wrong place.
 |---|---|---|
 | `todo.md` | the order of work | open items with their design; landed items deleted |
 | `what-was-removed.md` | why this fork looks nothing like upstream | the two cuts and what was deliberately kept |
-| `plans/work-list.md` | the destination for the work list | one list, one task type, one writer; the swarm as one executor; not served to the model |
+| `plans/work-list.md` | the destination for the work list | one file of rows, one item type, one writer, one run; a swarm is a count, not a mode; not served to the model |
 | `plans/browser-provider-protocol.md` | a design for work not yet built | the protocol; not served to the model |
 | `user/cli.md` | the non-interactive surface | flags a wrapper needs and their traps |
 | `user/tui.md` | terminal input, picker, panels | input mechanics and their terminal quirks |
