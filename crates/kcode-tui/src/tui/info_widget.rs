@@ -562,7 +562,7 @@ impl InfoWidgetData {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.todos.is_empty()
+        !self.has_data_for(WidgetKind::Todos)
             && self.context_info.is_none()
             && self.queue_mode.is_none()
             && self.model.is_none()
@@ -592,7 +592,7 @@ impl InfoWidgetData {
                 {
                     sections += 1;
                 }
-                if !self.todos.is_empty() {
+                if self.has_data_for(WidgetKind::Todos) {
                     sections += 1;
                 }
                 if self
@@ -631,7 +631,7 @@ impl InfoWidgetData {
                 // Only useful as a "join" mode when there are multiple sections.
                 sections >= 2
             }
-            WidgetKind::Todos => !self.todos.is_empty(),
+            WidgetKind::Todos => todos_render::has_open_items(&self.todos),
             WidgetKind::ContextUsage => {
                 self.context_info_stale
                     || self

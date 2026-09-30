@@ -68,6 +68,17 @@ fn todo_display_confidence(todo: &crate::todo::TodoItem) -> Option<crate::todo::
     }
 }
 
+/// True when the list still has work worth drawing. A fully completed or
+/// cancelled list is not shown: the widget draws whatever the model last wrote,
+/// so a finished plan would otherwise sit on screen until the model happened to
+/// clear it.
+pub(crate) fn has_open_items(todos: &[crate::todo::TodoItem]) -> bool {
+    todos.iter().any(|todo| {
+        !crate::todo::todo_status_is_completed(&todo.status)
+            && !crate::todo::todo_status_is_cancelled(&todo.status)
+    })
+}
+
 fn aggregate_todo_confidence<'a>(
     todos: impl IntoIterator<Item = &'a crate::todo::TodoItem>,
 ) -> Option<crate::todo::ConfidenceState> {

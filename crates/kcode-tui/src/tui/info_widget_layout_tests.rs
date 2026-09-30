@@ -32,6 +32,33 @@ fn todo(id: &str, status: &str) -> crate::todo::TodoItem {
     }
 }
 
+#[test]
+fn a_fully_finished_todo_list_is_not_eligible_for_the_widget() {
+    // The widget draws whatever the model last wrote, so a finished plan used
+    // to sit on screen until the model happened to clear it. Any terminal
+    // status counts, including the "done" alias.
+    let data = InfoWidgetData {
+        todos: vec![
+            todo("a", "completed"),
+            todo("b", "cancelled"),
+            todo("c", "done"),
+        ],
+        ..Default::default()
+    };
+    assert!(!data.has_data_for(WidgetKind::Todos));
+    assert!(data.is_empty());
+}
+
+#[test]
+fn one_open_todo_keeps_the_widget_eligible() {
+    let data = InfoWidgetData {
+        todos: vec![todo("a", "completed"), todo("b", "in_progress")],
+        ..Default::default()
+    };
+    assert!(data.has_data_for(WidgetKind::Todos));
+    assert!(!data.is_empty());
+}
+
 /// Kitchen-sink data: every enabled widget kind is eligible at once, so the
 /// placement pass has maximum contention for margin space.
 fn contended_data() -> InfoWidgetData {
