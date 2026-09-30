@@ -92,10 +92,8 @@ fn plan_item(id: &str, status: &str, priority: &str, blocked_by: &[&str]) -> Pla
         status: status.to_string(),
         priority: priority.to_string(),
         id: id.to_string(),
-        subsystem: None,
-        file_scope: Vec::new(),
         blocked_by: blocked_by.iter().map(|value| value.to_string()).collect(),
-        assigned_to: None,
+        ..Default::default()
     }
 }
 

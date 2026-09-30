@@ -12,6 +12,7 @@ fn test_swarm_plan_event_roundtrip_with_summary() -> Result<()> {
             file_scope: Vec::new(),
             blocked_by: vec![],
             assigned_to: None,
+                        group: None,
         }],
         participants: vec!["session_fox".to_string()],
         reason: Some("task_completed".to_string()),

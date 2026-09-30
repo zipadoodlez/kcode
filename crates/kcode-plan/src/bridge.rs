@@ -147,6 +147,7 @@ pub fn apply_task_graph(plan: &mut VersionedPlan, graph: &TaskGraph) {
             file_scope: prev.map(|p| p.file_scope.clone()).unwrap_or_default(),
             blocked_by: node.depends_on.clone(),
             assigned_to: node.owner.clone(),
+            group: None,
         });
         node_meta.insert(
             node.id.clone(),
@@ -328,10 +329,7 @@ mod tests {
             status: status.to_string(),
             priority: "medium".to_string(),
             id: id.to_string(),
-            subsystem: None,
-            file_scope: Vec::new(),
-            blocked_by: Vec::new(),
-            assigned_to: None,
+            ..Default::default()
         }
     }
 

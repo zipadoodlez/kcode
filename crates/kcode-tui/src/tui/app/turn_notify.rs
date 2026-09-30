@@ -420,9 +420,8 @@ mod tests {
             status: status.to_string(),
             priority: "medium".to_string(),
             id: content.to_string(),
-            group: None,
             blocked_by: blocked_by.iter().map(|s| s.to_string()).collect(),
-            assigned_to: None,
+            ..Default::default()
         }
     }
 

@@ -80,13 +80,6 @@ Every step lands whole, proven by the gate and, where behavior moves, one
 
 ### A. One durable item type
 
-Unblocked. 120 `PlanItem` refs, 134 `TodoItem` refs, 57 files, 115 struct
-literals, so a union merge cannot avoid touching the literals.
-
-- [ ] **A1, mechanical.** One definition, `TaskItem` in `kcode-task-types`, with
-  `PlanItem` and `TodoItem` as temporary aliases, all 115 literal sites updated,
-  and test fixtures on `..Default::default()` so the next field change costs no
-  fixture edits.
 - [ ] **A2, behavioral.** Drop `group`, `subsystem`, `file_scope`, and move
   `status` out of the type into live session state (rule 12).
 
@@ -138,6 +131,14 @@ Gated by C.
 - [ ] **F1.** Split the 3369 lines along the seams it already has: swarm
   coordination, the run-plan driver, capacity cleanup, and the formatters around
   `execute`. Cheaper once C has given the state one owner.
+
+### G. Close out
+
+- [ ] **G1.** Restore the two size ratchets in `scripts/check_guardrails.sh`,
+  paused for this project, and re-baseline both with `--update`. Paused because
+  a type merge and a file rewrite move lines between files faster than a
+  per-commit baseline can follow, and the ratchet only tightens, so raising a
+  baseline mid-project would leave a looser cap behind.
 
 ## Evidence (measured 2026-10-01)
 

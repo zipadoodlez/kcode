@@ -12,10 +12,8 @@ fn swarm_plan_updates_state_without_adding_an_inline_diagram() {
         status: "running".to_string(),
         priority: "high".to_string(),
         id: "haiku-1".to_string(),
-        subsystem: None,
-        file_scope: Vec::new(),
-        blocked_by: Vec::new(),
         assigned_to: Some("worker-fox".to_string()),
+        ..Default::default()
     };
 
     app.handle_server_event(

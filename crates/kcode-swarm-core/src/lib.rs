@@ -480,10 +480,7 @@ mod tests {
             content: content.to_string(),
             status: "queued".to_string(),
             priority: "normal".to_string(),
-            subsystem: None,
-            file_scope: Vec::new(),
-            blocked_by: Vec::new(),
-            assigned_to: None,
+            ..Default::default()
         }
     }
 

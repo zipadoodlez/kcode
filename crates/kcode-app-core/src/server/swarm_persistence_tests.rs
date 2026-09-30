@@ -41,10 +41,8 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
                 status: "running".to_string(),
                 priority: "high".to_string(),
                 id: "task-1".to_string(),
-                subsystem: None,
-                file_scope: Vec::new(),
-                blocked_by: Vec::new(),
                 assigned_to: Some("session-1".to_string()),
+                ..Default::default()
             }],
             version: 3,
             participants: ["session-1".to_string(), "session-2".to_string()]
@@ -234,10 +232,8 @@ fn dormant_plan_expiry_preserves_active_work_and_prunes_old_unassigned_graphs() 
         status: status.to_string(),
         priority: "medium".to_string(),
         id: format!("{status}-{}", assigned_to.unwrap_or("none")),
-        subsystem: None,
-        file_scope: Vec::new(),
-        blocked_by: Vec::new(),
         assigned_to: assigned_to.map(str::to_string),
+        ..Default::default()
     };
     let plan = |items| PersistedVersionedPlan {
         items,
@@ -510,20 +506,16 @@ fn deep_plan_mode_and_node_meta_round_trip() {
                 status: "completed".to_string(),
                 priority: "high".to_string(),
                 id: "root".to_string(),
-                subsystem: None,
-                file_scope: Vec::new(),
-                blocked_by: Vec::new(),
                 assigned_to: Some("session-1".to_string()),
+                ..Default::default()
             },
             crate::plan::PlanItem {
                 content: "gate".to_string(),
                 status: "queued".to_string(),
                 priority: "medium".to_string(),
                 id: "root.gate".to_string(),
-                subsystem: None,
-                file_scope: Vec::new(),
                 blocked_by: vec!["root".to_string()],
-                assigned_to: None,
+                ..Default::default()
             },
         ],
         version: 7,
@@ -605,10 +597,8 @@ fn gate_debt_and_artifact_hydration_survive_reload() {
         status: status.to_string(),
         priority: "medium".to_string(),
         id: id.to_string(),
-        subsystem: None,
-        file_scope: Vec::new(),
         blocked_by,
-        assigned_to: None,
+        ..Default::default()
     };
     let meta = |kind: &str, parent: Option<&str>, is_gate: bool, artifact: Option<&str>| {
         crate::plan::NodeMeta {
@@ -851,10 +841,7 @@ async fn stale_persist_cannot_regress_newer_plan_version() {
         status: "queued".to_string(),
         priority: "medium".to_string(),
         id: "t1".to_string(),
-        subsystem: None,
-        file_scope: Vec::new(),
-        blocked_by: Vec::new(),
-        assigned_to: None,
+        ..Default::default()
     }];
     let swarm_state = crate::server::SwarmState::new(
         HashMap::new(),

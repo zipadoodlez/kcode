@@ -16,13 +16,11 @@ fn test_finish_turn_does_not_duplicate_existing_poke_followup() {
         crate::todo::save_todos(
             &app.session.id,
             &[crate::todo::TodoItem {
-                group: None,
                 id: "todo-1".to_string(),
                 content: "Keep going".to_string(),
                 status: "pending".to_string(),
                 priority: "high".to_string(),
-                blocked_by: Vec::new(),
-                assigned_to: None,
+                ..Default::default()
             }],
         )
         .expect("save todos");

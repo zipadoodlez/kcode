@@ -80,10 +80,8 @@ fn plan_item(id: &str, blocked_by: &[&str]) -> PlanItem {
         status: "pending".to_string(),
         priority: "medium".to_string(),
         id: id.to_string(),
-        subsystem: None,
-        file_scope: Vec::new(),
         blocked_by: blocked_by.iter().map(|value| value.to_string()).collect(),
-        assigned_to: None,
+        ..Default::default()
     }
 }
 

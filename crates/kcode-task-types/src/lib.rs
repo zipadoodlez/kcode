@@ -194,8 +194,13 @@ fn default_pending_status() -> String {
     "pending".to_string()
 }
 
+/// One entry of a repo's work list: the single task type behind the `todo` tool,
+/// the swarm plan, and the list file.
+///
+/// `TodoItem` and `PlanItem` were separate structs of the same shape. This is
+/// that shape once, and both names alias it until the call sites are renamed.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TodoItem {
+pub struct TaskItem {
     pub content: String,
     pub status: String,
     pub priority: String,
@@ -205,11 +210,18 @@ pub struct TodoItem {
     /// steered into a new area, start a new group instead of renaming.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subsystem: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub file_scope: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub blocked_by: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assigned_to: Option<String>,
 }
+
+/// Retired name, kept as an alias for the `todo` call sites.
+pub use self::TaskItem as TodoItem;
 
 use std::collections::HashMap;
 

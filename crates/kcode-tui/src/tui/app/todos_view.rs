@@ -514,9 +514,7 @@ mod tests {
             content: content.to_string(),
             status: status.to_string(),
             priority: priority.to_string(),
-            group: None,
-            blocked_by: Vec::new(),
-            assigned_to: None,
+            ..Default::default()
         }
     }
 

@@ -12,25 +12,12 @@ pub mod bridge;
 pub mod dag;
 pub mod mermaid;
 
-/// A swarm plan item.
+/// A swarm plan item: the same task type the `todo` tool and the work list use.
 ///
-/// This is intentionally separate from session todos: plan data is shared at the
-/// server/swarm level, while todos remain session-local.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PlanItem {
-    pub content: String,
-    pub status: String,
-    pub priority: String,
-    pub id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub subsystem: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub file_scope: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub blocked_by: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub assigned_to: Option<String>,
-}
+/// This used to be a separate struct with the same shape as `TodoItem`. The
+/// definition now lives in `kcode-task-types`, and this alias retires when the
+/// call sites are renamed.
+pub use kcode_task_types::TaskItem as PlanItem;
 
 /// Durable progress associated with a swarm plan task.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -847,10 +834,8 @@ mod tests {
             content: id.to_string(),
             status: status.to_string(),
             priority: "high".to_string(),
-            subsystem: None,
-            file_scope: Vec::new(),
             blocked_by: blocked_by.iter().map(|value| value.to_string()).collect(),
-            assigned_to: None,
+            ..Default::default()
         }
     }
 

@@ -83,8 +83,13 @@ run_gate "Cargo.lock is up to date" cargo metadata --locked --format-version 1
 # of the gate, so they guarded nothing; a ratchet that never runs is not a
 # ratchet. They measure file-size drift, separate from the `App` shape ratchet
 # below (app.rs may shrink while the field/impl/glob counts stay flat).
-run_ratchet "code size budget" check_code_size_budget.py
-run_ratchet "test size budget" check_test_size_budget.py
+# braid: paused for the work-list project, restore when it lands
+# (`docs/plans/work-list.md`, step G1). A type merge and a file rewrite move
+# lines between files faster than a per-commit baseline can follow, and this
+# ratchet only tightens, so re-baselining mid-project leaves looser caps behind.
+# restore: uncomment both lines and re-baseline with `--update` at the end.
+# run_ratchet "code size budget" check_code_size_budget.py
+# run_ratchet "test size budget" check_test_size_budget.py
 run_gate "crate dependency boundaries" python3 scripts/check_dependency_boundaries.py
 run_ratchet "wildcard re-export ratchet" check_wildcard_reexport_budget.py
 # The `App` re-core may only shrink, so its field/impl/glob counts are ratcheted

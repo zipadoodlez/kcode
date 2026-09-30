@@ -9,13 +9,11 @@ fn test_remote_poke_queues_when_turn_is_in_progress() {
         crate::todo::save_todos(
             &app.session.id,
             &[crate::todo::TodoItem {
-                group: None,
                 id: "todo-1".to_string(),
                 content: "Continue working".to_string(),
                 status: "pending".to_string(),
                 priority: "high".to_string(),
-                blocked_by: Vec::new(),
-                assigned_to: None,
+                ..Default::default()
             }],
         )
         .expect("save todos");
@@ -49,22 +47,18 @@ fn test_remote_poke_queues_when_turn_is_in_progress() {
             &app.session.id,
             &[
                 crate::todo::TodoItem {
-                    group: None,
                     id: "todo-1".to_string(),
                     content: "Continue working".to_string(),
                     status: "pending".to_string(),
                     priority: "high".to_string(),
-                    blocked_by: Vec::new(),
-                    assigned_to: None,
+                    ..Default::default()
                 },
                 crate::todo::TodoItem {
-                    group: None,
                     id: "todo-2".to_string(),
                     content: "Handle the newly discovered follow-up".to_string(),
                     status: "pending".to_string(),
                     priority: "medium".to_string(),
-                    blocked_by: Vec::new(),
-                    assigned_to: None,
+                    ..Default::default()
                 },
             ],
         )
@@ -146,13 +140,11 @@ fn test_remote_interrupted_auto_poke_requeues_after_deferred_poke() {
         crate::todo::save_todos(
             &app.session.id,
             &[crate::todo::TodoItem {
-                group: None,
                 id: "todo-1".to_string(),
                 content: "Resume after interrupt".to_string(),
                 status: "pending".to_string(),
                 priority: "high".to_string(),
-                blocked_by: Vec::new(),
-                assigned_to: None,
+                ..Default::default()
             }],
         )
         .expect("save todos");

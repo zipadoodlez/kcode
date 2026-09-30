@@ -1735,10 +1735,7 @@ mod tests {
             status: "pending".to_string(),
             priority: "medium".to_string(),
             id: id.to_string(),
-            subsystem: None,
-            file_scope: Vec::new(),
-            blocked_by: Vec::new(),
-            assigned_to: None,
+            ..Default::default()
         }
     }
 
@@ -1974,20 +1971,15 @@ mod tests {
                         status: "completed".to_string(),
                         priority: "high".to_string(),
                         id: "setup".to_string(),
-                        subsystem: None,
-                        file_scope: Vec::new(),
-                        blocked_by: Vec::new(),
-                        assigned_to: None,
+                        ..Default::default()
                     },
                     PlanItem {
                         content: "follow-up".to_string(),
                         status: "queued".to_string(),
                         priority: "high".to_string(),
                         id: "follow-up".to_string(),
-                        subsystem: None,
-                        file_scope: Vec::new(),
                         blocked_by: vec!["setup".to_string()],
-                        assigned_to: None,
+                        ..Default::default()
                     },
                 ],
                 version: 2,
@@ -2009,20 +2001,16 @@ mod tests {
                 status: "running".to_string(),
                 priority: "high".to_string(),
                 id: "setup".to_string(),
-                subsystem: None,
-                file_scope: Vec::new(),
-                blocked_by: Vec::new(),
                 assigned_to: Some("worker".to_string()),
+                ..Default::default()
             },
             PlanItem {
                 content: "follow-up".to_string(),
                 status: "queued".to_string(),
                 priority: "high".to_string(),
                 id: "follow-up".to_string(),
-                subsystem: None,
-                file_scope: Vec::new(),
                 blocked_by: vec!["setup".to_string()],
-                assigned_to: None,
+                ..Default::default()
             },
         ];
 
@@ -2322,10 +2310,8 @@ mod tests {
                     status: "pending".to_string(),
                     priority: "medium".to_string(),
                     id: "1".to_string(),
-                    subsystem: None,
-                    file_scope: Vec::new(),
-                    blocked_by: Vec::new(),
                     assigned_to: Some("coord".to_string()),
+                    ..Default::default()
                 }],
                 version: 1,
                 participants: HashSet::from(["coord".to_string()]),
@@ -2795,10 +2781,8 @@ mod tests {
                     status: "running".to_string(),
                     priority: "medium".to_string(),
                     id: "task-1".to_string(),
-                    subsystem: None,
-                    file_scope: Vec::new(),
-                    blocked_by: Vec::new(),
                     assigned_to: Some("worker".to_string()),
+                    ..Default::default()
                 }],
                 version: 1,
                 participants: HashSet::from(["worker".to_string()]),
@@ -2878,10 +2862,8 @@ mod tests {
                     status: "running".to_string(),
                     priority: "medium".to_string(),
                     id: "task-1".to_string(),
-                    subsystem: None,
-                    file_scope: Vec::new(),
-                    blocked_by: Vec::new(),
                     assigned_to: Some(assignee.to_string()),
+                    ..Default::default()
                 }],
                 version: 1,
                 participants: HashSet::from([assignee.to_string()]),

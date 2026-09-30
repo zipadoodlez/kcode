@@ -318,10 +318,8 @@ mod tests {
             status: status.to_string(),
             priority: "normal".to_string(),
             id: id.to_string(),
-            subsystem: None,
-            file_scope: Vec::new(),
             blocked_by: blocked_by.iter().map(|s| s.to_string()).collect(),
-            assigned_to: None,
+            ..Default::default()
         }
     }
 

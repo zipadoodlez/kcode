@@ -84,9 +84,7 @@ fn refresh_todo_card_updates_content_when_todos_change() {
         content: content.to_string(),
         status: status.to_string(),
         priority: "high".to_string(),
-        group: None,
-        blocked_by: Vec::new(),
-        assigned_to: None,
+        ..Default::default()
     };
 
     crate::todo::save_todos(&session_id, &[todo("write the card", "pending")]).unwrap();
@@ -123,9 +121,7 @@ fn pinned_band_todo(id: &str, content: &str, status: &str) -> crate::todo::TodoI
         content: content.to_string(),
         status: status.to_string(),
         priority: "high".to_string(),
-        group: None,
-        blocked_by: Vec::new(),
-        assigned_to: None,
+        ..Default::default()
     }
 }
 

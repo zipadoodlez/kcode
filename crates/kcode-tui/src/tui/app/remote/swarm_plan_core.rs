@@ -89,10 +89,7 @@ mod tests {
             status: status.to_string(),
             priority: "normal".to_string(),
             id: id.to_string(),
-            subsystem: None,
-            file_scope: Vec::new(),
-            blocked_by: Vec::new(),
-            assigned_to: None,
+            ..Default::default()
         }
     }
 

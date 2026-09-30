@@ -100,8 +100,7 @@ fn todos_widgets_render_group_headers_when_groups_present() {
         content: format!("task {id}"),
         status: status.to_string(),
         priority: "medium".to_string(),
-        blocked_by: Vec::new(),
-        assigned_to: None,
+        ..Default::default()
     };
     let data = InfoWidgetData {
         todos: vec![
@@ -130,13 +129,11 @@ fn todos_widgets_render_group_headers_when_groups_present() {
 #[test]
 fn todos_widgets_stay_flat_without_groups() {
     let mk = |id: &str, status: &str| crate::todo::TodoItem {
-        group: None,
         id: id.to_string(),
         content: format!("task {id}"),
         status: status.to_string(),
         priority: "medium".to_string(),
-        blocked_by: Vec::new(),
-        assigned_to: None,
+        ..Default::default()
     };
     let data = InfoWidgetData {
         todos: vec![mk("a", "completed"), mk("b", "pending")],
@@ -149,13 +146,11 @@ fn todos_widgets_stay_flat_without_groups() {
 #[test]
 fn todos_widget_renders_exact_pips_for_small_lists() {
     let mk = |status: &str| crate::todo::TodoItem {
-        group: None,
         id: status.to_string(),
         content: format!("item {status}"),
         status: status.to_string(),
         priority: "medium".to_string(),
-        blocked_by: Vec::new(),
-        assigned_to: None,
+        ..Default::default()
     };
     let data = InfoWidgetData {
         todos: vec![
@@ -197,10 +192,7 @@ fn plan_item(id: &str, status: &str) -> crate::plan::PlanItem {
         status: status.to_string(),
         priority: "medium".to_string(),
         id: id.to_string(),
-        subsystem: None,
-        file_scope: Vec::new(),
-        blocked_by: Vec::new(),
-        assigned_to: None,
+        ..Default::default()
     }
 }
 
@@ -334,8 +326,7 @@ fn todo_item(id: &str, content: &str, status: &str, group: Option<&str>) -> crat
         priority: "medium".to_string(),
         id: id.to_string(),
         group: group.map(|g| g.to_string()),
-        blocked_by: Vec::new(),
-        assigned_to: None,
+        ..Default::default()
     }
 }
 
@@ -1036,13 +1027,11 @@ fn placements_never_include_border_only_widgets() {
             ..Default::default()
         }),
         todos: vec![crate::todo::TodoItem {
-            group: None,
             content: "ship patch".to_string(),
             status: "in_progress".to_string(),
             priority: "high".to_string(),
             id: "todo-1".to_string(),
-            blocked_by: Vec::new(),
-            assigned_to: None,
+            ..Default::default()
         }],
         queue_mode: Some(true),
         swarm_info: Some(SwarmInfo {

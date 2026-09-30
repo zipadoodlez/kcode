@@ -299,13 +299,11 @@ fn test_remote_escape_interrupt_disables_auto_poke_while_processing() {
         &mut app,
         super::commands::build_poke_message(&[
             crate::todo::TodoItem {
-                group: None,
                 id: "todo-1".to_string(),
                 content: "keep going".to_string(),
                 status: "pending".to_string(),
                 priority: "high".to_string(),
-                blocked_by: Vec::new(),
-                assigned_to: None,
+                ..Default::default()
             },
         ]),
     );
