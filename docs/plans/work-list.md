@@ -24,7 +24,9 @@ Settled 2026-10-01. Not steps; what every step has to satisfy.
 1. **One file per repo, `tasks.jsonl` at the repo root, and it supersedes
    `docs/todo.md`.** The home is found from git, not from the working directory,
    so a session started in `crates/foo` reads the same list. Work with no repo
-   uses the same basename in a scratch location tied to the session.
+   uses the same basename in a scratch location tied to the session. The file
+   lives in the server's working directory, so a remote attach writes the remote
+   checkout and git carries it to the client's side; no separate write path.
 2. **Never hand-authored.** The tool owns the write protocol and re-reads the
    file before each write, so a human edit is an input, not a conflict.
 3. **One close action, for every entry.** The holder produces the result the
@@ -43,7 +45,8 @@ Settled 2026-10-01. Not steps; what every step has to satisfy.
    enforcement, and it needs no status tracking.
 7. **The server is the only writer.** Agents claim a row by setting
    `assigned_to` before any work, so an unclaimed row is free. Many claimers,
-   one writer.
+   one writer. A claim rides the work's commit, so the tree is dirty from claim
+   to landing.
 8. **One item type**, in `kcode-task-types`, the crate whose name is the concept.
 9. **Every session works from a file from turn one.** There is one mode axis:
    the work. "Regular" is not a mode, it is a swarm with one member. Rigor stays
@@ -67,7 +70,7 @@ Settled 2026-10-01. Not steps; what every step has to satisfy.
     to search is a row like any other, while a fog or out-of-scope note is
     doc-shaped, so it earns no row and no section. An out-of-scope finding is a
     result ("searched, and this is out of scope because ..."), which rule 5
-    already records in the commit.
+    already records in the commit. Line order carries no promise.
 14. **The check is a rule, not a field.** The close action requires a nonempty
     result, and the tool description names the check and asks for its actual
     result. Nothing for the harness to judge. A skipped check shows only in the
@@ -88,31 +91,19 @@ Every step lands whole, proven by the gate and, where behavior moves, one
 
 ### B. The file is the list
 
-- [ ] **(decide)** whether line order means anything, such as priority.
-- [ ] **(decide)** where the standing decisions at the top of `docs/todo.md` go.
-  The file is not prose any more, and those are boundaries rather than tasks, so
-  they are not rows.
-- [ ] **(decide)** who writes when the working directory is remote, since the
-  server is the only writer and the file lives in the working tree.
-- [ ] **(decide)** whether a claim is committed. The file is tracked, so claiming
-  a row edits the working tree and leaves it dirty until the work lands; either
-  the claim rides the work's commit, or the tree sits dirty mid-task.
-- [ ] **(decide)** what happens to the per-session todo JSON's existing content
-  when B1 stops reading it: imported once into the repo file, or dropped.
 - [ ] **B1.** The `todo` tool reads and writes `tasks.jsonl` and its action set
   becomes add, claim, close: close requires a nonempty result and removes the row
   (rules 3 to 5), so `status` loses its writer and the poke counts open rows
   instead of incomplete statuses. This repo's `docs/todo.md` becomes the file's
-  first content, `/todos` and the widget render from it, the per-session todo
-  JSON is deleted, and the twelve references to `docs/todo.md` move to the new
-  path (`README.md`, `docs/README.md` four times, `hooks.md`, `dev/testing.md`,
-  `dev/benchmarking.md`, `dev/post-change.md`, the browser plan, one comment in
-  `kcode-tui/src/tui/mod.rs`).
+  first content and its standing decisions move to `docs/what-was-removed.md`,
+  which already holds what this fork deliberately kept; the old per-session JSON
+  is deleted with no import. `/todos` and the widget render from the file, and the
+  twelve references to `docs/todo.md` move to the new path (`README.md`,
+  `docs/README.md` four times, `hooks.md`, `dev/testing.md`, `dev/benchmarking.md`,
+  `dev/post-change.md`, the browser plan, one comment in `kcode-tui/src/tui/mod.rs`).
 - [ ] **B2.** Drop `group` and `status` from the type. B1 gives `parent`, which
   is what `group` was grouping by, and the close action is what makes a
   completed row unrepresentable rather than stored.
-
-Gated by the five decisions above.
 
 ### C. The swarm reads and writes the file
 
