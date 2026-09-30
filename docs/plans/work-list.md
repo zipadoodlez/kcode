@@ -123,7 +123,10 @@ Every step lands whole, proven by the gate and, where behavior moves, one
   provide the idle guard and the externally started turn. Trigger: the
   turn-terminal path, so the loop is the session's own turns. Prove: a session
   holding a ready row is continued, one holding a blocked row is not, one holding
-  nothing is not.
+  nothing is not. Landed: the loop and its pick are in, off unless
+  `features.auto_poke` is on and only for attended sessions, because a member is
+  driven by its plan until rows seed a run. The proof left is the loop end to end
+  rather than the pick alone.
 - [ ] **0.2. Delete the client poke**, which this replaces. With the server
   continuing a session that holds ready rows, the TUI's auto-poke machine goes:
   `auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`, `total_pokes_sent`,

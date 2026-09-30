@@ -839,6 +839,7 @@ pub(super) async fn handle_client(
                     let done_session = processing_session_id.take();
                     record_processing_completion(
                         done_session.as_deref(), result, completion_report,
+                        &sessions,
                         &SwarmStatusRefs {
                             members: &swarm_members,
                             swarms_by_id: &swarms_by_id,
@@ -2957,6 +2958,7 @@ pub(super) async fn handle_client(
                         processing_session_id.as_deref(),
                         result,
                         report,
+                        &sessions,
                         &SwarmStatusRefs {
                             members: &swarm_members,
                             swarms_by_id: &swarms_by_id,
@@ -3018,6 +3020,7 @@ async fn record_processing_completion(
     done_session: Option<&str>,
     result: Result<()>,
     completion_report: Option<String>,
+    sessions: &SessionAgents,
     swarm: &SwarmStatusRefs<'_>,
 ) {
     match result {
@@ -3033,6 +3036,20 @@ async fn record_processing_completion(
                     Some(swarm.event_history),
                     Some(swarm.event_counter),
                     Some(swarm.event_tx),
+                )
+                .await;
+                // A session's own turns are the loop, so a finished turn takes the
+                // next row it holds, when it may keep going on its own.
+                let _ = super::live_turn::continue_with_next_row(
+                    session_id,
+                    sessions,
+                    super::live_turn::LiveTurnSwarmContext::new(
+                        swarm.members,
+                        swarm.swarms_by_id,
+                        swarm.event_history,
+                        swarm.event_counter,
+                        swarm.event_tx,
+                    ),
                 )
                 .await;
             }
