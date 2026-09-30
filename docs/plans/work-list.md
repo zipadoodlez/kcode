@@ -33,7 +33,12 @@ row field, and the default is none because the scope is what stops it.
 A swarm member has no human, so the run supplies every turn. A session with a human
 never has turns taken from it: dispatch offers it rows at a turn boundary, and the
 session claims one when it picks it up, so an offered row is never stranded. That
-predicate is the only difference between today's poke and today's dispatch.
+is one mechanism with two triggers, a schedule and a person, not two mechanisms.
+
+Having a human is derived from live state that already exists, a client attached to
+the session, and it is read in exactly one place, the loop's decision about who
+supplies the next turn. Stored nowhere, and read anywhere else, it becomes the mode
+boundary this model deleted.
 
 A run adjusts by editing rows, since it has no plan of its own to mutate. It adds
 work under the row it came from, leaves notes, clears a blocker that no longer
