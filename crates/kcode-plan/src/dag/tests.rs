@@ -232,7 +232,7 @@ fn expand_rejecting_cycle_leaves_graph_unchanged() {
 }
 
 #[test]
-fn expand_records_planner_and_frees_owner_for_rescheduling() {
+fn expand_keeps_the_owner_who_integrates_the_children() {
     let mut g = dag(vec![spec("root", NodeKind::Explore)]);
     dispatch(&mut g, "root", "w0");
     expand_node(
@@ -244,10 +244,9 @@ fn expand_records_planner_and_frees_owner_for_rescheduling() {
     .unwrap();
 
     let root = g.get("root").unwrap();
-    // Owner is freed so the re-queued composite can be auto-scheduled, but the
-    // planner is recorded for synthesis affinity.
-    assert_eq!(root.owner, None);
-    assert_eq!(root.planner.as_deref(), Some("w0"));
+    // The owner stays: it is the record of who integrates the children, and
+    // ready_nodes never reads ownership, so the composite stays runnable.
+    assert_eq!(root.owner.as_deref(), Some("w0"));
     assert!(root.expanded);
 
     // Once the child completes, the composite is runnable again (no owner gate).

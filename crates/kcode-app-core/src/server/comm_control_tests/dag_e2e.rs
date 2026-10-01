@@ -511,16 +511,13 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
     )
     .await;
 
-    // Planner recorded; root owner freed.
+    // The holder stays: it is the record of who integrates the children, so the
+    // re-queued composite goes back to it with no side table.
     {
         let plans = fx.swarm_plans.read().await;
         let plan = &plans[&fx.swarm_id];
-        assert_eq!(
-            plan.node_meta["root"].planner.as_deref(),
-            Some(planner.as_str())
-        );
         let root = plan.items.iter().find(|i| i.id == "root").unwrap();
-        assert!(root.assigned_to.is_none());
+        assert_eq!(root.assigned_to.as_deref(), Some(planner.as_str()));
     }
 
     // Complete the child so the composite root becomes runnable again.
@@ -558,17 +555,56 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
     )
     .await;
 
-    // assign_next should route the composite synthesis back to the planner.
-    let resolved = crate::server::comm_control::resolve_assignment_target_for_task_test_hook(
-        &fx.coord,
-        &fx.swarm_id,
-        "root",
+    // The composite is runnable again and still names the planner, so the next
+    // dispatch hands the synthesis back to it rather than choosing a worker.
+    let mut client_rx = fx.client_rx;
+    let global_session_id = Arc::new(RwLock::new(String::new()));
+    let provider: Arc<dyn Provider> = Arc::new(TestProvider);
+    let mcp_pool = Arc::new(crate::mcp::SharedMcpPool::from_default_config());
+    handle_comm_assign_next(
+        4,
+        fx.coord.clone(),
         None,
+        None,
+        Some(true),
+        Some(true),
+        None,
+        None,
+        None,
+        &fx.client_tx,
+        &fx.sessions,
+        &global_session_id,
+        &provider,
+        &fx.soft_interrupt_queues,
+        &fx.client_connections,
         &fx.swarm_members,
+        &fx.swarms_by_id,
         &fx.swarm_plans,
+        &fx.swarm_coordinators,
+        &fx.event_history,
+        &fx.event_counter,
+        &fx.swarm_event_tx,
+        &mcp_pool,
+        &fx.mutation_runtime,
     )
     .await;
-    assert_eq!(resolved.as_deref(), Ok(planner.as_str()));
+    // The seed, expand and complete calls above left their acks in this channel.
+    while let Some(event) = client_rx.recv().await {
+        match event {
+            ServerEvent::CommAssignTaskResponse {
+                task_id,
+                target_session,
+                ..
+            } => {
+                assert_eq!(task_id, "root");
+                assert_eq!(target_session, planner);
+                return;
+            }
+            ServerEvent::Error { message, .. } => panic!("assign_next failed: {message}"),
+            _ => {}
+        }
+    }
+    panic!("assign_next sent no dispatch response");
 }
 
 /// A solo deep-mode agent (no coordinator registered) seeds a graph. It must be

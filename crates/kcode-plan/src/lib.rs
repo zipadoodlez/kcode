@@ -73,12 +73,6 @@ pub struct SwarmExecutionState {
 /// file's), so only what a row cannot say lives here.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeMeta {
-    /// The agent that planned this node's decomposition (composite owner). Kept
-    /// separately from `TaskItem.assigned_to` so a re-queued composite can be
-    /// auto-scheduled (assigned_to cleared) while still preferring its original
-    /// planner for the synthesis step.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub planner: Option<String>,
     /// The typed handoff artifact, present once the node completes. Serialized as
     /// JSON text so the protocol/persistence layers need no extra types.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -128,8 +122,8 @@ impl VersionedPlan {
     }
 
     /// Rewrite all durable references when a live client replaces its session
-    /// id. This keeps ownership and DAG planner affinity from accumulating
-    /// dangling historical identities.
+    /// id. This keeps ownership from accumulating dangling historical
+    /// identities.
     pub fn rename_session(&mut self, old_session_id: &str, new_session_id: &str) {
         if self.participants.remove(old_session_id) {
             self.participants.insert(new_session_id.to_string());
@@ -137,11 +131,6 @@ impl VersionedPlan {
         for item in &mut self.items {
             if item.assigned_to.as_deref() == Some(old_session_id) {
                 item.assigned_to = Some(new_session_id.to_string());
-            }
-        }
-        for meta in self.node_meta.values_mut() {
-            if meta.planner.as_deref() == Some(old_session_id) {
-                meta.planner = Some(new_session_id.to_string());
             }
         }
     }

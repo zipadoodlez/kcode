@@ -187,11 +187,6 @@ pub struct TaskNode {
     /// composite node re-runs as a synthesis/join once its children close.
     #[serde(default)]
     pub expanded: bool,
-    /// The agent that planned this node's decomposition. Set when a node is
-    /// expanded into a composite; used to prefer the same planner for the
-    /// synthesis re-wake while leaving `owner` free for normal scheduling.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub planner: Option<String>,
     /// Priority used to order the ready set. Lower rank runs first.
     #[serde(default)]
     pub priority: u8,

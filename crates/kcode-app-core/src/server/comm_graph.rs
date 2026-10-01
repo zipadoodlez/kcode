@@ -393,19 +393,15 @@ pub(super) async fn handle_comm_expand_node(
                         }
                     }
                     if let Some(parent) = plan.items.iter_mut().find(|item| item.id == node_id) {
-                        // The row is a join now: release it and wait for its children.
+                        // The row is a join now: it waits for its children, and it
+                        // keeps its holder, who is the one that integrates them.
                         parent.status = "queued".to_string();
-                        parent.assigned_to = None;
                         for child_id in child_ids {
                             if !parent.blocked_by.contains(&child_id) {
                                 parent.blocked_by.push(child_id);
                             }
                         }
                     }
-                    // The row has children (composite, derived) and its decomposition is
-                    // the planner's to integrate.
-                    let meta = plan.node_meta.entry(node_id.clone()).or_default();
-                    meta.planner = Some(req_session_id.clone());
                     plan.version += 1;
                     Ok(())
                 }

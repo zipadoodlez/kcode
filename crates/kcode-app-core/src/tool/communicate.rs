@@ -267,11 +267,11 @@ async fn stop_swarm_sessions(
 /// whose queued status may not have propagated yet. Returns how many workers
 /// were stopped.
 ///
-/// Tradeoff: a stopped `ready` worker may have been a composite planner whose
-/// synthesis node would otherwise be routed back to it (planner affinity).
-/// Assignment falls back to a fresh or other eligible worker in that case,
-/// which is an acceptable degradation when the alternative is aborting the run
-/// at the member cap.
+/// Tradeoff: a stopped `ready` worker may have been the holder of a composite
+/// whose synthesis step would otherwise be handed back to it. The salvage sweep
+/// frees that row once the member is gone, and assignment falls back to a fresh
+/// or other eligible worker, which is an acceptable degradation when the
+/// alternative is aborting the run at the member cap.
 async fn cleanup_finished_workers_for_capacity(
     ctx: &ToolContext,
     exclude: &[String],

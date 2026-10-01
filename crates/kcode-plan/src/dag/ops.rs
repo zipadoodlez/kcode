@@ -196,13 +196,11 @@ pub fn expand_node(
             .ok_or_else(|| DagError::UnknownNode(node_id.to_string()))?;
         node.expanded = true;
         node.status = NodeStatus::Queued;
-        // Record the planner (current owner) for synthesis re-wake affinity, then
-        // free `owner` so the re-queued composite is eligible for normal
-        // scheduling once its children complete.
-        if node.planner.is_none() {
-            node.planner = node.owner.clone();
-        }
-        node.owner = None;
+        // The owner stays: it is the record of who integrates the children, so the
+        // re-queued composite is scheduled back to the same worker once they
+        // complete. The row's assignment carries this in the plan, and readiness
+        // never reads ownership (`ready_nodes`), so nothing needs freeing to make
+        // the composite runnable again.
         // Keep its original upstream deps and add the join deps.
         for dep in synth_deps {
             if !node.depends_on.contains(&dep) {
@@ -333,7 +331,6 @@ fn spec_to_node(spec: NodeSpec, parent: Option<String>) -> TaskNode {
         parent,
         depends_on,
         expanded: false,
-        planner: None,
         priority: spec.priority,
         output: None,
     }

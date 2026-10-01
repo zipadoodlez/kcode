@@ -429,28 +429,6 @@ async fn task_id_for_target_session(
     task_control_target_item_id(&plan.items, target_session, action)
 }
 
-/// Test-only re-export of the private assignment resolver so the e2e tests can
-/// assert composite re-wake routing without going through the full assign path.
-#[cfg(test)]
-pub(super) async fn resolve_assignment_target_for_task_test_hook(
-    req_session_id: &str,
-    swarm_id: &str,
-    task_id: &str,
-    requested_target: Option<&str>,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
-) -> Result<String, String> {
-    resolve_assignment_target_for_task(
-        req_session_id,
-        swarm_id,
-        task_id,
-        requested_target,
-        swarm_members,
-        swarm_plans,
-    )
-    .await
-}
-
 async fn next_unassigned_runnable_task_id(
     swarm_id: &str,
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
@@ -554,38 +532,10 @@ async fn resolve_assignment_target_for_task(
         .await;
     }
 
-    // Composite owner re-wake affinity: a composite (expanded) node that has
-    // become runnable again is the synthesis/join step. Prefer routing it back to
-    // the agent that planned the decomposition (its recorded owner), so the same
-    // planner integrates its children rather than a fresh worker. Only honor this
-    // when that owner is still a live, eligible swarm member.
-    {
-        let plans = swarm_plans.read().await;
-        if let Some(plan) = plans.get(swarm_id) {
-            let planner = plan
-                .node_meta
-                .get(task_id)
-                .and_then(|meta| meta.planner.clone())
-                .filter(|_| plan.is_composite(task_id));
-            if let Some(owner) = planner
-                && owner != req_session_id
-            {
-                let members = swarm_members.read().await;
-                let owner_eligible =
-                    filter_swarm_agent_candidates(&members, req_session_id, swarm_id)
-                        .iter()
-                        .any(|member| member.session_id == owner);
-                // The planner affinity deliberately bypasses the busy check (the
-                // synthesis needs its decomposition context), but not the race
-                // claim: if another in-flight pick just took this member, fall
-                // through to normal selection instead of double-booking it.
-                if owner_eligible && try_claim_auto_assign_target(swarm_id, &owner) {
-                    return Ok(owner);
-                }
-            }
-        }
-    }
-
+    // A composite's synthesis re-wake needs no affinity here: the row keeps its
+    // holder when it is decomposed, so the dispatch picker hands it straight back
+    // (see [`next_dispatch`]). This resolver only ever chooses a worker for a row
+    // nobody holds.
     let affinities = {
         let plans = swarm_plans.read().await;
         let Some(plan) = plans.get(swarm_id) else {

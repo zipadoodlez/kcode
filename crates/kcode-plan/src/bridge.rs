@@ -130,7 +130,6 @@ pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
             parent: item.parent.clone(),
             depends_on: item.blocked_by.clone(),
             expanded: plan.is_composite(&item.id),
-            planner: meta.planner.clone(),
             priority: crate::priority_rank(&item.priority),
             output: artifact,
         });
@@ -176,7 +175,6 @@ pub fn apply_task_graph(plan: &mut VersionedPlan, graph: &TaskGraph) {
         node_meta.insert(
             node.id.clone(),
             NodeMeta {
-                planner: node.planner.clone(),
                 artifact_json: node
                     .output
                     .as_ref()
@@ -463,7 +461,6 @@ mod tests {
                     })
                     .unwrap(),
                 ),
-                ..NodeMeta::default()
             },
         );
 
@@ -493,7 +490,6 @@ mod tests {
                 artifact_json: Some(
                     serde_json::to_string(&HandoffArtifact::brief("partial")).unwrap(),
                 ),
-                ..NodeMeta::default()
             },
         );
         // dep is not completed, so no context is injected.
