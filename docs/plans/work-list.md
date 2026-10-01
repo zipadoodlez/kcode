@@ -312,6 +312,18 @@ Last of the file work, whenever we want it.
   the file itself. Today it resolves the repo from its own working directory,
   which is the same thing for a local session and the wrong repo for a remote
   attach.
+  - `(decide)` **A session's todo view shows the rows it holds, and adopting a row
+    is the session's decision, not automatic.** The view already claims the scope
+    and does not do it: `todos_view.rs:373` is `load_current_session_todos`, the
+    panel text says "dedicated to the current session's todo list" (`:269`) and
+    the placeholder "Waiting for a session todo list" (`:524`), but the read is
+    `load_tasks`, which returns the whole repo file. The engine is already scoped
+    to the session's holdings (`bridge.rs:90` in `seed_specs`; `live_turn.rs:259`
+    for ready work), so the view is the odd one out. Open: filter for every
+    session, or only for runs, so a plain session still sees the whole list? And
+    how does a session first *see* rows it does not hold, so that adopting one is
+    a decision it can make? The model does not scope the user's session to its
+    holdings, so the answer cannot be a new rule.
 
 ### D. Delete what the file makes redundant
 

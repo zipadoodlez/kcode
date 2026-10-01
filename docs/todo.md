@@ -310,6 +310,14 @@ changes are paid for in test churn.
   this fork deleted. Pick one: delete both notes, give the port-back a plan of its
   own, or make the `AGENTS.md` line name what is actually tracked. The notes call
   themselves scratch, so deleting them is the default.
+- [ ] **(decision)** `Action::List` returns every row, not the session's
+  (`crates/kcode-app-core/src/tool/todo.rs:64`; the read is
+  `load_tasks(dir, session_id)` at `:303`). The engine is already session-scoped on
+  `assigned_to` (`bridge.rs:90` in `seed_specs`; `live_turn.rs:259` for ready
+  work), so the server's list is the odd one out. Open with C5's client half in
+  `plans/work-list.md`: filter for every session, or only for runs? And how does a
+  session first see rows it does not hold, so that adopting one is its decision?
+  Not a rule: the model does not scope the user's session to its holdings.
 - [ ] Not every color derives from a role: `configured_native_color`
   (`kcode-tui-style/src/palette.rs`) attributes a shade to a role only when it
   equals that role's default, so hardcoded `Color::Rgb(...)` shades pass through
