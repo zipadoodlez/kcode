@@ -29,9 +29,6 @@ use super::comm_control::{
     handle_client_debug_command, handle_client_debug_response, handle_comm_assign_next,
     handle_comm_assign_role, handle_comm_assign_task, handle_comm_task_control,
 };
-use super::comm_plan::{
-    handle_comm_approve_plan, handle_comm_propose_plan, handle_comm_reject_plan,
-};
 use super::comm_session::{handle_comm_spawn, handle_comm_stop};
 use super::comm_sync::{
     CommResyncPlanContext, handle_comm_plan_status, handle_comm_read_context,
@@ -2348,81 +2345,6 @@ pub(super) async fn handle_client(
                     &client_event_tx,
                     &swarm_members,
                     &channel_subscriptions,
-                )
-                .await;
-            }
-
-            Request::CommProposePlan {
-                id,
-                session_id: req_session_id,
-                items,
-            } => {
-                handle_comm_propose_plan(
-                    id,
-                    req_session_id,
-                    items,
-                    &client_event_tx,
-                    &swarm_members,
-                    &swarms_by_id,
-                    &shared_context,
-                    &swarm_plans,
-                    &swarm_coordinators,
-                    &sessions,
-                    &soft_interrupt_queues,
-                    &event_history,
-                    &event_counter,
-                    &swarm_event_tx,
-                    &swarm_mutation_runtime,
-                )
-                .await;
-            }
-
-            Request::CommApprovePlan {
-                id,
-                session_id: req_session_id,
-                proposer_session,
-            } => {
-                handle_comm_approve_plan(
-                    id,
-                    req_session_id,
-                    proposer_session,
-                    &client_event_tx,
-                    &swarm_members,
-                    &swarms_by_id,
-                    &shared_context,
-                    &swarm_plans,
-                    &swarm_coordinators,
-                    &sessions,
-                    &soft_interrupt_queues,
-                    &event_history,
-                    &event_counter,
-                    &swarm_event_tx,
-                    &swarm_mutation_runtime,
-                )
-                .await;
-            }
-
-            Request::CommRejectPlan {
-                id,
-                session_id: req_session_id,
-                proposer_session,
-                reason,
-            } => {
-                handle_comm_reject_plan(
-                    id,
-                    req_session_id,
-                    proposer_session,
-                    reason,
-                    &client_event_tx,
-                    &swarm_members,
-                    &shared_context,
-                    &swarm_coordinators,
-                    &sessions,
-                    &soft_interrupt_queues,
-                    &event_history,
-                    &event_counter,
-                    &swarm_event_tx,
-                    &swarm_mutation_runtime,
                 )
                 .await;
             }

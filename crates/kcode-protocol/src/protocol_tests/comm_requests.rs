@@ -1,30 +1,4 @@
 #[test]
-fn test_comm_propose_plan_roundtrip() -> Result<()> {
-    let req = Request::CommProposePlan {
-        id: 42,
-        session_id: "sess_a".to_string(),
-        items: vec![TaskItem {
-            content: "Refactor parser".to_string(),
-            status: "pending".to_string(),
-            priority: "high".to_string(),
-            id: "p1".to_string(),
-            blocked_by: vec!["p0".to_string()],
-            assigned_to: Some("sess_b".to_string()),
-            ..Default::default()
-        }],
-    };
-    let json = serde_json::to_string(&req)?;
-    let decoded = parse_request_json(&json)?;
-    assert_eq!(decoded.id(), 42);
-    let Request::CommProposePlan { items, .. } = decoded else {
-        return Err(anyhow!("wrong request type"));
-    };
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0].id, "p1");
-    Ok(())
-}
-
-#[test]
 fn test_stdin_response_roundtrip() -> Result<()> {
     let req = Request::StdinResponse {
         id: 99,

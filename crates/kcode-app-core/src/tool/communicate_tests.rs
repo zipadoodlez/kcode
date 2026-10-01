@@ -1128,8 +1128,6 @@ fn schema_advertises_supported_swarm_fields() {
         json!("Session ID or unique friendly name of one agent. Alias of target_session.")
     );
     assert!(props.contains_key("channel"));
-    assert!(props.contains_key("proposer_session"));
-    assert!(props.contains_key("reason"));
     assert!(props.contains_key("target_session"));
     assert_eq!(
         props["target_session"]["description"],
@@ -1154,7 +1152,6 @@ fn schema_advertises_supported_swarm_fields() {
     assert!(props.contains_key("concurrency_limit"));
     assert!(props.contains_key("wake"));
     assert!(props.contains_key("delivery"));
-    assert!(props.contains_key("plan_items"));
     assert!(props.contains_key("initial_message"));
     assert!(props.contains_key("force"));
     assert!(props.contains_key("retain_agents"));
@@ -1173,10 +1170,6 @@ fn schema_advertises_supported_swarm_fields() {
     assert_eq!(
         props["delivery"]["enum"],
         json!(["notify", "interrupt", "wake"])
-    );
-    assert_eq!(
-        props["plan_items"]["items"]["additionalProperties"],
-        json!(true)
     );
     assert!(
         schema["properties"]["action"]["enum"]

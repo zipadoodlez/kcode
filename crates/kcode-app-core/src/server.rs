@@ -17,7 +17,6 @@ mod client_writer;
 mod comm_await;
 mod comm_control;
 mod comm_graph;
-mod comm_plan;
 mod comm_session;
 mod comm_sync;
 mod debug;
@@ -95,7 +94,7 @@ use anyhow::Result;
 use kcode_agent_runtime::{InterruptSignal, SoftInterruptSource};
 use kcode_swarm_core::{
     append_swarm_completion_report_instructions, format_structured_completion_report,
-    summarize_plan_items, truncate_detail,
+    truncate_detail,
 };
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;

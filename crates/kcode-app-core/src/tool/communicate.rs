@@ -1689,10 +1689,6 @@ struct CommunicateInput {
     #[serde(default)]
     channel: Option<String>,
     #[serde(default)]
-    proposer_session: Option<String>,
-    #[serde(default)]
-    reason: Option<String>,
-    #[serde(default)]
     target_session: Option<String>,
     #[serde(default)]
     role: Option<String>,
@@ -1711,12 +1707,10 @@ struct CommunicateInput {
     #[serde(default)]
     prefer_spawn: Option<bool>,
     #[serde(default)]
-    plan_items: Option<Vec<TaskItem>>,
-    #[serde(default)]
     node_id: Option<String>,
     /// Child rows for the expand_node action. Each: content, kind?, blocked_by?.
     #[serde(default)]
-    nodes: Option<Vec<kcode_plan::TaskItem>>,
+    nodes: Option<Vec<TaskItem>>,
     /// Handoff artifact (object) for complete_node.
     #[serde(default)]
     artifact: Option<serde_json::Value>,
@@ -1835,7 +1829,7 @@ impl Tool for CommunicateTool {
                 "action": {
                     "type": "string",
                     "enum": ["share", "share_append", "read", "message", "broadcast", "dm", "channel", "list", "list_channels", "channel_members",
-                             "propose_plan", "approve_plan", "reject_plan", "spawn", "stop", "assign_role",
+                             "spawn", "stop", "assign_role",
                              "status", "report", "plan_status", "summary", "read_context", "resync_plan", "assign_task", "assign_next", "fill_slots", "run_plan", "cleanup",
                              "task_graph", "expand_node", "complete_node",
                              "start", "start_task", "wake", "resume", "retry", "reassign", "replace", "salvage",
@@ -1877,8 +1871,6 @@ impl Tool for CommunicateTool {
                     "type": "string",
                     "description": "Channel name for channel actions. Discouraged: prefer DMs and task-graph artifacts."
                 },
-                "proposer_session": { "type": "string" },
-                "reason": { "type": "string" },
                 "target_session": {
                     "type": "string",
                     "description": "Session ID or unique friendly name for management actions. Alias of to_session."
@@ -1983,13 +1975,6 @@ impl Tool for CommunicateTool {
                     "type": "string",
                     "enum": ["notify", "interrupt", "wake"],
                     "description": "Optional delivery mode for dm/channel messaging."
-                },
-                "plan_items": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": true
-                    }
                 }
             }
         });
@@ -2348,87 +2333,6 @@ impl Tool for CommunicateTool {
                         Ok(ToolOutput::new("No channel members found."))
                     }
                     Err(e) => Err(anyhow::anyhow!("Failed to list channel members: {}", e)),
-                }
-            }
-
-            "propose_plan" => {
-                let items = params.plan_items.ok_or_else(|| {
-                    anyhow::anyhow!("'plan_items' is required for propose_plan action")
-                })?;
-                if items.is_empty() {
-                    return Err(anyhow::anyhow!(
-                        "'plan_items' must include at least one item"
-                    ));
-                }
-                let item_count = items.len() as u64;
-
-                let request = Request::CommProposePlan {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                    items,
-                };
-
-                match send_request(request).await {
-                    Ok(response) => {
-                        ensure_success(&response)?;
-                        Ok(ToolOutput::new(format!(
-                            "Plan proposal submitted ({} items).",
-                            item_count
-                        )))
-                    }
-                    Err(e) => Err(anyhow::anyhow!("Failed to propose plan: {}", e)),
-                }
-            }
-
-            "approve_plan" => {
-                let proposer = params.proposer_session.ok_or_else(|| {
-                    anyhow::anyhow!("'proposer_session' is required for approve_plan action")
-                })?;
-
-                let request = Request::CommApprovePlan {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                    proposer_session: proposer.clone(),
-                };
-
-                match send_request(request).await {
-                    Ok(response) => {
-                        ensure_success(&response)?;
-                        Ok(ToolOutput::new(format!(
-                            "Approved plan proposal from {}",
-                            proposer
-                        )))
-                    }
-                    Err(e) => Err(anyhow::anyhow!("Failed to approve plan: {}", e)),
-                }
-            }
-
-            "reject_plan" => {
-                let proposer = params.proposer_session.ok_or_else(|| {
-                    anyhow::anyhow!("'proposer_session' is required for reject_plan action")
-                })?;
-                let reason = params.reason.clone();
-
-                let request = Request::CommRejectPlan {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                    proposer_session: proposer.clone(),
-                    reason: reason.clone(),
-                };
-
-                match send_request(request).await {
-                    Ok(response) => {
-                        ensure_success(&response)?;
-                        let reason_msg = reason
-                            .as_ref()
-                            .map(|r| format!(" (reason: {})", r))
-                            .unwrap_or_default();
-                        Ok(ToolOutput::new(format!(
-                            "Rejected plan proposal from {}{}",
-                            proposer, reason_msg
-                        )))
-                    }
-                    Err(e) => Err(anyhow::anyhow!("Failed to reject plan: {}", e)),
                 }
             }
 
@@ -3128,7 +3032,7 @@ impl Tool for CommunicateTool {
 
             _ => Err(anyhow::anyhow!(
                 "Unknown action '{}'. Valid actions: share, share_append, read, message, broadcast, dm, channel, list, list_channels, channel_members, \
-                 propose_plan, approve_plan, reject_plan, spawn, stop, assign_role, status, report, plan_status, summary, read_context, \
+                 spawn, stop, assign_role, status, report, plan_status, summary, read_context, \
                  resync_plan, assign_task, assign_next, fill_slots, run_plan, cleanup, start, start_task, wake, resume, retry, reassign, replace, salvage, subscribe_channel, unsubscribe_channel, await_members. \
                  To read messages addressed to you, use action='read'.",
                 params.action

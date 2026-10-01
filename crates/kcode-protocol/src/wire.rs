@@ -448,32 +448,6 @@ pub enum Request {
         channel: String,
     },
 
-    /// Propose a swarm plan update
-    #[serde(rename = "comm_propose_plan")]
-    CommProposePlan {
-        id: u64,
-        session_id: String,
-        items: Vec<TaskItem>,
-    },
-
-    /// Approve a plan proposal (coordinator only)
-    #[serde(rename = "comm_approve_plan")]
-    CommApprovePlan {
-        id: u64,
-        session_id: String,
-        proposer_session: String,
-    },
-
-    /// Reject a plan proposal (coordinator only)
-    #[serde(rename = "comm_reject_plan")]
-    CommRejectPlan {
-        id: u64,
-        session_id: String,
-        proposer_session: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        reason: Option<String>,
-    },
-
     /// Seed the swarm task DAG from the rows the calling session holds. The plan
     /// gets the rows' ids, words, kinds and dependency edges; rows already in the
     /// plan are not seeded again.

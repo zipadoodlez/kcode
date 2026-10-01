@@ -210,8 +210,6 @@ CHANNELS:
 
 OPERATIONS (debug-only, bypass tool:communicate):
   swarm:set_context:<sess> <key> <value> - Set shared context as session
-  swarm:approve_plan:<coord> <proposer>  - Approve plan proposal (coordinator only)
-  swarm:reject_plan:<coord> <proposer> [reason] - Reject plan proposal
 
 UTILITIES:
   swarm:id:<path>          - Compute swarm_id for a path and show provenance

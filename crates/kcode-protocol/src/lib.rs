@@ -589,9 +589,6 @@ impl Request {
             Request::CommList { id, .. } => *id,
             Request::CommListChannels { id, .. } => *id,
             Request::CommChannelMembers { id, .. } => *id,
-            Request::CommProposePlan { id, .. } => *id,
-            Request::CommApprovePlan { id, .. } => *id,
-            Request::CommRejectPlan { id, .. } => *id,
             Request::CommSeedGraph { id, .. } => *id,
             Request::CommExpandNode { id, .. } => *id,
             Request::CommCompleteNode { id, .. } => *id,
@@ -625,9 +622,6 @@ impl Request {
                 | Request::CommList { .. }
                 | Request::CommListChannels { .. }
                 | Request::CommChannelMembers { .. }
-                | Request::CommProposePlan { .. }
-                | Request::CommApprovePlan { .. }
-                | Request::CommRejectPlan { .. }
                 | Request::CommSeedGraph { .. }
                 | Request::CommExpandNode { .. }
                 | Request::CommCompleteNode { .. }

@@ -86,8 +86,8 @@ explore surfaces the gaps its caller (or a follow-up row) can widen.
 
 - A member's deeper work is rows the run dispatches; only the root session starts
   agents. The single per-swarm coordinator slot is only for the shared plan
-  (`propose_plan`/`approve_plan`/`assign_task`/`task_control`), because there is
-  exactly one `VersionedPlan` per swarm.
+  (`assign_task`/`task_control`), because there is exactly one `VersionedPlan`
+  per swarm.
 - When the root leaves, its workers reparent to the live coordinator, or become
   roots, so the spawn tree never holds dangling report-back edges. Session renames
   rewrite children's report-back edges, so ownership, stop permission, and subtree
