@@ -222,16 +222,9 @@ destination, the roadmap, and why the tier must not return; the A/B probe recipe
 
 ## Anytime
 
-- [ ] **(decision)** What the long permission carries, now that the overnight
-  subsystem is gone (deleted 2026-10-01). Four things it did have value apart from
-  the mode, judged one at a time:
-  - **A bound.** `parse_duration` ("7h", "90m") and `target_wake_at` are the model's
-    "a bound on a run is a run property, never a row field", so "work until 07:00"
-    needs no model change; the parser and the "target in 4h 45m" label existed.
-  - **A quota projection.** `build_usage_projection` turned the existing
-    `usage::fetch_all_provider_usage` output into a risk that the spend would not
-    last the run. It is the only preflight piece that predicted rather than
-    displayed, and it fits on the grant as a warning or a stop near the hard limit.
+- [ ] **(decision)** Two of the four things the deleted overnight run had are still
+  unplaced (deleted 2026-10-01; the bound and the quota projection went back onto the
+  permission in `plans/work-list.md` step 0.1, where they belong).
   - **A resource snapshot.** Battery, memory, disk and load: ~200 lines of /proc and
     sysfs readers that were only ever displayed, never acted on. Worth keeping only
     if something acts, so throttle or stop on battery and refuse a run with no disk.

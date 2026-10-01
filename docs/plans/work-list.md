@@ -149,6 +149,12 @@ Every step lands whole, proven by the gate and, where behavior moves, one
   inherently, which is 0.3's business: a member is still driven by its plan. "Typing
   always wins" holds now: the reservation is given up before the next row is looked
   for, so a turn already waiting for the agent takes it and the run ends there.
+  The permission carries the two things the deleted overnight run had and this one
+  needs: an optional bound, so "work until 07:00" is a run property as the model
+  says (the duration parser and the target-wake label are in git history), and a
+  quota-projection warning built from the existing provider usage reports, which is
+  what makes a long permission safe to grant. The resource snapshot and a run-end
+  summary stay undecided in `docs/todo.md`.
 - [ ] **0.2. Delete the client poke**, which this replaces. With the server
   continuing a session that holds ready rows, the TUI's auto-poke machine goes:
   `auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`, `total_pokes_sent`,
