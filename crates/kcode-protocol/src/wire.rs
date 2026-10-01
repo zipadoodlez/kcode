@@ -7,27 +7,6 @@ fn default_true() -> bool {
     true
 }
 
-/// Wire spec for a task-DAG node submitted by an agent (seed/expand/inject).
-/// Mirrors `kcode_plan::dag::NodeSpec` but kept as an explicit wire type so the
-/// protocol stays self-describing and serde-stable.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct TaskGraphNodeSpec {
-    pub id: String,
-    pub content: String,
-    /// "explore" | "implement" | "verify" | "fix" | "synthesize". Defaults to
-    /// "explore" when absent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kind: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub depends_on: Vec<String>,
-    #[serde(default, skip_serializing_if = "is_zero_u8")]
-    pub priority: u8,
-}
-
-fn is_zero_u8(value: &u8) -> bool {
-    *value == 0
-}
-
 fn is_false(value: &bool) -> bool {
     !*value
 }
@@ -501,13 +480,15 @@ pub enum Request {
     #[serde(rename = "comm_seed_graph")]
     CommSeedGraph { id: u64, session_id: String },
 
-    /// Decompose a node the caller owns into a child sub-DAG (composite path).
+    /// Decompose a node the caller holds into child rows. Each child is a row:
+    /// content, optional kind, and blockers on rows that already exist. The store
+    /// owns the child ids.
     #[serde(rename = "comm_expand_node")]
     CommExpandNode {
         id: u64,
         session_id: String,
         node_id: String,
-        children: Vec<TaskGraphNodeSpec>,
+        children: Vec<TaskItem>,
     },
 
     /// Complete a node the caller owns with a typed handoff artifact.

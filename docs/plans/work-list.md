@@ -180,10 +180,10 @@ duplication they would have removed and nothing else.
 **Here is where the work stands**, and a step in flight is finished before a new one
 starts. 0.1, 0.2 and 0.3 have landed whole and are gone from this list; what 0.2 owed
 was 0.3's last stage, and the two losses 0.1 and 0.3 named are in `docs/todo.md`. Next
-is 0.4: its gate stage (0.4a) has landed, and its recursion/axis stage (0.4b) is decided
-(only the root spawns; both swarm rungs go) with its first part landed. Each stage
-compiles before it is committed (`dev/post-change.md` says which check); the full gate
-runs once, when the step is done.
+is 0.4: its gate stage (0.4a) and row stage (0.4c) have landed, and its recursion/axis
+stage (0.4b) is decided (only the root spawns; both swarm rungs go) with its first part
+landed and the rung removal outstanding. Each stage compiles before it is committed
+(`dev/post-change.md` says which check); the full gate runs once, when the step is done.
 
 ### 0. One way work gets done
 
@@ -202,10 +202,6 @@ runs once, when the step is done.
     deleted gates), so they, both directives, the `swarm_root_effort`/
     `swarm_deep_root_effort` pins, the sentinel handling in providers and the TUI rungs
     go. The losses are named in `docs/todo.md`. First part landed (`492597d7`).
-  - **0.4c. A decomposition is a row.** `expand_node` writes rows through the store
-    (`todo::close_row`'s sibling), and `TaskGraphNodeSpec` goes with it, so the wire
-    node spec is deleted. (`inject_gap` went with the gates in 0.4a: a gate was its only
-    caller.)
   - **0.4d. `parent`, `expanded`, `planner` and `origin` leave `node_meta`**: `parent`
     duplicates the row already, and the other three are run state.
   - **0.4e. `task_progress` goes**, and liveness comes from the member's own clock and

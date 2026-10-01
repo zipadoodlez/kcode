@@ -6,18 +6,17 @@
 // `handle_comm_assign_task` path, proving the substrate works request-to-plan and
 // that forward dataflow reaches a downstream assignment.
 
-use crate::protocol::TaskGraphNodeSpec;
 use crate::server::comm_graph::{
     handle_comm_complete_node, handle_comm_expand_node, handle_comm_seed_graph,
 };
 
-fn node_spec(id: &str, kind: &str, deps: &[&str]) -> TaskGraphNodeSpec {
-    TaskGraphNodeSpec {
+fn node_spec(id: &str, kind: &str, deps: &[&str]) -> TaskItem {
+    TaskItem {
         id: id.to_string(),
         content: format!("task {id}"),
         kind: Some(kind.to_string()),
-        depends_on: deps.iter().map(|d| d.to_string()).collect(),
-        priority: 0,
+        blocked_by: deps.iter().map(|d| d.to_string()).collect(),
+        ..Default::default()
     }
 }
 
@@ -41,16 +40,12 @@ fn scratch_repo() -> tempfile::TempDir {
 /// fixture puts the nodes it wants seeded there first; a node spec here is the
 /// test's shorthand for a row's id, words, kind and blockers, and the position is
 /// the order given.
-fn write_rows(repo: &std::path::Path, session_id: &str, nodes: &[TaskGraphNodeSpec]) {
+fn write_rows(repo: &std::path::Path, session_id: &str, nodes: &[TaskItem]) {
     let rows: Vec<TaskItem> = nodes
         .iter()
         .map(|node| TaskItem {
-            id: node.id.clone(),
-            content: node.content.clone(),
-            kind: node.kind.clone(),
-            blocked_by: node.depends_on.clone(),
             assigned_to: Some(session_id.to_string()),
-            ..Default::default()
+            ..node.clone()
         })
         .collect();
     crate::todo::save_tasks(Some(repo), session_id, &rows).expect("write the rows");
@@ -139,7 +134,7 @@ async fn graph_fixture_named(swarm_id: &str, coord: &str, worker: &str) -> Graph
 }
 
 impl GraphFixture {
-    async fn seed(&mut self, nodes: Vec<TaskGraphNodeSpec>) {
+    async fn seed(&mut self, nodes: Vec<TaskItem>) {
         write_rows(self.repo.path(), &self.coord, &nodes);
         handle_comm_seed_graph(
             1,
@@ -473,14 +468,12 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
     let other = "other".to_string();
     {
         let mut members = fx.swarm_members.write().await;
-        members.insert(
-            planner.clone(),
-            owned_member(&planner, &fx.swarm_id, "ready", &fx.coord),
-        );
-        members.insert(
-            other.clone(),
-            owned_member(&other, &fx.swarm_id, "ready", &fx.coord),
-        );
+        let mut planner_member = owned_member(&planner, &fx.swarm_id, "ready", &fx.coord);
+        planner_member.working_dir = Some(fx.repo.path().to_path_buf());
+        members.insert(planner.clone(), planner_member);
+        let mut other_member = owned_member(&other, &fx.swarm_id, "ready", &fx.coord);
+        other_member.working_dir = Some(fx.repo.path().to_path_buf());
+        members.insert(other.clone(), other_member);
         let mut by_id = fx.swarms_by_id.write().await;
         by_id
             .get_mut(&fx.swarm_id)
@@ -531,17 +524,28 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
     }
 
     // Complete the child so the composite root becomes runnable again.
+    // The store owned the child's id, so read it back rather than assuming one.
+    let child_id = {
+        let plans = fx.swarm_plans.read().await;
+        let plan = &plans[&fx.swarm_id];
+        plan.items
+            .iter()
+            .find(|i| i.parent.as_deref() == Some("root"))
+            .expect("the decomposition wrote a child row")
+            .id
+            .clone()
+    };
     {
         let mut plans = fx.swarm_plans.write().await;
         let plan = plans.get_mut(&fx.swarm_id).unwrap();
-        let child = plan.items.iter_mut().find(|i| i.id == "root.1").unwrap();
+        let child = plan.items.iter_mut().find(|i| i.id == child_id).unwrap();
         child.status = "running".to_string();
         child.assigned_to = Some(other.clone());
     }
     handle_comm_complete_node(
         4,
         other.clone(),
-        "root.1".to_string(),
+        child_id,
         serde_json::json!({"findings": "child done"}).to_string(),
         &fx.client_tx,
         &fx.swarm_members,

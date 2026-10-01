@@ -188,7 +188,6 @@ pub struct ReloadRecoveryDirective {
 pub type ReloadRecoverySnapshot = ReloadRecoveryDirective;
 
 mod wire;
-pub use wire::TaskGraphNodeSpec;
 pub use wire::{Request, ServerEvent};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

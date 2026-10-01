@@ -1718,9 +1718,9 @@ struct CommunicateInput {
     plan_items: Option<Vec<TaskItem>>,
     #[serde(default)]
     node_id: Option<String>,
-    /// Task-DAG node specs for the expand_node action.
+    /// Child rows for the expand_node action. Each: content, kind?, blocked_by?.
     #[serde(default)]
-    nodes: Option<Vec<crate::protocol::TaskGraphNodeSpec>>,
+    nodes: Option<Vec<kcode_plan::TaskItem>>,
     /// Handoff artifact (object) for complete_node.
     #[serde(default)]
     artifact: Option<serde_json::Value>,
@@ -2015,7 +2015,7 @@ impl Tool for CommunicateTool {
                 "nodes".to_string(),
                 json!({
                     "type": "array",
-                    "description": "Node specs for expand_node. Each: {id, content, kind?, depends_on?, priority?}.",
+                    "description": "Child rows for expand_node. Each: {content, kind?, blocked_by?}. The store assigns ids.",
                     "items": { "type": "object", "additionalProperties": true }
                 }),
             );

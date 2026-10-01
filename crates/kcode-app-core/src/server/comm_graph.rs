@@ -1,40 +1,24 @@
 //! Server handlers for the task-DAG mutation ops (seed/expand/complete).
 //!
-//! These are the live counterparts of the validated engine ops in
-//! `kcode_plan::dag`. Each handler lifts the swarm's current `VersionedPlan` into
-//! a `TaskGraph` (via `kcode_plan::bridge`), applies the engine op (which enforces
-//! acyclicity and ownership), lowers the
-//! result back into the plan, then persists and broadcasts using the existing
-//! swarm machinery. This keeps a single source of truth and reuses the scheduler,
-//! persistence, and TUI broadcast paths.
+//! Seeding and completing lift the swarm's current `VersionedPlan` into a
+//! `TaskGraph` (via `kcode_plan::bridge`), apply the engine op (which enforces
+//! acyclicity and ownership), and lower the result back. Decomposing is rows: the
+//! handler writes child rows through the file store (`kcode-base`'s `todo`), and the
+//! plan follows what the store wrote. Every path then persists and broadcasts using
+//! the existing swarm machinery, so there is one source of truth per fact.
 
 use super::{
     SwarmEvent, SwarmEventType, SwarmMember, SwarmState, VersionedPlan, broadcast_swarm_plan,
     persist_swarm_state_for, record_swarm_event,
 };
 use crate::protocol::ServerEvent;
-use crate::protocol::TaskGraphNodeSpec;
 use kcode_plan::MAX_PLAN_ITEMS;
-use kcode_plan::bridge::{apply_task_graph, parse_kind, to_task_graph};
-use kcode_plan::dag::{self, HandoffArtifact, NodeKind, NodeSpec, NodeStatus, TaskGraph};
+use kcode_plan::bridge::{apply_task_graph, to_task_graph};
+use kcode_plan::dag::{self, HandoffArtifact, NodeSpec, NodeStatus, TaskGraph};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::{RwLock, broadcast};
-
-fn spec_from_wire(spec: TaskGraphNodeSpec) -> NodeSpec {
-    NodeSpec {
-        id: Some(spec.id),
-        content: spec.content,
-        // The wire's `kind` is optional by its own contract, which names
-        // `explore` as the default (`kcode-protocol`'s `TaskGraphNodeSpec`), so
-        // the boundary that asks for it answers its absence. A row with no word
-        // is a different case: a run refuses it rather than guessing (rule 8).
-        kind: parse_kind(spec.kind.as_deref()).unwrap_or(NodeKind::Explore),
-        depends_on: spec.depends_on,
-        priority: spec.priority,
-    }
-}
 
 fn graph_size_error(graph: &TaskGraph) -> Option<String> {
     (graph.len() > MAX_PLAN_ITEMS).then(|| {
@@ -332,7 +316,7 @@ pub(super) async fn handle_comm_seed_graph(
     }
 }
 
-/// Decompose a node the caller owns into a child sub-DAG.
+/// Decompose a row the caller holds into child rows.
 #[expect(
     clippy::too_many_arguments,
     reason = "swarm op threads runtime handles"
@@ -341,7 +325,7 @@ pub(super) async fn handle_comm_expand_node(
     id: u64,
     req_session_id: String,
     node_id: String,
-    children: Vec<TaskGraphNodeSpec>,
+    children: Vec<kcode_plan::TaskItem>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
@@ -355,28 +339,81 @@ pub(super) async fn handle_comm_expand_node(
         err(client_event_tx, id, "Not in a swarm.".to_string());
         return;
     };
-    let specs: Vec<NodeSpec> = children.into_iter().map(spec_from_wire).collect();
-    let count = specs.len();
+    let working_dir = swarm_members
+        .read()
+        .await
+        .get(&req_session_id)
+        .and_then(|member| member.working_dir.clone());
+    let count = children.len();
 
-    let result = {
-        let mut plans = swarm_plans.write().await;
-        let Some(plan) = plans.get_mut(&swarm_id) else {
+    // Only the row's holder (or an unclaimed row) may decompose it. The plan holds
+    // the dispatch, so the check lives here while the file is not yet its view.
+    {
+        let plans = swarm_plans.read().await;
+        let Some(plan) = plans.get(&swarm_id) else {
             err(client_event_tx, id, "No plan for this swarm.".to_string());
             return;
         };
-        let mut graph = to_task_graph(plan);
-        claim_queued_node_for_actor(&mut graph, &node_id, &req_session_id);
-        match dag::expand_node(&mut graph, &node_id, &req_session_id, specs) {
-            Ok(_) => match graph_size_error(&graph) {
-                Some(message) => Err(message),
-                None => {
-                    apply_task_graph(plan, &graph);
+        let Some(item) = plan.items.iter().find(|item| item.id == node_id) else {
+            err(
+                client_event_tx,
+                id,
+                format!("Expand rejected: no node '{node_id}'"),
+            );
+            return;
+        };
+        if let Some(owner) = item.assigned_to.as_deref()
+            && owner != req_session_id
+        {
+            err(
+                client_event_tx,
+                id,
+                format!("Expand rejected: actor '{req_session_id}' does not hold '{node_id}'"),
+            );
+            return;
+        }
+    }
+
+    // The store is the writer (rule 2): it owns the child ids and the file, and the
+    // plan follows the rows it wrote.
+    let result = match crate::todo::expand_row_on_disk(
+        working_dir.as_deref(),
+        &req_session_id,
+        &node_id,
+        children,
+    ) {
+        Ok(added) => {
+            let mut plans = swarm_plans.write().await;
+            match plans.get_mut(&swarm_id) {
+                Some(plan) => {
+                    let child_ids: Vec<String> = added.iter().map(|row| row.id.clone()).collect();
+                    for row in added {
+                        if !plan.items.iter().any(|item| item.id == row.id) {
+                            plan.items.push(row);
+                        }
+                    }
+                    if let Some(parent) = plan.items.iter_mut().find(|item| item.id == node_id) {
+                        // The row is a join now: release it and wait for its children.
+                        parent.status = "queued".to_string();
+                        parent.assigned_to = None;
+                        for child_id in child_ids {
+                            if !parent.blocked_by.contains(&child_id) {
+                                parent.blocked_by.push(child_id);
+                            }
+                        }
+                    }
+                    // Composite state the plan still carries until 0.4d: the row has
+                    // children, and its decomposition is the planner's to integrate.
+                    let meta = plan.node_meta.entry(node_id.clone()).or_default();
+                    meta.expanded = true;
+                    meta.planner = Some(req_session_id.clone());
                     plan.version += 1;
                     Ok(())
                 }
-            },
-            Err(e) => Err(e.to_string()),
+                None => Err("No plan for this swarm.".to_string()),
+            }
         }
+        Err(error) => Err(error.to_string()),
     };
 
     match result {

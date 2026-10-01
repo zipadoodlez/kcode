@@ -311,6 +311,66 @@ pub fn close_row_on_disk(
     save_tasks(working_dir, session_id, &rows)
 }
 
+/// Decompose one row into child rows, in the file. A decomposition is rows: each
+/// child is added with `parent = id`, the row gains a blocker on every child so it
+/// is not picked while they are open, and the file is written back. The store owns
+/// each child's id, `status` and `priority` (rule 2), so a caller brings words, a
+/// kind, and any blockers on rows that already exist, never a node id.
+///
+/// The row is the one at the top of the decomposition: it re-runs as the synthesis
+/// once the last child closes, so it is a join, not a leaf. Who may decompose it
+/// is the caller's rule, not the file's: the swarm's plan holds the dispatch, so
+/// the handler checks the holder before it calls here.
+pub fn expand_row_on_disk(
+    working_dir: Option<&Path>,
+    session_id: &str,
+    id: &str,
+    children: Vec<TaskItem>,
+) -> Result<Vec<TaskItem>> {
+    if children.is_empty() {
+        bail!("expand needs at least one child");
+    }
+    let mut rows = load_tasks(working_dir, session_id)?;
+    rows.iter()
+        .find(|row| row.id == id)
+        .ok_or_else(|| anyhow::anyhow!("no task {id:?}; open ids: {}", open_ids(&rows)))?;
+    if rows.len() + children.len() > kcode_plan::MAX_PLAN_ITEMS {
+        bail!(
+            "expand would exceed the {}-row plan bound; finish or drop open rows first",
+            kcode_plan::MAX_PLAN_ITEMS
+        );
+    }
+
+    let mut added = Vec::with_capacity(children.len());
+    let mut child_ids = Vec::with_capacity(children.len());
+    for mut child in children {
+        child.parent = Some(id.to_string());
+        child.assigned_to = None;
+        child_ids.push(add_row(&mut rows, child)?);
+        added.push(rows.last().cloned().expect("add_row just pushed it"));
+    }
+    if let Some(row) = rows.iter_mut().find(|row| row.id == id) {
+        // The row is a join now: it is no longer held while its children run, and
+        // the run picks it again once the last one closes.
+        row.assigned_to = None;
+        for child_id in child_ids {
+            if !row.blocked_by.contains(&child_id) {
+                row.blocked_by.push(child_id);
+            }
+        }
+    }
+
+    let cycle = kcode_plan::cycle_item_ids(&rows);
+    if !cycle.is_empty() {
+        bail!(
+            "expand would create a dependency cycle among row(s): {}",
+            cycle.join(", ")
+        );
+    }
+    save_tasks(working_dir, session_id, &rows)?;
+    Ok(added)
+}
+
 /// The next free `t<n>` id.
 fn next_id(rows: &[TaskItem]) -> String {
     let highest = rows
