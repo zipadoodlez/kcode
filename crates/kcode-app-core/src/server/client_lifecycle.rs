@@ -567,6 +567,10 @@ pub(super) async fn handle_client(
     let mut processing_task: Option<tokio::task::JoinHandle<()>> = None;
     let mut processing_message_id: Option<u64> = None;
     let mut processing_session_id: Option<String> = None;
+    // The grant the turn's user gave, spent when the turn ends. One owner for it
+    // arrives with H5; until then it rides beside the other turn locals.
+    // braid: split when H5 lands
+    let mut processing_may_continue = false;
     let mut current_client_instance_id: Option<String> = None;
     let mut continue_on_disconnect = false;
     let mut model_usage_updates_enabled = false;
@@ -839,6 +843,7 @@ pub(super) async fn handle_client(
                     let done_session = processing_session_id.take();
                     record_processing_completion(
                         done_session.as_deref(), result, completion_report,
+                        processing_may_continue,
                         &sessions,
                         &SwarmStatusRefs {
                             members: &swarm_members,
@@ -1184,6 +1189,7 @@ pub(super) async fn handle_client(
                 system_reminder,
                 active_skill,
                 no_reply,
+                may_continue,
             } => {
                 if no_reply {
                     append_context_message(
@@ -1211,6 +1217,9 @@ pub(super) async fn handle_client(
                         info.current_tool_name = None;
                     }
                 }
+                // The grant is this turn's, set where the turn is, so a
+                // context-only or rejected message never leaves one behind.
+                processing_may_continue = may_continue;
                 start_processing_message(
                     ProcessingMessage {
                         id,
@@ -2958,6 +2967,7 @@ pub(super) async fn handle_client(
                         processing_session_id.as_deref(),
                         result,
                         report,
+                        processing_may_continue,
                         &sessions,
                         &SwarmStatusRefs {
                             members: &swarm_members,
@@ -3020,6 +3030,7 @@ async fn record_processing_completion(
     done_session: Option<&str>,
     result: Result<()>,
     completion_report: Option<String>,
+    may_continue: bool,
     sessions: &SessionAgents,
     swarm: &SwarmStatusRefs<'_>,
 ) {
@@ -3039,7 +3050,13 @@ async fn record_processing_completion(
                 )
                 .await;
                 // A session's own turns are the loop, so a finished turn takes the
-                // next row it holds, when it may keep going on its own.
+                // next row it holds when this turn's user granted it, or when the
+                // standing default says every turn of this project's may. This is
+                // the one place the permission is read (rule 11).
+                let standing = crate::config::config().features.auto_poke;
+                if !(may_continue || standing) {
+                    return;
+                }
                 let _ = super::live_turn::continue_with_next_row(
                     session_id,
                     sessions,

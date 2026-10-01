@@ -1523,6 +1523,7 @@ impl RawClient {
             system_reminder: None,
             active_skill: None,
             no_reply: false,
+            may_continue: false,
         })
         .await
     }

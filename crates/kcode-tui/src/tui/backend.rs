@@ -157,6 +157,9 @@ pub struct RemoteConnection {
     session_id: Option<String>,
     client_instance_id: Option<String>,
     next_request_id: u64,
+    /// Set by `/auto`, taken by the next message: that turn grants the session
+    /// permission to keep working its list on its own.
+    next_may_continue: bool,
     // Bootstrap Done acknowledgments are not completions of a detached turn.
     // Retain recent ids because target Subscribe can acknowledge twice.
     control_done_ids: std::sync::Mutex<std::collections::VecDeque<u64>>,
@@ -248,6 +251,7 @@ impl RemoteConnection {
             // local sockets as well as SSH. Keep its Done distinct from this
             // connection's Subscribe/GetHistory acknowledgments.
             next_request_id: (rand::random::<u64>() & ((1_u64 << 62) - 1)) | (1_u64 << 62),
+            next_may_continue: false,
             control_done_ids: Default::default(),
             tool_diff: RemoteDiffTracker::default(),
             read_buffer: Vec::new(),
@@ -468,6 +472,11 @@ impl RemoteConnection {
         });
     }
 
+    /// Grant the next message's turn the permission to keep working the list.
+    pub fn grant_next_turn(&mut self) {
+        self.next_may_continue = true;
+    }
+
     /// Send a message to the server
     /// Send a message to the server and return the request ID
     pub async fn send_message(&mut self, content: String) -> Result<u64> {
@@ -505,6 +514,7 @@ impl RemoteConnection {
         self.reset_call_output_tokens_seen();
 
         let id = self.next_request_id;
+        let may_continue = std::mem::take(&mut self.next_may_continue);
         let request = Request::Message {
             id,
             content,
@@ -512,6 +522,7 @@ impl RemoteConnection {
             system_reminder,
             active_skill,
             no_reply: false,
+            may_continue,
         };
         self.next_request_id += 1;
         self.send_request(request).await?;
@@ -1199,6 +1210,7 @@ impl RemoteConnection {
             session_id: None,
             client_instance_id: None,
             next_request_id: 1,
+            next_may_continue: false,
             control_done_ids: Default::default(),
             tool_diff: RemoteDiffTracker::default(),
             read_buffer: Vec::new(),

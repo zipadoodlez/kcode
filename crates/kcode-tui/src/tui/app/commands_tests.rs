@@ -1,6 +1,7 @@
 use super::super::helpers::queued_system_message;
 use super::ensure_swarm_prompt_edit_path;
 use super::is_queued_system_message;
+use super::parse_auto_command;
 use super::parse_diff_mode_name;
 use super::parse_manual_subagent_spec;
 
@@ -341,4 +342,19 @@ mod colors {
             "/colorscheme must not be claimed by /colors"
         );
     }
+}
+
+/// `/auto <words>` is the one turn that grants the session permission to keep
+/// working its list. Words are required, and only that exact command matches.
+#[test]
+fn auto_command_carries_the_words_and_rejects_the_near_misses() {
+    assert_eq!(
+        parse_auto_command("/auto work the list until it is done"),
+        Some(Ok("work the list until it is done".to_string()))
+    );
+    assert!(matches!(parse_auto_command("/auto"), Some(Err(_))));
+    assert!(matches!(parse_auto_command("/auto   "), Some(Err(_))));
+    assert!(parse_auto_command("/automatic").is_none());
+    assert!(parse_auto_command("/auto2 x").is_none());
+    assert!(parse_auto_command("not /auto x").is_none());
 }

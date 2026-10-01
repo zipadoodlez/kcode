@@ -873,6 +873,7 @@ pub(super) async fn handle_resume_all_sessions(
             agent_guard,
             super::live_turn::TurnSeed::asked("", Some(reminder), None)
                 .with_detail(Some("resuming interrupted session".to_string())),
+            false,
             super::live_turn::LiveTurnSwarmContext::new(
                 swarm_members,
                 swarms_by_id,

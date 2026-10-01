@@ -335,6 +335,7 @@ pub(super) async fn handle_comm_message(
                         let woke_immediately = run_live_turn_if_idle(
                             session_id,
                             TurnSeed::asked(&notification_msg, reminder, None),
+                            false,
                             sessions,
                             LiveTurnSwarmContext::new(
                                 swarm_members,

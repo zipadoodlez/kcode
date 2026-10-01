@@ -30,6 +30,7 @@ fn test_protocol_request_roundtrip_randomized_samples() -> Result<()> {
             system_reminder: system_reminder.clone(),
             active_skill: None,
             no_reply: rng.random_bool(0.5),
+            may_continue: rng.random_bool(0.5),
         };
         let decoded = parse_request_json(&serde_json::to_string(&req)?)?;
         let Request::Message {
@@ -38,6 +39,7 @@ fn test_protocol_request_roundtrip_randomized_samples() -> Result<()> {
             images: decoded_images,
             system_reminder: decoded_system_reminder,
             no_reply: decoded_no_reply,
+            may_continue: decoded_may_continue,
             ..
         } = decoded
         else {
@@ -50,6 +52,10 @@ fn test_protocol_request_roundtrip_randomized_samples() -> Result<()> {
         assert_eq!(
             decoded_no_reply,
             matches!(req, Request::Message { no_reply: true, .. })
+        );
+        assert_eq!(
+            decoded_may_continue,
+            matches!(req, Request::Message { may_continue: true, .. })
         );
     }
 

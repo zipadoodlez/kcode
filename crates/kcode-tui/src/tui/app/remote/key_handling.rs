@@ -2075,6 +2075,22 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
+                if let Some(command) = app_mod::commands::parse_auto_command(trimmed) {
+                    match command {
+                        Err(error) => app.push_display_message(DisplayMessage::error(error)),
+                        Ok(words) => {
+                            // The grant is this turn's, so it is set on the
+                            // connection and taken by the message it rides.
+                            remote.grant_next_turn();
+                            let _ =
+                                begin_remote_send(app, remote, words, vec![], false, None, true, 0)
+                                    .await;
+                            app.visible_turn_started = Some(Instant::now());
+                        }
+                    }
+                    return Ok(());
+                }
+
                 if let Some(command) = app_mod::commands::parse_poke_command(trimmed) {
                     match command {
                         Err(error) => app.push_display_message(DisplayMessage::error(error)),

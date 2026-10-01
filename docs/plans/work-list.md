@@ -171,27 +171,30 @@ removed and nothing else.
   turn-terminal path, so the loop is the session's own turns. Prove: a session
   holding a ready row is continued, one holding a blocked row is not, one holding
   nothing is not, and a row it already worked in this run is not picked again.
-  Landed: the loop and its pick are in, with the run's own bound in place: a row
-  worked once in the run is not picked again, so a row left open ends the run
-  instead of spinning it (`TurnSeed` carries the row id into the loop's `worked`
-  set, which the pick skips). The loop end to end is proven in `server/tests.rs`:
-  a session holding two ready rows takes three turns and then stops, a row whose
-  blocker is still open is left alone, and nothing ready takes one turn. It is off
-  unless `features.auto_poke` is on and only for attended sessions, because a member
-  is driven by its plan until rows seed a run. Owed, read against rule 11: the
-  config flag is a stand-in for the permission, and `may_continue_on_its_own` fuses
-  the permission with having a human and is read at two sites (`live_turn.rs:215`,
-  `:347`) where the model names one. The user's words cannot yet grant it for one
-  run, and a headless member is excluded where rule 11 says it holds the permission
-  inherently, which is 0.3's business: a member is still driven by its plan. "Typing
-  always wins" holds now: the reservation is given up before the next row is looked
-  for, so a turn already waiting for the agent takes it and the run ends there.
-  The permission carries the two things the deleted overnight run had and this one
-  needs: an optional bound, so "work until 07:00" is a run property as the model
-  says (the duration parser and the target-wake label are in git history), and a
-  quota-projection warning built from the existing provider usage reports, which is
-  what makes a long permission safe to grant. The resource snapshot and a run-end
-  summary stay undecided in `docs/todo.md`.
+  Landed, and proven end to end in `server/tests.rs`: the loop and its pick, with
+  the run's own bound in place, so a row worked once in the run is not picked again
+  and a row left open ends the run instead of spinning it (`TurnSeed` carries the
+  row id into the loop's `worked` set, which the pick skips). A session holding two
+  ready rows takes three turns and then stops, a row whose blocker is still open is
+  left alone, nothing ready takes one turn, and a turn nobody granted takes no
+  second row. The permission landed 2026-10-01: it rides the turn that grants it
+  (`may_continue` on `Request::Message`, set by `/auto <words>` and spent with that
+  turn), the standing default is `features.auto_poke` for a project where every
+  turn of yours may, and it is read in one place, the turn-terminal path that
+  decides the run. `may_continue_on_its_own` is gone, so the permission is no longer
+  fused with having a human and its two readers are one. A run's permission is its
+  own parameter, so a wake (a DM, a background completion, a resume) never continues
+  over rows: that is rule 11, and it is a behavior change for a session that had the
+  standing default on. Headless stays excluded by the reservation until 0.3 makes a
+  member's turn a row's. "Typing always wins" holds: the reservation is given up
+  before the next row is looked for, so a turn already waiting for the agent takes
+  it and the run ends there. `auto_poke` is now a misnomer for the standing default,
+  and 0.2 renames it when the poke it is named for goes.
+  Small, still owed: the row rung (`/auto t3`, the pick's optional subtree filter),
+  an optional bound so "work until 07:00" is the run property the model says (the
+  duration parser and the target-wake label are in git history), and a
+  quota-projection warning built from the existing provider usage reports. The
+  resource snapshot and a run-end summary stay undecided in `docs/todo.md`.
 - [ ] **0.2. Delete the client poke**, which this replaces. With the server
   continuing a session that holds ready rows, the TUI's auto-poke machine goes:
   `auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`, `total_pokes_sent`,

@@ -53,6 +53,11 @@ pub enum Request {
         /// acknowledges it without starting a model turn.
         #[serde(default, skip_serializing_if = "is_false")]
         no_reply: bool,
+        /// The user asked this session to keep working its own work list after
+        /// this turn, for as long as the rows it holds last. See rule 11 in
+        /// `docs/plans/work-list.md`.
+        #[serde(default, skip_serializing_if = "is_false")]
+        may_continue: bool,
     },
 
     /// Cancel current generation

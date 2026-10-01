@@ -7,6 +7,7 @@ fn test_request_roundtrip() -> Result<()> {
         system_reminder: None,
         active_skill: Some("verification".to_string()),
         no_reply: false,
+        may_continue: true,
     };
     let json = serde_json::to_string(&req)?;
     let decoded = parse_request_json(&json)?;

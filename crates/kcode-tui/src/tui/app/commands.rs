@@ -61,6 +61,21 @@ pub(super) fn parse_poke_command(trimmed: &str) -> Option<Result<PokeCommand, St
     }
 }
 
+/// `/auto <words>`: this turn grants the session permission to keep working its
+/// own work list on its own, for as long as the rows it holds last. The words are
+/// required, because the grant rides a real turn. See rule 11 in
+/// `docs/plans/work-list.md`.
+pub(super) fn parse_auto_command(trimmed: &str) -> Option<Result<String, String>> {
+    let rest = trimmed.strip_prefix("/auto")?;
+    if !rest.is_empty() && !rest.starts_with(' ') {
+        return None;
+    }
+    match rest.trim() {
+        "" => Some(Err("Usage: /auto <what to work on>".to_string())),
+        words => Some(Ok(words.to_string())),
+    }
+}
+
 /// Whether a queued message is one the client wrote for the model rather than
 /// the user's own text. The poke is queued wrapped as a system message, so this
 /// asks about the shape rather than about the wording.

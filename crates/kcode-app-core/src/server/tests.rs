@@ -565,6 +565,7 @@ async fn wake_turn_holds_reservation_until_terminal_status_is_published() {
     let started = super::live_turn::run_live_turn_if_idle(
         &session_id,
         super::live_turn::TurnSeed::asked("first wake", None, None),
+        false,
         &sessions,
         ctx.clone(),
     )
@@ -641,6 +642,7 @@ async fn wake_turn_tracks_member_status_and_emits_terminal_done() {
             Some("You received a direct swarm message.".to_string()),
             None,
         ),
+        false,
         &sessions,
         super::live_turn::LiveTurnSwarmContext::new(
             &swarm_members,
@@ -718,7 +720,8 @@ async fn wake_turn_tracks_member_status_and_emits_terminal_done() {
 /// One row of the fixture's work list: `(id, held by someone else, blockers)`.
 type RowSpec<'a> = (&'a str, bool, &'a [&'a str]);
 
-/// A live, attended session with `auto_poke` on and a work list of its own.
+/// A live, attended session with a work list of its own. Its runs are granted by
+/// `turns`, which is the permission now that the loop takes it as a parameter.
 struct LiveRun {
     session_id: String,
     sessions: super::SessionAgents,
@@ -726,7 +729,6 @@ struct LiveRun {
     ctx: super::live_turn::LiveTurnSwarmContext,
     _home: tempfile::TempDir,
     _env: EnvGuard,
-    _auto_poke: ScopedEnvVar,
     /// Declared last so it outlives both env guards, which is what serializes them.
     _env_lock: std::sync::MutexGuard<'static, ()>,
 }
@@ -734,10 +736,11 @@ struct LiveRun {
 impl LiveRun {
     /// Start a run and count the turns it takes: one terminal `Done` per turn, and
     /// the run has to go quiet after the last one.
-    async fn turns(&mut self, seed: &str) -> usize {
+    async fn turns(&mut self, seed: &str, granted: bool) -> usize {
         let started = super::live_turn::run_live_turn_if_idle(
             &self.session_id,
             super::live_turn::TurnSeed::asked(seed, None, None),
+            granted,
             &self.sessions,
             self.ctx.clone(),
         )
@@ -762,7 +765,6 @@ async fn live_run(rows: &[RowSpec<'_>], responses: usize) -> LiveRun {
     let env_lock = crate::storage::lock_test_env();
     let home = tempfile::tempdir().expect("temp dir");
     let env = configure_test_env(&home);
-    let auto_poke = ScopedEnvVar::set("KCODE_AUTO_POKE", "true");
 
     let provider = Arc::new(StreamingMockProvider::default());
     for _ in 0..responses {
@@ -841,7 +843,6 @@ async fn live_run(rows: &[RowSpec<'_>], responses: usize) -> LiveRun {
         ctx,
         _home: home,
         _env: env,
-        _auto_poke: auto_poke,
         _env_lock: env_lock,
     }
 }
@@ -853,7 +854,7 @@ async fn live_run(rows: &[RowSpec<'_>], responses: usize) -> LiveRun {
 async fn a_run_works_every_ready_row_it_holds_and_then_stops() {
     let mut run = live_run(&[("t1", false, &[]), ("t2", false, &[])], 6).await;
     assert_eq!(
-        run.turns("start").await,
+        run.turns("start", true).await,
         3,
         "the seed turn plus one per row"
     );
@@ -864,13 +865,21 @@ async fn a_run_works_every_ready_row_it_holds_and_then_stops() {
 #[tokio::test]
 async fn a_run_leaves_a_row_whose_blocker_is_still_open() {
     let mut run = live_run(&[("t0", true, &[]), ("t1", false, &["t0"])], 4).await;
-    assert_eq!(run.turns("start").await, 1, "the seed turn alone");
+    assert_eq!(run.turns("start", true).await, 1, "the seed turn alone");
 }
 
 #[tokio::test]
 async fn a_run_with_nothing_ready_takes_its_one_turn() {
     let mut run = live_run(&[], 2).await;
-    assert_eq!(run.turns("start").await, 1, "the seed turn alone");
+    assert_eq!(run.turns("start", true).await, 1, "the seed turn alone");
+}
+
+/// The permission defaults off (rule 11): a turn nobody granted ends where it ends,
+/// even with ready rows waiting, so a run only continues because it was allowed to.
+#[tokio::test]
+async fn an_ungranted_turn_does_not_take_another_row() {
+    let mut run = live_run(&[("t1", false, &[]), ("t2", false, &[])], 3).await;
+    assert_eq!(run.turns("start", false).await, 1, "the seed turn alone");
 }
 
 #[tokio::test]

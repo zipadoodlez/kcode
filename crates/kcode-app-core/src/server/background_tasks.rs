@@ -94,6 +94,7 @@ pub(super) async fn dispatch_background_task_completion(
                 ),
                 None,
             ),
+            false,
             sessions,
             LiveTurnSwarmContext::new(
                 swarm_members,
@@ -184,6 +185,7 @@ pub(super) async fn dispatch_background_task_stalled(
                 ),
                 None,
             ),
+            false,
             sessions,
             LiveTurnSwarmContext::new(
                 swarm_members,
@@ -278,6 +280,7 @@ pub(super) async fn dispatch_swarm_await_completion(
             ),
             None,
         ),
+        false,
         sessions,
         LiveTurnSwarmContext::new(
             swarm_members,

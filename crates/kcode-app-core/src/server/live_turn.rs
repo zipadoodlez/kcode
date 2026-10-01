@@ -136,27 +136,6 @@ pub(super) async fn idle_live_agent(
     agent.try_lock_owned().ok()
 }
 
-/// Whether `session_id` may take another turn without a user's message.
-///
-/// Holding a row says who owes the work, not that the session may keep going, so
-/// this is a permission and it defaults off: the user turns it on for the session.
-/// A member spawned for a run is driven by its plan rather than by the rows it
-/// holds, so only attended sessions are continued here, until rows are what seeds a
-/// run.
-async fn may_continue_on_its_own(session_id: &str, swarm: &LiveTurnSwarmContext) -> bool {
-    if !crate::config::config().features.auto_poke {
-        return false;
-    }
-    let (headless, attached) = {
-        let members = swarm.members.read().await;
-        match members.get(session_id) {
-            Some(member) => (member.is_headless, member.is_attended()),
-            None => (false, false),
-        }
-    };
-    !headless && attached
-}
-
 /// The next row this session holds and may work: file order, held by it, with every
 /// blocker already gone and not already worked in this run.
 ///
@@ -214,9 +193,6 @@ pub(super) async fn continue_with_next_row(
     sessions: &SessionAgents,
     swarm: LiveTurnSwarmContext,
 ) -> bool {
-    if !may_continue_on_its_own(session_id, &swarm).await {
-        return false;
-    }
     let working_dir = {
         let agents = sessions.read().await;
         agents
@@ -231,7 +207,7 @@ pub(super) async fn continue_with_next_row(
         return false;
     };
     let seed = TurnSeed::row(row);
-    run_live_turn_if_idle(session_id, seed, sessions, swarm).await
+    run_live_turn_if_idle(session_id, seed, true, sessions, swarm).await
 }
 
 /// Spawn `seed` as a full tracked turn in a live session.
@@ -248,6 +224,7 @@ pub(super) async fn spawn_tracked_live_turn(
     sessions: &SessionAgents,
     agent: OwnedMutexGuard<Agent>,
     seed: TurnSeed,
+    may_continue: bool,
     swarm: LiveTurnSwarmContext,
 ) {
     update_member_status(
@@ -361,7 +338,9 @@ pub(super) async fn spawn_tracked_live_turn(
                     break;
                 }
             }
-            if !may_continue_on_its_own(&session_id, &swarm).await {
+            // The permission is the run's, decided where the run started, so a
+            // turn that was not granted ends after its one turn.
+            if !may_continue {
                 break;
             }
             // Give the agent up before looking for more work: if a person or another
@@ -382,13 +361,14 @@ pub(super) async fn spawn_tracked_live_turn(
 pub(super) async fn run_live_turn_if_idle(
     session_id: &str,
     seed: TurnSeed,
+    may_continue: bool,
     sessions: &SessionAgents,
     swarm: LiveTurnSwarmContext,
 ) -> bool {
     let Some(agent) = idle_live_agent(session_id, sessions, &swarm.members).await else {
         return false;
     };
-    spawn_tracked_live_turn(session_id, sessions, agent, seed, swarm).await;
+    spawn_tracked_live_turn(session_id, sessions, agent, seed, may_continue, swarm).await;
     true
 }
 
@@ -406,7 +386,7 @@ pub(super) async fn run_live_system_turn_if_idle(
         None,
         Some(crate::session::StoredDisplayRole::System),
     );
-    spawn_tracked_live_turn(session_id, sessions, agent, seed, swarm).await;
+    spawn_tracked_live_turn(session_id, sessions, agent, seed, false, swarm).await;
     true
 }
 
