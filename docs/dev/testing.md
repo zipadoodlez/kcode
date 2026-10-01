@@ -10,10 +10,15 @@ scripts/test.sh                  # library + primary binary, minimal features
 scripts/test.sh crate kcode-tui  # one crate while iterating
 scripts/test.sh full             # lib-bins, provider-matrix, e2e; serial + timed
 scripts/test.sh full --parallel  # same, Cargo's default parallelism
+scripts/test.sh --last           # last recorded run for this tree, no rerun
 ```
 
 Bare `cargo test` still works when you need a filter the script does not cover,
 but prefer the script so a run matches how the suites are meant to be exercised.
+
+`--last` never skips anything. It reports the last recorded cargo `test` action
+for this repository (from the same log the wrapper writes) and whether this tree
+still matches the one it ran on, so you can decide whether a rerun is worth it.
 
 ## Profiles: build each one once
 

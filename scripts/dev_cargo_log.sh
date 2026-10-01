@@ -13,7 +13,15 @@ rust_action_log_started_ns=""
 rust_action_log_started_at=""
 rust_action_log_path=""
 rust_action_log_execution="local"
+rust_action_log_tree_hash=""
 cargo_gate_wait_ms=0
+
+# Hash of HEAD plus the porcelain status, so a recorded result can be compared
+# against the tree it ran on. Must match the computation in scripts/test.sh.
+worktree_hash() {
+  { git -C "$repo_root" rev-parse HEAD 2>/dev/null; git -C "$repo_root" status --porcelain 2>/dev/null; } \
+    | sha256sum | cut -d' ' -f1
+}
 
 # `cargo check`, `cargo clippy` and `cargo test` build different profiles, so a
 # switch rebuilds the tree. Surface the switch instead of paying it silently, by
@@ -48,6 +56,7 @@ start_rust_action_log() {
   local state_root="${KCODE_HOME:-${HOME:+$HOME/.kcode}}"
   [[ -n "$state_root" ]] || state_root="$repo_root/target/kcode-state"
   rust_action_log_path="${KCODE_RUST_ACTION_LOG_PATH:-$state_root/logs/rust-actions.jsonl}"
+  rust_action_log_tree_hash=$(worktree_hash)
   warn_on_profile_flap
   rust_action_log_started_ns=$(date +%s%N)
   rust_action_log_started_at=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
@@ -74,6 +83,7 @@ record_rust_action_log() {
   KCODE_LOG_PROFILE="$profile" \
   KCODE_LOG_REPO="$repo_root" \
   KCODE_LOG_EXECUTION="$rust_action_log_execution" \
+  KCODE_LOG_TREE_HASH="$rust_action_log_tree_hash" \
   python3 - "$rust_action_log_path" "${cargo_argv[@]}" <<'PY' || true
 import json
 import os
@@ -95,6 +105,7 @@ record = {
     "profile": os.environ["KCODE_LOG_PROFILE"],
     "repository": os.environ["KCODE_LOG_REPO"],
     "execution": os.environ["KCODE_LOG_EXECUTION"],
+    "tree_hash": os.environ.get("KCODE_LOG_TREE_HASH", ""),
     "argv": sys.argv[2:],
 }
 line = (json.dumps(record, separators=(",", ":")) + "\n").encode()

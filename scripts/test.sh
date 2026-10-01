@@ -6,7 +6,8 @@
 #   scripts/test.sh crate <name>     one crate's tests
 #   scripts/test.sh full             the CI-style suites, serial and timed
 #
-# Flags: --parallel (drop --test-threads=1 in full), --timeout-scale N.
+# Flags: --parallel (drop --test-threads=1 in full), --timeout-scale N,
+# --last (print the last recorded test run for this tree instead of running).
 # Failure classes and baselines: docs/dev/testing.md.
 set -uo pipefail
 
@@ -14,6 +15,7 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 dev_cargo="$repo_root/scripts/dev_cargo.sh"
 
 PARALLEL=0
+LAST=0
 TIMEOUT_SCALE="${KCODE_TEST_TIMEOUT_SCALE:-1}"
 
 usage() {
@@ -23,6 +25,57 @@ usage() {
 
 progress() {
     printf 'KCODE_PROGRESS {"kind":"indeterminate","message":"%s"}\n' "$1"
+}
+
+# Answer "do I need to rerun?" from the action log instead of rerunning. It never
+# skips anything; it reports the last recorded test run and whether this tree
+# still matches it. The hash must match worktree_hash() in scripts/dev_cargo_log.sh.
+print_last_result() {
+    local log="${KCODE_RUST_ACTION_LOG_PATH:-${KCODE_HOME:-$HOME/.kcode}/logs/rust-actions.jsonl}"
+    if [[ ! -f "$log" ]]; then
+        echo "no cargo action log yet: $log"
+        return 0
+    fi
+    local current_hash
+    current_hash=$( { git -C "$repo_root" rev-parse HEAD 2>/dev/null; git -C "$repo_root" status --porcelain 2>/dev/null; } | sha256sum | cut -d' ' -f1 )
+    KCODE_LAST_REPO="$repo_root" KCODE_LAST_HASH="$current_hash" python3 - "$log" <<'PY'
+import json, os, sys
+
+log = sys.argv[1]
+repo = os.environ["KCODE_LAST_REPO"]
+current = os.environ["KCODE_LAST_HASH"]
+runs = []
+with open(log) as fh:
+    for line in fh:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            r = json.loads(line)
+        except Exception:
+            continue
+        if r.get("repository") == repo and str(r.get("action", "")).startswith("test"):
+            runs.append(r)
+if not runs:
+    print("no recorded test run for this repository")
+    raise SystemExit(0)
+r = runs[-1]
+print(
+    "last test run: {} exit={} {}ms at {}".format(
+        "PASS" if r.get("success") else "FAIL",
+        r.get("exit_code"),
+        r.get("duration_ms"),
+        r.get("started_at"),
+    )
+)
+print("  cargo " + " ".join(r.get("argv", [])))
+if r.get("tree_hash") == current:
+    print("  tree: unchanged since that run")
+elif r.get("tree_hash"):
+    print("  tree: CHANGED since that run")
+else:
+    print("  tree: unknown (record predates tree hashing)")
+PY
 }
 
 # One timed suite in `full` mode. Stops the group on timeout and reports
@@ -81,12 +134,18 @@ args=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --parallel) PARALLEL=1; shift ;;
+        --last) LAST=1; shift ;;
         --timeout-scale) TIMEOUT_SCALE="$2"; shift 2 ;;
         --timeout-scale=*) TIMEOUT_SCALE="${1#*=}"; shift ;;
         -h|--help) usage 0 ;;
         *) args+=("$1"); shift ;;
     esac
 done
+
+if (( LAST == 1 )); then
+    print_last_result
+    exit $?
+fi
 
 mode="${args[0]:-lib}"
 rest=("${args[@]:1}")
