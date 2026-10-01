@@ -180,9 +180,10 @@ duplication they would have removed and nothing else.
 **Here is where the work stands**, and a step in flight is finished before a new one
 starts. 0.1, 0.2 and 0.3 have landed whole and are gone from this list; what 0.2 owed
 was 0.3's last stage, and the two losses 0.1 and 0.3 named are in `docs/todo.md`. Next
-is 0.4, whose first stage (the gate machinery) has landed and whose remaining blocker is
-the recursion rule 0.4b names. Each stage compiles before it is committed
-(`dev/post-change.md` says which check); the full gate runs once, when the step is done.
+is 0.4: its gate stage (0.4a) has landed, and its recursion/axis stage (0.4b) is decided
+(only the root spawns; both swarm rungs go) with its first part landed. Each stage
+compiles before it is committed (`dev/post-change.md` says which check); the full gate
+runs once, when the step is done.
 
 ### 0. One way work gets done
 
@@ -192,15 +193,15 @@ the recursion rule 0.4b names. Each stage compiles before it is committed
   performed is either a row someone typed (a `critique` row whose close needs its
   record) or nothing. The loss is named in `docs/todo.md`. Stages, in this order, one
   commit each:
-  - **0.4b. The recursion rule gets a home.** Recursion is not an effort sentinel any
-    more: `server/comm_session.rs:1332` reads the root's effort to allow a member to
-    spawn, and the effort axis is the user's own setting, which a run's rules should not
-    ride. Either only the root spawns (the model's "a swarm is a count, not a mode")
-    or the permission is a run property read where the spawn is decided; the loss is
-    named if recursion goes. The `swarm` and `swarm-deep` rungs of `/effort` go with the
-    axis: a user no longer selects orchestration by setting a level, and fanning out is
-    the model's own call through the `swarm` tool, which is what "a swarm is a count, not
-    a mode" means for the one who asks.
+  - **0.4b. One mode: the swarm `/effort` axis goes.** Decided with this step
+    (2026-10-01): **only the root session starts agents, and both swarm rungs go.** The
+    spawn rule moves to `spawn_swarm_agent`, the single choke point, so the assign path
+    obeys it too (it previously bypassed the rule), and the root's effort lookup is
+    gone: a member's deeper work is rows the run dispatches. The two rungs never reached
+    the engine (they only injected a prompt paragraph, and `swarm-deep`'s names 0.4a's
+    deleted gates), so they, both directives, the `swarm_root_effort`/
+    `swarm_deep_root_effort` pins, the sentinel handling in providers and the TUI rungs
+    go. The losses are named in `docs/todo.md`. First part landed (`492597d7`).
   - **0.4c. A decomposition is a row.** `expand_node` writes rows through the store
     (`todo::close_row`'s sibling), and `TaskGraphNodeSpec` goes with it, so the wire
     node spec is deleted. (`inject_gap` went with the gates in 0.4a: a gate was its only

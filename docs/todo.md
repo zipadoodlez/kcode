@@ -261,6 +261,16 @@ changes are paid for in test churn.
   the row that owns the work. Add the pass back as work, not as machinery: a row typed
   `critique` whose close needs the same record, which anyone (the user, the model, a
   coordinator) can add like any other row.
+- [ ] **(decision)** One mode: spawning is the root's and the `/effort` swarm rungs go
+  with 0.4b (2026-10-01). Only the root session starts agents; a member's deeper work is
+  rows the run dispatches, and the rule lives at `spawn_swarm_agent`, the single choke
+  point, so the assign path obeys it too (it previously bypassed it). What is lost: a
+  member can no longer start a worker on its own initiative, and a user can no longer
+  select orchestration with `/effort` (`swarm`, `swarm-deep`). Fanning out stays as the
+  model's own call through the `swarm` tool, and the engine has one mode whose
+  parallel/serial shape comes from the plan's blocking structure, not a flag.
+  `features.swarm` and the per-session swarm toggle stay: they say whether a session is
+  in a swarm, not how one behaves.
 - [ ] **(decision)** A one-shot `kcode run` no longer drains a list (0.3, 2026-10-01).
   The command-line poke was the last client-side continuation, so `kcode run` is one
   turn again: the permission is read in the session's loop, and a plan-driven member
