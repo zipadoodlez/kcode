@@ -211,10 +211,14 @@ runs once, when the step is done.
   - **0.4e. `task_progress` goes**, and liveness comes from the member's own clock and
     status where it renders.
   - **0.4f. `VersionedPlan` becomes a view of the file**, deleting
-    `swarm_persistence.rs` (650 lines) and its tests (1,227 lines).
+    `swarm_persistence.rs` (650 lines) and its tests (1,227 lines). The plan-approval
+    path (`propose_plan`/`approve_plan`/`reject_plan`, `resync_plan`) is a second writer
+    of the same rows and a consumer of the shared context; decide it here.
   - **0.4g. The swarm state gets one owner**: the `coordinators` map, any stored swarm
-    id, the `features.swarm` flag and per-session toggle (stored membership), and the 31
-    `SwarmState { .. }` rebuild sites (`docs/todo.md` §1's condense).
+    id (including the `KCODE_SWARM_ID` shared-swarm opt-in), the `features.swarm` flag
+    and per-session toggle (stored membership), the `assign_role` action that writes the
+    coordinator by hand, and the 31 `SwarmState { .. }` rebuild sites (`docs/todo.md`
+    §1's condense).
   `parse_kind`/`kind_str` stay, since they are what reads and writes a row's word.
   `Synthesize` stays as well: it counted as residue while the wire node spec was its
   only producer, and the word lives on the row now (`tool/todo.rs` offers every
@@ -287,11 +291,16 @@ Gated by C.
 - [ ] **E3.** Name the prologue, move the largest arms out, and settle the
   turn-lifecycle locals. `todo.md` §2's H1 to H5 in order.
 
-### F. `tool/communicate.rs`
+### F. The swarm tool surface
 
-- [ ] **F1.** Split the 3369 lines along the seams it already has: swarm
-  coordination, the run-plan driver, capacity cleanup, and the formatters around
-  `execute`. Cheaper once 0.3 has given the state one owner.
+- [ ] **F1. The tool keeps the model's verbs; the app takes the rest.** After 0.4 a node
+  is a row, so the model's verbs are row verbs, which the `todo` tool already serves.
+  The orchestration actions (`spawn`, `assign_task`/`assign_next`/`fill_slots`,
+  `run_plan`, `cleanup`, `await_members`) become the run's own behavior, not calls. The
+  exact cut is decided at the step; likely one task tool.
+- [ ] **F2.** Then split what remains of `tool/communicate.rs` along its seams (swarm
+  coordination, the run-plan driver, capacity cleanup, the formatters around `execute`),
+  if anything does. Cheaper once 0.3 has given the state one owner.
 
 ### G. Close out
 
