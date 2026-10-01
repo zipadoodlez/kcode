@@ -1222,7 +1222,7 @@ async fn the_standing_default_continues_an_ungranted_turn() {
     // Standing default off: an ungranted turn ends where it ends, even with a row
     // ready and the session attached.
     {
-        let _off = ScopedEnvVar::set("KCODE_AUTO_POKE", "false");
+        let _off = ScopedEnvVar::set("KCODE_AUTO_CONTINUE", "false");
         complete_turn(session_id, RunGrant::denied(), &sessions, &swarm_members).await;
         assert!(
             tokio::time::timeout(Duration::from_millis(500), member_rx.recv())
@@ -1234,7 +1234,7 @@ async fn the_standing_default_continues_an_ungranted_turn() {
 
     // Standing default on: the same ungranted turn takes the row.
     {
-        let _on = ScopedEnvVar::set("KCODE_AUTO_POKE", "true");
+        let _on = ScopedEnvVar::set("KCODE_AUTO_CONTINUE", "true");
         complete_turn(session_id, RunGrant::denied(), &sessions, &swarm_members).await;
         let ran = tokio::time::timeout(Duration::from_secs(2), async {
             loop {
