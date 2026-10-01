@@ -136,26 +136,25 @@ pub(super) async fn idle_live_agent(
     agent.try_lock_owned().ok()
 }
 
-/// The next row this session holds and may work: file order, held by it, with every
-/// blocker already gone and not already worked in this run.
+/// The next row this session holds and may work: file order, held by it, with no
+/// blocker and not already worked in this run.
 ///
 /// Readiness is a join against the file rather than something a row says about
-/// itself, because a blocker that closes is deleted and its id is left behind.
-/// `worked` is the run's own record, so a row left open stops the run instead of
-/// being picked again and again.
+/// itself: every `blocked_by` entry is an open row that must close first, so an
+/// empty list is exactly "unblocked". The close removes its id from every
+/// dependent, which is what empties it, and a hand-written id that names nothing
+/// blocks the row, as the plan engine's `missing_dependencies` says too. `worked`
+/// is the run's own record, so a row left open stops the run instead of being
+/// picked again and again.
 fn next_held_ready_row<'a>(
     rows: &'a [TaskItem],
     session_id: &str,
     worked: &HashSet<String>,
 ) -> Option<&'a TaskItem> {
-    let present: HashSet<&str> = rows.iter().map(|row| row.id.as_str()).collect();
     rows.iter().find(|row| {
         row.assigned_to.as_deref() == Some(session_id)
             && !worked.contains(&row.id)
-            && row
-                .blocked_by
-                .iter()
-                .all(|blocker| !present.contains(blocker.as_str()))
+            && row.blocked_by.is_empty()
     })
 }
 
@@ -417,13 +416,13 @@ mod tests {
         assert_eq!(picked.id, "t3");
     }
 
+    /// A blocker id that names no open row blocks too. A close removes its id from
+    /// dependents instead, so a dangling one is a hand-written typo, and the plan
+    /// engine's `missing_dependencies` treats it the same way.
     #[test]
-    fn a_closed_blocker_is_gone_and_its_row_becomes_ready() {
+    fn a_dangling_blocker_keeps_the_row_unready() {
         let rows = vec![row("t2", Some("me"), &["t1"])];
-        assert_eq!(
-            next_held_ready_row(&rows, "me", &HashSet::new()).map(|row| row.id.as_str()),
-            Some("t2")
-        );
+        assert!(next_held_ready_row(&rows, "me", &HashSet::new()).is_none());
     }
 
     #[test]

@@ -131,8 +131,9 @@ the children added underneath.
 7. **The file stores those fields and nothing else:** no `status`, `priority`,
    `group`, `subsystem` or `file_scope`, and line order promises nothing. Position
    is the default order. A row reads as claimed from `assigned_to`, and as ready only
-   against the file, since a blocker that closes is deleted and its id is left
-   behind in `blocked_by`.
+   against the file: a close deletes the row and removes its id from every
+   dependent's `blocked_by`, so an entry there always names an open row and a row
+   with none is ready.
 8. **A row with no `kind` is not seedable.** Typing it once records it, because the
    kind decides the artifact and the gate and may not be guessed.
 9. **The check is a rule, not a field.** The close requires a nonempty result and the

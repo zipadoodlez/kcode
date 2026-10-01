@@ -109,6 +109,13 @@ fn apply(input: &TodoInput, rows: &mut Vec<TaskItem>, session_id: &str) -> Resul
                     child.content
                 );
             }
+            // The blocker is gone, so drop it from every dependent: an id left
+            // behind would name no open row, which the plan engine reads as an
+            // unsatisfied dependency (rule 7).
+            for row in rows.iter_mut() {
+                row.blocked_by
+                    .retain(|dependency| dependency.as_str() != id);
+            }
             rows.retain(|row| row.id != id);
             // The result is the task's durable record; it travels in the commit
             // with this delete (rule 4), so nothing keeps it here.
@@ -324,6 +331,28 @@ mod tests {
         )
         .expect("close");
         assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn closing_a_blocker_frees_its_dependents() {
+        let mut rows = vec![row("t1", "blocker")];
+        let mut dependent = row("t2", "dependent");
+        dependent.blocked_by = vec!["t1".to_string()];
+        rows.push(dependent);
+
+        apply(
+            &input(json!({"action": "close", "id": "t1", "result": "cargo test: 12 passed"})),
+            &mut rows,
+            "s",
+        )
+        .expect("close");
+
+        assert_eq!(rows.len(), 1);
+        assert!(
+            rows[0].blocked_by.is_empty(),
+            "a closed blocker's id must not strand its dependent: {:?}",
+            rows[0].blocked_by
+        );
     }
 
     #[test]
