@@ -174,22 +174,17 @@ depends on them, and finishing the model does not need them. Dropping them costs
 duplication they would have removed and nothing else.
 
 **Here is where the work stands**, and a step in flight is finished before a new one
-starts. 0.1's loop and permission have landed with their tests. 0.2 has landed whole
-and is gone from this list; what it owed is now its own step below, after 0.3. Next
-is 0.1's row rung and two riders, and then 0.3. Each stage compiles before it is
-committed (`dev/post-change.md` says which check); the full gate runs once, when the
-step is done.
+starts. 0.1's loop, permission and row rung have landed with their tests. 0.2 has
+landed whole and is gone from this list; what it owed is now its own step below,
+after 0.3. Next are 0.1's two riders (the run's bound and the quota projection), and
+then 0.3. Each stage compiles before it is committed (`dev/post-change.md` says which
+check); the full gate runs once, when the step is done.
 
 ### 0. One way work gets done
 
 - [ ] **0.1. The permission's remaining pieces.** The loop and the permission landed
   2026-10-01, with the proof under a mock provider in `server/tests.rs`; what is left
-  is the row rung and two riders.
-  - The row rung. `/auto t3` means the run's scope is that row's subtree, which the
-    pick can filter by walking `parent`. When the words name no row, the grant creates
-    the run's anchor: a row whose content is those words, so an unscoped run still has
-    a scope row for its records and its end-of-run result. Today `/auto` takes words
-    and the scope is everything the session holds.
+  is two riders.
   - The optional bound, so "work until 07:00" is the run property the model says the
     default of none is not. The duration parser and the target-wake label are in git
     history.

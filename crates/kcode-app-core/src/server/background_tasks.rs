@@ -1,4 +1,4 @@
-use super::live_turn::{LiveTurnSwarmContext, TurnSeed, run_live_turn_if_idle};
+use super::live_turn::{LiveTurnSwarmContext, RunGrant, TurnSeed, run_live_turn_if_idle};
 use super::state::SwarmEvent;
 use super::{
     SessionAgents, SessionInterruptQueues, SwarmMember, fanout_session_event,
@@ -94,7 +94,7 @@ pub(super) async fn dispatch_background_task_completion(
                 ),
                 None,
             ),
-            false,
+            RunGrant::denied(),
             sessions,
             LiveTurnSwarmContext::new(
                 swarm_members,
@@ -185,7 +185,7 @@ pub(super) async fn dispatch_background_task_stalled(
                 ),
                 None,
             ),
-            false,
+            RunGrant::denied(),
             sessions,
             LiveTurnSwarmContext::new(
                 swarm_members,
@@ -280,7 +280,7 @@ pub(super) async fn dispatch_swarm_await_completion(
             ),
             None,
         ),
-        false,
+        RunGrant::denied(),
         sessions,
         LiveTurnSwarmContext::new(
             swarm_members,

@@ -1,6 +1,6 @@
 use super::{Tool, ToolContext, ToolOutput};
 use crate::bus::{Bus, BusEvent, TodoEvent};
-use crate::todo::{TaskItem, load_tasks, save_tasks};
+use crate::todo::{TaskItem, add_row, load_tasks, save_tasks};
 use anyhow::{Result, bail};
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -55,23 +55,14 @@ fn apply(input: &TodoInput, rows: &mut Vec<TaskItem>, session_id: &str) -> Resul
         Action::Add => {
             let content = nonempty(input.content.as_deref(), "add needs content")?;
             check_references(rows, input)?;
-            let id = next_id(rows);
-            rows.push(TaskItem {
-                id: id.clone(),
-                content: content.to_string(),
-                status: "pending".to_string(),
-                priority: String::new(),
-                parent: input.parent.clone(),
-                blocked_by: input.blocked_by.clone().unwrap_or_default(),
-                assigned_to: Some(
-                    input
-                        .assigned_to
-                        .clone()
-                        .unwrap_or_else(|| session_id.to_string()),
-                ),
-                note: input.note.clone(),
-                ..Default::default()
-            });
+            add_row(
+                rows,
+                content,
+                input.parent.clone(),
+                input.blocked_by.clone().unwrap_or_default(),
+                input.assigned_to.as_deref().unwrap_or(session_id),
+                input.note.clone(),
+            )?;
             return Ok(());
         }
         Action::Update => {
@@ -169,16 +160,6 @@ fn check_references(rows: &[TaskItem], input: &TodoInput) -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn next_id(rows: &[TaskItem]) -> String {
-    let highest = rows
-        .iter()
-        .filter_map(|row| row.id.strip_prefix('t'))
-        .filter_map(|number| number.parse::<u32>().ok())
-        .max()
-        .unwrap_or(0);
-    format!("t{}", highest + 1)
 }
 
 fn build_todo_output(rows: Vec<TaskItem>) -> Result<ToolOutput> {

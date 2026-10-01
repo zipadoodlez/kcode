@@ -1128,7 +1128,7 @@ async fn client_initiated_turn_fans_out_stream_and_terminal_events_to_live_attac
 /// decision reads members only.
 async fn complete_turn(
     session_id: &str,
-    may_continue: bool,
+    grant: RunGrant,
     sessions: &SessionAgents,
     members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
 ) {
@@ -1140,7 +1140,7 @@ async fn complete_turn(
         Some(session_id),
         Ok(()),
         None,
-        may_continue,
+        grant,
         sessions,
         &SwarmStatusRefs {
             members,
@@ -1214,7 +1214,7 @@ async fn the_standing_default_continues_an_ungranted_turn() {
     // ready and the session attached.
     {
         let _off = ScopedEnvVar::set("KCODE_AUTO_POKE", "false");
-        complete_turn(session_id, false, &sessions, &swarm_members).await;
+        complete_turn(session_id, RunGrant::denied(), &sessions, &swarm_members).await;
         assert!(
             tokio::time::timeout(Duration::from_millis(500), member_rx.recv())
                 .await
@@ -1226,7 +1226,7 @@ async fn the_standing_default_continues_an_ungranted_turn() {
     // Standing default on: the same ungranted turn takes the row.
     {
         let _on = ScopedEnvVar::set("KCODE_AUTO_POKE", "true");
-        complete_turn(session_id, false, &sessions, &swarm_members).await;
+        complete_turn(session_id, RunGrant::denied(), &sessions, &swarm_members).await;
         let ran = tokio::time::timeout(Duration::from_secs(2), async {
             loop {
                 match member_rx.recv().await {

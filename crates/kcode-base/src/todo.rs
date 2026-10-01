@@ -1,5 +1,5 @@
 use crate::storage;
-use anyhow::Result;
+use anyhow::{Result, bail};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
@@ -123,6 +123,83 @@ pub fn save_tasks(working_dir: Option<&Path>, session_id: &str, tasks: &[TaskIte
     storage::write_bytes(&path, write_json_lines(tasks)?.as_bytes())
 }
 
+/// The row a granted run is scoped to (its anchor), resolved from the words the
+/// grant typed. See `docs/plans/work-list.md`, the model and rules 2 and 10.
+///
+/// Words that name an open row - its id, or its content as a user says it - make
+/// that row the run's anchor and claim it for `session_id`, so the run's scope is
+/// its subtree. Words that name no row are the instruction: they become a fresh
+/// anchor, so every run has one row at its top for its records and its end-of-run
+/// result. The read-modify-write is the list's one write path (rule 2), shared
+/// with the `todo` tool, so a hand edit between the grant and this call is an
+/// input rather than a conflict.
+pub fn anchor_run(working_dir: Option<&Path>, session_id: &str, words: &str) -> Result<TaskItem> {
+    let words = words.trim();
+    let mut rows = load_tasks(working_dir, session_id)?;
+    let anchor = match rows.iter().position(|row| names_row(row, words)) {
+        Some(index) => {
+            let anchor = &mut rows[index];
+            anchor.assigned_to = Some(session_id.to_string());
+            anchor.clone()
+        }
+        None => {
+            let id = add_row(&mut rows, words, None, Vec::new(), session_id, None)?;
+            rows.iter()
+                .find(|row| row.id == id)
+                .cloned()
+                .expect("the row just added")
+        }
+    };
+    save_tasks(working_dir, session_id, &rows)?;
+    Ok(anchor)
+}
+
+/// Whether these words name `row`: its id, or its content as the user says it.
+/// The file keys on `id`, the conversation on words (rule 10).
+fn names_row(row: &TaskItem, words: &str) -> bool {
+    row.id == words || row.content.trim().eq_ignore_ascii_case(words)
+}
+
+/// Add one open row and hand back its id. The row's shape lives here, beside the
+/// file, so the `todo` tool and a grant's anchor are the same writer (rule 2).
+pub fn add_row(
+    rows: &mut Vec<TaskItem>,
+    content: &str,
+    parent: Option<String>,
+    blocked_by: Vec<String>,
+    assigned_to: &str,
+    note: Option<String>,
+) -> Result<String> {
+    let content = content.trim();
+    if content.is_empty() {
+        bail!("add needs content");
+    }
+    let id = next_id(rows);
+    rows.push(TaskItem {
+        id: id.clone(),
+        content: content.to_string(),
+        status: "pending".to_string(),
+        priority: String::new(),
+        parent,
+        blocked_by,
+        assigned_to: Some(assigned_to.to_string()),
+        note,
+        ..Default::default()
+    });
+    Ok(id)
+}
+
+/// The next free `t<n>` id.
+fn next_id(rows: &[TaskItem]) -> String {
+    let highest = rows
+        .iter()
+        .filter_map(|row| row.id.strip_prefix('t'))
+        .filter_map(|number| number.parse::<u32>().ok())
+        .max()
+        .unwrap_or(0);
+    format!("t{}", highest + 1)
+}
+
 /// One task per line, blank lines skipped, so an insert, a claim, or a close is a
 /// one-line diff in git.
 fn read_json_lines<T: DeserializeOwned>(text: &str) -> Result<Vec<T>> {
@@ -204,5 +281,55 @@ mod tests {
         let path =
             work_list_path(Some(Path::new(env!("CARGO_MANIFEST_DIR"))), "ignored").expect("path");
         assert!(path.ends_with(WORK_LIST_FILE), "{path:?}");
+    }
+
+    /// `/auto <words>` scopes a run to the row the words name - claiming it, since
+    /// a run only works what it holds - and words that name no row become the run's
+    /// anchor, so every run has one row at its top for its records.
+    #[test]
+    fn a_grant_resolves_its_anchor_from_its_words() {
+        let repo = std::env::temp_dir().join(format!("kcode-anchor-run-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&repo);
+        std::fs::create_dir_all(&repo).expect("scratch repo");
+        assert!(
+            std::process::Command::new("git")
+                .args(["init", "-q"])
+                .current_dir(&repo)
+                .status()
+                .expect("git init")
+                .success(),
+            "git init"
+        );
+        save_tasks(
+            Some(&repo),
+            "me",
+            &[TaskItem {
+                id: "t1".to_string(),
+                content: "fix the docs".to_string(),
+                assigned_to: Some("someone-else".to_string()),
+                ..Default::default()
+            }],
+        )
+        .expect("write the work list");
+
+        let named = anchor_run(Some(&repo), "me", "fix the docs").expect("named anchor");
+        assert_eq!(named.id, "t1");
+        assert_eq!(
+            load_tasks(Some(&repo), "me").expect("read")[0]
+                .assigned_to
+                .as_deref(),
+            Some("me"),
+            "the grant claims the row the words name"
+        );
+
+        let fresh =
+            anchor_run(Some(&repo), "me", "work the list until it is done").expect("fresh anchor");
+        assert_eq!(fresh.id, "t2");
+        assert_eq!(fresh.content, "work the list until it is done");
+        assert_eq!(fresh.parent, None, "a run's anchor has no parent");
+        assert_eq!(fresh.assigned_to.as_deref(), Some("me"));
+        assert_eq!(load_tasks(Some(&repo), "me").expect("read").len(), 2);
+
+        let _ = std::fs::remove_dir_all(&repo);
     }
 }

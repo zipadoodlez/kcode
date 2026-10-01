@@ -107,6 +107,67 @@ impl TurnSeed {
     }
 }
 
+/// What a granted turn carries into its run: whether the run may take another turn
+/// when this one ends, and the row whose subtree it works.
+///
+/// Both are run properties, stored nowhere and read where the next turn is decided
+/// (rule 11). `scope` is the run's anchor: `todo::anchor_run` resolves it from the
+/// grant's words, and `None` is a run scoped to everything the session holds, which
+/// is where an untyped grant starts.
+#[derive(Clone, Debug)]
+pub(super) struct RunGrant {
+    pub may_continue: bool,
+    pub scope: Option<String>,
+}
+
+impl RunGrant {
+    /// No permission: the turn ends where it ends (rule 11's default).
+    pub(super) fn denied() -> Self {
+        Self {
+            may_continue: false,
+            scope: None,
+        }
+    }
+
+    /// Permission with no typed scope: the run works whatever it holds.
+    pub(super) fn whole_list() -> Self {
+        Self {
+            may_continue: true,
+            scope: None,
+        }
+    }
+
+    /// Permission scoped to one row's subtree: the grant's own anchor.
+    pub(super) fn scoped(anchor: String) -> Self {
+        Self {
+            may_continue: true,
+            scope: Some(anchor),
+        }
+    }
+}
+
+/// The grant a message carries, resolved before its turn starts: the permission,
+/// and the scope its words name or become (`todo::anchor_run`).
+///
+/// A write that fails costs the scope and never the turn, so the run is warned
+/// about and left unscoped rather than silently losing the permission it was given.
+pub(super) fn resolve_grant(
+    words: &str,
+    working_dir: Option<&Path>,
+    session_id: &str,
+) -> (RunGrant, String) {
+    match crate::todo::anchor_run(working_dir, session_id, words) {
+        Ok(anchor) => (RunGrant::scoped(anchor.id), anchor.content),
+        Err(error) => {
+            crate::logging::warn(&format!(
+                "a granted turn could not resolve its scope ({error}); \
+                 the run works everything the session holds"
+            ));
+            (RunGrant::whole_list(), words.to_string())
+        }
+    }
+}
+
 /// Reserve the live agent for `session_id` when the session has at least one
 /// live client attachment and its agent is currently idle.
 ///
@@ -136,8 +197,36 @@ pub(super) async fn idle_live_agent(
     agent.try_lock_owned().ok()
 }
 
-/// The next row this session holds and may work: file order, held by it, with no
-/// blocker and not already worked in this run.
+/// A live session's working directory, whether or not its agent is mid-turn: the
+/// agent's own when it is free, and the member's record otherwise, which is the
+/// same session root (`resolve_target_subscribe_working_dir` reads it the same
+/// way). Never waits on the agent: a caller on a client's read loop must not stall
+/// behind a run, or that client could not even cancel it.
+pub(super) async fn session_working_dir(
+    session_id: &str,
+    sessions: &SessionAgents,
+    members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+) -> Option<PathBuf> {
+    let agent = {
+        let guard = sessions.read().await;
+        guard.get(session_id).cloned()
+    }?;
+    if let Some(dir) = agent
+        .try_lock()
+        .ok()
+        .and_then(|agent| agent.working_dir().map(PathBuf::from))
+    {
+        return Some(dir);
+    }
+    members
+        .read()
+        .await
+        .get(session_id)
+        .and_then(|member| member.working_dir.clone())
+}
+
+/// The next row this session holds and may work: file order, in this run's scope,
+/// held by it, with no blocker and not already worked in this run.
 ///
 /// Readiness is a join against the file rather than something a row says about
 /// itself: every `blocked_by` entry is an open row that must close first, so an
@@ -146,16 +235,45 @@ pub(super) async fn idle_live_agent(
 /// blocks the row, as the plan engine's `missing_dependencies` says too. `worked`
 /// is the run's own record, so a row left open stops the run instead of being
 /// picked again and again.
+///
+/// The scope row is picked last: it is a run's anchor, its close is the run's end,
+/// and it stays open while a child names it (rule 3), so working it first would
+/// only ask the model to close a row that cannot close yet.
 fn next_held_ready_row<'a>(
     rows: &'a [TaskItem],
     session_id: &str,
     worked: &HashSet<String>,
+    scope: Option<&str>,
 ) -> Option<&'a TaskItem> {
-    rows.iter().find(|row| {
+    let ready = |row: &TaskItem| {
         row.assigned_to.as_deref() == Some(session_id)
             && !worked.contains(&row.id)
             && row.blocked_by.is_empty()
-    })
+            && scope.is_none_or(|anchor| descends_from(rows, &row.id, anchor))
+    };
+    rows.iter()
+        .find(|row| ready(row) && Some(row.id.as_str()) != scope)
+        .or_else(|| rows.iter().find(|row| ready(row)))
+}
+
+/// Whether `id` is `anchor` or descends from it, by walking `parent`. A parent
+/// that names no open row, or a hand-written cycle, ends the walk: neither can be
+/// a descendant of the anchor.
+fn descends_from(rows: &[TaskItem], id: &str, anchor: &str) -> bool {
+    let mut current = Some(id);
+    for _ in 0..=rows.len() {
+        let Some(candidate) = current else {
+            return false;
+        };
+        if candidate == anchor {
+            return true;
+        }
+        current = rows
+            .iter()
+            .find(|row| row.id == candidate)
+            .and_then(|row| row.parent.as_deref());
+    }
+    false
 }
 
 /// The whole payload of a continuation is the row's own words.
@@ -176,9 +294,10 @@ fn next_row_turn(
     working_dir: Option<&Path>,
     session_id: &str,
     worked: &HashSet<String>,
+    scope: Option<&str>,
 ) -> Option<TurnSeed> {
     let rows = load_tasks(working_dir, session_id).ok()?;
-    next_held_ready_row(&rows, session_id, worked).map(TurnSeed::row)
+    next_held_ready_row(&rows, session_id, worked, scope).map(TurnSeed::row)
 }
 
 /// Continue a session with the next row it holds, when it is allowed to keep going
@@ -191,22 +310,18 @@ pub(super) async fn continue_with_next_row(
     session_id: &str,
     sessions: &SessionAgents,
     swarm: LiveTurnSwarmContext,
+    grant: RunGrant,
 ) -> bool {
-    let working_dir = {
-        let agents = sessions.read().await;
-        agents
-            .get(session_id)
-            .and_then(|agent| agent.try_lock().ok())
-            .and_then(|agent| agent.working_dir().map(PathBuf::from))
-    };
+    let working_dir = session_working_dir(session_id, sessions, &swarm.members).await;
     let Ok(rows) = load_tasks(working_dir.as_deref(), session_id) else {
         return false;
     };
-    let Some(row) = next_held_ready_row(&rows, session_id, &HashSet::new()) else {
+    let Some(row) = next_held_ready_row(&rows, session_id, &HashSet::new(), grant.scope.as_deref())
+    else {
         return false;
     };
     let seed = TurnSeed::row(row);
-    run_live_turn_if_idle(session_id, seed, true, sessions, swarm).await
+    run_live_turn_if_idle(session_id, seed, grant, sessions, swarm).await
 }
 
 /// Spawn `seed` as a full tracked turn in a live session.
@@ -223,7 +338,7 @@ pub(super) async fn spawn_tracked_live_turn(
     sessions: &SessionAgents,
     agent: OwnedMutexGuard<Agent>,
     seed: TurnSeed,
-    may_continue: bool,
+    grant: RunGrant,
     swarm: LiveTurnSwarmContext,
 ) {
     update_member_status(
@@ -339,14 +454,18 @@ pub(super) async fn spawn_tracked_live_turn(
             }
             // The permission is the run's, decided where the run started, so a
             // turn that was not granted ends after its one turn.
-            if !may_continue {
+            if !grant.may_continue {
                 break;
             }
             // Give the agent up before looking for more work: if a person or another
             // turn wants it, they get it and this run ends here.
             drop(agent);
-            let Some(next_seed) = next_row_turn(working_dir.as_deref(), &session_id, &worked)
-            else {
+            let Some(next_seed) = next_row_turn(
+                working_dir.as_deref(),
+                &session_id,
+                &worked,
+                grant.scope.as_deref(),
+            ) else {
                 break;
             };
             seed = Some(next_seed);
@@ -360,14 +479,14 @@ pub(super) async fn spawn_tracked_live_turn(
 pub(super) async fn run_live_turn_if_idle(
     session_id: &str,
     seed: TurnSeed,
-    may_continue: bool,
+    grant: RunGrant,
     sessions: &SessionAgents,
     swarm: LiveTurnSwarmContext,
 ) -> bool {
     let Some(agent) = idle_live_agent(session_id, sessions, &swarm.members).await else {
         return false;
     };
-    spawn_tracked_live_turn(session_id, sessions, agent, seed, may_continue, swarm).await;
+    spawn_tracked_live_turn(session_id, sessions, agent, seed, grant, swarm).await;
     true
 }
 
@@ -385,7 +504,7 @@ pub(super) async fn run_live_system_turn_if_idle(
         None,
         Some(crate::session::StoredDisplayRole::System),
     );
-    spawn_tracked_live_turn(session_id, sessions, agent, seed, false, swarm).await;
+    spawn_tracked_live_turn(session_id, sessions, agent, seed, RunGrant::denied(), swarm).await;
     true
 }
 
@@ -403,6 +522,28 @@ mod tests {
         }
     }
 
+    fn child(id: &str, holder: &str, parent: &str) -> TaskItem {
+        TaskItem {
+            parent: Some(parent.to_string()),
+            ..row(id, Some(holder), &[])
+        }
+    }
+
+    /// A repo of its own, so the list is this test's and never the machine's.
+    fn scratch_repo() -> tempfile::TempDir {
+        let repo = tempfile::tempdir().expect("temp dir");
+        assert!(
+            std::process::Command::new("git")
+                .args(["init", "-q"])
+                .current_dir(repo.path())
+                .status()
+                .expect("git init")
+                .success(),
+            "git init"
+        );
+        repo
+    }
+
     #[test]
     fn takes_the_first_held_row_whose_blockers_are_gone() {
         let rows = vec![
@@ -412,7 +553,8 @@ mod tests {
             row("t4", Some("other"), &[]),
         ];
         // t2 is held but still blocked by an open t1, and t4 is somebody else's.
-        let picked = next_held_ready_row(&rows, "me", &HashSet::new()).expect("a held ready row");
+        let picked =
+            next_held_ready_row(&rows, "me", &HashSet::new(), None).expect("a held ready row");
         assert_eq!(picked.id, "t3");
     }
 
@@ -422,13 +564,13 @@ mod tests {
     #[test]
     fn a_dangling_blocker_keeps_the_row_unready() {
         let rows = vec![row("t2", Some("me"), &["t1"])];
-        assert!(next_held_ready_row(&rows, "me", &HashSet::new()).is_none());
+        assert!(next_held_ready_row(&rows, "me", &HashSet::new(), None).is_none());
     }
 
     #[test]
     fn holding_nothing_ready_continues_nothing() {
         let rows = vec![row("t1", None, &[]), row("t2", Some("me"), &["t1"])];
-        assert!(next_held_ready_row(&rows, "me", &HashSet::new()).is_none());
+        assert!(next_held_ready_row(&rows, "me", &HashSet::new(), None).is_none());
     }
 
     /// Only a close removes a row, so without this the loop picks the same row
@@ -437,14 +579,14 @@ mod tests {
     fn a_row_the_run_already_worked_ends_it() {
         let rows = vec![row("t3", Some("me"), &[])];
         let worked: HashSet<String> = ["t3".to_string()].into_iter().collect();
-        assert!(next_held_ready_row(&rows, "me", &worked).is_none());
+        assert!(next_held_ready_row(&rows, "me", &worked, None).is_none());
     }
 
     #[test]
     fn a_worked_row_steps_aside_for_the_next_one() {
         let rows = vec![row("t3", Some("me"), &[]), row("t4", Some("me"), &[])];
         let worked: HashSet<String> = ["t3".to_string()].into_iter().collect();
-        let picked = next_held_ready_row(&rows, "me", &worked).expect("the row after t3");
+        let picked = next_held_ready_row(&rows, "me", &worked, None).expect("the row after t3");
         assert_eq!(picked.id, "t4");
     }
 
@@ -456,5 +598,68 @@ mod tests {
         assert!(message.contains("t7"));
         assert!(message.contains("row t7"));
         assert!(message.contains("paths first"));
+    }
+
+    /// A run's scope is its anchor's subtree: a row the session holds but that
+    /// descends from no anchor row is not this run's work, which is what makes
+    /// `/auto <row>` a scope rather than a starting point.
+    #[test]
+    fn a_held_row_outside_the_anchor_subtree_is_not_picked() {
+        let rows = vec![
+            row("t1", Some("me"), &[]),
+            child("t2", "me", "t1"),
+            row("t3", Some("me"), &[]),
+        ];
+        let picked = next_held_ready_row(&rows, "me", &HashSet::new(), Some("t1"));
+        assert_eq!(picked.map(|row| row.id.as_str()), Some("t2"));
+    }
+
+    /// The anchor is the run's own row and is worked last: its close is the run's
+    /// end and a parent's row stays while a child names it (rule 3), so picking it
+    /// first would only ask the model to close a row that cannot close yet.
+    #[test]
+    fn the_anchor_is_worked_last() {
+        let rows = vec![row("t1", Some("me"), &[]), child("t2", "me", "t1")];
+        let picked = next_held_ready_row(&rows, "me", &HashSet::new(), Some("t1"));
+        assert_eq!(picked.map(|row| row.id.as_str()), Some("t2"));
+
+        let worked: HashSet<String> = ["t2".to_string()].into_iter().collect();
+        let picked = next_held_ready_row(&rows, "me", &worked, Some("t1"));
+        assert_eq!(picked.map(|row| row.id.as_str()), Some("t1"));
+    }
+
+    /// The grant's words are both the scope and the run's first turn, and a named
+    /// row is claimed: a run only works what it holds, so an unclaimed anchor would
+    /// leave the session scoped to a row it could never pick.
+    #[test]
+    fn a_grant_scopes_the_run_to_the_row_its_words_name() {
+        let repo = scratch_repo();
+        let mut named = row("t1", Some("someone-else"), &[]);
+        named.content = "fix the docs".to_string();
+        crate::todo::save_tasks(Some(repo.path()), "me", &[named]).expect("write the work list");
+
+        let (grant, words) = resolve_grant("fix the docs", Some(repo.path()), "me");
+        assert_eq!(grant.scope.as_deref(), Some("t1"));
+        assert!(grant.may_continue, "the grant is this turn's permission");
+        assert_eq!(
+            words, "fix the docs",
+            "the row's words are the run's first turn"
+        );
+        assert_eq!(
+            crate::todo::load_tasks(Some(repo.path()), "me").expect("read")[0]
+                .assigned_to
+                .as_deref(),
+            Some("me"),
+            "the grant claims the row the words name"
+        );
+
+        let (grant, words) =
+            resolve_grant("work the list until it is done", Some(repo.path()), "me");
+        assert_eq!(
+            grant.scope.as_deref(),
+            Some("t2"),
+            "words that name no row become the run's anchor"
+        );
+        assert_eq!(words, "work the list until it is done");
     }
 }

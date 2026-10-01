@@ -565,7 +565,7 @@ async fn wake_turn_holds_reservation_until_terminal_status_is_published() {
     let started = super::live_turn::run_live_turn_if_idle(
         &session_id,
         super::live_turn::TurnSeed::asked("first wake", None, None),
-        false,
+        super::live_turn::RunGrant::denied(),
         &sessions,
         ctx.clone(),
     )
@@ -642,7 +642,7 @@ async fn wake_turn_tracks_member_status_and_emits_terminal_done() {
             Some("You received a direct swarm message.".to_string()),
             None,
         ),
-        false,
+        super::live_turn::RunGrant::denied(),
         &sessions,
         super::live_turn::LiveTurnSwarmContext::new(
             &swarm_members,
@@ -717,8 +717,8 @@ async fn wake_turn_tracks_member_status_and_emits_terminal_done() {
     );
 }
 
-/// One row of the fixture's work list: `(id, held by someone else, blockers)`.
-type RowSpec<'a> = (&'a str, bool, &'a [&'a str]);
+/// One row of the fixture's work list: `(id, held by someone else, blockers, parent)`.
+type RowSpec<'a> = (&'a str, bool, &'a [&'a str], Option<&'a str>);
 
 /// A live, attended session with a work list of its own. Its runs are granted by
 /// `turns`, which is the permission now that the loop takes it as a parameter.
@@ -736,11 +736,11 @@ struct LiveRun {
 impl LiveRun {
     /// Start a run and count the turns it takes: one terminal `Done` per turn, and
     /// the run has to go quiet after the last one.
-    async fn turns(&mut self, seed: &str, granted: bool) -> usize {
+    async fn turns(&mut self, seed: &str, grant: super::live_turn::RunGrant) -> usize {
         let started = super::live_turn::run_live_turn_if_idle(
             &self.session_id,
             super::live_turn::TurnSeed::asked(seed, None, None),
-            granted,
+            grant,
             &self.sessions,
             self.ctx.clone(),
         )
@@ -796,7 +796,7 @@ async fn live_run(rows: &[RowSpec<'_>], responses: usize) -> LiveRun {
 
     let rows: Vec<crate::todo::TaskItem> = rows
         .iter()
-        .map(|(id, foreign, blocked_by)| crate::todo::TaskItem {
+        .map(|(id, foreign, blocked_by, parent)| crate::todo::TaskItem {
             id: (*id).to_string(),
             content: format!("row {id}"),
             assigned_to: Some(if *foreign {
@@ -805,6 +805,7 @@ async fn live_run(rows: &[RowSpec<'_>], responses: usize) -> LiveRun {
                 session_id.clone()
             }),
             blocked_by: blocked_by.iter().map(|id| (*id).to_string()).collect(),
+            parent: parent.map(str::to_string),
             ..Default::default()
         })
         .collect();
@@ -852,9 +853,10 @@ async fn live_run(rows: &[RowSpec<'_>], responses: usize) -> LiveRun {
 /// the fifth turn and go on paying for it.
 #[tokio::test]
 async fn a_run_works_every_ready_row_it_holds_and_then_stops() {
-    let mut run = live_run(&[("t1", false, &[]), ("t2", false, &[])], 6).await;
+    let mut run = live_run(&[("t1", false, &[], None), ("t2", false, &[], None)], 6).await;
     assert_eq!(
-        run.turns("start", true).await,
+        run.turns("start", super::live_turn::RunGrant::whole_list())
+            .await,
         3,
         "the seed turn plus one per row"
     );
@@ -864,22 +866,61 @@ async fn a_run_works_every_ready_row_it_holds_and_then_stops() {
 /// held by someone else is never this session's to work.
 #[tokio::test]
 async fn a_run_leaves_a_row_whose_blocker_is_still_open() {
-    let mut run = live_run(&[("t0", true, &[]), ("t1", false, &["t0"])], 4).await;
-    assert_eq!(run.turns("start", true).await, 1, "the seed turn alone");
+    let mut run = live_run(&[("t0", true, &[], None), ("t1", false, &["t0"], None)], 4).await;
+    assert_eq!(
+        run.turns("start", super::live_turn::RunGrant::whole_list())
+            .await,
+        1,
+        "the seed turn alone"
+    );
+}
+
+/// A granted run is scoped to its anchor's subtree: `t3` is ready and held by this
+/// session, and it is still not the run's, because the grant named `t1`.
+#[tokio::test]
+async fn a_scoped_run_works_only_the_anchor_subtree() {
+    let mut run = live_run(
+        &[
+            ("t1", false, &[], None),
+            ("t2", false, &[], Some("t1")),
+            ("t3", false, &[], None),
+        ],
+        5,
+    )
+    .await;
+    assert_eq!(
+        run.turns(
+            "start",
+            super::live_turn::RunGrant::scoped("t1".to_string())
+        )
+        .await,
+        3,
+        "the seed turn, the anchor's child, and the anchor last"
+    );
 }
 
 #[tokio::test]
 async fn a_run_with_nothing_ready_takes_its_one_turn() {
     let mut run = live_run(&[], 2).await;
-    assert_eq!(run.turns("start", true).await, 1, "the seed turn alone");
+    assert_eq!(
+        run.turns("start", super::live_turn::RunGrant::whole_list())
+            .await,
+        1,
+        "the seed turn alone"
+    );
 }
 
 /// The permission defaults off (rule 11): a turn nobody granted ends where it ends,
 /// even with ready rows waiting, so a run only continues because it was allowed to.
 #[tokio::test]
 async fn an_ungranted_turn_does_not_take_another_row() {
-    let mut run = live_run(&[("t1", false, &[]), ("t2", false, &[])], 3).await;
-    assert_eq!(run.turns("start", false).await, 1, "the seed turn alone");
+    let mut run = live_run(&[("t1", false, &[], None), ("t2", false, &[], None)], 3).await;
+    assert_eq!(
+        run.turns("start", super::live_turn::RunGrant::denied())
+            .await,
+        1,
+        "the seed turn alone"
+    );
 }
 
 #[tokio::test]

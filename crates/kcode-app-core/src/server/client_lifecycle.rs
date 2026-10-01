@@ -37,6 +37,7 @@ use super::comm_sync::{
     CommResyncPlanContext, handle_comm_plan_status, handle_comm_read_context,
     handle_comm_resync_plan, handle_comm_status, handle_comm_summary,
 };
+use super::live_turn::RunGrant;
 use super::provider_control::{
     handle_cycle_model, handle_notify_auth_changed, handle_refresh_models,
     handle_set_compaction_mode, handle_set_model, handle_set_premium_mode,
@@ -570,7 +571,7 @@ pub(super) async fn handle_client(
     // The grant the turn's user gave, spent when the turn ends. One owner for it
     // arrives with H5; until then it rides beside the other turn locals.
     // braid: split when H5 lands
-    let mut processing_may_continue = false;
+    let mut processing_grant = RunGrant::denied();
     let mut current_client_instance_id: Option<String> = None;
     let mut continue_on_disconnect = false;
     let mut model_usage_updates_enabled = false;
@@ -843,7 +844,7 @@ pub(super) async fn handle_client(
                     let done_session = processing_session_id.take();
                     record_processing_completion(
                         done_session.as_deref(), result, completion_report,
-                        processing_may_continue,
+                        processing_grant.clone(),
                         &sessions,
                         &SwarmStatusRefs {
                             members: &swarm_members,
@@ -1219,7 +1220,34 @@ pub(super) async fn handle_client(
                 }
                 // The grant is this turn's, set where the turn is, so a
                 // context-only or rejected message never leaves one behind.
-                processing_may_continue = may_continue;
+                //
+                // A granted turn also resolves its scope: `/auto <words>` names an
+                // open row (rule 10's way of referring to one, by its words) or
+                // becomes the run's anchor, written through the list's one write
+                // path (rule 2). The anchor's own words are then this turn's words,
+                // so the seed asks for the row the grant named, not a bare id. Only
+                // a turn that will actually run resolves one: a rejection must not
+                // write a row into the list.
+                let mut grant = if may_continue {
+                    RunGrant::whole_list()
+                } else {
+                    RunGrant::denied()
+                };
+                let mut content = content;
+                if may_continue && !client_is_processing && !server_reload_starting() {
+                    let working_dir = super::live_turn::session_working_dir(
+                        &client_session_id,
+                        &sessions,
+                        &swarm_members,
+                    )
+                    .await;
+                    (grant, content) = super::live_turn::resolve_grant(
+                        &content,
+                        working_dir.as_deref(),
+                        &client_session_id,
+                    );
+                }
+                processing_grant = grant;
                 start_processing_message(
                     ProcessingMessage {
                         id,
@@ -2967,7 +2995,7 @@ pub(super) async fn handle_client(
                         processing_session_id.as_deref(),
                         result,
                         report,
-                        processing_may_continue,
+                        processing_grant.clone(),
                         &sessions,
                         &SwarmStatusRefs {
                             members: &swarm_members,
@@ -3030,7 +3058,7 @@ async fn record_processing_completion(
     done_session: Option<&str>,
     result: Result<()>,
     completion_report: Option<String>,
-    may_continue: bool,
+    grant: RunGrant,
     sessions: &SessionAgents,
     swarm: &SwarmStatusRefs<'_>,
 ) {
@@ -3054,7 +3082,7 @@ async fn record_processing_completion(
                 // standing default says every turn of this project's may. This is
                 // the one place the permission is read (rule 11).
                 let standing = crate::config::config().features.auto_poke;
-                if !(may_continue || standing) {
+                if !(grant.may_continue || standing) {
                     return;
                 }
                 let _ = super::live_turn::continue_with_next_row(
@@ -3067,6 +3095,7 @@ async fn record_processing_completion(
                         swarm.event_counter,
                         swarm.event_tx,
                     ),
+                    grant,
                 )
                 .await;
             }

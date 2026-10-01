@@ -1,4 +1,4 @@
-use super::live_turn::{LiveTurnSwarmContext, TurnSeed, run_live_turn_if_idle};
+use super::live_turn::{LiveTurnSwarmContext, RunGrant, TurnSeed, run_live_turn_if_idle};
 use super::{
     ChannelSubscriptions, ClientConnectionInfo, SessionAgents, SessionInterruptQueues, SwarmEvent,
     SwarmEventType, SwarmMember, fanout_session_event, queue_soft_interrupt_for_session,
@@ -335,7 +335,7 @@ pub(super) async fn handle_comm_message(
                         let woke_immediately = run_live_turn_if_idle(
                             session_id,
                             TurnSeed::asked(&notification_msg, reminder, None),
-                            false,
+                            RunGrant::denied(),
                             sessions,
                             LiveTurnSwarmContext::new(
                                 swarm_members,
