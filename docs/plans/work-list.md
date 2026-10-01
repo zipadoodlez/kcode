@@ -147,8 +147,9 @@ the children added underneath.
 
 ## Steps
 
-Every step lands whole, proven by the gate and, where behavior moves, one `kcode
-run` probe against its own socket. Widest shared shape first, so no step sweeps
+Every step lands whole, proven by the gate. The one `kcode run` probe against its
+own socket waits for the end of the list, where the user runs it, so no step is
+gated on it. Widest shared shape first, so no step sweeps
 call sites a later step reshapes: 0.2 removed the poke the permission replaced, and
 0.3 gives the state one owner so 0.4 can delete the rest.
 
@@ -162,15 +163,15 @@ duplication they would have removed and nothing else.
 **Here is where the work stands**, and a step in flight is finished before a new one
 starts. 0.1's loop and permission have landed with their tests. 0.2 has landed whole
 and is gone from this list; what it owed is now its own step below, after 0.3. Next
-is 0.1's four riders, and then 0.3. Each stage compiles before it is committed
-(`dev/post-change.md` says which check); the full gate runs once, when the step is
-done.
+is 0.1's row rung and two riders, and then 0.3. Each stage compiles before it is
+committed (`dev/post-change.md` says which check); the full gate runs once, when the
+step is done.
 
 ### 0. One way work gets done
 
 - [ ] **0.1. The permission's remaining pieces.** The loop and the permission landed
   2026-10-01, with the proof under a mock provider in `server/tests.rs`; what is left
-  is the row rung, two riders, and the proof a live socket owes.
+  is the row rung and two riders.
   - The row rung. `/auto t3` means the run's scope is that row's subtree, which the
     pick can filter by walking `parent`. Today `/auto` takes words and the scope is
     everything the session holds.
@@ -179,9 +180,6 @@ done.
     history.
   - The quota-projection warning, built from the existing provider usage reports and
     printed where the usage snapshot is already rendered.
-  - The step's own landing rule: the permission moved behavior (a granted turn
-    continues, a wake does not), so it wants one `kcode run` probe against its own
-    socket and a scratch repo, not only the in-process proof.
   Deferred: a headless member holding the permission inherently goes to 0.3, and the
   `features.auto_poke` rename goes with the last poke, the command-line one.
 
@@ -192,10 +190,14 @@ done.
 - [ ] **0.3's `kind` is the engine's word, stored once on the row.** `bridge.rs`
   already owns the only vocabulary (`parse_kind` reads it, `kind_str` writes it), so
   a row holds that word and the store learns no enum and takes no dependency on the
-  engine (rule 5). The one change is that `parse_kind` stops guessing: it defaults an
-  unknown word to `Explore`, which is what rule 8 forbids, so absent or unrecognised
-  has to mean the row is not seedable. Gate kinds are never typed on a row, since a
-  gate is the one node with no row.
+  engine (rule 5). Today it is on no row at all: it is `NodeMeta.kind`, a side-table
+  keyed by row id (`bridge.rs:100-108` reads it, `:166` writes it), so the file
+  cannot tell a kindless row. `TaskItem` gains `kind: Option<String>`, the `todo`
+  tool accepts it on add/update (the tool is the only writer), and `node_meta.kind`
+  goes. `parse_kind` then stops guessing: it defaults an unknown word to `Explore`,
+  which is what rule 8 forbids, so absent or unrecognised has to mean the row is not
+  seedable. Gate kinds are never typed on a row, since a gate is the one node with
+  no row.
 - [ ] `assigned_to` stays an opaque holder string, with no marker for a person. The
   mechanism never needs one: a holder naming no live session is never picked by any
   session, so a person-held row is inert by construction, and a claim whose session
@@ -285,3 +287,8 @@ Gated by C.
 - [ ] **G1.** Restore the two size ratchets in `scripts/check_guardrails.sh` and
   re-baseline both with `--update`. They are paused, with the reason at the call
   site.
+- [ ] **G2.** The one live `kcode run` probe against its own socket, in a scratch
+  repo, run by the user: the permission (a granted turn continues, a wake does not)
+  and the poke's removal (no client continuation; every non-retryable error gets the
+  short budget). It is the step's landing proof, so it runs when the list is done,
+  not per step.
