@@ -292,7 +292,6 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
     assigned.assigned_to = Some(worker.to_string());
     let prior_progress = crate::server::SwarmTaskProgress {
         assigned_session_id: Some(worker.to_string()),
-        assignment_summary: Some("original assignment".to_string()),
         assigned_at_unix_ms: Some(1_000),
         started_at_unix_ms: Some(2_000),
         last_heartbeat_unix_ms: Some(3_000),
@@ -395,11 +394,9 @@ async fn requeue_existing_assignment_preserves_prior_progress_history() {
                 "requeue-me".to_string(),
                 crate::server::SwarmTaskProgress {
                     assigned_session_id: Some(worker.to_string()),
-                    assignment_summary: Some("original assignment".to_string()),
                     assigned_at_unix_ms: Some(1_000),
                     started_at_unix_ms: Some(2_000),
                     last_heartbeat_unix_ms: Some(3_000),
-                    last_detail: Some("was working".to_string()),
                     last_checkpoint_unix_ms: Some(3_500),
                     checkpoint_summary: Some("halfway".to_string()),
                     heartbeat_count: Some(7),
@@ -420,7 +417,6 @@ async fn requeue_existing_assignment_preserves_prior_progress_history() {
         requester,
         worker,
         "requeue-me",
-        "resume this work".to_string(),
         &swarm_plans,
     )
     .await;
@@ -447,15 +443,9 @@ async fn requeue_existing_assignment_preserves_prior_progress_history() {
     assert_eq!(progress.heartbeat_count, Some(7));
     assert_eq!(progress.checkpoint_count, Some(2));
     assert_eq!(progress.checkpoint_summary.as_deref(), Some("halfway"));
-    assert_eq!(progress.last_detail.as_deref(), Some("was working"));
     assert_eq!(
         progress.stale_since_unix_ms, None,
         "requeued task is no longer stale"
-    );
-    assert_eq!(
-        progress.assignment_summary.as_deref(),
-        Some("resume this work"),
-        "assignment-scoped fields refresh for the new attempt"
     );
     assert!(
         progress.assigned_at_unix_ms.unwrap_or(0) > 1_000,

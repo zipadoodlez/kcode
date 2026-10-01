@@ -444,18 +444,17 @@ async fn plan_graph_status_for(
 /// Re-queue a task on its existing assignee for a task-control restart
 /// (currently only `resume` of a running/stale task reaches this).
 ///
-/// The prior run's history (`started_at`, heartbeats, checkpoints, last
-/// detail) is preserved rather than replaced: the requeue is a lifecycle
-/// transition of the same assignment, and wiping the record would blind
-/// staleness monitors and salvage flows to everything the previous run did.
-/// Only the assignment-scoped fields are refreshed, and the terminal/stale
-/// markers are cleared because the task is queued again.
+/// The prior run's history (`started_at`, heartbeats, checkpoints) is preserved
+/// rather than replaced: the requeue is a lifecycle transition of the same
+/// assignment, and wiping the record would blind staleness monitors and salvage
+/// flows to everything the previous run did. Only the assignment-scoped fields
+/// are refreshed, and the terminal/stale markers are cleared because the task is
+/// queued again.
 async fn requeue_existing_assignment(
     swarm_id: &str,
     req_session_id: &str,
     assignee_session: &str,
     task_id: &str,
-    assignment_summary: String,
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
 ) -> Option<(String, HashSet<String>, usize)> {
     let now_ms = now_unix_ms();
@@ -466,7 +465,6 @@ async fn requeue_existing_assignment(
     item.status = "queued".to_string();
     let progress = plan.task_progress.entry(task_id.to_string()).or_default();
     progress.assigned_session_id = Some(assignee_session.to_string());
-    progress.assignment_summary = Some(truncate_detail(&assignment_summary, 120));
     progress.assigned_at_unix_ms = Some(now_ms);
     progress.completed_at_unix_ms = None;
     progress.stale_since_unix_ms = None;
@@ -797,10 +795,8 @@ fn spawn_assigned_task_run(
                 item.status = "running".to_string();
                 let progress = plan.task_progress.entry(task_id.clone()).or_default();
                 progress.assigned_session_id = Some(target_session.clone());
-                progress.assignment_summary = Some(truncate_detail(&assignment_text, 120));
                 progress.started_at_unix_ms = Some(now_ms);
                 progress.last_heartbeat_unix_ms = Some(now_ms);
-                progress.last_detail = Some(truncate_detail(&assignment_text, 120));
                 progress.last_checkpoint_unix_ms = Some(now_ms);
                 progress.checkpoint_summary = Some("task started".to_string());
                 progress.completed_at_unix_ms = None;
@@ -858,7 +854,6 @@ fn spawn_assigned_task_run(
                                 &swarm_id,
                                 &task_id,
                                 Some(&target_session),
-                                None,
                                 None,
                                 &swarm_members,
                                 &swarms_by_id,
@@ -1183,7 +1178,6 @@ fn task_progress_event_sender(
                     &swarm_id,
                     &task_id,
                     Some(&session_id),
-                    detail.clone(),
                     checkpoint_summary,
                     &swarm_members,
                     &swarms_by_id,
@@ -1639,10 +1633,6 @@ async fn handle_comm_assign_task_with_mode(
                 item_id.clone(),
                 SwarmTaskProgress {
                     assigned_session_id: Some(target_session.clone()),
-                    assignment_summary: Some(truncate_detail(
-                        &combine_assignment_text(&content, message.as_deref()),
-                        120,
-                    )),
                     assigned_at_unix_ms: Some(now_ms),
                     ..SwarmTaskProgress::default()
                 },
@@ -2241,7 +2231,6 @@ pub(super) async fn handle_comm_task_control(
                         &req_session_id,
                         &assignee,
                         &task_id,
-                        assignment_text.clone(),
                         swarm_plans,
                     )
                     .await
@@ -2447,15 +2436,13 @@ pub(super) async fn handle_comm_task_control(
                     &summaries,
                     message.as_deref(),
                 );
-                if let Some(progress) = snapshot.progress.as_ref() {
-                    if let Some(summary) = progress.checkpoint_summary.as_deref() {
-                        salvage.push_str("\n\nLatest checkpoint summary:\n");
-                        salvage.push_str(summary);
-                    }
-                    if let Some(detail) = progress.last_detail.as_deref() {
-                        salvage.push_str("\n\nLatest recorded detail:\n");
-                        salvage.push_str(detail);
-                    }
+                if let Some(summary) = snapshot
+                    .progress
+                    .as_ref()
+                    .and_then(|progress| progress.checkpoint_summary.as_deref())
+                {
+                    salvage.push_str("\n\nLatest checkpoint summary:\n");
+                    salvage.push_str(summary);
                 }
                 Some(salvage)
             } else if action == TaskControlAction::Replace {

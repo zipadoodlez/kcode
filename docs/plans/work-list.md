@@ -31,9 +31,10 @@ blocks, wildcard re-exports and lines per file, ratcheted by
 `scripts/check_guardrails.sh`. A step that must grow records the reason in the same
 commit, because the App shape ratchet only tightens.
 
-**The go/no-go is the second `(decide)` under 0.3.** If a run in flight needs two
-durable stores, the plan or the file, then the model's central promise is false:
-stop at 0.3, keep what landed, and drop the tail rather than adapt it.
+**The go/no-go is the `(decide)` under 0.3 about where a run's
+finished-but-not-integrated nodes live.** If a run in flight needs two durable
+stores, the plan or the file, then the model's central promise is false: stop at
+0.3, keep what landed, and drop the tail rather than adapt it.
 
 ## The model
 
@@ -204,9 +205,10 @@ step is done.
   session, so a person-held row is inert by construction, and a claim whose session
   died is what `run_plan` already reports as a stall. Only the narration has to tell
   them apart, and the string is the narration (rule 10).
-- [ ] **(decide)** what a running run shows in the file while a node is in
-  flight, and what a stalled node shows. The row's `note` is the durable half of
-  `SwarmTaskProgress.last_detail`; one of the two has to win.
+- [ ] **0.3 stores no per-node progress.** The one place a run leaves words is the
+  row's `note`, written through the `todo` tool (rule 2). A stalled node is derived
+  from the member activity clock where its marker is rendered, never written to the
+  file, so the plan's progress record carries liveness only.
 - [ ] **(decide)** where a run's finished-but-not-integrated nodes live. The file
   deletes a row when its result is durable, but a gate must name every done node
   in its scope by id, and a run that resumes after a restart needs them too.

@@ -52,11 +52,9 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
                 "task-1".to_string(),
                 SwarmTaskProgress {
                     assigned_session_id: Some("session-1".to_string()),
-                    assignment_summary: Some("do thing".to_string()),
                     assigned_at_unix_ms: Some(10),
                     started_at_unix_ms: Some(20),
                     last_heartbeat_unix_ms: Some(30),
-                    last_detail: Some("tool start: read".to_string()),
                     last_checkpoint_unix_ms: Some(40),
                     checkpoint_summary: Some("tool done: read".to_string()),
                     completed_at_unix_ms: None,

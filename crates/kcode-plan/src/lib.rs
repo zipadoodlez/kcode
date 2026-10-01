@@ -23,15 +23,11 @@ pub struct SwarmTaskProgress {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assigned_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub assignment_summary: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assigned_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub started_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_heartbeat_unix_ms: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_detail: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_checkpoint_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

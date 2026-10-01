@@ -475,7 +475,6 @@ pub(super) async fn touch_swarm_task_progress(
     swarm_id: &str,
     task_id: &str,
     assigned_session_id: Option<&str>,
-    detail: Option<String>,
     checkpoint_summary: Option<String>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
@@ -503,9 +502,6 @@ pub(super) async fn touch_swarm_task_progress(
         }
         progress.last_heartbeat_unix_ms = Some(now_ms);
         progress.heartbeat_count = Some(progress.heartbeat_count.unwrap_or(0) + 1);
-        if let Some(detail) = detail {
-            progress.last_detail = Some(truncate_detail(&detail, 120));
-        }
         if let Some(summary) = checkpoint_summary {
             progress.last_checkpoint_unix_ms = Some(now_ms);
             progress.checkpoint_summary = Some(truncate_detail(&summary, 120));
@@ -2829,7 +2825,6 @@ mod tests {
             "swarm-1",
             "task-1",
             Some("worker"),
-            Some("still working".to_string()),
             Some("checkpoint saved".to_string()),
             &swarm_members,
             &swarms_by_id,

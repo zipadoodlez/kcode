@@ -28,7 +28,9 @@ conventions. The current project's destination, model and open steps are
     `in_progress`, so a stalled node renders as running (`▶` amber, `[doing]`) and
     `tui_state.rs` counts it in the running bucket. Give it its own glyph and
     label, `warning_color()`, sorted with `in_progress`; leave the progress count
-    alone so only the per-node marker changes.
+    alone so only the per-node marker changes. The stall itself is derived from the
+    member activity clock, not read from a stored `running_stale` status: nothing
+    writes node progress to the file.
 
 ## 2. God modules
 
