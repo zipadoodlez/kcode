@@ -212,6 +212,21 @@ changes are paid for in test churn.
   `ensure_test_kcode_home_if_unset`, `empty_swarm_status_state`,
   `available_models_display_seeds_from_persisted_catalog`, and the rest at 2).
   Re-measure before ranking.
+- [ ] Fold the Python live drivers into Rust. The three debug-socket drivers were
+  deleted on the `refactor-tests` branch: `test_swarm.py` and `test_swarm_debug.py`
+  test removed or scheduled-removed behavior (plan approval, 0.4f; the shared context,
+  D1; swarm state, 0.4g) or behavior the Rust suite already covers
+  (`client_comm_tests.rs`, `comm_plan_tests.rs`, `client_actions_tests.rs`,
+  `queue_tests.rs`), and `test_dag_live.py` tests gates (0.4a) and the deep rung
+  (0.4b), both gone. The injection trio (`scripts/test_soft_interrupt.py`,
+  `tests/test_injection_fix.py`, `tests/test_injection_thorough.py`) stays until its
+  Rust replacement runs, because it is the only coverage of live streaming placement,
+  which the unit tests (`messages_end_with_tool_result_*`, `queue_tests.rs`) do not
+  reach. Port it to one `tests/e2e/` module using the mock provider and a private
+  socket, keeping: injection lands after all `tool_result`s, injection during
+  streaming lands at the turn boundary, message order preserved, and an urgent
+  interrupt leaves results for skipped tools. Drop the timing-based and
+  real-provider cases.
 
 ## 5. Hygiene
 
