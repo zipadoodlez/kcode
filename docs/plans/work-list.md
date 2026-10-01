@@ -189,7 +189,8 @@ removed and nothing else.
   member's turn a row's. "Typing always wins" holds: the reservation is given up
   before the next row is looked for, so a turn already waiting for the agent takes
   it and the run ends there. `auto_poke` is now a misnomer for the standing default,
-  and 0.2 renames it when the poke it is named for goes.
+  and the name goes with the last poke, the command-line one 0.3 unblocks, because
+  until then both read it.
   Small, still owed: the row rung (`/auto t3`, the pick's optional subtree filter),
   an optional bound so "work until 07:00" is the run property the model says (the
   duration parser and the target-wake label are in git history), and a
@@ -197,15 +198,26 @@ removed and nothing else.
   resource snapshot and a run-end summary stay undecided in `docs/todo.md`.
 - [ ] **0.2. Delete the client poke**, which this replaces. With the server
   continuing a session that holds ready rows, the TUI's auto-poke machine goes:
-  `auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`, `total_pokes_sent`,
-  `morning_report_poked`, `final_wrap_poked`, its keybinding toggle, its overlay
-  line, its tests, and `build_auto_poke_message` in the store crate. The toggle
-  defaults off today, so nothing is lost. One cut in that list is not free:
+  `auto_poke_incomplete_todos` (16 files, 65 uses), `last_auto_poke_fingerprint`,
+  the `/poke` command with its ctrl+p toggle, its overlay line, its help and its
+  tests. `total_pokes_sent`, `morning_report_poked` and `final_wrap_poked` already
+  went with the overnight subsystem, and the toggle defaults off, so nothing the
+  user had is lost.
+  Two things in it are power rather than poke, and they are settled before the
+  delete. The guardrail breaker (`guardrail_stops_exhausted_at_turn_end`,
+  `stop_auto_continuation_after_guardrail`) exists because a provider that refuses
+  one request refuses it again, and a run advances to the next row on a *completed*
+  turn. If a guardrail-stopped turn returns `Ok`, that breaker moves onto the loop
+  in `live_turn.rs` instead of dying here; if it returns `Err`, the loop's existing
+  failure arm already ends the run and nothing is owed. The non-retryable-error
+  classifier stays, because it is the client's retry policy and the run already ends
+  on a failed turn.
   `build_auto_poke_message` is still called by the command-line paths this step
-  defers (`src/cli/commands.rs:719`), so it goes with them, not here. The
-  command-line variant (`src/cli/commands.rs`, the `_with_auto_poke` run paths and
-  `run_command_auto_poke_max_turns`) waits for 0.3, because a plan-driven member
-  must not be driven twice, and a headless run has no plan until rows seed one.
+  defers (`src/cli/commands.rs:719`), so it and the config key's rename go with
+  those, not here. The command-line variant (`src/cli/commands.rs`, the
+  `_with_auto_poke` run paths and `run_command_auto_poke_max_turns`) waits for 0.3,
+  because a plan-driven member must not be driven twice, and a headless run has no
+  plan until rows seed one.
 - [ ] **0.3. Rows are the run's seed source.** `kind` rides on the row, the node id
   is the row id, the file's `blocked_by` is the node's dependency edge (rules 6 and
   7 name it; there is no rename), position is priority, and gates get engine names.
