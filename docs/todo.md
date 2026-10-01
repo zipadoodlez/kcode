@@ -253,6 +253,14 @@ changes are paid for in test churn.
   the review HTML (a second durable store of the same work), the second supervisor
   and coordinator session, and the stored `validated` field, which a close's result
   is now.
+- [ ] **(decision)** The critique/verify pass and strict artifact validation go with
+  0.4 (2026-10-01). Deep mode inserted a gate per node and refused a close whose
+  artifact did not account for its dependencies; the row model has no room for a node
+  that is not a row, so gates and the deep/light axis are deleted. What is lost is the
+  automatic insertion and the refusal; what stays is the record every close leaves on
+  the row that owns the work. Add the pass back as work, not as machinery: a row typed
+  `critique` whose close needs the same record, which anyone (the user, the model, a
+  coordinator) can add like any other row.
 - [ ] **(decision)** A one-shot `kcode run` no longer drains a list (0.3, 2026-10-01).
   The command-line poke was the last client-side continuation, so `kcode run` is one
   turn again: the permission is read in the session's loop, and a plan-driven member

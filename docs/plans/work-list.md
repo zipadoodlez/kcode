@@ -50,8 +50,10 @@ the ready set are derived, never stored.
 Rows become nodes once, when a run takes them. Three things cross back, and only
 these: a claim, a note, a close. The close carries the record, so the durable
 target and the machine-readable parts travel together, and nothing durable lives in
-the run. Gates are the one node with no row, and when a gate finds work, that work
-becomes a row.
+the run. **There is no gate.** A critique or verify pass was engine machinery for
+making a swarm rigorous, and this model gets its rigor from the rows, the loop that
+works them, and the record each close leaves: what a gate would have found is a row
+someone typed or the run added under the row it came from.
 
 **What a run may do on its own initiative stops at what it holds. What the user's
 session may do does not.** The session the user is talking to changes any row,
@@ -149,7 +151,7 @@ the children added underneath.
    dependent's `blocked_by`, so an entry there always names an open row and a row
    with none is ready.
 8. **A row with no `kind` is not seedable.** Typing it once records it, because the
-   kind decides the artifact and the gate and may not be guessed.
+   kind decides what the row's result has to be and may not be guessed.
 9. **The check is a rule, not a field.** The close requires a nonempty result and the
    tool description names the check; a skipped check shows only in the commit.
 10. **Refer to a task by its words with the user.** The file keys on `id`; the
@@ -184,29 +186,53 @@ step is done.
 
 ### 0. One way work gets done
 
-- [ ] **0.4. The cuts the run makes redundant**: the wire node spec, the plan's
-  durable per-node state (`node_meta`, 85 sites in 19 files, and `task_progress`),
-  the persisted plan itself (`swarm_persistence.rs`, 650 lines plus 1,218 of tests;
-  `VersionedPlan` becomes an in-memory view built from the file), the `coordinators`
-  map, any stored swarm id, and the 31 `SwarmState { .. }` rebuild sites. One
-  thing blocks the `node_meta` half: `is_gate` lives there and a gate is the one node
-  with no row, so the step first settles whether a gate is re-derived per run from
-  `requires_gates`, with nothing durable, or carried in the file. `parent` duplicates
-  the row already, and `expanded`, `planner` and `origin` are run state.
+- [ ] **0.4. The cuts the run makes redundant.** Decided with this step (2026-10-01):
+  **gates go, and the deep/light axis goes with them.** A gate is the one node with no
+  row, and the row model has no room for a node that is not a row, so the pass a gate
+  performed is either a row someone typed (a `critique` row whose close needs its
+  record) or nothing. The loss is named in `docs/todo.md`. Stages, in this order, one
+  commit each:
+  - **0.4a. The gate machinery goes.** `NodeMeta.is_gate` (51 sites), the gate half of
+    the engine (`kcode-plan/src/dag/ops.rs:67`, `:308`, `:401`, `:709`, and the
+    insertion at `:201`), the deep instruction contract in `kcode-swarm-core`, the
+    gate-debt and low-confidence probe code (76 sites), and `inject_gap`'s gate path.
+    With no gate, `requires_gates` has no caller, so `Mode`, `parse_mode` and `mode_str`
+    collapse to nothing as well.
+  - **0.4b. The recursion rule gets a home.** Recursion is not an effort sentinel any
+    more: `server/comm_session.rs:1332` reads the root's effort to allow a member to
+    spawn, and the effort axis is the user's own setting, which a run's rules should not
+    ride. Either only the root spawns (the model's "a swarm is a count, not a mode")
+    or the permission is a run property read where the spawn is decided; the loss is
+    named if recursion goes. The `swarm` and `swarm-deep` rungs of `/effort` go with the
+    axis: a user no longer selects orchestration by setting a level, and fanning out is
+    the model's own call through the `swarm` tool, which is what "a swarm is a count, not
+    a mode" means for the one who asks.
+  - **0.4c. A decomposition and a gap are rows.** `expand_node` and `inject_gap` write
+    rows through the store (`todo::close_row`'s sibling), and the last two payloads of
+    `TaskGraphNodeSpec` go with it, so the wire node spec is deleted.
+  - **0.4d. `parent`, `expanded`, `planner` and `origin` leave `node_meta`**: `parent`
+    duplicates the row already, and the other three are run state.
+  - **0.4e. `task_progress` goes**, and liveness comes from the member's own clock and
+    status where it renders.
+  - **0.4f. `VersionedPlan` becomes a view of the file**, deleting
+    `swarm_persistence.rs` (650 lines) and its tests (1,227 lines).
+  - **0.4g. The swarm state gets one owner**: the `coordinators` map, any stored swarm
+    id, and the 31 `SwarmState { .. }` rebuild sites (`docs/todo.md` §1's condense).
   `parse_kind`/`kind_str` stay, since they are what reads and writes a row's word.
   `Synthesize` stays as well: it counted as residue while the wire node spec was its
   only producer, and the word lives on the row now (`tool/todo.rs` offers every
   `KINDS` entry), so a run's own join row has a word to be typed with. Nothing in the
   engine branches on it, so it costs one enum variant and one word.
-  The deep/light flag is not residue,
-  as `internals/swarm.md` says: there is no `Mode::is_deep`, and `requires_gates`
-  guards gate insertion (`kcode-plan/src/dag/ops.rs:67`, `:308`), gate-pass
-  validation (`:401`) and artifact validation (`:709`), while
-  `parse_mode(..) == Mode::Deep` gates deep-participant graph driving
-  (`server/comm_control.rs:2625`). It goes only once the row model owns gates and
-  the recursion rule, which is `session_effort`'s second job:
-  `server/comm_session.rs:1332` reads the root's effort to allow recursive
-  spawning, so that rule needs a home before the side-table goes.
+
+- [ ] **0.5. A task's effort defaults to low.** Two defaults decide it today and neither
+  is low: a session's reasoning level falls back to the provider's own choice
+  (`tui/app/state_ui.rs:1947` reads it as `"default"`), and a spawned worker's falls
+  back to the same through `resolve_swarm_spawn_effort`
+  (`server/comm_session.rs:558`), whose precedence is the spawn call's explicit
+  `effort`, then the `agents.swarm_effort` pin, then nothing. Make both defaults low,
+  so a level is raised deliberately rather than assumed, and say so in `user/config.md`.
+  Nothing else changes: a session or a spawn may still name any level, and after 0.4b
+  no run rule reads effort at all.
 
 ### B. The file is the list
 
