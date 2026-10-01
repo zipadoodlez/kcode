@@ -31,16 +31,17 @@ blocks, wildcard re-exports and lines per file, ratcheted by
 `scripts/check_guardrails.sh`. A step that must grow records the reason in the same
 commit, because the App shape ratchet only tightens.
 
-**The go/no-go is the `(decide)` under 0.3 about where a run's
-finished-but-not-integrated nodes live.** If a run in flight needs two durable
-stores, the plan or the file, then the model's central promise is false: stop at
-0.3, keep what landed, and drop the tail rather than adapt it.
+**The go/no-go is where a run's finished-but-not-integrated nodes live.** It reads
+one store: the close's record goes onto the owning row, so nothing durable needs the
+plan and the tail stands. Reversing that answer, so a run in flight needs the plan
+durable as well as the file, makes the model's central promise false: stop at 0.3,
+keep what landed, and drop the tail rather than adapt it.
 
 ## The model
 
 One file holds the open work: rows of `id`, `content`, optional `kind`, `parent`,
-`blocked_by`, `assigned_to`, `note`. A row is free or held, and there is nothing
-else about it.
+`blocked_by`, `assigned_to`, `note`, and `records` (the opaque closes of the rows
+worked under this one). A row is free or held, and there is nothing else about it.
 
 A **run** is a session working the rows it holds. A swarm is a count, not a mode:
 one member and eight are the same code. Membership, the coordinator, liveness, and
@@ -124,7 +125,8 @@ the children added underneath.
    integrated, a leaf's is its own work, and a parent's row cannot go while a child
    names it.
 4. **There is no completed state.** A row goes when its result is durable, and the
-   close names that place. A drop is a completion whose result says so, so
+   close names that place and writes the record onto the row that owns the work: the
+   parent for a node that has one. A drop is a completion whose result says so, so
    `cancelled` is not a state.
 5. **One item type**, in `kcode-task-types`, the crate whose name is the concept.
 6. **Hierarchy is `parent`, blocking is `blocked_by`,** two fields because they are
@@ -209,12 +211,14 @@ step is done.
   row's `note`, written through the `todo` tool (rule 2). A stalled node is derived
   from the member activity clock where its marker is rendered, never written to the
   file, so the plan's progress record carries liveness only.
-- [ ] **(decide)** where a run's finished-but-not-integrated nodes live. The file
-  deletes a row when its result is durable, but a gate must name every done node
-  in its scope by id, and a run that resumes after a restart needs them too.
-  Either the live graph is the gate's input and the persisted plan carries those
-  nodes until the run closes, which is two durable stores while a run runs, or
-  the gate reads something else.
+- [ ] **0.3 keeps the close's record on the row that owns the work.** Rule 4 already
+  promises it; the file does not keep it, so a finished node exists only in the plan.
+  The close writes its record onto the parent's row, and onto the run's anchor row
+  for a node with no parent; the anchor is the row `/auto t3` scopes the run to, so
+  the scope and the records share one home. Then a gate and a composite read the
+  file, nothing durable lives in the run, and 0.4 deletes the plan's durable half
+  with the wire node spec. `TaskItem` gains one opaque field, so the store still
+  learns no engine type (rule 5).
 - [ ] **The command-line poke goes with the rows.** `src/cli/commands.rs`'s
   `_with_auto_poke` run paths, `run_command_auto_poke_max_turns`, `next_headless_poke`
   and `incomplete_poke_todos`, plus `build_auto_poke_message` (its last remaining
