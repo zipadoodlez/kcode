@@ -207,20 +207,20 @@ removed and nothing else.
   tests. `total_pokes_sent`, `morning_report_poked` and `final_wrap_poked` already
   went with the overnight subsystem, and the toggle defaults off, so nothing the
   user had is lost.
-  Two things in it are power rather than poke, and they are settled before the
-  delete. The guardrail breaker (`guardrail_stops_exhausted_at_turn_end`,
-  `stop_auto_continuation_after_guardrail`) exists because a provider that refuses
-  one request refuses it again, and a run advances to the next row on a *completed*
-  turn. If a guardrail-stopped turn returns `Ok`, that breaker moves onto the loop
-  in `live_turn.rs` instead of dying here; if it returns `Err`, the loop's existing
-  failure arm already ends the run and nothing is owed. The non-retryable-error
-  classifier stays, because it is the client's retry policy and the run already ends
-  on a failed turn.
+  Two things in it are power rather than poke, and both are settled. A
+  guardrail-stopped turn does return `Ok`: the refusal breaks the stream rather than
+  the turn (`turn_streaming_mpsc.rs:1164`), so a run advances past it. It is not
+  re-homed anyway, and the reason is the run's own bound: a row is attempted once, so
+  a refusing provider costs at most one call per row the session holds, and the run
+  still ends. The breaker existed to stop an unbounded re-poke loop, and that loop is
+  what this step deletes. The non-retryable-error classifier stays, because it is the
+  client's retry policy and a failed turn already ends the run.
   The docs that name the poke go with it: the `/poke` examples in
   `dev/message-voice.md`, the `/poke` help, and its completion entries.
   `build_auto_poke_message` is still called by the command-line paths this step
-  defers (`src/cli/commands.rs:719`), so it and the config key's rename go with
-  those, not here. The command-line variant (`src/cli/commands.rs`, the
+  defers (`src/cli/commands.rs:719`), so it, the config key's rename, the
+  `auto_poke_toggle` keybinding, and the poke-named survivors (`is_non_retryable_auto_poke_error`,
+  which is really a turn-error classifier) go with those, not here. The command-line variant (`src/cli/commands.rs`, the
   `_with_auto_poke` run paths and `run_command_auto_poke_max_turns`) waits for 0.3,
   because a plan-driven member must not be driven twice, and a headless run has no
   plan until rows seed one.
