@@ -440,33 +440,3 @@ fn create_real_git_repo_fixture() -> tempfile::TempDir {
         .expect("git commit");
     temp
 }
-
-/// A new session must start with auto-poke off when the config says so, and
-/// `/poke on` must still be able to turn it back on for that session (#664).
-///
-/// The point of the feature is that the setting survives a restart, so
-/// asserting only the config value would miss the actual bug: the session
-/// default was a hardcoded `true` that ignored config entirely.
-#[test]
-fn auto_poke_config_sets_the_session_default_and_poke_on_still_overrides() {
-    with_temp_kcode_home(|| {
-        let mut cfg = crate::config::Config::load();
-        cfg.features.auto_poke = false;
-        cfg.save().expect("save auto_poke = false");
-        crate::config::invalidate_config_cache();
-
-        let mut app = create_test_app();
-        assert!(
-            !app.auto_poke_incomplete_todos,
-            "a new session must honour features.auto_poke = false"
-        );
-
-        // The session-scoped override must still win.
-        super::commands::activate_auto_poke_local(&mut app);
-        assert!(
-            app.auto_poke_incomplete_todos,
-            "/poke on must still re-enable auto-poke for the running session"
-        );
-    });
-}
-

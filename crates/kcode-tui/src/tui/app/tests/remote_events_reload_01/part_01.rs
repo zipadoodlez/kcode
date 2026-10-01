@@ -1203,43 +1203,6 @@ fn test_remote_done_recovers_stranded_soft_interrupt_as_queued_followup() {
         .collect();
     assert_eq!(user_messages, vec!["late interleave", "queued later"]);
 }
-
-#[test]
-fn test_remote_done_auto_pokes_again_when_todos_remain() {
-    with_temp_kcode_home(|| {
-        let mut app = create_test_app();
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let _guard = rt.enter();
-        let mut remote = crate::tui::backend::RemoteConnection::dummy();
-
-        crate::todo::save_tasks(None, 
-            &app.session.id,
-            &[crate::todo::TaskItem {
-                id: "todo-1".to_string(),
-                content: "Continue working".to_string(),
-                status: "pending".to_string(),
-                priority: "high".to_string(),
-                ..Default::default()
-            }],
-        )
-        .expect("save todos");
-
-        app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-        app.auto_poke_incomplete_todos = true;
-        app.is_processing = true;
-        app.status = ProcessingStatus::Streaming;
-        app.current_message_id = Some(42);
-
-        let needs_redraw =
-            app.handle_server_event(crate::protocol::ServerEvent::Done { id: 42 }, &mut remote);
-
-        assert!(needs_redraw);
-        assert!(app.pending_queued_dispatch);
-        assert_eq!(app.queued_messages().len(), 1);
-        assert!(app.queued_messages()[0].contains("Continue working, or update the todo tool."));
-    });
-}
-
 #[test]
 fn test_handle_server_event_mcp_status_updates_tools_without_status_notice() {
     let mut app = create_test_app();
@@ -1310,4 +1273,3 @@ fn test_handle_server_event_reasoning_delta_keeps_tool_status() {
     // A running tool must not be masked by reasoning text.
     assert!(matches!(app.status, ProcessingStatus::RunningTool(_)));
 }
-

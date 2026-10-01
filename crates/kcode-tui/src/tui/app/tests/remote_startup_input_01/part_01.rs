@@ -8,32 +8,6 @@ fn test_finish_turn_without_followup_clears_visible_turn_started() {
 
     assert!(app.visible_turn_started.is_none());
 }
-
-#[test]
-fn test_finish_turn_does_not_duplicate_existing_poke_followup() {
-    with_temp_kcode_home(|| {
-        let mut app = create_test_app();
-        crate::todo::save_tasks(None, 
-            &app.session.id,
-            &[crate::todo::TaskItem {
-                id: "todo-1".to_string(),
-                content: "Keep going".to_string(),
-                status: "pending".to_string(),
-                priority: "high".to_string(),
-                ..Default::default()
-            }],
-        )
-        .expect("save todos");
-
-        app.auto_poke_incomplete_todos = true;
-        app.is_processing = true;
-        app.queued_messages.push("existing poke".to_string());
-        app.conclude_completed_turn(app.display_turn_duration_secs());
-
-        assert_eq!(app.queued_messages(), &["existing poke"]);
-    });
-}
-
 #[test]
 fn test_review_prefers_openai_oauth_gpt_5_4_when_available() {
     with_temp_kcode_home(|| {

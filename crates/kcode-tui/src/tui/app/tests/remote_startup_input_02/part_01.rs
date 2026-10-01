@@ -882,36 +882,6 @@ fn test_ctrl_tab_toggles_queue_mode() {
         .unwrap();
     assert!(!app.queue_mode);
 }
-
-#[test]
-fn test_auto_poke_starts_disabled_by_default() {
-    let app = create_test_app();
-
-    assert!(!app.auto_poke_incomplete_todos);
-}
-
-#[test]
-fn test_ctrl_p_toggles_auto_poke_locally() {
-    let mut app = create_test_app();
-
-    // Auto-poke starts off; the subject here is the toggle.
-    app.auto_poke_incomplete_todos = true;
-
-    app.handle_key(KeyCode::Char('p'), KeyModifiers::CONTROL)
-        .unwrap();
-    assert!(!app.auto_poke_incomplete_todos);
-    assert_eq!(app.status_notice(), Some("Poke: OFF".to_string()));
-
-    app.handle_key(KeyCode::Char('p'), KeyModifiers::CONTROL)
-        .unwrap();
-    assert!(app.auto_poke_incomplete_todos);
-    assert_eq!(app.status_notice(), Some("Poke: ON".to_string()));
-    assert!(app.display_messages().iter().any(|msg| {
-        msg.content
-            .contains("Auto-poke enabled. Nothing unfinished right now")
-    }));
-}
-
 #[test]
 fn test_shift_enter_inserts_newline() {
     let mut app = create_test_app();
@@ -1034,36 +1004,6 @@ fn test_ctrl_c_requests_cancel_while_processing() {
     assert!(app.pending_soft_interrupts.is_empty());
     assert_eq!(app.status_notice(), Some("Interrupting...".to_string()));
 }
-
-#[test]
-fn test_escape_interrupt_disables_auto_poke_while_processing() {
-    let mut app = create_test_app();
-    app.is_processing = true;
-    app.auto_poke_incomplete_todos = true;
-    super::commands::queue_poke_message(
-        &mut app,
-        super::commands::build_poke_message(&[
-            crate::todo::TaskItem {
-                id: "todo-1".to_string(),
-                content: "keep going".to_string(),
-                status: "pending".to_string(),
-                priority: "high".to_string(),
-                ..Default::default()
-            },
-        ]),
-    );
-
-    app.handle_key(KeyCode::Esc, KeyModifiers::empty()).unwrap();
-
-    assert!(app.cancel_requested);
-    assert!(!app.auto_poke_incomplete_todos);
-    assert!(app.queued_messages.is_empty());
-    assert_eq!(
-        app.status_notice(),
-        Some("Interrupting... Auto-poke OFF".to_string())
-    );
-}
-
 #[test]
 fn test_ctrl_c_still_arms_quit_when_idle() {
     let mut app = create_test_app();

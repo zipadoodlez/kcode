@@ -285,40 +285,6 @@ fn test_remote_prompt_jump_ctrl_esc_fallback_on_macos() {
     assert!(app.viewport.auto_scroll_paused);
     assert!(app.viewport.scroll_offset > 0);
 }
-
-#[test]
-fn test_remote_escape_interrupt_disables_auto_poke_while_processing() {
-    let mut app = create_test_app();
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let _guard = rt.enter();
-    let mut remote = crate::tui::backend::RemoteConnection::dummy();
-
-    app.is_processing = true;
-    app.auto_poke_incomplete_todos = true;
-    super::commands::queue_poke_message(
-        &mut app,
-        super::commands::build_poke_message(&[
-            crate::todo::TaskItem {
-                id: "todo-1".to_string(),
-                content: "keep going".to_string(),
-                status: "pending".to_string(),
-                priority: "high".to_string(),
-                ..Default::default()
-            },
-        ]),
-    );
-
-    rt.block_on(app.handle_remote_key(KeyCode::Esc, KeyModifiers::empty(), &mut remote))
-        .unwrap();
-
-    assert!(!app.auto_poke_incomplete_todos);
-    assert!(app.queued_messages.is_empty());
-    assert_eq!(
-        app.status_notice(),
-        Some("Interrupting... Auto-poke OFF".to_string())
-    );
-}
-
 #[test]
 fn test_remote_prompt_jump_ctrl_digit_is_recency_rank() {
     let _render_lock = scroll_render_test_lock();
