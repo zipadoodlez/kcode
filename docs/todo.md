@@ -253,6 +253,13 @@ changes are paid for in test churn.
   the review HTML (a second durable store of the same work), the second supervisor
   and coordinator session, and the stored `validated` field, which a close's result
   is now.
+- [ ] **(decision)** Effort is one level, low (0.5, 2026-10-01). The design has no other
+  way to say how hard to think: no per-worker argument, no project pin, and a spawned
+  session inherits its creator's level. Lost: a coordinator's ability to spend more on
+  one node, a project's ability to pin a worker level, and a user's ability to run a
+  moderate session with harder workers. The way back in, once the tree is simpler, is
+  an engine rule with a signal rather than a knob: a node whose first attempt failed or
+  stalled is retried at a higher level, with the ladder chosen by a human.
 - [ ] **(decision)** The critique/verify pass and strict artifact validation go with
   0.4 (2026-10-01). Deep mode inserted a gate per node and refused a close whose
   artifact did not account for its dependencies; the row model has no room for a node

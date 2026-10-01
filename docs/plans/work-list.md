@@ -224,15 +224,24 @@ step is done.
   `KINDS` entry), so a run's own join row has a word to be typed with. Nothing in the
   engine branches on it, so it costs one enum variant and one word.
 
-- [ ] **0.5. A task's effort defaults to low.** Two defaults decide it today and neither
-  is low: a session's reasoning level falls back to the provider's own choice
-  (`tui/app/state_ui.rs:1947` reads it as `"default"`), and a spawned worker's falls
-  back to the same through `resolve_swarm_spawn_effort`
-  (`server/comm_session.rs:558`), whose precedence is the spawn call's explicit
-  `effort`, then the `agents.swarm_effort` pin, then nothing. Make both defaults low,
-  so a level is raised deliberately rather than assumed, and say so in `user/config.md`.
-  Nothing else changes: a session or a spawn may still name any level, and after 0.4b
-  no run rule reads effort at all.
+- [ ] **0.5. One level, low, and no second way to say it.** Effort stops being a design
+  variable: every turn runs at one level, the session's, whose default is low, and the
+  only way to change it is the one a human has.
+  - A session's level defaults to low (`tui/app/state_ui.rs:1947` reads `"default"`
+    today, which is the provider's own choice), `/effort` and the model picker remain
+    the user's lever, and the `swarm`/`swarm-deep` rungs go with 0.4b's axis.
+  - A spawned session inherits its creator's level:
+    `resolve_swarm_spawn_effort` (`server/comm_session.rs:558`) collapses to that, and
+    the `effort` argument goes from `spawn`, `assign_task`, `assign_next`, `fill_slots`
+    and `run_plan` (`tool/communicate.rs:1298`, `:1449`, `:2606`, `:2911`, `:2963`,
+    with its schema text at `:1688`, `:1801`; `wire.rs:560`, `:682`) along with the
+    `agents.swarm_effort` pin (`kcode-config-types/src/lib.rs:461`).
+  Why one level: a model cannot calibrate this choice, since it never sees the cost of
+  the extra thinking or whether the thinking changed the outcome, and its bias runs one
+  way, so its answer is noise or a constant high. A human can calibrate it, and that is
+  the lever left. What comes back later, if anything, is an engine rule with a signal
+  rather than a knob: a node whose first attempt failed or stalled is retried higher, and
+  the ladder is a human's. Both losses are named in `docs/todo.md`.
 
 ### B. The file is the list
 
