@@ -935,7 +935,7 @@ pub struct OpenRouterProvider {
 }
 
 impl OpenRouterProvider {
-    /// Apply a real (already resolved) effort without changing the stored swarm mode.
+    /// Apply a real (already resolved) reasoning effort at the wire boundary.
     fn apply_resolved_reasoning_effort(
         &self,
         request: &mut Value,

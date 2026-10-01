@@ -1,47 +1,21 @@
 //! Shared reasoning-effort ladders.
 //!
 //! Keep these in provider-core so provider runtimes and UI clients expose the
-//! same ordered values. `swarm` and `swarm-deep` are Kcode UI sentinels rather
-//! than wire-level provider values, but they belong in the selectable ladder.
+//! same ordered values.
 
-/// OpenAI Responses API effort levels, followed by Kcode's swarm modes.
-pub const OPENAI_SELECTABLE_EFFORTS: &[&str] = &[
-    "none",
-    "minimal",
-    "low",
-    "medium",
-    "high",
-    "xhigh",
-    "max",
-    "swarm",
-    "swarm-deep",
-];
+/// OpenAI Responses API effort levels.
+pub const OPENAI_SELECTABLE_EFFORTS: &[&str] =
+    &["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 /// OpenRouter's unified reasoning effort levels.
 ///
 /// OpenRouter currently treats `max` as an alias for `xhigh`, so it is not a
 /// separate rung in this ladder.
-pub const OPENROUTER_SELECTABLE_EFFORTS: &[&str] = &[
-    "none",
-    "minimal",
-    "low",
-    "medium",
-    "high",
-    "xhigh",
-    "swarm",
-    "swarm-deep",
-];
+pub const OPENROUTER_SELECTABLE_EFFORTS: &[&str] =
+    &["none", "minimal", "low", "medium", "high", "xhigh"];
 
-/// Direct DeepSeek effort levels, followed by Kcode's swarm modes.
-pub const DEEPSEEK_SELECTABLE_EFFORTS: &[&str] = &[
-    "none",
-    "low",
-    "medium",
-    "high",
-    "max",
-    "swarm",
-    "swarm-deep",
-];
+/// Direct DeepSeek effort levels.
+pub const DEEPSEEK_SELECTABLE_EFFORTS: &[&str] = &["none", "low", "medium", "high", "max"];
 
 /// Normalize a requested reasoning effort against a selectable ladder.
 ///
@@ -132,7 +106,6 @@ pub fn inferred_reasoning_efforts(
         if caps.max_effort {
             efforts.push("max");
         }
-        efforts.extend(["swarm", "swarm-deep"]);
         return efforts;
     }
 
@@ -182,28 +155,11 @@ mod tests {
     fn anthropic_ladder_comes_from_model_capabilities() {
         assert_eq!(
             inferred_reasoning_efforts(Some("anthropic"), Some("claude-sonnet-4-6")),
-            vec![
-                "none",
-                "low",
-                "medium",
-                "high",
-                "max",
-                "swarm",
-                "swarm-deep"
-            ]
+            vec!["none", "low", "medium", "high", "max"]
         );
         assert_eq!(
             inferred_reasoning_efforts(Some("anthropic"), Some("claude-opus-4-7")),
-            vec![
-                "none",
-                "low",
-                "medium",
-                "high",
-                "xhigh",
-                "max",
-                "swarm",
-                "swarm-deep"
-            ]
+            vec!["none", "low", "medium", "high", "xhigh", "max"]
         );
     }
 }

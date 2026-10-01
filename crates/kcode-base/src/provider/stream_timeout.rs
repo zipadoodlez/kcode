@@ -40,9 +40,7 @@ pub fn stream_idle_timeout_multiplier_for_effort(effort: Option<&str>) -> u32 {
     {
         "high" => 2,
         "xhigh" => 3,
-        // `swarm`/`swarm-deep` are Kcode UI sentinels that resolve to the top
-        // wire effort upstream, so budget them like `max`.
-        "max" | "swarm" | "swarm-deep" => MAX_STREAM_IDLE_TIMEOUT_MULTIPLIER,
+        "max" => MAX_STREAM_IDLE_TIMEOUT_MULTIPLIER,
         _ => 1,
     }
 }
@@ -86,13 +84,6 @@ mod tests {
         assert_eq!(stream_idle_timeout_multiplier_for_effort(Some("xhigh")), 3);
         assert_eq!(stream_idle_timeout_multiplier_for_effort(Some("max")), 4);
 
-        // Swarm sentinels resolve to the top wire effort upstream.
-        assert_eq!(stream_idle_timeout_multiplier_for_effort(Some("swarm")), 4);
-        assert_eq!(
-            stream_idle_timeout_multiplier_for_effort(Some("swarm-deep")),
-            4
-        );
-
         // Casing and padding come from config/CLI input, so normalize both.
         assert_eq!(stream_idle_timeout_multiplier_for_effort(Some("  MAX ")), 4);
 
@@ -104,17 +95,7 @@ mod tests {
         );
 
         // No effort may exceed the ceiling clients budget against.
-        for effort in [
-            "none",
-            "minimal",
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "max",
-            "swarm",
-            "swarm-deep",
-        ] {
+        for effort in ["none", "minimal", "low", "medium", "high", "xhigh", "max"] {
             assert!(
                 stream_idle_timeout_multiplier_for_effort(Some(effort))
                     <= MAX_STREAM_IDLE_TIMEOUT_MULTIPLIER,

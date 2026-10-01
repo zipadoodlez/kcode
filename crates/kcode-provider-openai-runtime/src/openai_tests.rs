@@ -301,21 +301,15 @@ async fn openai_available_efforts_follow_active_model_catalog_metadata() {
 
     assert_eq!(
         provider.available_efforts(),
-        vec!["minimal", "medium", "max", "swarm", "swarm-deep"]
+        vec!["minimal", "medium", "max"]
     );
     *provider.model.write().await = "gpt-5.6[1m]".to_string();
     assert_eq!(
         provider.available_efforts(),
-        vec!["minimal", "medium", "max", "swarm", "swarm-deep"],
+        vec!["minimal", "medium", "max"],
         "long-context aliases must use the canonical model's catalog metadata"
     );
     *provider.model.write().await = "gpt-5.6".to_string();
-    assert_eq!(
-        provider
-            .api_reasoning_effort_with_swarm_root(Some("swarm"), Some("max"))
-            .as_deref(),
-        Some("max")
-    );
 
     provider
         .model_reasoning_efforts
@@ -325,13 +319,6 @@ async fn openai_available_efforts_follow_active_model_catalog_metadata() {
             "gpt-5.6".to_string(),
             vec!["low".to_string(), "high".to_string(), "xhigh".to_string()],
         );
-    assert_eq!(
-        provider
-            .api_reasoning_effort_with_swarm_root(Some("swarm"), Some("max"))
-            .as_deref(),
-        Some("xhigh"),
-        "swarm must clamp to the active model's strongest advertised effort"
-    );
     assert!(
         provider.set_reasoning_effort("max").is_err(),
         "explicit effort choices must respect active-model catalog capabilities"

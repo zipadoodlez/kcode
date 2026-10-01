@@ -996,11 +996,8 @@ impl OpenAIProvider {
     }
 
     fn normalize_reasoning_effort(raw: &str) -> Option<String> {
-        // `swarm` and `swarm-deep` are UI sentinels meaning "configured root
-        // effort + use the swarm tool". They stay in the accepted set so the
-        // UI/session reflect them; `api_reasoning_effort` translates them to a
-        // real effort at request time. The ladder itself lives in provider-core,
-        // so the accepted set cannot drift from the one the UI offers.
+        // The ladder itself lives in provider-core, so the accepted set cannot
+        // drift from the one the UI offers.
         kcode_provider_core::normalize_effort(
             raw,
             kcode_provider_core::OPENAI_SELECTABLE_EFFORTS,
@@ -1031,9 +1028,7 @@ impl OpenAIProvider {
         let Some(current) = current else {
             return;
         };
-        if kcode_base::prompt::is_swarm_effort(&current)
-            || self.available_efforts().contains(&current.as_str())
-        {
+        if self.available_efforts().contains(&current.as_str()) {
             return;
         }
         kcode_base::logging::info(&format!(
@@ -1045,42 +1040,6 @@ impl OpenAIProvider {
             Ok(mut effort) => *effort = None,
             Err(poisoned) => *poisoned.into_inner() = None,
         }
-    }
-
-    /// Resolve swarm effort only at the wire boundary, preserving the stored mode.
-    fn api_reasoning_effort(&self, effort: Option<&str>) -> Option<String> {
-        self.api_reasoning_effort_with_swarm_root(
-            effort,
-            effort.and_then(kcode_base::prompt::swarm_root_reasoning_effort),
-        )
-    }
-
-    fn api_reasoning_effort_with_swarm_root(
-        &self,
-        effort: Option<&str>,
-        swarm_root: Option<&str>,
-    ) -> Option<String> {
-        let effort = effort?;
-        if !kcode_base::prompt::is_swarm_effort(effort) {
-            return Some(effort.to_string());
-        }
-        let resolved = swarm_root.unwrap_or("max");
-        let available = self.available_efforts();
-        let ladder = kcode_provider_core::OPENAI_SELECTABLE_EFFORTS;
-        let requested = ladder.iter().position(|e| *e == resolved)?;
-        // Preserve the old strongest-advertised mapping for max. For lower
-        // configured levels prefer the closest supported level at or below it,
-        // falling back to the minimum on models with a restricted ladder.
-        ladder[..=requested]
-            .iter()
-            .rev()
-            .find(|candidate| available.contains(candidate))
-            .or_else(|| {
-                ladder.iter().find(|candidate| {
-                    !kcode_base::prompt::is_swarm_effort(candidate) && available.contains(candidate)
-                })
-            })
-            .map(|effort| (*effort).to_string())
     }
 
     fn native_compaction_threshold_for_context_window(
@@ -1232,9 +1191,6 @@ impl OpenAIProvider {
             // No explicit user effort: fall back to the model's kcode-side
             // default (e.g. `low` for GPT-5.6 Sol).
             .or_else(|| Self::default_reasoning_effort_for_model(model_id));
-        // Map the `swarm` sentinel (and any future aliases) to the real effort
-        // value the API understands.
-        let api_reasoning_effort = self.api_reasoning_effort(reasoning_effort.as_deref());
         let service_tier = self
             .service_tier
             .read()
@@ -1249,7 +1205,7 @@ impl OpenAIProvider {
             &api_tools,
             is_chatgpt_mode,
             self.max_output_tokens,
-            api_reasoning_effort.as_deref(),
+            reasoning_effort.as_deref(),
             service_tier.as_deref(),
             self.prompt_cache_key.as_deref(),
             self.prompt_cache_retention.as_deref(),

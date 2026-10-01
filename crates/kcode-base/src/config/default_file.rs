@@ -379,14 +379,6 @@ wake_mode = "internal"
 # Env override: KCODE_SWARM_EFFORT
 # swarm_effort = "medium"
 #
-# Root model reasoning while /effort swarm or /effort swarm-deep is selected.
-# These are independent of worker swarm_effort. Supported levels:
-# none|minimal|low|medium|high|xhigh|max. Unset/invalid = max (model maximum).
-# Providers map unsupported levels to their supported range.
-# Env overrides: KCODE_SWARM_ROOT_EFFORT, KCODE_SWARM_DEEP_ROOT_EFFORT
-swarm_root_effort = "max"
-swarm_deep_root_effort = "max"
-#
 # How swarm-created agents are spawned:
 #   "inline"   - in-process (no window), shown as a live gallery viewport in the coordinator (default)
 #   "visible"  - open a headed terminal window (alias: "headed")

@@ -1675,12 +1675,6 @@ impl App {
 
             if !effort_routes.is_empty() {
                 for effort in &model_efforts {
-                    // Swarm modes (swarm / swarm-deep) are orchestration rungs on
-                    // the effort ladder, not per-model reasoning variants. They
-                    // must not generate `model (swarm)` picker rows.
-                    if crate::prompt::is_swarm_mode_effort(effort) {
-                        continue;
-                    }
                     let effort_label = match *effort {
                         "xhigh" => "xhigh",
                         "max" => "max",

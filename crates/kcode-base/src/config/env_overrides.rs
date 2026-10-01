@@ -316,21 +316,6 @@ impl Config {
                 Some(trimmed.to_string())
             };
         }
-        for (key, target) in [
-            (
-                "KCODE_SWARM_ROOT_EFFORT",
-                &mut self.agents.swarm_root_effort,
-            ),
-            (
-                "KCODE_SWARM_DEEP_ROOT_EFFORT",
-                &mut self.agents.swarm_deep_root_effort,
-            ),
-        ] {
-            if let Ok(value) = std::env::var(key) {
-                let value = value.trim();
-                *target = (!value.is_empty()).then(|| value.to_string());
-            }
-        }
         if let Ok(v) = std::env::var("KCODE_SWARM_SPAWN_MODE") {
             if let Some(parsed) = SwarmSpawnMode::parse(&v) {
                 self.agents.swarm_spawn_mode = parsed;

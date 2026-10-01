@@ -180,10 +180,10 @@ duplication they would have removed and nothing else.
 **Here is where the work stands**, and a step in flight is finished before a new one
 starts. 0.1, 0.2 and 0.3 have landed whole and are gone from this list; what 0.2 owed
 was 0.3's last stage, and the two losses 0.1 and 0.3 named are in `docs/todo.md`. Next
-is 0.4: its gate stage (0.4a) and row stage (0.4c) have landed, and its recursion/axis
-stage (0.4b) is decided (only the root spawns; both swarm rungs go) with its first part
-landed and the rung removal outstanding. Each stage compiles before it is committed
-(`dev/post-change.md` says which check); the full gate runs once, when the step is done.
+is 0.4: its gate stage (0.4a), row stage (0.4c), and one-mode stage (0.4b: only the root
+spawns, both swarm rungs and the effort side-table gone) have landed; 0.4d/0.4e/0.4f/
+0.4g remain. Each stage compiles before it is committed (`dev/post-change.md` says which
+check); the full gate runs once, when the step is done.
 
 ### 0. One way work gets done
 
@@ -193,21 +193,12 @@ landed and the rung removal outstanding. Each stage compiles before it is commit
   performed is either a row someone typed (a `critique` row whose close needs its
   record) or nothing. The loss is named in `docs/todo.md`. Stages, in this order, one
   commit each:
-  - **0.4b. One mode: the swarm `/effort` axis goes.** Decided with this step
-    (2026-10-01): **only the root session starts agents, and both swarm rungs go.** The
-    spawn rule moves to `spawn_swarm_agent`, the single choke point, so the assign path
-    obeys it too (it previously bypassed the rule), and the root's effort lookup is
-    gone: a member's deeper work is rows the run dispatches. The two rungs never reached
-    the engine (they only injected a prompt paragraph, and `swarm-deep`'s names 0.4a's
-    deleted gates), so they, both directives, the `swarm_root_effort`/
-    `swarm_deep_root_effort` pins, the sentinel handling in providers and the TUI rungs
-    go. The losses are named in `docs/todo.md`. First part landed (`492597d7`).
   - **0.4d. `parent`, `expanded`, `planner` and `origin` leave `node_meta`**: `parent`
     duplicates the row already, and the other three are run state.
   - **0.4e. `task_progress` goes**, and liveness comes from the member's own clock and
     status where it renders.
   - **0.4f. `VersionedPlan` becomes a view of the file**, deleting
-    `swarm_persistence.rs` (650 lines) and its tests (1,227 lines). The plan-approval
+    `swarm_persistence.rs` (638 lines) and its tests (938 lines). The plan-approval
     path (`propose_plan`/`approve_plan`/`reject_plan`, `resync_plan`) is a second writer
     of the same rows and a consumer of the shared context; decide it here.
   - **0.4g. The swarm state gets one owner**: the `coordinators` map, any stored swarm
@@ -225,7 +216,7 @@ landed and the rung removal outstanding. Each stage compiles before it is commit
   only way to change it is the one a human has.
   - A session's level defaults to low (`tui/app/state_ui.rs:1947` reads `"default"`
     today, which is the provider's own choice), `/effort` and the model picker remain
-    the user's lever, and the `swarm`/`swarm-deep` rungs go with 0.4b's axis.
+    the user's lever, and the `swarm`/`swarm-deep` rungs went with 0.4b's axis.
   - A spawned session inherits its creator's level:
     `resolve_swarm_spawn_effort` (`server/comm_session.rs:558`) collapses to that, and
     the `effort` argument goes from `spawn`, `assign_task`, `assign_next`, `fill_slots`

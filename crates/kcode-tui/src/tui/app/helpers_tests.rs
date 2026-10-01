@@ -1,7 +1,6 @@
 use super::{
-    effort_display_label, effort_display_label_with_root, extract_bracketed_system_message,
-    inferred_reasoning_efforts, partition_queued_messages, resume_invocation_args,
-    resumed_window_title,
+    effort_display_label, extract_bracketed_system_message, inferred_reasoning_efforts,
+    partition_queued_messages, resume_invocation_args, resumed_window_title,
 };
 use crate::terminal_launch::{detected_resume_terminal, shell_command};
 
@@ -70,17 +69,7 @@ fn partition_queued_messages_moves_system_messages_into_reminders() {
 fn inferred_reasoning_efforts_use_provider_specific_order_and_max_semantics() {
     assert_eq!(
         inferred_reasoning_efforts(Some("openai"), Some("gpt-5.4")),
-        vec![
-            "none",
-            "minimal",
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "max",
-            "swarm",
-            "swarm-deep"
-        ],
+        vec!["none", "minimal", "low", "medium", "high", "xhigh", "max",],
         "OpenAI exposes max as a real Responses API effort level"
     );
     assert_eq!(
@@ -90,105 +79,31 @@ fn inferred_reasoning_efforts_use_provider_specific_order_and_max_semantics() {
     );
     assert_eq!(
         inferred_reasoning_efforts(Some("anthropic"), Some("claude-sonnet-4-6")),
-        vec![
-            "none",
-            "low",
-            "medium",
-            "high",
-            "max",
-            "swarm",
-            "swarm-deep"
-        ]
+        vec!["none", "low", "medium", "high", "max",]
     );
     assert_eq!(
         inferred_reasoning_efforts(Some("anthropic"), Some("claude-opus-4-7")),
-        vec![
-            "none",
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "max",
-            "swarm",
-            "swarm-deep"
-        ]
+        vec!["none", "low", "medium", "high", "xhigh", "max",]
     );
     assert_eq!(
         inferred_reasoning_efforts(Some("openrouter"), Some("anthropic/claude-sonnet-4.6")),
-        vec![
-            "none",
-            "minimal",
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "swarm",
-            "swarm-deep"
-        ]
+        vec!["none", "minimal", "low", "medium", "high", "xhigh",]
     );
     assert_eq!(
         inferred_reasoning_efforts(Some("openrouter"), Some("deepseek/deepseek-r1")),
-        vec![
-            "none",
-            "minimal",
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "swarm",
-            "swarm-deep"
-        ],
+        vec!["none", "minimal", "low", "medium", "high", "xhigh",],
         "OpenRouter uses unified reasoning where max is only an alias, not a cycle level"
     );
     assert_eq!(
         inferred_reasoning_efforts(Some("deepseek"), Some("deepseek-v4-pro")),
-        vec![
-            "none",
-            "low",
-            "medium",
-            "high",
-            "max",
-            "swarm",
-            "swarm-deep"
-        ],
+        vec!["none", "low", "medium", "high", "max",],
         "DeepSeek direct keeps max as a real provider level"
     );
     assert!(inferred_reasoning_efforts(Some("ollama"), Some("llama3")).is_empty());
 }
 
 #[test]
-fn swarm_effort_display_labels_use_configured_root_and_preserve_modes() {
-    for (level, title) in [
-        ("none", "None"),
-        ("minimal", "Minimal"),
-        ("low", "Low"),
-        ("medium", "Medium"),
-        ("high", "High"),
-        ("xhigh", "xHigh"),
-        ("max", "Max"),
-    ] {
-        assert_eq!(
-            effort_display_label_with_root("swarm", Some(level)),
-            format!("Swarm ({title} + light fan-out) [Beta]")
-        );
-        assert_eq!(
-            effort_display_label_with_root("swarm-deep", Some(level)),
-            format!("Swarm Deep ({title} + task graph) [Beta]")
-        );
-        assert_eq!(effort_display_label_with_root("high", Some(level)), "High");
-    }
-}
-
-#[test]
-fn swarm_effort_display_labels_default_to_max() {
-    assert_eq!(
-        effort_display_label_with_root("swarm", None),
-        "Swarm (Max + light fan-out) [Beta]"
-    );
-    assert_eq!(
-        effort_display_label_with_root("swarm-deep", None),
-        "Swarm Deep (Max + task graph) [Beta]"
-    );
+fn effort_display_labels_are_static_and_validated() {
     assert_eq!(effort_display_label("high"), "High");
     assert_eq!(effort_display_label("future"), "future");
 }

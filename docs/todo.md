@@ -261,14 +261,19 @@ changes are paid for in test churn.
   the row that owns the work. Add the pass back as work, not as machinery: a row typed
   `critique` whose close needs the same record, which anyone (the user, the model, a
   coordinator) can add like any other row.
-- [ ] **(decision)** One mode: spawning is the root's and the `/effort` swarm rungs go
+- [x] **(decision)** One mode: spawning is the root's and the `/effort` swarm rungs go
   with 0.4b (2026-10-01). Only the root session starts agents; a member's deeper work is
   rows the run dispatches, and the rule lives at `spawn_swarm_agent`, the single choke
   point, so the assign path obeys it too (it previously bypassed it). What is lost: a
   member can no longer start a worker on its own initiative, and a user can no longer
   select orchestration with `/effort` (`swarm`, `swarm-deep`). Fanning out stays as the
   model's own call through the `swarm` tool, and the engine has one mode whose
-  parallel/serial shape comes from the plan's blocking structure, not a flag.
+  parallel/serial shape comes from the plan's blocking structure, not a flag. The rungs'
+  only other effect was a system-prompt nudge to fan out, and that nudge is deleted rather
+  than relocated: "use the swarm for non-trivial tasks" is the removed orchestration mode
+  in prose. Until F1 turns the swarm tool's orchestration actions into the run's own
+  behavior, nothing prompts the model to fan out, so orchestration quiets down between
+  0.4b and F1; the guidance returns with the row verbs, not as a paragraph.
   `features.swarm` and the per-session toggle are the same stored membership, so they go
   with the swarm id and the coordinator map in 0.4g: a session is a worker when it holds
   and works a row, and "in a swarm" is not a state to be in.

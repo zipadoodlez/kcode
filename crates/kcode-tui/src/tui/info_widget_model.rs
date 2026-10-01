@@ -316,8 +316,6 @@ fn short_reasoning_effort(effort: &str) -> Option<&str> {
         "medium" => "med",
         "low" => "lo",
         "none" => "∅",
-        "swarm" => "swarm",
-        "swarm-deep" => "swarm+",
         other => other,
     })
 }

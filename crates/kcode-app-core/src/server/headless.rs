@@ -182,7 +182,7 @@ pub(super) async fn create_headless_session(
             agent_guard.provider_model(),
             agent_guard.provider_name(),
             auth_method,
-            crate::session_effort::session_effort(&client_session_id),
+            agent_guard.provider_reasoning_effort(),
         )
     };
 

@@ -681,17 +681,7 @@ impl App {
         }
 
         if prefix.starts_with("/effort ") {
-            let efforts = [
-                "none",
-                "minimal",
-                "low",
-                "medium",
-                "high",
-                "xhigh",
-                "max",
-                "swarm",
-                "swarm-deep",
-            ];
+            let efforts = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
             return self.rank_suggestions(
                 input,
                 efforts

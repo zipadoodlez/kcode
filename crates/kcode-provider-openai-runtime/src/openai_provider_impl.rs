@@ -938,28 +938,21 @@ impl Provider for OpenAIProvider {
         let requested = effort.trim().to_ascii_lowercase();
         if !requested.is_empty()
             && kcode_provider_core::canonical_reasoning_effort(&requested).is_none()
-            && !kcode_base::prompt::is_swarm_effort(&requested)
         {
             anyhow::bail!(
-                "Unsupported OpenAI reasoning effort '{}'; expected none|minimal|low|medium|high|xhigh|max|swarm|swarm-deep",
+                "Unsupported OpenAI reasoning effort '{}'; expected none|minimal|low|medium|high|xhigh|max",
                 effort
             );
         }
         let normalized = Self::normalize_reasoning_effort(effort);
-        if let Some(requested) = normalized.as_deref()
-            && !kcode_base::prompt::is_swarm_effort(requested)
-        {
+        if let Some(requested) = normalized.as_deref() {
             let available = self.available_efforts();
             if !available.contains(&requested) {
                 anyhow::bail!(
                     "OpenAI reasoning effort '{}' is not supported by model '{}' (available: {})",
                     requested,
                     self.model(),
-                    available
-                        .into_iter()
-                        .filter(|effort| !kcode_base::prompt::is_swarm_effort(effort))
-                        .collect::<Vec<_>>()
-                        .join(", ")
+                    available.join(", ")
                 );
             }
         }
@@ -983,9 +976,9 @@ impl Provider for OpenAIProvider {
         // medium/high/xhigh.
         if kcode_provider_core::is_openai_api_only_pro_model(&model) {
             return if model.starts_with("gpt-5-pro") {
-                vec!["high", "swarm", "swarm-deep"]
+                vec!["high"]
             } else {
-                vec!["medium", "high", "xhigh", "swarm", "swarm-deep"]
+                vec!["medium", "high", "xhigh"]
             };
         }
         let advertised = self
@@ -994,11 +987,10 @@ impl Provider for OpenAIProvider {
             .map(|efforts| efforts.get(&model).cloned())
             .unwrap_or_else(|poisoned| poisoned.into_inner().get(&model).cloned());
         if let Some(advertised) = advertised {
-            let mut efforts: Vec<&'static str> = advertised
+            let efforts: Vec<&'static str> = advertised
                 .iter()
                 .filter_map(|effort| kcode_provider_core::canonical_reasoning_effort(effort))
                 .collect();
-            efforts.extend(["swarm", "swarm-deep"]);
             return efforts;
         }
         kcode_provider_core::OPENAI_SELECTABLE_EFFORTS.to_vec()

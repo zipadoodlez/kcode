@@ -139,9 +139,7 @@ impl Provider for OpenRouterProvider {
         }
 
         let sent_reasoning_config = reasoning_effort.as_deref().is_some_and(|effort| {
-            let resolved =
-                kcode_base::prompt::swarm_root_reasoning_effort(effort).unwrap_or(effort);
-            self.apply_resolved_reasoning_effort(&mut request, resolved, strict_openai_schema)
+            self.apply_resolved_reasoning_effort(&mut request, effort, strict_openai_schema)
         });
 
         if !api_tools.is_empty() {
@@ -425,7 +423,6 @@ impl Provider for OpenRouterProvider {
             .ok()
             .and_then(|effort| effort.clone());
         if let Some(stored_effort) = stored_effort
-            && !kcode_base::prompt::is_swarm_effort(&stored_effort)
             && !self.available_efforts().contains(&stored_effort.as_str())
             && let Ok(mut effort) = self.reasoning_effort.try_write()
         {

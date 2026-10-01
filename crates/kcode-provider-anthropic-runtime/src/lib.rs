@@ -617,7 +617,7 @@ impl AnthropicProvider {
             .anthropic_reasoning_effort
             .as_deref()
             .and_then(Self::normalize_reasoning_effort)
-            .map(|effort| Self::store_effort_for_model(&model, &effort));
+            .map(|effort| Self::actual_effort_for_model(&model, &effort));
 
         let direct_transport = DirectTransportConfig::from_env();
         let profile_api_key = std::env::var_os("KCODE_ANTHROPIC_API_BASE")
@@ -692,11 +692,7 @@ impl AnthropicProvider {
         }
         match value.as_str() {
             "off" | "disabled" => Some("none".to_string()),
-            // `swarm` is a UI sentinel meaning "configured root effort + use the swarm tool".
-            // Stored verbatim; resolved to a real effort in `actual_effort_for_model`.
-            "none" | "low" | "medium" | "high" | "xhigh" | "max" | "swarm" | "swarm-deep" => {
-                Some(value)
-            }
+            "none" | "low" | "medium" | "high" | "xhigh" | "max" => Some(value),
             other => {
                 kcode_base::logging::info(&format!(
                     "Warning: Ignoring unsupported Anthropic reasoning effort '{}'; expected none|low|medium|high|xhigh|max.",
@@ -708,7 +704,6 @@ impl AnthropicProvider {
     }
 
     fn actual_effort_for_model(model: &str, effort: &str) -> String {
-        let effort = kcode_base::prompt::swarm_root_reasoning_effort(effort).unwrap_or(effort);
         Self::resolved_effort_for_model(model, effort)
     }
 
@@ -725,20 +720,6 @@ impl AnthropicProvider {
             "high".to_string()
         } else {
             effort.to_string()
-        }
-    }
-
-    /// Like [`Self::actual_effort_for_model`], but preserves the swarm sentinels
-    /// (light `swarm` and `swarm-deep`) so the stored/UI value keeps reflecting
-    /// the chosen swarm mode. Used when persisting the user's choice; request
-    /// building resolves swarm to a real effort.
-    fn store_effort_for_model(model: &str, effort: &str) -> String {
-        if kcode_base::prompt::is_deep_swarm_effort(effort) {
-            kcode_base::prompt::SWARM_DEEP_EFFORT.to_string()
-        } else if kcode_base::prompt::is_swarm_effort(effort) {
-            kcode_base::prompt::SWARM_EFFORT.to_string()
-        } else {
-            Self::actual_effort_for_model(model, effort)
         }
     }
 
@@ -833,7 +814,6 @@ impl AnthropicProvider {
     }
 
     fn manual_thinking_budget(effort: &str, max_tokens: u32) -> Option<u32> {
-        let effort = kcode_base::prompt::swarm_root_reasoning_effort(effort).unwrap_or(effort);
         let desired = match effort {
             "minimal" | "low" => 1_024,
             "medium" => 4_096,
@@ -866,10 +846,12 @@ impl AnthropicProvider {
         let effort = self
             .stored_reasoning_effort()
             .or_else(|| Self::default_reasoning_effort_for_model(model));
-        let resolved = effort.as_deref().map(|effort| {
-            kcode_base::prompt::swarm_root_reasoning_effort(effort).unwrap_or(effort)
-        });
-        self.build_reasoning_request_parts_with_effort(model, is_oauth, show_thinking, resolved)
+        self.build_reasoning_request_parts_with_effort(
+            model,
+            is_oauth,
+            show_thinking,
+            effort.as_deref(),
+        )
     }
 
     fn build_reasoning_request_parts_with_effort(
@@ -879,7 +861,7 @@ impl AnthropicProvider {
         show_thinking: bool,
         resolved_effort: Option<&str>,
     ) -> (Option<ApiThinking>, Option<ApiOutputConfig>, Option<f32>) {
-        // Configured swarm `none` must also suppress display-triggered thinking.
+        // Configured `none` must also suppress display-triggered thinking.
         let show_thinking = show_thinking && resolved_effort != Some("none");
         let effort = resolved_effort
             .filter(|effort| *effort != "none" && Self::model_supports_reasoning_effort(model));
@@ -1320,13 +1302,13 @@ impl Provider for AnthropicProvider {
         match self.reasoning_effort.write() {
             Ok(mut guard) => {
                 if let Some(current) = guard.clone() {
-                    *guard = Some(Self::store_effort_for_model(model, &current));
+                    *guard = Some(Self::actual_effort_for_model(model, &current));
                 }
             }
             Err(poisoned) => {
                 let mut guard = poisoned.into_inner();
                 if let Some(current) = guard.clone() {
-                    *guard = Some(Self::store_effort_for_model(model, &current));
+                    *guard = Some(Self::actual_effort_for_model(model, &current));
                 }
             }
         }
@@ -1371,12 +1353,10 @@ impl Provider for AnthropicProvider {
                     | "high"
                     | "xhigh"
                     | "max"
-                    | "swarm"
-                    | "swarm-deep"
             )
         {
             anyhow::bail!(
-                "Unsupported Anthropic reasoning effort '{}'; expected none|low|medium|high|xhigh|max|swarm|swarm-deep",
+                "Unsupported Anthropic reasoning effort '{}'; expected none|low|medium|high|xhigh|max",
                 effort
             );
         }
@@ -1392,7 +1372,7 @@ impl Provider for AnthropicProvider {
                 "Anthropic xhigh effort is not supported by this model (available on Opus 4.7+, Sonnet 5+, and Fable 5+)"
             );
         }
-        let normalized = normalized.map(|effort| Self::store_effort_for_model(&model, &effort));
+        let normalized = normalized.map(|effort| Self::actual_effort_for_model(&model, &effort));
         match self.reasoning_effort.write() {
             Ok(mut guard) => {
                 *guard = normalized;
@@ -1417,7 +1397,6 @@ impl Provider for AnthropicProvider {
         if Self::model_supports_max_effort(&model) {
             efforts.push("max");
         }
-        efforts.extend(["swarm", "swarm-deep"]);
         efforts
     }
 

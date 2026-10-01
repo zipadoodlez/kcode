@@ -1758,15 +1758,7 @@ fn test_deepseek_direct_profile_supports_reasoning_effort_via_multi_provider() {
 
             assert_eq!(
                 provider.available_efforts(),
-                vec![
-                    "none",
-                    "low",
-                    "medium",
-                    "high",
-                    "max",
-                    "swarm",
-                    "swarm-deep"
-                ]
+                vec!["none", "low", "medium", "high", "max"]
             );
             provider
                 .set_reasoning_effort("max")
