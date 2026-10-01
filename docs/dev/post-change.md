@@ -73,7 +73,7 @@ the shell is read as configuration, and the whole `kcode-tui` lib suite fails
 change and reserve `--test-threads=1` for when you need the whole crate. See
 [testing.md](testing.md) for the known `kcode-tui` parallel-execution race, the
 ambient `KCODE_*` channel, and the `--test-threads=1` workaround, and check any
-suspect in isolation before blaming it. `scripts/test_ci_suites.py` runs the suites with per-suite timing if
+suspect in isolation before blaming it. `scripts/test.sh full` runs the suites with per-suite timing if
 you want a readable local report.
 
 ## Budget ratchets

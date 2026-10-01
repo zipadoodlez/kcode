@@ -37,7 +37,9 @@
   `cargo fmt --all --check`, the ratchet covering what you touched, and
   `cargo clippy -p <crate> --all-targets --all-features -- -D warnings` - and
   save the full run for the push. Keep `--all-targets --all-features` on the
-  narrow run: dropping them can pass where the full gate fails. Do not add test
+  narrow run: dropping them can pass where the full gate fails. Run tests
+  through `scripts/test.sh` (`crate <name>` while iterating, `full` for the
+  suites; see `docs/dev/testing.md`). Do not add test
   suites beyond what the change can affect. The suite is at zero single-threaded;
   at the default thread count about a dozen tests flake on process-global
   `KCODE_*` configuration, so re-run a failure with `--test-threads=1` before

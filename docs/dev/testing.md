@@ -1,10 +1,19 @@
 # Testing
 
-## Running the suites
+## One entry point
 
-`cargo test` runs the workspace. Target individual crates while iterating:
-`cargo test -p kcode-tui --lib`, `cargo test -p kcode-app-core --lib`, and so
-on.
+`scripts/test.sh` is the single way to run tests; it picks the feature profile,
+the thread count, and per-suite timeouts for you.
+
+```sh
+scripts/test.sh                  # library + primary binary, minimal features
+scripts/test.sh crate kcode-tui  # one crate while iterating
+scripts/test.sh full             # lib-bins, provider-matrix, e2e; serial + timed
+scripts/test.sh full --parallel  # same, Cargo's default parallelism
+```
+
+Bare `cargo test` still works when you need a filter the script does not cover,
+but prefer the script so a run matches how the suites are meant to be exercised.
 
 ## Known flakiness: `kcode-tui` lib tests under parallel execution
 
