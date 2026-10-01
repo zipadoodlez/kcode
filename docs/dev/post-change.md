@@ -20,6 +20,8 @@ change can be checked narrowly first with `cargo fmt --all --check`, the ratchet
 covering what it touched, and `cargo clippy -p <crate> --all-targets
 --all-features -- -D warnings`. Keep `--all-targets --all-features` on the narrow
 run, since the full gate uses them and dropping them can pass where it fails.
+Do not run a separate `cargo check`: clippy builds every target, and switching
+between profiles rebuilds the tree (`testing.md`).
 
 It runs the old CI guardrail set locally: `cargo fmt --check`, `cargo clippy --
 -D warnings` (which also compiles every target), `Cargo.lock` freshness, the

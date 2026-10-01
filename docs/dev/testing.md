@@ -15,14 +15,27 @@ scripts/test.sh full --parallel  # same, Cargo's default parallelism
 Bare `cargo test` still works when you need a filter the script does not cover,
 but prefer the script so a run matches how the suites are meant to be exercised.
 
+## Profiles: build each one once
+
+`cargo check`, `cargo clippy` and `cargo test` build different profiles, so
+alternating them rebuilds the tree. The commands that cover a change are:
+
+- `cargo clippy -p <crate> --all-targets --all-features -- -D warnings` while
+  iterating, because clippy compiles every target (a separate `cargo check` adds
+  a second, mostly redundant compile);
+- `scripts/test.sh` to run tests, which uses one profile for the whole run.
+
+Avoid `cargo check` before the gate for this reason; the gate's clippy already
+covers the compile errors it would find.
+
 ## Known flakiness: `kcode-tui` lib tests under parallel execution
 
-`cargo test -p kcode-tui --lib` fails a handful of tests per run at the default
-thread count, with a set that changes between runs. It is a race on
-process-global state, not a logic bug: each failure passes in isolation, and
-`--test-threads=1` passes the whole suite. This is the last known logic flake
-class; `AGENTS.md` carries the one-line version for a session that just saw a
-failure.
+`scripts/test.sh crate kcode-tui -- --test-threads=1` fails a handful of tests
+per run at the default thread count, with a set that changes between runs. It is
+a race on process-global state, not a logic bug: each failure passes in
+isolation, and serial execution passes the whole suite. This is the last known
+logic flake class; `AGENTS.md` carries the one-line version for a session that
+just saw a failure.
 
 Root cause: tests read configuration from process-global sources that other
 tests mutate concurrently. The live channels are:
@@ -86,7 +99,7 @@ was recorded here as a pre-existing failure on 2026-09-30; it is the ambient
 list; keep it current here. For `kcode-tui`:
 
 ```sh
-cargo test -p kcode-tui --lib -- --test-threads=1
+scripts/test.sh crate kcode-tui -- --test-threads=1
 ```
 
 ## Auth fixtures

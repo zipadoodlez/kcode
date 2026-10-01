@@ -15,6 +15,31 @@ rust_action_log_path=""
 rust_action_log_execution="local"
 cargo_gate_wait_ms=0
 
+# `cargo check`, `cargo clippy` and `cargo test` build different profiles, so a
+# switch rebuilds the tree. Surface the switch instead of paying it silently, by
+# reading the previous record for this repo. `KCODE_PROFILE_HINT=0` disables it.
+warn_on_profile_flap() {
+  [[ "${KCODE_PROFILE_HINT:-1}" == 0 ]] && return 0
+  [[ -f "$rust_action_log_path" ]] || return 0
+  local current_profile previous parsed prior_profile prior_repo
+  current_profile=$(selected_profile "${cargo_argv[@]}")
+  previous=$(tail -n 1 "$rust_action_log_path" 2>/dev/null) || return 0
+  [[ -n "$previous" ]] || return 0
+  parsed=$(printf '%s' "$previous" | python3 -c '
+import json, sys
+try:
+    r = json.loads(sys.stdin.read())
+except Exception:
+    raise SystemExit(0)
+print("{}\t{}".format(r.get("profile", ""), r.get("repository", "")))
+' 2>/dev/null) || return 0
+  prior_profile="${parsed%%$'\t'*}"
+  prior_repo="${parsed#*$'\t'}"
+  [[ "$prior_repo" == "$repo_root" ]] || return 0
+  [[ -n "$prior_profile" && "$prior_profile" != "$current_profile" ]] || return 0
+  log "profile ${prior_profile} -> ${current_profile}: that rebuilds the tree; run scripts/test.sh once instead of alternating check/clippy/test."
+}
+
 start_rust_action_log() {
   case "${KCODE_RUST_ACTION_LOG:-1}" in
     0|false|no|off) return ;;
@@ -23,6 +48,7 @@ start_rust_action_log() {
   local state_root="${KCODE_HOME:-${HOME:+$HOME/.kcode}}"
   [[ -n "$state_root" ]] || state_root="$repo_root/target/kcode-state"
   rust_action_log_path="${KCODE_RUST_ACTION_LOG_PATH:-$state_root/logs/rust-actions.jsonl}"
+  warn_on_profile_flap
   rust_action_log_started_ns=$(date +%s%N)
   rust_action_log_started_at=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
   trap 'record_rust_action_log "$?"' EXIT
