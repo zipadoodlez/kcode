@@ -240,12 +240,18 @@ step is done.
     the word `synthesize` to `todo::anchor_from_words`, because a fresh anchor is a row
     whose result is its children integrated and a row with no word is not seedable (rule
     8), while the store still learns no engine vocabulary (rule 5).
-  - **S5. A close keeps its record on the row that owns the work.** `TaskItem` gains
-    one opaque field, `records`: the closes of the work done under this row. The close
-    writes a node's record onto its parent's row, and it takes the machine-readable
-    parts the gate validates (findings, `what_i_did_not_check` and the confidence)
-    alongside the result, because the gate reads them from the row. One write path, two
-    callers: the `todo` tool's close and the engine's `complete_node` (`comm_graph.rs:409`).
+  - **S5a. The file keeps a close's record.** `TaskItem` gains one opaque field,
+    `records`: the closes of the work done under this row. The close moved into the
+    store (`todo::close_row`: the nonempty result, the open-child refusal, the blocker
+    cleanup, the row's removal, and the record onto the parent's row), so the `todo`
+    tool is a caller of one write path instead of owning the rules, and a close may
+    bring the machine-readable half (`artifact`: findings, evidence,
+    `what_i_did_not_check`, confidence) which the store keeps as written (rule 5). A row
+    that owns nothing keeps no record: its close is its own words in the commit.
+  - **S5b. The engine's close keeps the same record.** `complete_node`
+    (`comm_graph.rs:409`) writes its record onto the parent's row through the same
+    `todo::close_row`, so a deep node's close lands where a resumed run and a gate read
+    it, rather than only in the plan's `node_meta` that 0.4 deletes.
   - **S6. The command-line poke goes.** `src/cli/commands.rs`: the `_with_auto_poke`
     run paths (`:737`, `:773`) and the ndjson path that pokes too (`:817`),
     `run_command_auto_poke_max_turns` (`:662`), `next_headless_poke` (`:704`),

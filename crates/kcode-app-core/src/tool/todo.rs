@@ -1,6 +1,6 @@
 use super::{Tool, ToolContext, ToolOutput};
 use crate::bus::{Bus, BusEvent, TodoEvent};
-use crate::todo::{TaskItem, add_row, load_tasks, save_tasks};
+use crate::todo::{TaskItem, add_row, close_row, load_tasks, open_ids, save_tasks};
 use anyhow::{Result, bail};
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -44,6 +44,14 @@ struct TodoInput {
     note: Option<String>,
     #[serde(default)]
     result: Option<String>,
+    /// The machine-readable half of a close: what the work found, what it did not
+    /// check, and how sure it is. Kept on the row the closed row belongs to.
+    #[serde(default)]
+    findings: Option<String>,
+    #[serde(default)]
+    what_i_did_not_check: Option<Vec<String>>,
+    #[serde(default)]
+    confidence: Option<String>,
 }
 
 /// Apply one call to the open rows.
@@ -103,28 +111,12 @@ fn apply(input: &TodoInput, rows: &mut Vec<TaskItem>, session_id: &str) -> Resul
         }
         Action::Close => {
             let id = nonempty(input.id.as_deref(), "close needs id")?;
-            nonempty(
-                input.result.as_deref(),
-                "close needs result: name the check that proves it, and what it showed",
+            close_row(
+                rows,
+                id,
+                input.result.as_deref().unwrap_or_default(),
+                close_artifact(input),
             )?;
-            row_mut(rows, id)?;
-            if let Some(child) = rows.iter().find(|row| row.parent.as_deref() == Some(id)) {
-                bail!(
-                    "{id} still has open children: {} {}",
-                    child.id,
-                    child.content
-                );
-            }
-            // The blocker is gone, so drop it from every dependent: an id left
-            // behind would name no open row, which the plan engine reads as an
-            // unsatisfied dependency (rule 7).
-            for row in rows.iter_mut() {
-                row.blocked_by
-                    .retain(|dependency| dependency.as_str() != id);
-            }
-            rows.retain(|row| row.id != id);
-            // The result is the task's durable record; it travels in the commit
-            // with this delete (rule 4), so nothing keeps it here.
             return Ok(());
         }
     }
@@ -144,6 +136,35 @@ fn kind_or_none(kind: Option<&str>) -> Option<String> {
     kind.map(str::trim)
         .filter(|kind| !kind.is_empty())
         .map(str::to_string)
+}
+
+/// The machine-readable half of a close, as the record keeps it. A close that says
+/// nothing machine-readable keeps none, so the shape exists only when a field was
+/// given, and the engine's own closers write the same shape from the other side.
+fn close_artifact(input: &TodoInput) -> Option<serde_json::Value> {
+    if input.findings.is_none()
+        && input.what_i_did_not_check.is_none()
+        && input.confidence.is_none()
+    {
+        return None;
+    }
+    let mut artifact = serde_json::Map::new();
+    if let Some(findings) = input.findings.as_deref() {
+        artifact.insert("findings".to_string(), serde_json::Value::from(findings));
+    }
+    if let Some(not_checked) = input.what_i_did_not_check.as_deref() {
+        artifact.insert(
+            "what_i_did_not_check".to_string(),
+            serde_json::Value::from(not_checked),
+        );
+    }
+    if let Some(confidence) = input.confidence.as_deref() {
+        artifact.insert(
+            "confidence".to_string(),
+            serde_json::Value::from(confidence),
+        );
+    }
+    Some(serde_json::Value::Object(artifact))
 }
 
 /// A word the engine cannot read would be a row no run can seat, so the writer
@@ -170,17 +191,6 @@ fn row_mut<'a>(rows: &'a mut [TaskItem], id: &str) -> Result<&'a mut TaskItem> {
         .iter_mut()
         .find(|row| row.id == id)
         .expect("checked above"))
-}
-
-fn open_ids(rows: &[TaskItem]) -> String {
-    match rows.is_empty() {
-        true => "none".to_string(),
-        false => rows
-            .iter()
-            .map(|row| row.id.as_str())
-            .collect::<Vec<_>>()
-            .join(", "),
-    }
 }
 
 /// A parent or blocker that names no open row is a typo, not a plan.
@@ -263,6 +273,20 @@ impl Tool for TodoTool {
                 "result": {
                     "type": "string",
                     "description": "Required to close: name the check that proves the task done, and report what it showed."
+                },
+                "findings": {
+                    "type": "string",
+                    "description": "The close in machine-readable words, for a gate: what the work found."
+                },
+                "what_i_did_not_check": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "What the work left unchecked, named so a gate can go there."
+                },
+                "confidence": {
+                    "type": "string",
+                    "enum": ["high", "medium", "low"],
+                    "description": "How sure the close is."
                 }
             }
         })
@@ -378,6 +402,34 @@ mod tests {
             "a closed blocker's id must not strand its dependent: {:?}",
             rows[0].blocked_by
         );
+    }
+
+    /// A close keeps the record on the row the closed one belongs to, and takes the
+    /// machine-readable half alongside the result, because that is where a gate
+    /// reads it (rules 3 and 4).
+    #[test]
+    fn close_keeps_its_record_on_the_row_the_closed_one_belongs_to() {
+        let mut child = row("t2", "the work");
+        child.parent = Some("t1".to_string());
+        let mut rows = vec![row("t1", "the run"), child];
+
+        apply(
+            &input(json!({
+                "action": "close",
+                "id": "t2",
+                "result": "cargo test: 12 passed",
+                "findings": "it holds",
+                "confidence": "high",
+            })),
+            &mut rows,
+            "s",
+        )
+        .expect("close");
+
+        assert_eq!(rows.len(), 1, "the closed row is gone");
+        assert_eq!(rows[0].records[0]["id"], "t2");
+        assert_eq!(rows[0].records[0]["result"], "cargo test: 12 passed");
+        assert_eq!(rows[0].records[0]["artifact"]["findings"], "it holds");
     }
 
     #[test]
@@ -508,6 +560,11 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .contains("check")
+        );
+        assert_eq!(
+            props["confidence"]["enum"],
+            json!(["high", "medium", "low"]),
+            "the close says what its machine-readable half holds"
         );
         assert!(props.get("todos").is_none(), "the whole-list write is gone");
     }

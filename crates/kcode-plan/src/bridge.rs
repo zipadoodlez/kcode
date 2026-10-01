@@ -206,6 +206,9 @@ pub fn apply_task_graph(plan: &mut VersionedPlan, graph: &TaskGraph) {
             kind: Some(kind_str(node.kind).to_string()),
             subsystem: prev.and_then(|p| p.subsystem.clone()),
             file_scope: prev.map(|p| p.file_scope.clone()).unwrap_or_default(),
+            // The engine owns none of the records a close left on a row, the same
+            // way it owns none of the row's subsystem or file scope.
+            records: prev.map(|p| p.records.clone()).unwrap_or_default(),
             blocked_by: node.depends_on.clone(),
             assigned_to: node.owner.clone(),
             group: None,

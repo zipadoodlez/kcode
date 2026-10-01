@@ -225,6 +225,18 @@ pub struct TaskItem {
     /// One line on where the work got to, for whoever picks it up next.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// The closes of the work done under this row: one entry per row that was
+    /// closed while it named this one as its `parent`, so a row with children
+    /// carries their results after they are gone (rule 3, and rule 4's "a parent's
+    /// result is its children's results integrated").
+    ///
+    /// The store keeps each entry as the closer wrote it and reads none of it: the
+    /// shape is `{"id", "result", "artifact"}`, where `artifact` is the
+    /// machine-readable half a closer may supply (findings, evidence,
+    /// `what_i_did_not_check`, confidence). Kept as JSON so the store learns no
+    /// engine type (rule 5), the way `NodeMeta.artifact_json` does.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub records: Vec<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subsystem: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

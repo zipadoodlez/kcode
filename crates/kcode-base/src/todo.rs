@@ -234,6 +234,77 @@ pub fn add_row(rows: &mut Vec<TaskItem>, mut row: TaskItem) -> Result<String> {
     Ok(id)
 }
 
+/// The open ids, for a message that has to name what a caller could have written
+/// instead of the id it wrote.
+pub fn open_ids(rows: &[TaskItem]) -> String {
+    match rows.is_empty() {
+        true => "none".to_string(),
+        false => rows
+            .iter()
+            .map(|row| row.id.as_str())
+            .collect::<Vec<_>>()
+            .join(", "),
+    }
+}
+
+/// Close one row with the result that proves it, and keep that result where the
+/// work belongs. See `docs/plans/work-list.md`, rules 3 and 4.
+///
+/// The close states an outcome, so a nonempty `result` is required, and it names
+/// the check that proves the row done. A row with a child still naming it cannot
+/// close: rule 3 keeps a parent while a child does, which is what makes the
+/// parent's result its children's results integrated. The record then goes onto
+/// the row that owns the work, the parent for a row that has one, so a finished
+/// row is not gone with nothing kept: `artifact` is the machine-readable half a
+/// closer may bring (the words of the result stay the result's).
+///
+/// The row is the last thing to go, and the close drops its id from every
+/// dependent's `blocked_by`; an entry there always names an open row (rule 7).
+pub fn close_row(
+    rows: &mut Vec<TaskItem>,
+    id: &str,
+    result: &str,
+    artifact: Option<serde_json::Value>,
+) -> Result<()> {
+    let result = result.trim();
+    if result.is_empty() {
+        bail!("close needs result: name the check that proves it, and what it showed");
+    }
+    let row = rows
+        .iter()
+        .find(|row| row.id == id)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("no task {id:?}; open ids: {}", open_ids(rows)))?;
+    if let Some(child) = rows.iter().find(|row| row.parent.as_deref() == Some(id)) {
+        bail!(
+            "{id} still has open children: {} {}",
+            child.id,
+            child.content
+        );
+    }
+
+    // The record lands on the row that owns this work. A row that owns nothing
+    // keeps none: its result is its own close, which the caller's commit carries.
+    if let Some(parent_id) = row.parent.as_deref()
+        && let Some(parent) = rows.iter_mut().find(|row| row.id == parent_id)
+    {
+        let mut record = serde_json::Map::new();
+        record.insert("id".to_string(), serde_json::Value::from(id));
+        record.insert("result".to_string(), serde_json::Value::from(result));
+        if let Some(artifact) = artifact {
+            record.insert("artifact".to_string(), artifact);
+        }
+        parent.records.push(serde_json::Value::Object(record));
+    }
+
+    for row in rows.iter_mut() {
+        row.blocked_by
+            .retain(|dependency| dependency.as_str() != id);
+    }
+    rows.retain(|row| row.id != id);
+    Ok(())
+}
+
 /// The next free `t<n>` id.
 fn next_id(rows: &[TaskItem]) -> String {
     let highest = rows
@@ -489,5 +560,80 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    /// A close keeps its result on the row that owns the work: the parent for a row
+    /// that has one, so a finished row is not gone with nothing kept (rule 4). The
+    /// machine-readable half a closer brings travels with it.
+    #[test]
+    fn a_close_keeps_its_record_on_the_row_that_owns_the_work() {
+        let mut parent = TaskItem {
+            id: "t1".to_string(),
+            content: "the run".to_string(),
+            assigned_to: Some("me".to_string()),
+            ..Default::default()
+        };
+        parent.kind = Some("synthesize".to_string());
+        let mut child = TaskItem {
+            id: "t2".to_string(),
+            content: "the work".to_string(),
+            assigned_to: Some("me".to_string()),
+            parent: Some("t1".to_string()),
+            ..Default::default()
+        };
+        child.kind = Some("implement".to_string());
+        let mut rows = vec![parent, child];
+
+        close_row(
+            &mut rows,
+            "t2",
+            "cargo test -p kcode-base: 7 passed",
+            Some(serde_json::json!({"findings": "the store owns it", "confidence": "high"})),
+        )
+        .expect("close");
+
+        assert_eq!(rows.len(), 1, "the closed row is gone");
+        let record = &rows[0].records[0];
+        assert_eq!(record["id"], "t2");
+        assert_eq!(record["result"], "cargo test -p kcode-base: 7 passed");
+        assert_eq!(record["artifact"]["confidence"], "high");
+    }
+
+    /// A row that owns nothing keeps no record: there is no parent row to hold it,
+    /// and the close's own words are the commit's (rule 4).
+    #[test]
+    fn a_close_with_no_parent_keeps_no_record() {
+        let mut rows = vec![TaskItem {
+            id: "t1".to_string(),
+            content: "root work".to_string(),
+            assigned_to: Some("me".to_string()),
+            ..Default::default()
+        }];
+        close_row(&mut rows, "t1", "done: nothing to run", None).expect("close");
+        assert!(rows.is_empty());
+    }
+
+    /// The close still refuses what it always refused: no result, and a row a child
+    /// still names (rule 3).
+    #[test]
+    fn a_close_needs_a_result_and_no_open_child() {
+        let mut rows = vec![
+            TaskItem {
+                id: "t1".to_string(),
+                content: "parent".to_string(),
+                ..Default::default()
+            },
+            TaskItem {
+                id: "t2".to_string(),
+                content: "child".to_string(),
+                parent: Some("t1".to_string()),
+                ..Default::default()
+            },
+        ];
+        let err = close_row(&mut rows, "t1", "done", None).unwrap_err();
+        assert!(err.to_string().contains("still has open children"), "{err}");
+        let err = close_row(&mut rows, "t2", "   ", None).unwrap_err();
+        assert!(err.to_string().contains("close needs result"), "{err}");
+        assert_eq!(rows.len(), 2, "a refused close writes nothing");
     }
 }
