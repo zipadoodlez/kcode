@@ -112,8 +112,9 @@ for a run scoped to the whole list, the run's first row is the anchor, and every
 root-level row of that run names the anchor as its `parent`. A closed row's record
 goes onto its parent, so the anchor is where a run's root-level records accumulate
 and where a resumed run finds its scope. The anchor closes last, since rule 3 keeps
-it while a child names it, and its close is the run's end: its result is what a person
-reads afterwards, so a run needs no separate end-of-run summary.
+it while a child names it, and its close is the run's end: the loop picks the anchor
+like any other ready row once nothing else is left, so the summary is a turn and a run
+needs no separate end-of-run summary.
 
 A run adjusts by editing rows, since it has no plan of its own to mutate. It adds
 work under the row it came from, leaves notes, clears a blocker that no longer
@@ -200,7 +201,9 @@ step is done.
 - [ ] **0.3. Rows are the run's seed source.** `kind` rides on the row, the node id
   is the row id, the file's `blocked_by` is the node's dependency edge (rules 6 and
   7 name it; there is no rename), position is priority, and gates get engine names.
-  Testable against a scratch repo, so it needs no migration.
+  Testable against a scratch repo, so it needs no migration. A run whose grant never
+  typed an anchor (a headless member holds the permission inherently) gets one from
+  the seed, written through the tool's own write path, so rule 2 still has one writer.
 - [ ] **0.3's `kind` is the engine's word, stored once on the row.** `bridge.rs`
   already owns the only vocabulary (`parse_kind` reads it, `kind_str` writes it), so
   a row holds that word and the store learns no enum and takes no dependency on the
@@ -244,7 +247,11 @@ step is done.
   the persisted plan itself (`swarm_persistence.rs`, 650 lines plus 1,218 of tests;
   `VersionedPlan` becomes an in-memory view built from the file), the `coordinators`
   map, any stored swarm id, the 31 `SwarmState { .. }` rebuild sites, and the
-  `Synthesize` kind, reachable only through the wire spec this step deletes. `parse_kind`/`kind_str` stay, since they
+  `Synthesize` kind, reachable only through the wire spec this step deletes. One
+  thing blocks the `node_meta` half: `is_gate` lives there and a gate is the one node
+  with no row, so the step first settles whether a gate is re-derived per run from
+  `requires_gates`, with nothing durable, or carried in the file. `parent` duplicates
+  the row already, and `expanded`, `planner` and `origin` are run state. `parse_kind`/`kind_str` stay, since they
   are what reads a row's kind. The deep/light flag is not residue,
   as `internals/swarm.md` says: there is no `Mode::is_deep`, and `requires_gates`
   guards gate insertion (`kcode-plan/src/dag/ops.rs:67`, `:308`), gate-pass
@@ -279,7 +286,9 @@ Last of the file work, whenever we want it.
 ### C. The list reaches the client
 
 - [ ] **C3.** The two sub-items in `todo.md` §1: member appearance follows the
-  typed status, and a stalled plan node is visible. Gate this on 0.3.
+  typed status, and a stalled plan node is visible. Fold into 0.4: that step removes
+  the plan statuses these render, and decision 1 made the stall derived, so the
+  rendering change is measured against the tree after it, not before.
 - [ ] **C4.** Move `subsystem` and `file_scope` off the shared type onto the
   worker's own record. They are the scheduler's inputs (assignment affinity matches
   them against a worker's metadata), not list fields, and neither destination the
