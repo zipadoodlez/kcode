@@ -4,87 +4,40 @@
 // and 16 seconds later an explicit `assign_task task_id=<same node>` silently
 // re-assigned it to a fresh worker; both edited the same files for ~7 minutes.
 
-/// Pure guard predicate: assigned+fresh -> conflict, assigned+stale -> allow,
-/// unassigned -> allow, stale/terminal statuses -> allow.
+/// Pure guard predicate: a claim is a claim, so assigned+in-flight -> conflict,
+/// unassigned -> allow, and stale/terminal statuses -> allow.
 #[test]
-fn active_assignment_conflict_detects_only_assigned_and_fresh_items() {
-    let window = 45_000_u64;
+fn active_assignment_conflict_detects_any_claim_on_an_in_flight_item() {
+    // Unassigned -> allow, whatever the status.
+    for status in ["queued", "running"] {
+        assert!(
+            super::active_assignment_conflict(status, None).is_none(),
+            "unassigned items are always assignable"
+        );
+    }
 
-    // Unassigned -> allow, regardless of freshness.
-    assert!(
-        super::active_assignment_conflict("queued", None, Some(1_000), Some(1_000), window).is_none(),
-        "unassigned items are always assignable"
-    );
+    // Assigned + in-flight -> reject, naming the assignee.
+    for status in ["queued", "running"] {
+        let conflict = super::active_assignment_conflict(status, Some("snail"))
+            .unwrap_or_else(|| panic!("status '{status}' with a claim must conflict"));
+        assert_eq!(conflict.assignee, "snail");
+    }
 
-    // Assigned + a recently active assignee -> reject, naming the assignee and age.
-    let conflict = super::active_assignment_conflict(
-        "running",
-        Some("snail"),
-        None,
-        Some(12_000),
-        window,
-    )
-    .expect("assigned + active assignee must conflict");
-    assert_eq!(conflict.assignee, "snail");
-    assert_eq!(conflict.active_ago_ms, 12_000);
+    // The rejection names the task, the assignee, and the way out.
+    let conflict =
+        super::active_assignment_conflict("running", Some("snail")).expect("claim conflicts");
     let message = super::active_assignment_error("mem-impl-attribution", &conflict);
     assert!(
         message.contains("'mem-impl-attribution'")
             && message.contains("'snail'")
-            && message.contains("12s ago")
             && message.contains("reassign"),
-        "error must name the task, assignee, activity age, and takeover path: {message}"
+        "error must name the task, the assignee, and the takeover path: {message}"
     );
 
-    // Assigned + queued (dispatch pending) also counts as actively worked.
-    assert!(
-        super::active_assignment_conflict("queued", Some("snail"), None, Some(1_000), window)
-            .is_some(),
-        "a freshly queued assignment is in-flight, not reassignable"
-    );
-
-    // Assigned + activity at/over the stale window -> allow (stale path).
-    assert!(
-        super::active_assignment_conflict("running", Some("snail"), None, Some(window), window)
-            .is_none(),
-        "stale assignments stay reassignable"
-    );
-
-    // Nothing recent at all -> allow (treated stale, mirroring
-    // refresh_swarm_task_staleness).
-    assert!(
-        super::active_assignment_conflict("running", Some("snail"), None, None, window).is_none()
-    );
-    assert!(
-        super::active_assignment_conflict("running", Some("snail"), Some(60_000), None, window)
-            .is_none()
-    );
-
-    // A recent assignment counts before its assignee's clock has anything.
-    assert!(
-        super::active_assignment_conflict("queued", Some("snail"), Some(5_000), None, window)
-            .is_some(),
-        "an assignment made moments ago is active even before its first turn"
-    );
-
-    // The more recent of the two sources decides.
-    assert!(
-        super::active_assignment_conflict(
-            "running",
-            Some("snail"),
-            Some(60_000),
-            Some(3_000),
-            window
-        )
-        .is_some(),
-        "the assignee's own activity keeps a long assignment fresh"
-    );
-
-    // running_stale and terminal statuses -> allow (existing recovery paths).
+    // Stale and terminal statuses -> allow (existing recovery paths).
     for status in ["running_stale", "failed", "stopped", "crashed", "completed", "done"] {
         assert!(
-            super::active_assignment_conflict(status, Some("snail"), None, Some(1_000), window)
-                .is_none(),
+            super::active_assignment_conflict(status, Some("snail")).is_none(),
             "status '{status}' must not trigger the double-assignment guard"
         );
     }
@@ -97,7 +50,6 @@ fn double_assign_fixture(
     holder: &str,
     intruder: &str,
     contested: TaskItem,
-    progress: crate::server::SwarmTaskProgress,
 ) -> (
     Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>,
     Arc<RwLock<HashMap<String, SwarmMember>>>,
@@ -122,14 +74,13 @@ fn double_assign_fixture(
             intruder.to_string(),
         ]),
     )])));
-    let task_id = contested.id.clone();
     let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![contested],
             version: 1,
             participants: HashSet::from([requester.to_string(), holder.to_string()]),
-            task_progress: HashMap::from([(task_id, progress)]),
+            task_progress: HashMap::new(),
             node_meta: HashMap::new(),
         },
     )])));
@@ -147,37 +98,17 @@ fn double_assign_fixture(
     )
 }
 
-fn unix_now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock after epoch")
-        .as_millis() as u64
-}
-
-/// Live path: explicit assign_task against an assigned-and-active node is
-/// rejected and the plan keeps the original assignee.
+/// Live path: explicit assign_task against a claimed node is rejected and the
+/// plan keeps the original assignee.
 #[tokio::test]
-async fn assign_task_rejects_double_assignment_of_actively_worked_task() {
+async fn assign_task_rejects_double_assignment_of_claimed_task() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let swarm_id = "swarm-double-assign";
     let (requester, holder, intruder) = ("coord", "snail", "penguin");
     let mut contested = plan_item("contested", "running", "high", &[]);
     contested.assigned_to = Some(holder.to_string());
     let (sessions, swarm_members, swarms_by_id, swarm_plans, swarm_coordinators) =
-        double_assign_fixture(
-            swarm_id,
-            requester,
-            holder,
-            intruder,
-            contested,
-            crate::server::SwarmTaskProgress {
-                assigned_session_id: Some(holder.to_string()),
-                // Handed out moments ago, so the assignee's turn may not have
-                // started yet: the assignment itself is the freshness.
-                assigned_at_unix_ms: Some(unix_now_ms()),
-                ..Default::default()
-            },
-        );
+        double_assign_fixture(swarm_id, requester, holder, intruder, contested);
     sessions
         .write()
         .await
@@ -239,29 +170,18 @@ async fn assign_task_rejects_double_assignment_of_actively_worked_task() {
     assert_eq!(item.status, "running", "lifecycle status untouched");
 }
 
-/// Live path: an assignment far past the stale window with no live assignee
-/// activity is legitimately reassignable (dead-assignee recovery keeps working).
+/// Live path: a claim is not weakened by looking idle. Taking a task from its
+/// holder goes through task_control, or the salvage sweep for a dead holder; a
+/// plain assign_task is refused even when the holder has been quiet.
 #[tokio::test]
-async fn assign_task_allows_taking_over_stale_assignment() {
+async fn assign_task_refuses_to_take_a_quietly_held_claim() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
-    let swarm_id = "swarm-double-assign-stale";
+    let swarm_id = "swarm-double-assign-quiet";
     let (requester, holder, intruder) = ("coord", "snail", "penguin");
     let mut stalled = plan_item("stalled", "queued", "high", &[]);
     stalled.assigned_to = Some(holder.to_string());
     let (sessions, swarm_members, swarms_by_id, swarm_plans, swarm_coordinators) =
-        double_assign_fixture(
-            swarm_id,
-            requester,
-            holder,
-            intruder,
-            stalled,
-            crate::server::SwarmTaskProgress {
-                assigned_session_id: Some(holder.to_string()),
-                // Far beyond any configured stale window.
-                assigned_at_unix_ms: Some(unix_now_ms().saturating_sub(3_600_000)),
-                ..Default::default()
-            },
-        );
+        double_assign_fixture(swarm_id, requester, holder, intruder, stalled);
     sessions
         .write()
         .await
@@ -296,15 +216,17 @@ async fn assign_task_allows_taking_over_stale_assignment() {
     .await;
 
     match client_rx.recv().await.expect("response") {
-        ServerEvent::CommAssignTaskResponse {
-            task_id,
-            target_session,
-            ..
-        } => {
-            assert_eq!(task_id, "stalled");
-            assert_eq!(target_session, intruder);
+        ServerEvent::Error { message, .. } => {
+            assert!(
+                message.contains("already assigned to 'snail'"),
+                "a quietly held claim is still a claim: {message}"
+            );
+            assert!(
+                message.contains("reassign"),
+                "the refusal must point at the takeover path: {message}"
+            );
         }
-        other => panic!("stale assignment takeover should succeed, got {other:?}"),
+        other => panic!("expected the claim to be upheld, got {other:?}"),
     }
 
     let plans = swarm_plans.read().await;
@@ -313,7 +235,11 @@ async fn assign_task_allows_taking_over_stale_assignment() {
         .iter()
         .find(|item| item.id == "stalled")
         .expect("stalled task exists");
-    assert_eq!(item.assigned_to.as_deref(), Some(intruder));
+    assert_eq!(
+        item.assigned_to.as_deref(),
+        Some(holder),
+        "the holder keeps the task"
+    );
 }
 
 /// Takeover path: task_control reassign moves the task AND tells the displaced
@@ -327,18 +253,7 @@ async fn task_control_reassign_tells_displaced_worker_to_stand_down() {
     let mut contested = plan_item("contested", "running_stale", "high", &[]);
     contested.assigned_to = Some(holder.to_string());
     let (sessions, swarm_members, swarms_by_id, swarm_plans, swarm_coordinators) =
-        double_assign_fixture(
-            swarm_id,
-            requester,
-            holder,
-            intruder,
-            contested,
-            crate::server::SwarmTaskProgress {
-                assigned_session_id: Some(holder.to_string()),
-                assigned_at_unix_ms: Some(unix_now_ms().saturating_sub(3_600_000)),
-                ..Default::default()
-            },
-        );
+        double_assign_fixture(swarm_id, requester, holder, intruder, contested);
     // Capture the displaced worker's server-event stream to observe the DM.
     let (holder_tx, mut holder_rx) = mpsc::unbounded_channel();
     swarm_members

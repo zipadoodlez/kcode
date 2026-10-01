@@ -288,10 +288,7 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
     let mut assigned = plan_item("busy-task", "running", "high", &[]);
     assigned.assigned_to = Some(worker.to_string());
     let prior_progress = crate::server::SwarmTaskProgress {
-        assigned_session_id: Some(worker.to_string()),
-        assigned_at_unix_ms: Some(1_000),
-        started_at_unix_ms: Some(2_000),
-        ..crate::server::SwarmTaskProgress::default()
+        dead_assignee_reclaims: Some(1),
     };
     let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
@@ -364,12 +361,11 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
     );
 }
 
-/// Regression: requeueing an existing assignment (resume of a running/stale
-/// task) must preserve the prior run's history instead of replacing the
-/// progress record. Wiping started_at/heartbeats/checkpoints blinded
-/// staleness monitors and salvage flows to everything the previous run did.
+/// Regression: requeueing an existing assignment (resume of a running or stale
+/// task) must not reset the reclaim count. A requeue that cleared it would let a
+/// node whose workers keep dying be reclaimed forever.
 #[tokio::test]
-async fn requeue_existing_assignment_preserves_prior_progress_history() {
+async fn requeue_existing_assignment_preserves_the_reclaim_count() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let swarm_id = "swarm-requeue-preserve";
     let requester = "coord";
@@ -385,10 +381,7 @@ async fn requeue_existing_assignment_preserves_prior_progress_history() {
             task_progress: HashMap::from([(
                 "requeue-me".to_string(),
                 crate::server::SwarmTaskProgress {
-                    assigned_session_id: Some(worker.to_string()),
-                    assigned_at_unix_ms: Some(1_000),
-                    started_at_unix_ms: Some(2_000),
-                    dead_assignee_reclaims: None,
+                    dead_assignee_reclaims: Some(1),
                 },
             )]),
             node_meta: HashMap::new(),
@@ -418,13 +411,9 @@ async fn requeue_existing_assignment_preserves_prior_progress_history() {
         .get("requeue-me")
         .expect("progress exists");
     assert_eq!(
-        progress.started_at_unix_ms,
-        Some(2_000),
-        "prior run's start time must survive the requeue"
-    );
-    assert!(
-        progress.assigned_at_unix_ms.unwrap_or(0) > 1_000,
-        "assigned_at refreshes for the new attempt"
+        progress.dead_assignee_reclaims,
+        Some(1),
+        "a requeue must not reset the reclaim count"
     );
 }
 

@@ -17,20 +17,18 @@ pub mod dag;
 /// tool, and the list file all read and write the same entries.
 pub use kcode_task_types::TaskItem;
 
-/// Durable progress associated with a swarm plan task.
+/// Runtime state associated with a swarm plan task.
+///
+/// One value: how many times this node's assignment was reclaimed because its
+/// assignee session was dead (failed/stopped/crashed or gone). It caps automatic
+/// re-dispatch so a node whose workers keep dying cannot spawn workers forever;
+/// past the cap, explicit `retry`/`assign_task` remain the recovery paths.
+///
+/// Nothing else belongs here. A claim is the row's `assigned_to`, and a claim is
+/// assumed to be worked while its holder is alive, so there is no per-task
+/// assignment time to keep.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SwarmTaskProgress {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub assigned_session_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub assigned_at_unix_ms: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub started_at_unix_ms: Option<u64>,
-    /// How many times this node's assignment was reclaimed because its assignee
-    /// session was dead (failed/stopped/crashed or gone). Caps automatic
-    /// re-dispatch so a node whose workers keep dying cannot spawn workers
-    /// forever; past the cap, explicit `retry`/`assign_task` remain the
-    /// recovery paths.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dead_assignee_reclaims: Option<u32>,
 }
@@ -130,8 +128,8 @@ impl VersionedPlan {
     }
 
     /// Rewrite all durable references when a live client replaces its session
-    /// id. This keeps ownership, task progress, and DAG planner affinity from
-    /// accumulating dangling historical identities.
+    /// id. This keeps ownership and DAG planner affinity from accumulating
+    /// dangling historical identities.
     pub fn rename_session(&mut self, old_session_id: &str, new_session_id: &str) {
         if self.participants.remove(old_session_id) {
             self.participants.insert(new_session_id.to_string());
@@ -139,11 +137,6 @@ impl VersionedPlan {
         for item in &mut self.items {
             if item.assigned_to.as_deref() == Some(old_session_id) {
                 item.assigned_to = Some(new_session_id.to_string());
-            }
-        }
-        for progress in self.task_progress.values_mut() {
-            if progress.assigned_session_id.as_deref() == Some(old_session_id) {
-                progress.assigned_session_id = Some(new_session_id.to_string());
             }
         }
         for meta in self.node_meta.values_mut() {
@@ -620,8 +613,8 @@ pub fn next_stranded_runnable_item_id(
 
 /// Clear a stranded assignment so the node becomes eligible for normal
 /// automatic dispatch again, bumping the per-node reclaim counter and the plan
-/// version. The prior run's assignment record is preserved; only the binding is
-/// released. Returns `false` when the item is missing or not actually assigned.
+/// version. The binding is released and nothing else about the row changes.
+/// Returns `false` when the item is missing or not actually assigned.
 pub fn reclaim_stranded_assignment(plan: &mut VersionedPlan, task_id: &str) -> bool {
     let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id) else {
         return false;
@@ -631,7 +624,6 @@ pub fn reclaim_stranded_assignment(plan: &mut VersionedPlan, task_id: &str) -> b
     }
     item.assigned_to = None;
     let progress = plan.task_progress.entry(task_id.to_string()).or_default();
-    progress.assigned_session_id = None;
     progress.dead_assignee_reclaims = Some(progress.dead_assignee_reclaims.unwrap_or(0) + 1);
     plan.version += 1;
     true
@@ -734,11 +726,6 @@ pub fn assignment_affinities_for_task(
     for dependency_id in &task.blocked_by {
         if let Some(dep_item) = plan.items.iter().find(|item| item.id == *dependency_id)
             && let Some(owner) = dep_item.assigned_to.as_ref()
-        {
-            *dependency_carryover.entry(owner.clone()).or_default() += 1;
-        }
-        if let Some(progress) = plan.task_progress.get(dependency_id)
-            && let Some(owner) = progress.assigned_session_id.as_ref()
         {
             *dependency_carryover.entry(owner.clone()).or_default() += 1;
         }
@@ -1016,7 +1003,7 @@ mod tests {
 
     #[test]
     fn assignment_affinities_count_dependency_and_metadata_carryover() {
-        let mut plan = VersionedPlan {
+        let plan = VersionedPlan {
             items: vec![
                 TaskItem {
                     assigned_to: Some("agent-a".to_string()),
@@ -1038,16 +1025,8 @@ mod tests {
             ],
             ..VersionedPlan::new()
         };
-        plan.task_progress.insert(
-            "dep".to_string(),
-            SwarmTaskProgress {
-                assigned_session_id: Some("agent-a".to_string()),
-                ..SwarmTaskProgress::default()
-            },
-        );
-
         let affinities = assignment_affinities_for_task(&plan, "target").unwrap();
-        assert_eq!(affinities.dependency_carryover.get("agent-a"), Some(&2));
+        assert_eq!(affinities.dependency_carryover.get("agent-a"), Some(&1));
         assert_eq!(affinities.metadata_carryover.get("agent-b"), Some(&3));
         assert_eq!(affinities.loads.get("agent-b"), Some(&1));
     }
@@ -1090,7 +1069,6 @@ mod tests {
             "a".to_string(),
             SwarmTaskProgress {
                 dead_assignee_reclaims: Some(MAX_DEAD_ASSIGNEE_RECLAIMS),
-                ..SwarmTaskProgress::default()
             },
         );
         assert_eq!(next_stranded_runnable_item_id(&plan, &dead), None);
@@ -1106,14 +1084,6 @@ mod tests {
             }],
             ..VersionedPlan::new()
         };
-        plan.task_progress.insert(
-            "a".to_string(),
-            SwarmTaskProgress {
-                assigned_session_id: Some("dead-session".to_string()),
-                started_at_unix_ms: Some(42),
-                ..SwarmTaskProgress::default()
-            },
-        );
         let version_before = plan.version;
 
         assert!(reclaim_stranded_assignment(&mut plan, "a"));
@@ -1122,13 +1092,7 @@ mod tests {
         assert_eq!(item.assigned_to, None, "assignment binding released");
         assert_eq!(item.status, "queued", "lifecycle status untouched");
         let progress = plan.task_progress.get("a").unwrap();
-        assert_eq!(progress.assigned_session_id, None);
         assert_eq!(progress.dead_assignee_reclaims, Some(1));
-        assert_eq!(
-            progress.started_at_unix_ms,
-            Some(42),
-            "prior run history preserved"
-        );
         assert_eq!(plan.version, version_before + 1, "version bump for pollers");
 
         // The reclaimed item is now visible to the normal unassigned picker.

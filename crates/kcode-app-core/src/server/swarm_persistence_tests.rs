@@ -51,10 +51,7 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
             task_progress: HashMap::from([(
                 "task-1".to_string(),
                 SwarmTaskProgress {
-                    assigned_session_id: Some("session-1".to_string()),
-                    assigned_at_unix_ms: Some(10),
-                    started_at_unix_ms: Some(20),
-                    dead_assignee_reclaims: None,
+                    dead_assignee_reclaims: Some(2),
                 },
             )]),
             node_meta: HashMap::new(),
@@ -101,8 +98,7 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
         .task_progress
         .get("task-1")
         .expect("task progress");
-    assert_eq!(progress.assigned_session_id.as_deref(), Some("session-1"));
-    assert_eq!(progress.started_at_unix_ms, Some(20));
+    assert_eq!(progress.dead_assignee_reclaims, Some(2));
     assert_eq!(
         loaded.coordinators.get("swarm-alpha"),
         Some(&"session-2".to_string())

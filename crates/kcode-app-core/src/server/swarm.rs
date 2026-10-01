@@ -2729,13 +2729,7 @@ mod tests {
                 }],
                 version: 1,
                 participants: HashSet::from(["sweep-worker".to_string()]),
-                task_progress: HashMap::from([(
-                    "task-1".to_string(),
-                    crate::server::SwarmTaskProgress {
-                        assigned_session_id: Some("sweep-worker".to_string()),
-                        ..Default::default()
-                    },
-                )]),
+                task_progress: HashMap::new(),
                 node_meta: HashMap::new(),
             },
         )])));
@@ -2779,9 +2773,7 @@ mod tests {
                 task_progress: HashMap::from([(
                     "task-1".to_string(),
                     crate::server::SwarmTaskProgress {
-                        assigned_session_id: Some(assignee.to_string()),
                         dead_assignee_reclaims: reclaims,
-                        ..Default::default()
                     },
                 )]),
                 node_meta: HashMap::new(),
@@ -2827,7 +2819,6 @@ mod tests {
             assert_eq!(plan.items[0].status, "queued");
             assert_eq!(plan.items[0].assigned_to, None);
             let progress = plan.task_progress.get("task-1").expect("progress");
-            assert_eq!(progress.assigned_session_id, None);
             assert_eq!(progress.dead_assignee_reclaims, Some(1));
         }
 

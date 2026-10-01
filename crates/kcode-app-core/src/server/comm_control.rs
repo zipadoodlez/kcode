@@ -1,6 +1,6 @@
 #![cfg_attr(test, allow(clippy::items_after_test_module))]
 
-use super::swarm::swarm_task_stale_after;
+use super::append_swarm_completion_report_instructions;
 use super::swarm_mutation_state::{
     PersistedSwarmMutationResponse, begin_or_join_in_flight as begin_swarm_mutation_no_replay,
     begin_or_replay as begin_swarm_mutation_or_replay,
@@ -8,12 +8,11 @@ use super::swarm_mutation_state::{
 };
 use super::{
     ClientConnectionInfo, SessionAgents, SwarmEvent, SwarmEventType, SwarmMember,
-    SwarmMutationRuntime, SwarmState, SwarmTaskProgress, VersionedPlan, broadcast_swarm_plan,
+    SwarmMutationRuntime, SwarmState, VersionedPlan, broadcast_swarm_plan,
     broadcast_swarm_plan_with_previous, broadcast_swarm_status, fanout_session_event,
     persist_swarm_state_for, queue_soft_interrupt_for_session, record_swarm_event,
     set_member_task_label, truncate_detail, update_member_status, update_member_status_with_report,
 };
-use super::{append_swarm_completion_report_instructions, durable_state::now_unix_ms};
 use crate::agent::Agent;
 use crate::plan::{
     TaskControlAction, assignment_affinities_for_task, assignment_loads,
@@ -172,50 +171,35 @@ fn select_and_claim_auto_target(
     Err(no_auto_target_error(busy_skipped))
 }
 
-/// A double-assignment conflict: the task is already assigned and its
-/// assignee shows recent activity.
+/// A double-assignment conflict: the task already carries a claim, and a claim
+/// is assumed to be worked.
 struct ActiveAssignmentConflict {
     assignee: String,
-    active_ago_ms: u64,
 }
 
 /// Guard predicate for double assignment.
 ///
-/// Returns `Some(conflict)` when a direct `assign_task` must be rejected
-/// because the item is already assigned and actively worked: it carries an
-/// assignee, its status is in-flight (`queued`/`running`, not stale and not
-/// terminal), and the assignment is recent or its assignee is active within
-/// `active_within_ms`.
-///
-/// The two freshness sources are the assignment itself (a task handed out a
-/// moment ago is being worked) and the assignee's own activity clock, which the
-/// turn loop marks; liveness therefore needs no per-task record.
+/// Returns `Some(conflict)` when a direct `assign_task` must be rejected because
+/// the item already carries a claim: it has an assignee and its status is
+/// in-flight (`queued`/`running`). A claim is assumed to be worked while its
+/// holder lives, so nothing per-task needs recording and there is no window to
+/// age out of; the claim is released by its holder finishing, or by the salvage
+/// sweep reclaiming it from a dead holder.
 ///
 /// Everything else stays assignable so legitimate recovery keeps working:
-/// unassigned items, terminal items (explicit re-open), `running_stale` items
-/// (the stale-assignee path), and assigned items whose activity is older than
-/// the window (the sweep just has not flipped them to stale yet). An assigned
-/// item with no activity at all is treated as stale,
-/// mirroring `refresh_swarm_task_staleness`.
+/// unassigned items, terminal items (explicit re-open), and `running_stale`
+/// items (the stale-assignee path). Deliberate re-dispatch goes through
+/// `task_control` (retry/reassign/replace/salvage), which is exempt.
 fn active_assignment_conflict(
     status: &str,
     assigned_to: Option<&str>,
-    assigned_ago_ms: Option<u64>,
-    assignee_active_ago_ms: Option<u64>,
-    active_within_ms: u64,
 ) -> Option<ActiveAssignmentConflict> {
     let assignee = assigned_to?;
     if !matches!(status, "queued" | "running") {
         return None;
     }
-    // Whichever source is more recent decides; none at all counts as stale.
-    let active_ago_ms = [assigned_ago_ms, assignee_active_ago_ms]
-        .into_iter()
-        .flatten()
-        .min()?;
-    (active_ago_ms < active_within_ms).then(|| ActiveAssignmentConflict {
+    Some(ActiveAssignmentConflict {
         assignee: assignee.to_string(),
-        active_ago_ms,
     })
 }
 
@@ -223,13 +207,10 @@ fn active_assignment_conflict(
 /// assignee and pointing at the explicit takeover paths.
 fn active_assignment_error(task_id: &str, conflict: &ActiveAssignmentConflict) -> String {
     format!(
-        "Task '{}' is already assigned to '{}' (active {}s ago); refusing to double-assign. \
+        "Task '{}' is already assigned to '{}'; refusing to double-assign. \
          Use task_control reassign/replace to take over (the displaced worker is told to stand \
-         down), retry to re-dispatch to the same assignee, or wait for the assignment to finish \
-         or go stale.",
-        task_id,
-        conflict.assignee,
-        conflict.active_ago_ms / 1000
+         down), retry to re-dispatch to the same assignee, or wait for the assignment to finish.",
+        task_id, conflict.assignee
     )
 }
 
@@ -361,15 +342,11 @@ async fn requeue_existing_assignment(
     task_id: &str,
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
 ) -> Option<(String, HashSet<String>, usize)> {
-    let now_ms = now_unix_ms();
     let mut plans = swarm_plans.write().await;
     let plan = plans.get_mut(swarm_id)?;
     let item = plan.items.iter_mut().find(|item| item.id == task_id)?;
     item.assigned_to = Some(assignee_session.to_string());
     item.status = "queued".to_string();
-    let progress = plan.task_progress.entry(task_id.to_string()).or_default();
-    progress.assigned_session_id = Some(assignee_session.to_string());
-    progress.assigned_at_unix_ms = Some(now_ms);
     plan.version += 1;
     plan.participants.insert(req_session_id.to_string());
     plan.participants.insert(assignee_session.to_string());
@@ -689,15 +666,11 @@ fn spawn_assigned_task_run(
     let assignment_text = append_swarm_completion_report_instructions(&assignment_text);
     tokio::spawn(async move {
         {
-            let now_ms = now_unix_ms();
             let mut plans = swarm_plans.write().await;
             if let Some(plan) = plans.get_mut(&swarm_id)
                 && let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id)
             {
                 item.status = "running".to_string();
-                let progress = plan.task_progress.entry(task_id.clone()).or_default();
-                progress.assigned_session_id = Some(target_session.clone());
-                progress.started_at_unix_ms = Some(now_ms);
                 plan.version += 1;
             }
         }
@@ -1289,7 +1262,6 @@ async fn handle_comm_assign_task_with_mode(
     };
 
     let (selected_task_id, task_content, participant_ids, plan_item_count, blocked_reason) = {
-        let now_ms = now_unix_ms();
         let mut plans = swarm_plans.write().await;
         let plan = plans
             .entry(swarm_id.clone())
@@ -1311,21 +1283,7 @@ async fn handle_comm_assign_task_with_mode(
                     .iter()
                     .find(|item| item.id == task_id)
                     .and_then(|item| {
-                        let assignee = item.assigned_to.as_deref();
-                        active_assignment_conflict(
-                            &item.status,
-                            assignee,
-                            plan.task_progress
-                                .get(task_id)
-                                .and_then(|progress| {
-                                    progress.assigned_at_unix_ms.or(progress.started_at_unix_ms)
-                                })
-                                .map(|assigned_at| now_ms.saturating_sub(assigned_at)),
-                            assignee
-                                .and_then(crate::session_metrics::last_activity_age_secs)
-                                .map(|secs| secs.saturating_mul(1000)),
-                            swarm_task_stale_after().as_millis() as u64,
-                        )
+                        active_assignment_conflict(&item.status, item.assigned_to.as_deref())
                     })
                     .map(|conflict| active_assignment_error(task_id, &conflict))
             })
@@ -1367,14 +1325,6 @@ async fn handle_comm_assign_task_with_mode(
             let item = &mut plan.items[found_idx];
             item.assigned_to = Some(target_session.clone());
             item.status = "queued".to_string();
-            plan.task_progress.insert(
-                item_id.clone(),
-                SwarmTaskProgress {
-                    assigned_session_id: Some(target_session.clone()),
-                    assigned_at_unix_ms: Some(now_ms),
-                    ..SwarmTaskProgress::default()
-                },
-            );
             plan.version += 1;
             plan.participants.insert(req_session_id.clone());
             plan.participants.insert(target_session.clone());

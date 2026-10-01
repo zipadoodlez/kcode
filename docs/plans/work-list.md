@@ -232,27 +232,38 @@ and the one build + test pass lands at the end of 0.4f.
     path (`propose_plan`/`approve_plan`/`reject_plan`, `resync_plan`) is a second writer
     of the same rows and a consumer of the shared context; decide it here.
     It also carries what 0.4e deferred, because it is the same store-boundary cut:
-    `task_progress` goes; the heartbeat task, `touch_swarm_task_progress` and the
+    `task_progress` shrinks to the reclaim counter: the assignment time fields go,
+    because a claim is assumed to be worked while its holder lives, so the guard reads
+    the claim and not a clock; the heartbeat task, `touch_swarm_task_progress` and the
     heartbeat staleness sweep go (liveness is the member's); `running_stale` goes and
     its readers (turn-end, `task_control`, the conflict check, the TUI member view:
     `info_widget_todos::normalize_plan_status_for_todo` and `tui_state.rs` fold or count
     the string today, and the node keeps its own glyph, label and `warning_color()`
     sorted with `in_progress`, with the count untouched) derive the stall from the
     member's clock; the failed reason reads the member's detail
-    instead of `checkpoint_summary`; `dead_assignee_reclaims` moves to the run's runtime
-    keyed by row id (the salvage monitor is server-side, so the run, not the plan, is
-    its home, and the "worked once" rule in `live_turn.rs` does not bound that path);
+    instead of `checkpoint_summary`; the writers and readers that timed an assignment
+    (`requeue_existing_assignment`, the dispatch path, `active_assignment_conflict`)
+    stop doing so, and the reclaim counter stays where it is until 0.4g decides the
+    plan object and where runtime lives;
     `assignment_loads` stops being a per-task count and busy becomes the member's
     in-flight work; and `planner` goes once `expand_node` stops freeing the owner.
     Sequenced stages, one commit each, and the one build + test pass lands at the end of
-    0.4f. The persisted snapshot drops `task_progress` safely: it has no
-    `deny_unknown_fields` (`swarm_persistence.rs:112-121`), so old files still load.
+    0.4f. Dropping fields from the persisted snapshot is safe: `SwarmTaskProgress` has
+    no `deny_unknown_fields` (`swarm_persistence.rs:112-121`), so old files still load.
   - **0.4g. The swarm state gets one owner**: the `coordinators` map, any stored swarm
     id (including the `KCODE_SWARM_ID` shared-swarm opt-in), the `features.swarm` flag
     and per-session toggle (stored membership), the `assign_role` action that writes the
     coordinator by hand, and the 31 `SwarmState { .. }` rebuild sites (`docs/todo.md`
     §1's condense). Membership becoming derived is a behavior change, so this stage
     carries its own build + test pass; the one named above lands at the end of 0.4f.
+    - `(decide)` **Does the plan object exist, and where does per-task runtime live?**
+      `VersionedPlan` is a per-swarm cache of the rows plus `version`, `participants`
+      and the reclaim counter. The rows are the file and membership is the swarm;
+      `participants` is a hand-kept subset that the broadcast already falls back to
+      the whole swarm for (`swarm.rs:794`) and that no client reads. What the file
+      cannot give is `version`, which the client uses to drop out-of-order plan events
+      (`server_events.rs:2002`), and the counter. Answer this before the counter moves
+      again, so it moves once.
   `parse_kind`/`kind_str` stay, since they are what reads and writes a row's word.
   `Synthesize` stays as well: the word lives on the row (`tool/todo.rs` offers every
   `KINDS` entry), so a run's own join row has a word to be typed with. Nothing in the

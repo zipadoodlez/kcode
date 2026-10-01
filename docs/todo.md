@@ -318,6 +318,14 @@ changes are paid for in test churn.
   `plans/work-list.md`: filter for every session, or only for runs? And how does a
   session first see rows it does not hold, so that adopting one is its decision?
   Not a rule: the model does not scope the user's session to its holdings.
+- [ ] **(decision)** A quietly held claim can no longer be taken by a plain
+  `assign_task` (2026-10-01). The double-assignment guard used to age out: an
+  assignment older than `KCODE_SWARM_TASK_STALE_AFTER_SECS` (45s) whose assignee
+  showed no recent activity was reassignable by naming its task. That needed a
+  per-task assignment time, and the model keeps none: a claim is assumed to be worked
+  while its holder lives. Taking a task from its holder is now `task_control`
+  reassign/replace/retry, or waiting for the salvage sweep to reclaim it from a dead
+  holder. Add the age-out back only with a per-task clock it can read.
 - [ ] Not every color derives from a role: `configured_native_color`
   (`kcode-tui-style/src/palette.rs`) attributes a shade to a role only when it
   equals that role's default, so hardcoded `Color::Rgb(...)` shades pass through
