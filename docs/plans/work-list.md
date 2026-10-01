@@ -10,7 +10,7 @@ shape, or a mode, and a step that only adds surface is reconsidered before it is
 written. Four rules, each one paid for by a failure this plan already had:
 
 - **Every cut names its code and the evidence.** A step quotes the file and count it
-  measured (`31 SwarmState { .. }` sites, `app_fields=188`, the `SwarmMember`
+  measured (`31 SwarmState { .. }` sites, `app_fields=182`, the `SwarmMember`
   literal count), and the claim is grepped again before the step is written. 0.4
   shipped two claims that were false on this tree, and `internals/swarm.md` had
   repeated one of them.
@@ -149,7 +149,7 @@ the children added underneath.
 
 Every step lands whole, proven by the gate and, where behavior moves, one `kcode
 run` probe against its own socket. Widest shared shape first, so no step sweeps
-call sites a later step reshapes: 0.2 removes the poke the permission replaced, and
+call sites a later step reshapes: 0.2 removed the poke the permission replaced, and
 0.3 gives the state one owner so 0.4 can delete the rest.
 
 After that, in the order of the moves: delete (D, the topic channels, the shared
@@ -160,11 +160,11 @@ the model does not need them. Dropping them costs the duplication they would hav
 removed and nothing else.
 
 **Here is where the work stands**, and a step in flight is finished before a new one
-starts. 0.1's loop and permission have landed with their tests, and 0.2 has landed
-whole, in five committed stages; what it leaves owed is the command-line poke, which
-waits for 0.3. Next is 0.1's four riders, and then 0.3. Each stage compiles before it
-is committed (`dev/post-change.md` says which check); the full gate runs once, when
-the step is done.
+starts. 0.1's loop and permission have landed with their tests. 0.2 has landed whole
+and is gone from this list; what it owed is now its own step below, after 0.3. Next
+is 0.1's four riders, and then 0.3. Each stage compiles before it is committed
+(`dev/post-change.md` says which check); the full gate runs once, when the step is
+done.
 
 ### 0. One way work gets done
 
@@ -185,26 +185,6 @@ the step is done.
   Deferred: a headless member holding the permission inherently goes to 0.3, and the
   `features.auto_poke` rename goes with the last poke, the command-line one.
 
-- [x] **0.2. Delete the client poke.** Landed 2026-10-01 in five stages, each
-  committed on its own: its tests, its user surface (the `/poke` command, the
-  `auto_poke_toggle` keybinding, ctrl+p, the overlay row, its help), its scheduler
-  (`schedule_turn_end_followups`, `schedule_auto_poke_followup_if_needed`, the
-  guardrail breaker trio, `build_poke_message`, `queue_poke_message`), its arming
-  state (`auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`,
-  `disable_auto_poke`, `clear_queued_poke_messages`,
-  `stop_auto_poke_for_non_retryable_error`), and the docs and help strings that
-  named it. The guardrail breaker was not re-homed: it guarded the unbounded
-  re-poke loop this step deletes, and a row is attempted once. The non-retryable
-  classifier stays, because it is the client's turn-error retry policy rather than
-  a property of the poke, which makes that arm unconditional: every non-retryable
-  error now gets the short two-attempt budget and a fallback offer, where before
-  only a poked session did. Owed and deferred, because a plan-driven member must
-  not be driven twice and a headless run has no plan until rows seed one: the
-  command-line poke (`build_auto_poke_message`, the `_with_auto_poke` run paths and
-  `run_command_auto_poke_max_turns` in `src/cli/commands.rs`), the
-  `features.auto_poke` rename, and the two poke-named survivors
-  (`is_non_retryable_auto_poke_error`, `is_auto_poke_connectivity_error`), which are
-  really turn-error classifiers already covered by `network_retry`.
 - [ ] **0.3. Rows are the run's seed source.** `kind` rides on the row, the node id
   is the row id, the file's `blocked_by` is the node's dependency edge (rules 6 and
   7 name it; there is no rename), position is priority, and gates get engine names.
@@ -230,6 +210,14 @@ the step is done.
   Either the live graph is the gate's input and the persisted plan carries those
   nodes until the run closes, which is two durable stores while a run runs, or
   the gate reads something else.
+- [ ] **The command-line poke goes with the rows.** `src/cli/commands.rs`'s
+  `_with_auto_poke` run paths, `run_command_auto_poke_max_turns`, `next_headless_poke`
+  and `incomplete_poke_todos`, plus `build_auto_poke_message` (its last remaining
+  producer) and the `features.auto_poke` rename. It waits for 0.3 because a
+  plan-driven member must not be driven twice and a headless run has no plan until
+  rows seed one. The two poke-named survivors (`is_non_retryable_auto_poke_error`,
+  `is_auto_poke_connectivity_error`) are really turn-error classifiers and rename with
+  it.
 - [ ] **0.4. The cuts the run makes redundant**: the wire node spec, the
   `coordinators` map, any stored swarm id, the 31
   `SwarmState { .. }` rebuild sites, and the `Synthesize` kind, reachable only
