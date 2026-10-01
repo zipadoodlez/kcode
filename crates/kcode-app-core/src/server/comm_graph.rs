@@ -470,6 +470,12 @@ pub(super) async fn handle_comm_complete_node(
         }
     };
 
+    // The row's half of this close, kept before the engine op takes the artifact:
+    // the row's words are the artifact's findings, and the machine-readable half is
+    // the artifact as written.
+    let findings = artifact.findings.clone();
+    let record_artifact = serde_json::to_value(&artifact).ok();
+
     let result = {
         let mut plans = swarm_plans.write().await;
         let Some(plan) = plans.get_mut(&swarm_id) else {
@@ -490,6 +496,26 @@ pub(super) async fn handle_comm_complete_node(
 
     match result {
         Ok(()) => {
+            // The engine's close is the row's close too, through the same writer the
+            // `todo` tool uses: the node's id is the row's id, so the row goes with
+            // its record onto the row that owns the work, a gate reading it from the
+            // file and a re-seed not lifting finished work again.
+            let working_dir = swarm_members
+                .read()
+                .await
+                .get(&req_session_id)
+                .and_then(|member| member.working_dir.clone());
+            if let Err(error) = crate::todo::close_row_on_disk(
+                working_dir.as_deref(),
+                &req_session_id,
+                &node_id,
+                &findings,
+                record_artifact,
+            ) {
+                crate::logging::warn(&format!(
+                    "node {node_id} closed in the plan but not in the list: {error}"
+                ));
+            }
             finalize(
                 id,
                 &swarm_id,

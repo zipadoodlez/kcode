@@ -305,6 +305,23 @@ pub fn close_row(
     Ok(())
 }
 
+/// Close one row in the file: read the list, apply [`close_row`], write it back.
+///
+/// This is the second caller's half of rule 2. The `todo` tool closes a row it
+/// already holds in memory; the plan engine closes a node whose row is only in the
+/// file, and both go through the same rules and the same write.
+pub fn close_row_on_disk(
+    working_dir: Option<&Path>,
+    session_id: &str,
+    id: &str,
+    result: &str,
+    artifact: Option<serde_json::Value>,
+) -> Result<()> {
+    let mut rows = load_tasks(working_dir, session_id)?;
+    close_row(&mut rows, id, result, artifact)?;
+    save_tasks(working_dir, session_id, &rows)
+}
+
 /// The next free `t<n>` id.
 fn next_id(rows: &[TaskItem]) -> String {
     let highest = rows

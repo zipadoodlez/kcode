@@ -378,6 +378,66 @@ async fn e2e_reseed_keeps_the_plans_existing_node() {
     assert!(events.iter().any(|event| matches!(event, ServerEvent::Done { .. })));
 }
 
+/// The engine's close is the row's close: a completed node's row leaves the list
+/// and its record lands on the row that owns the work (S5b). The fixture's seed made
+/// the first row the run's anchor, so the finished row's record lands there, which is
+/// what a resumed run and a gate read.
+#[tokio::test]
+async fn e2e_complete_closes_the_row_and_keeps_its_record() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let mut fx = graph_fixture().await;
+    fx.seed(
+        "light",
+        vec![
+            node_spec("the-run", "synthesize", &[]),
+            node_spec("the-work", "implement", &[]),
+        ],
+    )
+    .await;
+    {
+        let mut plans = fx.swarm_plans.write().await;
+        let plan = plans.get_mut(&fx.swarm_id).expect("plan");
+        let work = plan
+            .items
+            .iter_mut()
+            .find(|item| item.id == "the-work")
+            .expect("the node");
+        work.status = "running".to_string();
+        work.assigned_to = Some(fx.worker.clone());
+    }
+
+    handle_comm_complete_node(
+        3,
+        fx.worker.clone(),
+        "the-work".to_string(),
+        serde_json::json!({"findings": "it holds", "confidence": "high"}).to_string(),
+        &fx.client_tx,
+        &fx.swarm_members,
+        &fx.swarms_by_id,
+        &fx.swarm_plans,
+        &fx.swarm_coordinators,
+        &fx.event_history,
+        &fx.event_counter,
+        &fx.swarm_event_tx,
+    )
+    .await;
+    while fx.client_rx.try_recv().is_ok() {}
+
+    let rows = crate::todo::load_tasks(Some(fx.repo.path()), &fx.coord).expect("read the list");
+    assert!(
+        !rows.iter().any(|row| row.id == "the-work"),
+        "the completed node's row is gone: {:?}",
+        rows.iter().map(|row| row.id.as_str()).collect::<Vec<_>>()
+    );
+    let anchor = rows
+        .iter()
+        .find(|row| row.id == "the-run")
+        .expect("the run's anchor row");
+    assert_eq!(anchor.records[0]["id"], "the-work");
+    assert_eq!(anchor.records[0]["result"], "it holds");
+    assert_eq!(anchor.records[0]["artifact"]["confidence"], "high");
+}
+
 #[tokio::test]
 async fn e2e_seed_rejects_cycle_without_mutating_plan() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
