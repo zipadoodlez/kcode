@@ -75,13 +75,10 @@ pub struct SwarmExecutionState {
 }
 
 /// Per-node task-DAG metadata, stored as a side map on `VersionedPlan` keyed by
-/// plan item id. This is the DAG decomposition relation, which is distinct from
-/// the row's `parent` field (the run's anchor grouping) and so is not derived.
+/// plan item id. The hierarchy is the row's own `parent` (one relation, the
+/// file's), so only what a row cannot say lives here.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeMeta {
-    /// The composite node this was decomposed from, if any.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parent: Option<String>,
     /// True once decomposed into children (composite join/synthesis point).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub expanded: bool,

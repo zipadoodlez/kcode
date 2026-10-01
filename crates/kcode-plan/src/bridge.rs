@@ -127,7 +127,7 @@ pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
             kind: parse_kind(item.kind.as_deref()).unwrap_or(NodeKind::Explore),
             status: status_from_plan(&item.status),
             owner: item.assigned_to.clone(),
-            parent: meta.parent.clone(),
+            parent: item.parent.clone(),
             depends_on: item.blocked_by.clone(),
             expanded: meta.expanded,
             planner: meta.planner.clone(),
@@ -170,13 +170,12 @@ pub fn apply_task_graph(plan: &mut VersionedPlan, graph: &TaskGraph) {
             blocked_by: node.depends_on.clone(),
             assigned_to: node.owner.clone(),
             group: None,
-            parent: prev.and_then(|p| p.parent.clone()),
+            parent: node.parent.clone(),
             note: prev.and_then(|p| p.note.clone()),
         });
         node_meta.insert(
             node.id.clone(),
             NodeMeta {
-                parent: node.parent.clone(),
                 expanded: node.expanded,
                 planner: node.planner.clone(),
                 artifact_json: node
@@ -406,7 +405,16 @@ mod tests {
         apply_task_graph(&mut plan, &graph);
 
         assert!(plan.node_meta["root"].expanded);
-        assert_eq!(plan.node_meta["root.1"].parent.as_deref(), Some("root"));
+        assert_eq!(
+            plan.items
+                .iter()
+                .find(|item| item.id == "root.1")
+                .expect("child row")
+                .parent
+                .as_deref(),
+            Some("root"),
+            "the decomposition hierarchy lands on the row's own parent"
+        );
 
         // Complete the child end to end through the bridge.
         let mut graph = to_task_graph(&plan);
