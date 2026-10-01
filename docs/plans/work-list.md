@@ -195,13 +195,12 @@ removed and nothing else.
   continues, a wake does not), so it wants one `kcode run` probe against its own
   socket and a scratch repo, not only the in-process tests. The proof so far is the
   pick and the loop under a mock provider.
-  Also owed, and it is a hole the permission commit opened: the standing default's
-  other half, `may_continue || features.auto_poke` in `record_processing_completion`,
-  has no test. The loop tests pass the grant explicitly, so the `||` branch is
-  unexercised, and 0.2 is about to remove the config key's last client reader, which
-  would make that half look like dead config. Covered by exposing
-  `record_processing_completion` to the test module and driving one ungranted turn
-  with `KCODE_AUTO_POKE=true`, then the same turn with it off.
+  The standing default's other half, `may_continue || features.auto_poke` in
+  `record_processing_completion`, landed with a test 2026-10-01
+  (`the_standing_default_continues_an_ungranted_turn`): one attached session holding
+  a ready row, driven twice through the real path, with the default off nothing runs
+  and with it on the row's turn does. It had to land before 0.2 stage 4, which
+  removes the config key's last client reader.
   Small, still owed: the row rung (`/auto t3`, the pick's optional subtree filter),
   an optional bound so "work until 07:00" is the run property the model says (the
   duration parser and the target-wake label are in git history), and a
