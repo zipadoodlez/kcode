@@ -568,6 +568,17 @@ pub(super) fn resolve_swarm_spawn_effort(
     clean(requested_effort).or_else(|| clean(configured_swarm_effort))
 }
 
+/// Whether `session_id` may create swarm agents: only the swarm's root, the
+/// member with no parent, may. A member's deeper work is rows the run
+/// dispatches, so a member never starts another agent. A session absent from the
+/// member map counts as a root.
+fn session_may_spawn(members: &HashMap<String, SwarmMember>, session_id: &str) -> bool {
+    members
+        .get(session_id)
+        .and_then(|member| member.report_back_to_session_id.as_deref())
+        .is_none()
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "server-side swarm spawning needs session, swarm state, provider, and event sinks together"
@@ -595,6 +606,14 @@ pub(super) async fn spawn_swarm_agent(
     soft_interrupt_queues: &SessionInterruptQueues,
     client_connections: &ClientConnections,
 ) -> anyhow::Result<String> {
+    // The single spawn choke point, so both the `spawn` action and the assign
+    // path obey the root-only rule.
+    if !session_may_spawn(&*swarm_members.read().await, req_session_id) {
+        anyhow::bail!(
+            "Only the root session of a swarm may spawn agents; a member adds \
+             deeper work as rows and the run starts their workers."
+        );
+    }
     let resolved_working_dir =
         resolve_spawn_working_dir(working_dir, req_session_id, sessions, swarm_members).await;
     let coordinator = resolve_coordinator_spawn_identity(req_session_id, sessions).await;
@@ -1242,7 +1261,6 @@ async fn ensure_spawn_coordinator_swarm(
         swarm_id,
         from_name,
         is_root,
-        root_session_id,
         coordinator_id,
         coordinator_is_stale,
         live_member_count,
@@ -1260,10 +1278,6 @@ async fn ensure_spawn_coordinator_swarm(
             .get(req_session_id)
             .and_then(|member| member.report_back_to_session_id.clone())
             .is_none();
-        let root_session_id = super::swarm::swarm_ancestors(&members, req_session_id)
-            .last()
-            .cloned()
-            .unwrap_or_else(|| req_session_id.to_string());
         // Count both all live members for the absolute hard cap and live spawned
         // agents for the configurable RAM-safety cap. User-created roots do not
         // consume worker slots; every recursively spawned descendant does.
@@ -1307,7 +1321,6 @@ async fn ensure_spawn_coordinator_swarm(
             swarm_id,
             from_name,
             is_root,
-            root_session_id,
             coordinator_id,
             coordinator_is_stale,
             live_member_count,
@@ -1323,26 +1336,6 @@ async fn ensure_spawn_coordinator_swarm(
         });
         return None;
     };
-
-    // Light and ad hoc swarms are deliberately one-level fan-out: only the root
-    // session may create workers. Recursive spawning is an explicit deep-swarm
-    // capability, keyed from the root's effort rather than the requesting
-    // child's effort so a worker cannot opt itself into unbounded growth.
-    if !is_root {
-        let root_is_deep = crate::session_effort::session_effort(&root_session_id)
-            .as_deref()
-            .is_some_and(crate::prompt::is_deep_swarm_effort);
-        if !root_is_deep {
-            let _ = client_event_tx.send(ServerEvent::Error {
-                id,
-                message: format!(
-                    "Recursive swarm spawning is disabled for light and ad hoc swarms. Only the root session ({root_session_id}) may spawn agents unless that root is running in swarm-deep mode."
-                ),
-                retry_after_secs: None,
-            });
-            return None;
-        }
-    }
 
     // Keep an absolute hard ceiling even when the configurable limit is disabled.
     if live_member_count >= super::MAX_SWARM_MEMBERS {
