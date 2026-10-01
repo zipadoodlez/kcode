@@ -200,10 +200,21 @@ into 0.4f, and 0.4e/0.4f/0.4g remain. Each stage compiles before it is committed
     `parent`/`expanded` cut is not a separate step: `row.parent` is the file's one
     hierarchy (the anchor adopts root rows and decomposition adds children), so the
     plan reading it is exactly 0.4f. See that stage.
-  - **0.4e. `task_progress` goes**, liveness comes from the member's own clock and
-    status where it renders, and the planner cut lands with the load model: count only
-    work actually being worked, so a waiting join no longer marks its planner busy, then
-    stop freeing the owner on expand and delete `planner` and its affinity read.
+  - **0.4e. `task_progress` goes**, and liveness comes from the member's own clock: the
+    activity mark the turn loop already writes (`session_metrics::record_activity`,
+    `record_token_usage`, `record_turn`, in `turn_streaming_mpsc.rs`) is the source, so a
+    task is alive when its assignee is. Liveness belongs to the member, not the task.
+    The same review settles the scheduler's other copies: fan-out is not a decision but
+    the plan's ready set (`blocked_by`), so a linear chain reuses one member and
+    independent rows fan out on their own; a member holds one row at a time, so busy is
+    the member's in-flight work, not a per-task load count; and who integrates a
+    decomposition is the row's holder (`assigned_to`), not a `planner` field. So the
+    per-task heartbeat task, the `touch_swarm_task_progress` path, the heartbeat
+    staleness sweep, `assignment_loads` as a count, and `planner` all go; the
+    member-death salvage path stays. Decisions: where the failed reason comes from once
+    `checkpoint_summary` is gone, and whether `dead_assignee_reclaims` lives as a small
+    run map or the cap is dropped. Sequenced stages, one commit each, and a build
+    checkpoint runs before 0.4f starts rather than after every stage.
   - **0.4f. `VersionedPlan` becomes a view of the file**, deleting
     `swarm_persistence.rs` (638 lines) and its tests (938 lines). It reads `parent` and
     composite from the rows: the file's `parent` is the one hierarchy (`anchor_from_rows`

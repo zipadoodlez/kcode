@@ -534,6 +534,7 @@ pub(super) async fn refresh_swarm_task_staleness(
 ) {
     let now_ms = now_unix_ms();
     let stale_after_ms = swarm_task_stale_after().as_millis() as u64;
+    let stale_after_secs = swarm_task_stale_after().as_secs();
     let changed_swarm_ids = {
         let mut plans = swarm_plans.write().await;
         let mut changed = Vec::new();
@@ -548,9 +549,21 @@ pub(super) async fn refresh_swarm_task_staleness(
                     .last_heartbeat_unix_ms
                     .or(progress.started_at_unix_ms)
                     .or(progress.assigned_at_unix_ms);
-                let is_stale = last_heartbeat
-                    .map(|ts| now_ms.saturating_sub(ts) >= stale_after_ms)
-                    .unwrap_or(true);
+                let heartbeat_fresh = last_heartbeat
+                    .map(|ts| now_ms.saturating_sub(ts) < stale_after_ms)
+                    .unwrap_or(false);
+                // Liveness is the member's own. The turn loop already marks its
+                // activity (`session_metrics::record_activity`), so a task is alive
+                // when its assignee is; the heartbeat stays as a feeder until the
+                // per-task record goes.
+                let member_fresh = item
+                    .assigned_to
+                    .as_deref()
+                    .or(progress.assigned_session_id.as_deref())
+                    .and_then(crate::session_metrics::last_activity_age_secs)
+                    .map(|age_secs| age_secs < stale_after_secs)
+                    .unwrap_or(false);
+                let is_stale = !(heartbeat_fresh || member_fresh);
                 match (item.status.as_str(), is_stale) {
                     ("running", true) => {
                         item.status = "running_stale".to_string();
