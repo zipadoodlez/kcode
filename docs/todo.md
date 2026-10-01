@@ -222,12 +222,27 @@ destination, the roadmap, and why the tier must not return; the A/B probe recipe
 
 ## Anytime
 
-- [ ] **(decision)** The long unattended run has no preflight. Deleting the overnight
-  subsystem (2026-10-01) took its checks with it: battery, free memory, free disk,
-  and a projection of whether the provider quota lasts the run. Under the new model
-  those are not a mode, but they are still the difference between a night's work and
-  a night's spend on a dead provider. Decide where a check belongs, if anywhere:
-  before the permission is granted, or as a warning the grant prints.
+- [ ] **(decision)** What the long permission carries, now that the overnight
+  subsystem is gone (deleted 2026-10-01). Four things it did have value apart from
+  the mode, judged one at a time:
+  - **A bound.** `parse_duration` ("7h", "90m") and `target_wake_at` are the model's
+    "a bound on a run is a run property, never a row field", so "work until 07:00"
+    needs no model change; the parser and the "target in 4h 45m" label existed.
+  - **A quota projection.** `build_usage_projection` turned the existing
+    `usage::fetch_all_provider_usage` output into a risk that the spend would not
+    last the run. It is the only preflight piece that predicted rather than
+    displayed, and it fits on the grant as a warning or a stop near the hard limit.
+  - **A resource snapshot.** Battery, memory, disk and load: ~200 lines of /proc and
+    sysfs readers that were only ever displayed, never acted on. Worth keeping only
+    if something acts, so throttle or stop on battery and refuse a run with no disk.
+  - **A run-end summary.** The morning-report, handoff-ready and final-wrap-up
+    prompts were three timers on one idea, the human-facing "what happened". Under
+    the new model the record is the row closes and the commits, which is readable but
+    not a summary. At most one prompt when the run ends, never three.
+  Deliberately not carried over: the manifest, the events file, the task cards and
+  the review HTML (a second durable store of the same work), the second supervisor
+  and coordinator session, and the stored `validated` field, which a close's result
+  is now.
 - [ ] **(decision)** Where does work land: `main`, or a branch with a merge-back?
   Two days and 85 commits went onto `batch-ab-provider-onboarding` while `main` did
   not move and nothing noticed; nothing was lost, but "is `main` green?" could not
