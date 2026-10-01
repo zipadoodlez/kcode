@@ -1,16 +1,13 @@
-use super::durable_state::now_unix_ms;
 use super::state::{MAX_EVENT_HISTORY, fanout_session_event};
 use super::{SwarmEvent, SwarmEventType, SwarmMember, SwarmState, VersionedPlan};
 use super::{persist_swarm_state_for, remove_persisted_swarm_state_for};
 use crate::agent::Agent;
-use crate::plan::{TaskItem, newly_ready_item_ids};
+use crate::plan::{TaskItem, newly_ready_item_ids, summarize_plan_graph};
 use crate::protocol::{NotificationType, ServerEvent, SwarmLifecycleStatus};
 use crate::session::Session;
 use anyhow::Result;
 use futures::future::try_join_all;
-use kcode_swarm_core::{
-    completion_notification_message, normalize_completion_report, truncate_detail,
-};
+use kcode_swarm_core::{completion_notification_message, normalize_completion_report};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -87,7 +84,6 @@ pub(super) fn swarm_is_self_or_ancestor(
 
 const DEFAULT_SWARM_STATUS_DEBOUNCE_MEMBER_THRESHOLD: usize = 2;
 const DEFAULT_SWARM_STATUS_DEBOUNCE_MS: u64 = 75;
-const DEFAULT_SWARM_TASK_HEARTBEAT_SECS: u64 = 10;
 const DEFAULT_SWARM_TASK_STALE_AFTER_SECS: u64 = 45;
 const DEFAULT_SWARM_TASK_SWEEP_INTERVAL_SECS: u64 = 5;
 const DEFAULT_SWARM_TERMINAL_MEMBER_RETENTION_SECS: u64 = 24 * 60 * 60;
@@ -157,13 +153,6 @@ fn log_swarm_lifecycle(phase: &str, fields: Vec<(&str, String)>) {
             .chain(fields)
             .collect::<Vec<_>>(),
     );
-}
-
-pub(super) fn swarm_task_heartbeat_interval() -> Duration {
-    Duration::from_secs(configured_positive_u64(
-        "KCODE_SWARM_TASK_HEARTBEAT_SECS",
-        DEFAULT_SWARM_TASK_HEARTBEAT_SECS,
-    ))
 }
 
 pub(super) fn swarm_task_stale_after() -> Duration {
@@ -321,7 +310,6 @@ impl DeadMemberSalvage {
 /// assign-time path so repeatedly lethal nodes fail loudly instead of cycling
 /// workers forever.
 fn salvage_plan_assignments_of(plan: &mut VersionedPlan, session_id: &str) -> DeadMemberSalvage {
-    let now_ms = now_unix_ms();
     let mut outcome = DeadMemberSalvage::default();
     let assigned_ids: Vec<String> = plan
         .items
@@ -343,25 +331,12 @@ fn salvage_plan_assignments_of(plan: &mut VersionedPlan, session_id: &str) -> De
                 item.status = "failed".to_string();
                 item.assigned_to = None;
             }
-            let progress = plan.task_progress.entry(task_id.clone()).or_default();
-            progress.assigned_session_id = None;
-            progress.completed_at_unix_ms = Some(now_ms);
-            progress.stale_since_unix_ms = None;
-            progress.checkpoint_summary = Some(truncate_detail(
-                &format!(
-                    "failed: assigned worker {} died and the automatic reclaim cap was reached",
-                    session_id
-                ),
-                120,
-            ));
             plan.version += 1;
             outcome.failed_task_ids.push(task_id);
         } else if crate::plan::reclaim_stranded_assignment(plan, &task_id) {
             if let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id) {
                 item.status = "queued".to_string();
             }
-            let progress = plan.task_progress.entry(task_id.clone()).or_default();
-            progress.stale_since_unix_ms = None;
             outcome.requeued_task_ids.push(task_id);
         }
     }
@@ -467,71 +442,12 @@ async fn notify_coordinator_of_salvage(
     .await;
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "task progress touch updates durable progress plus swarm persistence and coordinator-facing state in one helper"
-)]
-pub(super) async fn touch_swarm_task_progress(
-    swarm_id: &str,
-    task_id: &str,
-    assigned_session_id: Option<&str>,
-    checkpoint_summary: Option<String>,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
-) -> bool {
-    let now_ms = now_unix_ms();
-    let revived = {
-        let mut plans = swarm_plans.write().await;
-        let Some(plan) = plans.get_mut(swarm_id) else {
-            return false;
-        };
-        let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id) else {
-            return false;
-        };
-        let progress = plan.task_progress.entry(task_id.to_string()).or_default();
-        if let Some(session_id) = assigned_session_id {
-            progress.assigned_session_id = Some(session_id.to_string());
-        }
-        // Heartbeats/checkpoints are proof of life for the assigned session:
-        // fold them into the member activity clock so swarm status reflects
-        // busy workers whose lifecycle status has not changed in a while.
-        if let Some(session_id) = progress.assigned_session_id.as_deref() {
-            crate::session_metrics::record_activity(session_id);
-        }
-        progress.last_heartbeat_unix_ms = Some(now_ms);
-        if let Some(summary) = checkpoint_summary {
-            progress.last_checkpoint_unix_ms = Some(now_ms);
-            progress.checkpoint_summary = Some(truncate_detail(&summary, 120));
-        }
-        if item.status == "running_stale" {
-            item.status = "running".to_string();
-            progress.stale_since_unix_ms = None;
-            plan.version += 1;
-            true
-        } else {
-            false
-        }
-    };
-    let swarm_state = SwarmState {
-        members: Arc::clone(swarm_members),
-        swarms_by_id: Arc::clone(swarms_by_id),
-        plans: Arc::clone(swarm_plans),
-        coordinators: Arc::clone(swarm_coordinators),
-    };
-    persist_swarm_state_for(swarm_id, &swarm_state).await;
-    revived
-}
-
 pub(super) async fn refresh_swarm_task_staleness(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
 ) {
-    let now_ms = now_unix_ms();
-    let stale_after_ms = swarm_task_stale_after().as_millis() as u64;
     let stale_after_secs = swarm_task_stale_after().as_secs();
     let changed_swarm_ids = {
         let mut plans = swarm_plans.write().await;
@@ -542,36 +458,24 @@ pub(super) async fn refresh_swarm_task_staleness(
                 if !matches!(item.status.as_str(), "running" | "running_stale") {
                     continue;
                 }
-                let progress = plan.task_progress.entry(item.id.clone()).or_default();
-                let last_heartbeat = progress
-                    .last_heartbeat_unix_ms
-                    .or(progress.started_at_unix_ms)
-                    .or(progress.assigned_at_unix_ms);
-                let heartbeat_fresh = last_heartbeat
-                    .map(|ts| now_ms.saturating_sub(ts) < stale_after_ms)
-                    .unwrap_or(false);
-                // Liveness is the member's own. The turn loop already marks its
-                // activity (`session_metrics::record_activity`), so a task is alive
-                // when its assignee is; the heartbeat stays as a feeder until the
-                // per-task record goes.
+                // Liveness is the member's own: the turn loop marks its activity
+                // (`session_metrics::record_activity`), so a task is alive while
+                // its assignee is.
                 let member_fresh = item
                     .assigned_to
                     .as_deref()
-                    .or(progress.assigned_session_id.as_deref())
                     .and_then(crate::session_metrics::last_activity_age_secs)
                     .map(|age_secs| age_secs < stale_after_secs)
                     .unwrap_or(false);
-                let is_stale = !(heartbeat_fresh || member_fresh);
+                let is_stale = !member_fresh;
                 match (item.status.as_str(), is_stale) {
                     ("running", true) => {
                         item.status = "running_stale".to_string();
-                        progress.stale_since_unix_ms.get_or_insert(now_ms);
                         plan.version += 1;
                         swarm_changed = true;
                     }
                     ("running_stale", false) => {
                         item.status = "running".to_string();
-                        progress.stale_since_unix_ms = None;
                         plan.version += 1;
                         swarm_changed = true;
                     }
@@ -621,12 +525,7 @@ pub(super) async fn refresh_swarm_task_staleness(
                 if !matches!(item.status.as_str(), "running" | "running_stale" | "queued") {
                     continue;
                 }
-                let assignee = item.assigned_to.as_deref().or_else(|| {
-                    plan.task_progress
-                        .get(&item.id)
-                        .and_then(|progress| progress.assigned_session_id.as_deref())
-                });
-                let Some(assignee) = assignee else {
+                let Some(assignee) = item.assigned_to.as_deref() else {
                     continue;
                 };
                 let assignee_is_dead = match members.get(assignee) {
@@ -654,6 +553,45 @@ pub(super) async fn refresh_swarm_task_staleness(
         )
         .await;
     }
+}
+
+/// The last status detail of every member, keyed by session id.
+///
+/// The plan keeps no per-node history, so a node's failure reason is its
+/// assignee's own detail: this is the projection the plan snapshots need.
+pub(super) async fn member_details(
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+) -> HashMap<String, String> {
+    swarm_members
+        .read()
+        .await
+        .iter()
+        .filter_map(|(session_id, member)| {
+            member
+                .detail
+                .clone()
+                .map(|detail| (session_id.clone(), detail))
+        })
+        .collect()
+}
+
+/// Failure reason per failed plan item id, read from [`member_details`].
+pub(super) fn failed_reasons_for(
+    items: &[TaskItem],
+    member_details: &HashMap<String, String>,
+) -> std::collections::BTreeMap<String, String> {
+    summarize_plan_graph(items)
+        .failed_ids
+        .into_iter()
+        .filter_map(|id| {
+            let assignee = items
+                .iter()
+                .find(|item| item.id == id)?
+                .assigned_to
+                .as_deref()?;
+            Some((id, member_details.get(assignee)?.clone()))
+        })
+        .collect()
 }
 
 fn swarm_broadcast_key(
@@ -833,6 +771,7 @@ pub(super) async fn broadcast_swarm_plan_with_previous(
         crate::protocol::PlanGraphStatus,
         Vec<String>,
     ) = {
+        let assignee_details = member_details(swarm_members).await;
         let plans = swarm_plans.read().await;
         let Some(vp) = plans.get(swarm_id) else {
             return;
@@ -850,6 +789,7 @@ pub(super) async fn broadcast_swarm_plan_with_previous(
                 vp,
                 Some(3),
                 newly_ready_ids,
+                failed_reasons_for(&vp.items, &assignee_details),
             ),
             p,
         )
@@ -924,6 +864,7 @@ pub(super) async fn send_swarm_plan_to_session(
         return;
     };
 
+    let assignee_details = member_details(swarm_members).await;
     let event = {
         let plans = swarm_plans.read().await;
         let Some(vp) = plans.get(&swarm_id) else {
@@ -945,6 +886,7 @@ pub(super) async fn send_swarm_plan_to_session(
                 vp,
                 Some(3),
                 Vec::new(),
+                failed_reasons_for(&vp.items, &assignee_details),
             )),
         }
     };
@@ -1719,10 +1661,10 @@ fn parse_swarm_tasks(text: &str) -> Vec<SwarmTaskSpec> {
 mod tests {
     use super::{
         broadcast_swarm_plan, broadcast_swarm_plan_with_previous, broadcast_swarm_status,
-        member_in_status_broadcast, now_unix_ms, parse_swarm_tasks, refresh_swarm_task_staleness,
+        member_in_status_broadcast, parse_swarm_tasks, refresh_swarm_task_staleness,
         remove_session_from_swarm, salvage_assignments_of_dead_member, swarm_ancestors,
-        swarm_is_self_or_ancestor, swarm_spawn_depth, touch_swarm_task_progress,
-        update_member_status, update_member_status_with_report,
+        swarm_is_self_or_ancestor, swarm_spawn_depth, update_member_status,
+        update_member_status_with_report,
     };
     use crate::plan::TaskItem;
     use crate::protocol::SwarmLifecycleStatus;
@@ -2767,15 +2709,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn refresh_swarm_task_staleness_marks_running_tasks_stale_and_heartbeat_revives() {
+    async fn refresh_swarm_task_staleness_marks_running_tasks_stale_from_the_member_clock() {
         let swarm_members = Arc::new(RwLock::new(HashMap::new()));
         let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
             "swarm-1".to_string(),
             HashSet::from(["worker".to_string()]),
         )])));
         let swarm_coordinators = Arc::new(RwLock::new(HashMap::new()));
-        let now_ms = now_unix_ms();
-        let stale_age_ms = super::swarm_task_stale_after().as_millis() as u64 + 5_000;
         let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
             "swarm-1".to_string(),
             VersionedPlan {
@@ -2784,28 +2724,26 @@ mod tests {
                     status: "running".to_string(),
                     priority: "medium".to_string(),
                     id: "task-1".to_string(),
-                    assigned_to: Some("worker".to_string()),
+                    assigned_to: Some("sweep-worker".to_string()),
                     ..Default::default()
                 }],
                 version: 1,
-                participants: HashSet::from(["worker".to_string()]),
+                participants: HashSet::from(["sweep-worker".to_string()]),
                 task_progress: HashMap::from([(
                     "task-1".to_string(),
                     crate::server::SwarmTaskProgress {
-                        assigned_session_id: Some("worker".to_string()),
-                        started_at_unix_ms: Some(now_ms.saturating_sub(stale_age_ms)),
-                        last_heartbeat_unix_ms: Some(now_ms.saturating_sub(stale_age_ms)),
+                        assigned_session_id: Some("sweep-worker".to_string()),
                         ..Default::default()
                     },
                 )]),
                 node_meta: HashMap::new(),
             },
         )])));
-        let (worker, _worker_rx) = swarm_member("worker", "agent", true);
+        let (worker, _worker_rx) = swarm_member("sweep-worker", "agent", true);
         swarm_members
             .write()
             .await
-            .insert("worker".to_string(), worker);
+            .insert("sweep-worker".to_string(), worker);
 
         refresh_swarm_task_staleness(
             &swarm_members,
@@ -2815,40 +2753,10 @@ mod tests {
         )
         .await;
 
-        {
-            let plans = swarm_plans.read().await;
-            let plan = plans.get("swarm-1").expect("plan");
-            assert_eq!(plan.items[0].status, "running_stale");
-            assert!(
-                plan.task_progress
-                    .get("task-1")
-                    .and_then(|progress| progress.stale_since_unix_ms)
-                    .is_some()
-            );
-        }
-
-        let revived = touch_swarm_task_progress(
-            "swarm-1",
-            "task-1",
-            Some("worker"),
-            Some("checkpoint saved".to_string()),
-            &swarm_members,
-            &swarms_by_id,
-            &swarm_plans,
-            &swarm_coordinators,
-        )
-        .await;
-        assert!(revived);
-
+        // The assignee's own clock has no recent activity, so the node is stale.
         let plans = swarm_plans.read().await;
         let plan = plans.get("swarm-1").expect("plan");
-        assert_eq!(plan.items[0].status, "running");
-        let progress = plan.task_progress.get("task-1").expect("progress");
-        assert_eq!(
-            progress.checkpoint_summary.as_deref(),
-            Some("checkpoint saved")
-        );
-        assert!(progress.stale_since_unix_ms.is_none());
+        assert_eq!(plan.items[0].status, "running_stale");
     }
 
     fn running_plan_assigned_to(
@@ -3019,14 +2927,6 @@ mod tests {
             "coord".to_string(),
         )])));
         let swarm_plans = running_plan_assigned_to("ghost", None);
-        // Give the task a fresh heartbeat so the first sweep phase does not
-        // interfere; the salvage phase must still fire on the dead assignee.
-        {
-            let mut plans = swarm_plans.write().await;
-            let plan = plans.get_mut("swarm-1").expect("plan");
-            let progress = plan.task_progress.get_mut("task-1").expect("progress");
-            progress.last_heartbeat_unix_ms = Some(now_unix_ms());
-        }
         let (coord, _coord_rx) = swarm_member("coord", "coordinator", false);
         swarm_members
             .write()
@@ -3057,20 +2957,17 @@ mod tests {
             HashSet::from(["worker".to_string()]),
         )])));
         let swarm_coordinators = Arc::new(RwLock::new(HashMap::new()));
-        let swarm_plans = running_plan_assigned_to("worker", None);
-        {
-            let mut plans = swarm_plans.write().await;
-            let plan = plans.get_mut("swarm-1").expect("plan");
-            let progress = plan.task_progress.get_mut("task-1").expect("progress");
-            progress.last_heartbeat_unix_ms = Some(now_unix_ms());
-        }
-        let (mut worker, _worker_rx) = swarm_member("worker", "agent", true);
+        let swarm_plans = running_plan_assigned_to("grace-worker", None);
+        // The assignee is alive on its own clock, so the staleness phase leaves
+        // the node alone; only the salvage phase's grace window is under test.
+        crate::session_metrics::record_activity("grace-worker");
+        let (mut worker, _worker_rx) = swarm_member("grace-worker", "agent", true);
         worker.status = SwarmLifecycleStatus::Crashed;
         worker.last_status_change = Instant::now();
         swarm_members
             .write()
             .await
-            .insert("worker".to_string(), worker);
+            .insert("grace-worker".to_string(), worker);
 
         refresh_swarm_task_staleness(
             &swarm_members,
@@ -3083,7 +2980,7 @@ mod tests {
         let plans = swarm_plans.read().await;
         let plan = plans.get("swarm-1").expect("plan");
         assert_eq!(plan.items[0].status, "running");
-        assert_eq!(plan.items[0].assigned_to.as_deref(), Some("worker"));
+        assert_eq!(plan.items[0].assigned_to.as_deref(), Some("grace-worker"));
     }
 
     #[tokio::test]

@@ -427,7 +427,16 @@ pub(super) async fn handle_comm_plan_status(
         let plans = swarm_plans.read().await;
         let plan = plans.get(&swarm_id);
         if let Some(plan) = plan {
-            PlanGraphStatus::from_versioned_plan(swarm_id.clone(), plan, Some(8), Vec::new())
+            PlanGraphStatus::from_versioned_plan(
+                swarm_id.clone(),
+                plan,
+                Some(8),
+                Vec::new(),
+                super::swarm::failed_reasons_for(
+                    &plan.items,
+                    &super::swarm::member_details(swarm_members).await,
+                ),
+            )
         } else {
             PlanGraphStatus::empty_for_swarm(swarm_id.clone())
         }

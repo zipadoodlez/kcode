@@ -27,12 +27,6 @@ pub struct SwarmTaskProgress {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub started_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_heartbeat_unix_ms: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_checkpoint_unix_ms: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub checkpoint_summary: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completed_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stale_since_unix_ms: Option<u64>,
@@ -620,9 +614,8 @@ pub fn next_stranded_runnable_item_id(
 
 /// Clear a stranded assignment so the node becomes eligible for normal
 /// automatic dispatch again, bumping the per-node reclaim counter and the plan
-/// version. Prior run history (heartbeats, checkpoints, details) is preserved;
-/// only the assignment binding is released. Returns `false` when the item is
-/// missing or not actually assigned.
+/// version. The prior run's assignment record is preserved; only the binding is
+/// released. Returns `false` when the item is missing or not actually assigned.
 pub fn reclaim_stranded_assignment(plan: &mut VersionedPlan, task_id: &str) -> bool {
     let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id) else {
         return false;
@@ -630,14 +623,10 @@ pub fn reclaim_stranded_assignment(plan: &mut VersionedPlan, task_id: &str) -> b
     if item.assigned_to.is_none() {
         return false;
     }
-    let previous_assignee = item.assigned_to.take();
+    item.assigned_to = None;
     let progress = plan.task_progress.entry(task_id.to_string()).or_default();
     progress.assigned_session_id = None;
     progress.dead_assignee_reclaims = Some(progress.dead_assignee_reclaims.unwrap_or(0) + 1);
-    progress.checkpoint_summary = Some(format!(
-        "assignment reclaimed: previous assignee {} is dead",
-        previous_assignee.as_deref().unwrap_or("<unknown>")
-    ));
     plan.version += 1;
     true
 }
@@ -1115,7 +1104,7 @@ mod tests {
             "a".to_string(),
             SwarmTaskProgress {
                 assigned_session_id: Some("dead-session".to_string()),
-                last_heartbeat_unix_ms: Some(42),
+                started_at_unix_ms: Some(42),
                 ..SwarmTaskProgress::default()
             },
         );
@@ -1130,7 +1119,7 @@ mod tests {
         assert_eq!(progress.assigned_session_id, None);
         assert_eq!(progress.dead_assignee_reclaims, Some(1));
         assert_eq!(
-            progress.last_heartbeat_unix_ms,
+            progress.started_at_unix_ms,
             Some(42),
             "prior run history preserved"
         );

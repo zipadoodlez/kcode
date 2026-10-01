@@ -291,8 +291,6 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
         assigned_session_id: Some(worker.to_string()),
         assigned_at_unix_ms: Some(1_000),
         started_at_unix_ms: Some(2_000),
-        last_heartbeat_unix_ms: Some(3_000),
-        checkpoint_summary: Some("halfway".to_string()),
         ..crate::server::SwarmTaskProgress::default()
     };
     let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
@@ -390,9 +388,6 @@ async fn requeue_existing_assignment_preserves_prior_progress_history() {
                     assigned_session_id: Some(worker.to_string()),
                     assigned_at_unix_ms: Some(1_000),
                     started_at_unix_ms: Some(2_000),
-                    last_heartbeat_unix_ms: Some(3_000),
-                    last_checkpoint_unix_ms: Some(3_500),
-                    checkpoint_summary: Some("halfway".to_string()),
                     stale_since_unix_ms: Some(4_000),
                     completed_at_unix_ms: None,
                     dead_assignee_reclaims: None,
@@ -429,8 +424,6 @@ async fn requeue_existing_assignment_preserves_prior_progress_history() {
         Some(2_000),
         "prior run's start time must survive the requeue"
     );
-    assert_eq!(progress.last_heartbeat_unix_ms, Some(3_000));
-    assert_eq!(progress.checkpoint_summary.as_deref(), Some("halfway"));
     assert_eq!(
         progress.stale_since_unix_ms, None,
         "requeued task is no longer stale"

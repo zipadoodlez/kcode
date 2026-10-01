@@ -54,9 +54,6 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
                     assigned_session_id: Some("session-1".to_string()),
                     assigned_at_unix_ms: Some(10),
                     started_at_unix_ms: Some(20),
-                    last_heartbeat_unix_ms: Some(30),
-                    last_checkpoint_unix_ms: Some(40),
-                    checkpoint_summary: Some("tool done: read".to_string()),
                     completed_at_unix_ms: None,
                     stale_since_unix_ms: None,
                     dead_assignee_reclaims: None,
@@ -107,10 +104,7 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
         .get("task-1")
         .expect("task progress");
     assert_eq!(progress.assigned_session_id.as_deref(), Some("session-1"));
-    assert_eq!(
-        progress.checkpoint_summary.as_deref(),
-        Some("tool done: read")
-    );
+    assert_eq!(progress.started_at_unix_ms, Some(20));
     assert!(progress.stale_since_unix_ms.is_some());
     assert_eq!(
         loaded.coordinators.get("swarm-alpha"),

@@ -1,8 +1,6 @@
 #![cfg_attr(test, allow(clippy::items_after_test_module))]
 
-use super::swarm::{
-    swarm_task_heartbeat_interval, swarm_task_stale_after, touch_swarm_task_progress,
-};
+use super::swarm::swarm_task_stale_after;
 use super::swarm_mutation_state::{
     PersistedSwarmMutationResponse, begin_or_join_in_flight as begin_swarm_mutation_no_replay,
     begin_or_replay as begin_swarm_mutation_or_replay,
@@ -28,7 +26,7 @@ use crate::protocol::{NotificationType, PlanGraphStatus, ServerEvent};
 use kcode_agent_runtime::SoftInterruptSource;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock, broadcast, mpsc, watch};
+use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 
 /// Eligible auto-assignment targets for a swarm task.
 ///
@@ -186,33 +184,35 @@ struct ActiveAssignmentConflict {
 /// Returns `Some(conflict)` when a direct `assign_task` must be rejected
 /// because the item is already assigned and actively worked: it carries an
 /// assignee, its status is in-flight (`queued`/`running`, not stale and not
-/// terminal), and the assignment shows activity (heartbeat, start, or the
-/// assignment itself) within `active_within_ms`.
+/// terminal), and the assignment is recent or its assignee is active within
+/// `active_within_ms`.
+///
+/// The two freshness sources are the assignment itself (a task handed out a
+/// moment ago is being worked) and the assignee's own activity clock, which the
+/// turn loop marks; liveness therefore needs no per-task record.
 ///
 /// Everything else stays assignable so legitimate recovery keeps working:
 /// unassigned items, terminal items (explicit re-open), `running_stale` items
-/// (the stale-assignee path), and assigned items whose last activity is older
-/// than the window (the sweep just has not flipped them to stale yet). An
-/// assigned item with no recorded activity at all is treated as stale,
+/// (the stale-assignee path), and assigned items whose activity is older than
+/// the window (the sweep just has not flipped them to stale yet). An assigned
+/// item with no activity at all is treated as stale,
 /// mirroring `refresh_swarm_task_staleness`.
 fn active_assignment_conflict(
     status: &str,
     assigned_to: Option<&str>,
-    progress: Option<&SwarmTaskProgress>,
-    now_ms: u64,
+    assigned_ago_ms: Option<u64>,
+    assignee_active_ago_ms: Option<u64>,
     active_within_ms: u64,
 ) -> Option<ActiveAssignmentConflict> {
     let assignee = assigned_to?;
     if !matches!(status, "queued" | "running") {
         return None;
     }
-    let last_activity_ms = progress.and_then(|progress| {
-        progress
-            .last_heartbeat_unix_ms
-            .or(progress.started_at_unix_ms)
-            .or(progress.assigned_at_unix_ms)
-    })?;
-    let active_ago_ms = now_ms.saturating_sub(last_activity_ms);
+    // Whichever source is more recent decides; none at all counts as stale.
+    let active_ago_ms = [assigned_ago_ms, assignee_active_ago_ms]
+        .into_iter()
+        .flatten()
+        .min()?;
     (active_ago_ms < active_within_ms).then(|| ActiveAssignmentConflict {
         assignee: assignee.to_string(),
         active_ago_ms,
@@ -303,7 +303,6 @@ struct TaskSnapshot {
     content: String,
     status: String,
     assigned_to: Option<String>,
-    progress: Option<SwarmTaskProgress>,
 }
 
 async fn task_snapshot_for(
@@ -322,18 +321,25 @@ async fn task_snapshot_for(
         content: hydrated,
         status: item.status.clone(),
         assigned_to: item.assigned_to.clone(),
-        progress: plan.task_progress.get(task_id).cloned(),
     })
 }
 
 async fn plan_graph_status_for(
     swarm_id: &str,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
 ) -> PlanGraphStatus {
+    let assignee_details = super::swarm::member_details(swarm_members).await;
     let plans = swarm_plans.read().await;
     let plan = plans.get(swarm_id);
     if let Some(plan) = plan {
-        PlanGraphStatus::from_versioned_plan(swarm_id, plan, Some(8), Vec::new())
+        PlanGraphStatus::from_versioned_plan(
+            swarm_id,
+            plan,
+            Some(8),
+            Vec::new(),
+            super::swarm::failed_reasons_for(&plan.items, &assignee_details),
+        )
     } else {
         PlanGraphStatus::empty_for_swarm(swarm_id)
     }
@@ -342,11 +348,11 @@ async fn plan_graph_status_for(
 /// Re-queue a task on its existing assignee for a task-control restart
 /// (currently only `resume` of a running/stale task reaches this).
 ///
-/// The prior run's history (`started_at`, heartbeats, checkpoints) is preserved
-/// rather than replaced: the requeue is a lifecycle transition of the same
-/// assignment, and wiping the record would blind staleness monitors and salvage
-/// flows to everything the previous run did. Only the assignment-scoped fields
-/// are refreshed, and the terminal/stale markers are cleared because the task is
+/// The prior run's record (`started_at`, `completed_at`, the stale marker) is
+/// preserved rather than replaced: the requeue is a lifecycle transition of the
+/// same assignment, and wiping it would blind the staleness sweep and the salvage
+/// flow to what the previous run did. Only the assignment-scoped fields are
+/// refreshed, and the terminal/stale markers are cleared because the task is
 /// queued again.
 async fn requeue_existing_assignment(
     swarm_id: &str,
@@ -693,9 +699,6 @@ fn spawn_assigned_task_run(
                 let progress = plan.task_progress.entry(task_id.clone()).or_default();
                 progress.assigned_session_id = Some(target_session.clone());
                 progress.started_at_unix_ms = Some(now_ms);
-                progress.last_heartbeat_unix_ms = Some(now_ms);
-                progress.last_checkpoint_unix_ms = Some(now_ms);
-                progress.checkpoint_summary = Some("task started".to_string());
                 progress.completed_at_unix_ms = None;
                 progress.stale_since_unix_ms = None;
                 plan.version += 1;
@@ -729,62 +732,10 @@ fn spawn_assigned_task_run(
         )
         .await;
 
-        let (heartbeat_stop_tx, mut heartbeat_stop_rx) = watch::channel(false);
-        let heartbeat_task = {
-            let target_session = target_session.clone();
-            let swarm_id = swarm_id.clone();
-            let task_id = task_id.clone();
-            let swarm_members = Arc::clone(&swarm_members);
-            let swarms_by_id = Arc::clone(&swarms_by_id);
-            let swarm_plans = Arc::clone(&swarm_plans);
-            let swarm_coordinators = Arc::clone(&swarm_coordinators);
-            tokio::spawn(async move {
-                let mut interval = tokio::time::interval(swarm_task_heartbeat_interval());
-                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                interval.tick().await;
-                loop {
-                    tokio::select! {
-                        _ = interval.tick() => {
-                            let revived = touch_swarm_task_progress(
-                                &swarm_id,
-                                &task_id,
-                                Some(&target_session),
-                                None,
-                                &swarm_members,
-                                &swarms_by_id,
-                                &swarm_plans,
-                                &swarm_coordinators,
-                            )
-                            .await;
-                            if revived {
-                                broadcast_swarm_plan(
-                                    &swarm_id,
-                                    Some("task_heartbeat".to_string()),
-                                    &swarm_plans,
-                                    &swarm_members,
-                                    &swarms_by_id,
-                                )
-                                .await;
-                            }
-                        }
-                        changed = heartbeat_stop_rx.changed() => {
-                            if changed.is_err() || *heartbeat_stop_rx.borrow() {
-                                break;
-                            }
-                        }
-                    }
-                }
-            })
-        };
-
         let event_tx = task_progress_event_sender(
             target_session.clone(),
-            swarm_id.clone(),
-            task_id.clone(),
             Arc::clone(&swarm_members),
             Arc::clone(&swarms_by_id),
-            Arc::clone(&swarm_plans),
-            Arc::clone(&swarm_coordinators),
             Arc::clone(&event_history),
             Arc::clone(&event_counter),
             swarm_event_tx.clone(),
@@ -807,9 +758,6 @@ fn spawn_assigned_task_run(
         } else {
             None
         };
-        let _ = heartbeat_stop_tx.send(true);
-        let _ = heartbeat_task.await;
-
         match result {
             Ok(_) => {
                 let previous_items = {
@@ -848,9 +796,6 @@ fn spawn_assigned_task_run(
                                 item.status = "done".to_string();
                                 let progress =
                                     plan.task_progress.entry(task_id.clone()).or_default();
-                                progress.last_heartbeat_unix_ms = Some(now_ms);
-                                progress.last_checkpoint_unix_ms = Some(now_ms);
-                                progress.checkpoint_summary = Some("task completed".to_string());
                                 progress.completed_at_unix_ms = Some(now_ms);
                                 progress.stale_since_unix_ms = None;
                                 plan.version += 1;
@@ -903,10 +848,6 @@ fn spawn_assigned_task_run(
                     {
                         item.status = "failed".to_string();
                         let progress = plan.task_progress.entry(task_id.clone()).or_default();
-                        progress.last_heartbeat_unix_ms = Some(now_ms);
-                        progress.last_checkpoint_unix_ms = Some(now_ms);
-                        progress.checkpoint_summary =
-                            Some(truncate_detail(&format!("task failed: {}", error), 120));
                         progress.completed_at_unix_ms = Some(now_ms);
                         progress.stale_since_unix_ms = None;
                         plan.version += 1;
@@ -978,18 +919,10 @@ fn format_salvage_message(
     output
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "task progress fanout needs plan state, swarm membership, and event sinks together"
-)]
 fn task_progress_event_sender(
     session_id: String,
-    swarm_id: String,
-    task_id: String,
     swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_plans: Arc<RwLock<HashMap<String, VersionedPlan>>>,
-    swarm_coordinators: Arc<RwLock<HashMap<String, String>>>,
     event_history: Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: broadcast::Sender<SwarmEvent>,
@@ -997,58 +930,32 @@ fn task_progress_event_sender(
     let (tx, mut rx) = mpsc::unbounded_channel::<ServerEvent>();
     tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
-            let (detail, checkpoint_summary) = match &event {
-                ServerEvent::StatusDetail { detail } => (Some(detail.clone()), None),
-                ServerEvent::ToolStart { name, .. } => {
-                    let summary = format!("tool start: {name}");
-                    (Some(summary.clone()), Some(summary))
-                }
-                ServerEvent::ToolDone { name, error, .. } => {
-                    let summary = if error.is_some() {
-                        format!("tool error: {name}")
-                    } else {
-                        format!("tool done: {name}")
-                    };
-                    (Some(summary.clone()), Some(summary))
-                }
-                _ => (None, None),
+            // A busy worker shows through its member status, which this keeps
+            // current from the turn's own events; the turn loop marks the
+            // activity clock, so no per-task record is needed for liveness.
+            let detail = match &event {
+                ServerEvent::StatusDetail { detail } => Some(detail.clone()),
+                ServerEvent::ToolStart { name, .. } => Some(format!("tool start: {name}")),
+                ServerEvent::ToolDone { name, error, .. } => Some(if error.is_some() {
+                    format!("tool error: {name}")
+                } else {
+                    format!("tool done: {name}")
+                }),
+                _ => None,
             };
 
-            if detail.is_some() || checkpoint_summary.is_some() {
-                let revived = touch_swarm_task_progress(
-                    &swarm_id,
-                    &task_id,
-                    Some(&session_id),
-                    checkpoint_summary,
+            if let Some(detail) = detail {
+                update_member_status(
+                    &session_id,
+                    SwarmLifecycleStatus::Running,
+                    Some(truncate_detail(&detail, 120)),
                     &swarm_members,
                     &swarms_by_id,
-                    &swarm_plans,
-                    &swarm_coordinators,
+                    Some(&event_history),
+                    Some(&event_counter),
+                    Some(&swarm_event_tx),
                 )
                 .await;
-                if let Some(detail) = detail {
-                    update_member_status(
-                        &session_id,
-                        SwarmLifecycleStatus::Running,
-                        Some(truncate_detail(&detail, 120)),
-                        &swarm_members,
-                        &swarms_by_id,
-                        Some(&event_history),
-                        Some(&event_counter),
-                        Some(&swarm_event_tx),
-                    )
-                    .await;
-                }
-                if revived {
-                    broadcast_swarm_plan(
-                        &swarm_id,
-                        Some("task_heartbeat".to_string()),
-                        &swarm_plans,
-                        &swarm_members,
-                        &swarms_by_id,
-                    )
-                    .await;
-                }
             }
 
             let _ = fanout_session_event(&swarm_members, &session_id, event).await;
@@ -1417,11 +1324,19 @@ async fn handle_comm_assign_task_with_mode(
                     .iter()
                     .find(|item| item.id == task_id)
                     .and_then(|item| {
+                        let assignee = item.assigned_to.as_deref();
                         active_assignment_conflict(
                             &item.status,
-                            item.assigned_to.as_deref(),
-                            plan.task_progress.get(task_id),
-                            now_ms,
+                            assignee,
+                            plan.task_progress
+                                .get(task_id)
+                                .and_then(|progress| {
+                                    progress.assigned_at_unix_ms.or(progress.started_at_unix_ms)
+                                })
+                                .map(|assigned_at| now_ms.saturating_sub(assigned_at)),
+                            assignee
+                                .and_then(crate::session_metrics::last_activity_age_secs)
+                                .map(|secs| secs.saturating_mul(1000)),
                             swarm_task_stale_after().as_millis() as u64,
                         )
                     })
@@ -2107,7 +2022,7 @@ pub(super) async fn handle_comm_task_control(
                     Arc::clone(event_counter),
                     swarm_event_tx.clone(),
                 );
-                let summary = plan_graph_status_for(&swarm_id, swarm_plans).await;
+                let summary = plan_graph_status_for(&swarm_id, swarm_members, swarm_plans).await;
                 let _ = client_event_tx.send(ServerEvent::CommTaskControlResponse {
                     id,
                     action: action.as_str().to_string(),
@@ -2134,7 +2049,7 @@ pub(super) async fn handle_comm_task_control(
                     sessions,
                 )
                 .await;
-                let summary = plan_graph_status_for(&swarm_id, swarm_plans).await;
+                let summary = plan_graph_status_for(&swarm_id, swarm_members, swarm_plans).await;
                 let _ = client_event_tx.send(ServerEvent::CommTaskControlResponse {
                     id,
                     action: action.as_str().to_string(),
@@ -2257,9 +2172,10 @@ pub(super) async fn handle_comm_task_control(
             }
 
             let forwarded_message = if action == TaskControlAction::Salvage {
-                let prior_name = active_swarm_member(&assignee, swarm_members)
-                    .await
-                    .and_then(|member| member.friendly_name);
+                let prior_member = active_swarm_member(&assignee, swarm_members).await;
+                let prior_name = prior_member
+                    .as_ref()
+                    .and_then(|member| member.friendly_name.clone());
                 let summaries =
                     if let Some(agent_arc) = task_agent_session(&assignee, sessions).await {
                         if let Ok(agent) = agent_arc.try_lock() {
@@ -2276,13 +2192,9 @@ pub(super) async fn handle_comm_task_control(
                     &summaries,
                     message.as_deref(),
                 );
-                if let Some(summary) = snapshot
-                    .progress
-                    .as_ref()
-                    .and_then(|progress| progress.checkpoint_summary.as_deref())
-                {
-                    salvage.push_str("\n\nLatest checkpoint summary:\n");
-                    salvage.push_str(summary);
+                if let Some(detail) = prior_member.and_then(|member| member.detail) {
+                    salvage.push_str("\n\nLatest status detail:\n");
+                    salvage.push_str(&detail);
                 }
                 Some(salvage)
             } else if action == TaskControlAction::Replace {

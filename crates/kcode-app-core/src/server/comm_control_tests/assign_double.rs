@@ -8,36 +8,23 @@
 /// unassigned -> allow, stale/terminal statuses -> allow.
 #[test]
 fn active_assignment_conflict_detects_only_assigned_and_fresh_items() {
-    let now = 1_000_000_u64;
     let window = 45_000_u64;
-    let progress_with_heartbeat = |heartbeat: Option<u64>| crate::server::SwarmTaskProgress {
-        assigned_session_id: Some("snail".to_string()),
-        last_heartbeat_unix_ms: heartbeat,
-        ..Default::default()
-    };
 
-    // Unassigned -> allow, regardless of progress freshness.
+    // Unassigned -> allow, regardless of freshness.
     assert!(
-        super::active_assignment_conflict(
-            "queued",
-            None,
-            Some(&progress_with_heartbeat(Some(now - 1_000))),
-            now,
-            window,
-        )
-        .is_none(),
+        super::active_assignment_conflict("queued", None, Some(1_000), Some(1_000), window).is_none(),
         "unassigned items are always assignable"
     );
 
-    // Assigned + fresh heartbeat -> reject, naming the assignee and age.
+    // Assigned + a recently active assignee -> reject, naming the assignee and age.
     let conflict = super::active_assignment_conflict(
         "running",
         Some("snail"),
-        Some(&progress_with_heartbeat(Some(now - 12_000))),
-        now,
+        None,
+        Some(12_000),
         window,
     )
-    .expect("assigned + fresh heartbeat must conflict");
+    .expect("assigned + active assignee must conflict");
     assert_eq!(conflict.assignee, "snail");
     assert_eq!(conflict.active_ago_ms, 12_000);
     let message = super::active_assignment_error("mem-impl-attribution", &conflict);
@@ -51,67 +38,53 @@ fn active_assignment_conflict_detects_only_assigned_and_fresh_items() {
 
     // Assigned + queued (dispatch pending) also counts as actively worked.
     assert!(
-        super::active_assignment_conflict(
-            "queued",
-            Some("snail"),
-            Some(&progress_with_heartbeat(Some(now - 1_000))),
-            now,
-            window,
-        )
-        .is_some(),
+        super::active_assignment_conflict("queued", Some("snail"), None, Some(1_000), window)
+            .is_some(),
         "a freshly queued assignment is in-flight, not reassignable"
     );
 
-    // Assigned + heartbeat at/over the stale window -> allow (stale path).
+    // Assigned + activity at/over the stale window -> allow (stale path).
     assert!(
-        super::active_assignment_conflict(
-            "running",
-            Some("snail"),
-            Some(&progress_with_heartbeat(Some(now - window))),
-            now,
-            window,
-        )
-        .is_none(),
+        super::active_assignment_conflict("running", Some("snail"), None, Some(window), window)
+            .is_none(),
         "stale assignments stay reassignable"
     );
 
-    // Assigned with no progress record or no timestamps -> allow (treated
-    // stale, mirroring refresh_swarm_task_staleness).
-    assert!(super::active_assignment_conflict("running", Some("snail"), None, now, window).is_none());
+    // Nothing recent at all -> allow (treated stale, mirroring
+    // refresh_swarm_task_staleness).
+    assert!(
+        super::active_assignment_conflict("running", Some("snail"), None, None, window).is_none()
+    );
+    assert!(
+        super::active_assignment_conflict("running", Some("snail"), Some(60_000), None, window)
+            .is_none()
+    );
+
+    // A recent assignment counts before its assignee's clock has anything.
+    assert!(
+        super::active_assignment_conflict("queued", Some("snail"), Some(5_000), None, window)
+            .is_some(),
+        "an assignment made moments ago is active even before its first turn"
+    );
+
+    // The more recent of the two sources decides.
     assert!(
         super::active_assignment_conflict(
             "running",
             Some("snail"),
-            Some(&progress_with_heartbeat(None)),
-            now,
-            window,
+            Some(60_000),
+            Some(3_000),
+            window
         )
-        .is_none()
-    );
-
-    // started_at / assigned_at count as activity when no heartbeat landed yet.
-    let just_assigned = crate::server::SwarmTaskProgress {
-        assigned_session_id: Some("snail".to_string()),
-        assigned_at_unix_ms: Some(now - 5_000),
-        ..Default::default()
-    };
-    assert!(
-        super::active_assignment_conflict("queued", Some("snail"), Some(&just_assigned), now, window)
-            .is_some(),
-        "an assignment made moments ago is active even before its first heartbeat"
+        .is_some(),
+        "the assignee's own activity keeps a long assignment fresh"
     );
 
     // running_stale and terminal statuses -> allow (existing recovery paths).
     for status in ["running_stale", "failed", "stopped", "crashed", "completed", "done"] {
         assert!(
-            super::active_assignment_conflict(
-                status,
-                Some("snail"),
-                Some(&progress_with_heartbeat(Some(now - 1_000))),
-                now,
-                window,
-            )
-            .is_none(),
+            super::active_assignment_conflict(status, Some("snail"), None, Some(1_000), window)
+                .is_none(),
             "status '{status}' must not trigger the double-assignment guard"
         );
     }
@@ -199,7 +172,9 @@ async fn assign_task_rejects_double_assignment_of_actively_worked_task() {
             contested,
             crate::server::SwarmTaskProgress {
                 assigned_session_id: Some(holder.to_string()),
-                last_heartbeat_unix_ms: Some(unix_now_ms()),
+                // Handed out moments ago, so the assignee's turn may not have
+                // started yet: the assignment itself is the freshness.
+                assigned_at_unix_ms: Some(unix_now_ms()),
                 ..Default::default()
             },
         );
@@ -264,8 +239,8 @@ async fn assign_task_rejects_double_assignment_of_actively_worked_task() {
     assert_eq!(item.status, "running", "lifecycle status untouched");
 }
 
-/// Live path: an assignment whose heartbeat is far past the stale window is
-/// legitimately reassignable (dead-assignee recovery must keep working).
+/// Live path: an assignment far past the stale window with no live assignee
+/// activity is legitimately reassignable (dead-assignee recovery keeps working).
 #[tokio::test]
 async fn assign_task_allows_taking_over_stale_assignment() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
@@ -283,7 +258,7 @@ async fn assign_task_allows_taking_over_stale_assignment() {
             crate::server::SwarmTaskProgress {
                 assigned_session_id: Some(holder.to_string()),
                 // Far beyond any configured stale window.
-                last_heartbeat_unix_ms: Some(unix_now_ms().saturating_sub(3_600_000)),
+                assigned_at_unix_ms: Some(unix_now_ms().saturating_sub(3_600_000)),
                 ..Default::default()
             },
         );
@@ -360,7 +335,7 @@ async fn task_control_reassign_tells_displaced_worker_to_stand_down() {
             contested,
             crate::server::SwarmTaskProgress {
                 assigned_session_id: Some(holder.to_string()),
-                last_heartbeat_unix_ms: Some(unix_now_ms().saturating_sub(3_600_000)),
+                assigned_at_unix_ms: Some(unix_now_ms().saturating_sub(3_600_000)),
                 ..Default::default()
             },
         );
