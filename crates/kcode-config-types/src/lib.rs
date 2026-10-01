@@ -472,11 +472,10 @@ pub struct AgentsConfig {
     /// as chips on a single row.
     #[serde(default)]
     pub swarm_strip_layout: SwarmStripLayout,
-    /// Maximum number of live swarm worker agents in one swarm. This is the RAM
-    /// safety budget for both recursive ad hoc spawning and deep-mode `run_plan`
-    /// parallelism. Completed/stopped workers do not consume slots. Light mode
-    /// still uses a smaller fixed fan-out. `0` disables this configurable guard,
-    /// leaving only the absolute `MAX_SWARM_MEMBERS` hard cap.
+    /// Maximum number of live swarm worker agents in one swarm: the RAM safety
+    /// budget for spawned workers. Completed/stopped workers do not consume
+    /// slots. `0` disables this guard, leaving only the absolute
+    /// `MAX_SWARM_MEMBERS` hard cap.
     /// Env override: `KCODE_SWARM_MAX_CONCURRENT_AGENTS`.
     #[serde(default = "default_swarm_max_concurrent_agents")]
     pub swarm_max_concurrent_agents: usize,

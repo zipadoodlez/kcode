@@ -7,10 +7,6 @@
 
 use super::{NodeStatus, TaskGraph, TaskNode};
 
-/// Suggested default worker ceiling for light mode (doc section 1a). Deep mode is
-/// bounded by the swarm-level `MAX_SWARM_MEMBERS` cap instead.
-pub const LIGHT_MODE_SUGGESTED_WORKERS: usize = 16;
-
 /// Whether a node has reached a terminal status.
 pub fn is_terminal(node: &TaskNode) -> bool {
     node.is_terminal()

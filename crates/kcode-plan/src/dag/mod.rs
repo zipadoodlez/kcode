@@ -19,9 +19,7 @@ pub mod sim;
 mod tests;
 
 pub use ops::{complete_node, expand_node, fail_node, requeue_failed, seed};
-pub use schedule::{
-    LIGHT_MODE_SUGGESTED_WORKERS, assemble_input, dispatch, is_terminal, ready_nodes,
-};
+pub use schedule::{assemble_input, dispatch, is_terminal, ready_nodes};
 
 /// A node identifier. Stable string ids keep the model serializable.
 pub type NodeId = String;

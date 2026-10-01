@@ -829,8 +829,8 @@ fn spawn_assigned_task_run(
                         // A worker turn ends in one of three ways for its node:
                         //  1. it decomposed the node via `expand_node` -> the node is
                         //     now a composite synthesis/join point that must stay
-                        //     in-progress until its children (and deep-mode gate)
-                        //     finish; it is re-woken later to synthesize.
+                        //     in-progress until its children finish; it is re-woken
+                        //     later to synthesize.
                         //  2. it already finished the node via `complete_node` -> the
                         //     node is terminal and owned by no one.
                         //  3. it just ran and the node is still `running`.

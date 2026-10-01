@@ -126,4 +126,4 @@ the rows this session holds), `expand_node`, `complete_node`,
 `run_plan`, `fill_slots`, plus
 `spawn`/`dm`/`broadcast`/`channel` and the shared-context ops as lower-level
 escape hatches. The TUI shows a swarm info widget (agent/manager/coordinator graph)
-and a plan info widget (the task DAG with per-node status and checkpoints).
+and a plan info widget (the task DAG with per-node status).

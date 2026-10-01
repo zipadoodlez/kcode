@@ -1354,7 +1354,8 @@ fn available_efforts(state: &SessionUiState) -> Vec<&'static str> {
         state.model.as_deref(),
     )
     .into_iter()
-    // `swarm`/`swarm-deep` are TUI sentinels, not provider effort levels.
+    // Legacy `swarm`/`swarm-deep` effort values, from before the rungs were
+    // removed; they are not provider levels.
     .filter(|effort| !effort.starts_with("swarm"))
     .collect()
 }

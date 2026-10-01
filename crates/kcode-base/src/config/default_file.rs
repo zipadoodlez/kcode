@@ -389,9 +389,8 @@ wake_mode = "internal"
 swarm_spawn_mode = "inline"
 #
 # Max live swarm worker agents in one swarm. This RAM-safety budget applies to
-# recursive ad hoc spawning and deep-mode run_plan parallelism. Completed/stopped
-# workers free their slots. 0 disables this guard and leaves only the absolute
-# per-swarm hard cap of 1000. Light mode uses a smaller fixed fan-out.
+# spawned workers. Completed/stopped workers free their slots. 0 disables this
+# guard and leaves only the absolute per-swarm hard cap of 1000.
 # Env override: KCODE_SWARM_MAX_CONCURRENT_AGENTS
 swarm_max_concurrent_agents = 32
 #
