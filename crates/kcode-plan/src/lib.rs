@@ -26,10 +26,6 @@ pub struct SwarmTaskProgress {
     pub assigned_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub started_at_unix_ms: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub completed_at_unix_ms: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stale_since_unix_ms: Option<u64>,
     /// How many times this node's assignment was reclaimed because its assignee
     /// session was dead (failed/stopped/crashed or gone). Caps automatic
     /// re-dispatch so a node whose workers keep dying cannot spawn workers

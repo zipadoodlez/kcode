@@ -388,8 +388,6 @@ async fn requeue_existing_assignment_preserves_prior_progress_history() {
                     assigned_session_id: Some(worker.to_string()),
                     assigned_at_unix_ms: Some(1_000),
                     started_at_unix_ms: Some(2_000),
-                    stale_since_unix_ms: Some(4_000),
-                    completed_at_unix_ms: None,
                     dead_assignee_reclaims: None,
                 },
             )]),
@@ -423,10 +421,6 @@ async fn requeue_existing_assignment_preserves_prior_progress_history() {
         progress.started_at_unix_ms,
         Some(2_000),
         "prior run's start time must survive the requeue"
-    );
-    assert_eq!(
-        progress.stale_since_unix_ms, None,
-        "requeued task is no longer stale"
     );
     assert!(
         progress.assigned_at_unix_ms.unwrap_or(0) > 1_000,

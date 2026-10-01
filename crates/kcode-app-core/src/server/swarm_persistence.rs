@@ -268,15 +268,10 @@ fn remove_snapshot_files(swarm_id: &str) -> bool {
     removed
 }
 
-fn from_persisted_plan(mut plan: PersistedVersionedPlan, updated_at_unix_ms: u64) -> VersionedPlan {
+fn from_persisted_plan(mut plan: PersistedVersionedPlan) -> VersionedPlan {
     for item in &mut plan.items {
         if item.status == "running" {
             item.status = "running_stale".to_string();
-            plan.task_progress
-                .entry(item.id.clone())
-                .or_default()
-                .stale_since_unix_ms
-                .get_or_insert(updated_at_unix_ms);
         }
     }
     let mut plan = VersionedPlan {
@@ -472,10 +467,7 @@ pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
                 pruned_dormant_plans += 1;
                 pruned_plan_swarms.insert(swarm_id.clone());
             } else {
-                plans.insert(
-                    swarm_id.clone(),
-                    from_persisted_plan(plan, state.updated_at_unix_ms),
-                );
+                plans.insert(swarm_id.clone(), from_persisted_plan(plan));
             }
         }
         if let Some(coordinator_session_id) = state.coordinator_session_id {

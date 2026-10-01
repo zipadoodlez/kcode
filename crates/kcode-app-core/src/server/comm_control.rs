@@ -370,8 +370,6 @@ async fn requeue_existing_assignment(
     let progress = plan.task_progress.entry(task_id.to_string()).or_default();
     progress.assigned_session_id = Some(assignee_session.to_string());
     progress.assigned_at_unix_ms = Some(now_ms);
-    progress.completed_at_unix_ms = None;
-    progress.stale_since_unix_ms = None;
     plan.version += 1;
     plan.participants.insert(req_session_id.to_string());
     plan.participants.insert(assignee_session.to_string());
@@ -699,8 +697,6 @@ fn spawn_assigned_task_run(
                 let progress = plan.task_progress.entry(task_id.clone()).or_default();
                 progress.assigned_session_id = Some(target_session.clone());
                 progress.started_at_unix_ms = Some(now_ms);
-                progress.completed_at_unix_ms = None;
-                progress.stale_since_unix_ms = None;
                 plan.version += 1;
             }
         }
@@ -769,7 +765,6 @@ fn spawn_assigned_task_run(
                 };
                 let mut applied_disposition = TurnEndDisposition::LeaveAlone;
                 {
-                    let now_ms = now_unix_ms();
                     let mut plans = swarm_plans.write().await;
                     if let Some(plan) = plans.get_mut(&swarm_id)
                         && let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id)
@@ -794,10 +789,6 @@ fn spawn_assigned_task_run(
                             TurnEndDisposition::AutoComplete => {
                                 applied_disposition = TurnEndDisposition::AutoComplete;
                                 item.status = "done".to_string();
-                                let progress =
-                                    plan.task_progress.entry(task_id.clone()).or_default();
-                                progress.completed_at_unix_ms = Some(now_ms);
-                                progress.stale_since_unix_ms = None;
                                 plan.version += 1;
                             }
                             TurnEndDisposition::LeaveAlone => {}
@@ -841,15 +832,11 @@ fn spawn_assigned_task_run(
             }
             Err(error) => {
                 {
-                    let now_ms = now_unix_ms();
                     let mut plans = swarm_plans.write().await;
                     if let Some(plan) = plans.get_mut(&swarm_id)
                         && let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id)
                     {
                         item.status = "failed".to_string();
-                        let progress = plan.task_progress.entry(task_id.clone()).or_default();
-                        progress.completed_at_unix_ms = Some(now_ms);
-                        progress.stale_since_unix_ms = None;
                         plan.version += 1;
                     }
                 }
