@@ -1,8 +1,59 @@
+use crate::plan::TaskItem;
+
+/// A repo of its own, so the rows a seed reads are this test's and never the
+/// machine's (rule 1).
+fn scratch_repo() -> tempfile::TempDir {
+    let repo = tempfile::TempDir::new().expect("tempdir");
+    assert!(
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(repo.path())
+            .status()
+            .expect("git init")
+            .success(),
+        "git init"
+    );
+    repo
+}
+
+/// One row the seed can seat: an id, words, and the word that types its work.
+/// `blocked_by` names rows the seed holds too, so the dependency stays in scope.
+fn row(id: &str, kind: &str, blocked_by: &[&str]) -> TaskItem {
+    TaskItem {
+        id: id.to_string(),
+        content: format!("task {id}"),
+        kind: Some(kind.to_string()),
+        blocked_by: blocked_by.iter().map(|dep| dep.to_string()).collect(),
+        ..Default::default()
+    }
+}
+
+/// Write `rows` as `session`'s list. The file is the plan's source and the tool
+/// is its only writer, so a fixture puts the rows it wants seated there first.
+fn write_rows(repo: &Path, session: &str, rows: &[TaskItem]) {
+    let rows: Vec<TaskItem> = rows
+        .iter()
+        .map(|row| TaskItem {
+            assigned_to: Some(session.to_string()),
+            ..row.clone()
+        })
+        .collect();
+    crate::todo::save_tasks(Some(repo), session, &rows).expect("write the rows");
+}
+
+/// Seed the plan from the rows this session holds, the way a run does.
+async fn seed_graph(tool: &CommunicateTool, ctx: &ToolContext) {
+    tool.execute(json!({"action": "task_graph"}), ctx.clone())
+        .await
+        .expect("the seed from the rows should succeed");
+}
+
 #[tokio::test]
 async fn communicate_assign_task_can_spawn_fallback_agent() {
     let _env_lock = crate::storage::lock_test_env();
     let runtime_dir = tempfile::TempDir::new().expect("runtime tempdir");
-    let repo_dir = std::env::current_dir().expect("repo cwd");
+    let repo = scratch_repo();
+    let repo_dir = repo.path().to_path_buf();
     let socket_path = runtime_dir.path().join("kcode.sock");
     let _runtime = EnvGuard::set("KCODE_RUNTIME_DIR", runtime_dir.path());
     let _socket = EnvGuard::set("KCODE_SOCKET", &socket_path);
@@ -44,20 +95,8 @@ async fn communicate_assign_task_can_spawn_fallback_agent() {
     .await
     .expect("self-promotion to coordinator should succeed");
 
-    tool.execute(
-        json!({
-            "action": "propose_plan",
-            "plan_items": [{
-                "id": "task-a",
-                "content": "Implement planner follow-up",
-                "status": "queued",
-                "priority": "high"
-            }]
-        }),
-        ctx.clone(),
-    )
-    .await
-    .expect("plan proposal should succeed");
+    write_rows(&repo_dir, &watcher_session, &[row("task-a", "implement", &[])]);
+    seed_graph(&tool, &ctx).await;
 
     let assign_output = tool
         .execute(
@@ -115,7 +154,8 @@ async fn communicate_assign_task_can_spawn_fallback_agent() {
 async fn communicate_assign_next_assigns_next_runnable_task() {
     let _env_lock = crate::storage::lock_test_env();
     let runtime_dir = tempfile::TempDir::new().expect("runtime tempdir");
-    let repo_dir = std::env::current_dir().expect("repo cwd");
+    let repo = scratch_repo();
+    let repo_dir = repo.path().to_path_buf();
     let socket_path = runtime_dir.path().join("kcode.sock");
     let _runtime = EnvGuard::set("KCODE_RUNTIME_DIR", runtime_dir.path());
     let _socket = EnvGuard::set("KCODE_SOCKET", &socket_path);
@@ -178,26 +218,8 @@ async fn communicate_assign_next_assigns_next_runnable_task() {
         .await
         .expect("spawned worker should appear in swarm");
 
-    tool.execute(
-        json!({
-            "action": "propose_plan",
-            "plan_items": [{
-                "id": "setup",
-                "content": "setup",
-                "status": "completed",
-                "priority": "high"
-            }, {
-                "id": "next",
-                "content": "Take the next task",
-                "status": "queued",
-                "priority": "high",
-                "blocked_by": ["setup"]
-            }]
-        }),
-        ctx.clone(),
-    )
-    .await
-    .expect("plan proposal should succeed");
+    write_rows(&repo_dir, &watcher_session, &[row("next", "implement", &[])]);
+    seed_graph(&tool, &ctx).await;
 
     let assign_output = tool
         .execute(
@@ -223,7 +245,8 @@ async fn communicate_assign_next_assigns_next_runnable_task() {
 async fn communicate_assign_next_can_prefer_fresh_spawn_server_side() {
     let _env_lock = crate::storage::lock_test_env();
     let runtime_dir = tempfile::TempDir::new().expect("runtime tempdir");
-    let repo_dir = std::env::current_dir().expect("repo cwd");
+    let repo = scratch_repo();
+    let repo_dir = repo.path().to_path_buf();
     let socket_path = runtime_dir.path().join("kcode.sock");
     let _runtime = EnvGuard::set("KCODE_RUNTIME_DIR", runtime_dir.path());
     let _socket = EnvGuard::set("KCODE_SOCKET", &socket_path);
@@ -282,20 +305,8 @@ async fn communicate_assign_next_can_prefer_fresh_spawn_server_side() {
         .await
         .expect("existing worker should appear in swarm");
 
-    tool.execute(
-        json!({
-            "action": "propose_plan",
-            "plan_items": [{
-                "id": "task-c",
-                "content": "Use a fresh worker",
-                "status": "queued",
-                "priority": "high"
-            }]
-        }),
-        ctx.clone(),
-    )
-    .await
-    .expect("plan proposal should succeed");
+    write_rows(&repo_dir, &watcher_session, &[row("task-c", "implement", &[])]);
+    seed_graph(&tool, &ctx).await;
 
     let assign_output = tool
         .execute(
@@ -331,7 +342,8 @@ async fn communicate_assign_next_can_prefer_fresh_spawn_server_side() {
 async fn communicate_assign_next_can_spawn_if_needed_server_side() {
     let _env_lock = crate::storage::lock_test_env();
     let runtime_dir = tempfile::TempDir::new().expect("runtime tempdir");
-    let repo_dir = std::env::current_dir().expect("repo cwd");
+    let repo = scratch_repo();
+    let repo_dir = repo.path().to_path_buf();
     let socket_path = runtime_dir.path().join("kcode.sock");
     let _runtime = EnvGuard::set("KCODE_RUNTIME_DIR", runtime_dir.path());
     let _socket = EnvGuard::set("KCODE_SOCKET", &socket_path);
@@ -373,20 +385,8 @@ async fn communicate_assign_next_can_spawn_if_needed_server_side() {
     .await
     .expect("self-promotion to coordinator should succeed");
 
-    tool.execute(
-        json!({
-            "action": "propose_plan",
-            "plan_items": [{
-                "id": "task-d",
-                "content": "Spawn if no worker exists",
-                "status": "queued",
-                "priority": "high"
-            }]
-        }),
-        ctx.clone(),
-    )
-    .await
-    .expect("plan proposal should succeed");
+    write_rows(&repo_dir, &watcher_session, &[row("task-d", "implement", &[])]);
+    seed_graph(&tool, &ctx).await;
 
     let assign_output = tool
         .execute(
@@ -421,7 +421,8 @@ async fn communicate_assign_next_can_spawn_if_needed_server_side() {
 async fn communicate_fill_slots_tops_up_to_concurrency_limit() {
     let _env_lock = crate::storage::lock_test_env();
     let runtime_dir = tempfile::TempDir::new().expect("runtime tempdir");
-    let repo_dir = std::env::current_dir().expect("repo cwd");
+    let repo = scratch_repo();
+    let repo_dir = repo.path().to_path_buf();
     let socket_path = runtime_dir.path().join("kcode.sock");
     let _runtime = EnvGuard::set("KCODE_RUNTIME_DIR", runtime_dir.path());
     let _socket = EnvGuard::set("KCODE_SOCKET", &socket_path);
@@ -463,30 +464,16 @@ async fn communicate_fill_slots_tops_up_to_concurrency_limit() {
     .await
     .expect("self-promotion to coordinator should succeed");
 
-    tool.execute(
-        json!({
-            "action": "propose_plan",
-            "plan_items": [{
-                "id": "task-1",
-                "content": "first task",
-                "status": "queued",
-                "priority": "high"
-            }, {
-                "id": "task-2",
-                "content": "second task",
-                "status": "queued",
-                "priority": "high"
-            }, {
-                "id": "task-3",
-                "content": "third task",
-                "status": "queued",
-                "priority": "high"
-            }]
-        }),
-        ctx.clone(),
-    )
-    .await
-    .expect("plan proposal should succeed");
+    write_rows(
+        &repo_dir,
+        &watcher_session,
+        &[
+            row("task-1", "implement", &[]),
+            row("task-2", "implement", &[]),
+            row("task-3", "implement", &[]),
+        ],
+    );
+    seed_graph(&tool, &ctx).await;
 
     let output = tool
         .execute(
@@ -513,7 +500,8 @@ async fn communicate_fill_slots_tops_up_to_concurrency_limit() {
 async fn communicate_assign_task_can_prefer_fresh_spawn_over_reuse() {
     let _env_lock = crate::storage::lock_test_env();
     let runtime_dir = tempfile::TempDir::new().expect("runtime tempdir");
-    let repo_dir = std::env::current_dir().expect("repo cwd");
+    let repo = scratch_repo();
+    let repo_dir = repo.path().to_path_buf();
     let socket_path = runtime_dir.path().join("kcode.sock");
     let _runtime = EnvGuard::set("KCODE_RUNTIME_DIR", runtime_dir.path());
     let _socket = EnvGuard::set("KCODE_SOCKET", &socket_path);
@@ -575,20 +563,8 @@ async fn communicate_assign_task_can_prefer_fresh_spawn_over_reuse() {
         .await
         .expect("existing worker should appear in swarm");
 
-    tool.execute(
-        json!({
-            "action": "propose_plan",
-            "plan_items": [{
-                "id": "task-b",
-                "content": "Investigate a separate subsystem",
-                "status": "queued",
-                "priority": "high"
-            }]
-        }),
-        ctx.clone(),
-    )
-    .await
-    .expect("plan proposal should succeed");
+    write_rows(&repo_dir, &watcher_session, &[row("task-b", "implement", &[])]);
+    seed_graph(&tool, &ctx).await;
 
     let assign_output = tool
         .execute(
