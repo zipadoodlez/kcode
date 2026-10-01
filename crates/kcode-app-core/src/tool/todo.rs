@@ -52,6 +52,7 @@ struct TodoInput {
 /// that says what proves the task done, and a parent's row cannot go while a
 /// child names it. See `docs/plans/work-list.md`, rules 3 and 4.
 fn apply(input: &TodoInput, rows: &mut Vec<TaskItem>, session_id: &str) -> Result<()> {
+    check_kind(input.kind.as_deref())?;
     match input.action.unwrap_or(Action::List) {
         Action::List => {}
         Action::Add => {
@@ -145,6 +146,22 @@ fn kind_or_none(kind: Option<&str>) -> Option<String> {
         .map(str::to_string)
 }
 
+/// A word the engine cannot read would be a row no run can seat, so the writer
+/// refuses it where the row is written instead of leaving a row silently
+/// unseedable (rule 8). The words themselves live in the engine's vocabulary.
+fn check_kind(kind: Option<&str>) -> Result<()> {
+    let Some(kind) = kind_or_none(kind) else {
+        return Ok(());
+    };
+    if kcode_plan::bridge::parse_kind(Some(&kind)).is_none() {
+        bail!(
+            "{kind:?} is not a kind; the words are: {}",
+            kcode_plan::bridge::kind_words()
+        );
+    }
+    Ok(())
+}
+
 fn row_mut<'a>(rows: &'a mut [TaskItem], id: &str) -> Result<&'a mut TaskItem> {
     if !rows.iter().any(|row| row.id == id) {
         bail!("no task {id:?}; open ids: {}", open_ids(rows));
@@ -223,7 +240,8 @@ impl Tool for TodoTool {
                 },
                 "kind": {
                     "type": "string",
-                    "description": "The run's word for this row's work: explore, implement, verify, fix, synthesize, or critique."
+                    "enum": kcode_plan::bridge::KINDS.map(kcode_plan::bridge::kind_str),
+                    "description": "The run's word for this row's work."
                 },
                 "parent": {
                     "type": "string",
@@ -427,22 +445,43 @@ mod tests {
         );
     }
 
+    /// A word the engine cannot read leaves a row no run can seat, so the writer
+    /// refuses it rather than storing a row that never gets worked (rule 8).
+    #[test]
+    fn a_word_the_engine_does_not_know_is_refused() {
+        let mut rows = Vec::new();
+        let err = apply(
+            &input(json!({"action": "add", "content": "fix the docs", "kind": "implment"})),
+            &mut rows,
+            "s",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("explore"), "{err}");
+        assert!(rows.is_empty(), "a refused call writes nothing");
+    }
+
+    /// The schema is where the model learns the words, so it names the engine's
+    /// own list rather than a copy that can drift.
     #[test]
     fn the_schema_names_the_kinds_words() {
         let schema = TodoTool::new().parameters_schema();
-        let description = schema["properties"]["kind"]["description"]
-            .as_str()
-            .expect("kind description");
-        for word in [
-            "explore",
-            "implement",
-            "verify",
-            "fix",
-            "synthesize",
-            "critique",
-        ] {
-            assert!(description.contains(word), "{word} missing: {description}");
-        }
+        let words: Vec<&str> = schema["properties"]["kind"]["enum"]
+            .as_array()
+            .expect("the kind property carries the words")
+            .iter()
+            .map(|word| word.as_str().expect("a word"))
+            .collect();
+        assert_eq!(
+            words,
+            [
+                "explore",
+                "implement",
+                "verify",
+                "fix",
+                "synthesize",
+                "critique"
+            ]
+        );
     }
 
     #[test]

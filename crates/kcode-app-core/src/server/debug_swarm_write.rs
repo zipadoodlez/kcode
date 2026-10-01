@@ -570,7 +570,10 @@ fn debug_specs(specs: Vec<DebugNodeSpec>) -> Vec<kcode_plan::dag::NodeSpec> {
         .map(|s| kcode_plan::dag::NodeSpec {
             id: Some(s.id),
             content: s.content,
-            kind: kcode_plan::bridge::parse_kind(s.kind.as_deref()),
+            // A debug graph is a wire seed like any other, so its absent kind is
+            // answered the same way (`comm_graph::spec_from_wire`).
+            kind: kcode_plan::bridge::parse_kind(s.kind.as_deref())
+                .unwrap_or(kcode_plan::dag::NodeKind::Explore),
             depends_on: s.depends_on,
             priority: s.priority,
         })

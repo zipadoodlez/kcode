@@ -26,15 +26,26 @@ pub fn mode_str(mode: Mode) -> &'static str {
     }
 }
 
-/// Parse a node-kind string; unknown/absent values default to `Explore`.
-pub fn parse_kind(kind: Option<&str>) -> NodeKind {
+/// Every kind the engine knows, in the order its words are listed.
+pub const KINDS: [NodeKind; 6] = [
+    NodeKind::Explore,
+    NodeKind::Implement,
+    NodeKind::Verify,
+    NodeKind::Fix,
+    NodeKind::Synthesize,
+    NodeKind::Critique,
+];
+
+/// A kind's word, or `None` for a kind the engine has no word for.
+pub fn parse_kind(kind: Option<&str>) -> Option<NodeKind> {
     match kind.map(|k| k.trim().to_ascii_lowercase()).as_deref() {
-        Some("implement") => NodeKind::Implement,
-        Some("verify") => NodeKind::Verify,
-        Some("fix") => NodeKind::Fix,
-        Some("synthesize") => NodeKind::Synthesize,
-        Some("critique") => NodeKind::Critique,
-        _ => NodeKind::Explore,
+        Some("explore") => Some(NodeKind::Explore),
+        Some("implement") => Some(NodeKind::Implement),
+        Some("verify") => Some(NodeKind::Verify),
+        Some("fix") => Some(NodeKind::Fix),
+        Some("synthesize") => Some(NodeKind::Synthesize),
+        Some("critique") => Some(NodeKind::Critique),
+        _ => None,
     }
 }
 
@@ -47,6 +58,12 @@ pub fn kind_str(kind: NodeKind) -> &'static str {
         NodeKind::Synthesize => "synthesize",
         NodeKind::Critique => "critique",
     }
+}
+
+/// The kinds as the words a caller writes: a schema's `enum`, or an error message
+/// for a word the engine does not know.
+pub fn kind_words() -> String {
+    KINDS.map(kind_str).join(", ")
 }
 
 /// Parse a node-origin string; unknown/absent values yield `None` (legacy
@@ -90,6 +107,13 @@ fn status_to_plan(status: NodeStatus) -> &'static str {
     }
 }
 
+/// The kind word a node's row carries, falling back to the side-table for a plan
+/// persisted before rows held one. `None` is a row with no kind, which the seed
+/// refuses (rule 8).
+fn row_kind<'a>(item: &'a TaskItem, meta: &'a NodeMeta) -> Option<&'a str> {
+    item.kind.as_deref().or(meta.kind.as_deref())
+}
+
 /// Lift a [`VersionedPlan`] into a validated [`TaskGraph`] for engine ops.
 pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
     let mut graph = TaskGraph::new(parse_mode(&plan.mode));
@@ -102,7 +126,10 @@ pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
         graph.push_node(TaskNode {
             id: item.id.clone(),
             content: item.content.clone(),
-            kind: parse_kind(meta.kind.as_deref()),
+            // A lifted node must have a kind, and `Explore` is the one the
+            // side-table's absence always rendered as; a row with no word is
+            // refused by the seed, not here.
+            kind: parse_kind(row_kind(item, &meta)).unwrap_or(NodeKind::Explore),
             status: status_from_plan(&item.status),
             owner: item.assigned_to.clone(),
             parent: meta.parent.clone(),
@@ -143,10 +170,7 @@ pub fn apply_task_graph(plan: &mut VersionedPlan, graph: &TaskGraph) {
                 .map(|p| p.priority.clone())
                 .unwrap_or_else(|| priority_string(node.priority)),
             id: node.id.clone(),
-            // The row's own kind arrives in 0.3's S2; until then the engine's kind
-            // travels in `node_meta` below, where it already lives.
-            // braid: split when S2 lands
-            kind: None,
+            kind: Some(kind_str(node.kind).to_string()),
             subsystem: prev.and_then(|p| p.subsystem.clone()),
             file_scope: prev.map(|p| p.file_scope.clone()).unwrap_or_default(),
             blocked_by: node.depends_on.clone(),
@@ -155,6 +179,10 @@ pub fn apply_task_graph(plan: &mut VersionedPlan, graph: &TaskGraph) {
             parent: prev.and_then(|p| p.parent.clone()),
             note: prev.and_then(|p| p.note.clone()),
         });
+        // The side-table's copy of the kind is kept in step for one stage: a plan
+        // persisted before rows carried it still lifts, and the readers that have
+        // not moved yet still find it. S3 deletes it with its last reader.
+        // braid: split when S3 lands
         node_meta.insert(
             node.id.clone(),
             NodeMeta {
@@ -216,7 +244,7 @@ pub fn upstream_context(plan: &VersionedPlan, task_id: &str) -> Option<String> {
             continue;
         };
 
-        let kind = meta.kind.as_deref().unwrap_or("task");
+        let kind = row_kind(item, meta).unwrap_or("task");
         sections.push(artifact.render_section(dep_id, kind));
     }
 
@@ -339,6 +367,49 @@ mod tests {
         }
     }
 
+    /// The words, the parser and the writer are one vocabulary: a schema and an
+    /// error message both read `kind_words`, so a kind added to `KINDS` without a
+    /// word, or a word without a kind, has to fail here.
+    #[test]
+    fn the_words_the_parser_and_the_writer_agree() {
+        for kind in KINDS {
+            assert_eq!(parse_kind(Some(kind_str(kind))), Some(kind));
+        }
+        assert_eq!(parse_kind(None), None, "no word is no kind, not a guess");
+        assert_eq!(
+            parse_kind(Some("implment")),
+            None,
+            "an unknown word is no kind"
+        );
+        assert_eq!(parse_kind(Some(" Explore ")), Some(NodeKind::Explore));
+        assert_eq!(
+            kind_words(),
+            "explore, implement, verify, fix, synthesize, critique"
+        );
+    }
+
+    /// A plan persisted before rows carried the word still lifts its kind from the
+    /// side-table, so a reload across this change does not lose it; once the row
+    /// has a word, the row wins.
+    #[test]
+    fn a_node_lifts_its_kind_from_its_row_before_the_side_table() {
+        let mut plan = VersionedPlan::new();
+        plan.replace_items(vec![plan_item("root", "queued")]);
+        plan.node_meta.insert(
+            "root".to_string(),
+            NodeMeta {
+                kind: Some("verify".to_string()),
+                ..Default::default()
+            },
+        );
+        let graph = to_task_graph(&plan);
+        assert_eq!(graph.nodes()[0].kind, NodeKind::Verify);
+
+        plan.items[0].kind = Some("fix".to_string());
+        let graph = to_task_graph(&plan);
+        assert_eq!(graph.nodes()[0].kind, NodeKind::Fix);
+    }
+
     #[test]
     fn round_trip_preserves_items_and_edges() {
         let mut plan = VersionedPlan::new();
@@ -381,6 +452,16 @@ mod tests {
         apply_task_graph(&mut plan, &graph);
         assert_eq!(plan.items.len(), 2);
         assert_eq!(plan.node_meta["root"].kind.as_deref(), Some("explore"));
+        assert_eq!(
+            plan.items
+                .iter()
+                .find(|item| item.id == "root")
+                .expect("root row")
+                .kind
+                .as_deref(),
+            Some("explore"),
+            "the row carries the kind the engine lowered"
+        );
         assert_eq!(plan.node_meta["root"].origin.as_deref(), Some("seed"));
         let root_gate_id = plan
             .items

@@ -197,26 +197,34 @@ done.
     takes it on add and update, the schema names the six engine words, and the list
     output shows it. Nothing reads it yet, so `NodeMeta.kind` stays authoritative and
     the engine does not move.
-  - **S2. The engine's kind is read off the row.** `bridge::to_task_graph`
-    (`kcode-plan/src/bridge.rs:94`) reads `item.kind`, `apply_task_graph` (`:124`)
-    writes it, `upstream_context` (`:191`) names a dependency by its row, and
-    `parse_kind` (`:30`) stops guessing: absent or unrecognised is no kind, which the
-    seed and the lift both read as "not seedable" (rule 8), so it returns
-    `Option<NodeKind>` and `spec_from_wire` (`server/comm_graph.rs:25`) decides what an
-    untyped seed means. Every other `node_meta.kind` reader moves with it:
-    `comm_control.rs:359`, `:377`, `:419`, `:686`, `:948`, `debug_swarm_read.rs`,
-    `swarm_persistence.rs:122`, `:298`, and `scripts/test_dag_live.py:43`.
-  - **S3. `NodeMeta.kind` goes**, with the persistence round-trip
-    (`swarm_persistence.rs:113`, `:281`, `:304`) and the fixtures that build it
-    (`bridge.rs` tests, `swarm_persistence_tests.rs:470`), since its last caller is
-    gone. `parse_kind`/`kind_str` stay: they are what reads and writes a row's word.
+  - **S2. The row is the source of the engine's kind, and the side-table is kept in
+    step for one stage.** `bridge::to_task_graph` (`kcode-plan/src/bridge.rs:94`) lifts
+    a node's kind from its row, falling back to `NodeMeta.kind` for a plan persisted
+    before rows carried one, and `apply_task_graph` (`:124`) writes the row's kind
+    while still writing the side-table's copy, so a plan in flight across this change
+    loses nothing. `upstream_context` (`:191`) labels a dependency's artifact from its
+    row. `parse_kind` (`:30`) stops guessing: absent or unrecognised is no kind, and
+    the two boundaries that must still answer absence answer it where they own it, the
+    wire's optional `kind` (`comm_graph.rs:29`, `debug_swarm_write.rs:573`, the
+    documented `explore` default) and the lift (a kindless legacy node can only render
+    as `Explore`). The row's writer refuses a word the engine cannot read
+    (`tool/todo.rs`), because a typo would otherwise be a row no run could seat (rule
+    8).
+  - **S3. `NodeMeta.kind` goes**, with its write in `apply_task_graph`
+    (`bridge.rs:161`), the persistence round-trip (`swarm_persistence.rs:113`, `:281`,
+    `:304`) and the fixtures that build it (`bridge.rs` tests,
+    `swarm_persistence_tests.rs:470`), since its last reader is gone.
+    `parse_kind`/`kind_str`/`KINDS` stay: they are the vocabulary that reads and writes
+    a row's word.
   - **S4. The seed is the rows the run holds.** The seed path - `swarm run_plan`'s
     `nodes`, `CommSeedGraph`, `handle_comm_seed_graph` (`comm_graph.rs:221`) - takes its
     nodes from the file: id = row id, content = the row's words, kind = the row's kind,
     `depends_on` = `blocked_by`, and the priority rank is the row's position. A gate is
     the one node with no row, so its id and kind are engine names. A run whose grant
     typed no anchor gets one here, through the store's write path (`todo::anchor_run`
-    already writes a named row or a fresh anchor).
+    already writes a named row or a fresh anchor), and the grant types that anchor
+    `synthesize`: a row with no word is not seedable (rule 8), and the run's own row is
+    the one whose result is its children integrated.
   - **S5. A close keeps its record on the row that owns the work.** `TaskItem` gains
     one opaque field, `records`: the closes of the work done under this row. The close
     writes a node's record onto its parent's row, and it takes the machine-readable

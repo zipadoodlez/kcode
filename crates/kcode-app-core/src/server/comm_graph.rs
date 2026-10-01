@@ -16,7 +16,7 @@ use crate::protocol::ServerEvent;
 use crate::protocol::TaskGraphNodeSpec;
 use kcode_plan::MAX_PLAN_ITEMS;
 use kcode_plan::bridge::{apply_task_graph, parse_kind, to_task_graph};
-use kcode_plan::dag::{self, HandoffArtifact, NodeSpec, NodeStatus, TaskGraph};
+use kcode_plan::dag::{self, HandoffArtifact, NodeKind, NodeSpec, NodeStatus, TaskGraph};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -26,7 +26,11 @@ fn spec_from_wire(spec: TaskGraphNodeSpec) -> NodeSpec {
     NodeSpec {
         id: Some(spec.id),
         content: spec.content,
-        kind: parse_kind(spec.kind.as_deref()),
+        // The wire's `kind` is optional by its own contract, which names
+        // `explore` as the default (`kcode-protocol`'s `TaskGraphNodeSpec`), so
+        // the boundary that asks for it answers its absence. A row with no word
+        // is a different case: a run refuses it rather than guessing (rule 8).
+        kind: parse_kind(spec.kind.as_deref()).unwrap_or(NodeKind::Explore),
         depends_on: spec.depends_on,
         priority: spec.priority,
     }
