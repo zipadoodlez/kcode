@@ -185,8 +185,10 @@ step is done.
   2026-10-01, with the proof under a mock provider in `server/tests.rs`; what is left
   is the row rung and two riders.
   - The row rung. `/auto t3` means the run's scope is that row's subtree, which the
-    pick can filter by walking `parent`. Today `/auto` takes words and the scope is
-    everything the session holds.
+    pick can filter by walking `parent`. When the words name no row, the grant creates
+    the run's anchor: a row whose content is those words, so an unscoped run still has
+    a scope row for its records and its end-of-run result. Today `/auto` takes words
+    and the scope is everything the session holds.
   - The optional bound, so "work until 07:00" is the run property the model says the
     default of none is not. The duration parser and the target-wake label are in git
     history.
