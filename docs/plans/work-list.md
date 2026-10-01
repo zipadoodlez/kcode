@@ -188,10 +188,11 @@ duplication they would have removed and nothing else.
 starts. 0.1, 0.2 and 0.3 have landed whole and are gone from this list; what 0.2 owed
 was 0.3's last stage, and the two losses 0.1 and 0.3 named are in `docs/todo.md`. Next
 is 0.4: its gate stage (0.4a), row stage (0.4c), one-mode stage (0.4b: only the root
-spawns, both swarm rungs and the effort side-table gone) and node-meta stage (0.4d:
-origin and the growth report gone) have landed; 0.4d's `parent`/`expanded` cut is folded
-into 0.4f, and 0.4e/0.4f/0.4g remain. Each stage compiles before it is committed
-(`dev/post-change.md` says which check); the full gate runs once, when the step is done.
+spawns, both swarm rungs and the effort side-table gone), node-meta stage (0.4d: origin
+and the growth report gone) and liveness stage (0.4e: staleness reads the member's clock,
+the heartbeat counters gone) have landed. 0.4d's `parent`/`expanded` cut and the rest of
+0.4e are the same store-boundary cut as 0.4f, so they live there; 0.4f and 0.4g remain,
+and the one build + test pass lands at the end of 0.4f.
 
 ### 0. One way work gets done
 
@@ -207,30 +208,15 @@ into 0.4f, and 0.4e/0.4f/0.4g remain. Each stage compiles before it is committed
     `parent`/`expanded` cut is not a separate step: `row.parent` is the file's one
     hierarchy (the anchor adopts root rows and decomposition adds children), so the
     plan reading it is exactly 0.4f. See that stage.
-  - **0.4e. `task_progress` goes**, and liveness comes from the member's own clock: the
-    activity mark the turn loop already writes (`session_metrics::record_activity`,
-    `record_token_usage`, `record_turn`, in `turn_streaming_mpsc.rs`) is the source, so a
-    task is alive when its assignee is. Liveness belongs to the member, not the task.
-    The same review settles the scheduler's other copies: fan-out is not a decision but
-    the plan's ready set (`blocked_by`), so a linear chain reuses one member and
-    independent rows fan out on their own; a member holds one row at a time, so busy is
-    the member's in-flight work, not a per-task load count; and who integrates a
-    decomposition is the row's holder (`assigned_to`), not a `planner` field. So the
-    per-task heartbeat task, the `touch_swarm_task_progress` path, the heartbeat
-    staleness sweep, `assignment_loads` as a count, and `planner` all go; the
-    member-death salvage path stays. Decisions: where the failed reason comes from once
-    `checkpoint_summary` is gone, and whether `dead_assignee_reclaims` lives as a small
-    run map or the cap is dropped. Sequenced stages, one commit each, and a build
-    checkpoint runs before 0.4f starts rather than after every stage.
-    - **What the record's removal touches.** `running_stale` is read by turn-end
-      handling, `task_control`, the assignment conflict check, and the TUI member
-      view, so the status goes with the record and every reader derives the stall from
-      the member's clock (the §1 decision). The failed reason `plan_status` shows is
-      re-sourced from the assignee member's last detail instead of
-      `checkpoint_summary`. `dead_assignee_reclaims` moves to a small run-owned map
-      keyed by row id, so the re-dispatch cap survives without the record. The
-      persisted snapshot drops `task_progress` safely: it has no `deny_unknown_fields`
-      (`swarm_persistence.rs:112-121`), so old files still load.
+  - **0.4e. Liveness is the member's.** Landed: the staleness sweep reads the member's
+    activity clock (the turn loop's `session_metrics::record_activity`), and the
+    per-task `heartbeat_count`/`checkpoint_count` are gone. The rest of the review is
+    not separate work: removing `task_progress`, the heartbeat task and
+    `touch_swarm_task_progress`, `assignment_loads`, `planner`, and `running_stale` is
+    the same store-boundary cut as 0.4f, so it lives there. Liveness belongs to the
+    member, not the task; fan-out is the plan's ready set (`blocked_by`), not a
+    decision; busy is the member's in-flight work; and who integrates a decomposition is
+    the row's holder (`assigned_to`).
   - **0.4f. `VersionedPlan` becomes a view of the file**, deleting
     `swarm_persistence.rs` (638 lines) and its tests (938 lines). It reads `parent` and
     composite from the rows: the file's `parent` is the one hierarchy (`anchor_from_rows`
@@ -241,6 +227,19 @@ into 0.4f, and 0.4e/0.4f/0.4g remain. Each stage compiles before it is committed
     field comparison since a held root row legitimately has a parent. The plan-approval
     path (`propose_plan`/`approve_plan`/`reject_plan`, `resync_plan`) is a second writer
     of the same rows and a consumer of the shared context; decide it here.
+    It also carries what 0.4e deferred, because it is the same store-boundary cut:
+    `task_progress` goes; the heartbeat task, `touch_swarm_task_progress` and the
+    heartbeat staleness sweep go (liveness is the member's); `running_stale` goes and its
+    readers (turn-end, `task_control`, the conflict check, the TUI member view) derive
+    the stall from the member's clock; the failed reason reads the member's detail
+    instead of `checkpoint_summary`; `dead_assignee_reclaims` moves to the run's runtime
+    keyed by row id (the salvage monitor is server-side, so the run, not the plan, is
+    its home, and the "worked once" rule in `live_turn.rs` does not bound that path);
+    `assignment_loads` stops being a per-task count and busy becomes the member's
+    in-flight work; and `planner` goes once `expand_node` stops freeing the owner.
+    Sequenced stages, one commit each, and the one build + test pass lands at the end of
+    0.4f. The persisted snapshot drops `task_progress` safely: it has no
+    `deny_unknown_fields` (`swarm_persistence.rs:112-121`), so old files still load.
   - **0.4g. The swarm state gets one owner**: the `coordinators` map, any stored swarm
     id (including the `KCODE_SWARM_ID` shared-swarm opt-in), the `features.swarm` flag
     and per-session toggle (stored membership), the `assign_role` action that writes the
