@@ -1012,11 +1012,8 @@ pub(in crate::tui::app) fn handle_server_event(
             app.current_message_id = None;
             remote.clear_pending();
             remote.reset_call_output_tokens_seen();
-            let auto_poked = app.schedule_turn_end_followups();
-            if !auto_poked {
-                app.clear_visible_turn_started();
-            }
-            auto_poked
+            app.clear_visible_turn_started();
+            false
         }
         ServerEvent::ProviderGuardrail {
             stop_reason,
@@ -1030,10 +1027,6 @@ pub(in crate::tui::app) fn handle_server_event(
                 .as_deref()
                 .filter(|r| !r.trim().is_empty())
                 .unwrap_or("guardrail");
-            // Mark the turn so the Done handler can count consecutive
-            // guardrail stops and stop the auto-poke loop that would
-            // otherwise re-send the refused request forever.
-            app.turn_guardrail_stopped = true;
             // Plain text prefix: U+1F6E1 shield renders poorly in some
             // terminals (kitty shows a narrow monochrome glyph).
             app.push_display_message(DisplayMessage::system(format!("[guardrail] {}", message)));
@@ -1047,7 +1040,6 @@ pub(in crate::tui::app) fn handle_server_event(
             true
         }
         ServerEvent::Done { id } => {
-            let mut auto_poked = false;
             let mut completed_current_message = false;
             crate::logging::info(&format!(
                 "Client received Done id={}, current_message_id={:?}",
@@ -1137,7 +1129,7 @@ pub(in crate::tui::app) fn handle_server_event(
                     "client_turn_completed",
                     std::time::Duration::from_secs(30),
                 );
-                auto_poked = app.conclude_completed_turn(turn_duration_secs);
+                app.conclude_completed_turn(turn_duration_secs);
             } else if app.is_processing {
                 let is_stale = app.current_message_id.is_some_and(|mid| id < mid);
                 if is_stale {
@@ -1152,7 +1144,7 @@ pub(in crate::tui::app) fn handle_server_event(
                     ));
                 }
             }
-            completed_current_message || auto_poked
+            completed_current_message
         }
         ServerEvent::Error {
             message,
@@ -1337,7 +1329,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 // that is known to work), instead of leaving the user to run
                 // /login or /model manually.
                 app.offer_fallback_after_error_with_payload(&message, failed_fallback_payload);
-                return app.schedule_turn_end_followups();
+                return false;
             }
             false
         }

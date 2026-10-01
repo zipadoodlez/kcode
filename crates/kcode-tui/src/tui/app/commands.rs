@@ -68,7 +68,6 @@ pub(super) fn clear_queued_poke_messages(app: &mut App) -> usize {
 pub(super) fn disable_auto_poke(app: &mut App) -> usize {
     let cleared = clear_queued_poke_messages(app);
     app.auto_poke_incomplete_todos = false;
-    app.last_auto_poke_fingerprint = None;
     cleared
 }
 
@@ -1963,33 +1962,6 @@ pub(super) fn active_session_id(app: &App) -> String {
     } else {
         app.session.id.clone()
     }
-}
-
-pub(super) fn poke_todos(app: &App) -> Vec<crate::todo::TaskItem> {
-    crate::todo::load_tasks(
-        app.session.working_dir.as_deref().map(std::path::Path::new),
-        &active_session_id(app),
-    )
-    .unwrap_or_default()
-}
-
-pub(super) fn is_incomplete_poke_todo(todo: &crate::todo::TaskItem) -> bool {
-    !crate::todo::todo_status_is_completed(&todo.status)
-        && !crate::todo::todo_status_is_cancelled(&todo.status)
-}
-
-/// Queue one poke for the model.
-///
-/// Wrapped, so the queue sends it as a system reminder: the model reads it as
-/// harness text, and neither the live transcript nor a resumed session shows it
-/// as the user's own prompt.
-pub(super) fn queue_poke_message(app: &mut App, message: String) {
-    app.queued_messages
-        .push(super::helpers::queued_system_message(&message));
-}
-
-pub(super) fn build_poke_message(incomplete: &[crate::todo::TaskItem]) -> String {
-    crate::todo::build_auto_poke_message(incomplete.len())
 }
 
 pub(super) fn active_working_dir(app: &App) -> Option<std::path::PathBuf> {

@@ -851,20 +851,6 @@ pub struct App {
     pending_turn: bool,
     // When armed, automatically continue prompting while todos are incomplete.
     auto_poke_incomplete_todos: bool,
-    /// Exact continuation sent for the last incomplete todo state. An unchanged
-    /// list must not trigger another automatic turn: the agent may be parked on
-    /// a worker, wake, or human decision, and repeated pokes cannot help.
-    last_auto_poke_fingerprint: Option<String>,
-    /// Set when the current turn ended with a provider guardrail/refusal stop
-    /// (ServerEvent::ProviderGuardrail). Consumed by the Done handler to
-    /// update `consecutive_guardrail_stops`.
-    turn_guardrail_stopped: bool,
-    /// Consecutive turns that ended in a provider guardrail/refusal stop.
-    /// Auto-poke must stop re-sending after a few of
-    /// these: the same request refused once is almost always refused again,
-    /// so blindly poking loops forever (observed live: one refused API call
-    /// every ~7s until manually interrupted).
-    consecutive_guardrail_stops: u8,
     // Interactive "switch to next best model/method and resend" offer surfaced
     // after a provider turn error; accepted with a keypress.
     pending_fallback_offer: Option<PendingFallbackOffer>,
@@ -1239,12 +1225,6 @@ impl Provider for InertRuntimeProvider {
 impl App {
     const AUTO_RETRY_BASE_DELAY_SECS: u64 = 2;
     const AUTO_RETRY_MAX_ATTEMPTS: u8 = 3;
-    /// Consecutive guardrail/refusal-stopped turns tolerated before automatic
-    /// continuation paths (auto-poke) are stopped. Guardrail
-    /// refusals are deterministic for the same request, so re-poking the same
-    /// session just burns one refused API call per poke forever (observed
-    /// live: refusal + auto-poke alternating every ~7s until interrupted).
-    const GUARDRAIL_STOP_MAX_CONSECUTIVE: u8 = 2;
     /// Circuit breaker for credential failures: once this many consecutive
     /// turn errors classify as credential/auth failures, every automatic
     /// resend path (auto-retry, auto-poke, queued follow-ups)

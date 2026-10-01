@@ -29,25 +29,20 @@ pub(super) struct TurnNotification {
 }
 
 impl App {
-    /// Conclude a *completed* turn: run the end-of-turn followup (auto-poke)
-    /// and, when it queued nothing, retire the
-    /// visible-turn marker and post the completion notice.
+    /// Conclude a *completed* turn: retire the visible-turn marker and, when
+    /// nothing is queued to go out, post the completion notice.
     ///
     /// Shared by the live remote turn-complete arm and the turn-lifecycle
-    /// tests, so the followup order and the visible-turn bookkeeping have one
-    /// home. Returns whether a followup was queued.
+    /// tests, so the visible-turn bookkeeping and the notice order have one
+    /// home.
     ///
     /// Interrupted turns do not use this: they clear the marker without posting
     /// a completion notice, which is why they keep their own tail.
-    pub(super) fn conclude_completed_turn(&mut self, duration_secs: Option<f32>) -> bool {
-        let auto_poked = self.schedule_turn_end_followups();
-        if !auto_poked {
-            self.clear_visible_turn_started();
-            if self.queued_messages.is_empty() {
-                self.maybe_notify_turn_complete(duration_secs);
-            }
+    pub(super) fn conclude_completed_turn(&mut self, duration_secs: Option<f32>) {
+        self.clear_visible_turn_started();
+        if self.queued_messages.is_empty() {
+            self.maybe_notify_turn_complete(duration_secs);
         }
-        auto_poked
     }
 
     /// Send a desktop notification for a just-completed turn when warranted.

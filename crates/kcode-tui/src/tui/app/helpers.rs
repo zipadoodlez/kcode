@@ -141,6 +141,7 @@ pub(super) struct CachedContextSnapshot {
 /// `partition_queued_messages` turns this into a reminder-only turn: the model
 /// reads the text as a system reminder, and it never becomes user content or a
 /// displayed message. Whoever queues it shows the user its own notice.
+#[cfg(test)]
 pub(super) fn queued_system_message(text: &str) -> String {
     format!("[SYSTEM: {text}]")
 }
