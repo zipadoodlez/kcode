@@ -197,6 +197,13 @@ changes are paid for in test churn.
   under `app/tests/`. Separately, `kcode-base/src/live_tests.rs` (3,080) is a
   misnamed *production* module (`pub mod live_tests`, consumed by the TUI's
   `/live` report); rename it to what it is.
+- [ ] `kcode-tui`'s
+  `test_remote_fallback_provider_suggestions_normalize_bare_openai_openrouter_routes`
+  fails on a clean tree, at the default thread count and single-threaded, so the
+  suite has one false positive to explain before a red run can be trusted. Cause not
+  diagnosed; it asserts that provider suggestions include
+  `/model openai/gpt-5.4@OpenAI`. `dev/testing.md` carries the note for a session that
+  just saw it.
 - [ ] One home per duplicated test helper: 13 names are defined in more than one
   file (`lock_env` 8, `test_agent` 7, `create_test_app` 3, then
   `tracked_env_vars`, `clear_openai_compatible_runtime_env`,

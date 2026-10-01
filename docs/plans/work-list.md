@@ -14,9 +14,12 @@ written. Four rules, each one paid for by a failure this plan already had:
   literal count), and the claim is grepped again before the step is written. 0.4
   shipped two claims that were false on this tree, and `internals/swarm.md` had
   repeated one of them.
-- **A step lands whole, in one change.** Deleting a subsystem is one commit, not a
-  train of half-states. The doc line rides the code, and prose does not outrun
-  landings: a plan that grows faster than the tree shrinks is not this plan.
+- **A step lands whole; a big one lands in ordered stages.** A stage is one commit,
+  and a symbol goes only once its last caller is gone, so each stage builds on its
+  own and the order is the caller graph, outside in. Each stage compiles before it is
+  committed; the full gate runs once, when the step is done. The doc line rides the
+  code, and prose does not outrun landings: a plan that grows faster than the tree
+  shrinks is not this plan.
 - **A decision on a step's path is taken with that step.** A `(decide)` item is
   answered before the step starts, or the step is marked blocked on it.
 - **A loss is named, never silent.** Capability is fixed and only surface goes. A
@@ -206,7 +209,9 @@ removed and nothing else.
   rename away from the poke) rather than deleted, which would cut retry coverage.
   `commands_tests.rs:132` needs only a rename, since the classifier it tests survives.
   And an existing `auto_poke_toggle` line in a user's config becomes an unknown key
-  that is silently ignored, which is §5's known hazard, so it is named there.
+  that is silently ignored, which is §5's known hazard, so it is named there. The
+  `state_model_poke_0X` test-file names stay: they are grab-bags of unrelated state
+  tests whose names predate the poke, and `todo.md` §4 already owns condensing them.
   `build_auto_poke_message` is still called by the command-line paths this step
   defers (`src/cli/commands.rs:719`), so it, the `features.auto_poke` rename, and the
   poke-named survivors go with those, not here: `is_non_retryable_auto_poke_error`
