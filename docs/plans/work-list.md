@@ -3,6 +3,35 @@
 Work on branch `work-list`. `docs/todo.md` points here. Tick a step when it lands
 and delete it; git has the history.
 
+## How a step lands
+
+This plan is a deletion program. A step removes a representation, a duplicated
+shape, or a mode, and a step that only adds surface is reconsidered before it is
+written. Four rules, each one paid for by a failure this plan already had:
+
+- **Every cut names its code and the evidence.** A step quotes the file and count it
+  measured (`31 SwarmState { .. }` sites, `app_fields=188`, the `SwarmMember`
+  literal count), and the claim is grepped again before the step is written. 0.4
+  shipped two claims that were false on this tree, and `internals/swarm.md` had
+  repeated one of them.
+- **A step lands whole, in one change.** Deleting a subsystem is one commit, not a
+  train of half-states. The doc line rides the code, and prose does not outrun
+  landings: a plan that grows faster than the tree shrinks is not this plan.
+- **A decision on a step's path is taken with that step.** A `(decide)` item is
+  answered before the step starts, or the step is marked blocked on it.
+- **A loss is named, never silent.** Capability is fixed and only surface goes. A
+  step that drops power records it in `docs/todo.md` with why, the way the deleted
+  overnight preflight did.
+
+Zonytail's measure is the codebase after the step, not the diff: fields, `impl`
+blocks, wildcard re-exports and lines per file, ratcheted by
+`scripts/check_guardrails.sh`. A step that must grow records the reason in the same
+commit, because the App shape ratchet only tightens.
+
+**The go/no-go is the second `(decide)` under 0.3.** If a run in flight needs two
+durable stores, the plan or the file, then the model's central promise is false:
+stop at 0.3, keep what landed, and drop the tail rather than adapt it.
+
 ## The model
 
 One file holds the open work: rows of `id`, `content`, optional `kind`, `parent`,
@@ -115,9 +144,17 @@ the children added underneath.
 
 ## Steps
 
-Widest shared shape first, so no step sweeps call sites a later step reshapes.
-Every step lands whole, proven by the gate and, where behavior moves, one
-`kcode run` probe against its own socket.
+Every step lands whole, proven by the gate and, where behavior moves, one `kcode
+run` probe against its own socket. Widest shared shape first, so no step sweeps
+call sites a later step reshapes: 0.1 installs the permission so 0.2 can delete the
+poke, and 0.3 gives the state one owner so 0.4 can delete the rest.
+
+After that, in the order of the moves: delete (D, the topic channels, the shared
+context, and the member projection written four times), then the re-cores (E, F,
+and the `app.rs` re-core). The re-cores are the tail and they are droppable: the
+least evidence and the most churn, nothing upstream depends on them, and finishing
+the model does not need them. Dropping them costs the duplication they would have
+removed and nothing else.
 
 ### 0. One way work gets done
 
