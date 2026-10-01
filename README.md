@@ -48,13 +48,15 @@ claims that ship with a runnable script and its raw artifacts in-repo.
 ### Arch Linux (preferred)
 
 kcode is meant to be owned by the package manager, not dropped into
-`~/.local/bin`. The recipe is `packaging/arch/PKGBUILD`; the package is
-`kcode-git`, because kcode has no tags to build a release from.
+`~/.local/bin`. The package is `kcode-git` on the AUR, because kcode has no tags
+to build a release from. The recipe lives in the AUR repo, not in this tree, so
+clone the package first.
 
 With makepkg, which installs directly:
 
 ```bash
-cd packaging/arch
+git clone https://aur.archlinux.org/kcode-git.git
+cd kcode-git
 makepkg -si
 ```
 
@@ -66,15 +68,14 @@ mkdir -p ~/.config/aurutils
 echo 'AUR_REPO=custom' >> ~/.config/aurutils/env
 ```
 
-then, from `packaging/arch/`:
+then, from the package clone:
 
 ```bash
-cd packaging/arch
+cd kcode-git
 aur build                    # build, add to [custom], refresh its database
 
-# Install from anywhere except packaging/arch: makepkg keeps a bare clone of the
-# `git+` source there named kcode-git, and pacman reads that argument as a path.
-# No -y: [custom] is a local file:// repository, so this needs no network.
+# Install from a directory without the makepkg workspace: pacman would read a
+# local `kcode-git` path there. No -y: [custom] is a local file:// repository.
 sudo pacman -S kcode-git
 ```
 

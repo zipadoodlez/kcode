@@ -86,8 +86,8 @@ CI would handle Homebrew and AUR updates; neither is set up for kcode yet:
 - **Homebrew**: not supported. Publishing through a tap would need a `kcode`
   formula and tap, which do not exist. The inherited `1jehuang/homebrew-jcode`
   references above came from upstream and describe that project's tap.
-- **AUR**: not supported by CI. `packaging/arch/` holds a `kcode-git` source
-  package that is built by hand.
+- **AUR**: not supported by CI. The `kcode-git` AUR package is built by hand;
+  its recipe lives in the AUR repo, not in this tree.
 
 Both would be triggered conditionally by the final `release` job: Homebrew when
 all four Linux/macOS formula assets exist, AUR whenever Linux x86_64 exists.
