@@ -269,8 +269,9 @@ changes are paid for in test churn.
   select orchestration with `/effort` (`swarm`, `swarm-deep`). Fanning out stays as the
   model's own call through the `swarm` tool, and the engine has one mode whose
   parallel/serial shape comes from the plan's blocking structure, not a flag.
-  `features.swarm` and the per-session swarm toggle stay: they say whether a session is
-  in a swarm, not how one behaves.
+  `features.swarm` and the per-session toggle are the same stored membership, so they go
+  with the swarm id and the coordinator map in 0.4g: a session is a worker when it holds
+  and works a row, and "in a swarm" is not a state to be in.
 - [ ] **(decision)** A one-shot `kcode run` no longer drains a list (0.3, 2026-10-01).
   The command-line poke was the last client-side continuation, so `kcode run` is one
   turn again: the permission is read in the session's loop, and a plan-driven member

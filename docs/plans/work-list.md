@@ -213,7 +213,8 @@ runs once, when the step is done.
   - **0.4f. `VersionedPlan` becomes a view of the file**, deleting
     `swarm_persistence.rs` (650 lines) and its tests (1,227 lines).
   - **0.4g. The swarm state gets one owner**: the `coordinators` map, any stored swarm
-    id, and the 31 `SwarmState { .. }` rebuild sites (`docs/todo.md` §1's condense).
+    id, the `features.swarm` flag and per-session toggle (stored membership), and the 31
+    `SwarmState { .. }` rebuild sites (`docs/todo.md` §1's condense).
   `parse_kind`/`kind_str` stay, since they are what reads and writes a row's word.
   `Synthesize` stays as well: it counted as residue while the wire node spec was its
   only producer, and the word lives on the row now (`tool/todo.rs` offers every
