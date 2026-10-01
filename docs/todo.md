@@ -1,7 +1,8 @@
 # Todo
 
 Outstanding work, in the order that unblocks the most. See `README.md` for the
-conventions.
+conventions. The current project's destination, model and open steps are
+`plans/work-list.md`.
 
 ## 1. Shared shapes
 
@@ -210,34 +211,16 @@ changes are paid for in test churn.
   `plans/work-list.md`, which is a plan rather than a manual. It goes in
   `docs/user/` when the list settles, which is late enough to be worth writing
   once: after 0.3, since that is where the row gains its `kind`.
-- [ ] An unknown config key is silently ignored, and 0.2 just made one:
-  `auto_poke_toggle` dies with the client poke, so a config that sets it keeps a dead
-  line with no warning. Same hazard as the sections above, and the first real
-  instance of it.
-- [ ] Unknown config sections are silently ignored (`toml::from_str` with no
-  `deny_unknown_fields`), so older configs keep dead keys with no warning.
+- [ ] Unknown config keys and sections are silently ignored (`toml::from_str` with no
+  `deny_unknown_fields`), so a config keeps dead lines with no warning. First real
+  instance: `auto_poke_toggle`, which dies with the client poke in 0.2.
 - [ ] A stale explicit key in `config.toml` silently beats a changed compiled
   default, with no migration or warning.
 
-## Work list (phase 2)
-
-Phase 1 landed 2026-09-30: the enforcement tier is gone and the poke is identified
-by shape. Phase 2 is the work list, one task: `plans/work-list.md` holds the
-destination, the roadmap, and why the tier must not return; the A/B probe recipe is
-`dev/todo-rework-ab-probe.md`. 0.1 landed 2026-10-01 (the loop, then the
-permission); 0.2 is next and deletes the client poke.
-
-- [ ] The live check the old step 2 owed is superseded: a continuation is no longer
-  a poke reaching the model as a system reminder, it is the session's own turn
-  seeded with a row. What that owes is the probe 0.1's landing rule asks for: one
-  `kcode run` against its own socket on a scratch repo, with a granted turn and two
-  ready rows, showing two row turns and then a stop. See `plans/work-list.md` 0.1.
-
 ## Anytime
 
-- [ ] **(decision)** Two of the four things the deleted overnight run had are still
-  unplaced (deleted 2026-10-01; the bound and the quota projection went back onto the
-  permission in `plans/work-list.md` step 0.1, where they belong).
+- [ ] **(decision)** Two of the four things the overnight run had are still unplaced;
+  the other two went back onto the permission in `plans/work-list.md` 0.1.
   - **A resource snapshot.** Battery, memory, disk and load: ~200 lines of /proc and
     sysfs readers that were only ever displayed, never acted on. Worth keeping only
     if something acts, so throttle or stop on battery and refuse a run with no disk.

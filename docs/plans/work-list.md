@@ -146,8 +146,8 @@ the children added underneath.
 
 Every step lands whole, proven by the gate and, where behavior moves, one `kcode
 run` probe against its own socket. Widest shared shape first, so no step sweeps
-call sites a later step reshapes: 0.1 installs the permission so 0.2 can delete the
-poke, and 0.3 gives the state one owner so 0.4 can delete the rest.
+call sites a later step reshapes: 0.2 removes the poke the permission replaced, and
+0.3 gives the state one owner so 0.4 can delete the rest.
 
 After that, in the order of the moves: delete (D, the topic channels, the shared
 context, and the member projection written four times), then the re-cores (E, F,
@@ -158,95 +158,53 @@ removed and nothing else.
 
 ### 0. One way work gets done
 
-- [ ] **0.1. A session that holds ready rows keeps going without a client nudge.**
-  The blocker I first named here was wrong. The auto-pick filter does not stop
-  this, because an explicit `target_session` bypasses it, and `run_plan`'s loop
-  already drives members, but only ones it owns, and it stalls with "assigned to a
-  session run_plan cannot drive" on the rest. What is actually missing is the
-  continuation: when a session is idle and attached and holds a row whose blockers
-  are all gone, the server starts one tracked turn naming that row, and takes
-  another when that turn ends, until it holds nothing ready. Home: beside
-  `idle_live_agent` and `spawn_tracked_live_turn` in `live_turn.rs`, which already
-  provide the idle guard and the externally started turn. Trigger: the
-  turn-terminal path, so the loop is the session's own turns. Prove: a session
-  holding a ready row is continued, one holding a blocked row is not, one holding
-  nothing is not, and a row it already worked in this run is not picked again.
-  Landed, and proven end to end in `server/tests.rs`: the loop and its pick, with
-  the run's own bound in place, so a row worked once in the run is not picked again
-  and a row left open ends the run instead of spinning it (`TurnSeed` carries the
-  row id into the loop's `worked` set, which the pick skips). A session holding two
-  ready rows takes three turns and then stops, a row whose blocker is still open is
-  left alone, nothing ready takes one turn, and a turn nobody granted takes no
-  second row. The permission landed 2026-10-01: it rides the turn that grants it
-  (`may_continue` on `Request::Message`, set by `/auto <words>` and spent with that
-  turn), the standing default is `features.auto_poke` for a project where every
-  turn of yours may, and it is read in one place, the turn-terminal path that
-  decides the run. `may_continue_on_its_own` is gone, so the permission is no longer
-  fused with having a human and its two readers are one. A run's permission is its
-  own parameter, so a wake (a DM, a background completion, a resume) never continues
-  over rows: that is rule 11, and it is a behavior change for a session that had the
-  standing default on. Headless stays excluded by the reservation until 0.3 makes a
-  member's turn a row's. "Typing always wins" holds: the reservation is given up
-  before the next row is looked for, so a turn already waiting for the agent takes
-  it and the run ends there. `auto_poke` is now a misnomer for the standing default,
-  and the name goes with the last poke, the command-line one 0.3 unblocks, because
-  until then both read it.
-  Owed by the step's own landing rule: the permission moved behavior (a granted turn
-  continues, a wake does not), so it wants one `kcode run` probe against its own
-  socket and a scratch repo, not only the in-process tests. The proof so far is the
-  pick and the loop under a mock provider.
-  The standing default's other half, `may_continue || features.auto_poke` in
-  `record_processing_completion`, landed with a test 2026-10-01
-  (`the_standing_default_continues_an_ungranted_turn`): one attached session holding
-  a ready row, driven twice through the real path, with the default off nothing runs
-  and with it on the row's turn does. It had to land before 0.2 stage 4, which
-  removes the config key's last client reader.
-  Small, still owed: the row rung (`/auto t3`, the pick's optional subtree filter),
-  an optional bound so "work until 07:00" is the run property the model says (the
-  duration parser and the target-wake label are in git history), and a
-  quota-projection warning built from the existing provider usage reports. The
-  resource snapshot and a run-end summary stay undecided in `docs/todo.md`.
+- [ ] **0.1. The permission's remaining pieces.** The loop and the permission landed
+  2026-10-01, with the proof under a mock provider in `server/tests.rs`; what is left
+  is the boundary, one rider, and the proof a live socket owes.
+  - The row rung. `/auto t3` means the run's scope is that row's subtree, which the
+    pick can filter by walking `parent`. Today `/auto` takes words and the scope is
+    everything the session holds.
+  - The optional bound, so "work until 07:00" is the run property the model says the
+    default of none is not. The duration parser and the target-wake label are in git
+    history.
+  - The quota-projection warning, built from the existing provider usage reports and
+    printed where the usage snapshot is already rendered.
+  - The step's own landing rule: the permission moved behavior (a granted turn
+    continues, a wake does not), so it wants one `kcode run` probe against its own
+    socket and a scratch repo, not only the in-process proof.
+  Deferred: a headless member holding the permission inherently goes to 0.3, and the
+  `features.auto_poke` rename goes with the last poke, the command-line one.
+
 - [ ] **0.2. Delete the client poke**, which this replaces. With the server
   continuing a session that holds ready rows, the TUI's auto-poke machine goes:
   `auto_poke_incomplete_todos` (16 files, 65 uses), `last_auto_poke_fingerprint`,
   the `/poke` command with the `auto_poke_toggle` keybinding it is bound to (ctrl+p
-  by default, with its template line, its `display_summary` entry and its test), its
-  overlay line, its help and its completions, and its tests. `total_pokes_sent`, `morning_report_poked` and `final_wrap_poked` already
-  went with the overnight subsystem, and the toggle defaults off, so nothing the
+  by default, with its template, its `display_summary` entry and its test), its
+  overlay line, and its help and completions. The toggle defaults off, so nothing the
   user had is lost.
-  Two things in it are power rather than poke, and both are settled. A
-  guardrail-stopped turn does return `Ok`: the refusal breaks the stream rather than
-  the turn (`turn_streaming_mpsc.rs:1164`), so a run advances past it. It is not
-  re-homed anyway, and the reason is the run's own bound: a row is attempted once, so
-  a refusing provider costs at most one call per row the session holds, and the run
-  still ends. The breaker existed to stop an unbounded re-poke loop, and that loop is
-  what this step deletes. The non-retryable-error classifier stays, because it is the
-  client's retry policy and a failed turn already ends the run.
-  The docs that name the poke go with it: the `/poke` examples in
-  `dev/message-voice.md`, the `/poke` help, and its completion entries.
+  Its two pieces of real power are settled. The guardrail breaker guarded an
+  unbounded re-poke loop, and that loop is what this step deletes: a refused turn
+  does return `Ok` (`turn_streaming_mpsc.rs:1164`), but a row is attempted once, so a
+  refusing provider costs at most one call per row held. The non-retryable classifier
+  stays, because it is the client's retry policy and a failed turn already ends a run.
   The pass, in the order the caller graph allows, so every stage leaves a tree that
-  builds: a symbol goes only once its last caller is gone. Five stages, each landed
-  and committed on its own.
-  1. **The tests**, because they are the only callers of the poke API from outside it
-     (`commands_tests.rs` and eleven files under `app/tests/`). Done 2026-10-01: 21
-     poke-only tests, 850 lines, with the two `Esc`-interrupt tests removed rather
-     than trimmed, since their subject was the poke disarm and a neighbouring test
-     keeps the interrupt covered.
-  2. **The user surface**: the command and its arms (`commands.rs`, `key_handling.rs`),
+  builds: a symbol goes only once its last caller is gone. The tests went first and
+  are gone; four stages are left, each landed and committed on its own.
+  1. **The user surface**: the command and its arms (`commands.rs`, `key_handling.rs`),
      the registry and completion entries, the help arm, the `auto_poke_toggle`
      keybinding end to end, and the hotkey and overlay lines.
-  3. **The scheduler**: `schedule_turn_end_followups` with `conclude_completed_turn`'s
+  2. **The scheduler**: `schedule_turn_end_followups` with `conclude_completed_turn`'s
      use of it, `schedule_auto_poke_followup_if_needed`, `build_poke_message`,
      `queue_poke_message`, and the breaker trio with `turn_guardrail_stopped`, which
      only the breaker reads.
-  4. **The state**: `auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`,
+  3. **The state**: `auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`,
      `disable_auto_poke`, `clear_queued_poke_messages`, and the poke arms in
      `stop_auto_poke_for_non_retryable_error`, `remote.rs`, `model_context.rs`,
      `server_events.rs` and `tui_lifecycle.rs`.
-  5. **The docs** that name it.
+  4. **The docs** that name it.
   Two traps. The five retry tests at `remote_events_reload_04.rs` 202, 268, 310, 366
   and 425 are not poke tests: they use the poke only to create a queued follow-up, so
-  they are retargeted at the retry path in stage 3 (create the follow-up directly,
+  they are retargeted at the retry path in stage 2 (create the follow-up directly,
   rename away from the poke) rather than deleted, which would cut retry coverage.
   `commands_tests.rs:132` needs only a rename, since the classifier it tests survives.
   And an existing `auto_poke_toggle` line in a user's config becomes an unknown key
