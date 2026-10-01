@@ -236,12 +236,6 @@ step is done.
     and `run_plan` (`tool/communicate.rs:1298`, `:1449`, `:2606`, `:2911`, `:2963`,
     with its schema text at `:1688`, `:1801`; `wire.rs:560`, `:682`) along with the
     `agents.swarm_effort` pin (`kcode-config-types/src/lib.rs:461`).
-  Why one level: a model cannot calibrate this choice, since it never sees the cost of
-  the extra thinking or whether the thinking changed the outcome, and its bias runs one
-  way, so its answer is noise or a constant high. A human can calibrate it, and that is
-  the lever left. What comes back later, if anything, is an engine rule with a signal
-  rather than a knob: a node whose first attempt failed or stalled is retried higher, and
-  the ladder is a human's.
 
 ### B. The file is the list
 
