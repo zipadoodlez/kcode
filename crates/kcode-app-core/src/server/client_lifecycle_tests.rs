@@ -1,3 +1,4 @@
+use super::super::tests::{ScopedEnvVar, attached_swarm_member, configure_test_env};
 use super::*;
 use crate::message::{ContentBlock, Message, StreamEvent, ToolDefinition};
 use crate::protocol::SwarmLifecycleStatus;
@@ -1119,6 +1120,125 @@ async fn client_initiated_turn_fans_out_stream_and_terminal_events_to_live_attac
 
     if let Some(handle) = processing_task.take() {
         handle.await.expect("processing task join");
+    }
+}
+
+/// Complete one client turn for `session_id`, which is where the permission is read
+/// (rule 11 in `plans/work-list.md`). The swarm tables are empty because this
+/// decision reads members only.
+async fn complete_turn(
+    session_id: &str,
+    may_continue: bool,
+    sessions: &SessionAgents,
+    members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+) {
+    let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
+    let event_history = Arc::new(RwLock::new(std::collections::VecDeque::new()));
+    let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let (swarm_event_tx, _) = broadcast::channel(8);
+    record_processing_completion(
+        Some(session_id),
+        Ok(()),
+        None,
+        may_continue,
+        sessions,
+        &SwarmStatusRefs {
+            members,
+            swarms_by_id: &swarms_by_id,
+            event_history: &event_history,
+            event_counter: &event_counter,
+            event_tx: &swarm_event_tx,
+        },
+    )
+    .await;
+}
+
+/// The standing default (rule 11 in `plans/work-list.md`): a turn nobody granted
+/// continues over the rows this session holds only when the project says every
+/// turn of yours may, which is `features.auto_poke`. The loop tests pass the grant
+/// explicitly, so this is the only cover for the config half of that decision.
+#[tokio::test]
+async fn the_standing_default_continues_an_ungranted_turn() {
+    let _storage = crate::storage::lock_test_env();
+    let home = tempfile::tempdir().expect("temp dir");
+    let _env = configure_test_env(&home);
+    let session_id = "session_standing_default";
+
+    // A repo of its own, so the run reads a list this test owns.
+    let repo = home.path().join("repo");
+    std::fs::create_dir_all(&repo).expect("repo dir");
+    assert!(
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&repo)
+            .status()
+            .expect("git init")
+            .success(),
+        "git init"
+    );
+    crate::todo::save_tasks(
+        Some(&repo),
+        session_id,
+        &[crate::todo::TaskItem {
+            id: "t1".to_string(),
+            content: "row t1".to_string(),
+            assigned_to: Some(session_id.to_string()),
+            ..Default::default()
+        }],
+    )
+    .expect("write the work list");
+
+    let provider: Arc<dyn Provider> = Arc::new(FanoutStreamProvider);
+    let registry = Registry::new(Arc::clone(&provider)).await;
+    let agent = Arc::new(Mutex::new(Agent::new_with_initial_working_dir(
+        provider,
+        registry,
+        Some(repo.to_str().expect("utf-8 repo path")),
+    )));
+    let sessions: SessionAgents = Arc::new(RwLock::new(HashMap::from([(
+        session_id.to_string(),
+        Arc::clone(&agent),
+    )])));
+
+    let (member_tx, mut member_rx) = mpsc::unbounded_channel::<ServerEvent>();
+    let mut member = attached_swarm_member(session_id, member_tx.clone());
+    // Attached through the map a real client attach uses, so the reservation can
+    // be taken and the run is allowed to continue.
+    member.event_txs.insert("test".to_string(), member_tx);
+    let swarm_members = Arc::new(RwLock::new(HashMap::from([(
+        session_id.to_string(),
+        member,
+    )])));
+
+    // Standing default off: an ungranted turn ends where it ends, even with a row
+    // ready and the session attached.
+    {
+        let _off = ScopedEnvVar::set("KCODE_AUTO_POKE", "false");
+        complete_turn(session_id, false, &sessions, &swarm_members).await;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(500), member_rx.recv())
+                .await
+                .is_err(),
+            "no run may start while the permission is off"
+        );
+    }
+
+    // Standing default on: the same ungranted turn takes the row.
+    {
+        let _on = ScopedEnvVar::set("KCODE_AUTO_POKE", "true");
+        complete_turn(session_id, false, &sessions, &swarm_members).await;
+        let ran = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                match member_rx.recv().await {
+                    Some(ServerEvent::Done { .. }) => return true,
+                    Some(_) => continue,
+                    None => return false,
+                }
+            }
+        })
+        .await
+        .expect("the standing default should take the row's turn");
+        assert!(ran, "the run's turn must reach its terminal event");
     }
 }
 

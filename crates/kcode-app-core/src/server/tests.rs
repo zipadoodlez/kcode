@@ -25,13 +25,13 @@ use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 use tokio::time::timeout;
 
-struct EnvGuard {
+pub(super) struct EnvGuard {
     prev_home: Option<OsString>,
     prev_runtime_dir: Option<OsString>,
     prev_socket: Option<OsString>,
 }
 
-struct ScopedEnvVar {
+pub(super) struct ScopedEnvVar {
     key: &'static str,
     prev: Option<OsString>,
 }
@@ -167,7 +167,7 @@ impl Drop for EnvGuard {
 }
 
 impl ScopedEnvVar {
-    fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
+    pub(super) fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
         let prev = std::env::var_os(key);
         crate::env::set_var(key, value);
         // Config caches env-derived values; a scoped override must be visible
@@ -188,7 +188,7 @@ impl Drop for ScopedEnvVar {
     }
 }
 
-fn configure_test_env(root: &tempfile::TempDir) -> EnvGuard {
+pub(super) fn configure_test_env(root: &tempfile::TempDir) -> EnvGuard {
     let prev_home = std::env::var_os("KCODE_HOME");
     let prev_runtime_dir = std::env::var_os("KCODE_RUNTIME_DIR");
     let prev_socket = std::env::var_os("KCODE_SOCKET");
@@ -267,7 +267,7 @@ fn empty_swarm_status_state() -> (
     )
 }
 
-fn attached_swarm_member(
+pub(super) fn attached_swarm_member(
     session_id: &str,
     event_tx: mpsc::UnboundedSender<ServerEvent>,
 ) -> SwarmMember {
