@@ -258,13 +258,16 @@ step is done.
   durable per-node state (`node_meta`, 85 sites in 19 files, and `task_progress`),
   the persisted plan itself (`swarm_persistence.rs`, 650 lines plus 1,218 of tests;
   `VersionedPlan` becomes an in-memory view built from the file), the `coordinators`
-  map, any stored swarm id, the 31 `SwarmState { .. }` rebuild sites, and the
-  `Synthesize` kind, reachable only through the wire spec this step deletes. One
+  map, any stored swarm id, and the 31 `SwarmState { .. }` rebuild sites. One
   thing blocks the `node_meta` half: `is_gate` lives there and a gate is the one node
   with no row, so the step first settles whether a gate is re-derived per run from
   `requires_gates`, with nothing durable, or carried in the file. `parent` duplicates
   the row already, and `expanded`, `planner` and `origin` are run state.
   `parse_kind`/`kind_str` stay, since they are what reads and writes a row's word.
+  `Synthesize` stays as well: it counted as residue while the wire node spec was its
+  only producer, and the word lives on the row now (`tool/todo.rs` offers every
+  `KINDS` entry), so a run's own join row has a word to be typed with. Nothing in the
+  engine branches on it, so it costs one enum variant and one word.
   The deep/light flag is not residue,
   as `internals/swarm.md` says: there is no `Mode::is_deep`, and `requires_gates`
   guards gate insertion (`kcode-plan/src/dag/ops.rs:67`, `:308`), gate-pass
