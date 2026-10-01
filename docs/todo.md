@@ -336,6 +336,17 @@ changes are paid for in test churn.
   synthesis: it can now be given a second row. Concurrent picks are still serialized
   by the in-process claim, and a member actually working is never a candidate. Add a
   per-member cap only if stacking matters again.
+- [ ] **(decision)** A decomposition's finish step goes back to the agent that split
+  it (0.4f s11, 2026-10-01). The row's `assigned_to` is the record of who owes the
+  work, so a ready row claimed by a live, idle holder is handed back to that holder,
+  and no fresh agent is spawned for it. Two consequences, both accepted: `run_plan`'s
+  default fresh-agent preference stops applying to a held row, so the finish step
+  waits for the agent that planned the decomposition instead of running on a new
+  agent, which is what the code's own comment said the synthesis needs; and a ready
+  row held by a free session is dispatchable by an untargeted `assign_next` outside
+  the composite case too. The asking session's own rows stay out of the picker,
+  because the assign path refuses to assign a task to the asking session, so a self
+  hand-back would fail the whole run.
 - [ ] Not every color derives from a role: `configured_native_color`
   (`kcode-tui-style/src/palette.rs`) attributes a shade to a role only when it
   equals that role's default, so hardcoded `Color::Rgb(...)` shades pass through

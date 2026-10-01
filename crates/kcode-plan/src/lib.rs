@@ -561,6 +561,33 @@ pub fn next_unassigned_runnable_item_id(plan: &VersionedPlan) -> Option<String> 
         })
 }
 
+/// The highest-priority runnable (ready) item that a holder which can work it
+/// already claims, together with that holder.
+///
+/// A row that names a holder is not granted afresh by anyone: the assignment is
+/// the record of who owes the work, so a ready row held by a session that can
+/// take it is handed back to that session rather than given to a free worker. A
+/// holder the caller cannot drive is not returned here; the dead case is
+/// [`next_stranded_runnable_item_id`], and a holder that is merely busy is left
+/// alone until it finishes. `requester`'s own rows are excluded: it works those
+/// itself, and the assign path refuses to assign a task to the asking session.
+pub fn next_held_runnable_item_id(
+    plan: &VersionedPlan,
+    holder_can_work: &dyn Fn(&str) -> bool,
+    requester: &str,
+) -> Option<(String, String)> {
+    next_runnable_item_ids(&plan.items, None)
+        .into_iter()
+        .find_map(|candidate_id| {
+            let item = plan.items.iter().find(|item| item.id == candidate_id)?;
+            let holder = item.assigned_to.as_deref()?;
+            if holder == requester || !holder_can_work(holder) {
+                return None;
+            }
+            Some((candidate_id, holder.to_string()))
+        })
+}
+
 /// Cap on automatic reclaims of a node stranded on a dead assignee. Past this,
 /// only explicit `retry`/`assign_task` can move the node, so a node whose
 /// workers keep dying cannot spawn replacements forever.
@@ -957,6 +984,42 @@ mod tests {
         assert_eq!(
             explicit_task_blocked_reason(&plan, "blocked"),
             Some("Task 'blocked' is still blocked by: ready".to_string())
+        );
+    }
+
+    #[test]
+    fn a_held_runnable_row_names_the_holder_that_can_take_it_back() {
+        let plan = VersionedPlan {
+            items: vec![
+                TaskItem {
+                    assigned_to: Some("worker-busy".to_string()),
+                    ..item("busy", "queued", &[])
+                },
+                TaskItem {
+                    assigned_to: Some("worker-free".to_string()),
+                    ..item("held", "queued", &[])
+                },
+                TaskItem {
+                    assigned_to: Some("requester".to_string()),
+                    ..item("own", "queued", &[])
+                },
+                item("unowned", "queued", &[]),
+            ],
+            ..VersionedPlan::new()
+        };
+        let free = |session: &str| session == "worker-free" || session == "requester";
+
+        // The first runnable row whose holder can take it, skipping a busy holder
+        // and the asker's own rows.
+        assert_eq!(
+            next_held_runnable_item_id(&plan, &free, "requester"),
+            Some(("held".to_string(), "worker-free".to_string()))
+        );
+        // Nobody can take anything: no hand-back, and an unowned row is not one.
+        let nobody = |_: &str| false;
+        assert_eq!(
+            next_held_runnable_item_id(&plan, &nobody, "requester"),
+            None
         );
     }
 

@@ -49,6 +49,9 @@ use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 /// are the idle lifecycle states, and a member that is working or waiting on
 /// work (`is_in_flight`, i.e. `queued`/`running`) is never idle. Busy is the
 /// member's own in-flight work, so nothing here consults the plan.
+///
+/// Idleness is asked in one more place, the dispatch picker, which hands a ready
+/// row back to a holder that can take it. Both read [`member_is_idle`].
 fn filter_swarm_agent_candidates<'a>(
     members: &'a HashMap<String, SwarmMember>,
     req_session_id: &str,
@@ -60,10 +63,20 @@ fn filter_swarm_agent_candidates<'a>(
             member.session_id != req_session_id
                 && member.swarm_id.as_deref() == Some(swarm_id)
                 && member.role == "agent"
-                && matches!(member.status.as_str(), "ready" | "completed")
+                && member_is_idle(&member.status)
                 && is_drivable_auto_worker(member, req_session_id)
         })
         .collect()
+}
+
+/// Whether a member can take a row right now: the idle lifecycle states. A
+/// member that is `queued`/`running` is working, and one that is failed,
+/// stopped or crashed can never come back (the salvage sweep frees its rows).
+fn member_is_idle(status: &SwarmLifecycleStatus) -> bool {
+    matches!(
+        status,
+        SwarmLifecycleStatus::Ready | SwarmLifecycleStatus::Completed
+    )
 }
 
 /// Whether `member` can be auto-assigned a task and be relied on to run it.
@@ -447,31 +460,40 @@ async fn next_unassigned_runnable_task_id(
     next_unassigned_runnable_item_id(plan)
 }
 
-/// Like [`next_unassigned_runnable_task_id`], but when no unassigned runnable
-/// item exists, look for a runnable item *stranded* on a dead assignee (a
-/// member whose lifecycle status is terminal, or that is no longer a swarm
-/// member at all) and reclaim it so the caller can dispatch it normally.
+/// Which row a dispatch takes, and how the row is already held.
+enum Dispatch {
+    /// Nobody holds the row, so the resolver picks a free worker for it.
+    Unassigned(String),
+    /// A holder that can work the row already claims it, so the row goes back
+    /// to that holder.
+    HandBack { task_id: String, holder: String },
+}
+
+/// The row a dispatch should take next, asked in this order: an unowned runnable
+/// row (new work, handed to a free worker), then a runnable row a live holder can
+/// take back (the assignment is the record of who owes it), then a runnable row
+/// stranded on a holder that can never come back, whose claim is cleared first.
 ///
-/// This is the requeue-pickup path: `task_control retry` re-dispatches to the
-/// existing assignee, so when that session died (e.g. an auth-failure wave)
-/// the node sits `queued` + assigned-to-a-corpse, invisible to
+/// The stranded rung is the requeue-pickup path: `task_control retry`
+/// re-dispatches to the existing assignee, so when that session died (e.g. an
+/// auth-failure wave) the node sits `queued` + assigned-to-a-corpse, invisible to
 /// `next_unassigned_runnable_item_id`, and a still-running `run_plan` driver
-/// reports "No runnable unassigned tasks" forever. Reclaims are capped
-/// per-node by [`crate::plan::MAX_DEAD_ASSIGNEE_RECLAIMS`] to respect the
-/// repeat-failure policy: beyond the cap only explicit `retry`/`assign_task`
-/// move the node.
-async fn next_runnable_task_id_reclaiming_stranded(
+/// reports "No runnable unassigned tasks" forever. Reclaims are capped per-node by
+/// [`crate::plan::MAX_DEAD_ASSIGNEE_RECLAIMS`] to respect the repeat-failure
+/// policy: beyond the cap only explicit `retry`/`assign_task` move the node.
+async fn next_dispatch(
     swarm_id: &str,
+    req_session_id: &str,
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-) -> Option<String> {
+) -> Option<Dispatch> {
     if let Some(task_id) = next_unassigned_runnable_task_id(swarm_id, swarm_plans).await {
-        return Some(task_id);
+        return Some(Dispatch::Unassigned(task_id));
     }
 
-    // Snapshot member liveness first so the plans write lock is not held
-    // across the members read lock (avoids lock-order inversions with paths
-    // that lock members before plans).
+    // Snapshot member liveness first so the plans locks are not held across the
+    // members read lock (avoids lock-order inversions with paths that lock
+    // members before plans).
     let member_statuses: HashMap<String, SwarmLifecycleStatus> = {
         let members = swarm_members.read().await;
         members
@@ -480,13 +502,25 @@ async fn next_runnable_task_id_reclaiming_stranded(
             .map(|member| (member.session_id.clone(), member.status.clone()))
             .collect()
     };
-    let assignee_is_dead = move |session_id: &str| -> bool {
+    let holder_can_work =
+        |session_id: &str| member_statuses.get(session_id).is_some_and(member_is_idle);
+    let assignee_is_dead = |session_id: &str| -> bool {
         match member_statuses.get(session_id) {
             Some(status) => status.is_dead(),
             // Not a member of this swarm anymore: nothing can drive it.
             None => true,
         }
     };
+
+    let held = {
+        let plans = swarm_plans.read().await;
+        plans.get(swarm_id).and_then(|plan| {
+            crate::plan::next_held_runnable_item_id(plan, &holder_can_work, req_session_id)
+        })
+    };
+    if let Some((task_id, holder)) = held {
+        return Some(Dispatch::HandBack { task_id, holder });
+    }
 
     let mut plans = swarm_plans.write().await;
     let plan = plans.get_mut(swarm_id)?;
@@ -496,7 +530,7 @@ async fn next_runnable_task_id_reclaiming_stranded(
             "swarm {}: reclaimed stranded task '{}' from dead assignee for re-dispatch",
             swarm_id, stranded_id
         ));
-        Some(stranded_id)
+        Some(Dispatch::Unassigned(stranded_id))
     } else {
         None
     }
@@ -1539,8 +1573,8 @@ pub(super) async fn handle_comm_assign_next(
             None => return,
         };
 
-        let Some(selected_task_id) =
-            next_runnable_task_id_reclaiming_stranded(&swarm_id, swarm_plans, swarm_members).await
+        let Some(dispatch) =
+            next_dispatch(&swarm_id, &req_session_id, swarm_plans, swarm_members).await
         else {
             let _ = client_event_tx.send(ServerEvent::Error {
                 id,
@@ -1548,6 +1582,39 @@ pub(super) async fn handle_comm_assign_next(
                 retry_after_secs: None,
             });
             return;
+        };
+
+        // A row that already names a holder goes back to that holder, and no
+        // fresh agent is spawned for it: the assignment is the record of who owes
+        // the work, so a caller's fresh-agent preference governs rows nobody
+        // holds. The re-dispatch is deliberate, like `retry`, so a stored answer
+        // to an earlier identical request must not swallow it.
+        if let Dispatch::HandBack { task_id, holder } = dispatch {
+            handle_comm_assign_task_with_mode(
+                id,
+                req_session_id,
+                Some(holder),
+                Some(task_id),
+                message,
+                AssignDedupMode::AlwaysDispatch,
+                client_event_tx,
+                sessions,
+                soft_interrupt_queues,
+                client_connections,
+                swarm_members,
+                swarms_by_id,
+                swarm_plans,
+                swarm_coordinators,
+                event_history,
+                event_counter,
+                swarm_event_tx,
+                swarm_mutation_runtime,
+            )
+            .await;
+            return;
+        }
+        let Dispatch::Unassigned(selected_task_id) = dispatch else {
+            unreachable!("the hand-back case returned above")
         };
 
         let preferred_target = resolve_assignment_target_for_task(
