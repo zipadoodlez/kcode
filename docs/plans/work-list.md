@@ -238,6 +238,14 @@ runs once, when the step is done.
     with its schema text at `:1688`, `:1801`; `wire.rs:560`, `:682`) along with the
     `agents.swarm_effort` pin (`kcode-config-types/src/lib.rs:461`).
 
+### A. Audit
+
+- [ ] **A1. A braid audit of the tree.** Run `/braid-audit` once over the repo and fold
+  what it finds into this list: unscoped concepts, duplicate representations, modes and
+  dead paths, ranked by surface removed. It runs after 0.4 and 0.5 so it audits the
+  settled model rather than one in flight, and it feeds the tail (D, E, F) and the
+  hygiene items. A finding is a step or a deletion, never a standalone report.
+
 ### B. The file is the list
 
 Last of the file work, whenever we want it.
