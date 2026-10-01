@@ -159,11 +159,18 @@ least evidence and the most churn, nothing upstream depends on them, and finishi
 the model does not need them. Dropping them costs the duplication they would have
 removed and nothing else.
 
+**Here is where the work stands**, and a step in flight is finished before a new one
+starts. 0.1's loop and permission have landed with their tests. 0.2 is in flight,
+two of its five stages gone (its tests, its surface); its remaining three follow.
+0.1's four riders come after, and then 0.3. Each stage compiles before it is
+committed (`dev/post-change.md` says which check); the full gate runs once, when the
+step is done.
+
 ### 0. One way work gets done
 
 - [ ] **0.1. The permission's remaining pieces.** The loop and the permission landed
   2026-10-01, with the proof under a mock provider in `server/tests.rs`; what is left
-  is the boundary, one rider, and the proof a live socket owes.
+  is the row rung, two riders, and the proof a live socket owes.
   - The row rung. `/auto t3` means the run's scope is that row's subtree, which the
     pick can filter by walking `parent`. Today `/auto` takes words and the scope is
     everything the session holds.
