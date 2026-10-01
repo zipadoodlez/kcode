@@ -177,9 +177,10 @@ duplication they would have removed and nothing else.
 starts. 0.1 has landed whole and is gone from this list: the loop, the permission and
 the row rung, each with its tests, and its two riders were cut with the loss named in
 `docs/todo.md`. 0.2 has landed whole too; what it owed is its own step below, after
-0.3. Next is 0.3, staged below. Each stage compiles before it is committed
-(`dev/post-change.md` says which check); the full gate runs once, when the step is
-done.
+0.3. Next is 0.3, staged below and in flight: its stages land in order, so a resume
+starts at the first stage whose work is not in git. Each stage compiles before it is
+committed (`dev/post-change.md` says which check); the full gate runs once, when the
+step is done.
 
 ### 0. One way work gets done
 
@@ -216,15 +217,21 @@ done.
     `swarm_persistence_tests.rs:470`), since its last reader is gone.
     `parse_kind`/`kind_str`/`KINDS` stay: they are the vocabulary that reads and writes
     a row's word.
-  - **S4. The seed is the rows the run holds.** The seed path - `swarm run_plan`'s
-    `nodes`, `CommSeedGraph`, `handle_comm_seed_graph` (`comm_graph.rs:221`) - takes its
-    nodes from the file: id = row id, content = the row's words, kind = the row's kind,
-    `depends_on` = `blocked_by`, and the priority rank is the row's position. A gate is
-    the one node with no row, so its id and kind are engine names. A run whose grant
-    typed no anchor gets one here, through the store's write path (`todo::anchor_run`
-    already writes a named row or a fresh anchor), and the grant types that anchor
-    `synthesize`: a row with no word is not seedable (rule 8), and the run's own row is
-    the one whose result is its children integrated.
+  - **S4a. The seed is the rows the run holds.** The seed path
+    (`handle_comm_seed_graph`, `comm_graph.rs:221`) reads the seeder's list instead of a
+    list the caller types: `bridge::seed_specs` lifts the rows a session holds into
+    nodes, the row's id is the node's id, and a row already in the plan is not seeded
+    again. The wire's `nodes` payload goes, and with it the id-collision remap
+    machinery the model's invented ids needed, since a row's id is unique by
+    construction. `expand_node` and `inject_gap` still take node specs; 0.4 deletes the
+    spec once the row model owns a decomposition too.
+  - **S4b. A run with no typed anchor gets one from the seed.** A run whose grant typed
+    no anchor (a headless member holds the permission inherently) gets one through the
+    store's write path (`todo::anchor_run` already writes a named row or a fresh
+    anchor), and the grant types that anchor `synthesize`: a row with no word is not
+    seedable (rule 8), and the run's own row is the one whose result is its children
+    integrated. Its root-level rows then name it as their parent, so every record has a
+    home inside the run's own scope.
   - **S5. A close keeps its record on the row that owns the work.** `TaskItem` gains
     one opaque field, `records`: the closes of the work done under this row. The close
     writes a node's record onto its parent's row, and it takes the machine-readable

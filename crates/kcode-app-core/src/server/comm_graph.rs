@@ -226,7 +226,6 @@ pub(super) async fn handle_comm_seed_graph(
     id: u64,
     req_session_id: String,
     mode: Option<String>,
-    nodes: Vec<TaskGraphNodeSpec>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
@@ -240,6 +239,13 @@ pub(super) async fn handle_comm_seed_graph(
         err(client_event_tx, id, "Not in a swarm.".to_string());
         return;
     };
+    // The rows live where the seeder's session lives: its member record, the same
+    // session root a busy agent's attach reads.
+    let working_dir = swarm_members
+        .read()
+        .await
+        .get(&req_session_id)
+        .and_then(|member| member.working_dir.clone());
 
     // A deep-mode seeder is usually a solo agent. Elect it coordinator (when no
     // live coordinator exists) so it can actually dispatch the graph it seeds via
@@ -252,8 +258,21 @@ pub(super) async fn handle_comm_seed_graph(
     )
     .await;
 
-    let specs: Vec<NodeSpec> = nodes.into_iter().map(spec_from_wire).collect();
-    let count = specs.len();
+    // The seed is the rows this session holds (the run's own scope), not a list the
+    // caller types: the row's id is the node's id, so a row never becomes two nodes
+    // and a re-seed is a no-op. What the plan already has is not seeded again.
+    let rows = crate::todo::load_tasks(working_dir.as_deref(), &req_session_id).unwrap_or_default();
+    let seedable: Vec<NodeSpec> = kcode_plan::bridge::seed_specs(&rows, &req_session_id);
+    if seedable.is_empty() {
+        err(
+            client_event_tx,
+            id,
+            "Seed rejected: this session holds no row the engine can seat. A row seeds a run when the todo tool gave it a kind and every row it is blocked by is this session's too."
+                .to_string(),
+        );
+        return;
+    }
+    let count = seedable.len();
 
     // Resolve the plan mode. The model is *asked* to pass `mode:"deep"` when it is
     // running at `swarm-deep` effort, but it frequently forgets. Rather than
@@ -272,6 +291,13 @@ pub(super) async fn handle_comm_seed_graph(
         let plan = plans
             .entry(swarm_id.clone())
             .or_insert_with(VersionedPlan::new);
+        let specs: Vec<NodeSpec> = seedable
+            .into_iter()
+            .filter(|spec| {
+                let id = spec.id.as_deref().unwrap_or_default();
+                !plan.items.iter().any(|item| item.id == id)
+            })
+            .collect();
         if let Some(mode) = resolved_mode {
             // Guard against silent rigor downgrades: re-seeding an existing deep
             // plan as light would strip the gates + artifact validation from all
@@ -305,7 +331,7 @@ pub(super) async fn handle_comm_seed_graph(
                         apply_task_graph(plan, &graph);
                         plan.version += 1;
                     }
-                    Ok(())
+                    Ok(count)
                 }
             },
             Err(e) => Err(e.to_string()),
@@ -313,7 +339,7 @@ pub(super) async fn handle_comm_seed_graph(
     };
 
     match result {
-        Ok(()) => {
+        Ok(count) => {
             finalize(
                 id,
                 &swarm_id,

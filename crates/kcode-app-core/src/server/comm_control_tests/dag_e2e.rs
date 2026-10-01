@@ -21,8 +21,45 @@ fn node_spec(id: &str, kind: &str, deps: &[&str]) -> TaskGraphNodeSpec {
     }
 }
 
+/// A repo of its own, so the list a seed reads is this test's and never the
+/// machine's (rule 1).
+fn scratch_repo() -> tempfile::TempDir {
+    let repo = tempfile::TempDir::new().expect("tempdir");
+    assert!(
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(repo.path())
+            .status()
+            .expect("git init")
+            .success(),
+        "git init"
+    );
+    repo
+}
+
+/// Write `nodes` as `session_id`'s rows. The seed reads the seeder's list, so a
+/// fixture puts the nodes it wants seeded there first; a node spec here is the
+/// test's shorthand for a row's id, words, kind and blockers, and the position is
+/// the order given.
+fn write_rows(repo: &std::path::Path, session_id: &str, nodes: &[TaskGraphNodeSpec]) {
+    let rows: Vec<TaskItem> = nodes
+        .iter()
+        .map(|node| TaskItem {
+            id: node.id.clone(),
+            content: node.content.clone(),
+            kind: node.kind.clone(),
+            blocked_by: node.depends_on.clone(),
+            assigned_to: Some(session_id.to_string()),
+            ..Default::default()
+        })
+        .collect();
+    crate::todo::save_tasks(Some(repo), session_id, &rows).expect("write the rows");
+}
+
 /// Shared fixture: a two-member swarm (coordinator + worker) with an empty plan.
 struct GraphFixture {
+    /// The seeder's repo: the rows the seed reads live here (rule 1).
+    repo: tempfile::TempDir,
     swarm_id: String,
     coord: String,
     worker: String,
@@ -49,6 +86,7 @@ async fn graph_fixture_named(swarm_id: &str, coord: &str, worker: &str) -> Graph
     let swarm_id = swarm_id.to_string();
     let coord = coord.to_string();
     let worker = worker.to_string();
+    let repo = scratch_repo();
     let (client_tx, client_rx) = mpsc::unbounded_channel();
     let sessions = Arc::new(RwLock::new(HashMap::from([
         (coord.clone(), test_agent().await),
@@ -58,9 +96,14 @@ async fn graph_fixture_named(swarm_id: &str, coord: &str, worker: &str) -> Graph
         (coord.clone(), {
             let mut m = member(&coord, &swarm_id, "ready");
             m.role = "coordinator".to_string();
+            m.working_dir = Some(repo.path().to_path_buf());
             m
         }),
-        (worker.clone(), member(&worker, &swarm_id, "ready")),
+        (worker.clone(), {
+            let mut m = member(&worker, &swarm_id, "ready");
+            m.working_dir = Some(repo.path().to_path_buf());
+            m
+        }),
     ])));
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.clone(),
@@ -75,6 +118,7 @@ async fn graph_fixture_named(swarm_id: &str, coord: &str, worker: &str) -> Graph
         coord.clone(),
     )])));
     GraphFixture {
+        repo,
         swarm_id,
         coord,
         worker,
@@ -96,31 +140,21 @@ async fn graph_fixture_named(swarm_id: &str, coord: &str, worker: &str) -> Graph
 
 impl GraphFixture {
     async fn seed(&mut self, mode: &str, nodes: Vec<TaskGraphNodeSpec>) {
-        handle_comm_seed_graph(
-            1,
-            self.coord.clone(),
-            Some(mode.to_string()),
-            nodes,
-            &self.client_tx,
-            &self.swarm_members,
-            &self.swarms_by_id,
-            &self.swarm_plans,
-            &self.swarm_coordinators,
-            &self.event_history,
-            &self.event_counter,
-            &self.swarm_event_tx,
-        )
-        .await;
+        self.seed_nodes(Some(mode), nodes).await;
     }
 
     /// Seed with no explicit mode, so the handler must fall back to the seeder's
     /// recorded reasoning effort to decide deep vs light.
     async fn seed_without_mode(&mut self, nodes: Vec<TaskGraphNodeSpec>) {
+        self.seed_nodes(None, nodes).await;
+    }
+
+    async fn seed_nodes(&mut self, mode: Option<&str>, nodes: Vec<TaskGraphNodeSpec>) {
+        write_rows(self.repo.path(), &self.coord, &nodes);
         handle_comm_seed_graph(
             1,
             self.coord.clone(),
-            None,
-            nodes,
+            mode.map(str::to_string),
             &self.client_tx,
             &self.swarm_members,
             &self.swarms_by_id,
@@ -290,7 +324,11 @@ async fn e2e_identical_seed_replay_succeeds_without_version_or_node_churn() {
 }
 
 #[tokio::test]
-async fn e2e_seed_rejects_conflicting_existing_definition_without_mutation() {
+async fn e2e_reseed_keeps_the_plans_existing_node() {
+    // The caller cannot send a definition any more: the rows are the seed, and a
+    // row already in the plan is not seeded again. A row edited after it was seeded
+    // therefore leaves the plan's node as the run had it; 0.4 makes the plan a view
+    // of the file, where the file wins.
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let mut fx = graph_fixture_named("swarm-seed-conflict", "coord-conflict", "worker-conflict").await;
     fx.seed("light", vec![node_spec("shared", "explore", &[])])
@@ -310,15 +348,15 @@ async fn e2e_seed_rejects_conflicting_existing_definition_without_mutation() {
                 .clone(),
         )
     };
-    let mut conflicting = node_spec("shared", "explore", &[]);
-    conflicting.content = "a different task using the same id".to_string();
+    let mut edited = node_spec("shared", "explore", &[]);
+    edited.content = "a different task using the same id".to_string();
 
-    fx.seed("light", vec![conflicting]).await;
+    fx.seed("light", vec![edited]).await;
 
     let plans = fx.swarm_plans.read().await;
     let after = &plans[&fx.swarm_id];
-    assert_eq!(after.version, before_version);
-    assert_eq!(after.items.len(), before_items);
+    assert_eq!(after.version, before_version, "a replay bumps nothing");
+    assert_eq!(after.items.len(), before_items, "a replay adds nothing");
     assert_eq!(
         after
             .items
@@ -327,14 +365,17 @@ async fn e2e_seed_rejects_conflicting_existing_definition_without_mutation() {
             .expect("original node remains")
             .content,
         before_content,
-        "a conflicting replay must preserve the original definition"
+        "the plan's node keeps the words the run seeded it with"
     );
     drop(plans);
     let events: Vec<_> = std::iter::from_fn(|| fx.client_rx.try_recv().ok()).collect();
-    assert!(events.iter().any(|event| matches!(
-        event,
-        ServerEvent::Error { message, .. } if message.contains("duplicate node id 'shared'")
-    )));
+    assert!(
+        events
+            .iter()
+            .all(|event| !matches!(event, ServerEvent::Error { .. })),
+        "a row already in the plan is a no-op, not an error: {events:?}"
+    );
+    assert!(events.iter().any(|event| matches!(event, ServerEvent::Done { .. })));
 }
 
 #[tokio::test]
@@ -892,8 +933,21 @@ async fn e2e_solo_seeder_is_elected_coordinator_and_can_assign() {
         (seeder.clone(), test_agent().await),
         (worker.clone(), test_agent().await),
     ])));
+    let repo = scratch_repo();
+    write_rows(
+        repo.path(),
+        &seeder,
+        &[
+            node_spec("explore", "explore", &[]),
+            node_spec("synth", "synthesize", &["explore"]),
+        ],
+    );
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
-        (seeder.clone(), member(&seeder, &swarm_id, "ready")),
+        (seeder.clone(), {
+            let mut m = member(&seeder, &swarm_id, "ready");
+            m.working_dir = Some(repo.path().to_path_buf());
+            m
+        }),
         (worker.clone(), member(&worker, &swarm_id, "ready")),
     ])));
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
@@ -920,10 +974,6 @@ async fn e2e_solo_seeder_is_elected_coordinator_and_can_assign() {
         1,
         seeder.clone(),
         Some("deep".to_string()),
-        vec![
-            node_spec("explore", "explore", &[]),
-            node_spec("synth", "synthesize", &["explore"]),
-        ],
         &client_tx,
         &swarm_members,
         &swarms_by_id,
@@ -999,9 +1049,15 @@ async fn e2e_seed_does_not_displace_live_coordinator() {
     coord_member.event_tx = coord_tx;
     coord_member.role = "coordinator".to_string();
 
+    let repo = scratch_repo();
+    write_rows(repo.path(), &worker, &[node_spec("root", "explore", &[])]);
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
         (coord.clone(), coord_member),
-        (worker.clone(), member(&worker, &swarm_id, "ready")),
+        (worker.clone(), {
+            let mut m = member(&worker, &swarm_id, "ready");
+            m.working_dir = Some(repo.path().to_path_buf());
+            m
+        }),
     ])));
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.clone(),
@@ -1024,7 +1080,6 @@ async fn e2e_seed_does_not_displace_live_coordinator() {
         1,
         worker.clone(),
         Some("deep".to_string()),
-        vec![node_spec("root", "explore", &[])],
         &client_tx,
         &swarm_members,
         &swarms_by_id,

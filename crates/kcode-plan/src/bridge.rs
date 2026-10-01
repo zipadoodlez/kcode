@@ -8,8 +8,11 @@
 //! engine op, then lower the result back. This keeps a single source of truth and
 //! reuses the existing persistence/broadcast/scheduler machinery.
 
-use crate::dag::{HandoffArtifact, Mode, NodeKind, NodeOrigin, NodeStatus, TaskGraph, TaskNode};
+use crate::dag::{
+    HandoffArtifact, Mode, NodeKind, NodeOrigin, NodeSpec, NodeStatus, TaskGraph, TaskNode,
+};
 use crate::{NodeMeta, TaskItem, VersionedPlan};
+use std::collections::HashSet;
 
 /// Parse a mode string ("deep"/"light"); unknown values fall back to light.
 pub fn parse_mode(mode: &str) -> Mode {
@@ -105,6 +108,43 @@ fn status_to_plan(status: NodeStatus) -> &'static str {
         NodeStatus::Done => "completed",
         NodeStatus::Failed => "failed",
     }
+}
+
+/// The nodes one session's rows seed: the rows it holds, in file order, lifted
+/// into the engine's node specs. See `docs/plans/work-list.md`, "Rows are the
+/// run's seed source".
+///
+/// The row's id is the node's id, its words are the node's content, its kind is
+/// the node's kind, and its position is its priority rank, so the engine's order
+/// and the file's order agree. A row is seeded only when it is seedable at all:
+/// the engine knows its kind (rule 8 forbids guessing one), and every row it is
+/// blocked by is also this session's. A blocker held by someone else is not this
+/// run's to start, and an edge naming a node the graph does not have is not a
+/// graph, so the pair is left for whoever holds the blocker.
+pub fn seed_specs(rows: &[TaskItem], session_id: &str) -> Vec<NodeSpec> {
+    let held: Vec<(usize, &TaskItem, NodeKind)> = rows
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| row.assigned_to.as_deref() == Some(session_id))
+        .filter_map(|(position, row)| {
+            parse_kind(row.kind.as_deref()).map(|kind| (position, row, kind))
+        })
+        .collect();
+    let in_scope: HashSet<&str> = held.iter().map(|(_, row, _)| row.id.as_str()).collect();
+    held.into_iter()
+        .filter(|(_, row, _)| {
+            row.blocked_by
+                .iter()
+                .all(|blocker| in_scope.contains(blocker.as_str()))
+        })
+        .map(|(position, row, kind)| NodeSpec {
+            id: Some(row.id.clone()),
+            content: row.content.clone(),
+            kind,
+            depends_on: row.blocked_by.clone(),
+            priority: position.min(u8::MAX as usize) as u8,
+        })
+        .collect()
 }
 
 /// Lift a [`VersionedPlan`] into a validated [`TaskGraph`] for engine ops.
@@ -374,6 +414,61 @@ mod tests {
             kind_words(),
             "explore, implement, verify, fix, synthesize, critique"
         );
+    }
+
+    fn kinded(id: &str, kind: &str, deps: &[&str]) -> TaskItem {
+        TaskItem {
+            kind: Some(kind.to_string()),
+            blocked_by: deps.iter().map(|dep| (*dep).to_string()).collect(),
+            assigned_to: Some("me".to_string()),
+            ..plan_item(id, "queued")
+        }
+    }
+
+    /// The seed is the rows the session holds: the id, the words, the kind, the
+    /// blocker edges and the position all come from the row, and a row that cannot
+    /// be seated is left out instead of being given a guessed kind or an edge to a
+    /// node the graph will not have.
+    #[test]
+    fn the_seed_is_the_rows_the_session_holds() {
+        let rows = vec![
+            kinded("t1", "explore", &[]),
+            kinded("t2", "verify", &["t1"]),
+            kinded("t3", "", &[]),
+            TaskItem {
+                assigned_to: Some("someone-else".to_string()),
+                ..kinded("t4", "fix", &[])
+            },
+            kinded("t5", "explore", &["t4"]),
+        ];
+
+        let specs = seed_specs(&rows, "me");
+
+        let ids: Vec<&str> = specs
+            .iter()
+            .map(|spec| spec.id.as_deref().unwrap_or_default())
+            .collect();
+        assert_eq!(
+            ids,
+            ["t1", "t2"],
+            "a kindless row, a foreign row, and a row blocked outside the run stay out"
+        );
+        assert_eq!(
+            specs[0].content, "task t1",
+            "the row's words are the node's"
+        );
+        assert_eq!(
+            specs[1].kind,
+            NodeKind::Verify,
+            "the row's kind is the node's"
+        );
+        assert_eq!(
+            specs[1].depends_on,
+            vec!["t1".to_string()],
+            "the row's blockers are the node's edges"
+        );
+        assert_eq!(specs[0].priority, 0, "position is priority");
+        assert_eq!(specs[1].priority, 1);
     }
 
     #[test]

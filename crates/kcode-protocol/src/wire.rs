@@ -495,8 +495,9 @@ pub enum Request {
         reason: Option<String>,
     },
 
-    /// Seed the swarm task DAG in one call (the first agent's draft). Replaces or
-    /// initializes the shared plan with a validated graph of nodes + edges.
+    /// Seed the swarm task DAG from the rows the calling session holds. The plan
+    /// gets the rows' ids, words, kinds and dependency edges; rows already in the
+    /// plan are not seeded again.
     #[serde(rename = "comm_seed_graph")]
     CommSeedGraph {
         id: u64,
@@ -504,7 +505,6 @@ pub enum Request {
         /// "deep" (comprehensive, gated) or "light" (fan-out).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         mode: Option<String>,
-        nodes: Vec<TaskGraphNodeSpec>,
     },
 
     /// Decompose a node the caller owns into a child sub-DAG (composite path). In

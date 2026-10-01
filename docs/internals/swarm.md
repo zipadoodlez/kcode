@@ -10,8 +10,11 @@ The graph is a single server-owned, versioned object (`kcode-plan`'s
 
 The swarm is one executor of the repo's work list (`plans/work-list.md`). The
 list is the shared contract; this engine's plan is its execution state, and the
-durable plan carries work while a run is in flight. The list's store and tool
-exist; the plan does not seed from it yet.
+durable plan carries work while a run is in flight. The seed is the rows the
+seeding session holds: `bridge::seed_specs` lifts them into nodes (the row's id,
+words, kind and `blocked_by` are the node's, its position is its priority), a row
+whose kind the engine cannot read stays out rather than being given a guessed
+one, and a row already in the plan is not seeded again.
 
 ## Two modes: deep and light
 
@@ -144,8 +147,9 @@ resolved by direct contact between the agents.
 
 ## Tool surface
 
-The `communicate` tool carries the swarm actions: `task_graph` (seed),
-`expand_node`, `complete_node`, `inject_gap`, `run_plan`, `fill_slots`, plus
+The `communicate` tool carries the swarm actions: `task_graph` (seed the plan from
+the rows this session holds), `expand_node`, `complete_node`, `inject_gap`,
+`run_plan`, `fill_slots`, plus
 `spawn`/`dm`/`broadcast`/`channel` and the shared-context ops as lower-level
 escape hatches. The TUI shows a swarm info widget (agent/manager/coordinator graph)
 and a plan info widget (the task DAG with per-node status and checkpoints).
