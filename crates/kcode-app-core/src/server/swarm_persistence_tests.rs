@@ -59,8 +59,6 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
                     checkpoint_summary: Some("tool done: read".to_string()),
                     completed_at_unix_ms: None,
                     stale_since_unix_ms: None,
-                    heartbeat_count: Some(2),
-                    checkpoint_count: Some(1),
                     dead_assignee_reclaims: None,
                 },
             )]),

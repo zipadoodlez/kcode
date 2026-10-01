@@ -292,8 +292,6 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
         assigned_at_unix_ms: Some(1_000),
         started_at_unix_ms: Some(2_000),
         last_heartbeat_unix_ms: Some(3_000),
-        heartbeat_count: Some(7),
-        checkpoint_count: Some(2),
         checkpoint_summary: Some("halfway".to_string()),
         ..crate::server::SwarmTaskProgress::default()
     };
@@ -395,8 +393,6 @@ async fn requeue_existing_assignment_preserves_prior_progress_history() {
                     last_heartbeat_unix_ms: Some(3_000),
                     last_checkpoint_unix_ms: Some(3_500),
                     checkpoint_summary: Some("halfway".to_string()),
-                    heartbeat_count: Some(7),
-                    checkpoint_count: Some(2),
                     stale_since_unix_ms: Some(4_000),
                     completed_at_unix_ms: None,
                     dead_assignee_reclaims: None,
@@ -434,8 +430,6 @@ async fn requeue_existing_assignment_preserves_prior_progress_history() {
         "prior run's start time must survive the requeue"
     );
     assert_eq!(progress.last_heartbeat_unix_ms, Some(3_000));
-    assert_eq!(progress.heartbeat_count, Some(7));
-    assert_eq!(progress.checkpoint_count, Some(2));
     assert_eq!(progress.checkpoint_summary.as_deref(), Some("halfway"));
     assert_eq!(
         progress.stale_since_unix_ms, None,

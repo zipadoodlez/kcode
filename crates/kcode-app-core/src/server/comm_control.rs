@@ -698,8 +698,6 @@ fn spawn_assigned_task_run(
                 progress.checkpoint_summary = Some("task started".to_string());
                 progress.completed_at_unix_ms = None;
                 progress.stale_since_unix_ms = None;
-                progress.heartbeat_count = Some(progress.heartbeat_count.unwrap_or(0) + 1);
-                progress.checkpoint_count = Some(progress.checkpoint_count.unwrap_or(0) + 1);
                 plan.version += 1;
             }
         }
@@ -855,8 +853,6 @@ fn spawn_assigned_task_run(
                                 progress.checkpoint_summary = Some("task completed".to_string());
                                 progress.completed_at_unix_ms = Some(now_ms);
                                 progress.stale_since_unix_ms = None;
-                                progress.checkpoint_count =
-                                    Some(progress.checkpoint_count.unwrap_or(0) + 1);
                                 plan.version += 1;
                             }
                             TurnEndDisposition::LeaveAlone => {}
@@ -913,8 +909,6 @@ fn spawn_assigned_task_run(
                             Some(truncate_detail(&format!("task failed: {}", error), 120));
                         progress.completed_at_unix_ms = Some(now_ms);
                         progress.stale_since_unix_ms = None;
-                        progress.checkpoint_count =
-                            Some(progress.checkpoint_count.unwrap_or(0) + 1);
                         plan.version += 1;
                     }
                 }
