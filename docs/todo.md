@@ -293,6 +293,19 @@ changes are paid for in test churn.
   `features.swarm` and the per-session toggle are the same stored membership, so they go
   with the swarm id and the coordinator map in 0.4g: a session is a worker when it holds
   and works a row, and "in a swarm" is not a state to be in.
+- [x] **(decision)** The plan's growth report and seed/expand tag go (0.4d,
+  2026-10-01). `origin`, `GrowthStats`/`growth_stats`, the `seeded_count`/`grown_count`
+  snapshot fields, their renders, and the engine's `NodeOrigin`/`TaskNode.origin` are
+  deleted; the seed guard's `node.parent.is_some()` already excludes expanded children.
+  What is lost: `plan_status` and the `run_plan` summary no longer print
+  `seeded -> grown (+expansion)`. Growth is a run fact, so a run-scoped counter is the
+  home to add if the scoreboard is wanted.
+- [ ] **(decision)** What `parent` means, before 0.4d can collapse it. `node_meta.parent`
+  is the DAG decomposition parent; `row.parent` is the run's anchor grouping
+  (`anchor_from_rows` sets every root row's parent to the anchor). They are two
+  relations sharing a name, so "`parent` duplicates the row" is false on this tree.
+  Decide how the run's anchor and DAG decomposition relate before deriving `expanded`
+  and deleting either field.
 - [ ] **(decision)** A one-shot `kcode run` no longer drains a list (0.3, 2026-10-01).
   The command-line poke was the last client-side continuation, so `kcode run` is one
   turn again: the permission is read in the session's loop, and a plan-driven member

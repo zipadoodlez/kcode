@@ -35,9 +35,9 @@ the parent is a join and is picked again once they close. A child may block only
 rows that already exist, and the store refuses a cycle, which keeps the graph
 acyclic by construction. Only the row's holder may decompose it.
 
-Each node records an origin (`seed`/`expand`), and a plan carries
-`seeded_count`/`grown_count` so a plan that never outgrew its seed is visibly
-under-explored.
+Whether a node is composite is the plan's `node_meta.expanded`. The DAG
+decomposition parent (`node_meta.parent`) is distinct from a row's `parent`, which is
+the run's anchor grouping (`anchor_from_rows`), so the two are not collapsed yet.
 
 ## Node kinds
 

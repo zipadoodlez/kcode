@@ -362,15 +362,6 @@ pub struct PlanGraphStatus {
     pub next_ready_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub newly_ready_ids: Vec<String>,
-    /// Growth accounting: nodes from the initial seed (legacy/unknown origins
-    /// count as seeded).
-    #[serde(default)]
-    pub seeded_count: usize,
-    /// Growth accounting: machinery-generated nodes (expand children).
-    /// `seeded_count + grown_count == item_count`. A plan with `grown_count == 0`
-    /// never decomposed anything, which almost always means under-exploration.
-    #[serde(default)]
-    pub grown_count: usize,
 }
 
 impl PlanGraphStatus {
@@ -389,8 +380,6 @@ impl PlanGraphStatus {
             unresolved_dependency_ids: Vec::new(),
             next_ready_ids: Vec::new(),
             newly_ready_ids: Vec::new(),
-            seeded_count: 0,
-            grown_count: 0,
         }
     }
 
@@ -401,7 +390,6 @@ impl PlanGraphStatus {
         newly_ready_ids: Vec<String>,
     ) -> Self {
         let graph = summarize_plan_graph(&plan.items);
-        let growth = kcode_plan::bridge::growth_stats(plan);
         let failed_reasons: BTreeMap<String, String> = graph
             .failed_ids
             .iter()
@@ -426,8 +414,6 @@ impl PlanGraphStatus {
             unresolved_dependency_ids: graph.unresolved_dependency_ids,
             next_ready_ids: next_runnable_item_ids(&plan.items, next_ready_limit),
             newly_ready_ids,
-            seeded_count: growth.seeded,
-            grown_count: growth.grown(),
         }
     }
 }

@@ -8,9 +8,7 @@
 //! back. This keeps a single source of truth and reuses the existing
 //! persistence/broadcast/scheduler machinery.
 
-use crate::dag::{
-    HandoffArtifact, NodeKind, NodeOrigin, NodeSpec, NodeStatus, TaskGraph, TaskNode,
-};
+use crate::dag::{HandoffArtifact, NodeKind, NodeSpec, NodeStatus, TaskGraph, TaskNode};
 use crate::{NodeMeta, TaskItem, VersionedPlan};
 use std::collections::HashSet;
 
@@ -52,23 +50,6 @@ pub fn kind_str(kind: NodeKind) -> &'static str {
 /// for a word the engine does not know.
 pub fn kind_words() -> String {
     KINDS.map(kind_str).join(", ")
-}
-
-/// Parse a node-origin string; unknown/absent values yield `None` (legacy
-/// nodes, treated as seeded by the growth accounting).
-pub fn parse_origin(origin: Option<&str>) -> Option<NodeOrigin> {
-    match origin.map(|o| o.trim().to_ascii_lowercase()).as_deref() {
-        Some("seed") => Some(NodeOrigin::Seed),
-        Some("expand") => Some(NodeOrigin::Expand),
-        _ => None,
-    }
-}
-
-pub fn origin_str(origin: NodeOrigin) -> &'static str {
-    match origin {
-        NodeOrigin::Seed => "seed",
-        NodeOrigin::Expand => "expand",
-    }
 }
 
 /// Map a plan status string to an engine [`NodeStatus`].
@@ -152,7 +133,6 @@ pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
             planner: meta.planner.clone(),
             priority: crate::priority_rank(&item.priority),
             output: artifact,
-            origin: parse_origin(meta.origin.as_deref()),
         });
     }
     graph
@@ -203,7 +183,6 @@ pub fn apply_task_graph(plan: &mut VersionedPlan, graph: &TaskGraph) {
                     .output
                     .as_ref()
                     .and_then(|a| serde_json::to_string(a).ok()),
-                origin: node.origin.map(|o| origin_str(o).to_string()),
             },
         );
     }
@@ -272,56 +251,6 @@ pub fn hydrate_assignment(plan: &VersionedPlan, task_id: &str, content: &str) ->
         Some(context) => format!("{content}\n\n{context}"),
         None => content.to_string(),
     }
-}
-
-/// Growth accounting for a plan: how far the graph outgrew its seed. A plan
-/// whose node count equals its seed count never decomposed anything, which
-/// almost always means under-exploration rather than a genuinely atomic plan.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct GrowthStats {
-    /// Nodes from the initial seed batch (plus legacy nodes with no origin).
-    pub seeded: usize,
-    /// Nodes born from `expand_node` decomposition.
-    pub from_expansion: usize,
-}
-
-impl GrowthStats {
-    pub fn total(&self) -> usize {
-        self.seeded + self.from_expansion
-    }
-
-    /// Machinery-generated nodes (everything that is not seed).
-    pub fn grown(&self) -> usize {
-        self.from_expansion
-    }
-
-    /// One-line human summary, e.g.
-    /// `12 seeded -> 87 nodes (+75 expansion)`.
-    pub fn summary_line(&self) -> String {
-        format!(
-            "{} seeded -> {} nodes (+{} expansion)",
-            self.seeded,
-            self.total(),
-            self.from_expansion,
-        )
-    }
-}
-
-/// Compute growth stats from the plan's `node_meta` origin records. Nodes with
-/// no recorded origin (legacy plans, hand-written items) count as seeded.
-pub fn growth_stats(plan: &VersionedPlan) -> GrowthStats {
-    let mut stats = GrowthStats::default();
-    for item in &plan.items {
-        let origin = plan
-            .node_meta
-            .get(&item.id)
-            .and_then(|meta| parse_origin(meta.origin.as_deref()));
-        match origin {
-            Some(NodeOrigin::Expand) => stats.from_expansion += 1,
-            Some(NodeOrigin::Seed) | None => stats.seeded += 1,
-        }
-    }
-    stats
 }
 
 #[cfg(test)]
@@ -462,7 +391,6 @@ mod tests {
             Some("explore"),
             "the row carries the kind the engine lowered"
         );
-        assert_eq!(plan.node_meta["root"].origin.as_deref(), Some("seed"));
 
         // Dispatch + expand via engine, lower back; the composite parent lands
         // marked expanded with its child alongside.
@@ -478,7 +406,7 @@ mod tests {
         apply_task_graph(&mut plan, &graph);
 
         assert!(plan.node_meta["root"].expanded);
-        assert_eq!(plan.node_meta["root.1"].origin.as_deref(), Some("expand"));
+        assert_eq!(plan.node_meta["root.1"].parent.as_deref(), Some("root"));
 
         // Complete the child end to end through the bridge.
         let mut graph = to_task_graph(&plan);

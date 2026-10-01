@@ -433,22 +433,6 @@ pub fn format_comm_plan_status(summary: &PlanGraphStatus) -> String {
         "Plan status for swarm {}\n\n  Version: {}\n  Items: {}\n",
         swarm_id, summary.version, summary.item_count
     );
-    // Growth accounting: a plan is meant to outgrow its seed (decomposition).
-    // Surfacing seeded-vs-grown makes a plan that never grew visibly
-    // under-explored.
-    if summary.item_count > 0 {
-        output.push_str(&format!(
-            "  Growth: {} seeded -> {} nodes ({} machinery-grown)",
-            summary.seeded_count, summary.item_count, summary.grown_count
-        ));
-        if summary.grown_count == 0 {
-            output.push_str(
-                " — the graph has not grown beyond its seed yet; \
-                 expect expand_node decomposition",
-            );
-        }
-        output.push('\n');
-    }
 
     output.push_str(&format!(
         "  Ready: {}\n",

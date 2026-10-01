@@ -85,9 +85,8 @@ pub struct SwarmExecutionState {
 }
 
 /// Per-node task-DAG metadata, stored as a side map on `VersionedPlan` keyed by
-/// plan item id. This mirrors the `task_progress` side-map pattern so existing
-/// `TaskItem` construction sites stay unchanged while the DAG engine gains the
-/// extra structure it needs (composite/gate mechanics + typed artifacts).
+/// plan item id. This is the DAG decomposition relation, which is distinct from
+/// the row's `parent` field (the run's anchor grouping) and so is not derived.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeMeta {
     /// The composite node this was decomposed from, if any.
@@ -106,11 +105,6 @@ pub struct NodeMeta {
     /// JSON text so the protocol/persistence layers need no extra types.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact_json: Option<String>,
-    /// Where the node came from: "seed" | "expand" | "gap" | "gate". Powers the
-    /// growth accounting (seeded vs machinery-grown) on status surfaces. Absent
-    /// on legacy plans, which count as seeded.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub origin: Option<String>,
 }
 
 /// Versioned shared swarm plan state.

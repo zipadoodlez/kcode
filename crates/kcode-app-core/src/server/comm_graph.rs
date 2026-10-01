@@ -402,8 +402,8 @@ pub(super) async fn handle_comm_expand_node(
                             }
                         }
                     }
-                    // Composite state the plan still carries until 0.4d: the row has
-                    // children, and its decomposition is the planner's to integrate.
+                    // The row has children (composite) and its decomposition is the
+                    // planner's to integrate.
                     let meta = plan.node_meta.entry(node_id.clone()).or_default();
                     meta.expanded = true;
                     meta.planner = Some(req_session_id.clone());

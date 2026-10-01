@@ -948,10 +948,6 @@ fn format_run_plan_terminal_summary(
         summary.active_ids.len(),
         assignment_count
     );
-    output.push_str(&format!(
-        "\nGrowth: {} seeded -> {} nodes ({} machinery-grown: expansions).",
-        summary.seeded_count, summary.item_count, summary.grown_count
-    ));
     if !summary.failed_ids.is_empty() {
         output.push_str(&format!(
             "\nFailed nodes: {}. This run did NOT finish cleanly; inspect them with `swarm plan_status` and retry or salvage before trusting the result.",

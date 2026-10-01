@@ -26,19 +26,6 @@ pub use schedule::{
 /// A node identifier. Stable string ids keep the model serializable.
 pub type NodeId = String;
 
-/// Where a node came from. `Seed` nodes are the first agent's draft; `Expand`
-/// nodes are decomposition the machinery generated. Status surfaces report
-/// seeded-vs-grown so a plan that never outgrew its seed is visibly
-/// under-explored.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum NodeOrigin {
-    /// Part of the initial `seed` batch (or a later re-seed).
-    Seed,
-    /// Born from `expand_node` decomposition.
-    Expand,
-}
-
 /// The terminal action a node represents. The DAG is task-type agnostic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NodeKind {
@@ -213,10 +200,6 @@ pub struct TaskNode {
     /// The typed handoff artifact, present once `Done`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<HandoffArtifact>,
-    /// Where this node came from (seed vs machinery-generated growth). `None`
-    /// on legacy nodes, which are treated as seeded.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub origin: Option<NodeOrigin>,
 }
 
 impl TaskNode {

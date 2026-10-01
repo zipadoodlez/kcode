@@ -302,8 +302,6 @@ fn await_wakes_only_for_ready_items_beyond_the_wave_baseline() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
-        seeded_count: 0,
-        grown_count: 0,
     };
 
     // Items already ready at wave start (even permanently-undispatchable
@@ -338,8 +336,6 @@ fn run_plan_progress_counts_only_completed_toward_percent_and_shows_live_active(
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
-        seeded_count: 0,
-        grown_count: 0,
     };
 
     let (completed, total, message) = super::run_plan_progress_snapshot(&summary, 4, 137);
@@ -391,8 +387,6 @@ fn run_plan_progress_active_prefers_plan_execution_state_when_larger() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
-        seeded_count: 0,
-        grown_count: 0,
     };
 
     // Plan says 3 active but only 1 live member is observable (e.g. status
@@ -421,8 +415,6 @@ fn plan_status_budget_line_nudges_serialized_graphs() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
-        seeded_count: 0,
-        grown_count: 0,
     };
 
     // Narrow frontier (2 of 32) with 7 more items serialized behind edges ->
@@ -536,8 +528,6 @@ fn run_plan_terminal_summary_reports_failed_nodes() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
-        seeded_count: 0,
-        grown_count: 0,
     };
 
     let with_failures = super::format_run_plan_terminal_summary(5, &base, 7);
@@ -580,8 +570,6 @@ fn plan_terminal_node_count_includes_failed_without_double_counting() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
-        seeded_count: 0,
-        grown_count: 0,
     };
     // a (completed) + c (failed) + x (blocked/cycle, deduped) = 3. Without
     // failed_ids in the terminal count a run with failed nodes would never
@@ -652,8 +640,6 @@ fn format_plan_status_includes_next_ready() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: vec!["task-2".to_string()],
         newly_ready_ids: vec!["task-3".to_string()],
-        seeded_count: 0,
-        grown_count: 0,
     });
     let text = output.output;
     assert!(text.contains("Plan status for swarm swarm-a"));
@@ -678,8 +664,6 @@ fn in_flight_slot_accounting_counts_queued_workers_not_coordinator() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: vec!["queued-assigned".to_string()],
         newly_ready_ids: Vec::new(),
-        seeded_count: 0,
-        grown_count: 0,
     };
     let members = vec![
         AgentInfo {
@@ -751,8 +735,6 @@ fn in_flight_count_excludes_foreign_queued_session() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
-        seeded_count: 0,
-        grown_count: 0,
     };
     let members = vec![
         AgentInfo {
@@ -1744,8 +1726,6 @@ fn run_plan_terminal_summary_includes_recorded_failure_reasons() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
-        seeded_count: 0,
-        grown_count: 0,
     };
     let output = super::format_run_plan_terminal_summary(3, &summary, 2);
     assert!(output.contains("Failed nodes: c"));

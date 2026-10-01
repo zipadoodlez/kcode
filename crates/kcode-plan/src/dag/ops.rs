@@ -4,7 +4,7 @@
 //! owner (you may only expand/complete a node you own), edges may only reference
 //! existing nodes, and the result must stay acyclic (doc sections 2, 3, 6).
 
-use super::{DagError, HandoffArtifact, NodeOrigin, NodeSpec, NodeStatus, TaskGraph, TaskNode};
+use super::{DagError, HandoffArtifact, NodeSpec, NodeStatus, TaskGraph, TaskNode};
 
 /// Seed the initial DAG from a batch of specs (the first agent's draft). All
 /// referenced dependencies must resolve within the supplied set and the result
@@ -50,7 +50,7 @@ pub fn seed(graph: &mut TaskGraph, specs: Vec<NodeSpec>) -> Result<(), DagError>
             }
             continue;
         }
-        staged.push(spec_to_node(spec, None, NodeOrigin::Seed));
+        staged.push(spec_to_node(spec, None));
     }
     let cycle = staged.cycle_nodes();
     if !cycle.is_empty() {
@@ -69,11 +69,9 @@ fn seed_specs_equivalent(left: &NodeSpec, right: &NodeSpec) -> bool {
 }
 
 fn seed_spec_matches_existing(graph: &TaskGraph, node: &TaskNode, spec: &NodeSpec) -> bool {
-    // Only top-level seeded (or legacy, origin-less) work can be replayed. A
-    // collision with an expanded child must never be silently treated as the
-    // same declaration.
+    // Only top-level seeded work can be replayed. A collision with an expanded
+    // child must never be silently treated as the same declaration.
     if node.parent.is_some()
-        || !matches!(node.origin, None | Some(NodeOrigin::Seed))
         || node.content != spec.content
         || node.kind != spec.kind
         || node.priority != spec.priority
@@ -181,11 +179,7 @@ pub fn expand_node(
 
     // Insert children, parented to this node.
     for spec in children {
-        staged.push(spec_to_node(
-            spec,
-            Some(node_id.to_string()),
-            NodeOrigin::Expand,
-        ));
+        staged.push(spec_to_node(spec, Some(node_id.to_string())));
     }
 
     // The synthesis (parent) must wait for every child. The forward-dataflow
@@ -320,7 +314,7 @@ fn validated_spec_id(spec: &NodeSpec, op: &str) -> Result<String, DagError> {
     Ok(id)
 }
 
-fn spec_to_node(spec: NodeSpec, parent: Option<String>, origin: NodeOrigin) -> TaskNode {
+fn spec_to_node(spec: NodeSpec, parent: Option<String>) -> TaskNode {
     // Dedup dependencies (order-preserving). Agent-supplied specs sometimes
     // repeat a dep; duplicates carry no meaning and used to trip the cycle
     // detector's indegree accounting.
@@ -342,6 +336,5 @@ fn spec_to_node(spec: NodeSpec, parent: Option<String>, origin: NodeOrigin) -> T
         planner: None,
         priority: spec.priority,
         output: None,
-        origin: Some(origin),
     }
 }
