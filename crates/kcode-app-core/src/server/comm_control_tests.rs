@@ -146,7 +146,6 @@ include!("comm_control_tests/assign_task.rs");
 include!("comm_control_tests/assign_blocked.rs");
 include!("comm_control_tests/assign_double.rs");
 include!("comm_control_tests/assign_ready_agent.rs");
-include!("comm_control_tests/assign_less_loaded.rs");
 include!("comm_control_tests/assign_busy_skip.rs");
 include!("comm_control_tests/task_control.rs");
 include!("comm_control_tests/assign_next_dependency.rs");

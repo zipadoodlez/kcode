@@ -326,6 +326,16 @@ changes are paid for in test churn.
   while its holder lives. Taking a task from its holder is now `task_control`
   reassign/replace/retry, or waiting for the salvage sweep to reclaim it from a dead
   holder. Add the age-out back only with a per-task clock it can read.
+- [ ] **(decision)** An idle worker that still holds a row is reusable (0.4f s10,
+  2026-10-01). Auto-pick used to call a member busy when the plan held any
+  non-terminal assignment for it, a per-task count read beside the member's own
+  status. Busy is the member's in-flight work, and that is the member's status:
+  `queued`/`running` already says it, so the count goes and a `ready`/`completed`
+  member is a candidate again even while it holds an open row. The case that lived
+  is the composite holder, whose turn ends `completed` while its node stays open for
+  synthesis: it can now be given a second row. Concurrent picks are still serialized
+  by the in-process claim, and a member actually working is never a candidate. Add a
+  per-member cap only if stacking matters again.
 - [ ] Not every color derives from a role: `configured_native_color`
   (`kcode-tui-style/src/palette.rs`) attributes a shade to a role only when it
   equals that role's default, so hardcoded `Color::Rgb(...)` shades pass through

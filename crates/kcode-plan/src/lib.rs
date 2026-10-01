@@ -549,19 +549,6 @@ pub fn next_runnable_item_ids(items: &[TaskItem], limit: Option<usize>) -> Vec<S
     }
 }
 
-pub fn assignment_loads(plan: &VersionedPlan) -> HashMap<String, usize> {
-    let mut loads = HashMap::new();
-    for item in &plan.items {
-        if is_terminal_status(&item.status) {
-            continue;
-        }
-        if let Some(assignee) = item.assigned_to.as_ref() {
-            *loads.entry(assignee.clone()).or_default() += 1;
-        }
-    }
-    loads
-}
-
 pub fn next_unassigned_runnable_item_id(plan: &VersionedPlan) -> Option<String> {
     next_runnable_item_ids(&plan.items, None)
         .into_iter()
@@ -706,7 +693,6 @@ pub fn explicit_task_blocked_reason(plan: &VersionedPlan, task_id: &str) -> Opti
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AssignmentAffinities {
-    pub loads: HashMap<String, usize>,
     pub dependency_carryover: HashMap<String, usize>,
     pub metadata_carryover: HashMap<String, usize>,
 }
@@ -715,8 +701,6 @@ pub fn assignment_affinities_for_task(
     plan: &VersionedPlan,
     task_id: &str,
 ) -> Result<AssignmentAffinities, String> {
-    let loads = assignment_loads(plan);
-
     let Some(task) = plan.items.iter().find(|item| item.id == task_id) else {
         return Err(format!("Task '{}' not found in swarm plan", task_id));
     };
@@ -759,7 +743,6 @@ pub fn assignment_affinities_for_task(
     }
 
     Ok(AssignmentAffinities {
-        loads,
         dependency_carryover,
         metadata_carryover,
     })
@@ -918,30 +901,6 @@ mod tests {
     }
 
     #[test]
-    fn assignment_loads_ignore_terminal_tasks() {
-        let plan = VersionedPlan {
-            items: vec![
-                TaskItem {
-                    assigned_to: Some("agent-a".to_string()),
-                    ..item("active", "queued", &[])
-                },
-                TaskItem {
-                    assigned_to: Some("agent-a".to_string()),
-                    ..item("done", "completed", &[])
-                },
-                TaskItem {
-                    assigned_to: Some("agent-b".to_string()),
-                    ..item("running", "running", &[])
-                },
-            ],
-            ..VersionedPlan::new()
-        };
-
-        assert_eq!(assignment_loads(&plan).get("agent-a"), Some(&1));
-        assert_eq!(assignment_loads(&plan).get("agent-b"), Some(&1));
-    }
-
-    #[test]
     fn task_control_target_prefers_active_assignment_and_rejects_ambiguous_matches() {
         let items = vec![
             TaskItem {
@@ -1028,7 +987,6 @@ mod tests {
         let affinities = assignment_affinities_for_task(&plan, "target").unwrap();
         assert_eq!(affinities.dependency_carryover.get("agent-a"), Some(&1));
         assert_eq!(affinities.metadata_carryover.get("agent-b"), Some(&3));
-        assert_eq!(affinities.loads.get("agent-b"), Some(&1));
     }
 
     #[test]

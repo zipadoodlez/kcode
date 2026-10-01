@@ -16,10 +16,9 @@ use super::{
 };
 use crate::agent::Agent;
 use crate::plan::{
-    TaskControlAction, assignment_affinities_for_task, assignment_loads,
-    build_control_assignment_text, combine_assignment_text, explicit_task_blocked_reason,
-    next_unassigned_runnable_item_id, task_control_action_allows_status, task_control_status_error,
-    task_control_target_item_id,
+    TaskControlAction, assignment_affinities_for_task, build_control_assignment_text,
+    combine_assignment_text, explicit_task_blocked_reason, next_unassigned_runnable_item_id,
+    task_control_action_allows_status, task_control_status_error, task_control_target_item_id,
 };
 use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{NotificationType, PlanGraphStatus, ServerEvent};
@@ -45,6 +44,11 @@ use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 ///
 /// Everything else (foreign humans, zombies) must be addressed with an explicit
 /// `target_session`, which bypasses this filter; this only governs auto-pick.
+///
+/// The status allowlist is also the whole busy rule: `ready` and `completed`
+/// are the idle lifecycle states, and a member that is working or waiting on
+/// work (`is_in_flight`, i.e. `queued`/`running`) is never idle. Busy is the
+/// member's own in-flight work, so nothing here consults the plan.
 fn filter_swarm_agent_candidates<'a>(
     members: &'a HashMap<String, SwarmMember>,
     req_session_id: &str,
@@ -68,17 +72,6 @@ fn is_drivable_auto_worker(member: &SwarmMember, req_session_id: &str) -> bool {
     member.is_headless || member.report_back_to_session_id.as_deref() == Some(req_session_id)
 }
 
-/// Whether a candidate already holds an incomplete plan assignment.
-///
-/// Auto-pick must treat such a member as busy rather than reusable: assigning
-/// more work to it queues large tasks serially on one agent while the swarm
-/// still has spawn capacity (`spawn_if_needed` exists precisely to spawn a
-/// fresh agent in that case). `loads` counts non-terminal plan items per
-/// assignee (see [`assignment_loads`]).
-fn member_has_active_assignment(session_id: &str, loads: &HashMap<String, usize>) -> bool {
-    loads.get(session_id).copied().unwrap_or(0) > 0
-}
-
 /// Safety-net expiry for auto-pick claims that never reach an explicit
 /// release (e.g. a request that dies between the pick and the plan write).
 const AUTO_ASSIGN_CLAIM_TTL: std::time::Duration = std::time::Duration::from_secs(15);
@@ -86,15 +79,14 @@ const AUTO_ASSIGN_CLAIM_TTL: std::time::Duration = std::time::Duration::from_sec
 /// In-process claims for auto-picked assignment targets, keyed by
 /// `swarm_id\nsession_id`.
 ///
-/// The busy check reads the *plan* (`assignment_loads`), but the plan only
-/// records an assignment at a write that happens several awaits after the
-/// target is picked. Concurrent `assign_task`/`assign_next` requests resolve
-/// their targets inside that window (observed live: three auto-picks within
-/// ~100ms all stacking onto the same worker), so the pick itself must be a
-/// claim: the first resolver wins the member, later ones skip it and fall
-/// back to another candidate or to `spawn_if_needed`. Claims are released
-/// once the plan write records (or abandons) the assignment; the TTL only
-/// reaps leaked claims.
+/// The plan records an assignment at a write that happens several awaits after
+/// the target is picked, and until that write the member still looks idle.
+/// Concurrent `assign_task`/`assign_next` requests resolve their targets inside
+/// that window (observed live: three auto-picks within ~100ms all stacking onto
+/// the same worker), so the pick itself must be a claim: the first resolver
+/// wins the member, later ones skip it and fall back to another candidate or to
+/// `spawn_if_needed`. Claims are released once the plan write records (or
+/// abandons) the assignment; the TTL only reaps leaked claims.
 fn auto_assign_claims() -> &'static std::sync::Mutex<HashMap<String, std::time::Instant>> {
     static CLAIMS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, std::time::Instant>>> =
         std::sync::OnceLock::new();
@@ -132,44 +124,38 @@ fn release_auto_assign_claim(swarm_id: &str, session_id: &str) {
 /// Error for an auto-pick that found no assignable worker. The leading
 /// sentence is a stable contract: `spawn_if_needed`/`run_plan` match on it to
 /// decide to spawn a fresh agent instead of failing the assignment.
-fn no_auto_target_error(busy_skipped: usize) -> String {
+fn no_auto_target_error(claim_skipped: usize) -> String {
     let mut message =
         "No ready or completed swarm agents are available for automatic task assignment."
             .to_string();
-    if busy_skipped > 0 {
+    if claim_skipped > 0 {
         message.push_str(&format!(
-            " Skipped {busy_skipped} worker(s) that already have an active assignment or an \
-             in-flight pick; spawn a fresh agent (spawn_if_needed/prefer_spawn) or wait for one \
-             to finish."
+            " Skipped {claim_skipped} worker(s) another in-flight assignment request just \
+             picked; spawn a fresh agent (spawn_if_needed/prefer_spawn) or retry."
         ));
     }
     message
 }
 
-/// Pick the first idle, unclaimed candidate from `candidates` (already ranked
-/// by the caller) and claim it.
+/// Pick the first unclaimed candidate from `candidates` (already ranked by the
+/// caller) and claim it.
 ///
-/// Members that already hold an incomplete plan assignment are skipped, as are
-/// members another in-flight request just picked, so repeated auto-assignments
-/// fan out across workers (or trigger a fresh spawn) instead of stacking
-/// serially on one agent.
+/// Idleness is the candidate filter's job (see
+/// [`filter_swarm_agent_candidates`]), so all that is left here is the claim:
+/// the plan records an assignment several awaits after the target is picked, so
+/// two requests resolving inside that window must not choose the same member.
 fn select_and_claim_auto_target(
     swarm_id: &str,
     candidates: &[&SwarmMember],
-    loads: &HashMap<String, usize>,
 ) -> Result<String, String> {
-    let mut busy_skipped = 0usize;
+    let mut claim_skipped = 0usize;
     for member in candidates {
-        if member_has_active_assignment(&member.session_id, loads) {
-            busy_skipped += 1;
-            continue;
-        }
         if try_claim_auto_assign_target(swarm_id, &member.session_id) {
             return Ok(member.session_id.clone());
         }
-        busy_skipped += 1;
+        claim_skipped += 1;
     }
-    Err(no_auto_target_error(busy_skipped))
+    Err(no_auto_target_error(claim_skipped))
 }
 
 /// A double-assignment conflict: the task already carries a claim, and a claim
@@ -377,7 +363,6 @@ async fn resolve_assignment_target_session(
     swarm_id: &str,
     requested_target: Option<&str>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
 ) -> Result<String, String> {
     let members = swarm_members.read().await;
 
@@ -397,25 +382,9 @@ async fn resolve_assignment_target_session(
         return Ok(target.to_string());
     }
 
-    let assignment_counts = {
-        let plans = swarm_plans.read().await;
-        plans
-            .get(swarm_id)
-            .map(assignment_loads)
-            .unwrap_or_default()
-    };
-
     let mut candidates = filter_swarm_agent_candidates(&members, req_session_id, swarm_id);
 
     candidates.sort_by(|left, right| {
-        let left_load = assignment_counts
-            .get(&left.session_id)
-            .copied()
-            .unwrap_or(0);
-        let right_load = assignment_counts
-            .get(&right.session_id)
-            .copied()
-            .unwrap_or(0);
         let left_rank = if left.status == SwarmLifecycleStatus::Ready {
             0
         } else {
@@ -426,13 +395,12 @@ async fn resolve_assignment_target_session(
         } else {
             1
         };
-        left_load
-            .cmp(&right_load)
-            .then_with(|| left_rank.cmp(&right_rank))
+        left_rank
+            .cmp(&right_rank)
             .then_with(|| left.session_id.cmp(&right.session_id))
     });
 
-    select_and_claim_auto_target(swarm_id, &candidates, &assignment_counts)
+    select_and_claim_auto_target(swarm_id, &candidates)
 }
 
 async fn task_id_for_target_session(
@@ -548,7 +516,6 @@ async fn resolve_assignment_target_for_task(
             swarm_id,
             requested_target,
             swarm_members,
-            swarm_plans,
         )
         .await;
     }
@@ -617,12 +584,6 @@ async fn resolve_assignment_target_for_task(
             .get(&right.session_id)
             .copied()
             .unwrap_or(0);
-        let left_load = affinities.loads.get(&left.session_id).copied().unwrap_or(0);
-        let right_load = affinities
-            .loads
-            .get(&right.session_id)
-            .copied()
-            .unwrap_or(0);
         let left_rank = if left.status == SwarmLifecycleStatus::Ready {
             0
         } else {
@@ -636,12 +597,11 @@ async fn resolve_assignment_target_for_task(
         right_carry
             .cmp(&left_carry)
             .then_with(|| right_meta.cmp(&left_meta))
-            .then_with(|| left_load.cmp(&right_load))
             .then_with(|| left_rank.cmp(&right_rank))
             .then_with(|| left.session_id.cmp(&right.session_id))
     });
 
-    select_and_claim_auto_target(swarm_id, &candidates, &affinities.loads)
+    select_and_claim_auto_target(swarm_id, &candidates)
 }
 
 #[expect(
@@ -1241,7 +1201,6 @@ async fn handle_comm_assign_task_with_mode(
         &swarm_id,
         requested_target_session.as_deref(),
         swarm_members,
-        swarm_plans,
     )
     .await
     {
@@ -1339,11 +1298,11 @@ async fn handle_comm_assign_task_with_mode(
         }
     };
 
-    // The plan write above either recorded the assignment (from here
-    // `assignment_loads` marks the target busy) or abandoned it (no runnable
-    // task / blocked), so an auto-picked target's in-flight claim is released
-    // in both cases. Explicit targets never claimed; `assign_next` releases
-    // its own pre-claimed pick after this handler returns.
+    // The plan write above either recorded the assignment (which puts the
+    // target's own status in flight) or abandoned it (no runnable task /
+    // blocked), so an auto-picked target's in-flight claim is released in both
+    // cases. Explicit targets never claimed; `assign_next` releases its own
+    // pre-claimed pick after this handler returns.
     if requested_target_session.is_none() {
         release_auto_assign_claim(&swarm_id, &target_session);
     }
@@ -1692,8 +1651,8 @@ pub(super) async fn handle_comm_assign_next(
                 )
                 .await;
                 // The pick was claimed at resolve time; by now the assignment
-                // either landed in the plan (busy via assignment_loads) or was
-                // rejected, so the in-flight claim is spent either way.
+                // either landed in the plan or was rejected, so the in-flight
+                // claim is spent either way.
                 release_auto_assign_claim(&swarm_id, &target_session);
             }
             Err(message) => {

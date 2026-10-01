@@ -98,6 +98,46 @@ async fn auto_candidate_filter_excludes_foreign_client_attached_session() {
     );
 }
 
+/// Busy is the member's own in-flight work, so the filter's status allowlist is
+/// the whole busy rule: a member that is working or waiting on work is never a
+/// candidate, and nothing consults the plan to decide it.
+#[test]
+fn auto_candidate_filter_offers_only_idle_members() {
+    let swarm_id = "swarm-idle-only";
+    let coord = "coord";
+
+    let members: HashMap<String, SwarmMember> = HashMap::from([
+        (coord.to_string(), {
+            let mut m = agent_member(coord, swarm_id);
+            m.role = "coordinator".to_string();
+            m
+        }),
+        (
+            "idle".to_string(),
+            owned_member("idle", swarm_id, "ready", coord),
+        ),
+        (
+            "reuse".to_string(),
+            owned_member("reuse", swarm_id, "completed", coord),
+        ),
+        (
+            "working".to_string(),
+            owned_member("working", swarm_id, "running", coord),
+        ),
+        (
+            "waiting".to_string(),
+            owned_member("waiting", swarm_id, "queued", coord),
+        ),
+    ]);
+
+    let ids: std::collections::HashSet<&str> =
+        filter_swarm_agent_candidates(&members, coord, swarm_id)
+            .iter()
+            .map(|m| m.session_id.as_str())
+            .collect();
+    assert_eq!(ids, std::collections::HashSet::from(["idle", "reuse"]));
+}
+
 // ----- composite-aware turn completion -----
 
 use super::turn_end_should_auto_complete;
