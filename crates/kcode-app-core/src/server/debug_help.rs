@@ -78,7 +78,6 @@ SWARM COMMANDS (swarm: prefix):
   swarm:roles              - List all members with roles
   swarm:plans              - List all swarm plans
   swarm:plan_version:<id>  - Show plan version for a swarm
-  swarm:proposals          - List pending plan proposals
   swarm:context            - List all shared context
   swarm:touches            - List all file touches
   swarm:conflicts          - Files touched by multiple sessions
@@ -179,11 +178,6 @@ PLANS (server-scoped plan items):
   swarm:plan:<swarm_id>    - Get plan items for specific swarm
   swarm:plan_version:<id>  - Show current plan version for a swarm
   swarm:clear_plan:<id>    - Admin: delete a swarm's plan (memory + persisted state)
-
-PLAN PROPOSALS (pending approval):
-  swarm:proposals          - List all pending proposals across swarms
-  swarm:proposals:<swarm>  - List proposals for a specific swarm (with items)
-  swarm:proposals:<sess>   - Get detailed proposal from a session
 
 SHARED CONTEXT (key-value store):
   swarm:context            - List all shared context entries

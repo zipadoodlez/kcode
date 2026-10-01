@@ -336,12 +336,6 @@ pub enum SwarmEventType {
     },
     /// A swarm plan was updated
     PlanUpdate { swarm_id: String, item_count: usize },
-    /// A plan proposal was submitted
-    PlanProposal {
-        swarm_id: String,
-        proposer_session: String,
-        item_count: usize,
-    },
     /// Shared context was updated
     ContextUpdate { swarm_id: String, key: String },
     /// Session status changed

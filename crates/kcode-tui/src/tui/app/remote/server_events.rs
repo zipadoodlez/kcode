@@ -2030,24 +2030,6 @@ pub(in crate::tui::app) fn handle_server_event(
             }
             false
         }
-        ServerEvent::SwarmPlanProposal {
-            swarm_id,
-            proposer_session,
-            proposer_name,
-            summary,
-            ..
-        } => {
-            let proposer =
-                proposer_name.unwrap_or_else(|| proposer_session.chars().take(8).collect());
-            let message = format!(
-                "Plan proposal received in swarm {}\nFrom: {}\nSummary: {}",
-                swarm_id, proposer, summary
-            );
-            app.push_display_message(DisplayMessage::system(message.clone()));
-            persist_replay_display_message(app, "system", None, &message);
-            app.set_status_notice("Plan proposal received");
-            false
-        }
         ServerEvent::McpStatus { servers } => {
             app.mcp_server_names = servers
                 .iter()

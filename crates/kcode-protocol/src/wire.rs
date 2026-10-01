@@ -872,18 +872,6 @@ pub enum ServerEvent {
         summary: Option<PlanGraphStatus>,
     },
 
-    /// Plan proposal payload delivered to the coordinator.
-    #[serde(rename = "swarm_plan_proposal")]
-    SwarmPlanProposal {
-        swarm_id: String,
-        proposer_session: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        proposer_name: Option<String>,
-        items: Vec<TaskItem>,
-        summary: String,
-        proposal_key: String,
-    },
-
     /// Soft interrupt message was injected at a safe point
     #[serde(rename = "soft_interrupt_injected")]
     SoftInterruptInjected {

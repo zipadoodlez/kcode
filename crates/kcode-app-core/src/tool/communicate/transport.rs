@@ -119,7 +119,6 @@ pub(super) async fn send_request_with_timeout(
             // Skip broadcast/async events that are not tied to our request
             "swarm_status"
             | "swarm_plan"
-            | "swarm_plan_proposal"
             | "swarm_event"
             | "notification"
             | "soft_interrupt_injected"
