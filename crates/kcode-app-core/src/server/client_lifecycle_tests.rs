@@ -1176,15 +1176,24 @@ async fn the_standing_default_continues_an_ungranted_turn() {
             .success(),
         "git init"
     );
+    // Two rows that belong to nothing, so the run has to make its own anchor.
     crate::todo::save_tasks(
         Some(&repo),
         session_id,
-        &[crate::todo::TaskItem {
-            id: "t1".to_string(),
-            content: "row t1".to_string(),
-            assigned_to: Some(session_id.to_string()),
-            ..Default::default()
-        }],
+        &[
+            crate::todo::TaskItem {
+                id: "t1".to_string(),
+                content: "row t1".to_string(),
+                assigned_to: Some(session_id.to_string()),
+                ..Default::default()
+            },
+            crate::todo::TaskItem {
+                id: "t2".to_string(),
+                content: "row t2".to_string(),
+                assigned_to: Some(session_id.to_string()),
+                ..Default::default()
+            },
+        ],
     )
     .expect("write the work list");
 
@@ -1240,6 +1249,27 @@ async fn the_standing_default_continues_an_ungranted_turn() {
         .expect("the standing default should take the row's turn");
         assert!(ran, "the run's turn must reach its terminal event");
     }
+
+    // The run typed no scope, so it made one: the first row it holds that belongs
+    // to nothing is the anchor, and the rest of its rows belong to it. The anchor is
+    // where the run's records and its end-of-run result land, and it is the row the
+    // run closes last.
+    let rows = crate::todo::load_tasks(Some(&repo), session_id).expect("read the work list");
+    let root = |id: &str| {
+        rows.iter()
+            .find(|row| row.id == id)
+            .and_then(|row| row.parent.clone())
+    };
+    assert_eq!(
+        root("t1"),
+        None,
+        "the run's first root row became its anchor"
+    );
+    assert_eq!(
+        root("t2").as_deref(),
+        Some("t1"),
+        "the run's other root row was changed to belong to the anchor"
+    );
 }
 
 #[test]

@@ -133,7 +133,16 @@ pub fn save_tasks(working_dir: Option<&Path>, session_id: &str, tasks: &[TaskIte
 /// result. The read-modify-write is the list's one write path (rule 2), shared
 /// with the `todo` tool, so a hand edit between the grant and this call is an
 /// input rather than a conflict.
-pub fn anchor_run(working_dir: Option<&Path>, session_id: &str, words: &str) -> Result<TaskItem> {
+///
+/// `fresh_kind` types a freshly written anchor. The caller brings the word, so the
+/// store still learns no engine vocabulary (rule 5); a row the words name keeps
+/// its own kind, because the grant does not get to guess what that work is.
+pub fn anchor_from_words(
+    working_dir: Option<&Path>,
+    session_id: &str,
+    words: &str,
+    fresh_kind: Option<&str>,
+) -> Result<TaskItem> {
     let words = words.trim();
     let mut rows = load_tasks(working_dir, session_id)?;
     let anchor = match rows.iter().position(|row| names_row(row, words)) {
@@ -147,6 +156,7 @@ pub fn anchor_run(working_dir: Option<&Path>, session_id: &str, words: &str) -> 
                 &mut rows,
                 TaskItem {
                     content: words.to_string(),
+                    kind: fresh_kind.map(str::to_string),
                     assigned_to: Some(session_id.to_string()),
                     ..Default::default()
                 },
@@ -159,6 +169,43 @@ pub fn anchor_run(working_dir: Option<&Path>, session_id: &str, words: &str) -> 
     };
     save_tasks(working_dir, session_id, &rows)?;
     Ok(anchor)
+}
+
+/// The anchor of a run that typed none: the one row at the top of the rows a
+/// session holds. See `docs/plans/work-list.md`: for a run scoped to the whole
+/// list, the run's first row is the anchor, and the rest name it as their `parent`.
+///
+/// The rule, in full. If the rows this session holds include one that belongs to
+/// nothing, the first such row is the anchor and the other rows it holds that
+/// belong to nothing are changed to belong to it. If none of them belongs to
+/// nothing, nothing is written: those rows already have a row that owns their
+/// records. Running it again changes nothing, and a row that already has a parent
+/// keeps it, so a run never adopts work that belongs to another run's structure.
+///
+/// Returns the run's anchor, whether this call promoted it or found it already
+/// there. `None` means the session holds no row that belongs to nothing, so its
+/// rows already have a row that owns their records and there is nothing to make.
+pub fn anchor_from_rows(working_dir: Option<&Path>, session_id: &str) -> Result<Option<String>> {
+    let mut rows = load_tasks(working_dir, session_id)?;
+    let held = |row: &TaskItem| row.assigned_to.as_deref() == Some(session_id);
+    let Some(anchor) = rows
+        .iter()
+        .find(|row| held(row) && row.parent.is_none())
+        .map(|row| row.id.clone())
+    else {
+        return Ok(None);
+    };
+    let mut adopted = false;
+    for row in rows.iter_mut() {
+        if held(row) && row.parent.is_none() && row.id != anchor {
+            row.parent = Some(anchor.clone());
+            adopted = true;
+        }
+    }
+    if adopted {
+        save_tasks(working_dir, session_id, &rows)?;
+    }
+    Ok(Some(anchor))
 }
 
 /// Whether these words name `row`: its id, or its content as the user says it.
@@ -310,7 +357,8 @@ mod tests {
         )
         .expect("write the work list");
 
-        let named = anchor_run(Some(&repo), "me", "fix the docs").expect("named anchor");
+        let named =
+            anchor_from_words(Some(&repo), "me", "fix the docs", None).expect("named anchor");
         assert_eq!(named.id, "t1");
         assert_eq!(
             load_tasks(Some(&repo), "me").expect("read")[0]
@@ -320,13 +368,125 @@ mod tests {
             "the grant claims the row the words name"
         );
 
-        let fresh =
-            anchor_run(Some(&repo), "me", "work the list until it is done").expect("fresh anchor");
+        let fresh = anchor_from_words(
+            Some(&repo),
+            "me",
+            "work the list until it is done",
+            Some("synthesize"),
+        )
+        .expect("fresh anchor");
         assert_eq!(fresh.id, "t2");
         assert_eq!(fresh.content, "work the list until it is done");
         assert_eq!(fresh.parent, None, "a run's anchor has no parent");
+        assert_eq!(
+            fresh.kind.as_deref(),
+            Some("synthesize"),
+            "a fresh anchor is the run's own row, and the caller's word types it"
+        );
         assert_eq!(fresh.assigned_to.as_deref(), Some("me"));
         assert_eq!(load_tasks(Some(&repo), "me").expect("read").len(), 2);
+
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    /// A run that typed no words gets its anchor from the rows it holds: the first
+    /// row that belongs to nothing is the one at the top, and the rest of the rows
+    /// the session holds that belong to nothing are changed to belong to it. A row
+    /// that already belongs to something keeps it, and a second call writes nothing.
+    #[test]
+    fn a_run_that_typed_nothing_anchors_on_its_first_root_row() {
+        let repo = std::env::temp_dir().join(format!("kcode-anchor-rows-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&repo);
+        std::fs::create_dir_all(&repo).expect("scratch repo");
+        assert!(
+            std::process::Command::new("git")
+                .args(["init", "-q"])
+                .current_dir(&repo)
+                .status()
+                .expect("git init")
+                .success(),
+            "git init"
+        );
+        let mine = |id: &str| TaskItem {
+            id: id.to_string(),
+            content: format!("row {id}"),
+            assigned_to: Some("me".to_string()),
+            ..Default::default()
+        };
+        let mut nested = mine("t4");
+        nested.parent = Some("elsewhere".to_string());
+        let mut theirs = mine("t5");
+        theirs.assigned_to = Some("someone-else".to_string());
+        save_tasks(
+            Some(&repo),
+            "me",
+            &[mine("t1"), mine("t2"), nested, theirs, mine("t3")],
+        )
+        .expect("write the work list");
+
+        let anchor = anchor_from_rows(Some(&repo), "me").expect("anchor");
+        assert_eq!(
+            anchor.as_deref(),
+            Some("t1"),
+            "the first root row is the top"
+        );
+
+        let rows = load_tasks(Some(&repo), "me").expect("read");
+        let parent = |id: &str| {
+            rows.iter()
+                .find(|row| row.id == id)
+                .and_then(|row| row.parent.clone())
+        };
+        assert_eq!(parent("t2").as_deref(), Some("t1"));
+        assert_eq!(parent("t3").as_deref(), Some("t1"));
+        assert_eq!(
+            parent("t4").as_deref(),
+            Some("elsewhere"),
+            "a row that already belongs to something keeps it"
+        );
+        assert_eq!(parent("t1"), None, "the anchor itself belongs to nothing");
+        assert_eq!(
+            parent("t5"),
+            None,
+            "another session's row is not this run's"
+        );
+
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    /// A session whose rows all belong to something needs no anchor: their records
+    /// already have a row that owns them, and nothing may be written.
+    #[test]
+    fn rows_that_all_belong_to_something_need_no_anchor() {
+        let repo = std::env::temp_dir().join(format!("kcode-anchor-none-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&repo);
+        std::fs::create_dir_all(&repo).expect("scratch repo");
+        assert!(
+            std::process::Command::new("git")
+                .args(["init", "-q"])
+                .current_dir(&repo)
+                .status()
+                .expect("git init")
+                .success(),
+            "git init"
+        );
+        let mut child = TaskItem {
+            id: "t1".to_string(),
+            content: "row t1".to_string(),
+            assigned_to: Some("me".to_string()),
+            ..Default::default()
+        };
+        child.parent = Some("someone-elses-anchor".to_string());
+        save_tasks(Some(&repo), "me", &[child]).expect("write the work list");
+
+        assert_eq!(anchor_from_rows(Some(&repo), "me").expect("anchor"), None);
+        assert_eq!(
+            load_tasks(Some(&repo), "me").expect("read")[0]
+                .parent
+                .as_deref(),
+            Some("someone-elses-anchor"),
+            "the file is left as it was"
+        );
 
         let _ = std::fs::remove_dir_all(&repo);
     }

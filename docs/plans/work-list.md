@@ -114,7 +114,9 @@ goes onto its parent, so the anchor is where a run's root-level records accumula
 and where a resumed run finds its scope. The anchor closes last, since rule 3 keeps
 it while a child names it, and its close is the run's end: the loop picks the anchor
 like any other ready row once nothing else is left, so the summary is a turn and a run
-needs no separate end-of-run summary.
+needs no separate end-of-run summary. A row other rows belong to is not ready until
+they are closed, which is what makes that "once nothing else is left" true without a
+second way to say the same thing.
 
 A run adjusts by editing rows, since it has no plan of its own to mutate. It adds
 work under the row it came from, leaves notes, clears a blocker that no longer
@@ -225,13 +227,19 @@ step is done.
     machinery the model's invented ids needed, since a row's id is unique by
     construction. `expand_node` and `inject_gap` still take node specs; 0.4 deletes the
     spec once the row model owns a decomposition too.
-  - **S4b. A run with no typed anchor gets one from the seed.** A run whose grant typed
-    no anchor (a headless member holds the permission inherently) gets one through the
-    store's write path (`todo::anchor_run` already writes a named row or a fresh
-    anchor), and the grant types that anchor `synthesize`: a row with no word is not
-    seedable (rule 8), and the run's own row is the one whose result is its children
-    integrated. Its root-level rows then name it as their parent, so every record has a
-    home inside the run's own scope.
+  - **S4b. A run that typed no scope makes its own anchor.** `todo::anchor_from_rows`:
+    the first row the session holds that belongs to nothing is the run's top row, and
+    the other rows it holds that belong to nothing are changed to belong to it. A row
+    that already belongs to something keeps its parent, so a run never adopts another
+    run's structure, and a call with nothing to change writes nothing, so it is safe
+    to repeat. The run calls it where a run starts (`live_turn::continue_with_next_row`,
+    when the grant has no scope) and the seed calls it before it reads the rows, so the
+    plan holds the anchor as one of its nodes. A row other rows belong to waits for them
+    (`next_held_ready_row`), so the anchor is the last row the run closes and its close
+    is the run's end-of-run result. The words case is the other half: the caller passes
+    the word `synthesize` to `todo::anchor_from_words`, because a fresh anchor is a row
+    whose result is its children integrated and a row with no word is not seedable (rule
+    8), while the store still learns no engine vocabulary (rule 5).
   - **S5. A close keeps its record on the row that owns the work.** `TaskItem` gains
     one opaque field, `records`: the closes of the work done under this row. The close
     writes a node's record onto its parent's row, and it takes the machine-readable

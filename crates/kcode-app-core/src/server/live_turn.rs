@@ -147,7 +147,7 @@ impl RunGrant {
 }
 
 /// The grant a message carries, resolved before its turn starts: the permission,
-/// and the scope its words name or become (`todo::anchor_run`).
+/// and the scope its words name or become (`todo::anchor_from_words`).
 ///
 /// A write that fails costs the scope and never the turn, so the run is warned
 /// about and left unscoped rather than silently losing the permission it was given.
@@ -156,7 +156,11 @@ pub(super) fn resolve_grant(
     working_dir: Option<&Path>,
     session_id: &str,
 ) -> (RunGrant, String) {
-    match crate::todo::anchor_run(working_dir, session_id, words) {
+    // A fresh anchor is the run's own row: its result is the rows under it
+    // integrated, so the engine's word for it is `synthesize`, and it needs one at
+    // all because a row with no kind is not seedable (rule 8).
+    let fresh_kind = kcode_plan::bridge::kind_str(kcode_plan::dag::NodeKind::Synthesize);
+    match crate::todo::anchor_from_words(working_dir, session_id, words, Some(fresh_kind)) {
         Ok(anchor) => (RunGrant::scoped(anchor.id), anchor.content),
         Err(error) => {
             crate::logging::warn(&format!(
@@ -236,6 +240,12 @@ pub(super) async fn session_working_dir(
 /// is the run's own record, so a row left open stops the run instead of being
 /// picked again and again.
 ///
+/// A row other rows belong to waits for them as well: its result is theirs
+/// integrated (rule 3), and a close is refused while a child is open, so picking
+/// it first would burn its one turn in the run and leave the run no turn to close
+/// it with. This is what makes a run's anchor, which every root-level row of the
+/// run belongs to, the last row the run closes.
+///
 /// The scope row is picked last: it is a run's anchor, its close is the run's end,
 /// and it stays open while a child names it (rule 3), so working it first would
 /// only ask the model to close a row that cannot close yet.
@@ -249,6 +259,9 @@ fn next_held_ready_row<'a>(
         row.assigned_to.as_deref() == Some(session_id)
             && !worked.contains(&row.id)
             && row.blocked_by.is_empty()
+            && !rows
+                .iter()
+                .any(|child| child.parent.as_deref() == Some(&row.id))
             && scope.is_none_or(|anchor| descends_from(rows, &row.id, anchor))
     };
     rows.iter()
@@ -316,6 +329,19 @@ pub(super) async fn continue_with_next_row(
     let Ok(rows) = load_tasks(working_dir.as_deref(), session_id) else {
         return false;
     };
+    // A run that typed no scope has no row at its top yet: the first row it holds
+    // that belongs to nothing becomes it, and the rest of its rows are changed to
+    // belong to it, so the run's records and its end-of-run result have a home
+    // (`todo::anchor_from_rows`). A scoped run already has one, the row its grant
+    // named or became, and a run whose rows all belong to something needs none.
+    if grant.scope.is_none()
+        && let Err(error) = crate::todo::anchor_from_rows(working_dir.as_deref(), session_id)
+    {
+        crate::logging::warn(&format!(
+            "run {session_id} could not make its anchor ({error}); \
+             its records live in the commits alone"
+        ));
+    }
     let Some(row) = next_held_ready_row(&rows, session_id, &HashSet::new(), grant.scope.as_deref())
     else {
         return false;
@@ -614,17 +640,26 @@ mod tests {
         assert_eq!(picked.map(|row| row.id.as_str()), Some("t2"));
     }
 
-    /// The anchor is the run's own row and is worked last: its close is the run's
-    /// end and a parent's row stays while a child names it (rule 3), so picking it
-    /// first would only ask the model to close a row that cannot close yet.
+    /// A row other rows belong to waits for them: its result is theirs integrated,
+    /// and a close is refused while a child is open (rule 3). Without this the run
+    /// would spend its one turn on it, could not close it, and never come back, so a
+    /// run's anchor would never write the run's end-of-run result.
     #[test]
-    fn the_anchor_is_worked_last() {
+    fn a_row_other_rows_belong_to_waits_for_them() {
         let rows = vec![row("t1", Some("me"), &[]), child("t2", "me", "t1")];
         let picked = next_held_ready_row(&rows, "me", &HashSet::new(), Some("t1"));
         assert_eq!(picked.map(|row| row.id.as_str()), Some("t2"));
 
+        // Taking a turn on the child is not closing it: the parent waits for the
+        // close, which is what a run's anchor needs.
         let worked: HashSet<String> = ["t2".to_string()].into_iter().collect();
-        let picked = next_held_ready_row(&rows, "me", &worked, Some("t1"));
+        assert!(
+            next_held_ready_row(&rows, "me", &worked, Some("t1")).is_none(),
+            "an open child keeps its parent out of the run"
+        );
+
+        let closed = vec![rows[0].clone()];
+        let picked = next_held_ready_row(&closed, "me", &worked, Some("t1"));
         assert_eq!(picked.map(|row| row.id.as_str()), Some("t1"));
     }
 

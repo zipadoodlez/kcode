@@ -261,6 +261,13 @@ pub(super) async fn handle_comm_seed_graph(
     // The seed is the rows this session holds (the run's own scope), not a list the
     // caller types: the row's id is the node's id, so a row never becomes two nodes
     // and a re-seed is a no-op. What the plan already has is not seeded again.
+    // The run gets its anchor first, when it holds rows that belong to nothing, so
+    // the row the run's records land on is one of the nodes it seeds.
+    if let Err(error) = crate::todo::anchor_from_rows(working_dir.as_deref(), &req_session_id) {
+        crate::logging::warn(&format!(
+            "seed for {req_session_id} could not make the run's anchor ({error})"
+        ));
+    }
     let rows = crate::todo::load_tasks(working_dir.as_deref(), &req_session_id).unwrap_or_default();
     let seedable: Vec<NodeSpec> = kcode_plan::bridge::seed_specs(&rows, &req_session_id);
     if seedable.is_empty() {

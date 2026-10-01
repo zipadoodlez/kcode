@@ -894,8 +894,9 @@ async fn a_scoped_run_works_only_the_anchor_subtree() {
             super::live_turn::RunGrant::scoped("t1".to_string())
         )
         .await,
-        3,
-        "the seed turn, the anchor's child, and the anchor last"
+        2,
+        "the seed turn and the anchor's child: the anchor's own turn waits for the \
+         child to close, and nothing closes rows under this mock"
     );
 }
 
