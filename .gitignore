@@ -18,11 +18,9 @@ __pycache__/
 # reproducible (community assignment depends on the environment) nor current.
 graphify-out/
 
-# makepkg build artifacts for the Arch recipe in packaging/arch/. The bare
-# clone in `kcode-git/` is the local reference makepkg keeps for the `git+`
-# source; it holds a full pack of this repository, so committing it would add
-# tens of megabytes of binary history.
-packaging/arch/src/
-packaging/arch/pkg/
-packaging/arch/kcode-git/
-packaging/arch/*.pkg.tar.*
+# The Arch recipe lives in its AUR repo (`kcode-git`), which is what users clone
+# and AUR serves. This directory is the local makepkg workspace: a recipe copy,
+# the `git+` source clone (a full pack of this repo, tens of MB), src/, pkg/, and
+# logs. Untracked, because a tracked copy duplicates the AUR recipe and rewrites
+# `pkgver` on every build.
+packaging/arch/
