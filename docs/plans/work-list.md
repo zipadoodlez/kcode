@@ -136,6 +136,10 @@ the children added underneath.
 
 ## Rules
 
+These are the model the steps drive the tree to, not the tree. Where a rule and
+the type disagree today, the type is behind: `TaskItem` still carries `status`,
+`priority`, `group`, `subsystem` and `file_scope`, and B3 and C4 remove them.
+
 1. **One file per repo**, `tasks.jsonl` at the root, found from git so a session in
    `crates/foo` reads the same list; outside a repo, a session scratch location.
 2. **The tool is the only writer.** It owns the write protocol and re-reads the file
@@ -218,7 +222,7 @@ and the one build + test pass lands at the end of 0.4f.
     decision; busy is the member's in-flight work; and who integrates a decomposition is
     the row's holder (`assigned_to`).
   - **0.4f. `VersionedPlan` becomes a view of the file**, deleting
-    `swarm_persistence.rs` (638 lines) and its tests (938 lines). It reads `parent` and
+    `swarm_persistence.rs` (638 lines) and its tests (936 lines). It reads `parent` and
     composite from the rows: the file's `parent` is the one hierarchy (`anchor_from_rows`
     adopts root rows, `expand_row_on_disk` adds children), so `node_meta.parent` is
     deleted, and a node is composite when it has an open child or a nonempty `records`
@@ -229,9 +233,12 @@ and the one build + test pass lands at the end of 0.4f.
     of the same rows and a consumer of the shared context; decide it here.
     It also carries what 0.4e deferred, because it is the same store-boundary cut:
     `task_progress` goes; the heartbeat task, `touch_swarm_task_progress` and the
-    heartbeat staleness sweep go (liveness is the member's); `running_stale` goes and its
-    readers (turn-end, `task_control`, the conflict check, the TUI member view) derive
-    the stall from the member's clock; the failed reason reads the member's detail
+    heartbeat staleness sweep go (liveness is the member's); `running_stale` goes and
+    its readers (turn-end, `task_control`, the conflict check, the TUI member view:
+    `info_widget_todos::normalize_plan_status_for_todo` and `tui_state.rs` fold or count
+    the string today, and the node keeps its own glyph, label and `warning_color()`
+    sorted with `in_progress`, with the count untouched) derive the stall from the
+    member's clock; the failed reason reads the member's detail
     instead of `checkpoint_summary`; `dead_assignee_reclaims` moves to the run's runtime
     keyed by row id (the salvage monitor is server-side, so the run, not the plan, is
     its home, and the "worked once" rule in `live_turn.rs` does not bound that path);
@@ -244,7 +251,8 @@ and the one build + test pass lands at the end of 0.4f.
     id (including the `KCODE_SWARM_ID` shared-swarm opt-in), the `features.swarm` flag
     and per-session toggle (stored membership), the `assign_role` action that writes the
     coordinator by hand, and the 31 `SwarmState { .. }` rebuild sites (`docs/todo.md`
-    §1's condense).
+    §1's condense). Membership becoming derived is a behavior change, so this stage
+    carries its own build + test pass; the one named above lands at the end of 0.4f.
   `parse_kind`/`kind_str` stay, since they are what reads and writes a row's word.
   `Synthesize` stays as well: the word lives on the row (`tool/todo.rs` offers every
   `KINDS` entry), so a run's own join row has a word to be typed with. Nothing in the
@@ -261,7 +269,9 @@ and the one build + test pass lands at the end of 0.4f.
     the `effort` argument goes from `spawn`, `assign_task`, `assign_next`, `fill_slots`
     and `run_plan` (`tool/communicate.rs:1298`, `:1449`, `:2606`, `:2911`, `:2963`,
     with its schema text at `:1688`, `:1801`; `wire.rs:560`, `:682`) along with the
-    `agents.swarm_effort` pin (`kcode-config-types/src/lib.rs:461`).
+    `agents.swarm_effort` pin (`kcode-config-types/src/lib.rs:461`). F1 deletes those
+    actions outright, so the argument text is touched twice if the tail lands; accepted,
+    because 0.5 is kept and the tail is droppable.
 
 ### A. Audit
 
@@ -269,7 +279,8 @@ and the one build + test pass lands at the end of 0.4f.
   what it finds into this list: unscoped concepts, duplicate representations, modes and
   dead paths, ranked by surface removed. It runs after 0.4 and 0.5 so it audits the
   settled model rather than one in flight, and it feeds the tail (D, E, F) and the
-  hygiene items. A finding is a step or a deletion, never a standalone report.
+  `todo.md` §4 and §5 items. A finding is a step or a deletion, never a standalone
+  report.
 
 ### B. The file is the list
 
@@ -288,16 +299,10 @@ Last of the file work, whenever we want it.
   (`:267`), `newly_ready_item_ids` (`:813`, read by the swarm path at
   `server/swarm.rs:830`), the task-control actions (`:358`, `:672`), and
   `status_from_plan`/`status_to_plan` (`bridge.rs:74`). Afterwards a row is ready
-  when `blocked_by` is empty and liveness comes from the member, not the item. The
-  stored `running_stale` (`server/swarm.rs:556`) goes with it, since the stall is
-  derived.
+  when `blocked_by` is empty and liveness comes from the member, not the item.
 
 ### C. The list reaches the client
 
-- [ ] **C3.** The two sub-items in `todo.md` §1: member appearance follows the
-  typed status, and a stalled plan node is visible. Fold into 0.4: that step removes
-  the plan statuses these render, and decision 1 made the stall derived, so the
-  rendering change is measured against the tree after it, not before.
 - [ ] **C4.** Move `subsystem` and `file_scope` off the shared type onto the
   worker's own record. They are the scheduler's inputs (assignment affinity matches
   them against a worker's metadata), not list fields, and neither destination the
@@ -313,14 +318,26 @@ Last of the file work, whenever we want it.
 - [ ] **D1.** The topic channels and the shared-context key-value store, the
   removal `internals/swarm.md` recorded as pending and never did, plus the member
   projection `AgentInfo`, `SwarmMemberStatus`, `MemberStatic` and `SwarmMember`
-  write four times by hand.
+  write four times by hand. With the projection one type, member appearance follows
+  the typed status: `kcode-tui-render` takes `SwarmLifecycleStatus` (a dependency on
+  the data-only `kcode-session-types`), so the string matches in `swarm_gallery.rs`
+  and `is_active_status` become enum matches; one module owns accent, glyph, label
+  and sort rank, with an `is_working` predicate kept distinct from lifecycle
+  `is_active` so a stalled node does not spin; the duplicate map
+  `info_widget_swarm_background::swarm_status_style` goes; and the swarm-path
+  `Color::Rgb` literals become `kcode_tui_style` role accessors so `/colors` can
+  recolor them (the small default shift is accepted). The projection's `RunningStale`
+  goes with it: 0.4f removes its only producer (a plan item's status), so the variant
+  is unreachable.
 
-Gated by C.
+Gated by C4 and C5.
 
 ### E. The server shape
 
 - [ ] **E1.** `ClientContext` for `handle_client`'s 28 arguments.
-- [ ] **E2.** Fold swarm ownership in, which is gated on 0.3.
+- [ ] **E2.** Fold swarm ownership in, which is gated on 0.4g: `todo.md` §1's
+  condense must land before this split, since the request context is designed to hold
+  that state.
 - [ ] **E3.** Name the prologue, move the largest arms out, and settle the
   turn-lifecycle locals. `todo.md` §2's H1 to H5 in order.
 

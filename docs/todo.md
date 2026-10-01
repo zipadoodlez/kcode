@@ -12,25 +12,6 @@ conventions. The current project's destination, model and open steps are
   Design and measurements: `plans/work-list.md`; engine: `internals/swarm.md`. Do
   it before splitting `handle_client`, whose request context is designed to hold
   that state.
-  - [ ] **Member appearance follows the typed status** (decided 2026-09-29).
-    `kcode-tui-render` takes `SwarmLifecycleStatus` (a new dependency on the
-    data-only `kcode-session-types`), so the string matches in `swarm_gallery.rs`
-    and `is_active_status` become enum matches. One module owns appearance:
-    accent, glyph, label, sort rank, and an `is_working` predicate kept distinct
-    from lifecycle `is_active`, because a stalled node must not spin. Delete the
-    duplicate map `info_widget_swarm_background::swarm_status_style`. The
-    swarm-path `Color::Rgb` literals become `kcode_tui_style` role accessors so
-    `/colors` can recolor them; the small default shift is accepted.
-  - [ ] **A stalled plan node is visible** (planned 2026-09-29). `running_stale` is
-    only ever a plan-item status (`recover_member_status` maps `Running` to
-    `Crashed` and `Ready` to `Stopped`), so the member enum's `RunningStale` is
-    unreachable. `info_widget_todos::normalize_plan_status_for_todo` folds it into
-    `in_progress`, so a stalled node renders as running (`▶` amber, `[doing]`) and
-    `tui_state.rs` counts it in the running bucket. Give it its own glyph and
-    label, `warning_color()`, sorted with `in_progress`; leave the progress count
-    alone so only the per-node marker changes. The stall itself is derived from the
-    member activity clock, not read from a stored `running_stale` status: nothing
-    writes node progress to the file.
 
 ## 2. God modules
 
@@ -82,7 +63,7 @@ Staged; each lands whole.
     `App`. Deleting it is a trade, decided once `App` is cheap to construct.
   - Out of scope here: `handle_client`, provider identity, the crate spine.
   - Done when: field count and `impl App` count fall monotonically
-    (`check_app_shape.py`), `use super::*` falls from 117, and `app.rs` leaves
+    (`check_app_shape.py`), `use super::*` falls from 116, and `app.rs` leaves
     `code_size_budget.json`.
   - [ ] **Behavior-check the landed extractions.** They were cut by cohesion
     (which methods touch which fields), so tests prove the moves preserved
@@ -103,21 +84,21 @@ Staged; each lands whole.
     status and ack id) deletes the conversions; a struct keeps the duplication.
     Needs fresh context.
 - [ ] **Split `handle_client`** (`crates/kcode-app-core/src/server/client_lifecycle.rs`,
-  3,584 lines; the function is 434-3037, ~2600). Researched 2026-09-28: the arms
+  3,620 lines; the function is 435-3029, ~2,595). Researched 2026-09-28: the arms
   are already thin and mostly delegate, so the god-ness is not the arms. It is:
-  - **744 lines of setup prologue** (434-1178): the read loop until `Subscribe`
+  - **~750 lines of setup prologue** (435-1184): the read loop until `Subscribe`
     (lightweight control requests answered inline and dropped), working-dir
     resolution, provider fork, `Registry::new`,
     `Agent::new_with_initial_working_dir`, prewarm, `SessionControlHandle`
     registration, four `write().await` map inserts, and the event-forwarder spawn.
-  - **77 `Request::` arms, 1742 lines**: largest `Subscribe` 195,
-    `SoftInterrupt` 81, `ResumeSession` 74, `Message` 64, `Rewind` 61,
+  - **75 `Request::` arms, ~1,730 lines** (1185-2913): largest `Subscribe` 195,
+    `Message` 95, `SoftInterrupt` 81, `ResumeSession` 74, `Rewind` 61,
     `RewindUndo` 60, `Clear` 47; the rest 15-40. The `Comm*` arms only unpack and
     forward.
-  - **~117 lines of teardown** (2920-3037) that already calls
+  - **~116 lines of teardown** (2914-3029) that already calls
     `client_disconnect_cleanup` helpers.
   - **28 args** under `#[expect(clippy::too_many_arguments)]`, with one production
-    caller (`server/runtime.rs:263`) plus tests, so a context struct is mechanical.
+    caller (`server/runtime.rs:261`) plus tests, so a context struct is mechanical.
     Ten args are swarm state: four already modelled by `SwarmState`
     (`swarm_members`/`swarms_by_id`/`swarm_plans`/`swarm_coordinators` -> `members`,
     `swarms_by_id`, `plans`, `coordinators`) and six loose Arcs beside it
@@ -146,7 +127,7 @@ Staged; each lands whole.
     reusing the `App` result rather than re-deriving it.
   - Done when: `handle_client` is under ~600 lines, the file is out of the size
     budget, and no `SwarmState { .. }` literal is built inside a request arm.
-- [ ] **Condense `tool/communicate.rs`** (3,369 lines) `[census]`: four concepts
+- [ ] **Condense `tool/communicate.rs`** (3,142 lines) `[census]`: four concepts
   welded together, swarm coordination, capacity cleanup (`cleanup_swarm_workers`,
   `stop_swarm_sessions`), the run-plan driver (`run_swarm_plan_loop`, the
   driver-claim helpers), and the `format_*`/`fetch_*` formatters around a
@@ -321,12 +302,21 @@ changes are paid for in test churn.
   be answered from `main`. Pick one and make it visible: if branches stay, a
   post-commit or session-start line when `git rev-list --count main..HEAD` is
   non-zero. The two hooks in `.githooks/` are graphify's and stay out of it.
+- [ ] **(decision)** Does this fork port from upstream? `AGENTS.md` says it "tracks no
+  upstream" and that there is "nothing to fetch from `jcode`", but two untracked notes
+  at the root describe the opposite: `UPSTREAM-SINCE-0.85.md` and
+  `UPSTREAM-PORTABLE.md` cover `v0.85.0 .. master@5f1c091cf` (~398 commits, mirror at
+  `~/.kcode/scratch/jcode-upstream.git`) and split what still applies here from what
+  this fork deleted. Pick one: delete both notes, give the port-back a plan of its
+  own, or make the `AGENTS.md` line name what is actually tracked. The notes call
+  themselves scratch, so deleting them is the default.
 - [ ] Not every color derives from a role: `configured_native_color`
   (`kcode-tui-style/src/palette.rs`) attributes a shade to a role only when it
   equals that role's default, so hardcoded `Color::Rgb(...)` shades pass through
-  and `/colors` cannot recolor them. The swarm path is covered by §1; what remains
-  is `login_picker.rs` `PANEL_BG`/`PANEL_BORDER` and other orphans. Give each shade
-  a role, or mark it intentionally fixed.
+  and `/colors` cannot recolor them. The swarm path is covered by
+  `plans/work-list.md` D1; what remains is `login_picker.rs`
+  `PANEL_BG`/`PANEL_BORDER` and other orphans. Give each shade a role, or mark it
+  intentionally fixed.
 - [ ] `now_ms` is defined 4x: `app/observe.rs:212`, `app/split_view.rs:295`,
   `app/todos_view.rs:500`, `kcode-base/src/side_panel.rs:557`. The existing clock
   home is `tui::test_harness::now_ms()`, and routing through it changes behavior
@@ -342,4 +332,6 @@ changes are paid for in test churn.
   enums/required) and put the prose in the bundled, version-matched docs
   (`kcode_docs`), echoed in the tool's own error when a call is wrong. Control
   shape: one aggregate schema-token budget instead of per-item caps plus the
-  `swarm` exemption.
+  `swarm` exemption. The same gap has a second face: nothing in `kgrep`'s description
+  or the system prompt connects "search" to `kgrep`, so a model that has not already
+  learned the name does not reach for it.
