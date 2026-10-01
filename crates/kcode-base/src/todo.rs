@@ -143,7 +143,14 @@ pub fn anchor_run(working_dir: Option<&Path>, session_id: &str, words: &str) -> 
             anchor.clone()
         }
         None => {
-            let id = add_row(&mut rows, words, None, Vec::new(), session_id, None)?;
+            let id = add_row(
+                &mut rows,
+                TaskItem {
+                    content: words.to_string(),
+                    assigned_to: Some(session_id.to_string()),
+                    ..Default::default()
+                },
+            )?;
             rows.iter()
                 .find(|row| row.id == id)
                 .cloned()
@@ -160,31 +167,22 @@ fn names_row(row: &TaskItem, words: &str) -> bool {
     row.id == words || row.content.trim().eq_ignore_ascii_case(words)
 }
 
-/// Add one open row and hand back its id. The row's shape lives here, beside the
-/// file, so the `todo` tool and a grant's anchor are the same writer (rule 2).
-pub fn add_row(
-    rows: &mut Vec<TaskItem>,
-    content: &str,
-    parent: Option<String>,
-    blocked_by: Vec<String>,
-    assigned_to: &str,
-    note: Option<String>,
-) -> Result<String> {
-    let content = content.trim();
+/// Add one open row and hand back its id. The caller brings the row's words; the
+/// store owns what every new row is (an id, `pending`, no priority rank) and what
+/// no row may be (empty), so the `todo` tool and a grant's anchor are the same
+/// writer with the same invariants (rule 2).
+pub fn add_row(rows: &mut Vec<TaskItem>, mut row: TaskItem) -> Result<String> {
+    let content = row.content.trim();
     if content.is_empty() {
         bail!("add needs content");
     }
+    row.content = content.to_string();
     let id = next_id(rows);
     rows.push(TaskItem {
         id: id.clone(),
-        content: content.to_string(),
         status: "pending".to_string(),
         priority: String::new(),
-        parent,
-        blocked_by,
-        assigned_to: Some(assigned_to.to_string()),
-        note,
-        ..Default::default()
+        ..row
     });
     Ok(id)
 }

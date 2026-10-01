@@ -33,6 +33,8 @@ struct TodoInput {
     #[serde(default)]
     content: Option<String>,
     #[serde(default)]
+    kind: Option<String>,
+    #[serde(default)]
     parent: Option<String>,
     #[serde(default)]
     blocked_by: Option<Vec<String>>,
@@ -57,11 +59,20 @@ fn apply(input: &TodoInput, rows: &mut Vec<TaskItem>, session_id: &str) -> Resul
             check_references(rows, input)?;
             add_row(
                 rows,
-                content,
-                input.parent.clone(),
-                input.blocked_by.clone().unwrap_or_default(),
-                input.assigned_to.as_deref().unwrap_or(session_id),
-                input.note.clone(),
+                TaskItem {
+                    content: content.to_string(),
+                    kind: kind_or_none(input.kind.as_deref()),
+                    parent: input.parent.clone(),
+                    blocked_by: input.blocked_by.clone().unwrap_or_default(),
+                    assigned_to: Some(
+                        input
+                            .assigned_to
+                            .clone()
+                            .unwrap_or_else(|| session_id.to_string()),
+                    ),
+                    note: input.note.clone(),
+                    ..Default::default()
+                },
             )?;
             return Ok(());
         }
@@ -73,6 +84,9 @@ fn apply(input: &TodoInput, rows: &mut Vec<TaskItem>, session_id: &str) -> Resul
             }
             if let Some(parent) = &input.parent {
                 row.parent = Some(parent.clone());
+            }
+            if let Some(kind) = &input.kind {
+                row.kind = kind_or_none(Some(kind));
             }
             if let Some(blocked_by) = &input.blocked_by {
                 row.blocked_by = blocked_by.clone();
@@ -121,6 +135,14 @@ fn nonempty<'a>(value: Option<&'a str>, message: &str) -> Result<&'a str> {
         Some(value) if !value.is_empty() => Ok(value),
         _ => bail!("{message}"),
     }
+}
+
+/// A kind is a word or nothing: blank means the row has none, which rule 8 keeps
+/// distinct from a guessed kind.
+fn kind_or_none(kind: Option<&str>) -> Option<String> {
+    kind.map(str::trim)
+        .filter(|kind| !kind.is_empty())
+        .map(str::to_string)
 }
 
 fn row_mut<'a>(rows: &'a mut [TaskItem], id: &str) -> Result<&'a mut TaskItem> {
@@ -198,6 +220,10 @@ impl Tool for TodoTool {
                 "content": {
                     "type": "string",
                     "description": "The task in words."
+                },
+                "kind": {
+                    "type": "string",
+                    "description": "The run's word for this row's work: explore, implement, verify, fix, synthesize, or critique."
                 },
                 "parent": {
                     "type": "string",
@@ -364,6 +390,59 @@ mod tests {
         .expect("update");
         assert_eq!(rows[0].content, "reworded");
         assert_eq!(rows[0].note.as_deref(), Some("old note"));
+    }
+
+    #[test]
+    fn add_records_the_kind_as_the_engine_word() {
+        let mut rows = Vec::new();
+        apply(
+            &input(json!({"action": "add", "content": "fix the docs", "kind": " implement "})),
+            &mut rows,
+            "s",
+        )
+        .expect("add");
+        assert_eq!(rows[0].kind.as_deref(), Some("implement"));
+    }
+
+    #[test]
+    fn update_sets_and_clears_the_kind() {
+        let mut rows = vec![row("t1", "first")];
+        apply(
+            &input(json!({"action": "update", "id": "t1", "kind": "verify"})),
+            &mut rows,
+            "s",
+        )
+        .expect("update");
+        assert_eq!(rows[0].kind.as_deref(), Some("verify"));
+
+        apply(
+            &input(json!({"action": "update", "id": "t1", "kind": "  "})),
+            &mut rows,
+            "s",
+        )
+        .expect("clear");
+        assert_eq!(
+            rows[0].kind, None,
+            "a blank kind means the row has none, not a kind of spaces"
+        );
+    }
+
+    #[test]
+    fn the_schema_names_the_kinds_words() {
+        let schema = TodoTool::new().parameters_schema();
+        let description = schema["properties"]["kind"]["description"]
+            .as_str()
+            .expect("kind description");
+        for word in [
+            "explore",
+            "implement",
+            "verify",
+            "fix",
+            "synthesize",
+            "critique",
+        ] {
+            assert!(description.contains(word), "{word} missing: {description}");
+        }
     }
 
     #[test]

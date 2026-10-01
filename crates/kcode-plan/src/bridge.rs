@@ -143,6 +143,10 @@ pub fn apply_task_graph(plan: &mut VersionedPlan, graph: &TaskGraph) {
                 .map(|p| p.priority.clone())
                 .unwrap_or_else(|| priority_string(node.priority)),
             id: node.id.clone(),
+            // The row's own kind arrives in 0.3's S2; until then the engine's kind
+            // travels in `node_meta` below, where it already lives.
+            // braid: split when S2 lands
+            kind: None,
             subsystem: prev.and_then(|p| p.subsystem.clone()),
             file_scope: prev.map(|p| p.file_scope.clone()).unwrap_or_default(),
             blocked_by: node.depends_on.clone(),
