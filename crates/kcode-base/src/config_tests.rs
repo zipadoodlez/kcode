@@ -159,25 +159,6 @@ fn swarm_max_concurrent_agents_defaults_to_safe_live_worker_budget() {
     // spawns to grow until the 1000-member hard cap exhausts machine memory.
     assert_eq!(Config::default().agents.swarm_max_concurrent_agents, 32);
 }
-
-#[test]
-fn auto_poke_toggle_key_defaults_parses_and_reports_disabled() {
-    assert_eq!(Config::default().keybindings.auto_poke_toggle, "ctrl+p");
-
-    let remapped: Config = toml::from_str("[keybindings]\nauto_poke_toggle = \"alt+p\"\n")
-        .expect("keybindings.auto_poke_toggle should parse");
-    assert_eq!(remapped.keybindings.auto_poke_toggle, "alt+p");
-
-    let disabled: Config = toml::from_str("[keybindings]\nauto_poke_toggle = \"\"\n")
-        .expect("an empty auto-poke toggle should parse");
-    assert!(disabled.keybindings.auto_poke_toggle.is_empty());
-    assert!(
-        disabled
-            .display_string()
-            .contains("- Auto-poke toggle: `disabled`")
-    );
-}
-
 #[test]
 fn auto_poke_environment_override_uses_standard_boolean_values() {
     let _guard = crate::storage::lock_test_env();

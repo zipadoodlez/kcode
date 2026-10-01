@@ -2166,10 +2166,6 @@ pub(super) fn handle_pre_control_shortcuts(
 
     let macos_option_shortcut =
         crate::tui::keybind::shortcut_char_for_macos_option_key(code, modifiers);
-    if app.keybinds.toggle_keys.auto_poke.matches(code, modifiers) {
-        super::commands::toggle_auto_poke_hotkey_local(app);
-        return true;
-    }
     if app
         .keybinds
         .toggle_keys

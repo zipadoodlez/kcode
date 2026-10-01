@@ -376,7 +376,6 @@ impl ToggleBinding {
 /// All configurable pane / mode toggle keybindings.
 #[derive(Clone, Debug)]
 pub struct ToggleKeys {
-    pub auto_poke: ToggleBinding,
     pub side_panel: ToggleBinding,
     pub copy_selection: ToggleBinding,
     pub diagram_pane: ToggleBinding,
@@ -390,13 +389,6 @@ pub struct ToggleKeys {
 pub fn load_toggle_keys() -> ToggleKeys {
     let cfg = config();
     ToggleKeys {
-        auto_poke: ToggleBinding::load_with_default(
-            &cfg.keybindings.auto_poke_toggle,
-            KeyBinding {
-                code: KeyCode::Char('p'),
-                modifiers: KeyModifiers::CONTROL,
-            },
-        ),
         side_panel: ToggleBinding::load(&cfg.keybindings.side_panel_toggle, 'm'),
         copy_selection: ToggleBinding::load(&cfg.keybindings.copy_selection_toggle, 'y'),
         diagram_pane: ToggleBinding::load(&cfg.keybindings.diagram_pane_toggle, 't'),
@@ -651,7 +643,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn auto_poke_toggle_can_be_remapped_or_disabled() {
+    fn toggle_binding_can_be_remapped_or_disabled() {
         let default = KeyBinding {
             code: KeyCode::Char('p'),
             modifiers: KeyModifiers::CONTROL,

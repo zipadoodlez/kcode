@@ -189,22 +189,20 @@ removed and nothing else.
   stays, because it is the client's retry policy and a failed turn already ends a run.
   The pass, in the order the caller graph allows, so every stage leaves a tree that
   builds: a symbol goes only once its last caller is gone. The tests went first and
-  are gone; four stages are left, each landed and committed on its own.
-  1. **The user surface**: the command and its arms (`commands.rs`, `key_handling.rs`),
-     the registry and completion entries, the help arm, the `auto_poke_toggle`
-     keybinding end to end, and the hotkey and overlay lines.
-  2. **The scheduler**: `schedule_turn_end_followups` with `conclude_completed_turn`'s
+  are gone, then the surface; three stages are left, each landed and committed on its
+  own.
+  1. **The scheduler**: `schedule_turn_end_followups` with `conclude_completed_turn`'s
      use of it, `schedule_auto_poke_followup_if_needed`, `build_poke_message`,
      `queue_poke_message`, and the breaker trio with `turn_guardrail_stopped`, which
      only the breaker reads.
-  3. **The state**: `auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`,
+  2. **The state**: `auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`,
      `disable_auto_poke`, `clear_queued_poke_messages`, and the poke arms in
      `stop_auto_poke_for_non_retryable_error`, `remote.rs`, `model_context.rs`,
      `server_events.rs` and `tui_lifecycle.rs`.
-  4. **The docs** that name it.
+  3. **The docs** that name it.
   Two traps. The five retry tests at `remote_events_reload_04.rs` 202, 268, 310, 366
   and 425 are not poke tests: they use the poke only to create a queued follow-up, so
-  they are retargeted at the retry path in stage 2 (create the follow-up directly,
+  they are retargeted at the retry path in stage 1 (create the follow-up directly,
   rename away from the poke) rather than deleted, which would cut retry coverage.
   `commands_tests.rs:132` needs only a rename, since the classifier it tests survives.
   And an existing `auto_poke_toggle` line in a user's config becomes an unknown key

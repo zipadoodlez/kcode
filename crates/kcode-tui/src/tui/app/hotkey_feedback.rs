@@ -127,11 +127,6 @@ pub(super) fn build_registry(inputs: &RegistryInputs<'_>) -> Vec<KnownHotkey> {
 
     // Configured pane/mode toggles (pre-control shortcuts).
     push(
-        inputs.toggles.auto_poke.binding().cloned(),
-        "auto_poke_toggle",
-        "toggle auto-poke",
-    );
-    push(
         inputs.toggles.copy_selection.binding().cloned(),
         "copy_selection_toggle",
         "toggle copy/selection mode",
@@ -881,11 +876,11 @@ mod tests {
     }
 
     #[test]
-    fn lookup_finds_configured_ctrl_p_auto_poke() {
+    fn lookup_finds_configured_side_panel_toggle() {
         let registry = test_inputs_registry(false);
-        let info = lookup(&registry, true, KeyCode::Char('p'), KeyModifiers::CONTROL)
-            .expect("ctrl+p known");
-        assert_eq!(info.action, "auto_poke_toggle");
+        let info =
+            lookup(&registry, true, KeyCode::Char('m'), KeyModifiers::ALT).expect("alt+m known");
+        assert_eq!(info.action, "side_panel_toggle");
     }
 
     #[test]
@@ -926,11 +921,11 @@ mod tests {
         let registry = test_inputs_registry(false);
         let near = nearest_hotkey(
             &registry,
-            KeyCode::Char('p'),
-            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            KeyCode::Char('m'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
         )
-        .expect("suggestion for ctrl+shift+p");
-        assert_eq!(near.action, "auto_poke_toggle");
+        .expect("suggestion for ctrl+alt+m");
+        assert_eq!(near.action, "side_panel_toggle");
     }
 
     #[test]
@@ -953,12 +948,12 @@ mod tests {
         let registry = test_inputs_registry(false);
         let msg = unknown_chord_message(
             &registry,
-            KeyCode::Char('p'),
-            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            KeyCode::Char('m'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
         );
-        assert!(msg.contains("Ctrl+Shift+P"), "{msg}");
-        assert!(msg.contains("Ctrl+P"), "{msg}");
-        assert!(msg.contains("auto-poke"), "{msg}");
+        assert!(msg.contains("Ctrl+Alt+M"), "{msg}");
+        assert!(msg.contains("Alt+M"), "{msg}");
+        assert!(msg.contains("side panel"), "{msg}");
 
         let fallback = unknown_chord_message(&registry, KeyCode::Char(';'), KeyModifiers::CONTROL);
         assert!(fallback.contains("isn't bound"), "{fallback}");
@@ -1015,7 +1010,6 @@ mod tests {
             ("effort_increase", Some(&["effort_increase"])),
             ("effort_decrease", Some(&["effort_decrease"])),
             ("centered_toggle", Some(&["centered_toggle"])),
-            ("auto_poke_toggle", Some(&["auto_poke_toggle"])),
             ("scroll_prompt_up", Some(&["prompt_jump_up"])),
             ("scroll_prompt_down", Some(&["prompt_jump_down"])),
             ("scroll_bookmark", Some(&["scroll_bookmark"])),
@@ -1097,7 +1091,6 @@ mod tests {
         let registry = test_inputs_registry(false);
         let toggles = crate::tui::keybind::load_toggle_keys();
         let toggle_bindings: &[(&str, Option<&KeyBinding>)] = &[
-            ("auto_poke_toggle", toggles.auto_poke.binding()),
             ("side_panel_toggle", toggles.side_panel.binding()),
             ("copy_selection_toggle", toggles.copy_selection.binding()),
             ("diagram_pane_toggle", toggles.diagram_pane.binding()),

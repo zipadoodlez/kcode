@@ -31,35 +31,6 @@ use std::process::Command;
 use std::time::Instant;
 
 pub(super) const REVIEW_PREFERRED_MODEL: &str = "gpt-5.5";
-const POKE_OFF_UI_HINT: &str = "/poke off to stop.";
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum PokeCommand {
-    Trigger,
-    On,
-    Off,
-    Status,
-}
-
-pub(super) enum PokeActivation {
-    EnabledNoIncomplete,
-    Queued,
-    SendNow {
-        incomplete_count: usize,
-        poke_msg: String,
-    },
-}
-
-pub(super) fn parse_poke_command(trimmed: &str) -> Option<Result<PokeCommand, String>> {
-    match trimmed {
-        "/poke" => Some(Ok(PokeCommand::Trigger)),
-        "/poke on" => Some(Ok(PokeCommand::On)),
-        "/poke off" => Some(Ok(PokeCommand::Off)),
-        "/poke status" => Some(Ok(PokeCommand::Status)),
-        _ if trimmed.starts_with("/poke ") => Some(Err("Usage: /poke [on|off|status]".to_string())),
-        _ => None,
-    }
-}
 
 /// `/auto <words>`: this turn grants the session permission to keep working its
 /// own work list on its own, for as long as the rows it holds last. The words are
@@ -186,166 +157,9 @@ pub(super) fn stop_auto_poke_for_non_retryable_error(app: &mut App, error: &str)
     true
 }
 
-pub(super) fn poke_disabled_message(cleared: usize) -> String {
-    format!(
-        "Auto-poke disabled.{}",
-        if cleared == 0 {
-            String::new()
-        } else {
-            format!(
-                " Cleared {} queued poke follow-up{}.",
-                cleared,
-                if cleared == 1 { "" } else { "s" }
-            )
-        }
-    )
-}
-
-pub(super) fn poke_enabled_without_incomplete_message() -> String {
-    "Auto-poke enabled. Nothing unfinished right now; we'll poke the agent if it stops with todos left.".to_string()
-}
-
-pub(super) fn poke_queued_display_message() -> String {
-    format!(
-        "👉 Poke queued. We'll re-check for unfinished todos after this turn. {}",
-        POKE_OFF_UI_HINT
-    )
-}
-
-pub(super) fn poke_triggered_display_message(incomplete_count: usize) -> String {
-    format!(
-        "👉 {} incomplete todo{}. We poked the agent. {}",
-        incomplete_count,
-        if incomplete_count == 1 { "" } else { "s" },
-        POKE_OFF_UI_HINT,
-    )
-}
-
-pub(super) fn activate_auto_poke(app: &mut App) -> PokeActivation {
-    let incomplete = incomplete_poke_todos(app);
-    app.auto_poke_incomplete_todos = true;
-    app.last_auto_poke_fingerprint = None;
-    // Re-arming is an explicit user action: give the guardrail circuit
-    // breaker its full budget again (the user likely rephrased the task).
-    app.consecutive_guardrail_stops = 0;
-    app.turn_guardrail_stopped = false;
-    app.set_status_notice("Poke: ON");
-
-    if incomplete.is_empty() {
-        return PokeActivation::EnabledNoIncomplete;
-    }
-
-    if app.is_processing {
-        app.set_status_notice("Poke queued after current turn");
-        PokeActivation::Queued
-    } else {
-        let incomplete_count = incomplete.len();
-        let poke_msg = build_poke_message(&incomplete);
-        PokeActivation::SendNow {
-            incomplete_count,
-            poke_msg,
-        }
-    }
-}
-
-pub(super) fn activate_auto_poke_local(app: &mut App) {
-    match activate_auto_poke(app) {
-        PokeActivation::EnabledNoIncomplete => {
-            app.push_display_message(DisplayMessage::system(
-                poke_enabled_without_incomplete_message(),
-            ));
-        }
-        PokeActivation::Queued => {
-            app.push_display_message(DisplayMessage::system(poke_queued_display_message()));
-        }
-        PokeActivation::SendNow {
-            incomplete_count,
-            poke_msg,
-        } => {
-            app.push_display_message(DisplayMessage::system(poke_triggered_display_message(
-                incomplete_count,
-            )));
-
-            app.add_provider_message(Message::user(&poke_msg));
-            // The model reads this as the harness talking, so history must not
-            // render it as the user's own prompt.
-            app.session.add_message_with_display_role(
-                Role::User,
-                vec![ContentBlock::Text {
-                    text: poke_msg,
-                    cache_control: None,
-                }],
-                Some(crate::session::StoredDisplayRole::System),
-            );
-            let _ = app.session.save();
-
-            app.is_processing = true;
-            app.status = ProcessingStatus::Sending;
-            app.clear_streaming_render_state();
-            app.stream_buffer.clear();
-            app.reasoning.thought_line_inserted = false;
-            app.reasoning.thinking_prefix_emitted = false;
-            app.reasoning.thinking_buffer.clear();
-            app.streaming_tool_calls.clear();
-            app.batch_progress = None;
-            app.streaming.streaming_input_tokens = 0;
-            app.streaming.streaming_output_tokens = 0;
-            app.streaming.streaming_cache_read_tokens = None;
-            app.streaming.streaming_cache_creation_tokens = None;
-            app.kv_cache.current_api_usage_recorded = false;
-            app.upstream_provider = None;
-            app.status_detail = None;
-            app.streaming.streaming_tps_start = None;
-            app.streaming.streaming_tps_elapsed = std::time::Duration::ZERO;
-            app.streaming.streaming_tps_collect_output = false;
-            app.streaming.streaming_total_output_tokens = 0;
-            app.streaming.streaming_tps_observed_output_tokens = 0;
-            app.streaming.streaming_tps_observed_elapsed = std::time::Duration::ZERO;
-            app.processing_started = Some(Instant::now());
-            app.visible_turn_started = Some(Instant::now());
-            app.pending_turn = true;
-        }
-    }
-}
-
-pub(super) fn toggle_auto_poke_hotkey_local(app: &mut App) {
-    if app.auto_poke_incomplete_todos {
-        let cleared = disable_auto_poke(app);
-        app.set_status_notice("Poke: OFF");
-        app.push_display_message(DisplayMessage::system(poke_disabled_message(cleared)));
-    } else {
-        activate_auto_poke_local(app);
-    }
-}
-
 pub(super) fn transfer_pause_message() -> String {
     "Transfer requested. Please pause after the current step, update the todo list if needed, and stop so work can continue in the transferred session."
         .to_string()
-}
-
-pub(super) fn poke_status_message(app: &App) -> String {
-    let incomplete = incomplete_poke_todos(app);
-    let queued_followup = app
-        .queued_messages
-        .iter()
-        .any(|message| is_queued_system_message(message));
-    let mut message = format!(
-        "Auto-poke: {}. {} incomplete todo{}.",
-        if app.auto_poke_incomplete_todos {
-            "ON"
-        } else {
-            "OFF"
-        },
-        incomplete.len(),
-        if incomplete.len() == 1 { "" } else { "s" }
-    );
-    if queued_followup {
-        message.push_str(" A follow-up poke is queued.");
-    }
-    if app.is_processing {
-        message.push_str(" A turn is currently running.");
-    }
-    message
 }
 
 pub(super) fn current_subagent_model_summary(app: &App) -> String {
@@ -1742,25 +1556,6 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    if let Some(command) = parse_poke_command(trimmed) {
-        match command {
-            Err(error) => app.push_display_message(DisplayMessage::error(error)),
-            Ok(PokeCommand::Status) => {
-                app.push_display_message(DisplayMessage::system(poke_status_message(app)));
-            }
-            Ok(PokeCommand::Off) => {
-                let cleared = disable_auto_poke(app);
-                app.set_status_notice("Poke: OFF");
-                app.push_display_message(DisplayMessage::system(poke_disabled_message(cleared)));
-            }
-            Ok(PokeCommand::Trigger | PokeCommand::On) => {
-                activate_auto_poke_local(app);
-            }
-        }
-
-        return true;
-    }
-
     false
 }
 
@@ -2181,13 +1976,6 @@ pub(super) fn poke_todos(app: &App) -> Vec<crate::todo::TaskItem> {
 pub(super) fn is_incomplete_poke_todo(todo: &crate::todo::TaskItem) -> bool {
     !crate::todo::todo_status_is_completed(&todo.status)
         && !crate::todo::todo_status_is_cancelled(&todo.status)
-}
-
-pub(super) fn incomplete_poke_todos(app: &App) -> Vec<crate::todo::TaskItem> {
-    poke_todos(app)
-        .into_iter()
-        .filter(is_incomplete_poke_todo)
-        .collect()
 }
 
 /// Queue one poke for the model.
