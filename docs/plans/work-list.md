@@ -154,10 +154,10 @@ call sites a later step reshapes: 0.2 removed the poke the permission replaced, 
 
 After that, in the order of the moves: delete (D, the topic channels, the shared
 context, and the member projection written four times), then the re-cores (E, F,
-and the `app.rs` re-core). The re-cores are the tail and they are droppable: the
-least evidence and the most churn, nothing upstream depends on them, and finishing
-the model does not need them. Dropping them costs the duplication they would have
-removed and nothing else.
+and the `app.rs` re-core, whose detail `docs/todo.md` §2 owns). The re-cores are the
+tail and they are droppable: the least evidence and the most churn, nothing upstream
+depends on them, and finishing the model does not need them. Dropping them costs the
+duplication they would have removed and nothing else.
 
 **Here is where the work stands**, and a step in flight is finished before a new one
 starts. 0.1's loop and permission have landed with their tests. 0.2 has landed whole
@@ -239,10 +239,11 @@ Last of the file work, whenever we want it.
 - [ ] **B2.** This repo's own list migrates: `docs/todo.md` becomes the first
   content of `tasks.jsonl`, its standing decisions move to
   `docs/what-was-removed.md`, and the twelve references follow.
-- [ ] **B3.** Drop `group` and `status` from the type, once the file's `parent`
-  field and the close action exist: `parent` is what `group` was grouping by, and
-  the close action is what makes a completed row unrepresentable rather than
-  stored.
+- [ ] **B3.** Drop `group`, `status` and `priority` from the type. The gate has
+  already landed: `parent` is what `group` was grouping by, the close action is what
+  makes a completed row unrepresentable rather than stored, and 0.3's "position is
+  priority" is what `priority` becomes. Every `add` still writes `status` and
+  `priority` today.
 
 ### C. The list reaches the client
 
