@@ -107,13 +107,6 @@ fn status_to_plan(status: NodeStatus) -> &'static str {
     }
 }
 
-/// The kind word a node's row carries, falling back to the side-table for a plan
-/// persisted before rows held one. `None` is a row with no kind, which the seed
-/// refuses (rule 8).
-fn row_kind<'a>(item: &'a TaskItem, meta: &'a NodeMeta) -> Option<&'a str> {
-    item.kind.as_deref().or(meta.kind.as_deref())
-}
-
 /// Lift a [`VersionedPlan`] into a validated [`TaskGraph`] for engine ops.
 pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
     let mut graph = TaskGraph::new(parse_mode(&plan.mode));
@@ -126,10 +119,10 @@ pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
         graph.push_node(TaskNode {
             id: item.id.clone(),
             content: item.content.clone(),
-            // A lifted node must have a kind, and `Explore` is the one the
-            // side-table's absence always rendered as; a row with no word is
-            // refused by the seed, not here.
-            kind: parse_kind(row_kind(item, &meta)).unwrap_or(NodeKind::Explore),
+            // A lifted node must have a kind, and `Explore` is what an unwritten
+            // kind has always rendered as; a row with no word is refused by the
+            // seed, not here.
+            kind: parse_kind(item.kind.as_deref()).unwrap_or(NodeKind::Explore),
             status: status_from_plan(&item.status),
             owner: item.assigned_to.clone(),
             parent: meta.parent.clone(),
@@ -179,14 +172,9 @@ pub fn apply_task_graph(plan: &mut VersionedPlan, graph: &TaskGraph) {
             parent: prev.and_then(|p| p.parent.clone()),
             note: prev.and_then(|p| p.note.clone()),
         });
-        // The side-table's copy of the kind is kept in step for one stage: a plan
-        // persisted before rows carried it still lifts, and the readers that have
-        // not moved yet still find it. S3 deletes it with its last reader.
-        // braid: split when S3 lands
         node_meta.insert(
             node.id.clone(),
             NodeMeta {
-                kind: Some(kind_str(node.kind).to_string()),
                 parent: node.parent.clone(),
                 expanded: node.expanded,
                 is_gate: node.is_gate,
@@ -244,7 +232,7 @@ pub fn upstream_context(plan: &VersionedPlan, task_id: &str) -> Option<String> {
             continue;
         };
 
-        let kind = row_kind(item, meta).unwrap_or("task");
+        let kind = dep.kind.as_deref().unwrap_or("task");
         sections.push(artifact.render_section(dep_id, kind));
     }
 
@@ -388,28 +376,6 @@ mod tests {
         );
     }
 
-    /// A plan persisted before rows carried the word still lifts its kind from the
-    /// side-table, so a reload across this change does not lose it; once the row
-    /// has a word, the row wins.
-    #[test]
-    fn a_node_lifts_its_kind_from_its_row_before_the_side_table() {
-        let mut plan = VersionedPlan::new();
-        plan.replace_items(vec![plan_item("root", "queued")]);
-        plan.node_meta.insert(
-            "root".to_string(),
-            NodeMeta {
-                kind: Some("verify".to_string()),
-                ..Default::default()
-            },
-        );
-        let graph = to_task_graph(&plan);
-        assert_eq!(graph.nodes()[0].kind, NodeKind::Verify);
-
-        plan.items[0].kind = Some("fix".to_string());
-        let graph = to_task_graph(&plan);
-        assert_eq!(graph.nodes()[0].kind, NodeKind::Fix);
-    }
-
     #[test]
     fn round_trip_preserves_items_and_edges() {
         let mut plan = VersionedPlan::new();
@@ -451,7 +417,6 @@ mod tests {
         .unwrap();
         apply_task_graph(&mut plan, &graph);
         assert_eq!(plan.items.len(), 2);
-        assert_eq!(plan.node_meta["root"].kind.as_deref(), Some("explore"));
         assert_eq!(
             plan.items
                 .iter()
@@ -504,7 +469,11 @@ mod tests {
                     .unwrap_or(false)
             })
             .expect("gate should exist in lowered plan");
-        assert_eq!(plan.node_meta[&gate.id].kind.as_deref(), Some("critique"));
+        assert_eq!(
+            gate.kind.as_deref(),
+            Some("critique"),
+            "a gate's kind lands on its row like any other node's"
+        );
 
         // Complete the child + gate + synthesis end to end through the bridge.
         let mut graph = to_task_graph(&plan);
@@ -531,7 +500,10 @@ mod tests {
     fn upstream_context_merges_completed_dependency_artifacts() {
         let mut plan = VersionedPlan::new();
         plan.items = vec![
-            plan_item("dep", "completed"),
+            TaskItem {
+                kind: Some("explore".to_string()),
+                ..plan_item("dep", "completed")
+            },
             TaskItem {
                 blocked_by: vec!["dep".to_string()],
                 ..plan_item("task", "queued")
@@ -540,7 +512,6 @@ mod tests {
         plan.node_meta.insert(
             "dep".to_string(),
             NodeMeta {
-                kind: Some("explore".to_string()),
                 artifact_json: Some(
                     serde_json::to_string(&HandoffArtifact {
                         findings: "API in foo.rs".into(),

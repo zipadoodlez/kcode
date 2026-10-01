@@ -96,10 +96,6 @@ pub struct SwarmExecutionState {
 /// extra structure it needs (composite/gate mechanics + typed artifacts).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeMeta {
-    /// Terminal-action kind: "explore" | "implement" | "verify" | "fix" |
-    /// "synthesize" | "critique". Defaults to a plain task when absent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kind: Option<String>,
     /// The composite node this was decomposed from, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,

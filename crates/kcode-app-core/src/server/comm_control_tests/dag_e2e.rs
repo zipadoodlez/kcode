@@ -225,8 +225,16 @@ async fn e2e_seed_creates_plan_with_kinds_and_edges() {
     assert_eq!(plan.mode, "deep");
     // 2 seeded nodes + the auto-inserted plan-wide root gate.
     assert_eq!(plan.items.len(), 3);
-    assert_eq!(plan.node_meta["explore"].kind.as_deref(), Some("explore"));
-    assert_eq!(plan.node_meta["synth"].kind.as_deref(), Some("synthesize"));
+    let kinded = |id: &str| {
+        plan.items
+            .iter()
+            .find(|item| item.id == id)
+            .expect("a seeded row")
+            .kind
+            .clone()
+    };
+    assert_eq!(kinded("explore").as_deref(), Some("explore"));
+    assert_eq!(kinded("synth").as_deref(), Some("synthesize"));
     let synth = plan.items.iter().find(|i| i.id == "synth").unwrap();
     assert_eq!(synth.blocked_by, vec!["explore".to_string()]);
     // The root gate audits every seeded root node and blocks plan completion
@@ -427,7 +435,7 @@ async fn e2e_deep_expand_inserts_gate_in_live_plan() {
                 .unwrap_or(false)
         })
         .expect("a gate node should be present after deep expand");
-    assert_eq!(plan.node_meta[&gate.id].kind.as_deref(), Some("critique"));
+    assert_eq!(gate.kind.as_deref(), Some("critique"));
     assert!(plan.node_meta["root"].expanded);
 }
 

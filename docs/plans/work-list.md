@@ -248,7 +248,7 @@ done.
     words is the row's `note`, and a stalled node is derived from the member activity
     clock where its marker renders).
 - [ ] **0.4. The cuts the run makes redundant**: the wire node spec, the plan's
-  durable per-node state (`node_meta`, 90 sites in 19 files, and `task_progress`),
+  durable per-node state (`node_meta`, 85 sites in 19 files, and `task_progress`),
   the persisted plan itself (`swarm_persistence.rs`, 650 lines plus 1,218 of tests;
   `VersionedPlan` becomes an in-memory view built from the file), the `coordinators`
   map, any stored swarm id, the 31 `SwarmState { .. }` rebuild sites, and the

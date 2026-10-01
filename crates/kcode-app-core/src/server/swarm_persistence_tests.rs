@@ -475,7 +475,6 @@ fn deep_plan_mode_and_node_meta_round_trip() {
     node_meta.insert(
         "root".to_string(),
         crate::plan::NodeMeta {
-            kind: Some("explore".to_string()),
             parent: None,
             expanded: true,
             is_gate: false,
@@ -487,7 +486,6 @@ fn deep_plan_mode_and_node_meta_round_trip() {
     node_meta.insert(
         "root.gate".to_string(),
         crate::plan::NodeMeta {
-            kind: Some("critique".to_string()),
             parent: Some("root".to_string()),
             expanded: false,
             is_gate: true,
@@ -504,6 +502,7 @@ fn deep_plan_mode_and_node_meta_round_trip() {
                 status: "completed".to_string(),
                 priority: "high".to_string(),
                 id: "root".to_string(),
+                kind: Some("explore".to_string()),
                 assigned_to: Some("session-1".to_string()),
                 ..Default::default()
             },
@@ -512,6 +511,7 @@ fn deep_plan_mode_and_node_meta_round_trip() {
                 status: "queued".to_string(),
                 priority: "medium".to_string(),
                 id: "root.gate".to_string(),
+                kind: Some("critique".to_string()),
                 blocked_by: vec!["root".to_string()],
                 ..Default::default()
             },
@@ -538,9 +538,15 @@ fn deep_plan_mode_and_node_meta_round_trip() {
         .expect("gate item");
     assert_eq!(gate_item.blocked_by, vec!["root".to_string()]);
 
-    // Node kinds, gate flags, expansion, planner, and artifacts survive in node_meta.
+    // The row keeps its kind; gate flags, expansion, planner, and artifacts
+    // survive in node_meta.
+    let root_row = loaded_plan
+        .items
+        .iter()
+        .find(|item| item.id == "root")
+        .expect("root row");
+    assert_eq!(root_row.kind.as_deref(), Some("explore"));
     let root_meta = loaded_plan.node_meta.get("root").expect("root meta");
-    assert_eq!(root_meta.kind.as_deref(), Some("explore"));
     assert!(root_meta.expanded);
     assert!(!root_meta.is_gate);
     assert_eq!(root_meta.planner.as_deref(), Some("session-1"));
@@ -550,8 +556,13 @@ fn deep_plan_mode_and_node_meta_round_trip() {
             .as_deref()
             .is_some_and(|json| json.contains("found it"))
     );
+    let gate_row = loaded_plan
+        .items
+        .iter()
+        .find(|item| item.id == "root.gate")
+        .expect("gate row");
+    assert_eq!(gate_row.kind.as_deref(), Some("critique"));
     let gate_meta = loaded_plan.node_meta.get("root.gate").expect("gate meta");
-    assert_eq!(gate_meta.kind.as_deref(), Some("critique"));
     assert!(gate_meta.is_gate);
     assert_eq!(gate_meta.parent.as_deref(), Some("root"));
 }
@@ -590,62 +601,60 @@ fn gate_debt_and_artifact_hydration_survive_reload() {
     })
     .unwrap();
 
-    let item = |id: &str, status: &str, blocked_by: Vec<String>| crate::plan::TaskItem {
-        content: format!("work on {id}"),
-        status: status.to_string(),
-        priority: "medium".to_string(),
-        id: id.to_string(),
-        blocked_by,
-        ..Default::default()
-    };
-    let meta = |kind: &str, parent: Option<&str>, is_gate: bool, artifact: Option<&str>| {
-        crate::plan::NodeMeta {
+    let item =
+        |id: &str, kind: &str, status: &str, blocked_by: Vec<String>| crate::plan::TaskItem {
+            content: format!("work on {id}"),
+            status: status.to_string(),
+            priority: "medium".to_string(),
+            id: id.to_string(),
             kind: Some(kind.to_string()),
+            blocked_by,
+            ..Default::default()
+        };
+    let meta =
+        |parent: Option<&str>, is_gate: bool, artifact: Option<&str>| crate::plan::NodeMeta {
             parent: parent.map(str::to_string),
             expanded: false,
             is_gate,
             planner: None,
             artifact_json: artifact.map(str::to_string),
             origin: None,
-        }
-    };
+        };
 
     let mut plan = VersionedPlan::new();
     plan.mode = "deep".to_string();
     plan.version = 4;
     plan.items = vec![
         {
-            let mut root = item("root", "running", Vec::new());
+            let mut root = item("root", "explore", "running", Vec::new());
             root.assigned_to = Some("planner-1".to_string());
             root
         },
-        item("root.solid", "completed", Vec::new()),
-        item("root.shaky", "completed", Vec::new()),
+        item("root.solid", "explore", "completed", Vec::new()),
+        item("root.shaky", "explore", "completed", Vec::new()),
         item(
             "root.gate",
+            "critique",
             "queued",
             vec!["root.solid".to_string(), "root.shaky".to_string()],
         ),
     ];
     plan.node_meta = HashMap::from([
         ("root".to_string(), {
-            let mut m = meta("explore", None, false, None);
+            let mut m = meta(None, false, None);
             m.expanded = true;
             m.planner = Some("planner-1".to_string());
             m
         }),
         (
             "root.solid".to_string(),
-            meta("explore", Some("root"), false, Some(&solid_artifact)),
+            meta(Some("root"), false, Some(&solid_artifact)),
         ),
         (
             "root.shaky".to_string(),
-            meta("explore", Some("root"), false, Some(&shaky_artifact)),
+            meta(Some("root"), false, Some(&shaky_artifact)),
         ),
-        (
-            "root.gate".to_string(),
-            meta("critique", Some("root"), true, None),
-        ),
+        ("root.gate".to_string(), meta(Some("root"), true, None)),
     ]);
 
     persist_swarm_state("swarm-debt", Some(&plan), None, &[]);
