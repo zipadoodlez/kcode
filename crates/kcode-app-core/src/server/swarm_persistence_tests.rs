@@ -28,7 +28,7 @@ fn test_env(dir: &tempfile::TempDir) -> EnvGuard {
 }
 
 #[test]
-fn persisted_swarm_state_round_trips_and_marks_running_stale() {
+fn persisted_swarm_state_round_trips() {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let _env = test_env(&dir);
 
@@ -93,7 +93,10 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
     let loaded_plan = loaded.plans.get("swarm-alpha").expect("loaded plan");
     assert_eq!(loaded_plan.version, 3);
     assert_eq!(loaded_plan.items.len(), 1);
-    assert_eq!(loaded_plan.items[0].status, "running_stale");
+    assert_eq!(
+        loaded_plan.items[0].status, "running",
+        "a restored row keeps the status it was saved with"
+    );
     let progress = loaded_plan
         .task_progress
         .get("task-1")
@@ -528,7 +531,7 @@ fn state_dir_is_durable_not_runtime() {
 /// `load_runtime_state()` and `recover_headless_sessions_on_startup`
 /// (server.rs:584-918) drives recovery from that state, so a regressed
 /// snapshot silently restores the older plan: work completed between v5 and
-/// v6 flips back to queued/running_stale and newer node_meta artifacts are
+/// v6 flips back to queued/running and newer node_meta artifacts are
 /// lost.
 ///
 #[tokio::test]

@@ -370,7 +370,7 @@ async fn requeue_existing_assignment_preserves_the_reclaim_count() {
     let swarm_id = "swarm-requeue-preserve";
     let requester = "coord";
     let worker = "worker";
-    let mut assigned = plan_item("requeue-me", "running_stale", "high", &[]);
+    let mut assigned = plan_item("requeue-me", "running", "high", &[]);
     assigned.assigned_to = Some(worker.to_string());
     let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),

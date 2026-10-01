@@ -105,9 +105,8 @@ use super::turn_end_should_auto_complete;
 #[test]
 fn atomic_turn_auto_completes() {
     // A plain running atomic node that the worker just ran should be
-    // auto-marked done. `running_stale` (revived after a reload) counts too.
+    // auto-marked done.
     assert!(turn_end_should_auto_complete("running", false));
-    assert!(turn_end_should_auto_complete("running_stale", false));
 }
 
 #[test]
@@ -147,10 +146,6 @@ fn running_turn_auto_completes_unless_expanded() {
     // for synthesis. Non-running nodes are never reopened.
     assert_eq!(
         turn_end_disposition("running", false),
-        TurnEndDisposition::AutoComplete
-    );
-    assert_eq!(
-        turn_end_disposition("running_stale", false),
         TurnEndDisposition::AutoComplete
     );
     assert_eq!(

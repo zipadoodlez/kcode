@@ -13,7 +13,7 @@ const EXACT_PIP_FLOOR: usize = 12;
 /// transient 3s "Swarm plan synced" status notice).
 ///
 /// Plan statuses use the scheduler vocabulary (`queued`, `ready`, `running`,
-/// `running_stale`, `done`, `failed`, `stopped`, `crashed`, ...) while the todo
+/// `done`, `failed`, `stopped`, `crashed`, ...) while the todo
 /// renderer only distinguishes `in_progress`/`completed`/`cancelled`/other.
 /// Without normalization, `running` plan tasks render as open `○` items and
 /// sort *after* completed work, so large plans hide all live activity behind
@@ -42,7 +42,7 @@ pub(crate) fn swarm_plan_todos(items: &[crate::plan::TaskItem]) -> Vec<crate::to
 /// ⊳ marker from `blocked_by`.
 fn normalize_plan_status_for_todo(status: &str) -> String {
     match status {
-        "running" | "running_stale" => "in_progress".to_string(),
+        "running" => "in_progress".to_string(),
         "done" => "completed".to_string(),
         "failed" | "stopped" | "crashed" => "cancelled".to_string(),
         "queued" | "ready" | "todo" | "blocked" => "pending".to_string(),

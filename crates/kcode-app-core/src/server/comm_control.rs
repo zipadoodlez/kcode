@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::items_after_test_module))]
 
 use super::append_swarm_completion_report_instructions;
+use super::swarm::swarm_task_stale_after;
 use super::swarm_mutation_state::{
     PersistedSwarmMutationResponse, begin_or_join_in_flight as begin_swarm_mutation_no_replay,
     begin_or_replay as begin_swarm_mutation_or_replay,
@@ -187,8 +188,7 @@ struct ActiveAssignmentConflict {
 /// sweep reclaiming it from a dead holder.
 ///
 /// Everything else stays assignable so legitimate recovery keeps working:
-/// unassigned items, terminal items (explicit re-open), and `running_stale`
-/// items (the stale-assignee path). Deliberate re-dispatch goes through
+/// unassigned items, terminal items (explicit re-open). Deliberate re-dispatch goes through
 /// `task_control` (retry/reassign/replace/salvage), which is exempt.
 fn active_assignment_conflict(
     status: &str,
@@ -239,8 +239,7 @@ enum TurnEndDisposition {
 /// A running atomic node auto-completes; an expanded composite stays open for
 /// synthesis.
 fn turn_end_disposition(status: &str, expanded: bool) -> TurnEndDisposition {
-    let running = matches!(status, "running" | "running_stale");
-    if !running {
+    if status != "running" {
         return TurnEndDisposition::LeaveAlone;
     }
     if expanded {
@@ -1313,7 +1312,7 @@ async fn handle_comm_assign_task_with_mode(
             // was the (now-stale) decomposition brief, so replace it with an explicit
             // synthesis instruction. Without this the planner replays the old "expand
             // me" prompt and reports instead of calling `complete_node`, leaving the
-            // composite `running_stale` forever.
+            // composite open forever.
             let is_composite_synthesis = plan.is_composite(&item_id);
             let effective_content =
                 composite_synthesis_content(&item_id, &raw_content, is_composite_synthesis);
@@ -2075,7 +2074,15 @@ pub(super) async fn handle_comm_task_control(
                 return;
             }
 
-            if snapshot.status == "running" {
+            // A holder that is still reporting activity keeps the row: handing it
+            // off would clobber work in flight. A holder that has gone quiet is
+            // handed off, which is what the staleness sweep used to write down as
+            // `running_stale`. Liveness is the member's own clock, so it is read
+            // here rather than stored.
+            let holder_is_live = crate::session_metrics::last_activity_age_secs(&assignee)
+                .map(|age_secs| age_secs < swarm_task_stale_after().as_secs())
+                .unwrap_or(false);
+            if snapshot.status == "running" && holder_is_live {
                 let _ = client_event_tx.send(ServerEvent::Error {
                     id,
                     message: format!(
@@ -2090,7 +2097,7 @@ pub(super) async fn handle_comm_task_control(
             if action == TaskControlAction::Replace
                 && !matches!(
                     snapshot.status.as_str(),
-                    "queued" | "failed" | "stopped" | "crashed" | "running_stale"
+                    "queued" | "failed" | "stopped" | "crashed"
                 )
             {
                 let _ = client_event_tx.send(ServerEvent::Error {

@@ -268,12 +268,7 @@ fn remove_snapshot_files(swarm_id: &str) -> bool {
     removed
 }
 
-fn from_persisted_plan(mut plan: PersistedVersionedPlan) -> VersionedPlan {
-    for item in &mut plan.items {
-        if item.status == "running" {
-            item.status = "running_stale".to_string();
-        }
-    }
+fn from_persisted_plan(plan: PersistedVersionedPlan) -> VersionedPlan {
     let mut plan = VersionedPlan {
         items: plan.items,
         version: plan.version,

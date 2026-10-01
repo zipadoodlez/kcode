@@ -1402,7 +1402,7 @@ impl crate::tui::TuiState for App {
                         .swarm
                         .plan_items
                         .iter()
-                        .filter(|item| matches!(item.status.as_str(), "running" | "running_stale"))
+                        .filter(|item| matches!(item.status.as_str(), "running"))
                         .count() as u32;
                     Some((done, running, total))
                 };

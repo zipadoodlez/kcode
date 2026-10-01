@@ -200,7 +200,6 @@ fn plan_item(id: &str, status: &str) -> crate::plan::TaskItem {
 fn swarm_plan_todos_normalizes_scheduler_statuses() {
     let items = vec![
         plan_item("a", "running"),
-        plan_item("b", "running_stale"),
         plan_item("c", "done"),
         plan_item("d", "completed"),
         plan_item("e", "failed"),
@@ -223,7 +222,6 @@ fn swarm_plan_todos_normalizes_scheduler_statuses() {
     };
     // Active scheduler states surface as in_progress (▶ amber, sorts first).
     assert_eq!(status_of("a"), "in_progress");
-    assert_eq!(status_of("b"), "in_progress");
     // Terminal success maps onto completed (✓).
     assert_eq!(status_of("c"), "completed");
     assert_eq!(status_of("d"), "completed");

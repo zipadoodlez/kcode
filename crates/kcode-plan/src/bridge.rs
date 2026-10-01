@@ -55,7 +55,7 @@ pub fn kind_words() -> String {
 /// Map a plan status string to an engine [`NodeStatus`].
 fn status_from_plan(status: &str) -> NodeStatus {
     match status {
-        "running" | "running_stale" => NodeStatus::Running,
+        "running" => NodeStatus::Running,
         "completed" | "done" => NodeStatus::Done,
         "failed" | "stopped" | "crashed" => NodeStatus::Failed,
         _ => NodeStatus::Queued,

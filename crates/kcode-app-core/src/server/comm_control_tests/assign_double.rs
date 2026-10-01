@@ -35,7 +35,7 @@ fn active_assignment_conflict_detects_any_claim_on_an_in_flight_item() {
     );
 
     // Stale and terminal statuses -> allow (existing recovery paths).
-    for status in ["running_stale", "failed", "stopped", "crashed", "completed", "done"] {
+    for status in ["failed", "stopped", "crashed", "completed", "done"] {
         assert!(
             super::active_assignment_conflict(status, Some("snail")).is_none(),
             "status '{status}' must not trigger the double-assignment guard"
@@ -250,7 +250,7 @@ async fn task_control_reassign_tells_displaced_worker_to_stand_down() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let swarm_id = "swarm-reassign-stand-down";
     let (requester, holder, intruder) = ("coord", "snail", "penguin");
-    let mut contested = plan_item("contested", "running_stale", "high", &[]);
+    let mut contested = plan_item("contested", "running", "high", &[]);
     contested.assigned_to = Some(holder.to_string());
     let (sessions, swarm_members, swarms_by_id, swarm_plans, swarm_coordinators) =
         double_assign_fixture(swarm_id, requester, holder, intruder, contested);
@@ -355,4 +355,80 @@ async fn task_control_reassign_tells_displaced_worker_to_stand_down() {
         }
     }
     assert!(saw_dm, "displaced worker must receive a stand-down DM");
+}
+
+/// Live path: the handoff verbs refuse while the holder is still reporting
+/// activity, so an explicit hand-over cannot clobber work in flight. The
+/// staleness sweep used to write this fact down as `running_stale`; it is read
+/// from the member's own clock now, so the holder's activity decides.
+#[tokio::test]
+async fn task_control_reassign_refuses_while_the_holder_is_live() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let swarm_id = "swarm-handoff-live";
+    let (requester, holder, intruder) = ("coord", "live-holder", "penguin");
+    let mut contested = plan_item("contested", "running", "high", &[]);
+    contested.assigned_to = Some(holder.to_string());
+    let (sessions, swarm_members, swarms_by_id, swarm_plans, swarm_coordinators) =
+        double_assign_fixture(swarm_id, requester, holder, intruder, contested);
+    // The holder is reporting activity, so the row is in flight.
+    crate::session_metrics::record_activity(holder);
+    sessions
+        .write()
+        .await
+        .insert(holder.to_string(), test_agent().await);
+    sessions
+        .write()
+        .await
+        .insert(intruder.to_string(), test_agent().await);
+    let (client_tx, mut client_rx) = mpsc::unbounded_channel();
+    let soft_interrupt_queues = Arc::new(RwLock::new(HashMap::new()));
+    let client_connections = Arc::new(RwLock::new(HashMap::new()));
+    let event_history = Arc::new(RwLock::new(VecDeque::new()));
+    let event_counter = Arc::new(AtomicU64::new(1));
+    let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
+    let mutation_runtime = SwarmMutationRuntime::default();
+
+    handle_comm_task_control(
+        94,
+        requester.to_string(),
+        "reassign".to_string(),
+        "contested".to_string(),
+        Some(intruder.to_string()),
+        None,
+        &client_tx,
+        &sessions,
+        &soft_interrupt_queues,
+        &client_connections,
+        &swarm_members,
+        &swarms_by_id,
+        &swarm_plans,
+        &swarm_coordinators,
+        &event_history,
+        &event_counter,
+        &swarm_event_tx,
+        &mutation_runtime,
+    )
+    .await;
+
+    match client_rx.recv().await.expect("response") {
+        ServerEvent::Error { message, .. } => {
+            assert!(
+                message.contains("actively running on 'live-holder'"),
+                "a live holder keeps the row: {message}"
+            );
+        }
+        other => panic!("expected the live holder to keep the row, got {other:?}"),
+    }
+
+    let plans = swarm_plans.read().await;
+    let item = plans[swarm_id]
+        .items
+        .iter()
+        .find(|item| item.id == "contested")
+        .expect("contested task exists");
+    assert_eq!(
+        item.assigned_to.as_deref(),
+        Some(holder),
+        "the live holder keeps the task"
+    );
 }

@@ -231,7 +231,7 @@ pub fn is_terminal_status(status: &str) -> bool {
 }
 
 pub fn is_active_status(status: &str) -> bool {
-    matches!(status, "running" | "running_stale")
+    status == "running"
 }
 
 /// Terminal without completing: the item is finished from the scheduler's
@@ -324,8 +324,8 @@ pub fn build_control_assignment_text(
 pub fn task_control_action_allows_status(action: TaskControlAction, status: &str) -> bool {
     match action {
         TaskControlAction::Start | TaskControlAction::Wake => status == "queued",
-        TaskControlAction::Resume => matches!(status, "queued" | "running" | "running_stale"),
-        TaskControlAction::Retry => matches!(status, "failed" | "running_stale"),
+        TaskControlAction::Resume => matches!(status, "queued" | "running"),
+        TaskControlAction::Retry => status == "failed",
         // A completed node must never be reopened by handoff actions:
         // complete_node persists "completed" (not just "done"), and reassigning
         // it would re-queue finished work and clobber its artifact.
@@ -641,7 +641,7 @@ pub fn task_control_target_item_id(
         .collect();
 
     candidates.sort_by_key(|item| match item.status.as_str() {
-        "running" | "running_stale" => 0,
+        "running" => 0,
         "queued" | "ready" | "pending" | "todo" => 1,
         "failed" | "stopped" | "crashed" => 2,
         "completed" | "done" => 3,
@@ -893,7 +893,7 @@ mod tests {
     fn status_helpers_match_runtime_expectations() {
         assert!(is_completed_status("completed"));
         assert!(is_terminal_status("failed"));
-        assert!(is_active_status("running_stale"));
+        assert!(is_active_status("running"));
         assert!(is_runnable_status("queued"));
         assert!(!is_terminal_status("queued"));
     }

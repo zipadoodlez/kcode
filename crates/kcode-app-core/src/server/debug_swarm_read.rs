@@ -223,7 +223,6 @@ pub(super) async fn maybe_handle_swarm_read_command(
                 "item_count": vp.items.len(),
                 "member_count": runtime.members.len(),
                 "coordinator": runtime.coordinator_session_id,
-                "stale_item_count": vp.items.iter().filter(|item| item.status == "running_stale").count(),
                 "ready_item_count": summary.ready_ids.len(),
                 "blocked_item_count": summary.blocked_ids.len(),
                 "active_item_count": summary.active_ids.len(),

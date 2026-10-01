@@ -442,79 +442,20 @@ async fn notify_coordinator_of_salvage(
     .await;
 }
 
-pub(super) async fn refresh_swarm_task_staleness(
+/// Requeue (or fail, at the reclaim cap) in-flight rows whose assignee is dead.
+///
+/// Nothing here marks a row stale: liveness is the member's own clock, so a row
+/// whose holder has gone quiet is still that holder's. What this resolves is a
+/// holder that can never come back, because no turn-end will ever arrive for it.
+/// A terminal-status member gets a grace period before salvage: reload recovery
+/// briefly marks resumable members `crashed` before restoring them, and
+/// salvaging inside that window would double-assign their work.
+pub(super) async fn salvage_dead_assignees(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
 ) {
-    let stale_after_secs = swarm_task_stale_after().as_secs();
-    let changed_swarm_ids = {
-        let mut plans = swarm_plans.write().await;
-        let mut changed = Vec::new();
-        for (swarm_id, plan) in plans.iter_mut() {
-            let mut swarm_changed = false;
-            for item in &mut plan.items {
-                if !matches!(item.status.as_str(), "running" | "running_stale") {
-                    continue;
-                }
-                // Liveness is the member's own: the turn loop marks its activity
-                // (`session_metrics::record_activity`), so a task is alive while
-                // its assignee is.
-                let member_fresh = item
-                    .assigned_to
-                    .as_deref()
-                    .and_then(crate::session_metrics::last_activity_age_secs)
-                    .map(|age_secs| age_secs < stale_after_secs)
-                    .unwrap_or(false);
-                let is_stale = !member_fresh;
-                match (item.status.as_str(), is_stale) {
-                    ("running", true) => {
-                        item.status = "running_stale".to_string();
-                        plan.version += 1;
-                        swarm_changed = true;
-                    }
-                    ("running_stale", false) => {
-                        item.status = "running".to_string();
-                        plan.version += 1;
-                        swarm_changed = true;
-                    }
-                    _ => {}
-                }
-            }
-            if swarm_changed {
-                changed.push(swarm_id.clone());
-            }
-        }
-        changed
-    };
-
-    for swarm_id in changed_swarm_ids {
-        let swarm_state = SwarmState {
-            members: Arc::clone(swarm_members),
-            swarms_by_id: Arc::clone(swarms_by_id),
-            plans: Arc::clone(swarm_plans),
-            coordinators: Arc::clone(swarm_coordinators),
-        };
-        persist_swarm_state_for(&swarm_id, &swarm_state).await;
-        broadcast_swarm_plan(
-            &swarm_id,
-            Some("task_staleness_changed".to_string()),
-            swarm_plans,
-            swarm_members,
-            swarms_by_id,
-        )
-        .await;
-    }
-
-    // Second phase: salvage in-flight items whose assignee is dead. Staleness
-    // marking above only reflects missing heartbeats; when the assigned member
-    // is gone from the swarm or sits in a terminal lifecycle status, no
-    // heartbeat or turn-end will ever arrive, so the item must be requeued
-    // (or failed at the reclaim cap) instead of pulsing running_stale forever.
-    // A terminal-status member gets a grace period before salvage: reload
-    // recovery briefly marks resumable members `crashed` before restoring
-    // them, and salvaging inside that window would double-assign their work.
     let salvage_grace = swarm_task_stale_after();
     let salvage_candidates: Vec<(String, String)> = {
         let plans = swarm_plans.read().await;
@@ -1661,8 +1602,8 @@ fn parse_swarm_tasks(text: &str) -> Vec<SwarmTaskSpec> {
 mod tests {
     use super::{
         broadcast_swarm_plan, broadcast_swarm_plan_with_previous, broadcast_swarm_status,
-        member_in_status_broadcast, parse_swarm_tasks, refresh_swarm_task_staleness,
-        remove_session_from_swarm, salvage_assignments_of_dead_member, swarm_ancestors,
+        member_in_status_broadcast, parse_swarm_tasks, remove_session_from_swarm,
+        salvage_assignments_of_dead_member, salvage_dead_assignees, swarm_ancestors,
         swarm_is_self_or_ancestor, swarm_spawn_depth, update_member_status,
         update_member_status_with_report,
     };
@@ -2708,51 +2649,6 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
-    async fn refresh_swarm_task_staleness_marks_running_tasks_stale_from_the_member_clock() {
-        let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-        let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-            "swarm-1".to_string(),
-            HashSet::from(["worker".to_string()]),
-        )])));
-        let swarm_coordinators = Arc::new(RwLock::new(HashMap::new()));
-        let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-            "swarm-1".to_string(),
-            VersionedPlan {
-                items: vec![TaskItem {
-                    content: "task".to_string(),
-                    status: "running".to_string(),
-                    priority: "medium".to_string(),
-                    id: "task-1".to_string(),
-                    assigned_to: Some("sweep-worker".to_string()),
-                    ..Default::default()
-                }],
-                version: 1,
-                participants: HashSet::from(["sweep-worker".to_string()]),
-                task_progress: HashMap::new(),
-                node_meta: HashMap::new(),
-            },
-        )])));
-        let (worker, _worker_rx) = swarm_member("sweep-worker", "agent", true);
-        swarm_members
-            .write()
-            .await
-            .insert("sweep-worker".to_string(), worker);
-
-        refresh_swarm_task_staleness(
-            &swarm_members,
-            &swarms_by_id,
-            &swarm_plans,
-            &swarm_coordinators,
-        )
-        .await;
-
-        // The assignee's own clock has no recent activity, so the node is stale.
-        let plans = swarm_plans.read().await;
-        let plan = plans.get("swarm-1").expect("plan");
-        assert_eq!(plan.items[0].status, "running_stale");
-    }
-
     fn running_plan_assigned_to(
         assignee: &str,
         reclaims: Option<u32>,
@@ -2904,7 +2800,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn staleness_sweep_salvages_tasks_of_vanished_assignee() {
+    async fn salvage_reclaims_tasks_of_vanished_assignee() {
         // The assignee is not a swarm member at all (zombie left over from a
         // previous process): no grace period applies and the sweep must
         // requeue its running task.
@@ -2924,7 +2820,7 @@ mod tests {
             .await
             .insert("coord".to_string(), coord);
 
-        refresh_swarm_task_staleness(
+        salvage_dead_assignees(
             &swarm_members,
             &swarms_by_id,
             &swarm_plans,
@@ -2939,7 +2835,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn staleness_sweep_grants_grace_to_recently_crashed_member() {
+    async fn salvage_grants_grace_to_recently_crashed_member() {
         // A member marked crashed moments ago may be mid reload-recovery; the
         // sweep must not reclaim its work inside the grace window.
         let swarm_members = Arc::new(RwLock::new(HashMap::new()));
@@ -2960,7 +2856,7 @@ mod tests {
             .await
             .insert("grace-worker".to_string(), worker);
 
-        refresh_swarm_task_staleness(
+        salvage_dead_assignees(
             &swarm_members,
             &swarms_by_id,
             &swarm_plans,

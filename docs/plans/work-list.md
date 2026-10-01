@@ -235,12 +235,15 @@ and the one build + test pass lands at the end of 0.4f.
     `task_progress` shrinks to the reclaim counter: the assignment time fields go,
     because a claim is assumed to be worked while its holder lives, so the guard reads
     the claim and not a clock; the heartbeat task, `touch_swarm_task_progress` and the
-    heartbeat staleness sweep go (liveness is the member's); `running_stale` goes and
-    its readers (turn-end, `task_control`, the conflict check, the TUI member view:
-    `info_widget_todos::normalize_plan_status_for_todo` and `tui_state.rs` fold or count
-    the string today, and the node keeps its own glyph, label and `warning_color()`
-    sorted with `in_progress`, with the count untouched) derive the stall from the
-    member's clock; the failed reason reads the member's detail
+    heartbeat staleness sweep go (liveness is the member's); `running_stale` goes: the
+    sweep's flip, the load-time migration and the member-status variant go with it, and
+    its readers fold it away (turn-end, the conflict check, the TUI's
+    `normalize_plan_status_for_todo` and its running count: the node already renders
+    `in_progress` with the same glyph and `warning_color()`, and the count is
+    untouched), except `task_control`, whose handoff guard asks the member's clock
+    whether the holder is still live — that check is what the sweep used to write down
+    as `running_stale`, and it is the one reader that had to be derived rather than
+    dropped; the failed reason reads the member's detail
     instead of `checkpoint_summary`; the writers and readers that timed an assignment
     (`requeue_existing_assignment`, the dispatch path, `active_assignment_conflict`)
     stop doing so, and the reclaim counter stays where it is until 0.4g decides the
@@ -264,6 +267,22 @@ and the one build + test pass lands at the end of 0.4f.
       cannot give is `version`, which the client uses to drop out-of-order plan events
       (`server_events.rs:2002`), and the counter. Answer this before the counter moves
       again, so it moves once.
+    - `(decide)` **Is a claim a lock for a run and not for the user's session?** This
+      is what makes `assign_task` a sufficient takeover, and it decides the verb set
+      with it. The vision names four levers over a session you are not sitting in —
+      "message it, stop it, wake it, retry it, reassign or replace its work" — so
+      `wake`/`retry`/`reassign`/`replace` stay, and `start`/`resume`/`salvage` are the
+      candidates: `start` and `resume` are `retry` restricted to an idle holder, and
+      `salvage` is `reassign` plus the prior worker's tool-call summaries, where the
+      vision says the payload is the row's own words and kind and carried context
+      belongs in the row's `note`. Their home travels with them: this policy is all in
+      `kcode-plan` (`TaskControlAction`, its status tables, the target picker), put
+      there by `2345c002` "Move swarm task control policy into plan crate", while the
+      crate named for swarms holds none of it and only `kcode-app-core` reads it, so the
+      cut and the move are one pass. Answering it also settles the handoff guard, which
+      today refuses a handover while the holder is live (read from the member's clock
+      since 0.4f): the vision's answer is that the displaced holder finds out on its
+      next write instead.
   `parse_kind`/`kind_str` stay, since they are what reads and writes a row's word.
   `Synthesize` stays as well: the word lives on the row (`tool/todo.rs` offers every
   `KINDS` entry), so a run's own join row has a word to be typed with. Nothing in the

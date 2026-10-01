@@ -60,7 +60,6 @@ pub enum SwarmLifecycleStatus {
     Spawned,
     Ready,
     Running,
-    RunningStale,
     Completed,
     Done,
     Failed,
@@ -79,7 +78,6 @@ impl SwarmLifecycleStatus {
             Self::Spawned => "spawned",
             Self::Ready => "ready",
             Self::Running => "running",
-            Self::RunningStale => "running_stale",
             Self::Completed => "completed",
             Self::Done => "done",
             Self::Failed => "failed",
@@ -110,12 +108,12 @@ impl SwarmLifecycleStatus {
 
     /// Actively working right now.
     pub fn is_active(&self) -> bool {
-        matches!(self, Self::Running | Self::RunningStale)
+        matches!(self, Self::Running)
     }
 
     /// Holds or is waiting on an assignment.
     pub fn is_in_flight(&self) -> bool {
-        matches!(self, Self::Queued | Self::Running | Self::RunningStale)
+        matches!(self, Self::Queued | Self::Running)
     }
 }
 
@@ -125,7 +123,6 @@ impl From<String> for SwarmLifecycleStatus {
             "spawned" => Self::Spawned,
             "ready" => Self::Ready,
             "running" => Self::Running,
-            "running_stale" => Self::RunningStale,
             "completed" => Self::Completed,
             "done" => Self::Done,
             "failed" => Self::Failed,
@@ -197,7 +194,6 @@ mod swarm_status_tests {
     #[test]
     fn status_predicates_group_the_vocabulary() {
         assert!(SwarmLifecycleStatus::Running.is_active());
-        assert!(SwarmLifecycleStatus::RunningStale.is_active());
         assert!(!SwarmLifecycleStatus::Ready.is_active());
         assert!(SwarmLifecycleStatus::Failed.is_dead());
         assert!(!SwarmLifecycleStatus::Running.is_dead());
@@ -211,8 +207,8 @@ mod swarm_status_tests {
 
     #[test]
     fn status_serializes_to_the_historical_strings() {
-        let json = serde_json::to_string(&SwarmLifecycleStatus::RunningStale).unwrap();
-        assert_eq!(json, "\"running_stale\"");
+        let json = serde_json::to_string(&SwarmLifecycleStatus::Running).unwrap();
+        assert_eq!(json, "\"running\"");
         let parsed: SwarmLifecycleStatus = serde_json::from_str("\"running\"").unwrap();
         assert_eq!(parsed, SwarmLifecycleStatus::Running);
     }
