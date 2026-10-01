@@ -49,7 +49,7 @@ pub fn todo_status_is_cancelled(status: &str) -> bool {
 }
 
 /// Build the synthetic auto-poke continuation prompt sent when the model
-/// stops with incomplete todos. Kept here so every producer (TUI auto-poke,
+/// stops with incomplete todos. Kept here so every remaining producer (the
 /// `kcode run` auto-poke) and the transcript renderer agree on the exact text.
 pub fn build_auto_poke_message(incomplete_count: usize) -> String {
     format!(

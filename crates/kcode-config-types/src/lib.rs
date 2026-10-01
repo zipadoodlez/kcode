@@ -925,7 +925,7 @@ pub struct FeatureConfig {
     /// Enable swarm coordination features (default: true)
     pub swarm: bool,
     /// Default state of auto-poke (automatic follow-up when the model stops with
-    /// incomplete todos). `/poke on` / `/poke off` still override this per session
+    /// incomplete todos). `/auto <what to work on>` still grants it for one run
     /// (default: false)
     pub auto_poke: bool,
     /// Inject timestamps into user messages and tool results sent to the model (default: true)

@@ -326,7 +326,7 @@ struct FallbackResendPayload {
     content: String,
     /// Inline image attachments that accompanied the message.
     images: Vec<(String, String)>,
-    /// Whether the failed send was a system continuation (poke/reminder).
+    /// Whether the failed send was a system continuation (reminder).
     is_system: bool,
     /// Whether the failed send was flagged for automatic retries.
     auto_retry: bool,
@@ -832,7 +832,7 @@ pub struct App {
     remote_resume_activity: Option<RemoteResumeActivity>,
     // First tick at which a queued follow-up was observed sitting undispatched
     // while the client was idle. Drives the starvation watchdog that recovers a
-    // stranded auto-poke continuation instead of spinning forever.
+    // stranded continuation instead of spinning forever.
     queued_followup_starved_since: Option<Instant>,
     // Current status
     status: ProcessingStatus,
@@ -841,8 +841,8 @@ pub struct App {
     // Batch progress (shown during batch tool execution)
     batch_progress: Option<crate::bus::BatchProgress>,
     processing_started: Option<Instant>,
-    // User-visible turn timer. Preserved across synthetic auto-poke follow-ups so elapsed time
-    // reflects the original user turn rather than only the latest poke resend.
+    // User-visible turn timer. Preserved across synthetic continuation
+    // follow-ups so elapsed time reflects the original user turn.
     visible_turn_started: Option<Instant>,
     // The last completed API response (cache-TTL inputs): when, which
     // provider/model, and how many input tokens.
@@ -1225,8 +1225,8 @@ impl App {
     const AUTO_RETRY_MAX_ATTEMPTS: u8 = 3;
     /// Circuit breaker for credential failures: once this many consecutive
     /// turn errors classify as credential/auth failures, every automatic
-    /// resend path (auto-retry, auto-poke, queued follow-ups)
-    /// is stopped until auth changes or a turn succeeds. Telemetry showed
+    /// resend path (auto-retry, queued follow-ups) is stopped until auth
+    /// changes or a turn succeeds. Telemetry showed
     /// runaway sessions logging thousands of 401s at one failed turn per
     /// retry (18k in one session) because retry loops kept resending against
     /// a dead credential.

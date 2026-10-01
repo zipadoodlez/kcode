@@ -269,10 +269,6 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         "Attempt recovery when model cannot continue",
     ));
     lines.push(help_entry(
-        "/poke",
-        "Poke model to resume with incomplete todos (on/off/status)",
-    ));
-    lines.push(help_entry(
         "/plan [goal]",
         "Draft a plan-only proposal as a plan card (no edits)",
     ));

@@ -237,7 +237,7 @@ swarm = true
 # Auto-continue: with this on, every turn of yours may keep working this session's
 # own work list by itself until nothing it holds is ready, and typing stops a run
 # at its next turn. Off by default; /auto <what to work on> grants the same thing
-# for one run without the setting. Also arms the older /poke path until that goes.
+# for one run without the setting. Also arms the command-line auto-poke path.
 auto_poke = false
 # Inject timestamps into user messages and tool results sent to the model
 message_timestamps = true
