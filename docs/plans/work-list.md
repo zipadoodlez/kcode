@@ -195,6 +195,13 @@ removed and nothing else.
   continues, a wake does not), so it wants one `kcode run` probe against its own
   socket and a scratch repo, not only the in-process tests. The proof so far is the
   pick and the loop under a mock provider.
+  Also owed, and it is a hole the permission commit opened: the standing default's
+  other half, `may_continue || features.auto_poke` in `record_processing_completion`,
+  has no test. The loop tests pass the grant explicitly, so the `||` branch is
+  unexercised, and 0.2 is about to remove the config key's last client reader, which
+  would make that half look like dead config. Covered by exposing
+  `record_processing_completion` to the test module and driving one ungranted turn
+  with `KCODE_AUTO_POKE=true`, then the same turn with it off.
   Small, still owed: the row rung (`/auto t3`, the pick's optional subtree filter),
   an optional bound so "work until 07:00" is the run property the model says (the
   duration parser and the target-wake label are in git history), and a
@@ -218,21 +225,33 @@ removed and nothing else.
   client's retry policy and a failed turn already ends the run.
   The docs that name the poke go with it: the `/poke` examples in
   `dev/message-voice.md`, the `/poke` help, and its completion entries.
-  The pass, in the order that keeps it reviewable: the user surface (the command and
-  its arms in `commands.rs` and `key_handling.rs`, the registry and completion
-  entries, the help arm, the keybinding end to end, the hotkey and overlay lines),
-  then the scheduler (`schedule_auto_poke_followup_if_needed`, `build_poke_message`,
-  `queue_poke_message`, `clear_queued_poke_messages`, `disable_auto_poke`, and the
-  poke arms of `schedule_turn_end_followups` and
-  `stop_auto_poke_for_non_retryable_error`), then the state
-  (`auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`, the breaker trio
-  `consecutive_guardrail_stops` / `guardrail_stops_exhausted_at_turn_end` /
-  `stop_auto_continuation_after_guardrail`, and `turn_guardrail_stopped`, which only
-  the breaker reads), then the tests, then the doc.
-  Two traps. Some tests cover the retry policy through poke helpers, so they are
-  retargeted at the retry path rather than deleted with it. And an existing
-  `auto_poke_toggle` line in a user's config becomes an unknown key that is silently
-  ignored, which is §5's known hazard, so it is named there.
+  The pass, in the order the caller graph allows, so every stage leaves a tree that
+  builds: a symbol goes only once its last caller is gone. Five stages, each landed
+  and committed on its own.
+  1. **The tests**, because they are the only callers of the poke API from outside it
+     (`commands_tests.rs` and eleven files under `app/tests/`). Done 2026-10-01: 21
+     poke-only tests, 850 lines, with the two `Esc`-interrupt tests removed rather
+     than trimmed, since their subject was the poke disarm and a neighbouring test
+     keeps the interrupt covered.
+  2. **The user surface**: the command and its arms (`commands.rs`, `key_handling.rs`),
+     the registry and completion entries, the help arm, the `auto_poke_toggle`
+     keybinding end to end, and the hotkey and overlay lines.
+  3. **The scheduler**: `schedule_turn_end_followups` with `conclude_completed_turn`'s
+     use of it, `schedule_auto_poke_followup_if_needed`, `build_poke_message`,
+     `queue_poke_message`, and the breaker trio with `turn_guardrail_stopped`, which
+     only the breaker reads.
+  4. **The state**: `auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`,
+     `disable_auto_poke`, `clear_queued_poke_messages`, and the poke arms in
+     `stop_auto_poke_for_non_retryable_error`, `remote.rs`, `model_context.rs`,
+     `server_events.rs` and `tui_lifecycle.rs`.
+  5. **The docs** that name it.
+  Two traps. The five retry tests at `remote_events_reload_04.rs` 202, 268, 310, 366
+  and 425 are not poke tests: they use the poke only to create a queued follow-up, so
+  they are retargeted at the retry path in stage 3 (create the follow-up directly,
+  rename away from the poke) rather than deleted, which would cut retry coverage.
+  `commands_tests.rs:132` needs only a rename, since the classifier it tests survives.
+  And an existing `auto_poke_toggle` line in a user's config becomes an unknown key
+  that is silently ignored, which is §5's known hazard, so it is named there.
   `build_auto_poke_message` is still called by the command-line paths this step
   defers (`src/cli/commands.rs:719`), so it, the `features.auto_poke` rename, and the
   poke-named survivors go with those, not here: `is_non_retryable_auto_poke_error`
