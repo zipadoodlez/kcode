@@ -47,30 +47,6 @@ pub(super) fn parse_auto_command(trimmed: &str) -> Option<Result<String, String>
     }
 }
 
-/// Whether a queued message is one the client wrote for the model rather than
-/// the user's own text. The poke is queued wrapped as a system message, so this
-/// asks about the shape rather than about the wording.
-pub(super) fn is_queued_system_message(message: &str) -> bool {
-    super::helpers::extract_bracketed_system_message(message).is_some()
-}
-
-pub(super) fn clear_queued_poke_messages(app: &mut App) -> usize {
-    let before = app.queued_messages.len();
-    app.queued_messages
-        .retain(|message| !is_queued_system_message(message));
-    let removed = before.saturating_sub(app.queued_messages.len());
-    if removed > 0 && !app.has_queued_followups() {
-        app.pending_queued_dispatch = false;
-    }
-    removed
-}
-
-pub(super) fn disable_auto_poke(app: &mut App) -> usize {
-    let cleared = clear_queued_poke_messages(app);
-    app.auto_poke_incomplete_todos = false;
-    cleared
-}
-
 #[path = "commands_auto_poke_errors.rs"]
 mod auto_poke_errors;
 pub(super) use auto_poke_errors::is_non_retryable_auto_poke_error;
@@ -130,30 +106,6 @@ pub(super) fn is_fatal_model_endpoint_error(error: &str) -> bool {
     model_endpoint_markers
         .iter()
         .any(|marker| lower.contains(marker))
-}
-
-pub(super) fn stop_auto_poke_for_non_retryable_error(app: &mut App, error: &str) -> bool {
-    if !app.auto_poke_incomplete_todos || !is_non_retryable_auto_poke_error(error) {
-        return false;
-    }
-
-    let cleared = disable_auto_poke(app);
-    app.rate_limit_pending_message = None;
-    app.rate_limit_reset = None;
-    app.push_display_message(DisplayMessage::system(format!(
-        "🛑 The last request failed in a way that retrying won't fix, so we stopped poking.{} Fix the request or session, then /poke to resume.",
-        if cleared == 0 {
-            String::new()
-        } else {
-            format!(
-                " Cleared {} queued poke follow-up{}.",
-                cleared,
-                if cleared == 1 { "" } else { "s" }
-            )
-        }
-    )));
-    app.set_status_notice("Poke stopped: this error won't fix itself");
-    true
 }
 
 pub(super) fn transfer_pause_message() -> String {

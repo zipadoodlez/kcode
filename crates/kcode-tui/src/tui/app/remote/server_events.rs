@@ -1282,11 +1282,6 @@ pub(in crate::tui::app) fn handle_server_event(
             // auto-retry budget on guaranteed 4xx responses (#387).
             if crate::tui::app::commands::is_fatal_model_endpoint_error(&message) {
                 app.clear_pending_remote_retry();
-                if app.auto_poke_incomplete_todos {
-                    crate::tui::app::commands::stop_auto_poke_for_non_retryable_error(
-                        app, &message,
-                    );
-                }
                 app.push_display_message(DisplayMessage::system(
                     "🛑 Not retrying: the model is not valid for the configured endpoint (e.g. an Ark coding-plan endpoint rejecting a model without the coding plan feature, or a model-not-found). Check the model name and base URL (the coding endpoint `/api/coding/v3` only accepts coding-plan models; use `/api/v3` otherwise), then send again.".to_string(),
                 ));
@@ -1300,16 +1295,13 @@ pub(in crate::tui::app) fn handle_server_event(
                 );
                 return false;
             }
-            if app.auto_poke_incomplete_todos
-                && crate::tui::app::commands::is_non_retryable_auto_poke_error(&message)
-            {
+            if crate::tui::app::commands::is_non_retryable_auto_poke_error(&message) {
                 if app.schedule_pending_remote_retry_with_limit(
                     "⚠ The request failed in a way a retry probably won't fix. Trying once more anyway.",
                     2,
                 ) {
                     return false;
                 }
-                crate::tui::app::commands::stop_auto_poke_for_non_retryable_error(app, &message);
                 // Terminal: no retry will fire. Offer a one-keypress switch to
                 // the next best model/auth-method (e.g. an expired OAuth login
                 // -> a working provider) with the failed payload staged.

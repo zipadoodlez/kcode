@@ -2496,18 +2496,8 @@ async fn handle_remote_key_internal(
                 app.inline_interactive_state = None;
                 input::clear_input_for_escape(app);
             } else if app.is_processing {
-                let disabled_auto_poke = app.auto_poke_incomplete_todos
-                    || app
-                        .queued_messages
-                        .iter()
-                        .any(|message| app_mod::commands::is_queued_system_message(message));
                 remote.cancel_with_reason("keyboard_escape").await?;
-                if disabled_auto_poke {
-                    app_mod::commands::disable_auto_poke(app);
-                    app.set_status_notice("Interrupting... Auto-poke OFF");
-                } else {
-                    app.set_status_notice("Interrupting...");
-                }
+                app.set_status_notice("Interrupting...");
             } else {
                 app.viewport.follow_chat_bottom();
                 input::clear_input_for_escape(app);

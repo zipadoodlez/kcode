@@ -2538,22 +2538,12 @@ pub(super) fn handle_basic_key(app: &mut App, code: KeyCode) -> bool {
                 app.inline_view_state = None;
                 clear_input_for_escape(app);
             } else if app.is_processing {
-                let disabled_auto_poke = app.auto_poke_incomplete_todos
-                    || app
-                        .queued_messages
-                        .iter()
-                        .any(|message| super::commands::is_queued_system_message(message));
                 app.cancel_requested = true;
                 app.interleave_message = None;
                 app.interleave_images.clear();
                 app.pending_soft_interrupts.clear();
                 app.pending_soft_interrupt_requests.clear();
-                if disabled_auto_poke {
-                    super::commands::disable_auto_poke(app);
-                    app.set_status_notice("Interrupting... Auto-poke OFF");
-                } else {
-                    app.set_status_notice("Interrupting...");
-                }
+                app.set_status_notice("Interrupting...");
             } else {
                 app.viewport.follow_chat_bottom();
                 clear_input_for_escape(app);

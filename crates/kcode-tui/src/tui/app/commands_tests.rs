@@ -1,20 +1,7 @@
-use super::super::helpers::queued_system_message;
 use super::ensure_swarm_prompt_edit_path;
-use super::is_queued_system_message;
 use super::parse_auto_command;
 use super::parse_diff_mode_name;
 use super::parse_manual_subagent_spec;
-
-/// A queued poke is harness text: wrapped, so the queue sends it as a system
-/// reminder, and only that shape counts as ours. A user's own words never do.
-#[test]
-fn is_queued_system_message_recognizes_the_wrapped_form_only() {
-    let wrapped = queued_system_message("Continue where you left off.");
-    assert!(is_queued_system_message(&wrapped), "{wrapped}");
-    assert!(!is_queued_system_message("please fix the login bug"));
-    assert!(!is_queued_system_message(""));
-    assert!(!is_queued_system_message("[SYSTEM:]"));
-}
 
 #[test]
 fn parse_diff_mode_name_maps_known_aliases() {

@@ -14,7 +14,6 @@ fn test_busy_automatic_continuation_waits_for_running_turn_without_retrying() {
     for auto_retry in [false, true] {
         let mut app = create_test_app();
         app.set_runtime_mode(crate::tui::app::AppRuntimeMode::RemoteClient);
-        app.auto_poke_incomplete_todos = false;
         let rt = tokio::runtime::Runtime::new().unwrap();
         let _guard = rt.enter();
         let mut remote = crate::tui::backend::RemoteConnection::dummy();

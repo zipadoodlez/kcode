@@ -219,7 +219,7 @@ impl App {
                 self.rate_limit_pending_message = None;
                 self.rate_limit_reset = None;
                 self.push_display_message(DisplayMessage::error(format!(
-                    "{} Auto-retry limit reached after {} attempt{}. Use `/poke` again to retry manually.",
+                    "{} Auto-retry limit reached after {} attempt{}. Send the message again to retry.",
                     reason,
                     current_attempts,
                     if current_attempts == 1 { "" } else { "s" }
@@ -307,11 +307,6 @@ impl App {
     pub(super) fn trip_credential_failure_breaker(&mut self) {
         let failures = self.consecutive_credential_failures;
         self.clear_pending_remote_retry();
-        let cleared_pokes = if self.auto_poke_incomplete_todos {
-            super::commands::disable_auto_poke(self)
-        } else {
-            0
-        };
 
         // Report the streak explicitly so "breaker tripped on a dead
         // credential" is distinguishable from a transient blip.
@@ -320,13 +315,8 @@ impl App {
         self.push_display_message(DisplayMessage::error(format!(
             "🛑 Stopped automatic retries: {failures} consecutive credential/auth failures. \
              The current login or API key for {provider} is not working, so resending the same \
-             request cannot succeed.{} Run /login to re-authenticate (or /model to switch to a \
-             working route), then send again.",
-            if cleared_pokes == 0 {
-                String::new()
-            } else {
-                format!(" Cleared {cleared_pokes} queued auto-poke follow-up(s).")
-            }
+             request cannot succeed. Run /login to re-authenticate (or /model to switch to a \
+             working route), then send again."
         )));
         self.set_status_notice("Stopped: repeated auth failures");
         self.restore_failed_input_to_box();
@@ -421,7 +411,6 @@ impl App {
             visible_turn_started: None,
             last_api_response: Default::default(),
             pending_turn: false,
-            auto_poke_incomplete_todos: features.auto_poke,
             pending_fallback_offer: None,
             pending_fallback_resend: None,
             pending_merge_offer: None,
@@ -685,7 +674,6 @@ impl App {
             visible_turn_started: None,
             last_api_response: Default::default(),
             pending_turn: false,
-            auto_poke_incomplete_todos: features.auto_poke,
             pending_fallback_offer: None,
             pending_fallback_resend: None,
             pending_merge_offer: None,

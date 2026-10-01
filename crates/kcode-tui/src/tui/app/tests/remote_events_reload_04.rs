@@ -199,13 +199,12 @@ fn test_remote_error_with_retryable_pending_schedules_retry() {
 }
 
 #[test]
-fn test_remote_non_retryable_error_gets_short_auto_poke_retry() {
+fn test_remote_non_retryable_error_gets_short_retry() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.auto_poke_incomplete_todos = true;
     app.queued_messages.push(super::helpers::queued_system_message("Continue the work list."));
     app.rate_limit_pending_message = Some(PendingRemoteMessage {
         content: "You have 1 incomplete todo. Continue working, or update the todo tool."
@@ -229,7 +228,6 @@ fn test_remote_non_retryable_error_gets_short_auto_poke_retry() {
         &mut remote,
     );
 
-    assert!(app.auto_poke_incomplete_todos);
     let pending = app
         .rate_limit_pending_message
         .as_ref()
@@ -251,7 +249,6 @@ fn test_remote_non_retryable_error_gets_short_auto_poke_retry() {
         &mut remote,
     );
 
-    assert!(app.auto_poke_incomplete_todos);
     let pending = app
         .rate_limit_pending_message
         .as_ref()
@@ -265,13 +262,12 @@ fn test_remote_non_retryable_error_gets_short_auto_poke_retry() {
 }
 
 #[test]
-fn test_remote_non_retryable_error_stops_auto_poke_after_short_retry_budget() {
+fn test_remote_non_retryable_error_exhausts_short_retry_budget() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.auto_poke_incomplete_todos = true;
     app.queued_messages.push(super::helpers::queued_system_message("Continue the work list."));
     app.rate_limit_pending_message = Some(PendingRemoteMessage {
         content: "You have 1 incomplete todo. Continue working, or update the todo tool."
@@ -295,14 +291,12 @@ fn test_remote_non_retryable_error_stops_auto_poke_after_short_retry_budget() {
         &mut remote,
     );
 
-    assert!(!app.auto_poke_incomplete_todos);
-    assert!(app.queued_messages().is_empty());
     assert!(app.rate_limit_pending_message.is_none());
     assert!(app.rate_limit_reset.is_none());
     assert!(
         app.display_messages()
             .iter()
-            .any(|m| m.role == "system" && m.content.contains("we stopped poking"))
+            .any(|m| m.role == "error" && m.content.contains("Auto-retry limit reached"))
     );
 }
 
@@ -316,7 +310,6 @@ fn test_remote_fatal_model_endpoint_error_fails_fast_without_retry_budget() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.auto_poke_incomplete_todos = true;
     app.queued_messages.push(super::helpers::queued_system_message("Continue the work list."));
     app.rate_limit_pending_message = Some(PendingRemoteMessage {
         content: "continue".to_string(),
@@ -342,8 +335,7 @@ fn test_remote_fatal_model_endpoint_error_fails_fast_without_retry_budget() {
     // No retry scheduled: pending cleared immediately, no backoff timer set.
     assert!(app.rate_limit_pending_message.is_none());
     assert!(app.rate_limit_reset.is_none());
-    // Auto-poke is stopped, and an actionable hint is shown.
-    assert!(!app.auto_poke_incomplete_todos);
+    // An actionable hint is shown.
     assert!(
         app.display_messages()
             .iter()
@@ -369,7 +361,6 @@ fn test_remote_connectivity_error_waits_for_network_without_retry_budget() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.auto_poke_incomplete_todos = true;
     app.queued_messages.push(super::helpers::queued_system_message("Continue the work list."));
     app.rate_limit_pending_message = Some(PendingRemoteMessage {
         content: "You have 1 incomplete todo. Continue working, or update the todo tool."
@@ -393,7 +384,6 @@ fn test_remote_connectivity_error_waits_for_network_without_retry_budget() {
         &mut remote,
     );
 
-    assert!(app.auto_poke_incomplete_todos);
     assert!(!app.queued_messages().is_empty());
     let pending = app
         .rate_limit_pending_message
@@ -431,7 +421,6 @@ fn test_remote_connectivity_error_without_auto_retry_still_waits_for_network() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.auto_poke_incomplete_todos = true;
     app.queued_messages.push(super::helpers::queued_system_message("Continue the work list."));
     app.rate_limit_pending_message = Some(PendingRemoteMessage {
         content: "Continue working on the task.".to_string(),
@@ -454,8 +443,7 @@ fn test_remote_connectivity_error_without_auto_retry_still_waits_for_network() {
         &mut remote,
     );
 
-    // Auto-poke must stay enabled and queued work preserved.
-    assert!(app.auto_poke_incomplete_todos);
+    // Queued work must be preserved while the turn waits for the network.
     assert!(!app.queued_messages().is_empty());
     let pending = app
         .rate_limit_pending_message
@@ -469,11 +457,6 @@ fn test_remote_connectivity_error_without_auto_retry_still_waits_for_network() {
         app.status,
         ProcessingStatus::WaitingForNetwork { .. }
     ));
-    assert!(
-        !app.display_messages()
-            .iter()
-            .any(|m| m.role == "system" && m.content.contains("we stopped poking"))
-    );
 }
 
 fn openai_oauth_route(model: &str) -> crate::provider::ModelRoute {
@@ -2368,9 +2351,8 @@ fn test_credential_failure_breaker_trips_after_consecutive_auth_errors() {
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
     remote.mark_history_loaded();
 
-    // Auto-poke on with an auto-retryable pending message: this is the
-    // runaway-loop shape that produced thousands of 401s per session.
-    app.auto_poke_incomplete_todos = true;
+    // An auto-retryable pending message: this is the runaway-loop shape that
+    // produced thousands of 401s per session.
 
     for attempt in 0..App::CREDENTIAL_FAILURE_BREAKER_THRESHOLD {
         app.rate_limit_pending_message = Some(PendingRemoteMessage {
@@ -2397,10 +2379,6 @@ fn test_credential_failure_breaker_trips_after_consecutive_auth_errors() {
     assert!(
         app.rate_limit_pending_message.is_none(),
         "breaker must clear the pending auto-retry"
-    );
-    assert!(
-        !app.auto_poke_incomplete_todos,
-        "breaker must disable auto-poke"
     );
     assert_eq!(app.consecutive_credential_failures, 0);
     assert!(

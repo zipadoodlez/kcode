@@ -631,8 +631,7 @@ impl App {
 
         if is_request_payload_too_large_error(&error) {
             // 413 is a request body-size rejection driven by inline images.
-            // Strip oversized images now so a manual resubmit (or auto-poke
-            // retry) goes through, and keep auto-poke alive.
+            // Strip oversized images now so a manual resubmit goes through.
             let stripped = self
                 .session
                 .strip_oversized_images(crate::compaction::PAYLOAD_IMAGE_CHAR_BUDGET);
@@ -648,27 +647,20 @@ impl App {
                     "Error: {} Request body was too large but no inline images could be dropped. Run /fix to try manual recovery.",
                     error
                 )));
-                super::commands::stop_auto_poke_for_non_retryable_error(self, &error);
             }
             return;
         }
 
         if is_context_limit_error(&error) {
             let recovery = self.auto_recover_context_limit();
-            let should_stop_auto_poke = recovery.is_none();
             let hint = match recovery {
                 Some(msg) => format!(" {}", msg),
                 None => " Context limit exceeded but auto-recovery failed. Run /fix to try manual recovery.".to_string(),
             };
             self.push_display_message(DisplayMessage::error(format!("Error: {}{}", error, hint)));
-            if should_stop_auto_poke {
-                super::commands::stop_auto_poke_for_non_retryable_error(self, &error);
-            }
         } else {
             // Offer a one-keypress switch to the next best model/auth-method
-            // (e.g. broken API key -> working OAuth login) before giving up. The
-            // offer is informational; auto-poke still stops so an unattended loop
-            // does not silently keep retrying a path that needs a human decision.
+            // (e.g. broken API key -> working OAuth login) before giving up.
             let offered = self.offer_fallback_after_error(&error);
             if offered {
                 self.push_display_message(DisplayMessage::error(format!("Error: {}", error)));
@@ -678,7 +670,6 @@ impl App {
                     error
                 )));
             }
-            super::commands::stop_auto_poke_for_non_retryable_error(self, &error);
         }
     }
 

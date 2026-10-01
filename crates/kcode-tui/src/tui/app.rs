@@ -849,8 +849,6 @@ pub struct App {
     last_api_response: state_ui_runtime::LastApiResponse,
     // Pending turn to process (allows UI to redraw before processing starts)
     pending_turn: bool,
-    // When armed, automatically continue prompting while todos are incomplete.
-    auto_poke_incomplete_todos: bool,
     // Interactive "switch to next best model/method and resend" offer surfaced
     // after a provider turn error; accepted with a keypress.
     pending_fallback_offer: Option<PendingFallbackOffer>,

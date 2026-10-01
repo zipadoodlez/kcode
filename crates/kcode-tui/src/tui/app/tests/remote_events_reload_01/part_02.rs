@@ -6,7 +6,6 @@ fn test_remote_done_shows_footer_after_final_tool_result_without_trailing_text()
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
     app.is_processing = true;
-    app.auto_poke_incomplete_todos = false;
     app.status = ProcessingStatus::Streaming;
     app.current_message_id = Some(42);
     app.processing_started = Some(Instant::now());
