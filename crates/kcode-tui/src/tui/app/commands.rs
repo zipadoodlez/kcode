@@ -48,18 +48,18 @@ pub(super) fn parse_auto_command(trimmed: &str) -> Option<Result<String, String>
     }
 }
 
-#[path = "commands_auto_poke_errors.rs"]
-mod auto_poke_errors;
-pub(super) use auto_poke_errors::is_non_retryable_auto_poke_error;
+#[path = "commands_turn_errors.rs"]
+mod turn_errors;
+pub(super) use turn_errors::is_non_retryable_turn_error;
 
 /// Whether `error` is a transient connectivity failure (DNS, name resolution,
 /// routing, unreachable host) that the agent itself cannot repair by resending
 /// immediately. These are NOT non-retryable: they resolve once the network
 /// environment recovers, so callers route them to a network-wait/resume path
 /// rather than treating them as permanent. Kept separate from
-/// [`is_non_retryable_auto_poke_error`] precisely so a transient disconnect is
+/// [`is_non_retryable_turn_error`] precisely so a transient disconnect is
 /// never treated as a permanent failure.
-pub(super) fn is_auto_poke_connectivity_error(error: &str) -> bool {
+pub(super) fn is_turn_connectivity_error(error: &str) -> bool {
     // Delegate to the shared connectivity classifier (kcode-app-core's
     // network_retry) so this list can never drift out of sync with the wait-
     // for-network path, then add wrappers specific to this call site.
@@ -85,7 +85,7 @@ pub(super) fn is_auto_poke_connectivity_error(error: &str) -> bool {
 /// valid for the configured endpoint (e.g. Volcengine Ark's coding-plan endpoint
 /// returning `404 UnsupportedModel` for a model that lacks the coding plan
 /// feature, or a plain model-not-found). Unlike the broader
-/// [`is_non_retryable_auto_poke_error`] set (which also covers billing, payload
+/// [`is_non_retryable_turn_error`] set (which also covers billing, payload
 /// size, auth, etc.), this is narrow enough that we can fail fast during
 /// reconnect/recovery continuation instead of burning the retry budget on a
 /// request that is structurally guaranteed to 4xx. See #387.

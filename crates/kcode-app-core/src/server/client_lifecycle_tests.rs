@@ -1155,7 +1155,7 @@ async fn complete_turn(
 
 /// The standing default (rule 11 in `plans/work-list.md`): a turn nobody granted
 /// continues over the rows this session holds only when the project says every
-/// turn of yours may, which is `features.auto_poke`. The loop tests pass the grant
+/// turn of yours may, which is `features.auto_continue`. The loop tests pass the grant
 /// explicitly, so this is the only cover for the config half of that decision.
 #[tokio::test]
 async fn the_standing_default_continues_an_ungranted_turn() {

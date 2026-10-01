@@ -160,16 +160,38 @@ fn swarm_max_concurrent_agents_defaults_to_safe_live_worker_budget() {
     assert_eq!(Config::default().agents.swarm_max_concurrent_agents, 32);
 }
 #[test]
-fn auto_poke_environment_override_uses_standard_boolean_values() {
+fn auto_continue_environment_override_uses_standard_boolean_values() {
     let _guard = crate::storage::lock_test_env();
-    let previous = std::env::var_os("KCODE_AUTO_POKE");
-    crate::env::set_var("KCODE_AUTO_POKE", "off");
+    let previous = std::env::var_os("KCODE_AUTO_CONTINUE");
+    crate::env::set_var("KCODE_AUTO_CONTINUE", "off");
 
     let mut cfg = Config::default();
     cfg.apply_env_overrides();
-    assert!(!cfg.features.auto_poke);
+    assert!(!cfg.features.auto_continue);
+
+    restore_env_var("KCODE_AUTO_CONTINUE", previous);
+}
+
+/// The name this setting had while the poke existed still arms it: a config or
+/// environment that was written before the rename keeps working.
+#[test]
+fn the_old_auto_poke_name_still_arms_the_permission() {
+    let _guard = crate::storage::lock_test_env();
+    let previous = std::env::var_os("KCODE_AUTO_POKE");
+    crate::env::set_var("KCODE_AUTO_POKE", "on");
+
+    let mut cfg = Config::default();
+    cfg.apply_env_overrides();
+    assert!(cfg.features.auto_continue);
 
     restore_env_var("KCODE_AUTO_POKE", previous);
+
+    let cfg: Config =
+        toml::from_str("[features]\nauto_poke = true\n").expect("the old key still parses");
+    assert!(
+        cfg.features.auto_continue,
+        "the old config key still counts"
+    );
 }
 
 #[test]

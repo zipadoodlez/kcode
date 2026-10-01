@@ -47,12 +47,12 @@ and your real `~/.kcode` are untouched:
 
 ```bash
 KCODE_HOME=/tmp/kcode-home-before \
-KCODE_AUTO_POKE=1 KCODE_RUN_AUTO_POKE=1 \
+KCODE_AUTO_CONTINUE=1 \
   /tmp/kcode-before-bin run --socket /run/user/$UID/kcode-ab-before.sock '<task>'
 ```
 
-Repeat with `after` and `kcode-ab-after.sock`. Arming matters: `features.auto_poke`
-defaults to `false`, so without the env vars you are measuring a disabled feature.
+Repeat with `after` and `kcode-ab-after.sock`. Arming matters: `features.auto_continue`
+defaults to `false`, so without the env var you are measuring a disabled feature.
 Logs land in `$KCODE_HOME/logs/`; sessions and todo files land in
 `$KCODE_HOME`, which is why the two sides need separate homes.
 

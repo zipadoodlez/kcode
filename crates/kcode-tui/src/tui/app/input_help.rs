@@ -114,7 +114,7 @@ impl App {
             }
             "swarm" => "/swarm [on|off|status]\nToggle swarm features for this session.",
             "auto" => {
-                "/auto <what to work on>\nThis turn grants the session permission to keep working its own work list on its own, for as long as the rows it holds last, then the permission is spent. Words that name an open row (its id, or its content) scope the run to that row and the work under it; any other words become the run's own row at the top of the list, and the run works that row last. The standing version is auto_poke = true under [features] in ~/.kcode/config.toml. Typing anything stops a run at its next turn."
+                "/auto <what to work on>\nThis turn grants the session permission to keep working its own work list on its own, for as long as the rows it holds last, then the permission is spent. Words that name an open row (its id, or its content) scope the run to that row and the work under it; any other words become the run's own row at the top of the list, and the run works that row last. The standing version is auto_continue = true under [features] in ~/.kcode/config.toml. Typing anything stops a run at its next turn."
             }
             "transfer" => {
                 "/transfer\nCompact the current session into a summary-only handoff, copy the current todo list to a fresh session, and open that transferred session in a new window.\n\nIf a turn is currently running, kcode first soft-pauses the current session at the next safe point, then performs the transfer."

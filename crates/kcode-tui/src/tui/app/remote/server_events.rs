@@ -1255,7 +1255,7 @@ pub(in crate::tui::app) fn handle_server_event(
             // before the non-retryable check so a transient disconnect
             // is never misclassified as a permanent failure that ends retries.
             let is_connectivity_error =
-                crate::tui::app::commands::is_auto_poke_connectivity_error(&message)
+                crate::tui::app::commands::is_turn_connectivity_error(&message)
                     || crate::network_retry::classify_message(&message).is_some();
             if is_connectivity_error
                 && app.schedule_pending_remote_network_wait_with_force(&message, true)
@@ -1295,7 +1295,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 );
                 return false;
             }
-            if crate::tui::app::commands::is_non_retryable_auto_poke_error(&message) {
+            if crate::tui::app::commands::is_non_retryable_turn_error(&message) {
                 if app.schedule_pending_remote_retry_with_limit(
                     "⚠ The request failed in a way a retry probably won't fix. Trying once more anyway.",
                     2,

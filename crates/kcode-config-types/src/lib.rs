@@ -924,10 +924,12 @@ pub struct FeatureConfig {
     pub check_updates: bool,
     /// Enable swarm coordination features (default: true)
     pub swarm: bool,
-    /// Default state of auto-poke (automatic follow-up when the model stops with
-    /// incomplete todos). `/auto <what to work on>` still grants it for one run
-    /// (default: false)
-    pub auto_poke: bool,
+    /// The standing form of `/auto`: every turn of this project's may keep working
+    /// its own work list on its own, until the rows it holds run out (rule 11 in
+    /// `plans/work-list.md`; default: false). `/auto <what to work on>` grants the
+    /// same permission for one run, and a headless member holds it inherently.
+    #[serde(alias = "auto_poke")]
+    pub auto_continue: bool,
     /// Inject timestamps into user messages and tool results sent to the model (default: true)
     pub message_timestamps: bool,
     /// Surface an in-chat system message whenever a request misses the KV cache
@@ -946,7 +948,7 @@ impl Default for FeatureConfig {
         Self {
             check_updates: true,
             swarm: true,
-            auto_poke: false,
+            auto_continue: false,
             message_timestamps: true,
             kv_cache_miss_notices: true,
             update_channel: UpdateChannel::default(),

@@ -253,6 +253,12 @@ changes are paid for in test churn.
   the review HTML (a second durable store of the same work), the second supervisor
   and coordinator session, and the stored `validated` field, which a close's result
   is now.
+- [ ] **(decision)** A one-shot `kcode run` no longer drains a list (0.3, 2026-10-01).
+  The command-line poke was the last client-side continuation, so `kcode run` is one
+  turn again: the permission is read in the session's loop, and a plan-driven member
+  holds it inherently. Add a drain back to the CLI if a scripted unattended run is
+  wanted, which means giving that path the row loop the session already has rather
+  than a second poke.
 - [ ] **(decision)** Where does work land: `main`, or a branch with a merge-back?
   Two days and 85 commits went onto `batch-ab-provider-onboarding` while `main` did
   not move and nothing noticed; nothing was lost, but "is `main` green?" could not

@@ -42,8 +42,9 @@ holds whose blockers are gone, then the next, until none is left. The permission
 spent with that run, so the next one needs another `/auto`. Typing stops a run at
 its next turn, and a run never touches a row held by someone else.
 
-To make it standing behaviour for a project, set `auto_poke = true` under
+To make it standing behaviour for a project, set `auto_continue = true` under
 `[features]` in `~/.kcode/config.toml`: then every turn of yours may continue.
+(The name was `auto_poke` while the poke existed; both still arm it.)
 
 The list is `tasks.jsonl` at the repo root, one row per line, found from git so a
 session started in `crates/foo` reads the same file. The `todo` tool writes it

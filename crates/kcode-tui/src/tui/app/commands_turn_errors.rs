@@ -1,6 +1,6 @@
 //! Deterministic non-retryable turn-error classification.
 
-pub(crate) fn is_non_retryable_auto_poke_error(error: &str) -> bool {
+pub(crate) fn is_non_retryable_turn_error(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
 
     // These failures are deterministic for the current request/session shape. Retrying the same

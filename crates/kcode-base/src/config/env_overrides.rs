@@ -275,10 +275,13 @@ impl Config {
                 self.features.check_updates = parsed;
             }
         }
-        if let Ok(v) = std::env::var("KCODE_AUTO_POKE") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.features.auto_poke = parsed;
-            }
+        // `KCODE_AUTO_POKE` is the name this had while the poke existed; it still
+        // arms the same standing permission.
+        if let Ok(v) =
+            std::env::var("KCODE_AUTO_CONTINUE").or_else(|_| std::env::var("KCODE_AUTO_POKE"))
+            && let Some(parsed) = parse_env_bool(&v)
+        {
+            self.features.auto_continue = parsed;
         }
         if let Ok(v) = std::env::var("KCODE_MESSAGE_TIMESTAMPS") {
             if let Some(parsed) = parse_env_bool(&v) {

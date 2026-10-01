@@ -48,17 +48,6 @@ pub fn todo_status_is_cancelled(status: &str) -> bool {
     canonical_todo_status(status) == Some("cancelled")
 }
 
-/// Build the synthetic auto-poke continuation prompt sent when the model
-/// stops with incomplete todos. Kept here so every remaining producer (the
-/// `kcode run` auto-poke) and the transcript renderer agree on the exact text.
-pub fn build_auto_poke_message(incomplete_count: usize) -> String {
-    format!(
-        "You have {} incomplete todo{}. Continue working, or update the todo tool.",
-        incomplete_count,
-        if incomplete_count == 1 { "" } else { "s" },
-    )
-}
-
 /// Where a session's work list lives: `tasks.jsonl` at the repo root of
 /// `working_dir`, or, with no repo, a session-scoped file under the kcode dir.
 ///
@@ -354,19 +343,6 @@ fn write_json_lines<T: Serialize>(tasks: &[T]) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// The turn-finish gate must tell the model how to clear it without implying
-    /// that the todo write which triggered the check was discarded.
-    #[test]
-    fn the_poke_names_the_count_and_invites_an_update() {
-        let message = build_auto_poke_message(3);
-        assert!(message.contains("3 incomplete todos"), "{message}");
-        assert!(message.contains("update the todo tool"), "{message}");
-        assert!(
-            build_auto_poke_message(1).contains("1 incomplete todo."),
-            "the singular form must not gain an s"
-        );
-    }
 
     #[test]
     fn a_list_round_trips_through_json_lines() {

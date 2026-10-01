@@ -536,7 +536,7 @@ async fn run_single_message_with_agent(
 ) -> Result<()> {
     let result: Result<()> = async {
         if emit_json {
-            let text = run_single_message_command_capture_with_auto_poke(agent, message).await?;
+            let text = agent.run_once_capture(message).await?;
             let report = RunCommandReport {
                 session_id: agent.session_id().to_string(),
                 provider: provider.name().to_string(),
@@ -548,7 +548,7 @@ async fn run_single_message_with_agent(
         } else if emit_ndjson {
             run_single_message_command_ndjson(agent, provider, message).await?;
         } else {
-            run_single_message_command_plain_with_auto_poke(agent, message).await?;
+            agent.run_once(message).await?;
         }
         Ok(())
     }
@@ -562,16 +562,6 @@ async fn run_single_message_with_agent(
     // (issue #988).
     agent.mark_closed();
     result
-}
-
-fn run_command_auto_poke_enabled() -> bool {
-    std::env::var("KCODE_RUN_AUTO_POKE")
-        .ok()
-        .map(|value| {
-            let value = value.trim().to_ascii_lowercase();
-            !matches!(value.as_str(), "0" | "false" | "off" | "no")
-        })
-        .unwrap_or_else(|| crate::config::config().features.auto_poke)
 }
 
 /// Whether headless `kcode run` should load MCP servers from `~/.kcode/mcp.json`.
@@ -659,151 +649,6 @@ async fn wait_for_cold_cache_mcp_tools(registry: &crate::tool::Registry) {
     }
 }
 
-fn run_command_auto_poke_max_turns() -> Option<usize> {
-    std::env::var("KCODE_RUN_AUTO_POKE_MAX_TURNS")
-        .ok()
-        .and_then(|value| value.trim().parse::<usize>().ok())
-        .filter(|value| *value > 0)
-}
-
-/// What the headless poke loop should do next.
-enum HeadlessPoke {
-    /// Send this message as the next turn.
-    Poke { count: usize, message: String },
-    /// `KCODE_RUN_AUTO_POKE_MAX_TURNS` ran out while work was still open.
-    BudgetExhausted { count: usize, max_turns: usize },
-}
-
-fn run_todos(
-    working_dir: Option<&std::path::Path>,
-    session_id: &str,
-) -> Vec<crate::todo::TaskItem> {
-    crate::todo::load_tasks(working_dir, session_id).unwrap_or_default()
-}
-
-/// The open todos that justify a poke.
-///
-/// Uses the canonical status helpers so persisted spellings the tool used to
-/// accept ("done", "Finished", " DONE ") count as finished, the same way the
-/// todo tool's own readers do.
-fn incomplete_poke_todos(todos: Vec<crate::todo::TaskItem>) -> Vec<crate::todo::TaskItem> {
-    todos
-        .into_iter()
-        .filter(|todo| {
-            !crate::todo::todo_status_is_completed(&todo.status)
-                && !crate::todo::todo_status_is_cancelled(&todo.status)
-        })
-        .collect()
-}
-
-/// The one headless continuation: poke while todos are open.
-///
-/// The gates this replaced (quality digest, confidence summary, validation
-/// message) are gone, so it enforces nothing. `last_poke` is the loop guard,
-/// matching the TUI: an unchanged list is never poked twice.
-fn next_headless_poke(
-    working_dir: Option<&std::path::Path>,
-    session_id: &str,
-    last_poke: &mut Option<String>,
-    turns_completed: usize,
-    max_turns: Option<usize>,
-) -> Option<HeadlessPoke> {
-    if !run_command_auto_poke_enabled() {
-        return None;
-    }
-    let incomplete = incomplete_poke_todos(run_todos(working_dir, session_id));
-    if incomplete.is_empty() {
-        *last_poke = None;
-        return None;
-    }
-    let message = crate::todo::build_auto_poke_message(incomplete.len());
-    let fingerprint = serde_json::to_string(&incomplete).unwrap_or_else(|_| message.clone());
-    if last_poke.as_ref() == Some(&fingerprint) {
-        return None;
-    }
-    if let Some(max_turns) = max_turns.filter(|max| turns_completed >= *max) {
-        return Some(HeadlessPoke::BudgetExhausted {
-            count: incomplete.len(),
-            max_turns,
-        });
-    }
-    *last_poke = Some(fingerprint);
-    Some(HeadlessPoke::Poke {
-        count: incomplete.len(),
-        message,
-    })
-}
-
-async fn run_single_message_command_plain_with_auto_poke(
-    agent: &mut crate::agent::Agent,
-    message: &str,
-) -> Result<()> {
-    let mut next_message = message.to_string();
-    let max_turns = run_command_auto_poke_max_turns();
-    let mut last_poke = None;
-    let mut turns_completed = 0usize;
-    loop {
-        agent.run_once(&next_message).await?;
-        turns_completed += 1;
-        match next_headless_poke(
-            agent.working_dir().map(std::path::Path::new),
-            agent.session_id(),
-            &mut last_poke,
-            turns_completed,
-            max_turns,
-        ) {
-            Some(HeadlessPoke::Poke { count, message }) => {
-                eprintln!(
-                    "{count} incomplete todo(s). We poked the agent for you. Set KCODE_RUN_AUTO_POKE=0 to disable."
-                );
-                next_message = message;
-            }
-            Some(HeadlessPoke::BudgetExhausted { count, max_turns }) => {
-                eprintln!(
-                    "We stopped poking after {max_turns} turn(s); {count} todo(s) are still unfinished."
-                );
-                break;
-            }
-            None => break,
-        }
-    }
-    Ok(())
-}
-
-async fn run_single_message_command_capture_with_auto_poke(
-    agent: &mut crate::agent::Agent,
-    message: &str,
-) -> Result<String> {
-    let mut next_message = message.to_string();
-    let max_turns = run_command_auto_poke_max_turns();
-    let mut outputs = Vec::new();
-    let mut last_poke = None;
-    let mut turns_completed = 0usize;
-    loop {
-        outputs.push(agent.run_once_capture(&next_message).await?);
-        turns_completed += 1;
-        match next_headless_poke(
-            agent.working_dir().map(std::path::Path::new),
-            agent.session_id(),
-            &mut last_poke,
-            turns_completed,
-            max_turns,
-        ) {
-            Some(HeadlessPoke::Poke { message, .. }) => {
-                next_message = message;
-            }
-            Some(HeadlessPoke::BudgetExhausted { count, max_turns }) => {
-                outputs.push(format!(
-                    "We stopped poking after {max_turns} turn(s); {count} todo(s) are still unfinished."
-                ));
-                break;
-            }
-            None => break,
-        }
-    }
-    Ok(outputs.join("\n\n"))
-}
-
 fn restore_agent_session_if_requested(
     agent: &mut crate::agent::Agent,
     resume_session: Option<&str>,
@@ -836,15 +681,11 @@ async fn run_single_message_command_ndjson(
         }),
     )?;
 
-    let max_turns = run_command_auto_poke_max_turns();
-    let mut next_message = message.to_string();
     let mut result: Result<()> = Ok(());
-    let mut last_poke = None;
-    let mut turns_completed = 0usize;
-    loop {
+    {
         let turn_result = {
             let mut run_future = std::pin::pin!(agent.run_once_streaming_mpsc(
-                &next_message,
+                message,
                 Vec::new(),
                 None,
                 event_tx.clone(),
@@ -874,41 +715,6 @@ async fn run_single_message_command_ndjson(
 
         if let Err(err) = turn_result {
             result = Err(err);
-            break;
-        }
-        turns_completed += 1;
-        match next_headless_poke(
-            agent.working_dir().map(std::path::Path::new),
-            &session_id,
-            &mut last_poke,
-            turns_completed,
-            max_turns,
-        ) {
-            Some(HeadlessPoke::Poke { count, message }) => {
-                next_message = message;
-                write_json_line(
-                    &mut stdout,
-                    &serde_json::json!({
-                        "type": "auto_poke",
-                        "session_id": session_id,
-                        "incomplete_todos": count,
-                        "message": next_message,
-                    }),
-                )?;
-            }
-            Some(HeadlessPoke::BudgetExhausted { count, max_turns }) => {
-                write_json_line(
-                    &mut stdout,
-                    &serde_json::json!({
-                        "type": "auto_poke_stopped",
-                        "session_id": session_id,
-                        "incomplete_todos": count,
-                        "max_turns": max_turns,
-                    }),
-                )?;
-                break;
-            }
-            None => break,
         }
     }
 

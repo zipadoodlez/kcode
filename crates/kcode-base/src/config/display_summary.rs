@@ -155,7 +155,7 @@ impl Config {
             },
             self.features.check_updates,
             self.features.swarm,
-            self.features.auto_poke,
+            self.features.auto_continue,
             self.features.message_timestamps,
             self.features.kv_cache_miss_notices,
             self.features.update_channel,

@@ -257,51 +257,6 @@ fn cli_route_display_uses_typed_api_methods() {
     );
 }
 
-fn test_todo(id: &str, status: &str, priority: &str) -> crate::todo::TaskItem {
-    crate::todo::TaskItem {
-        id: id.to_string(),
-        content: format!("todo {id}"),
-        status: status.to_string(),
-        priority: priority.to_string(),
-        ..Default::default()
-    }
-}
-
-#[test]
-fn incomplete_poke_todos_treats_status_synonyms_and_case_as_finished() {
-    for status in [
-        "done",
-        "finished",
-        "complete",
-        "Completed",
-        " DONE ",
-        "cancelled",
-        "canceled",
-    ] {
-        assert!(
-            incomplete_poke_todos(vec![test_todo("a", status, "high")]).is_empty(),
-            "status {status:?} must not count as open work"
-        );
-    }
-    for status in ["pending", "in_progress", "in progress", "blocked"] {
-        assert_eq!(
-            incomplete_poke_todos(vec![test_todo("a", status, "high")]).len(),
-            1,
-            "status {status:?} must count as open work"
-        );
-    }
-}
-
-/// Headless `kcode run` is what the benchmarks and scripted use go through, so
-/// the deferred quality review must reach that path too, not only the TUI.
-/// Open todos mean the agent is still working, so the review must wait for the
-/// turn to actually end rather than interrupting mid-flight.
-/// Regression: the digest is consumed from the log before the follow-up is
-/// chosen, so a turn with open todos must not destroy it. Auto-poke iterates
-/// many times with open todos on a long run, and each pass used to silently
-/// discard the observations, meaning the reminder never survived to delivery.
-/// The log must be consumed on delivery, or one turn's observations would leak
-/// into the next turn and be raised again against work they never described.
 #[test]
 fn cli_provider_choice_filter_uses_typed_api_methods() {
     let routes = vec![

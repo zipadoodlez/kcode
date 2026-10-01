@@ -3079,7 +3079,7 @@ async fn record_processing_completion(
                 // next row it holds when this turn's user granted it, or when the
                 // standing default says every turn of this project's may. This is
                 // the one place the permission is read (rule 11).
-                let standing = crate::config::config().features.auto_poke;
+                let standing = crate::config::config().features.auto_continue;
                 if !(grant.may_continue || standing) {
                     return;
                 }
