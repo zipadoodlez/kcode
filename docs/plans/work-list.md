@@ -216,8 +216,7 @@ landed and the rung removal outstanding. Each stage compiles before it is commit
     coordinator by hand, and the 31 `SwarmState { .. }` rebuild sites (`docs/todo.md`
     §1's condense).
   `parse_kind`/`kind_str` stay, since they are what reads and writes a row's word.
-  `Synthesize` stays as well: it counted as residue while the wire node spec was its
-  only producer, and the word lives on the row now (`tool/todo.rs` offers every
+  `Synthesize` stays as well: the word lives on the row (`tool/todo.rs` offers every
   `KINDS` entry), so a run's own join row has a word to be typed with. Nothing in the
   engine branches on it, so it costs one enum variant and one word.
 

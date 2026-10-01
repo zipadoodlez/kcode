@@ -6,7 +6,8 @@ workers, not entities you micromanage: the old coordinator/worktree-manager
 roles are scheduler policy, not user-facing roles.
 
 The graph is a single server-owned, versioned object (`kcode-plan`'s
-`VersionedPlan`). Agents mutate it only through validated ops.
+`VersionedPlan`). A decomposition is rows: the store writes the children
+(0.4c) and the plan follows what it wrote.
 
 The swarm is one executor of the repo's work list (`plans/work-list.md`). The
 list is the shared contract; this engine's plan is its execution state, and the
@@ -25,14 +26,14 @@ validity check and the artifact-or-nothing turn-end rule were removed in 0.4a of
 handoff artifact and decomposition. What was lost (the automatic gate insertion
 and the refusal to close without an artifact) is named in `docs/todo.md`.
 
-## Ownership: a tree over the graph
+## Ownership: a tree over the rows
 
-The unit of mutation is **expanding a node you own**; you never edit arbitrary
-nodes. Writes are partitioned by owner, so two owners never touch the same
-region and the shared graph stays coherent without locks. Mutations are
-append-style ops (`add nodes`, `add edges`, `complete node`), validated
-server-side for acyclicity and ownership. New edges may only point at
-already-existing upstream nodes, which preserves acyclicity by construction.
+The unit of mutation is **decomposing a row you hold**; you never edit arbitrary
+rows. Writes go through one store, the file's read-modify-write (rule 2): a
+decomposition adds child rows with `parent` set and blocks the parent on them, so
+the parent is a join and is picked again once they close. A child may block only on
+rows that already exist, and the store refuses a cycle, which keeps the graph
+acyclic by construction. Only the row's holder may decompose it.
 
 Each node records an origin (`seed`/`expand`), and a plan carries
 `seeded_count`/`grown_count` so a plan that never outgrew its seed is visibly
@@ -43,11 +44,10 @@ under-explored.
 A node's fate flips at runtime, not at draft time:
 
 - **Atomic** - the worker executes the task and writes a handoff artifact.
-- **Composite** - the worker decomposes the node into a child sub-DAG it owns.
-  The node becomes a join: it stays in progress until children complete, then the
-  owner re-wakes, reads their artifacts, and writes one synthesized output. A
-  composite owner plans and integrates (map then reduce); it does not execute
-  leaf work.
+- **Composite** - the worker decomposes the row into child rows. The row becomes a
+  join: it is released, blocked until its children close, then picked again, reads
+  their artifacts, and writes one synthesized output. A composite owner plans and
+  integrates (map then reduce); it does not execute leaf work.
 
 Terminal action kinds are task-agnostic; only the artifact and "done" contract
 change: `explore` (findings), `implement` (diff/commit ref), `verify` (pass/fail
@@ -77,8 +77,8 @@ explore surfaces the gaps its caller (or a follow-up row) can widen.
 
 ## Coordination and communication
 
-- Nested owners coordinate their own subtree through spawn prompts, DMs, and stop.
-  The single per-swarm coordinator slot is only for the shared plan
+- A member's deeper work is rows the run dispatches; only the root session starts
+  agents. The single per-swarm coordinator slot is only for the shared plan
   (`propose_plan`/`approve_plan`/`assign_task`/`task_control`), because there is
   exactly one `VersionedPlan` per swarm.
 - A mid-tree member leaving reparents its children to their live grandparent
@@ -104,11 +104,11 @@ explore surfaces the gaps its caller (or a follow-up row) can widen.
 ## Limits
 
 Runaway prevention is one cap: `MAX_SWARM_MEMBERS` = **1000** live members per
-swarm. There is deliberately no depth cap and no per-node fan-out cap; at the cap,
-further spawns are refused. A configurable live-worker budget (32 by default)
-throttles concurrency below that. The graph orders work but does not do mutual
-exclusion: two subtrees editing the same files is still the no-locks case,
-resolved by direct contact between the agents.
+swarm. Only the root session starts agents (0.4b), so there is no nesting and no
+depth cap to state; at the cap, further spawns are refused. A configurable
+live-worker budget (32 by default) throttles concurrency below that. The graph
+orders work but does not do mutual exclusion: two subtrees editing the same files
+is still the no-locks case, resolved by direct contact between the agents.
 
 ## Tool surface
 
