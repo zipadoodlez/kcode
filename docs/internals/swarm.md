@@ -35,9 +35,10 @@ the parent is a join and is picked again once they close. A child may block only
 rows that already exist, and the store refuses a cycle, which keeps the graph
 acyclic by construction. Only the row's holder may decompose it.
 
-Whether a node is composite is the plan's `node_meta.expanded`. The DAG
-decomposition parent (`node_meta.parent`) is distinct from a row's `parent`, which is
-the run's anchor grouping (`anchor_from_rows`), so the two are not collapsed yet.
+A row's `parent` is the file's one hierarchy: `anchor_from_rows` adopts root rows and
+`expand_row_on_disk` adds children, so anchor grouping and decomposition are the same
+relation. The plan holds no copy of it; a node is composite when it has an open child or
+a nonempty `records`, which is how "was decomposed" survives its children's removal.
 
 ## Node kinds
 

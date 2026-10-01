@@ -300,12 +300,15 @@ changes are paid for in test churn.
   What is lost: `plan_status` and the `run_plan` summary no longer print
   `seeded -> grown (+expansion)`. Growth is a run fact, so a run-scoped counter is the
   home to add if the scoreboard is wanted.
-- [ ] **(decision)** What `parent` means, before 0.4d can collapse it. `node_meta.parent`
-  is the DAG decomposition parent; `row.parent` is the run's anchor grouping
-  (`anchor_from_rows` sets every root row's parent to the anchor). They are two
-  relations sharing a name, so "`parent` duplicates the row" is false on this tree.
-  Decide how the run's anchor and DAG decomposition relate before deriving `expanded`
-  and deleting either field.
+- [x] **(decision)** What `parent` means, and where the plan's copy goes (2026-10-01).
+  `row.parent` is the file's one hierarchy: `anchor_from_rows` adopts root rows and
+  `expand_row_on_disk` adds children, so anchor grouping and decomposition are the same
+  relation, not two. The plan therefore stops storing `node_meta.parent` and reads the
+  row, and a node is composite when it has an open child or a nonempty `records` (a
+  close leaves its record on its parent, so "was decomposed" survives the children's
+  removal). `node_meta` keeps only the artifact, and the seed guard compares fields
+  instead of rejecting a parented node, since a held root row legitimately has a parent.
+  This is 0.4f's work, not a separate step.
 - [ ] **(decision)** A one-shot `kcode run` no longer drains a list (0.3, 2026-10-01).
   The command-line poke was the last client-side continuation, so `kcode run` is one
   turn again: the permission is read in the session's loop, and a plan-driven member

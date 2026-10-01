@@ -181,11 +181,10 @@ duplication they would have removed and nothing else.
 starts. 0.1, 0.2 and 0.3 have landed whole and are gone from this list; what 0.2 owed
 was 0.3's last stage, and the two losses 0.1 and 0.3 named are in `docs/todo.md`. Next
 is 0.4: its gate stage (0.4a), row stage (0.4c), one-mode stage (0.4b: only the root
-spawns, both swarm rungs and the effort side-table gone) and the origin/growth half of
-0.4d have landed; 0.4d's `parent`/`expanded` collapse is blocked on the
-anchor-vs-decomposition naming, and 0.4e/0.4f/0.4g remain. Each stage compiles before it
-is committed (`dev/post-change.md` says which check); the full gate runs once, when the
-step is done.
+spawns, both swarm rungs and the effort side-table gone) and node-meta stage (0.4d:
+origin and the growth report gone) have landed; 0.4d's `parent`/`expanded` cut is folded
+into 0.4f, and 0.4e/0.4f/0.4g remain. Each stage compiles before it is committed
+(`dev/post-change.md` says which check); the full gate runs once, when the step is done.
 
 ### 0. One way work gets done
 
@@ -195,20 +194,24 @@ step is done.
   performed is either a row someone typed (a `critique` row whose close needs its
   record) or nothing. The loss is named in `docs/todo.md`. Stages, in this order, one
   commit each:
-  - **0.4d. `origin` and the growth report are gone; `parent` and `expanded` await a
-    decision.** The persisted origin, `GrowthStats`/`growth_stats`, the
-    `seeded_count`/`grown_count` snapshot fields and their renders, and the engine's
-    `NodeOrigin` are deleted. What remains is a naming knot: `node_meta.parent` is the
-    DAG decomposition parent while `row.parent` is the run's anchor grouping
-    (`anchor_from_rows` sets every root row's parent to the anchor), so they are two
-    relations sharing a name, not a duplicate. Collapsing them, and deriving `expanded`
-    from the result, needs the anchor/decomposition unification decided first.
+  - **0.4d. `origin` and the growth report are gone.** The persisted origin,
+    `GrowthStats`/`growth_stats`, the `seeded_count`/`grown_count` snapshot fields and
+    their renders, and the engine's `NodeOrigin`/`TaskNode.origin` are deleted. The
+    `parent`/`expanded` cut is not a separate step: `row.parent` is the file's one
+    hierarchy (the anchor adopts root rows and decomposition adds children), so the
+    plan reading it is exactly 0.4f. See that stage.
   - **0.4e. `task_progress` goes**, liveness comes from the member's own clock and
     status where it renders, and the planner cut lands with the load model: count only
     work actually being worked, so a waiting join no longer marks its planner busy, then
     stop freeing the owner on expand and delete `planner` and its affinity read.
   - **0.4f. `VersionedPlan` becomes a view of the file**, deleting
-    `swarm_persistence.rs` (638 lines) and its tests (938 lines). The plan-approval
+    `swarm_persistence.rs` (638 lines) and its tests (938 lines). It reads `parent` and
+    composite from the rows: the file's `parent` is the one hierarchy (`anchor_from_rows`
+    adopts root rows, `expand_row_on_disk` adds children), so `node_meta.parent` is
+    deleted, and a node is composite when it has an open child or a nonempty `records`
+    (a close leaves its record on its parent, so "was decomposed" survives the children's
+    removal). `node_meta` keeps only the typed artifact, and the seed guard becomes a
+    field comparison since a held root row legitimately has a parent. The plan-approval
     path (`propose_plan`/`approve_plan`/`reject_plan`, `resync_plan`) is a second writer
     of the same rows and a consumer of the shared context; decide it here.
   - **0.4g. The swarm state gets one owner**: the `coordinators` map, any stored swarm
