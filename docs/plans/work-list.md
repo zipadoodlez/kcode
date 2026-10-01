@@ -13,7 +13,14 @@ written. Four rules, each one paid for by a failure this plan already had:
   measured (`31 SwarmState { .. }` sites, `app_fields=182`, the `SwarmMember`
   literal count), and the claim is grepped again before the step is written. 0.4
   shipped two claims that were false on this tree, and `internals/swarm.md` had
-  repeated one of them.
+  repeated one of them. 0.4d is the third: `parent` looked like a duplicate of the
+  row, but `row.parent` is the run's anchor hierarchy while `node_meta.parent` is the
+  DAG decomposition, so the check belongs before the cut, and it caught the error.
+- **A deletion and a behavior change are checked differently.** The build alone
+  proves a deletion; a behavior change needs the build plus the tests that exercise
+  it. So the build runs at the behavior boundary, not after every stage: go blind
+  across deletion stages, and stop for tests where meaning moves (the liveness sweep,
+  the busy/load change).
 - **A step lands whole; a big one lands in ordered stages.** A stage is one commit,
   and a symbol goes only once its last caller is gone, so each stage builds on its
   own and the order is the caller graph, outside in. Each stage compiles before it is
@@ -215,6 +222,15 @@ into 0.4f, and 0.4e/0.4f/0.4g remain. Each stage compiles before it is committed
     `checkpoint_summary` is gone, and whether `dead_assignee_reclaims` lives as a small
     run map or the cap is dropped. Sequenced stages, one commit each, and a build
     checkpoint runs before 0.4f starts rather than after every stage.
+    - **What the record's removal touches.** `running_stale` is read by turn-end
+      handling, `task_control`, the assignment conflict check, and the TUI member
+      view, so the status goes with the record and every reader derives the stall from
+      the member's clock (the §1 decision). The failed reason `plan_status` shows is
+      re-sourced from the assignee member's last detail instead of
+      `checkpoint_summary`. `dead_assignee_reclaims` moves to a small run-owned map
+      keyed by row id, so the re-dispatch cap survives without the record. The
+      persisted snapshot drops `task_progress` safely: it has no `deny_unknown_fields`
+      (`swarm_persistence.rs:112-121`), so old files still load.
   - **0.4f. `VersionedPlan` becomes a view of the file**, deleting
     `swarm_persistence.rs` (638 lines) and its tests (938 lines). It reads `parent` and
     composite from the rows: the file's `parent` is the one hierarchy (`anchor_from_rows`

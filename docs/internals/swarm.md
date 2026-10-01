@@ -40,6 +40,12 @@ A row's `parent` is the file's one hierarchy: `anchor_from_rows` adopts root row
 relation. The plan holds no copy of it; a node is composite when it has an open child or
 a nonempty `records`, which is how "was decomposed" survives its children's removal.
 
+Liveness is the member's, not the task's: the turn loop marks the session's activity
+(`session_metrics::record_activity`) and a task is alive when its assignee is. A member
+holds one row at a time, so "busy" is the member's in-flight work; and fan-out is not a
+decision but the plan's ready set (`blocked_by`), which is why a linear chain reuses one
+member while independent rows fan out on their own.
+
 ## Node kinds
 
 A node's fate flips at runtime, not at draft time:
