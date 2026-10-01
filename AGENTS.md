@@ -2,6 +2,11 @@
 
 ## Development Workflow
 
+- **Start at `docs/todo.md`** - It is the order of work, and the current project's
+  destination, model and open steps are `docs/plans/work-list.md`. Read the plan's
+  Steps intro before changing anything there: it says where the work stands, and a
+  step in flight is finished before a new one starts. `docs/README.md` lists every doc
+  and what belongs in it.
 - **Use the user's Git identity** - Create commits with the configured
   `user.name` and `user.email`. Do not override them with `Kcode`, `Kcode agent`,
   or a fabricated agent email. Preserve existing contributor attribution when
