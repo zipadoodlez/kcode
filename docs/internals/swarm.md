@@ -81,10 +81,10 @@ explore surfaces the gaps its caller (or a follow-up row) can widen.
   agents. The single per-swarm coordinator slot is only for the shared plan
   (`propose_plan`/`approve_plan`/`assign_task`/`task_control`), because there is
   exactly one `VersionedPlan` per swarm.
-- A mid-tree member leaving reparents its children to their live grandparent
-  (else the coordinator, else they become roots). Session renames rewrite
-  children's report-back edges, so ownership, stop permission, and subtree scope
-  survive churn.
+- When the root leaves, its workers reparent to the live coordinator, or become
+  roots, so the spawn tree never holds dangling report-back edges. Session renames
+  rewrite children's report-back edges, so ownership, stop permission, and subtree
+  scope survive churn.
 - A worker must end each prompted turn with a useful final response; the server
   forwards it to its owner as the **completion report** (outcome, changes,
   validation, blockers), not a bare `done`.
@@ -104,11 +104,13 @@ explore surfaces the gaps its caller (or a follow-up row) can widen.
 ## Limits
 
 Runaway prevention is one cap: `MAX_SWARM_MEMBERS` = **1000** live members per
-swarm. Only the root session starts agents (0.4b), so there is no nesting and no
-depth cap to state; at the cap, further spawns are refused. A configurable
-live-worker budget (32 by default) throttles concurrency below that. The graph
-orders work but does not do mutual exclusion: two subtrees editing the same files
-is still the no-locks case, resolved by direct contact between the agents.
+swarm. Only the root session starts agents (0.4b), so the agent tree is one level
+and there is no recursive-spawn depth to cap; at the cap, further spawns are
+refused. Work decomposition is still a tree, arbitrarily deep: a child row can be
+decomposed again. A configurable live-worker budget (32 by default) throttles
+concurrency below that. The graph orders work but does not do mutual exclusion: two
+subtrees editing the same files is still the no-locks case, resolved by direct
+contact between the agents.
 
 ## Tool surface
 
