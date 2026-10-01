@@ -203,8 +203,9 @@ removed and nothing else.
 - [ ] **0.2. Delete the client poke**, which this replaces. With the server
   continuing a session that holds ready rows, the TUI's auto-poke machine goes:
   `auto_poke_incomplete_todos` (16 files, 65 uses), `last_auto_poke_fingerprint`,
-  the `/poke` command with its ctrl+p toggle, its overlay line, its help and its
-  tests. `total_pokes_sent`, `morning_report_poked` and `final_wrap_poked` already
+  the `/poke` command with the `auto_poke_toggle` keybinding it is bound to (ctrl+p
+  by default, with its template line, its `display_summary` entry and its test), its
+  overlay line, its help and its completions, and its tests. `total_pokes_sent`, `morning_report_poked` and `final_wrap_poked` already
   went with the overnight subsystem, and the toggle defaults off, so nothing the
   user had is lost.
   Two things in it are power rather than poke, and both are settled. A
@@ -218,9 +219,9 @@ removed and nothing else.
   The docs that name the poke go with it: the `/poke` examples in
   `dev/message-voice.md`, the `/poke` help, and its completion entries.
   `build_auto_poke_message` is still called by the command-line paths this step
-  defers (`src/cli/commands.rs:719`), so it, the config key's rename, the
-  `auto_poke_toggle` keybinding, and the poke-named survivors (`is_non_retryable_auto_poke_error`,
-  which is really a turn-error classifier) go with those, not here. The command-line variant (`src/cli/commands.rs`, the
+  defers (`src/cli/commands.rs:719`), so it, the `features.auto_poke` rename, and the
+  poke-named survivor `is_non_retryable_auto_poke_error` (really a turn-error
+  classifier, read by the client's retry path) go with those, not here. The command-line variant (`src/cli/commands.rs`, the
   `_with_auto_poke` run paths and `run_command_auto_poke_max_turns`) waits for 0.3,
   because a plan-driven member must not be driven twice, and a headless run has no
   plan until rows seed one.
