@@ -210,6 +210,10 @@ changes are paid for in test churn.
   `plans/work-list.md`, which is a plan rather than a manual. It goes in
   `docs/user/` when the list settles, which is late enough to be worth writing
   once: after 0.3, since that is where the row gains its `kind`.
+- [ ] An unknown config key is silently ignored, and 0.2 just made one:
+  `auto_poke_toggle` dies with the client poke, so a config that sets it keeps a dead
+  line with no warning. Same hazard as the sections above, and the first real
+  instance of it.
 - [ ] Unknown config sections are silently ignored (`toml::from_str` with no
   `deny_unknown_fields`), so older configs keep dead keys with no warning.
 - [ ] A stale explicit key in `config.toml` silently beats a changed compiled

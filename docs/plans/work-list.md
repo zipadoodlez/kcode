@@ -218,10 +218,27 @@ removed and nothing else.
   client's retry policy and a failed turn already ends the run.
   The docs that name the poke go with it: the `/poke` examples in
   `dev/message-voice.md`, the `/poke` help, and its completion entries.
+  The pass, in the order that keeps it reviewable: the user surface (the command and
+  its arms in `commands.rs` and `key_handling.rs`, the registry and completion
+  entries, the help arm, the keybinding end to end, the hotkey and overlay lines),
+  then the scheduler (`schedule_auto_poke_followup_if_needed`, `build_poke_message`,
+  `queue_poke_message`, `clear_queued_poke_messages`, `disable_auto_poke`, and the
+  poke arms of `schedule_turn_end_followups` and
+  `stop_auto_poke_for_non_retryable_error`), then the state
+  (`auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`, the breaker trio
+  `consecutive_guardrail_stops` / `guardrail_stops_exhausted_at_turn_end` /
+  `stop_auto_continuation_after_guardrail`, and `turn_guardrail_stopped`, which only
+  the breaker reads), then the tests, then the doc.
+  Two traps. Some tests cover the retry policy through poke helpers, so they are
+  retargeted at the retry path rather than deleted with it. And an existing
+  `auto_poke_toggle` line in a user's config becomes an unknown key that is silently
+  ignored, which is §5's known hazard, so it is named there.
   `build_auto_poke_message` is still called by the command-line paths this step
   defers (`src/cli/commands.rs:719`), so it, the `features.auto_poke` rename, and the
-  poke-named survivor `is_non_retryable_auto_poke_error` (really a turn-error
-  classifier, read by the client's retry path) go with those, not here. The command-line variant (`src/cli/commands.rs`, the
+  poke-named survivors go with those, not here: `is_non_retryable_auto_poke_error`
+  (really a turn-error classifier, read by the client's retry path) and
+  `is_auto_poke_connectivity_error` (read by the network-wait path, whose call site
+  also ORs `network_retry::classify_message`, which the function already covers). The command-line variant (`src/cli/commands.rs`, the
   `_with_auto_poke` run paths and `run_command_auto_poke_max_turns`) waits for 0.3,
   because a plan-driven member must not be driven twice, and a headless run has no
   plan until rows seed one.
