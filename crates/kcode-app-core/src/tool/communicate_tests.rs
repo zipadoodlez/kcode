@@ -220,27 +220,18 @@ async fn run_plan_driver_guard_releases_claim_on_drop_without_task() {
 }
 
 #[test]
-fn run_plan_concurrency_is_mode_aware() {
-    // Light mode (no explicit limit) keeps the small cheap fan-out default.
-    assert_eq!(
-        resolve_run_plan_concurrency(None, false, 32),
-        super::LIGHT_MODE_DEFAULT_CONCURRENCY
-    );
+fn run_plan_concurrency_reads_the_configured_cap() {
+    // No explicit limit: fan out wide using the configured cap.
+    assert_eq!(resolve_run_plan_concurrency(None, 32), 32);
+    assert_eq!(resolve_run_plan_concurrency(None, 64), 64);
 
-    // Deep mode (no explicit limit) fans out wide using the configured cap,
-    // NOT the old hardcoded 3 and NOT the light default.
-    assert_eq!(resolve_run_plan_concurrency(None, true, 32), 32);
-    assert_eq!(resolve_run_plan_concurrency(None, true, 64), 64);
+    // A cap of 0 means "no extra cap": dispatch the whole ready set, bounded
+    // only by the swarm member cap.
+    assert_eq!(resolve_run_plan_concurrency(None, 0), usize::MAX);
 
-    // Deep mode with the cap set to 0 means "no extra cap": dispatch the whole
-    // ready set, bounded only by the swarm member cap.
-    assert_eq!(resolve_run_plan_concurrency(None, true, 0), usize::MAX);
-
-    // An explicit request always wins over the mode default, in both modes,
-    // and is clamped to at least 1.
-    assert_eq!(resolve_run_plan_concurrency(Some(5), true, 32), 5);
-    assert_eq!(resolve_run_plan_concurrency(Some(5), false, 32), 5);
-    assert_eq!(resolve_run_plan_concurrency(Some(0), true, 32), 1);
+    // An explicit request always wins, and is clamped to at least 1.
+    assert_eq!(resolve_run_plan_concurrency(Some(5), 32), 5);
+    assert_eq!(resolve_run_plan_concurrency(Some(0), 32), 1);
 }
 
 #[test]
@@ -258,16 +249,16 @@ fn run_plan_utilization_tracks_peak_and_starvation() {
     assert_eq!(util.loops, 3);
     assert_eq!(util.starved_loops, 1);
 
-    let report = util.report(8, true);
+    let report = util.report(8);
     assert!(report.contains("peak 8 of 8"));
     assert!(report.contains("1 of 3 loop(s)"));
     // 1/3 starved and peak 8: healthy run, no hint.
-    assert!(!report.contains("Deep-mode hint"));
+    assert!(!report.contains("Hint"));
 }
 
 #[test]
-fn run_plan_utilization_flags_serial_deep_runs() {
-    // A deep run that trickles one task at a time despite a 32-slot budget.
+fn run_plan_utilization_flags_serial_runs() {
+    // A run that trickles one task at a time despite a 32-slot budget.
     let mut util = super::RunPlanUtilization::default();
     for _ in 0..4 {
         util.record_loop(0, Some(32), 1);
@@ -275,25 +266,21 @@ fn run_plan_utilization_flags_serial_deep_runs() {
     assert_eq!(util.peak_in_flight, 1);
     assert_eq!(util.starved_loops, 4);
 
-    let deep_report = util.report(32, true);
-    assert!(deep_report.contains("peak 1 of 32"));
-    assert!(deep_report.contains("Deep-mode hint"));
-    assert!(deep_report.contains("expand"));
-
-    // The same shape in light mode is by design; no nagging.
-    let light_report = util.report(32, false);
-    assert!(!light_report.contains("Deep-mode hint"));
+    let report = util.report(32);
+    assert!(report.contains("peak 1 of 32"));
+    assert!(report.contains("Hint"));
+    assert!(report.contains("expand"));
 }
 
 #[test]
 fn run_plan_utilization_handles_unbounded_budget() {
     let mut util = super::RunPlanUtilization::default();
-    // Unbounded budget (deep_cap=0): open slots are not meaningful, so no
+    // Unbounded budget (cap=0): open slots are not meaningful, so no
     // starvation accounting, but peak parallelism still records.
     util.record_loop(10, None, 5);
     assert_eq!(util.peak_in_flight, 15);
     assert_eq!(util.starved_loops, 0);
-    let report = util.report(usize::MAX, true);
+    let report = util.report(usize::MAX);
     assert!(report.contains("peak 15 of unbounded"));
 }
 
@@ -315,8 +302,6 @@ fn await_wakes_only_for_ready_items_beyond_the_wave_baseline() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
-        low_confidence_ids: Vec::new(),
-        mode: "deep".to_string(),
         seeded_count: 0,
         grown_count: 0,
     };
@@ -353,8 +338,6 @@ fn run_plan_progress_counts_only_completed_toward_percent_and_shows_live_active(
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
-        low_confidence_ids: Vec::new(),
-        mode: "deep".to_string(),
         seeded_count: 0,
         grown_count: 0,
     };
@@ -408,8 +391,6 @@ fn run_plan_progress_active_prefers_plan_execution_state_when_larger() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
-        low_confidence_ids: Vec::new(),
-        mode: "light".to_string(),
         seeded_count: 0,
         grown_count: 0,
     };
@@ -425,7 +406,7 @@ fn run_plan_progress_active_prefers_plan_execution_state_when_larger() {
 }
 
 #[test]
-fn plan_status_budget_line_is_deep_only_and_nudges_serialized_graphs() {
+fn plan_status_budget_line_nudges_serialized_graphs() {
     let base = crate::protocol::PlanGraphStatus {
         swarm_id: Some("swarm-a".to_string()),
         version: 1,
@@ -440,27 +421,18 @@ fn plan_status_budget_line_is_deep_only_and_nudges_serialized_graphs() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
-        low_confidence_ids: Vec::new(),
-        mode: "deep".to_string(),
         seeded_count: 0,
         grown_count: 0,
     };
 
-    // Light plans get no budget line at all.
-    let light = crate::protocol::PlanGraphStatus {
-        mode: "light".to_string(),
-        ..base.clone()
-    };
-    assert_eq!(super::plan_status_budget_line(&light, 32), None);
-
-    // Deep + narrow frontier (2 of 32) with 7 more items serialized behind
-    // edges -> budget line plus the widen nudge.
-    let narrow = super::plan_status_budget_line(&base, 32).expect("deep plans get a budget line");
+    // Narrow frontier (2 of 32) with 7 more items serialized behind edges ->
+    // budget line plus the widen nudge.
+    let narrow = super::plan_status_budget_line(&base, 32).expect("a budget line");
     assert!(narrow.contains("Parallel budget: 32"));
     assert!(narrow.contains("ready set is 1 wide (1 active)"));
     assert!(narrow.contains("expand_node"));
 
-    // Deep + the frontier is all that remains -> line but no nudge.
+    // The frontier is all that remains -> line but no nudge.
     let almost_done = crate::protocol::PlanGraphStatus {
         item_count: 3,
         ..base.clone()
@@ -469,7 +441,7 @@ fn plan_status_budget_line_is_deep_only_and_nudges_serialized_graphs() {
     assert!(line.contains("Parallel budget: 32"));
     assert!(!line.contains("expand_node"));
 
-    // deep_cap=0 (unbounded) surfaces the member cap as the budget.
+    // cap=0 (unbounded) surfaces the member cap as the budget.
     let unbounded = super::plan_status_budget_line(&base, 0).unwrap();
     assert!(unbounded.contains("1000 (member cap)"));
 }
@@ -564,8 +536,6 @@ fn run_plan_terminal_summary_reports_failed_nodes() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
-        low_confidence_ids: Vec::new(),
-        mode: "deep".to_string(),
         seeded_count: 0,
         grown_count: 0,
     };
@@ -610,8 +580,6 @@ fn plan_terminal_node_count_includes_failed_without_double_counting() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
-        low_confidence_ids: Vec::new(),
-        mode: "light".to_string(),
         seeded_count: 0,
         grown_count: 0,
     };
@@ -684,8 +652,6 @@ fn format_plan_status_includes_next_ready() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: vec!["task-2".to_string()],
         newly_ready_ids: vec!["task-3".to_string()],
-        low_confidence_ids: Vec::new(),
-        mode: "deep".to_string(),
         seeded_count: 0,
         grown_count: 0,
     });
@@ -712,8 +678,6 @@ fn in_flight_slot_accounting_counts_queued_workers_not_coordinator() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: vec!["queued-assigned".to_string()],
         newly_ready_ids: Vec::new(),
-        low_confidence_ids: Vec::new(),
-        mode: "light".to_string(),
         seeded_count: 0,
         grown_count: 0,
     };
@@ -787,8 +751,6 @@ fn in_flight_count_excludes_foreign_queued_session() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
-        low_confidence_ids: Vec::new(),
-        mode: "light".to_string(),
         seeded_count: 0,
         grown_count: 0,
     };
@@ -1782,8 +1744,6 @@ fn run_plan_terminal_summary_includes_recorded_failure_reasons() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
-        low_confidence_ids: Vec::new(),
-        mode: "light".to_string(),
         seeded_count: 0,
         grown_count: 0,
     };

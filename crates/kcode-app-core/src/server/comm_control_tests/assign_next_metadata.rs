@@ -50,7 +50,6 @@ async fn assign_next_prefers_worker_with_matching_subsystem_metadata() {
                 other_worker.to_string(),
             ]),
             task_progress: HashMap::new(),
-            mode: "light".to_string(),
             node_meta: HashMap::new(),
         },
     )])));

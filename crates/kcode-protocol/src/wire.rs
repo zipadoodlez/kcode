@@ -499,16 +499,9 @@ pub enum Request {
     /// gets the rows' ids, words, kinds and dependency edges; rows already in the
     /// plan are not seeded again.
     #[serde(rename = "comm_seed_graph")]
-    CommSeedGraph {
-        id: u64,
-        session_id: String,
-        /// "deep" (comprehensive, gated) or "light" (fan-out).
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        mode: Option<String>,
-    },
+    CommSeedGraph { id: u64, session_id: String },
 
-    /// Decompose a node the caller owns into a child sub-DAG (composite path). In
-    /// deep mode a critique/verify gate is auto-inserted.
+    /// Decompose a node the caller owns into a child sub-DAG (composite path).
     #[serde(rename = "comm_expand_node")]
     CommExpandNode {
         id: u64,
@@ -517,8 +510,7 @@ pub enum Request {
         children: Vec<TaskGraphNodeSpec>,
     },
 
-    /// Complete a node the caller owns with a typed handoff artifact. In deep mode
-    /// the artifact is validated for thinness.
+    /// Complete a node the caller owns with a typed handoff artifact.
     #[serde(rename = "comm_complete_node")]
     CommCompleteNode {
         id: u64,
@@ -526,16 +518,6 @@ pub enum Request {
         node_id: String,
         /// Handoff artifact as a JSON object string.
         artifact_json: String,
-    },
-
-    /// Inject gap/fix nodes from a gate that found a problem, re-blocking the gate
-    /// (and its composite parent) until the new nodes drain.
-    #[serde(rename = "comm_inject_gap")]
-    CommInjectGap {
-        id: u64,
-        session_id: String,
-        gate_id: String,
-        nodes: Vec<TaskGraphNodeSpec>,
     },
 
     /// Spawn a new agent session (coordinator only)

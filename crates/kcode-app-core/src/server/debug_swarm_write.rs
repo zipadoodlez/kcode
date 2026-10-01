@@ -521,10 +521,9 @@ pub(super) async fn maybe_handle_swarm_write_command(
 
     // Task-DAG ops over the debug socket, for testing/operability without a live
     // model session. Arg is a JSON object:
-    //   {"op":"seed","swarm_id":"..","mode":"deep","nodes":[{id,content,kind,depends_on}]}
+    //   {"op":"seed","swarm_id":"..","nodes":[{id,content,kind,depends_on}]}
     //   {"op":"expand","swarm_id":"..","actor":"sess","node_id":"..","children":[..]}
     //   {"op":"complete","swarm_id":"..","actor":"sess","node_id":"..","artifact":{..}}
-    //   {"op":"inject","swarm_id":"..","actor":"sess","gate_id":"..","nodes":[..]}
     if let Some(rest) = cmd.strip_prefix("swarm:graph:") {
         return Ok(Some(handle_debug_graph_op(rest.trim(), ctx).await));
     }
@@ -537,13 +536,9 @@ struct DebugGraphArg {
     op: String,
     swarm_id: String,
     #[serde(default)]
-    mode: Option<String>,
-    #[serde(default)]
     actor: Option<String>,
     #[serde(default)]
     node_id: Option<String>,
-    #[serde(default)]
-    gate_id: Option<String>,
     #[serde(default)]
     nodes: Vec<DebugNodeSpec>,
     #[serde(default)]
@@ -601,9 +596,6 @@ async fn handle_debug_graph_op(arg: &str, ctx: &DebugSwarmWriteContext<'_>) -> S
             .or_insert_with(VersionedPlan::new);
         match parsed.op.as_str() {
             "seed" => {
-                if let Some(mode) = parsed.mode {
-                    plan.mode = mode;
-                }
                 let count = parsed.nodes.len();
                 let mut graph = to_task_graph(plan);
                 let before = graph.clone();
@@ -664,29 +656,6 @@ async fn handle_debug_graph_op(arg: &str, ctx: &DebugSwarmWriteContext<'_>) -> S
                         apply_task_graph(plan, &graph);
                         plan.version += 1;
                         Ok((1, "complete"))
-                    }
-                    Err(e) => Err(e.to_string()),
-                }
-            }
-            "inject" => {
-                let Some(actor) = parsed.actor.clone() else {
-                    return fail("'actor' required");
-                };
-                let Some(gate_id) = parsed.gate_id.clone() else {
-                    return fail("'gate_id' required");
-                };
-                let count = parsed.nodes.len();
-                if let Some(item) = plan.items.iter_mut().find(|i| i.id == gate_id) {
-                    item.assigned_to = Some(actor.clone());
-                    item.status = "running".to_string();
-                }
-                let mut graph = to_task_graph(plan);
-                match dag::inject_from_gate(&mut graph, &gate_id, &actor, debug_specs(parsed.nodes))
-                {
-                    Ok(_) => {
-                        apply_task_graph(plan, &graph);
-                        plan.version += 1;
-                        Ok((count, "inject"))
                     }
                     Err(e) => Err(e.to_string()),
                 }

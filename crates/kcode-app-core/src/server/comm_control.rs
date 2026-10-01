@@ -238,58 +238,29 @@ fn active_assignment_error(task_id: &str, conflict: &ActiveAssignmentConflict) -
 ///
 /// A turn must NOT force-complete a node when the worker decomposed it into a
 /// composite (`expanded`): that node is now a synthesis/join point that has to
-/// wait for its children (and, in deep mode, its critique/verify gate) before it
-/// can close, and it will be re-woken to synthesize. Likewise a node the worker
-/// already drove to a terminal status (e.g. via `complete_node`, or that failed)
-/// must not be reopened/reclosed. A node that is `queued` at turn end was
-/// re-queued mid-turn by someone else (`inject_gap` re-queuing its gate, a
-/// reassign, a requeue): it is no longer this worker's to close, and force-doing
-/// so would bypass gate artifact validation and strand injected gap nodes. Only
-/// a plain, still-running atomic turn auto-completes.
-/// What to do with a node whose worker turn ended while the node is still
-/// marked running.
+/// wait for its children before it can close, and it will be re-woken to
+/// synthesize. Likewise a node the worker already drove to a terminal status
+/// (e.g. via `complete_node`, or that failed) must not be reopened/reclosed. A
+/// node that is `queued` at turn end was re-queued mid-turn by someone else (a
+/// reassign, a requeue): it is no longer this worker's to close. Only a plain,
+/// still-running atomic turn auto-completes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TurnEndDisposition {
-    /// Light mode: the worker just ran an atomic node; mark it done.
+    /// The worker just ran an atomic node; mark it done.
     AutoComplete,
-    /// Deep mode, first offense: the worker never called `complete_node`, so
-    /// re-queue the node for a fresh worker. Deep completion is artifact-or-
-    /// nothing; silently marking it done would bypass artifact validation and
-    /// every gate rule.
-    RequeueNoArtifact,
-    /// Deep mode, repeated offense: fail the node loudly instead of cycling
-    /// workers forever. `task_control retry` / `requeue_failed` remain the
-    /// recovery paths.
-    FailNoArtifact,
-    /// The node is already terminal, queued (expanded or gap-injected this
-    /// turn), or otherwise not this turn's responsibility.
+    /// The node is already terminal, queued (expanded this turn), or otherwise
+    /// not this turn's responsibility.
     LeaveAlone,
 }
 
 /// Decide the turn-end disposition for a node.
 ///
-/// Light mode keeps the historical lenient behavior: a running atomic node
-/// auto-completes, an expanded composite stays open for synthesis. Deep mode
-/// abolishes auto-complete entirely — the typed artifact contract is only real
-/// if there is no path to "done" that skips it. A running node at turn end
-/// (atomic without `complete_node`, or a re-woken composite synthesis that
-/// never synthesized) gets one fresh attempt, then fails.
-fn turn_end_disposition(
-    is_deep: bool,
-    status: &str,
-    expanded: bool,
-    prior_no_artifact_requeues: u32,
-) -> TurnEndDisposition {
+/// A running atomic node auto-completes; an expanded composite stays open for
+/// synthesis.
+fn turn_end_disposition(status: &str, expanded: bool) -> TurnEndDisposition {
     let running = matches!(status, "running" | "running_stale");
     if !running {
         return TurnEndDisposition::LeaveAlone;
-    }
-    if is_deep {
-        return if prior_no_artifact_requeues == 0 {
-            TurnEndDisposition::RequeueNoArtifact
-        } else {
-            TurnEndDisposition::FailNoArtifact
-        };
     }
     if expanded {
         // The worker decomposed the node; it must stay open to synthesize later.
@@ -300,7 +271,7 @@ fn turn_end_disposition(
 
 #[cfg(test)]
 fn turn_end_should_auto_complete(status: &str, expanded: bool) -> bool {
-    turn_end_disposition(false, status, expanded, 0) == TurnEndDisposition::AutoComplete
+    turn_end_disposition(status, expanded) == TurnEndDisposition::AutoComplete
 }
 
 /// Assignment content for a (re-)dispatched node.
@@ -316,8 +287,8 @@ fn composite_synthesis_content(
 ) -> String {
     if is_composite_synthesis {
         format!(
-            "Synthesis turn for composite node '{item_id}'. Its children (and the deep-mode \
-             critique/verify gate) are complete; their outputs are provided below. Read them, \
+            "Synthesis turn for composite node '{item_id}'. Its children are complete; their \
+             outputs are provided below. Read them, \
              write one synthesized result, and finish by calling `swarm complete_node` with \
              node_id=\"{item_id}\" and an artifact summarizing the integrated findings. Do NOT \
              call expand_node again. Original brief: {raw_content}"
@@ -335,73 +306,6 @@ struct TaskSnapshot {
     progress: Option<SwarmTaskProgress>,
 }
 
-/// Attach the deep-mode execution contract to an assignment's content when the
-/// plan is running deep.
-///
-/// This is the mechanism that makes the swarm's large agent budget actually get
-/// used: every dispatched node carries an in-band directive telling the worker
-/// it may `expand_node` into MANY parallel children and must close with a typed
-/// artifact, and every gate carries the `inject_gap`-or-pass contract. Without
-/// it, only the seeding session (which ran at `swarm-deep` effort) knows the
-/// deep workflow, and freshly spawned workers execute serially. A re-woken
-/// composite synthesis keeps its dedicated synthesis brief instead, since
-/// re-expanding there would loop.
-fn deep_mode_assignment_content(
-    plan: &VersionedPlan,
-    item_id: &str,
-    is_composite_synthesis: bool,
-    content: &str,
-) -> String {
-    if !plan.mode.eq_ignore_ascii_case("deep") || is_composite_synthesis {
-        return content.to_string();
-    }
-    let is_gate = plan
-        .node_meta
-        .get(item_id)
-        .map(|meta| meta.is_gate)
-        .unwrap_or(false);
-    if is_gate {
-        // The gate's audit scope is its non-gate dependencies (composite gates
-        // audit their siblings; the root gate audits the whole root set). The
-        // server rejects a pass whose artifact does not account for each of
-        // these by id, so the directive enumerates them up front instead of
-        // letting the gate discover the rejection by trial and error.
-        let audited_ids: Vec<String> = plan
-            .items
-            .iter()
-            .find(|item| item.id == item_id)
-            .map(|item| {
-                item.blocked_by
-                    .iter()
-                    .filter(|dep| {
-                        plan.node_meta
-                            .get(dep.as_str())
-                            .map(|meta| !meta.is_gate)
-                            .unwrap_or(true)
-                    })
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default();
-        // Completed scope nodes whose artifacts self-reported low confidence:
-        // the strictest debts, named as priority probe targets.
-        let audited: HashSet<&str> = audited_ids.iter().map(String::as_str).collect();
-        let low_confidence_siblings: Vec<String> =
-            kcode_plan::bridge::low_confidence_completed_ids(plan)
-                .into_iter()
-                .filter(|id| audited.contains(id.as_str()))
-                .collect();
-        kcode_swarm_core::append_deep_gate_instructions(
-            content,
-            item_id,
-            &audited_ids,
-            &low_confidence_siblings,
-        )
-    } else {
-        kcode_swarm_core::append_deep_node_instructions(content, item_id)
-    }
-}
-
 async fn task_snapshot_for(
     swarm_id: &str,
     task_id: &str,
@@ -412,16 +316,10 @@ async fn task_snapshot_for(
     let item = plan.items.iter().find(|item| item.id == task_id)?;
     // Hydrate with forward dataflow from completed upstream dependencies so
     // resume/start/wake re-injects the same artifact context an initial
-    // assignment would carry, then attach the deep-mode contract the same way
-    // the initial assignment path does.
+    // assignment would carry.
     let hydrated = kcode_plan::bridge::hydrate_assignment(plan, task_id, &item.content);
-    let is_composite_synthesis = plan
-        .node_meta
-        .get(task_id)
-        .map(|meta| meta.expanded && !meta.is_gate)
-        .unwrap_or(false);
     Some(TaskSnapshot {
-        content: deep_mode_assignment_content(plan, task_id, is_composite_synthesis, &hydrated),
+        content: hydrated,
         status: item.status.clone(),
         assigned_to: item.assigned_to.clone(),
         progress: plan.task_progress.get(task_id).cloned(),
@@ -683,11 +581,10 @@ async fn resolve_assignment_target_for_task(
     {
         let plans = swarm_plans.read().await;
         if let Some(plan) = plans.get(swarm_id) {
-            let planner = plan.node_meta.get(task_id).and_then(|meta| {
-                (meta.expanded && !meta.is_gate)
-                    .then(|| meta.planner.clone())
-                    .flatten()
-            });
+            let planner = plan
+                .node_meta
+                .get(task_id)
+                .and_then(|meta| meta.expanded.then(|| meta.planner.clone()).flatten());
             if let Some(owner) = planner
                 && owner != req_session_id
             {
@@ -939,24 +836,15 @@ fn spawn_assigned_task_run(
                         //  2. it already finished the node via `complete_node` -> the
                         //     node is terminal and owned by no one.
                         //  3. it just ran and the node is still `running`.
-                        // Case 3 is mode-dependent: light mode auto-completes
-                        // (cheap fan-out, artifacts optional), deep mode never
-                        // does — a deep node only closes through `complete_node`
-                        // with a validated artifact, so an artifact-less turn is
-                        // re-queued once to a fresh worker and then failed.
+                        // Case 3 auto-completes: a turn that ends without a
+                        // `complete_node` closes the atomic node, while an
+                        // expanded composite stays open for its synthesis turn.
                         let expanded = plan
                             .node_meta
                             .get(&task_id)
-                            .map(|m| m.expanded && !m.is_gate)
+                            .map(|m| m.expanded)
                             .unwrap_or(false);
-                        let is_deep = plan.mode.eq_ignore_ascii_case("deep");
-                        let prior_requeues = plan
-                            .task_progress
-                            .get(&task_id)
-                            .and_then(|p| p.no_artifact_requeues)
-                            .unwrap_or(0);
-                        match turn_end_disposition(is_deep, &item.status, expanded, prior_requeues)
-                        {
+                        match turn_end_disposition(&item.status, expanded) {
                             TurnEndDisposition::AutoComplete => {
                                 applied_disposition = TurnEndDisposition::AutoComplete;
                                 item.status = "done".to_string();
@@ -965,44 +853,6 @@ fn spawn_assigned_task_run(
                                 progress.last_heartbeat_unix_ms = Some(now_ms);
                                 progress.last_checkpoint_unix_ms = Some(now_ms);
                                 progress.checkpoint_summary = Some("task completed".to_string());
-                                progress.completed_at_unix_ms = Some(now_ms);
-                                progress.stale_since_unix_ms = None;
-                                progress.checkpoint_count =
-                                    Some(progress.checkpoint_count.unwrap_or(0) + 1);
-                                plan.version += 1;
-                            }
-                            TurnEndDisposition::RequeueNoArtifact => {
-                                applied_disposition = TurnEndDisposition::RequeueNoArtifact;
-                                item.status = "queued".to_string();
-                                item.assigned_to = None;
-                                let progress =
-                                    plan.task_progress.entry(task_id.clone()).or_default();
-                                progress.assigned_session_id = None;
-                                progress.no_artifact_requeues = Some(prior_requeues + 1);
-                                progress.last_heartbeat_unix_ms = Some(now_ms);
-                                progress.last_checkpoint_unix_ms = Some(now_ms);
-                                progress.checkpoint_summary = Some(
-                                    "requeued: deep-mode turn ended without a complete_node \
-                                     artifact"
-                                        .to_string(),
-                                );
-                                progress.stale_since_unix_ms = None;
-                                progress.checkpoint_count =
-                                    Some(progress.checkpoint_count.unwrap_or(0) + 1);
-                                plan.version += 1;
-                            }
-                            TurnEndDisposition::FailNoArtifact => {
-                                applied_disposition = TurnEndDisposition::FailNoArtifact;
-                                item.status = "failed".to_string();
-                                let progress =
-                                    plan.task_progress.entry(task_id.clone()).or_default();
-                                progress.last_heartbeat_unix_ms = Some(now_ms);
-                                progress.last_checkpoint_unix_ms = Some(now_ms);
-                                progress.checkpoint_summary = Some(
-                                    "failed: repeated deep-mode turns ended without a \
-                                     complete_node artifact"
-                                        .to_string(),
-                                );
                                 progress.completed_at_unix_ms = Some(now_ms);
                                 progress.stale_since_unix_ms = None;
                                 progress.checkpoint_count =
@@ -1021,9 +871,8 @@ fn spawn_assigned_task_run(
                 };
                 persist_swarm_state_for(&swarm_id, &swarm_state).await;
                 let plan_reason = match applied_disposition {
-                    TurnEndDisposition::RequeueNoArtifact => "task_requeued_no_artifact",
-                    TurnEndDisposition::FailNoArtifact => "task_failed_no_artifact",
-                    _ => "task_completed",
+                    TurnEndDisposition::AutoComplete => "task_completed",
+                    TurnEndDisposition::LeaveAlone => "task_completed",
                 };
                 broadcast_swarm_plan_with_previous(
                     &swarm_id,
@@ -1035,9 +884,7 @@ fn spawn_assigned_task_run(
                 )
                 .await;
                 // The worker's member status reflects its own turn (it ran to
-                // completion) even when its node was requeued/failed for missing
-                // an artifact: lifecycle and node state are separate axes, and a
-                // "completed" worker is reusable for the requeued node.
+                // completion); lifecycle and node state are separate axes.
                 update_member_status_with_report(
                     &target_session,
                     SwarmLifecycleStatus::Completed,
@@ -1616,14 +1463,13 @@ async fn handle_comm_assign_task_with_mode(
             let is_composite_synthesis = plan
                 .node_meta
                 .get(&item_id)
-                .map(|meta| meta.expanded && !meta.is_gate)
+                .map(|meta| meta.expanded)
                 .unwrap_or(false);
             let effective_content =
                 composite_synthesis_content(&item_id, &raw_content, is_composite_synthesis);
             let hydrated =
                 kcode_plan::bridge::hydrate_assignment(plan, &item_id, &effective_content);
-            let content =
-                deep_mode_assignment_content(plan, &item_id, is_composite_synthesis, &hydrated);
+            let content = hydrated;
 
             // Index resolved under this same plan lock, so it stays valid.
             let item = &mut plan.items[found_idx];
@@ -2557,17 +2403,15 @@ pub(super) fn handle_client_debug_response(
 
 /// Authorize a session to drive task dispatch for its swarm plan.
 ///
-/// Light mode keeps the single-coordinator rule: a coordinator is the one driver,
-/// which matches the cheap fan-out preset. Deep mode follows the task-DAG
-/// ownership model (see `docs/internals/swarm.md`): the plan is a tree
-/// of ownership over a graph, and the agent that seeded/participates in the graph
-/// must be able to dispatch it even when another session already holds the
-/// swarm-level coordinator slot. Without this, a deep-mode agent that joins a
-/// shared swarm can seed a graph but is then blocked from spawning/assigning any
-/// of it, so nothing ever runs.
+/// The task-DAG ownership model (see `docs/internals/swarm.md`) says the plan is
+/// a tree of ownership over a graph, so the agent that seeded or participates in
+/// the graph must be able to dispatch it even when another session already holds
+/// the swarm-level coordinator slot. Without this, an agent that joins a shared
+/// swarm can seed a graph but is then blocked from spawning/assigning any of it,
+/// so nothing ever runs.
 ///
-/// Returns the swarm id when the caller is the coordinator, or (deep mode only) a
-/// participant of the swarm's plan.
+/// Returns the swarm id when the caller is the coordinator or a participant of
+/// the swarm's plan.
 async fn require_plan_driver_swarm(
     id: u64,
     req_session_id: &str,
@@ -2603,18 +2447,15 @@ async fn require_plan_driver_swarm(
         return Some(swarm_id);
     }
 
-    // Deep mode: any participant of the plan may drive its own task graph.
-    let is_deep_participant = {
+    // Any participant of the plan may drive its own task graph.
+    let is_participant = {
         let plans = swarm_plans.read().await;
         plans
             .get(&swarm_id)
-            .map(|plan| {
-                kcode_plan::bridge::parse_mode(&plan.mode) == kcode_plan::dag::Mode::Deep
-                    && plan.participants.contains(req_session_id)
-            })
+            .map(|plan| plan.participants.contains(req_session_id))
             .unwrap_or(false)
     };
-    if is_deep_participant {
+    if is_participant {
         return Some(swarm_id);
     }
 

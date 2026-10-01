@@ -1981,7 +1981,6 @@ mod tests {
                 version: 2,
                 participants: HashSet::from(["worker".to_string()]),
                 task_progress: HashMap::new(),
-                mode: "light".to_string(),
                 node_meta: HashMap::new(),
             },
         )])));
@@ -2066,7 +2065,6 @@ mod tests {
                 // fallback path, which is where we deterministically park it.
                 participants: HashSet::new(),
                 task_progress: HashMap::new(),
-                mode: "light".to_string(),
                 node_meta: HashMap::new(),
             },
         )])));
@@ -2248,7 +2246,6 @@ mod tests {
                 // no longer exists in this server process.
                 participants: HashSet::from(["ghost".to_string()]),
                 task_progress: HashMap::new(),
-                mode: "light".to_string(),
                 node_meta: HashMap::new(),
             },
         )])));
@@ -2312,7 +2309,6 @@ mod tests {
                 version: 1,
                 participants: HashSet::from(["coord".to_string()]),
                 task_progress: HashMap::new(),
-                mode: "light".to_string(),
                 node_meta: HashMap::new(),
             },
         )])));
@@ -2791,7 +2787,6 @@ mod tests {
                         ..Default::default()
                     },
                 )]),
-                mode: "light".to_string(),
                 node_meta: HashMap::new(),
             },
         )])));
@@ -2870,7 +2865,6 @@ mod tests {
                         ..Default::default()
                     },
                 )]),
-                mode: "light".to_string(),
                 node_meta: HashMap::new(),
             },
         )])))

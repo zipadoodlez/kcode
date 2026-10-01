@@ -63,15 +63,6 @@ impl RemoteSwarmPlanSnapshot {
                     summary.newly_ready_ids.join(", ")
                 ));
             }
-            // Deep-mode routing data: completed items whose artifact self-reported
-            // low confidence. Surfacing them keeps shaky coverage visible so the
-            // coordinator can widen follow-up work.
-            if !summary.low_confidence_ids.is_empty() {
-                notice.push_str(&format!(
-                    " · low-conf: {}",
-                    summary.low_confidence_ids.join(", ")
-                ));
-            }
         }
         notice
     }
@@ -122,8 +113,6 @@ mod tests {
             unresolved_dependency_ids: Vec::new(),
             next_ready_ids: vec!["task-2".to_string()],
             newly_ready_ids: vec!["task-3".to_string()],
-            low_confidence_ids: Vec::new(),
-            mode: "light".to_string(),
         }
     }
 
@@ -144,7 +133,6 @@ mod tests {
         assert!(notice.contains("graph: 1 done, 1 ready, 1 blocked"));
         assert!(notice.contains("next: task-2"));
         assert!(notice.contains("newly ready: task-3"));
-        assert!(!notice.contains("low-conf"));
     }
 
     #[test]
@@ -209,19 +197,5 @@ mod tests {
         summary.unresolved_dependency_ids = vec!["task-9".to_string()];
         let notice = snapshot(fixture_items(), Some(summary)).status_notice();
         assert!(notice.contains("1 unresolved deps"), "notice: {notice}");
-    }
-
-    #[test]
-    fn swarm_plan_status_notice_deep_mode_surfaces_low_confidence_ids() {
-        // low_confidence_ids is deep-mode routing data (see PlanGraphStatus docs
-        // in kcode-protocol): completed items with shaky self-reported coverage.
-        let mut summary = summary_fixture();
-        summary.mode = "deep".to_string();
-        summary.low_confidence_ids = vec!["task-1".to_string(), "task-3".to_string()];
-        let notice = snapshot(fixture_items(), Some(summary)).status_notice();
-        assert!(
-            notice.contains("· low-conf: task-1, task-3"),
-            "notice: {notice}"
-        );
     }
 }

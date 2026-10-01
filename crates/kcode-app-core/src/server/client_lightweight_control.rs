@@ -350,12 +350,10 @@ pub(super) async fn handle_lightweight_control_request(
         Request::CommSeedGraph {
             id,
             session_id: req_session_id,
-            mode,
         } => {
             super::comm_graph::handle_comm_seed_graph(
                 id,
                 req_session_id,
-                mode,
                 &client_event_tx,
                 swarm_members,
                 swarms_by_id,
@@ -400,28 +398,6 @@ pub(super) async fn handle_lightweight_control_request(
                 req_session_id,
                 node_id,
                 artifact_json,
-                &client_event_tx,
-                swarm_members,
-                swarms_by_id,
-                swarm_plans,
-                swarm_coordinators,
-                event_history,
-                event_counter,
-                swarm_event_tx,
-            )
-            .await;
-        }
-        Request::CommInjectGap {
-            id,
-            session_id: req_session_id,
-            gate_id,
-            nodes,
-        } => {
-            super::comm_graph::handle_comm_inject_gap(
-                id,
-                req_session_id,
-                gate_id,
-                nodes,
                 &client_event_tx,
                 swarm_members,
                 swarms_by_id,

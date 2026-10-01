@@ -3,9 +3,9 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 /// Hard upper bound for one swarm's durable plan graph. A plan is coordination
 /// state, not an append-only activity log; without a bound, repeated seed,
-/// expand, inject, and approve calls can retain and broadcast thousands of
-/// stale nodes forever. This is four times the live swarm-member cap and well
-/// above normal deep graphs while bounding server, disk, and per-client state.
+/// expand, and approve calls can retain and broadcast thousands of stale nodes
+/// forever. This is four times the live swarm-member cap and well above normal
+/// decomposed graphs while bounding server, disk, and per-client state.
 pub const MAX_PLAN_ITEMS: usize = 1024;
 
 pub mod bridge;
@@ -40,12 +40,6 @@ pub struct SwarmTaskProgress {
     pub heartbeat_count: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint_count: Option<u64>,
-    /// How many times this node was re-queued because a deep-mode worker's turn
-    /// ended without a `complete_node` artifact. Deep mode gives the node one
-    /// fresh attempt, then fails it: there must be no path to "done" that skips
-    /// artifact validation.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub no_artifact_requeues: Option<u32>,
     /// How many times this node's assignment was reclaimed because its assignee
     /// session was dead (failed/stopped/crashed or gone). Caps automatic
     /// re-dispatch so a node whose workers keep dying cannot spawn workers
@@ -102,9 +96,6 @@ pub struct NodeMeta {
     /// True once decomposed into children (composite join/synthesis point).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub expanded: bool,
-    /// True if this node is an auto-inserted critique/verify gate.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub is_gate: bool,
     /// The agent that planned this node's decomposition (composite owner). Kept
     /// separately from `TaskItem.assigned_to` so a re-queued composite can be
     /// auto-scheduled (assigned_to cleared) while still preferring its original
@@ -131,9 +122,6 @@ pub struct VersionedPlan {
     pub participants: HashSet<String>,
     /// Durable runtime task progress keyed by plan item id.
     pub task_progress: HashMap<String, SwarmTaskProgress>,
-    /// Engine mode: "deep" (comprehensive, gated) or "light" (fan-out). Defaults
-    /// to light so legacy plans behave as before.
-    pub mode: String,
     /// Per-node task-DAG metadata keyed by plan item id.
     pub node_meta: HashMap<String, NodeMeta>,
 }
@@ -145,7 +133,6 @@ impl VersionedPlan {
             version: 0,
             participants: HashSet::new(),
             task_progress: HashMap::new(),
-            mode: "light".to_string(),
             node_meta: HashMap::new(),
         }
     }
@@ -356,7 +343,7 @@ pub fn task_control_action_allows_status(action: TaskControlAction, status: &str
         TaskControlAction::Start | TaskControlAction::Wake => status == "queued",
         TaskControlAction::Resume => matches!(status, "queued" | "running" | "running_stale"),
         TaskControlAction::Retry => matches!(status, "failed" | "running_stale"),
-        // A completed node must never be reopened by handoff actions: deep-mode
+        // A completed node must never be reopened by handoff actions:
         // complete_node persists "completed" (not just "done"), and reassigning
         // it would re-queue finished work and clobber its artifact.
         TaskControlAction::Reassign | TaskControlAction::Replace | TaskControlAction::Salvage => {

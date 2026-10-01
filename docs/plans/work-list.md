@@ -180,9 +180,9 @@ duplication they would have removed and nothing else.
 **Here is where the work stands**, and a step in flight is finished before a new one
 starts. 0.1, 0.2 and 0.3 have landed whole and are gone from this list; what 0.2 owed
 was 0.3's last stage, and the two losses 0.1 and 0.3 named are in `docs/todo.md`. Next
-is 0.4, whose two blockers are the ones it names itself. Each stage compiles before it
-is committed (`dev/post-change.md` says which check); the full gate runs once, when the
-step is done.
+is 0.4, whose first stage (the gate machinery) has landed and whose remaining blocker is
+the recursion rule 0.4b names. Each stage compiles before it is committed
+(`dev/post-change.md` says which check); the full gate runs once, when the step is done.
 
 ### 0. One way work gets done
 
@@ -192,12 +192,6 @@ step is done.
   performed is either a row someone typed (a `critique` row whose close needs its
   record) or nothing. The loss is named in `docs/todo.md`. Stages, in this order, one
   commit each:
-  - **0.4a. The gate machinery goes.** `NodeMeta.is_gate` (51 sites), the gate half of
-    the engine (`kcode-plan/src/dag/ops.rs:67`, `:308`, `:401`, `:709`, and the
-    insertion at `:201`), the deep instruction contract in `kcode-swarm-core`, the
-    gate-debt and low-confidence probe code (76 sites), and `inject_gap`'s gate path.
-    With no gate, `requires_gates` has no caller, so `Mode`, `parse_mode` and `mode_str`
-    collapse to nothing as well.
   - **0.4b. The recursion rule gets a home.** Recursion is not an effort sentinel any
     more: `server/comm_session.rs:1332` reads the root's effort to allow a member to
     spawn, and the effort axis is the user's own setting, which a run's rules should not
@@ -207,9 +201,10 @@ step is done.
     axis: a user no longer selects orchestration by setting a level, and fanning out is
     the model's own call through the `swarm` tool, which is what "a swarm is a count, not
     a mode" means for the one who asks.
-  - **0.4c. A decomposition and a gap are rows.** `expand_node` and `inject_gap` write
-    rows through the store (`todo::close_row`'s sibling), and the last two payloads of
-    `TaskGraphNodeSpec` go with it, so the wire node spec is deleted.
+  - **0.4c. A decomposition is a row.** `expand_node` writes rows through the store
+    (`todo::close_row`'s sibling), and `TaskGraphNodeSpec` goes with it, so the wire
+    node spec is deleted. (`inject_gap` went with the gates in 0.4a: a gate was its only
+    caller.)
   - **0.4d. `parent`, `expanded`, `planner` and `origin` leave `node_meta`**: `parent`
     duplicates the row already, and the other three are run state.
   - **0.4e. `task_progress` goes**, and liveness comes from the member's own clock and

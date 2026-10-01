@@ -137,62 +137,33 @@ fn already_terminal_turn_is_not_reclosed() {
     assert!(!turn_end_should_auto_complete("stopped", false));
 }
 
-// ----- deep mode: artifact-or-nothing at turn end -----
+// ----- turn-end disposition -----
 
 use super::{TurnEndDisposition, turn_end_disposition};
 
 #[test]
-fn deep_turn_without_artifact_requeues_then_fails() {
-    // Deep mode never auto-completes: the typed-artifact contract is only real
-    // if there is no path to "done" that skips complete_node. First offense is
-    // a requeue to a fresh worker; a repeat fails the node loudly.
+fn running_turn_auto_completes_unless_expanded() {
+    // A running atomic node auto-completes; an expanded composite stays open
+    // for synthesis. Non-running nodes are never reopened.
     assert_eq!(
-        turn_end_disposition(true, "running", false, 0),
-        TurnEndDisposition::RequeueNoArtifact
+        turn_end_disposition("running", false),
+        TurnEndDisposition::AutoComplete
     );
     assert_eq!(
-        turn_end_disposition(true, "running_stale", false, 0),
-        TurnEndDisposition::RequeueNoArtifact
+        turn_end_disposition("running_stale", false),
+        TurnEndDisposition::AutoComplete
     );
     assert_eq!(
-        turn_end_disposition(true, "running", false, 1),
-        TurnEndDisposition::FailNoArtifact
+        turn_end_disposition("running", true),
+        TurnEndDisposition::LeaveAlone
     );
-    // A re-woken composite synthesis that never synthesized is equally guilty.
-    assert_eq!(
-        turn_end_disposition(true, "running", true, 0),
-        TurnEndDisposition::RequeueNoArtifact
-    );
-}
-
-#[test]
-fn deep_turn_leaves_non_running_nodes_alone() {
-    // Terminal states were set by complete_node/fail; queued means the node was
-    // re-queued mid-turn (expand_node or inject_gap). None are this turn's
-    // responsibility.
     for status in ["queued", "completed", "done", "failed", "stopped"] {
         assert_eq!(
-            turn_end_disposition(true, status, false, 0),
+            turn_end_disposition(status, false),
             TurnEndDisposition::LeaveAlone,
             "status {status}"
         );
     }
-}
-
-#[test]
-fn light_turn_disposition_matches_legacy_auto_complete() {
-    assert_eq!(
-        turn_end_disposition(false, "running", false, 0),
-        TurnEndDisposition::AutoComplete
-    );
-    assert_eq!(
-        turn_end_disposition(false, "running", true, 0),
-        TurnEndDisposition::LeaveAlone
-    );
-    assert_eq!(
-        turn_end_disposition(false, "queued", false, 0),
-        TurnEndDisposition::LeaveAlone
-    );
 }
 
 // ----- composite synthesis assignment content -----

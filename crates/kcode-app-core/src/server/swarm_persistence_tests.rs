@@ -61,11 +61,9 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
                     stale_since_unix_ms: None,
                     heartbeat_count: Some(2),
                     checkpoint_count: Some(1),
-                    no_artifact_requeues: None,
                     dead_assignee_reclaims: None,
                 },
             )]),
-            mode: "light".to_string(),
             node_meta: HashMap::new(),
         },
     );
@@ -238,7 +236,6 @@ fn dormant_plan_expiry_preserves_active_work_and_prunes_old_unassigned_graphs() 
         version: 1,
         participants: Vec::new(),
         task_progress: HashMap::new(),
-        mode: "light".to_string(),
         node_meta: HashMap::new(),
     };
     let now = 10_000_000u64;
@@ -455,7 +452,6 @@ fn remove_swarm_state_deletes_persisted_snapshot() {
             version: 1,
             participants: Default::default(),
             task_progress: HashMap::new(),
-            mode: "light".to_string(),
             node_meta: HashMap::new(),
         },
     )]);
@@ -464,247 +460,6 @@ fn remove_swarm_state_deletes_persisted_snapshot() {
 
     remove_swarm_state("swarm-beta");
     assert!(!state_path("swarm-beta").exists());
-}
-
-#[test]
-fn deep_plan_mode_and_node_meta_round_trip() {
-    let dir = tempfile::TempDir::new().expect("tempdir");
-    let _env = test_env(&dir);
-
-    let mut node_meta = HashMap::new();
-    node_meta.insert(
-        "root".to_string(),
-        crate::plan::NodeMeta {
-            parent: None,
-            expanded: true,
-            is_gate: false,
-            planner: Some("session-1".to_string()),
-            artifact_json: Some(r#"{"findings":"found it","confidence":"high"}"#.to_string()),
-            origin: Some("seed".to_string()),
-        },
-    );
-    node_meta.insert(
-        "root.gate".to_string(),
-        crate::plan::NodeMeta {
-            parent: Some("root".to_string()),
-            expanded: false,
-            is_gate: true,
-            planner: None,
-            artifact_json: None,
-            origin: Some("gate".to_string()),
-        },
-    );
-
-    let plan = VersionedPlan {
-        items: vec![
-            crate::plan::TaskItem {
-                content: "explore X".to_string(),
-                status: "completed".to_string(),
-                priority: "high".to_string(),
-                id: "root".to_string(),
-                kind: Some("explore".to_string()),
-                assigned_to: Some("session-1".to_string()),
-                ..Default::default()
-            },
-            crate::plan::TaskItem {
-                content: "gate".to_string(),
-                status: "queued".to_string(),
-                priority: "medium".to_string(),
-                id: "root.gate".to_string(),
-                kind: Some("critique".to_string()),
-                blocked_by: vec!["root".to_string()],
-                ..Default::default()
-            },
-        ],
-        version: 7,
-        participants: ["session-1".to_string()].into_iter().collect(),
-        task_progress: HashMap::new(),
-        mode: "deep".to_string(),
-        node_meta,
-    };
-
-    persist_swarm_state("swarm-deep", Some(&plan), None, &[]);
-    let loaded = load_runtime_state();
-
-    let loaded_plan = loaded.plans.get("swarm-deep").expect("loaded plan");
-    assert_eq!(loaded_plan.mode, "deep");
-    assert_eq!(loaded_plan.version, 7);
-
-    // Edges survive on the item itself.
-    let gate_item = loaded_plan
-        .items
-        .iter()
-        .find(|item| item.id == "root.gate")
-        .expect("gate item");
-    assert_eq!(gate_item.blocked_by, vec!["root".to_string()]);
-
-    // The row keeps its kind; gate flags, expansion, planner, and artifacts
-    // survive in node_meta.
-    let root_row = loaded_plan
-        .items
-        .iter()
-        .find(|item| item.id == "root")
-        .expect("root row");
-    assert_eq!(root_row.kind.as_deref(), Some("explore"));
-    let root_meta = loaded_plan.node_meta.get("root").expect("root meta");
-    assert!(root_meta.expanded);
-    assert!(!root_meta.is_gate);
-    assert_eq!(root_meta.planner.as_deref(), Some("session-1"));
-    assert!(
-        root_meta
-            .artifact_json
-            .as_deref()
-            .is_some_and(|json| json.contains("found it"))
-    );
-    let gate_row = loaded_plan
-        .items
-        .iter()
-        .find(|item| item.id == "root.gate")
-        .expect("gate row");
-    assert_eq!(gate_row.kind.as_deref(), Some("critique"));
-    let gate_meta = loaded_plan.node_meta.get("root.gate").expect("gate meta");
-    assert!(gate_meta.is_gate);
-    assert_eq!(gate_meta.parent.as_deref(), Some("root"));
-}
-
-/// The behavioral counterpart of `deep_plan_mode_and_node_meta_round_trip`:
-/// after a persist -> load cycle (server restart), the reloaded plan must still
-/// drive the deep-mode machinery that reads `node_meta`:
-///
-/// 1. `low_confidence_completed_ids` still reports completed nodes whose stored
-///    artifact self-reported low confidence (gate confidence-debt tracking).
-/// 2. `hydrate_assignment` still injects completed upstream artifacts
-///    (forward dataflow) into assignment content.
-/// 3. Lifting the reloaded plan into the DAG engine still enforces the gate
-///    debt rule: a gate cannot rubber-stamp past an unaddressed low-confidence
-///    sibling, but passes once it addresses that sibling by id.
-#[test]
-fn gate_debt_and_artifact_hydration_survive_reload() {
-    use crate::plan::dag::{DagError, HandoffArtifact, complete_node, dispatch};
-
-    let dir = tempfile::TempDir::new().expect("tempdir");
-    let _env = test_env(&dir);
-
-    let solid_artifact = serde_json::to_string(&HandoffArtifact {
-        findings: "solid scope fully mapped".to_string(),
-        evidence: vec!["crates/foo/api.rs:12".to_string()],
-        confidence: Some("high".to_string()),
-        what_i_did_not_check: vec!["nothing, fully covered".to_string()],
-        ..HandoffArtifact::default()
-    })
-    .unwrap();
-    let shaky_artifact = serde_json::to_string(&HandoffArtifact {
-        findings: "unsure about the edge cases here".to_string(),
-        confidence: Some("low".to_string()),
-        what_i_did_not_check: vec!["error paths".to_string()],
-        ..HandoffArtifact::default()
-    })
-    .unwrap();
-
-    let item =
-        |id: &str, kind: &str, status: &str, blocked_by: Vec<String>| crate::plan::TaskItem {
-            content: format!("work on {id}"),
-            status: status.to_string(),
-            priority: "medium".to_string(),
-            id: id.to_string(),
-            kind: Some(kind.to_string()),
-            blocked_by,
-            ..Default::default()
-        };
-    let meta =
-        |parent: Option<&str>, is_gate: bool, artifact: Option<&str>| crate::plan::NodeMeta {
-            parent: parent.map(str::to_string),
-            expanded: false,
-            is_gate,
-            planner: None,
-            artifact_json: artifact.map(str::to_string),
-            origin: None,
-        };
-
-    let mut plan = VersionedPlan::new();
-    plan.mode = "deep".to_string();
-    plan.version = 4;
-    plan.items = vec![
-        {
-            let mut root = item("root", "explore", "running", Vec::new());
-            root.assigned_to = Some("planner-1".to_string());
-            root
-        },
-        item("root.solid", "explore", "completed", Vec::new()),
-        item("root.shaky", "explore", "completed", Vec::new()),
-        item(
-            "root.gate",
-            "critique",
-            "queued",
-            vec!["root.solid".to_string(), "root.shaky".to_string()],
-        ),
-    ];
-    plan.node_meta = HashMap::from([
-        ("root".to_string(), {
-            let mut m = meta(None, false, None);
-            m.expanded = true;
-            m.planner = Some("planner-1".to_string());
-            m
-        }),
-        (
-            "root.solid".to_string(),
-            meta(Some("root"), false, Some(&solid_artifact)),
-        ),
-        (
-            "root.shaky".to_string(),
-            meta(Some("root"), false, Some(&shaky_artifact)),
-        ),
-        ("root.gate".to_string(), meta(Some("root"), true, None)),
-    ]);
-
-    persist_swarm_state("swarm-debt", Some(&plan), None, &[]);
-    let loaded = load_runtime_state();
-    let loaded_plan = loaded.plans.get("swarm-debt").expect("loaded plan");
-
-    // 1. Confidence-debt tracking: the reloaded plan still flags the shaky node.
-    assert_eq!(
-        crate::plan::bridge::low_confidence_completed_ids(loaded_plan),
-        vec!["root.shaky".to_string()]
-    );
-
-    // 2. Upstream artifact hydration: the gate's assignment content still gets
-    // both completed dependency artifacts, including what_i_did_not_check.
-    let hydrated = crate::plan::bridge::hydrate_assignment(loaded_plan, "root.gate", "gate prompt");
-    assert!(hydrated.contains("gate prompt"));
-    assert!(hydrated.contains("Inputs from completed dependencies"));
-    assert!(hydrated.contains("solid scope fully mapped"));
-    assert!(hydrated.contains("crates/foo/api.rs:12"));
-    assert!(hydrated.contains("unsure about the edge cases here"));
-    assert!(hydrated.contains("error paths"));
-
-    // 3. The DAG engine, lifted from the reloaded plan, still enforces the gate
-    // debt rule end to end.
-    let mut graph = crate::plan::bridge::to_task_graph(loaded_plan);
-    assert!(dispatch(&mut graph, "root.gate", "gate-worker"));
-    let err = complete_node(
-        &mut graph,
-        "root.gate",
-        "gate-worker",
-        HandoffArtifact::brief("all good, no gaps"),
-    )
-    .unwrap_err();
-    match &err {
-        DagError::UnaddressedLowConfidence { gate, nodes } => {
-            assert_eq!(gate, "root.gate");
-            assert_eq!(nodes, &vec!["root.shaky".to_string()]);
-        }
-        other => panic!("expected UnaddressedLowConfidence after reload, got {other:?}"),
-    }
-    complete_node(
-        &mut graph,
-        "root.gate",
-        "gate-worker",
-        HandoffArtifact::brief(
-            "root.shaky's low confidence is acceptable: its scope was re-derived and \
-             cross-checked; root.solid audited clean",
-        ),
-    )
-    .expect("gate passes once every audited node is addressed by id");
 }
 
 #[test]
@@ -770,50 +525,6 @@ fn state_dir_is_durable_not_runtime() {
     // not be the legacy runtime-dir location.
     assert_ne!(state_dir(), legacy_state_dir());
     assert!(state_dir().starts_with(dir.path()));
-}
-
-#[test]
-fn legacy_snapshot_without_mode_defaults_to_light() {
-    let dir = tempfile::TempDir::new().expect("tempdir");
-    let _env = test_env(&dir);
-
-    // Simulate a pre-deep-mode snapshot on disk: no `mode`, no `node_meta`.
-    //
-    // The snapshot must look *recent*, not epoch-old. Dormant-plan pruning
-    // (33cd27330) drops a queued-only plan whose `updated_at_unix_ms` is older
-    // than the retention window, so a hardcoded timestamp of `1` would be
-    // garbage collected before the mode default could be observed. This test is
-    // about legacy field defaulting, not retention, so keep it fresh.
-    let updated_at_unix_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock after unix epoch")
-        .as_millis() as u64;
-    let legacy = serde_json::json!({
-        "swarm_id": "swarm-legacy",
-        "plan": {
-            "items": [{
-                "content": "old task",
-                "status": "queued",
-                "priority": "medium",
-                "id": "t1"
-            }],
-            "version": 2,
-            "participants": ["session-1"]
-        },
-        "updated_at_unix_ms": updated_at_unix_ms
-    });
-    std::fs::create_dir_all(state_dir()).expect("state dir");
-    std::fs::write(
-        state_path("swarm-legacy"),
-        serde_json::to_vec(&legacy).unwrap(),
-    )
-    .expect("write legacy snapshot");
-
-    let loaded = load_runtime_state();
-    let plan = loaded.plans.get("swarm-legacy").expect("legacy plan");
-    assert_eq!(plan.mode, "light");
-    assert!(plan.node_meta.is_empty());
-    assert_eq!(plan.version, 2);
 }
 
 /// A persist that captured an older plan must not overwrite a newer durable

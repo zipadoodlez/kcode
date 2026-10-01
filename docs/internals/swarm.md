@@ -16,26 +16,14 @@ words, kind and `blocked_by` are the node's, its position is its priority), a ro
 whose kind the engine cannot read stays out rather than being given a guessed
 one, and a row already in the plan is not seeded again.
 
-## Two modes: deep and light
+## One engine
 
-Whether this axis survives is open, but it does work today: `Mode::requires_gates`
-gates gate insertion, gate-pass validation and artifact validation in
-`kcode-plan/src/dag/ops.rs`, and the plan's mode gates whether a non-root member
-may drive its own task graph (`server/comm_control.rs`). See step 0.4 in
-`plans/work-list.md`.
-
-One engine, two presets. Both use the same DAG data model and scheduler; only the
-rigor machinery and the member cap differ.
-
-| dimension | deep | light |
-|---|---|---|
-| goal | leave no nook unexplored | parallelize for speed |
-| shape | recursive, self-deepening | mostly flat, one level |
-| decomposition | mandatory (composite by default) | optional |
-| critique/verify gate | required before a node closes | off (optional final check) |
-| recursion | unbounded depth | root-only (no nesting) |
-| handoff artifact | full typed schema | lightweight, free-form |
-| cost | high, deliberate | low, fast |
+There is one engine and no mode axis. The former deep/light presets, the
+auto-inserted critique/verify gate, the gate-pass audit, the deep artifact
+validity check and the artifact-or-nothing turn-end rule were removed in 0.4a of
+`plans/work-list.md`; the engine keeps the DAG model, the scheduler, the typed
+handoff artifact and decomposition. What was lost (the automatic gate insertion
+and the refusal to close without an artifact) is named in `docs/todo.md`.
 
 ## Ownership: a tree over the graph
 
@@ -46,9 +34,9 @@ append-style ops (`add nodes`, `add edges`, `complete node`), validated
 server-side for acyclicity and ownership. New edges may only point at
 already-existing upstream nodes, which preserves acyclicity by construction.
 
-Each node records an origin (`seed`/`expand`/`gap`/`gate`), and a plan carries
-`seeded_count`/`grown_count` so a deep plan that never outgrew its seed is
-visibly under-explored.
+Each node records an origin (`seed`/`expand`), and a plan carries
+`seeded_count`/`grown_count` so a plan that never outgrew its seed is visibly
+under-explored.
 
 ## Node kinds
 
@@ -63,8 +51,8 @@ A node's fate flips at runtime, not at draft time:
 
 Terminal action kinds are task-agnostic; only the artifact and "done" contract
 change: `explore` (findings), `implement` (diff/commit ref), `verify` (pass/fail
-and failures), `fix` (patch). A failing verify spawns `fix` nodes, the same way a
-critique spawns gap nodes.
+and failures), `fix` (patch). A worker that finds follow-up work adds it as rows
+or children, rather than an engine inserting it.
 
 ## Dataflow: the edge is the channel
 
@@ -78,37 +66,14 @@ commit `abc123`", with the repo and git as the shared medium. Embed by value onl
 for things not in the repo (a decision, an analysis). This keeps context small,
 which matters at depth.
 
-The deep-mode artifact schema is required, not advisory:
+The handoff artifact schema:
 
 `findings`, `evidence` (file:line or commit refs, not bare claims),
 `edge_cases_considered`, `validation`, `open_questions`, `confidence`,
 `what_i_did_not_check`.
 
 `what_i_did_not_check` is the point: forcing an agent to name what it did *not*
-explore surfaces the gaps the gate then turns into nodes.
-
-## Gates (deep mode)
-
-Comprehensiveness is structural, enforced by the engine in `kcode-plan/src/dag`:
-
-- **Gate discipline.** Every composite node must have a critique (explore) or
-  verify (code) dependent before it can close. Gates are adversarial and
-  domain-agnostic: "what did this miss given its own stated scope" / "does the
-  declared acceptance check pass".
-- **Gap/failure becomes graph.** A gate that finds gaps or failures emits new
-  child nodes, and the parent cannot close until they drain. `inject_gap` adds
-  nodes at a gate's scope.
-- **Root gate.** A deep seed auto-inserts a parent-less gate depending on every
-  root-level node, so even a flat seed needs a final adversarial pass; that pass
-  can inject new top-level nodes. Re-seeding widens the gate's scope and re-opens
-  it.
-- **Enumerated coverage.** A passing deep gate must address every done node in its
-  scope by id, up to a cap of 20; above the cap only HIGH-confidence nodes may be
-  skipped. "All good, no gaps" is rejected (`UncoveredSiblings`), and a pass is
-  rejected if nodes entered the scope after dispatch (`StaleGateScope`).
-- **Artifact-or-nothing.** Deep mode has no auto-complete: a turn that ends with
-  its node still running is re-queued once (`no_artifact_requeues`) and failed on
-  repeat. A deep node closes only via `expand_node` or `complete_node`.
+explore surfaces the gaps its caller (or a follow-up row) can widen.
 
 ## Coordination and communication
 
@@ -148,7 +113,7 @@ resolved by direct contact between the agents.
 ## Tool surface
 
 The `communicate` tool carries the swarm actions: `task_graph` (seed the plan from
-the rows this session holds), `expand_node`, `complete_node`, `inject_gap`,
+the rows this session holds), `expand_node`, `complete_node`,
 `run_plan`, `fill_slots`, plus
 `spawn`/`dm`/`broadcast`/`channel` and the shared-context ops as lower-level
 escape hatches. The TUI shows a swarm info widget (agent/manager/coordinator graph)

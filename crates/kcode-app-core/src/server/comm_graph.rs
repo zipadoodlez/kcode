@@ -1,9 +1,9 @@
-//! Server handlers for the task-DAG mutation ops (seed/expand/complete/inject).
+//! Server handlers for the task-DAG mutation ops (seed/expand/complete).
 //!
 //! These are the live counterparts of the validated engine ops in
 //! `kcode_plan::dag`. Each handler lifts the swarm's current `VersionedPlan` into
 //! a `TaskGraph` (via `kcode_plan::bridge`), applies the engine op (which enforces
-//! acyclicity, ownership, gate insertion, and artifact validation), lowers the
+//! acyclicity and ownership), lowers the
 //! result back into the plan, then persists and broadcasts using the existing
 //! swarm machinery. This keeps a single source of truth and reuses the scheduler,
 //! persistence, and TUI broadcast paths.
@@ -59,10 +59,10 @@ async fn swarm_id_for(
 
 /// Ensure the seeding session can actually drive the graph it just created.
 ///
-/// Deep-mode sessions are frequently solo `agent`s with no coordinator elected,
+/// Seeding sessions are frequently solo `agent`s with no coordinator elected,
 /// yet `assign_task` / `assign_next` / `run_plan` are coordinator-gated. Without
-/// this, a fresh deep-mode agent can seed a task graph but then cannot dispatch
-/// any of it. We elect the seeder as coordinator when the swarm has no *live*
+/// this, a fresh agent can seed a task graph but then cannot dispatch any of it.
+/// We elect the seeder as coordinator when the swarm has no *live*
 /// coordinator, mirroring the self-promote rule used by `assign_role`. A live,
 /// non-headless coordinator is left untouched so a real coordinator is never
 /// displaced by a worker that happens to seed.
@@ -126,7 +126,7 @@ async fn ensure_seeder_can_coordinate(
 
 /// Auto-claim a queued node for the participant that is trying to mutate it.
 ///
-/// Seeded nodes are unowned until dispatch, but the deep-mode contract tells the
+/// Seeded nodes are unowned until dispatch, but the run's contract tells the
 /// seeding agent to `expand_node`/`complete_node` its own nodes, and the assign
 /// path refuses self-assignment — so without this a solo deep seeder could never
 /// legally touch any node it seeded (observed live as "Complete rejected: actor
@@ -225,7 +225,6 @@ async fn finalize(
 pub(super) async fn handle_comm_seed_graph(
     id: u64,
     req_session_id: String,
-    mode: Option<String>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
@@ -247,8 +246,7 @@ pub(super) async fn handle_comm_seed_graph(
         .get(&req_session_id)
         .and_then(|member| member.working_dir.clone());
 
-    // A deep-mode seeder is usually a solo agent. Elect it coordinator (when no
-    // live coordinator exists) so it can actually dispatch the graph it seeds via
+    // A solo seeder needs the coordinator slot to dispatch the graph it seeds via
     // the coordinator-gated assign/run_plan paths.
     ensure_seeder_can_coordinate(
         &swarm_id,
@@ -281,18 +279,6 @@ pub(super) async fn handle_comm_seed_graph(
     }
     let count = seedable.len();
 
-    // Resolve the plan mode. The model is *asked* to pass `mode:"deep"` when it is
-    // running at `swarm-deep` effort, but it frequently forgets. Rather than
-    // silently downgrading a deep-effort session to light (which disables the
-    // gates + artifact validation that define deep mode), default the mode from
-    // the seeder's recorded reasoning effort when the caller did not specify one.
-    // An explicit `mode` always wins so a caller can still opt into light.
-    let resolved_mode = mode.or_else(|| {
-        crate::session_effort::session_effort(&req_session_id)
-            .filter(|effort| crate::prompt::is_deep_swarm_effort(effort))
-            .map(|_| "deep".to_string())
-    });
-
     let result = {
         let mut plans = swarm_plans.write().await;
         let plan = plans
@@ -305,28 +291,6 @@ pub(super) async fn handle_comm_seed_graph(
                 !plan.items.iter().any(|item| item.id == id)
             })
             .collect();
-        if let Some(mode) = resolved_mode {
-            // Guard against silent rigor downgrades: re-seeding an existing deep
-            // plan as light would strip the gates + artifact validation from all
-            // nodes already in flight. Deepening (light -> deep) or re-stating
-            // the same mode is fine; only the downgrade of a non-empty deep plan
-            // is rejected.
-            let downgrades_deep = plan.mode.eq_ignore_ascii_case("deep")
-                && !mode.eq_ignore_ascii_case("deep")
-                && !plan.items.is_empty();
-            if downgrades_deep {
-                err(
-                    client_event_tx,
-                    id,
-                    "Seed rejected: this swarm already has a non-empty deep-mode plan; \
-                     seeding with mode=light would silently strip its gates and artifact \
-                     validation. Omit `mode` to keep deep, or finish/clear the current plan first."
-                        .to_string(),
-                );
-                return;
-            }
-            plan.mode = mode;
-        }
         plan.participants.insert(req_session_id.clone());
         let mut graph = to_task_graph(plan);
         let before = graph.clone();
@@ -498,8 +462,8 @@ pub(super) async fn handle_comm_complete_node(
         Ok(()) => {
             // The engine's close is the row's close too, through the same writer the
             // `todo` tool uses: the node's id is the row's id, so the row goes with
-            // its record onto the row that owns the work, a gate reading it from the
-            // file and a re-seed not lifting finished work again.
+            // its record onto the row that owns the work, and a re-seed does not
+            // lift finished work again.
             let working_dir = swarm_members
                 .read()
                 .await
@@ -534,75 +498,5 @@ pub(super) async fn handle_comm_complete_node(
             .await;
         }
         Err(e) => err(client_event_tx, id, format!("Complete rejected: {e}")),
-    }
-}
-
-/// Inject gap/fix nodes from a gate the caller owns.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "swarm op threads runtime handles"
-)]
-pub(super) async fn handle_comm_inject_gap(
-    id: u64,
-    req_session_id: String,
-    gate_id: String,
-    nodes: Vec<TaskGraphNodeSpec>,
-    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
-    event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
-    event_counter: &Arc<std::sync::atomic::AtomicU64>,
-    swarm_event_tx: &broadcast::Sender<SwarmEvent>,
-) {
-    let Some(swarm_id) = swarm_id_for(&req_session_id, swarm_members).await else {
-        err(client_event_tx, id, "Not in a swarm.".to_string());
-        return;
-    };
-    let specs: Vec<NodeSpec> = nodes.into_iter().map(spec_from_wire).collect();
-    let count = specs.len();
-
-    let result = {
-        let mut plans = swarm_plans.write().await;
-        let Some(plan) = plans.get_mut(&swarm_id) else {
-            err(client_event_tx, id, "No plan for this swarm.".to_string());
-            return;
-        };
-        let mut graph = to_task_graph(plan);
-        claim_queued_node_for_actor(&mut graph, &gate_id, &req_session_id);
-        match dag::inject_from_gate(&mut graph, &gate_id, &req_session_id, specs) {
-            Ok(_) => match graph_size_error(&graph) {
-                Some(message) => Err(message),
-                None => {
-                    apply_task_graph(plan, &graph);
-                    plan.version += 1;
-                    Ok(())
-                }
-            },
-            Err(e) => Err(e.to_string()),
-        }
-    };
-
-    match result {
-        Ok(()) => {
-            finalize(
-                id,
-                &swarm_id,
-                &req_session_id,
-                "task_graph_inject_gap",
-                count,
-                client_event_tx,
-                swarm_members,
-                swarms_by_id,
-                swarm_plans,
-                swarm_coordinators,
-                event_history,
-                event_counter,
-                swarm_event_tx,
-            )
-            .await;
-        }
-        Err(e) => err(client_event_tx, id, format!("Inject rejected: {e}")),
     }
 }

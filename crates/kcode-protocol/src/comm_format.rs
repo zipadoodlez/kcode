@@ -430,13 +430,13 @@ pub fn format_comm_status_snapshot(snapshot: &AgentStatusSnapshot) -> String {
 pub fn format_comm_plan_status(summary: &PlanGraphStatus) -> String {
     let swarm_id = summary.swarm_id.as_deref().unwrap_or("unknown");
     let mut output = format!(
-        "Plan status for swarm {}\n\n  Version: {}\n  Mode: {}\n  Items: {}\n",
-        swarm_id, summary.version, summary.mode, summary.item_count
+        "Plan status for swarm {}\n\n  Version: {}\n  Items: {}\n",
+        swarm_id, summary.version, summary.item_count
     );
-    // Growth accounting: deep mode is meant to outgrow its seed (decomposition,
-    // gate-injected gaps). Surfacing seeded-vs-grown makes a plan that never
-    // grew visibly under-explored.
-    if summary.mode.eq_ignore_ascii_case("deep") && summary.item_count > 0 {
+    // Growth accounting: a plan is meant to outgrow its seed (decomposition).
+    // Surfacing seeded-vs-grown makes a plan that never grew visibly
+    // under-explored.
+    if summary.item_count > 0 {
         output.push_str(&format!(
             "  Growth: {} seeded -> {} nodes ({} machinery-grown)",
             summary.seeded_count, summary.item_count, summary.grown_count
@@ -444,7 +444,7 @@ pub fn format_comm_plan_status(summary: &PlanGraphStatus) -> String {
         if summary.grown_count == 0 {
             output.push_str(
                 " — the graph has not grown beyond its seed yet; \
-                 expect expand_node decomposition and gate-injected gaps",
+                 expect expand_node decomposition",
             );
         }
         output.push('\n');
@@ -497,12 +497,6 @@ pub fn format_comm_plan_status(summary: &PlanGraphStatus) -> String {
                 output.push_str(&format!("    {}: {}\n", id, reason));
             }
         }
-    }
-    if !summary.low_confidence_ids.is_empty() {
-        output.push_str(&format!(
-            "  Low confidence (completed but shaky; widen with follow-up nodes): {}\n",
-            summary.low_confidence_ids.join(", ")
-        ));
     }
     if !summary.cycle_ids.is_empty() {
         output.push_str(&format!("  Cycles: {}\n", summary.cycle_ids.join(", ")));
