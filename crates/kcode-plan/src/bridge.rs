@@ -129,7 +129,7 @@ pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
             owner: item.assigned_to.clone(),
             parent: item.parent.clone(),
             depends_on: item.blocked_by.clone(),
-            expanded: meta.expanded,
+            expanded: plan.is_composite(&item.id),
             planner: meta.planner.clone(),
             priority: crate::priority_rank(&item.priority),
             output: artifact,
@@ -176,7 +176,6 @@ pub fn apply_task_graph(plan: &mut VersionedPlan, graph: &TaskGraph) {
         node_meta.insert(
             node.id.clone(),
             NodeMeta {
-                expanded: node.expanded,
                 planner: node.planner.clone(),
                 artifact_json: node
                     .output
@@ -404,7 +403,10 @@ mod tests {
         .unwrap();
         apply_task_graph(&mut plan, &graph);
 
-        assert!(plan.node_meta["root"].expanded);
+        assert!(
+            plan.is_composite("root"),
+            "a row with an open child is composite"
+        );
         assert_eq!(
             plan.items
                 .iter()

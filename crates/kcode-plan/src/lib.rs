@@ -75,9 +75,6 @@ pub struct SwarmExecutionState {
 /// file's), so only what a row cannot say lives here.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeMeta {
-    /// True once decomposed into children (composite join/synthesis point).
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub expanded: bool,
     /// The agent that planned this node's decomposition (composite owner). Kept
     /// separately from `TaskItem.assigned_to` so a re-queued composite can be
     /// auto-scheduled (assigned_to cleared) while still preferring its original
@@ -154,6 +151,22 @@ impl VersionedPlan {
                 meta.planner = Some(new_session_id.to_string());
             }
         }
+    }
+
+    /// Whether `id` is a row other rows belong to: a composite join/synthesis
+    /// point rather than a leaf. Derived, never stored: a child that is still a
+    /// row names its parent, and a close deletes the child and leaves its record
+    /// on the parent (`kcode_base::todo::close_row`), so a row with an open child
+    /// or a nonempty `records` was decomposed and still is.
+    pub fn is_composite(&self, id: &str) -> bool {
+        self.items
+            .iter()
+            .any(|row| row.parent.as_deref() == Some(id))
+            || self
+                .items
+                .iter()
+                .find(|row| row.id == id)
+                .is_some_and(|row| !row.records.is_empty())
     }
 
     pub fn plan_definition(&self) -> SwarmPlanDefinition {

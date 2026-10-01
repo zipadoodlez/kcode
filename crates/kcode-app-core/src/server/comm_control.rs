@@ -588,7 +588,8 @@ async fn resolve_assignment_target_for_task(
             let planner = plan
                 .node_meta
                 .get(task_id)
-                .and_then(|meta| meta.expanded.then(|| meta.planner.clone()).flatten());
+                .and_then(|meta| meta.planner.clone())
+                .filter(|_| plan.is_composite(task_id));
             if let Some(owner) = planner
                 && owner != req_session_id
             {
@@ -766,32 +767,31 @@ fn spawn_assigned_task_run(
                 let mut applied_disposition = TurnEndDisposition::LeaveAlone;
                 {
                     let mut plans = swarm_plans.write().await;
-                    if let Some(plan) = plans.get_mut(&swarm_id)
-                        && let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id)
-                    {
-                        // A worker turn ends in one of three ways for its node:
-                        //  1. it decomposed the node via `expand_node` -> the node is
-                        //     now a composite synthesis/join point that must stay
-                        //     in-progress until its children finish; it is re-woken
-                        //     later to synthesize.
-                        //  2. it already finished the node via `complete_node` -> the
-                        //     node is terminal and owned by no one.
-                        //  3. it just ran and the node is still `running`.
-                        // Case 3 auto-completes: a turn that ends without a
-                        // `complete_node` closes the atomic node, while an
-                        // expanded composite stays open for its synthesis turn.
-                        let expanded = plan
-                            .node_meta
-                            .get(&task_id)
-                            .map(|m| m.expanded)
-                            .unwrap_or(false);
-                        match turn_end_disposition(&item.status, expanded) {
-                            TurnEndDisposition::AutoComplete => {
-                                applied_disposition = TurnEndDisposition::AutoComplete;
-                                item.status = "done".to_string();
-                                plan.version += 1;
+                    if let Some(plan) = plans.get_mut(&swarm_id) {
+                        // Derived, so read before the mutable borrow: a composite
+                        // was decomposed, and the children it is waiting on are
+                        // still rows naming it (or are closed into its records).
+                        let composite = plan.is_composite(&task_id);
+                        if let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id) {
+                            // A worker turn ends in one of three ways for its node:
+                            //  1. it decomposed the node via `expand_node` -> the node is
+                            //     now a composite synthesis/join point that must stay
+                            //     in-progress until its children finish; it is re-woken
+                            //     later to synthesize.
+                            //  2. it already finished the node via `complete_node` -> the
+                            //     node is terminal and owned by no one.
+                            //  3. it just ran and the node is still `running`.
+                            // Case 3 auto-completes: a turn that ends without a
+                            // `complete_node` closes the atomic node, while an
+                            // expanded composite stays open for its synthesis turn.
+                            match turn_end_disposition(&item.status, composite) {
+                                TurnEndDisposition::AutoComplete => {
+                                    applied_disposition = TurnEndDisposition::AutoComplete;
+                                    item.status = "done".to_string();
+                                    plan.version += 1;
+                                }
+                                TurnEndDisposition::LeaveAlone => {}
                             }
-                            TurnEndDisposition::LeaveAlone => {}
                         }
                     }
                 }
@@ -1356,11 +1356,7 @@ async fn handle_comm_assign_task_with_mode(
             // synthesis instruction. Without this the planner replays the old "expand
             // me" prompt and reports instead of calling `complete_node`, leaving the
             // composite `running_stale` forever.
-            let is_composite_synthesis = plan
-                .node_meta
-                .get(&item_id)
-                .map(|meta| meta.expanded)
-                .unwrap_or(false);
+            let is_composite_synthesis = plan.is_composite(&item_id);
             let effective_content =
                 composite_synthesis_content(&item_id, &raw_content, is_composite_synthesis);
             let hydrated =
