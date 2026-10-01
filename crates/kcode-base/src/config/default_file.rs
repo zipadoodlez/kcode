@@ -237,8 +237,10 @@ reasoning_display = "full"
 check_updates = true
 # Swarm: multi-session coordination features
 swarm = true
-# Auto-poke: automatically nudge the model to continue when it stops with
-# incomplete todos. Off by default; /poke on enables it for a session.
+# Auto-continue: with this on, every turn of yours may keep working this session's
+# own work list by itself until nothing it holds is ready, and typing stops a run
+# at its next turn. Off by default; /auto <what to work on> grants the same thing
+# for one run without the setting. Also arms the older /poke path until that goes.
 auto_poke = false
 # Inject timestamps into user messages and tool results sent to the model
 message_timestamps = true

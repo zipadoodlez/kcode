@@ -34,6 +34,23 @@ These work on any terminal because they do not depend on modified-key reporting:
 - **Option/Alt+Enter** works wherever the terminal sends `ESC` + `CR`, including
   Terminal.app with "Use Option as Meta Key".
 
+## Unattended work
+
+`/auto <what to work on>` starts one turn with permission for the session to keep
+working its own work list on its own: after that turn it takes the next row it
+holds whose blockers are gone, then the next, until none is left. The permission is
+spent with that run, so the next one needs another `/auto`. Typing stops a run at
+its next turn, and a run never touches a row held by someone else.
+
+To make it standing behaviour for a project, set `auto_poke = true` under
+`[features]` in `~/.kcode/config.toml`: then every turn of yours may continue.
+
+The list is `tasks.jsonl` at the repo root, one row per line, found from git so a
+session started in `crates/foo` reads the same file. The `todo` tool writes it
+(`add`, `update`, `close`), there is no whole-list write, and a `close` needs the
+result that proves the row done. `parent` groups, `blocked_by` blocks, `assigned_to`
+says who holds it, and a row leaves the file only when it closes.
+
 ## Session picker
 
 `/resume`, `/session`, and `/sessions` open the interactive picker. They are

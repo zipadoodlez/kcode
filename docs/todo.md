@@ -154,7 +154,9 @@ Staged; each lands whole.
 - [ ] **Unify the command surface**: slash-command identity is a string matched in
   four tables, the registry `REGISTERED_COMMANDS`
   (`app/state_ui_input_helpers.rs`, 108 entries), `app/commands.rs` (57),
-  `app/commands_dispatch.rs` (83), `app/remote/key_handling.rs` (53). One table
+  `app/commands_dispatch.rs` (83), `app/remote/key_handling.rs` (53), plus
+  `app/input_help.rs` for the help text, which the list did not name: landing
+  `/auto` meant an entry in three of them. One table
   (name, aliases, help, handler, remote-safe) fixes the `/help` gap and the dead
   SSH-block commands. Shares `commands_dispatch.rs` with the `App` re-core, so
   keep them in separate changes.
@@ -203,6 +205,11 @@ changes are paid for in test churn.
 
 ## 5. Hygiene
 
+- [ ] The work list has no user doc. `tasks.jsonl` at the repo root, the `todo`
+  tool's three actions, and the close's required result are described only in
+  `plans/work-list.md`, which is a plan rather than a manual. It goes in
+  `docs/user/` when the list settles, which is late enough to be worth writing
+  once: after 0.3, since that is where the row gains its `kind`.
 - [ ] Unknown config sections are silently ignored (`toml::from_str` with no
   `deny_unknown_fields`), so older configs keep dead keys with no warning.
 - [ ] A stale explicit key in `config.toml` silently beats a changed compiled
@@ -213,12 +220,14 @@ changes are paid for in test churn.
 Phase 1 landed 2026-09-30: the enforcement tier is gone and the poke is identified
 by shape. Phase 2 is the work list, one task: `plans/work-list.md` holds the
 destination, the roadmap, and why the tier must not return; the A/B probe recipe is
-`dev/todo-rework-ab-probe.md`.
+`dev/todo-rework-ab-probe.md`. 0.1 landed 2026-10-01 (the loop, then the
+permission); 0.2 is next and deletes the client poke.
 
-- [ ] Live check owed from step 2: the poke now reaches the model as a system
-  reminder rather than as user content. One isolated `kcode run` with auto-poke
-  armed, on a task that leaves items open, must show the model continuing rather
-  than only replying. If it chats, the fallback is in the internals doc (Step 2).
+- [ ] The live check the old step 2 owed is superseded: a continuation is no longer
+  a poke reaching the model as a system reminder, it is the session's own turn
+  seeded with a row. What that owes is the probe 0.1's landing rule asks for: one
+  `kcode run` against its own socket on a scratch repo, with a granted turn and two
+  ready rows, showing two row turns and then a stop. See `plans/work-list.md` 0.1.
 
 ## Anytime
 

@@ -191,6 +191,10 @@ removed and nothing else.
   it and the run ends there. `auto_poke` is now a misnomer for the standing default,
   and the name goes with the last poke, the command-line one 0.3 unblocks, because
   until then both read it.
+  Owed by the step's own landing rule: the permission moved behavior (a granted turn
+  continues, a wake does not), so it wants one `kcode run` probe against its own
+  socket and a scratch repo, not only the in-process tests. The proof so far is the
+  pick and the loop under a mock provider.
   Small, still owed: the row rung (`/auto t3`, the pick's optional subtree filter),
   an optional bound so "work until 07:00" is the run property the model says (the
   duration parser and the target-wake label are in git history), and a
@@ -212,6 +216,8 @@ removed and nothing else.
   failure arm already ends the run and nothing is owed. The non-retryable-error
   classifier stays, because it is the client's retry policy and the run already ends
   on a failed turn.
+  The docs that name the poke go with it: the `/poke` examples in
+  `dev/message-voice.md`, the `/poke` help, and its completion entries.
   `build_auto_poke_message` is still called by the command-line paths this step
   defers (`src/cli/commands.rs:719`), so it and the config key's rename go with
   those, not here. The command-line variant (`src/cli/commands.rs`, the

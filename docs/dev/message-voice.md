@@ -38,7 +38,6 @@ Only the first part is required, but the order holds.
 |---|---|
 | `👉 Auto-poking: 5 incomplete todos. /poke off to stop.` | `👉 5 incomplete todos. We poked it for you. /poke off to stop.` |
 | `Auto-poke halted: provider guardrail stop x3, circuit breaker open.` | `🛑 The provider refused 3 turns in a row, so we stopped poking. The same request will keep getting refused. Rephrase or narrow the task, then /poke to resume.` |
-| `Overnight auto-poke: stalled_turns=4 >= limit 4; review_path=…` | `🛑 Overnight auto-poke stopped after 4 consecutive no-progress turns. Review <path> before continuing manually.` |
 
 ## Out of scope
 
