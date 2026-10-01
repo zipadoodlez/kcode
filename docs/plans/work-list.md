@@ -107,6 +107,14 @@ session holds rows that are ready. Nothing is queued, nothing is transferred but
 words, and the message is the entire mechanism. A row whose note cannot stand alone
 is a row that cannot be handed over.
 
+**A run's scope has one row at its top, the anchor.** It is the row `/auto t3` names;
+for a run scoped to the whole list, the run's first row is the anchor, and every
+root-level row of that run names the anchor as its `parent`. A closed row's record
+goes onto its parent, so the anchor is where a run's root-level records accumulate
+and where a resumed run finds its scope. The anchor closes last, since rule 3 keeps
+it while a child names it, and its close is the run's end: its result is what a person
+reads afterwards, so a run needs no separate end-of-run summary.
+
 A run adjusts by editing rows, since it has no plan of its own to mutate. It adds
 work under the row it came from, leaves notes, clears a blocker that no longer
 blocks, retypes a row whose kind was wrong, and closes what it holds. Picking is a
@@ -213,12 +221,14 @@ step is done.
   file, so the plan's progress record carries liveness only.
 - [ ] **0.3 keeps the close's record on the row that owns the work.** Rule 4 already
   promises it; the file does not keep it, so a finished node exists only in the plan.
-  The close writes its record onto the parent's row, and onto the run's anchor row
-  for a node with no parent; the anchor is the row `/auto t3` scopes the run to, so
-  the scope and the records share one home. Then a gate and a composite read the
-  file, nothing durable lives in the run, and 0.4 deletes the plan's durable half
-  with the wire node spec. `TaskItem` gains one opaque field, so the store still
-  learns no engine type (rule 5).
+  The close writes its record onto the parent's row, and a run's root-level rows name
+  the anchor as their parent, so every record has a home inside the run's own scope.
+  Then a gate and a composite read the file, nothing durable lives in the run, and
+  0.4 deletes the plan's durable half with the wire node spec. `TaskItem` gains one opaque field, so the store still
+  learns no engine type (rule 5). The close takes the machine-readable parts the
+  gate validates alongside the result (the findings, `what_i_did_not_check` and the
+  confidence), because the tool is the only writer and the gate reads them from the
+  row.
 - [ ] **The command-line poke goes with the rows.** `src/cli/commands.rs`'s
   `_with_auto_poke` run paths, `run_command_auto_poke_max_turns`, `next_headless_poke`
   and `incomplete_poke_todos`, plus `build_auto_poke_message` (its last remaining
@@ -227,10 +237,12 @@ step is done.
   rows seed one. The two poke-named survivors (`is_non_retryable_auto_poke_error`,
   `is_auto_poke_connectivity_error`) are really turn-error classifiers and rename with
   it.
-- [ ] **0.4. The cuts the run makes redundant**: the wire node spec, the
-  `coordinators` map, any stored swarm id, the 31
-  `SwarmState { .. }` rebuild sites, and the `Synthesize` kind, reachable only
-  through the wire spec this step deletes. `parse_kind`/`kind_str` stay, since they
+- [ ] **0.4. The cuts the run makes redundant**: the wire node spec, the plan's
+  durable per-node state (`node_meta`, 90 sites in 19 files, and `task_progress`),
+  the persisted plan itself (`swarm_persistence.rs`, 650 lines plus 1,218 of tests;
+  `VersionedPlan` becomes an in-memory view built from the file), the `coordinators`
+  map, any stored swarm id, the 31 `SwarmState { .. }` rebuild sites, and the
+  `Synthesize` kind, reachable only through the wire spec this step deletes. `parse_kind`/`kind_str` stay, since they
   are what reads a row's kind. The deep/light flag is not residue,
   as `internals/swarm.md` says: there is no `Mode::is_deep`, and `requires_gates`
   guards gate insertion (`kcode-plan/src/dag/ops.rs:67`, `:308`), gate-pass
@@ -252,16 +264,25 @@ Last of the file work, whenever we want it.
   already landed: `parent` is what `group` was grouping by, the close action is what
   makes a completed row unrepresentable rather than stored, and 0.3's "position is
   priority" is what `priority` becomes. Every `add` still writes `status` and
-  `priority` today.
+  `priority` today. Dropping `status` is the larger half, because the plan
+  classifies by it everywhere: `summarize_plan_graph`
+  (`kcode-plan/src/lib.rs:508-560`), `completed_item_ids`, `is_active_status`
+  (`:267`), `newly_ready_item_ids` (`:813`, read by the swarm path at
+  `server/swarm.rs:830`), the task-control actions (`:358`, `:672`), and
+  `status_from_plan`/`status_to_plan` (`bridge.rs:74`). Afterwards a row is ready
+  when `blocked_by` is empty and liveness comes from the member, not the item. The
+  stored `running_stale` (`server/swarm.rs:556`) goes with it, since the stall is
+  derived.
 
 ### C. The list reaches the client
 
 - [ ] **C3.** The two sub-items in `todo.md` §1: member appearance follows the
   typed status, and a stalled plan node is visible. Gate this on 0.3.
-- [ ] **C4.** Move `subsystem` and `file_scope` off the shared type into the
-  plan's own per-item state. They are the scheduler's inputs (assignment
-  affinity matches them against a worker's metadata), not list fields, and
-  `SwarmPlanItemSpec` already carries them on the plan side.
+- [ ] **C4.** Move `subsystem` and `file_scope` off the shared type onto the
+  worker's own record. They are the scheduler's inputs (assignment affinity matches
+  them against a worker's metadata), not list fields, and neither destination the
+  old text named can hold them: 0.4 deletes both `SwarmPlanItemSpec` and the
+  `node_meta` side-map.
 - [ ] **C5.** The client renders the list from server events instead of reading
   the file itself. Today it resolves the repo from its own working directory,
   which is the same thing for a local session and the wrong repo for a remote

@@ -233,10 +233,10 @@ changes are paid for in test churn.
   - **A resource snapshot.** Battery, memory, disk and load: ~200 lines of /proc and
     sysfs readers that were only ever displayed, never acted on. Worth keeping only
     if something acts, so throttle or stop on battery and refuse a run with no disk.
-  - **A run-end summary.** The morning-report, handoff-ready and final-wrap-up
-    prompts were three timers on one idea, the human-facing "what happened". Under
-    the new model the record is the row closes and the commits, which is readable but
-    not a summary. At most one prompt when the run ends, never three.
+  - **A run-end summary.** Placed by the anchor row in `plans/work-list.md`: a run's
+    scope row closes last, and its result is the summary, so the three timers
+    (morning report, handoff-ready, final wrap-up) stay deleted and nothing replaces
+    them.
   Deliberately not carried over: the manifest, the events file, the task cards and
   the review HTML (a second durable store of the same work), the second supervisor
   and coordinator session, and the stored `validated` field, which a close's result
