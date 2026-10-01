@@ -579,7 +579,6 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     ));
     lines.push(key_entry(&alt("Y"), "Toggle chat selection/copy mode"));
     lines.push(key_entry(&alt("S"), "Toggle typing scroll lock"));
-    lines.push(key_entry("Ctrl+P", "Toggle auto-poke for incomplete todos"));
     lines.push(key_entry(&alt("X"), "Show/dismiss todo list card in chat"));
     lines.push(key_entry(
         &crate::tui::keybind::effort_switch_keys_label(),

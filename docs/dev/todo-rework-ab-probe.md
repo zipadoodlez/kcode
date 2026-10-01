@@ -91,10 +91,11 @@ visible:
 
 1. Did the final message name a concrete check and its actual result? Quote the
    sentence, or record that there was none. This is the whole point of the probe.
-2. How many turns the nudge bought:
-   `grep -c 'AUTO_POKE_DECISION action=queue_continuation' $KCODE_HOME/logs/*.log`
-   The one surviving poke keeps this decision line, so the metric still works
-   after step 1.
+2. How many turns the nudge bought. The client no longer emits a per-continuation
+   decision line, so read the count off the session transcript for the run and
+   subtract one for the initial prompt. (The server's continuation loop is the
+   nudge now; it is `continue_with_next_row` in
+   `kcode-app-core/src/server/live_turn.rs`.)
 3. Total turns in the run.
 
 ## How to read the result

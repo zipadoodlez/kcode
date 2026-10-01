@@ -74,7 +74,7 @@ pub(crate) fn parse_rate_limit_error(error: &str) -> Option<Duration> {
         }
         if saw_unit {
             // Only auto-retry within a day; longer windows should be treated
-            // as terminal by the caller (fallback offer / stop auto-poke).
+            // as terminal by the caller (fallback offer / stop retrying).
             if unit_total > Duration::ZERO && unit_total < Duration::from_secs(86400) {
                 return Some(unit_total);
             }

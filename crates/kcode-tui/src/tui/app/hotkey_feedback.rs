@@ -8,7 +8,7 @@
 //!    persist across sessions, so the notes stop once an action is familiar.
 //! 2. **Near-miss suggestions.** When a modified chord falls through every
 //!    dispatcher unhandled, we tell the user instead of silently swallowing it:
-//!    `⌨ Ctrl+Shift+P isn't bound · nearest: Ctrl+P → toggle auto-poke`.
+//!    `⌨ Ctrl+M isn't bound · nearest: Alt+M → toggle side panel`.
 //!
 //! The registry mirrors the real dispatch tables (configured bindings first,
 //! then built-in readline/navigation chords). Matching, familiarity, and the

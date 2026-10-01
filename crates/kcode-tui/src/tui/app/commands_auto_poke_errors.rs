@@ -1,10 +1,10 @@
-//! Deterministic non-retryable auto-poke error classification.
+//! Deterministic non-retryable turn-error classification.
 
 pub(crate) fn is_non_retryable_auto_poke_error(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
 
     // These failures are deterministic for the current request/session shape. Retrying the same
-    // auto-poke cannot help and can create an infinite spam loop.
+    // request cannot help and can create an infinite resend loop.
     let deterministic_markers = [
         "400 bad request",
         "invalid_request_error",

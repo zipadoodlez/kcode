@@ -19,25 +19,25 @@ Only the first part is required, but the order holds.
    outcomes ("your agent didn't finish its work"), not mechanism names ("todo
    completion gate", "auto-poke armed", "queued continuation").
 2. **Say what we did for them, past tense.** When the harness acts
-   automatically, frame it as already handled: "We poked it for you", not
-   "Auto-poking..." or "Poke scheduled".
+   automatically, frame it as already handled: "We stopped automatic retries",
+   not "Auto-retry circuit open".
 3. **Escape hatch last, and short.** Controls go after the human sentence:
-   "... `/poke off` to stop." Never lead with the flag or the setting name.
+   "Run /login to re-authenticate, then send again." Never lead with the flag or
+   the setting name.
 4. **No internal jargon in user-facing text.** Words to avoid: gate, armed,
    dispatch, continuation, follow-up, queued dispatch, state, flag.
 5. **Plain sentences over labels.** "Your agent stopped with 5 todos
-   unfinished." beats "Auto-poke: 5 incomplete todos."
-6. **Warnings explain the consequence, then what to do.** "We stopped poking
-   because it wasn't making progress. Review the remaining todos." Not "Gate
-   exhausted after N attempts" or `AUTO_POKE_DECISION action=idle
-   reason=gate_budget_exhausted`. Log lines keep the internal names.
+   unfinished." beats "todo gate: 5 open".
+6. **Warnings explain the consequence, then what to do.** "Stopped automatic
+   retries: 3 consecutive auth failures, so the same request cannot succeed."
+   Not "Gate exhausted after N attempts". Log lines keep the internal names.
 
 ## Examples
 
 | before | after |
 |---|---|
-| `👉 Auto-poking: 5 incomplete todos. /poke off to stop.` | `👉 5 incomplete todos. We poked it for you. /poke off to stop.` |
-| `Auto-poke halted: provider guardrail stop x3, circuit breaker open.` | `🛑 The provider refused 3 turns in a row, so we stopped poking. The same request will keep getting refused. Rephrase or narrow the task, then /poke to resume.` |
+| `Auto-retry circuit open after 3 auth errors.` | `🛑 Stopped automatic retries: 3 consecutive credential/auth failures. The current login or API key for Anthropic is not working, so resending the same request cannot succeed. Run /login to re-authenticate (or /model to switch to a working route), then send again.` |
+| `Network down. Backoff armed.` | `📡 Network appears offline - waiting to retry automatically.` |
 
 ## Out of scope
 

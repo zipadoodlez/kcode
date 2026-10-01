@@ -160,11 +160,11 @@ the model does not need them. Dropping them costs the duplication they would hav
 removed and nothing else.
 
 **Here is where the work stands**, and a step in flight is finished before a new one
-starts. 0.1's loop and permission have landed with their tests. 0.2 is in flight,
-two of its five stages gone (its tests, its surface); its remaining three follow.
-0.1's four riders come after, and then 0.3. Each stage compiles before it is
-committed (`dev/post-change.md` says which check); the full gate runs once, when the
-step is done.
+starts. 0.1's loop and permission have landed with their tests, and 0.2 has landed
+whole, in five committed stages; what it leaves owed is the command-line poke, which
+waits for 0.3. Next is 0.1's four riders, and then 0.3. Each stage compiles before it
+is committed (`dev/post-change.md` says which check); the full gate runs once, when
+the step is done.
 
 ### 0. One way work gets done
 
@@ -185,49 +185,26 @@ step is done.
   Deferred: a headless member holding the permission inherently goes to 0.3, and the
   `features.auto_poke` rename goes with the last poke, the command-line one.
 
-- [ ] **0.2. Delete the client poke**, which this replaces. With the server
-  continuing a session that holds ready rows, the TUI's auto-poke machine goes:
-  `auto_poke_incomplete_todos` (16 files, 65 uses), `last_auto_poke_fingerprint`,
-  the `/poke` command with the `auto_poke_toggle` keybinding it is bound to (ctrl+p
-  by default, with its template, its `display_summary` entry and its test), its
-  overlay line, and its help and completions. The toggle defaults off, so nothing the
-  user had is lost.
-  Its two pieces of real power are settled. The guardrail breaker guarded an
-  unbounded re-poke loop, and that loop is what this step deletes: a refused turn
-  does return `Ok` (`turn_streaming_mpsc.rs:1164`), but a row is attempted once, so a
-  refusing provider costs at most one call per row held. The non-retryable classifier
-  stays, because it is the client's retry policy and a failed turn already ends a run.
-  The pass, in the order the caller graph allows, so every stage leaves a tree that
-  builds: a symbol goes only once its last caller is gone. The tests went first and
-  are gone, then the surface; three stages are left, each landed and committed on its
-  own.
-  1. **The scheduler**: `schedule_turn_end_followups` with `conclude_completed_turn`'s
-     use of it, `schedule_auto_poke_followup_if_needed`, `build_poke_message`,
-     `queue_poke_message`, and the breaker trio with `turn_guardrail_stopped`, which
-     only the breaker reads.
-  2. **The state**: `auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`,
-     `disable_auto_poke`, `clear_queued_poke_messages`, and the poke arms in
-     `stop_auto_poke_for_non_retryable_error`, `remote.rs`, `model_context.rs`,
-     `server_events.rs` and `tui_lifecycle.rs`.
-  3. **The docs** that name it.
-  Two traps. The five retry tests at `remote_events_reload_04.rs` 202, 268, 310, 366
-  and 425 are not poke tests: they use the poke only to create a queued follow-up, so
-  they are retargeted at the retry path in stage 1 (create the follow-up directly,
-  rename away from the poke) rather than deleted, which would cut retry coverage.
-  `commands_tests.rs:132` needs only a rename, since the classifier it tests survives.
-  And an existing `auto_poke_toggle` line in a user's config becomes an unknown key
-  that is silently ignored, which is §5's known hazard, so it is named there. The
-  `state_model_poke_0X` test-file names stay: they are grab-bags of unrelated state
-  tests whose names predate the poke, and `todo.md` §4 already owns condensing them.
-  `build_auto_poke_message` is still called by the command-line paths this step
-  defers (`src/cli/commands.rs:719`), so it, the `features.auto_poke` rename, and the
-  poke-named survivors go with those, not here: `is_non_retryable_auto_poke_error`
-  (really a turn-error classifier, read by the client's retry path) and
-  `is_auto_poke_connectivity_error` (read by the network-wait path, whose call site
-  also ORs `network_retry::classify_message`, which the function already covers). The command-line variant (`src/cli/commands.rs`, the
-  `_with_auto_poke` run paths and `run_command_auto_poke_max_turns`) waits for 0.3,
-  because a plan-driven member must not be driven twice, and a headless run has no
-  plan until rows seed one.
+- [x] **0.2. Delete the client poke.** Landed 2026-10-01 in five stages, each
+  committed on its own: its tests, its user surface (the `/poke` command, the
+  `auto_poke_toggle` keybinding, ctrl+p, the overlay row, its help), its scheduler
+  (`schedule_turn_end_followups`, `schedule_auto_poke_followup_if_needed`, the
+  guardrail breaker trio, `build_poke_message`, `queue_poke_message`), its arming
+  state (`auto_poke_incomplete_todos`, `last_auto_poke_fingerprint`,
+  `disable_auto_poke`, `clear_queued_poke_messages`,
+  `stop_auto_poke_for_non_retryable_error`), and the docs and help strings that
+  named it. The guardrail breaker was not re-homed: it guarded the unbounded
+  re-poke loop this step deletes, and a row is attempted once. The non-retryable
+  classifier stays, because it is the client's turn-error retry policy rather than
+  a property of the poke, which makes that arm unconditional: every non-retryable
+  error now gets the short two-attempt budget and a fallback offer, where before
+  only a poked session did. Owed and deferred, because a plan-driven member must
+  not be driven twice and a headless run has no plan until rows seed one: the
+  command-line poke (`build_auto_poke_message`, the `_with_auto_poke` run paths and
+  `run_command_auto_poke_max_turns` in `src/cli/commands.rs`), the
+  `features.auto_poke` rename, and the two poke-named survivors
+  (`is_non_retryable_auto_poke_error`, `is_auto_poke_connectivity_error`), which are
+  really turn-error classifiers already covered by `network_retry`.
 - [ ] **0.3. Rows are the run's seed source.** `kind` rides on the row, the node id
   is the row id, the file's `blocked_by` is the node's dependency edge (rules 6 and
   7 name it; there is no rename), position is priority, and gates get engine names.

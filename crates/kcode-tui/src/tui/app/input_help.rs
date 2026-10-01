@@ -116,17 +116,6 @@ impl App {
             "auto" => {
                 "/auto <what to work on>\nThis turn grants the session permission to keep working its own work list on its own, for as long as the rows it holds last, then the permission is spent. The standing version is auto_poke = true under [features] in ~/.kcode/config.toml. Typing anything stops a run at its next turn."
             }
-            "poke" => {
-                "/poke [on|off|status]\nPoke the model to resume when it has stopped with incomplete todos.\n\n\
-                Auto-poke now starts enabled by default, and Ctrl+P toggles it on/off.\n\
-                Set auto_poke = false under [features] in ~/.kcode/config.toml to start with it disabled.\n\
-                /poke or /poke on arms auto-poke and immediately pokes if work remains.\n\
-                /poke off disarms auto-poke and clears any queued poke follow-ups.\n\
-                /poke status shows whether auto-poke is currently armed.\n\
-                If a turn is currently running, the poke is queued and sent right after that turn finishes.\n\
-                Injects a reminder with the number of incomplete todos and prompts the model to either\n\
-                finish the work, update the todo list to reflect what is done, or ask for user input if genuinely blocked."
-            }
             "transfer" => {
                 "/transfer\nCompact the current session into a summary-only handoff, copy the current todo list to a fresh session, and open that transferred session in a new window.\n\nIf a turn is currently running, kcode first soft-pauses the current session at the next safe point, then performs the transfer."
             }

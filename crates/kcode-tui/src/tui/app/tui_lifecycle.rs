@@ -135,7 +135,7 @@ impl App {
     /// `force` is set we wait regardless of the pending message's `auto_retry`
     /// flag and promote it to auto-retry so the tick-based resume re-sends it.
     /// This prevents a transient disconnect from being misclassified as a
-    /// permanent, non-retryable failure that stops auto-poke.
+    /// permanent, non-retryable failure.
     pub(super) fn schedule_pending_remote_network_wait_with_force(
         &mut self,
         reason: &str,
@@ -302,8 +302,8 @@ impl App {
     /// Hard-stop every automatic resend path because the session has hit
     /// repeated credential/auth failures. Retrying the identical request
     /// against a dead credential can never succeed; before this breaker,
-    /// auto-poke/queued-retry loops logged thousands of 401s in a single
-    /// session (one failed turn per resend) until the user noticed.
+    /// queued-retry loops logged thousands of 401s in a single session (one
+    /// failed turn per resend) until the user noticed.
     pub(super) fn trip_credential_failure_breaker(&mut self) {
         let failures = self.consecutive_credential_failures;
         self.clear_pending_remote_retry();

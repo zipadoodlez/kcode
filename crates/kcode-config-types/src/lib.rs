@@ -801,7 +801,6 @@ pub struct KeybindingsConfig {
     pub scroll_prompt_down: String,
     /// Scroll bookmark toggle key (default: "ctrl+g")
     pub scroll_bookmark: String,
-    /// Toggle auto-poke (default: "ctrl+p"). Set "" to disable.
     /// Scroll up fallback key (default: unset; Cmd+K moves up by prompt on macOS)
     pub scroll_up_fallback: String,
     /// Scroll down fallback key (default: unset; Cmd+J moves down by prompt on macOS)

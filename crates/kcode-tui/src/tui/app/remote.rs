@@ -1357,15 +1357,15 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
 /// the starvation watchdog treats it as stranded.
 const QUEUED_FOLLOWUP_STARVATION_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Recover the "👉 Auto-poking: N incomplete todos" + spinner-forever state
-/// where no request is actually in flight.
+/// Recover the queued-follow-up-behind-a-spinner state where no request is
+/// actually in flight.
 ///
-/// `schedule_auto_poke_followup_if_needed` pushes the continuation onto
-/// `queued_messages` and sets `pending_queued_dispatch`. The event loop clears
-/// that flag and calls `process_remote_followups`, which returns early WITHOUT
-/// sending whenever one of its gates is closed (history not loaded, an earlier
-/// pending prompt/split/transfer branch returning first, or `is_processing`
-/// still true from a turn whose terminal event was dropped). The flag is
+/// A continuation is pushed onto `queued_messages` with `pending_queued_dispatch`
+/// set. The event loop clears that flag and calls `process_remote_followups`,
+/// which returns early WITHOUT sending whenever one of its gates is closed
+/// (history not loaded, an earlier pending prompt/split/transfer branch
+/// returning first, or `is_processing` still true from a turn whose terminal
+/// event was dropped). The flag is
 /// already consumed by then, and nothing re-arms it: the follow-up sits in
 /// `queued_messages`, `App::is_processing()` keeps reporting true because the
 /// queue is non-empty, and the spinner spins while the model is idle.
@@ -1886,7 +1886,7 @@ mod stall_guard_tests {
         );
     }
 
-    /// The stranded-auto-poke bug: a continuation sits in `queued_messages`
+    /// The stranded-follow-up bug: a continuation sits in `queued_messages`
     /// with `pending_queued_dispatch` already consumed, so nothing ever sends
     /// it while `is_processing()` (queue-aware) keeps the spinner up.
     #[test]
@@ -1895,7 +1895,7 @@ mod stall_guard_tests {
         app.is_processing = false;
         app.pending_queued_dispatch = false;
         app.queued_messages
-            .push(crate::todo::build_auto_poke_message(2));
+            .push("Continue the work list.".to_string());
 
         // First observation only arms the timer; it must not re-dispatch yet.
         assert!(!detect_starved_queued_followup(&mut app));
@@ -1908,7 +1908,7 @@ mod stall_guard_tests {
         assert!(detect_starved_queued_followup(&mut app));
         assert!(
             app.pending_queued_dispatch,
-            "watchdog must re-arm dispatch so the queued poke is actually sent"
+            "watchdog must re-arm dispatch so the queued follow-up is actually sent"
         );
         assert!(app.queued_followup_starved_since.is_none());
         assert_eq!(
@@ -1928,7 +1928,7 @@ mod stall_guard_tests {
         assert!(app.queued_followup_starved_since.is_none());
 
         // Queued but a turn is in flight: the queue drains at turn end.
-        app.queued_messages.push("poke".to_string());
+        app.queued_messages.push("follow-up".to_string());
         app.is_processing = true;
         app.queued_followup_starved_since =
             Some(Instant::now() - QUEUED_FOLLOWUP_STARVATION_TIMEOUT - Duration::from_secs(1));

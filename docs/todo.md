@@ -35,8 +35,8 @@ conventions. The current project's destination, model and open steps are
 Staged; each lands whole.
 
 - [ ] **Re-core `App`** (`crates/kcode-tui/src/tui/app.rs`), the largest single
-  cost in the tree. State (2026-10-01): `app_fields=188` (310 when this began),
-  `impl_app_blocks=53`, `super_glob_imports=117`, 2,147 lines. Landed: the runtime
+  cost in the tree. State (2026-10-01): `app_fields=182` (310 when this began),
+  `impl_app_blocks=52`, `super_glob_imports=116`, 2,091 lines. Landed: the runtime
   axis, `CopySelection`, `Redraw`, `Viewport`, the side-panel page and decoration,
   `Swarm`, `HotkeyFeedback`, `ReloadState`, `TodosView`, `SplitView`, `Observe`,
   `Catchup`, `RemoteServerInfo`, `RemoteStartup`, `HistoryRecovery`,
@@ -220,7 +220,7 @@ changes are paid for in test churn.
   once: after 0.3, since that is where the row gains its `kind`.
 - [ ] Unknown config keys and sections are silently ignored (`toml::from_str` with no
   `deny_unknown_fields`), so a config keeps dead lines with no warning. First real
-  instance: `auto_poke_toggle`, which dies with the client poke in 0.2.
+  instance: `auto_poke_toggle`, which died with the client poke in 0.2.
 - [ ] A stale explicit key in `config.toml` silently beats a changed compiled
   default, with no migration or warning.
 
