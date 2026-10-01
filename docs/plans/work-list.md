@@ -241,7 +241,7 @@ step is done.
   way, so its answer is noise or a constant high. A human can calibrate it, and that is
   the lever left. What comes back later, if anything, is an engine rule with a signal
   rather than a knob: a node whose first attempt failed or stalled is retried higher, and
-  the ladder is a human's. Both losses are named in `docs/todo.md`.
+  the ladder is a human's.
 
 ### B. The file is the list
 
