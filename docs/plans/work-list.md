@@ -164,7 +164,7 @@ Every step lands whole, proven by the gate. The one `kcode run` probe against it
 own socket waits for the end of the list, where the user runs it, so no step is
 gated on it. Widest shared shape first, so no step sweeps
 call sites a later step reshapes: 0.2 removed the poke the permission replaced, and
-0.3 gives the state one owner so 0.4 can delete the rest.
+0.3 makes the file the seed so 0.4 can delete the plan's durable half.
 
 After that, in the order of the moves: delete (D, the topic channels, the shared
 context, and the member projection written four times), then the re-cores (E, F,
@@ -174,69 +174,71 @@ depends on them, and finishing the model does not need them. Dropping them costs
 duplication they would have removed and nothing else.
 
 **Here is where the work stands**, and a step in flight is finished before a new one
-starts. 0.1's loop, permission and row rung have landed with their tests. 0.2 has
-landed whole and is gone from this list; what it owed is now its own step below,
-after 0.3. Next are 0.1's two riders (the run's bound and the quota projection), and
-then 0.3. Each stage compiles before it is committed (`dev/post-change.md` says which
-check); the full gate runs once, when the step is done.
+starts. 0.1 has landed whole and is gone from this list: the loop, the permission and
+the row rung, each with its tests, and its two riders were cut with the loss named in
+`docs/todo.md`. 0.2 has landed whole too; what it owed is its own step below, after
+0.3. Next is 0.3, staged below. Each stage compiles before it is committed
+(`dev/post-change.md` says which check); the full gate runs once, when the step is
+done.
 
 ### 0. One way work gets done
 
-- [ ] **0.1. The permission's remaining pieces.** The loop and the permission landed
-  2026-10-01, with the proof under a mock provider in `server/tests.rs`; what is left
-  is two riders.
-  - The optional bound, so "work until 07:00" is the run property the model says the
-    default of none is not. The duration parser and the target-wake label are in git
-    history.
-  - The quota-projection warning, built from the existing provider usage reports and
-    printed where the usage snapshot is already rendered.
-  Deferred: a headless member holding the permission inherently goes to 0.3, and the
-  `features.auto_poke` rename goes with the last poke, the command-line one.
-
-- [ ] **0.3. Rows are the run's seed source.** `kind` rides on the row, the node id
-  is the row id, the file's `blocked_by` is the node's dependency edge (rules 6 and
-  7 name it; there is no rename), position is priority, and gates get engine names.
-  Testable against a scratch repo, so it needs no migration. A run whose grant never
-  typed an anchor (a headless member holds the permission inherently) gets one from
-  the seed, written through the tool's own write path, so rule 2 still has one writer.
-- [ ] **0.3's `kind` is the engine's word, stored once on the row.** `bridge.rs`
-  already owns the only vocabulary (`parse_kind` reads it, `kind_str` writes it), so
-  a row holds that word and the store learns no enum and takes no dependency on the
-  engine (rule 5). Today it is on no row at all: it is `NodeMeta.kind`, a side-table
-  keyed by row id (`bridge.rs:100-108` reads it, `:166` writes it), so the file
-  cannot tell a kindless row. `TaskItem` gains `kind: Option<String>`, the `todo`
-  tool accepts it on add/update (the tool is the only writer), and `node_meta.kind`
-  goes. `parse_kind` then stops guessing: it defaults an unknown word to `Explore`,
-  which is what rule 8 forbids, so absent or unrecognised has to mean the row is not
-  seedable. Gate kinds are never typed on a row, since a gate is the one node with
-  no row.
-- [ ] `assigned_to` stays an opaque holder string, with no marker for a person. The
-  mechanism never needs one: a holder naming no live session is never picked by any
-  session, so a person-held row is inert by construction, and a claim whose session
-  died is what `run_plan` already reports as a stall. Only the narration has to tell
-  them apart, and the string is the narration (rule 10).
-- [ ] **0.3 stores no per-node progress.** The one place a run leaves words is the
-  row's `note`, written through the `todo` tool (rule 2). A stalled node is derived
-  from the member activity clock where its marker is rendered, never written to the
-  file, so the plan's progress record carries liveness only.
-- [ ] **0.3 keeps the close's record on the row that owns the work.** Rule 4 already
-  promises it; the file does not keep it, so a finished node exists only in the plan.
-  The close writes its record onto the parent's row, and a run's root-level rows name
-  the anchor as their parent, so every record has a home inside the run's own scope.
-  Then a gate and a composite read the file, nothing durable lives in the run, and
-  0.4 deletes the plan's durable half with the wire node spec. `TaskItem` gains one opaque field, so the store still
-  learns no engine type (rule 5). The close takes the machine-readable parts the
-  gate validates alongside the result (the findings, `what_i_did_not_check` and the
-  confidence), because the tool is the only writer and the gate reads them from the
-  row.
-- [ ] **The command-line poke goes with the rows.** `src/cli/commands.rs`'s
-  `_with_auto_poke` run paths, `run_command_auto_poke_max_turns`, `next_headless_poke`
-  and `incomplete_poke_todos`, plus `build_auto_poke_message` (its last remaining
-  producer) and the `features.auto_poke` rename. It waits for 0.3 because a
-  plan-driven member must not be driven twice and a headless run has no plan until
-  rows seed one. The two poke-named survivors (`is_non_retryable_auto_poke_error`,
-  `is_auto_poke_connectivity_error`) are really turn-error classifiers and rename with
-  it.
+- [ ] **0.3. Rows are the run's seed source.** The `todo` tool's file is what seeds a
+  run: the node id is the row id, `kind` rides on the row, the file's `blocked_by` is
+  the node's dependency edge (rules 6 and 7 name it; there is no rename), position is
+  priority, and gates get engine names. A run whose grant never typed an anchor (a
+  headless member holds the permission inherently) gets one from the seed, written
+  through the tool's own write path, so rule 2 still has one writer. Testable against a
+  scratch repo, so it needs no migration. Stages, in this order, one commit each and
+  each compiling alone: the order is the caller graph, writer before reader, delete
+  last.
+  - **S1. The row carries `kind`.** `TaskItem` gains `kind: Option<String>`
+    (`kcode-task-types/src/lib.rs:203`), and the `todo` tool is its writer: `TodoInput`
+    takes it on add and update, the schema names the six engine words, and the list
+    output shows it. Nothing reads it yet, so `NodeMeta.kind` stays authoritative and
+    the engine does not move.
+  - **S2. The engine's kind is read off the row.** `bridge::to_task_graph`
+    (`kcode-plan/src/bridge.rs:94`) reads `item.kind`, `apply_task_graph` (`:124`)
+    writes it, `upstream_context` (`:191`) names a dependency by its row, and
+    `parse_kind` (`:30`) stops guessing: absent or unrecognised is no kind, which the
+    seed and the lift both read as "not seedable" (rule 8), so it returns
+    `Option<NodeKind>` and `spec_from_wire` (`server/comm_graph.rs:25`) decides what an
+    untyped seed means. Every other `node_meta.kind` reader moves with it:
+    `comm_control.rs:359`, `:377`, `:419`, `:686`, `:948`, `debug_swarm_read.rs`,
+    `swarm_persistence.rs:122`, `:298`, and `scripts/test_dag_live.py:43`.
+  - **S3. `NodeMeta.kind` goes**, with the persistence round-trip
+    (`swarm_persistence.rs:113`, `:281`, `:304`) and the fixtures that build it
+    (`bridge.rs` tests, `swarm_persistence_tests.rs:470`), since its last caller is
+    gone. `parse_kind`/`kind_str` stay: they are what reads and writes a row's word.
+  - **S4. The seed is the rows the run holds.** The seed path - `swarm run_plan`'s
+    `nodes`, `CommSeedGraph`, `handle_comm_seed_graph` (`comm_graph.rs:221`) - takes its
+    nodes from the file: id = row id, content = the row's words, kind = the row's kind,
+    `depends_on` = `blocked_by`, and the priority rank is the row's position. A gate is
+    the one node with no row, so its id and kind are engine names. A run whose grant
+    typed no anchor gets one here, through the store's write path (`todo::anchor_run`
+    already writes a named row or a fresh anchor).
+  - **S5. A close keeps its record on the row that owns the work.** `TaskItem` gains
+    one opaque field, `records`: the closes of the work done under this row. The close
+    writes a node's record onto its parent's row, and it takes the machine-readable
+    parts the gate validates (findings, `what_i_did_not_check` and the confidence)
+    alongside the result, because the gate reads them from the row. One write path, two
+    callers: the `todo` tool's close and the engine's `complete_node` (`comm_graph.rs:409`).
+  - **S6. The command-line poke goes.** `src/cli/commands.rs`: the `_with_auto_poke`
+    run paths (`:737`, `:773`) and the ndjson path that pokes too (`:817`),
+    `run_command_auto_poke_max_turns` (`:662`), `next_headless_poke` (`:704`),
+    `incomplete_poke_todos` (`:689`), and `build_auto_poke_message` (its last producer,
+    `kcode-base/src/todo.rs:54`); plus the `features.auto_poke` rename
+    (`kcode-config-types/src/lib.rs:930`). It waits for S4: a plan-driven member must
+    not be driven twice, and a headless run has no plan until rows seed one. The two
+    poke-named survivors (`is_non_retryable_auto_poke_error`,
+    `is_auto_poke_connectivity_error`, in `commands_auto_poke_errors.rs`) are really
+    turn-error classifiers and rename with it.
+  - Not stages, because no code moves with them: `assigned_to` stays an opaque holder
+    string (a holder naming no live session is never picked, so a person-held row is
+    inert by construction, and a claim whose session died is what `run_plan` already
+    reports as a stall), and no per-node progress is stored (the one place a run leaves
+    words is the row's `note`, and a stalled node is derived from the member activity
+    clock where its marker renders).
 - [ ] **0.4. The cuts the run makes redundant**: the wire node spec, the plan's
   durable per-node state (`node_meta`, 90 sites in 19 files, and `task_progress`),
   the persisted plan itself (`swarm_persistence.rs`, 650 lines plus 1,218 of tests;
@@ -246,8 +248,9 @@ check); the full gate runs once, when the step is done.
   thing blocks the `node_meta` half: `is_gate` lives there and a gate is the one node
   with no row, so the step first settles whether a gate is re-derived per run from
   `requires_gates`, with nothing durable, or carried in the file. `parent` duplicates
-  the row already, and `expanded`, `planner` and `origin` are run state. `parse_kind`/`kind_str` stay, since they
-  are what reads a row's kind. The deep/light flag is not residue,
+  the row already, and `expanded`, `planner` and `origin` are run state.
+  `parse_kind`/`kind_str` stay, since they are what reads and writes a row's word.
+  The deep/light flag is not residue,
   as `internals/swarm.md` says: there is no `Mode::is_deep`, and `requires_gates`
   guards gate insertion (`kcode-plan/src/dag/ops.rs:67`, `:308`), gate-pass
   validation (`:401`) and artifact validation (`:709`), while

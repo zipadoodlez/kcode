@@ -6,7 +6,7 @@ conventions. The current project's destination, model and open steps are
 
 ## 1. Shared shapes
 
-- [ ] **Condense swarm/comm** (`plans/work-list.md` steps 0.3 and 0.4): the state
+- [ ] **Condense swarm/comm** (`plans/work-list.md` step 0.4): the state
   gets one owner instead of being rebuilt at 31 sites, and membership is derived
   from the file rather than stored, so the swarm id and the coordinator map go.
   Design and measurements: `plans/work-list.md`; engine: `internals/swarm.md`. Do
@@ -228,8 +228,20 @@ changes are paid for in test churn.
 
 ## Anytime
 
-- [ ] **(decision)** Two of the four things the overnight run had are still unplaced;
-  the other two went back onto the permission in `plans/work-list.md` 0.1.
+- [ ] **(decision)** What the overnight run had, and where it went. Two of its parts
+  are still unplaced; the two that went back onto the permission in
+  `plans/work-list.md` 0.1 were cut when 0.1 landed, and are kept here because a
+  loss is named and never silent.
+  - **The run's bound.** "work until 07:00" was the run property the model names, and
+    its duration parser and target-wake label are in git history (`fb2b7737` deleted
+    `kcode-overnight-core`). Cut because a run already stops when its scope has no
+    ready row, so a wall-clock stop was a second stop with no caller. Add when "keep
+    going for two hours" is wanted more than the list draining.
+  - **The quota-projection warning.** It would read the existing provider usage
+    reports and print where the usage snapshot already renders (`info_widget_usage.rs`,
+    `usage_overlay.rs`). Cut because it changed no behavior: the run's own usage
+    already shows the cost, and a warning with no action is surface. Add when a run
+    can act on it, by throttling or stopping.
   - **A resource snapshot.** Battery, memory, disk and load: ~200 lines of /proc and
     sysfs readers that were only ever displayed, never acted on. Worth keeping only
     if something acts, so throttle or stop on battery and refuse a run with no disk.
