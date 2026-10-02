@@ -194,20 +194,21 @@ was 0.3's last stage, and the two losses 0.1 and 0.3 named are in `docs/todo.md`
 gate stage (0.4a), row stage (0.4c), one-mode stage (0.4b), node-meta stage (0.4d),
 liveness stage (0.4e) and 0.4f have landed: the plan's items are the file's open rows,
 the holder and the artifact live where the list is, and a turn end is a close. **0.4g's
-g1-g4 have landed** (no version, no participant list, no durable plan, no item cache, no
-reclaim cap, and no stored membership: a run keeps one sparse status per row, reads
-everything else from the list, and derives who is in it), so what is left of 0.4g is
-**g5, the verb set**. 0.4f's one build + full test pass ran with it (three pre-existing
-`session_flow` e2e failures, recorded in `docs/todo.md`).
+g1-g5 have landed** (no version, no participant list, no durable plan, no item cache,
+no reclaim cap, no stored membership, and one act where seven handoff verbs were: a run
+keeps one sparse status per row, reads everything else from the list, derives who is in
+it, and closes only the rows it holds). **0.4g is whole, and 0.4 with it.** 0.4f's one
+build + full test pass ran with it (three pre-existing `session_flow` e2e failures,
+recorded in `docs/todo.md`).
 
 ### 0. One way work gets done
 
-- [ ] **0.4. The cuts the run makes redundant.** Landed except 0.4g, stage by stage in
+- [x] **0.4. The cuts the run makes redundant.** Landed whole, stage by stage in
   git: the gate and the deep/light axis, the row model, one spawn level, the growth
   report, liveness on the member's clock, and `VersionedPlan` becoming a view of the
   file (0.4f: the holder and the artifact live where the list is, a turn end is a
-  close, and the engine carries no artifact). Losses are in `docs/todo.md`. What is
-  left is 0.4g:
+  close, and the engine carries no artifact), and 0.4g below. Losses are in
+  `docs/todo.md`.
   - **0.4g. The swarm state gets one owner.** One step, five commits, one gate, decided
     2026-10-02. All four questions are answered: the plan object goes; per-row run state
     lives in memory on the runtime owner; a claim is a lock for a run and not for the
@@ -277,14 +278,27 @@ everything else from the list, and derives who is in it), so what is left of 0.4
        Rows under the anchor stay what they already were: the run's scope (`swarm_rows`).
        Measured: 95 files, +887/-3554 lines; no `VersionedPlan`, no `swarms_by_id`, no
        `coordinators`, and no `SwarmState { .. }` literal survives.
-    5. **g5. The verb set** (behavior boundary: the user's levers). One guard: a run
-       refuses to work a row whose `assigned_to` is not itself, checked in the run's row
-       write, since `claim_row_on_disk`/`close_row` (`kcode-base/src/todo.rs`) ignore the
-       caller's `session_id` today and a close on a moved row already errors. Delete the
-       live-holder guard (`comm_control.rs:2195`), `task_control_action_allows_status`,
-       `task_control_status_error` and the seven `TaskControlAction` variants;
-       `assign_task` (the takeover, for a session with a client), `retry` and the
-       session levers that already exist (message, stop, wake) remain.
+    5. **g5. The verb set** (behavior boundary: the user's levers). Landed. One guard,
+       one line: `close_row_on_disk` (`kcode-base/src/todo.rs`) refuses a row whose
+       `assigned_to` is not the caller, so a turn that ends after its row moved is
+       refused rather than closing work that is no longer its own. The person's path is
+       a different function (the `todo` tool closes in memory), so it still closes
+       anything. Deleted: `TaskControlAction` and its seven variants, both status
+       tables, the target-resolution helper, `RestartInstructionPrefix`'s texts,
+       `build_control_assignment_text`, `handle_comm_task_control` and its helpers
+       (`task_snapshot_for`, `task_id_for_target_session`, `requeue_existing_assignment`,
+       `TaskSnapshot`, `plan_graph_status_for`, `active_swarm_member`,
+       `task_agent_session`, `format_salvage_message`), `Request::CommTaskControl` and
+       `CommTaskControlResponse` with both dispatch arms, the double-assignment refusal
+       (`active_assignment_conflict`/`active_assignment_error`), the five tool actions
+       (`start`, `start_task`, `resume`, `reassign`, `replace`, `salvage`), the dead
+       `requeue_failed` DAG op, and the TUI's action names for them.
+       Two refinements of the decision, both in `docs/todo.md`: the takeover is gated on
+       `swarm_is_root` (the 0.4b derivation) rather than on "a session with a client",
+       since a headless root reaches only its own run's rows either way; and `retry`/`wake`
+       are the assign request with a fixed sentence, carrying a `redispatch` flag so the
+       replay layer cannot answer a deliberate retry from the record of the last one.
+       `require_plan_driver_swarm` became `require_run_root`, which now checks something.
     Then the gate: one build and the full suite for 0.4f's tail and g1-g5, with the
     three known `session_flow` failures recorded.
   `parse_kind`/`kind_str` stay, since they are what reads and writes a row's word.

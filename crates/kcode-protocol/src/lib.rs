@@ -596,7 +596,6 @@ impl Request {
             Request::CommPlanStatus { id, .. } => *id,
             Request::CommAssignTask { id, .. } => *id,
             Request::CommAssignNext { id, .. } => *id,
-            Request::CommTaskControl { id, .. } => *id,
             Request::CommSubscribeChannel { id, .. } => *id,
             Request::CommUnsubscribeChannel { id, .. } => *id,
             Request::CommAwaitMembers { id, .. } => *id,
@@ -628,7 +627,6 @@ impl Request {
                 | Request::CommResyncPlan { .. }
                 | Request::CommAssignTask { .. }
                 | Request::CommAssignNext { .. }
-                | Request::CommTaskControl { .. }
                 | Request::CommSubscribeChannel { .. }
                 | Request::CommUnsubscribeChannel { .. }
                 | Request::CommAwaitMembers { .. }

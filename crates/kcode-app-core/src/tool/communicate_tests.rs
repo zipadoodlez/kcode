@@ -1163,18 +1163,6 @@ fn schema_advertises_supported_swarm_fields() {
         schema["properties"]["action"]["enum"]
             .as_array()
             .expect("action enum")
-            .contains(&json!("start"))
-    );
-    assert!(
-        schema["properties"]["action"]["enum"]
-            .as_array()
-            .expect("action enum")
-            .contains(&json!("start_task"))
-    );
-    assert!(
-        schema["properties"]["action"]["enum"]
-            .as_array()
-            .expect("action enum")
             .contains(&json!("assign_next"))
     );
     assert!(
@@ -1194,12 +1182,6 @@ fn schema_advertises_supported_swarm_fields() {
             .as_array()
             .expect("action enum")
             .contains(&json!("cleanup"))
-    );
-    assert!(
-        schema["properties"]["action"]["enum"]
-            .as_array()
-            .expect("action enum")
-            .contains(&json!("salvage"))
     );
 }
 

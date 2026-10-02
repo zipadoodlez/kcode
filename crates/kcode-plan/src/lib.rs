@@ -83,44 +83,6 @@ pub fn is_runnable_status(status: &str) -> bool {
     matches!(status, "queued" | "ready" | "pending" | "todo")
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TaskControlAction {
-    Start,
-    Wake,
-    Resume,
-    Retry,
-    Reassign,
-    Replace,
-    Salvage,
-}
-
-impl TaskControlAction {
-    pub fn parse(action: &str) -> Option<Self> {
-        match action {
-            "start" => Some(Self::Start),
-            "wake" => Some(Self::Wake),
-            "resume" => Some(Self::Resume),
-            "retry" => Some(Self::Retry),
-            "reassign" => Some(Self::Reassign),
-            "replace" => Some(Self::Replace),
-            "salvage" => Some(Self::Salvage),
-            _ => None,
-        }
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Start => "start",
-            Self::Wake => "wake",
-            Self::Resume => "resume",
-            Self::Retry => "retry",
-            Self::Reassign => "reassign",
-            Self::Replace => "replace",
-            Self::Salvage => "salvage",
-        }
-    }
-}
-
 pub fn combine_assignment_text(content: &str, message: Option<&str>) -> String {
     if let Some(extra) = message {
         format!(
@@ -129,81 +91,6 @@ pub fn combine_assignment_text(content: &str, message: Option<&str>) -> String {
         )
     } else {
         content.to_string()
-    }
-}
-
-fn restart_instruction_prefix(action: TaskControlAction) -> Option<&'static str> {
-    match action {
-        TaskControlAction::Resume => Some(
-            "Resume your assigned task from the current session context and continue the work.",
-        ),
-        TaskControlAction::Retry => {
-            Some("Retry your assigned task. Fix any earlier issues and continue toward completion.")
-        }
-        _ => None,
-    }
-}
-
-pub fn build_control_assignment_text(
-    action: TaskControlAction,
-    content: &str,
-    message: Option<&str>,
-) -> String {
-    let mut parts = Vec::new();
-    if let Some(prefix) = restart_instruction_prefix(action) {
-        parts.push(prefix.to_string());
-    }
-    parts.push(content.to_string());
-    if let Some(extra) = message {
-        parts.push(format!("Additional coordinator instructions:\n{}", extra));
-    }
-    parts.join("\n\n")
-}
-
-pub fn task_control_action_allows_status(action: TaskControlAction, status: &str) -> bool {
-    match action {
-        TaskControlAction::Start | TaskControlAction::Wake => status == "queued",
-        TaskControlAction::Resume => matches!(status, "queued" | "running"),
-        TaskControlAction::Retry => status == "failed",
-        // A completed node must never be reopened by handoff actions:
-        // complete_node persists "completed" (not just "done"), and reassigning
-        // it would re-queue finished work and clobber its artifact.
-        TaskControlAction::Reassign | TaskControlAction::Replace | TaskControlAction::Salvage => {
-            !is_completed_status(status)
-        }
-    }
-}
-
-pub fn task_control_status_error(action: TaskControlAction, status: &str, task_id: &str) -> String {
-    match action {
-        TaskControlAction::Start => format!(
-            "Task '{}' is '{}' and cannot be started. Use start only for queued assignments.",
-            task_id, status
-        ),
-        TaskControlAction::Wake => format!(
-            "Task '{}' is '{}' and cannot be woken. Use wake only for queued assignments.",
-            task_id, status
-        ),
-        TaskControlAction::Resume => format!(
-            "Task '{}' is '{}' and cannot be resumed safely.",
-            task_id, status
-        ),
-        TaskControlAction::Retry => format!(
-            "Task '{}' is '{}' and cannot be retried. Retry is only for failed or stale work.",
-            task_id, status
-        ),
-        TaskControlAction::Reassign => format!(
-            "Task '{}' is already complete. Reassign unfinished work instead.",
-            task_id
-        ),
-        TaskControlAction::Replace => format!(
-            "Task '{}' is already complete. Replace is only for unfinished work.",
-            task_id
-        ),
-        TaskControlAction::Salvage => format!(
-            "Task '{}' is already complete. Salvage is only for unfinished or failed work.",
-            task_id
-        ),
     }
 }
 
@@ -439,10 +326,9 @@ pub fn next_held_runnable_item_id(
 /// The highest-priority runnable (ready) item that is *stranded*: it carries an
 /// assignment, but the assignee is dead per `assignee_is_dead` (terminal
 /// lifecycle status or no longer a swarm member). Such items are invisible to
-/// [`next_handover_runnable_item_id`] (which requires nobody else to hold it),
-/// which is how `task_control retry` against a dead worker used to strand a
-/// Ready node: retry keeps the assignee, the re-dispatch dies with the session,
-/// and automatic assignment skips the node forever. A row that keeps killing its
+/// [`next_handover_runnable_item_id`] (which requires nobody else to hold it), so
+/// a row re-dispatched to a session that then died sits assigned to nobody who can
+/// work it and automatic assignment skips it forever. A row that keeps killing its
 /// workers is not bounded here: releasing the claim is the whole recovery, and the
 /// loop that repeats the work owns the bound.
 pub fn next_stranded_runnable_item_id(
@@ -460,46 +346,6 @@ pub fn next_stranded_runnable_item_id(
             };
             assignee_is_dead(assignee)
         })
-}
-
-pub fn task_control_target_item_id(
-    items: &[TaskItem],
-    target_session: &str,
-    action: TaskControlAction,
-) -> Result<String, String> {
-    let mut candidates: Vec<&TaskItem> = items
-        .iter()
-        .filter(|item| item.assigned_to.as_deref() == Some(target_session))
-        .filter(|item| task_control_action_allows_status(action, &item.status))
-        .collect();
-
-    candidates.sort_by_key(|item| match item.status.as_str() {
-        "running" => 0,
-        "queued" | "ready" | "pending" | "todo" => 1,
-        "failed" | "stopped" | "crashed" => 2,
-        "completed" | "done" => 3,
-        _ => 4,
-    });
-
-    match candidates.as_slice() {
-        [] => Err(format!(
-            "No task assigned to '{}' can be {}. Provide task_id explicitly, or assign a task first.",
-            target_session,
-            action.as_str()
-        )),
-        [item] => Ok(item.id.clone()),
-        [first, second, ..] if first.status != second.status => Ok(first.id.clone()),
-        _ => Err(format!(
-            "Multiple tasks assigned to '{}' can be {}: {}. Provide task_id explicitly.",
-            target_session,
-            action.as_str(),
-            candidates
-                .iter()
-                .map(|item| item.id.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )),
-    }
 }
 
 pub fn explicit_task_blocked_reason(items: &[TaskItem], task_id: &str) -> Option<String> {
@@ -744,41 +590,6 @@ mod tests {
 
         assert_eq!(next_runnable_item_ids(&items, None), vec!["a", "b", "c"]);
         assert_eq!(next_runnable_item_ids(&items, Some(2)), vec!["a", "b"]);
-    }
-
-    #[test]
-    fn task_control_target_prefers_active_assignment_and_rejects_ambiguous_matches() {
-        let items = vec![
-            TaskItem {
-                assigned_to: Some("agent-a".to_string()),
-                ..item("queued", "queued", &[])
-            },
-            TaskItem {
-                assigned_to: Some("agent-a".to_string()),
-                ..item("running", "running", &[])
-            },
-        ];
-
-        assert_eq!(
-            task_control_target_item_id(&items, "agent-a", TaskControlAction::Resume),
-            Ok("running".to_string())
-        );
-
-        let ambiguous = vec![
-            TaskItem {
-                assigned_to: Some("agent-a".to_string()),
-                ..item("one", "queued", &[])
-            },
-            TaskItem {
-                assigned_to: Some("agent-a".to_string()),
-                ..item("two", "queued", &[])
-            },
-        ];
-        assert!(
-            task_control_target_item_id(&ambiguous, "agent-a", TaskControlAction::Start)
-                .unwrap_err()
-                .contains("Multiple tasks")
-        );
     }
 
     #[test]

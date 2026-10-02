@@ -33,6 +33,7 @@ async fn assign_task_without_task_id_picks_highest_priority_runnable_task() {
         Some(worker.to_string()),
         None,
         Some("Pick the next task".to_string()),
+        false,
         &client_tx,
         &sessions,
         &soft_interrupt_queues,
@@ -42,8 +43,7 @@ async fn assign_task_without_task_id_picks_highest_priority_runnable_task() {
         &event_history,
         &event_counter,
         &swarm_event_tx,
-        &mutation_runtime,
-    )
+        &mutation_runtime)
     .await;
 
     let response = client_rx.recv().await.expect("response");
@@ -115,6 +115,7 @@ async fn assign_task_marks_completed_worker_queued_before_returning() {
         Some(worker.to_string()),
         Some("next".to_string()),
         None,
+        false,
         &client_tx,
         &sessions,
         &soft_interrupt_queues,
@@ -124,8 +125,7 @@ async fn assign_task_marks_completed_worker_queued_before_returning() {
         &event_history,
         &event_counter,
         &swarm_event_tx,
-        &mutation_runtime,
-    )
+        &mutation_runtime)
     .await;
 
     match client_rx.recv().await.expect("response") {
@@ -189,6 +189,7 @@ async fn a_dispatch_refuses_a_row_the_list_does_not_have() {
         Some(worker.to_string()),
         Some("ghost".to_string()),
         None,
+        false,
         &client_tx,
         &sessions,
         &soft_interrupt_queues,
@@ -198,8 +199,7 @@ async fn a_dispatch_refuses_a_row_the_list_does_not_have() {
         &event_history,
         &event_counter,
         &swarm_event_tx,
-        &mutation_runtime,
-    )
+        &mutation_runtime)
     .await;
 
     match client_rx.recv().await.expect("response") {
@@ -263,6 +263,7 @@ async fn a_dispatched_turn_closes_its_row() {
         Some(worker.to_string()),
         Some("work".to_string()),
         None,
+        false,
         &client_tx,
         &sessions,
         &soft_interrupt_queues,
@@ -272,8 +273,7 @@ async fn a_dispatched_turn_closes_its_row() {
         &event_history,
         &event_counter,
         &swarm_event_tx,
-        &mutation_runtime,
-    )
+        &mutation_runtime)
     .await;
     // The dispatch answers before its turn has finished; drain it so the turn's own
     // events do not accumulate.

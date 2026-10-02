@@ -268,28 +268,6 @@ pub fn fail_node(graph: &mut TaskGraph, node_id: &str, actor: &str) -> Result<()
     Ok(())
 }
 
-/// Re-queue a failed node so it can be dispatched again (the retry path). The
-/// owner is cleared: the retry may go to any worker. This is the engine-level
-/// counterpart of the live `task_control retry` action, because `deps_satisfied`
-/// requires `Done` and every other mutation requires `Running`.
-pub fn requeue_failed(graph: &mut TaskGraph, node_id: &str) -> Result<(), DagError> {
-    let node = graph
-        .get(node_id)
-        .ok_or_else(|| DagError::UnknownNode(node_id.to_string()))?;
-    if node.status != NodeStatus::Failed {
-        return Err(DagError::InvalidState {
-            node: node_id.to_string(),
-            status: node.status,
-        });
-    }
-    let node = graph
-        .get_mut(node_id)
-        .ok_or_else(|| DagError::UnknownNode(node_id.to_string()))?;
-    node.status = NodeStatus::Queued;
-    node.owner = None;
-    Ok(())
-}
-
 /// Validate that a spec carries an explicit, non-blank id and return it. A
 /// missing id is a misuse; an empty/whitespace id would corrupt id-based
 /// lookups and edge references just like a duplicate would.

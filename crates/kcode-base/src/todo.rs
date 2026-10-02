@@ -299,6 +299,11 @@ pub fn close_row(
 /// This is the second caller's half of rule 2. The `todo` tool closes a row it
 /// already holds in memory; the plan engine closes a node whose row is only in the
 /// file, and both go through the same rules and the same write.
+///
+/// A run works the rows it holds, so a run closes only a row that names nobody or
+/// names it: the user's session takes any row by writing it, and a row that moved
+/// mid-turn is no longer the moved-from turn's to finish. The in-memory close the
+/// `todo` tool uses has no such check, because that *is* the person taking the row.
 pub fn close_row_on_disk(
     working_dir: Option<&Path>,
     session_id: &str,
@@ -307,6 +312,14 @@ pub fn close_row_on_disk(
     artifact: Option<serde_json::Value>,
 ) -> Result<Vec<TaskItem>> {
     let mut rows = load_tasks(working_dir, session_id)?;
+    if let Some(row) = rows.iter().find(|row| row.id == id)
+        && let Some(holder) = row.assigned_to.as_deref()
+        && holder != session_id
+    {
+        bail!(
+            "task {id:?} is held by {holder}, not {session_id}; a run closes only the rows it holds"
+        );
+    }
     let before: std::collections::HashMap<String, TaskItem> = rows
         .iter()
         .map(|row| (row.id.clone(), row.clone()))
@@ -612,6 +625,44 @@ mod tests {
         );
         assert_eq!(fresh.assigned_to.as_deref(), Some("me"));
         assert_eq!(load_tasks(Some(&repo), "me").expect("read").len(), 2);
+
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    /// A run closes only the rows it holds: a row that moved to another session
+    /// mid-turn is refused, and the row stays open for whoever holds it now.
+    #[test]
+    fn a_run_closes_only_a_row_it_still_holds() {
+        let repo = scratch_repo("close-holder");
+        let row = TaskItem {
+            id: "t1".to_string(),
+            content: "work".to_string(),
+            assigned_to: Some("worker".to_string()),
+            ..Default::default()
+        };
+        save_tasks(Some(&repo), "me", &[row]).expect("write the work list");
+
+        let err = close_row_on_disk(Some(&repo), "moved-away", "t1", "done: x", None).unwrap_err();
+        assert!(
+            err.to_string().contains("held by worker"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(
+            load_tasks(Some(&repo), "me").expect("read").len(),
+            1,
+            "a refused close leaves the row open"
+        );
+
+        // The holder closes it, and a row nobody holds is anybody's to close.
+        close_row_on_disk(
+            Some(&repo),
+            "worker",
+            "t1",
+            "done: the work is in commit abc",
+            None,
+        )
+        .expect("the holder closes its own row");
+        assert!(load_tasks(Some(&repo), "me").expect("read").is_empty());
 
         let _ = std::fs::remove_dir_all(&repo);
     }

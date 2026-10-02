@@ -257,39 +257,6 @@ fn test_comm_await_members_response_roundtrip() -> Result<()> {
 }
 
 #[test]
-fn test_comm_task_control_roundtrip() -> Result<()> {
-    let req = Request::CommTaskControl {
-        id: 58,
-        session_id: "sess_coord".to_string(),
-        action: "salvage".to_string(),
-        task_id: "task_42".to_string(),
-        target_session: Some("sess_replacement".to_string()),
-        message: Some("Recover partial progress first.".to_string()),
-    };
-    let json = serde_json::to_string(&req)?;
-    assert!(json.contains("\"type\":\"comm_task_control\""));
-    let decoded = parse_request_json(&json)?;
-    assert_eq!(decoded.id(), 58);
-    let Request::CommTaskControl {
-        session_id,
-        action,
-        task_id,
-        target_session,
-        message,
-        ..
-    } = decoded
-    else {
-        return Err(anyhow!("expected CommTaskControl"));
-    };
-    assert_eq!(session_id, "sess_coord");
-    assert_eq!(action, "salvage");
-    assert_eq!(task_id, "task_42");
-    assert_eq!(target_session.as_deref(), Some("sess_replacement"));
-    assert_eq!(message.as_deref(), Some("Recover partial progress first."));
-    Ok(())
-}
-
-#[test]
 fn test_comm_assign_task_roundtrip_without_explicit_task_id() -> Result<()> {
     let req = Request::CommAssignTask {
         id: 57,
@@ -297,10 +264,22 @@ fn test_comm_assign_task_roundtrip_without_explicit_task_id() -> Result<()> {
         target_session: None,
         task_id: None,
         message: Some("Take the next highest-priority runnable task.".to_string()),
+        redispatch: false,
     };
     let json = serde_json::to_string(&req)?;
     assert!(json.contains("\"type\":\"comm_assign_task\""));
     assert!(!json.contains("\"task_id\""));
+    // A plain assignment may be answered from the record; a retry may not.
+    assert!(!json.contains("\"redispatch\""));
+    let retry = Request::CommAssignTask {
+        id: 58,
+        session_id: "sess_coord".to_string(),
+        target_session: Some("sess_worker".to_string()),
+        task_id: Some("task-1".to_string()),
+        message: None,
+        redispatch: true,
+    };
+    assert!(serde_json::to_string(&retry)?.contains("\"redispatch\":true"));
     let decoded = parse_request_json(&json)?;
     assert_eq!(decoded.id(), 57);
     let Request::CommAssignTask {

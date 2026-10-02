@@ -343,6 +343,7 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
         Some(fx.worker.clone()),
         Some("api".to_string()),
         None,
+        false,
         &fx.client_tx,
         &fx.sessions,
         &fx.soft_interrupt_queues,
@@ -352,8 +353,7 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
         &fx.event_history,
         &fx.event_counter,
         &fx.swarm_event_tx,
-        &fx.mutation_runtime,
-    )
+        &fx.mutation_runtime)
     .await;
     fx.set_row("api", Some(&fx.worker.clone()), "running");
 
@@ -414,6 +414,7 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
         Some(fx.worker.clone()),
         Some("ui".to_string()),
         None,
+        false,
         &fx.client_tx,
         &fx.sessions,
         &fx.soft_interrupt_queues,
@@ -423,8 +424,7 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
         &fx.event_history,
         &fx.event_counter,
         &fx.swarm_event_tx,
-        &fx.mutation_runtime,
-    )
+        &fx.mutation_runtime)
     .await;
 
     // The dispatched row's holder is in the list, where a claim is written.

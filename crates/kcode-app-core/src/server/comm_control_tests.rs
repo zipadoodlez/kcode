@@ -1,4 +1,4 @@
-use super::{handle_comm_assign_next, handle_comm_assign_task, handle_comm_task_control};
+use super::{handle_comm_assign_next, handle_comm_assign_task};
 use crate::agent::Agent;
 use crate::message::{Message, StreamEvent, ToolDefinition};
 use crate::plan::TaskItem;
@@ -181,10 +181,10 @@ use crate::protocol::SwarmLifecycleStatus;
 include!("comm_control_tests/assign_task.rs");
 include!("comm_control_tests/assign_blocked.rs");
 include!("comm_control_tests/assign_double.rs");
+include!("comm_control_tests/retry_redispatch.rs");
 include!("comm_control_tests/assign_ready_agent.rs");
 include!("comm_control_tests/assign_handback.rs");
 include!("comm_control_tests/assign_busy_skip.rs");
-include!("comm_control_tests/task_control.rs");
 include!("comm_control_tests/assign_next_dependency.rs");
 include!("comm_control_tests/assign_next_metadata.rs");
 include!("comm_control_tests/await_late_joiners.rs");

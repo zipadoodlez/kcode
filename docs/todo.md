@@ -427,6 +427,27 @@ changes are paid for in test churn.
   `reassign` is it outright, and `salvage`'s prior tool-call summaries belong in the
   row's `note`, so all five go, along with the seven `TaskControlAction` variants and
   their status tables; a displaced holder is no longer told to stand down.
+  Landed as g5, with two refinements. The takeover is gated on `swarm_is_root` rather
+  than on "a session with a client": the run root is the 0.4b derivation, and a headless
+  root reaches only its own run's rows either way, so a client check would rule out
+  nothing and add a predicate. And `retry`/`wake` land as the assign request with a fixed
+  sentence, carrying a `redispatch` flag: the replay layer must not answer a deliberate
+  retry from the record of the last one, which is what the deleted retry pinned. Also
+  lost with the family: the status gate that refused a retry on a row that was not failed
+  (rule 9: the check is a rule, not a field), the busy-agent refusals that told the caller
+  to wake or stop instead, and the plan-summary tail on a task-control response. What
+  stays and now covers the same ground: the reclaim sweep for a dead holder, the picker's
+  hand-back to a holder that can still work, and the row's own `note`.
+- [ ] **(braid)** Releasing a dead holder's rows is written twice, at two clocks.
+  `next_dispatch` (`server/comm_control.rs`) releases a stranded row when a run wants
+  work, reading liveness as "dead status or no longer a member"; the periodic sweep
+  (`salvage_dead_assignees`, `server/swarm.rs`) does the same thing after a grace period
+  and also notifies the run's root. The sweep's own comment calls itself "the eager
+  counterpart to the assign-time stranded-row reclaim", so the codebase knows. The tool
+  action `salvage` was a third writer of the same fact; g5 deleted it. Unifying the two
+  changes *when* a row is reclaimed (grace or not, dispatch or clock), which is a liveness
+  boundary and not a verb one, so it is not g5's call. Split when a liveness change is in
+  scope: one predicate (`assignee_is_dead` with its grace) used by both callers.
 - [ ] Not every color derives from a role: `configured_native_color`
   (`kcode-tui-style/src/palette.rs`) attributes a shade to a role only when it
   equals that role's default, so hardcoded `Color::Rgb(...)` shades pass through

@@ -268,7 +268,7 @@ async fn stop_swarm_sessions(
 /// were stopped.
 ///
 /// Tradeoff: a stopped `ready` worker may have been the holder of a composite
-/// whose synthesis step would otherwise be handed back to it. The salvage sweep
+/// whose synthesis step would otherwise be handed back to it. The reclaim sweep
 /// frees that row once the member is gone, and assignment falls back to a fresh
 /// or other eligible worker, which is an acceptable degradation when the
 /// alternative is aborting the run at the member cap.
@@ -947,7 +947,7 @@ fn format_run_plan_terminal_summary(
     );
     if !summary.failed_ids.is_empty() {
         output.push_str(&format!(
-            "\nFailed nodes: {}. This run did NOT finish cleanly; inspect them with `swarm plan_status` and retry or salvage before trusting the result.",
+            "\nFailed nodes: {}. This run did NOT finish cleanly; inspect them with `swarm plan_status` and retry the rows before trusting the result.",
             summary.failed_ids.join(", ")
         ));
         // Recorded failure reasons make the summary self-explanatory: a wave
@@ -1445,6 +1445,7 @@ async fn assign_task_to_session(
         target_session: Some(target_session.clone()),
         task_id: params.task_id.clone(),
         message: params.message.clone(),
+        redispatch: false,
     };
 
     match send_request(retry_request).await {
@@ -1812,6 +1813,51 @@ fn canonical_swarm_action(action: &str) -> &str {
     }
 }
 
+/// The row a retry or a wake acts on, and whoever holds it.
+///
+/// A retry goes back to the same assignee, so the holder is read from the list: the
+/// row itself names who owes the work. `task_id` names the row; `target_session`
+/// names the holder, and then that session must hold exactly one open row. The two
+/// are the same read, because the caller's session's list is the list the run works.
+fn held_row(
+    ctx: &ToolContext,
+    task_id: Option<&str>,
+    target_session: Option<&str>,
+) -> Result<(String, String)> {
+    fn trimmed(value: Option<&str>) -> Option<&str> {
+        value.map(str::trim).filter(|value| !value.is_empty())
+    }
+
+    let rows = crate::todo::load_tasks(ctx.working_dir.as_deref(), &ctx.session_id)?;
+    if let Some(task_id) = trimmed(task_id) {
+        let row = rows.iter().find(|row| row.id == task_id).ok_or_else(|| {
+            anyhow::anyhow!(
+                "no task {task_id:?}; open ids: {}",
+                crate::todo::open_ids(&rows)
+            )
+        })?;
+        let holder = row.assigned_to.clone().ok_or_else(|| {
+            anyhow::anyhow!(
+                "task {task_id:?} has no assignee; use assign_task to create the first assignment"
+            )
+        })?;
+        return Ok((task_id.to_string(), holder));
+    }
+
+    let Some(target) = trimmed(target_session) else {
+        return Err(anyhow::anyhow!("'task_id' or 'target_session' is required"));
+    };
+    let mut held = rows
+        .iter()
+        .filter(|row| row.assigned_to.as_deref() == Some(target));
+    let (Some(row), None) = (held.next(), held.next()) else {
+        return Err(anyhow::anyhow!(
+            "'{target}' must hold exactly one open task to retry or wake; pass task_id"
+        ));
+    };
+    Ok((row.id.clone(), target.to_string()))
+}
+
 #[async_trait]
 impl Tool for CommunicateTool {
     fn name(&self) -> &str {
@@ -1834,7 +1880,7 @@ impl Tool for CommunicateTool {
                              "spawn", "stop",
                              "status", "report", "plan_status", "summary", "read_context", "resync_plan", "assign_task", "assign_next", "fill_slots", "run_plan", "cleanup",
                              "task_graph", "expand_node", "complete_node",
-                             "start", "start_task", "wake", "resume", "retry", "reassign", "replace", "salvage",
+                             "retry", "wake",
                              "subscribe_channel", "unsubscribe_channel", "await_members", "list_models"],
                     "description": "Action. spawn requires label and should include prompt. list_models shows available models/routes."
                 },
@@ -2635,6 +2681,7 @@ impl Tool for CommunicateTool {
                     target_session: params.target_session.clone(),
                     task_id: params.task_id.clone(),
                     message: params.message.clone(),
+                    redispatch: false,
                 };
 
                 match send_request(request).await {
@@ -2801,83 +2848,43 @@ impl Tool for CommunicateTool {
                 }
             }
 
-            "start" | "start_task" | "wake" | "resume" | "retry" | "reassign" | "replace"
-            | "salvage" => {
-                let task_id = match params.task_id.clone() {
-                    Some(task_id) => task_id,
-                    None if params.target_session.is_some() => String::new(),
-                    None => {
-                        return Err(anyhow::anyhow!(
-                            "'task_id' is required for {} action unless 'target_session' uniquely identifies the assigned task. Use `swarm list`/`swarm plan_status` to inspect assignments, or pass task_id explicitly.",
-                            params.action
-                        ));
-                    }
-                };
-                if matches!(params.action.as_str(), "reassign" | "replace" | "salvage")
-                    && params.target_session.is_none()
-                {
-                    return Err(anyhow::anyhow!(
-                        "'target_session' is required for {} action",
-                        params.action
-                    ));
-                }
-
-                let control_action = if params.action == "start_task" {
-                    "start".to_string()
+            // A retry and a wake are the same act: hand the row back to whoever
+            // holds it, with words. The assign request claims it for that holder
+            // again and, when nobody is attached to it, starts a turn there.
+            "retry" | "wake" => {
+                let (task_id, holder) = held_row(
+                    &ctx,
+                    params.task_id.as_deref(),
+                    params.target_session.as_deref(),
+                )?;
+                let instruction = if params.action == "retry" {
+                    "Retry your assigned task. Fix any earlier issues and continue toward completion."
                 } else {
-                    params.action.clone()
+                    "Continue your assigned task: you were woken to keep working it."
                 };
-
-                let request = Request::CommTaskControl {
+                let message = match params.message.as_deref().map(str::trim) {
+                    Some(extra) if !extra.is_empty() => {
+                        format!("{instruction}\n\nAdditional coordinator instructions:\n{extra}")
+                    }
+                    _ => instruction.to_string(),
+                };
+                let request = Request::CommAssignTask {
                     id: REQUEST_ID,
                     session_id: ctx.session_id.clone(),
-                    action: control_action.clone(),
-                    task_id: task_id.clone(),
-                    target_session: params.target_session.clone(),
-                    message: params.message.clone(),
+                    target_session: Some(holder.clone()),
+                    task_id: Some(task_id.clone()),
+                    message: Some(message),
+                    redispatch: true,
                 };
-
                 match send_request(request).await {
-                    Ok(ServerEvent::CommTaskControlResponse {
-                        task_id,
-                        action,
-                        target_session,
-                        status,
-                        summary,
-                        ..
-                    }) => {
-                        let mut output = format!("Task '{}' {}", task_id, action);
-                        if let Some(target_session) = target_session {
-                            output.push_str(&format!(" -> {}", target_session));
-                        }
-                        output.push_str(&format!("\nStatus: {}", status));
-                        if !summary.next_ready_ids.is_empty() {
-                            output.push_str(&format!(
-                                "\nNext ready: {}",
-                                summary.next_ready_ids.join(", ")
-                            ));
-                        }
-                        if !summary.newly_ready_ids.is_empty() {
-                            output.push_str(&format!(
-                                "\nNewly ready: {}",
-                                summary.newly_ready_ids.join(", ")
-                            ));
-                        }
-                        Ok(ToolOutput::new(output))
-                    }
                     Ok(response) => {
                         ensure_success(&response)?;
-                        let target_suffix = params
-                            .target_session
-                            .as_deref()
-                            .map(|target| format!(" -> {}", target))
-                            .unwrap_or_default();
                         Ok(ToolOutput::new(format!(
-                            "Task '{}' {}{}",
-                            task_id, params.action, target_suffix
+                            "Task '{task_id}' {} -> {holder}",
+                            params.action
                         )))
                     }
-                    Err(e) => Err(anyhow::anyhow!("Failed to {} task: {}", control_action, e)),
+                    Err(e) => Err(anyhow::anyhow!("Failed to {} task: {}", params.action, e)),
                 }
             }
 
@@ -2997,7 +3004,7 @@ impl Tool for CommunicateTool {
             _ => Err(anyhow::anyhow!(
                 "Unknown action '{}'. Valid actions: share, share_append, read, message, broadcast, dm, channel, list, list_channels, channel_members, \
                  spawn, stop, status, report, plan_status, summary, read_context, \
-                 resync_plan, assign_task, assign_next, fill_slots, run_plan, cleanup, start, start_task, wake, resume, retry, reassign, replace, salvage, subscribe_channel, unsubscribe_channel, await_members. \
+                 resync_plan, assign_task, assign_next, fill_slots, run_plan, cleanup, retry, wake, subscribe_channel, unsubscribe_channel, await_members. \
                  To read messages addressed to you, use action='read'.",
                 params.action
             )),

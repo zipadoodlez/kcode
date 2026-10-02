@@ -129,6 +129,7 @@ async fn assign_task_reuses_an_idle_worker_that_still_holds_a_row() {
         None,
         None,
         Some("Keep the holder working".to_string()),
+        false,
         &client_tx,
         &sessions,
         &soft_interrupt_queues,
@@ -138,8 +139,7 @@ async fn assign_task_reuses_an_idle_worker_that_still_holds_a_row() {
         &event_history,
         &event_counter,
         &swarm_event_tx,
-        &mutation_runtime,
-    )
+        &mutation_runtime)
     .await;
 
     match client_rx.recv().await.expect("response") {

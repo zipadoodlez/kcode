@@ -18,7 +18,7 @@ pub mod sim;
 #[cfg(test)]
 mod tests;
 
-pub use ops::{complete_node, expand_node, fail_node, requeue_failed, seed};
+pub use ops::{complete_node, expand_node, fail_node, seed};
 pub use schedule::{dispatch, is_terminal, ready_nodes};
 
 /// A node identifier. Stable string ids keep the model serializable.

@@ -27,7 +27,7 @@ use super::client_writer::write_direct_event;
 use super::comm_await::{CommAwaitMembersContext, handle_comm_await_members};
 use super::comm_control::{
     handle_client_debug_command, handle_client_debug_response, handle_comm_assign_next,
-    handle_comm_assign_task, handle_comm_task_control,
+    handle_comm_assign_task,
 };
 use super::comm_session::{handle_comm_spawn, handle_comm_stop};
 use super::comm_sync::{
@@ -2576,6 +2576,7 @@ pub(super) async fn handle_client(
                 target_session,
                 task_id,
                 message,
+                redispatch,
             } => {
                 handle_comm_assign_task(
                     id,
@@ -2583,6 +2584,7 @@ pub(super) async fn handle_client(
                     target_session,
                     task_id,
                     message,
+                    redispatch,
                     &client_event_tx,
                     &sessions,
                     &soft_interrupt_queues,
@@ -2630,35 +2632,6 @@ pub(super) async fn handle_client(
                     &event_counter,
                     &swarm_event_tx,
                     &mcp_pool,
-                    &swarm_mutation_runtime,
-                )
-                .await;
-            }
-
-            Request::CommTaskControl {
-                id,
-                session_id: req_session_id,
-                action,
-                task_id,
-                target_session,
-                message,
-            } => {
-                handle_comm_task_control(
-                    id,
-                    req_session_id,
-                    action,
-                    task_id,
-                    target_session,
-                    message,
-                    &client_event_tx,
-                    &sessions,
-                    &soft_interrupt_queues,
-                    &client_connections,
-                    &swarm_members,
-                    &swarm_runs,
-                    &event_history,
-                    &event_counter,
-                    &swarm_event_tx,
                     &swarm_mutation_runtime,
                 )
                 .await;

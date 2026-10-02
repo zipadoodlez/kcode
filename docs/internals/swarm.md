@@ -131,9 +131,16 @@ explore surfaces the gaps its caller (or a follow-up row) can widen.
 - Inter-agent messages are delivered as notifications, queued as soft interrupts
   and injected into running agents at safe points, so they interleave without
   starting a new turn. Completed or idle agents do not resume on a notification;
-  the coordinator must assign, wake, or respawn them. Recovery handoffs are
-  explicit: retry (same assignee), reassign (existing agent), replace (new
-  assignee after safe checks), salvage (reassign with preserved progress).
+  the run must assign, wake, or respawn them. A handover is one act, not a family:
+  the row goes back to its holder with words, which is what `retry` (same assignee)
+  and `wake` are, both of them the assign request with a fixed sentence. Taking a
+  row over is the same request aimed at a different session, and only the session
+  that roots the run may send it: a member works the rows the run hands it.
+- A claim is a lock for a run and not for a person. The user's session writes any
+  row it likes, including one another session holds, and the displaced holder finds
+  out on its next write: a run closes only a row that names nobody or names it
+  (`close_row_on_disk`), so a turn that finished after its row moved is refused
+  rather than closing work that is no longer its own.
 
 ## Limits
 

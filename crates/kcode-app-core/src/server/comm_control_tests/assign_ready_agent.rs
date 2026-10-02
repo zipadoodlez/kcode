@@ -41,6 +41,7 @@ async fn assign_task_without_target_picks_ready_agent() {
         None,
         None,
         Some("Pick a task and worker".to_string()),
+        false,
         &client_tx,
         &sessions,
         &soft_interrupt_queues,
@@ -50,8 +51,7 @@ async fn assign_task_without_target_picks_ready_agent() {
         &event_history,
         &event_counter,
         &swarm_event_tx,
-        &mutation_runtime,
-    )
+        &mutation_runtime)
     .await;
 
     match client_rx.recv().await.expect("response") {

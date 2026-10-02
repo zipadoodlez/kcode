@@ -586,6 +586,10 @@ pub enum Request {
         task_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         message: Option<String>,
+        /// Dispatch even when an identical request finished moments ago. A retry or
+        /// a wake is a deliberate act, not a resend to answer from the record.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        redispatch: bool,
     },
 
     /// Assign the next runnable unassigned task from the plan (coordinator only)
@@ -611,19 +615,6 @@ pub enum Request {
         /// (same semantics as CommSpawn::effort).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         effort: Option<String>,
-    },
-
-    /// Control an existing assigned task lifecycle (coordinator only)
-    #[serde(rename = "comm_task_control")]
-    CommTaskControl {
-        id: u64,
-        session_id: String,
-        action: String,
-        task_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        target_session: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        message: Option<String>,
     },
 
     /// Subscribe to a named channel in the swarm
@@ -1296,18 +1287,6 @@ pub enum ServerEvent {
         id: u64,
         task_id: String,
         target_session: String,
-    },
-
-    /// Response to comm_task_control request
-    #[serde(rename = "comm_task_control_response")]
-    CommTaskControlResponse {
-        id: u64,
-        action: String,
-        task_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        target_session: Option<String>,
-        status: String,
-        summary: PlanGraphStatus,
     },
 
     /// Response to comm_read_context request

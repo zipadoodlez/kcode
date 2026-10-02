@@ -401,8 +401,7 @@ fn summarize_swarm_tool_action(tool: &ToolCall, bounded: &dyn Fn(usize) -> usize
             }
         }
         "summary" | "read_context" | "stop" | "assign_task" | "assign_next" | "fill_slots"
-        | "await_members" | "start" | "wake" | "resume" | "retry" | "reassign" | "replace"
-        | "salvage" => target
+        | "await_members" | "wake" | "retry" => target
             .as_deref()
             .map(|target| format!("{} {}", action, target))
             .unwrap_or_else(|| action.to_string()),
