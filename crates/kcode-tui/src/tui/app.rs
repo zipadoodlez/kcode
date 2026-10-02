@@ -601,10 +601,9 @@ struct CommandCandidatesCache {
 /// The suggestion list is read up to eight times per rendered frame (input
 /// box, hint line, shell-mode routing, key handling, debug capture). Each
 /// uncached call re-ranks ~120 registered commands plus skills, allocating a
-/// lowercased `String` per candidate, and some prefixes (`/goals show `) hit
-/// the disk. Caching on the exact input plus the small amount of state that
-/// can change the answer collapses that to one computation per distinct
-/// input.
+/// lowercased `String` per candidate. Caching on the exact input plus the
+/// small amount of state that can change the answer collapses that to one
+/// computation per distinct input.
 #[derive(Clone, Debug)]
 struct CommandSuggestionsCache {
     /// Exact (untrimmed) input buffer the suggestions were computed from.
@@ -613,8 +612,8 @@ struct CommandSuggestionsCache {
     /// stale entry can never outlive a prompt/picker transition.
     signature: CommandSuggestionsSignature,
     /// Frame epoch the entry was built in. The suggestion list also depends on
-    /// mutable session data (rewind target count, model catalogs, skills,
-    /// goals on disk) that is impractical to enumerate in a signature, so the
+    /// mutable session data (rewind target count, model catalogs, skills) that
+    /// is impractical to enumerate in a signature, so the
     /// memo is deliberately scoped to a single frame: it collapses the ~8
     /// reads per frame into one computation and never survives into the next.
     epoch: u64,

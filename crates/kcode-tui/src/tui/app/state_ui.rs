@@ -565,8 +565,6 @@ impl App {
                 }
                 (Some(super::todos_view::TODOS_VIEW_PAGE_ID), _) => self.set_status_notice("Todos"),
                 (Some(super::observe::OBSERVE_PAGE_ID), _) => self.set_status_notice("Observe"),
-                (Some("goals"), _) => self.set_status_notice("Goals"),
-                (Some(id), Some(title)) if id.starts_with("goal.") => self.set_status_notice(title),
                 _ => {}
             }
         }

@@ -1318,10 +1318,6 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    if handle_goals_command(app, trimmed) {
-        return true;
-    }
-
     if trimmed == "/swarm" || trimmed == "/swarm status" {
         app.push_display_message(DisplayMessage::system(format!(
             "Swarm: {} member(s) in this session's subtree.",
@@ -1688,111 +1684,6 @@ fn handle_remote_release_command_local(app: &mut App) {
         app.push_display_message(DisplayMessage::system(remote_release_launch_notice(false)));
         super::commands_improve::start_synthetic_user_turn(app, prompt);
     }
-}
-
-pub(super) fn handle_goals_command(app: &mut App, trimmed: &str) -> bool {
-    let Some(trimmed) = trimmed
-        .strip_prefix("/initiatives")
-        .or_else(|| trimmed.strip_prefix("/goals"))
-    else {
-        return false;
-    };
-    let trimmed = format!("/initiatives{}", trimmed);
-
-    if trimmed == "/initiatives" {
-        match crate::goal::open_goals_overview_for_session(
-            active_session_id(app).as_str(),
-            active_working_dir(app).as_deref(),
-            true,
-        ) {
-            Ok(snapshot) => {
-                app.set_side_panel_snapshot(snapshot);
-                let count = crate::goal::list_relevant_goals(active_working_dir(app).as_deref())
-                    .map(|goals| goals.len())
-                    .unwrap_or(0);
-                app.push_display_message(DisplayMessage::system(format!(
-                    "Opened initiatives overview in the side panel ({} initiative{}).",
-                    count,
-                    if count == 1 { "" } else { "s" }
-                )));
-                app.set_status_notice("Initiatives");
-            }
-            Err(e) => app.push_display_message(DisplayMessage::error(format!(
-                "Failed to open initiatives overview: {}",
-                e
-            ))),
-        }
-        return true;
-    }
-
-    if trimmed == "/initiatives resume" {
-        match crate::goal::resume_goal_for_session(
-            active_session_id(app).as_str(),
-            active_working_dir(app).as_deref(),
-            true,
-        ) {
-            Ok(Some(result)) => {
-                app.set_side_panel_snapshot(result.snapshot);
-                let mut msg = format!("Resumed initiative {}.", result.goal.title);
-                if let Some(next_step) = result.goal.next_steps.first() {
-                    msg.push_str(&format!(" Next step: {}", next_step));
-                }
-                app.push_display_message(DisplayMessage::system(msg));
-                app.set_status_notice(format!("Initiative: {}", result.goal.title));
-            }
-            Ok(None) => app.push_display_message(DisplayMessage::system(
-                "No resumable initiatives found for this session.".to_string(),
-            )),
-            Err(e) => app.push_display_message(DisplayMessage::error(format!(
-                "Failed to resume initiative: {}",
-                e
-            ))),
-        }
-        return true;
-    }
-
-    if let Some(id) = trimmed.strip_prefix("/initiatives show ") {
-        let id = id.trim();
-        if id.is_empty() {
-            app.push_display_message(DisplayMessage::error(
-                "Usage: /initiatives show <id>".to_string(),
-            ));
-            return true;
-        }
-        match crate::goal::open_goal_for_session(
-            active_session_id(app).as_str(),
-            active_working_dir(app).as_deref(),
-            id,
-            true,
-        ) {
-            Ok(Some(result)) => {
-                app.set_side_panel_snapshot(result.snapshot);
-                app.push_display_message(DisplayMessage::system(format!(
-                    "Opened initiative {} in the side panel.",
-                    result.goal.title
-                )));
-                app.set_status_notice(format!("Initiative: {}", result.goal.title));
-            }
-            Ok(None) => app.push_display_message(DisplayMessage::error(format!(
-                "Initiative not found: {}",
-                id
-            ))),
-            Err(e) => app.push_display_message(DisplayMessage::error(format!(
-                "Failed to open initiative: {}",
-                e
-            ))),
-        }
-        return true;
-    }
-
-    if trimmed.starts_with("/initiatives ") {
-        app.push_display_message(DisplayMessage::error(
-            "Usage: /initiatives, /initiatives resume, or /initiatives show <id>".to_string(),
-        ));
-        return true;
-    }
-
-    true
 }
 
 pub(super) fn handle_disabled_mission_command(app: &mut App, trimmed: &str) -> bool {

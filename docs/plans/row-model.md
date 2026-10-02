@@ -203,7 +203,8 @@ it, and closes only the rows it holds). **0.4g is whole, and 0.4 with it.** 0.4f
 build + full test pass ran with it (three pre-existing `session_flow` e2e failures,
 recorded in `plans/test-tree.md`). **0.5 has landed too**, its gate and live probe with
 it, so no row is open; **A1's audit has run too** (2026-10-03, folded as A2-A7 and the
-`plans/hygiene.md` items), and the open work is A2-A7 with the tail the audit feeds.
+`plans/hygiene.md` items) and **A2 has landed** with it, so the open work is A3-A7
+with the tail the audit feeds.
 
 ### 0. One way work gets done
 
@@ -338,16 +339,14 @@ sent `low`. Losses: `docs/what-was-removed.md`.
   `canonical_todo_status` plus its two wrappers in `kcode-base/src/todo.rs`, and
   `normalize_plan_status_for_todo`, `status_badge` and a second `priority_rank` in the
   TUI.
-- [ ] **A2. The goals/initiatives store is a second work list with no producer.**
-  `create_goal` is called only from TUI tests and `update_goal`,
-  `attach_goal_to_session`, `write_goal_page` and `refresh_goals_overview_for_session`
-  have no caller at all, so the live `/initiatives` path renders files only tests
-  create. `(decide)` first: if no external writer (desktop, older build) is expected,
-  delete `kcode-base/src/goal.rs` (620), `goal_tests.rs` (82), the `Goal*` types in
-  `kcode-task-types` (~185), the `/initiatives` and `/goals` commands
-  (`commands.rs:1693-1796`), and their registry, suggestion and help lines; the row
-  list is the one work representation. If a writer is expected, re-core the goals onto
-  rows instead of deleting.
+- [x] **A2. The goals/initiatives store is a second work list with no producer.**
+  Decided delete (no external writer expected) and landed 2026-10-03: deleted
+  `kcode-base/src/goal.rs` (620) with `goal_tests.rs` (82), the `Goal*` types in
+  `kcode-task-types` (185), the `/initiatives` and `/goals` commands with their
+  registry, suggestion, help and status-notice entries (`commands.rs`,
+  `commands_dispatch.rs`, `state_ui_input_helpers.rs`, `input_help.rs`,
+  `ui_overlays.rs`, the remote key-handling call site), the goal-panel tests, and the
+  README row. The loss is recorded in `docs/what-was-removed.md`.
 - [ ] **A3. The mission store goes.** `mission::set`, `checkpoint`, `clear`,
   `update_status`, `render_status` and `render_mission_continuation_prompt` have zero
   callers, `/mission` and `/goal` are refused (`commands.rs:1798`, "disabled in this

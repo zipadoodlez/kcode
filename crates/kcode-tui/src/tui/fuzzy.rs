@@ -19,7 +19,7 @@ mod tests {
 
     #[test]
     fn slash_commands_remain_anchored() {
-        assert!(kcode_fuzzy::command_fuzzy_match("/g", "/config").is_none());
-        assert!(kcode_fuzzy::command_fuzzy_match("/g", "/goals").is_some());
+        assert!(kcode_fuzzy::command_fuzzy_match("/m", "/config").is_none());
+        assert!(kcode_fuzzy::command_fuzzy_match("/m", "/model").is_some());
     }
 }

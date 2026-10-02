@@ -109,9 +109,6 @@ impl App {
             "log" => {
                 "/log mark [note]\nWrite a distinctive KCODE_LOG_MARK line to ~/.kcode/logs/kcode-YYYY-MM-DD.log with the current session, provider, model, working directory, and optional note. Use this to mark a spot for agents to inspect later."
             }
-            "goals" => {
-                "/goals\nOpen the goals overview in the side panel.\n\n/goals resume\nResume the most relevant active goal for this session/project.\n\n/goals show <id>\nOpen a specific goal in the side panel."
-            }
             "swarm" => {
                 "/swarm [status]\nShow this session's swarm status: the members of the run it roots."
             }

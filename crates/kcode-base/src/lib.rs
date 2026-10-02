@@ -31,7 +31,6 @@ pub mod copilot_usage;
 pub mod env;
 pub mod generated_image;
 pub mod github;
-pub mod goal;
 pub mod hooks;
 pub mod id;
 pub mod live_tests;

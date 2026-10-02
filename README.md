@@ -231,7 +231,6 @@ Slash commands inside the TUI. The registry lives in
 | `/review`, `/judge` | One-shot review/judge session |
 | `/overnight` | Supervised overnight coordinator |
 | `/improve`, `/refactor`, `/test` | Autonomous improve; refactor loop; layered verification |
-| `/initiatives`, `/goals` | Initiatives overview |
 
 **Workflow and git**
 

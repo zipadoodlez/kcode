@@ -219,6 +219,21 @@ machine default back if it is wanted, as the non-interactive surface's own flag
 (`kcode run --effort`), which is the same concept as `/effort` rather than a sixth
 place to store one.
 
+**The initiative/goal store goes** (A2, 2026-10-03). The goals read path had no
+producer: `create_goal` was called only from tests, `update_goal`,
+`attach_goal_to_session`, `write_goal_page` and `refresh_goals_overview_for_session`
+had no caller at all, and no tool, CLI command or debug op wrote a goal file, so
+`/initiatives` and `/goals` could only render JSON nothing in the tree ever created.
+Deleted: `kcode-base/src/goal.rs` (620 lines) with `goal_tests.rs`, the `Goal*` types
+in `kcode-task-types` (`Goal`, `GoalScope`, `GoalStatus`, `GoalStep`,
+`GoalMilestone`, `GoalUpdate`, 185 lines), the `/initiatives` and `/goals` commands
+with their registry, suggestion, help and status-notice entries, and the README row.
+What is lost: someone who hand-wrote `~/.kcode/goals/**/*.json`, or kept files from
+an older build, can no longer read them through kcode, and a tracked initiative is
+no longer a thing the app knows about. It was a second work representation beside
+the row list, with its own statuses, milestones, steps and progress; the row list is
+the one representation the model keeps. Bring it back as rows if it is wanted.
+
 ## Deliberately kept from upstream
 
 - `/account` and `/accounts` - the multi-account picker for Claude and OpenAI.

@@ -982,44 +982,6 @@ fn test_save_command_bookmarks_session_with_memory_enabled() {
 }
 
 #[test]
-fn test_goals_command_opens_overview_in_side_panel() {
-    let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("repo");
-    std::fs::create_dir_all(&project).expect("project dir");
-    let prev_home = std::env::var_os("KCODE_HOME");
-    crate::env::set_var("KCODE_HOME", temp.path());
-
-    crate::goal::create_goal(
-        crate::goal::GoalCreateInput {
-            title: "Ship mobile MVP".to_string(),
-            scope: crate::goal::GoalScope::Project,
-            ..crate::goal::GoalCreateInput::default()
-        },
-        Some(&project),
-    )
-    .expect("create goal");
-
-    let mut app = create_test_app();
-    app.session.working_dir = Some(project.display().to_string());
-    app.composer.input = "/goals".to_string();
-    app.submit_input();
-
-    assert_eq!(app.side_panel.focused_page_id.as_deref(), Some("goals"));
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing goals message");
-    assert!(msg.content.contains("Opened initiatives overview"));
-
-    if let Some(prev_home) = prev_home {
-        crate::env::set_var("KCODE_HOME", prev_home);
-    } else {
-        crate::env::remove_var("KCODE_HOME");
-    }
-}
-
-#[test]
 fn test_mission_and_goal_commands_are_disabled() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -1061,34 +1023,6 @@ fn test_mission_and_goal_commands_are_disabled() {
             .expect("load mission")
             .is_none(),
         "/goal must not create a mission"
-    );
-
-    if let Some(prev_home) = prev_home {
-        crate::env::set_var("KCODE_HOME", prev_home);
-    } else {
-        crate::env::remove_var("KCODE_HOME");
-    }
-}
-
-#[test]
-fn test_goals_legacy_alias_is_not_captured_by_goal_mission_alias() {
-    let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("repo");
-    std::fs::create_dir_all(&project).expect("project dir");
-    let prev_home = std::env::var_os("KCODE_HOME");
-    crate::env::set_var("KCODE_HOME", temp.path());
-
-    let mut app = create_test_app();
-    app.session.working_dir = Some(project.display().to_string());
-    app.composer.input = "/goals".to_string();
-    app.submit_input();
-
-    assert_eq!(app.side_panel.focused_page_id.as_deref(), Some("goals"));
-    let mission = crate::mission::load(&app.session.id).expect("load mission");
-    assert!(
-        mission.is_none(),
-        "/goals should not create a mission named `s`"
     );
 
     if let Some(prev_home) = prev_home {
@@ -1559,42 +1493,6 @@ fn test_observe_ignores_noise_tools_and_preserves_latest_useful_context() {
     assert_eq!(after, before);
     assert!(after.contains("fn main() {}"));
     assert!(!after.contains("tool_side_panel"));
-}
-
-#[test]
-fn test_goals_show_command_focuses_goal_page() {
-    let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("repo");
-    std::fs::create_dir_all(&project).expect("project dir");
-    let prev_home = std::env::var_os("KCODE_HOME");
-    crate::env::set_var("KCODE_HOME", temp.path());
-
-    let goal = crate::goal::create_goal(
-        crate::goal::GoalCreateInput {
-            title: "Ship mobile MVP".to_string(),
-            scope: crate::goal::GoalScope::Project,
-            ..crate::goal::GoalCreateInput::default()
-        },
-        Some(&project),
-    )
-    .expect("create goal");
-
-    let mut app = create_test_app();
-    app.session.working_dir = Some(project.display().to_string());
-    app.composer.input = format!("/goals show {}", goal.id);
-    app.submit_input();
-
-    assert_eq!(
-        app.side_panel.focused_page_id.as_deref(),
-        Some(format!("goal.{}", goal.id).as_str())
-    );
-
-    if let Some(prev_home) = prev_home {
-        crate::env::set_var("KCODE_HOME", prev_home);
-    } else {
-        crate::env::remove_var("KCODE_HOME");
-    }
 }
 
 #[test]

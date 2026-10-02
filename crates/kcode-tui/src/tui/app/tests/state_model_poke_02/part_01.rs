@@ -770,15 +770,15 @@ fn test_context_command_reports_session_context_snapshot() {
             .push(("image/png".to_string(), "abc".to_string()));
         app.side_panel = crate::side_panel::SidePanelSnapshot {
             focus_revision: 0,
-            focused_page_id: Some("goals".to_string()),
+            focused_page_id: Some("notes".to_string()),
             pages: vec![crate::side_panel::SidePanelPage {
-                id: "goals".to_string(),
-                title: "Goals".to_string(),
+                id: "notes".to_string(),
+                title: "Notes".to_string(),
                 file_path: "".to_string(),
                 format: crate::side_panel::SidePanelPageFormat::Markdown,
                 pdf_data: None,
                 source: crate::side_panel::SidePanelPageSource::Managed,
-                content: "goal details".to_string(),
+                content: "note details".to_string(),
                 updated_at_ms: 0,
             }],
         };
@@ -851,49 +851,22 @@ fn test_nested_command_suggestions_filter_partial_suffixes() {
 }
 
 #[test]
-fn test_autocomplete_adds_space_for_nested_argument_commands() {
+fn test_autocomplete_completes_nested_commands_and_spaces_argument_commands() {
     let mut app = create_test_app();
-    app.composer.input = "/goals sh".to_string();
+
+    // A nested command completes to its full name and adds no trailing space
+    // when the completed command takes no argument.
+    app.composer.input = "/config ed".to_string();
     app.composer.cursor_pos = app.composer.input.len();
-
     assert!(app.autocomplete());
-    assert_eq!(app.input(), "/goals show ");
-}
+    assert_eq!(app.input(), "/config edit");
 
-#[test]
-fn test_goals_show_suggestions_include_goal_ids() {
-    let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("tempdir");
-    let project = temp.path().join("repo");
-    std::fs::create_dir_all(&project).expect("project dir");
-    let prev_home = std::env::var_os("KCODE_HOME");
-    crate::env::set_var("KCODE_HOME", temp.path());
-
-    let goal = crate::goal::create_goal(
-        crate::goal::GoalCreateInput {
-            title: "Ship mobile MVP".to_string(),
-            scope: crate::goal::GoalScope::Project,
-            ..crate::goal::GoalCreateInput::default()
-        },
-        Some(&project),
-    )
-    .expect("create goal");
-
-    let mut app = create_test_app();
-    app.session.working_dir = Some(project.display().to_string());
-
-    let suggestions = app.get_suggestions_for("/goals show ");
-    assert!(
-        suggestions
-            .iter()
-            .any(|(cmd, _)| cmd == &format!("/goals show {}", goal.id))
-    );
-
-    if let Some(prev_home) = prev_home {
-        crate::env::set_var("KCODE_HOME", prev_home);
-    } else {
-        crate::env::remove_var("KCODE_HOME");
-    }
+    // A command that takes an argument gets the trailing space the caller
+    // would otherwise type.
+    app.composer.input = "/rewind".to_string();
+    app.composer.cursor_pos = app.composer.input.len();
+    assert!(app.autocomplete());
+    assert_eq!(app.input(), "/rewind ");
 }
 
 fn configure_test_remote_models(app: &mut App) {

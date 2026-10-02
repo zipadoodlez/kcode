@@ -12,7 +12,7 @@ fn cached_suggestions_match_uncached_across_input_mutations() {
     let mut app = create_test_app();
 
     for input in [
-        "", "/", "/m", "/mod", "/model", "/help", "/conifg", "/goals ", "/rewind ", "not a command",
+        "", "/", "/m", "/mod", "/model", "/help", "/conifg", "/effort ", "/rewind ", "not a command",
         "/",
     ] {
         app.composer.input = input.to_string();

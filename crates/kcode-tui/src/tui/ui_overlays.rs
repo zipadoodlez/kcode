@@ -346,10 +346,6 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         "Run layered verification and produce proof",
     ));
     lines.push(help_entry(
-        "/initiatives",
-        "Open initiatives overview / resume an initiative",
-    ));
-    lines.push(help_entry(
         "/swarm [status]",
         "Show this session's swarm status",
     ));

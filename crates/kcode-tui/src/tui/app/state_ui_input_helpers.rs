@@ -153,11 +153,6 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     RegisteredCommand::public("/compact", "Compact context"),
     RegisteredCommand::public("/fix", "Recover when the model cannot continue"),
     RegisteredCommand::public("/test", "Verify a claim/current changes with layered tests"),
-    RegisteredCommand::public(
-        "/initiatives",
-        "Open initiatives overview / resume tracked initiatives",
-    ),
-    RegisteredCommand::public("/goals", "Legacy alias for /initiatives"),
     RegisteredCommand::public("/swarm", "Show swarm status"),
     RegisteredCommand::public("/auto", "Work the list on its own after this turn"),
     RegisteredCommand::public("/context", "Show the full session context snapshot"),
@@ -438,7 +433,7 @@ impl App {
         let input = input.trim_start();
 
         if crate::tui::is_ssh_remote() {
-            // Do not enumerate local account labels, projects, or goals while
+            // Do not enumerate local account labels or projects while
             // completing a command intended for a different host.
             if input.starts_with("/model ") || input.starts_with("/models ") {
                 return self.rank_suggestions(input, self.model_suggestion_candidates());
@@ -984,31 +979,6 @@ impl App {
             );
         }
 
-        if prefix.starts_with("/goals show ") {
-            let relevant_goals = crate::goal::list_relevant_goals(
-                self.session
-                    .working_dir
-                    .as_deref()
-                    .map(std::path::Path::new),
-            )
-            .unwrap_or_default();
-            let suggestions = relevant_goals
-                .into_iter()
-                .map(|goal| (format!("/goals show {}", goal.id), "Open this goal"))
-                .collect();
-            return self.rank_suggestions(input, suggestions);
-        }
-
-        if prefix.starts_with("/goals ") {
-            return self.rank_suggestions(
-                input,
-                vec![
-                    ("/goals resume".into(), "Resume the current goal"),
-                    ("/goals show".into(), "Open a specific goal by id"),
-                ],
-            );
-        }
-
         if prefix.starts_with("/selfdev ") {
             return self.rank_suggestions(
                 input,
@@ -1358,10 +1328,6 @@ impl App {
                 | "/account openai remove"
                 | "/usage"
                 | "/test"
-                | "/initiatives"
-                | "/initiatives show"
-                | "/goals"
-                | "/goals show"
                 | "/swarm"
                 | "/plan"
                 | "/improve"
