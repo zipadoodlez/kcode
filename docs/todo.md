@@ -198,7 +198,9 @@ changes are paid for in test churn.
   stashed, at the commit before it. The suite's other session tests pass, including
   one that calls the same `Session::load`, so the failure is specific to a session
   the *debug command* created. Cause not diagnosed; the next reader should start at
-  what `create_session` persists versus what `Session::load` reads.
+  what `create_session` persists versus what `Session::load` reads. Re-checked after
+  0.4g's g1-g3 (2026-10-02): the same three, unchanged, and the plan's own suites pass
+  around them.
 - [ ] One home per duplicated test helper: 13 names are defined in more than one
   file (`lock_env` 8, `test_agent` 7, `create_test_app` 3, then
   `tracked_env_vars`, `clear_openai_compatible_runtime_env`,

@@ -260,7 +260,12 @@ verb set**. 0.4f's one build + full test pass ran with it (three pre-existing
        `coordinators` map (the coordinator is the session holding the run's anchor row),
        the stored swarm id including `KCODE_SWARM_ID` (`server/util.rs:96`, `:116`),
        `features.swarm`/the per-session toggle, and `assign_role`; the 25
-       `SwarmState { .. }` literals collapse into the request context E2 wants.
+       `SwarmState { .. }` literals collapse into the request context E2 wants. Two
+       user-facing surfaces move with it, both in the same change: the spawn env vars a
+       hook reads, `KCODE_SPAWN_SWARM_ID` and `KCODE_SPAWN_COORDINATOR_SESSION_ID`
+       (`server/comm_session.rs:677`, `:678`), so `docs/user/hooks.md` changes with the
+       code, and the coordinator slot whose only remaining reader is `assign_role` and
+       the election path.
     5. **g5. The verb set** (behavior boundary: the user's levers). One guard: a run
        refuses to work a row whose `assigned_to` is not itself, checked in the run's row
        write, since `claim_row_on_disk`/`close_row` (`kcode-base/src/todo.rs`) ignore the
