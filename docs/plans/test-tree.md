@@ -44,3 +44,12 @@ through `create_test_app`. The two diagnoses are independent of everything.
  created. Start at what `create_session` persists versus what `Session::load` reads.
  Re-checked after 0.4g's g1-g3 (2026-10-02): the same three, unchanged, and the plan's
  own suites pass around them.
+- [ ] **Diagnose the four `kcode-provider-openai-runtime` failures** (2026-10-02, seen
+ while landing 0.5): `persistent_terminal_public_stream_ends`,
+ `persistent_terminal_public_next_call_not_stalled`,
+ `persistent_terminal_public_missing_previous_full_replay`, and
+ `websocket_v2_prewarm_is_adopted_by_complete_without_losing_request_state`. Verified
+ pre-existing: the same four fail with the 0.5 change stashed, at the commit before it
+ (129 passed, 4 failed either way). They bind a local socket and drive the prewarm and
+ persistent-terminal paths, so start at whether they need a live account or an
+ advertised model catalog.

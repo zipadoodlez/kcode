@@ -337,10 +337,15 @@ async fn openai_available_efforts_follow_active_model_catalog_metadata() {
     *provider.model.write().await = "gpt-5.5".to_string();
     provider.revalidate_reasoning_effort();
     assert_eq!(
-        provider.reasoning_effort(),
-        None,
-        "an effort unsupported by the newly selected model must not remain active"
+        provider.reasoning_effort().as_deref(),
+        Some("low"),
+        "an effort unsupported by the newly selected model must not remain active; \
+         kcode's bounded default (which 5.5 advertises) takes its place"
     );
+    // A model whose own ladder has no `low` has no default to fall back to.
+    *provider.model.write().await = "gpt-5-pro".to_string();
+    provider.revalidate_reasoning_effort();
+    assert_eq!(provider.reasoning_effort(), None);
     assert!(provider.set_reasoning_effort("typo").is_err());
 }
 

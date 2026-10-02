@@ -928,10 +928,9 @@ impl Provider for OpenAIProvider {
             .read()
             .map(|guard| guard.clone())
             .unwrap_or_else(|poisoned| poisoned.into_inner().clone())
-            // Surface the *effective* effort so the UI/status reflects the
-            // model default (e.g. `low` for GPT-5.6 Sol) when the user has
-            // not picked one explicitly.
-            .or_else(|| Self::default_reasoning_effort_for_model(&self.model()))
+            // Surface the *effective* effort so the UI/status reflects
+            // kcode's `low` default when the user has not picked one.
+            .or_else(|| Self::default_reasoning_effort(&self.available_efforts()))
     }
 
     fn set_reasoning_effort(&self, effort: &str) -> Result<()> {

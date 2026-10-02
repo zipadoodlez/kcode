@@ -1005,18 +1005,19 @@ impl OpenAIProvider {
         )
     }
 
-    /// Default reasoning effort to apply when the user has *not* explicitly
-    /// configured one. GPT-5.6 Sol defaults to `low`: it is strong enough at
-    /// low effort for day-to-day coding/agentic work, and users can cycle up
-    /// when they want deeper reasoning. Every other model keeps the model's
-    /// own API-side default (no forced effort).
-    fn default_reasoning_effort_for_model(model: &str) -> Option<String> {
-        let key = kcode_provider_core::model_id::canonical(model);
-        if key.starts_with("gpt-5.6-sol") {
-            Some("low".to_string())
-        } else {
-            None
-        }
+    /// Default reasoning effort for a model when the session has stored none.
+    ///
+    /// `low` is kcode's own opinion for the OpenAI family: strong enough for
+    /// day-to-day coding/agentic work on the reasoning models, and cheaper when
+    /// it is not, so a user who wants deeper reasoning cycles up with `/effort`,
+    /// which persists on the session. This is the one home for that opinion: it
+    /// used to be spelled `provider.openai_reasoning_effort` in config, which
+    /// covered every OpenAI model at construction and contradicted this table's
+    /// narrower rule for `gpt-5.6-sol` alone. The model's own ladder bounds it,
+    /// so a model that cannot take `low` (the `gpt-5-pro` family advertises
+    /// `high` alone) keeps its own value instead of being handed one it refuses.
+    fn default_reasoning_effort(ladder: &[&str]) -> Option<String> {
+        ladder.contains(&"low").then(|| "low".to_string())
     }
 
     fn revalidate_reasoning_effort(&self) {
@@ -1188,9 +1189,9 @@ impl OpenAIProvider {
             .read()
             .map(|guard| guard.clone())
             .unwrap_or_else(|poisoned| poisoned.into_inner().clone())
-            // No explicit user effort: fall back to the model's kcode-side
-            // default (e.g. `low` for GPT-5.6 Sol).
-            .or_else(|| Self::default_reasoning_effort_for_model(model_id));
+            // No explicit user effort: fall back to kcode's default for the
+            // active model, bounded by that model's own ladder.
+            .or_else(|| Self::default_reasoning_effort(&self.available_efforts()));
         let service_tier = self
             .service_tier
             .read()
