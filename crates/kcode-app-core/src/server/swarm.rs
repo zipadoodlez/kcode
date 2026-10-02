@@ -327,16 +327,17 @@ fn salvage_plan_assignments_of(plan: &mut VersionedPlan, session_id: &str) -> De
             .and_then(|progress| progress.dead_assignee_reclaims)
             .unwrap_or(0);
         if reclaims >= crate::plan::MAX_DEAD_ASSIGNEE_RECLAIMS {
-            if let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id) {
-                item.status = "failed".to_string();
-                item.assigned_to = None;
-            }
+            // Past the cap the row is the run's failure to report, which is the
+            // plan's own lifecycle for it; the claim is released where the list is
+            // by the caller below.
+            plan.set_row_status(&task_id, "failed");
             plan.version += 1;
             outcome.failed_task_ids.push(task_id);
-        } else if crate::plan::reclaim_stranded_assignment(plan, &task_id) {
-            if let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id) {
-                item.status = "queued".to_string();
-            }
+        } else {
+            // The claim is released in the list by the caller; this is the cap's
+            // bookkeeping and the row's lifecycle, which is work again.
+            crate::plan::count_dead_assignee_reclaim(plan, &task_id);
+            plan.set_row_status(&task_id, "queued");
             outcome.requeued_task_ids.push(task_id);
         }
     }
@@ -370,23 +371,41 @@ pub(super) async fn salvage_assignments_of_dead_member(
     // does not owe these rows anymore, so the file stops naming it. The rows live
     // where that session lived, and a failed write is logged because the plan
     // change is the one that decides the work.
-    let working_dir = swarm_members
-        .read()
-        .await
-        .get(session_id)
-        .and_then(|member| member.working_dir.clone());
+    let working_dir = {
+        let members = swarm_members.read().await;
+        members
+            .get(session_id)
+            .and_then(|member| member.working_dir.clone())
+            .or_else(|| {
+                // The dead session's own record may already be gone (it left the
+                // swarm), and the rows live where the swarm's sessions live, so any
+                // member of it names the same list.
+                members
+                    .values()
+                    .find(|member| member.swarm_id.as_deref() == Some(swarm_id))
+                    .and_then(|member| member.working_dir.clone())
+            })
+    };
+    let mut released =
+        Vec::with_capacity(outcome.requeued_task_ids.len() + outcome.failed_task_ids.len());
     for task_id in outcome
         .requeued_task_ids
         .iter()
         .chain(outcome.failed_task_ids.iter())
     {
-        if let Err(error) =
-            crate::todo::release_row_on_disk(working_dir.as_deref(), session_id, task_id)
-        {
-            crate::logging::warn(&format!(
+        match crate::todo::release_row_on_disk(working_dir.as_deref(), session_id, task_id) {
+            Ok(row) => released.push(row),
+            Err(error) => crate::logging::warn(&format!(
                 "swarm {swarm_id}: salvaged task '{task_id}' in the plan but not in the list: {error}"
-            ));
+            )),
         }
+    }
+    // The plan follows the rows it released, so the dead holder stops being named
+    // in both places at once.
+    if !released.is_empty()
+        && let Some(plan) = swarm_plans.write().await.get_mut(swarm_id)
+    {
+        plan.sync_rows(&released);
     }
 
     log_swarm_lifecycle(
@@ -1730,6 +1749,46 @@ mod tests {
         )
     }
 
+    /// A repo whose list holds `rows`, so a store write in these tests has somewhere
+    /// to go (rule 1: the rows live where the session lives). The caller keeps the
+    /// returned dir alive.
+    fn list_repo(rows: &[TaskItem]) -> tempfile::TempDir {
+        let repo = tempfile::TempDir::new().expect("tempdir");
+        assert!(
+            std::process::Command::new("git")
+                .args(["init", "-q"])
+                .current_dir(repo.path())
+                .status()
+                .expect("git init")
+                .success(),
+            "git init"
+        );
+        crate::todo::save_tasks(Some(repo.path()), "worker", rows).expect("write the list");
+        repo
+    }
+
+    /// A row the store would write for a plan item of the same id, held by `holder`.
+    fn held_row(id: &str, holder: &str) -> TaskItem {
+        TaskItem {
+            id: id.to_string(),
+            assigned_to: Some(holder.to_string()),
+            status: "pending".to_string(),
+            ..Default::default()
+        }
+    }
+
+    /// A member that works in `repo`.
+    fn swarm_member_in(
+        repo: &tempfile::TempDir,
+        session_id: &str,
+        role: &str,
+        is_headless: bool,
+    ) -> (SwarmMember, mpsc::UnboundedReceiver<ServerEvent>) {
+        let (mut member, rx) = swarm_member(session_id, role, is_headless);
+        member.working_dir = Some(repo.path().to_path_buf());
+        (member, rx)
+    }
+
     fn member_with_parent(session_id: &str, parent: Option<&str>) -> SwarmMember {
         let (mut member, _rx) = swarm_member(session_id, "agent", false);
         member.report_back_to_session_id = parent.map(str::to_string);
@@ -2711,9 +2770,10 @@ mod tests {
             "swarm-1".to_string(),
             "coord".to_string(),
         )])));
+        let repo = list_repo(&[held_row("task-1", "worker")]);
         let swarm_plans = running_plan_assigned_to("worker", None);
-        let (coord, mut coord_rx) = swarm_member("coord", "coordinator", false);
-        let (worker, _worker_rx) = swarm_member("worker", "agent", true);
+        let (coord, mut coord_rx) = swarm_member_in(&repo, "coord", "coordinator", false);
+        let (worker, _worker_rx) = swarm_member_in(&repo, "worker", "agent", true);
         {
             let mut members = swarm_members.write().await;
             members.insert("coord".to_string(), coord);
@@ -2762,7 +2822,8 @@ mod tests {
         let swarm_coordinators = Arc::new(RwLock::new(HashMap::new()));
         let swarm_plans =
             running_plan_assigned_to("worker", Some(crate::plan::MAX_DEAD_ASSIGNEE_RECLAIMS));
-        let (worker, _worker_rx) = swarm_member("worker", "agent", true);
+        let repo = list_repo(&[held_row("task-1", "worker")]);
+        let (worker, _worker_rx) = swarm_member_in(&repo, "worker", "agent", true);
         swarm_members
             .write()
             .await
@@ -2797,9 +2858,10 @@ mod tests {
             "swarm-1".to_string(),
             "coord".to_string(),
         )])));
+        let repo = list_repo(&[held_row("task-1", "worker")]);
         let swarm_plans = running_plan_assigned_to("worker", None);
-        let (coord, _coord_rx) = swarm_member("coord", "coordinator", false);
-        let (worker, _worker_rx) = swarm_member("worker", "agent", true);
+        let (coord, _coord_rx) = swarm_member_in(&repo, "coord", "coordinator", false);
+        let (worker, _worker_rx) = swarm_member_in(&repo, "worker", "agent", true);
         {
             let mut members = swarm_members.write().await;
             members.insert("coord".to_string(), coord);
@@ -2836,8 +2898,9 @@ mod tests {
             "swarm-1".to_string(),
             "coord".to_string(),
         )])));
+        let repo = list_repo(&[held_row("task-1", "ghost")]);
         let swarm_plans = running_plan_assigned_to("ghost", None);
-        let (coord, _coord_rx) = swarm_member("coord", "coordinator", false);
+        let (coord, _coord_rx) = swarm_member_in(&repo, "coord", "coordinator", false);
         swarm_members
             .write()
             .await

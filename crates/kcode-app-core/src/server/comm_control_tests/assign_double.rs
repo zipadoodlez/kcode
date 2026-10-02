@@ -11,21 +11,28 @@ fn active_assignment_conflict_detects_any_claim_on_an_in_flight_item() {
     // Unassigned -> allow, whatever the status.
     for status in ["queued", "running"] {
         assert!(
-            super::active_assignment_conflict(status, None).is_none(),
+            super::active_assignment_conflict(status, None, "coord").is_none(),
             "unassigned items are always assignable"
         );
     }
 
     // Assigned + in-flight -> reject, naming the assignee.
     for status in ["queued", "running"] {
-        let conflict = super::active_assignment_conflict(status, Some("snail"))
+        let conflict = super::active_assignment_conflict(status, Some("snail"), "coord")
             .unwrap_or_else(|| panic!("status '{status}' with a claim must conflict"));
         assert_eq!(conflict.assignee, "snail");
     }
 
+    // The requester's own claim is the row it is handing over, not a conflict: the
+    // claim moves from the run to the worker.
+    assert!(
+        super::active_assignment_conflict("queued", Some("coord"), "coord").is_none(),
+        "a run hands over the rows it holds"
+    );
+
     // The rejection names the task, the assignee, and the way out.
     let conflict =
-        super::active_assignment_conflict("running", Some("snail")).expect("claim conflicts");
+        super::active_assignment_conflict("running", Some("snail"), "coord").expect("claim conflicts");
     let message = super::active_assignment_error("mem-impl-attribution", &conflict);
     assert!(
         message.contains("'mem-impl-attribution'")
@@ -37,7 +44,7 @@ fn active_assignment_conflict_detects_any_claim_on_an_in_flight_item() {
     // Stale and terminal statuses -> allow (existing recovery paths).
     for status in ["failed", "stopped", "crashed", "completed", "done"] {
         assert!(
-            super::active_assignment_conflict(status, Some("snail")).is_none(),
+            super::active_assignment_conflict(status, Some("snail"), "coord").is_none(),
             "status '{status}' must not trigger the double-assignment guard"
         );
     }

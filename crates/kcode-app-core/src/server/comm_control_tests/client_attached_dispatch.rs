@@ -175,7 +175,7 @@ async fn assign_task_to_client_attached_session_skips_server_side_run() {
     {
         let plans = swarm_plans.read().await;
         assert!(
-            crate::plan::next_unassigned_runnable_item_id(&plans[swarm_id]).is_none(),
+            crate::plan::next_handover_runnable_item_id(&plans[swarm_id], requester).is_none(),
             "assigned queued task must not be offered to assign_next"
         );
         let summary = crate::plan::summarize_plan_graph(&plans[swarm_id].items);

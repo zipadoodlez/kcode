@@ -135,6 +135,40 @@ async fn assign_next(fx: &HandbackFixture, prefer_spawn: bool) {
     .await;
 }
 
+/// A run hands over the rows it holds: the row stays with the run until a worker
+/// takes it, and the worker is never the run itself (the assign path refuses to
+/// assign a task to the session that asked).
+#[tokio::test]
+async fn the_asking_sessions_own_held_row_goes_to_a_worker_not_back_to_it() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let mut own = plan_item("own", "queued", "high", &[]);
+    own.assigned_to = Some("coord".to_string());
+    let mut fx = handback_fixture(vec![own]).await;
+
+    // Reuse only, so the worker the resolver picks is the free one rather than a
+    // fresh spawn (the prefer_spawn path has its own tests).
+    assign_next(&fx, false).await;
+
+    match fx.client_rx.recv().await.expect("response") {
+        ServerEvent::CommAssignTaskResponse {
+            task_id,
+            target_session,
+            ..
+        } => {
+            assert_eq!(task_id, "own");
+            assert_ne!(
+                target_session, fx.coord,
+                "the run's own row is handed to a worker, never back to the run"
+            );
+            assert!(
+                target_session == fx.holder || target_session == fx.other,
+                "and the worker is one of the run's own: {target_session}"
+            );
+        }
+        other => panic!("expected the row to be handed to a worker, got {other:?}"),
+    }
+}
+
 #[tokio::test]
 async fn a_ready_row_held_by_a_free_holder_goes_back_to_it() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
@@ -202,29 +236,6 @@ async fn a_held_row_whose_holder_is_working_is_left_alone() {
     }
 }
 
-#[tokio::test]
-async fn the_asking_sessions_own_held_row_is_not_handed_back_to_it() {
-    let (_env, _runtime) = RuntimeEnvGuard::new();
-    // The coordinator holds a ready row. Handing it to itself would be refused by
-    // the assign path ("cannot assign a swarm task to itself") and would fail the
-    // whole run, so the picker excludes the asker's own rows.
-    let mut own = plan_item("own", "queued", "high", &[]);
-    own.assigned_to = Some("coord".to_string());
-    let mut fx = handback_fixture(vec![own]).await;
-
-    assign_next(&fx, true).await;
-
-    match fx.client_rx.recv().await.expect("response") {
-        ServerEvent::Error { message, .. } => {
-            assert!(
-                message.starts_with("No runnable unassigned tasks"),
-                "the asker's own row must stay with it, got: {message}"
-            );
-        }
-        other => panic!("expected no self hand-back, got {other:?}"),
-    }
-}
-
 /// A row whose holder can never come back is released where the list is, before the
 /// plan follows it: the dead holder stops being named in the file, so a later
 /// dispatch can seat the row.
@@ -233,7 +244,7 @@ async fn a_stranded_row_is_released_in_the_list_when_it_is_reclaimed() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let mut held = plan_item("held", "queued", "high", &[]);
     held.assigned_to = Some("worker-holder".to_string());
-    let mut fx = handback_fixture(vec![held]).await;
+    let fx = handback_fixture(vec![held]).await;
     {
         let mut members = fx.swarm_members.write().await;
         members.get_mut(fx.holder).unwrap().status = SwarmLifecycleStatus::Failed;

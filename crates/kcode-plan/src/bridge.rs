@@ -9,7 +9,7 @@
 //! persistence/broadcast/scheduler machinery.
 
 use crate::dag::{HandoffArtifact, NodeKind, NodeSpec, NodeStatus, TaskGraph, TaskNode};
-use crate::{NodeMeta, TaskItem, VersionedPlan};
+use crate::{TaskItem, VersionedPlan};
 use std::collections::HashSet;
 
 /// Every kind the engine knows, in the order its words are listed.
@@ -59,16 +59,6 @@ fn status_from_plan(status: &str) -> NodeStatus {
         "completed" | "done" => NodeStatus::Done,
         "failed" | "stopped" | "crashed" => NodeStatus::Failed,
         _ => NodeStatus::Queued,
-    }
-}
-
-/// Map an engine [`NodeStatus`] back to the canonical plan status string.
-fn status_to_plan(status: NodeStatus) -> &'static str {
-    match status {
-        NodeStatus::Queued => "queued",
-        NodeStatus::Running => "running",
-        NodeStatus::Done => "completed",
-        NodeStatus::Failed => "failed",
     }
 }
 
@@ -137,64 +127,6 @@ pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
     graph
 }
 
-/// Lower a [`TaskGraph`] back into the plan's items + node_meta, preserving the
-/// fields the engine does not own (subsystem, file_scope, original priority
-/// string) from the prior plan where ids still match.
-pub fn apply_task_graph(plan: &mut VersionedPlan, graph: &TaskGraph) {
-    // Index prior items to retain non-engine fields.
-    let prior: std::collections::HashMap<String, TaskItem> = plan
-        .items
-        .iter()
-        .map(|item| (item.id.clone(), item.clone()))
-        .collect();
-
-    let mut items = Vec::with_capacity(graph.nodes().len());
-    let mut node_meta = std::collections::HashMap::new();
-
-    for node in graph.nodes() {
-        let prev = prior.get(&node.id);
-        items.push(TaskItem {
-            content: node.content.clone(),
-            status: status_to_plan(node.status).to_string(),
-            priority: prev
-                .map(|p| p.priority.clone())
-                .unwrap_or_else(|| priority_string(node.priority)),
-            id: node.id.clone(),
-            kind: Some(kind_str(node.kind).to_string()),
-            subsystem: prev.and_then(|p| p.subsystem.clone()),
-            file_scope: prev.map(|p| p.file_scope.clone()).unwrap_or_default(),
-            // The engine owns none of the records a close left on a row, the same
-            // way it owns none of the row's subsystem or file scope.
-            records: prev.map(|p| p.records.clone()).unwrap_or_default(),
-            blocked_by: node.depends_on.clone(),
-            assigned_to: node.owner.clone(),
-            group: None,
-            parent: node.parent.clone(),
-            note: prev.and_then(|p| p.note.clone()),
-        });
-        node_meta.insert(
-            node.id.clone(),
-            NodeMeta {
-                artifact_json: node
-                    .output
-                    .as_ref()
-                    .and_then(|a| serde_json::to_string(a).ok()),
-            },
-        );
-    }
-
-    plan.replace_items(items);
-    plan.node_meta = node_meta;
-}
-
-fn priority_string(rank: u8) -> String {
-    match rank {
-        0 => "high".to_string(),
-        2 => "low".to_string(),
-        _ => "medium".to_string(),
-    }
-}
-
 /// Build the forward-dataflow context for a task: the merged handoff artifacts of
 /// all its completed upstream dependencies, formatted for injection into the
 /// assigned worker's prompt. Returns `None` when the task has no completed
@@ -252,7 +184,7 @@ pub fn hydrate_assignment(plan: &VersionedPlan, task_id: &str, content: &str) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dag::{NodeSpec, complete_node, dispatch, expand_node, seed};
+    use crate::NodeMeta;
 
     fn plan_item(id: &str, status: &str) -> TaskItem {
         TaskItem {
@@ -355,86 +287,6 @@ mod tests {
         assert_eq!(graph.len(), 2);
         assert!(graph.get("a").unwrap().is_done());
         assert_eq!(graph.get("b").unwrap().depends_on, vec!["a".to_string()]);
-
-        let mut plan2 = plan.clone();
-        apply_task_graph(&mut plan2, &graph);
-        assert_eq!(plan2.items.len(), 2);
-        let b = plan2.items.iter().find(|i| i.id == "b").unwrap();
-        assert_eq!(b.blocked_by, vec!["a".to_string()]);
-        assert_eq!(b.status, "queued");
-    }
-
-    #[test]
-    fn engine_op_through_bridge_updates_plan() {
-        let mut plan = VersionedPlan::new();
-
-        // Seed via engine, lower back into the plan.
-        let mut graph = to_task_graph(&plan);
-        seed(
-            &mut graph,
-            vec![NodeSpec::new("root", "explore X", NodeKind::Explore)],
-        )
-        .unwrap();
-        apply_task_graph(&mut plan, &graph);
-        assert_eq!(plan.items.len(), 1);
-        assert_eq!(
-            plan.items
-                .iter()
-                .find(|item| item.id == "root")
-                .expect("root row")
-                .kind
-                .as_deref(),
-            Some("explore"),
-            "the row carries the kind the engine lowered"
-        );
-
-        // Dispatch + expand via engine, lower back; the composite parent lands
-        // marked expanded with its child alongside.
-        let mut graph = to_task_graph(&plan);
-        dispatch(&mut graph, "root", "w0");
-        expand_node(
-            &mut graph,
-            "root",
-            "w0",
-            vec![NodeSpec::new("root.1", "facet", NodeKind::Explore)],
-        )
-        .unwrap();
-        apply_task_graph(&mut plan, &graph);
-
-        assert!(
-            plan.is_composite("root"),
-            "a row with an open child is composite"
-        );
-        assert_eq!(
-            plan.items
-                .iter()
-                .find(|item| item.id == "root.1")
-                .expect("child row")
-                .parent
-                .as_deref(),
-            Some("root"),
-            "the decomposition hierarchy lands on the row's own parent"
-        );
-
-        // Complete the child end to end through the bridge.
-        let mut graph = to_task_graph(&plan);
-        dispatch(&mut graph, "root.1", "w0");
-        complete_node(
-            &mut graph,
-            "root.1",
-            "w0",
-            HandoffArtifact {
-                findings: "found".into(),
-                what_i_did_not_check: vec!["nothing".into()],
-                confidence: Some("high".into()),
-                ..HandoffArtifact::default()
-            },
-        )
-        .unwrap();
-        apply_task_graph(&mut plan, &graph);
-        // The child's artifact round-trips through node_meta JSON.
-        let stored = &plan.node_meta["root.1"].artifact_json;
-        assert!(stored.as_ref().unwrap().contains("found"));
     }
 
     #[test]

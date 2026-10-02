@@ -17,7 +17,7 @@ use super::{
 use crate::agent::Agent;
 use crate::plan::{
     TaskControlAction, assignment_affinities_for_task, build_control_assignment_text,
-    combine_assignment_text, explicit_task_blocked_reason, next_unassigned_runnable_item_id,
+    combine_assignment_text, explicit_task_blocked_reason, next_handover_runnable_item_id,
     task_control_action_allows_status, task_control_status_error, task_control_target_item_id,
 };
 use crate::protocol::SwarmLifecycleStatus;
@@ -180,11 +180,13 @@ struct ActiveAssignmentConflict {
 /// Guard predicate for double assignment.
 ///
 /// Returns `Some(conflict)` when a direct `assign_task` must be rejected because
-/// the item already carries a claim: it has an assignee and its status is
-/// in-flight (`queued`/`running`). A claim is assumed to be worked while its
-/// holder lives, so nothing per-task needs recording and there is no window to
-/// age out of; the claim is released by its holder finishing, or by the salvage
-/// sweep reclaiming it from a dead holder.
+/// the item already carries another session's claim: it has an assignee that is not
+/// the requester, and its status is in-flight (`queued`/`running`). A claim is
+/// assumed to be worked while its holder lives, so nothing per-task needs recording
+/// and there is no window to age out of; the claim is released by its holder
+/// finishing, or by the salvage sweep reclaiming it from a dead holder. The
+/// requester's own claim is not a conflict: that is the row it is handing over, and
+/// the claim moves to the worker.
 ///
 /// Everything else stays assignable so legitimate recovery keeps working:
 /// unassigned items, terminal items (explicit re-open). Deliberate re-dispatch goes through
@@ -192,8 +194,15 @@ struct ActiveAssignmentConflict {
 fn active_assignment_conflict(
     status: &str,
     assigned_to: Option<&str>,
+    requester: &str,
 ) -> Option<ActiveAssignmentConflict> {
     let assignee = assigned_to?;
+    // A run's own claim is what it hands over: the claim moves from the run to the
+    // worker, so this is not a double assignment. A claim by another session is,
+    // and stays refused.
+    if assignee == requester {
+        return None;
+    }
     if !matches!(status, "queued" | "running") {
         return None;
     }
@@ -338,21 +347,39 @@ async fn requeue_existing_assignment(
     req_session_id: &str,
     assignee_session: &str,
     task_id: &str,
+    working_dir: Option<&std::path::Path>,
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
 ) -> Option<(String, HashSet<String>, usize)> {
+    // The claim is written where the list is, as a dispatch's is, so a requeue
+    // records the same fact the same way.
+    let row = match crate::todo::claim_row_on_disk(
+        working_dir,
+        req_session_id,
+        task_id,
+        assignee_session,
+    ) {
+        Ok(row) => row,
+        Err(error) => {
+            crate::logging::warn(&format!(
+                "swarm {swarm_id}: could not claim '{task_id}' for its assignee in the list: {error}"
+            ));
+            return None;
+        }
+    };
     let mut plans = swarm_plans.write().await;
     let plan = plans.get_mut(swarm_id)?;
-    let item = plan.items.iter_mut().find(|item| item.id == task_id)?;
-    item.assigned_to = Some(assignee_session.to_string());
-    item.status = "queued".to_string();
+    plan.sync_rows(&[row]);
+    plan.set_row_status(task_id, "queued");
     plan.version += 1;
     plan.participants.insert(req_session_id.to_string());
     plan.participants.insert(assignee_session.to_string());
-    Some((
-        item.content.clone(),
-        plan.participants.clone(),
-        plan.items.len(),
-    ))
+    let content = plan
+        .items
+        .iter()
+        .find(|item| item.id == task_id)?
+        .content
+        .clone();
+    Some((content, plan.participants.clone(), plan.items.len()))
 }
 
 async fn active_swarm_member(
@@ -429,33 +456,36 @@ async fn task_id_for_target_session(
     task_control_target_item_id(&plan.items, target_session, action)
 }
 
-async fn next_unassigned_runnable_task_id(
+async fn next_handover_runnable_task_id(
     swarm_id: &str,
+    req_session_id: &str,
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
 ) -> Option<String> {
     let plans = swarm_plans.read().await;
     let plan = plans.get(swarm_id)?;
-    next_unassigned_runnable_item_id(plan)
+    next_handover_runnable_item_id(plan, req_session_id)
 }
 
 /// Which row a dispatch takes, and how the row is already held.
 enum Dispatch {
-    /// Nobody holds the row, so the resolver picks a free worker for it.
-    Unassigned(String),
+    /// Nobody holds the row, or the run itself does: either way the resolver picks
+    /// a free worker and the claim moves to it.
+    HandOver(String),
     /// A holder that can work the row already claims it, so the row goes back
     /// to that holder.
     HandBack { task_id: String, holder: String },
 }
 
-/// The row a dispatch should take next, asked in this order: an unowned runnable
-/// row (new work, handed to a free worker), then a runnable row a live holder can
-/// take back (the assignment is the record of who owes it), then a runnable row
-/// stranded on a holder that can never come back, whose claim is cleared first.
+/// The row a dispatch should take next, asked in this order: a runnable row nobody
+/// holds, or one this run holds and is handing over; then a runnable row a live
+/// holder can take back (the assignment is the record of who owes it); then a
+/// runnable row stranded on a holder that can never come back, whose claim is
+/// cleared first.
 ///
 /// The stranded rung is the requeue-pickup path: `task_control retry`
 /// re-dispatches to the existing assignee, so when that session died (e.g. an
 /// auth-failure wave) the node sits `queued` + assigned-to-a-corpse, invisible to
-/// `next_unassigned_runnable_item_id`, and a still-running `run_plan` driver
+/// `next_handover_runnable_item_id`, and a still-running `run_plan` driver
 /// reports "No runnable unassigned tasks" forever. Reclaims are capped per-node by
 /// [`crate::plan::MAX_DEAD_ASSIGNEE_RECLAIMS`] to respect the repeat-failure
 /// policy: beyond the cap only explicit `retry`/`assign_task` move the node.
@@ -465,8 +495,10 @@ async fn next_dispatch(
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
 ) -> Option<Dispatch> {
-    if let Some(task_id) = next_unassigned_runnable_task_id(swarm_id, swarm_plans).await {
-        return Some(Dispatch::Unassigned(task_id));
+    if let Some(task_id) =
+        next_handover_runnable_task_id(swarm_id, req_session_id, swarm_plans).await
+    {
+        return Some(Dispatch::HandOver(task_id));
     }
 
     // Snapshot member liveness first so the plans locks are not held across the
@@ -510,26 +542,29 @@ async fn next_dispatch(
     let mut plans = swarm_plans.write().await;
     let plan = plans.get_mut(swarm_id)?;
     let stranded_id = crate::plan::next_stranded_runnable_item_id(plan, &assignee_is_dead)?;
-    // The claim is released where the list is before the plan follows: the holder
-    // is a fact about the list, so a row whose holder can never come back goes
-    // back to the file unclaimed and the next dispatch can seat it.
-    if let Err(error) =
-        crate::todo::release_row_on_disk(working_dir.as_deref(), req_session_id, &stranded_id)
-    {
-        crate::logging::warn(&format!(
-            "swarm {swarm_id}: could not release stranded task '{stranded_id}' in the list: {error}"
-        ));
-        return None;
-    }
-    if crate::plan::reclaim_stranded_assignment(plan, &stranded_id) {
-        crate::logging::info(&format!(
-            "swarm {}: reclaimed stranded task '{}' from dead assignee for re-dispatch",
-            swarm_id, stranded_id
-        ));
-        Some(Dispatch::Unassigned(stranded_id))
-    } else {
-        None
-    }
+    // The claim is released where the list is, and the plan's copy follows the row
+    // it released: a holder that can never come back does not owe the row, so the
+    // next dispatch can seat it. The counter below is the cap's bookkeeping.
+    let released = match crate::todo::release_row_on_disk(
+        working_dir.as_deref(),
+        req_session_id,
+        &stranded_id,
+    ) {
+        Ok(row) => row,
+        Err(error) => {
+            crate::logging::warn(&format!(
+                "swarm {swarm_id}: could not release stranded task '{stranded_id}' in the list: {error}"
+            ));
+            return None;
+        }
+    };
+    plan.sync_rows(&[released]);
+    crate::plan::count_dead_assignee_reclaim(plan, &stranded_id);
+    crate::logging::info(&format!(
+        "swarm {}: reclaimed stranded task '{}' from dead assignee for re-dispatch",
+        swarm_id, stranded_id
+    ));
+    Some(Dispatch::HandOver(stranded_id))
 }
 
 async fn resolve_assignment_target_for_task(
@@ -629,9 +664,8 @@ fn spawn_assigned_task_run(
         {
             let mut plans = swarm_plans.write().await;
             if let Some(plan) = plans.get_mut(&swarm_id)
-                && let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id)
+                && plan.set_row_status(&task_id, "running")
             {
-                item.status = "running".to_string();
                 plan.version += 1;
             }
         }
@@ -706,26 +740,29 @@ fn spawn_assigned_task_run(
                         // was decomposed, and the children it is waiting on are
                         // still rows naming it (or are closed into its records).
                         let composite = plan.is_composite(&task_id);
-                        if let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id) {
-                            // A worker turn ends in one of three ways for its node:
-                            //  1. it decomposed the node via `expand_node` -> the node is
-                            //     now a composite synthesis/join point that must stay
-                            //     in-progress until its children finish; it is re-woken
-                            //     later to synthesize.
-                            //  2. it already finished the node via `complete_node` -> the
-                            //     node is terminal and owned by no one.
-                            //  3. it just ran and the node is still `running`.
-                            // Case 3 auto-completes: a turn that ends without a
-                            // `complete_node` closes the atomic node, while an
-                            // expanded composite stays open for its synthesis turn.
-                            match turn_end_disposition(&item.status, composite) {
-                                TurnEndDisposition::AutoComplete => {
-                                    applied_disposition = TurnEndDisposition::AutoComplete;
-                                    item.status = "done".to_string();
-                                    plan.version += 1;
-                                }
-                                TurnEndDisposition::LeaveAlone => {}
-                            }
+                        let status = plan
+                            .items
+                            .iter()
+                            .find(|item| item.id == task_id)
+                            .map(|item| item.status.clone());
+                        // A worker turn ends in one of three ways for its node:
+                        //  1. it decomposed the node via `expand_node` -> the node is
+                        //     now a composite synthesis/join point that must stay
+                        //     in-progress until its children finish; it is re-woken
+                        //     later to synthesize.
+                        //  2. it already finished the node via `complete_node` -> the
+                        //     node is terminal and owned by no one.
+                        //  3. it just ran and the node is still `running`.
+                        // Case 3 auto-completes: a turn that ends without a
+                        // `complete_node` closes the atomic node, while an
+                        // expanded composite stays open for its synthesis turn.
+                        if let Some(status) = status
+                            && turn_end_disposition(&status, composite)
+                                == TurnEndDisposition::AutoComplete
+                        {
+                            applied_disposition = TurnEndDisposition::AutoComplete;
+                            plan.set_row_status(&task_id, "done");
+                            plan.version += 1;
                         }
                     }
                 }
@@ -768,9 +805,8 @@ fn spawn_assigned_task_run(
                 {
                     let mut plans = swarm_plans.write().await;
                     if let Some(plan) = plans.get_mut(&swarm_id)
-                        && let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id)
+                        && plan.set_row_status(&task_id, "failed")
                     {
-                        item.status = "failed".to_string();
                         plan.version += 1;
                     }
                 }
@@ -1236,22 +1272,26 @@ async fn handle_comm_assign_task_with_mode(
             .or_insert_with(VersionedPlan::new);
         let selected_task_id = requested_task_id
             .clone()
-            .or_else(|| next_unassigned_runnable_item_id(plan));
+            .or_else(|| next_handover_runnable_item_id(plan, &req_session_id));
         // Double-assignment guard: a direct assign_task naming an item that is
         // already assigned and actively worked is a coordination bug (observed
         // live: run_plan dispatched a node, then an explicit assign_task
         // silently re-assigned it to a second worker and both edited the same
         // files for minutes). Deliberate re-dispatch goes through task_control
         // (retry/reassign/replace/salvage), which uses AlwaysDispatch and is
-        // exempt. Auto-selection only picks unassigned items, so only an
-        // explicit task_id can conflict.
+        // exempt. Auto-selection only picks a row nobody holds or this run holds,
+        // so only an explicit task_id can conflict.
         let conflict_reason = if dedup_mode == AssignDedupMode::ReplayFinal {
             requested_task_id.as_deref().and_then(|task_id| {
                 plan.items
                     .iter()
                     .find(|item| item.id == task_id)
                     .and_then(|item| {
-                        active_assignment_conflict(&item.status, item.assigned_to.as_deref())
+                        active_assignment_conflict(
+                            &item.status,
+                            item.assigned_to.as_deref(),
+                            &req_session_id,
+                        )
                     })
                     .map(|conflict| active_assignment_error(task_id, &conflict))
             })
@@ -1267,15 +1307,24 @@ async fn handle_comm_assign_task_with_mode(
         // where the list is, before the plan records it: a failed write fails the
         // dispatch instead of leaving the plan holding a row the list does not.
         // This is the shape the expand path already has.
+        let mut claimed_row = None;
         let blocked_reason = match (&blocked_reason, selected_task_id.as_deref()) {
-            (None, Some(task_id)) => crate::todo::claim_row_on_disk(
-                working_dir.as_deref(),
-                &req_session_id,
-                task_id,
-                &target_session,
-            )
-            .err()
-            .map(|error| format!("Task '{task_id}' could not be claimed in the list: {error}")),
+            (None, Some(task_id)) => {
+                match crate::todo::claim_row_on_disk(
+                    working_dir.as_deref(),
+                    &req_session_id,
+                    task_id,
+                    &target_session,
+                ) {
+                    Ok(row) => {
+                        claimed_row = Some(row);
+                        None
+                    }
+                    Err(error) => Some(format!(
+                        "Task '{task_id}' could not be claimed in the list: {error}"
+                    )),
+                }
+            }
             _ => blocked_reason,
         };
         let found_idx = if blocked_reason.is_some() {
@@ -1304,10 +1353,12 @@ async fn handle_comm_assign_task_with_mode(
                 kcode_plan::bridge::hydrate_assignment(plan, &item_id, &effective_content);
             let content = hydrated;
 
-            // Index resolved under this same plan lock, so it stays valid.
-            let item = &mut plan.items[found_idx];
-            item.assigned_to = Some(target_session.clone());
-            item.status = "queued".to_string();
+            // The row the store just claimed is the item now; the run's lifecycle
+            // for it is the plan's own field.
+            if let Some(row) = claimed_row.take() {
+                plan.sync_rows(&[row]);
+            }
+            plan.set_row_status(&item_id, "queued");
             plan.version += 1;
             plan.participants.insert(req_session_id.clone());
             plan.participants.insert(target_session.clone());
@@ -1604,7 +1655,7 @@ pub(super) async fn handle_comm_assign_next(
             .await;
             return;
         }
-        let Dispatch::Unassigned(selected_task_id) = dispatch else {
+        let Dispatch::HandOver(selected_task_id) = dispatch else {
             unreachable!("the hand-back case returned above")
         };
 
@@ -1929,12 +1980,18 @@ pub(super) async fn handle_comm_task_control(
             };
 
             if agent_is_idle {
+                let working_dir = swarm_members
+                    .read()
+                    .await
+                    .get(&req_session_id)
+                    .and_then(|member| member.working_dir.clone());
                 if snapshot.status != "queued"
                     && requeue_existing_assignment(
                         &swarm_id,
                         &req_session_id,
                         &assignee,
                         &task_id,
+                        working_dir.as_deref(),
                         swarm_plans,
                     )
                     .await

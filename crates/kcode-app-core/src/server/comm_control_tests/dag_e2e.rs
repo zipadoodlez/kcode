@@ -45,6 +45,9 @@ fn write_rows(repo: &std::path::Path, session_id: &str, nodes: &[TaskItem]) {
         .iter()
         .map(|node| TaskItem {
             assigned_to: Some(session_id.to_string()),
+            // What the store writes for a fresh row (`kcode_base::todo::add_row`),
+            // so a fixture cannot model a row the store would never produce.
+            status: "pending".to_string(),
             ..node.clone()
         })
         .collect();
@@ -357,8 +360,12 @@ async fn e2e_seed_rejects_cycle_without_mutating_plan() {
 async fn e2e_complete_flows_artifact_to_downstream_assignment() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let mut fx = graph_fixture().await;
+    // The first root row a run holds becomes its anchor and adopts the rest, so the
+    // run gets its own row here: api is then a child that can close while ui is
+    // open (rule 3 keeps a row whose children name it).
     fx.seed(
         vec![
+            node_spec("run", "synthesize", &[]),
             node_spec("api", "implement", &[]),
             node_spec("ui", "implement", &["api"]),
         ],
@@ -419,9 +426,14 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
     {
         let plans = fx.swarm_plans.read().await;
         let plan = &plans[&fx.swarm_id];
-        let api = plan.items.iter().find(|i| i.id == "api").unwrap();
-        assert_eq!(api.status, "completed");
-        assert!(plan.node_meta["api"].artifact_json.is_some());
+        assert!(
+            !plan.items.iter().any(|i| i.id == "api"),
+            "a close takes the row out of the plan, not just out of the list"
+        );
+        assert!(
+            plan.node_meta["api"].artifact_json.is_some(),
+            "the artifact stays for the downstream row's context"
+        );
         let ready = kcode_plan::next_runnable_item_ids(&plan.items, None);
         assert!(
             ready.contains(&"ui".to_string()),
@@ -487,13 +499,20 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
     fx.seed(vec![node_spec("root", "explore", &[])])
         .await;
 
-    // planner owns root and decomposes it into one child.
+    // planner owns root and decomposes it into one child. The claim is written
+    // where the list is, the way a dispatch writes it, and the plan follows.
+    crate::todo::claim_row_on_disk(Some(fx.repo.path()), &fx.coord, "root", &planner)
+        .expect("claim root for the planner");
     {
+        let root_row = crate::todo::load_tasks(Some(fx.repo.path()), &fx.coord)
+            .expect("read the list")
+            .into_iter()
+            .find(|row| row.id == "root")
+            .expect("the root row");
         let mut plans = fx.swarm_plans.write().await;
         let plan = plans.get_mut(&fx.swarm_id).unwrap();
-        let root = plan.items.iter_mut().find(|i| i.id == "root").unwrap();
-        root.status = "running".to_string();
-        root.assigned_to = Some(planner.clone());
+        plan.sync_rows(&[root_row]);
+        plan.set_row_status("root", "running");
     }
     handle_comm_expand_node(
         3,
@@ -826,10 +845,9 @@ async fn e2e_solo_seeder_can_complete_its_own_seeded_node() {
 
     let plans = fx.swarm_plans.read().await;
     let plan = &plans[&fx.swarm_id];
-    let probe = plan.items.iter().find(|i| i.id == "probe").unwrap();
-    assert_eq!(
-        probe.status, "completed",
-        "solo seeder must be able to complete its own seeded node"
+    assert!(
+        !plan.items.iter().any(|i| i.id == "probe"),
+        "a solo seeder completed its own row, so the plan no longer holds it"
     );
     assert!(
         plan.node_meta["probe"].artifact_json.is_some(),
@@ -926,9 +944,8 @@ async fn e2e_assignee_can_complete_queued_assignment() {
 
     let plans = fx.swarm_plans.read().await;
     let plan = &plans[&fx.swarm_id];
-    let mine = plan.items.iter().find(|i| i.id == "mine").unwrap();
-    assert_eq!(
-        mine.status, "completed",
-        "the assignee must be able to complete its queued assignment"
+    assert!(
+        !plan.items.iter().any(|i| i.id == "mine"),
+        "the assignee completed its queued assignment, so the row left the plan"
     );
 }

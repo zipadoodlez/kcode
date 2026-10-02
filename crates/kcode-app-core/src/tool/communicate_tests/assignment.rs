@@ -35,6 +35,9 @@ fn write_rows(repo: &Path, session: &str, rows: &[TaskItem]) {
         .iter()
         .map(|row| TaskItem {
             assigned_to: Some(session.to_string()),
+            // What the store writes for a fresh row (`kcode_base::todo::add_row`), so
+            // a fixture cannot model a row the store would never produce.
+            status: "pending".to_string(),
             ..row.clone()
         })
         .collect();

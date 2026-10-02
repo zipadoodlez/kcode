@@ -305,10 +305,29 @@ pub fn close_row_on_disk(
     id: &str,
     result: &str,
     artifact: Option<serde_json::Value>,
-) -> Result<()> {
+) -> Result<Vec<TaskItem>> {
     let mut rows = load_tasks(working_dir, session_id)?;
+    let before: std::collections::HashMap<String, TaskItem> = rows
+        .iter()
+        .map(|row| (row.id.clone(), row.clone()))
+        .collect();
     close_row(&mut rows, id, result, artifact)?;
-    save_tasks(working_dir, session_id, &rows)
+    let touched = changed_rows(&rows, &before);
+    save_tasks(working_dir, session_id, &rows)?;
+    Ok(touched)
+}
+
+/// The rows a write changed, by id, so a caller can bring its own copy of the list
+/// to the same state the store wrote. A close touches the parent that takes the
+/// record and every row that no longer names the closed row as a blocker.
+fn changed_rows(
+    rows: &[TaskItem],
+    before: &std::collections::HashMap<String, TaskItem>,
+) -> Vec<TaskItem> {
+    rows.iter()
+        .filter(|row| before.get(&row.id) != Some(*row))
+        .cloned()
+        .collect()
 }
 
 /// Claim one open row for `holder` in the file. The holder is a fact about the
@@ -324,7 +343,7 @@ pub fn claim_row_on_disk(
     session_id: &str,
     id: &str,
     holder: &str,
-) -> Result<()> {
+) -> Result<TaskItem> {
     set_row_holder_on_disk(working_dir, session_id, id, Some(holder))
 }
 
@@ -333,7 +352,11 @@ pub fn claim_row_on_disk(
 /// list unclaimed so the next dispatch can seat it. This is what the stranded
 /// reclaim and the salvage sweep write; a holder that is merely between turns is
 /// left alone, because it still owes the row.
-pub fn release_row_on_disk(working_dir: Option<&Path>, session_id: &str, id: &str) -> Result<()> {
+pub fn release_row_on_disk(
+    working_dir: Option<&Path>,
+    session_id: &str,
+    id: &str,
+) -> Result<TaskItem> {
     set_row_holder_on_disk(working_dir, session_id, id, None)
 }
 
@@ -342,14 +365,16 @@ fn set_row_holder_on_disk(
     session_id: &str,
     id: &str,
     holder: Option<&str>,
-) -> Result<()> {
+) -> Result<TaskItem> {
     let mut rows = load_tasks(working_dir, session_id)?;
     let index = rows
         .iter()
         .position(|row| row.id == id)
         .ok_or_else(|| anyhow::anyhow!("no task {id:?}; open ids: {}", open_ids(&rows)))?;
     rows[index].assigned_to = holder.map(str::to_string);
-    save_tasks(working_dir, session_id, &rows)
+    let written = rows[index].clone();
+    save_tasks(working_dir, session_id, &rows)?;
+    Ok(written)
 }
 
 /// Decompose one row into child rows, in the file. A decomposition is rows: each
@@ -382,13 +407,15 @@ pub fn expand_row_on_disk(
         );
     }
 
-    let mut added = Vec::with_capacity(children.len());
+    let before: std::collections::HashMap<String, TaskItem> = rows
+        .iter()
+        .map(|row| (row.id.clone(), row.clone()))
+        .collect();
     let mut child_ids = Vec::with_capacity(children.len());
     for mut child in children {
         child.parent = Some(id.to_string());
         child.assigned_to = None;
         child_ids.push(add_row(&mut rows, child)?);
-        added.push(rows.last().cloned().expect("add_row just pushed it"));
     }
     if let Some(row) = rows.iter_mut().find(|row| row.id == id) {
         // The row is a join now, and it keeps its holder: the one that decomposed
@@ -409,8 +436,9 @@ pub fn expand_row_on_disk(
             cycle.join(", ")
         );
     }
+    let touched = changed_rows(&rows, &before);
     save_tasks(working_dir, session_id, &rows)?;
-    Ok(added)
+    Ok(touched)
 }
 
 /// The next free `t<n>` id.

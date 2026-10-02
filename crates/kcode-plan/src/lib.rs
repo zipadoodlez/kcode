@@ -103,13 +103,49 @@ impl VersionedPlan {
         }
     }
 
-    /// Replace the authoritative item set and discard side-map entries whose
-    /// task ids no longer exist. Plan updates are snapshots, not an append-only
-    /// log, so retaining progress or DAG metadata for removed items leaks state
-    /// across every subsequent persistence and broadcast.
-    pub fn replace_items(&mut self, items: Vec<TaskItem>) {
-        self.items = items;
+    /// Make the plan agree with rows the store just wrote: each row here becomes
+    /// the item of the same id, field for field, and a row the plan does not hold
+    /// yet becomes an item. Nothing else about the item set changes: the plan
+    /// governs *which* rows it holds (a run seats the rows it works), while a row's
+    /// fields come from the list, so this never sweeps in rows nobody seated.
+    ///
+    /// One field is not the row's. A row's status is what the store writes (`pending`
+    /// for a fresh row), while an item's status is the run's lifecycle for that row
+    /// (`queued`, `running`, `done`, `failed`). That lifecycle is runtime state the
+    /// list cannot hold, so it is carried forward by id and set through
+    /// [`Self::set_row_status`]. `priority` is the row's, so the plan's order is the
+    /// list's order wherever the list says nothing about priority.
+    pub fn sync_rows(&mut self, rows: &[TaskItem]) {
+        for row in rows {
+            match self.items.iter_mut().find(|item| item.id == row.id) {
+                Some(item) => {
+                    let status = std::mem::take(&mut item.status);
+                    *item = row.clone();
+                    item.status = status;
+                }
+                None => self.items.push(row.clone()),
+            }
+        }
         self.prune_side_maps();
+    }
+
+    /// Drop one row's item, for a close: the row is gone from the list, so the plan
+    /// stops holding it and the runtime state keyed by its id goes with it.
+    pub fn drop_row(&mut self, id: &str) {
+        self.items.retain(|item| item.id != id);
+        self.prune_side_maps();
+    }
+
+    /// Set the run's lifecycle status for one row; see [`Self::sync_rows`] for why
+    /// this is the plan's field and not the row's. Returns false when the plan holds
+    /// no such row, so a caller can tell "not mine" from "set".
+    pub fn set_row_status(&mut self, id: &str, status: &str) -> bool {
+        if let Some(item) = self.items.iter_mut().find(|item| item.id == id) {
+            item.status = status.to_string();
+            true
+        } else {
+            false
+        }
     }
 
     /// Remove task-scoped metadata that no longer belongs to a live plan item.
@@ -538,15 +574,24 @@ pub fn next_runnable_item_ids(items: &[TaskItem], limit: Option<usize>) -> Vec<S
     }
 }
 
-pub fn next_unassigned_runnable_item_id(plan: &VersionedPlan) -> Option<String> {
+/// The highest-priority runnable item a hand-over may pick: one nobody holds, or
+/// one `requester` itself holds, because a run hands over the rows it works and the
+/// assignment moves the claim from the run to the worker. A row another live
+/// session holds is not this run's to give away (the holder takes it back, see
+/// [`next_held_runnable_item_id`]), and a row whose holder can never come back is
+/// [`next_stranded_runnable_item_id`].
+pub fn next_handover_runnable_item_id(plan: &VersionedPlan, requester: &str) -> Option<String> {
     next_runnable_item_ids(&plan.items, None)
         .into_iter()
         .find(|candidate_id| {
             plan.items
                 .iter()
                 .find(|item| item.id == *candidate_id)
-                .map(|item| item.assigned_to.is_none())
-                .unwrap_or(false)
+                .is_some_and(|item| {
+                    item.assigned_to
+                        .as_deref()
+                        .is_none_or(|holder| holder == requester)
+                })
         })
 }
 
@@ -585,7 +630,7 @@ pub const MAX_DEAD_ASSIGNEE_RECLAIMS: u32 = 3;
 /// The highest-priority runnable (ready) item that is *stranded*: it carries an
 /// assignment, but the assignee is dead per `assignee_is_dead` (terminal
 /// lifecycle status or no longer a swarm member). Such items are invisible to
-/// [`next_unassigned_runnable_item_id`] (which requires `assigned_to == None`),
+/// [`next_handover_runnable_item_id`] (which requires nobody else to hold it),
 /// which is how `task_control retry` against a dead worker used to strand a
 /// Ready node: retry keeps the assignee, the re-dispatch dies with the session,
 /// and automatic assignment skips the node forever. Items at or over
@@ -618,18 +663,15 @@ pub fn next_stranded_runnable_item_id(
 /// automatic dispatch again, bumping the per-node reclaim counter and the plan
 /// version. The binding is released and nothing else about the row changes.
 /// Returns `false` when the item is missing or not actually assigned.
-pub fn reclaim_stranded_assignment(plan: &mut VersionedPlan, task_id: &str) -> bool {
-    let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id) else {
-        return false;
-    };
-    if item.assigned_to.is_none() {
-        return false;
-    }
-    item.assigned_to = None;
+/// Count one automatic reclaim of a row stranded on a holder that can never come
+/// back, so a repeatedly lethal row fails loudly instead of cycling workers
+/// forever. The claim itself is released where the list is (`claim`/`release` in
+/// `kcode_base::todo`) and the plan's copy follows the row, so this writes no row
+/// field: it is the cap's bookkeeping.
+pub fn count_dead_assignee_reclaim(plan: &mut VersionedPlan, task_id: &str) {
     let progress = plan.task_progress.entry(task_id.to_string()).or_default();
     progress.dead_assignee_reclaims = Some(progress.dead_assignee_reclaims.unwrap_or(0) + 1);
     plan.version += 1;
-    true
 }
 
 pub fn task_control_target_item_id(
@@ -967,7 +1009,7 @@ mod tests {
         };
 
         assert_eq!(
-            next_unassigned_runnable_item_id(&plan),
+            next_handover_runnable_item_id(&plan, "me"),
             Some("ready".to_string())
         );
         assert_eq!(
@@ -1085,7 +1127,7 @@ mod tests {
     }
 
     #[test]
-    fn reclaim_stranded_assignment_releases_owner_and_counts_reclaims() {
+    fn a_dead_assignee_reclaim_counts_and_the_row_carries_the_release() {
         let mut plan = VersionedPlan {
             items: vec![{
                 let mut stranded = item("a", "queued", &[]);
@@ -1096,27 +1138,75 @@ mod tests {
         };
         let version_before = plan.version;
 
-        assert!(reclaim_stranded_assignment(&mut plan, "a"));
+        count_dead_assignee_reclaim(&mut plan, "a");
 
-        let item = &plan.items[0];
-        assert_eq!(item.assigned_to, None, "assignment binding released");
-        assert_eq!(item.status, "queued", "lifecycle status untouched");
-        let progress = plan.task_progress.get("a").unwrap();
-        assert_eq!(progress.dead_assignee_reclaims, Some(1));
-        assert_eq!(plan.version, version_before + 1, "version bump for pollers");
-
-        // The reclaimed item is now visible to the normal unassigned picker.
-        assert_eq!(
-            next_unassigned_runnable_item_id(&plan),
-            Some("a".to_string())
-        );
-
-        // Reclaiming an unassigned item is a no-op failure, not a counter bump.
-        assert!(!reclaim_stranded_assignment(&mut plan, "a"));
         assert_eq!(
             plan.task_progress.get("a").unwrap().dead_assignee_reclaims,
             Some(1)
         );
-        assert!(!reclaim_stranded_assignment(&mut plan, "missing"));
+        assert_eq!(plan.version, version_before + 1, "version bump for pollers");
+
+        // The claim lives on the row, so the release arrives with the row the store
+        // wrote; the plan's copy follows it and nothing else about the row moves.
+        let mut released = plan.items[0].clone();
+        released.assigned_to = None;
+        plan.sync_rows(&[released]);
+        let item = &plan.items[0];
+        assert_eq!(item.assigned_to, None, "the released row is the item");
+        assert_eq!(item.status, "queued", "the run's lifecycle is untouched");
+        assert_eq!(
+            next_handover_runnable_item_id(&plan, "someone-else"),
+            Some("a".to_string()),
+            "and a released row is visible to the hand-over picker"
+        );
+
+        count_dead_assignee_reclaim(&mut plan, "a");
+        assert_eq!(
+            plan.task_progress.get("a").unwrap().dead_assignee_reclaims,
+            Some(2),
+            "the cap counts every reclaim"
+        );
+    }
+
+    /// The rows are the plan: a row's fields replace the item's, the run's own
+    /// lifecycle survives by id, a row the plan does not hold becomes an item, and a
+    /// close takes the item with it.
+    #[test]
+    fn syncing_rows_makes_the_plan_agree_with_the_list() {
+        let mut plan = VersionedPlan {
+            items: vec![{
+                let mut held = item("held", "running", &[]);
+                held.assigned_to = Some("worker".to_string());
+                held.note = Some("old".to_string());
+                held
+            }],
+            ..VersionedPlan::new()
+        };
+
+        // A row the store rewrote: the fields are the row's, the status is the run's.
+        let mut rewritten = item("held", "pending", &[]);
+        rewritten.assigned_to = Some("worker".to_string());
+        rewritten.note = Some("new".to_string());
+        let fresh = item("fresh", "pending", &[]);
+        plan.sync_rows(&[rewritten, fresh]);
+
+        let held = plan.items.iter().find(|i| i.id == "held").unwrap();
+        assert_eq!(held.note.as_deref(), Some("new"), "the row's fields win");
+        assert_eq!(held.status, "running", "the run's lifecycle is the plan's");
+        let fresh = plan.items.iter().find(|i| i.id == "fresh").unwrap();
+        assert_eq!(
+            fresh.status, "pending",
+            "a new row arrives as the list has it"
+        );
+
+        assert!(plan.set_row_status("fresh", "queued"));
+        assert!(!plan.set_row_status("absent", "queued"));
+        assert_eq!(
+            plan.items.iter().find(|i| i.id == "fresh").unwrap().status,
+            "queued"
+        );
+
+        plan.drop_row("held");
+        assert!(!plan.items.iter().any(|i| i.id == "held"));
     }
 }

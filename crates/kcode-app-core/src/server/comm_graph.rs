@@ -12,9 +12,9 @@ use super::{
     persist_swarm_state_for, record_swarm_event,
 };
 use crate::protocol::ServerEvent;
-use kcode_plan::MAX_PLAN_ITEMS;
-use kcode_plan::bridge::{apply_task_graph, to_task_graph};
+use kcode_plan::bridge::to_task_graph;
 use kcode_plan::dag::{self, HandoffArtifact, NodeSpec, NodeStatus, TaskGraph};
+use kcode_plan::{MAX_PLAN_ITEMS, NodeMeta, TaskItem};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -275,15 +275,24 @@ pub(super) async fn handle_comm_seed_graph(
                 !plan.items.iter().any(|item| item.id == id)
             })
             .collect();
+        // The rows this seed seats, taken from the list the seed just read. The plan
+        // holds the rows its run works, so seating is the plan's decision and the
+        // graph below is only the validation view over them.
+        let seated_ids: HashSet<&str> =
+            specs.iter().filter_map(|spec| spec.id.as_deref()).collect();
+        let seated: Vec<TaskItem> = rows
+            .iter()
+            .filter(|row| seated_ids.contains(row.id.as_str()))
+            .cloned()
+            .collect();
         plan.participants.insert(req_session_id.clone());
         let mut graph = to_task_graph(plan);
-        let before = graph.clone();
         match dag::seed(&mut graph, specs) {
             Ok(()) => match graph_size_error(&graph) {
                 Some(message) => Err(message),
                 None => {
-                    if graph != before {
-                        apply_task_graph(plan, &graph);
+                    if !seated.is_empty() {
+                        plan.sync_rows(&seated);
                         plan.version += 1;
                     }
                     Ok(count)
@@ -382,26 +391,16 @@ pub(super) async fn handle_comm_expand_node(
         &node_id,
         children,
     ) {
-        Ok(added) => {
+        Ok(touched) => {
             let mut plans = swarm_plans.write().await;
             match plans.get_mut(&swarm_id) {
                 Some(plan) => {
-                    let child_ids: Vec<String> = added.iter().map(|row| row.id.clone()).collect();
-                    for row in added {
-                        if !plan.items.iter().any(|item| item.id == row.id) {
-                            plan.items.push(row);
-                        }
-                    }
-                    if let Some(parent) = plan.items.iter_mut().find(|item| item.id == node_id) {
-                        // The row is a join now: it waits for its children, and it
-                        // keeps its holder, who is the one that integrates them.
-                        parent.status = "queued".to_string();
-                        for child_id in child_ids {
-                            if !parent.blocked_by.contains(&child_id) {
-                                parent.blocked_by.push(child_id);
-                            }
-                        }
-                    }
+                    // The store wrote the children and the parent's blockers, so the
+                    // plan takes the rows it wrote as its items. The parent is a join
+                    // now: it waits for its children and keeps its holder, who is the
+                    // one that integrates them.
+                    plan.sync_rows(&touched);
+                    plan.set_row_status(&node_id, "queued");
                     plan.version += 1;
                     Ok(())
                 }
@@ -481,36 +480,54 @@ pub(super) async fn handle_comm_complete_node(
         let mut graph = to_task_graph(plan);
         claim_queued_node_for_actor(&mut graph, &node_id, &req_session_id);
         match dag::complete_node(&mut graph, &node_id, &req_session_id, artifact) {
-            Ok(()) => {
-                apply_task_graph(plan, &graph);
-                plan.version += 1;
-                Ok(())
-            }
+            Ok(()) => Ok(graph),
             Err(e) => Err(e.to_string()),
         }
     };
 
     match result {
-        Ok(()) => {
-            // The engine's close is the row's close too, through the same writer the
-            // `todo` tool uses: the node's id is the row's id, so the row goes with
-            // its record onto the row that owns the work, and a re-seed does not
-            // lift finished work again.
+        Ok(_) => {
+            // The close is the list's, through the same writer the `todo` tool uses:
+            // the node's id is the row's id, so the row goes with its record onto the
+            // row that owns the work, and a re-seed does not lift finished work
+            // again. A refused write is a refused close: the plan does not drop a row
+            // the list still has, and nothing here keeps a ghost of finished work.
             let working_dir = swarm_members
                 .read()
                 .await
                 .get(&req_session_id)
                 .and_then(|member| member.working_dir.clone());
-            if let Err(error) = crate::todo::close_row_on_disk(
+            let touched = match crate::todo::close_row_on_disk(
                 working_dir.as_deref(),
                 &req_session_id,
                 &node_id,
                 &findings,
-                record_artifact,
+                record_artifact.clone(),
             ) {
-                crate::logging::warn(&format!(
-                    "node {node_id} closed in the plan but not in the list: {error}"
-                ));
+                Ok(touched) => touched,
+                Err(error) => {
+                    err(
+                        client_event_tx,
+                        id,
+                        format!("Complete rejected: the row could not be closed: {error}"),
+                    );
+                    return;
+                }
+            };
+            if let Some(plan) = swarm_plans.write().await.get_mut(&swarm_id) {
+                plan.sync_rows(&touched);
+                plan.drop_row(&node_id);
+                // The artifact stays until the row's record is its only home (the
+                // plan's next move).
+                plan.node_meta.insert(
+                    node_id.clone(),
+                    NodeMeta {
+                        artifact_json: record_artifact
+                            .as_ref()
+                            .and_then(|value| serde_json::to_string(value).ok()),
+                    },
+                );
+                plan.version += 1;
             }
             finalize(
                 id,

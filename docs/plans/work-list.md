@@ -284,23 +284,31 @@ and the one build + test pass lands at the end of 0.4f.
          `expand_row_on_disk`). So this move is one more function of that shape, in
          that home, plus the calls. No new concept, and the model can already hand a
          row to anyone through the tool.
-      2. **The plan is refreshed from the file, not a peer store.** Decided with move
-         1. The rule, settled by reading every plan mutation (2026-10-02): there is one
-         write path, so there is one refresh. A row write goes through the store, and
-         the plan's items are then rebuilt from the rows the store wrote, carrying a
-         by-id runtime overlay forward (`status`, and the reclaim counter) and dropping
-         an overlay whose row is gone. Not a patch per site, which would leave two
-         writers of the same field, and not a re-read per site, which would be five
-         parallel refreshes of one fact. The durable half lives in the file, the
-         overlay is what a run knows and the file cannot say, and on a reload the
-         overlay is rebuilt rather than restored, which is the model's "nothing durable
-         lives in the run". Where the overlay belongs, and whether `status` survives at
-         all, is 0.4g's `(decide)` and B3; s12 moves the durable half only.
-         A consequence worth taking: with the rows as the items, the bridge's
-         `apply_task_graph` stops being a writer of items and `node_meta` (it exists to
-         lower the engine's graph back into the plan), so the closed-item ghost dies at
-         its source and the bridge becomes a validation and op view over the rows. That
-         is moves 3 and 4 falling out rather than being chased.
+      2. **The plan is refreshed from the file, not a peer store.** Landed. One write
+         path, so one refresh: a row write goes through the store, and the plan's items
+         follow the rows it wrote. Not a patch per site, which would leave two writers
+         of one field, and not a re-read per site, which would be five parallel
+         refreshes of one fact. The rule is field-level, not set-level: an item equals
+         its row, an item whose row is gone is dropped, and a new item comes only from a
+         seat (the seed) or from a row the store just added (an expansion's children),
+         because the file is the repo's one list while a plan holds the rows its run
+         seated (`seed_specs` leaves out a kindless row, a foreign row, and a row
+         blocked outside the run). The one field the rows cannot give is `status`: a
+         row's own status is what the store writes (`pending` for a fresh row), while an
+         item's status is the run's lifecycle for that row, so it is carried by id.
+         Where that lifecycle belongs, and whether it survives at all, is 0.4g's
+         `(decide)` and B3; this move took the durable half.
+         Three things fell out of it. The bridge's `apply_task_graph` stopped being a
+         writer of items, so the closed-item ghost dies at its source and the bridge is
+         a validation and op view over the rows (`to_task_graph`, kept). A run's own
+         held rows became visible as rows, so the dispatch picker hands them over
+         explicitly (`next_handover_runnable_item_id`: nobody holds it, or this run
+         does) instead of relying on the seed dropping holders, and the double-assign
+         guard stopped treating the requester's own claim as a conflict, because that
+         claim is what a hand-over moves. And the debug `swarm:graph` op went with it:
+         it existed to drive the engine's ops against plan-owned items, which is the
+         shape this move removes, and nothing (no test, no doc, no script) referenced
+         it.
       3. **The artifact's one home is the row's `record`.** The close already writes
          `{"id","result","artifact"}` onto the owning row (`kcode-base/src/todo.rs:279`)
          and the plan writes the same artifact into `node_meta`

@@ -417,6 +417,7 @@ async fn requeue_existing_assignment_preserves_the_reclaim_count() {
         requester,
         worker,
         "requeue-me",
+        Some(repo.path()),
         &swarm_plans,
     )
     .await;
