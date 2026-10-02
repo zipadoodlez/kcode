@@ -384,8 +384,12 @@ changes are paid for in test churn.
   loop that repeats the work, which is the run's own `worked` set (`live_turn.rs:399`),
   and the `run_plan` driver's loop limits stand in until F1 folds hand-outs into that
   loop, the ceiling the `braid:` note records at the release site. Also gone: the
-  `swarm:plan_version` debug read, and the plan page's completed, terminal and failed
-  segments, which nothing can set once rows come from the list.
+  `swarm:plan_version` debug read and the plan page's `done` segment, which nothing can
+  set once a closed row leaves the list. Two smaller signals moved with it: the
+  `run_plan` progress card has no completed count (its zero is marked in the code, and
+  the run's own record of the rows it closed is F1's to supply), and the
+  credential-failure wave guard now treats a worker that finished a turn as "the route
+  works" instead of a completed node, so it can fire while a long run is going well.
 - [x] **(decision)** `KCODE_SWARM_ID` goes with the stored swarm id (0.4g, 2026-10-02).
   A swarm is a count, not a mode, so membership is derived from who holds rows under the
   run's anchor. What is lost: two working directories can no longer declare one shared
