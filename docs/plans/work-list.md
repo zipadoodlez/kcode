@@ -263,9 +263,25 @@ and the one build + test pass lands at the end of 0.4f.
       it), `participants` (no client reads it; the broadcast already falls back to the
       whole swarm, `swarm.rs:739`) and the reclaim counter. All three are 0.4g's
       `(decide)` about whether the plan object exists and where per-task runtime lives,
-      so s12 empties the plan's half and leaves the file to 0.4g. Three moves, one
-      commit each.
-      1. **The artifact's one home is the row's `record`.** The close already writes
+      so s12 empties the plan's half and leaves the file to 0.4g. Five moves, one
+      commit each. The first two and the fourth are decided (2026-10-02), and together
+      they are what makes the two lists one list.
+      1. **An assignment is a file write.** Decided. The holder lives only in the plan
+         today and the snapshot is what makes it durable, while the file's
+         `assigned_to` is written only by the store's own paths
+         (`anchor_from_words`, the `todo` tool's claim), so the list does not show who
+         the plan handed work to, and "the file is the list" cannot be true while that
+         holds. Expand and close already write the store first and let the plan follow;
+         assign joins them. The paths that change a holder: dispatch
+         (`handle_comm_assign_task`), `requeue_existing_assignment`,
+         `reclaim_stranded_assignment` and its salvage sweep, and everything
+         `task_control` routes through assign. One store function, one shape.
+      2. **The plan is refreshed from the file, not a peer store.** Decided with move
+         1, and the rule that makes it a view instead of a cache that drifts: after a
+         row write the plan's items are re-read or rebuilt, so an item that names no
+         open row does not survive. Settle the exact rule (re-read per write, or
+         rebuild after write) by reading the plan's mutation paths before this lands.
+      3. **The artifact's one home is the row's `record`.** The close already writes
          `{"id","result","artifact"}` onto the owning row (`kcode-base/src/todo.rs:279`)
          and the plan writes the same artifact into `node_meta`
          (`bridge::apply_task_graph`), so the artifact exists twice. `bridge`'s
@@ -278,25 +294,34 @@ and the one build + test pass lands at the end of 0.4f.
          rule 7 drops a closed id from every dependent's `blocked_by`, so the file no
          longer names the edge and no narrower read exists. It matches the model (a
          run's records accumulate on its anchor) and is named as a loss.
-      2. **A close deletes the plan's item, not only the row.** Three writers leave a
+      4. **A close deletes the plan's item, not only the row, and a turn end is a
+         close.** Decided. Three writers leave a
          closed item behind: the turn-end auto-complete (`comm_control.rs:706`), the
          `complete_node` path through `apply_task_graph` (Done becomes "completed"), and
          the salvage cap's "failed" (`swarm.rs:322`). Only one of them closes the row on
          disk, `close_row_on_disk`, and it has exactly one caller
          (`comm_graph.rs:504`). So an auto-completed turn leaves the file row open while
-         the plan says done, and the plan's items are not the file's rows. The close
-         path makes the plan follow the file the way the expand path already does.
-      3. **The engine stops carrying the artifact.** `TaskNode.output`,
+         the plan says done, and the plan's items are not the file's rows. So the turn
+         end closes the row, with the turn's report as the close's result. One loose
+         end that must land with it: a close needs a nonempty result and a turn can end
+         with no report, so what makes that close legal is part of this move; without
+         it the row stays open and the picker's hand-back would re-dispatch it forever.
+      5. **The engine stops carrying the artifact.** `TaskNode.output`,
          `dag::assemble_input` and the artifact argument of `complete_node` exist so the
          plan can keep its copy; `assemble_input` has no production caller at all, so
          the engine's dataflow is a second, dead implementation of the hydration the
          bridge does. It goes, with the simulator's use of it, and the engine keeps
          ownership, status and edges.
       Then the single build + full test pass for 0.4f.
+      What the decided moves change: a dispatch now writes the list file, so a failed
+      write is a failed dispatch (the close path already logs and carries on, and this
+      takes the same shape), a reload recovers holders from the file instead of the
+      snapshot, and a hand edit of a holder becomes an input rather than a conflict.
       Losses to name: a leaf whose dependency closed before a reload no longer gets
-      that dependency's context, because the file keeps no edge to a closed row; and
-      the sibling widening above, where a row's context becomes the closed work under
-      its parent rather than the exact dependencies it named.
+      that dependency's context, because the file keeps no edge to a closed row; the
+      sibling widening above, where a row's context becomes the closed work under its
+      parent rather than the exact dependencies it named; and a turn that ends with no
+      report, where the close needs a rule this stage must write.
   - **0.4g. The swarm state gets one owner**: the `coordinators` map, any stored swarm
     id (including the `KCODE_SWARM_ID` shared-swarm opt-in), the `features.swarm` flag
     and per-session toggle (stored membership), the `assign_role` action that writes the
