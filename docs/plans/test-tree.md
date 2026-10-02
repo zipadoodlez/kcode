@@ -52,7 +52,13 @@ through `create_test_app`. The two diagnoses are independent of everything.
  pre-existing: the same four fail with the 0.5 change stashed, at the commit before it
  (129 passed, 4 failed either way). They bind a local socket and drive the prewarm and
  persistent-terminal paths, so start at whether they need a live account or an
- advertised model catalog.
+ advertised model catalog. Re-run while gating 0.5 (2026-10-03, single-threaded, the
+ same four, 129 passed either way): the panic is `set_model` rejecting `gpt-5.6-sol`
+ (`openai_provider_impl.rs:753`), and that id **is** in `ALL_OPENAI_MODELS`, so the
+ static fallback is not what is missing. `known_openai_model_ids()` takes
+ `cached_openai_model_ids()` first, so a catalog read that returns an empty list
+ shadows the static one; start at which test seeds that empty catalog for the account
+ scope.
 - [ ] **`kcode-provider-anthropic-runtime`'s
  `tests::anthropic_fallback_honors_server_recommendation` is red** (2026-10-02, seen
  while landing 0.5): 57 pass, this one fails, alone and in-crate, single-threaded too.

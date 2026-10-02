@@ -328,8 +328,12 @@ the model table, `provider.anthropic_reasoning_effort`, and a named profile's
 `reasoning_effort`. The losses are named in `docs/what-was-removed.md`, including the
 models that ship a higher default and start lower until a human cycles them up.
 
-In flight: its rows are in `tasks.jsonl` (`t1`-`t7`), the first step of B2 taken early
-for the step that is running; the design stays here.
+In flight: t5, the gate, is down to its live probe, which runs at the next build.
+The rest has run: `scripts/check_guardrails.sh` green (fmt, workspace clippy with
+`-D warnings`, lockfile, boundaries, wildcard and App-shape ratchets), `scripts/test.sh
+full` green apart from the three `session_flow` reds, and the touched crates' own
+suites green apart from the reds `plans/test-tree.md` already records. The design
+stays here.
 
 ### A. Audit
 

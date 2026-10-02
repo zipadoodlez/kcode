@@ -33,6 +33,11 @@ alternating them rebuilds the tree. The commands that cover a change are:
 Avoid `cargo check` before the gate for this reason; the gate's clippy already
 covers the compile errors it would find.
 
+`full` runs the root package's lib and bins plus the `provider_matrix` and `e2e`
+suites. It does not run a workspace crate's own unit tests, so a change inside
+`crates/` needs `scripts/test.sh crate <name>` as well. That is where the provider
+and TUI reds in `plans/test-tree.md` appear; `full` cannot show them.
+
 ## Smoke, by hand, once per build
 
 The suites cover the wiring they can reach; these are the ends they cannot, so a build
