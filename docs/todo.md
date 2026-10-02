@@ -379,8 +379,13 @@ changes are paid for in test churn.
   ordering comes from sending the event inside the lock that mutated it); participants
   had no reader; the lifecycle and the count are run facts and move to the runtime owner,
   keyed by row id. What is lost: restart recovery no longer restores a plan, and the
-  reclaim cap resets with the process, so a crash-looping row gets three more automatic
-  re-assignments. Also gone: the `swarm:plan_version` debug read.
+  per-row reclaim bound is gone with the counter, so a row whose workers keep dying stays
+  open and unclaimed instead of failing after three tries. The bound now belongs to the
+  loop that repeats the work, which is the run's own `worked` set (`live_turn.rs:399`),
+  and the `run_plan` driver's loop limits stand in until F1 folds hand-outs into that
+  loop, the ceiling the `braid:` note records at the release site. Also gone: the
+  `swarm:plan_version` debug read, and the plan page's completed, terminal and failed
+  segments, which nothing can set once rows come from the list.
 - [x] **(decision)** `KCODE_SWARM_ID` goes with the stored swarm id (0.4g, 2026-10-02).
   A swarm is a count, not a mode, so membership is derived from who holds rows under the
   run's anchor. What is lost: two working directories can no longer declare one shared

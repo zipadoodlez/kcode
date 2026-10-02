@@ -239,12 +239,31 @@ full test pass ran with it (three pre-existing `session_flow` e2e failures, reco
        longer counts. The restart behavior is pinned by
        `a_loaded_swarm_seats_the_rows_its_members_hold`.
     3. **g3. The item cache dies** (behavior boundary: the status readers). What is left
-       of g2: per-row run state, lifecycle and reclaim count, becomes a map on the
-       runtime owner keyed by row id; `VersionedPlan`, `SwarmTaskProgress`, `sync_rows`,
+       of g2, decided 2026-10-02. `VersionedPlan`, `SwarmTaskProgress`, `sync_rows`,
        `drop_row`, `set_row_status`, `prune_side_maps`, `rename_session`, `is_composite`,
-       `execution_state`, `plan_definition` and the debug-only plan DTOs go, and the
-       ~47 item reads come from the list. The reclaim cap stays 3 and resets on restart,
-       the loss named in `docs/todo.md`.
+       `execution_state`, `plan_definition` and the debug-only plan DTOs go, and the ~47
+       item reads come from the list. What replaces them is one rule and one map: a
+       swarm's rows are the open rows its members hold (the scope g2's hydration already
+       uses, and the anchor's subtree when two runs share a repo), the run keeps a sparse
+       `status` per row id while the process lives, and every read uses the run's status
+       when it set one and the row's own otherwise, which is what keeps the pickers, the
+       summary and the graph DTOs working on a plain `&[TaskItem]`.
+       The reclaim cap is deleted with no replacement, decided 2026-10-02:
+       `dead_assignee_reclaims`, `MAX_DEAD_ASSIGNEE_RECLAIMS`, `count_dead_assignee_reclaim`,
+       the cap branch in `next_stranded_runnable_item_id`, and the `failed` status the cap
+       wrote all go. The bound belongs to the loop that repeats the work, and the run
+       already keeps it (`worked`, `live_turn.rs:399`), so `salvage_plan_assignments_of`
+       becomes: release every row the dead holder holds, in the file, and report the
+       death. The residual ceiling is the `run_plan` driver, whose own limits (200 loops,
+       the stall detector, the concurrency cap) are coarser than three tries per row until
+       F1 folds hand-outs into the run's loop; that is the `braid:` note the commit
+       carries at the release site.
+       Nothing sets a failure status any more, so `completed_ids`, `terminal_ids`,
+       `failed_ids`, `failed_reasons` and `plan_terminal_node_count` go with it, and the
+       summary is ready, blocked, active, cycle and unresolved.
+       Boundaries to test: a restored row is picked for dispatch, a dead holder's rows are
+       released in the file, the plan page renders run statuses, and a close removes the
+       row.
     4. **g4. Membership is derived** (behavior boundary: membership). Delete the
        `coordinators` map (the coordinator is the session holding the run's anchor row),
        the stored swarm id including `KCODE_SWARM_ID` (`server/util.rs:96`, `:116`),
