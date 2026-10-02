@@ -221,8 +221,8 @@ and the one build + test pass lands at the end of 0.4f.
     member, not the task; fan-out is the plan's ready set (`blocked_by`), not a
     decision; busy is the member's in-flight work; and who integrates a decomposition is
     the row's holder (`assigned_to`).
-  - **0.4f. `VersionedPlan` becomes a view of the file**, deleting
-    `swarm_persistence.rs` (638 lines) and its tests (936 lines). It reads `parent` and
+  - **0.4f. `VersionedPlan` becomes a view of the file.** The durable snapshot goes,
+    but not here: see s12 below, which measured it. It reads `parent` and
     composite from the rows: the file's `parent` is the one hierarchy (`anchor_from_rows`
     adopts root rows, `expand_row_on_disk` adds children), so `node_meta.parent` is
     deleted, and a node is composite when it has an open child or a nonempty `records`
@@ -253,6 +253,50 @@ and the one build + test pass lands at the end of 0.4f.
     Sequenced stages, one commit each, and the one build + test pass lands at the end of
     0.4f. Dropping fields from the persisted snapshot is safe: `SwarmTaskProgress` has
     no `deny_unknown_fields` (`swarm_persistence.rs:112-121`), so old files still load.
+    - **s12. The plan's items become the file's open rows.** Read 2026-10-02, and two
+      things in the paragraph above are wrong on this tree. `swarm_persistence.rs` is
+      625 lines and its tests 926, and the tests are almost none of it: of 21 cases,
+      3 touch the plan, and the rest cover member recovery, terminal retention, legacy
+      migration, `.bak` rotation and per-swarm locking. That is the member and
+      coordinator half, which is 0.4g's ownership cut, not this stage's. What the plan
+      actually persists is three things: `version` (the client orders plan events by
+      it), `participants` (no client reads it; the broadcast already falls back to the
+      whole swarm, `swarm.rs:739`) and the reclaim counter. All three are 0.4g's
+      `(decide)` about whether the plan object exists and where per-task runtime lives,
+      so s12 empties the plan's half and leaves the file to 0.4g. Three moves, one
+      commit each.
+      1. **The artifact's one home is the row's `record`.** The close already writes
+         `{"id","result","artifact"}` onto the owning row (`kcode-base/src/todo.rs:279`)
+         and the plan writes the same artifact into `node_meta`
+         (`bridge::apply_task_graph`), so the artifact exists twice. `bridge`'s
+         `upstream_context` is the only production reader (`bridge.rs:206`), and it
+         should read the record. Then `NodeMeta` goes: the type, `prune_side_maps`'s
+         arm, the snapshot field, the bridge's lift and lower, and the two debug reads
+         (`debug_swarm_read.rs:275`, `:306`). A composite's own records are its
+         children's artifacts, which is exactly the map-reduce synthesis; a leaf reads
+         the closed work under its own parent. That last part is a widening, because
+         rule 7 drops a closed id from every dependent's `blocked_by`, so the file no
+         longer names the edge and no narrower read exists. It matches the model (a
+         run's records accumulate on its anchor) and is named as a loss.
+      2. **A close deletes the plan's item, not only the row.** Three writers leave a
+         closed item behind: the turn-end auto-complete (`comm_control.rs:706`), the
+         `complete_node` path through `apply_task_graph` (Done becomes "completed"), and
+         the salvage cap's "failed" (`swarm.rs:322`). Only one of them closes the row on
+         disk, `close_row_on_disk`, and it has exactly one caller
+         (`comm_graph.rs:504`). So an auto-completed turn leaves the file row open while
+         the plan says done, and the plan's items are not the file's rows. The close
+         path makes the plan follow the file the way the expand path already does.
+      3. **The engine stops carrying the artifact.** `TaskNode.output`,
+         `dag::assemble_input` and the artifact argument of `complete_node` exist so the
+         plan can keep its copy; `assemble_input` has no production caller at all, so
+         the engine's dataflow is a second, dead implementation of the hydration the
+         bridge does. It goes, with the simulator's use of it, and the engine keeps
+         ownership, status and edges.
+      Then the single build + full test pass for 0.4f.
+      Losses to name: a leaf whose dependency closed before a reload no longer gets
+      that dependency's context, because the file keeps no edge to a closed row; and
+      the sibling widening above, where a row's context becomes the closed work under
+      its parent rather than the exact dependencies it named.
   - **0.4g. The swarm state gets one owner**: the `coordinators` map, any stored swarm
     id (including the `KCODE_SWARM_ID` shared-swarm opt-in), the `features.swarm` flag
     and per-session toggle (stored membership), the `assign_role` action that writes the
