@@ -190,13 +190,12 @@ duplication they would have removed and nothing else.
 
 **Here is where the work stands**, and a step in flight is finished before a new one
 starts. 0.1, 0.2 and 0.3 have landed whole and are gone from this list; what 0.2 owed
-was 0.3's last stage, and the two losses 0.1 and 0.3 named are in `docs/todo.md`. Next
-is 0.4: its gate stage (0.4a), row stage (0.4c), one-mode stage (0.4b: only the root
-spawns, both swarm rungs and the effort side-table gone), node-meta stage (0.4d: origin
-and the growth report gone) and liveness stage (0.4e: staleness reads the member's clock,
-the heartbeat counters gone) have landed. 0.4d's `parent`/`expanded` cut and the rest of
-0.4e are the same store-boundary cut as 0.4f, so they live there; 0.4f and 0.4g remain,
-and the one build + test pass lands at the end of 0.4f.
+was 0.3's last stage, and the two losses 0.1 and 0.3 named are in `docs/todo.md`. 0.4's
+gate stage (0.4a), row stage (0.4c), one-mode stage (0.4b), node-meta stage (0.4d),
+liveness stage (0.4e) and 0.4f have landed: the plan's items are the file's open rows,
+the holder and the artifact live where the list is, and a turn end is a close. **0.4g
+is next**, and the one build + full test pass for 0.4f ran with it (three pre-existing
+`session_flow` e2e failures, recorded in `docs/todo.md`).
 
 ### 0. One way work gets done
 
@@ -341,12 +340,14 @@ and the one build + test pass lands at the end of 0.4f.
          salvage cap keeps its row for the same reason, so its plan-only "failed" stays
          (it is the one state a human can move, and 0.4g's runtime question owns where
          that status lives).
-      5. **The engine stops carrying the artifact.** `TaskNode.output`,
-         `dag::assemble_input` and the artifact argument of `complete_node` exist so the
-         plan can keep its copy; `assemble_input` has no production caller at all, so
-         the engine's dataflow is a second, dead implementation of the hydration the
-         bridge does. It goes, with the simulator's use of it, and the engine keeps
-         ownership, status and edges.
+      5. **The engine stops carrying the artifact.** Landed. `TaskNode.output`,
+         `dag::assemble_input`, `complete_node`'s artifact argument and the simulator's
+         artifact plumbing all existed so the plan could keep its copy; with the record
+         as the home they were a second, dead implementation of the context the bridge
+         builds. The engine now keeps ownership, status and edges, and `HandoffArtifact`
+         moved out of `dag` to `kcode_plan::artifact`, where its users are (the closer
+         that writes it and the bridge that renders it), so the type no longer reads as
+         the engine's.
       Then the single build + full test pass for 0.4f.
       What the decided moves change: a dispatch now writes the list file first and the
       plan follows it, so a failed write is a failed dispatch and nothing records an

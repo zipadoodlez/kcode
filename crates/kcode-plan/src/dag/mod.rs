@@ -19,7 +19,7 @@ pub mod sim;
 mod tests;
 
 pub use ops::{complete_node, expand_node, fail_node, requeue_failed, seed};
-pub use schedule::{assemble_input, dispatch, is_terminal, ready_nodes};
+pub use schedule::{dispatch, is_terminal, ready_nodes};
 
 /// A node identifier. Stable string ids keep the model serializable.
 pub type NodeId = String;
@@ -49,126 +49,11 @@ pub enum NodeStatus {
     Queued,
     /// Dispatched to a worker and actively executing.
     Running,
-    /// Finished successfully; `output` artifact is attached.
+    /// Finished successfully. The close's own words and its machine-readable half
+    /// are the row's record, not the node's.
     Done,
     /// Unrecoverable failure. A `Fix`/re-verify path may supersede it.
     Failed,
-}
-
-/// Deserialize `confidence` from either a JSON string or a bare number.
-/// Agents frequently emit `"confidence": 0.8` instead of `"0.8"`; rejecting
-/// that with a serde type error is pointless friction, so numbers are
-/// stringified.
-fn de_confidence_scalar<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum Scalar {
-        Text(String),
-        Number(f64),
-        Bool(bool),
-    }
-    Ok(
-        Option::<Scalar>::deserialize(deserializer)?.map(|scalar| match scalar {
-            Scalar::Text(text) => text,
-            Scalar::Number(number) => number.to_string(),
-            Scalar::Bool(flag) => flag.to_string(),
-        }),
-    )
-}
-
-/// The typed handoff artifact attached to a node on completion. This is the
-/// dataflow payload that travels forward along edges to dependents.
-///
-/// Forcing an agent to enumerate what it did *not* check is what makes thin work
-/// structurally visible, so that field is rendered forward with the rest.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HandoffArtifact {
-    /// The deliverable summary (findings for explore, what shipped for implement).
-    #[serde(default)]
-    pub findings: String,
-    /// References, not claims: file:line, commit refs, paths.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub evidence: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub edge_cases_considered: Vec<String>,
-    /// Verify results for code-style nodes.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub validation: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub open_questions: Vec<String>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "de_confidence_scalar"
-    )]
-    pub confidence: Option<String>,
-    /// Explicit unexplored surface, rendered forward for downstream workers.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub what_i_did_not_check: Vec<String>,
-}
-
-impl HandoffArtifact {
-    /// A minimal artifact for tests.
-    pub fn brief(findings: impl Into<String>) -> Self {
-        Self {
-            findings: findings.into(),
-            ..Self::default()
-        }
-    }
-
-    /// Render this artifact as a forward-dataflow section for a downstream worker
-    /// (or a gate). This is the single source of truth for how an artifact is
-    /// surfaced on a dependency edge, so the engine scheduler and the live bridge
-    /// stay in lockstep.
-    ///
-    /// Critically this includes `edge_cases_considered` and `what_i_did_not_check`:
-    /// a downstream worker reads what its dependencies did *not* check, so
-    /// dropping those fields here would hide that surface (doc sections 5, 6.3).
-    /// Render this artifact as one section of a prompt's context. `kind` is the
-    /// node's word for the work when the caller still has the node; a section built
-    /// from a closed row's record has no kind, because the store keeps no engine
-    /// vocabulary and the row is gone.
-    pub fn render_section(&self, id: &str, kind: Option<&str>) -> String {
-        let mut body = match kind {
-            Some(kind) => format!("## {id} ({kind})\n"),
-            None => format!("## {id}\n"),
-        };
-        if !self.findings.trim().is_empty() {
-            body.push_str(&self.findings);
-            body.push('\n');
-        }
-        if !self.evidence.is_empty() {
-            body.push_str(&format!("Evidence: {}\n", self.evidence.join("; ")));
-        }
-        if !self.edge_cases_considered.is_empty() {
-            body.push_str(&format!(
-                "Edge cases considered: {}\n",
-                self.edge_cases_considered.join("; ")
-            ));
-        }
-        if let Some(validation) = &self.validation {
-            body.push_str(&format!("Validation: {validation}\n"));
-        }
-        if !self.open_questions.is_empty() {
-            body.push_str(&format!(
-                "Open questions: {}\n",
-                self.open_questions.join("; ")
-            ));
-        }
-        if let Some(confidence) = &self.confidence {
-            body.push_str(&format!("Confidence: {confidence}\n"));
-        }
-        if !self.what_i_did_not_check.is_empty() {
-            body.push_str(&format!(
-                "What was not checked: {}\n",
-                self.what_i_did_not_check.join("; ")
-            ));
-        }
-        body
-    }
 }
 
 /// A single task node in the DAG.
@@ -197,9 +82,6 @@ pub struct TaskNode {
     /// Priority used to order the ready set. Lower rank runs first.
     #[serde(default)]
     pub priority: u8,
-    /// The typed handoff artifact, present once `Done`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub output: Option<HandoffArtifact>,
 }
 
 impl TaskNode {

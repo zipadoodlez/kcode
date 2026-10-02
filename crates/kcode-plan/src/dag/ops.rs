@@ -4,7 +4,7 @@
 //! owner (you may only expand/complete a node you own), edges may only reference
 //! existing nodes, and the result must stay acyclic (doc sections 2, 3, 6).
 
-use super::{DagError, HandoffArtifact, NodeSpec, NodeStatus, TaskGraph, TaskNode};
+use super::{DagError, NodeSpec, NodeStatus, TaskGraph, TaskNode};
 
 /// Seed the initial DAG from a batch of specs (the first agent's draft). All
 /// referenced dependencies must resolve within the supplied set and the result
@@ -182,9 +182,8 @@ pub fn expand_node(
         staged.push(spec_to_node(spec, Some(node_id.to_string())));
     }
 
-    // The synthesis (parent) must wait for every child. The forward-dataflow
-    // hydration reads a node's *direct* dependencies, so the child edges carry
-    // the map-reduce synthesis re-wake its children's artifacts (doc section 5).
+    // The synthesis (parent) must wait for every child, so the child edges are what
+    // holds it open until they close.
     let synth_deps = child_ids.clone();
 
     // Flip the parent into a composite join: it re-queues, depends on the
@@ -217,14 +216,10 @@ pub fn expand_node(
     Ok(child_ids)
 }
 
-/// Complete a node the actor owns with a typed handoff artifact. The artifact
-/// becomes the dataflow payload for dependents.
-pub fn complete_node(
-    graph: &mut TaskGraph,
-    node_id: &str,
-    actor: &str,
-    artifact: HandoffArtifact,
-) -> Result<(), DagError> {
+/// Complete a node the actor owns. The close's words and its machine-readable half
+/// are the row's business (the store's record), not the graph's: the engine keeps
+/// ownership, status and edges.
+pub fn complete_node(graph: &mut TaskGraph, node_id: &str, actor: &str) -> Result<(), DagError> {
     let node = graph
         .get(node_id)
         .ok_or_else(|| DagError::UnknownNode(node_id.to_string()))?;
@@ -245,7 +240,6 @@ pub fn complete_node(
         .get_mut(node_id)
         .ok_or_else(|| DagError::UnknownNode(node_id.to_string()))?;
     node.status = NodeStatus::Done;
-    node.output = Some(artifact);
     Ok(())
 }
 
@@ -332,6 +326,5 @@ fn spec_to_node(spec: NodeSpec, parent: Option<String>) -> TaskNode {
         depends_on,
         expanded: false,
         priority: spec.priority,
-        output: None,
     }
 }

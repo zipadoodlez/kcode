@@ -165,7 +165,7 @@ fn dispatch_assigns_owner_and_blocks_dependents() {
 fn complete_rejects_non_owner() {
     let mut g = dag(vec![spec("a", NodeKind::Explore)]);
     dispatch(&mut g, "a", "w0");
-    let err = complete_node(&mut g, "a", "intruder", HandoffArtifact::brief("x")).unwrap_err();
+    let err = complete_node(&mut g, "a", "intruder").unwrap_err();
     assert_eq!(
         err,
         DagError::NotOwner {
@@ -187,25 +187,6 @@ fn expand_rejects_non_owner() {
     )
     .unwrap_err();
     assert!(matches!(err, DagError::NotOwner { .. }));
-}
-
-// ----- dataflow on edges -----
-
-#[test]
-fn assembled_input_includes_upstream_artifacts() {
-    let mut g = dag(vec![
-        spec("a", NodeKind::Explore),
-        spec("b", NodeKind::Implement).depends_on(["a"]),
-    ]);
-    dispatch(&mut g, "a", "w0");
-    let mut artifact = HandoffArtifact::brief("API lives in foo.rs");
-    artifact.evidence = vec!["crates/foo/api.rs:12".into()];
-    complete_node(&mut g, "a", "w0", artifact).unwrap();
-
-    let input = assemble_input(&g, "b");
-    assert!(input.contains("task b"));
-    assert!(input.contains("API lives in foo.rs"));
-    assert!(input.contains("crates/foo/api.rs:12"));
 }
 
 // ----- composite expansion + gate insertion -----
@@ -251,7 +232,7 @@ fn expand_keeps_the_owner_who_integrates_the_children() {
 
     // Once the child completes, the composite is runnable again (no owner gate).
     dispatch(&mut g, "root.1", "w0");
-    complete_node(&mut g, "root.1", "w0", HandoffArtifact::brief("done")).unwrap();
+    complete_node(&mut g, "root.1", "w0").unwrap();
     assert!(ready_nodes(&g).iter().any(|n| n.id == "root"));
 }
 
@@ -263,11 +244,11 @@ fn simulator_stalls_when_failed_node_blocks_dependents() {
         spec("a", NodeKind::Implement),
         spec("b", NodeKind::Implement).depends_on(["a"]),
     ]);
-    let mut worker = |id: &str, _k: NodeKind, _i: &str| {
+    let mut worker = |id: &str, _k: NodeKind| {
         if id == "a" {
             WorkerAction::Fail
         } else {
-            WorkerAction::Complete(HandoffArtifact::brief(id))
+            WorkerAction::Complete
         }
     };
     let report = sim::run(&mut g, 2, 50, &mut worker).unwrap();
@@ -291,7 +272,7 @@ fn seed_accepts_duplicate_dependencies_without_false_cycle() {
     assert_eq!(g.get("a").unwrap().depends_on, vec!["b".to_string()]);
     // And the graph drains normally.
     dispatch(&mut g, "b", "w0");
-    complete_node(&mut g, "b", "w0", sim::artifact("b done")).unwrap();
+    complete_node(&mut g, "b", "w0").unwrap();
     assert_eq!(ready_nodes(&g).len(), 1);
 }
 
@@ -304,16 +285,4 @@ fn seed_rejects_blank_ids() {
     let mut ws = TaskGraph::new();
     let white = NodeSpec::new("   ", "task", NodeKind::Explore);
     assert!(seed(&mut ws, vec![white]).is_err());
-}
-
-#[test]
-fn artifact_accepts_numeric_confidence_json() {
-    // Agents emit {"confidence": 0.8}; the deserializer must coerce, not reject.
-    let artifact: HandoffArtifact =
-        serde_json::from_str(r#"{"findings":"x","confidence":0.8,"what_i_did_not_check":["y"]}"#)
-            .expect("numeric confidence should deserialize");
-    assert_eq!(artifact.confidence.as_deref(), Some("0.8"));
-    let artifact: HandoffArtifact =
-        serde_json::from_str(r#"{"findings":"x","confidence":"low"}"#).unwrap();
-    assert_eq!(artifact.confidence.as_deref(), Some("low"));
 }

@@ -8,7 +8,8 @@
 //! back. This keeps a single source of truth and reuses the existing
 //! persistence/broadcast/scheduler machinery.
 
-use crate::dag::{HandoffArtifact, NodeKind, NodeSpec, NodeStatus, TaskGraph, TaskNode};
+use crate::artifact::HandoffArtifact;
+use crate::dag::{NodeKind, NodeSpec, NodeStatus, TaskGraph, TaskNode};
 use crate::{TaskItem, VersionedPlan};
 use std::collections::HashSet;
 
@@ -116,9 +117,6 @@ pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
             depends_on: item.blocked_by.clone(),
             expanded: plan.is_composite(&item.id),
             priority: crate::priority_rank(&item.priority),
-            // The artifact's home is the row's record, so a lifted node starts with
-            // none: the engine fills it only for nodes it completes in its own graph.
-            output: None,
         });
     }
     graph

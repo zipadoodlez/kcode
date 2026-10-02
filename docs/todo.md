@@ -187,6 +187,16 @@ changes are paid for in test churn.
   diagnosed; it asserts that provider suggestions include
   `/model openai/gpt-5.4@OpenAI`. `dev/testing.md` carries the note for a session that
   just saw it.
+- [ ] Three `session_flow` e2e tests fail on a clean tree (2026-10-02, seen while
+  landing 0.4f): `test_debug_create_session_marks_debug`,
+  `test_debug_create_selfdev_session_marks_canary` and
+  `test_clear_preserves_debug_for_resumed_debug_session`, each dying with a bare
+  `No such file or directory (os error 2)` after `create_session` over the debug
+  socket. Verified pre-existing: all three fail identically with the s12 change
+  stashed, at the commit before it. The suite's other session tests pass, including
+  one that calls the same `Session::load`, so the failure is specific to a session
+  the *debug command* created. Cause not diagnosed; the next reader should start at
+  what `create_session` persists versus what `Session::load` reads.
 - [ ] One home per duplicated test helper: 13 names are defined in more than one
   file (`lock_env` 8, `test_agent` 7, `create_test_app` 3, then
   `tracked_env_vars`, `clear_openai_compatible_runtime_env`,

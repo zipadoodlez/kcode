@@ -1,33 +1,33 @@
 //! Deterministic task-DAG simulator.
 //!
-//! This drives the engine end-to-end with scripted mock workers so the scheduler,
-//! ops, and dataflow can be verified without any live agents. It is the
-//! executable analogue of the DAG model in `docs/internals/swarm.md`.
+//! This drives the engine end-to-end with scripted mock workers so the scheduler and
+//! ops can be verified without any live agents. It is the executable analogue of the
+//! DAG model in `docs/internals/swarm.md`.
 //!
-//! A worker is a closure that, given the assembled input for a node, returns a
+//! A worker is a closure that, given the node it was handed, returns a
 //! [`WorkerAction`]. The driver loops: dispatch all ready nodes round-robin to a
 //! bounded worker pool, run each one step, apply the resulting mutation, and
 //! repeat until the graph is fully terminal or it stalls.
 
 use super::{
-    DagError, HandoffArtifact, NodeKind, NodeSpec, TaskGraph, complete_node, dispatch, expand_node,
-    fail_node, ready_nodes,
+    DagError, NodeKind, NodeSpec, TaskGraph, complete_node, dispatch, expand_node, fail_node,
+    ready_nodes,
 };
 
 /// What a mock worker decides to do with the node it was handed.
 #[derive(Debug, Clone)]
 pub enum WorkerAction {
-    /// Execute the node directly and complete it with this artifact.
-    Complete(HandoffArtifact),
+    /// Execute the node directly and complete it.
+    Complete,
     /// Decompose the node into these children (composite path).
     Expand(Vec<NodeSpec>),
     /// Fail the node.
     Fail,
 }
 
-/// A scripted worker. Receives the node id, kind, and assembled input; returns an
-/// action. The closure may capture mutable state (e.g. to expand only once).
-pub type Worker<'a> = dyn FnMut(&str, NodeKind, &str) -> WorkerAction + 'a;
+/// A scripted worker. Receives the node id and kind; returns an action. The closure
+/// may capture mutable state (e.g. to expand only once).
+pub type Worker<'a> = dyn FnMut(&str, NodeKind) -> WorkerAction + 'a;
 
 /// Outcome of a simulation run.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,11 +74,10 @@ pub fn run(
             if !dispatch(graph, &node_id, &worker_name) {
                 continue;
             }
-            let input = super::assemble_input(graph, &node_id);
-            let action = worker(&node_id, kind, &input);
+            let action = worker(&node_id, kind);
             match action {
-                WorkerAction::Complete(artifact) => {
-                    complete_node(graph, &node_id, &worker_name, artifact)?;
+                WorkerAction::Complete => {
+                    complete_node(graph, &node_id, &worker_name)?;
                 }
                 WorkerAction::Expand(children) => {
                     expand_node(graph, &node_id, &worker_name, children)?;
@@ -105,15 +104,5 @@ fn report(graph: &TaskGraph, steps: usize, stalled: bool) -> SimReport {
         completed,
         failed,
         stalled,
-    }
-}
-
-/// Convenience: a handoff artifact for tests/sims.
-pub fn artifact(findings: &str) -> HandoffArtifact {
-    HandoffArtifact {
-        findings: findings.to_string(),
-        what_i_did_not_check: vec!["nothing material; covered the stated scope".to_string()],
-        confidence: Some("high".to_string()),
-        ..HandoffArtifact::default()
     }
 }

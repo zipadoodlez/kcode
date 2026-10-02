@@ -12,8 +12,9 @@ use super::{
     persist_swarm_state_for, record_swarm_event,
 };
 use crate::protocol::ServerEvent;
+use kcode_plan::artifact::HandoffArtifact;
 use kcode_plan::bridge::to_task_graph;
-use kcode_plan::dag::{self, HandoffArtifact, NodeSpec, NodeStatus, TaskGraph};
+use kcode_plan::dag::{self, NodeSpec, NodeStatus, TaskGraph};
 use kcode_plan::{MAX_PLAN_ITEMS, TaskItem};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -480,7 +481,7 @@ pub(super) async fn handle_comm_complete_node(
         };
         let mut graph = to_task_graph(plan);
         claim_queued_node_for_actor(&mut graph, &node_id, &req_session_id);
-        match dag::complete_node(&mut graph, &node_id, &req_session_id, artifact) {
+        match dag::complete_node(&mut graph, &node_id, &req_session_id) {
             Ok(()) => Ok(graph),
             Err(e) => Err(e.to_string()),
         }

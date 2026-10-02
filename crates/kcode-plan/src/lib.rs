@@ -8,6 +8,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// decomposed graphs while bounding server, disk, and per-client state.
 pub const MAX_PLAN_ITEMS: usize = 1024;
 
+pub mod artifact;
 pub mod bridge;
 pub mod dag;
 
