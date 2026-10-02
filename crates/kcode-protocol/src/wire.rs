@@ -494,10 +494,6 @@ pub enum Request {
         /// sentinels to force coordinator inheritance past a config pin.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         model: Option<String>,
-        /// Optional reasoning effort for the spawned agent (e.g. `none`,
-        /// `low`, `medium`, `high`, `xhigh`, `max`). Unset = provider default.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        effort: Option<String>,
         /// Optional short human-readable label for the spawned agent shown in
         /// swarm UI (gallery chips, member lists). Overrides the task label
         /// otherwise derived from the first line of `initial_message`.
@@ -611,10 +607,6 @@ pub enum Request {
         /// (same semantics as CommSpawn::model).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         model: Option<String>,
-        /// Optional reasoning effort for workers spawned by this assignment
-        /// (same semantics as CommSpawn::effort).
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        effort: Option<String>,
     },
 
     /// Subscribe to a named channel in the swarm

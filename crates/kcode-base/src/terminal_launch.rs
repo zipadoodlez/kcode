@@ -130,7 +130,7 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         assert_eq!(
-            recorded, "swarm-agent|ses_hooked|swarm-7|/usr/local/bin/kcode --resume ses_hooked",
+            recorded, "swarm-agent|ses_hooked|/usr/local/bin/kcode --resume ses_hooked",
             "hook should receive metadata env and the kcode command as argv"
         );
     }

@@ -1261,7 +1261,6 @@ async fn run_swarm_plan_loop(
                 },
                 message: params.message.clone(),
                 model: params.model.clone(),
-                effort: params.effort.clone(),
             };
             match send_request(request).await {
                 Ok(ServerEvent::CommAssignTaskResponse {
@@ -1412,7 +1411,6 @@ async fn spawn_assignment_session(ctx: &ToolContext, params: &CommunicateInput) 
         request_nonce: Some(fresh_spawn_request_nonce(ctx)),
         spawn_mode: params.spawn_mode.clone(),
         model: params.model.clone(),
-        effort: params.effort.clone(),
         label: None,
     };
 
@@ -1649,7 +1647,6 @@ fn format_swarm_model_list(
             route.model, route.provider, route.api_method, availability, cost, detail
         ));
     }
-    out.push_str("\nAlso pass effort (none|minimal|low|medium|high|xhigh|max) to set the spawned agent's reasoning effort.");
     out
 }
 
@@ -1752,9 +1749,6 @@ struct CommunicateInput {
     /// threshold.
     #[serde(default)]
     tldr: Option<String>,
-    /// Reasoning effort for spawned agents (none|minimal|low|medium|high|xhigh|max).
-    #[serde(default)]
-    effort: Option<String>,
     /// Per-worker model override for spawn and assignment-created workers.
     /// Takes precedence over agents.swarm_model; see list_models for routes.
     #[serde(default)]
@@ -1965,11 +1959,6 @@ impl Tool for CommunicateTool {
                 "model": {
                     "type": "string",
                     "description": "Model for newly spawned workers (spawn, assign_task, assign_next, fill_slots, run_plan), e.g. 'gpt-6-astra' or 'openai-api:gpt-5.6-luna'. Overrides agents.swarm_model. Omit to use that default or inherit the coordinator if unset. Use 'inherit' to force the coordinator's model and route. Does not change reused workers. See list_models."
-                },
-                "effort": {
-                    "type": "string",
-                    "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
-                    "description": "Optional reasoning effort for spawned agents. Omit for the model default."
                 },
                 "session_ids": {
                     "type": "array",
@@ -2466,7 +2455,6 @@ impl Tool for CommunicateTool {
                     request_nonce: None,
                     spawn_mode: params.spawn_mode.clone(),
                     model: params.model.clone(),
-                    effort: params.effort.clone(),
                     label: Some(label),
                 };
 
@@ -2738,7 +2726,6 @@ impl Tool for CommunicateTool {
                     spawn_if_needed: params.spawn_if_needed,
                     message: params.message.clone(),
                     model: params.model.clone(),
-                    effort: params.effort.clone(),
                 };
 
                 match send_request(request).await {
@@ -2790,7 +2777,6 @@ impl Tool for CommunicateTool {
                         spawn_if_needed: params.spawn_if_needed,
                         message: params.message.clone(),
                         model: params.model.clone(),
-                        effort: params.effort.clone(),
                     };
 
                     match send_request(request).await {

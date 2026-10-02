@@ -289,7 +289,11 @@ async fn communicate_await_members_background_returns_immediately_and_notifies()
 async fn communicate_run_plan_with_empty_plan_returns_inline_even_in_background_mode() {
     let _env_lock = crate::storage::lock_test_env();
     let runtime_dir = tempfile::TempDir::new().expect("runtime tempdir");
-    let repo_dir = std::env::current_dir().expect("repo cwd");
+    // The work list is the repo's, found from git, so this test must not run in
+    // this repo: a session started here with rows in `tasks.jsonl` is not the
+    // empty plan under test. A plain directory outside any repo has no list.
+    let list_dir = tempfile::TempDir::new().expect("list tempdir");
+    let repo_dir = list_dir.path();
     let socket_path = runtime_dir.path().join("kcode.sock");
     let _runtime = EnvGuard::set("KCODE_RUNTIME_DIR", runtime_dir.path());
     let _socket = EnvGuard::set("KCODE_SOCKET", &socket_path);

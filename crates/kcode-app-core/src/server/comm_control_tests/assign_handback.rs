@@ -86,7 +86,7 @@ async fn assign_next(fx: &HandbackFixture, prefer_spawn: bool) {
         Some(prefer_spawn),
         None,
         None,
-        None,
+
         &fx.client_tx,
         &fx.sessions,
         &fx.global_session_id,

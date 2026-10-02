@@ -208,6 +208,11 @@ impl Agent {
         self.provider_runtime_state.user_selected_after(generation)
     }
 
+    /// Apply the session's stored reasoning effort, if a human set one.
+    ///
+    /// The session field is only ever a human's choice (`/effort`, the model
+    /// picker, the effort keys, ACP); when it is unset the provider resolves
+    /// the model's own default, which is the single place that answer lives.
     pub fn restore_reasoning_effort_from_session(&mut self) {
         if let Some(effort) = self.session.reasoning_effort.clone() {
             if let Err(e) = self.provider.set_reasoning_effort(&effort) {
@@ -216,8 +221,6 @@ impl Agent {
                     effort, e
                 ));
             }
-        } else {
-            self.session.reasoning_effort = self.provider.reasoning_effort();
         }
     }
 

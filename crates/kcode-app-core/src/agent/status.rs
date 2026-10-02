@@ -167,6 +167,14 @@ impl Agent {
         self.provider.reasoning_effort()
     }
 
+    /// The session's stored reasoning effort: the level a human chose, or
+    /// `None` when the model's own default applies. A spawned session inherits
+    /// this rather than the resolved value, so a worker on another model still
+    /// gets that model's default.
+    pub fn session_reasoning_effort(&self) -> Option<String> {
+        self.session.reasoning_effort.clone()
+    }
+
     pub fn provider_model(&self) -> String {
         let model = self.provider.model();
         self.provider

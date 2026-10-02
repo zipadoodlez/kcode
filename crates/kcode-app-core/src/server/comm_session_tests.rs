@@ -385,7 +385,7 @@ fn prepare_visible_spawn_session_persists_and_launches_provider_key_for_openrout
 }
 
 #[test]
-fn prepare_visible_spawn_session_persists_requested_effort() {
+fn prepare_visible_spawn_session_persists_inherited_effort() {
     let _guard = crate::storage::lock_test_env();
     let temp_home = tempfile::TempDir::new().expect("temp home");
     crate::env::set_var("KCODE_HOME", temp_home.path());
@@ -409,7 +409,7 @@ fn prepare_visible_spawn_session_persists_requested_effort() {
     assert_eq!(
         session.reasoning_effort.as_deref(),
         Some("low"),
-        "requested effort should persist so the headed client restores it"
+        "the inherited level should persist so the headed client restores it"
     );
 
     crate::env::remove_var("KCODE_HOME");
@@ -454,6 +454,7 @@ fn coordinator_identity(
         model: model.map(str::to_string),
         provider_key: provider_key.map(str::to_string),
         route_api_method: route_api_method.map(str::to_string),
+        effort: None,
         is_canary: false,
     }
 }
@@ -787,6 +788,7 @@ async fn coordinator_identity_falls_back_to_persisted_session_when_agent_busy() 
     session.model = Some("claude-opus-4-6".to_string());
     session.provider_key = Some("claude-api".to_string());
     session.route_api_method = Some("claude-api".to_string());
+    session.reasoning_effort = Some("high".to_string());
     session.save().expect("persist coordinator session");
 
     // Hold the agent lock to simulate a coordinator mid-turn: the spawn path
@@ -802,6 +804,11 @@ async fn coordinator_identity_falls_back_to_persisted_session_when_agent_busy() 
     assert_eq!(identity.model.as_deref(), Some("claude-opus-4-6"));
     assert_eq!(identity.provider_key.as_deref(), Some("claude-api"));
     assert_eq!(identity.route_api_method.as_deref(), Some("claude-api"));
+    assert_eq!(
+        identity.effort.as_deref(),
+        Some("high"),
+        "a spawned worker inherits the level its creator's session holds"
+    );
 
     crate::env::remove_var("KCODE_HOME");
 }
@@ -972,27 +979,4 @@ async fn spawn_admission_lock_serializes_per_swarm_only() {
             .await
             .is_ok()
     );
-}
-
-#[test]
-fn swarm_spawn_effort_prefers_explicit_then_config_pin_then_inherit() {
-    use super::resolve_swarm_spawn_effort;
-
-    // Explicit spawn argument wins over the config pin (#1165).
-    assert_eq!(
-        resolve_swarm_spawn_effort(Some("low"), Some("medium")),
-        Some("low".to_string())
-    );
-    // A missing or blank spawn argument falls back to `agents.swarm_effort`.
-    assert_eq!(
-        resolve_swarm_spawn_effort(None, Some("medium")),
-        Some("medium".to_string())
-    );
-    assert_eq!(
-        resolve_swarm_spawn_effort(Some("  "), Some(" medium ")),
-        Some("medium".to_string())
-    );
-    // With neither, the worker inherits the provider-wide effort.
-    assert_eq!(resolve_swarm_spawn_effort(None, None), None);
-    assert_eq!(resolve_swarm_spawn_effort(Some(""), Some("")), None);
 }

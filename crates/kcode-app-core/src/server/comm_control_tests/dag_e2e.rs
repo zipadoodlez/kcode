@@ -523,7 +523,7 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
         Some(true),
         None,
         None,
-        None,
+
         &fx.client_tx,
         &fx.sessions,
         &global_session_id,

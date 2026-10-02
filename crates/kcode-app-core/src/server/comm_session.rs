@@ -68,7 +68,7 @@ fn create_visible_spawn_session(
     model_override: Option<&str>,
     provider_key_override: Option<&str>,
     route_api_method_override: Option<&str>,
-    effort_override: Option<&str>,
+    inherited_effort: Option<&str>,
     selfdev_requested: bool,
 ) -> anyhow::Result<(String, PathBuf)> {
     let cwd = working_dir
@@ -89,7 +89,7 @@ fn create_visible_spawn_session(
     {
         session.route_api_method = Some(route_api_method.to_string());
     }
-    if let Some(effort) = effort_override.map(str::trim).filter(|e| !e.is_empty()) {
+    if let Some(effort) = inherited_effort.map(str::trim).filter(|e| !e.is_empty()) {
         // Persisted effort is restored (and validated against the resolved
         // provider/model) by `restore_reasoning_effort_from_session` when the
         // headed client attaches to this session.
@@ -207,6 +207,7 @@ pub(super) struct CoordinatorSpawnIdentity {
     pub model: Option<String>,
     pub provider_key: Option<String>,
     pub route_api_method: Option<String>,
+    pub effort: Option<String>,
     pub is_canary: bool,
 }
 
@@ -239,6 +240,7 @@ async fn resolve_coordinator_spawn_identity(
             model: Some(agent_guard.provider_model()),
             provider_key: agent_guard.session_provider_key(),
             route_api_method: agent_guard.session_route_api_method(),
+            effort: agent_guard.session_reasoning_effort(),
             is_canary: agent_guard.is_canary(),
         };
     }
@@ -251,14 +253,16 @@ async fn resolve_coordinator_spawn_identity(
                 model: session.model.clone(),
                 provider_key: session.provider_key.clone(),
                 route_api_method: session.route_api_method.clone(),
+                effort: session.reasoning_effort.clone(),
                 is_canary: session.is_canary,
             };
             crate::logging::info(&format!(
-                "Swarm spawn: coordinator {} agent busy/unavailable, inheriting identity from persisted session (model={:?} provider_key={:?} route={:?} canary={})",
+                "Swarm spawn: coordinator {} agent busy/unavailable, inheriting identity from persisted session (model={:?} provider_key={:?} route={:?} effort={:?} canary={})",
                 req_session_id,
                 identity.model,
                 identity.provider_key,
                 identity.route_api_method,
+                identity.effort,
                 identity.is_canary,
             ));
             identity
@@ -426,7 +430,7 @@ fn prepare_visible_spawn_session<F>(
     model_override: Option<&str>,
     provider_key_override: Option<&str>,
     route_api_method_override: Option<&str>,
-    effort_override: Option<&str>,
+    inherited_effort: Option<&str>,
     selfdev_requested: bool,
     startup_message: Option<&str>,
     launch_visible: F,
@@ -440,7 +444,7 @@ where
         model_override,
         provider_key.as_deref(),
         route_api_method_override,
-        effort_override,
+        inherited_effort,
         selfdev_requested,
     )?;
 
@@ -539,24 +543,6 @@ async fn register_visible_spawned_member(
     broadcast_swarm_status(swarm_id, swarm_members).await;
 }
 
-/// Resolve the reasoning effort for a spawned swarm worker (#1165).
-///
-/// Precedence mirrors the model path: an explicit `effort` on the spawn call
-/// wins, then the `agents.swarm_effort` config pin, and only then does the
-/// worker inherit the provider-wide reasoning effort (`None`).
-pub(super) fn resolve_swarm_spawn_effort(
-    requested_effort: Option<&str>,
-    configured_swarm_effort: Option<&str>,
-) -> Option<String> {
-    let clean = |effort: Option<&str>| {
-        effort
-            .map(str::trim)
-            .filter(|effort| !effort.is_empty())
-            .map(str::to_string)
-    };
-    clean(requested_effort).or_else(|| clean(configured_swarm_effort))
-}
-
 /// Whether `session_id` may create swarm agents: only the swarm's root, the
 /// member with no parent, may. A member's deeper work is rows the run
 /// dispatches, so a member never starts another agent. A session absent from the
@@ -579,7 +565,6 @@ pub(super) async fn spawn_swarm_agent(
     initial_message: Option<String>,
     spawn_mode: Option<SwarmSpawnMode>,
     requested_model: Option<String>,
-    requested_effort: Option<String>,
     label: Option<String>,
     sessions: &SessionAgents,
     global_session_id: &Arc<RwLock<String>>,
@@ -621,15 +606,13 @@ pub(super) async fn spawn_swarm_agent(
     let spawn_model = selection.model.clone();
     let spawn_provider_key = selection.provider_key.clone();
     let spawn_route_api_method = selection.route_api_method.clone();
-    let spawn_effort = resolve_swarm_spawn_effort(
-        requested_effort.as_deref(),
-        agents_config.swarm_effort.as_deref(),
-    );
+    // The worker inherits the level its creator's session holds, which is only
+    // ever a human's choice; with none, the worker's own model default applies.
+    let spawn_effort = coordinator.effort.clone();
     crate::logging::info(&format!(
-        "Swarm spawn model resolution: requested_model={:?} requested_effort={:?} configured_swarm_effort={:?} configured_swarm_model={:?} coordinator_model={:?} coordinator_provider_key={:?} coordinator_route={:?} -> spawn_model={:?} spawn_provider_key={:?} spawn_route={:?}",
+        "Swarm spawn model resolution: requested_model={:?} inherited_effort={:?} configured_swarm_model={:?} coordinator_model={:?} coordinator_provider_key={:?} coordinator_route={:?} -> spawn_model={:?} spawn_provider_key={:?} spawn_route={:?}",
         requested_model,
-        requested_effort,
-        agents_config.swarm_effort,
+        spawn_effort,
         configured_swarm_model,
         coordinator.model,
         coordinator.provider_key,
@@ -841,7 +824,6 @@ pub(super) async fn handle_comm_spawn(
     request_nonce: Option<String>,
     spawn_mode: Option<SwarmSpawnMode>,
     model: Option<String>,
-    effort: Option<String>,
     label: Option<String>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     sessions: &SessionAgents,
@@ -894,7 +876,6 @@ pub(super) async fn handle_comm_spawn(
             spawn_mode
                 .map(|mode| format!("{mode:?}"))
                 .unwrap_or_default(),
-            effort.clone().unwrap_or_default(),
             model.clone().unwrap_or_default(),
             label.clone().unwrap_or_default(),
         ],
@@ -919,7 +900,6 @@ pub(super) async fn handle_comm_spawn(
         initial_message,
         spawn_mode,
         model,
-        effort,
         label,
         sessions,
         global_session_id,

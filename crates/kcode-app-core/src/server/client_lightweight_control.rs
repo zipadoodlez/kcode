@@ -325,7 +325,6 @@ pub(super) async fn handle_lightweight_control_request(
             request_nonce,
             spawn_mode,
             model,
-            effort,
             label,
         } => {
             let spawn_mode = match parse_swarm_spawn_mode(id, spawn_mode, &client_event_tx) {
@@ -340,7 +339,6 @@ pub(super) async fn handle_lightweight_control_request(
                 request_nonce,
                 spawn_mode,
                 model,
-                effort,
                 label,
                 &client_event_tx,
                 sessions,
@@ -546,7 +544,6 @@ pub(super) async fn handle_lightweight_control_request(
             spawn_if_needed,
             message,
             model,
-            effort,
         } => {
             handle_comm_assign_next(
                 id,
@@ -557,7 +554,6 @@ pub(super) async fn handle_lightweight_control_request(
                 spawn_if_needed,
                 message,
                 model,
-                effort,
                 &client_event_tx,
                 sessions,
                 global_session_id,
