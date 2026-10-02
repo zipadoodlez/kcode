@@ -6,8 +6,10 @@ workers, not entities you micromanage: the old coordinator/worktree-manager
 roles are scheduler policy, not user-facing roles.
 
 The graph is a single server-owned, versioned object (`kcode-plan`'s
-`VersionedPlan`). A decomposition is rows: the store writes the children
-(0.4c) and the plan follows what it wrote.
+`VersionedPlan`), and 0.4f made it a view: the store writes the rows (a
+decomposition, a close, a claim) and the plan's items follow what it wrote. What the
+plan adds to the file is the run's `version`, its `participants` and the per-task
+reclaim counter.
 
 The swarm is one executor of the repo's work list (`plans/work-list.md`). The
 list is the shared contract; this engine's plan is its execution state, and the
@@ -52,21 +54,25 @@ A node's fate flips at runtime, not at draft time:
 
 - **Atomic** - the worker executes the task and writes a handoff artifact.
 - **Composite** - the worker decomposes the row into child rows. The row becomes a
-  join: it is released, blocked until its children close, then picked again, reads
-  their artifacts, and writes one synthesized output. A composite owner plans and
-  integrates (map then reduce); it does not execute leaf work.
+  join: it keeps its holder (the one that decomposed it is the one that integrates),
+  is blocked until its children close, then is picked again, reads what closed under
+  it, and writes one synthesized output. A composite owner plans and integrates (map
+  then reduce); it does not execute leaf work.
 
-Terminal action kinds are task-agnostic; only the artifact and "done" contract
+Terminal action kinds are task-agnostic; only the close's result and artifact
 change: `explore` (findings), `implement` (diff/commit ref), `verify` (pass/fail
 and failures), `fix` (patch). A worker that finds follow-up work adds it as rows
 or children, rather than an engine inserting it.
 
-## Dataflow: the edge is the channel
+## Dataflow: the close's record is the channel
 
-On completion a node stores a typed **handoff artifact** on the node. When a
-dependent becomes runnable, the scheduler assembles its input from its own prompt
-plus the merged artifacts of its dependencies. Fan-out and fan-in fall out of
-this naturally.
+A close writes `{"id","result","artifact"}` onto the row that owns the work, so the
+results of earlier work accumulate where the row that integrates them sits. A row's
+context is therefore its own `records`: a split row reads its children when its join
+turn runs, and a run's top row reads the run when it closes. Fan-out and fan-in fall
+out of this naturally. A row blocked by another gets no artifact from it, because the
+list keeps no edge to a closed row: what a row receives is the work that closed under
+it, which is why a join or a run end is the place context accumulates.
 
 Artifacts are **by-reference by default**: "the API is in `crates/foo/api.rs`,
 commit `abc123`", with the repo and git as the shared medium. Embed by value only
@@ -95,7 +101,7 @@ explore surfaces the gaps its caller (or a follow-up row) can widen.
 - A worker must end each prompted turn with a useful final response; the server
   forwards it to its owner as the **completion report** (outcome, changes,
   validation, blockers), not a bare `done`.
-- Communication is **dataflow first**: the dependency edge's artifact is the
+- Communication is **dataflow first**: the close's record on the owning row is the
   primary channel. Direct DMs and subtree-scoped broadcasts are the exception
   path (conflict resolution, clarifying questions up the tree); broadcasts are
   subtree-scoped so they cannot become a member-cap-sized storm. Topic channels

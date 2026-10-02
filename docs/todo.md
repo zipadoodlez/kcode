@@ -297,8 +297,9 @@ changes are paid for in test churn.
   relation, not two. The plan therefore stops storing `node_meta.parent` and reads the
   row, and a node is composite when it has an open child or a nonempty `records` (a
   close leaves its record on its parent, so "was decomposed" survives the children's
-  removal). `node_meta` keeps only the artifact, and the seed guard compares fields
-  instead of rejecting a parented node, since a held root row legitimately has a parent.
+  removal). The artifact's own copy in `node_meta` went later (0.4f s12), where the row's
+  `record` became its one home, and the seed guard compares fields instead of rejecting a
+  parented node, since a held root row legitimately has a parent.
   This is 0.4f's work, not a separate step.
 - [ ] **(decision)** A one-shot `kcode run` no longer drains a list (0.3, 2026-10-01).
   The command-line poke was the last client-side continuation, so `kcode run` is one
@@ -357,6 +358,16 @@ changes are paid for in test churn.
   the composite case too. The asking session's own rows stay out of the picker,
   because the assign path refuses to assign a task to the asking session, so a self
   hand-back would fail the whole run.
+- [ ] **(decision)** The plan's items are the file's open rows (0.4f s12, 2026-10-02).
+  A row write goes through the store and the plan follows it, so a holder, a close and an
+  artifact live where the list is, a turn that ends without a close closes its own row
+  (stating "the turn ended without a report" when it said nothing), and no item carries a
+  terminal status any more, so a client that rendered completed nodes normalizes the open
+  rows itself. What is lost: a row blocked by another no longer receives that row's
+  artifact, because the list keeps no edge to a closed row, and the debug `swarm:graph`
+  op is gone, since it existed to drive the engine against plan-owned items. What is
+  gained: a split row's join turn finally reads its children's artifacts, and a run's top
+  row reads the run.
 - [ ] Not every color derives from a role: `configured_native_color`
   (`kcode-tui-style/src/palette.rs`) attributes a shade to a role only when it
   equals that role's default, so hardcoded `Color::Rgb(...)` shades pass through
