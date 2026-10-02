@@ -308,21 +308,29 @@ recorded in `plans/test-tree.md`).
   `KINDS` entry), so a run's own join row has a word to be typed with. Nothing in the
   engine branches on it, so it costs one enum variant and one word.
 
-- [ ] **0.5. One level, low, and no second way to say it.** Effort stops being a design
-  variable: every turn runs at one level, the session's, whose default is low, and the
-  only way to change it is the one a human has.
-  - A session's level defaults to low (`tui/app/state_ui.rs:1947` reads `"default"`
-    today, which is the provider's own choice), `/effort` and the model picker remain
-    the user's lever, and the `swarm`/`swarm-deep` rungs went with 0.4b's axis.
-  - A spawned session inherits its creator's level:
-    `resolve_swarm_spawn_effort` (`server/comm_session.rs:558`) collapses to that, and
-    the `effort` argument goes from `spawn`, `assign_task`, `assign_next`, `fill_slots`
-    and `run_plan` (`tool/communicate.rs:1264`, `:1415`, `:2429`, `:2734`, `:2786`,
-    with the parameter at `:1758` and its schema text at `:1651`, `:1929`; `wire.rs:500`,
-    `:619`) along with the
-    `agents.swarm_effort` pin (`kcode-config-types/src/lib.rs:461`). F1 deletes those
-    actions outright, so the argument text is touched twice if the tail lands; accepted,
-    because 0.5 is kept and the tail is droppable.
+### 0.5. One level, low, and no second way to say it
+
+Effort stops being a design variable: every turn runs at one level, the session's,
+whose default is low, and the only way to change it is the one a human has (`/effort`,
+the model picker, and ACP's `session/set_reasoning_effort`); the `swarm`/`swarm-deep`
+rungs went with 0.4b's axis.
+
+A session's level defaults to low, which today it does not: with no stored level the
+session adopts the provider's own choice (`agent/provider.rs:211`, the `else` branch of
+`restore_reasoning_effort_from_session`), which is where Opus's `xhigh` and fable's
+`high` come from, and `/info` reports it as `"default"` (`state_ui.rs:1943`). A spawned
+session inherits its creator's level, so `resolve_swarm_spawn_effort`
+(`server/comm_session.rs:547`) collapses, and the `effort` argument goes from `spawn`,
+`assign_task`, `assign_next`, `fill_slots` and `run_plan` (`tool/communicate.rs:1757`,
+pass-throughs `:1264`, `:1415`, `:2469`, `:2741`, `:2793`; schema text `:1969`, list hint
+`:1652`; `wire.rs:500`, `:617`) along with the `agents.swarm_effort` pin
+(`kcode-config-types/src/lib.rs:461`, `env_overrides.rs:306`) and its test
+(`config_tests.rs:276`). F1 deletes those actions outright, so the argument text is
+touched twice if the tail lands; accepted, because 0.5 is kept and the tail is
+droppable.
+
+In flight: its rows are in `tasks.jsonl` (`t1`-`t5`), the first step of B2 taken early
+for the step that is running; the design stays here.
 
 ### A. Audit
 
