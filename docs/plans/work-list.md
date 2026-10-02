@@ -205,37 +205,49 @@ is next**, and the one build + full test pass for 0.4f ran with it (three pre-ex
   file (0.4f: the holder and the artifact live where the list is, a turn end is a
   close, and the engine carries no artifact). Losses are in `docs/todo.md`. What is
   left is 0.4g:
-  - **0.4g. The swarm state gets one owner**: the `coordinators` map, any stored swarm
-    id (including the `KCODE_SWARM_ID` shared-swarm opt-in), the `features.swarm` flag
-    and per-session toggle (stored membership), the `assign_role` action that writes the
-    coordinator by hand, and the 31 `SwarmState { .. }` rebuild sites (`docs/todo.md`
-    §1's condense). Membership becoming derived is a behavior change, so this stage
-    carries its own build + test pass; 0.4f's pass has landed (three pre-existing
-    `session_flow` e2e failures are recorded in `docs/todo.md`).
-    - `(decide)` **Does the plan object exist, and where does per-task runtime live?**
-      `VersionedPlan` is a per-swarm cache of the rows plus `version`, `participants`
-      and the reclaim counter. The rows are the file and membership is the swarm;
-      `participants` is a hand-kept subset that the broadcast already falls back to
-      the whole swarm for (`swarm.rs:794`) and that no client reads. What the file
-      cannot give is `version`, which the client uses to drop out-of-order plan events
-      (`server_events.rs:2002`), and the counter. Answer this before the counter moves
-      again, so it moves once.
-    - `(decide)` **Is a claim a lock for a run and not for the user's session?** This
-      is what makes `assign_task` a sufficient takeover, and it decides the verb set
-      with it. The vision names four levers over a session you are not sitting in —
-      "message it, stop it, wake it, retry it, reassign or replace its work" — so
-      `wake`/`retry`/`reassign`/`replace` stay, and `start`/`resume`/`salvage` are the
-      candidates: `start` and `resume` are `retry` restricted to an idle holder, and
-      `salvage` is `reassign` plus the prior worker's tool-call summaries, where the
-      vision says the payload is the row's own words and kind and carried context
-      belongs in the row's `note`. Their home travels with them: this policy is all in
-      `kcode-plan` (`TaskControlAction`, its status tables, the target picker), put
-      there by `2345c002` "Move swarm task control policy into plan crate", while the
-      crate named for swarms holds none of it and only `kcode-app-core` reads it, so the
-      cut and the move are one pass. Answering it also settles the handoff guard, which
-      today refuses a handover while the holder is live (read from the member's clock
-      since 0.4f): the vision's answer is that the displaced holder finds out on its
-      next write instead.
+  - **0.4g. The swarm state gets one owner.** One step, five commits, one gate, decided
+    2026-10-02. All four questions are answered: the plan object goes; per-row run state
+    lives in memory on the runtime owner; a claim is a lock for a run and not for the
+    user's session; the verb cut rides this step rather than a separate 0.4h. The losses
+    are in `docs/todo.md`. Re-grepped before writing: the `SwarmState { .. }` rebuild
+    sites are 26, not 31 (`VersionedPlan` appears in 48 files, `swarm_coordinators` is
+    referenced 221 times, and `swarm_persistence.rs` is 621 lines with 924 test lines).
+    1. **g1. Ordering replaces `version`** (deletion; no behavior boundary). `version`
+       guards a stale durable write (`persist_swarm_state`, test
+       `stale_persist_cannot_regress_newer_plan_version`) and client ordering
+       (`server_events.rs:1995`); g2 removes the first, and the second is fixed by
+       sending the plan event while the plan lock is held, which cannot block because
+       `event_tx` is an `mpsc::UnboundedSender` (`server/state.rs:135`). Deletes
+       `version`, `participants` (6 insert sites, no reader: the broadcast already falls
+       back to the swarm set at `swarm.rs:781`), the client's `plan_version` and its
+       stale-regression branch, `RemoteSwarmPlanSnapshot.version`, the replay record's
+       field, and the debug `swarm:plan_version:` op.
+    2. **g2. The plan stops being durable** (behavior boundary: restart). Delete
+       `PersistedVersionedPlan`, `to_persisted_plan`/`from_persisted_plan`, the
+       dormant/expired plan retention and the version guard; restart recovery reads the
+       file's `assigned_to` plus the member records instead of plan status
+       (`running_plan_assigned_to`, `swarm.rs:2730`).
+    3. **g3. The item cache dies** (behavior boundary: the status readers). Per-row run
+       state, lifecycle and reclaim count, becomes a map on the runtime owner keyed by
+       row id; `VersionedPlan`, `SwarmTaskProgress`, `sync_rows`, `drop_row`,
+       `prune_side_maps`, `rename_session`, `execution_state` and `plan_definition` go,
+       and a graph is built from the list where one is needed. The reclaim cap stays 3
+       and resets on restart, the loss named in `docs/todo.md`.
+    4. **g4. Membership is derived** (behavior boundary: membership). Delete the
+       `coordinators` map (the coordinator is the session holding the run's anchor row),
+       the stored swarm id including `KCODE_SWARM_ID` (`server/util.rs:96`, `:116`),
+       `features.swarm`/the per-session toggle, and `assign_role`; the 26
+       `SwarmState { .. }` literals collapse into the request context E2 wants.
+    5. **g5. The verb set** (behavior boundary: the user's levers). One guard: a run
+       refuses to work a row whose `assigned_to` is not itself, checked in the run's row
+       write, since `claim_row_on_disk`/`close_row` (`kcode-base/src/todo.rs`) ignore the
+       caller's `session_id` today and a close on a moved row already errors. Delete the
+       live-holder guard (`comm_control.rs:2184`), `task_control_action_allows_status`,
+       `task_control_status_error` and the seven `TaskControlAction` variants;
+       `assign_task` (the takeover, for a session with a client), `retry` and the
+       session levers that already exist (message, stop, wake) remain.
+    Then the gate: one build and the full suite for 0.4f's tail and g1-g5, with the
+    three known `session_flow` failures recorded.
   `parse_kind`/`kind_str` stay, since they are what reads and writes a row's word.
   `Synthesize` stays as well: the word lives on the row (`tool/todo.rs` offers every
   `KINDS` entry), so a run's own join row has a word to be typed with. Nothing in the

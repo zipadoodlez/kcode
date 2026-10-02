@@ -336,7 +336,9 @@ changes are paid for in test churn.
   per-task assignment time, and the model keeps none: a claim is assumed to be worked
   while its holder lives. Taking a task from its holder is now `task_control`
   reassign/replace/retry, or waiting for the salvage sweep to reclaim it from a dead
-  holder. Add the age-out back only with a per-task clock it can read.
+  holder. Add the age-out back only with a per-task clock it can read. 0.4g
+  (2026-10-02) replaced the verb family this named: `assign_task` is the takeover
+  for a session with a client, and the status tables it gated on are deleted.
 - [ ] **(decision)** An idle worker that still holds a row is reusable (0.4f s10,
   2026-10-01). Auto-pick used to call a member busy when the plan held any
   non-terminal assignment for it, a per-task count read beside the member's own
@@ -368,6 +370,30 @@ changes are paid for in test churn.
   op is gone, since it existed to drive the engine against plan-owned items. What is
   gained: a split row's join turn finally reads its children's artifacts, and a run's top
   row reads the run.
+
+- [x] **(decision)** The plan object goes, and per-row run state lives in memory (0.4g,
+  2026-10-02). The rows are the file and membership is a count, so `VersionedPlan` was a
+  cache of the list plus four things the file cannot hold: a version, a participant list,
+  a per-row lifecycle and a per-row reclaim count. The version guarded a stale durable
+  write and client event ordering, and both die with the plan (the write is gone, and
+  ordering comes from sending the event inside the lock that mutated it); participants
+  had no reader; the lifecycle and the count are run facts and move to the runtime owner,
+  keyed by row id. What is lost: restart recovery no longer restores a plan, and the
+  reclaim cap resets with the process, so a crash-looping row gets three more automatic
+  re-assignments. Also gone: the `swarm:plan` and `swarm:plan_version` debug reads.
+- [x] **(decision)** `KCODE_SWARM_ID` goes with the stored swarm id (0.4g, 2026-10-02).
+  A swarm is a count, not a mode, so membership is derived from who holds rows under the
+  run's anchor. What is lost: two working directories can no longer declare one shared
+  swarm by environment variable; sharing a swarm becomes one anchor row two sessions
+  hold.
+- [x] **(decision)** A claim is a lock for a run and not for the user's session, so the
+  verb family collapses (0.4g, 2026-10-02). A session with a client attached takes any
+  row by writing it, and the displaced holder finds out on its next write; a run refuses
+  only to work a row whose holder is not itself. What is lost: `start` and `resume` are
+  `assign_task`'s dispatch with a message prefix, `replace` is it with a default message,
+  `reassign` is it outright, and `salvage`'s prior tool-call summaries belong in the
+  row's `note`, so all five go, along with the seven `TaskControlAction` variants and
+  their status tables; a displaced holder is no longer told to stand down.
 - [ ] Not every color derives from a role: `configured_native_color`
   (`kcode-tui-style/src/palette.rs`) attributes a shade to a role only when it
   equals that role's default, so hardcoded `Color::Rgb(...)` shades pass through
