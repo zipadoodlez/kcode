@@ -310,26 +310,25 @@ recorded in `plans/test-tree.md`).
 
 ### 0.5. One level, low, and no second way to say it
 
-Effort stops being a design variable: every turn runs at one level, the session's,
-whose default is low, and the only way to change it is the one a human has (`/effort`,
-the model picker, and ACP's `session/set_reasoning_effort`); the `swarm`/`swarm-deep`
-rungs went with 0.4b's axis.
+Effort stops being a design variable: every turn runs at one level, the session's, and
+the only way to change it is the one a human has (`/effort`, the model picker, the
+effort keys, and ACP's `session/set_reasoning_effort`); the `swarm`/`swarm-deep` rungs
+went with 0.4b's axis.
 
-A session's level defaults to low, which today it does not: with no stored level the
-session adopts the provider's own choice (`agent/provider.rs:211`, the `else` branch of
-`restore_reasoning_effort_from_session`), which is where Opus's `xhigh` and fable's
-`high` come from, and `/info` reports it as `"default"` (`state_ui.rs:1943`). A spawned
-session inherits its creator's level, so `resolve_swarm_spawn_effort`
-(`server/comm_session.rs:547`) collapses, and the `effort` argument goes from `spawn`,
-`assign_task`, `assign_next`, `fill_slots` and `run_plan` (`tool/communicate.rs:1757`,
-pass-throughs `:1264`, `:1415`, `:2469`, `:2741`, `:2793`; schema text `:1969`, list hint
-`:1652`; `wire.rs:500`, `:617`) along with the `agents.swarm_effort` pin
-(`kcode-config-types/src/lib.rs:461`, `env_overrides.rs:306`) and its test
-(`config_tests.rs:276`). F1 deletes those actions outright, so the argument text is
-touched twice if the tail lands; accepted, because 0.5 is kept and the tail is
-droppable.
+Resolution becomes one place and one order: the session's stored level, else the model
+table (`default_reasoning_effort_for_model`, which is where kcode's own `low` belongs so
+the per-model exceptions stay data), else nothing, so a model with no ladder has no
+level and `/info` keeps meaning `default` for it. Three things say it today that are not
+the session's level, and all three go: the write that materializes the provider's value
+into the session (`agent/provider.rs:211`'s `else` branch, which makes a provider
+default look like a human's choice), the spawn-side argument with its
+`agents.swarm_effort` pin, and the config keys - `provider.openai_reasoning_effort`,
+whose compiled `Some("low")` currently overrides every OpenAI model and disagrees with
+the model table, `provider.anthropic_reasoning_effort`, and a named profile's
+`reasoning_effort`. The losses are named in `docs/what-was-removed.md`, including the
+models that ship a higher default and start lower until a human cycles them up.
 
-In flight: its rows are in `tasks.jsonl` (`t1`-`t5`), the first step of B2 taken early
+In flight: its rows are in `tasks.jsonl` (`t1`-`t7`), the first step of B2 taken early
 for the step that is running; the design stays here.
 
 ### A. Audit
