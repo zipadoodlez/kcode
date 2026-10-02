@@ -259,9 +259,13 @@ full test pass ran with it (three pre-existing `session_flow` e2e failures, reco
        the stall detector, the concurrency cap) are coarser than three tries per row until
        F1 folds hand-outs into the run's loop; that is the `braid:` note the commit
        carries at the release site.
-       Nothing sets a failure status any more, so `completed_ids`, `terminal_ids`,
-       `failed_ids`, `failed_reasons` and `plan_terminal_node_count` go with it, and the
-       summary is ready, blocked, active, cycle and unresolved.
+       The summary loses the segment nothing can set: `completed_ids` is gone, because a
+       closed row leaves the list and no row is ever marked done. `failed_ids` and
+       `failed_reasons` stay (a worker's errored turn sets them), `terminal_ids` stays
+       with them, and the credential-wave guard now reads a completed *worker* for the
+       "the route works" signal a closed row used to give. The run_plan progress card
+       reports no completed count, with the ceiling marked: the run's own record of rows
+       it closed is F1's.
        Boundaries are pinned: `a_dispatched_turn_closes_its_row`,
        `a_stranded_row_is_released_in_the_list_when_it_is_reclaimed`,
        `salvage_releases_dead_members_rows_and_notifies_coordinator`, and the load-path

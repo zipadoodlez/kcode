@@ -25,9 +25,6 @@ impl RemoteSwarmPlanSnapshot {
             // scheduling state. Only show segments that are non-empty so the line
             // stays compact.
             let mut segments = Vec::new();
-            if !summary.completed_ids.is_empty() {
-                segments.push(format!("{} done", summary.completed_ids.len()));
-            }
             if !summary.active_ids.is_empty() {
                 segments.push(format!("{} running", summary.active_ids.len()));
             }
@@ -95,7 +92,6 @@ mod tests {
             ready_ids: vec!["task-2".to_string()],
             blocked_ids: vec!["task-4".to_string()],
             active_ids: Vec::new(),
-            completed_ids: vec!["task-1".to_string()],
             failed_ids: Vec::new(),
             failed_reasons: Default::default(),
             cycle_ids: Vec::new(),
@@ -118,7 +114,7 @@ mod tests {
     fn swarm_plan_status_notice_includes_graph_hints() {
         let notice = snapshot(fixture_items(), Some(summary_fixture())).status_notice();
         assert!(notice.contains("4 items"));
-        assert!(notice.contains("graph: 1 done, 1 ready, 1 blocked"));
+        assert!(notice.contains("graph: 1 ready, 1 blocked"));
         assert!(notice.contains("next: task-2"));
         assert!(notice.contains("newly ready: task-3"));
     }
@@ -142,30 +138,6 @@ mod tests {
         let summary = PlanGraphStatus::empty_for_swarm("swarm-a");
         let notice = snapshot(Vec::new(), Some(summary)).status_notice();
         assert_eq!(notice, "Swarm plan synced (0 items)");
-    }
-
-    #[test]
-    fn swarm_plan_status_notice_all_done_shows_only_done_segment() {
-        let mut summary = summary_fixture();
-        summary.ready_ids = Vec::new();
-        summary.blocked_ids = Vec::new();
-        summary.next_ready_ids = Vec::new();
-        summary.newly_ready_ids = Vec::new();
-        summary.completed_ids = vec![
-            "task-1".to_string(),
-            "task-2".to_string(),
-            "task-3".to_string(),
-            "task-4".to_string(),
-        ];
-        let items = fixture_items()
-            .into_iter()
-            .map(|mut item| {
-                item.status = "completed".to_string();
-                item
-            })
-            .collect();
-        let notice = snapshot(items, Some(summary)).status_notice();
-        assert_eq!(notice, "Swarm plan synced (4 items) · graph: 4 done");
     }
 
     #[test]

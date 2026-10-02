@@ -894,9 +894,8 @@ fn cap_recovery_step(cap_hits: usize, freed: usize) -> CapRecoveryStep {
 /// legacy three), so a plain sum both over- and under-counts.
 fn plan_terminal_node_count(summary: &PlanGraphStatus) -> usize {
     summary
-        .completed_ids
+        .failed_ids
         .iter()
-        .chain(summary.failed_ids.iter())
         .chain(summary.blocked_ids.iter())
         .chain(summary.cycle_ids.iter())
         .collect::<std::collections::HashSet<_>>()
@@ -905,30 +904,29 @@ fn plan_terminal_node_count(summary: &PlanGraphStatus) -> usize {
 
 /// Numbers for the `run_plan` background progress card. Pure for unit testing.
 ///
-/// The percent-driving pair is `(completed, total)`: only *completed* nodes
-/// count toward 100%, so a run where most nodes failed reads as mostly
-/// unfinished instead of "98% complete" (failed/blocked counts are surfaced in
-/// the message instead). `live_active` is the count of in-flight worker
-/// sessions observed from member state; the card shows whichever of plan
-/// execution state (`active_ids`) or live member state is larger, so nodes
-/// assigned outside this driver (e.g. manual `assign_task`) still show as
-/// active.
+/// The percent-driving pair is `(0, total)`: a closed row leaves the list, so nothing
+/// in the open rows says how much of a run is done, and over-reporting progress is
+/// worse than reporting none. `live_active` is the count of in-flight worker sessions
+/// observed from member state; the card shows whichever of plan execution state
+/// (`active_ids`) or live member state is larger, so nodes assigned outside this driver
+/// (e.g. manual `assign_task`) still show as active.
+///
+/// braid: the run's own record of the rows it closed, which F1's row loop keeps, is
+/// the count that surpasses this zero.
 fn run_plan_progress_snapshot(
     summary: &PlanGraphStatus,
     live_active: usize,
     assignment_count: usize,
 ) -> (usize, usize, String) {
-    let completed = summary.completed_ids.len();
     let active = summary.active_ids.len().max(live_active);
     let message = format!(
-        "completed {} · failed {} · blocked {} · active {} · assignments {}",
-        completed,
+        "failed {} · blocked {} · active {} · assignments {}",
         summary.failed_ids.len(),
         summary.blocked_ids.len(),
         active,
         assignment_count
     );
-    (completed, summary.item_count, message)
+    (0, summary.item_count, message)
 }
 
 /// Terminal-state summary line for `run_plan`, including failed nodes so a run
@@ -939,9 +937,8 @@ fn format_run_plan_terminal_summary(
     assignment_count: usize,
 ) -> String {
     let mut output = format!(
-        "Swarm plan reached terminal/blocked state after {} loop(s). completed={} failed={} blocked={} cycles={} active={} assignments={}",
+        "Swarm plan reached terminal/blocked state after {} loop(s). failed={} blocked={} cycles={} active={} assignments={}",
         loop_count,
-        summary.completed_ids.len(),
         summary.failed_ids.len(),
         summary.blocked_ids.len(),
         summary.cycle_ids.len(),
@@ -1002,10 +999,18 @@ struct CredentialFailureWave {
 fn detect_credential_failure_wave(
     members: &[AgentInfo],
     coordinator_session_id: &str,
-    completed_node_count: usize,
     window_secs: u64,
 ) -> Option<CredentialFailureWave> {
-    if completed_node_count > 0 {
+    // A worker that finished a turn is the evidence the route works, which is what a
+    // closed row used to say before rows came from the list.
+    let any_worker_finished = members.iter().any(|member| {
+        member.session_id != coordinator_session_id
+            && matches!(
+                member.status.as_ref(),
+                Some(SwarmLifecycleStatus::Completed | SwarmLifecycleStatus::Done)
+            )
+    });
+    if any_worker_finished {
         return None;
     }
     let mut session_ids = Vec::new();
@@ -1178,7 +1183,6 @@ async fn run_swarm_plan_loop(
         if let Some(wave) = detect_credential_failure_wave(
             &members,
             &ctx.session_id,
-            summary.completed_ids.len(),
             CREDENTIAL_FAILURE_WAVE_WINDOW_SECS,
         ) {
             let message =
@@ -1518,7 +1522,7 @@ fn plan_status_budget_line(summary: &PlanGraphStatus, cap: usize) -> Option<Stri
     // budget while other non-terminal work exists but is serialized behind
     // depends_on edges. A small plan that is simply almost done gets no nudge.
     let frontier = ready_width + active_width;
-    let terminal = summary.completed_ids.len() + summary.cycle_ids.len();
+    let terminal = summary.failed_ids.len() + summary.cycle_ids.len();
     let serialized_remaining = summary.item_count > terminal + frontier;
     if frontier < effective_budget && serialized_remaining {
         line.push_str(

@@ -462,12 +462,6 @@ pub fn format_comm_plan_status(summary: &PlanGraphStatus) -> String {
     if !summary.active_ids.is_empty() {
         output.push_str(&format!("  Active: {}\n", summary.active_ids.join(", ")));
     }
-    if !summary.completed_ids.is_empty() {
-        output.push_str(&format!(
-            "  Completed: {}\n",
-            summary.completed_ids.join(", ")
-        ));
-    }
     if !summary.failed_ids.is_empty() {
         output.push_str(&format!(
             "  Failed (terminal without completing): {}\n",

@@ -294,7 +294,6 @@ fn await_wakes_only_for_ready_items_beyond_the_wave_baseline() {
         ready_ids: vec!["stuck".to_string()],
         blocked_ids: Vec::new(),
         active_ids: vec!["a1".to_string()],
-        completed_ids: Vec::new(),
         failed_ids: Vec::new(),
         failed_reasons: Default::default(),
         cycle_ids: Vec::new(),
@@ -317,17 +316,15 @@ fn await_wakes_only_for_ready_items_beyond_the_wave_baseline() {
 }
 
 #[test]
-fn run_plan_progress_counts_only_completed_toward_percent_and_shows_live_active() {
-    // Regression: a plan with 33 completed / 116 failed of 152 used to report
-    // terminal/total = 149/152 (~98%) with active 0 while four externally
-    // assigned workers were still running.
+fn run_plan_progress_reports_no_completed_count_and_shows_live_active() {
+    // A closed row leaves the list, so nothing in the open rows says how much of the
+    // run is done; the card reports none rather than a number it cannot know.
     let summary = crate::protocol::PlanGraphStatus {
         swarm_id: Some("swarm-a".to_string()),
         item_count: 152,
         ready_ids: Vec::new(),
         blocked_ids: Vec::new(),
         active_ids: Vec::new(),
-        completed_ids: (0..33).map(|i| format!("c{i}")).collect(),
         failed_ids: (0..116).map(|i| format!("f{i}")).collect(),
         failed_reasons: Default::default(),
         cycle_ids: Vec::new(),
@@ -337,19 +334,17 @@ fn run_plan_progress_counts_only_completed_toward_percent_and_shows_live_active(
     };
 
     let (completed, total, message) = super::run_plan_progress_snapshot(&summary, 4, 137);
-    // Percent driver is completed/total: 33/152 (~22%), never ~98%.
-    assert_eq!(completed, 33);
+    assert_eq!(completed, 0, "the open rows cannot say how much is done");
     assert_eq!(total, 152);
     // Failed nodes are surfaced separately, and live in-flight workers show as
     // active even when the plan's own active_ids is empty (external
     // assign_task dispatches).
     assert_eq!(
         message,
-        "completed 33 · failed 116 · blocked 0 · active 4 · assignments 137"
+        "failed 116 · blocked 0 · active 4 · assignments 137"
     );
 
     // The normalized background progress percent derived from (current,total)
-    // must match completed/total, not terminal/total.
     let progress = crate::bus::BackgroundTaskProgress {
         kind: crate::bus::BackgroundTaskProgressKind::Determinate,
         percent: None,
@@ -364,8 +359,8 @@ fn run_plan_progress_counts_only_completed_toward_percent_and_shows_live_active(
     .normalize();
     let percent = progress.percent.expect("determinate percent");
     assert!(
-        (percent - 21.71).abs() < 0.1,
-        "33/152 must normalize to ~21.7%, got {percent}"
+        percent.abs() < 0.1,
+        "with no completed count the card reports 0%, got {percent}"
     );
 }
 
@@ -377,7 +372,6 @@ fn run_plan_progress_active_prefers_plan_execution_state_when_larger() {
         ready_ids: Vec::new(),
         blocked_ids: vec!["b1".to_string()],
         active_ids: vec!["a1".to_string(), "a2".to_string(), "a3".to_string()],
-        completed_ids: vec!["c1".to_string(), "c2".to_string()],
         failed_ids: vec!["f1".to_string()],
         failed_reasons: Default::default(),
         cycle_ids: Vec::new(),
@@ -389,11 +383,8 @@ fn run_plan_progress_active_prefers_plan_execution_state_when_larger() {
     // Plan says 3 active but only 1 live member is observable (e.g. status
     // propagation lag): keep the larger plan-state number.
     let (completed, total, message) = super::run_plan_progress_snapshot(&summary, 1, 5);
-    assert_eq!((completed, total), (2, 10));
-    assert_eq!(
-        message,
-        "completed 2 · failed 1 · blocked 1 · active 3 · assignments 5"
-    );
+    assert_eq!((completed, total), (0, 10));
+    assert_eq!(message, "failed 1 · blocked 1 · active 3 · assignments 5");
 }
 
 #[test]
@@ -404,7 +395,6 @@ fn plan_status_budget_line_nudges_serialized_graphs() {
         ready_ids: vec!["a".to_string()],
         blocked_ids: Vec::new(),
         active_ids: vec!["b".to_string()],
-        completed_ids: vec!["c".to_string()],
         failed_ids: Vec::new(),
         failed_reasons: Default::default(),
         cycle_ids: Vec::new(),
@@ -420,9 +410,11 @@ fn plan_status_budget_line_nudges_serialized_graphs() {
     assert!(narrow.contains("ready set is 1 wide (1 active)"));
     assert!(narrow.contains("expand_node"));
 
-    // The frontier is all that remains -> line but no nudge.
+    // The frontier is all that remains: two rows failed, one ready, one active, so
+    // nothing is serialized behind an edge -> line but no nudge.
     let almost_done = crate::protocol::PlanGraphStatus {
         item_count: 3,
+        failed_ids: vec!["f".to_string(), "g".to_string()],
         ..base.clone()
     };
     let line = super::plan_status_budget_line(&almost_done, 32).unwrap();
@@ -516,7 +508,6 @@ fn run_plan_terminal_summary_reports_failed_nodes() {
         ready_ids: Vec::new(),
         blocked_ids: Vec::new(),
         active_ids: Vec::new(),
-        completed_ids: vec!["a".to_string(), "b".to_string()],
         failed_ids: vec!["c".to_string(), "d".to_string()],
         failed_reasons: Default::default(),
         cycle_ids: Vec::new(),
@@ -526,19 +517,12 @@ fn run_plan_terminal_summary_reports_failed_nodes() {
     };
 
     let with_failures = super::format_run_plan_terminal_summary(5, &base, 7);
-    assert!(with_failures.contains("completed=2"));
     assert!(with_failures.contains("failed=2"));
     assert!(with_failures.contains("Failed nodes: c, d"));
     assert!(with_failures.contains("did NOT finish cleanly"));
 
     // A clean run reports failed=0 and no failure callout.
     let clean = crate::protocol::PlanGraphStatus {
-        completed_ids: vec![
-            "a".to_string(),
-            "b".to_string(),
-            "c".to_string(),
-            "d".to_string(),
-        ],
         failed_ids: Vec::new(),
         failed_reasons: Default::default(),
         ..base
@@ -556,7 +540,6 @@ fn plan_terminal_node_count_includes_failed_without_double_counting() {
         ready_ids: Vec::new(),
         blocked_ids: vec!["x".to_string()],
         active_ids: Vec::new(),
-        completed_ids: vec!["a".to_string()],
         failed_ids: vec!["c".to_string()],
         failed_reasons: Default::default(),
         // "x" is both blocked and cyclic; it must count once.
@@ -565,10 +548,10 @@ fn plan_terminal_node_count_includes_failed_without_double_counting() {
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
     };
-    // a (completed) + c (failed) + x (blocked/cycle, deduped) = 3. Without
-    // failed_ids in the terminal count a run with failed nodes would never
-    // satisfy terminal_count >= item_count and run_plan could spin or stall.
-    assert_eq!(super::plan_terminal_node_count(&summary), 3);
+    // c (failed) + x (blocked/cycle, deduped) = 2. Without failed_ids in the terminal
+    // count a run with failed nodes would never satisfy terminal_count >= item_count
+    // and run_plan could spin or stall.
+    assert_eq!(super::plan_terminal_node_count(&summary), 2);
 }
 
 #[test]
@@ -626,7 +609,6 @@ fn format_plan_status_includes_next_ready() {
         ready_ids: vec!["task-2".to_string(), "task-3".to_string()],
         blocked_ids: vec!["task-4".to_string()],
         active_ids: vec!["task-1".to_string()],
-        completed_ids: vec!["setup".to_string()],
         failed_ids: Vec::new(),
         failed_reasons: Default::default(),
         cycle_ids: Vec::new(),
@@ -649,7 +631,6 @@ fn in_flight_slot_accounting_counts_queued_workers_not_coordinator() {
         ready_ids: vec!["queued-assigned".to_string()],
         blocked_ids: Vec::new(),
         active_ids: vec!["running-plan-task".to_string()],
-        completed_ids: Vec::new(),
         failed_ids: Vec::new(),
         failed_reasons: Default::default(),
         cycle_ids: Vec::new(),
@@ -719,7 +700,6 @@ fn in_flight_count_excludes_foreign_queued_session() {
         ready_ids: Vec::new(),
         blocked_ids: Vec::new(),
         active_ids: Vec::new(),
-        completed_ids: vec!["done-task".to_string()],
         failed_ids: Vec::new(),
         failed_reasons: Default::default(),
         cycle_ids: Vec::new(),
@@ -1587,7 +1567,7 @@ fn credential_failure_wave_detected_for_recent_auth_failed_workers() {
         credential_failed_worker("w2", "Anthropic API error (401 Unauthorized)", 3),
         credential_failed_worker("w3", "invalid_grant: refresh token invalid", 5),
     ];
-    let wave = super::detect_credential_failure_wave(&members, "coord", 0, 60)
+    let wave = super::detect_credential_failure_wave(&members, "coord", 60)
         .expect("three recent credential failures with zero completions is a wave");
     assert_eq!(wave.session_ids, vec!["w1", "w2", "w3"]);
     assert_eq!(wave.sample_detail, "Anthropic API error (401 Unauthorized)");
@@ -1608,7 +1588,7 @@ fn credential_failure_wave_requires_at_least_two_workers() {
         2,
     )];
     assert_eq!(
-        super::detect_credential_failure_wave(&members, "coord", 0, 60),
+        super::detect_credential_failure_wave(&members, "coord", 60),
         None,
         "one bad worker is not a wave"
     );
@@ -1621,9 +1601,15 @@ fn credential_failure_wave_not_detected_once_anything_completed() {
     let members = vec![
         credential_failed_worker("w1", "Anthropic API error (401 Unauthorized)", 2),
         credential_failed_worker("w2", "Anthropic API error (401 Unauthorized)", 3),
+        {
+            // A worker that finished a turn is the route working.
+            let mut finished = credential_failed_worker("w3", "done", 1);
+            finished.status = Some(crate::protocol::SwarmLifecycleStatus::Completed);
+            finished
+        },
     ];
     assert_eq!(
-        super::detect_credential_failure_wave(&members, "coord", 1, 60),
+        super::detect_credential_failure_wave(&members, "coord", 60),
         None
     );
 }
@@ -1645,7 +1631,7 @@ fn credential_failure_wave_ignores_stale_and_non_credential_failures() {
         credential_failed_worker("w1", "Anthropic API error (401 Unauthorized)", 2),
     ];
     assert_eq!(
-        super::detect_credential_failure_wave(&members, "coord", 0, 60),
+        super::detect_credential_failure_wave(&members, "coord", 60),
         None
     );
 }
@@ -1664,7 +1650,7 @@ fn credential_failure_wave_ignores_foreign_members() {
         credential_failed_worker("w1", "401 Unauthorized", 2),
     ];
     assert_eq!(
-        super::detect_credential_failure_wave(&members, "coord", 0, 60),
+        super::detect_credential_failure_wave(&members, "coord", 60),
         None
     );
 }
@@ -1702,7 +1688,6 @@ fn run_plan_terminal_summary_includes_recorded_failure_reasons() {
         ready_ids: Vec::new(),
         blocked_ids: Vec::new(),
         active_ids: Vec::new(),
-        completed_ids: vec!["a".to_string()],
         failed_ids: vec!["c".to_string()],
         failed_reasons,
         cycle_ids: Vec::new(),

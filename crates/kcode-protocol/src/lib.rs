@@ -338,8 +338,6 @@ pub struct PlanGraphStatus {
     pub blocked_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub active_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub completed_ids: Vec<String>,
     /// Terminal without completing: failed, stopped, or crashed items. A plan
     /// whose run "finished" with entries here did not finish cleanly, so
     /// schedulers and reports must surface these instead of reading the
@@ -371,7 +369,6 @@ impl PlanGraphStatus {
             ready_ids: Vec::new(),
             blocked_ids: Vec::new(),
             active_ids: Vec::new(),
-            completed_ids: Vec::new(),
             failed_ids: Vec::new(),
             failed_reasons: BTreeMap::new(),
             cycle_ids: Vec::new(),
@@ -395,7 +392,6 @@ impl PlanGraphStatus {
             ready_ids: graph.ready_ids,
             blocked_ids: graph.blocked_ids,
             active_ids: graph.active_ids,
-            completed_ids: graph.completed_ids,
             failed_ids: graph.failed_ids,
             failed_reasons,
             cycle_ids: graph.cycle_ids,
