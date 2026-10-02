@@ -50,6 +50,16 @@ spine is the one structural item; the two calls are the maintainer's.
  answered from `main`. Pick one and make it visible: if branches stay, a post-commit
  or session-start line when `git rev-list --count main..HEAD` is non-zero. The two
  hooks in `.githooks/` are graphify's and stay out of it.
+- [ ] **(decision) Does a machine-wide level come back?** 0.5 leaves the level to the
+ session, and its default to the model table; config no longer sets one, so a user who
+ always wants `high` sets it once per session (`/effort` persists on the session) and a
+ repo or CI cannot pin a level at all (`what-was-removed.md` names both losses). The
+ default answer is to live with it: the friction is one command per new session, and the
+ decision wants evidence that a daily driver hits it. If it comes back, its shape is
+ settled: one key with one meaning (a new session's starting level, not a per-family
+ provider override), read at resolution time so the session field stays a human's
+ choice, and no env var. A `kcode run --effort` flag is a separate, additive call, and
+ only if scripts need a level without touching config.
 - [ ] **(decision) Does this fork port from upstream?** `AGENTS.md` says it "tracks no
  upstream" and that there is "nothing to fetch from `jcode`", but two untracked notes
  at the root describe the opposite: `UPSTREAM-SINCE-0.85.md` and
