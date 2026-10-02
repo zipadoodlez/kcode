@@ -422,8 +422,8 @@ row-model work that path carries.
   The orchestration actions (`spawn`, `assign_task`/`assign_next`/`fill_slots`,
   `run_plan`, `cleanup`, `await_members`) become the run's own behavior, not calls. The
   exact cut is decided at the step; likely one task tool.
-- [ ] **F2.** The file's shape after F1 is `plans/server-shape.md`'s condense task,
-  which owns `tool/communicate.rs`; nothing about it lives here.
+F2's shape lands with F1: what remains of `tool/communicate.rs` after the verb cut is
+`plans/server-shape.md`'s condense task, which owns the file.
 
 ### G. Close out
 
