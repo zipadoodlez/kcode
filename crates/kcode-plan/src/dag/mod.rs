@@ -232,7 +232,7 @@ impl TaskGraph {
         self.nodes.push(node);
     }
 
-    /// Push a fully-formed node. Used by the bridge to lift a `VersionedPlan` into
+    /// Push a fully-formed node. Used by the bridge to lift the run's rows into
     /// a `TaskGraph`. Callers are responsible for keeping ids unique; the
     /// validated ops (`seed`/`expand_node`) enforce uniqueness on the write path.
     pub fn push_node(&mut self, node: TaskNode) {

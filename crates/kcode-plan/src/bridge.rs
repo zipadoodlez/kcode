@@ -1,12 +1,10 @@
-//! Bridge between the validated [`crate::dag`] engine and the live
-//! [`VersionedPlan`] storage used by the swarm runtime.
+//! Bridge between the validated [`crate::dag`] engine and the rows the swarm
+//! runtime works.
 //!
-//! The `dag` engine is the brain: it owns validation (acyclicity, ownership) and
-//! the reference simulator. `VersionedPlan` is the live, persisted, broadcast
-//! storage. Rather than run two parallel runtimes, server handlers lift the
-//! current plan into a `TaskGraph`, apply an engine op, then lower the result
-//! back. This keeps a single source of truth and reuses the existing
-//! persistence/broadcast/scheduler machinery.
+//! The `dag` engine is the brain: it owns validation (acyclicity, ownership) and the
+//! reference simulator. The rows are the work list's, so server handlers lift them into
+//! a `TaskGraph`, apply an engine op, and read the result: one source of truth, because
+//! there is no second copy to keep in step.
 
 use crate::TaskItem;
 use crate::artifact::HandoffArtifact;

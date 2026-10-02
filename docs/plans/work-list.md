@@ -212,15 +212,19 @@ verb set**. 0.4f's one build + full test pass ran with it (three pre-existing
     2026-10-02. All four questions are answered: the plan object goes; per-row run state
     lives in memory on the runtime owner; a claim is a lock for a run and not for the
     user's session; the verb cut rides this step rather than a separate 0.4h. The losses
-    are in `docs/todo.md`. Re-grepped before writing: the `SwarmState { .. }` rebuild
-    sites are 26, not 31 (`VersionedPlan` appears in 48 files, `swarm_coordinators` is
-    referenced 221 times, and `swarm_persistence.rs` is 621 lines with 924 test lines).
+    are in `docs/todo.md`. Measured before the stage: the `SwarmState { .. }` rebuild
+    sites were 26 (31 in the older note), `VersionedPlan` appeared in 48 files, and
+    `swarm_persistence.rs` was 621 lines with 924 test lines. Measured after g3: 25
+    rebuild sites, no `VersionedPlan` anywhere, 469 lines with 676 test lines, and
+    `swarm_coordinators` referenced 329 times, which is g4's number to move.
     1. **g1. Ordering replaces `version`.** Landed. `version` guarded a stale durable
-       write and client ordering; the second is now construction, since the plan event
-       is built and sent while the plan lock is held, which cannot block because
-       `event_tx` is an `mpsc::UnboundedSender` (`server/state.rs:135`), and the first
-       left with the field (the persist guard went with it, one piece of g2 pulled
-       forward because the field's last caller was the guard). Deleted `version` and
+       write and client ordering; the first left with the field (the persist guard went
+       with it, one piece of g2 pulled forward because the field's last caller was the
+       guard) and the second is now construction: the event is built and sent while a
+       per-swarm lock is held. g1 held the plan's lock for that; g3b deleted the plan, so
+       the lock is `swarm_operation_lock` (the one the persist path already takes), and
+       holding it across the send cannot block because a member's `event_tx` is an
+       `mpsc::UnboundedSender` (`server/state.rs:209`). Deleted `version` and
        `participants` (the broadcast's recipients are the swarm's sessions, which was
        already its fallback), the client's `plan_version` and stale-regression branch,
        `RemoteSwarmPlanSnapshot.version`, the replay record's fields, the
@@ -228,59 +232,40 @@ verb set**. 0.4f's one build + full test pass ran with it (three pre-existing
        list. The broadcast's ordering is pinned by
        `swarm_plan_broadcasts_cannot_invert_on_one_member_channel`, which replaces the
        test that demonstrated the inversion.
-    2. **g2. The plan stops being durable** (behavior boundary: restart). Landed, and it
-       took g3's first half: the two are one change, because deleting the durable copy
-       leaves nothing to source the in-memory plan after a restart. The load path now
-       rebuilds a swarm's plan from the list, seating the open rows its members hold
-       queued again, instead of reading a snapshot. Deleted `PersistedVersionedPlan` and
-       the snapshot's plan field, the plan converters, the dormant-plan retention rule,
-       its `KCODE_SWARM_DORMANT_PLAN_RETENTION_SECS` env var and constant, the plan
-       argument threaded through the persist callers, and `swarm:clear_plan`'s
-       re-persist; `SwarmRuntime::has_any_state` means durable state, so the plan no
-       longer counts. The restart behavior is pinned by
-       `a_loaded_swarm_seats_the_rows_its_members_hold`.
-    3. **g3. The item cache dies** (behavior boundary: the status readers). Landed as two
-       commits: g3a removed the reclaim cap and its counter, g3b removed the plan object
-       and moved every read to the list. Decided 2026-10-02. `VersionedPlan`, `SwarmTaskProgress`, `sync_rows`,
-       `drop_row`, `set_row_status`, `prune_side_maps`, `rename_session`, `is_composite`,
-       `execution_state`, `plan_definition` and the debug-only plan DTOs go, and the ~47
-       item reads come from the list. What replaces them is one rule and one map: a
-       swarm's rows are the open rows its members hold (the scope g2's hydration already
-       uses, and the anchor's subtree when two runs share a repo), the run keeps a sparse
-       `status` per row id while the process lives, and every read uses the run's status
-       when it set one and the row's own otherwise, which is what keeps the pickers, the
-       summary and the graph DTOs working on a plain `&[TaskItem]`.
-       The reclaim cap is deleted with no replacement, decided 2026-10-02:
-       `dead_assignee_reclaims`, `MAX_DEAD_ASSIGNEE_RECLAIMS`, `count_dead_assignee_reclaim`,
-       the cap branch in `next_stranded_runnable_item_id`, and the `failed` status the cap
-       wrote all go. The bound belongs to the loop that repeats the work, and the run
-       already keeps it (`worked`, `live_turn.rs:399`), so `salvage_plan_assignments_of`
-       becomes: release every row the dead holder holds, in the file, and report the
-       death. The residual ceiling is the `run_plan` driver, whose own limits (200 loops,
-       the stall detector, the concurrency cap) are coarser than three tries per row until
-       F1 folds hand-outs into the run's loop; that is the `braid:` note the commit
-       carries at the release site.
-       The summary loses the segment nothing can set: `completed_ids` is gone, because a
-       closed row leaves the list and no row is ever marked done. `failed_ids` and
-       `failed_reasons` stay (a worker's errored turn sets them), `terminal_ids` stays
-       with them, and the credential-wave guard now reads a completed *worker* for the
-       "the route works" signal a closed row used to give. The run_plan progress card
-       reports no completed count, with the ceiling marked: the run's own record of rows
-       it closed is F1's.
-       Boundaries are pinned: `a_dispatched_turn_closes_its_row`,
-       `a_stranded_row_is_released_in_the_list_when_it_is_reclaimed`,
-       `salvage_releases_dead_members_rows_and_notifies_coordinator`, and the load-path
-       test g2 added. What g3 still owes is the summary trim below.
+    2. **g2. The plan stops being durable** (behavior boundary: restart). Landed. Deleted
+       `PersistedVersionedPlan` and the snapshot's plan field, the plan converters, the
+       dormant-plan retention rule, its `KCODE_SWARM_DORMANT_PLAN_RETENTION_SECS` env var
+       and constant, the plan argument threaded through the persist callers, and
+       `swarm:clear_plan`'s re-persist; `SwarmRuntime::has_any_state` came to mean durable
+       state, so the plan no longer counts. It also took g3's first half, because
+       deleting the durable copy leaves nothing to source the in-memory plan after a
+       restart: the load path seated the swarm's rows from the list. g3b then deleted
+       that seating too, so a loaded swarm now holds no plan at all and the reads go
+       straight to the list; the load tests pin the member and coordinator round trip.
+    3. **g3. The item cache dies** (behavior boundary: the status readers). Landed in
+       three commits: g3a removed the reclaim cap and its counter, g3b removed the plan
+       object, g3c removed the summary's completed segment. `VersionedPlan`,
+       `SwarmTaskProgress`, `sync_rows`, `drop_row`, `set_row_status`, `prune_side_maps`,
+       `rename_session`, `is_composite`, `execution_state`, `plan_definition` and the
+       debug-only plan DTOs are gone, every item read comes from the list, and what
+       replaces them is one rule and one map: a swarm's rows are the open rows its
+       members hold, the rows nobody holds, and the rows whose holder left the swarm (the
+       sweep's case, and the one that decided the scope), the run keeps a sparse `status`
+       per row id while the process lives, and every read uses the run's status when it
+       set one and the row's own otherwise. Re-measured facts: the scope rule is
+       `swarm_rows` (`swarm.rs`), and a session rename now rewrites its rows' holder
+       (`rename_row_holder_on_disk`), since the in-memory copy that used to carry it is
+       gone.
     4. **g4. Membership is derived** (behavior boundary: membership). Delete the
        `coordinators` map (the coordinator is the session holding the run's anchor row),
        the stored swarm id including `KCODE_SWARM_ID` (`server/util.rs:96`, `:116`),
-       `features.swarm`/the per-session toggle, and `assign_role`; the 26
+       `features.swarm`/the per-session toggle, and `assign_role`; the 25
        `SwarmState { .. }` literals collapse into the request context E2 wants.
     5. **g5. The verb set** (behavior boundary: the user's levers). One guard: a run
        refuses to work a row whose `assigned_to` is not itself, checked in the run's row
        write, since `claim_row_on_disk`/`close_row` (`kcode-base/src/todo.rs`) ignore the
        caller's `session_id` today and a close on a moved row already errors. Delete the
-       live-holder guard (`comm_control.rs:2184`), `task_control_action_allows_status`,
+       live-holder guard (`comm_control.rs:2195`), `task_control_action_allows_status`,
        `task_control_status_error` and the seven `TaskControlAction` variants;
        `assign_task` (the takeover, for a session with a client), `retry` and the
        session levers that already exist (message, stop, wake) remain.
@@ -300,8 +285,9 @@ verb set**. 0.4f's one build + full test pass ran with it (three pre-existing
   - A spawned session inherits its creator's level:
     `resolve_swarm_spawn_effort` (`server/comm_session.rs:558`) collapses to that, and
     the `effort` argument goes from `spawn`, `assign_task`, `assign_next`, `fill_slots`
-    and `run_plan` (`tool/communicate.rs:1298`, `:1449`, `:2606`, `:2911`, `:2963`,
-    with its schema text at `:1688`, `:1801`; `wire.rs:560`, `:682`) along with the
+    and `run_plan` (`tool/communicate.rs:1264`, `:1415`, `:2429`, `:2734`, `:2786`,
+    with the parameter at `:1758` and its schema text at `:1651`, `:1929`; `wire.rs:500`,
+    `:619`) along with the
     `agents.swarm_effort` pin (`kcode-config-types/src/lib.rs:461`). F1 deletes those
     actions outright, so the argument text is touched twice if the tail lands; accepted,
     because 0.5 is kept and the tail is droppable.
@@ -351,7 +337,7 @@ Last of the file work, whenever we want it.
     panel text says "dedicated to the current session's todo list" (`:269`) and
     the placeholder "Waiting for a session todo list" (`:524`), but the read is
     `load_tasks`, which returns the whole repo file. The engine is already scoped
-    to the session's holdings (`bridge.rs:90` in `seed_specs`; `live_turn.rs:259`
+    to the session's holdings (`bridge.rs:79` in `seed_specs`; `live_turn.rs:259`
     for ready work), so the view is the odd one out. Open: filter for every
     session, or only for runs, so a plain session still sees the whole list? And
     how does a session first *see* rows it does not hold, so that adopting one is

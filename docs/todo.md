@@ -6,9 +6,11 @@ conventions. The current project's destination, model and open steps are
 
 ## 1. Shared shapes
 
-- [ ] **Condense swarm/comm** (`plans/work-list.md` step 0.4): the state
-  gets one owner instead of being rebuilt at 31 sites, and membership is derived
-  from the file rather than stored, so the swarm id and the coordinator map go.
+- [ ] **Condense swarm/comm** (`plans/work-list.md` step 0.4g): the state
+  gets one owner instead of being rebuilt at 25 `SwarmState { .. }` sites
+  (re-measured 2026-10-02, after g1-g3 removed the plan those literals carried), and
+  membership is derived from the file rather than stored, so the swarm id and the
+  coordinator map go.
   Design and measurements: `plans/work-list.md`; engine: `internals/swarm.md`. Do
   it before splitting `handle_client`, whose request context is designed to hold
   that state.
@@ -100,8 +102,8 @@ Staged; each lands whole.
   - **28 args** under `#[expect(clippy::too_many_arguments)]`, with one production
     caller (`server/runtime.rs:261`) plus tests, so a context struct is mechanical.
     Ten args are swarm state: four already modelled by `SwarmState`
-    (`swarm_members`/`swarms_by_id`/`swarm_plans`/`swarm_coordinators` -> `members`,
-    `swarms_by_id`, `plans`, `coordinators`) and six loose Arcs beside it
+    (`swarm_members`/`swarms_by_id`/`swarm_runs`/`swarm_coordinators` -> `members`,
+    `swarms_by_id`, `runs`, `coordinators`) and six loose Arcs beside it
     (`shared_context`, `event_history`, `event_counter`, `swarm_event_tx`,
     `await_members_runtime`, `swarm_mutation_runtime`). Every `Comm*` arm re-wraps
     them into a `SwarmState { .. }` literal: that literal is §1's duplication, and
@@ -275,7 +277,7 @@ changes are paid for in test churn.
   member can no longer start a worker on its own initiative, and a user can no longer
   select orchestration with `/effort` (`swarm`, `swarm-deep`). Fanning out stays as the
   model's own call through the `swarm` tool, and the engine has one mode whose
-  parallel/serial shape comes from the plan's blocking structure, not a flag. The rungs'
+  parallel/serial shape comes from the list's blocking structure, not a flag. The rungs'
   only other effect was a system-prompt nudge to fan out, and that nudge is deleted rather
   than relocated: "use the swarm for non-trivial tasks" is the removed orchestration mode
   in prose. Until F1 turns the swarm tool's orchestration actions into the run's own

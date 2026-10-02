@@ -26,7 +26,7 @@ The seed is the rows the
 seeding session holds: `bridge::seed_specs` lifts them into nodes (the row's id,
 words, kind and `blocked_by` are the node's, its position is its priority), a row
 whose kind the engine cannot read stays out rather than being given a guessed
-one, and a row already in the plan is not seeded again.
+one, and a row the list already has is not seeded again.
 
 ## One engine
 
@@ -48,13 +48,14 @@ acyclic by construction. Only the row's holder may decompose it.
 
 A row's `parent` is the file's one hierarchy: `anchor_from_rows` adopts root rows and
 `expand_row_on_disk` adds children, so anchor grouping and decomposition are the same
-relation. The plan holds no copy of it; a node is composite when it has an open child or
-a nonempty `records`, which is how "was decomposed" survives its children's removal.
+relation. Nothing keeps a second copy of it; a row is composite when it has an open
+child or a nonempty `records`, which is how "was decomposed" survives its children's
+removal.
 
 Liveness is the member's, not the task's: the turn loop marks the session's activity
 (`session_metrics::record_activity`) and a task is alive when its assignee is. A member
 holds one row at a time, so "busy" is the member's in-flight work; and fan-out is not a
-decision but the plan's ready set (`blocked_by`), which is why a linear chain reuses one
+decision but the list's ready set (`blocked_by`), which is why a linear chain reuses one
 member while independent rows fan out on their own.
 
 ## Node kinds
@@ -100,13 +101,15 @@ explore surfaces the gaps its caller (or a follow-up row) can widen.
 ## Coordination and communication
 
 - A member's deeper work is rows the run dispatches; only the root session starts
-  agents. The single per-swarm coordinator slot is only for the shared plan
-  (`assign_task`/`task_control`), because there is exactly one `VersionedPlan`
-  per swarm.
+  agents. Membership is the whole authorization to drive a swarm's rows: a member's
+  record names its swarm, and the run drives the rows it holds. The per-swarm
+  coordinator slot is an election record only (who owns the subtree) until 0.4g's g4
+  derives it from the anchor row.
 - When the root leaves, its workers reparent to the live coordinator, or become
   roots, so the spawn tree never holds dangling report-back edges. Session renames
-  rewrite children's report-back edges, so ownership, stop permission, and subtree
-  scope survive churn.
+  rewrite children's report-back edges and the holder of the rows the session held
+  (`rename_row_holder_on_disk`), so ownership, stop permission, and subtree scope
+  survive churn.
 - A worker must end each prompted turn with a useful final response; the server
   forwards it to its owner as the **completion report** (outcome, changes,
   validation, blockers), not a bare `done`.
@@ -136,9 +139,9 @@ contact between the agents.
 
 ## Tool surface
 
-The `communicate` tool carries the swarm actions: `task_graph` (seed the plan from
-the rows this session holds), `expand_node`, `complete_node`,
+The `communicate` tool carries the swarm actions: `task_graph` (seed the run's rows
+from the rows this session holds), `expand_node`, `complete_node`,
 `run_plan`, `fill_slots`, plus
 `spawn`/`dm`/`broadcast`/`channel` and the shared-context ops as lower-level
 escape hatches. The TUI shows a swarm info widget (agent/manager/coordinator graph)
-and a plan info widget (the task DAG with per-node status).
+and a plan info widget (the run's rows with the status a turn set for each).
