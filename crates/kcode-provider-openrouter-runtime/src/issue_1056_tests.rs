@@ -6,8 +6,13 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::mpsc;
 
+/// Issue #1056: a Mistral profile declares reasoning *capability* per model, and the
+/// level belongs to the session. The `reasoning_effort` lines these profiles used to
+/// carry are ignored now (`what-was-removed.md`, 0.5): they parse, and they set
+/// nothing, which is the dead-line cost the ledger names. They stay in the fixture on
+/// purpose, so the ignore is the thing under test.
 #[test]
-fn mistral_models_use_their_configured_reasoning_defaults() {
+fn mistral_models_declare_reasoning_capability_not_a_level() {
     let profile: kcode_base::config::NamedProviderConfig = toml::from_str(
         r#"
 type = "openai-compatible"
@@ -32,8 +37,19 @@ reasoning_effort = "max"
     let provider = OpenRouterProvider::new_named_openai_compatible("mistral", &profile)
         .expect("Mistral provider constructs");
     provider.set_model("mistral-small-latest").unwrap();
-    assert_eq!(provider.reasoning_effort().as_deref(), Some("high"));
+    assert!(
+        !provider.available_efforts().is_empty(),
+        "the profile still declares effort capability"
+    );
+    assert_eq!(provider.reasoning_effort(), None, "no level from config");
+
     provider.set_model("mistral-medium-latest").unwrap();
+    assert!(!provider.available_efforts().is_empty());
+    assert_eq!(provider.reasoning_effort(), None, "no level from config");
+
+    provider
+        .set_reasoning_effort("max")
+        .expect("the session can set one");
     assert_eq!(provider.reasoning_effort().as_deref(), Some("max"));
 }
 
