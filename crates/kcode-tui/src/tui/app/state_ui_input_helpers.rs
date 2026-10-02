@@ -814,10 +814,6 @@ impl App {
                 "/account openai transport".into(),
                 "Set OpenAI transport preference",
             ));
-            suggestions.push((
-                "/account openai effort".into(),
-                "Set OpenAI reasoning effort preference",
-            ));
             if let Ok(accounts) = crate::auth::claude::list_accounts() {
                 for account in accounts {
                     suggestions.push((

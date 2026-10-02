@@ -816,11 +816,6 @@ impl OpenAIProvider {
             None => None,
         };
         let max_output_tokens = Self::load_max_output_tokens();
-        let reasoning_effort = kcode_base::config::config()
-            .provider
-            .openai_reasoning_effort
-            .as_deref()
-            .and_then(Self::normalize_reasoning_effort);
         let service_tier = Self::load_service_tier(
             kcode_base::config::config()
                 .provider
@@ -853,7 +848,7 @@ impl OpenAIProvider {
             prompt_cache_key,
             prompt_cache_retention,
             max_output_tokens,
-            reasoning_effort: Arc::new(StdRwLock::new(reasoning_effort)),
+            reasoning_effort: Arc::new(StdRwLock::new(None)),
             model_reasoning_efforts: Arc::new(StdRwLock::new(model_reasoning_efforts)),
             service_tier: Arc::new(StdRwLock::new(service_tier)),
             native_compaction_mode,

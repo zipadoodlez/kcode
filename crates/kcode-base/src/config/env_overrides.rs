@@ -470,18 +470,6 @@ impl Config {
                 self.provider.default_provider = Some(trimmed);
             }
         }
-        if let Ok(v) = std::env::var("KCODE_OPENAI_REASONING_EFFORT") {
-            let trimmed = v.trim().to_string();
-            if !trimmed.is_empty() {
-                self.provider.openai_reasoning_effort = Some(trimmed);
-            }
-        }
-        if let Ok(v) = std::env::var("KCODE_ANTHROPIC_REASONING_EFFORT") {
-            let trimmed = v.trim().to_string();
-            if !trimmed.is_empty() {
-                self.provider.anthropic_reasoning_effort = Some(trimmed);
-            }
-        }
         if let Ok(v) = std::env::var("KCODE_OPENAI_TRANSPORT") {
             let trimmed = v.trim().to_string();
             if !trimmed.is_empty() {

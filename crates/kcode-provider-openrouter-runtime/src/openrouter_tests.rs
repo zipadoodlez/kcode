@@ -386,7 +386,6 @@ fn named_openai_compatible_model_with_empty_input_preserves_image_support() {
         models: vec![kcode_base::config::NamedProviderModelConfig {
             id: "text-model".to_string(),
             reasoning: None,
-            reasoning_effort: None,
             input: Vec::new(),
             ..Default::default()
         }],
@@ -1544,25 +1543,19 @@ fn direct_zai_profile_exposes_openai_reasoning_effort_ladder() {
 }
 
 #[test]
-fn direct_zai_profile_applies_configured_effort_on_construction_and_model_switch() {
-    let configured = kcode_base::config::config()
-        .provider
-        .openai_reasoning_effort
-        .as_deref()
-        .and_then(OpenRouterProvider::normalize_openai_reasoning_effort);
-    assert_eq!(
-        OpenRouterProvider::initial_reasoning_effort(None, Some("zai")),
-        configured
-    );
-
+fn direct_zai_profile_keeps_the_user_level_across_a_model_switch() {
     let provider = OpenRouterProvider {
         profile_id: Some("zai".to_string()),
         supports_provider_features: false,
-        reasoning_effort: Arc::new(RwLock::new(None)),
+        reasoning_effort: Arc::new(RwLock::new(Some("high".to_string()))),
         ..make_custom_compatible_provider()
     };
     provider.set_model("glm-5.3-flash").unwrap();
-    assert_eq!(provider.reasoning_effort(), configured);
+    assert_eq!(
+        provider.reasoning_effort().as_deref(),
+        Some("high"),
+        "a model switch keeps the level the user set; config no longer seeds one"
+    );
 }
 
 #[test]
@@ -2218,7 +2211,6 @@ fn named_openai_compatible_model_context_window_overrides_default() {
             id: "custom-long-context".to_string(),
             context_window: Some(512_000),
             reasoning: None,
-            reasoning_effort: None,
             input: Vec::new(),
         }],
         ..Default::default()
@@ -2247,7 +2239,6 @@ fn named_profile_context_window_survives_provider_qualified_model() {
             id: "qwen3.6-35b-a2000-128k".to_string(),
             context_window: Some(131_072),
             reasoning: None,
-            reasoning_effort: None,
             input: Vec::new(),
         }],
         ..Default::default()
@@ -3166,11 +3157,12 @@ fn named_profile_supports_reasoning_effort_config_override() {
     );
 }
 
-/// Issue #352: named profiles construct with the user's configured
-/// `openai_reasoning_effort` when the profile supports effort, instead of
-/// silently ignoring the config.
+/// Issue #352: a named profile that declares effort support starts with no level
+/// of its own and accepts one. It used to seed the level from
+/// `provider.openai_reasoning_effort`; the level is the session's now, and config
+/// sets none.
 #[test]
-fn named_profile_construction_reads_openai_reasoning_effort_config() {
+fn named_profile_construction_starts_with_no_level() {
     let _lock = ENV_LOCK.lock();
     let _namespace = EnvVarGuard::remove("KCODE_OPENROUTER_CACHE_NAMESPACE");
 
@@ -3184,18 +3176,11 @@ fn named_profile_construction_reads_openai_reasoning_effort_config() {
 
     let provider =
         OpenRouterProvider::new_named_openai_compatible("custom", &config).expect("provider");
-    // The config default is only applied when openai_reasoning_effort is set;
-    // with no config value the provider starts with no effort but still
-    // supports setting one.
-    let initial = provider.reasoning_effort();
-    let configured = kcode_base::config::config()
-        .provider
-        .openai_reasoning_effort
-        .clone();
-    match configured {
-        Some(_) => assert!(initial.is_some(), "configured effort must be honored"),
-        None => assert_eq!(initial, None),
-    }
+    assert_eq!(
+        provider.reasoning_effort(),
+        None,
+        "config no longer seeds a level; the session's stored one is the only lever"
+    );
     provider
         .set_reasoning_effort("max")
         .expect("explicitly-enabled profile accepts effort");
@@ -3219,9 +3204,10 @@ fn named_profile_can_disable_reasoning_model_name_heuristics() {
 }
 
 #[test]
-fn named_profile_model_reasoning_overrides_capability_and_default_effort() {
+fn named_profile_model_reasoning_overrides_capability() {
     let _lock = ENV_LOCK.lock();
     let _namespace = EnvVarGuard::remove("KCODE_OPENROUTER_CACHE_NAMESPACE");
+
     let config = kcode_base::config::NamedProviderConfig {
         base_url: "https://compat.example.test/v1".to_string(),
         api_key: Some("test".to_string()),
@@ -3231,7 +3217,6 @@ fn named_profile_model_reasoning_overrides_capability_and_default_effort() {
             kcode_base::config::NamedProviderModelConfig {
                 id: "reasoning-custom".to_string(),
                 reasoning: Some(true),
-                reasoning_effort: Some("high".to_string()),
                 ..Default::default()
             },
             kcode_base::config::NamedProviderModelConfig {
@@ -3242,7 +3227,6 @@ fn named_profile_model_reasoning_overrides_capability_and_default_effort() {
             kcode_base::config::NamedProviderModelConfig {
                 id: "reasoning-mini".to_string(),
                 reasoning: Some(true),
-                reasoning_effort: Some("low".to_string()),
                 ..Default::default()
             },
         ],
@@ -3250,15 +3234,20 @@ fn named_profile_model_reasoning_overrides_capability_and_default_effort() {
     };
 
     let provider = OpenRouterProvider::new_named_openai_compatible("custom", &config).unwrap();
-    assert_eq!(provider.reasoning_effort(), Some("high".to_string()));
     assert!(provider.available_efforts().contains(&"xhigh"));
+    assert_eq!(
+        provider.reasoning_effort(),
+        None,
+        "a profile sets capability, not a level: config no longer carries one"
+    );
 
     provider.set_model("gpt-5-disabled").unwrap();
     assert!(provider.available_efforts().is_empty());
     assert_eq!(provider.reasoning_effort(), None);
 
     provider.set_model("reasoning-mini").unwrap();
-    assert_eq!(provider.reasoning_effort(), Some("low".to_string()));
+    assert!(provider.available_efforts().iter().any(|e| *e == "low"));
+    assert_eq!(provider.reasoning_effort(), None);
 }
 
 /// Regression: when the shared interactive server boots an `OpenRouterProvider`

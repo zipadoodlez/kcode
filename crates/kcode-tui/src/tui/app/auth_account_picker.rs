@@ -185,21 +185,6 @@ impl App {
                     items.push(AccountPickerItem::action(
                         provider.id,
                         provider.display_name,
-                        "Reasoning effort",
-                        cfg.provider
-                            .openai_reasoning_effort
-                            .as_deref()
-                            .unwrap_or("(provider default)"),
-                        AccountPickerCommand::PromptValue {
-                            prompt: "Enter OpenAI reasoning effort: none, minimal, low, medium, high, xhigh, max, or clear.".to_string(),
-                            command_prefix: "/account openai effort".to_string(),
-                            empty_value: Some("clear".to_string()),
-                            status_notice: "Account: editing OpenAI effort...".to_string(),
-                        },
-                    ));
-                    items.push(AccountPickerItem::action(
-                        provider.id,
-                        provider.display_name,
                         "Fast mode",
                         if cfg.provider.openai_service_tier.as_deref() == Some("priority") {
                             "on"

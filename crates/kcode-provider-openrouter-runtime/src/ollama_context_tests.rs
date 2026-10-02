@@ -53,7 +53,6 @@ fn explicit_context_window_still_wins_over_the_ollama_clamp() {
             id: "qwen3:35b".to_string(),
             context_window: Some(65_536),
             reasoning: None,
-            reasoning_effort: None,
             input: Vec::new(),
         }],
         ..Default::default()

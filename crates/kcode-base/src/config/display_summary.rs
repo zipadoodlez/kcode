@@ -71,8 +71,6 @@ impl Config {
 **Provider:**
 - Default model: {}
 - Default provider: {}
-- OpenAI reasoning effort: {}
-- Anthropic reasoning effort: {}
 - OpenAI transport: {}
 - OpenAI service tier: {}
 - OpenAI native compaction: {}
@@ -181,14 +179,6 @@ impl Config {
                 .default_provider
                 .as_deref()
                 .unwrap_or("(auto)"),
-            self.provider
-                .openai_reasoning_effort
-                .as_deref()
-                .unwrap_or("(provider default)"),
-            self.provider
-                .anthropic_reasoning_effort
-                .as_deref()
-                .unwrap_or("(provider default)"),
             self.provider
                 .openai_transport
                 .as_deref()

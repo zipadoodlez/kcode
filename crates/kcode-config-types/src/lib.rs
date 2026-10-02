@@ -336,14 +336,6 @@ pub struct NamedProviderModelConfig {
     /// the provider-level setting and built-in model-family detection apply.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<bool>,
-    /// Reasoning effort selected when this model becomes active. This overrides
-    /// `[provider].openai_reasoning_effort` for this model only.
-    #[serde(
-        default,
-        alias = "reasoning-effort",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub reasoning_effort: Option<String>,
     #[serde(
         default,
         alias = "context_limit",
@@ -998,10 +990,6 @@ pub struct ProviderConfig {
     pub default_model: Option<String>,
     /// Default provider to use (claude|openai|copilot|openrouter)
     pub default_provider: Option<String>,
-    /// Reasoning effort for OpenAI Responses API (none|minimal|low|medium|high|xhigh|max)
-    pub openai_reasoning_effort: Option<String>,
-    /// Reasoning effort for Anthropic Messages API output_config (none|low|medium|high|xhigh; max aliases to strongest supported)
-    pub anthropic_reasoning_effort: Option<String>,
     /// OpenAI transport mode (auto|websocket|https)
     pub openai_transport: Option<String>,
     /// OpenAI service tier override (priority|flex)
@@ -1052,8 +1040,6 @@ impl Default for ProviderConfig {
         Self {
             default_model: None,
             default_provider: None,
-            openai_reasoning_effort: Some("low".to_string()),
-            anthropic_reasoning_effort: None,
             openai_transport: None,
             openai_service_tier: Some("priority".to_string()),
             openai_native_compaction_mode: "auto".to_string(),

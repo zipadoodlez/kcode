@@ -125,14 +125,6 @@ fn gemini_environment_overrides_config_without_changing_the_file() {
 }
 
 #[test]
-fn test_openai_reasoning_effort_defaults_to_low() {
-    assert_eq!(
-        ProviderConfig::default().openai_reasoning_effort.as_deref(),
-        Some("low")
-    );
-}
-
-#[test]
 fn test_openai_fast_mode_defaults_to_priority() {
     assert_eq!(
         ProviderConfig::default().openai_service_tier.as_deref(),
@@ -635,10 +627,6 @@ fn test_generated_default_config_has_expected_user_defaults() {
     let content = std::fs::read_to_string(path).expect("read default config file");
 
     assert!(
-        content.contains("openai_reasoning_effort = \"low\""),
-        "generated default config should use low OpenAI reasoning effort"
-    );
-    assert!(
         content.contains("openai_service_tier = \"priority\""),
         "generated default config should enable OpenAI fast mode"
     );
@@ -1101,7 +1089,6 @@ fn populate_context_limits_from_config_ref_seeds_global_cache() {
             models: vec![NamedProviderModelConfig {
                 id: model_id.to_string(),
                 reasoning: None,
-                reasoning_effort: None,
                 context_window: Some(1_000_000),
                 input: Vec::new(),
             }],
@@ -1137,14 +1124,12 @@ fn populate_context_limits_from_config_seeds_qualified_runtime_model_shapes() {
                 NamedProviderModelConfig {
                     id: "issue421-qwen-128k".to_string(),
                     reasoning: None,
-                    reasoning_effort: None,
                     context_window: Some(131_072),
                     input: Vec::new(),
                 },
                 NamedProviderModelConfig {
                     id: "/opt/models/issue421-ornith-35b-q4.gguf".to_string(),
                     reasoning: None,
-                    reasoning_effort: None,
                     context_window: Some(131_072),
                     input: Vec::new(),
                 },

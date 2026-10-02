@@ -126,30 +126,6 @@ impl Config {
         Self::set_default_model(model, cfg.provider.default_provider.as_deref())
     }
 
-    /// Update the persisted OpenAI reasoning effort preference.
-    pub fn set_openai_reasoning_effort(value: Option<&str>) -> anyhow::Result<()> {
-        let mut cfg = Self::load_for_update()?;
-        cfg.provider.openai_reasoning_effort = value.map(|s| s.to_string());
-        cfg.save()?;
-        crate::logging::info(&format!(
-            "Saved openai_reasoning_effort to config: {}",
-            value.unwrap_or("(none)")
-        ));
-        Ok(())
-    }
-
-    /// Update the persisted Anthropic reasoning effort preference.
-    pub fn set_anthropic_reasoning_effort(value: Option<&str>) -> anyhow::Result<()> {
-        let mut cfg = Self::load_for_update()?;
-        cfg.provider.anthropic_reasoning_effort = value.map(|s| s.to_string());
-        cfg.save()?;
-        crate::logging::info(&format!(
-            "Saved anthropic_reasoning_effort to config: {}",
-            value.unwrap_or("(none)")
-        ));
-        Ok(())
-    }
-
     /// Update the persisted OpenAI transport preference.
     pub fn set_openai_transport(value: Option<&str>) -> anyhow::Result<()> {
         let mut cfg = Self::load_for_update()?;
@@ -527,7 +503,7 @@ mod issue_1056_tests {
     }
 
     #[test]
-    fn effort_update_preserves_profile_with_capitalized_bearer_auth() {
+    fn config_update_preserves_profile_with_capitalized_bearer_auth() {
         let _lock = crate::storage::lock_test_env();
         let home = tempfile::tempdir().unwrap();
         let _home = EnvGuard::set("KCODE_HOME", home.path());
@@ -536,7 +512,7 @@ mod issue_1056_tests {
             &path,
             r#"
 [provider]
-openai_reasoning_effort = "low"
+openai_transport = "https"
 
 [providers.mistral]
 type = "openai-compatible"
@@ -548,26 +524,25 @@ disable_reasoning_heuristics = true
 [[providers.mistral.models]]
 id = "mistral-medium-latest"
 reasoning = true
-reasoning_effort = "max"
 "#,
         )
         .unwrap();
 
-        Config::set_openai_reasoning_effort(Some("high")).unwrap();
+        Config::set_openai_transport(Some("websocket")).unwrap();
 
         let saved = std::fs::read_to_string(path).unwrap();
         assert!(saved.contains("[providers.mistral]"));
         assert!(saved.contains("mistral-medium-latest"));
         let parsed = Config::load_strict().unwrap();
         assert_eq!(
-            parsed.provider.openai_reasoning_effort.as_deref(),
-            Some("high")
+            parsed.provider.openai_transport.as_deref(),
+            Some("websocket")
         );
         assert_eq!(parsed.providers["mistral"].models.len(), 1);
     }
 
     #[test]
-    fn effort_update_refuses_to_overwrite_malformed_config() {
+    fn config_update_refuses_to_overwrite_malformed_config() {
         let _lock = crate::storage::lock_test_env();
         let home = tempfile::tempdir().unwrap();
         let _home = EnvGuard::set("KCODE_HOME", home.path());
@@ -575,7 +550,7 @@ reasoning_effort = "max"
         let original = "[providers.broken]\nauth = \"invalid-auth-mode\"\n";
         std::fs::write(&path, original).unwrap();
 
-        let error = Config::set_openai_reasoning_effort(Some("high"))
+        let error = Config::set_openai_transport(Some("websocket"))
             .expect_err("a malformed config must block mutation");
 
         assert!(error.to_string().contains("Failed to parse config file"));

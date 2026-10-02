@@ -312,12 +312,6 @@ tool_profile = "acp"
 # `claude` and `anthropic-api` are distinct providers with distinct credentials.
 # See docs/user/auth.md for where each credential lives.
 # default_provider = "copilot"
-# OpenAI reasoning effort (none|minimal|low|medium|high|xhigh|max)
-openai_reasoning_effort = "low"
-# Anthropic reasoning effort for Claude reasoning models (none|low|medium|high|xhigh|max)
-# xhigh needs Opus 4.7/4.8 or Fable 5; max needs an output_config effort model (Opus/Sonnet 4.6+).
-# Defaults to xhigh for Claude Opus 4.7/4.8 (high on older Opus) when unset; other models keep their own default.
-# anthropic_reasoning_effort = "medium"
 # OpenAI transport mode (auto|websocket|https)
 # openai_transport = "auto"
 # OpenAI service tier override (priority|flex|off)

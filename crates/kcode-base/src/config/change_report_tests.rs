@@ -114,7 +114,6 @@ fn commonly_edited_sections_are_live() {
         "keybindings.scroll_up",
         "display.centered",
         "features.thinking",
-        "provider.openai_reasoning_effort",
         "agents.swarm_spawn_mode",
         "tools.profile",
         "websearch.engine",

@@ -612,13 +612,6 @@ impl AnthropicProvider {
         let max_tokens_override = std::env::var("KCODE_ANTHROPIC_MAX_TOKENS")
             .ok()
             .and_then(|v| v.trim().parse::<u32>().ok());
-        let reasoning_effort = kcode_base::config::config()
-            .provider
-            .anthropic_reasoning_effort
-            .as_deref()
-            .and_then(Self::normalize_reasoning_effort)
-            .map(|effort| Self::actual_effort_for_model(&model, &effort));
-
         let direct_transport = DirectTransportConfig::from_env();
         let profile_api_key = std::env::var_os("KCODE_ANTHROPIC_API_BASE")
             .map(|_| load_anthropic_api_key().map_err(|err| format!("{err:#}")));
@@ -627,7 +620,7 @@ impl AnthropicProvider {
         Self {
             client: kcode_provider_core::shared_http_client(),
             model: Arc::new(std::sync::RwLock::new(model)),
-            reasoning_effort: Arc::new(std::sync::RwLock::new(reasoning_effort)),
+            reasoning_effort: Arc::new(std::sync::RwLock::new(None)),
             service_tier: Arc::new(std::sync::RwLock::new(None)),
             credentials: Arc::new(RwLock::new(None)),
             credential_mode: Arc::new(RwLock::new(AnthropicCredentialMode::from_runtime_env(

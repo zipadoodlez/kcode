@@ -67,12 +67,16 @@ fn mistral_max_effort_is_sent_as_official_xhigh_value() {
         models: vec![kcode_base::config::NamedProviderModelConfig {
             id: "mistral-medium-latest".to_string(),
             reasoning: Some(true),
-            reasoning_effort: Some("max".to_string()),
             ..Default::default()
         }],
         ..Default::default()
     };
     let provider = OpenRouterProvider::new_named_openai_compatible("mistral", &profile).unwrap();
+    // The level is the session's now, so the test sets it the way a session does
+    // before the request goes out.
+    provider
+        .set_reasoning_effort("max")
+        .expect("the profile advertises effort");
     let messages = vec![Message::user("hello")];
 
     let runtime = tokio::runtime::Runtime::new().unwrap();

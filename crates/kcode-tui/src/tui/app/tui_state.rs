@@ -114,33 +114,11 @@ impl App {
         (provider, model)
     }
 
-    /// Best-known current reasoning effort for the remote session. Falls back
-    /// to the configured provider-family default when the server has not
-    /// reported one yet, so pre-settle effort cycling starts from the value the
-    /// session will actually use instead of assuming the maximum.
+    /// The level the session runs at, as last reported by the server. There is
+    /// no config fallback any more: the session's stored level, else the model's
+    /// own default, is the whole answer.
     pub(super) fn remote_reasoning_effort_hint(&self) -> Option<String> {
-        if crate::tui::is_ssh_remote() {
-            return self.remote_reasoning_effort.clone();
-        }
-        self.remote_reasoning_effort.clone().or_else(|| {
-            let (provider, model) = self.remote_effort_identity();
-            let provider = provider.unwrap_or_default().to_ascii_lowercase();
-            let model = model.unwrap_or_default().to_ascii_lowercase();
-            let cfg = &crate::config::config().provider;
-            if provider.contains("anthropic")
-                || provider.contains("claude")
-                || model.starts_with("claude-")
-            {
-                cfg.anthropic_reasoning_effort.clone()
-            } else if provider.contains("openai")
-                || provider.contains("codex")
-                || model.starts_with("gpt-")
-            {
-                cfg.openai_reasoning_effort.clone()
-            } else {
-                None
-            }
-        })
+        self.remote_reasoning_effort.clone()
     }
 
     fn remote_header_provider_model(&self) -> Option<String> {

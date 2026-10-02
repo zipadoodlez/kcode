@@ -233,15 +233,6 @@ fn parse_account_command(trimmed: &str) -> Option<Result<AccountCommand, String>
                 }
                 AccountCommand::SetOpenAiTransport(normalize_clearish_value(value))
             }
-            "effort" if provider.id == "openai" => {
-                if value.is_empty() {
-                    return Some(Err(
-                        "Usage: /account openai effort <none|minimal|low|medium|high|xhigh|max|clear>"
-                            .to_string(),
-                    ));
-                }
-                AccountCommand::SetOpenAiEffort(normalize_clearish_value(value))
-            }
             "fast" if provider.id == "openai" => match value.to_ascii_lowercase().as_str() {
                 "on" => AccountCommand::SetOpenAiFast(true),
                 "off" => AccountCommand::SetOpenAiFast(false),
@@ -403,9 +394,6 @@ pub(crate) fn execute_account_command_local(app: &mut App, command: AccountComma
         AccountCommand::SetOpenAiTransport(value) => {
             save_openai_transport_setting_local(app, value.as_deref())
         }
-        AccountCommand::SetOpenAiEffort(value) => {
-            save_openai_effort_setting_local(app, value.as_deref())
-        }
         AccountCommand::SetOpenAiFast(enabled) => save_openai_fast_setting_local(app, enabled),
         AccountCommand::SetCopilotPremium(mode) => {
             save_copilot_premium_setting(app, mode.as_deref())
@@ -534,12 +522,6 @@ pub(crate) async fn execute_account_command_remote(
             remote
                 .set_transport(value.as_deref().unwrap_or("auto"))
                 .await?;
-        }
-        AccountCommand::SetOpenAiEffort(value) => {
-            save_openai_effort_setting_local(app, value.as_deref());
-            if let Some(value) = value.as_deref() {
-                remote.set_reasoning_effort(value).await?;
-            }
         }
         AccountCommand::SetOpenAiFast(enabled) => {
             save_openai_fast_setting_local(app, enabled);
@@ -693,44 +675,6 @@ fn save_openai_transport_setting_local(app: &mut App, value: Option<&str>) {
         }
         Err(err) => app.push_display_message(DisplayMessage::error(format!(
             "Failed to save OpenAI transport: {}",
-            err
-        ))),
-    }
-}
-
-fn save_openai_effort_setting_local(app: &mut App, value: Option<&str>) {
-    if let Some(value) = value
-        && !matches!(
-            value,
-            "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
-        )
-    {
-        app.push_display_message(DisplayMessage::error(
-            "OpenAI effort must be one of none, minimal, low, medium, high, xhigh, or max."
-                .to_string(),
-        ));
-        return;
-    }
-    if let Some(value) = value
-        && let Err(err) = app.provider.set_reasoning_effort(value)
-    {
-        app.push_display_message(DisplayMessage::error(format!(
-            "Failed to set OpenAI effort: {}",
-            err
-        )));
-        return;
-    }
-    match crate::config::Config::set_openai_reasoning_effort(value) {
-        Ok(()) => {
-            let label = value.unwrap_or("(provider default)");
-            app.set_status_notice(format!("Effort: {}", label));
-            app.push_display_message(DisplayMessage::system(format!(
-                "Saved OpenAI reasoning effort: {}.",
-                label
-            )));
-        }
-        Err(err) => app.push_display_message(DisplayMessage::error(format!(
-            "Failed to save OpenAI effort: {}",
             err
         ))),
     }
@@ -964,13 +908,6 @@ fn render_provider_settings_markdown(app: &App, provider_id: &str) -> String {
                 cfg.provider.openai_transport.as_deref().unwrap_or("auto")
             ));
             lines.push(format!(
-                "  - Reasoning effort: {}",
-                cfg.provider
-                    .openai_reasoning_effort
-                    .as_deref()
-                    .unwrap_or("(provider default)")
-            ));
-            lines.push(format!(
                 "  - Fast mode: {}",
                 if cfg.provider.openai_service_tier.as_deref() == Some("priority") {
                     "on"
@@ -979,10 +916,6 @@ fn render_provider_settings_markdown(app: &App, provider_id: &str) -> String {
                 }
             ));
             lines.push("  - /account openai transport <auto|https|websocket>".to_string());
-            lines.push(
-                "  - /account openai effort <none|minimal|low|medium|high|xhigh|max|clear>"
-                    .to_string(),
-            );
             lines.push("  - /account openai fast <on|off>".to_string());
         }
         "copilot" => {

@@ -905,7 +905,7 @@ pub struct OpenRouterProvider {
     reasoning_effort_support: Option<bool>,
     disable_reasoning_heuristics: bool,
     /// Per-model `(supports effort, default effort)` overrides from a named profile.
-    static_reasoning_config: HashMap<String, (Option<bool>, Option<String>)>,
+    static_reasoning_config: HashMap<String, Option<bool>>,
     max_tokens: Option<u32>,
     /// Extra top-level JSON object fields merged into every chat/completions
     /// request body (e.g. NVIDIA NIM DeepSeek-V4 `chat_template_kwargs`).
@@ -1056,25 +1056,10 @@ impl OpenRouterProvider {
             .unwrap_or_default()
     }
 
-    fn model_reasoning_config(&self) -> Option<&(Option<bool>, Option<String>)> {
-        let model = self.model_snapshot().trim().to_ascii_lowercase();
-        self.static_reasoning_config.get(&model)
-    }
-
+    /// Whether the profile pins this model's `/effort` support, when it says so.
     fn model_reasoning_support(&self) -> Option<bool> {
-        self.model_reasoning_config().and_then(|config| config.0)
-    }
-
-    fn configured_effort_for_model(&self) -> Option<String> {
-        self.model_reasoning_config()
-            .and_then(|config| config.1.clone())
-            .or_else(|| {
-                kcode_base::config::config()
-                    .provider
-                    .openai_reasoning_effort
-                    .clone()
-            })
-            .and_then(|effort| self.normalize_reasoning_effort_for_self(&effort))
+        let model = self.model_snapshot().trim().to_ascii_lowercase();
+        self.static_reasoning_config.get(&model).copied().flatten()
     }
 
     pub(crate) fn supports_any_reasoning_effort(&self) -> bool {
@@ -1094,33 +1079,6 @@ impl OpenRouterProvider {
         } else {
             Self::normalize_unified_reasoning_effort(effort)
         }
-    }
-
-    /// Initial reasoning effort at construction. Named/compat profiles that
-    /// support effort honor the user's configured `openai_reasoning_effort`
-    /// (issue #352: previously hardcoded to None so the config was ignored).
-    fn initial_reasoning_effort(
-        reasoning_effort_support: Option<bool>,
-        profile_id: Option<&str>,
-    ) -> Option<String> {
-        let supported = reasoning_effort_support.unwrap_or(
-            Self::profile_supports_reasoning_effort(profile_id)
-                || Self::profile_supports_openai_reasoning_effort(profile_id),
-        );
-        if !supported {
-            return None;
-        }
-        kcode_base::config::config()
-            .provider
-            .openai_reasoning_effort
-            .as_deref()
-            .and_then(|effort| {
-                if Self::profile_supports_openai_reasoning_effort(profile_id) {
-                    Self::normalize_openai_reasoning_effort(effort)
-                } else {
-                    Self::normalize_reasoning_effort(effort)
-                }
-            })
     }
 
     fn profile_rejects_image_input(profile_id: Option<&str>) -> bool {
@@ -1406,14 +1364,10 @@ impl OpenRouterProvider {
             .iter()
             .filter_map(|model| {
                 let id = model.id.trim();
-                if id.is_empty() || (model.reasoning.is_none() && model.reasoning_effort.is_none())
-                {
+                if id.is_empty() || model.reasoning.is_none() {
                     return None;
                 }
-                Some((
-                    id.to_ascii_lowercase(),
-                    (model.reasoning, model.reasoning_effort.clone()),
-                ))
+                Some((id.to_ascii_lowercase(), model.reasoning))
             })
             .collect::<HashMap<_, _>>();
         let provider = Self {
@@ -1457,14 +1411,6 @@ impl OpenRouterProvider {
             endpoints_cache: Arc::new(RwLock::new(HashMap::new())),
             endpoint_refresh: Arc::new(Mutex::new(EndpointRefreshTracker::default())),
         };
-        let initial_effort = if provider.supports_any_reasoning_effort() {
-            provider.configured_effort_for_model()
-        } else {
-            None
-        };
-        if let Ok(mut effort) = provider.reasoning_effort.try_write() {
-            *effort = initial_effort;
-        }
         Ok(provider)
     }
 
@@ -1637,10 +1583,7 @@ impl OpenRouterProvider {
         Ok(Self {
             client: kcode_provider_core::shared_http_client(),
             model: Arc::new(RwLock::new(model)),
-            reasoning_effort: Arc::new(RwLock::new(Self::initial_reasoning_effort(
-                None,
-                profile_id.as_deref(),
-            ))),
+            reasoning_effort: Arc::new(RwLock::new(None)),
             api_base,
             auth,
             supports_provider_features,
@@ -1753,10 +1696,7 @@ impl OpenRouterProvider {
         Ok(Self {
             client: kcode_provider_core::shared_http_client(),
             model: Arc::new(RwLock::new(model)),
-            reasoning_effort: Arc::new(RwLock::new(Self::initial_reasoning_effort(
-                None,
-                Some(&resolved.id),
-            ))),
+            reasoning_effort: Arc::new(RwLock::new(None)),
             api_base,
             auth,
             supports_provider_features: false,
