@@ -287,3 +287,128 @@ async fn a_dispatch_refuses_a_row_the_list_does_not_have() {
         "a refused claim must leave the plan as it was"
     );
 }
+
+/// A dispatched turn that ends without an explicit close closes its own row: the
+/// store writes the turn's report as the result (or says the turn reported nothing),
+/// the record lands on the row that owns the work, and the plan stops holding the
+/// row. This is the fallback for a worker that just ran, so a run cannot re-dispatch
+/// a row whose turn already ended.
+#[tokio::test]
+async fn a_dispatched_turn_closes_its_row() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let repo = scratch_repo();
+    let swarm_id = "swarm-turn-close";
+    let requester = "coord";
+    let worker = "worker";
+    let (client_tx, mut client_rx) = mpsc::unbounded_channel();
+    let sessions: crate::server::SessionAgents = Arc::new(RwLock::new(HashMap::from([(
+        worker.to_string(),
+        test_agent().await,
+    )])));
+    let soft_interrupt_queues = Arc::new(RwLock::new(HashMap::new()));
+    let client_connections = Arc::new(RwLock::new(HashMap::new()));
+    let swarm_members = Arc::new(RwLock::new(HashMap::from([
+        (requester.to_string(), {
+            let mut member = member(requester, swarm_id, "ready");
+            member.role = "coordinator".to_string();
+            member
+        }),
+        (
+            worker.to_string(),
+            owned_member(worker, swarm_id, "ready", requester),
+        ),
+    ])));
+    set_repo(&swarm_members, repo.path()).await;
+    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.to_string(),
+        HashSet::from([requester.to_string(), worker.to_string()]),
+    )])));
+    // The run's own row (the anchor) and the row this turn will work under it.
+    let mut run_row = plan_item("run", "queued", "high", &[]);
+    run_row.kind = Some("synthesize".to_string());
+    run_row.assigned_to = Some(requester.to_string());
+    let mut work_row = plan_item("work", "queued", "high", &[]);
+    work_row.kind = Some("implement".to_string());
+    work_row.assigned_to = Some(requester.to_string());
+    // The row that owns the work takes the close's record.
+    work_row.parent = Some("run".to_string());
+    write_list(repo.path(), requester, &[run_row.clone(), work_row.clone()]);
+    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.to_string(),
+        VersionedPlan {
+            items: vec![run_row, work_row],
+            version: 1,
+            participants: HashSet::from([requester.to_string(), worker.to_string()]),
+            task_progress: HashMap::new(),
+        },
+    )])));
+    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.to_string(),
+        requester.to_string(),
+    )])));
+    let event_history = Arc::new(RwLock::new(VecDeque::new()));
+    let event_counter = Arc::new(AtomicU64::new(1));
+    let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
+    let mutation_runtime = SwarmMutationRuntime::default();
+
+    handle_comm_assign_task(
+        81,
+        requester.to_string(),
+        Some(worker.to_string()),
+        Some("work".to_string()),
+        None,
+        &client_tx,
+        &sessions,
+        &soft_interrupt_queues,
+        &client_connections,
+        &swarm_members,
+        &swarms_by_id,
+        &swarm_plans,
+        &swarm_coordinators,
+        &event_history,
+        &event_counter,
+        &swarm_event_tx,
+        &mutation_runtime,
+    )
+    .await;
+    // The dispatch answers before its turn has finished; drain it so the turn's own
+    // events do not accumulate.
+    let _ = client_rx.try_recv();
+
+    // The turn is spawned, so wait for its close to land (bounded).
+    for _ in 0..200 {
+        let closed = {
+            let plans = swarm_plans.read().await;
+            !plans[swarm_id].items.iter().any(|item| item.id == "work")
+        };
+        if closed {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    let plans = swarm_plans.read().await;
+    assert!(
+        !plans[swarm_id].items.iter().any(|item| item.id == "work"),
+        "the turn's close takes the row out of the plan"
+    );
+    drop(plans);
+
+    let rows = crate::todo::load_tasks(Some(repo.path()), requester).expect("read the list");
+    assert!(
+        !rows.iter().any(|row| row.id == "work"),
+        "and out of the list"
+    );
+    let run = rows.iter().find(|row| row.id == "run").expect("the run row");
+    let record = run
+        .records
+        .iter()
+        .find(|record| record["id"] == "work")
+        .expect("the close left its record on the row that owns the work");
+    assert!(
+        record["result"]
+            .as_str()
+            .is_some_and(|result| result.contains("the turn ended without a report")),
+        "the turn stated its own outcome: {record}"
+    );
+}

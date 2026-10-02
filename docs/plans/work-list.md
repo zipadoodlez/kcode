@@ -326,18 +326,21 @@ and the one build + test pass lands at the end of 0.4f.
          dumps. The section heading loses the kind, because a closed row's kind is gone
          with it and the store keeps no engine vocabulary, so a record renders as
          `## <id>`.
-      4. **A close deletes the plan's item, not only the row, and a turn end is a
-         close.** Decided. Three writers leave a
-         closed item behind: the turn-end auto-complete (`comm_control.rs:706`), the
-         `complete_node` path through `apply_task_graph` (Done becomes "completed"), and
-         the salvage cap's "failed" (`swarm.rs:322`). Only one of them closes the row on
-         disk, `close_row_on_disk`, and it has exactly one caller
-         (`comm_graph.rs:504`). So an auto-completed turn leaves the file row open while
-         the plan says done, and the plan's items are not the file's rows. So the turn
-         end closes the row, with the turn's report as the close's result. One loose
-         end that must land with it: a close needs a nonempty result and a turn can end
-         with no report, so what makes that close legal is part of this move; without
-         it the row stays open and the picker's hand-back would re-dispatch it forever.
+      4. **A turn end is a close.** Landed. The turn-end path used to mark a plan item
+         "done" without touching the file, which left the list showing work a run had
+         finished and made the plan's items something other than the file's rows. Now a
+         turn that ends without a close closes its own row through the store, exactly as
+         `complete_node` does: the turn's report is the result and the artifact's
+         findings (so the row that integrates it can read what it found), and when the
+         turn reported nothing the result says so, because the alternative is a row the
+         picker hands back forever. With this, no production path writes a terminal item
+         status: the plan holds open rows with a runtime status of `pending`, `queued`,
+         `running` or `failed`, and "completed" survives only as something a client
+         normalizes. A turn that *errored* is not a close: the row stays, marked
+         `failed`, because that is a state a person can still retry or reassign, and the
+         salvage cap keeps its row for the same reason, so its plan-only "failed" stays
+         (it is the one state a human can move, and 0.4g's runtime question owns where
+         that status lives).
       5. **The engine stops carrying the artifact.** `TaskNode.output`,
          `dag::assemble_input` and the artifact argument of `complete_node` exist so the
          plan can keep its copy; `assemble_input` has no production caller at all, so

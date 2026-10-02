@@ -732,38 +732,66 @@ fn spawn_assigned_task_run(
                         .map(|plan| plan.items.clone())
                         .unwrap_or_default()
                 };
+                // The row the turn was handed, and the list it lives in: the acting
+                // session is the worker this turn ran as.
+                let working_dir = swarm_members
+                    .read()
+                    .await
+                    .get(&target_session)
+                    .and_then(|member| member.working_dir.clone());
                 let mut applied_disposition = TurnEndDisposition::LeaveAlone;
-                {
-                    let mut plans = swarm_plans.write().await;
-                    if let Some(plan) = plans.get_mut(&swarm_id) {
-                        // Derived, so read before the mutable borrow: a composite
-                        // was decomposed, and the children it is waiting on are
-                        // still rows naming it (or are closed into its records).
+                // A worker turn ends in one of three ways for its row:
+                //  1. it decomposed the row via `expand_node` -> the row is now a
+                //     composite synthesis/join point that must stay open until its
+                //     children finish; it is re-woken later to synthesize.
+                //  2. it already closed the row via `complete_node` -> the row is
+                //     gone from the list and the plan, and this turn is done.
+                //  3. it just ran and the row is still in flight.
+                // Case 3 closes the row: a turn that ended without a close states its
+                // own outcome, which is the turn's report, or the fact that the turn
+                // reported nothing. The store writes that close, exactly as
+                // `complete_node` does, and the record lands where the row's work is
+                // owned.
+                let closes_its_row = {
+                    let plans = swarm_plans.read().await;
+                    plans.get(&swarm_id).is_some_and(|plan| {
                         let composite = plan.is_composite(&task_id);
-                        let status = plan
-                            .items
+                        plan.items
                             .iter()
                             .find(|item| item.id == task_id)
-                            .map(|item| item.status.clone());
-                        // A worker turn ends in one of three ways for its node:
-                        //  1. it decomposed the node via `expand_node` -> the node is
-                        //     now a composite synthesis/join point that must stay
-                        //     in-progress until its children finish; it is re-woken
-                        //     later to synthesize.
-                        //  2. it already finished the node via `complete_node` -> the
-                        //     node is terminal and owned by no one.
-                        //  3. it just ran and the node is still `running`.
-                        // Case 3 auto-completes: a turn that ends without a
-                        // `complete_node` closes the atomic node, while an
-                        // expanded composite stays open for its synthesis turn.
-                        if let Some(status) = status
-                            && turn_end_disposition(&status, composite)
-                                == TurnEndDisposition::AutoComplete
-                        {
-                            applied_disposition = TurnEndDisposition::AutoComplete;
-                            plan.set_row_status(&task_id, "done");
-                            plan.version += 1;
+                            .is_some_and(|item| {
+                                turn_end_disposition(&item.status, composite)
+                                    == TurnEndDisposition::AutoComplete
+                            })
+                    })
+                };
+                if closes_its_row {
+                    applied_disposition = TurnEndDisposition::AutoComplete;
+                    let report = completion_report
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|report| !report.is_empty());
+                    let result = report.unwrap_or("the turn ended without a report");
+                    // The report is the artifact's findings too, so the row that
+                    // integrates this work can read what this turn found.
+                    let artifact = report.map(|report| serde_json::json!({ "findings": report }));
+                    match crate::todo::close_row_on_disk(
+                        working_dir.as_deref(),
+                        &target_session,
+                        &task_id,
+                        result,
+                        artifact,
+                    ) {
+                        Ok(touched) => {
+                            if let Some(plan) = swarm_plans.write().await.get_mut(&swarm_id) {
+                                plan.sync_rows(&touched);
+                                plan.drop_row(&task_id);
+                                plan.version += 1;
+                            }
                         }
+                        Err(error) => crate::logging::warn(&format!(
+                            "swarm {swarm_id}: the turn for '{task_id}' ended but its row could not be closed: {error}"
+                        )),
                     }
                 }
                 let swarm_state = SwarmState {
@@ -774,7 +802,7 @@ fn spawn_assigned_task_run(
                 };
                 persist_swarm_state_for(&swarm_id, &swarm_state).await;
                 let plan_reason = match applied_disposition {
-                    TurnEndDisposition::AutoComplete => "task_completed",
+                    TurnEndDisposition::AutoComplete => "task_closed",
                     TurnEndDisposition::LeaveAlone => "task_completed",
                 };
                 broadcast_swarm_plan_with_previous(
