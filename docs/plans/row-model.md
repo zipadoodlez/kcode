@@ -201,7 +201,8 @@ no reclaim cap, no stored membership, and one act where seven handoff verbs were
 keeps one sparse status per row, reads everything else from the list, derives who is in
 it, and closes only the rows it holds). **0.4g is whole, and 0.4 with it.** 0.4f's one
 build + full test pass ran with it (three pre-existing `session_flow` e2e failures,
-recorded in `plans/test-tree.md`).
+recorded in `plans/test-tree.md`). **0.5 has landed too**, its gate and live probe with
+it, so no row is open and the next step is A1's audit over the settled model.
 
 ### 0. One way work gets done
 
@@ -310,30 +311,17 @@ recorded in `plans/test-tree.md`).
 
 ### 0.5. One level, low, and no second way to say it
 
-Effort stops being a design variable: every turn runs at one level, the session's, and
-the only way to change it is the one a human has (`/effort`, the model picker, the
-effort keys, and ACP's `session/set_reasoning_effort`); the `swarm`/`swarm-deep` rungs
-went with 0.4b's axis.
-
-Resolution becomes one place and one order: the session's stored level, else the model
-table (`default_reasoning_effort_for_model`, which is where kcode's own `low` belongs so
-the per-model exceptions stay data), else nothing, so a model with no ladder has no
-level and `/info` keeps meaning `default` for it. Three things say it today that are not
-the session's level, and all three go: the write that materializes the provider's value
-into the session (`agent/provider.rs:211`'s `else` branch, which makes a provider
-default look like a human's choice), the spawn-side argument with its
-`agents.swarm_effort` pin, and the config keys - `provider.openai_reasoning_effort`,
-whose compiled `Some("low")` currently overrides every OpenAI model and disagrees with
-the model table, `provider.anthropic_reasoning_effort`, and a named profile's
-`reasoning_effort`. The losses are named in `docs/what-was-removed.md`, including the
-models that ship a higher default and start lower until a human cycles them up.
-
-In flight: t5, the gate, is down to its live probe, which runs at the next build.
-The rest has run: `scripts/check_guardrails.sh` green (fmt, workspace clippy with
-`-D warnings`, lockfile, boundaries, wildcard and App-shape ratchets), `scripts/test.sh
-full` green apart from the three `session_flow` reds, and the touched crates' own
-suites green apart from the reds `plans/test-tree.md` already records. The design
-stays here.
+Landed whole 2026-10-03, stage by stage in git: one level and the session's, with no
+argument to say otherwise; the `low` default moved into the model table; and config
+stopped setting a level at all, with the picker reading the session's. One order and one
+home remain: the session's stored level, else the model table, else nothing, read where
+the request is built, so a model with no ladder still means `default`. Gate (t5):
+`check_guardrails.sh` green; `test.sh full` green bar the three `session_flow` reds; the
+touched crates' own suites green bar the reds `plans/test-tree.md` records; and the live
+probe on its own socket against a local mock, where a fresh session reported `low`,
+`/effort high` then a resume kept `high` and the request carried `high`, and a config
+still carrying `provider.openai_reasoning_effort`/`agents.swarm_effort` started clean and
+sent `low`. Losses: `docs/what-was-removed.md`.
 
 ### A. Audit
 
