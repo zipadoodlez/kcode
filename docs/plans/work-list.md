@@ -212,16 +212,19 @@ is next**, and the one build + full test pass for 0.4f ran with it (three pre-ex
     are in `docs/todo.md`. Re-grepped before writing: the `SwarmState { .. }` rebuild
     sites are 26, not 31 (`VersionedPlan` appears in 48 files, `swarm_coordinators` is
     referenced 221 times, and `swarm_persistence.rs` is 621 lines with 924 test lines).
-    1. **g1. Ordering replaces `version`** (deletion; no behavior boundary). `version`
-       guards a stale durable write (`persist_swarm_state`, test
-       `stale_persist_cannot_regress_newer_plan_version`) and client ordering
-       (`server_events.rs:1995`); g2 removes the first, and the second is fixed by
-       sending the plan event while the plan lock is held, which cannot block because
-       `event_tx` is an `mpsc::UnboundedSender` (`server/state.rs:135`). Deletes
-       `version`, `participants` (6 insert sites, no reader: the broadcast already falls
-       back to the swarm set at `swarm.rs:781`), the client's `plan_version` and its
-       stale-regression branch, `RemoteSwarmPlanSnapshot.version`, the replay record's
-       field, and the debug `swarm:plan_version:` op.
+    1. **g1. Ordering replaces `version`.** Landed. `version` guarded a stale durable
+       write and client ordering; the second is now construction, since the plan event
+       is built and sent while the plan lock is held, which cannot block because
+       `event_tx` is an `mpsc::UnboundedSender` (`server/state.rs:135`), and the first
+       left with the field (the persist guard went with it, one piece of g2 pulled
+       forward because the field's last caller was the guard). Deleted `version` and
+       `participants` (the broadcast's recipients are the swarm's sessions, which was
+       already its fallback), the client's `plan_version` and stale-regression branch,
+       `RemoteSwarmPlanSnapshot.version`, the replay record's fields, the
+       `swarm:plan_version:` debug read, and member notices built from the participant
+       list. The broadcast's ordering is pinned by
+       `swarm_plan_broadcasts_cannot_invert_on_one_member_channel`, which replaces the
+       test that demonstrated the inversion.
     2. **g2. The plan stops being durable** (behavior boundary: restart). Delete
        `PersistedVersionedPlan`, `to_persisted_plan`/`from_persisted_plan`, the
        dormant/expired plan retention and the version guard; restart recovery reads the

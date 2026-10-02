@@ -49,8 +49,6 @@ pub struct SwarmPlanItemSpec {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SwarmPlanDefinition {
-    pub version: u64,
-    pub participants: Vec<String>,
     pub items: Vec<SwarmPlanItemSpec>,
 }
 
@@ -69,13 +67,14 @@ pub struct SwarmExecutionState {
     pub items: Vec<SwarmExecutionItemState>,
 }
 
-/// Versioned shared swarm plan state.
+/// The live swarm plan.
+///
+/// Rows are the file's and the run's lifecycle is the engine's, so what is left here
+/// is the run's own state per row it holds: the lifecycle status a turn sets, and the
+/// count of automatic re-dispatches.
 #[derive(Clone, Debug)]
 pub struct VersionedPlan {
     pub items: Vec<TaskItem>,
-    pub version: u64,
-    /// Session ids that should receive this plan's updates.
-    pub participants: HashSet<String>,
     /// Durable runtime task progress keyed by plan item id.
     pub task_progress: HashMap<String, SwarmTaskProgress>,
 }
@@ -84,8 +83,6 @@ impl VersionedPlan {
     pub fn new() -> Self {
         Self {
             items: Vec::new(),
-            version: 0,
-            participants: HashSet::new(),
             task_progress: HashMap::new(),
         }
     }
@@ -146,9 +143,6 @@ impl VersionedPlan {
     /// id. This keeps ownership from accumulating dangling historical
     /// identities.
     pub fn rename_session(&mut self, old_session_id: &str, new_session_id: &str) {
-        if self.participants.remove(old_session_id) {
-            self.participants.insert(new_session_id.to_string());
-        }
         for item in &mut self.items {
             if item.assigned_to.as_deref() == Some(old_session_id) {
                 item.assigned_to = Some(new_session_id.to_string());
@@ -173,11 +167,7 @@ impl VersionedPlan {
     }
 
     pub fn plan_definition(&self) -> SwarmPlanDefinition {
-        let mut participants: Vec<String> = self.participants.iter().cloned().collect();
-        participants.sort();
         SwarmPlanDefinition {
-            version: self.version,
-            participants,
             items: self
                 .items
                 .iter()
@@ -656,7 +646,6 @@ pub fn next_stranded_runnable_item_id(
 pub fn count_dead_assignee_reclaim(plan: &mut VersionedPlan, task_id: &str) {
     let progress = plan.task_progress.entry(task_id.to_string()).or_default();
     progress.dead_assignee_reclaims = Some(progress.dead_assignee_reclaims.unwrap_or(0) + 1);
-    plan.version += 1;
 }
 
 pub fn task_control_target_item_id(
@@ -1121,7 +1110,6 @@ mod tests {
             }],
             ..VersionedPlan::new()
         };
-        let version_before = plan.version;
 
         count_dead_assignee_reclaim(&mut plan, "a");
 
@@ -1129,7 +1117,6 @@ mod tests {
             plan.task_progress.get("a").unwrap().dead_assignee_reclaims,
             Some(1)
         );
-        assert_eq!(plan.version, version_before + 1, "version bump for pollers");
 
         // The claim lives on the row, so the release arrives with the row the store
         // wrote; the plan's copy follows it and nothing else about the row moves.

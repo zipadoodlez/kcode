@@ -430,8 +430,8 @@ pub fn format_comm_status_snapshot(snapshot: &AgentStatusSnapshot) -> String {
 pub fn format_comm_plan_status(summary: &PlanGraphStatus) -> String {
     let swarm_id = summary.swarm_id.as_deref().unwrap_or("unknown");
     let mut output = format!(
-        "Plan status for swarm {}\n\n  Version: {}\n  Items: {}\n",
-        swarm_id, summary.version, summary.item_count
+        "Plan status for swarm {}\n\n  Items: {}\n",
+        swarm_id, summary.item_count
     );
 
     output.push_str(&format!(

@@ -1526,7 +1526,6 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.remote_token_usage_totals = None;
                 app.swarm.members.clear();
                 app.swarm.plan_items.clear();
-                app.swarm.plan_version = None;
                 app.swarm.plan_swarm_id = None;
                 remote.reset_call_output_tokens_seen();
             }
@@ -1985,49 +1984,25 @@ pub(in crate::tui::app) fn handle_server_event(
         }
         ServerEvent::SwarmPlan {
             swarm_id,
-            version,
             items,
-            participants,
             reason,
             summary,
             ..
         } => {
-            // Drop stale out-of-order broadcasts. Server-side plan mutations
-            // snapshot under the lock but send after releasing it, so two
-            // racing mutations can deliver an older version after a newer
-            // one; applying it would regress both the snapshot state and the
-            // inline diagram. Same-swarm version regressions are ignored,
-            // except near v1 (a deleted-and-recreated plan restarts its
-            // version counter and must still render).
-            let stale_regression = app.swarm.plan_swarm_id.as_deref() == Some(swarm_id.as_str())
-                && app
-                    .swarm
-                    .plan_version
-                    .is_some_and(|current| version < current)
-                && version > 2;
-            if !stale_regression {
-                let snapshot = RemoteSwarmPlanSnapshot {
-                    swarm_id: swarm_id.clone(),
-                    version,
-                    items: items.clone(),
-                    participants: participants.clone(),
-                    reason: reason.clone(),
-                    summary,
-                };
-                let notice = snapshot.status_notice();
-                app.swarm.plan_swarm_id = Some(snapshot.swarm_id.clone());
-                app.swarm.plan_version = Some(snapshot.version);
-                app.swarm.plan_items = snapshot.items.clone();
-                persist_swarm_plan_snapshot(
-                    app,
-                    snapshot.swarm_id,
-                    snapshot.version,
-                    snapshot.items,
-                    snapshot.participants,
-                    snapshot.reason,
-                );
-                app.set_status_notice(notice);
-            }
+            // The server sends a plan event from inside the lock that mutated the
+            // plan, so the events arrive in mutation order and nothing here has to
+            // drop a stale one.
+            let snapshot = RemoteSwarmPlanSnapshot {
+                swarm_id: swarm_id.clone(),
+                items: items.clone(),
+                reason: reason.clone(),
+                summary,
+            };
+            let notice = snapshot.status_notice();
+            app.swarm.plan_swarm_id = Some(snapshot.swarm_id.clone());
+            app.swarm.plan_items = snapshot.items.clone();
+            persist_swarm_plan_snapshot(app, snapshot.swarm_id, snapshot.items, snapshot.reason);
+            app.set_status_notice(notice);
             false
         }
         ServerEvent::McpStatus { servers } => {

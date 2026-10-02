@@ -32,8 +32,6 @@ async fn task_control_wake_returns_structured_response_with_plan_summary() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![assigned, plan_item("next", "queued", "high", &[])],
-            version: 1,
-            participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
         },
     )])));
@@ -126,8 +124,6 @@ async fn task_control_resume_without_task_id_uses_unique_target_assignment() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![assigned],
-            version: 1,
-            participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
         },
     )])));
@@ -216,8 +212,6 @@ async fn task_control_without_task_id_rejects_ambiguous_target_assignments() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![first, second],
-            version: 1,
-            participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
         },
     )])));
@@ -308,8 +302,6 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![assigned],
-            version: 1,
-            participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::from([("busy-task".to_string(), prior_progress.clone())]),
         },
     )])));
@@ -369,7 +361,6 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
         item.status, "running",
         "rejected resume must not flip a live task back to queued"
     );
-    assert_eq!(plan.version, 1, "rejected resume must not bump the plan");
     assert_eq!(
         plan.task_progress.get("busy-task"),
         Some(&prior_progress),
@@ -393,8 +384,6 @@ async fn requeue_existing_assignment_preserves_the_reclaim_count() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![assigned],
-            version: 1,
-            participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::from([(
                 "requeue-me".to_string(),
                 crate::server::SwarmTaskProgress {
@@ -477,8 +466,6 @@ async fn task_control_retry_re_dispatches_after_recent_identical_retry() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![assigned],
-            version: 1,
-            participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
         },
     )])));

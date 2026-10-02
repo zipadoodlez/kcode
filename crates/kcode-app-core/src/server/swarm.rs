@@ -331,7 +331,6 @@ fn salvage_plan_assignments_of(plan: &mut VersionedPlan, session_id: &str) -> De
             // plan's own lifecycle for it; the claim is released where the list is
             // by the caller below.
             plan.set_row_status(&task_id, "failed");
-            plan.version += 1;
             outcome.failed_task_ids.push(task_id);
         } else {
             // The claim is released in the list by the caller; this is the cap's
@@ -718,10 +717,11 @@ pub(super) async fn broadcast_swarm_status(
     });
 }
 
-/// Broadcast the authoritative swarm plan snapshot.
+/// Broadcast the authoritative swarm plan snapshot to the swarm's sessions.
 ///
-/// Plan snapshots are sent to explicit plan participants. If a plan has no
-/// participants yet, fall back to all current swarm members.
+/// The plan lock is held until every event is queued. A mutation cannot take the
+/// write lock until this broadcast has sent, so two racing mutations cannot deliver
+/// out of order; the sender is an unbounded queue, so holding the lock cannot block.
 pub(super) async fn broadcast_swarm_plan(
     swarm_id: &str,
     reason: Option<String>,
@@ -748,48 +748,31 @@ pub(super) async fn broadcast_swarm_plan_with_previous(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
 ) {
-    let (version, items, summary, mut participants): (
-        u64,
-        Vec<TaskItem>,
-        crate::protocol::PlanGraphStatus,
-        Vec<String>,
-    ) = {
-        let assignee_details = member_details(swarm_members).await;
-        let plans = swarm_plans.read().await;
-        let Some(vp) = plans.get(swarm_id) else {
-            return;
-        };
-        let newly_ready_ids = previous_items
-            .map(|before| newly_ready_item_ids(before, &vp.items))
-            .unwrap_or_default();
-        let mut p: Vec<String> = vp.participants.iter().cloned().collect();
-        p.sort();
-        (
-            vp.version,
-            vp.items.clone(),
-            crate::protocol::PlanGraphStatus::from_versioned_plan(
-                swarm_id,
-                vp,
-                Some(3),
-                newly_ready_ids,
-                failed_reasons_for(&vp.items, &assignee_details),
-            ),
-            p,
-        )
+    let assignee_details = member_details(swarm_members).await;
+    let plans = swarm_plans.read().await;
+    let Some(vp) = plans.get(swarm_id) else {
+        return;
     };
+    let newly_ready_ids = previous_items
+        .map(|before| newly_ready_item_ids(before, &vp.items))
+        .unwrap_or_default();
+    let items = vp.items.clone();
+    let summary = crate::protocol::PlanGraphStatus::from_versioned_plan(
+        swarm_id,
+        vp,
+        Some(3),
+        newly_ready_ids,
+        failed_reasons_for(&vp.items, &assignee_details),
+    );
 
-    if participants.is_empty() {
+    let mut participants: Vec<String> = {
         let swarms = swarms_by_id.read().await;
-        participants = swarms
+        swarms
             .get(swarm_id)
-            .map(|s| {
-                let mut ids: Vec<String> = s.iter().cloned().collect();
-                ids.sort();
-                ids
-            })
-            .unwrap_or_default();
-    }
-
+            .map(|s| s.iter().cloned().collect())
+            .unwrap_or_default()
+    };
+    participants.sort();
     if participants.is_empty() {
         return;
     }
@@ -798,9 +781,7 @@ pub(super) async fn broadcast_swarm_plan_with_previous(
     let reason_label = reason.clone().unwrap_or_else(|| "unspecified".to_string());
     let event = ServerEvent::SwarmPlan {
         swarm_id: swarm_id.to_string(),
-        version,
         items,
-        participants: participants.clone(),
         reason,
         summary: Some(summary),
     };
@@ -819,7 +800,6 @@ pub(super) async fn broadcast_swarm_plan_with_previous(
         "plan_broadcast",
         vec![
             ("swarm_id", swarm_id.to_string()),
-            ("version", version.to_string()),
             ("item_count", item_count.to_string()),
             ("participant_count", participant_count.to_string()),
             ("delivered_count", delivered_count.to_string()),
@@ -856,13 +836,9 @@ pub(super) async fn send_swarm_plan_to_session(
         if vp.items.is_empty() {
             return;
         }
-        let mut participants: Vec<String> = vp.participants.iter().cloned().collect();
-        participants.sort();
         ServerEvent::SwarmPlan {
             swarm_id: swarm_id.clone(),
-            version: vp.version,
             items: vp.items.clone(),
-            participants,
             reason: Some("reconnect".to_string()),
             summary: Some(crate::protocol::PlanGraphStatus::from_versioned_plan(
                 &swarm_id,
@@ -889,17 +865,6 @@ pub(super) async fn rename_plan_participant(
     let mut plans = swarm_plans.write().await;
     if let Some(vp) = plans.get_mut(swarm_id) {
         vp.rename_session(old_session_id, new_session_id);
-    }
-}
-
-pub(super) async fn remove_plan_participant(
-    swarm_id: &str,
-    session_id: &str,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
-) {
-    let mut plans = swarm_plans.write().await;
-    if let Some(vp) = plans.get_mut(swarm_id) {
-        vp.participants.remove(session_id);
     }
 }
 
@@ -942,7 +907,6 @@ pub(super) async fn remove_session_from_swarm(
         swarm_coordinators,
     )
     .await;
-    remove_plan_participant(swarm_id, session_id, swarm_plans).await;
 
     {
         let mut swarms = swarms_by_id.write().await;
@@ -995,10 +959,6 @@ pub(super) async fn remove_session_from_swarm(
                 if let Some(member) = members.get_mut(&new_id) {
                     member.role = "coordinator".to_string();
                 }
-            }
-            let mut plans = swarm_plans.write().await;
-            if let Some(vp) = plans.get_mut(swarm_id) {
-                vp.participants.insert(new_id.clone());
             }
             let members = swarm_members.read().await;
             if let Some(member) = members.get(&new_id) {
@@ -1954,8 +1914,6 @@ mod tests {
                         ..Default::default()
                     },
                 ],
-                version: 2,
-                participants: HashSet::from(["worker".to_string()]),
                 task_progress: HashMap::new(),
             },
         )])));
@@ -2008,37 +1966,19 @@ mod tests {
         }
     }
 
-    /// Deterministic demonstration of the mutate->broadcast version-inversion
-    /// race (wiring-audit.plan-broadcast-ordering).
+    /// A mutation cannot reach a member before a broadcast that started earlier.
     ///
-    /// `broadcast_swarm_plan_with_previous` snapshots `(version, items)` under
-    /// `swarm_plans.read()`, releases the lock, and only later (after further
-    /// await points on `swarms_by_id.read()` / `swarm_members.read()`) sends
-    /// on `member.event_tx`. A second mutator can bump the version AND
-    /// complete its own broadcast inside that window, so a single ordered
-    /// mpsc channel can deliver v6 before v5.
-    ///
-    /// This test parks broadcast A (snapshot v5, empty participants, so it
-    /// must await `swarms_by_id.read()`) behind a held `swarms_by_id.write()`
-    /// guard, lets mutator B bump to v6 and broadcast it, then releases A.
-    /// The worker receives [6, 5]: inverted versions on one channel.
-    ///
-    /// If this test starts failing with versions == [6, 6] or [5, 6], the
-    /// race has been fixed (e.g. by holding the plan lock through send or by
-    /// stamping a send-order sequence); update the wiring audit and consider
-    /// whether the TUI-side monotonicity guard (server_events.rs SwarmPlan
-    /// handler currently overwrites `swarm_plan_version` unconditionally) is
-    /// still needed.
+    /// `broadcast_swarm_plan_with_previous` holds the plan read lock until every
+    /// event is queued, so a second mutator cannot take the write lock, and cannot
+    /// send, until the first broadcast has sent. This test parks broadcast A behind a
+    /// held `swarms_by_id.write()` guard and lets mutator B queue behind A's plan
+    /// lock; releasing the guard delivers one item then two, in order.
     #[tokio::test]
-    async fn swarm_plan_broadcast_versions_can_invert_on_one_member_channel() {
+    async fn swarm_plan_broadcasts_cannot_invert_on_one_member_channel() {
         let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
             "swarm-1".to_string(),
             VersionedPlan {
                 items: vec![plan_item("t1", "task one")],
-                version: 5,
-                // Empty participants: broadcast A takes the swarms_by_id
-                // fallback path, which is where we deterministically park it.
-                participants: HashSet::new(),
                 task_progress: HashMap::new(),
             },
         )])));
@@ -2049,8 +1989,8 @@ mod tests {
             HashSet::from(["worker".to_string()]),
         )])));
 
-        // Hold a write guard on swarms_by_id so broadcast A parks after it
-        // has already snapshotted version 5 from swarm_plans.
+        // Hold the membership lock so broadcast A parks on it, already holding the
+        // plan lock it took first.
         let gate = swarms_by_id.write().await;
 
         let a = tokio::spawn({
@@ -2068,47 +2008,52 @@ mod tests {
                 .await;
             }
         });
-        // Current-thread test runtime: yielding runs A until it parks on the
-        // contended swarms_by_id.read().await, past its v5 snapshot.
         for _ in 0..16 {
             tokio::task::yield_now().await;
         }
 
-        // Mutator B: bump to v6 and register an explicit participant so B's
-        // broadcast skips the swarms_by_id fallback and is not blocked by
-        // the gate. This mirrors real mutators (write, release, broadcast).
-        {
-            let mut plans = swarm_plans.write().await;
-            let vp = plans.get_mut("swarm-1").expect("plan");
-            vp.version = 6;
-            vp.participants.insert("worker".to_string());
+        // Mutator B writes the plan and broadcasts it. It queues behind A's plan
+        // lock rather than interleaving with it.
+        let b = tokio::spawn({
+            let swarm_plans = Arc::clone(&swarm_plans);
+            let swarm_members = Arc::clone(&swarm_members);
+            let swarms_by_id = Arc::clone(&swarms_by_id);
+            async move {
+                {
+                    let mut plans = swarm_plans.write().await;
+                    plans
+                        .get_mut("swarm-1")
+                        .expect("plan")
+                        .sync_rows(&[plan_item("t2", "task two")]);
+                }
+                broadcast_swarm_plan(
+                    "swarm-1",
+                    Some("mutator_2".to_string()),
+                    &swarm_plans,
+                    &swarm_members,
+                    &swarms_by_id,
+                )
+                .await;
+            }
+        });
+        for _ in 0..16 {
+            tokio::task::yield_now().await;
         }
-        broadcast_swarm_plan(
-            "swarm-1",
-            Some("mutator_2".to_string()),
-            &swarm_plans,
-            &swarm_members,
-            &swarms_by_id,
-        )
-        .await;
 
-        // Release A: it resumes with its stale v5 snapshot and sends it
-        // after v6 on the same ordered channel.
         drop(gate);
         a.await.expect("broadcast task");
+        b.await.expect("mutator task");
 
-        let mut versions = Vec::new();
+        let mut item_counts = Vec::new();
         while let Ok(event) = worker_rx.try_recv() {
-            if let ServerEvent::SwarmPlan { version, .. } = event {
-                versions.push(version);
+            if let ServerEvent::SwarmPlan { items, .. } = event {
+                item_counts.push(items.len());
             }
         }
         assert_eq!(
-            versions,
-            vec![6, 5],
-            "expected version inversion on one member channel; if this fails \
-             the mutate->broadcast race may have been fixed (update the \
-             wiring audit)"
+            item_counts,
+            vec![1, 2],
+            "the broadcast that started first must reach the member first"
         );
     }
 
@@ -2125,8 +2070,8 @@ mod tests {
     /// consumer (the TUI SwarmStatus handler) is then left showing the stale
     /// status until the next unrelated broadcast.
     ///
-    /// Unlike the SwarmPlan inversion test above, there is no second lock we
-    /// can gate on: the status path snapshots from the same `swarm_members`
+    /// Unlike the SwarmPlan path, whose broadcast now holds the plan lock through
+    /// the send, there is no second lock we can gate on here: the status path snapshots from the same `swarm_members`
     /// lock it later writes, so holding any guard also blocks the mutator.
     /// Instead this test uses tokio's cooperative budget (128 units per task
     /// poll on a current-thread runtime; every RwLock acquisition consumes
@@ -2203,22 +2148,15 @@ mod tests {
         );
     }
 
-    /// Restored (persisted) plan participants with dead channels starve live
-    /// swarm members of plan broadcasts: the fallback to swarms_by_id only
-    /// triggers when `participants` is EMPTY, so a participant set that only
-    /// contains stale sessions (e.g. restored after a server restart, where
-    /// `from_persisted_member` gives every member a closed event_tx) means
-    /// nobody receives the snapshot, not even live members of the swarm.
+    /// A restored member with a dead channel does not starve the live ones: the
+    /// recipients are the swarm's sessions, not a hand-kept participant list, so a
+    /// session whose channel has closed simply fails to receive.
     #[tokio::test]
-    async fn stale_participants_starve_live_members_of_plan_broadcasts() {
+    async fn a_closed_member_channel_does_not_starve_live_members_of_plan_broadcasts() {
         let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
             "swarm-1".to_string(),
             VersionedPlan {
                 items: vec![plan_item("t1", "task one")],
-                version: 7,
-                // "ghost" is a participant restored from disk whose session
-                // no longer exists in this server process.
-                participants: HashSet::from(["ghost".to_string()]),
                 task_progress: HashMap::new(),
             },
         )])));
@@ -2246,10 +2184,8 @@ mod tests {
         .await;
 
         assert!(
-            live_rx.try_recv().is_err(),
-            "live member unexpectedly received the plan broadcast; stale \
-             participant starvation may have been fixed (update the wiring \
-             audit)"
+            live_rx.try_recv().is_ok(),
+            "every live member of the swarm receives the plan broadcast"
         );
     }
 
@@ -2279,8 +2215,6 @@ mod tests {
                     assigned_to: Some("coord".to_string()),
                     ..Default::default()
                 }],
-                version: 1,
-                participants: HashSet::from(["coord".to_string()]),
                 task_progress: HashMap::new(),
             },
         )])));
@@ -2313,13 +2247,6 @@ mod tests {
                 .get("swarm-1")
                 .map(String::as_str),
             Some("worker")
-        );
-        assert!(
-            swarm_plans
-                .read()
-                .await
-                .get("swarm-1")
-                .is_some_and(|plan| plan.participants.contains("worker"))
         );
         assert_eq!(
             swarm_members
@@ -2742,8 +2669,6 @@ mod tests {
                     assigned_to: Some(assignee.to_string()),
                     ..Default::default()
                 }],
-                version: 1,
-                participants: HashSet::from([assignee.to_string()]),
                 task_progress: HashMap::from([(
                     "task-1".to_string(),
                     crate::server::SwarmTaskProgress {

@@ -286,7 +286,6 @@ pub(super) async fn handle_comm_seed_graph(
             .filter(|row| seated_ids.contains(row.id.as_str()))
             .cloned()
             .collect();
-        plan.participants.insert(req_session_id.clone());
         let mut graph = to_task_graph(plan);
         match dag::seed(&mut graph, specs) {
             Ok(()) => match graph_size_error(&graph) {
@@ -294,7 +293,6 @@ pub(super) async fn handle_comm_seed_graph(
                 None => {
                     if !seated.is_empty() {
                         plan.sync_rows(&seated);
-                        plan.version += 1;
                     }
                     Ok(count)
                 }
@@ -402,7 +400,6 @@ pub(super) async fn handle_comm_expand_node(
                     // one that integrates them.
                     plan.sync_rows(&touched);
                     plan.set_row_status(&node_id, "queued");
-                    plan.version += 1;
                     Ok(())
                 }
                 None => Err("No plan for this swarm.".to_string()),
@@ -519,7 +516,6 @@ pub(super) async fn handle_comm_complete_node(
             if let Some(plan) = swarm_plans.write().await.get_mut(&swarm_id) {
                 plan.sync_rows(&touched);
                 plan.drop_row(&node_id);
-                plan.version += 1;
             }
             finalize(
                 id,

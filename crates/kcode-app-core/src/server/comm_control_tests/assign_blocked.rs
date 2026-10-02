@@ -33,8 +33,6 @@ async fn assign_task_rejects_explicit_blocked_task() {
                 plan_item("setup", "completed", "high", &[]),
                 plan_item("blocked", "queued", "high", &["missing-prereq"]),
             ],
-            version: 1,
-            participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
         },
     )])));

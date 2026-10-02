@@ -290,7 +290,6 @@ fn await_wakes_only_for_ready_items_beyond_the_wave_baseline() {
         ["stuck".to_string(), "assigned".to_string()].into();
     let mut summary = crate::protocol::PlanGraphStatus {
         swarm_id: None,
-        version: 3,
         item_count: 6,
         ready_ids: vec!["stuck".to_string()],
         blocked_ids: Vec::new(),
@@ -324,7 +323,6 @@ fn run_plan_progress_counts_only_completed_toward_percent_and_shows_live_active(
     // assigned workers were still running.
     let summary = crate::protocol::PlanGraphStatus {
         swarm_id: Some("swarm-a".to_string()),
-        version: 9,
         item_count: 152,
         ready_ids: Vec::new(),
         blocked_ids: Vec::new(),
@@ -375,7 +373,6 @@ fn run_plan_progress_counts_only_completed_toward_percent_and_shows_live_active(
 fn run_plan_progress_active_prefers_plan_execution_state_when_larger() {
     let summary = crate::protocol::PlanGraphStatus {
         swarm_id: None,
-        version: 1,
         item_count: 10,
         ready_ids: Vec::new(),
         blocked_ids: vec!["b1".to_string()],
@@ -403,7 +400,6 @@ fn run_plan_progress_active_prefers_plan_execution_state_when_larger() {
 fn plan_status_budget_line_nudges_serialized_graphs() {
     let base = crate::protocol::PlanGraphStatus {
         swarm_id: Some("swarm-a".to_string()),
-        version: 1,
         item_count: 10,
         ready_ids: vec!["a".to_string()],
         blocked_ids: Vec::new(),
@@ -516,7 +512,6 @@ fn run_plan_driver_failures_carry_worker_retention_hint() {
 fn run_plan_terminal_summary_reports_failed_nodes() {
     let base = crate::protocol::PlanGraphStatus {
         swarm_id: Some("swarm-a".to_string()),
-        version: 1,
         item_count: 4,
         ready_ids: Vec::new(),
         blocked_ids: Vec::new(),
@@ -557,7 +552,6 @@ fn run_plan_terminal_summary_reports_failed_nodes() {
 fn plan_terminal_node_count_includes_failed_without_double_counting() {
     let summary = crate::protocol::PlanGraphStatus {
         swarm_id: Some("swarm-a".to_string()),
-        version: 1,
         item_count: 4,
         ready_ids: Vec::new(),
         blocked_ids: vec!["x".to_string()],
@@ -628,7 +622,6 @@ fn communicate_input_aliases_to_session_and_target_session() {
 fn format_plan_status_includes_next_ready() {
     let output = format_plan_status(&crate::protocol::PlanGraphStatus {
         swarm_id: Some("swarm-a".to_string()),
-        version: 3,
         item_count: 4,
         ready_ids: vec!["task-2".to_string(), "task-3".to_string()],
         blocked_ids: vec!["task-4".to_string()],
@@ -652,7 +645,6 @@ fn format_plan_status_includes_next_ready() {
 fn in_flight_slot_accounting_counts_queued_workers_not_coordinator() {
     let summary = crate::protocol::PlanGraphStatus {
         swarm_id: Some("swarm-a".to_string()),
-        version: 3,
         item_count: 4,
         ready_ids: vec!["queued-assigned".to_string()],
         blocked_ids: Vec::new(),
@@ -723,7 +715,6 @@ fn in_flight_count_excludes_foreign_queued_session() {
     // though no plan task is assigned to it. Regression for the run_plan stall.
     let summary = crate::protocol::PlanGraphStatus {
         swarm_id: Some("swarm-a".to_string()),
-        version: 1,
         item_count: 1,
         ready_ids: Vec::new(),
         blocked_ids: Vec::new(),
@@ -1707,7 +1698,6 @@ fn run_plan_terminal_summary_includes_recorded_failure_reasons() {
     );
     let summary = crate::protocol::PlanGraphStatus {
         swarm_id: Some("swarm-a".to_string()),
-        version: 1,
         item_count: 2,
         ready_ids: Vec::new(),
         blocked_ids: Vec::new(),

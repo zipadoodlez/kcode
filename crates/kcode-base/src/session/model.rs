@@ -29,10 +29,7 @@ pub enum StoredReplayEventKind {
     #[serde(rename = "swarm_plan")]
     SwarmPlan {
         swarm_id: String,
-        version: u64,
         items: Vec<crate::plan::TaskItem>,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        participants: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
     },

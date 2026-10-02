@@ -899,9 +899,7 @@ async fn build_server_memory_payload(
     let swarm_plan_estimate_bytes: usize = plans
         .iter()
         .map(|(swarm_id, plan)| {
-            swarm_id.len()
-                + crate::process_memory::estimate_json_bytes(&plan.items)
-                + plan.participants.iter().map(|sid| sid.len()).sum::<usize>()
+            swarm_id.len() + crate::process_memory::estimate_json_bytes(&plan.items)
         })
         .sum();
     drop(plans);

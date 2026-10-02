@@ -1433,16 +1433,12 @@ request in this new forked session, using the inherited conversation only as con
     pub fn record_swarm_plan_event(
         &mut self,
         swarm_id: String,
-        version: u64,
         items: Vec<crate::plan::TaskItem>,
-        participants: Vec<String>,
         reason: Option<String>,
     ) {
         let kind = StoredReplayEventKind::SwarmPlan {
             swarm_id,
-            version,
             items,
-            participants,
             reason,
         };
         if self

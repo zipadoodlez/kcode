@@ -77,7 +77,6 @@ SWARM COMMANDS (swarm: prefix):
   swarm:coordinators       - List all coordinators
   swarm:roles              - List all members with roles
   swarm:plans              - List all swarm plans
-  swarm:plan_version:<id>  - Show plan version for a swarm
   swarm:context            - List all shared context
   swarm:touches            - List all file touches
   swarm:conflicts          - Files touched by multiple sessions
@@ -176,7 +175,6 @@ COORDINATORS & ROLES:
 PLANS (server-scoped plan items):
   swarm:plans              - List all swarm plans with item counts
   swarm:plan:<swarm_id>    - Get plan items for specific swarm
-  swarm:plan_version:<id>  - Show current plan version for a swarm
   swarm:clear_plan:<id>    - Admin: delete a swarm's plan (memory + persisted state)
 
 SHARED CONTEXT (key-value store):

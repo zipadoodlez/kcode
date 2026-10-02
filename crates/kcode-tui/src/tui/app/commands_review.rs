@@ -298,7 +298,6 @@ pub(super) fn reset_current_session(app: &mut App) {
     app.clear_streaming_render_state();
     app.clear_live_usage_state();
     app.swarm.plan_items.clear();
-    app.swarm.plan_version = None;
     app.swarm.plan_swarm_id = None;
     app.queued_messages.clear();
     app.composer.pasted_contents.clear();

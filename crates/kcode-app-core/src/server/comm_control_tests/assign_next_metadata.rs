@@ -45,12 +45,6 @@ async fn assign_next_prefers_worker_with_matching_subsystem_metadata() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![prior, next],
-            version: 1,
-            participants: HashSet::from([
-                requester.to_string(),
-                metadata_worker.to_string(),
-                other_worker.to_string(),
-            ]),
             task_progress: HashMap::new(),
         },
     )])));

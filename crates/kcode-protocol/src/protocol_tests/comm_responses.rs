@@ -2,7 +2,6 @@
 fn test_swarm_plan_event_roundtrip_with_summary() -> Result<()> {
     let event = ServerEvent::SwarmPlan {
         swarm_id: "swarm_123".to_string(),
-        version: 7,
         items: vec![TaskItem {
             content: "Investigate planner state".to_string(),
             status: "queued".to_string(),
@@ -10,11 +9,9 @@ fn test_swarm_plan_event_roundtrip_with_summary() -> Result<()> {
             id: "task-1".to_string(),
             ..Default::default()
         }],
-        participants: vec!["session_fox".to_string()],
         reason: Some("task_completed".to_string()),
         summary: Some(PlanGraphStatus {
             swarm_id: Some("swarm_123".to_string()),
-            version: 7,
             item_count: 1,
             ready_ids: vec!["task-1".to_string()],
             blocked_ids: Vec::new(),
@@ -34,9 +31,7 @@ fn test_swarm_plan_event_roundtrip_with_summary() -> Result<()> {
     let decoded = parse_event_json(json.trim())?;
     let ServerEvent::SwarmPlan {
         swarm_id,
-        version,
         items,
-        participants,
         reason,
         summary,
     } = decoded
@@ -44,8 +39,6 @@ fn test_swarm_plan_event_roundtrip_with_summary() -> Result<()> {
         return Err(anyhow!("expected SwarmPlan event"));
     };
     assert_eq!(swarm_id, "swarm_123");
-    assert_eq!(version, 7);
-    assert_eq!(participants, vec!["session_fox"]);
     assert_eq!(reason.as_deref(), Some("task_completed"));
     assert_eq!(items.len(), 1);
     let summary = summary.ok_or_else(|| anyhow!("expected plan summary"))?;
@@ -64,7 +57,6 @@ fn test_comm_task_control_response_roundtrip() -> Result<()> {
         status: "running".to_string(),
         summary: PlanGraphStatus {
             swarm_id: Some("swarm_123".to_string()),
-            version: 3,
             item_count: 2,
             ready_ids: vec!["task-2".to_string()],
             blocked_ids: Vec::new(),

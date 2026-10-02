@@ -78,12 +78,6 @@ async fn handback_fixture(rows: Vec<TaskItem>) -> HandbackFixture {
             swarm_id.to_string(),
             VersionedPlan {
                 items: rows,
-                version: 1,
-                participants: HashSet::from([
-                    coord.to_string(),
-                    holder.to_string(),
-                    other.to_string(),
-                ]),
                 task_progress: HashMap::new(),
             },
         )]))),

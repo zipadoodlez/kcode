@@ -195,17 +195,15 @@ async fn e2e_identical_seed_replay_succeeds_without_version_or_node_churn() {
 
     fx.seed(nodes.clone()).await;
     while fx.client_rx.try_recv().is_ok() {}
-    let (version, item_count) = {
+    let item_count = {
         let plans = fx.swarm_plans.read().await;
-        let plan = &plans[&fx.swarm_id];
-        (plan.version, plan.items.len())
+        plans[&fx.swarm_id].items.len()
     };
 
     fx.seed(nodes).await;
 
     let plans = fx.swarm_plans.read().await;
     let plan = &plans[&fx.swarm_id];
-    assert_eq!(plan.version, version, "a replay must not bump plan version");
     assert_eq!(plan.items.len(), item_count, "a replay must not add nodes");
     drop(plans);
     let events: Vec<_> = std::iter::from_fn(|| fx.client_rx.try_recv().ok()).collect();
@@ -227,11 +225,10 @@ async fn e2e_reseed_keeps_the_plans_existing_node() {
     fx.seed(vec![node_spec("shared", "explore", &[])])
         .await;
     while fx.client_rx.try_recv().is_ok() {}
-    let (before_version, before_items, before_content) = {
+    let (before_items, before_content) = {
         let plans = fx.swarm_plans.read().await;
         let plan = &plans[&fx.swarm_id];
         (
-            plan.version,
             plan.items.len(),
             plan.items
                 .iter()
@@ -248,7 +245,6 @@ async fn e2e_reseed_keeps_the_plans_existing_node() {
 
     let plans = fx.swarm_plans.read().await;
     let after = &plans[&fx.swarm_id];
-    assert_eq!(after.version, before_version, "a replay bumps nothing");
     assert_eq!(after.items.len(), before_items, "a replay adds nothing");
     assert_eq!(
         after

@@ -331,7 +331,6 @@ pub struct AgentStatusSnapshot {
 pub struct PlanGraphStatus {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swarm_id: Option<String>,
-    pub version: u64,
     pub item_count: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ready_ids: Vec<String>,
@@ -368,7 +367,6 @@ impl PlanGraphStatus {
     pub fn empty_for_swarm(swarm_id: impl Into<String>) -> Self {
         Self {
             swarm_id: Some(swarm_id.into()),
-            version: 0,
             item_count: 0,
             ready_ids: Vec::new(),
             blocked_ids: Vec::new(),
@@ -393,7 +391,6 @@ impl PlanGraphStatus {
         let graph = summarize_plan_graph(&plan.items);
         Self {
             swarm_id: Some(swarm_id.into()),
-            version: plan.version,
             item_count: plan.items.len(),
             ready_ids: graph.ready_ids,
             blocked_ids: graph.blocked_ids,

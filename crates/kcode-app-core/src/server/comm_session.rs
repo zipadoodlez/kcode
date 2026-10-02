@@ -731,16 +731,6 @@ pub(super) async fn spawn_swarm_agent(
     }?;
 
     let startup_message = startup_message.clone();
-    {
-        let mut plans = swarm_plans.write().await;
-        if let Some(plan) = plans.get_mut(swarm_id)
-            && (!plan.items.is_empty() || !plan.participants.is_empty())
-        {
-            plan.participants.insert(req_session_id.to_string());
-            plan.participants.insert(new_session_id.clone());
-        }
-    }
-
     broadcast_swarm_plan(
         swarm_id,
         Some("participant_spawned".to_string()),

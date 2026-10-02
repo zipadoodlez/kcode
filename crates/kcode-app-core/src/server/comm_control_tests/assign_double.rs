@@ -87,8 +87,6 @@ async fn double_assign_fixture(
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![contested],
-            version: 1,
-            participants: HashSet::from([requester.to_string(), holder.to_string()]),
             task_progress: HashMap::new(),
         },
     )])));

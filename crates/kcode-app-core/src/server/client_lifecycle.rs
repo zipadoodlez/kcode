@@ -1424,7 +1424,6 @@ pub(super) async fn handle_client(
                         &file_touch,
                         &channel_subscriptions,
                         &channel_subscriptions_by_session,
-                        &swarm_plans,
                         &event_history,
                         &event_counter,
                         &swarm_event_tx,

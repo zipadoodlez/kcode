@@ -380,7 +380,7 @@ changes are paid for in test churn.
   had no reader; the lifecycle and the count are run facts and move to the runtime owner,
   keyed by row id. What is lost: restart recovery no longer restores a plan, and the
   reclaim cap resets with the process, so a crash-looping row gets three more automatic
-  re-assignments. Also gone: the `swarm:plan` and `swarm:plan_version` debug reads.
+  re-assignments. Also gone: the `swarm:plan_version` debug read.
 - [x] **(decision)** `KCODE_SWARM_ID` goes with the stored swarm id (0.4g, 2026-10-02).
   A swarm is a count, not a mode, so membership is derived from who holds rows under the
   run's anchor. What is lost: two working directories can no longer declare one shared

@@ -29,17 +29,14 @@ pub(super) fn persist_swarm_status_snapshot(app: &mut App) {
 pub(super) fn persist_swarm_plan_snapshot(
     app: &mut App,
     swarm_id: String,
-    version: u64,
     items: Vec<crate::plan::TaskItem>,
-    participants: Vec<String>,
     reason: Option<String>,
 ) {
     if app.is_remote_client() {
         // Avoid clobbering the server-owned session file from a remote client's shadow copy.
         return;
     }
-    app.session
-        .record_swarm_plan_event(swarm_id, version, items, participants, reason);
+    app.session.record_swarm_plan_event(swarm_id, items, reason);
     let _ = app.session.save();
 }
 

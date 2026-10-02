@@ -13,7 +13,6 @@ pub(super) struct Swarm {
     pub(super) members: Vec<crate::protocol::SwarmMemberStatus>,
     /// Latest swarm plan snapshot (local or remote server event stream).
     pub(super) plan_items: Vec<crate::plan::TaskItem>,
-    pub(super) plan_version: Option<u64>,
     pub(super) plan_swarm_id: Option<String>,
     /// Currently selected agent index in the inline swarm panel (display order).
     pub(super) panel_selected: usize,

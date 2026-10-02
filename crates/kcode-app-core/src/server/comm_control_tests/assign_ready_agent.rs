@@ -47,13 +47,6 @@ async fn assign_task_without_target_picks_ready_agent() {
                 plan_item("setup", "completed", "high", &[]),
                 plan_item("next", "queued", "high", &["setup"]),
             ],
-            version: 1,
-            participants: HashSet::from([
-                requester.to_string(),
-                ready_worker.to_string(),
-                completed_worker.to_string(),
-                running_worker.to_string(),
-            ]),
             task_progress: HashMap::new(),
         },
     )])));

@@ -460,12 +460,9 @@ pub(super) async fn handle_comm_resync_plan(
     if let Some(swarm_id) = swarm_id {
         let plan_state = {
             let mut plans = ctx.swarm_plans.write().await;
-            plans.get_mut(&swarm_id).map(|plan| {
-                plan.participants.insert(req_session_id.clone());
-                (plan.version, plan.items.len())
-            })
+            plans.get_mut(&swarm_id).map(|plan| plan.items.len())
         };
-        if let Some((version, item_count)) = plan_state {
+        if let Some(item_count) = plan_state {
             let swarm_state = SwarmState {
                 members: Arc::clone(ctx.swarm_members),
                 swarms_by_id: Arc::clone(ctx.swarms_by_id),
@@ -482,10 +479,7 @@ pub(super) async fn handle_comm_resync_plan(
                         channel: None,
                         tldr: None,
                     },
-                    message: format!(
-                        "Plan attached to this session (v{}, {} items).",
-                        version, item_count
-                    ),
+                    message: format!("Plan attached to this session ({} items).", item_count),
                 });
             }
             broadcast_swarm_plan(

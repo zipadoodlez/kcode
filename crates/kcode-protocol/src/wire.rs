@@ -862,10 +862,7 @@ pub enum ServerEvent {
     #[serde(rename = "swarm_plan")]
     SwarmPlan {
         swarm_id: String,
-        version: u64,
         items: Vec<TaskItem>,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        participants: Vec<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -211,81 +211,6 @@ pub(super) async fn maybe_handle_swarm_read_command(
         ));
     }
 
-    if cmd.starts_with("swarm:plan_version:") {
-        let swarm_id = cmd.strip_prefix("swarm:plan_version:").unwrap_or("").trim();
-        let runtime = swarm_state.load_runtime(swarm_id).await;
-        let output = if let Some(vp) = runtime.plan.as_ref() {
-            let summary = summarize_plan_graph(&vp.items);
-            let next_ready_ids = next_runnable_item_ids(&vp.items, Some(8));
-            serde_json::json!({
-                "swarm_id": runtime.swarm_id,
-                "version": vp.version,
-                "item_count": vp.items.len(),
-                "member_count": runtime.members.len(),
-                "coordinator": runtime.coordinator_session_id,
-                "ready_item_count": summary.ready_ids.len(),
-                "blocked_item_count": summary.blocked_ids.len(),
-                "active_item_count": summary.active_ids.len(),
-                "completed_item_count": summary.completed_ids.len(),
-                "next_ready_ids": next_ready_ids,
-                "cycle_ids": summary.cycle_ids,
-                "unresolved_dependency_ids": summary.unresolved_dependency_ids,
-            })
-            .to_string()
-        } else {
-            serde_json::json!({
-                "swarm_id": swarm_id,
-                "version": 0,
-                "item_count": 0,
-                "stale_item_count": 0,
-                "ready_item_count": 0,
-                "blocked_item_count": 0,
-                "active_item_count": 0,
-                "completed_item_count": 0,
-                "next_ready_ids": Vec::<String>::new(),
-                "cycle_ids": Vec::<String>::new(),
-                "unresolved_dependency_ids": Vec::<String>::new(),
-            })
-            .to_string()
-        };
-        return Ok(Some(output));
-    }
-
-    if cmd == "swarm:plans" {
-        let plans = swarm_plans.read().await;
-        let mut out: Vec<serde_json::Value> = Vec::new();
-        for swarm_id in plans.keys() {
-            let runtime = swarm_state.load_runtime(swarm_id).await;
-            let Some(vp) = runtime.plan.as_ref() else {
-                continue;
-            };
-            let summary = summarize_plan_graph(&vp.items);
-            let next_ready_ids = next_runnable_item_ids(&vp.items, Some(8));
-            out.push(serde_json::json!({
-                "swarm_id": runtime.swarm_id,
-                "item_count": vp.items.len(),
-                "version": vp.version,
-                "member_count": runtime.members.len(),
-                "coordinator": runtime.coordinator_session_id,
-                "plan_definition": vp.plan_definition(),
-                "execution_state": vp.execution_state(),
-                "participants": &vp.participants,
-                "items": &vp.items,
-                "task_progress": &vp.task_progress,
-                "ready_ids": summary.ready_ids,
-                "blocked_ids": summary.blocked_ids,
-                "active_ids": summary.active_ids,
-                "completed_ids": summary.completed_ids,
-                "next_ready_ids": next_ready_ids,
-                "cycle_ids": summary.cycle_ids,
-                "unresolved_dependency_ids": summary.unresolved_dependency_ids,
-            }));
-        }
-        return Ok(Some(
-            serde_json::to_string_pretty(&out).unwrap_or_else(|_| "[]".to_string()),
-        ));
-    }
-
     if cmd.starts_with("swarm:plan:") {
         let swarm_id = cmd.strip_prefix("swarm:plan:").unwrap_or("").trim();
         let runtime = swarm_state.load_runtime(swarm_id).await;
@@ -294,12 +219,10 @@ pub(super) async fn maybe_handle_swarm_read_command(
             let next_ready_ids = next_runnable_item_ids(&vp.items, Some(8));
             serde_json::json!({
                 "swarm_id": runtime.swarm_id,
-                "version": vp.version,
                 "member_count": runtime.members.len(),
                 "coordinator": runtime.coordinator_session_id,
                 "plan_definition": vp.plan_definition(),
                 "execution_state": vp.execution_state(),
-                "participants": &vp.participants,
                 "items": &vp.items,
                 "task_progress": &vp.task_progress,
                 "ready_ids": summary.ready_ids,
@@ -555,7 +478,6 @@ pub(super) async fn maybe_handle_swarm_read_command(
                     serde_json::json!({
                         "items": &vp.items,
                         "task_progress": &vp.task_progress,
-                        "version": vp.version,
                     })
                 })
                 .unwrap_or_else(|| {

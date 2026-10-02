@@ -4,9 +4,7 @@ use crate::protocol::PlanGraphStatus;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct RemoteSwarmPlanSnapshot {
     pub swarm_id: String,
-    pub version: u64,
     pub items: Vec<TaskItem>,
-    pub participants: Vec<String>,
     pub reason: Option<String>,
     pub summary: Option<PlanGraphStatus>,
 }
@@ -21,10 +19,7 @@ impl RemoteSwarmPlanSnapshot {
             .as_ref()
             .map(|summary| summary.item_count)
             .unwrap_or_else(|| self.items.len());
-        let mut notice = format!(
-            "Swarm plan synced (v{}, {} items)",
-            self.version, item_count
-        );
+        let mut notice = format!("Swarm plan synced ({} items)", item_count);
         if let Some(summary) = &self.summary {
             // Task-DAG progress breakdown: how the graph currently partitions by
             // scheduling state. Only show segments that are non-empty so the line
@@ -85,12 +80,9 @@ mod tests {
     }
 
     fn snapshot(items: Vec<TaskItem>, summary: Option<PlanGraphStatus>) -> RemoteSwarmPlanSnapshot {
-        let version = summary.as_ref().map(|s| s.version).unwrap_or(0);
         RemoteSwarmPlanSnapshot {
             swarm_id: "swarm-a".to_string(),
-            version,
             items,
-            participants: Vec::new(),
             reason: None,
             summary,
         }
@@ -99,7 +91,6 @@ mod tests {
     fn summary_fixture() -> PlanGraphStatus {
         PlanGraphStatus {
             swarm_id: Some("swarm-a".to_string()),
-            version: 5,
             item_count: 4,
             ready_ids: vec!["task-2".to_string()],
             blocked_ids: vec!["task-4".to_string()],
@@ -126,7 +117,6 @@ mod tests {
     #[test]
     fn swarm_plan_status_notice_includes_graph_hints() {
         let notice = snapshot(fixture_items(), Some(summary_fixture())).status_notice();
-        assert!(notice.contains("v5"));
         assert!(notice.contains("4 items"));
         assert!(notice.contains("graph: 1 done, 1 ready, 1 blocked"));
         assert!(notice.contains("next: task-2"));
@@ -138,20 +128,20 @@ mod tests {
         // items can lag or be trimmed relative to the graph summary; the
         // summary's item_count is authoritative when present.
         let notice = snapshot(Vec::new(), Some(summary_fixture())).status_notice();
-        assert!(notice.contains("(v5, 4 items)"), "notice: {notice}");
+        assert!(notice.contains("(4 items)"), "notice: {notice}");
     }
 
     #[test]
     fn swarm_plan_status_notice_empty_plan_without_summary() {
         let notice = snapshot(Vec::new(), None).status_notice();
-        assert_eq!(notice, "Swarm plan synced (v0, 0 items)");
+        assert_eq!(notice, "Swarm plan synced (0 items)");
     }
 
     #[test]
     fn swarm_plan_status_notice_empty_summary_has_no_graph_suffix() {
         let summary = PlanGraphStatus::empty_for_swarm("swarm-a");
         let notice = snapshot(Vec::new(), Some(summary)).status_notice();
-        assert_eq!(notice, "Swarm plan synced (v0, 0 items)");
+        assert_eq!(notice, "Swarm plan synced (0 items)");
     }
 
     #[test]
@@ -175,7 +165,7 @@ mod tests {
             })
             .collect();
         let notice = snapshot(items, Some(summary)).status_notice();
-        assert_eq!(notice, "Swarm plan synced (v5, 4 items) · graph: 4 done");
+        assert_eq!(notice, "Swarm plan synced (4 items) · graph: 4 done");
     }
 
     #[test]

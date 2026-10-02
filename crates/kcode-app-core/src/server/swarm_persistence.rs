@@ -112,8 +112,6 @@ struct PersistedSwarmState {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct PersistedVersionedPlan {
     items: Vec<crate::plan::TaskItem>,
-    version: u64,
-    participants: Vec<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     task_progress: HashMap<String, SwarmTaskProgress>,
 }
@@ -269,8 +267,6 @@ fn remove_snapshot_files(swarm_id: &str) -> bool {
 fn from_persisted_plan(plan: PersistedVersionedPlan) -> VersionedPlan {
     let mut plan = VersionedPlan {
         items: plan.items,
-        version: plan.version,
-        participants: plan.participants.into_iter().collect(),
         task_progress: plan.task_progress,
     };
     plan.prune_side_maps();
@@ -278,12 +274,8 @@ fn from_persisted_plan(plan: PersistedVersionedPlan) -> VersionedPlan {
 }
 
 fn to_persisted_plan(plan: &VersionedPlan) -> PersistedVersionedPlan {
-    let mut participants: Vec<String> = plan.participants.iter().cloned().collect();
-    participants.sort();
     PersistedVersionedPlan {
         items: plan.items.clone(),
-        version: plan.version,
-        participants,
         task_progress: plan.task_progress.clone(),
     }
 }
@@ -494,12 +486,6 @@ pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
             .get(swarm_id)
             .is_some_and(|pruned| pruned.contains(session_id))
     });
-    for (swarm_id, pruned_session_ids) in &pruned_members_by_swarm {
-        if let Some(plan) = plans.get_mut(swarm_id) {
-            plan.participants
-                .retain(|session_id| !pruned_session_ids.contains(session_id));
-        }
-    }
     // Rewrite every affected snapshot once so startup collection shrinks the
     // durable state too. Without this, the same expired records would be parsed
     // and discarded on every restart forever.
@@ -553,20 +539,6 @@ pub(super) fn persist_swarm_state(
 
     if swarm_plan.is_none() && coordinator_session_id.is_none() && swarm_members.is_empty() {
         let _ = remove_snapshot_files(swarm_id);
-        return;
-    }
-
-    // A snapshot can be captured before another task advances the plan and
-    // reach disk afterwards. Never let that stale completion regress the
-    // durable plan. Full member/coordinator ordering is provided by the
-    // per-swarm operation lock around load_runtime + this write.
-    if let Some(candidate_plan) = swarm_plan
-        && let Ok(current) = storage::read_json::<PersistedSwarmState>(&state_path(swarm_id))
-        && current
-            .plan
-            .as_ref()
-            .is_some_and(|plan| plan.version > candidate_plan.version)
-    {
         return;
     }
 

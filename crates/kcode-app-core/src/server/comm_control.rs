@@ -349,7 +349,7 @@ async fn requeue_existing_assignment(
     task_id: &str,
     working_dir: Option<&std::path::Path>,
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
-) -> Option<(String, HashSet<String>, usize)> {
+) -> Option<(String, usize)> {
     // The claim is written where the list is, as a dispatch's is, so a requeue
     // records the same fact the same way.
     let row = match crate::todo::claim_row_on_disk(
@@ -370,16 +370,13 @@ async fn requeue_existing_assignment(
     let plan = plans.get_mut(swarm_id)?;
     plan.sync_rows(&[row]);
     plan.set_row_status(task_id, "queued");
-    plan.version += 1;
-    plan.participants.insert(req_session_id.to_string());
-    plan.participants.insert(assignee_session.to_string());
     let content = plan
         .items
         .iter()
         .find(|item| item.id == task_id)?
         .content
         .clone();
-    Some((content, plan.participants.clone(), plan.items.len()))
+    Some((content, plan.items.len()))
 }
 
 async fn active_swarm_member(
@@ -663,10 +660,8 @@ fn spawn_assigned_task_run(
     tokio::spawn(async move {
         {
             let mut plans = swarm_plans.write().await;
-            if let Some(plan) = plans.get_mut(&swarm_id)
-                && plan.set_row_status(&task_id, "running")
-            {
-                plan.version += 1;
+            if let Some(plan) = plans.get_mut(&swarm_id) {
+                plan.set_row_status(&task_id, "running");
             }
         }
         let swarm_state = SwarmState {
@@ -786,7 +781,6 @@ fn spawn_assigned_task_run(
                             if let Some(plan) = swarm_plans.write().await.get_mut(&swarm_id) {
                                 plan.sync_rows(&touched);
                                 plan.drop_row(&task_id);
-                                plan.version += 1;
                             }
                         }
                         Err(error) => crate::logging::warn(&format!(
@@ -832,10 +826,8 @@ fn spawn_assigned_task_run(
             Err(error) => {
                 {
                     let mut plans = swarm_plans.write().await;
-                    if let Some(plan) = plans.get_mut(&swarm_id)
-                        && plan.set_row_status(&task_id, "failed")
-                    {
-                        plan.version += 1;
+                    if let Some(plan) = plans.get_mut(&swarm_id) {
+                        plan.set_row_status(&task_id, "failed");
                     }
                 }
                 let swarm_state = SwarmState {
@@ -1208,11 +1200,8 @@ async fn handle_comm_assign_task_with_mode(
     let swarm_id = match require_plan_driver_swarm(
         id,
         &req_session_id,
-        "Only the coordinator can assign tasks.",
         client_event_tx,
         swarm_members,
-        swarm_plans,
-        swarm_coordinators,
     )
     .await
     {
@@ -1293,7 +1282,7 @@ async fn handle_comm_assign_task_with_mode(
         .get(&req_session_id)
         .and_then(|member| member.working_dir.clone());
 
-    let (selected_task_id, task_content, participant_ids, plan_item_count, blocked_reason) = {
+    let (selected_task_id, task_content, plan_item_count, blocked_reason) = {
         let mut plans = swarm_plans.write().await;
         let plan = plans
             .entry(swarm_id.clone())
@@ -1387,18 +1376,9 @@ async fn handle_comm_assign_task_with_mode(
                 plan.sync_rows(&[row]);
             }
             plan.set_row_status(&item_id, "queued");
-            plan.version += 1;
-            plan.participants.insert(req_session_id.clone());
-            plan.participants.insert(target_session.clone());
-            (
-                Some(item_id.clone()),
-                Some(content),
-                plan.participants.clone(),
-                plan.items.len(),
-                None,
-            )
+            (Some(item_id.clone()), Some(content), plan.items.len(), None)
         } else {
-            (None, None, HashSet::new(), 0, blocked_reason)
+            (None, None, 0, blocked_reason)
         }
     };
 
@@ -1567,8 +1547,17 @@ async fn handle_comm_assign_task_with_mode(
         "Plan updated: task '{}' assigned to {}.",
         selected_task_id, target_session
     );
+    let swarm_members_for_notice: Vec<String> = {
+        let sessions = swarms_by_id.read().await;
+        sessions
+            .get(&swarm_id)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .collect()
+    };
     let members = swarm_members.read().await;
-    for sid in participant_ids {
+    for sid in swarm_members_for_notice {
         if sid == target_session || sid == req_session_id {
             continue;
         }
@@ -1628,20 +1617,13 @@ pub(super) async fn handle_comm_assign_next(
     swarm_mutation_runtime: &SwarmMutationRuntime,
 ) {
     if target_session.is_none() {
-        let swarm_id = match require_plan_driver_swarm(
-            id,
-            &req_session_id,
-            "Only the coordinator can assign tasks.",
-            client_event_tx,
-            swarm_members,
-            swarm_plans,
-            swarm_coordinators,
-        )
-        .await
-        {
-            Some(swarm_id) => swarm_id,
-            None => return,
-        };
+        let swarm_id =
+            match require_plan_driver_swarm(id, &req_session_id, client_event_tx, swarm_members)
+                .await
+            {
+                Some(swarm_id) => swarm_id,
+                None => return,
+            };
 
         let Some(dispatch) =
             next_dispatch(&swarm_id, &req_session_id, swarm_plans, swarm_members).await
@@ -1861,11 +1843,8 @@ pub(super) async fn handle_comm_task_control(
     let swarm_id = match require_plan_driver_swarm(
         id,
         &req_session_id,
-        "Only the coordinator can control assigned tasks.",
         client_event_tx,
         swarm_members,
-        swarm_plans,
-        swarm_coordinators,
     )
     .await
     {
@@ -2358,16 +2337,12 @@ pub(super) fn handle_client_debug_response(
 /// swarm can seed a graph but is then blocked from spawning/assigning any of it,
 /// so nothing ever runs.
 ///
-/// Returns the swarm id when the caller is the coordinator or a participant of
-/// the swarm's plan.
+/// Returns the swarm id when the caller is a member of a swarm.
 async fn require_plan_driver_swarm(
     id: u64,
     req_session_id: &str,
-    permission_error: &str,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
 ) -> Option<String> {
     let swarm_id = {
         let members = swarm_members.read().await;
@@ -2384,33 +2359,7 @@ async fn require_plan_driver_swarm(
         return None;
     };
 
-    let is_coordinator = {
-        let coordinators = swarm_coordinators.read().await;
-        coordinators
-            .get(&swarm_id)
-            .map(|coordinator| coordinator == req_session_id)
-            .unwrap_or(false)
-    };
-    if is_coordinator {
-        return Some(swarm_id);
-    }
-
-    // Any participant of the plan may drive its own task graph.
-    let is_participant = {
-        let plans = swarm_plans.read().await;
-        plans
-            .get(&swarm_id)
-            .map(|plan| plan.participants.contains(req_session_id))
-            .unwrap_or(false)
-    };
-    if is_participant {
-        return Some(swarm_id);
-    }
-
-    let _ = client_event_tx.send(ServerEvent::Error {
-        id,
-        message: permission_error.to_string(),
-        retry_after_secs: None,
-    });
-    None
+    // Membership in the swarm is the whole authorization: the member record above
+    // already names this session's swarm, and a run drives the rows it holds.
+    Some(swarm_id)
 }

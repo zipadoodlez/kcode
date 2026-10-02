@@ -69,8 +69,6 @@ async fn assign_task_to_client_attached_session_skips_server_side_run() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![plan_item("solo", "queued", "high", &[])],
-            version: 1,
-            participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
         },
     )])));

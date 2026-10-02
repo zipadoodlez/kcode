@@ -79,8 +79,6 @@ async fn handle_clear_session_replaces_runtime_handles_and_updates_shutdown_regi
         "swarm-test".to_string(),
         VersionedPlan {
             items: Vec::new(),
-            version: 1,
-            participants: HashSet::from([old_session_id.to_string()]),
             task_progress: HashMap::new(),
         },
     )])));
@@ -107,7 +105,6 @@ async fn handle_clear_session_replaces_runtime_handles_and_updates_shutdown_regi
         &file_touch,
         &channel_subscriptions,
         &channel_subscriptions_by_session,
-        &swarm_plans,
         &event_history,
         &event_counter,
         &swarm_event_tx,
@@ -137,13 +134,13 @@ async fn handle_clear_session_replaces_runtime_handles_and_updates_shutdown_regi
             .get(&replacement_swarm_id)
             .is_some_and(|sessions| sessions.contains(&client_session_id))
     );
+    // The plan carries rows, not a participant list, so the identity check is that
+    // no row is left pointing at the cleared session.
     let plans = swarm_plans.read().await;
-    assert!(!plans["swarm-test"].participants.contains(old_session_id));
-    assert!(
-        !plans["swarm-test"]
-            .participants
-            .contains(&client_session_id)
-    );
+    assert!(plans["swarm-test"].items.iter().all(|item| {
+        item.assigned_to.as_deref() != Some(old_session_id)
+            && item.assigned_to.as_deref() != Some(client_session_id.as_str())
+    }));
     drop(plans);
 
     old_queue

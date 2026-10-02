@@ -40,12 +40,6 @@ async fn assign_next_prefers_worker_with_dependency_context() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![dependency, plan_item("next", "queued", "high", &["dep"])],
-            version: 1,
-            participants: HashSet::from([
-                requester.to_string(),
-                context_worker.to_string(),
-                other_worker.to_string(),
-            ]),
             task_progress: HashMap::new(),
         },
     )])));

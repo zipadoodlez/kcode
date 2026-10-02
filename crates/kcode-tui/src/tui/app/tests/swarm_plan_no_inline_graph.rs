@@ -19,9 +19,7 @@ fn swarm_plan_updates_state_without_adding_an_inline_diagram() {
     app.handle_server_event(
         crate::protocol::ServerEvent::SwarmPlan {
             swarm_id: "test-swarm".to_string(),
-            version: 3,
             items: vec![item.clone()],
-            participants: vec!["session_a".to_string()],
             reason: None,
             summary: None,
         },
@@ -29,7 +27,6 @@ fn swarm_plan_updates_state_without_adding_an_inline_diagram() {
     );
 
     assert_eq!(app.swarm.plan_swarm_id.as_deref(), Some("test-swarm"));
-    assert_eq!(app.swarm.plan_version, Some(3));
     assert_eq!(app.swarm.plan_items, vec![item]);
     assert_eq!(
         app.display_messages().len(),
