@@ -515,12 +515,6 @@ fn model_picker_route_provider_matches_key(
     )
 }
 
-/// Whether an effort-qualified picker entry matches the persisted reasoning
-/// effort for its route's provider family. Entries without an effort always
-/// match. When no effort is persisted for the family, every variant matches
-/// (legacy model-level behavior) so we never hide the `default` marker
-/// entirely (issue #675).
-
 fn model_picker_route_is_default(
     model_name: &str,
     route: &PickerOption,

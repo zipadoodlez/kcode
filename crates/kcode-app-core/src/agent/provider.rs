@@ -214,13 +214,13 @@ impl Agent {
     /// picker, the effort keys, ACP); when it is unset the provider resolves
     /// the model's own default, which is the single place that answer lives.
     pub fn restore_reasoning_effort_from_session(&mut self) {
-        if let Some(effort) = self.session.reasoning_effort.clone() {
-            if let Err(e) = self.provider.set_reasoning_effort(&effort) {
-                crate::logging::error(&format!(
-                    "Failed to restore session reasoning effort '{}': {}",
-                    effort, e
-                ));
-            }
+        if let Some(effort) = self.session.reasoning_effort.clone()
+            && let Err(e) = self.provider.set_reasoning_effort(&effort)
+        {
+            crate::logging::error(&format!(
+                "Failed to restore session reasoning effort '{}': {}",
+                effort, e
+            ));
         }
     }
 

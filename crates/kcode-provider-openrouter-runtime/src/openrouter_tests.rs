@@ -3246,7 +3246,7 @@ fn named_profile_model_reasoning_overrides_capability() {
     assert_eq!(provider.reasoning_effort(), None);
 
     provider.set_model("reasoning-mini").unwrap();
-    assert!(provider.available_efforts().iter().any(|e| *e == "low"));
+    assert!(provider.available_efforts().contains(&"low"));
     assert_eq!(provider.reasoning_effort(), None);
 }
 

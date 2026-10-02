@@ -316,11 +316,11 @@ async fn communicate_run_plan_with_empty_plan_returns_inline_even_in_background_
     let mut client = RawClient::connect(&socket_path)
         .await
         .expect("client should connect");
-    client.subscribe(&repo_dir).await.expect("subscribe");
+    client.subscribe(repo_dir).await.expect("subscribe");
     let session = client.session_id().await.expect("session id");
 
     let tool = CommunicateTool::new();
-    let ctx = test_ctx(&session, &repo_dir);
+    let ctx = test_ctx(&session, repo_dir);
 
     // Background is the default; with no plan the validation happens inline and
     // no background task should be started.
