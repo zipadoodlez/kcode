@@ -6,6 +6,24 @@ spine is the one structural item; the two calls are the maintainer's.
 
 ## Tasks
 
+- [ ] **The provider dispatch fan-out.** `kcode-base/src/provider/mod.rs` (2,858
+ lines) re-matches `self.active_provider()` 24 times (28 `ActiveProvider::Claude`
+ arms) across the `Provider` impl's 43 methods. One dispatch seam (a slot lookup or
+ a macro) removes the repeated 8-arm matches. The arms differ in failover and catalog
+ behavior, so verify with the provider suites. (A1, 2026-10-03.)
+- [ ] **(decide) The provider tiers.** 61,824 lines in `crates/kcode-provider*` (src)
+ plus `kcode-base/src/provider/*` (2,858 in `mod.rs` alone), `provider_catalog.rs` and
+ `provider-metadata/catalog.rs`: three homes for one provider's identity and catalog
+ (`provider-X` metadata, `provider-X-runtime` transport, the base and metadata tables),
+ and `kcode-provider-bedrock` is referenced once from outside its crate. Decide which
+ tier owns the catalog, then collapse. This is the repo's largest non-TUI surface and
+ it is not the audit's safe tier. (A1.)
+- [ ] **The catchup types are in the wrong crate.** `PersistedCatchupState` and
+ `CatchupBrief` live in `kcode-task-types` and are used only by
+ `kcode-app-core/src/catchup.rs`; move them to the user so the crate named for the
+ task concept holds the task concept. (A1.)
+- [ ] **`tasks.bak` goes.** It is tracked at the repo root (843 bytes, the last closed
+ row) and stale; the store writes `tasks.jsonl` only. (A1.)
 - [ ] **The crate spine.** `kcode-base` -> `kcode-app-core` -> `kcode-tui` -> root,
  with `pub use kcode_*::*` making every module path global, so no call site names its
  owning crate. `scripts/check_wildcard_reexport_budget.py` ratchets it (baseline 13,

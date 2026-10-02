@@ -202,7 +202,8 @@ keeps one sparse status per row, reads everything else from the list, derives wh
 it, and closes only the rows it holds). **0.4g is whole, and 0.4 with it.** 0.4f's one
 build + full test pass ran with it (three pre-existing `session_flow` e2e failures,
 recorded in `plans/test-tree.md`). **0.5 has landed too**, its gate and live probe with
-it, so no row is open and the next step is A1's audit over the settled model.
+it, so no row is open; **A1's audit has run too** (2026-10-03, folded as A2-A7 and the
+`plans/hygiene.md` items), and the open work is A2-A7 with the tail the audit feeds.
 
 ### 0. One way work gets done
 
@@ -325,13 +326,62 @@ sent `low`. Losses: `docs/what-was-removed.md`.
 
 ### A. Audit
 
-- [ ] **A1. A braid audit of the tree.** Run `/braid-audit` once over the repo and fold
-  what it finds into this list: unscoped concepts, duplicate representations, modes and
-  dead paths, ranked by surface removed. It runs after 0.4 and 0.5 so it audits the
-  settled model rather than one in flight, and it feeds the tail (D, F) and the
-  `plans/test-tree.md` and `plans/hygiene.md` items. A finding is a step or a deletion,
-  never a standalone
-  report.
+- [x] **A1. A braid audit of the tree.** Ran 2026-10-03 with `/braid-audit` over the
+  settled 0.5 tree, row-list first. The row-list findings are A2-A7; the ones with
+  another owner went to `plans/hygiene.md` (the provider dispatch fan-out, the provider
+  tiers, the mislaid catchup types, `tasks.bak`). Measured, row-list tier: the
+  coordination machine is 16,395 lines in `kcode-app-core/src/server/{comm*,swarm*}`
+  (in-file tests included), 6,551 in `tool/communicate*`, 5,957 in the TUI and render
+  `swarm*` files, 498 in `kcode-swarm-core`, over 23 `Comm*` wire requests and 19
+  `SwarmState { .. }` literals. D1/D2/F1 still own that cut; A2-A7 are what they miss.
+  B3's status cut measured again: five status helpers in `kcode-plan/src/lib.rs`,
+  `canonical_todo_status` plus its two wrappers in `kcode-base/src/todo.rs`, and
+  `normalize_plan_status_for_todo`, `status_badge` and a second `priority_rank` in the
+  TUI.
+- [ ] **A2. The goals/initiatives store is a second work list with no producer.**
+  `create_goal` is called only from TUI tests and `update_goal`,
+  `attach_goal_to_session`, `write_goal_page` and `refresh_goals_overview_for_session`
+  have no caller at all, so the live `/initiatives` path renders files only tests
+  create. `(decide)` first: if no external writer (desktop, older build) is expected,
+  delete `kcode-base/src/goal.rs` (620), `goal_tests.rs` (82), the `Goal*` types in
+  `kcode-task-types` (~185), the `/initiatives` and `/goals` commands
+  (`commands.rs:1693-1796`), and their registry, suggestion and help lines; the row
+  list is the one work representation. If a writer is expected, re-core the goals onto
+  rows instead of deleting.
+- [ ] **A3. The mission store goes.** `mission::set`, `checkpoint`, `clear`,
+  `update_status`, `render_status` and `render_mission_continuation_prompt` have zero
+  callers, `/mission` and `/goal` are refused (`commands.rs:1798`, "disabled in this
+  build"), and the only live path is the per-turn reminder (`input.rs:69`) reading a
+  file nothing in the tree writes. Rule 11's permission replaced the concept: delete
+  `mission.rs` (185), `prompt/mission_continuation.md` (58) with
+  `MISSION_CONTINUATION_TEMPLATE`, the reminder hook and the disabled-command shim.
+  Name the loss in `docs/what-was-removed.md` only if a mission file written by an
+  older build is a real input.
+- [ ] **A4. The member runtime stops carrying the rows.** `SwarmMemberRuntime.todo_items`
+  (`protocol/src/lib.rs:450`) is the third copy of a session's rows, after the file and
+  the run's sparse status: folded from `TodoEvent`s by `compact_todo_items` and the two
+  `update_active_todo_*` helpers (`server/background_tasks.rs:362-505`), then mapped
+  again into `GalleryTodo` for the gallery. Read the rows where the list is, keep only
+  the per-row status the run set, and delete `SwarmTodoItem`, `SwarmToolIntent`, the
+  compact and update helpers and the TUI mapping (`info_widget_swarm_gallery.rs:98`).
+  Gated by C5; the gallery is the only consumer.
+- [ ] **A5. One read of the list and one render, not four.** The inline card, the
+  side-panel page (its own comment says "legacy"), the pinned band and the info
+  widget's pips each render the list, and the client keeps four caches over one file:
+  three hashes in `todos_view.rs`, a 1s TTL cache with a refresh thread
+  (`helpers.rs:969-...`), and the transcript's previous-list parse in
+  `ui_todo_changes.rs`. `commands_improve.rs` repeats the same load six times, and
+  `turn_notify.rs:220`, `state_ui.rs:1811` and `remote/key_handling.rs` (four sites)
+  read it again. Decide which surfaces stay, then keep one read and one model with the
+  renderers as pure functions; C5 makes the read a server event and lands first.
+- [ ] **A6. What 0.4 claimed to delete and did not.** `SwarmPlanItemSpec`
+  (`kcode-plan/src/lib.rs:21-32`) has one hit, its definition, though C4 records that
+  0.4 deleted it; `dag::sim` (108) is referenced only from `dag/tests.rs`, so the
+  shipping lib compiles a test harness. Delete the type and gate the simulator.
+- [ ] **A7. One artifact shape.** `tool/todo.rs:144-168` hand-builds the close artifact
+  from three fields while `kcode-plan/artifact.rs` owns the seven-field
+  `HandoffArtifact`; a field added on one side drifts silently. The tool builds a
+  `HandoffArtifact` and serializes it.
 
 ### B. The file is the list
 
@@ -357,8 +407,8 @@ Last of the file work, whenever we want it.
 - [ ] **C4.** Move `subsystem` and `file_scope` off the shared type onto the
   worker's own record. They are the scheduler's inputs (assignment affinity matches
   them against a worker's metadata), not list fields, and neither destination the
-  old text named can hold them: 0.4 deletes both `SwarmPlanItemSpec` and the
-  `node_meta` side-map.
+  old text named can hold them: 0.4 deleted the `node_meta` side-map and claimed
+  `SwarmPlanItemSpec`, which survived (A6).
 - [ ] **C5.** The client renders the list from server events instead of reading
   the file itself. Today it resolves the repo from its own working directory,
   which is the same thing for a local session and the wrong repo for a remote
@@ -399,7 +449,8 @@ Last of the file work, whenever we want it.
 - [ ] **D2. The swarm/comm condense.** The `SwarmState` handle pair is still
   threaded to ~40 functions and rebuilt as a literal at each request arm, so the
   request context that ends it is the remaining half. Give the swarm state its one
-  owner and delete the pair. Engine: `internals/swarm.md`.
+  owner and delete the pair. Engine: `internals/swarm.md`. (A1 measured 19
+  `SwarmState { .. }` literals and 244 `swarm_runs` references on the settled tree.)
 
 ### E. The server shape
 
