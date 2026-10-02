@@ -1,5 +1,5 @@
 use super::durable_state::now_unix_ms;
-use super::{SwarmMember, SwarmTaskProgress, VersionedPlan};
+use super::{SwarmMember, VersionedPlan};
 use crate::protocol::ServerEvent;
 use crate::storage;
 use kcode_swarm_core::{SwarmLifecycleStatus, SwarmMemberRecord};
@@ -13,11 +13,6 @@ use tokio::sync::mpsc;
 const SWARM_STATE_DIR: &str = "swarm";
 /// Pre-0.36 location under the runtime dir (tmpfs on Linux, wiped on reboot).
 const LEGACY_SWARM_STATE_DIR: &str = "kcode-swarm-state";
-/// Dormant plans are durable for recovery, but not immortal. A plan with no
-/// active/assigned work that has not had *any* swarm snapshot activity for a
-/// week is stale coordination state and is removed during startup loading.
-const DEFAULT_DORMANT_PLAN_RETENTION_SECS: u64 = 7 * 24 * 60 * 60;
-
 /// Serialize each swarm's complete snapshot/read/write operation. Callers must
 /// acquire this before reading the independently locked in-memory maps so an
 /// older snapshot cannot finish after a newer one.
@@ -58,36 +53,33 @@ fn swarm_file_lock(swarm_id: &str) -> Arc<StdMutex<()>> {
     lock
 }
 
-fn dormant_plan_retention() -> Duration {
-    Duration::from_secs(
-        std::env::var("KCODE_SWARM_DORMANT_PLAN_RETENTION_SECS")
-            .ok()
-            .and_then(|value| value.trim().parse::<u64>().ok())
-            .filter(|value| *value > 0)
-            .unwrap_or(DEFAULT_DORMANT_PLAN_RETENTION_SECS),
-    )
-}
-
-fn persisted_plan_is_dormant(plan: &PersistedVersionedPlan) -> bool {
-    plan.items.is_empty()
-        || plan
-            .items
-            .iter()
-            .all(|item| item.assigned_to.is_none() && !kcode_plan::is_active_status(&item.status))
-}
-
-fn persisted_plan_is_expired(
-    plan: &PersistedVersionedPlan,
-    snapshot_updated_at_unix_ms: u64,
-    loaded_at_unix_ms: u64,
-    retention: Duration,
-) -> bool {
-    if plan.items.is_empty() {
-        return true;
+/// The rows a swarm holds, seated into a plan from the list.
+///
+/// The list is where the work lives and a run's own state is not durable, so a loaded
+/// swarm's plan is rebuilt from the file: every open row held by one of its members
+/// becomes an item again, queued for the next dispatch. The run lifecycle and the
+/// reclaim counts start fresh, which is the loss `docs/todo.md` names.
+fn hydrate_plan_from_list(
+    working_dir: Option<&std::path::Path>,
+    session_id: &str,
+    held_by: &HashSet<String>,
+) -> VersionedPlan {
+    let mut plan = VersionedPlan::new();
+    let Ok(rows) = crate::todo::load_tasks(working_dir, session_id) else {
+        return plan;
+    };
+    plan.items = rows
+        .into_iter()
+        .filter(|row| {
+            row.assigned_to
+                .as_deref()
+                .is_some_and(|holder| held_by.contains(holder))
+        })
+        .collect();
+    for item in &mut plan.items {
+        item.status = "queued".to_string();
     }
-    persisted_plan_is_dormant(plan)
-        && loaded_at_unix_ms.saturating_sub(snapshot_updated_at_unix_ms)
-            >= retention.as_millis() as u64
+    plan
 }
 
 pub(super) struct LoadedSwarmRuntimeState {
@@ -101,19 +93,10 @@ pub(super) struct LoadedSwarmRuntimeState {
 struct PersistedSwarmState {
     swarm_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    plan: Option<PersistedVersionedPlan>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     coordinator_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     members: Vec<PersistedSwarmMember>,
     updated_at_unix_ms: u64,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct PersistedVersionedPlan {
-    items: Vec<crate::plan::TaskItem>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    task_progress: HashMap<String, SwarmTaskProgress>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -234,7 +217,6 @@ fn remove_snapshot_files(swarm_id: &str) -> bool {
     // already logically invalid even if physical cleanup is interrupted.
     let tombstone = PersistedSwarmState {
         swarm_id: swarm_id.to_string(),
-        plan: None,
         coordinator_session_id: None,
         members: Vec::new(),
         updated_at_unix_ms: now_unix_ms(),
@@ -262,22 +244,6 @@ fn remove_snapshot_files(swarm_id: &str) -> bool {
         }
     }
     removed
-}
-
-fn from_persisted_plan(plan: PersistedVersionedPlan) -> VersionedPlan {
-    let mut plan = VersionedPlan {
-        items: plan.items,
-        task_progress: plan.task_progress,
-    };
-    plan.prune_side_maps();
-    plan
-}
-
-fn to_persisted_plan(plan: &VersionedPlan) -> PersistedVersionedPlan {
-    PersistedVersionedPlan {
-        items: plan.items.clone(),
-        task_progress: plan.task_progress.clone(),
-    }
 }
 
 fn to_persisted_member(member: &SwarmMember, snapshot_unix_ms: u64) -> PersistedSwarmMember {
@@ -407,17 +373,13 @@ pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
         };
     };
 
-    let mut plans = HashMap::new();
     let mut coordinators = HashMap::new();
     let mut members = HashMap::new();
     let mut swarms_by_id = HashMap::new();
     let loaded_at_unix_ms = now_unix_ms();
     let terminal_retention = super::swarm::swarm_terminal_member_retention();
-    let plan_retention = dormant_plan_retention();
     let mut pruned_terminal_members = 0usize;
-    let mut pruned_dormant_plans = 0usize;
     let mut pruned_members_by_swarm: HashMap<String, HashSet<String>> = HashMap::new();
-    let mut pruned_plan_swarms: HashSet<String> = HashSet::new();
     for entry in entries.flatten() {
         let path = entry.path();
         if !path.is_file() {
@@ -440,19 +402,6 @@ pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
             continue;
         };
         let swarm_id = state.swarm_id.clone();
-        if let Some(plan) = state.plan {
-            if persisted_plan_is_expired(
-                &plan,
-                state.updated_at_unix_ms,
-                loaded_at_unix_ms,
-                plan_retention,
-            ) {
-                pruned_dormant_plans += 1;
-                pruned_plan_swarms.insert(swarm_id.clone());
-            } else {
-                plans.insert(swarm_id.clone(), from_persisted_plan(plan));
-            }
-        }
         if let Some(coordinator_session_id) = state.coordinator_session_id {
             coordinators.insert(swarm_id, coordinator_session_id);
         }
@@ -489,11 +438,7 @@ pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
     // Rewrite every affected snapshot once so startup collection shrinks the
     // durable state too. Without this, the same expired records would be parsed
     // and discarded on every restart forever.
-    let rewritten_swarms: HashSet<String> = pruned_members_by_swarm
-        .keys()
-        .chain(pruned_plan_swarms.iter())
-        .cloned()
-        .collect();
+    let rewritten_swarms: HashSet<String> = pruned_members_by_swarm.keys().cloned().collect();
     for swarm_id in &rewritten_swarms {
         let retained_members = swarms_by_id
             .get(swarm_id)
@@ -503,7 +448,6 @@ pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
             .collect::<Vec<_>>();
         persist_swarm_state(
             swarm_id,
-            plans.get(swarm_id),
             coordinators.get(swarm_id).map(String::as_str),
             &retained_members,
         );
@@ -513,10 +457,24 @@ pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
             "Pruned {pruned_terminal_members} expired terminal swarm member(s) while loading durable state"
         ));
     }
-    if pruned_dormant_plans > 0 {
-        crate::logging::info(&format!(
-            "Pruned {pruned_dormant_plans} expired dormant swarm plan(s) while loading durable state"
-        ));
+    // Nothing durable holds the rows, so each loaded swarm's plan is the rows its
+    // members hold in the list.
+    let mut plans = HashMap::new();
+    for (swarm_id, session_ids) in &swarms_by_id {
+        let Some(holder) = members
+            .values()
+            .find(|member| member.swarm_id.as_deref() == Some(swarm_id.as_str()))
+        else {
+            continue;
+        };
+        let plan = hydrate_plan_from_list(
+            holder.working_dir.as_deref(),
+            &holder.session_id,
+            session_ids,
+        );
+        if !plan.items.is_empty() {
+            plans.insert(swarm_id.clone(), plan);
+        }
     }
     LoadedSwarmRuntimeState {
         plans,
@@ -528,7 +486,6 @@ pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
 
 pub(super) fn persist_swarm_state(
     swarm_id: &str,
-    swarm_plan: Option<&VersionedPlan>,
     coordinator_session_id: Option<&str>,
     swarm_members: &[SwarmMember],
 ) {
@@ -537,7 +494,7 @@ pub(super) fn persist_swarm_state(
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
 
-    if swarm_plan.is_none() && coordinator_session_id.is_none() && swarm_members.is_empty() {
+    if coordinator_session_id.is_none() && swarm_members.is_empty() {
         let _ = remove_snapshot_files(swarm_id);
         return;
     }
@@ -551,7 +508,6 @@ pub(super) fn persist_swarm_state(
 
     let state = PersistedSwarmState {
         swarm_id: swarm_id.to_string(),
-        plan: swarm_plan.map(to_persisted_plan),
         coordinator_session_id: coordinator_session_id.map(str::to_string),
         members,
         updated_at_unix_ms: snapshot_unix_ms,

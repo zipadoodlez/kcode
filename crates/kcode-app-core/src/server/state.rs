@@ -123,8 +123,10 @@ pub struct SwarmRuntime {
 }
 
 impl SwarmRuntime {
+    /// Whether anything about this swarm is durable. The plan is in-memory only, so
+    /// it says nothing about the files.
     pub fn has_any_state(&self) -> bool {
-        self.plan.is_some() || self.coordinator_session_id.is_some() || !self.members.is_empty()
+        self.coordinator_session_id.is_some() || !self.members.is_empty()
     }
 }
 

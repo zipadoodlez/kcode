@@ -313,7 +313,6 @@ pub(super) async fn persist_swarm_state_for(swarm_id: &str, swarm_state: &SwarmS
     let runtime = swarm_state.load_runtime(swarm_id).await;
     persist_swarm_state_snapshot(
         swarm_id,
-        runtime.plan.as_ref(),
         runtime.coordinator_session_id.as_deref(),
         &runtime.members,
     );

@@ -193,9 +193,11 @@ starts. 0.1, 0.2 and 0.3 have landed whole and are gone from this list; what 0.2
 was 0.3's last stage, and the two losses 0.1 and 0.3 named are in `docs/todo.md`. 0.4's
 gate stage (0.4a), row stage (0.4c), one-mode stage (0.4b), node-meta stage (0.4d),
 liveness stage (0.4e) and 0.4f have landed: the plan's items are the file's open rows,
-the holder and the artifact live where the list is, and a turn end is a close. **0.4g
-is next**, and the one build + full test pass for 0.4f ran with it (three pre-existing
-`session_flow` e2e failures, recorded in `docs/todo.md`).
+the holder and the artifact live where the list is, and a turn end is a close. **0.4g is
+in flight: g1 and g2 have landed** (no version, no participant list, no durable plan,
+and a loaded swarm rebuilds its plan from the list), and g3 is next. 0.4f's one build +
+full test pass ran with it (three pre-existing `session_flow` e2e failures, recorded in
+`docs/todo.md`).
 
 ### 0. One way work gets done
 
@@ -225,17 +227,24 @@ is next**, and the one build + full test pass for 0.4f ran with it (three pre-ex
        list. The broadcast's ordering is pinned by
        `swarm_plan_broadcasts_cannot_invert_on_one_member_channel`, which replaces the
        test that demonstrated the inversion.
-    2. **g2. The plan stops being durable** (behavior boundary: restart). Delete
-       `PersistedVersionedPlan`, `to_persisted_plan`/`from_persisted_plan`, the
-       dormant/expired plan retention and the version guard; restart recovery reads the
-       file's `assigned_to` plus the member records instead of plan status
-       (`running_plan_assigned_to`, `swarm.rs:2730`).
-    3. **g3. The item cache dies** (behavior boundary: the status readers). Per-row run
-       state, lifecycle and reclaim count, becomes a map on the runtime owner keyed by
-       row id; `VersionedPlan`, `SwarmTaskProgress`, `sync_rows`, `drop_row`,
-       `prune_side_maps`, `rename_session`, `execution_state` and `plan_definition` go,
-       and a graph is built from the list where one is needed. The reclaim cap stays 3
-       and resets on restart, the loss named in `docs/todo.md`.
+    2. **g2. The plan stops being durable** (behavior boundary: restart). Landed, and it
+       took g3's first half: the two are one change, because deleting the durable copy
+       leaves nothing to source the in-memory plan after a restart. The load path now
+       rebuilds a swarm's plan from the list, seating the open rows its members hold
+       queued again, instead of reading a snapshot. Deleted `PersistedVersionedPlan` and
+       the snapshot's plan field, the plan converters, the dormant-plan retention rule,
+       its `KCODE_SWARM_DORMANT_PLAN_RETENTION_SECS` env var and constant, the plan
+       argument threaded through the persist callers, and `swarm:clear_plan`'s
+       re-persist; `SwarmRuntime::has_any_state` means durable state, so the plan no
+       longer counts. The restart behavior is pinned by
+       `a_loaded_swarm_seats_the_rows_its_members_hold`.
+    3. **g3. The item cache dies** (behavior boundary: the status readers). What is left
+       of g2: per-row run state, lifecycle and reclaim count, becomes a map on the
+       runtime owner keyed by row id; `VersionedPlan`, `SwarmTaskProgress`, `sync_rows`,
+       `drop_row`, `set_row_status`, `prune_side_maps`, `rename_session`, `is_composite`,
+       `execution_state`, `plan_definition` and the debug-only plan DTOs go, and the
+       ~47 item reads come from the list. The reclaim cap stays 3 and resets on restart,
+       the loss named in `docs/todo.md`.
     4. **g4. Membership is derived** (behavior boundary: membership). Delete the
        `coordinators` map (the coordinator is the session holding the run's anchor row),
        the stored swarm id including `KCODE_SWARM_ID` (`server/util.rs:96`, `:116`),

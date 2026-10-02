@@ -73,9 +73,8 @@ pub(super) async fn maybe_handle_swarm_write_command(
         let Some(removed) = removed else {
             return Err(anyhow::anyhow!("No plan found for swarm '{}'", swarm_id));
         };
-        // Re-persist so the on-disk swarm state drops the plan too; otherwise
-        // the next server restart resurrects it and every fresh session in
-        // this working dir gets the stale plan graph pushed on subscribe.
+        // The plan is in memory only, so clearing it clears it; the members and the
+        // coordinator are what the state file holds.
         let swarm_state = SwarmState {
             members: Arc::clone(ctx.swarm_members),
             swarms_by_id: Arc::clone(ctx.swarms_by_id),

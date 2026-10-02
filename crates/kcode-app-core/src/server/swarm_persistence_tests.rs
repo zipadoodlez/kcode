@@ -27,31 +27,38 @@ fn test_env(dir: &tempfile::TempDir) -> EnvGuard {
     }
 }
 
+/// The smallest member a snapshot can hold: a session, its swarm, and nothing else.
+fn persisted_member(session_id: &str, swarm_id: &str) -> SwarmMember {
+    let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+    SwarmMember {
+        session_id: session_id.to_string(),
+        event_tx,
+        event_txs: HashMap::new(),
+        working_dir: None,
+        swarm_id: Some(swarm_id.to_string()),
+        swarm_enabled: true,
+        status: SwarmLifecycleStatus::Ready,
+        detail: None,
+        friendly_name: None,
+        report_back_to_session_id: None,
+        latest_completion_report: None,
+        role: "agent".to_string(),
+        joined_at: Instant::now(),
+        last_status_change: Instant::now(),
+        is_headless: false,
+        output_tail: None,
+        todo_progress: None,
+        todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
+        task_label: None,
+    }
+}
+
 #[test]
 fn persisted_swarm_state_round_trips() {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let _env = test_env(&dir);
 
-    let mut plans = HashMap::new();
-    plans.insert(
-        "swarm-alpha".to_string(),
-        VersionedPlan {
-            items: vec![crate::plan::TaskItem {
-                content: "do thing".to_string(),
-                status: "running".to_string(),
-                priority: "high".to_string(),
-                id: "task-1".to_string(),
-                assigned_to: Some("session-1".to_string()),
-                ..Default::default()
-            }],
-            task_progress: HashMap::from([(
-                "task-1".to_string(),
-                SwarmTaskProgress {
-                    dead_assignee_reclaims: Some(2),
-                },
-            )]),
-        },
-    );
     let coordinators = HashMap::from([("swarm-alpha".to_string(), "session-2".to_string())]);
     let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
     let members = vec![SwarmMember {
@@ -79,23 +86,11 @@ fn persisted_swarm_state_round_trips() {
 
     persist_swarm_state(
         "swarm-alpha",
-        plans.get("swarm-alpha"),
         coordinators.get("swarm-alpha").map(String::as_str),
         &members,
     );
     let loaded = load_runtime_state();
 
-    let loaded_plan = loaded.plans.get("swarm-alpha").expect("loaded plan");
-    assert_eq!(loaded_plan.items.len(), 1);
-    assert_eq!(
-        loaded_plan.items[0].status, "running",
-        "a restored row keeps the status it was saved with"
-    );
-    let progress = loaded_plan
-        .task_progress
-        .get("task-1")
-        .expect("task progress");
-    assert_eq!(progress.dead_assignee_reclaims, Some(2));
     assert_eq!(
         loaded.coordinators.get("swarm-alpha"),
         Some(&"session-2".to_string())
@@ -115,6 +110,71 @@ fn persisted_swarm_state_round_trips() {
         loaded.swarms_by_id.get("swarm-alpha"),
         Some(&HashSet::from(["session-1".to_string()]))
     );
+}
+
+/// A plan is not durable, so a loaded swarm rebuilds it from the list: the open rows
+/// its members hold come back queued, and the run's own state starts fresh.
+#[test]
+fn a_loaded_swarm_seats_the_rows_its_members_hold() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+    let repo = dir.path().join("repo");
+    std::fs::create_dir_all(&repo).expect("repo dir");
+    let row = |id: &str, holder: Option<&str>| crate::plan::TaskItem {
+        content: format!("task {id}"),
+        status: "pending".to_string(),
+        priority: "medium".to_string(),
+        id: id.to_string(),
+        assigned_to: holder.map(str::to_string),
+        ..Default::default()
+    };
+    crate::todo::save_tasks(
+        Some(&repo),
+        "session-1",
+        &[
+            row("mine", Some("session-1")),
+            row("theirs", Some("session-9")),
+            row("free", None),
+        ],
+    )
+    .expect("write list");
+
+    let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let members = vec![SwarmMember {
+        session_id: "session-1".to_string(),
+        event_tx,
+        event_txs: HashMap::new(),
+        working_dir: Some(repo.clone()),
+        swarm_id: Some("swarm-alpha".to_string()),
+        swarm_enabled: true,
+        status: SwarmLifecycleStatus::Ready,
+        detail: None,
+        friendly_name: None,
+        report_back_to_session_id: None,
+        latest_completion_report: None,
+        role: "agent".to_string(),
+        joined_at: Instant::now(),
+        last_status_change: Instant::now(),
+        is_headless: false,
+        output_tail: None,
+        todo_progress: None,
+        todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
+        task_label: None,
+    }];
+    persist_swarm_state("swarm-alpha", None, &members);
+
+    let loaded = load_runtime_state();
+    let plan = loaded.plans.get("swarm-alpha").expect("hydrated plan");
+    assert_eq!(
+        plan.items
+            .iter()
+            .map(|item| (item.id.as_str(), item.status.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("mine", "queued")],
+        "the rows the swarm holds, queued again"
+    );
+    assert!(plan.task_progress.is_empty(), "run state starts fresh");
 }
 
 #[test]
@@ -149,7 +209,7 @@ fn ready_headless_member_with_report_stops_without_losing_report() {
         task_label: None,
     }];
 
-    persist_swarm_state("swarm-gamma", None, None, &members);
+    persist_swarm_state("swarm-gamma", None, &members);
     let loaded = load_runtime_state();
 
     let recovered = loaded.members.get("session-ready").expect("member");
@@ -193,7 +253,7 @@ fn ready_detached_client_stops_on_reload_until_it_reattaches() {
         task_label: None,
     }];
 
-    persist_swarm_state("swarm-client", None, None, &members);
+    persist_swarm_state("swarm-client", None, &members);
     let loaded = load_runtime_state();
     let recovered = loaded.members.get("session-detached").expect("member");
     assert_eq!(recovered.status, SwarmLifecycleStatus::Stopped);
@@ -201,50 +261,6 @@ fn ready_detached_client_stops_on_reload_until_it_reattaches() {
         recovered.detail.as_deref(),
         Some("client not attached after server restart")
     );
-}
-
-#[test]
-fn dormant_plan_expiry_preserves_active_work_and_prunes_old_unassigned_graphs() {
-    let item = |status: &str, assigned_to: Option<&str>| crate::plan::TaskItem {
-        content: "task".to_string(),
-        status: status.to_string(),
-        priority: "medium".to_string(),
-        id: format!("{status}-{}", assigned_to.unwrap_or("none")),
-        assigned_to: assigned_to.map(str::to_string),
-        ..Default::default()
-    };
-    let plan = |items| PersistedVersionedPlan {
-        items,
-        task_progress: HashMap::new(),
-    };
-    let now = 10_000_000u64;
-    let retention = Duration::from_secs(60);
-    let old = now - retention.as_millis() as u64;
-
-    assert!(persisted_plan_is_expired(
-        &plan(Vec::new()),
-        now,
-        now,
-        retention
-    ));
-    assert!(persisted_plan_is_expired(
-        &plan(vec![item("queued", None), item("completed", None)]),
-        old,
-        now,
-        retention
-    ));
-    assert!(!persisted_plan_is_expired(
-        &plan(vec![item("running", Some("worker"))]),
-        old,
-        now,
-        retention
-    ));
-    assert!(!persisted_plan_is_expired(
-        &plan(vec![item("queued", None)]),
-        now,
-        now,
-        retention
-    ));
 }
 
 #[test]
@@ -403,7 +419,7 @@ fn startup_gc_removes_expired_terminal_members_from_durable_snapshot() {
         runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }];
-    persist_swarm_state("swarm-expired", None, None, &members);
+    persist_swarm_state("swarm-expired", None, &members);
 
     let path = state_path("swarm-expired");
     let mut persisted = storage::read_json::<PersistedSwarmState>(&path).expect("snapshot");
@@ -424,14 +440,13 @@ fn remove_swarm_state_deletes_persisted_snapshot() {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let _env = test_env(&dir);
 
-    let plans = HashMap::from([(
-        "swarm-beta".to_string(),
-        VersionedPlan {
-            items: Vec::new(),
-            task_progress: HashMap::new(),
-        },
-    )]);
-    persist_swarm_state("swarm-beta", plans.get("swarm-beta"), None, &[]);
+    // Members and the coordinator are what the snapshot holds, so a swarm with a
+    // member is what leaves a file behind.
+    persist_swarm_state(
+        "swarm-beta",
+        Some("session-beta"),
+        &[persisted_member("session-beta", "swarm-beta")],
+    );
     assert!(state_path("swarm-beta").exists());
 
     remove_swarm_state("swarm-beta");
@@ -470,7 +485,7 @@ fn migration_does_not_clobber_existing_durable_state() {
     let _env = test_env(&dir);
 
     // Durable dir already has state for this swarm.
-    persist_swarm_state("swarm-both", None, Some("coord-new"), &[]);
+    persist_swarm_state("swarm-both", Some("coord-new"), &[]);
 
     // Legacy dir has a stale snapshot for the same swarm.
     let legacy = serde_json::json!({
@@ -657,7 +672,7 @@ fn persisted_swarm_state_without_plan_still_restores_coordinator_and_members() {
         task_label: None,
     }];
 
-    persist_swarm_state("swarm-gamma", None, Some("coord-1"), &members);
+    persist_swarm_state("swarm-gamma", Some("coord-1"), &members);
 
     let loaded = load_runtime_state();
     assert!(!loaded.plans.contains_key("swarm-gamma"));
@@ -685,8 +700,8 @@ fn remove_swarm_state_removes_backup_and_cannot_resurrect() {
 
     // First persist creates the primary; the second overwrite makes
     // write_json_fast hard-link the previous (coord-v1) snapshot to `.bak`.
-    persist_swarm_state("swarm-zombie", None, Some("coord-v1"), &[]);
-    persist_swarm_state("swarm-zombie", None, Some("coord-v2"), &[]);
+    persist_swarm_state("swarm-zombie", Some("coord-v1"), &[]);
+    persist_swarm_state("swarm-zombie", Some("coord-v2"), &[]);
     let bak_path = state_path("swarm-zombie").with_extension("bak");
     assert!(bak_path.exists(), "write_json_fast leaves a .bak hard link");
 
@@ -709,14 +724,14 @@ fn empty_persist_dissolution_removes_backup_and_cannot_resurrect() {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let _env = test_env(&dir);
 
-    persist_swarm_state("swarm-dissolve", None, Some("coord-v1"), &[]);
-    persist_swarm_state("swarm-dissolve", None, Some("coord-v2"), &[]);
+    persist_swarm_state("swarm-dissolve", Some("coord-v1"), &[]);
+    persist_swarm_state("swarm-dissolve", Some("coord-v2"), &[]);
     let bak_path = state_path("swarm-dissolve").with_extension("bak");
     assert!(bak_path.exists(), "write_json_fast leaves a .bak hard link");
 
     // Dissolution: no plan, no coordinator, no members hits the
     // remove_file branch instead of writing a snapshot.
-    persist_swarm_state("swarm-dissolve", None, None, &[]);
+    persist_swarm_state("swarm-dissolve", None, &[]);
     assert!(!state_path("swarm-dissolve").exists());
     assert!(
         !bak_path.exists(),
@@ -759,7 +774,7 @@ async fn stale_remove_cannot_delete_fresh_snapshot_or_restore_backup() {
 
     // The previous incarnation's snapshot is on disk; the swarm has since
     // been dissolved, so the in-memory runtime is empty.
-    persist_swarm_state("swarm-del-race", None, Some("coord-stale"), &[]);
+    persist_swarm_state("swarm-del-race", Some("coord-stale"), &[]);
     let swarm_state = crate::server::SwarmState::new(
         HashMap::new(),
         HashMap::new(),
@@ -794,7 +809,7 @@ async fn stale_remove_cannot_delete_fresh_snapshot_or_restore_backup() {
     // B's own persist_swarm_state_for on another worker thread, whose
     // uncontended lock reads resolve without suspending). This overwrite
     // also hard-links the stale pre-dissolution snapshot to `.bak`.
-    persist_swarm_state("swarm-del-race", None, Some("coord-new"), &[]);
+    persist_swarm_state("swarm-del-race", Some("coord-new"), &[]);
     let on_disk = storage::read_json::<PersistedSwarmState>(&state_path("swarm-del-race"))
         .expect("fresh snapshot");
     assert_eq!(

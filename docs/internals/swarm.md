@@ -9,10 +9,12 @@ The graph is a single server-owned object (`kcode-plan`'s `VersionedPlan`), and
 0.4f made it a view: the store writes the rows (a decomposition, a close, a claim)
 and the plan's items follow what it wrote. What the plan adds to the file is the
 run's own per-task state: the lifecycle status a turn sets and the reclaim counter.
-0.4g's first stage deleted the run's `version` and its `participants`: the
+0.4g deleted the run's `version`, its `participants` and its durability: the
 recipients are the swarm's sessions, which is what the broadcast already fell back
-to, and event ordering comes from sending inside the lock that mutated the plan, so
-nothing has to drop a stale event.
+to; event ordering comes from sending inside the lock that mutated the plan, so
+nothing has to drop a stale event; and a loaded swarm rebuilds its plan from the
+list, seating the rows its members hold queued again, because the run's own state
+was never the file's to keep.
 
 The swarm is one executor of the repo's work list (`plans/work-list.md`). The
 list is the shared contract and the work lives there; the plan is a runtime view of

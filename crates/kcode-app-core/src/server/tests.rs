@@ -1096,7 +1096,6 @@ async fn startup_recovery_resumes_interrupted_headless_sessions_after_reload() -
     persist_swarm_state_snapshot(
         swarm_id,
         None,
-        None,
         &[
             persisted_headless_member(&initiator.id, swarm_id, "running", "selfdev reload"),
             persisted_headless_member(&peer.id, swarm_id, "running", "bash tool"),
@@ -1228,7 +1227,6 @@ async fn startup_recovery_preserves_headed_session_reload_context_for_later_reco
     persist_swarm_state_snapshot(
         swarm_id,
         None,
-        None,
         &[persisted_headless_member(
             &headless.id,
             swarm_id,
@@ -1300,7 +1298,6 @@ async fn startup_ready_signal_is_not_blocked_by_headless_recovery_delay() -> Res
     let swarm_id = "swarm-ready-before-recovery";
     persist_swarm_state_snapshot(
         swarm_id,
-        None,
         None,
         &[persisted_headless_member(
             &headless.id,
