@@ -25,7 +25,7 @@ holding the run's anchor row, and a session belongs to a run when its
 there is no swarm id to declare, no coordinator map, and no per-session toggle. A
 session that reports back to nobody roots its own run. `swarm_root` in `server/swarm.rs`
 is the one derivation; everything that used to read a stored id reads it instead. What
-that costs is named in `docs/todo.md`: two sessions cannot declare one shared swarm by
+that costs is named in `docs/what-was-removed.md`: two sessions cannot declare one shared swarm by
 environment variable, and a root that leaves no longer hands its subtree to an elected
 coordinator, so its workers become roots of their own runs.
 
@@ -45,7 +45,7 @@ auto-inserted critique/verify gate, the gate-pass audit, the deep artifact
 validity check and the artifact-or-nothing turn-end rule were removed in 0.4a of
 `plans/work-list.md`; the engine keeps the DAG model, the scheduler, the typed
 handoff artifact and decomposition. What was lost (the automatic gate insertion
-and the refusal to close without an artifact) is named in `docs/todo.md`.
+and the refusal to close without an artifact) is named in `docs/what-was-removed.md`.
 
 ## Ownership: a tree over the rows
 

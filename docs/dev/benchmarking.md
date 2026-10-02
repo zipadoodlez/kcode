@@ -72,4 +72,4 @@ verifier reward `1.0`.
 `scripts/compile_time_probe.sh` measures the build critical path, and
 `scripts/compile_isolation_report.py` reports LOC, inline tests, `async_trait`
 usage, and dependency-boundary advisories. The compile-time isolation effort
-itself is an uncommitted idea tracked in [../todo.md](../todo.md).
+itself is an uncommitted idea, not tracked yet.

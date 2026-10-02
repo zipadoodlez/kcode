@@ -8,7 +8,10 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 - `internals/` - how kcode works: architecture, subsystems, protocols.
 - `dev/` - contributor process: testing, benchmarking, dependency hygiene.
 - `plans/` - designs for work not yet built. Not part of the bundled corpus.
-- `todo.md` - outstanding work: the checklist, with each item's design inline.
+- `todo.md` - outstanding work: the checklist of open items, with each item's design
+  inline.
+- `what-was-removed.md` - the ledger of cuts: every deliberate removal and what it
+  cost.
 
 ## Conventions
 
@@ -18,14 +21,18 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
   from the tree with a search, it does not belong here: state the why, the trap,
   the contract, the measurement, or the recipe, and nothing else. A fact that is
   absent cannot go stale. If a doc and the code disagree, the doc is wrong.
-- **`todo.md` is the one home for outstanding work**, in the order that unblocks
-  the most. The design lives in the entry when it is short, and in the doc the
-  item links to when it is not: a design too large to inline - a full protocol or
+- **Two homes, split by tense.** `todo.md` holds what is still to do: open work and
+  open calls, in the order that unblocks the most. `what-was-removed.md` holds what a
+  cut cost: a decision that landed is a record, and a record is not work. A deferred
+  internal note is neither: it lives in the code as a `# braid: <ceiling>, <what
+  surpasses it>` comment, next to what it is about.
+- **The design lives with its item.** Inline when it is short, in the doc the item
+  links to when it is not: a design too large to inline - a full protocol or
   interface spec for something not yet built - goes in `plans/`, which `build.rs`
   keeps out of the bundled `kcode_docs` corpus so the model never reads it as a
   description of the tree. Superseded items are deleted, not archived: git has the
-  history. An item marked `(decision)` waits on a call from the maintainer; the
-  rest are actionable.
+  history. An item marked `(decision)` waits on a call from the maintainer; the rest
+  are actionable.
 - **Prefer one good doc over three thin ones.** If two docs would share a
   header structure, they are one doc.
 - **No marketing.** State what a thing does and what it costs.
@@ -43,8 +50,8 @@ not fit its row is a doc in the wrong place.
 
 | doc | purpose | holds |
 |---|---|---|
-| `todo.md` | the order of work | open items with their design; landed items deleted |
-| `what-was-removed.md` | why this fork looks nothing like upstream | the two cuts and what was deliberately kept |
+| `todo.md` | the order of work | open items with their design, and open calls; a landed record is not here |
+| `what-was-removed.md` | every deliberate removal and what it cost | the fork cut, the account cut, the model cut, and what was deliberately kept |
 | `plans/work-list.md` | the destination for the work list | one file of rows, one item type, one writer, one run; a swarm is a count, not a mode; not served to the model |
 | `plans/browser-provider-protocol.md` | a design for work not yet built | the protocol; not served to the model |
 | `user/cli.md` | the non-interactive surface | flags a wrapper needs and their traps |

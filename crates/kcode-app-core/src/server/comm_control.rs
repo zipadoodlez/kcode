@@ -376,6 +376,9 @@ async fn next_dispatch(
     }
 
     let stranded_id = crate::plan::next_stranded_runnable_item_id(&items, &assignee_is_dead)?;
+    // braid: one of the two reclaim clocks; the periodic sweep
+    // (`swarm.rs::salvage_dead_assignees`) is the other and it waits a grace period
+    // this one does not. Unify when a liveness change is in scope.
     // The claim is released where the list is: a holder that can never come back
     // does not owe the row, so the next dispatch can pick it up. Nothing counts
     // attempts, because the bound belongs to the loop that repeats the work.

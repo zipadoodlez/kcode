@@ -1,27 +1,26 @@
 # Todo
 
-Outstanding work, in the order that unblocks the most. See `README.md` for the
-conventions. The current project's destination, model and open steps are
-`plans/work-list.md`.
+Open work, in the order that unblocks the most: every item is something to do, or a
+call to make. A decision that has landed is not here: its record and what it cost are
+in `what-was-removed.md`, and a deferred internal note lives in the code as a
+`# braid:` comment. See `README.md` for the conventions. The current project's
+destination, model and open steps are `plans/work-list.md`.
 
 ## 1. Shared shapes
 
-- [ ] **Condense swarm/comm** (`plans/work-list.md` step 0.4g). Landed with g4: the
-  swarm has one derived identity (`swarm_root`) and `SwarmState` is down to `members`
-  + `runs`, so the stored swarm id, the coordinator map and the member projection are
-  gone. What is left is the half E2/H2 owns: the `SwarmState` handle pair is still
-  threaded to ~40 functions and rebuilt as a literal at each request arm, so folding
-  it into the request context remains undone, and it is why this waits on
-  `handle_client` rather than the other way round.
-  Design and measurements: `plans/work-list.md`; engine: `internals/swarm.md`.
+- [ ] **Condense swarm/comm** (`plans/work-list.md` step 0.4g; what remains is E2/H2's
+  half). The `SwarmState` handle pair is still threaded to ~40 functions and rebuilt as
+  a literal at each request arm, so folding it into the request context is undone. It
+  waits on splitting `handle_client`, whose request context is designed to hold it.
+  Design: `plans/work-list.md`; engine: `internals/swarm.md`.
 
 ## 2. God modules
 
 Staged; each lands whole.
 
 - [ ] **Re-core `App`** (`crates/kcode-tui/src/tui/app.rs`), the largest single
-  cost in the tree. State (2026-10-01): `app_fields=182` (310 when this began),
-  `impl_app_blocks=52`, `super_glob_imports=116`, 2,091 lines. Landed: the runtime
+  cost in the tree. The shape is ratcheted (`scripts/check_app_shape.py`), so the
+  numbers are read where they are enforced, not here. Landed: the runtime
   axis, `CopySelection`, `Redraw`, `Viewport`, the side-panel page and decoration,
   `Swarm`, `HotkeyFeedback`, `ReloadState`, `TodosView`, `SplitView`, `Observe`,
   `Catchup`, `RemoteServerInfo`, `RemoteStartup`, `HistoryRecovery`,
@@ -128,14 +127,14 @@ Staged; each lands whole.
     reusing the `App` result rather than re-deriving it.
   - Done when: `handle_client` is under ~600 lines, the file is out of the size
     budget, and no `SwarmState { .. }` literal is built inside a request arm.
-- [ ] **Condense `tool/communicate.rs`** (3,142 lines) `[census]`: four concepts
-  welded together, swarm coordination, capacity cleanup (`cleanup_swarm_workers`,
+- [ ] **Condense `tool/communicate.rs`**: four concepts welded together, swarm
+  coordination, capacity cleanup (`cleanup_swarm_workers`,
   `stop_swarm_sessions`), the run-plan driver (`run_swarm_plan_loop`, the
-  driver-claim helpers), and the `format_*`/`fetch_*` formatters around a
-  ~1,100-line `execute`. The same census found these are *not* splits:
-  `server/swarm.rs`, `server/comm_control.rs` (covered by §1), and
-  `agent/turn_streaming_mpsc.rs`. `tool/session_search.rs` has two real seams
-  (native index vs external-source ingestion).
+  driver-claim helpers), and the `format_*`/`fetch_*` formatters around a large
+  `execute`. A census found these are *not* splits: `server/swarm.rs`,
+  `server/comm_control.rs` (covered by §1), and `agent/turn_streaming_mpsc.rs`.
+  `tool/session_search.rs` has two real seams (native index vs external-source
+  ingestion). Measure the size at the step; it moves.
 - [ ] **Unify the command surface**: slash-command identity is a string matched in
   four tables, the registry `REGISTERED_COMMANDS`
   (`app/state_ui_input_helpers.rs`, 108 entries), `app/commands.rs` (57),
@@ -206,22 +205,6 @@ changes are paid for in test churn.
   `ensure_test_kcode_home_if_unset`, `empty_swarm_status_state`,
   `available_models_display_seeds_from_persisted_catalog`, and the rest at 2).
   Re-measure before ranking.
-- [x] Fold the Python live drivers into Rust. The three debug-socket drivers were
-  deleted on the `refactor-tests` branch: `test_swarm.py` and `test_swarm_debug.py`
-  test removed or scheduled-removed behavior (plan approval, 0.4f; the shared context,
-  D1; swarm state, 0.4g) or behavior the Rust suite already covers
-  (`client_comm_tests.rs`, `comm_plan_tests.rs`, `client_actions_tests.rs`,
-  `queue_tests.rs`), and `test_dag_live.py` tests gates (0.4a) and the deep rung
-  (0.4b), both gone. The injection trio (`scripts/test_soft_interrupt.py`,
-  `tests/test_injection_fix.py`, `tests/test_injection_thorough.py`) stays until its
-  Rust replacement ran, as `tests/e2e/soft_interrupt.rs` (private server plus the
-  mock provider, deterministic): an injected message lands after the tool result,
-  and queued interrupts keep their order. The Python trio is deleted. Dropped
-  rather than ported: the streaming-timing cases (a wall-clock race; queueing
-  while idle covers the same placement), the real-provider cases, the urgent-skip
-  case, and the API-error case. The ported case is the trio's only unique
-  coverage of live placement, which the unit tests
-  (`messages_end_with_tool_result_*`, `queue_tests.rs`) do not reach.
 
 ## 5. Hygiene
 
@@ -238,78 +221,6 @@ changes are paid for in test churn.
 
 ## Anytime
 
-- [ ] **(decision)** What the overnight run had, and where it went. Two of its parts
-  are still unplaced; the two that went back onto the permission in
-  `plans/work-list.md` 0.1 were cut when 0.1 landed, and are kept here because a
-  loss is named and never silent.
-  - **The run's bound.** "work until 07:00" was the run property the model names, and
-    its duration parser and target-wake label are in git history (`fb2b7737` deleted
-    `kcode-overnight-core`). Cut because a run already stops when its scope has no
-    ready row, so a wall-clock stop was a second stop with no caller. Add when "keep
-    going for two hours" is wanted more than the list draining.
-  - **The quota-projection warning.** It would read the existing provider usage
-    reports and print where the usage snapshot already renders (`info_widget_usage.rs`,
-    `usage_overlay.rs`). Cut because it changed no behavior: the run's own usage
-    already shows the cost, and a warning with no action is surface. Add when a run
-    can act on it, by throttling or stopping.
-  - **A resource snapshot.** Battery, memory, disk and load: ~200 lines of /proc and
-    sysfs readers that were only ever displayed, never acted on. Worth keeping only
-    if something acts, so throttle or stop on battery and refuse a run with no disk.
-  - **A run-end summary.** Placed by the anchor row in `plans/work-list.md`: a run's
-    scope row closes last, and its result is the summary, so the three timers
-    (morning report, handoff-ready, final wrap-up) stay deleted and nothing replaces
-    them.
-  Deliberately not carried over: the manifest, the events file, the task cards and
-  the review HTML (a second durable store of the same work), the second supervisor
-  and coordinator session, and the stored `validated` field, which a close's result
-  is now.
-- [ ] **(decision)** The critique/verify pass and strict artifact validation go with
-  0.4 (2026-10-01). Deep mode inserted a gate per node and refused a close whose
-  artifact did not account for its dependencies; the row model has no room for a node
-  that is not a row, so gates and the deep/light axis are deleted. What is lost is the
-  automatic insertion and the refusal; what stays is the record every close leaves on
-  the row that owns the work. Add the pass back as work, not as machinery: a row typed
-  `critique` whose close needs the same record, which anyone (the user, the model, a
-  coordinator) can add like any other row.
-- [x] **(decision)** One mode: spawning is the root's and the `/effort` swarm rungs go
-  with 0.4b (2026-10-01). Only the root session starts agents; a member's deeper work is
-  rows the run dispatches, and the rule lives at `spawn_swarm_agent`, the single choke
-  point, so the assign path obeys it too (it previously bypassed it). What is lost: a
-  member can no longer start a worker on its own initiative, and a user can no longer
-  select orchestration with `/effort` (`swarm`, `swarm-deep`). Fanning out stays as the
-  model's own call through the `swarm` tool, and the engine has one mode whose
-  parallel/serial shape comes from the list's blocking structure, not a flag. The rungs'
-  only other effect was a system-prompt nudge to fan out, and that nudge is deleted rather
-  than relocated: "use the swarm for non-trivial tasks" is the removed orchestration mode
-  in prose. Until F1 turns the swarm tool's orchestration actions into the run's own
-  behavior, nothing prompts the model to fan out, so orchestration quiets down between
-  0.4b and F1; the guidance returns with the row verbs, not as a paragraph.
-  `features.swarm` and the per-session toggle are the same stored membership, so they go
-  with the swarm id and the coordinator map in 0.4g: a session is a worker when it holds
-  and works a row, and "in a swarm" is not a state to be in.
-- [x] **(decision)** The plan's growth report and seed/expand tag go (0.4d,
-  2026-10-01). `origin`, `GrowthStats`/`growth_stats`, the `seeded_count`/`grown_count`
-  snapshot fields, their renders, and the engine's `NodeOrigin`/`TaskNode.origin` are
-  deleted; the seed guard's `node.parent.is_some()` already excludes expanded children.
-  What is lost: `plan_status` and the `run_plan` summary no longer print
-  `seeded -> grown (+expansion)`. Growth is a run fact, so a run-scoped counter is the
-  home to add if the scoreboard is wanted.
-- [x] **(decision)** What `parent` means, and where the plan's copy goes (2026-10-01).
-  `row.parent` is the file's one hierarchy: `anchor_from_rows` adopts root rows and
-  `expand_row_on_disk` adds children, so anchor grouping and decomposition are the same
-  relation, not two. The plan therefore stops storing `node_meta.parent` and reads the
-  row, and a node is composite when it has an open child or a nonempty `records` (a
-  close leaves its record on its parent, so "was decomposed" survives the children's
-  removal). The artifact's own copy in `node_meta` went later (0.4f s12), where the row's
-  `record` became its one home, and the seed guard compares fields instead of rejecting a
-  parented node, since a held root row legitimately has a parent.
-  This is 0.4f's work, not a separate step.
-- [ ] **(decision)** A one-shot `kcode run` no longer drains a list (0.3, 2026-10-01).
-  The command-line poke was the last client-side continuation, so `kcode run` is one
-  turn again: the permission is read in the session's loop, and a plan-driven member
-  holds it inherently. Add a drain back to the CLI if a scripted unattended run is
-  wanted, which means giving that path the row loop the session already has rather
-  than a second poke.
 - [ ] **(decision)** Where does work land: `main`, or a branch with a merge-back?
   Two days and 85 commits went onto `batch-ab-provider-onboarding` while `main` did
   not move and nothing noticed; nothing was lost, but "is `main` green?" could not
@@ -332,122 +243,6 @@ changes are paid for in test churn.
   `plans/work-list.md`: filter for every session, or only for runs? And how does a
   session first see rows it does not hold, so that adopting one is its decision?
   Not a rule: the model does not scope the user's session to its holdings.
-- [ ] **(decision)** A quietly held claim can no longer be taken by a plain
-  `assign_task` (2026-10-01). The double-assignment guard used to age out: an
-  assignment older than `KCODE_SWARM_TASK_STALE_AFTER_SECS` (45s) whose assignee
-  showed no recent activity was reassignable by naming its task. That needed a
-  per-task assignment time, and the model keeps none: a claim is assumed to be worked
-  while its holder lives. Taking a task from its holder is now `task_control`
-  reassign/replace/retry, or waiting for the salvage sweep to reclaim it from a dead
-  holder. Add the age-out back only with a per-task clock it can read. 0.4g
-  (2026-10-02) replaced the verb family this named: `assign_task` is the takeover
-  for a session with a client, and the status tables it gated on are deleted.
-- [ ] **(decision)** An idle worker that still holds a row is reusable (0.4f s10,
-  2026-10-01). Auto-pick used to call a member busy when the plan held any
-  non-terminal assignment for it, a per-task count read beside the member's own
-  status. Busy is the member's in-flight work, and that is the member's status:
-  `queued`/`running` already says it, so the count goes and a `ready`/`completed`
-  member is a candidate again even while it holds an open row. The case that lived
-  is the composite holder, whose turn ends `completed` while its node stays open for
-  synthesis: it can now be given a second row. Concurrent picks are still serialized
-  by the in-process claim, and a member actually working is never a candidate. Add a
-  per-member cap only if stacking matters again.
-- [ ] **(decision)** A decomposition's finish step goes back to the agent that split
-  it (0.4f s11, 2026-10-01). The row's `assigned_to` is the record of who owes the
-  work, so a ready row claimed by a live, idle holder is handed back to that holder,
-  and no fresh agent is spawned for it. Two consequences, both accepted: `run_plan`'s
-  default fresh-agent preference stops applying to a held row, so the finish step
-  waits for the agent that planned the decomposition instead of running on a new
-  agent, which is what the code's own comment said the synthesis needs; and a ready
-  row held by a free session is dispatchable by an untargeted `assign_next` outside
-  the composite case too. The asking session's own rows stay out of the picker,
-  because the assign path refuses to assign a task to the asking session, so a self
-  hand-back would fail the whole run.
-- [ ] **(decision)** The plan's items are the file's open rows (0.4f s12, 2026-10-02).
-  A row write goes through the store and the plan follows it, so a holder, a close and an
-  artifact live where the list is, a turn that ends without a close closes its own row
-  (stating "the turn ended without a report" when it said nothing), and no item carries a
-  terminal status any more, so a client that rendered completed nodes normalizes the open
-  rows itself. What is lost: a row blocked by another no longer receives that row's
-  artifact, because the list keeps no edge to a closed row, and the debug `swarm:graph`
-  op is gone, since it existed to drive the engine against plan-owned items. What is
-  gained: a split row's join turn finally reads its children's artifacts, and a run's top
-  row reads the run.
-
-- [x] **(decision)** The plan object goes, and per-row run state lives in memory (0.4g,
-  2026-10-02). The rows are the file and membership is a count, so `VersionedPlan` was a
-  cache of the list plus four things the file cannot hold: a version, a participant list,
-  a per-row lifecycle and a per-row reclaim count. The version guarded a stale durable
-  write and client event ordering, and both die with the plan (the write is gone, and
-  ordering comes from sending the event inside the lock that mutated it); participants
-  had no reader; the lifecycle and the count are run facts and move to the runtime owner,
-  keyed by row id. What is lost: restart recovery no longer restores a plan, and the
-  per-row reclaim bound is gone with the counter, so a row whose workers keep dying stays
-  open and unclaimed instead of failing after three tries. The bound now belongs to the
-  loop that repeats the work, which is the run's own `worked` set (`live_turn.rs:399`),
-  and the `run_plan` driver's loop limits stand in until F1 folds hand-outs into that
-  loop, the ceiling the `braid:` note records at the release site. Also gone: the
-  `swarm:plan_version` debug read and the plan page's `done` segment, which nothing can
-  set once a closed row leaves the list. Two smaller signals moved with it: the
-  `run_plan` progress card has no completed count (its zero is marked in the code, and
-  the run's own record of the rows it closed is F1's to supply), and the
-  credential-failure wave guard now treats a worker that finished a turn as "the route
-  works" instead of a completed node, so it can fire while a long run is going well.
-- [x] **(decision)** `KCODE_SWARM_ID` goes with the stored swarm id (0.4g, 2026-10-02).
-  A swarm is a count, not a mode, so membership is derived from who holds rows under the
-  run's anchor. What is lost: two working directories can no longer declare one shared
-  swarm by environment variable; sharing a swarm becomes one anchor row two sessions
-  hold.
-  Refined when g4 landed: membership landed as the **spawn edge**
-  (`report_back_to_session_id`) rather than as row-holding. A worker holds no row
-  between `spawn` and its first assignment, so a row-derived answer has a hole exactly
-  there, and answering it per query is a file read per membership question, which is the
-  item cache g3 deleted under another name. Rows under the anchor stay what they already
-  were for the run: its scope (`swarm_rows`). So a session is in a run when its
-  report-back chain ends at that run's root, and that root is the coordinator.
-- [x] **(decision)** The spawn edge is the membership, and g4 landed (2026-10-02). The
-  swarm has one derivation (`swarm_root`) and `SwarmState` is `members` + `runs`. What is
-  lost, all named here: a session's `swarm_id`/`swarm_enabled`/`role` fields, the
-  coordinator map, `swarms_by_id`, the `KCODE_SWARM_ID`/`KCODE_SWARM_ENABLED` env vars
-  and the per-session toggle; and with them three behaviours. (1) A root that leaves no
-  longer elects a coordinator: its workers become roots of their own runs, and their
-  completion reports have nowhere to go, where before the elected coordinator received
-  them. (2) `/swarm on|off` is gone (`/swarm [status]` reports the subtree), because a
-  session is a worker when it holds and works a row, not a state to be in. (3)
-  `assign_role` is gone from the tool, the wire and both dispatch arms, since the role
-  is derived. Two surfaces moved with it: the spawn hook env `KCODE_SPAWN_SWARM_ID`
-  (`docs/user/hooks.md`), and the debug ops `swarm:id:` and `swarm:clear_coordinator`.
-  Two sessions in one working directory no longer message each other unless one spawned
-  the other.
-- [x] **(decision)** A claim is a lock for a run and not for the user's session, so the
-  verb family collapses (0.4g, 2026-10-02). A session with a client attached takes any
-  row by writing it, and the displaced holder finds out on its next write; a run refuses
-  only to work a row whose holder is not itself. What is lost: `start` and `resume` are
-  `assign_task`'s dispatch with a message prefix, `replace` is it with a default message,
-  `reassign` is it outright, and `salvage`'s prior tool-call summaries belong in the
-  row's `note`, so all five go, along with the seven `TaskControlAction` variants and
-  their status tables; a displaced holder is no longer told to stand down.
-  Landed as g5, with two refinements. The takeover is gated on `swarm_is_root` rather
-  than on "a session with a client": the run root is the 0.4b derivation, and a headless
-  root reaches only its own run's rows either way, so a client check would rule out
-  nothing and add a predicate. And `retry`/`wake` land as the assign request with a fixed
-  sentence, carrying a `redispatch` flag: the replay layer must not answer a deliberate
-  retry from the record of the last one, which is what the deleted retry pinned. Also
-  lost with the family: the status gate that refused a retry on a row that was not failed
-  (rule 9: the check is a rule, not a field), the busy-agent refusals that told the caller
-  to wake or stop instead, and the plan-summary tail on a task-control response. What
-  stays and now covers the same ground: the reclaim sweep for a dead holder, the picker's
-  hand-back to a holder that can still work, and the row's own `note`.
-- [ ] **(braid)** Releasing a dead holder's rows is written twice, at two clocks.
-  `next_dispatch` (`server/comm_control.rs`) releases a stranded row when a run wants
-  work, reading liveness as "dead status or no longer a member"; the periodic sweep
-  (`salvage_dead_assignees`, `server/swarm.rs`) does the same thing after a grace period
-  and also notifies the run's root. The sweep's own comment calls itself "the eager
-  counterpart to the assign-time stranded-row reclaim", so the codebase knows. The tool
-  action `salvage` was a third writer of the same fact; g5 deleted it. Unifying the two
-  changes *when* a row is reclaimed (grace or not, dispatch or clock), which is a liveness
-  boundary and not a verb one, so it is not g5's call. Split when a liveness change is in
-  scope: one predicate (`assignee_is_dead` with its grace) used by both callers.
 - [ ] Not every color derives from a role: `configured_native_color`
   (`kcode-tui-style/src/palette.rs`) attributes a shade to a role only when it
   equals that role's default, so hardcoded `Color::Rgb(...)` shades pass through

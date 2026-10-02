@@ -112,7 +112,11 @@ set). `cargo machete` was removed because it never ran here.
 - **Public behavior, commands, or config change**: update `docs/user/` and, if
   the mechanism changed, `docs/internals/`. Those docs describe the code as it
   is today; a doc that disagrees with the code is wrong.
-- **Introduced or removed a concept**: record it in `docs/todo.md`.
+- **Introduced a concept**: name it where it lives, in `docs/internals/` or
+  `docs/user/`.
+- **Removed a concept**: record the cut and what it cost in
+  `docs/what-was-removed.md`, in the same change that removes it. A loss in the order
+  of work is a loss nobody reads.
 
 ## Names
 

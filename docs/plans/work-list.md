@@ -30,8 +30,8 @@ written. Four rules, each one paid for by a failure this plan already had:
 - **A decision on a step's path is taken with that step.** A `(decide)` item is
   answered before the step starts, or the step is marked blocked on it.
 - **A loss is named, never silent.** Capability is fixed and only surface goes. A
-  step that drops power records it in `docs/todo.md` with why, the way the deleted
-  overnight preflight did.
+  step that drops power records it in `docs/what-was-removed.md` with why, the way the
+  deleted overnight preflight did.
 
 Zonytail's measure is the codebase after the step, not the diff: fields, `impl`
 blocks, wildcard re-exports and lines per file, ratcheted by
@@ -85,7 +85,7 @@ was spawned for. A long unattended run is therefore not a kind of run: it is thi
 permission held while a long list drains, and there is nothing else to build for it.
 (The overnight subsystem, which was a second run with its own crate, supervisor,
 durable store, UI and preflight, was deleted on that ground on 2026-10-01; its
-preflight is now a decision in `docs/todo.md`.)
+preflight is recorded in `docs/what-was-removed.md`.)
 
 A swarm member has no human, so the run supplies every turn. A session with a human
 never has turns taken from it: a turn that wants the agent owns it the moment the run
@@ -190,7 +190,7 @@ duplication they would have removed and nothing else.
 
 **Here is where the work stands**, and a step in flight is finished before a new one
 starts. 0.1, 0.2 and 0.3 have landed whole and are gone from this list; what 0.2 owed
-was 0.3's last stage, and the two losses 0.1 and 0.3 named are in `docs/todo.md`. 0.4's
+was 0.3's last stage, and the two losses 0.1 and 0.3 named are in `docs/what-was-removed.md`. 0.4's
 gate stage (0.4a), row stage (0.4c), one-mode stage (0.4b), node-meta stage (0.4d),
 liveness stage (0.4e) and 0.4f have landed: the plan's items are the file's open rows,
 the holder and the artifact live where the list is, and a turn end is a close. **0.4g's
@@ -208,12 +208,12 @@ recorded in `docs/todo.md`).
   report, liveness on the member's clock, and `VersionedPlan` becoming a view of the
   file (0.4f: the holder and the artifact live where the list is, a turn end is a
   close, and the engine carries no artifact), and 0.4g below. Losses are in
-  `docs/todo.md`.
+  `docs/what-was-removed.md`.
   - **0.4g. The swarm state gets one owner.** One step, five commits, one gate, decided
     2026-10-02. All four questions are answered: the plan object goes; per-row run state
     lives in memory on the runtime owner; a claim is a lock for a run and not for the
     user's session; the verb cut rides this step rather than a separate 0.4h. The losses
-    are in `docs/todo.md`. Measured before the stage: the `SwarmState { .. }` rebuild
+    are in `docs/what-was-removed.md`. Measured before the stage: the `SwarmState { .. }` rebuild
     sites were 26 (31 in the older note), `VersionedPlan` appeared in 48 files, and
     `swarm_persistence.rs` was 621 lines with 924 test lines. Measured after g3: 25
     rebuild sites, no `VersionedPlan` anywhere, 469 lines with 676 test lines, and
@@ -271,7 +271,7 @@ recorded in `docs/todo.md`).
        (wire variant, tool action, handler and both dispatch arms), the debug `swarm:id:` and
        `swarm:clear_coordinator` ops, and the hook env `KCODE_SPAWN_SWARM_ID`
        (`KCODE_SPAWN_COORDINATOR_SESSION_ID` stays; `docs/user/hooks.md` moved with it).
-       **A refinement of the decision**, recorded in `docs/todo.md`: the decision said
+       **A refinement of the decision**, recorded in `docs/what-was-removed.md`: the decision said
        membership derives from who holds rows under the anchor, and it landed as the spawn
        edge instead, because a worker holds no row between `spawn` and its first assignment
        and because a per-query row read is the item cache g3 deleted under another name.
@@ -293,7 +293,7 @@ recorded in `docs/todo.md`).
        (`active_assignment_conflict`/`active_assignment_error`), the five tool actions
        (`start`, `start_task`, `resume`, `reassign`, `replace`, `salvage`), the dead
        `requeue_failed` DAG op, and the TUI's action names for them.
-       Two refinements of the decision, both in `docs/todo.md`: the takeover is gated on
+       Two refinements of the decision, both in `docs/what-was-removed.md`: the takeover is gated on
        `swarm_is_root` (the 0.4b derivation) rather than on "a session with a client",
        since a headless root reaches only its own run's rows either way; and `retry`/`wake`
        are the assign request with a fixed sentence, carrying a `redispatch` flag so the
@@ -336,8 +336,9 @@ recorded in `docs/todo.md`).
 Last of the file work, whenever we want it.
 
 - [ ] **B2.** This repo's own list migrates: `docs/todo.md` becomes the first
-  content of `tasks.jsonl`, its standing decisions move to
-  `docs/what-was-removed.md`, and the twelve references follow.
+  content of `tasks.jsonl`, and the twelve references follow. Its landed records have
+  already moved, as they land, to `docs/what-was-removed.md`; what is left to migrate
+  is the open items.
 - [ ] **B3.** Drop `group`, `status` and `priority` from the type. The gate has
   already landed: `parent` is what `group` was grouping by, the close action is what
   makes a completed row unrepresentable rather than stored, and 0.3's "position is

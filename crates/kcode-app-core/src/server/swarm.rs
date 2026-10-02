@@ -568,6 +568,10 @@ pub(super) async fn salvage_dead_assignees(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
 ) {
+    // braid: the reclaim rule is written twice, here and in `next_dispatch`
+    // (`comm_control.rs`, the dispatch-time stranded row), and the two liveness
+    // predicates disagree: this one waits out the reload grace, that one does not.
+    // Unify into one `assignee_is_dead` when a liveness change is in scope.
     let salvage_grace = swarm_task_stale_after();
     let swarm_ids: Vec<String> = {
         let members = swarm_members.read().await;
