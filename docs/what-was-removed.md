@@ -200,6 +200,25 @@ row's artifact, because the list keeps no edge to a closed row, and the debug
 items. What is gained: a split row's join turn reads its children's artifacts, and a
 run's top row reads the run.
 
+**Effort is the session's level, and config carries none** (0.5, 2026-10-02). Four
+spellings of a level go, each a way to *say* it at a different scope while pretending
+to be the same thing: the swarm tool's `effort` argument with its wire fields and the
+three-step spawn precedence (an explicit value, then `agents.swarm_effort`, then the
+provider's own), the `agents.swarm_effort` pin with `KCODE_SWARM_EFFORT`,
+`provider.openai_reasoning_effort` and `provider.anthropic_reasoning_effort` with
+their env overrides, a named profile's per-model `reasoning_effort`, and
+`/account openai effort`. A spawned session inherits its creator's level instead, and
+the model table is the only place a provider's own default lives.
+
+What is lost: a machine-wide default for new sessions, since config pinned every
+session's level and `/effort` is per session; a coordinator's level per worker, per
+call; and a repo's ability to pin its workers at one level. What stays: `/effort`, the
+model picker's effort entries, ACP's `session/set_reasoning_effort`, and the effort
+keys, so a human still sets one level in one action and the session keeps it. Add a
+machine default back if it is wanted, as the non-interactive surface's own flag
+(`kcode run --effort`), which is the same concept as `/effort` rather than a sixth
+place to store one.
+
 ## Deliberately kept from upstream
 
 - `/account` and `/accounts` - the multi-account picker for Claude and OpenAI.
