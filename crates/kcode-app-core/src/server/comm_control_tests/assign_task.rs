@@ -31,7 +31,6 @@ async fn assign_task_without_task_id_picks_highest_priority_runnable_task() {
                 plan_item("low-ready", "queued", "low", &["done"]),
                 plan_item("high-ready", "queued", "high", &["done"]),
             ],
-            task_progress: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,
@@ -137,7 +136,6 @@ async fn assign_task_marks_completed_worker_queued_before_returning() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![plan_item("next", "queued", "high", &[])],
-            task_progress: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,
@@ -235,7 +233,6 @@ async fn a_dispatch_refuses_a_row_the_list_does_not_have() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![plan_item("ghost", "queued", "high", &[])],
-            task_progress: HashMap::new(),
         },
     )])));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
@@ -331,7 +328,6 @@ async fn a_dispatched_turn_closes_its_row() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![run_row, work_row],
-            task_progress: HashMap::new(),
         },
     )])));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(

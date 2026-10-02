@@ -224,7 +224,6 @@ pub(super) async fn maybe_handle_swarm_read_command(
                 "plan_definition": vp.plan_definition(),
                 "execution_state": vp.execution_state(),
                 "items": &vp.items,
-                "task_progress": &vp.task_progress,
                 "ready_ids": summary.ready_ids,
                 "blocked_ids": summary.blocked_ids,
                 "active_ids": summary.active_ids,
@@ -476,9 +475,8 @@ pub(super) async fn maybe_handle_swarm_read_command(
                 .get(swarm_id)
                 .map(|vp| {
                     serde_json::json!({
-                        "items": &vp.items,
-                        "task_progress": &vp.task_progress,
-                    })
+                    "items": &vp.items,
+                        })
                 })
                 .unwrap_or_else(|| {
                     serde_json::json!({

@@ -32,7 +32,6 @@ async fn task_control_wake_returns_structured_response_with_plan_summary() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![assigned, plan_item("next", "queued", "high", &[])],
-            task_progress: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,
@@ -124,7 +123,6 @@ async fn task_control_resume_without_task_id_uses_unique_target_assignment() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![assigned],
-            task_progress: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,
@@ -212,7 +210,6 @@ async fn task_control_without_task_id_rejects_ambiguous_target_assignments() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![first, second],
-            task_progress: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,
@@ -295,14 +292,10 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
     )])));
     let mut assigned = plan_item("busy-task", "running", "high", &[]);
     assigned.assigned_to = Some(worker.to_string());
-    let prior_progress = crate::server::SwarmTaskProgress {
-        dead_assignee_reclaims: Some(1),
-    };
     let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![assigned],
-            task_progress: HashMap::from([("busy-task".to_string(), prior_progress.clone())]),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,
@@ -361,11 +354,6 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
         item.status, "running",
         "rejected resume must not flip a live task back to queued"
     );
-    assert_eq!(
-        plan.task_progress.get("busy-task"),
-        Some(&prior_progress),
-        "rejected resume must not touch the task's progress record"
-    );
 }
 
 /// Regression: requeueing an existing assignment (resume of a running or stale
@@ -384,12 +372,6 @@ async fn requeue_existing_assignment_preserves_the_reclaim_count() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![assigned],
-            task_progress: HashMap::from([(
-                "requeue-me".to_string(),
-                crate::server::SwarmTaskProgress {
-                    dead_assignee_reclaims: Some(1),
-                },
-            )]),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,
@@ -415,15 +397,6 @@ async fn requeue_existing_assignment_preserves_the_reclaim_count() {
         .find(|item| item.id == "requeue-me")
         .expect("task exists");
     assert_eq!(item.status, "queued");
-    let progress = plan
-        .task_progress
-        .get("requeue-me")
-        .expect("progress exists");
-    assert_eq!(
-        progress.dead_assignee_reclaims,
-        Some(1),
-        "a requeue must not reset the reclaim count"
-    );
 }
 
 /// Regression: an identical coordinator retry issued shortly after a
@@ -466,7 +439,6 @@ async fn task_control_retry_re_dispatches_after_recent_identical_retry() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![assigned],
-            task_progress: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,

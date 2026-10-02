@@ -45,7 +45,6 @@ async fn assign_next_prefers_worker_with_matching_subsystem_metadata() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![prior, next],
-            task_progress: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,

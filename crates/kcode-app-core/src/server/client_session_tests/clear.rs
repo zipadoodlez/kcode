@@ -77,10 +77,7 @@ async fn handle_clear_session_replaces_runtime_handles_and_updates_shutdown_regi
     >::new()));
     let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
         "swarm-test".to_string(),
-        VersionedPlan {
-            items: Vec::new(),
-            task_progress: HashMap::new(),
-        },
+        VersionedPlan { items: Vec::new() },
     )])));
     let event_history = Arc::new(RwLock::new(VecDeque::<SwarmEvent>::new()));
     let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));

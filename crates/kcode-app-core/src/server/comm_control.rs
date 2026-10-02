@@ -484,8 +484,8 @@ enum Dispatch {
 /// auth-failure wave) the node sits `queued` + assigned-to-a-corpse, invisible to
 /// `next_handover_runnable_item_id`, and a still-running `run_plan` driver
 /// reports "No runnable unassigned tasks" forever. Reclaims are capped per-node by
-/// [`crate::plan::MAX_DEAD_ASSIGNEE_RECLAIMS`] to respect the repeat-failure
-/// policy: beyond the cap only explicit `retry`/`assign_task` move the node.
+/// Releasing the claim is the whole recovery; nothing counts attempts here, because
+/// the bound belongs to the loop that repeats the work.
 async fn next_dispatch(
     swarm_id: &str,
     req_session_id: &str,
@@ -556,7 +556,7 @@ async fn next_dispatch(
         }
     };
     plan.sync_rows(&[released]);
-    crate::plan::count_dead_assignee_reclaim(plan, &stranded_id);
+    // nothing counts attempts: the bound belongs to the loop that repeats the work.
     crate::logging::info(&format!(
         "swarm {}: reclaimed stranded task '{}' from dead assignee for re-dispatch",
         swarm_id, stranded_id

@@ -87,7 +87,6 @@ async fn double_assign_fixture(
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![contested],
-            task_progress: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,

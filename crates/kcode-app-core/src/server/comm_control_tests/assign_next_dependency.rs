@@ -40,7 +40,6 @@ async fn assign_next_prefers_worker_with_dependency_context() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![dependency, plan_item("next", "queued", "high", &["dep"])],
-            task_progress: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,

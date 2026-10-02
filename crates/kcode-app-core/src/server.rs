@@ -581,7 +581,7 @@ use self::state::{
     remove_session_interrupt_queue, rename_background_tool_signal, rename_session_interrupt_queue,
     session_event_fanout_sender, unregister_session_event_sender,
 };
-pub use crate::plan::{SwarmTaskProgress, VersionedPlan};
+pub use crate::plan::VersionedPlan;
 
 pub use self::await_members_state::pending_await_members_for_session;
 use self::reload_state::clear_reload_marker_if_stale_for_pid;

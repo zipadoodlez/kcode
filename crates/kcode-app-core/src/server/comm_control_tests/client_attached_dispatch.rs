@@ -69,7 +69,6 @@ async fn assign_task_to_client_attached_session_skips_server_side_run() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![plan_item("solo", "queued", "high", &[])],
-            task_progress: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,

@@ -129,7 +129,6 @@ async fn assign_task_reuses_an_idle_worker_that_still_holds_a_row() {
         swarm_id.to_string(),
         VersionedPlan {
             items: vec![in_flight, plan_item("next", "queued", "high", &[])],
-            task_progress: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,

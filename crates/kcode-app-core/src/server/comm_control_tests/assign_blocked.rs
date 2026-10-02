@@ -33,7 +33,6 @@ async fn assign_task_rejects_explicit_blocked_task() {
                 plan_item("setup", "completed", "high", &[]),
                 plan_item("blocked", "queued", "high", &["missing-prereq"]),
             ],
-            task_progress: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,

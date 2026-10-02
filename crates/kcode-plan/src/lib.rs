@@ -18,22 +18,6 @@ pub mod dag;
 /// tool, and the list file all read and write the same entries.
 pub use kcode_task_types::TaskItem;
 
-/// Runtime state associated with a swarm plan task.
-///
-/// One value: how many times this node's assignment was reclaimed because its
-/// assignee session was dead (failed/stopped/crashed or gone). It caps automatic
-/// re-dispatch so a node whose workers keep dying cannot spawn workers forever;
-/// past the cap, explicit `retry`/`assign_task` remain the recovery paths.
-///
-/// Nothing else belongs here. A claim is the row's `assigned_to`, and a claim is
-/// assumed to be worked while its holder is alive, so there is no per-task
-/// assignment time to keep.
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SwarmTaskProgress {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dead_assignee_reclaims: Option<u32>,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SwarmPlanItemSpec {
     pub id: String,
@@ -58,8 +42,6 @@ pub struct SwarmExecutionItemState {
     pub status: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assigned_to: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub progress: Option<SwarmTaskProgress>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -75,16 +57,11 @@ pub struct SwarmExecutionState {
 #[derive(Clone, Debug)]
 pub struct VersionedPlan {
     pub items: Vec<TaskItem>,
-    /// Durable runtime task progress keyed by plan item id.
-    pub task_progress: HashMap<String, SwarmTaskProgress>,
 }
 
 impl VersionedPlan {
     pub fn new() -> Self {
-        Self {
-            items: Vec::new(),
-            task_progress: HashMap::new(),
-        }
+        Self { items: Vec::new() }
     }
 
     /// Make the plan agree with rows the store just wrote: each row here becomes
@@ -110,14 +87,12 @@ impl VersionedPlan {
                 None => self.items.push(row.clone()),
             }
         }
-        self.prune_side_maps();
     }
 
     /// Drop one row's item, for a close: the row is gone from the list, so the plan
     /// stops holding it and the runtime state keyed by its id goes with it.
     pub fn drop_row(&mut self, id: &str) {
         self.items.retain(|item| item.id != id);
-        self.prune_side_maps();
     }
 
     /// Set the run's lifecycle status for one row; see [`Self::sync_rows`] for why
@@ -130,13 +105,6 @@ impl VersionedPlan {
         } else {
             false
         }
-    }
-
-    /// Remove task-scoped metadata that no longer belongs to a live plan item.
-    pub fn prune_side_maps(&mut self) {
-        let item_ids: HashSet<&str> = self.items.iter().map(|item| item.id.as_str()).collect();
-        self.task_progress
-            .retain(|task_id, _| item_ids.contains(task_id.as_str()));
     }
 
     /// Rewrite all durable references when a live client replaces its session
@@ -192,7 +160,6 @@ impl VersionedPlan {
                     task_id: item.id.clone(),
                     status: item.status.clone(),
                     assigned_to: item.assigned_to.clone(),
-                    progress: self.task_progress.get(&item.id).cloned(),
                 })
                 .collect(),
         }
@@ -597,19 +564,15 @@ pub fn next_held_runnable_item_id(
         })
 }
 
-/// Cap on automatic reclaims of a node stranded on a dead assignee. Past this,
-/// only explicit `retry`/`assign_task` can move the node, so a node whose
-/// workers keep dying cannot spawn replacements forever.
-pub const MAX_DEAD_ASSIGNEE_RECLAIMS: u32 = 3;
-
 /// The highest-priority runnable (ready) item that is *stranded*: it carries an
 /// assignment, but the assignee is dead per `assignee_is_dead` (terminal
 /// lifecycle status or no longer a swarm member). Such items are invisible to
 /// [`next_handover_runnable_item_id`] (which requires nobody else to hold it),
 /// which is how `task_control retry` against a dead worker used to strand a
 /// Ready node: retry keeps the assignee, the re-dispatch dies with the session,
-/// and automatic assignment skips the node forever. Items at or over
-/// [`MAX_DEAD_ASSIGNEE_RECLAIMS`] are excluded.
+/// and automatic assignment skips the node forever. A row that keeps killing its
+/// workers is not bounded here: releasing the claim is the whole recovery, and the
+/// loop that repeats the work owns the bound.
 pub fn next_stranded_runnable_item_id(
     plan: &VersionedPlan,
     assignee_is_dead: &dyn Fn(&str) -> bool,
@@ -623,29 +586,8 @@ pub fn next_stranded_runnable_item_id(
             let Some(assignee) = item.assigned_to.as_deref() else {
                 return false;
             };
-            if !assignee_is_dead(assignee) {
-                return false;
-            }
-            plan.task_progress
-                .get(candidate_id)
-                .and_then(|progress| progress.dead_assignee_reclaims)
-                .unwrap_or(0)
-                < MAX_DEAD_ASSIGNEE_RECLAIMS
+            assignee_is_dead(assignee)
         })
-}
-
-/// Clear a stranded assignment so the node becomes eligible for normal
-/// automatic dispatch again, bumping the per-node reclaim counter and the plan
-/// version. The binding is released and nothing else about the row changes.
-/// Returns `false` when the item is missing or not actually assigned.
-/// Count one automatic reclaim of a row stranded on a holder that can never come
-/// back, so a repeatedly lethal row fails loudly instead of cycling workers
-/// forever. The claim itself is released where the list is (`claim`/`release` in
-/// `kcode_base::todo`) and the plan's copy follows the row, so this writes no row
-/// field: it is the cap's bookkeeping.
-pub fn count_dead_assignee_reclaim(plan: &mut VersionedPlan, task_id: &str) {
-    let progress = plan.task_progress.entry(task_id.to_string()).or_default();
-    progress.dead_assignee_reclaims = Some(progress.dead_assignee_reclaims.unwrap_or(0) + 1);
 }
 
 pub fn task_control_target_item_id(
@@ -1089,19 +1031,10 @@ mod tests {
             ..VersionedPlan::new()
         };
         assert_eq!(next_stranded_runnable_item_id(&blocked_plan, &dead), None);
-
-        // At the reclaim cap: excluded, so repeat failures cannot loop forever.
-        plan.task_progress.insert(
-            "a".to_string(),
-            SwarmTaskProgress {
-                dead_assignee_reclaims: Some(MAX_DEAD_ASSIGNEE_RECLAIMS),
-            },
-        );
-        assert_eq!(next_stranded_runnable_item_id(&plan, &dead), None);
     }
 
     #[test]
-    fn a_dead_assignee_reclaim_counts_and_the_row_carries_the_release() {
+    fn a_dead_assignee_release_arrives_with_the_row() {
         let mut plan = VersionedPlan {
             items: vec![{
                 let mut stranded = item("a", "queued", &[]);
@@ -1110,13 +1043,6 @@ mod tests {
             }],
             ..VersionedPlan::new()
         };
-
-        count_dead_assignee_reclaim(&mut plan, "a");
-
-        assert_eq!(
-            plan.task_progress.get("a").unwrap().dead_assignee_reclaims,
-            Some(1)
-        );
 
         // The claim lives on the row, so the release arrives with the row the store
         // wrote; the plan's copy follows it and nothing else about the row moves.
@@ -1130,13 +1056,6 @@ mod tests {
             next_handover_runnable_item_id(&plan, "someone-else"),
             Some("a".to_string()),
             "and a released row is visible to the hand-over picker"
-        );
-
-        count_dead_assignee_reclaim(&mut plan, "a");
-        assert_eq!(
-            plan.task_progress.get("a").unwrap().dead_assignee_reclaims,
-            Some(2),
-            "the cap counts every reclaim"
         );
     }
 

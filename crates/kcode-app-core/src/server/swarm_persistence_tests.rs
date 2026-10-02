@@ -174,7 +174,6 @@ fn a_loaded_swarm_seats_the_rows_its_members_hold() {
         vec![("mine", "queued")],
         "the rows the swarm holds, queued again"
     );
-    assert!(plan.task_progress.is_empty(), "run state starts fresh");
 }
 
 #[test]

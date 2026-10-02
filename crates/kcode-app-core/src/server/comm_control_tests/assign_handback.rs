@@ -78,7 +78,6 @@ async fn handback_fixture(rows: Vec<TaskItem>) -> HandbackFixture {
             swarm_id.to_string(),
             VersionedPlan {
                 items: rows,
-                task_progress: HashMap::new(),
             },
         )]))),
         swarm_coordinators: Arc::new(RwLock::new(HashMap::from([(

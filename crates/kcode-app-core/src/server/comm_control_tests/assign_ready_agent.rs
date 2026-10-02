@@ -47,7 +47,6 @@ async fn assign_task_without_target_picks_ready_agent() {
                 plan_item("setup", "completed", "high", &[]),
                 plan_item("next", "queued", "high", &["setup"]),
             ],
-            task_progress: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,
