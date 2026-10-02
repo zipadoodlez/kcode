@@ -346,7 +346,14 @@ sent `low`. Losses: `docs/what-was-removed.md`.
   registry, suggestion, help and status-notice entries (`commands.rs`,
   `commands_dispatch.rs`, `state_ui_input_helpers.rs`, `input_help.rs`,
   `ui_overlays.rs`, the remote key-handling call site), the goal-panel tests, and the
-  README row. The loss is recorded in `docs/what-was-removed.md`.
+  README row. The loss is recorded in `docs/what-was-removed.md`. Gate: the build and
+  clippy `--all-targets --all-features -- -D warnings` on `kcode-task-types`,
+  `kcode-base` and `kcode-tui`, `check_guardrails.sh` green, `kcode-tui` serial 1760
+  passed with its one known red
+  (`test_remote_fallback_provider_suggestions_normalize_bare_openai_openrouter_routes`),
+  `kcode-base` green, and `scripts/test.sh full` green bar the three `session_flow` e2e
+  reds `plans/test-tree.md` records. Two `kcode-tui` tests that only used the removed
+  command as their input were repointed at commands the tree still has, not dropped.
 - [ ] **A3. The mission store goes.** `mission::set`, `checkpoint`, `clear`,
   `update_status`, `render_status` and `render_mission_continuation_prompt` have zero
   callers, `/mission` and `/goal` are refused (`commands.rs:1798`, "disabled in this
