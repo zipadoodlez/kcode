@@ -472,13 +472,20 @@ async fn next_dispatch(
     // Snapshot member liveness first so the plans locks are not held across the
     // members read lock (avoids lock-order inversions with paths that lock
     // members before plans).
-    let member_statuses: HashMap<String, SwarmLifecycleStatus> = {
+    let (member_statuses, working_dir): (
+        HashMap<String, SwarmLifecycleStatus>,
+        Option<std::path::PathBuf>,
+    ) = {
         let members = swarm_members.read().await;
-        members
+        let statuses = members
             .values()
             .filter(|member| member.swarm_id.as_deref() == Some(swarm_id))
             .map(|member| (member.session_id.clone(), member.status.clone()))
-            .collect()
+            .collect();
+        let working_dir = members
+            .get(req_session_id)
+            .and_then(|member| member.working_dir.clone());
+        (statuses, working_dir)
     };
     let holder_can_work =
         |session_id: &str| member_statuses.get(session_id).is_some_and(member_is_idle);
@@ -503,6 +510,17 @@ async fn next_dispatch(
     let mut plans = swarm_plans.write().await;
     let plan = plans.get_mut(swarm_id)?;
     let stranded_id = crate::plan::next_stranded_runnable_item_id(plan, &assignee_is_dead)?;
+    // The claim is released where the list is before the plan follows: the holder
+    // is a fact about the list, so a row whose holder can never come back goes
+    // back to the file unclaimed and the next dispatch can seat it.
+    if let Err(error) =
+        crate::todo::release_row_on_disk(working_dir.as_deref(), req_session_id, &stranded_id)
+    {
+        crate::logging::warn(&format!(
+            "swarm {swarm_id}: could not release stranded task '{stranded_id}' in the list: {error}"
+        ));
+        return None;
+    }
     if crate::plan::reclaim_stranded_assignment(plan, &stranded_id) {
         crate::logging::info(&format!(
             "swarm {}: reclaimed stranded task '{}' from dead assignee for re-dispatch",
@@ -1203,6 +1221,14 @@ async fn handle_comm_assign_task_with_mode(
         }
     };
 
+    // The list a dispatch writes lives in the run's repo, the same root a seed
+    // reads, and the acting session's member record names it.
+    let working_dir = swarm_members
+        .read()
+        .await
+        .get(&req_session_id)
+        .and_then(|member| member.working_dir.clone());
+
     let (selected_task_id, task_content, participant_ids, plan_item_count, blocked_reason) = {
         let mut plans = swarm_plans.write().await;
         let plan = plans
@@ -1237,6 +1263,21 @@ async fn handle_comm_assign_task_with_mode(
                 .as_deref()
                 .and_then(|task_id| explicit_task_blocked_reason(plan, task_id))
         });
+        // The holder is a fact about the list (rule 2), so the claim is written
+        // where the list is, before the plan records it: a failed write fails the
+        // dispatch instead of leaving the plan holding a row the list does not.
+        // This is the shape the expand path already has.
+        let blocked_reason = match (&blocked_reason, selected_task_id.as_deref()) {
+            (None, Some(task_id)) => crate::todo::claim_row_on_disk(
+                working_dir.as_deref(),
+                &req_session_id,
+                task_id,
+                &target_session,
+            )
+            .err()
+            .map(|error| format!("Task '{task_id}' could not be claimed in the list: {error}")),
+            _ => blocked_reason,
+        };
         let found_idx = if blocked_reason.is_some() {
             None
         } else {

@@ -333,10 +333,14 @@ and the one build + test pass lands at the end of 0.4f.
          bridge does. It goes, with the simulator's use of it, and the engine keeps
          ownership, status and edges.
       Then the single build + full test pass for 0.4f.
-      What the decided moves change: a dispatch now writes the list file, so a failed
-      write is a failed dispatch (the close path already logs and carries on, and this
-      takes the same shape), a reload recovers holders from the file instead of the
-      snapshot, and a hand edit of a holder becomes an input rather than a conflict.
+      What the decided moves change: a dispatch now writes the list file first and the
+      plan follows it, so a failed write is a failed dispatch and nothing records an
+      assignment the list does not have. The store goes first where the write is the
+      fact that makes the operation true (assign, expand, reclaim); where the plan's
+      decision is the fact and the file write is its mirror (close, salvage), the plan
+      goes first and a failed mirror is logged. A reload then recovers holders from the
+      file instead of the snapshot, and a hand edit of a holder becomes an input rather
+      than a conflict.
       Losses to name: a leaf whose dependency closed before a reload no longer gets
       that dependency's context, because the file keeps no edge to a closed row; the
       sibling widening above, where a row's context becomes the closed work under its

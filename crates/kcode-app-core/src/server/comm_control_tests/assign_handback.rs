@@ -9,6 +9,8 @@
 // Included into the `comm_control::tests` module.
 
 struct HandbackFixture {
+    /// The repo the rows live in, kept alive for the test's lifetime.
+    _repo: tempfile::TempDir,
     swarm_id: &'static str,
     coord: &'static str,
     holder: &'static str,
@@ -37,6 +39,7 @@ async fn handback_fixture(rows: Vec<TaskItem>) -> HandbackFixture {
     let holder = "worker-holder";
     let other = "worker-other";
     let (client_tx, client_rx) = mpsc::unbounded_channel();
+    let repo = scratch_repo();
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
         (coord.to_string(), {
             let mut member = member(coord, swarm_id, "ready");
@@ -52,7 +55,11 @@ async fn handback_fixture(rows: Vec<TaskItem>) -> HandbackFixture {
             owned_member(other, swarm_id, "ready", coord),
         ),
     ])));
+    // The plan needs rows behind it: the file is what a dispatch writes to.
+    write_list(repo.path(), coord, &rows);
+    set_repo(&swarm_members, repo.path()).await;
     HandbackFixture {
+        _repo: repo,
         swarm_id,
         coord,
         holder,
@@ -95,16 +102,17 @@ async fn handback_fixture(rows: Vec<TaskItem>) -> HandbackFixture {
     }
 }
 
-/// Ask for the next row with the fresh-agent preference ON, which is what
-/// `run_plan` uses by default. A held row must still go to its holder.
-async fn assign_next_preferring_spawn(fx: &HandbackFixture) {
+/// Ask for the next row. `prefer_spawn` is what `run_plan` turns on by default; a
+/// held row must go to its holder even then, and a run with no free worker and no
+/// spawning gets an error instead of a dispatch.
+async fn assign_next(fx: &HandbackFixture, prefer_spawn: bool) {
     handle_comm_assign_next(
         102,
         fx.coord.to_string(),
         None,
         None,
-        Some(true),
-        Some(true),
+        Some(prefer_spawn),
+        Some(prefer_spawn),
         None,
         None,
         None,
@@ -134,7 +142,7 @@ async fn a_ready_row_held_by_a_free_holder_goes_back_to_it() {
     held.assigned_to = Some("worker-holder".to_string());
     let mut fx = handback_fixture(vec![held]).await;
 
-    assign_next_preferring_spawn(&fx).await;
+    assign_next(&fx, true).await;
 
     match fx.client_rx.recv().await.expect("response") {
         ServerEvent::CommAssignTaskResponse {
@@ -156,7 +164,7 @@ async fn a_held_row_is_not_granted_to_a_free_worker() {
     held.assigned_to = Some("worker-holder".to_string());
     let fx = handback_fixture(vec![held]).await;
 
-    assign_next_preferring_spawn(&fx).await;
+    assign_next(&fx, true).await;
 
     let plans = fx.swarm_plans.read().await;
     let row = plans[fx.swarm_id]
@@ -181,7 +189,7 @@ async fn a_held_row_whose_holder_is_working_is_left_alone() {
         members.get_mut(fx.holder).unwrap().status = SwarmLifecycleStatus::Running;
     }
 
-    assign_next_preferring_spawn(&fx).await;
+    assign_next(&fx, true).await;
 
     match fx.client_rx.recv().await.expect("response") {
         ServerEvent::Error { message, .. } => {
@@ -204,7 +212,7 @@ async fn the_asking_sessions_own_held_row_is_not_handed_back_to_it() {
     own.assigned_to = Some("coord".to_string());
     let mut fx = handback_fixture(vec![own]).await;
 
-    assign_next_preferring_spawn(&fx).await;
+    assign_next(&fx, true).await;
 
     match fx.client_rx.recv().await.expect("response") {
         ServerEvent::Error { message, .. } => {
@@ -215,4 +223,42 @@ async fn the_asking_sessions_own_held_row_is_not_handed_back_to_it() {
         }
         other => panic!("expected no self hand-back, got {other:?}"),
     }
+}
+
+/// A row whose holder can never come back is released where the list is, before the
+/// plan follows it: the dead holder stops being named in the file, so a later
+/// dispatch can seat the row.
+#[tokio::test]
+async fn a_stranded_row_is_released_in_the_list_when_it_is_reclaimed() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let mut held = plan_item("held", "queued", "high", &[]);
+    held.assigned_to = Some("worker-holder".to_string());
+    let mut fx = handback_fixture(vec![held]).await;
+    {
+        let mut members = fx.swarm_members.write().await;
+        members.get_mut(fx.holder).unwrap().status = SwarmLifecycleStatus::Failed;
+        members.get_mut(fx.other).unwrap().status = SwarmLifecycleStatus::Failed;
+    }
+
+    assign_next(&fx, false).await;
+
+    let plans = fx.swarm_plans.read().await;
+    let row = plans[fx.swarm_id]
+        .items
+        .iter()
+        .find(|item| item.id == "held")
+        .expect("the row");
+    assert_eq!(row.assigned_to, None, "the claim is cleared");
+    assert_eq!(row.status, "queued", "and the row is work again");
+    drop(plans);
+
+    let rows = crate::todo::load_tasks(Some(fx._repo.path()), fx.coord).expect("read the list");
+    assert_eq!(
+        rows.iter()
+            .find(|row| row.id == "held")
+            .expect("the row")
+            .assigned_to,
+        None,
+        "the file stops naming a holder that can never come back"
+    );
 }

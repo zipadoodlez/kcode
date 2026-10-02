@@ -1,6 +1,7 @@
 #[tokio::test]
 async fn assign_next_prefers_worker_with_matching_subsystem_metadata() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
+    let repo = scratch_repo();
     let swarm_id = "swarm-metadata-score";
     let requester = "coord";
     let metadata_worker = "worker-metadata";
@@ -24,6 +25,7 @@ async fn assign_next_prefers_worker_with_matching_subsystem_metadata() {
             owned_member(other_worker, swarm_id, "ready", requester),
         ),
     ])));
+    set_repo(&swarm_members, repo.path()).await;
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         HashSet::from([
@@ -53,6 +55,9 @@ async fn assign_next_prefers_worker_with_matching_subsystem_metadata() {
             node_meta: HashMap::new(),
         },
     )])));
+    // The plan needs rows behind it: the file is what a dispatch writes to,
+    // and the repo root is that file's home.
+    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),

@@ -366,6 +366,29 @@ pub(super) async fn salvage_assignments_of_dead_member(
         return outcome;
     }
 
+    // The plan's salvage decision stands, and the list follows it: the dead holder
+    // does not owe these rows anymore, so the file stops naming it. The rows live
+    // where that session lived, and a failed write is logged because the plan
+    // change is the one that decides the work.
+    let working_dir = swarm_members
+        .read()
+        .await
+        .get(session_id)
+        .and_then(|member| member.working_dir.clone());
+    for task_id in outcome
+        .requeued_task_ids
+        .iter()
+        .chain(outcome.failed_task_ids.iter())
+    {
+        if let Err(error) =
+            crate::todo::release_row_on_disk(working_dir.as_deref(), session_id, task_id)
+        {
+            crate::logging::warn(&format!(
+                "swarm {swarm_id}: salvaged task '{task_id}' in the plan but not in the list: {error}"
+            ));
+        }
+    }
+
     log_swarm_lifecycle(
         "dead_member_tasks_salvaged",
         vec![

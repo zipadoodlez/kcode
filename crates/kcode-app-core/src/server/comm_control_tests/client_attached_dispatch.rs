@@ -15,6 +15,7 @@
 #[tokio::test]
 async fn assign_task_to_client_attached_session_skips_server_side_run() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
+    let repo = scratch_repo();
     let swarm_id = "swarm-client-attached";
     let requester = "coord";
     let worker = "worker-attached";
@@ -59,6 +60,7 @@ async fn assign_task_to_client_attached_session_skips_server_side_run() {
             owned_member(worker, swarm_id, "ready", requester),
         ),
     ])));
+    set_repo(&swarm_members, repo.path()).await;
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         HashSet::from([requester.to_string(), worker.to_string()]),
@@ -73,6 +75,9 @@ async fn assign_task_to_client_attached_session_skips_server_side_run() {
             node_meta: HashMap::new(),
         },
     )])));
+    // The plan needs rows behind it: the file is what a dispatch writes to,
+    // and the repo root is that file's home.
+    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),

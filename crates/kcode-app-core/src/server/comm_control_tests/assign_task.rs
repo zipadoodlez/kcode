@@ -1,6 +1,7 @@
 #[tokio::test]
 async fn assign_task_without_task_id_picks_highest_priority_runnable_task() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
+    let repo = scratch_repo();
     let swarm_id = "swarm-assign";
     let requester = "coord";
     let worker = "worker";
@@ -16,6 +17,7 @@ async fn assign_task_without_task_id_picks_highest_priority_runnable_task() {
         }),
         (worker.to_string(), member(worker, swarm_id, "ready")),
     ])));
+    set_repo(&swarm_members, repo.path()).await;
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         HashSet::from([requester.to_string(), worker.to_string()]),
@@ -35,6 +37,9 @@ async fn assign_task_without_task_id_picks_highest_priority_runnable_task() {
             node_meta: HashMap::new(),
         },
     )])));
+    // The plan needs rows behind it: the file is what a dispatch writes to,
+    // and the repo root is that file's home.
+    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -110,6 +115,7 @@ async fn assign_task_without_task_id_picks_highest_priority_runnable_task() {
 #[tokio::test]
 async fn assign_task_marks_completed_worker_queued_before_returning() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
+    let repo = scratch_repo();
     let swarm_id = "swarm-assign-completed-worker";
     let requester = "coord";
     let worker = "worker-completed";
@@ -125,6 +131,7 @@ async fn assign_task_marks_completed_worker_queued_before_returning() {
         }),
         (worker.to_string(), member(worker, swarm_id, "completed")),
     ])));
+    set_repo(&swarm_members, repo.path()).await;
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         HashSet::from([requester.to_string(), worker.to_string()]),
@@ -139,6 +146,9 @@ async fn assign_task_marks_completed_worker_queued_before_returning() {
             node_meta: HashMap::new(),
         },
     )])));
+    // The plan needs rows behind it: the file is what a dispatch writes to,
+    // and the repo root is that file's home.
+    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -191,5 +201,92 @@ async fn assign_task_marks_completed_worker_queued_before_returning() {
             .as_deref()
             .is_some_and(|detail| detail.contains("task next")),
         "queued member should include the assigned task in its detail"
+    );
+}
+
+/// A dispatch writes the holder where the list is, so a row the list does not have
+/// is refused instead of dispatched: a plan item with no row is the plan holding
+/// state the list does not, which is the shape this stage removes. Until the plan
+/// is a view of the rows, this is the guard that catches the two disagreeing.
+#[tokio::test]
+async fn a_dispatch_refuses_a_row_the_list_does_not_have() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let repo = scratch_repo();
+    let swarm_id = "swarm-ghost-row";
+    let requester = "coord";
+    let worker = "worker";
+    let (client_tx, mut client_rx) = mpsc::unbounded_channel();
+    let sessions = Arc::new(RwLock::new(HashMap::new()));
+    let soft_interrupt_queues = Arc::new(RwLock::new(HashMap::new()));
+    let client_connections = Arc::new(RwLock::new(HashMap::new()));
+    let swarm_members = Arc::new(RwLock::new(HashMap::from([
+        (requester.to_string(), {
+            let mut member = member(requester, swarm_id, "ready");
+            member.role = "coordinator".to_string();
+            member
+        }),
+        (
+            worker.to_string(),
+            owned_member(worker, swarm_id, "ready", requester),
+        ),
+    ])));
+    set_repo(&swarm_members, repo.path()).await;
+    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.to_string(),
+        HashSet::from([requester.to_string(), worker.to_string()]),
+    )])));
+    // Written empty on purpose: the plan below names a row no list has.
+    write_list(repo.path(), requester, &[]);
+    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.to_string(),
+        VersionedPlan {
+            items: vec![plan_item("ghost", "queued", "high", &[])],
+            version: 1,
+            participants: HashSet::from([requester.to_string(), worker.to_string()]),
+            task_progress: HashMap::new(),
+            node_meta: HashMap::new(),
+        },
+    )])));
+    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.to_string(),
+        requester.to_string(),
+    )])));
+    let event_history = Arc::new(RwLock::new(VecDeque::new()));
+    let event_counter = Arc::new(AtomicU64::new(1));
+    let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
+    let mutation_runtime = SwarmMutationRuntime::default();
+
+    handle_comm_assign_task(
+        79,
+        requester.to_string(),
+        Some(worker.to_string()),
+        Some("ghost".to_string()),
+        None,
+        &client_tx,
+        &sessions,
+        &soft_interrupt_queues,
+        &client_connections,
+        &swarm_members,
+        &swarms_by_id,
+        &swarm_plans,
+        &swarm_coordinators,
+        &event_history,
+        &event_counter,
+        &swarm_event_tx,
+        &mutation_runtime,
+    )
+    .await;
+
+    match client_rx.recv().await.expect("response") {
+        ServerEvent::Error { message, .. } => assert!(
+            message.contains("could not be claimed in the list"),
+            "expected the claim to be refused, got: {message}"
+        ),
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+    let plans = swarm_plans.read().await;
+    assert!(
+        plans[swarm_id].items[0].assigned_to.is_none(),
+        "a refused claim must leave the plan as it was"
     );
 }

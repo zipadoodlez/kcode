@@ -1,6 +1,7 @@
 #[tokio::test]
 async fn assign_task_without_target_picks_ready_agent() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
+    let repo = scratch_repo();
     let swarm_id = "swarm-auto-target";
     let requester = "coord";
     let ready_worker = "worker-ready";
@@ -29,6 +30,7 @@ async fn assign_task_without_target_picks_ready_agent() {
             owned_member(running_worker, swarm_id, "running", requester),
         ),
     ])));
+    set_repo(&swarm_members, repo.path()).await;
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         HashSet::from([
@@ -56,6 +58,9 @@ async fn assign_task_without_target_picks_ready_agent() {
             node_meta: HashMap::new(),
         },
     )])));
+    // The plan needs rows behind it: the file is what a dispatch writes to,
+    // and the repo root is that file's home.
+    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -98,4 +103,10 @@ async fn assign_task_without_target_picks_ready_agent() {
         }
         other => panic!("expected CommAssignTaskResponse, got {other:?}"),
     }
+
+    // The holder is a fact about the list, so the row the dispatch handed out
+    // names the worker it handed it to.
+    let rows = crate::todo::load_tasks(Some(repo.path()), requester).expect("read the list");
+    let handed = rows.iter().find(|row| row.id == "next").expect("the row");
+    assert_eq!(handed.assigned_to.as_deref(), Some(ready_worker));
 }

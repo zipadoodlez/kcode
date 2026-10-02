@@ -311,6 +311,47 @@ pub fn close_row_on_disk(
     save_tasks(working_dir, session_id, &rows)
 }
 
+/// Claim one open row for `holder` in the file. The holder is a fact about the
+/// list, so it is written where the list is (rule 2): the row itself names who
+/// owes it, and a re-read after a restart finds it there.
+///
+/// The read-modify-write is the shape [`close_row_on_disk`] already has, so a hand
+/// edit between the read and the write is an input rather than a conflict. The row
+/// must be open: a claim on a row that is not in the list is refused, because a
+/// holder with no row is the plan holding state the list does not have.
+pub fn claim_row_on_disk(
+    working_dir: Option<&Path>,
+    session_id: &str,
+    id: &str,
+    holder: &str,
+) -> Result<()> {
+    set_row_holder_on_disk(working_dir, session_id, id, Some(holder))
+}
+
+/// Release one open row's claim in the file, the counterpart of
+/// [`claim_row_on_disk`]: a row whose holder can never come back goes back to the
+/// list unclaimed so the next dispatch can seat it. This is what the stranded
+/// reclaim and the salvage sweep write; a holder that is merely between turns is
+/// left alone, because it still owes the row.
+pub fn release_row_on_disk(working_dir: Option<&Path>, session_id: &str, id: &str) -> Result<()> {
+    set_row_holder_on_disk(working_dir, session_id, id, None)
+}
+
+fn set_row_holder_on_disk(
+    working_dir: Option<&Path>,
+    session_id: &str,
+    id: &str,
+    holder: Option<&str>,
+) -> Result<()> {
+    let mut rows = load_tasks(working_dir, session_id)?;
+    let index = rows
+        .iter()
+        .position(|row| row.id == id)
+        .ok_or_else(|| anyhow::anyhow!("no task {id:?}; open ids: {}", open_ids(&rows)))?;
+    rows[index].assigned_to = holder.map(str::to_string);
+    save_tasks(working_dir, session_id, &rows)
+}
+
 /// Decompose one row into child rows, in the file. A decomposition is rows: each
 /// child is added with `parent = id`, the row gains a blocker on every child so it
 /// is not picked while they are open, and the file is written back. The store owns
@@ -350,9 +391,10 @@ pub fn expand_row_on_disk(
         added.push(rows.last().cloned().expect("add_row just pushed it"));
     }
     if let Some(row) = rows.iter_mut().find(|row| row.id == id) {
-        // The row is a join now: it is no longer held while its children run, and
-        // the run picks it again once the last one closes.
-        row.assigned_to = None;
+        // The row is a join now, and it keeps its holder: the one that decomposed
+        // it is the one that integrates the children, so the row stays claimed
+        // while they run and is handed back to the same session when the last one
+        // closes (see the plan's s11).
         for child_id in child_ids {
             if !row.blocked_by.contains(&child_id) {
                 row.blocked_by.push(child_id);
@@ -403,6 +445,24 @@ fn write_json_lines<T: Serialize>(tasks: &[T]) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A repo of its own, so the list a test writes is its own and never the
+    /// machine's (rule 1), keyed by name so two tests never share one.
+    fn scratch_repo(name: &str) -> PathBuf {
+        let repo = std::env::temp_dir().join(format!("kcode-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&repo);
+        std::fs::create_dir_all(&repo).expect("scratch repo");
+        assert!(
+            std::process::Command::new("git")
+                .args(["init", "-q"])
+                .current_dir(&repo)
+                .status()
+                .expect("git init")
+                .success(),
+            "git init"
+        );
+        repo
+    }
 
     #[test]
     fn a_list_round_trips_through_json_lines() {
@@ -457,18 +517,7 @@ mod tests {
     /// anchor, so every run has one row at its top for its records.
     #[test]
     fn a_grant_resolves_its_anchor_from_its_words() {
-        let repo = std::env::temp_dir().join(format!("kcode-anchor-run-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&repo);
-        std::fs::create_dir_all(&repo).expect("scratch repo");
-        assert!(
-            std::process::Command::new("git")
-                .args(["init", "-q"])
-                .current_dir(&repo)
-                .status()
-                .expect("git init")
-                .success(),
-            "git init"
-        );
+        let repo = scratch_repo("anchor-run");
         save_tasks(
             Some(&repo),
             "me",
@@ -519,18 +568,7 @@ mod tests {
     /// that already belongs to something keeps it, and a second call writes nothing.
     #[test]
     fn a_run_that_typed_nothing_anchors_on_its_first_root_row() {
-        let repo = std::env::temp_dir().join(format!("kcode-anchor-rows-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&repo);
-        std::fs::create_dir_all(&repo).expect("scratch repo");
-        assert!(
-            std::process::Command::new("git")
-                .args(["init", "-q"])
-                .current_dir(&repo)
-                .status()
-                .expect("git init")
-                .success(),
-            "git init"
-        );
+        let repo = scratch_repo("anchor-rows");
         let mine = |id: &str| TaskItem {
             id: id.to_string(),
             content: format!("row {id}"),
@@ -582,18 +620,7 @@ mod tests {
     /// already have a row that owns them, and nothing may be written.
     #[test]
     fn rows_that_all_belong_to_something_need_no_anchor() {
-        let repo = std::env::temp_dir().join(format!("kcode-anchor-none-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&repo);
-        std::fs::create_dir_all(&repo).expect("scratch repo");
-        assert!(
-            std::process::Command::new("git")
-                .args(["init", "-q"])
-                .current_dir(&repo)
-                .status()
-                .expect("git init")
-                .success(),
-            "git init"
-        );
+        let repo = scratch_repo("anchor-none");
         let mut child = TaskItem {
             id: "t1".to_string(),
             content: "row t1".to_string(),
@@ -610,6 +637,45 @@ mod tests {
                 .as_deref(),
             Some("someone-elses-anchor"),
             "the file is left as it was"
+        );
+
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    /// The holder is a fact about the list, so a claim writes it on the row and a
+    /// release takes it back. Everything else about the row is left as it was, and a
+    /// claim on a row the list does not have is refused rather than invented: a
+    /// holder with no row is the plan holding state the list does not have.
+    #[test]
+    fn a_claim_and_a_release_move_the_holder_on_the_row() {
+        let repo = scratch_repo("row-holder");
+        let row = TaskItem {
+            id: "t1".to_string(),
+            content: "work".to_string(),
+            note: Some("kept".to_string()),
+            ..Default::default()
+        };
+        save_tasks(Some(&repo), "me", &[row]).expect("write the work list");
+
+        claim_row_on_disk(Some(&repo), "me", "t1", "worker").expect("claim");
+        let claimed = load_tasks(Some(&repo), "me").expect("read");
+        assert_eq!(claimed[0].assigned_to.as_deref(), Some("worker"));
+        assert_eq!(
+            claimed[0].note.as_deref(),
+            Some("kept"),
+            "a claim moves the holder and nothing else"
+        );
+
+        release_row_on_disk(Some(&repo), "me", "t1").expect("release");
+        assert_eq!(
+            load_tasks(Some(&repo), "me").expect("read")[0].assigned_to,
+            None
+        );
+
+        let err = claim_row_on_disk(Some(&repo), "me", "gone", "worker").unwrap_err();
+        assert!(
+            err.to_string().contains("no task \"gone\""),
+            "unexpected error: {err}"
         );
 
         let _ = std::fs::remove_dir_all(&repo);

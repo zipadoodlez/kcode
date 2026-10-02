@@ -1,6 +1,7 @@
 #[tokio::test]
 async fn task_control_wake_returns_structured_response_with_plan_summary() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
+    let repo = scratch_repo();
     let swarm_id = "swarm-task-control";
     let requester = "coord";
     let worker = "worker";
@@ -20,6 +21,7 @@ async fn task_control_wake_returns_structured_response_with_plan_summary() {
         }),
         (worker.to_string(), member(worker, swarm_id, "ready")),
     ])));
+    set_repo(&swarm_members, repo.path()).await;
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         HashSet::from([requester.to_string(), worker.to_string()]),
@@ -36,6 +38,9 @@ async fn task_control_wake_returns_structured_response_with_plan_summary() {
             node_meta: HashMap::new(),
         },
     )])));
+    // The plan needs rows behind it: the file is what a dispatch writes to,
+    // and the repo root is that file's home.
+    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -91,6 +96,7 @@ async fn task_control_wake_returns_structured_response_with_plan_summary() {
 #[tokio::test]
 async fn task_control_resume_without_task_id_uses_unique_target_assignment() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
+    let repo = scratch_repo();
     let swarm_id = "swarm-task-control-target";
     let requester = "coord";
     let worker = "worker";
@@ -110,6 +116,7 @@ async fn task_control_resume_without_task_id_uses_unique_target_assignment() {
         }),
         (worker.to_string(), member(worker, swarm_id, "stopped")),
     ])));
+    set_repo(&swarm_members, repo.path()).await;
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         HashSet::from([requester.to_string(), worker.to_string()]),
@@ -126,6 +133,9 @@ async fn task_control_resume_without_task_id_uses_unique_target_assignment() {
             node_meta: HashMap::new(),
         },
     )])));
+    // The plan needs rows behind it: the file is what a dispatch writes to,
+    // and the repo root is that file's home.
+    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -179,6 +189,7 @@ async fn task_control_resume_without_task_id_uses_unique_target_assignment() {
 #[tokio::test]
 async fn task_control_without_task_id_rejects_ambiguous_target_assignments() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
+    let repo = scratch_repo();
     let swarm_id = "swarm-task-control-ambiguous";
     let requester = "coord";
     let worker = "worker";
@@ -194,6 +205,7 @@ async fn task_control_without_task_id_rejects_ambiguous_target_assignments() {
         }),
         (worker.to_string(), member(worker, swarm_id, "stopped")),
     ])));
+    set_repo(&swarm_members, repo.path()).await;
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         HashSet::from([requester.to_string(), worker.to_string()]),
@@ -212,6 +224,9 @@ async fn task_control_without_task_id_rejects_ambiguous_target_assignments() {
             node_meta: HashMap::new(),
         },
     )])));
+    // The plan needs rows behind it: the file is what a dispatch writes to,
+    // and the repo root is that file's home.
+    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -262,6 +277,7 @@ async fn task_control_without_task_id_rejects_ambiguous_target_assignments() {
 #[tokio::test]
 async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
+    let repo = scratch_repo();
     let swarm_id = "swarm-task-control-busy";
     let requester = "coord";
     let worker = "worker";
@@ -281,6 +297,7 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
         }),
         (worker.to_string(), member(worker, swarm_id, "running")),
     ])));
+    set_repo(&swarm_members, repo.path()).await;
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         HashSet::from([requester.to_string(), worker.to_string()]),
@@ -300,6 +317,9 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
             node_meta: HashMap::new(),
         },
     )])));
+    // The plan needs rows behind it: the file is what a dispatch writes to,
+    // and the repo root is that file's home.
+    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -367,6 +387,7 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
 #[tokio::test]
 async fn requeue_existing_assignment_preserves_the_reclaim_count() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
+    let repo = scratch_repo();
     let swarm_id = "swarm-requeue-preserve";
     let requester = "coord";
     let worker = "worker";
@@ -387,6 +408,9 @@ async fn requeue_existing_assignment_preserves_the_reclaim_count() {
             node_meta: HashMap::new(),
         },
     )])));
+    // The plan needs rows behind it: the file is what a dispatch writes to,
+    // and the repo root is that file's home.
+    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
 
     let result = super::requeue_existing_assignment(
         swarm_id,
@@ -426,6 +450,7 @@ async fn requeue_existing_assignment_preserves_the_reclaim_count() {
 #[tokio::test]
 async fn task_control_retry_re_dispatches_after_recent_identical_retry() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
+    let repo = scratch_repo();
     let swarm_id = "swarm-retry-replay";
     let requester = "coord";
     let worker = "worker";
@@ -445,6 +470,7 @@ async fn task_control_retry_re_dispatches_after_recent_identical_retry() {
         }),
         (worker.to_string(), member(worker, swarm_id, "ready")),
     ])));
+    set_repo(&swarm_members, repo.path()).await;
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         HashSet::from([requester.to_string(), worker.to_string()]),
@@ -461,6 +487,9 @@ async fn task_control_retry_re_dispatches_after_recent_identical_retry() {
             node_meta: HashMap::new(),
         },
     )])));
+    // The plan needs rows behind it: the file is what a dispatch writes to,
+    // and the repo root is that file's home.
+    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),

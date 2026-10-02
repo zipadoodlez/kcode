@@ -86,6 +86,22 @@ fn owned_member(session_id: &str, swarm_id: &str, status: &str, owner: &str) -> 
     m
 }
 
+/// Put every member of a fixture in `repo`, so the list a dispatch writes is this
+/// test's own (rule 1: the rows live where the session lives).
+async fn set_repo(members: &Arc<RwLock<HashMap<String, SwarmMember>>>, repo: &std::path::Path) {
+    for member in members.write().await.values_mut() {
+        member.working_dir = Some(repo.to_path_buf());
+    }
+}
+
+/// Write `rows` as `session_id`'s list, exactly as given, so a fixture's plan has
+/// rows behind it: the file is the list, and a plan row with no row is exactly the
+/// state the plan is being cut down to. `write_rows` (dag_e2e) is this plus
+/// holding every row for the session.
+fn write_list(repo: &std::path::Path, session_id: &str, rows: &[TaskItem]) {
+    crate::todo::save_tasks(Some(repo), session_id, rows).expect("write the list");
+}
+
 fn plan_item(id: &str, status: &str, priority: &str, blocked_by: &[&str]) -> TaskItem {
     TaskItem {
         content: format!("task {id}"),

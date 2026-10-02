@@ -97,6 +97,7 @@ fn released_claim_makes_member_pickable_again() {
 #[tokio::test]
 async fn assign_task_reuses_an_idle_worker_that_still_holds_a_row() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
+    let repo = scratch_repo();
     let swarm_id = "swarm-reuse-holder";
     let requester = "coord";
     let holder = "worker-holder";
@@ -117,6 +118,7 @@ async fn assign_task_reuses_an_idle_worker_that_still_holds_a_row() {
             owned_member(holder, swarm_id, "ready", requester),
         ),
     ])));
+    set_repo(&swarm_members, repo.path()).await;
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         HashSet::from([requester.to_string(), holder.to_string()]),
@@ -133,6 +135,9 @@ async fn assign_task_reuses_an_idle_worker_that_still_holds_a_row() {
             node_meta: HashMap::new(),
         },
     )])));
+    // The plan needs rows behind it: the file is what a dispatch writes to,
+    // and the repo root is that file's home.
+    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
