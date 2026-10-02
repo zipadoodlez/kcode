@@ -5,20 +5,23 @@ server's scheduler turns ready nodes into worker turns. Agents are fungible
 workers, not entities you micromanage: the old coordinator/worktree-manager
 roles are scheduler policy, not user-facing roles.
 
-The graph is a single server-owned object (`kcode-plan`'s `VersionedPlan`), and
-0.4f made it a view: the store writes the rows (a decomposition, a close, a claim)
-and the plan's items follow what it wrote. What the plan adds to the file is the
-run's own per-task state: the lifecycle status a turn sets and the reclaim counter.
-0.4g deleted the run's `version`, its `participants` and its durability: the
-recipients are the swarm's sessions, which is what the broadcast already fell back
-to; event ordering comes from sending inside the lock that mutated the plan, so
-nothing has to drop a stale event; and a loaded swarm rebuilds its plan from the
-list, seating the rows its members hold queued again, because the run's own state
-was never the file's to keep.
+The graph is the repo's work list. A run reads the rows it works: the open rows its
+members hold, the rows nobody holds, and the rows whose holder is no longer a member
+(the sweep's case). What a run keeps of its own is one sparse map keyed by row id, the
+lifecycle status a turn set for that row. Every read uses the run's status when it set
+one and the row's own otherwise, which is why a row with no run entry is work with no
+bookkeeping.
+
+0.4g removed the rest of the plan object: its `version` (ordering comes from sending
+inside the per-swarm lock that mutated), its `participants` (the recipients are the
+swarm's sessions), its durability (a restart forgets the run's statuses and the rows
+come back from the list), and the item cache itself, which had become a second copy of
+rows the store owns. The reclaim cap went with it: releasing the claim in the list is
+the whole recovery, and the bound belongs to the loop that repeats the work.
 
 The swarm is one executor of the repo's work list (`plans/work-list.md`). The
-list is the shared contract and the work lives there; the plan is a runtime view of
-the rows a run seated, with the run's per-task lifecycle and reclaim counter on top.
+list is the shared contract and the work lives there; a run holds its own lifecycle for
+the rows it works and reads everything else from the file.
 The seed is the rows the
 seeding session holds: `bridge::seed_specs` lifts them into nodes (the row's id,
 words, kind and `blocked_by` are the node's, its position is its priority), a row

@@ -238,8 +238,9 @@ full test pass ran with it (three pre-existing `session_flow` e2e failures, reco
        re-persist; `SwarmRuntime::has_any_state` means durable state, so the plan no
        longer counts. The restart behavior is pinned by
        `a_loaded_swarm_seats_the_rows_its_members_hold`.
-    3. **g3. The item cache dies** (behavior boundary: the status readers). What is left
-       of g2, decided 2026-10-02. `VersionedPlan`, `SwarmTaskProgress`, `sync_rows`,
+    3. **g3. The item cache dies** (behavior boundary: the status readers). Landed as two
+       commits: g3a removed the reclaim cap and its counter, g3b removed the plan object
+       and moved every read to the list. Decided 2026-10-02. `VersionedPlan`, `SwarmTaskProgress`, `sync_rows`,
        `drop_row`, `set_row_status`, `prune_side_maps`, `rename_session`, `is_composite`,
        `execution_state`, `plan_definition` and the debug-only plan DTOs go, and the ~47
        item reads come from the list. What replaces them is one rule and one map: a
@@ -261,9 +262,10 @@ full test pass ran with it (three pre-existing `session_flow` e2e failures, reco
        Nothing sets a failure status any more, so `completed_ids`, `terminal_ids`,
        `failed_ids`, `failed_reasons` and `plan_terminal_node_count` go with it, and the
        summary is ready, blocked, active, cycle and unresolved.
-       Boundaries to test: a restored row is picked for dispatch, a dead holder's rows are
-       released in the file, the plan page renders run statuses, and a close removes the
-       row.
+       Boundaries are pinned: `a_dispatched_turn_closes_its_row`,
+       `a_stranded_row_is_released_in_the_list_when_it_is_reclaimed`,
+       `salvage_releases_dead_members_rows_and_notifies_coordinator`, and the load-path
+       test g2 added. What g3 still owes is the summary trim below.
     4. **g4. Membership is derived** (behavior boundary: membership). Delete the
        `coordinators` map (the coordinator is the session holding the run's anchor row),
        the stored swarm id including `KCODE_SWARM_ID` (`server/util.rs:96`, `:116`),
