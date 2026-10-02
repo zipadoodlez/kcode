@@ -54,8 +54,11 @@ Three traps worth internalising:
 default_provider = "claude"          # Claude subscription (OAuth)
 # default_provider = "anthropic-api" # Claude via direct API key instead
 default_model = "claude-opus-4-8"
-anthropic_reasoning_effort = "xhigh"
 ```
+
+The reasoning level is the session's, set with `/effort` (it persists with the
+session), not a config key; see `../what-was-removed.md` for why config no longer
+carries one.
 
 `anthropic-api` deliberately **does not** fall back to OAuth: if no API key is
 configured, the request fails rather than silently spending the wrong credential.

@@ -53,6 +53,18 @@ through `create_test_app`. The two diagnoses are independent of everything.
  (129 passed, 4 failed either way). They bind a local socket and drive the prewarm and
  persistent-terminal paths, so start at whether they need a live account or an
  advertised model catalog.
+- [ ] **`kcode-provider-anthropic-runtime`'s
+ `tests::anthropic_fallback_honors_server_recommendation` is red** (2026-10-02, seen
+ while landing 0.5): 57 pass, this one fails, alone and in-crate, single-threaded too.
+ It asserts that a 404 body's prose recommendation ("please use Opus 4.8") maps to
+ `claude-opus-4-8`, and the mapping scores `known_anthropic_model_ids()`, so it depends
+ on the process-global model catalog that the test itself resets; no effort path is
+ involved, and the 0.5 change touches only Anthropic's constructor effort seed. Not
+ proven pre-existing: reverting that one file alone does not compile (the config field
+ it read is gone workspace-wide), so the clean check is a worktree at `d927b4ae`, the
+ commit before it (`cargo test -p kcode-provider-anthropic-runtime --lib
+ anthropic_fallback_honors_server_recommendation`). Settle it there before blaming the
+ catalog.
 - [ ] **Stop the session tests writing into the real store.** `client_session_tests`
  and its `resume/` and `reload` includes call `Session::save()` and `mark_active()`
  with only `KCODE_RUNTIME_DIR` redirected, so `kcode_dir()` resolves to the

@@ -33,6 +33,25 @@ alternating them rebuilds the tree. The commands that cover a change are:
 Avoid `cargo check` before the gate for this reason; the gate's clippy already
 covers the compile errors it would find.
 
+## Smoke, by hand, once per build
+
+The suites cover the wiring they can reach; these are the ends they cannot, so a build
+meant to be lived in gets them looked at once. Keep the list short: an item not worth
+five seconds of looking is an item that will be skipped.
+
+- Open a TUI on the build, no install needed (`./target/selfdev/kcode --socket <path>`
+  serves its own daemon), and read `/info` against what the session holds: model,
+  effort level, provider.
+- Set a level (`/effort high`), quit, `--resume`, and read `/info` again. This is the
+  hop no test crosses: a request that reaches the provider but never persists looks
+  identical to one that worked.
+- Spawn one worker and read its `/info`: it should show what the creator's session
+  held, not the worker model's own default.
+- Run one real turn against a provider, so the request path is exercised by something
+  that is not a fixture.
+- A `config.toml` carrying keys removed since the last build starts clean and sets
+  nothing. A line that is silently ignored is worth noticing once per removal.
+
 ## Known flakiness: `kcode-tui` lib tests under parallel execution
 
 `scripts/test.sh crate kcode-tui -- --test-threads=1` fails a handful of tests
