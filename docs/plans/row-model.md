@@ -415,9 +415,8 @@ row-model work that path carries.
   The orchestration actions (`spawn`, `assign_task`/`assign_next`/`fill_slots`,
   `run_plan`, `cleanup`, `await_members`) become the run's own behavior, not calls. The
   exact cut is decided at the step; likely one task tool.
-- [ ] **F2.** Then split what remains of `tool/communicate.rs` along its seams (swarm
-  coordination, the run-plan driver, capacity cleanup, the formatters around `execute`),
-  if anything does. Cheaper once 0.3 has given the state one owner.
+- [ ] **F2.** The file's shape after F1 is `plans/server-shape.md`'s condense task,
+  which owns `tool/communicate.rs`; nothing about it lives here.
 
 ### G. Close out
 

@@ -50,7 +50,9 @@ subject is one checkbox below, with its design in the item.
     `App` result rather than re-deriving it.
  Done when: `handle_client` is under ~600 lines, the file is out of the size budget,
  and no `SwarmState { .. }` literal is built inside a request arm.
-- [ ] **Condense `tool/communicate.rs`.** Four concepts welded together: swarm
+- [ ] **Condense `tool/communicate.rs`.** It lands after the verb cut
+ (`plans/row-model.md` F1), which removes two of the four concepts first. Four concepts
+ are welded together: swarm
  coordination, capacity cleanup (`cleanup_swarm_workers`, `stop_swarm_sessions`), the
  run-plan driver (`run_swarm_plan_loop`, the driver-claim helpers), and the
  `format_*`/`fetch_*` formatters around a large `execute`. A census found these are
