@@ -22,7 +22,7 @@ Policy:
 
 The long-term goal is to drive this budget to zero as the migration-era
 re-export spine (base -> app-core -> tui -> root) is dismantled. See
-`docs/todo.md` (crate spine item).
+`plans/hygiene.md` (the crate spine task).
 """
 
 from __future__ import annotations

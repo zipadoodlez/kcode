@@ -7,9 +7,8 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 - `user/` - how to use kcode: install, commands, configuration, providers.
 - `internals/` - how kcode works: architecture, subsystems, protocols.
 - `dev/` - contributor process: testing, benchmarking, dependency hygiene.
-- `plans/` - designs for work not yet built. Not part of the bundled corpus.
-- `todo.md` - outstanding work: the checklist of open items, with each item's design
-  inline.
+- `plans/` - the work lanes: one plan per subject, each holding its own task
+  checklist with the design beside the item. Not part of the bundled corpus.
 - `what-was-removed.md` - the ledger of cuts: every deliberate removal and what it
   cost.
 
@@ -21,15 +20,19 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
   from the tree with a search, it does not belong here: state the why, the trap,
   the contract, the measurement, or the recipe, and nothing else. A fact that is
   absent cannot go stale. If a doc and the code disagree, the doc is wrong.
-- **Two homes, split by tense.** `todo.md` holds what is still to do: open work and
-  open calls, in the order that unblocks the most. `what-was-removed.md` holds what a
-  cut cost: a decision that landed is a record, and a record is not work. A deferred
-  internal note is neither: it lives in the code as a `# braid: <ceiling>, <what
-  surpasses it>` comment, next to what it is about.
-- **The design lives with its item.** Inline when it is short, in the doc the item
-  links to when it is not: a design too large to inline - a full protocol or
-  interface spec for something not yet built - goes in `plans/`, which `build.rs`
-  keeps out of the bundled `kcode_docs` corpus so the model never reads it as a
+- **One home per fact.** An open item is one checkbox in exactly one lane, with its
+  design beside it, and a gate between two lanes is named once, in the item that
+  waits. Nothing is summarized into a second list and nothing is stated twice, so no
+  two places can disagree about what is left to do.
+- **Two homes, split by tense.** `plans/` holds what is still to do; a landed decision
+  is a record, and a record is not work, so it lives in `what-was-removed.md`. A
+  deferred internal note is neither: it lives in the code as a
+  `# braid: <ceiling>, <what surpasses it>` comment, next to what it is about.
+- **One lane per subject, and its tasks do not touch each other.** A lane is a
+  `plans/*.md` file, so several can be in flight at once; a task that must wait names
+  its gate. A design too large to sit beside its item - a full protocol or interface
+  spec for something not yet built - is a lane of its own, since `build.rs` keeps
+  `plans/` out of the bundled `kcode_docs` corpus and the model never reads it as a
   description of the tree. Superseded items are deleted, not archived: git has the
   history. An item marked `(decision)` waits on a call from the maintainer; the rest
   are actionable.
@@ -40,7 +43,8 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 ## Start here
 
 - Install and usage: [`../README.md`](../README.md)
-- Order of work: [`todo.md`](todo.md)
+- The work: one lane per subject under [`plans/`](plans/), with
+  [`plans/row-model.md`](plans/row-model.md) as the destination.
 
 ## The map
 
@@ -50,13 +54,13 @@ not fit its row is a doc in the wrong place.
 
 | doc | purpose | holds |
 |---|---|---|
-| `todo.md` | the order of work | open items with their design, and open calls; a landed record is not here |
 | `what-was-removed.md` | every deliberate removal and what it cost | the fork cut, the account cut, the model cut, and what was deliberately kept |
-| `plans/row-model.md` | the destination for the work list | one file of rows, one item type, one writer, one run; a swarm is a count, not a mode; not served to the model |
-| `plans/app-shape.md` | the app's shape | the `App` re-core's groups, the command surface, the two calls |
+| `plans/row-model.md` | the destination lane: the row model | the model, its rules, its steps and where the work stands; not served to the model |
+| `plans/app-shape.md` | the app's shape | the `App` re-core's tasks, the command surface, the two calls |
 | `plans/server-shape.md` | the request path's shape | the `handle_client` split (H1-H5) and the `communicate.rs` condense |
-| `plans/test-tree.md` | the test tree | its reshape items, and the tests red on a clean tree |
-| `plans/browser-provider-protocol.md` | a design for work not yet built | the protocol; not served to the model |
+| `plans/test-tree.md` | the test tree | its reshape tasks, and the tests red on a clean tree |
+| `plans/hygiene.md` | the loose ends | config warnings, hook observability, palette and clock consistency, tool-description cost, the crate spine, and the two process calls |
+| `plans/browser-provider-protocol.md` | a design for work not yet built | the protocol, and the one call to build it; not served to the model |
 | `user/cli.md` | the non-interactive surface | flags a wrapper needs and their traps |
 | `user/tui.md` | terminal input, picker, panels | input mechanics and their terminal quirks |
 | `user/config.md` | settings, env vars, the system prompt | layer order and precedence rules |

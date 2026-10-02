@@ -257,7 +257,7 @@ through the hook.
 
 ## Not implemented yet
 
-Real gaps in the hook surface, tracked in [../todo.md](../todo.md):
+Real gaps in the hook surface, tracked in [`../plans/hygiene.md`](../plans/hygiene.md):
 
 - **No way to see whether a hook is wired or firing.** There is no `/hooks`
   command, no listing of configured hooks, and no dry-run. A typo in a command

@@ -1,9 +1,9 @@
 # Row model
 
-`docs/todo.md` points here. Tick a step when it lands and delete it; git has the
-history. The open items this plan leaves behind are split by subject: the app's shape
-in `plans/app-shape.md`, the request path in `plans/server-shape.md`, the test tree in
-`plans/test-tree.md`.
+Tick a step when it lands and delete it; git has the history. The open items this plan
+leaves behind are split by subject: the app's shape in `plans/app-shape.md`, the
+request path in `plans/server-shape.md`, the test tree in `plans/test-tree.md`, and the
+loose ends in `plans/hygiene.md`.
 
 ## How a step lands
 
@@ -329,8 +329,8 @@ recorded in `plans/test-tree.md`).
 - [ ] **A1. A braid audit of the tree.** Run `/braid-audit` once over the repo and fold
   what it finds into this list: unscoped concepts, duplicate representations, modes and
   dead paths, ranked by surface removed. It runs after 0.4 and 0.5 so it audits the
-  settled model rather than one in flight, and it feeds the tail (D, E, F) and the
-  `plans/test-tree.md` and `todo.md` §5 items. A finding is a step or a deletion,
+  settled model rather than one in flight, and it feeds the tail (D, F) and the
+  `plans/test-tree.md` and `plans/hygiene.md` items. A finding is a step or a deletion,
   never a standalone
   report.
 
@@ -338,10 +338,9 @@ recorded in `plans/test-tree.md`).
 
 Last of the file work, whenever we want it.
 
-- [ ] **B2.** This repo's own list migrates: `docs/todo.md` becomes the first
-  content of `tasks.jsonl`, and the twelve references follow. Its landed records have
-  already moved, as they land, to `docs/what-was-removed.md`; what is left to migrate
-  is the open items.
+- [ ] **B2.** This repo's own list migrates: the open checkboxes in `plans/*.md`
+  become the first content of `tasks.jsonl`. Its landed records have already moved, as
+  they land, to `docs/what-was-removed.md`; what is left to migrate is the open items.
 - [ ] **B3.** Drop `group`, `status` and `priority` from the type. The gate has
   already landed: `parent` is what `group` was grouping by, the close action is what
   makes a completed row unrepresentable rather than stored, and 0.3's "position is
@@ -376,7 +375,9 @@ Last of the file work, whenever we want it.
     session, or only for runs, so a plain session still sees the whole list? And
     how does a session first *see* rows it does not hold, so that adopting one is
     a decision it can make? The model does not scope the user's session to its
-    holdings, so the answer cannot be a new rule.
+    holdings, so the answer cannot be a new rule. The server's read is the same odd
+    one: `Action::List` returns every row, not the session's (`tool/todo.rs:64`, over
+    `load_tasks(dir, session_id)` at `:303`).
 
 ### D. Delete what the file makes redundant
 
@@ -395,16 +396,17 @@ Last of the file work, whenever we want it.
   goes with it: 0.4f removes its only producer (a plan item's status), so the variant
   is unreachable.
 
-Gated by C4 and C5.
+  Gated by C4 and C5.
+- [ ] **D2. The swarm/comm condense.** The `SwarmState` handle pair is still
+  threaded to ~40 functions and rebuilt as a literal at each request arm, so the
+  request context that ends it is the remaining half. Give the swarm state its one
+  owner and delete the pair. Engine: `internals/swarm.md`.
 
 ### E. The server shape
 
-- [ ] **E1.** `ClientContext` for `handle_client`'s 28 arguments.
-- [ ] **E2.** Fold swarm ownership in, which is gated on 0.4g: `todo.md` §1's
-  condense must land before this split, since the request context is designed to hold
-  that state.
-- [ ] **E3.** Name the prologue, move the largest arms out, and settle the
-  turn-lifecycle locals. `plans/server-shape.md`'s H1 to H5 in order.
+The request-path split is `plans/server-shape.md`'s H1-H5, and this plan owns none of
+it: H2 (the swarm state in the client context) waits on D2 above, which is the only
+row-model work that path carries.
 
 ### F. The swarm tool surface
 
@@ -427,3 +429,8 @@ Gated by C4 and C5.
   and the poke's removal (no client continuation; every non-retryable error gets the
   short budget). It is the step's landing proof, so it runs when the list is done,
   not per step.
+- [ ] **G3.** The work list gets its user doc under `docs/user/`: `tasks.jsonl` at the
+  repo root, the `todo` tool's actions, and the close's required result are described
+  only in this plan, which is a design rather than a manual. It waits until the list
+  settles, which is worth writing once: the row gains its `kind` at 0.3, and B3's
+  field cuts land before the shape stops moving.

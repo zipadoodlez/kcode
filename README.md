@@ -381,11 +381,10 @@ hooks, and the provider catalog.
 
 ## Status and known gaps
 
-Work in progress has one entry point: **[docs/todo.md](docs/todo.md)**, the order of
-work. An item whose design fits a screen carries it; the rest link to a plan under
-**[docs/plans/](docs/plans/)**. What a cut cost is recorded in
-**[docs/what-was-removed.md](docs/what-was-removed.md)**. This README does not
-duplicate any of them.
+Work in progress has one entry point: **[docs/plans/](docs/plans/)**, one lane per
+subject, each holding its own task checklist with the design beside the item. What a
+cut cost is recorded in **[docs/what-was-removed.md](docs/what-was-removed.md)**. This
+README does not duplicate any of them.
 
 ---
 

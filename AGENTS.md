@@ -2,11 +2,12 @@
 
 ## Development Workflow
 
-- **Start at `docs/todo.md`** - It is the order of work, and the current project's
+- **Start at `docs/README.md`** - its map is the only list of docs, and `docs/plans/`
+  holds the work: one lane per subject, each a task checklist with the design beside
+  its item, and a lane's tasks do not touch each other. The current project's
   destination, model and open steps are `docs/plans/row-model.md`. Read the plan's
-  Steps intro before changing anything there: it says where the work stands, and a
-  step in flight is finished before a new one starts. `docs/README.md` lists every doc
-  and what belongs in it.
+  Steps intro before changing anything there: it says where the work stands, and a step
+  in flight is finished before a new one starts.
 - **Use the user's Git identity** - Create commits with the configured
   `user.name` and `user.email`. Do not override them with `Kcode`, `Kcode agent`,
   or a fabricated agent email. Preserve existing contributor attribution when

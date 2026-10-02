@@ -1,10 +1,15 @@
 # Browser Provider Protocol
 
-Status: draft. A design for work not yet built; listed in `docs/README.md` and not
-tracked by `todo.md` yet. Not part of the bundled `kcode_docs` corpus, so it is
-never served as a description of the tree.
+Status: draft. A design for work not yet built; listed in `docs/README.md`. Not part of
+the bundled `kcode_docs` corpus, so it is never served as a description of the tree.
 Owner: kcode
 Audience: kcode core, browser bridge authors, adapter authors
+
+## Tasks
+
+- [ ] **(decision) Build a browser provider to this protocol, or delete the spec.**
+ Nothing is implemented until that call is made, so the spec is the design of a
+ possible lane rather than work in flight.
 
 ## Why this exists
 
