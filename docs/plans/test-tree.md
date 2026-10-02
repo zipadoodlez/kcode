@@ -53,3 +53,17 @@ through `create_test_app`. The two diagnoses are independent of everything.
  (129 passed, 4 failed either way). They bind a local socket and drive the prewarm and
  persistent-terminal paths, so start at whether they need a live account or an
  advertised model catalog.
+- [ ] **Stop the session tests writing into the real store.** `client_session_tests`
+ and its `resume/` and `reload` includes call `Session::save()` and `mark_active()`
+ with only `KCODE_RUNTIME_DIR` redirected, so `kcode_dir()` resolves to the
+ developer's real `~/.kcode/sessions`. Their orphaned `active_pids` markers are then
+ swept as crashes on the next TUI start, and because `save()` re-stamps `updated_at`
+ the picker sorts the leftovers to the top of `/resume`. The sibling
+ `client_lifecycle_tests` already routes through `super::tests::configure_test_env`
+ (`KCODE_HOME` + `KCODE_RUNTIME_DIR` + `KCODE_SOCKET`); these tests should too, or
+ `setup_runtime_dir` should carry the home. Its durable fix is the same as "One home
+ per duplicated test helper" above: a single app-core test-home guard that every
+ session-saving test goes through. Measured by the count of `~/.kcode/sessions/*.json`
+ whose `working_dir` sits under this repo after a suite run (2026-10-02: 2,027 of
+ 2,537 session files, 2,425 marked crashed, nearly all from these tests and swarm
+ workers).
