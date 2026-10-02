@@ -22,20 +22,12 @@ async fn assign_task_without_task_id_picks_highest_priority_runnable_task() {
         swarm_id.to_string(),
         HashSet::from([requester.to_string(), worker.to_string()]),
     )])));
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        VersionedPlan {
-            items: vec![
-                plan_item("done", "completed", "high", &[]),
-                plan_item("blocked", "queued", "high", &["high-ready"]),
-                plan_item("low-ready", "queued", "low", &["done"]),
-                plan_item("high-ready", "queued", "high", &["done"]),
-            ],
-        },
-    )])));
-    // The plan needs rows behind it: the file is what a dispatch writes to,
-    // and the repo root is that file's home.
-    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
+    let swarm_runs = seeded(repo.path(), vec![
+        plan_item("done", "completed", "high", &[]),
+        plan_item("blocked", "queued", "high", &["high-ready"]),
+        plan_item("low-ready", "queued", "low", &["done"]),
+        plan_item("high-ready", "queued", "high", &["done"]),
+    ]);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -57,7 +49,7 @@ async fn assign_task_without_task_id_picks_highest_priority_runnable_task() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -80,18 +72,15 @@ async fn assign_task_without_task_id_picks_highest_priority_runnable_task() {
         other => panic!("expected CommAssignTaskResponse, got {other:?}"),
     }
 
-    let plans = swarm_plans.read().await;
-    let plan = plans.get(swarm_id).expect("plan exists");
-    let selected = plan
-        .items
+    let rows = rows_in(repo.path());
+    let selected = rows
         .iter()
         .find(|item| item.id == "high-ready")
         .expect("selected task exists");
     assert_eq!(selected.assigned_to.as_deref(), Some(worker));
     assert_eq!(selected.status, "queued");
 
-    let blocked = plan
-        .items
+    let blocked = rows
         .iter()
         .find(|item| item.id == "blocked")
         .expect("blocked task exists");
@@ -132,15 +121,7 @@ async fn assign_task_marks_completed_worker_queued_before_returning() {
         swarm_id.to_string(),
         HashSet::from([requester.to_string(), worker.to_string()]),
     )])));
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        VersionedPlan {
-            items: vec![plan_item("next", "queued", "high", &[])],
-        },
-    )])));
-    // The plan needs rows behind it: the file is what a dispatch writes to,
-    // and the repo root is that file's home.
-    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
+    let swarm_runs = seeded(repo.path(), vec![plan_item("next", "queued", "high", &[])]);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -162,7 +143,7 @@ async fn assign_task_marks_completed_worker_queued_before_returning() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -227,14 +208,9 @@ async fn a_dispatch_refuses_a_row_the_list_does_not_have() {
         swarm_id.to_string(),
         HashSet::from([requester.to_string(), worker.to_string()]),
     )])));
-    // Written empty on purpose: the plan below names a row no list has.
+    // Written empty on purpose: the caller names a row no list has.
     write_list(repo.path(), requester, &[]);
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        VersionedPlan {
-            items: vec![plan_item("ghost", "queued", "high", &[])],
-        },
-    )])));
+    let swarm_runs = empty_run_state();
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -256,7 +232,7 @@ async fn a_dispatch_refuses_a_row_the_list_does_not_have() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -272,10 +248,9 @@ async fn a_dispatch_refuses_a_row_the_list_does_not_have() {
         ),
         other => panic!("expected a refusal, got {other:?}"),
     }
-    let plans = swarm_plans.read().await;
     assert!(
-        plans[swarm_id].items[0].assigned_to.is_none(),
-        "a refused claim must leave the plan as it was"
+        rows_in(repo.path()).is_empty(),
+        "a refused claim leaves the list as it was"
     );
 }
 
@@ -323,13 +298,8 @@ async fn a_dispatched_turn_closes_its_row() {
     work_row.assigned_to = Some(requester.to_string());
     // The row that owns the work takes the close's record.
     work_row.parent = Some("run".to_string());
-    write_list(repo.path(), requester, &[run_row.clone(), work_row.clone()]);
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        VersionedPlan {
-            items: vec![run_row, work_row],
-        },
-    )])));
+    write_list(repo.path(), requester, &[run_row, work_row]);
+    let swarm_runs = empty_run_state();
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -351,7 +321,7 @@ async fn a_dispatched_turn_closes_its_row() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -365,22 +335,17 @@ async fn a_dispatched_turn_closes_its_row() {
 
     // The turn is spawned, so wait for its close to land (bounded).
     for _ in 0..200 {
-        let closed = {
-            let plans = swarm_plans.read().await;
-            !plans[swarm_id].items.iter().any(|item| item.id == "work")
-        };
+        let closed = { !rows_in(repo.path()).iter().any(|item| item.id == "work") };
         if closed {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
 
-    let plans = swarm_plans.read().await;
     assert!(
-        !plans[swarm_id].items.iter().any(|item| item.id == "work"),
-        "the turn's close takes the row out of the plan"
+        !rows_in(repo.path()).iter().any(|item| item.id == "work"),
+        "the turn's close takes the row out of the list"
     );
-    drop(plans);
 
     let rows = crate::todo::load_tasks(Some(repo.path()), requester).expect("read the list");
     assert!(

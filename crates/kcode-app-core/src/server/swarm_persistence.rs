@@ -1,5 +1,5 @@
+use super::SwarmMember;
 use super::durable_state::now_unix_ms;
-use super::{SwarmMember, VersionedPlan};
 use crate::protocol::ServerEvent;
 use crate::storage;
 use kcode_swarm_core::{SwarmLifecycleStatus, SwarmMemberRecord};
@@ -23,9 +23,6 @@ static SWARM_OPERATION_LOCKS: LazyLock<StdMutex<HashMap<String, Weak<tokio::sync
 /// and recovery paths that invoke the synchronous persistence helpers directly.
 static SWARM_FILE_LOCKS: LazyLock<StdMutex<HashMap<String, Weak<StdMutex<()>>>>> =
     LazyLock::new(|| StdMutex::new(HashMap::new()));
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct SwarmStateFileVersion(Option<Vec<u8>>);
 
 pub(super) fn swarm_operation_lock(swarm_id: &str) -> Arc<tokio::sync::Mutex<()>> {
     let mut locks = SWARM_OPERATION_LOCKS
@@ -53,37 +50,7 @@ fn swarm_file_lock(swarm_id: &str) -> Arc<StdMutex<()>> {
     lock
 }
 
-/// The rows a swarm holds, seated into a plan from the list.
-///
-/// The list is where the work lives and a run's own state is not durable, so a loaded
-/// swarm's plan is rebuilt from the file: every open row held by one of its members
-/// becomes an item again, queued for the next dispatch. The run lifecycle and the
-/// reclaim counts start fresh, which is the loss `docs/todo.md` names.
-fn hydrate_plan_from_list(
-    working_dir: Option<&std::path::Path>,
-    session_id: &str,
-    held_by: &HashSet<String>,
-) -> VersionedPlan {
-    let mut plan = VersionedPlan::new();
-    let Ok(rows) = crate::todo::load_tasks(working_dir, session_id) else {
-        return plan;
-    };
-    plan.items = rows
-        .into_iter()
-        .filter(|row| {
-            row.assigned_to
-                .as_deref()
-                .is_some_and(|holder| held_by.contains(holder))
-        })
-        .collect();
-    for item in &mut plan.items {
-        item.status = "queued".to_string();
-    }
-    plan
-}
-
 pub(super) struct LoadedSwarmRuntimeState {
-    pub plans: HashMap<String, VersionedPlan>,
     pub coordinators: HashMap<String, String>,
     pub members: HashMap<String, SwarmMember>,
     pub swarms_by_id: HashMap<String, HashSet<String>>,
@@ -194,18 +161,6 @@ fn state_path(swarm_id: &str) -> PathBuf {
         })
         .collect();
     state_dir().join(format!("{}.json", sanitized))
-}
-
-fn read_primary_version(swarm_id: &str) -> SwarmStateFileVersion {
-    SwarmStateFileVersion(std::fs::read(state_path(swarm_id)).ok())
-}
-
-pub(super) fn capture_swarm_state_version(swarm_id: &str) -> SwarmStateFileVersion {
-    let file_lock = swarm_file_lock(swarm_id);
-    let _guard = file_lock
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    read_primary_version(swarm_id)
 }
 
 fn remove_snapshot_files(swarm_id: &str) -> bool {
@@ -366,7 +321,6 @@ pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
     let dir = state_dir();
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return LoadedSwarmRuntimeState {
-            plans: HashMap::new(),
             coordinators: HashMap::new(),
             members: HashMap::new(),
             swarms_by_id: HashMap::new(),
@@ -457,27 +411,7 @@ pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
             "Pruned {pruned_terminal_members} expired terminal swarm member(s) while loading durable state"
         ));
     }
-    // Nothing durable holds the rows, so each loaded swarm's plan is the rows its
-    // members hold in the list.
-    let mut plans = HashMap::new();
-    for (swarm_id, session_ids) in &swarms_by_id {
-        let Some(holder) = members
-            .values()
-            .find(|member| member.swarm_id.as_deref() == Some(swarm_id.as_str()))
-        else {
-            continue;
-        };
-        let plan = hydrate_plan_from_list(
-            holder.working_dir.as_deref(),
-            &holder.session_id,
-            session_ids,
-        );
-        if !plan.items.is_empty() {
-            plans.insert(swarm_id.clone(), plan);
-        }
-    }
     LoadedSwarmRuntimeState {
-        plans,
         coordinators,
         members,
         swarms_by_id,
@@ -528,20 +462,6 @@ pub(super) fn remove_swarm_state(swarm_id: &str) {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let _ = remove_snapshot_files(swarm_id);
-}
-
-pub(super) fn remove_swarm_state_if_version(
-    swarm_id: &str,
-    expected: &SwarmStateFileVersion,
-) -> bool {
-    let file_lock = swarm_file_lock(swarm_id);
-    let _guard = file_lock
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if &read_primary_version(swarm_id) != expected {
-        return false;
-    }
-    remove_snapshot_files(swarm_id)
 }
 
 #[cfg(test)]

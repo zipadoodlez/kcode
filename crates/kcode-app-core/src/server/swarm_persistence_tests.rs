@@ -112,70 +112,6 @@ fn persisted_swarm_state_round_trips() {
     );
 }
 
-/// A plan is not durable, so a loaded swarm rebuilds it from the list: the open rows
-/// its members hold come back queued, and the run's own state starts fresh.
-#[test]
-fn a_loaded_swarm_seats_the_rows_its_members_hold() {
-    let dir = tempfile::TempDir::new().expect("tempdir");
-    let _env = test_env(&dir);
-    let repo = dir.path().join("repo");
-    std::fs::create_dir_all(&repo).expect("repo dir");
-    let row = |id: &str, holder: Option<&str>| crate::plan::TaskItem {
-        content: format!("task {id}"),
-        status: "pending".to_string(),
-        priority: "medium".to_string(),
-        id: id.to_string(),
-        assigned_to: holder.map(str::to_string),
-        ..Default::default()
-    };
-    crate::todo::save_tasks(
-        Some(&repo),
-        "session-1",
-        &[
-            row("mine", Some("session-1")),
-            row("theirs", Some("session-9")),
-            row("free", None),
-        ],
-    )
-    .expect("write list");
-
-    let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
-    let members = vec![SwarmMember {
-        session_id: "session-1".to_string(),
-        event_tx,
-        event_txs: HashMap::new(),
-        working_dir: Some(repo.clone()),
-        swarm_id: Some("swarm-alpha".to_string()),
-        swarm_enabled: true,
-        status: SwarmLifecycleStatus::Ready,
-        detail: None,
-        friendly_name: None,
-        report_back_to_session_id: None,
-        latest_completion_report: None,
-        role: "agent".to_string(),
-        joined_at: Instant::now(),
-        last_status_change: Instant::now(),
-        is_headless: false,
-        output_tail: None,
-        todo_progress: None,
-        todo_items: Vec::new(),
-        runtime: crate::protocol::SwarmMemberRuntime::default(),
-        task_label: None,
-    }];
-    persist_swarm_state("swarm-alpha", None, &members);
-
-    let loaded = load_runtime_state();
-    let plan = loaded.plans.get("swarm-alpha").expect("hydrated plan");
-    assert_eq!(
-        plan.items
-            .iter()
-            .map(|item| (item.id.as_str(), item.status.as_str()))
-            .collect::<Vec<_>>(),
-        vec![("mine", "queued")],
-        "the rows the swarm holds, queued again"
-    );
-}
-
 #[test]
 fn ready_headless_member_with_report_stops_without_losing_report() {
     // A headless worker that finished its task has no process after restart.
@@ -631,10 +567,6 @@ fn load_runtime_state_ignores_bak_when_primary_json_exists() {
     .expect("write primary snapshot");
 
     let loaded = load_runtime_state();
-    assert!(
-        !loaded.plans.contains_key("swarm-cleared"),
-        "plan cleared from the primary snapshot must not be resurrected from .bak"
-    );
     assert_eq!(
         loaded.coordinators.get("swarm-cleared"),
         Some(&"coord-current".to_string()),
@@ -674,7 +606,6 @@ fn persisted_swarm_state_without_plan_still_restores_coordinator_and_members() {
     persist_swarm_state("swarm-gamma", Some("coord-1"), &members);
 
     let loaded = load_runtime_state();
-    assert!(!loaded.plans.contains_key("swarm-gamma"));
     assert_eq!(
         loaded.coordinators.get("swarm-gamma"),
         Some(&"coord-1".to_string())
@@ -741,95 +672,5 @@ fn empty_persist_dissolution_removes_backup_and_cannot_resurrect() {
     assert!(
         !loaded.coordinators.contains_key("swarm-dissolve"),
         "a dissolved swarm must not be restored on the next load"
-    );
-}
-
-/// Delete-vs-write interleaving between `remove_persisted_swarm_state_for`
-/// and a concurrent persist (wiring-audit.bak-resurrection, part b).
-///
-/// `remove_persisted_swarm_state_for` (server.rs:120) is `load_runtime()
-/// .await` followed by an unserialized `remove_swarm_state`. Like the
-/// persist inversion race above, `load_runtime` observes the four state
-/// maps across multiple await points, so a remover that saw an all-empty
-/// (dissolved) runtime can park, lose the race to a swarm re-creation plus
-/// persist, then resume and delete the FRESH snapshot the re-creation just
-/// wrote. Two failures compound:
-///   1. Orphaned live swarm: the recreated swarm (coordinator registered
-///      in memory) has no primary snapshot, so a clean restart loses it.
-///   2. Zombie resurrection: the persist that the remover clobbered
-///      hard-linked the PRE-dissolution snapshot to `.bak`, and
-///      `load_runtime_state` reads `.bak` files, so restart restores the
-///      stale pre-dissolution state instead.
-///
-/// Same gate technique as
-/// `stale_persist_cannot_regress_newer_plan_version`:
-/// park A inside `load_runtime` at the contended `members.read()`, run
-/// mutator B's re-creation and persist while A is parked, release A.
-#[tokio::test]
-#[allow(clippy::await_holding_lock)]
-async fn stale_remove_cannot_delete_fresh_snapshot_or_restore_backup() {
-    let dir = tempfile::TempDir::new().expect("tempdir");
-    let _env = test_env(&dir);
-
-    // The previous incarnation's snapshot is on disk; the swarm has since
-    // been dissolved, so the in-memory runtime is empty.
-    persist_swarm_state("swarm-del-race", Some("coord-stale"), &[]);
-    let swarm_state = crate::server::SwarmState::new(
-        HashMap::new(),
-        HashMap::new(),
-        HashMap::new(),
-        HashMap::new(),
-    );
-
-    // Gate: hold members.write() so remover A parks inside load_runtime at
-    // the final members.read(), AFTER it has already observed the
-    // dissolved (all-empty) plans/coordinators/swarms_by_id state.
-    let gate = swarm_state.members.write().await;
-
-    let a = tokio::spawn({
-        let swarm_state = swarm_state.clone();
-        async move {
-            crate::server::remove_persisted_swarm_state_for("swarm-del-race", &swarm_state).await;
-        }
-    });
-    // Current-thread test runtime: yielding runs A until it parks on the
-    // contended members.read().await.
-    for _ in 0..16 {
-        tokio::task::yield_now().await;
-    }
-
-    // Mutator B: the swarm is recreated while A is parked. B registers a
-    // new coordinator in memory ...
-    {
-        let mut coordinators = swarm_state.coordinators.write().await;
-        coordinators.insert("swarm-del-race".to_string(), "coord-new".to_string());
-    }
-    // ... and B's persist half runs to completion (in production this is
-    // B's own persist_swarm_state_for on another worker thread, whose
-    // uncontended lock reads resolve without suspending). This overwrite
-    // also hard-links the stale pre-dissolution snapshot to `.bak`.
-    persist_swarm_state("swarm-del-race", Some("coord-new"), &[]);
-    let on_disk = storage::read_json::<PersistedSwarmState>(&state_path("swarm-del-race"))
-        .expect("fresh snapshot");
-    assert_eq!(
-        on_disk.coordinator_session_id.as_deref(),
-        Some("coord-new"),
-        "fresh snapshot must be durably on disk before A resumes"
-    );
-
-    // Release A: its stale all-empty runtime passes has_any_state(), but the
-    // compare-and-delete guard must notice that the durable snapshot changed.
-    drop(gate);
-    a.await.expect("remove task");
-
-    assert!(
-        state_path("swarm-del-race").exists(),
-        "a stale remove must not delete a freshly persisted snapshot"
-    );
-    let loaded = load_runtime_state();
-    assert_eq!(
-        loaded.coordinators.get("swarm-del-race"),
-        Some(&"coord-new".to_string()),
-        "restart must restore the fresh incarnation, not its stale backup"
     );
 }

@@ -125,15 +125,7 @@ async fn assign_task_reuses_an_idle_worker_that_still_holds_a_row() {
     )])));
     let mut in_flight = plan_item("in-flight", "queued", "high", &[]);
     in_flight.assigned_to = Some(holder.to_string());
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        VersionedPlan {
-            items: vec![in_flight, plan_item("next", "queued", "high", &[])],
-        },
-    )])));
-    // The plan needs rows behind it: the file is what a dispatch writes to,
-    // and the repo root is that file's home.
-    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
+    let swarm_runs = seeded(repo.path(), vec![in_flight, plan_item("next", "queued", "high", &[])]);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -155,7 +147,7 @@ async fn assign_task_reuses_an_idle_worker_that_still_holds_a_row() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -177,9 +169,8 @@ async fn assign_task_reuses_an_idle_worker_that_still_holds_a_row() {
         other => panic!("expected the worker to be reused, got {other:?}"),
     }
 
-    let plans = swarm_plans.read().await;
-    let assigned: Vec<&str> = plans[swarm_id]
-        .items
+    let rows = rows_in(repo.path());
+    let assigned: Vec<&str> = rows
         .iter()
         .filter(|item| item.assigned_to.as_deref() == Some(holder))
         .map(|item| item.id.as_str())

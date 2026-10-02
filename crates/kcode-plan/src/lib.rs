@@ -31,145 +31,17 @@ pub struct SwarmPlanItemSpec {
     pub blocked_by: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SwarmPlanDefinition {
-    pub items: Vec<SwarmPlanItemSpec>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SwarmExecutionItemState {
-    pub task_id: String,
-    pub status: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub assigned_to: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SwarmExecutionState {
-    pub items: Vec<SwarmExecutionItemState>,
-}
-
-/// The live swarm plan.
-///
-/// Rows are the file's and the run's lifecycle is the engine's, so what is left here
-/// is the run's own state per row it holds: the lifecycle status a turn sets, and the
-/// count of automatic re-dispatches.
-#[derive(Clone, Debug)]
-pub struct VersionedPlan {
-    pub items: Vec<TaskItem>,
-}
-
-impl VersionedPlan {
-    pub fn new() -> Self {
-        Self { items: Vec::new() }
-    }
-
-    /// Make the plan agree with rows the store just wrote: each row here becomes
-    /// the item of the same id, field for field, and a row the plan does not hold
-    /// yet becomes an item. Nothing else about the item set changes: the plan
-    /// governs *which* rows it holds (a run seats the rows it works), while a row's
-    /// fields come from the list, so this never sweeps in rows nobody seated.
-    ///
-    /// One field is not the row's. A row's status is what the store writes (`pending`
-    /// for a fresh row), while an item's status is the run's lifecycle for that row
-    /// (`queued`, `running`, `done`, `failed`). That lifecycle is runtime state the
-    /// list cannot hold, so it is carried forward by id and set through
-    /// [`Self::set_row_status`]. `priority` is the row's, so the plan's order is the
-    /// list's order wherever the list says nothing about priority.
-    pub fn sync_rows(&mut self, rows: &[TaskItem]) {
-        for row in rows {
-            match self.items.iter_mut().find(|item| item.id == row.id) {
-                Some(item) => {
-                    let status = std::mem::take(&mut item.status);
-                    *item = row.clone();
-                    item.status = status;
-                }
-                None => self.items.push(row.clone()),
-            }
-        }
-    }
-
-    /// Drop one row's item, for a close: the row is gone from the list, so the plan
-    /// stops holding it and the runtime state keyed by its id goes with it.
-    pub fn drop_row(&mut self, id: &str) {
-        self.items.retain(|item| item.id != id);
-    }
-
-    /// Set the run's lifecycle status for one row; see [`Self::sync_rows`] for why
-    /// this is the plan's field and not the row's. Returns false when the plan holds
-    /// no such row, so a caller can tell "not mine" from "set".
-    pub fn set_row_status(&mut self, id: &str, status: &str) -> bool {
-        if let Some(item) = self.items.iter_mut().find(|item| item.id == id) {
-            item.status = status.to_string();
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Rewrite all durable references when a live client replaces its session
-    /// id. This keeps ownership from accumulating dangling historical
-    /// identities.
-    pub fn rename_session(&mut self, old_session_id: &str, new_session_id: &str) {
-        for item in &mut self.items {
-            if item.assigned_to.as_deref() == Some(old_session_id) {
-                item.assigned_to = Some(new_session_id.to_string());
-            }
-        }
-    }
-
-    /// Whether `id` is a row other rows belong to: a composite join/synthesis
-    /// point rather than a leaf. Derived, never stored: a child that is still a
-    /// row names its parent, and a close deletes the child and leaves its record
-    /// on the parent (`kcode_base::todo::close_row`), so a row with an open child
-    /// or a nonempty `records` was decomposed and still is.
-    pub fn is_composite(&self, id: &str) -> bool {
-        self.items
+/// Whether `id` is a row other rows belong to: a composite join/synthesis point
+/// rather than a leaf. Derived, never stored: a child that is still a row names its
+/// parent, and a close deletes the child and leaves its record on the parent
+/// (`kcode_base::todo::close_row`), so a row with an open child or a nonempty
+/// `records` was decomposed and still is.
+pub fn is_composite(rows: &[TaskItem], id: &str) -> bool {
+    rows.iter().any(|row| row.parent.as_deref() == Some(id))
+        || rows
             .iter()
-            .any(|row| row.parent.as_deref() == Some(id))
-            || self
-                .items
-                .iter()
-                .find(|row| row.id == id)
-                .is_some_and(|row| !row.records.is_empty())
-    }
-
-    pub fn plan_definition(&self) -> SwarmPlanDefinition {
-        SwarmPlanDefinition {
-            items: self
-                .items
-                .iter()
-                .map(|item| SwarmPlanItemSpec {
-                    id: item.id.clone(),
-                    content: item.content.clone(),
-                    priority: item.priority.clone(),
-                    subsystem: item.subsystem.clone(),
-                    file_scope: item.file_scope.clone(),
-                    blocked_by: item.blocked_by.clone(),
-                })
-                .collect(),
-        }
-    }
-
-    pub fn execution_state(&self) -> SwarmExecutionState {
-        SwarmExecutionState {
-            items: self
-                .items
-                .iter()
-                .map(|item| SwarmExecutionItemState {
-                    task_id: item.id.clone(),
-                    status: item.status.clone(),
-                    assigned_to: item.assigned_to.clone(),
-                })
-                .collect(),
-        }
-    }
-}
-
-impl Default for VersionedPlan {
-    fn default() -> Self {
-        Self::new()
-    }
+            .find(|row| row.id == id)
+            .is_some_and(|row| !row.records.is_empty())
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -522,11 +394,11 @@ pub fn next_runnable_item_ids(items: &[TaskItem], limit: Option<usize>) -> Vec<S
 /// session holds is not this run's to give away (the holder takes it back, see
 /// [`next_held_runnable_item_id`]), and a row whose holder can never come back is
 /// [`next_stranded_runnable_item_id`].
-pub fn next_handover_runnable_item_id(plan: &VersionedPlan, requester: &str) -> Option<String> {
-    next_runnable_item_ids(&plan.items, None)
+pub fn next_handover_runnable_item_id(items: &[TaskItem], requester: &str) -> Option<String> {
+    next_runnable_item_ids(items, None)
         .into_iter()
         .find(|candidate_id| {
-            plan.items
+            items
                 .iter()
                 .find(|item| item.id == *candidate_id)
                 .is_some_and(|item| {
@@ -548,14 +420,14 @@ pub fn next_handover_runnable_item_id(plan: &VersionedPlan, requester: &str) -> 
 /// alone until it finishes. `requester`'s own rows are excluded: it works those
 /// itself, and the assign path refuses to assign a task to the asking session.
 pub fn next_held_runnable_item_id(
-    plan: &VersionedPlan,
+    items: &[TaskItem],
     holder_can_work: &dyn Fn(&str) -> bool,
     requester: &str,
 ) -> Option<(String, String)> {
-    next_runnable_item_ids(&plan.items, None)
+    next_runnable_item_ids(items, None)
         .into_iter()
         .find_map(|candidate_id| {
-            let item = plan.items.iter().find(|item| item.id == candidate_id)?;
+            let item = items.iter().find(|item| item.id == candidate_id)?;
             let holder = item.assigned_to.as_deref()?;
             if holder == requester || !holder_can_work(holder) {
                 return None;
@@ -574,13 +446,13 @@ pub fn next_held_runnable_item_id(
 /// workers is not bounded here: releasing the claim is the whole recovery, and the
 /// loop that repeats the work owns the bound.
 pub fn next_stranded_runnable_item_id(
-    plan: &VersionedPlan,
+    items: &[TaskItem],
     assignee_is_dead: &dyn Fn(&str) -> bool,
 ) -> Option<String> {
-    next_runnable_item_ids(&plan.items, None)
+    next_runnable_item_ids(items, None)
         .into_iter()
         .find(|candidate_id| {
-            let Some(item) = plan.items.iter().find(|item| item.id == *candidate_id) else {
+            let Some(item) = items.iter().find(|item| item.id == *candidate_id) else {
                 return false;
             };
             let Some(assignee) = item.assigned_to.as_deref() else {
@@ -630,13 +502,13 @@ pub fn task_control_target_item_id(
     }
 }
 
-pub fn explicit_task_blocked_reason(plan: &VersionedPlan, task_id: &str) -> Option<String> {
-    let known_ids: HashSet<&str> = plan.items.iter().map(|item| item.id.as_str()).collect();
-    let completed_ids = completed_item_ids(&plan.items);
+pub fn explicit_task_blocked_reason(items: &[TaskItem], task_id: &str) -> Option<String> {
+    let known_ids: HashSet<&str> = items.iter().map(|item| item.id.as_str()).collect();
+    let completed_ids = completed_item_ids(items);
     let completed_refs: HashSet<&str> = completed_ids.iter().map(String::as_str).collect();
-    let cycle_ids: HashSet<String> = cycle_item_ids(&plan.items).into_iter().collect();
+    let cycle_ids: HashSet<String> = cycle_item_ids(items).into_iter().collect();
 
-    let item = plan.items.iter().find(|item| item.id == task_id)?;
+    let item = items.iter().find(|item| item.id == task_id)?;
     let missing = missing_dependencies(item, &known_ids);
     if !missing.is_empty() {
         return Some(format!(
@@ -672,24 +544,24 @@ pub struct AssignmentAffinities {
 }
 
 pub fn assignment_affinities_for_task(
-    plan: &VersionedPlan,
+    items: &[TaskItem],
     task_id: &str,
 ) -> Result<AssignmentAffinities, String> {
-    let Some(task) = plan.items.iter().find(|item| item.id == task_id) else {
+    let Some(task) = items.iter().find(|item| item.id == task_id) else {
         return Err(format!("Task '{}' not found in swarm plan", task_id));
     };
 
     let mut dependency_carryover = HashMap::<String, usize>::new();
     let mut metadata_carryover = HashMap::<String, usize>::new();
     for dependency_id in &task.blocked_by {
-        if let Some(dep_item) = plan.items.iter().find(|item| item.id == *dependency_id)
+        if let Some(dep_item) = items.iter().find(|item| item.id == *dependency_id)
             && let Some(owner) = dep_item.assigned_to.as_ref()
         {
             *dependency_carryover.entry(owner.clone()).or_default() += 1;
         }
     }
 
-    for item in &plan.items {
+    for item in items {
         let Some(owner) = item.assigned_to.as_ref() else {
             continue;
         };
@@ -911,193 +783,110 @@ mod tests {
 
     #[test]
     fn assignment_helpers_report_blocked_and_next_unassigned_tasks() {
-        let plan = VersionedPlan {
-            items: vec![
-                item("done", "completed", &[]),
-                TaskItem {
-                    assigned_to: Some("agent-a".to_string()),
-                    ..item("assigned", "queued", &["done"])
-                },
-                item("ready", "queued", &["done"]),
-                item("blocked", "queued", &["ready"]),
-            ],
-            ..VersionedPlan::new()
-        };
+        let items = vec![
+            item("done", "completed", &[]),
+            TaskItem {
+                assigned_to: Some("agent-a".to_string()),
+                ..item("assigned", "queued", &["done"])
+            },
+            item("ready", "queued", &["done"]),
+            item("blocked", "queued", &["ready"]),
+        ];
 
         assert_eq!(
-            next_handover_runnable_item_id(&plan, "me"),
+            next_handover_runnable_item_id(&items, "me"),
             Some("ready".to_string())
         );
         assert_eq!(
-            explicit_task_blocked_reason(&plan, "blocked"),
+            explicit_task_blocked_reason(&items, "blocked"),
             Some("Task 'blocked' is still blocked by: ready".to_string())
         );
     }
 
     #[test]
     fn a_held_runnable_row_names_the_holder_that_can_take_it_back() {
-        let plan = VersionedPlan {
-            items: vec![
-                TaskItem {
-                    assigned_to: Some("worker-busy".to_string()),
-                    ..item("busy", "queued", &[])
-                },
-                TaskItem {
-                    assigned_to: Some("worker-free".to_string()),
-                    ..item("held", "queued", &[])
-                },
-                TaskItem {
-                    assigned_to: Some("requester".to_string()),
-                    ..item("own", "queued", &[])
-                },
-                item("unowned", "queued", &[]),
-            ],
-            ..VersionedPlan::new()
-        };
+        let items = vec![
+            TaskItem {
+                assigned_to: Some("worker-busy".to_string()),
+                ..item("busy", "queued", &[])
+            },
+            TaskItem {
+                assigned_to: Some("worker-free".to_string()),
+                ..item("held", "queued", &[])
+            },
+            TaskItem {
+                assigned_to: Some("requester".to_string()),
+                ..item("own", "queued", &[])
+            },
+            item("unowned", "queued", &[]),
+        ];
         let free = |session: &str| session == "worker-free" || session == "requester";
 
         // The first runnable row whose holder can take it, skipping a busy holder
         // and the asker's own rows.
         assert_eq!(
-            next_held_runnable_item_id(&plan, &free, "requester"),
+            next_held_runnable_item_id(&items, &free, "requester"),
             Some(("held".to_string(), "worker-free".to_string()))
         );
         // Nobody can take anything: no hand-back, and an unowned row is not one.
         let nobody = |_: &str| false;
         assert_eq!(
-            next_held_runnable_item_id(&plan, &nobody, "requester"),
+            next_held_runnable_item_id(&items, &nobody, "requester"),
             None
         );
     }
 
     #[test]
     fn assignment_affinities_count_dependency_and_metadata_carryover() {
-        let plan = VersionedPlan {
-            items: vec![
-                TaskItem {
-                    assigned_to: Some("agent-a".to_string()),
-                    subsystem: Some("ui".to_string()),
-                    file_scope: vec!["src/tui.rs".to_string()],
-                    ..item("dep", "completed", &[])
-                },
-                TaskItem {
-                    assigned_to: Some("agent-b".to_string()),
-                    subsystem: Some("ui".to_string()),
-                    file_scope: vec!["src/tui.rs".to_string()],
-                    ..item("sibling", "queued", &[])
-                },
-                TaskItem {
-                    subsystem: Some("ui".to_string()),
-                    file_scope: vec!["src/tui.rs".to_string()],
-                    ..item("target", "queued", &["dep"])
-                },
-            ],
-            ..VersionedPlan::new()
-        };
-        let affinities = assignment_affinities_for_task(&plan, "target").unwrap();
+        let items = vec![
+            TaskItem {
+                assigned_to: Some("agent-a".to_string()),
+                subsystem: Some("ui".to_string()),
+                file_scope: vec!["src/tui.rs".to_string()],
+                ..item("dep", "completed", &[])
+            },
+            TaskItem {
+                assigned_to: Some("agent-b".to_string()),
+                subsystem: Some("ui".to_string()),
+                file_scope: vec!["src/tui.rs".to_string()],
+                ..item("sibling", "queued", &[])
+            },
+            TaskItem {
+                subsystem: Some("ui".to_string()),
+                file_scope: vec!["src/tui.rs".to_string()],
+                ..item("target", "queued", &["dep"])
+            },
+        ];
+        let affinities = assignment_affinities_for_task(&items, "target").unwrap();
         assert_eq!(affinities.dependency_carryover.get("agent-a"), Some(&1));
         assert_eq!(affinities.metadata_carryover.get("agent-b"), Some(&3));
     }
 
     #[test]
-    fn stranded_runnable_item_requires_dead_assignee_and_respects_reclaim_cap() {
+    fn stranded_runnable_item_requires_a_dead_assignee() {
         let dead = |session: &str| session == "dead-session";
 
         // Ready but unassigned: not stranded (normal path handles it).
-        let mut plan = VersionedPlan {
-            items: vec![item("a", "queued", &[])],
-            ..VersionedPlan::new()
-        };
-        assert_eq!(next_stranded_runnable_item_id(&plan, &dead), None);
+        let mut items = vec![item("a", "queued", &[])];
+        assert_eq!(next_stranded_runnable_item_id(&items, &dead), None);
 
         // Assigned to a live session: not stranded.
-        plan.items[0].assigned_to = Some("live-session".to_string());
-        assert_eq!(next_stranded_runnable_item_id(&plan, &dead), None);
+        items[0].assigned_to = Some("live-session".to_string());
+        assert_eq!(next_stranded_runnable_item_id(&items, &dead), None);
 
         // Assigned to a dead session: stranded.
-        plan.items[0].assigned_to = Some("dead-session".to_string());
+        items[0].assigned_to = Some("dead-session".to_string());
         assert_eq!(
-            next_stranded_runnable_item_id(&plan, &dead),
+            next_stranded_runnable_item_id(&items, &dead),
             Some("a".to_string())
         );
 
         // Blocked items never count even with a dead assignee.
-        let blocked_plan = VersionedPlan {
-            items: vec![item("gate", "queued", &[]), {
-                let mut blocked = item("b", "queued", &["gate"]);
-                blocked.assigned_to = Some("dead-session".to_string());
-                blocked
-            }],
-            ..VersionedPlan::new()
-        };
-        assert_eq!(next_stranded_runnable_item_id(&blocked_plan, &dead), None);
-    }
-
-    #[test]
-    fn a_dead_assignee_release_arrives_with_the_row() {
-        let mut plan = VersionedPlan {
-            items: vec![{
-                let mut stranded = item("a", "queued", &[]);
-                stranded.assigned_to = Some("dead-session".to_string());
-                stranded
-            }],
-            ..VersionedPlan::new()
-        };
-
-        // The claim lives on the row, so the release arrives with the row the store
-        // wrote; the plan's copy follows it and nothing else about the row moves.
-        let mut released = plan.items[0].clone();
-        released.assigned_to = None;
-        plan.sync_rows(&[released]);
-        let item = &plan.items[0];
-        assert_eq!(item.assigned_to, None, "the released row is the item");
-        assert_eq!(item.status, "queued", "the run's lifecycle is untouched");
-        assert_eq!(
-            next_handover_runnable_item_id(&plan, "someone-else"),
-            Some("a".to_string()),
-            "and a released row is visible to the hand-over picker"
-        );
-    }
-
-    /// The rows are the plan: a row's fields replace the item's, the run's own
-    /// lifecycle survives by id, a row the plan does not hold becomes an item, and a
-    /// close takes the item with it.
-    #[test]
-    fn syncing_rows_makes_the_plan_agree_with_the_list() {
-        let mut plan = VersionedPlan {
-            items: vec![{
-                let mut held = item("held", "running", &[]);
-                held.assigned_to = Some("worker".to_string());
-                held.note = Some("old".to_string());
-                held
-            }],
-            ..VersionedPlan::new()
-        };
-
-        // A row the store rewrote: the fields are the row's, the status is the run's.
-        let mut rewritten = item("held", "pending", &[]);
-        rewritten.assigned_to = Some("worker".to_string());
-        rewritten.note = Some("new".to_string());
-        let fresh = item("fresh", "pending", &[]);
-        plan.sync_rows(&[rewritten, fresh]);
-
-        let held = plan.items.iter().find(|i| i.id == "held").unwrap();
-        assert_eq!(held.note.as_deref(), Some("new"), "the row's fields win");
-        assert_eq!(held.status, "running", "the run's lifecycle is the plan's");
-        let fresh = plan.items.iter().find(|i| i.id == "fresh").unwrap();
-        assert_eq!(
-            fresh.status, "pending",
-            "a new row arrives as the list has it"
-        );
-
-        assert!(plan.set_row_status("fresh", "queued"));
-        assert!(!plan.set_row_status("absent", "queued"));
-        assert_eq!(
-            plan.items.iter().find(|i| i.id == "fresh").unwrap().status,
-            "queued"
-        );
-
-        plan.drop_row("held");
-        assert!(!plan.items.iter().any(|i| i.id == "held"));
+        let blocked = vec![item("gate", "queued", &[]), {
+            let mut blocked = item("b", "queued", &["gate"]);
+            blocked.assigned_to = Some("dead-session".to_string());
+            blocked
+        }];
+        assert_eq!(next_stranded_runnable_item_id(&blocked, &dead), None);
     }
 }

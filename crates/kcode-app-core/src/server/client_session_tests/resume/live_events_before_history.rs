@@ -81,7 +81,7 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
         String,
         HashMap<String, HashSet<String>>,
     >::new()));
-    let swarm_plans = Arc::new(RwLock::new(HashMap::<String, VersionedPlan>::new()));
+    let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::<String, String>::new()));
     let client_count = Arc::new(RwLock::new(1usize));
     let (writer, _peer_stream) = test_writer()?;
@@ -109,7 +109,7 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
         let file_touch = file_touch.clone();
         let channel_subscriptions = Arc::clone(&channel_subscriptions);
         let channel_subscriptions_by_session = Arc::clone(&channel_subscriptions_by_session);
-        let swarm_plans = Arc::clone(&swarm_plans);
+        let swarm_runs = Arc::clone(&swarm_runs);
         let swarm_coordinators = Arc::clone(&swarm_coordinators);
         let client_count = Arc::clone(&client_count);
         let writer = Arc::clone(&writer);
@@ -142,7 +142,7 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
                 &file_touch,
                 &channel_subscriptions,
                 &channel_subscriptions_by_session,
-                &swarm_plans,
+                &swarm_runs,
                 &swarm_coordinators,
                 &client_count,
                 &writer,

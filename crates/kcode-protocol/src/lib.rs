@@ -18,7 +18,7 @@ pub use notifications::{FeatureToggle, NotificationType};
 
 use kcode_message_types::BatchProgress;
 use kcode_message_types::{InputShellResult, ToolCall};
-use kcode_plan::{TaskItem, VersionedPlan, next_runnable_item_ids, summarize_plan_graph};
+use kcode_plan::{TaskItem, next_runnable_item_ids, summarize_plan_graph};
 pub use kcode_session_types::SwarmLifecycleStatus;
 pub use side_panel::{
     PersistedSidePanelPage, PersistedSidePanelState, SidePanelPage, SidePanelPageFormat,
@@ -381,17 +381,17 @@ impl PlanGraphStatus {
         }
     }
 
-    pub fn from_versioned_plan(
+    pub fn from_rows(
         swarm_id: impl Into<String>,
-        plan: &VersionedPlan,
+        rows: &[TaskItem],
         next_ready_limit: Option<usize>,
         newly_ready_ids: Vec<String>,
         failed_reasons: BTreeMap<String, String>,
     ) -> Self {
-        let graph = summarize_plan_graph(&plan.items);
+        let graph = summarize_plan_graph(rows);
         Self {
             swarm_id: Some(swarm_id.into()),
-            item_count: plan.items.len(),
+            item_count: rows.len(),
             ready_ids: graph.ready_ids,
             blocked_ids: graph.blocked_ids,
             active_ids: graph.active_ids,
@@ -400,7 +400,7 @@ impl PlanGraphStatus {
             failed_reasons,
             cycle_ids: graph.cycle_ids,
             unresolved_dependency_ids: graph.unresolved_dependency_ids,
-            next_ready_ids: next_runnable_item_ids(&plan.items, next_ready_limit),
+            next_ready_ids: next_runnable_item_ids(rows, next_ready_limit),
             newly_ready_ids,
         }
     }

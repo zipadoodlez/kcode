@@ -82,7 +82,7 @@ async fn handle_resume_session_allows_attach_from_different_client_instance() ->
         String,
         HashMap<String, HashSet<String>>,
     >::new()));
-    let swarm_plans = Arc::new(RwLock::new(HashMap::<String, VersionedPlan>::new()));
+    let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::<String, String>::new()));
     let client_count = Arc::new(RwLock::new(2usize));
     let (writer, _peer_stream) = test_writer()?;
@@ -118,7 +118,7 @@ async fn handle_resume_session_allows_attach_from_different_client_instance() ->
         &file_touch,
         &channel_subscriptions,
         &channel_subscriptions_by_session,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &client_count,
         &writer,

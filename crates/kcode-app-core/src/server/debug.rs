@@ -17,8 +17,8 @@ use super::debug_swarm_read::maybe_handle_swarm_read_command;
 use super::debug_swarm_write::{DebugSwarmWriteContext, maybe_handle_swarm_write_command};
 use super::debug_testers::execute_tester_command;
 use super::{
-    ChannelSubscriptions, FileTouchService, ServerIdentity, SharedContext, SwarmEvent, SwarmMember,
-    VersionedPlan, debug_control_allowed, fanout_session_event,
+    ChannelSubscriptions, FileTouchService, RunState, ServerIdentity, SharedContext, SwarmEvent,
+    SwarmMember, debug_control_allowed, fanout_session_event,
 };
 use crate::agent::Agent;
 use crate::protocol::{Request, ServerEvent, TranscriptMode, decode_request, encode_event};
@@ -241,7 +241,7 @@ pub(super) async fn handle_debug_client(
     swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
     shared_context: Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
-    swarm_plans: Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: Arc<RwLock<HashMap<String, String>>>,
     file_touch: FileTouchService,
     channel_subscriptions: ChannelSubscriptions,
@@ -423,7 +423,7 @@ pub(super) async fn handle_debug_client(
                             &swarm_members,
                             &swarms_by_id,
                             &swarm_coordinators,
-                            &swarm_plans,
+                            &swarm_runs,
                             &event_history,
                             &event_counter,
                             &swarm_event_tx,
@@ -443,7 +443,7 @@ pub(super) async fn handle_debug_client(
                             server_start_time,
                             &swarms_by_id,
                             &shared_context,
-                            &swarm_plans,
+                            &swarm_runs,
                             &swarm_coordinators,
                             &file_touch,
                             &channel_subscriptions,
@@ -462,7 +462,7 @@ pub(super) async fn handle_debug_client(
                             &swarm_members,
                             &swarms_by_id,
                             &shared_context,
-                            &swarm_plans,
+                            &swarm_runs,
                             &swarm_coordinators,
                             &file_touch,
                             &channel_subscriptions,
@@ -478,7 +478,7 @@ pub(super) async fn handle_debug_client(
                                 swarm_members: &swarm_members,
                                 swarms_by_id: &swarms_by_id,
                                 shared_context: &shared_context,
-                                swarm_plans: &swarm_plans,
+                                swarm_runs: &swarm_runs,
                                 swarm_coordinators: &swarm_coordinators,
                             },
                         )

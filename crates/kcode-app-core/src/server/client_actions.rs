@@ -2,8 +2,8 @@
 
 use super::client_lifecycle::process_message_streaming_mpsc;
 use super::{
-    ChannelSubscriptions, ClientConnectionInfo, SessionAgents, SessionInterruptQueues, SwarmEvent,
-    SwarmMember, SwarmState, VersionedPlan, broadcast_swarm_status, fanout_session_event,
+    ChannelSubscriptions, ClientConnectionInfo, RunState, SessionAgents, SessionInterruptQueues,
+    SwarmEvent, SwarmMember, SwarmState, broadcast_swarm_status, fanout_session_event,
     persist_swarm_state_for, queue_soft_interrupt_for_session,
     remove_session_channel_subscriptions, remove_session_from_swarm, swarm_id_for_session,
     truncate_detail, update_member_status,
@@ -393,7 +393,7 @@ pub(super) async fn handle_set_feature(
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     channel_subscriptions: &ChannelSubscriptions,
     channel_subscriptions_by_session: &ChannelSubscriptions,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
 ) {
     match feature {
@@ -457,7 +457,7 @@ pub(super) async fn handle_set_feature(
                     swarm_members,
                     swarms_by_id,
                     swarm_coordinators,
-                    swarm_plans,
+                    swarm_runs,
                 )
                 .await;
                 remove_session_channel_subscriptions(
@@ -492,7 +492,7 @@ pub(super) async fn handle_set_feature(
                     let swarm_state = SwarmState {
                         members: Arc::clone(swarm_members),
                         swarms_by_id: Arc::clone(swarms_by_id),
-                        plans: Arc::clone(swarm_plans),
+                        runs: Arc::clone(swarm_runs),
                         coordinators: Arc::clone(swarm_coordinators),
                     };
                     persist_swarm_state_for(id, &swarm_state).await;

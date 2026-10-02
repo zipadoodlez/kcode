@@ -377,6 +377,32 @@ fn set_row_holder_on_disk(
     Ok(written)
 }
 
+/// Rewrite every row's holder when a session's id changes.
+///
+/// The list is where a holder lives (rule 2), so a renamed session must be renamed
+/// in the list too, or its rows read as somebody else's and it loses sight of its own
+/// work. Read-modify-write, like every other write here.
+pub fn rename_row_holder_on_disk(
+    working_dir: Option<&Path>,
+    session_id: &str,
+    old_session_id: &str,
+    new_session_id: &str,
+) -> Result<Vec<TaskItem>> {
+    let mut rows = load_tasks(working_dir, session_id)?;
+    let before: std::collections::HashMap<String, TaskItem> = rows
+        .iter()
+        .map(|row| (row.id.clone(), row.clone()))
+        .collect();
+    for row in rows.iter_mut() {
+        if row.assigned_to.as_deref() == Some(old_session_id) {
+            row.assigned_to = Some(new_session_id.to_string());
+        }
+    }
+    let touched = changed_rows(&rows, &before);
+    save_tasks(working_dir, session_id, &rows)?;
+    Ok(touched)
+}
+
 /// Decompose one row into child rows, in the file. A decomposition is rows: each
 /// child is added with `parent = id`, the row gains a blocker on every child so it
 /// is not picked while they are open, and the file is written back. The store owns

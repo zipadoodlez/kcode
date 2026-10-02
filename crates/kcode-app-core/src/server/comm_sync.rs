@@ -1,6 +1,6 @@
 use super::{
-    ClientConnectionInfo, FileTouchService, SessionAgents, SwarmEvent, SwarmEventType, SwarmMember,
-    SwarmState, VersionedPlan, broadcast_swarm_plan, persist_swarm_state_for, record_swarm_event,
+    ClientConnectionInfo, FileTouchService, RunState, SessionAgents, SwarmEvent, SwarmEventType,
+    SwarmMember, SwarmState, broadcast_swarm_plan, persist_swarm_state_for, record_swarm_event,
 };
 use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{
@@ -14,7 +14,7 @@ pub(super) struct CommResyncPlanContext<'a> {
     pub(super) client_event_tx: &'a mpsc::UnboundedSender<ServerEvent>,
     pub(super) swarm_members: &'a Arc<RwLock<HashMap<String, SwarmMember>>>,
     pub(super) swarms_by_id: &'a Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    pub(super) swarm_plans: &'a Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    pub(super) swarm_runs: &'a Arc<RwLock<HashMap<String, RunState>>>,
     pub(super) swarm_coordinators: &'a Arc<RwLock<HashMap<String, String>>>,
     pub(super) event_history: &'a Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     pub(super) event_counter: &'a Arc<std::sync::atomic::AtomicU64>,
@@ -404,7 +404,7 @@ pub(super) async fn handle_comm_plan_status(
     id: u64,
     req_session_id: String,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
 ) {
     let swarm_id = {
@@ -424,21 +424,27 @@ pub(super) async fn handle_comm_plan_status(
     };
 
     let summary = {
-        let plans = swarm_plans.read().await;
-        let plan = plans.get(&swarm_id);
-        if let Some(plan) = plan {
-            PlanGraphStatus::from_versioned_plan(
+        let run = swarm_runs
+            .read()
+            .await
+            .get(&swarm_id)
+            .cloned()
+            .unwrap_or_default();
+        let rows = super::swarm::swarm_rows(&swarm_id, &req_session_id, swarm_members).await;
+        let items = super::swarm::rows_with_run_status(&rows, &run);
+        if items.is_empty() {
+            PlanGraphStatus::empty_for_swarm(swarm_id.clone())
+        } else {
+            PlanGraphStatus::from_rows(
                 swarm_id.clone(),
-                plan,
+                &items,
                 Some(8),
                 Vec::new(),
                 super::swarm::failed_reasons_for(
-                    &plan.items,
+                    &items,
                     &super::swarm::member_details(swarm_members).await,
                 ),
             )
-        } else {
-            PlanGraphStatus::empty_for_swarm(swarm_id.clone())
         }
     };
 
@@ -458,15 +464,16 @@ pub(super) async fn handle_comm_resync_plan(
     };
 
     if let Some(swarm_id) = swarm_id {
-        let plan_state = {
-            let mut plans = ctx.swarm_plans.write().await;
-            plans.get_mut(&swarm_id).map(|plan| plan.items.len())
+        let item_count = {
+            let rows =
+                super::swarm::swarm_rows(&swarm_id, &req_session_id, ctx.swarm_members).await;
+            rows.len()
         };
-        if let Some(item_count) = plan_state {
+        if item_count > 0 {
             let swarm_state = SwarmState {
                 members: Arc::clone(ctx.swarm_members),
                 swarms_by_id: Arc::clone(ctx.swarms_by_id),
-                plans: Arc::clone(ctx.swarm_plans),
+                runs: Arc::clone(ctx.swarm_runs),
                 coordinators: Arc::clone(ctx.swarm_coordinators),
             };
             persist_swarm_state_for(&swarm_id, &swarm_state).await;
@@ -485,7 +492,7 @@ pub(super) async fn handle_comm_resync_plan(
             broadcast_swarm_plan(
                 &swarm_id,
                 Some("resync".to_string()),
-                ctx.swarm_plans,
+                ctx.swarm_runs,
                 ctx.swarm_members,
                 ctx.swarms_by_id,
             )

@@ -4,7 +4,7 @@ use crate::protocol::ServerEvent;
 use crate::protocol::SwarmLifecycleStatus;
 use crate::provider::Provider;
 use crate::server::{
-    SessionInterruptQueues, SwarmMember, VersionedPlan, broadcast_swarm_status,
+    RunState, SessionInterruptQueues, SwarmMember, broadcast_swarm_status,
     register_background_tool_signal, register_session_interrupt_queue, swarm_id_for_session,
 };
 use crate::tool::Registry;
@@ -26,7 +26,7 @@ pub(super) async fn create_headless_session(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
-    _swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    _swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     soft_interrupt_queues: &SessionInterruptQueues,
     selfdev_requested: bool,
     model_override: Option<String>,

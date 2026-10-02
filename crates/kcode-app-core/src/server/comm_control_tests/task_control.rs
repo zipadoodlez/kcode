@@ -28,15 +28,7 @@ async fn task_control_wake_returns_structured_response_with_plan_summary() {
     )])));
     let mut assigned = plan_item("active-task", "queued", "high", &[]);
     assigned.assigned_to = Some(worker.to_string());
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        VersionedPlan {
-            items: vec![assigned, plan_item("next", "queued", "high", &[])],
-        },
-    )])));
-    // The plan needs rows behind it: the file is what a dispatch writes to,
-    // and the repo root is that file's home.
-    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
+    let swarm_runs = seeded(repo.path(), vec![assigned, plan_item("next", "queued", "high", &[])]);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -59,7 +51,7 @@ async fn task_control_wake_returns_structured_response_with_plan_summary() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -119,15 +111,7 @@ async fn task_control_resume_without_task_id_uses_unique_target_assignment() {
     )])));
     let mut assigned = plan_item("resume-me", "queued", "high", &[]);
     assigned.assigned_to = Some(worker.to_string());
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        VersionedPlan {
-            items: vec![assigned],
-        },
-    )])));
-    // The plan needs rows behind it: the file is what a dispatch writes to,
-    // and the repo root is that file's home.
-    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
+    let swarm_runs = seeded(repo.path(), vec![assigned]);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -150,7 +134,7 @@ async fn task_control_resume_without_task_id_uses_unique_target_assignment() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -206,15 +190,7 @@ async fn task_control_without_task_id_rejects_ambiguous_target_assignments() {
     first.assigned_to = Some(worker.to_string());
     let mut second = plan_item("second", "queued", "high", &[]);
     second.assigned_to = Some(worker.to_string());
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        VersionedPlan {
-            items: vec![first, second],
-        },
-    )])));
-    // The plan needs rows behind it: the file is what a dispatch writes to,
-    // and the repo root is that file's home.
-    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
+    let swarm_runs = seeded(repo.path(), vec![first, second]);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -237,7 +213,7 @@ async fn task_control_without_task_id_rejects_ambiguous_target_assignments() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -292,15 +268,7 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
     )])));
     let mut assigned = plan_item("busy-task", "running", "high", &[]);
     assigned.assigned_to = Some(worker.to_string());
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        VersionedPlan {
-            items: vec![assigned],
-        },
-    )])));
-    // The plan needs rows behind it: the file is what a dispatch writes to,
-    // and the repo root is that file's home.
-    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
+    let swarm_runs = seeded(repo.path(), vec![assigned]);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -326,7 +294,7 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -343,10 +311,8 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
         other => panic!("expected busy Error, got {other:?}"),
     }
 
-    let plans = swarm_plans.read().await;
-    let plan = plans.get(swarm_id).expect("plan exists");
-    let item = plan
-        .items
+    let rows = rows_in(repo.path());
+    let item = rows
         .iter()
         .find(|item| item.id == "busy-task")
         .expect("task exists");
@@ -368,15 +334,7 @@ async fn requeue_existing_assignment_preserves_the_reclaim_count() {
     let worker = "worker";
     let mut assigned = plan_item("requeue-me", "running", "high", &[]);
     assigned.assigned_to = Some(worker.to_string());
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        VersionedPlan {
-            items: vec![assigned],
-        },
-    )])));
-    // The plan needs rows behind it: the file is what a dispatch writes to,
-    // and the repo root is that file's home.
-    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
+    let swarm_runs = seeded(repo.path(), vec![assigned]);
 
     let result = super::requeue_existing_assignment(
         swarm_id,
@@ -384,19 +342,19 @@ async fn requeue_existing_assignment_preserves_the_reclaim_count() {
         worker,
         "requeue-me",
         Some(repo.path()),
-        &swarm_plans,
+        &swarm_runs,
     )
     .await;
-    assert!(result.is_some(), "requeue should succeed");
+    assert!(result, "requeue should succeed");
 
-    let plans = swarm_plans.read().await;
-    let plan = plans.get(swarm_id).expect("plan exists");
-    let item = plan
-        .items
-        .iter()
-        .find(|item| item.id == "requeue-me")
-        .expect("task exists");
-    assert_eq!(item.status, "queued");
+    let runs = swarm_runs.read().await;
+    assert_eq!(
+        runs.get(swarm_id)
+            .and_then(|run| run.get("requeue-me"))
+            .map(|state| state.status.as_str()),
+        Some("queued"),
+        "a requeue puts the row back in the run's own lifecycle"
+    );
 }
 
 /// Regression: an identical coordinator retry issued shortly after a
@@ -435,15 +393,7 @@ async fn task_control_retry_re_dispatches_after_recent_identical_retry() {
     )])));
     let mut assigned = plan_item("flaky-task", "failed", "high", &[]);
     assigned.assigned_to = Some(worker.to_string());
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        VersionedPlan {
-            items: vec![assigned],
-        },
-    )])));
-    // The plan needs rows behind it: the file is what a dispatch writes to,
-    // and the repo root is that file's home.
-    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
+    let swarm_runs = seeded(repo.path(), vec![assigned]);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -461,7 +411,7 @@ async fn task_control_retry_re_dispatches_after_recent_identical_retry() {
         let client_connections = Arc::clone(&client_connections);
         let swarm_members = Arc::clone(&swarm_members);
         let swarms_by_id = Arc::clone(&swarms_by_id);
-        let swarm_plans = Arc::clone(&swarm_plans);
+        let swarm_runs = Arc::clone(&swarm_runs);
         let swarm_coordinators = Arc::clone(&swarm_coordinators);
         let event_history = Arc::clone(&event_history);
         let event_counter = Arc::clone(&event_counter);
@@ -481,7 +431,7 @@ async fn task_control_retry_re_dispatches_after_recent_identical_retry() {
                 &client_connections,
                 &swarm_members,
                 &swarms_by_id,
-                &swarm_plans,
+                &swarm_runs,
                 &swarm_coordinators,
                 &event_history,
                 &event_counter,
@@ -492,15 +442,15 @@ async fn task_control_retry_re_dispatches_after_recent_identical_retry() {
         }
     };
 
+    let repo_path = repo.path().to_path_buf();
     let wait_for_status_leaving_failed = || {
-        let swarm_plans = Arc::clone(&swarm_plans);
+        let repo_path = repo_path.clone();
         async move {
             for _ in 0..200 {
                 {
-                    let plans = swarm_plans.read().await;
-                    let status = plans
-                        .get(swarm_id)
-                        .and_then(|plan| plan.items.iter().find(|item| item.id == "flaky-task"))
+                    let status = rows_in(&repo_path)
+                        .iter()
+                        .find(|item| item.id == "flaky-task")
                         .map(|item| item.status.clone())
                         .unwrap_or_default();
                     if status != "failed" {
@@ -525,16 +475,12 @@ async fn task_control_retry_re_dispatches_after_recent_identical_retry() {
     let status = wait_for_status_leaving_failed().await;
     assert_ne!(status, "failed", "first retry should dispatch the task");
 
-    // Simulate the worker failing quickly, well within the final-state TTL.
+    // The worker failed quickly, well within the final-state TTL: the task reads
+    // failed in the list again, held by the worker that just failed it.
     {
-        let mut plans = swarm_plans.write().await;
-        let plan = plans.get_mut(swarm_id).expect("plan exists");
-        let item = plan
-            .items
-            .iter_mut()
-            .find(|item| item.id == "flaky-task")
-            .expect("task exists");
-        item.status = "failed".to_string();
+        let mut failed = plan_item("flaky-task", "failed", "high", &[]);
+        failed.assigned_to = Some(worker.to_string());
+        crate::todo::save_tasks(Some(&repo_path), "fixture", &[failed]).expect("write the list");
     }
 
     // Identical second retry must re-dispatch instead of replaying the

@@ -62,9 +62,9 @@ use self::swarm::{
     MAX_SWARM_MEMBERS, broadcast_swarm_plan, broadcast_swarm_plan_with_previous,
     broadcast_swarm_status, expired_terminal_member_ids, member_consumes_swarm_capacity,
     record_swarm_event, record_swarm_event_for_session, remove_session_from_swarm,
-    rename_plan_participant, run_swarm_message, salvage_dead_assignees, send_swarm_plan_to_session,
-    set_member_task_label, swarm_is_self_or_ancestor, update_member_status,
-    update_member_status_with_report, update_member_status_with_report_tldr,
+    run_swarm_message, salvage_dead_assignees, send_swarm_plan_to_session, set_member_task_label,
+    swarm_is_self_or_ancestor, update_member_status, update_member_status_with_report,
+    update_member_status_with_report_tldr,
 };
 use self::swarm_channels::{
     remove_session_channel_subscriptions, subscribe_session_to_channel,
@@ -72,10 +72,8 @@ use self::swarm_channels::{
 };
 pub(super) use self::swarm_mutation_state::SwarmMutationRuntime;
 use self::swarm_persistence::{
-    LoadedSwarmRuntimeState, capture_swarm_state_version,
-    load_runtime_state as load_persisted_swarm_runtime_state,
-    persist_swarm_state as persist_swarm_state_snapshot, remove_swarm_state_if_version,
-    swarm_operation_lock,
+    LoadedSwarmRuntimeState, load_runtime_state as load_persisted_swarm_runtime_state,
+    persist_swarm_state as persist_swarm_state_snapshot, swarm_operation_lock,
 };
 use self::util::get_shared_mcp_pool;
 use crate::agent::Agent;
@@ -187,7 +185,7 @@ async fn prune_expired_terminal_swarm_members(
             &swarm_state.members,
             &swarm_state.swarms_by_id,
             &swarm_state.coordinators,
-            &swarm_state.plans,
+            &swarm_state.runs,
         )
         .await;
         remove_session_channel_subscriptions(
@@ -286,7 +284,7 @@ async fn reap_idle_spawned_workers(
                 &swarm_state.members,
                 &swarm_state.swarms_by_id,
                 &swarm_state.coordinators,
-                &swarm_state.plans,
+                &swarm_state.runs,
             )
             .await;
         }
@@ -316,19 +314,6 @@ pub(super) async fn persist_swarm_state_for(swarm_id: &str, swarm_state: &SwarmS
         runtime.coordinator_session_id.as_deref(),
         &runtime.members,
     );
-}
-
-pub(super) async fn remove_persisted_swarm_state_for(swarm_id: &str, swarm_state: &SwarmState) {
-    // Persist and remove share one per-swarm ordering domain. The file version
-    // is an extra CAS guard against direct/recovery writers outside this path.
-    let operation_lock = swarm_operation_lock(swarm_id);
-    let _operation_guard = operation_lock.lock().await;
-    let file_version = capture_swarm_state_version(swarm_id);
-    let runtime = swarm_state.load_runtime(swarm_id).await;
-    if runtime.has_any_state() {
-        return;
-    }
-    let _ = remove_swarm_state_if_version(swarm_id, &file_version);
 }
 
 fn headless_member_should_restore(status: &SwarmLifecycleStatus, is_headless: bool) -> bool {
@@ -571,8 +556,8 @@ mod state;
 
 use self::state::latest_peer_touches;
 pub use self::state::{
-    FileAccess, SessionControlHandle, SharedContext, SwarmEvent, SwarmEventType, SwarmMember,
-    SwarmState,
+    FileAccess, RowRunState, RunState, SessionControlHandle, SharedContext, SwarmEvent,
+    SwarmEventType, SwarmMember, SwarmState,
 };
 use self::state::{
     SessionInterruptQueues, fanout_live_client_event, fanout_session_event,
@@ -581,7 +566,7 @@ use self::state::{
     remove_session_interrupt_queue, rename_background_tool_signal, rename_session_interrupt_queue,
     session_event_fanout_sender, unregister_session_event_sender,
 };
-pub use crate::plan::VersionedPlan;
+pub use crate::plan::TaskItem;
 
 pub use self::await_members_state::pending_await_members_for_session;
 use self::reload_state::clear_reload_marker_if_stale_for_pid;
@@ -749,7 +734,6 @@ impl Server {
         crate::process_title::set_server_title(&identity.name);
 
         let LoadedSwarmRuntimeState {
-            plans: restored_swarm_plans,
             coordinators: restored_swarm_coordinators,
             members: restored_swarm_members,
             swarms_by_id: restored_swarms_by_id,
@@ -770,7 +754,7 @@ impl Server {
             swarm_state: SwarmState::new(
                 restored_swarm_members,
                 restored_swarms_by_id,
-                restored_swarm_plans,
+                HashMap::new(),
                 restored_swarm_coordinators,
             ),
             shared_context: Arc::new(RwLock::new(HashMap::new())),
@@ -1270,7 +1254,7 @@ impl Server {
         let monitor_file_touch = self.file_touch.clone();
         let monitor_swarm_members = Arc::clone(&self.swarm_state.members);
         let monitor_swarms_by_id = Arc::clone(&self.swarm_state.swarms_by_id);
-        let monitor_swarm_plans = Arc::clone(&self.swarm_state.plans);
+        let monitor_swarm_runs = Arc::clone(&self.swarm_state.runs);
         let monitor_swarm_coordinators = Arc::clone(&self.swarm_state.coordinators);
         let monitor_shared_context = Arc::clone(&self.shared_context);
         let monitor_sessions = Arc::clone(&self.sessions);
@@ -1283,7 +1267,7 @@ impl Server {
                 monitor_file_touch,
                 monitor_swarm_members,
                 monitor_swarms_by_id,
-                monitor_swarm_plans,
+                monitor_swarm_runs,
                 monitor_swarm_coordinators,
                 monitor_shared_context,
                 monitor_sessions,
@@ -1316,7 +1300,7 @@ impl Server {
 
         let stale_swarm_members = Arc::clone(&self.swarm_state.members);
         let stale_swarms_by_id = Arc::clone(&self.swarm_state.swarms_by_id);
-        let stale_swarm_plans = Arc::clone(&self.swarm_state.plans);
+        let stale_swarm_runs = Arc::clone(&self.swarm_state.runs);
         let stale_swarm_coordinators = Arc::clone(&self.swarm_state.coordinators);
         tokio::spawn(async move {
             let mut interval =
@@ -1327,7 +1311,7 @@ impl Server {
                 salvage_dead_assignees(
                     &stale_swarm_members,
                     &stale_swarms_by_id,
-                    &stale_swarm_plans,
+                    &stale_swarm_runs,
                     &stale_swarm_coordinators,
                 )
                 .await;
@@ -1834,7 +1818,7 @@ impl Server {
         file_touch: FileTouchService,
         swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
         swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
-        _swarm_plans: Arc<RwLock<HashMap<String, VersionedPlan>>>,
+        _swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
         _swarm_coordinators: Arc<RwLock<HashMap<String, String>>>,
         _shared_context: Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
         sessions: Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>,

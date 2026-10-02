@@ -1,6 +1,82 @@
 use super::state::{MAX_EVENT_HISTORY, fanout_session_event};
-use super::{SwarmEvent, SwarmEventType, SwarmMember, SwarmState, VersionedPlan};
-use super::{persist_swarm_state_for, remove_persisted_swarm_state_for};
+use super::{RunState, SwarmEvent, SwarmEventType, SwarmMember, SwarmState};
+
+/// The rows a swarm works: the open rows its members hold, the rows nobody holds,
+/// and the rows whose holder is no longer a member, in file order.
+///
+/// The list is the one place rows live, so a run reads them instead of keeping a
+/// copy: its own rows come back because its members hold them; an unclaimed row is
+/// anyone's to take, which is also how a row released by a salvage returns; and a row
+/// whose holder has vanished is nobody's live work, which is what the sweep reclaims.
+/// A row a live session of another swarm holds stays out.
+pub(super) async fn swarm_rows(
+    swarm_id: &str,
+    requester: &str,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+) -> Vec<TaskItem> {
+    let (working_dir, held_by, members) = {
+        let members = swarm_members.read().await;
+        let held_by: HashSet<String> = members
+            .values()
+            .filter(|member| member.swarm_id.as_deref() == Some(swarm_id))
+            .map(|member| member.session_id.clone())
+            .collect();
+        let working_dir = members
+            .get(requester)
+            .and_then(|member| member.working_dir.clone())
+            .or_else(|| {
+                members
+                    .values()
+                    .find(|member| member.swarm_id.as_deref() == Some(swarm_id))
+                    .and_then(|member| member.working_dir.clone())
+            });
+        (working_dir, held_by, members)
+    };
+    let Ok(rows) = crate::todo::load_tasks(working_dir.as_deref(), requester) else {
+        return Vec::new();
+    };
+    rows.into_iter()
+        .filter(|row| match row.assigned_to.as_deref() {
+            None => true,
+            Some(holder) => held_by.contains(holder) || !members.contains_key(holder),
+        })
+        .collect()
+}
+
+/// The rows as the run sees them: a row the run set a status for reads that status,
+/// and a row it did not reads its own. Cheap because the run's map holds only the
+/// rows a turn touched.
+pub(super) fn rows_with_run_status(rows: &[TaskItem], run: &RunState) -> Vec<TaskItem> {
+    rows.iter()
+        .map(|row| {
+            let mut row = row.clone();
+            if let Some(state) = run.get(&row.id)
+                && !state.status.is_empty()
+            {
+                row.status = state.status.clone();
+            }
+            row
+        })
+        .collect()
+}
+
+/// Set a row's run status for a swarm, creating the swarm's run state when it has
+/// none yet: a row a dispatch just touched is work whatever the map held before.
+pub(super) fn set_run_status_for(
+    runs: &mut HashMap<String, RunState>,
+    swarm_id: &str,
+    row_id: &str,
+    status: &str,
+) {
+    let run = runs.entry(swarm_id.to_string()).or_default();
+    set_run_status(run, row_id, status);
+}
+
+/// The run's lifecycle for one row, in the run's own map.
+pub(super) fn set_run_status(run: &mut RunState, id: &str, status: &str) {
+    run.entry(id.to_string()).or_default().status = status.to_string();
+}
+use super::persist_swarm_state_for;
 use crate::agent::Agent;
 use crate::plan::{TaskItem, newly_ready_item_ids, summarize_plan_graph};
 use crate::protocol::{NotificationType, ServerEvent, SwarmLifecycleStatus};
@@ -297,22 +373,18 @@ impl DeadMemberSalvage {
 /// member dies converts that silent strand into work the list offers again. The
 /// claim is released in the list by the caller; nothing counts attempts, because
 /// the bound belongs to the loop that repeats the work.
-fn salvage_plan_assignments_of(plan: &mut VersionedPlan, session_id: &str) -> DeadMemberSalvage {
-    let mut outcome = DeadMemberSalvage::default();
-    let assigned_ids: Vec<String> = plan
-        .items
-        .iter()
-        .filter(|item| {
-            item.assigned_to.as_deref() == Some(session_id)
-                && !crate::plan::is_terminal_status(&item.status)
+fn held_row_ids(rows: &[TaskItem], run: &RunState, session_id: &str) -> Vec<String> {
+    rows.iter()
+        .filter(|row| row.assigned_to.as_deref() == Some(session_id))
+        .map(|row| row.id.clone())
+        .filter(|id| {
+            let status = run
+                .get(id)
+                .map(|state| state.status.as_str())
+                .unwrap_or(&rows[0].status);
+            !crate::plan::is_terminal_status(status)
         })
-        .map(|item| item.id.clone())
-        .collect();
-    for task_id in assigned_ids {
-        plan.set_row_status(&task_id, "queued");
-        outcome.released_task_ids.push(task_id);
-    }
-    outcome
+        .collect()
 }
 
 /// Salvage `session_id`'s plan assignments in `swarm_id`, then persist,
@@ -324,24 +396,26 @@ pub(super) async fn salvage_assignments_of_dead_member(
     swarm_id: &str,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
 ) -> DeadMemberSalvage {
+    let rows = swarm_rows(swarm_id, session_id, swarm_members).await;
     let outcome = {
-        let mut plans = swarm_plans.write().await;
-        match plans.get_mut(swarm_id) {
-            Some(plan) => salvage_plan_assignments_of(plan, session_id),
-            None => DeadMemberSalvage::default(),
+        let mut runs = swarm_runs.write().await;
+        let run = runs.entry(swarm_id.to_string()).or_default();
+        let mut outcome = DeadMemberSalvage::default();
+        for task_id in held_row_ids(&rows, run, session_id) {
+            set_run_status(run, &task_id, "queued");
+            outcome.released_task_ids.push(task_id);
         }
+        outcome
     };
     if outcome.is_empty() {
         return outcome;
     }
 
-    // The plan's salvage decision stands, and the list follows it: the dead holder
-    // does not owe these rows anymore, so the file stops naming it. The rows live
-    // where that session lived, and a failed write is logged because the plan
-    // change is the one that decides the work.
+    // The dead holder does not owe these rows anymore, so the file stops naming it.
+    // The rows live where that session lived, and a failed write is logged.
     let working_dir = {
         let members = swarm_members.read().await;
         members
@@ -366,14 +440,6 @@ pub(super) async fn salvage_assignments_of_dead_member(
             )),
         }
     }
-    // The plan follows the rows it released, so the dead holder stops being named
-    // in both places at once.
-    if !released.is_empty()
-        && let Some(plan) = swarm_plans.write().await.get_mut(swarm_id)
-    {
-        plan.sync_rows(&released);
-    }
-
     log_swarm_lifecycle(
         "dead_member_tasks_salvaged",
         vec![
@@ -386,14 +452,14 @@ pub(super) async fn salvage_assignments_of_dead_member(
     let swarm_state = SwarmState {
         members: Arc::clone(swarm_members),
         swarms_by_id: Arc::clone(swarms_by_id),
-        plans: Arc::clone(swarm_plans),
+        runs: Arc::clone(swarm_runs),
         coordinators: Arc::clone(swarm_coordinators),
     };
     persist_swarm_state_for(swarm_id, &swarm_state).await;
     broadcast_swarm_plan(
         swarm_id,
         Some("task_salvaged_dead_worker".to_string()),
-        swarm_plans,
+        swarm_runs,
         swarm_members,
         swarms_by_id,
     )
@@ -460,43 +526,56 @@ async fn notify_coordinator_of_salvage(
 pub(super) async fn salvage_dead_assignees(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
 ) {
     let salvage_grace = swarm_task_stale_after();
-    let salvage_candidates: Vec<(String, String)> = {
-        let plans = swarm_plans.read().await;
+    let swarm_ids: Vec<String> = {
         let members = swarm_members.read().await;
-        let mut pairs = std::collections::BTreeSet::new();
-        for (swarm_id, plan) in plans.iter() {
-            for item in &plan.items {
-                if !matches!(item.status.as_str(), "running" | "running_stale" | "queued") {
-                    continue;
+        let mut ids: Vec<String> = members
+            .values()
+            .filter_map(|member| member.swarm_id.clone())
+            .collect();
+        ids.sort();
+        ids.dedup();
+        ids
+    };
+    let mut salvage_candidates: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new();
+    for swarm_id in swarm_ids {
+        let Some(requester) = ({
+            let members = swarm_members.read().await;
+            members
+                .values()
+                .find(|member| member.swarm_id.as_deref() == Some(swarm_id.as_str()))
+                .map(|member| member.session_id.clone())
+        }) else {
+            continue;
+        };
+        let rows = swarm_rows(&swarm_id, &requester, swarm_members).await;
+        let members = swarm_members.read().await;
+        for row in rows {
+            let Some(assignee) = row.assigned_to.as_deref() else {
+                continue;
+            };
+            let assignee_is_dead = match members.get(assignee) {
+                None => true,
+                Some(member) => {
+                    member.status.is_dead() && member.last_status_change.elapsed() >= salvage_grace
                 }
-                let Some(assignee) = item.assigned_to.as_deref() else {
-                    continue;
-                };
-                let assignee_is_dead = match members.get(assignee) {
-                    None => true,
-                    Some(member) => {
-                        member.status.is_dead()
-                            && member.last_status_change.elapsed() >= salvage_grace
-                    }
-                };
-                if assignee_is_dead {
-                    pairs.insert((swarm_id.clone(), assignee.to_string()));
-                }
+            };
+            if assignee_is_dead {
+                salvage_candidates.insert((swarm_id.clone(), assignee.to_string()));
             }
         }
-        pairs.into_iter().collect()
-    };
+    }
     for (swarm_id, session_id) in salvage_candidates {
         salvage_assignments_of_dead_member(
             &session_id,
             &swarm_id,
             swarm_members,
             swarms_by_id,
-            swarm_plans,
+            swarm_runs,
             swarm_coordinators,
         )
         .await;
@@ -691,7 +770,7 @@ pub(super) async fn broadcast_swarm_status(
 pub(super) async fn broadcast_swarm_plan(
     swarm_id: &str,
     reason: Option<String>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
 ) {
@@ -699,7 +778,7 @@ pub(super) async fn broadcast_swarm_plan(
         swarm_id,
         reason,
         None,
-        swarm_plans,
+        swarm_runs,
         swarm_members,
         swarms_by_id,
     )
@@ -710,25 +789,33 @@ pub(super) async fn broadcast_swarm_plan_with_previous(
     swarm_id: &str,
     reason: Option<String>,
     previous_items: Option<&[TaskItem]>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
 ) {
+    // One per-swarm ordering domain, the same one the persist path takes: the read
+    // and the send happen together, so two mutations cannot deliver out of order.
+    let _ordering = crate::server::swarm_operation_lock(swarm_id)
+        .lock_owned()
+        .await;
     let assignee_details = member_details(swarm_members).await;
-    let plans = swarm_plans.read().await;
-    let Some(vp) = plans.get(swarm_id) else {
-        return;
-    };
-    let newly_ready_ids = previous_items
-        .map(|before| newly_ready_item_ids(before, &vp.items))
+    let rows = swarm_rows(swarm_id, swarm_id, swarm_members).await;
+    let run = swarm_runs
+        .read()
+        .await
+        .get(swarm_id)
+        .cloned()
         .unwrap_or_default();
-    let items = vp.items.clone();
-    let summary = crate::protocol::PlanGraphStatus::from_versioned_plan(
+    let items = rows_with_run_status(&rows, &run);
+    let newly_ready_ids = previous_items
+        .map(|before| newly_ready_item_ids(before, &items))
+        .unwrap_or_default();
+    let summary = crate::protocol::PlanGraphStatus::from_rows(
         swarm_id,
-        vp,
+        &items,
         Some(3),
         newly_ready_ids,
-        failed_reasons_for(&vp.items, &assignee_details),
+        failed_reasons_for(&items, &assignee_details),
     );
 
     let mut participants: Vec<String> = {
@@ -781,7 +868,7 @@ pub(super) async fn broadcast_swarm_plan_with_previous(
 pub(super) async fn send_swarm_plan_to_session(
     session_id: &str,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
 ) {
     let swarm_id = {
         let members = swarm_members.read().await;
@@ -794,43 +881,33 @@ pub(super) async fn send_swarm_plan_to_session(
     };
 
     let assignee_details = member_details(swarm_members).await;
-    let event = {
-        let plans = swarm_plans.read().await;
-        let Some(vp) = plans.get(&swarm_id) else {
-            return;
-        };
-        if vp.items.is_empty() {
-            return;
-        }
-        ServerEvent::SwarmPlan {
-            swarm_id: swarm_id.clone(),
-            items: vp.items.clone(),
-            reason: Some("reconnect".to_string()),
-            summary: Some(crate::protocol::PlanGraphStatus::from_versioned_plan(
-                &swarm_id,
-                vp,
-                Some(3),
-                Vec::new(),
-                failed_reasons_for(&vp.items, &assignee_details),
-            )),
-        }
+    let rows = swarm_rows(&swarm_id, session_id, swarm_members).await;
+    let run = swarm_runs
+        .read()
+        .await
+        .get(&swarm_id)
+        .cloned()
+        .unwrap_or_default();
+    let items = rows_with_run_status(&rows, &run);
+    if items.is_empty() {
+        return;
+    }
+    let event = ServerEvent::SwarmPlan {
+        swarm_id: swarm_id.clone(),
+        items: items.clone(),
+        reason: Some("reconnect".to_string()),
+        summary: Some(crate::protocol::PlanGraphStatus::from_rows(
+            &swarm_id,
+            &items,
+            Some(3),
+            Vec::new(),
+            failed_reasons_for(&items, &assignee_details),
+        )),
     };
 
     let members = swarm_members.read().await;
     if let Some(member) = members.get(session_id) {
         let _ = member.event_tx.send(event);
-    }
-}
-
-pub(super) async fn rename_plan_participant(
-    swarm_id: &str,
-    old_session_id: &str,
-    new_session_id: &str,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
-) {
-    let mut plans = swarm_plans.write().await;
-    if let Some(vp) = plans.get_mut(swarm_id) {
-        vp.rename_session(old_session_id, new_session_id);
     }
 }
 
@@ -840,7 +917,7 @@ pub(super) async fn remove_session_from_swarm(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
 ) {
     let started = Instant::now();
     log_swarm_lifecycle(
@@ -869,7 +946,7 @@ pub(super) async fn remove_session_from_swarm(
         swarm_id,
         swarm_members,
         swarms_by_id,
-        swarm_plans,
+        swarm_runs,
         swarm_coordinators,
     )
     .await;
@@ -1008,22 +1085,14 @@ pub(super) async fn remove_session_from_swarm(
         );
     }
 
-    if swarm_plans.read().await.contains_key(swarm_id) {
+    {
         let swarm_state = SwarmState {
             members: Arc::clone(swarm_members),
             swarms_by_id: Arc::clone(swarms_by_id),
-            plans: Arc::clone(swarm_plans),
+            runs: Arc::clone(swarm_runs),
             coordinators: Arc::clone(swarm_coordinators),
         };
         persist_swarm_state_for(swarm_id, &swarm_state).await;
-    } else {
-        let swarm_state = SwarmState {
-            members: Arc::clone(swarm_members),
-            swarms_by_id: Arc::clone(swarms_by_id),
-            plans: Arc::clone(swarm_plans),
-            coordinators: Arc::clone(swarm_coordinators),
-        };
-        remove_persisted_swarm_state_for(swarm_id, &swarm_state).await;
     }
 
     let remaining_member_count = swarms_by_id
@@ -1578,7 +1647,7 @@ mod tests {
     use crate::plan::TaskItem;
     use crate::protocol::SwarmLifecycleStatus;
     use crate::protocol::{NotificationType, ServerEvent};
-    use crate::server::{SwarmMember, VersionedPlan};
+    use crate::server::{RunState, SwarmMember};
     use kcode_swarm_core::{
         append_swarm_completion_report_instructions, summarize_plan_items, truncate_detail,
     };
@@ -1595,6 +1664,23 @@ mod tests {
             id: id.to_string(),
             ..Default::default()
         }
+    }
+
+    /// A row as the store would write it: words, a status, and a holder.
+    fn row(id: &str, status: &str, holder: Option<&str>) -> TaskItem {
+        TaskItem {
+            content: format!("task {id}"),
+            status: status.to_string(),
+            priority: "medium".to_string(),
+            id: id.to_string(),
+            assigned_to: holder.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    /// Write the fixture's list back, exactly as given.
+    fn write_list(repo: &std::path::Path, rows: &[TaskItem]) {
+        crate::todo::save_tasks(Some(repo), "worker", rows).expect("write the list");
     }
 
     #[test]
@@ -1860,29 +1946,12 @@ mod tests {
 
     #[tokio::test]
     async fn broadcast_swarm_plan_with_previous_includes_newly_ready_ids() {
-        let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-            "swarm-1".to_string(),
-            VersionedPlan {
-                items: vec![
-                    TaskItem {
-                        content: "setup".to_string(),
-                        status: "completed".to_string(),
-                        priority: "high".to_string(),
-                        id: "setup".to_string(),
-                        ..Default::default()
-                    },
-                    TaskItem {
-                        content: "follow-up".to_string(),
-                        status: "queued".to_string(),
-                        priority: "high".to_string(),
-                        id: "follow-up".to_string(),
-                        blocked_by: vec!["setup".to_string()],
-                        ..Default::default()
-                    },
-                ],
-            },
-        )])));
-        let (worker, mut worker_rx) = swarm_member("worker", "agent", false);
+        let repo = list_repo(&[
+            row("setup", "running", Some("worker")),
+            row("follow-up", "queued", Some("worker")),
+        ]);
+        let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
+        let (worker, mut worker_rx) = swarm_member_in(&repo, "worker", "agent", false);
         let swarm_members = Arc::new(RwLock::new(HashMap::from([("worker".to_string(), worker)])));
         let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
             "swarm-1".to_string(),
@@ -1911,7 +1980,7 @@ mod tests {
             "swarm-1",
             Some("task_completed".to_string()),
             Some(&previous_items),
-            &swarm_plans,
+            &swarm_runs,
             &swarm_members,
             &swarms_by_id,
         )
@@ -1940,13 +2009,9 @@ mod tests {
     /// lock; releasing the guard delivers one item then two, in order.
     #[tokio::test]
     async fn swarm_plan_broadcasts_cannot_invert_on_one_member_channel() {
-        let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-            "swarm-1".to_string(),
-            VersionedPlan {
-                items: vec![plan_item("t1", "task one")],
-            },
-        )])));
-        let (worker, mut worker_rx) = swarm_member("worker", "agent", false);
+        let repo = std::sync::Arc::new(list_repo(&[plan_item("t1", "task one")]));
+        let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
+        let (worker, mut worker_rx) = swarm_member_in(&repo, "worker", "agent", false);
         let swarm_members = Arc::new(RwLock::new(HashMap::from([("worker".to_string(), worker)])));
         let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
             "swarm-1".to_string(),
@@ -1958,14 +2023,14 @@ mod tests {
         let gate = swarms_by_id.write().await;
 
         let a = tokio::spawn({
-            let swarm_plans = Arc::clone(&swarm_plans);
+            let swarm_runs = Arc::clone(&swarm_runs);
             let swarm_members = Arc::clone(&swarm_members);
             let swarms_by_id = Arc::clone(&swarms_by_id);
             async move {
                 broadcast_swarm_plan(
                     "swarm-1",
                     Some("mutator_1".to_string()),
-                    &swarm_plans,
+                    &swarm_runs,
                     &swarm_members,
                     &swarms_by_id,
                 )
@@ -1979,21 +2044,23 @@ mod tests {
         // Mutator B writes the plan and broadcasts it. It queues behind A's plan
         // lock rather than interleaving with it.
         let b = tokio::spawn({
-            let swarm_plans = Arc::clone(&swarm_plans);
+            let swarm_runs = Arc::clone(&swarm_runs);
             let swarm_members = Arc::clone(&swarm_members);
             let swarms_by_id = Arc::clone(&swarms_by_id);
+            let repo = std::sync::Arc::clone(&repo);
             async move {
-                {
-                    let mut plans = swarm_plans.write().await;
-                    plans
-                        .get_mut("swarm-1")
-                        .expect("plan")
-                        .sync_rows(&[plan_item("t2", "task two")]);
-                }
+                // The mutation is a write to the list, which is where rows live.
+                write_list(
+                    repo.path(),
+                    &[
+                        row("t1", "pending", Some("worker")),
+                        row("t2", "pending", Some("worker")),
+                    ],
+                );
                 broadcast_swarm_plan(
                     "swarm-1",
                     Some("mutator_2".to_string()),
-                    &swarm_plans,
+                    &swarm_runs,
                     &swarm_members,
                     &swarms_by_id,
                 )
@@ -2117,17 +2184,13 @@ mod tests {
     /// session whose channel has closed simply fails to receive.
     #[tokio::test]
     async fn a_closed_member_channel_does_not_starve_live_members_of_plan_broadcasts() {
-        let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-            "swarm-1".to_string(),
-            VersionedPlan {
-                items: vec![plan_item("t1", "task one")],
-            },
-        )])));
+        let repo = list_repo(&[row("t1", "pending", Some("live"))]);
+        let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
         // Ghost member as produced by swarm_persistence restore: present in
         // the member map but with a closed event channel.
-        let (ghost, ghost_rx) = swarm_member("ghost", "agent", true);
+        let (ghost, ghost_rx) = swarm_member_in(&repo, "ghost", "agent", true);
         drop(ghost_rx);
-        let (live, mut live_rx) = swarm_member("live", "agent", false);
+        let (live, mut live_rx) = swarm_member_in(&repo, "live", "agent", false);
         let swarm_members = Arc::new(RwLock::new(HashMap::from([
             ("ghost".to_string(), ghost),
             ("live".to_string(), live),
@@ -2140,7 +2203,7 @@ mod tests {
         broadcast_swarm_plan(
             "swarm-1",
             Some("test".to_string()),
-            &swarm_plans,
+            &swarm_runs,
             &swarm_members,
             &swarms_by_id,
         )
@@ -2167,19 +2230,8 @@ mod tests {
             "swarm-1".to_string(),
             "coord".to_string(),
         )])));
-        let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-            "swarm-1".to_string(),
-            VersionedPlan {
-                items: vec![TaskItem {
-                    content: "task".to_string(),
-                    status: "pending".to_string(),
-                    priority: "medium".to_string(),
-                    id: "1".to_string(),
-                    assigned_to: Some("coord".to_string()),
-                    ..Default::default()
-                }],
-            },
-        )])));
+        let _repo = list_repo(&[row("1", "pending", Some("coord"))]);
+        let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
 
         let (coord, _coord_rx) = swarm_member("coord", "coordinator", false);
         let (headless, mut headless_rx) = swarm_member("headless", "agent", true);
@@ -2198,7 +2250,7 @@ mod tests {
             &swarm_members,
             &swarms_by_id,
             &swarm_coordinators,
-            &swarm_plans,
+            &swarm_runs,
         )
         .await;
 
@@ -2263,7 +2315,7 @@ mod tests {
             "swarm-1".to_string(),
             "root".to_string(),
         )])));
-        let swarm_plans = Arc::new(RwLock::new(HashMap::new()));
+        let swarm_runs = Arc::new(RwLock::new(HashMap::new()));
 
         let (root, _root_rx) = swarm_member("root", "coordinator", false);
         let (mut mid, _mid_rx) = swarm_member("mid", "agent", true);
@@ -2283,7 +2335,7 @@ mod tests {
             &swarm_members,
             &swarms_by_id,
             &swarm_coordinators,
-            &swarm_plans,
+            &swarm_runs,
         )
         .await;
 
@@ -2314,7 +2366,7 @@ mod tests {
             "swarm-1".to_string(),
             "coord".to_string(),
         )])));
-        let swarm_plans = Arc::new(RwLock::new(HashMap::new()));
+        let swarm_runs = Arc::new(RwLock::new(HashMap::new()));
 
         // peer_root is itself a root (no parent), so its children have no
         // grandparent to inherit; they should fall back to the coordinator.
@@ -2335,7 +2387,7 @@ mod tests {
             &swarm_members,
             &swarms_by_id,
             &swarm_coordinators,
-            &swarm_plans,
+            &swarm_runs,
         )
         .await;
 
@@ -2616,20 +2668,29 @@ mod tests {
         ));
     }
 
-    fn running_plan_assigned_to(assignee: &str) -> Arc<RwLock<HashMap<String, VersionedPlan>>> {
-        Arc::new(RwLock::new(HashMap::from([(
-            "swarm-1".to_string(),
-            VersionedPlan {
-                items: vec![TaskItem {
-                    content: "task".to_string(),
-                    status: "running".to_string(),
-                    priority: "medium".to_string(),
-                    id: "task-1".to_string(),
-                    assigned_to: Some(assignee.to_string()),
-                    ..Default::default()
-                }],
-            },
-        )])))
+    fn running_plan_assigned_to(_assignee: &str) -> Arc<RwLock<HashMap<String, RunState>>> {
+        Arc::new(RwLock::new(HashMap::<String, RunState>::new()))
+    }
+
+    /// The row's status as the run sees it: the run's own entry when it set one, and
+    /// the list's row otherwise. The holder is the row's, read from the list.
+    async fn salvage_state(
+        swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
+        repo: &std::path::Path,
+        row_id: &str,
+    ) -> (Option<String>, Option<String>) {
+        let run_status = swarm_runs
+            .read()
+            .await
+            .get("swarm-1")
+            .and_then(|run| run.get(row_id))
+            .map(|state| state.status.clone());
+        let holder = crate::todo::load_tasks(Some(repo), "worker")
+            .expect("read the list")
+            .into_iter()
+            .find(|row| row.id == row_id)
+            .and_then(|row| row.assigned_to);
+        (run_status, holder)
     }
 
     #[tokio::test]
@@ -2644,7 +2705,7 @@ mod tests {
             "coord".to_string(),
         )])));
         let repo = list_repo(&[held_row("task-1", "worker")]);
-        let swarm_plans = running_plan_assigned_to("worker");
+        let swarm_runs = running_plan_assigned_to("worker");
         let (coord, mut coord_rx) = swarm_member_in(&repo, "coord", "coordinator", false);
         let (worker, _worker_rx) = swarm_member_in(&repo, "worker", "agent", true);
         {
@@ -2653,23 +2714,19 @@ mod tests {
             members.insert("worker".to_string(), worker);
         }
 
-        let outcome = salvage_assignments_of_dead_member(
+        let _outcome = salvage_assignments_of_dead_member(
             "worker",
             "swarm-1",
             &swarm_members,
             &swarms_by_id,
-            &swarm_plans,
+            &swarm_runs,
             &swarm_coordinators,
         )
         .await;
 
-        assert_eq!(outcome.released_task_ids, vec!["task-1".to_string()]);
-        {
-            let plans = swarm_plans.read().await;
-            let plan = plans.get("swarm-1").expect("plan");
-            assert_eq!(plan.items[0].status, "queued");
-            assert_eq!(plan.items[0].assigned_to, None);
-        }
+        let (status, holder) = salvage_state(&swarm_runs, repo.path(), "task-1").await;
+        assert_eq!(status.as_deref(), Some("queued"), "the row is work again");
+        assert_eq!(holder, None, "and the claim is released in the list");
 
         let coord_events: Vec<_> = std::iter::from_fn(|| coord_rx.try_recv().ok()).collect();
         assert!(
@@ -2694,7 +2751,7 @@ mod tests {
             "coord".to_string(),
         )])));
         let repo = list_repo(&[held_row("task-1", "worker")]);
-        let swarm_plans = running_plan_assigned_to("worker");
+        let swarm_runs = running_plan_assigned_to("worker");
         let (coord, _coord_rx) = swarm_member_in(&repo, "coord", "coordinator", false);
         let (worker, _worker_rx) = swarm_member_in(&repo, "worker", "agent", true);
         {
@@ -2709,14 +2766,13 @@ mod tests {
             &swarm_members,
             &swarms_by_id,
             &swarm_coordinators,
-            &swarm_plans,
+            &swarm_runs,
         )
         .await;
 
-        let plans = swarm_plans.read().await;
-        let plan = plans.get("swarm-1").expect("plan");
-        assert_eq!(plan.items[0].status, "queued");
-        assert_eq!(plan.items[0].assigned_to, None);
+        let (status, holder) = salvage_state(&swarm_runs, repo.path(), "task-1").await;
+        assert_eq!(status.as_deref(), Some("queued"), "the row is work again");
+        assert_eq!(holder, None, "and the claim is released in the list");
     }
 
     #[tokio::test]
@@ -2734,7 +2790,7 @@ mod tests {
             "coord".to_string(),
         )])));
         let repo = list_repo(&[held_row("task-1", "ghost")]);
-        let swarm_plans = running_plan_assigned_to("ghost");
+        let swarm_runs = running_plan_assigned_to("ghost");
         let (coord, _coord_rx) = swarm_member_in(&repo, "coord", "coordinator", false);
         swarm_members
             .write()
@@ -2744,15 +2800,14 @@ mod tests {
         salvage_dead_assignees(
             &swarm_members,
             &swarms_by_id,
-            &swarm_plans,
+            &swarm_runs,
             &swarm_coordinators,
         )
         .await;
 
-        let plans = swarm_plans.read().await;
-        let plan = plans.get("swarm-1").expect("plan");
-        assert_eq!(plan.items[0].status, "queued");
-        assert_eq!(plan.items[0].assigned_to, None);
+        let (status, holder) = salvage_state(&swarm_runs, repo.path(), "task-1").await;
+        assert_eq!(status.as_deref(), Some("queued"), "the row is work again");
+        assert_eq!(holder, None, "and the claim is released in the list");
     }
 
     #[tokio::test]
@@ -2765,11 +2820,12 @@ mod tests {
             HashSet::from(["worker".to_string()]),
         )])));
         let swarm_coordinators = Arc::new(RwLock::new(HashMap::new()));
-        let swarm_plans = running_plan_assigned_to("grace-worker");
+        let repo = list_repo(&[held_row("task-1", "grace-worker")]);
+        let swarm_runs = running_plan_assigned_to("grace-worker");
         // The assignee is alive on its own clock, so the staleness phase leaves
         // the node alone; only the salvage phase's grace window is under test.
         crate::session_metrics::record_activity("grace-worker");
-        let (mut worker, _worker_rx) = swarm_member("grace-worker", "agent", true);
+        let (mut worker, _worker_rx) = swarm_member_in(&repo, "grace-worker", "agent", true);
         worker.status = SwarmLifecycleStatus::Crashed;
         worker.last_status_change = Instant::now();
         swarm_members
@@ -2780,15 +2836,17 @@ mod tests {
         salvage_dead_assignees(
             &swarm_members,
             &swarms_by_id,
-            &swarm_plans,
+            &swarm_runs,
             &swarm_coordinators,
         )
         .await;
 
-        let plans = swarm_plans.read().await;
-        let plan = plans.get("swarm-1").expect("plan");
-        assert_eq!(plan.items[0].status, "running");
-        assert_eq!(plan.items[0].assigned_to.as_deref(), Some("grace-worker"));
+        let (status, holder) = salvage_state(&swarm_runs, repo.path(), "task-1").await;
+        assert_eq!(
+            status, None,
+            "a live holder keeps the row as the list has it"
+        );
+        assert_eq!(holder.as_deref(), Some("grace-worker"));
     }
 
     #[tokio::test]

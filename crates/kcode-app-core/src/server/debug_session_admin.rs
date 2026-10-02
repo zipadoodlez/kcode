@@ -1,6 +1,6 @@
 use super::{
-    SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember, SwarmState,
-    VersionedPlan, broadcast_swarm_status, create_headless_session, persist_swarm_state_for,
+    RunState, SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember,
+    SwarmState, broadcast_swarm_status, create_headless_session, persist_swarm_state_for,
     record_swarm_event, remove_background_tool_signal, remove_session_interrupt_queue,
 };
 use crate::protocol::SwarmLifecycleStatus;
@@ -58,7 +58,7 @@ pub(super) async fn maybe_handle_session_admin_command(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -78,7 +78,7 @@ pub(super) async fn maybe_handle_session_admin_command(
             swarm_members,
             swarms_by_id,
             swarm_coordinators,
-            swarm_plans,
+            swarm_runs,
             soft_interrupt_queues,
             selfdev_requested,
             None,
@@ -95,7 +95,7 @@ pub(super) async fn maybe_handle_session_admin_command(
             let swarm_state = SwarmState {
                 members: Arc::clone(swarm_members),
                 swarms_by_id: Arc::clone(swarms_by_id),
-                plans: Arc::clone(swarm_plans),
+                runs: Arc::clone(swarm_runs),
                 coordinators: Arc::clone(swarm_coordinators),
             };
             persist_swarm_state_for(swarm_id, &swarm_state).await;
@@ -189,7 +189,7 @@ pub(super) async fn maybe_handle_session_admin_command(
             let swarm_state = SwarmState {
                 members: Arc::clone(swarm_members),
                 swarms_by_id: Arc::clone(swarms_by_id),
-                plans: Arc::clone(swarm_plans),
+                runs: Arc::clone(swarm_runs),
                 coordinators: Arc::clone(swarm_coordinators),
             };
             persist_swarm_state_for(swarm_id, &swarm_state).await;

@@ -1,4 +1,4 @@
-use super::{SharedContext, SwarmMember, SwarmState, VersionedPlan, persist_swarm_state_for};
+use super::{RunState, SharedContext, SwarmMember, SwarmState, persist_swarm_state_for};
 use crate::protocol::{NotificationType, ServerEvent};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -11,7 +11,7 @@ pub(super) struct DebugSwarmWriteContext<'a> {
     pub(super) swarm_members: &'a Arc<RwLock<HashMap<String, SwarmMember>>>,
     pub(super) swarms_by_id: &'a Arc<RwLock<HashMap<String, HashSet<String>>>>,
     pub(super) shared_context: &'a Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
-    pub(super) swarm_plans: &'a Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    pub(super) swarm_runs: &'a Arc<RwLock<HashMap<String, RunState>>>,
     pub(super) swarm_coordinators: &'a Arc<RwLock<HashMap<String, String>>>,
 }
 
@@ -44,7 +44,7 @@ pub(super) async fn maybe_handle_swarm_write_command(
             let swarm_state = SwarmState {
                 members: Arc::clone(ctx.swarm_members),
                 swarms_by_id: Arc::clone(ctx.swarms_by_id),
-                plans: Arc::clone(ctx.swarm_plans),
+                runs: Arc::clone(ctx.swarm_runs),
                 coordinators: Arc::clone(ctx.swarm_coordinators),
             };
             persist_swarm_state_for(swarm_id, &swarm_state).await;
@@ -67,18 +67,21 @@ pub(super) async fn maybe_handle_swarm_write_command(
             ));
         }
         let removed = {
-            let mut plans = ctx.swarm_plans.write().await;
+            let mut plans = ctx.swarm_runs.write().await;
             plans.remove(swarm_id)
         };
         let Some(removed) = removed else {
-            return Err(anyhow::anyhow!("No plan found for swarm '{}'", swarm_id));
+            return Err(anyhow::anyhow!(
+                "No run state found for swarm '{}'",
+                swarm_id
+            ));
         };
         // The plan is in memory only, so clearing it clears it; the members and the
         // coordinator are what the state file holds.
         let swarm_state = SwarmState {
             members: Arc::clone(ctx.swarm_members),
             swarms_by_id: Arc::clone(ctx.swarms_by_id),
-            plans: Arc::clone(ctx.swarm_plans),
+            runs: Arc::clone(ctx.swarm_runs),
             coordinators: Arc::clone(ctx.swarm_coordinators),
         };
         persist_swarm_state_for(swarm_id, &swarm_state).await;
@@ -113,7 +116,7 @@ pub(super) async fn maybe_handle_swarm_write_command(
         return Ok(Some(
             serde_json::json!({
                 "swarm_id": swarm_id,
-                "cleared_item_count": removed.items.len(),
+                "cleared_row_state_count": removed.len(),
             })
             .to_string(),
         ));
@@ -371,7 +374,7 @@ mod tests {
         let swarm_members = Arc::new(RwLock::new(HashMap::new()));
         let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
         let shared_context = Arc::new(RwLock::new(HashMap::new()));
-        let swarm_plans = Arc::new(RwLock::new(HashMap::new()));
+        let swarm_runs = Arc::new(RwLock::new(HashMap::new()));
         let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
             "swarm-lock-order".to_string(),
             "session-1".to_string(),
@@ -381,7 +384,7 @@ mod tests {
             swarm_members: &swarm_members,
             swarms_by_id: &swarms_by_id,
             shared_context: &shared_context,
-            swarm_plans: &swarm_plans,
+            swarm_runs: &swarm_runs,
             swarm_coordinators: &swarm_coordinators,
         };
 

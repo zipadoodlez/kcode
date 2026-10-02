@@ -12,8 +12,8 @@ use crate::message::{Message, ToolDefinition};
 use crate::protocol::ServerEvent;
 use crate::provider::{EventStream, Provider};
 use crate::server::{
-    ClientConnectionInfo, ClientDebugState, FileTouchService, SessionInterruptQueues, SwarmEvent,
-    SwarmMember, VersionedPlan,
+    ClientConnectionInfo, ClientDebugState, FileTouchService, RunState, SessionInterruptQueues,
+    SwarmEvent, SwarmMember,
 };
 use crate::tool::Registry;
 use anyhow::Result;

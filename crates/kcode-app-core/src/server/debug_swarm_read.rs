@@ -1,7 +1,7 @@
 use super::swarm_channels::list_channels_for_swarm;
 use super::{
-    ChannelSubscriptions, FileTouchService, ServerIdentity, SessionAgents, SharedContext,
-    SwarmMember, SwarmState, VersionedPlan, git_common_dir_for, swarm_id_for_dir,
+    ChannelSubscriptions, FileTouchService, RunState, ServerIdentity, SessionAgents, SharedContext,
+    SwarmMember, SwarmState, git_common_dir_for, swarm_id_for_dir,
 };
 use crate::plan::{next_runnable_item_ids, summarize_plan_graph};
 use crate::protocol::SwarmLifecycleStatus;
@@ -21,7 +21,7 @@ pub(super) async fn maybe_handle_swarm_read_command(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     shared_context: &Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     file_touch: &FileTouchService,
     channel_subscriptions: &ChannelSubscriptions,
@@ -30,7 +30,7 @@ pub(super) async fn maybe_handle_swarm_read_command(
     let swarm_state = SwarmState {
         members: Arc::clone(swarm_members),
         swarms_by_id: Arc::clone(swarms_by_id),
-        plans: Arc::clone(swarm_plans),
+        runs: Arc::clone(swarm_runs),
         coordinators: Arc::clone(swarm_coordinators),
     };
 
@@ -214,28 +214,32 @@ pub(super) async fn maybe_handle_swarm_read_command(
     if cmd.starts_with("swarm:plan:") {
         let swarm_id = cmd.strip_prefix("swarm:plan:").unwrap_or("").trim();
         let runtime = swarm_state.load_runtime(swarm_id).await;
-        let output = if let Some(vp) = runtime.plan.as_ref() {
-            let summary = summarize_plan_graph(&vp.items);
-            let next_ready_ids = next_runnable_item_ids(&vp.items, Some(8));
-            serde_json::json!({
-                "swarm_id": runtime.swarm_id,
-                "member_count": runtime.members.len(),
-                "coordinator": runtime.coordinator_session_id,
-                "plan_definition": vp.plan_definition(),
-                "execution_state": vp.execution_state(),
-                "items": &vp.items,
-                "ready_ids": summary.ready_ids,
-                "blocked_ids": summary.blocked_ids,
-                "active_ids": summary.active_ids,
-                "completed_ids": summary.completed_ids,
-                "next_ready_ids": next_ready_ids,
-                "cycle_ids": summary.cycle_ids,
-                "unresolved_dependency_ids": summary.unresolved_dependency_ids,
-            })
-            .to_string()
-        } else {
-            "[]".to_string()
-        };
+        let requester = runtime
+            .members
+            .first()
+            .map(|member| member.session_id.as_str())
+            .unwrap_or(swarm_id);
+        let rows = super::swarm::swarm_rows(swarm_id, requester, swarm_members).await;
+        let items = super::swarm::rows_with_run_status(&rows, &runtime.run);
+        if items.is_empty() {
+            return Ok(Some("[]".to_string()));
+        }
+        let summary = summarize_plan_graph(&items);
+        let next_ready_ids = next_runnable_item_ids(&items, Some(8));
+        let output = serde_json::json!({
+            "swarm_id": runtime.swarm_id,
+            "member_count": runtime.members.len(),
+            "coordinator": runtime.coordinator_session_id,
+            "rows": &rows,
+            "run": &runtime.run,
+            "ready_ids": summary.ready_ids,
+            "blocked_ids": summary.blocked_ids,
+            "active_ids": summary.active_ids,
+            "next_ready_ids": next_ready_ids,
+            "cycle_ids": summary.cycle_ids,
+            "unresolved_dependency_ids": summary.unresolved_dependency_ids,
+        })
+        .to_string();
         return Ok(Some(output));
     }
 
@@ -447,7 +451,7 @@ pub(super) async fn maybe_handle_swarm_read_command(
         let swarms = swarms_by_id.read().await;
         let coordinators = swarm_coordinators.read().await;
         let members = swarm_members.read().await;
-        let plans = swarm_plans.read().await;
+        let plans = swarm_runs.read().await;
         let ctx = shared_context.read().await;
         let touches = file_touch.snapshot().await;
 
@@ -471,20 +475,12 @@ pub(super) async fn maybe_handle_swarm_read_command(
                 })
                 .collect();
 
-            let plan = plans
-                .get(swarm_id)
-                .map(|vp| {
-                    serde_json::json!({
-                    "items": &vp.items,
-                        })
-                })
-                .unwrap_or_else(|| {
-                    serde_json::json!({
-                        "items": [],
-                        "task_progress": {},
-                        "version": 0,
-                    })
-                });
+            let run = plans.get(swarm_id).cloned().unwrap_or_default();
+            let items = super::swarm::rows_with_run_status(
+                &super::swarm::swarm_rows(swarm_id, swarm_id, swarm_members).await,
+                &run,
+            );
+            let plan = serde_json::json!({ "items": items, "run": run });
 
             let context_keys: Vec<_> = ctx
                 .get(swarm_id)

@@ -1,7 +1,7 @@
 use super::{
     ChannelSubscriptions, ClientConnectionInfo, ClientDebugState, DebugJob, FileAccess,
-    FileTouchService, ServerIdentity, SessionAgents, SessionInterruptQueues, SharedContext,
-    SwarmEvent, SwarmMember, VersionedPlan,
+    FileTouchService, RunState, ServerIdentity, SessionAgents, SessionInterruptQueues,
+    SharedContext, SwarmEvent, SwarmMember,
 };
 use crate::agent::Agent;
 use anyhow::Result;
@@ -96,7 +96,7 @@ pub(super) async fn maybe_handle_server_state_command(
     server_start_time: Instant,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     shared_context: &Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     file_touch: &FileTouchService,
     channel_subscriptions: &ChannelSubscriptions,
@@ -198,7 +198,7 @@ pub(super) async fn maybe_handle_server_state_command(
             server_start_time,
             swarms_by_id,
             shared_context,
-            swarm_plans,
+            swarm_runs,
             swarm_coordinators,
             file_touch,
             channel_subscriptions,
@@ -715,7 +715,7 @@ async fn build_server_memory_payload(
     server_start_time: Instant,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     shared_context: &Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     file_touch: &FileTouchService,
     channel_subscriptions: &ChannelSubscriptions,
@@ -893,16 +893,10 @@ async fn build_server_memory_payload(
     let shared_context_swarm_count = context.len();
     drop(context);
 
-    let plans = swarm_plans.read().await;
-    let swarm_plan_count = plans.len();
-    let swarm_plan_item_count: usize = plans.values().map(|plan| plan.items.len()).sum();
-    let swarm_plan_estimate_bytes: usize = plans
-        .iter()
-        .map(|(swarm_id, plan)| {
-            swarm_id.len() + crate::process_memory::estimate_json_bytes(&plan.items)
-        })
-        .sum();
-    drop(plans);
+    let runs = swarm_runs.read().await;
+    let swarm_run_count = runs.len();
+    let swarm_run_entry_count: usize = runs.values().map(|run| run.len()).sum();
+    drop(runs);
 
     let coordinators = swarm_coordinators.read().await;
     let swarm_coordinator_count = coordinators.len();
@@ -1056,9 +1050,8 @@ async fn build_server_memory_payload(
             "shared_context_swarm_count": shared_context_swarm_count,
             "shared_context_entry_count": shared_context_entry_count,
             "shared_context_estimate_bytes": shared_context_estimate_bytes,
-            "plan_count": swarm_plan_count,
-            "plan_item_count": swarm_plan_item_count,
-            "plan_estimate_bytes": swarm_plan_estimate_bytes,
+            "run_count": swarm_run_count,
+            "run_entry_count": swarm_run_entry_count,
             "coordinator_count": swarm_coordinator_count,
             "coordinator_estimate_bytes": swarm_coordinator_bytes,
         },

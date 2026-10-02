@@ -1,6 +1,6 @@
 //! Server handlers for the task-DAG mutation ops (seed/expand/complete).
 //!
-//! Seeding and completing lift the swarm's current `VersionedPlan` into a
+//! Seeding and completing lift the swarm's current `RunState` into a
 //! `TaskGraph` (via `kcode_plan::bridge`), apply the engine op (which enforces
 //! acyclicity and ownership), and lower the result back. Decomposing is rows: the
 //! handler writes child rows through the file store (`kcode-base`'s `todo`), and the
@@ -8,14 +8,14 @@
 //! the existing swarm machinery, so there is one source of truth per fact.
 
 use super::{
-    SwarmEvent, SwarmEventType, SwarmMember, SwarmState, VersionedPlan, broadcast_swarm_plan,
+    RunState, SwarmEvent, SwarmEventType, SwarmMember, SwarmState, broadcast_swarm_plan,
     persist_swarm_state_for, record_swarm_event,
 };
 use crate::protocol::ServerEvent;
+use kcode_plan::MAX_PLAN_ITEMS;
 use kcode_plan::artifact::HandoffArtifact;
 use kcode_plan::bridge::to_task_graph;
 use kcode_plan::dag::{self, NodeSpec, NodeStatus, TaskGraph};
-use kcode_plan::{MAX_PLAN_ITEMS, TaskItem};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -159,7 +159,7 @@ async fn finalize(
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
@@ -174,14 +174,14 @@ async fn finalize(
     let swarm_state = SwarmState {
         members: Arc::clone(swarm_members),
         swarms_by_id: Arc::clone(swarms_by_id),
-        plans: Arc::clone(swarm_plans),
+        runs: Arc::clone(swarm_runs),
         coordinators: Arc::clone(swarm_coordinators),
     };
     persist_swarm_state_for(swarm_id, &swarm_state).await;
     broadcast_swarm_plan(
         swarm_id,
         Some(reason.to_string()),
-        swarm_plans,
+        swarm_runs,
         swarm_members,
         swarms_by_id,
     )
@@ -213,7 +213,7 @@ pub(super) async fn handle_comm_seed_graph(
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
@@ -265,37 +265,27 @@ pub(super) async fn handle_comm_seed_graph(
     let count = seedable.len();
 
     let result = {
-        let mut plans = swarm_plans.write().await;
-        let plan = plans
-            .entry(swarm_id.clone())
-            .or_insert_with(VersionedPlan::new);
+        let run = swarm_runs
+            .read()
+            .await
+            .get(&swarm_id)
+            .cloned()
+            .unwrap_or_default();
+        let items = super::swarm::rows_with_run_status(&rows, &run);
+        // A row the list already has is not seeded again: the graph below is only the
+        // validation view over the rows the run holds.
         let specs: Vec<NodeSpec> = seedable
             .into_iter()
             .filter(|spec| {
                 let id = spec.id.as_deref().unwrap_or_default();
-                !plan.items.iter().any(|item| item.id == id)
+                !items.iter().any(|item| item.id == id)
             })
             .collect();
-        // The rows this seed seats, taken from the list the seed just read. The plan
-        // holds the rows its run works, so seating is the plan's decision and the
-        // graph below is only the validation view over them.
-        let seated_ids: HashSet<&str> =
-            specs.iter().filter_map(|spec| spec.id.as_deref()).collect();
-        let seated: Vec<TaskItem> = rows
-            .iter()
-            .filter(|row| seated_ids.contains(row.id.as_str()))
-            .cloned()
-            .collect();
-        let mut graph = to_task_graph(plan);
+        let mut graph = to_task_graph(&items);
         match dag::seed(&mut graph, specs) {
             Ok(()) => match graph_size_error(&graph) {
                 Some(message) => Err(message),
-                None => {
-                    if !seated.is_empty() {
-                        plan.sync_rows(&seated);
-                    }
-                    Ok(count)
-                }
+                None => Ok(count),
             },
             Err(e) => Err(e.to_string()),
         }
@@ -312,7 +302,7 @@ pub(super) async fn handle_comm_seed_graph(
                 client_event_tx,
                 swarm_members,
                 swarms_by_id,
-                swarm_plans,
+                swarm_runs,
                 swarm_coordinators,
                 event_history,
                 event_counter,
@@ -337,7 +327,7 @@ pub(super) async fn handle_comm_expand_node(
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
@@ -354,15 +344,10 @@ pub(super) async fn handle_comm_expand_node(
         .and_then(|member| member.working_dir.clone());
     let count = children.len();
 
-    // Only the row's holder (or an unclaimed row) may decompose it. The plan holds
-    // the dispatch, so the check lives here while the file is not yet its view.
+    // Only the row's holder (or an unclaimed row) may decompose it.
     {
-        let plans = swarm_plans.read().await;
-        let Some(plan) = plans.get(&swarm_id) else {
-            err(client_event_tx, id, "No plan for this swarm.".to_string());
-            return;
-        };
-        let Some(item) = plan.items.iter().find(|item| item.id == node_id) else {
+        let rows = super::swarm::swarm_rows(&swarm_id, &req_session_id, swarm_members).await;
+        let Some(row) = rows.iter().find(|row| row.id == node_id) else {
             err(
                 client_event_tx,
                 id,
@@ -370,7 +355,7 @@ pub(super) async fn handle_comm_expand_node(
             );
             return;
         };
-        if let Some(owner) = item.assigned_to.as_deref()
+        if let Some(owner) = row.assigned_to.as_deref()
             && owner != req_session_id
         {
             err(
@@ -390,20 +375,14 @@ pub(super) async fn handle_comm_expand_node(
         &node_id,
         children,
     ) {
-        Ok(touched) => {
-            let mut plans = swarm_plans.write().await;
-            match plans.get_mut(&swarm_id) {
-                Some(plan) => {
-                    // The store wrote the children and the parent's blockers, so the
-                    // plan takes the rows it wrote as its items. The parent is a join
-                    // now: it waits for its children and keeps its holder, who is the
-                    // one that integrates them.
-                    plan.sync_rows(&touched);
-                    plan.set_row_status(&node_id, "queued");
-                    Ok(())
-                }
-                None => Err("No plan for this swarm.".to_string()),
-            }
+        Ok(_) => {
+            // The store wrote the children and the parent's blockers. The parent is a
+            // join now: it waits for its children and keeps its holder, who is the one
+            // that integrates them, so its run status is work again.
+            let mut runs = swarm_runs.write().await;
+            let run = runs.entry(swarm_id.clone()).or_default();
+            super::swarm::set_run_status(run, &node_id, "queued");
+            Ok(())
         }
         Err(error) => Err(error.to_string()),
     };
@@ -419,7 +398,7 @@ pub(super) async fn handle_comm_expand_node(
                 client_event_tx,
                 swarm_members,
                 swarms_by_id,
-                swarm_plans,
+                swarm_runs,
                 swarm_coordinators,
                 event_history,
                 event_counter,
@@ -444,7 +423,7 @@ pub(super) async fn handle_comm_complete_node(
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
@@ -471,12 +450,19 @@ pub(super) async fn handle_comm_complete_node(
     let record_artifact = serde_json::to_value(&artifact).ok();
 
     let result = {
-        let mut plans = swarm_plans.write().await;
-        let Some(plan) = plans.get_mut(&swarm_id) else {
+        let run = swarm_runs
+            .read()
+            .await
+            .get(&swarm_id)
+            .cloned()
+            .unwrap_or_default();
+        let rows = super::swarm::swarm_rows(&swarm_id, &req_session_id, swarm_members).await;
+        if rows.is_empty() {
             err(client_event_tx, id, "No plan for this swarm.".to_string());
             return;
-        };
-        let mut graph = to_task_graph(plan);
+        }
+        let items = super::swarm::rows_with_run_status(&rows, &run);
+        let mut graph = to_task_graph(&items);
         claim_queued_node_for_actor(&mut graph, &node_id, &req_session_id);
         match dag::complete_node(&mut graph, &node_id, &req_session_id) {
             Ok(()) => Ok(graph),
@@ -496,14 +482,14 @@ pub(super) async fn handle_comm_complete_node(
                 .await
                 .get(&req_session_id)
                 .and_then(|member| member.working_dir.clone());
-            let touched = match crate::todo::close_row_on_disk(
+            match crate::todo::close_row_on_disk(
                 working_dir.as_deref(),
                 &req_session_id,
                 &node_id,
                 &findings,
                 record_artifact.clone(),
             ) {
-                Ok(touched) => touched,
+                Ok(_) => {}
                 Err(error) => {
                     err(
                         client_event_tx,
@@ -512,10 +498,9 @@ pub(super) async fn handle_comm_complete_node(
                     );
                     return;
                 }
-            };
-            if let Some(plan) = swarm_plans.write().await.get_mut(&swarm_id) {
-                plan.sync_rows(&touched);
-                plan.drop_row(&node_id);
+            }
+            if let Some(run) = swarm_runs.write().await.get_mut(&swarm_id) {
+                run.remove(&node_id);
             }
             finalize(
                 id,
@@ -526,7 +511,7 @@ pub(super) async fn handle_comm_complete_node(
                 client_event_tx,
                 swarm_members,
                 swarms_by_id,
-                swarm_plans,
+                swarm_runs,
                 swarm_coordinators,
                 event_history,
                 event_counter,

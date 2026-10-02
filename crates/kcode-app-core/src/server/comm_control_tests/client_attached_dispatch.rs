@@ -65,15 +65,7 @@ async fn assign_task_to_client_attached_session_skips_server_side_run() {
         swarm_id.to_string(),
         HashSet::from([requester.to_string(), worker.to_string()]),
     )])));
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        VersionedPlan {
-            items: vec![plan_item("solo", "queued", "high", &[])],
-        },
-    )])));
-    // The plan needs rows behind it: the file is what a dispatch writes to,
-    // and the repo root is that file's home.
-    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
+    let swarm_runs = seeded(repo.path(), vec![plan_item("solo", "queued", "high", &[])]);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -95,7 +87,7 @@ async fn assign_task_to_client_attached_session_skips_server_side_run() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -121,8 +113,8 @@ async fn assign_task_to_client_attached_session_skips_server_side_run() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     {
-        let plans = swarm_plans.read().await;
-        let item = &plans[swarm_id].items[0];
+        let rows = rows_in(repo.path());
+        let item = &rows[0];
         assert_eq!(
             item.status, "queued",
             "client-attached dispatch must not start a server-side run (no running/done flip)"
@@ -154,8 +146,8 @@ async fn assign_task_to_client_attached_session_skips_server_side_run() {
     .await;
 
     {
-        let plans = swarm_plans.read().await;
-        let item = &plans[swarm_id].items[0];
+        let rows = rows_in(repo.path());
+        let item = &rows[0];
         assert_eq!(
             item.status, "queued",
             "member-status turn-end flip must not (silently) complete the plan item; \
@@ -169,12 +161,12 @@ async fn assign_task_to_client_attached_session_skips_server_side_run() {
     // is no longer in flight. Pin the ingredients of that stall so the contract
     // stays visible.
     {
-        let plans = swarm_plans.read().await;
+        let rows = rows_in(repo.path());
         assert!(
-            crate::plan::next_handover_runnable_item_id(&plans[swarm_id], requester).is_none(),
+            crate::plan::next_handover_runnable_item_id(&rows, requester).is_none(),
             "assigned queued task must not be offered to assign_next"
         );
-        let summary = crate::plan::summarize_plan_graph(&plans[swarm_id].items);
+        let summary = crate::plan::summarize_plan_graph(&rows);
         assert!(
             summary.terminal_ids.is_empty(),
             "plan must not be terminal while the assigned task is still queued"

@@ -62,7 +62,7 @@ async fn double_assign_fixture(
     Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>,
     Arc<RwLock<HashMap<String, SwarmMember>>>,
     Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    Arc<RwLock<HashMap<String, RunState>>>,
     Arc<RwLock<HashMap<String, String>>>,
 ) {
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
@@ -83,15 +83,7 @@ async fn double_assign_fixture(
             intruder.to_string(),
         ]),
     )])));
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        VersionedPlan {
-            items: vec![contested],
-        },
-    )])));
-    // The plan needs rows behind it: the file is what a dispatch writes to,
-    // and the repo root is that file's home.
-    write_list(repo, "fixture", &swarm_plans.read().await[swarm_id].items);
+    let swarm_runs = seeded(repo, vec![contested]);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -101,7 +93,7 @@ async fn double_assign_fixture(
         sessions,
         swarm_members,
         swarms_by_id,
-        swarm_plans,
+        swarm_runs,
         swarm_coordinators,
     )
 }
@@ -116,7 +108,7 @@ async fn assign_task_rejects_double_assignment_of_claimed_task() {
     let (requester, holder, intruder) = ("coord", "snail", "penguin");
     let mut contested = plan_item("contested", "running", "high", &[]);
     contested.assigned_to = Some(holder.to_string());
-    let (sessions, swarm_members, swarms_by_id, swarm_plans, swarm_coordinators) =
+    let (sessions, swarm_members, swarms_by_id, swarm_runs, swarm_coordinators) =
         double_assign_fixture(repo.path(), swarm_id, requester, holder, intruder, contested).await;
     sessions
         .write()
@@ -142,7 +134,7 @@ async fn assign_task_rejects_double_assignment_of_claimed_task() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -165,9 +157,8 @@ async fn assign_task_rejects_double_assignment_of_claimed_task() {
         other => panic!("expected double-assignment rejection, got {other:?}"),
     }
 
-    let plans = swarm_plans.read().await;
-    let item = plans[swarm_id]
-        .items
+    let rows = rows_in(repo.path());
+    let item = rows
         .iter()
         .find(|item| item.id == "contested")
         .expect("contested task exists");
@@ -190,7 +181,7 @@ async fn assign_task_refuses_to_take_a_quietly_held_claim() {
     let (requester, holder, intruder) = ("coord", "snail", "penguin");
     let mut stalled = plan_item("stalled", "queued", "high", &[]);
     stalled.assigned_to = Some(holder.to_string());
-    let (sessions, swarm_members, swarms_by_id, swarm_plans, swarm_coordinators) =
+    let (sessions, swarm_members, swarms_by_id, swarm_runs, swarm_coordinators) =
         double_assign_fixture(repo.path(), swarm_id, requester, holder, intruder, stalled).await;
     sessions
         .write()
@@ -216,7 +207,7 @@ async fn assign_task_refuses_to_take_a_quietly_held_claim() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -239,9 +230,8 @@ async fn assign_task_refuses_to_take_a_quietly_held_claim() {
         other => panic!("expected the claim to be upheld, got {other:?}"),
     }
 
-    let plans = swarm_plans.read().await;
-    let item = plans[swarm_id]
-        .items
+    let rows = rows_in(repo.path());
+    let item = rows
         .iter()
         .find(|item| item.id == "stalled")
         .expect("stalled task exists");
@@ -263,7 +253,7 @@ async fn task_control_reassign_tells_displaced_worker_to_stand_down() {
     let (requester, holder, intruder) = ("coord", "snail", "penguin");
     let mut contested = plan_item("contested", "running", "high", &[]);
     contested.assigned_to = Some(holder.to_string());
-    let (sessions, swarm_members, swarms_by_id, swarm_plans, swarm_coordinators) =
+    let (sessions, swarm_members, swarms_by_id, swarm_runs, swarm_coordinators) =
         double_assign_fixture(repo.path(), swarm_id, requester, holder, intruder, contested).await;
     // Capture the displaced worker's server-event stream to observe the DM.
     let (holder_tx, mut holder_rx) = mpsc::unbounded_channel();
@@ -302,7 +292,7 @@ async fn task_control_reassign_tells_displaced_worker_to_stand_down() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -324,9 +314,8 @@ async fn task_control_reassign_tells_displaced_worker_to_stand_down() {
     }
 
     {
-        let plans = swarm_plans.read().await;
-        let item = plans[swarm_id]
-            .items
+        let rows = rows_in(repo.path());
+        let item = rows
             .iter()
             .find(|item| item.id == "contested")
             .expect("contested task exists");
@@ -380,7 +369,7 @@ async fn task_control_reassign_refuses_while_the_holder_is_live() {
     let (requester, holder, intruder) = ("coord", "live-holder", "penguin");
     let mut contested = plan_item("contested", "running", "high", &[]);
     contested.assigned_to = Some(holder.to_string());
-    let (sessions, swarm_members, swarms_by_id, swarm_plans, swarm_coordinators) =
+    let (sessions, swarm_members, swarms_by_id, swarm_runs, swarm_coordinators) =
         double_assign_fixture(repo.path(), swarm_id, requester, holder, intruder, contested).await;
     // The holder is reporting activity, so the row is in flight.
     crate::session_metrics::record_activity(holder);
@@ -413,7 +402,7 @@ async fn task_control_reassign_refuses_while_the_holder_is_live() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -432,9 +421,8 @@ async fn task_control_reassign_refuses_while_the_holder_is_live() {
         other => panic!("expected the live holder to keep the row, got {other:?}"),
     }
 
-    let plans = swarm_plans.read().await;
-    let item = plans[swarm_id]
-        .items
+    let rows = rows_in(repo.path());
+    let item = rows
         .iter()
         .find(|item| item.id == "contested")
         .expect("contested task exists");

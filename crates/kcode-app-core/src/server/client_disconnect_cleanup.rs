@@ -1,6 +1,6 @@
 use super::{
-    ChannelSubscriptions, ClientConnectionInfo, ClientDebugState, FileTouchService, SessionAgents,
-    SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember, VersionedPlan,
+    ChannelSubscriptions, ClientConnectionInfo, ClientDebugState, FileTouchService, RunState,
+    SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember,
     record_swarm_event, remove_background_tool_signal, remove_session_channel_subscriptions,
     remove_session_from_swarm, remove_session_interrupt_queue, unregister_session_event_sender,
     update_member_status,
@@ -90,7 +90,7 @@ pub(super) async fn cleanup_client_connection(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     file_touch: &FileTouchService,
     channel_subscriptions: &ChannelSubscriptions,
     channel_subscriptions_by_session: &ChannelSubscriptions,
@@ -312,7 +312,7 @@ pub(super) async fn cleanup_client_connection(
                 swarm_members,
                 swarms_by_id,
                 swarm_coordinators,
-                swarm_plans,
+                swarm_runs,
             )
             .await;
         }

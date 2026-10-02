@@ -2,7 +2,7 @@
 //
 // Unlike the engine unit tests (which exercise `kcode_plan::dag` in isolation),
 // this drives the live `comm_graph` handlers against real server state
-// (swarm_members / swarms_by_id / swarm_plans / coordinators) and then the real
+// (swarm_members / swarms_by_id / swarm_runs / coordinators) and then the real
 // `handle_comm_assign_task` path, proving the substrate works request-to-plan and
 // that forward dataflow reaches a downstream assignment.
 
@@ -68,12 +68,34 @@ struct GraphFixture {
     client_connections: Arc<RwLock<HashMap<String, crate::server::ClientConnectionInfo>>>,
     swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_plans: Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: Arc<RwLock<HashMap<String, String>>>,
     event_history: Arc<RwLock<VecDeque<SwarmEvent>>>,
     event_counter: Arc<AtomicU64>,
     swarm_event_tx: broadcast::Sender<SwarmEvent>,
     mutation_runtime: SwarmMutationRuntime,
+}
+
+impl GraphFixture {
+    /// The rows in the fixture's list: the store is where the handlers write, so a
+    /// test reads its expectations from there.
+    fn rows(&self) -> Vec<TaskItem> {
+        crate::todo::load_tasks(Some(self.repo.path()), &self.worker).unwrap_or_default()
+    }
+
+    /// Write the fixture's rows back exactly as given.
+    fn write_rows(&self, rows: &[TaskItem]) {
+        crate::todo::save_tasks(Some(self.repo.path()), &self.worker, rows).expect("write the rows");
+    }
+
+    /// Mark a row as a session's in-flight work, where a dispatch would: the list.
+    fn set_row(&self, id: &str, holder: Option<&str>, status: &str) {
+        let mut rows = self.rows();
+        let row = rows.iter_mut().find(|row| row.id == id).expect("a row");
+        row.assigned_to = holder.map(str::to_string);
+        row.status = status.to_string();
+        self.write_rows(&rows);
+    }
 }
 
 async fn graph_fixture() -> GraphFixture {
@@ -107,9 +129,9 @@ async fn graph_fixture_named(swarm_id: &str, coord: &str, worker: &str) -> Graph
         swarm_id.clone(),
         HashSet::from([coord.clone(), worker.clone()]),
     )])));
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
+    let swarm_runs = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.clone(),
-        VersionedPlan::new(),
+        RunState::new(),
     )])));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.clone(),
@@ -127,7 +149,7 @@ async fn graph_fixture_named(swarm_id: &str, coord: &str, worker: &str) -> Graph
         client_connections: Arc::new(RwLock::new(HashMap::new())),
         swarm_members,
         swarms_by_id,
-        swarm_plans,
+        swarm_runs,
         swarm_coordinators,
         event_history: Arc::new(RwLock::new(VecDeque::new())),
         event_counter: Arc::new(AtomicU64::new(1)),
@@ -145,7 +167,7 @@ impl GraphFixture {
             &self.client_tx,
             &self.swarm_members,
             &self.swarms_by_id,
-            &self.swarm_plans,
+            &self.swarm_runs,
             &self.swarm_coordinators,
             &self.event_history,
             &self.event_counter,
@@ -167,25 +189,23 @@ async fn e2e_seed_creates_plan_with_kinds_and_edges() {
     )
     .await;
 
-    let plans = fx.swarm_plans.read().await;
-    let plan = &plans[&fx.swarm_id];
-    assert_eq!(plan.items.len(), 2);
+    let rows = fx.rows();
+    assert_eq!(rows.len(), 2);
     let kinded = |id: &str| {
-        plan.items
-            .iter()
-            .find(|item| item.id == id)
+        rows.iter()
+            .find(|row| row.id == id)
             .expect("a seeded row")
             .kind
             .clone()
     };
     assert_eq!(kinded("explore").as_deref(), Some("explore"));
     assert_eq!(kinded("synth").as_deref(), Some("synthesize"));
-    let synth = plan.items.iter().find(|i| i.id == "synth").unwrap();
+    let synth = rows.iter().find(|i| i.id == "synth").unwrap();
     assert_eq!(synth.blocked_by, vec!["explore".to_string()]);
 }
 
 #[tokio::test]
-async fn e2e_identical_seed_replay_succeeds_without_version_or_node_churn() {
+async fn e2e_identical_seed_replay_succeeds_without_node_churn() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let mut fx = graph_fixture_named("swarm-seed-replay", "coord-replay", "worker-replay").await;
     let nodes = vec![
@@ -195,17 +215,11 @@ async fn e2e_identical_seed_replay_succeeds_without_version_or_node_churn() {
 
     fx.seed(nodes.clone()).await;
     while fx.client_rx.try_recv().is_ok() {}
-    let item_count = {
-        let plans = fx.swarm_plans.read().await;
-        plans[&fx.swarm_id].items.len()
-    };
+    let item_count = fx.rows().len();
 
     fx.seed(nodes).await;
 
-    let plans = fx.swarm_plans.read().await;
-    let plan = &plans[&fx.swarm_id];
-    assert_eq!(plan.items.len(), item_count, "a replay must not add nodes");
-    drop(plans);
+    assert_eq!(fx.rows().len(), item_count, "a replay must not add nodes");
     let events: Vec<_> = std::iter::from_fn(|| fx.client_rx.try_recv().ok()).collect();
     assert!(
         events.iter().all(|event| !matches!(event, ServerEvent::Error { .. })),
@@ -216,47 +230,31 @@ async fn e2e_identical_seed_replay_succeeds_without_version_or_node_churn() {
 
 #[tokio::test]
 async fn e2e_reseed_keeps_the_plans_existing_node() {
-    // The caller cannot send a definition any more: the rows are the seed, and a
-    // row already in the plan is not seeded again. A row edited after it was seeded
-    // therefore leaves the plan's node as the run had it; 0.4 makes the plan a view
-    // of the file, where the file wins.
+    // The caller cannot send a definition any more: the rows are the seed, and a row
+    // already in the list is not seeded again. A row edited after it was seeded is the
+    // row the run works, because the list is the only place a row lives.
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let mut fx = graph_fixture_named("swarm-seed-conflict", "coord-conflict", "worker-conflict").await;
     fx.seed(vec![node_spec("shared", "explore", &[])])
         .await;
     while fx.client_rx.try_recv().is_ok() {}
-    let (before_items, before_content) = {
-        let plans = fx.swarm_plans.read().await;
-        let plan = &plans[&fx.swarm_id];
-        (
-            plan.items.len(),
-            plan.items
-                .iter()
-                .find(|item| item.id == "shared")
-                .expect("seeded node")
-                .content
-                .clone(),
-        )
-    };
+    let before_items = fx.rows().len();
     let mut edited = node_spec("shared", "explore", &[]);
     edited.content = "a different task using the same id".to_string();
 
     fx.seed(vec![edited]).await;
 
-    let plans = fx.swarm_plans.read().await;
-    let after = &plans[&fx.swarm_id];
-    assert_eq!(after.items.len(), before_items, "a replay adds nothing");
+    let after = fx.rows();
+    assert_eq!(after.len(), before_items, "a replay adds nothing");
     assert_eq!(
         after
-            .items
             .iter()
-            .find(|item| item.id == "shared")
-            .expect("original node remains")
+            .find(|row| row.id == "shared")
+            .expect("the row remains")
             .content,
-        before_content,
-        "the plan's node keeps the words the run seeded it with"
+        "a different task using the same id",
+        "the row's words are the row's: the list wins over what the run seeded"
     );
-    drop(plans);
     let events: Vec<_> = std::iter::from_fn(|| fx.client_rx.try_recv().ok()).collect();
     assert!(
         events
@@ -282,17 +280,7 @@ async fn e2e_complete_closes_the_row_and_keeps_its_record() {
         ],
     )
     .await;
-    {
-        let mut plans = fx.swarm_plans.write().await;
-        let plan = plans.get_mut(&fx.swarm_id).expect("plan");
-        let work = plan
-            .items
-            .iter_mut()
-            .find(|item| item.id == "the-work")
-            .expect("the node");
-        work.status = "running".to_string();
-        work.assigned_to = Some(fx.worker.clone());
-    }
+    fx.set_row("the-work", Some(&fx.worker.clone()), "running");
 
     handle_comm_complete_node(
         3,
@@ -302,7 +290,7 @@ async fn e2e_complete_closes_the_row_and_keeps_its_record() {
         &fx.client_tx,
         &fx.swarm_members,
         &fx.swarms_by_id,
-        &fx.swarm_plans,
+        &fx.swarm_runs,
         &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
@@ -338,10 +326,8 @@ async fn e2e_seed_rejects_cycle_without_mutating_plan() {
     )
     .await;
 
-    // Plan stays empty and an error is surfaced.
-    let plans = fx.swarm_plans.read().await;
-    assert!(plans[&fx.swarm_id].items.is_empty());
-    drop(plans);
+    // The seed changed nothing (the fixture's own rows are all the list has) and an
+    // error is surfaced.
     let mut saw_error = false;
     while let Ok(ev) = fx.client_rx.try_recv() {
         if let ServerEvent::Error { message, .. } = ev {
@@ -381,7 +367,7 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
         &fx.client_connections,
         &fx.swarm_members,
         &fx.swarms_by_id,
-        &fx.swarm_plans,
+        &fx.swarm_runs,
         &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
@@ -389,13 +375,7 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
         &fx.mutation_runtime,
     )
     .await;
-    {
-        let mut plans = fx.swarm_plans.write().await;
-        let plan = plans.get_mut(&fx.swarm_id).unwrap();
-        let api = plan.items.iter_mut().find(|i| i.id == "api").unwrap();
-        api.status = "running".to_string();
-        api.assigned_to = Some(fx.worker.clone());
-    }
+    fx.set_row("api", Some(&fx.worker.clone()), "running");
 
     let artifact = serde_json::json!({
         "findings": "API built in crates/foo/api.rs with types Req/Resp",
@@ -410,7 +390,7 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
         &fx.client_tx,
         &fx.swarm_members,
         &fx.swarms_by_id,
-        &fx.swarm_plans,
+        &fx.swarm_runs,
         &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
@@ -420,16 +400,14 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
 
     // api is now completed; ui should be runnable.
     {
-        let plans = fx.swarm_plans.read().await;
-        let plan = &plans[&fx.swarm_id];
+        let rows = fx.rows();
         assert!(
-            !plan.items.iter().any(|i| i.id == "api"),
-            "a close takes the row out of the plan, not just out of the list"
+            !rows.iter().any(|i| i.id == "api"),
+            "a close takes the row out of the list"
         );
         // The artifact's home is the close's record, on the row that owns the work
         // (api's parent, the run).
-        let run = plan
-            .items
+        let run = rows
             .iter()
             .find(|i| i.id == "run")
             .expect("the run row");
@@ -444,7 +422,7 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
                 .is_some_and(|findings| findings.contains("api")),
             "the close's artifact travels with its record: {record}"
         );
-        let ready = kcode_plan::next_runnable_item_ids(&plan.items, None);
+        let ready = kcode_plan::next_runnable_item_ids(&rows, None);
         assert!(
             ready.contains(&"ui".to_string()),
             "ui should be ready: {ready:?}"
@@ -464,7 +442,7 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
         &fx.client_connections,
         &fx.swarm_members,
         &fx.swarms_by_id,
-        &fx.swarm_plans,
+        &fx.swarm_runs,
         &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
@@ -473,10 +451,9 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
     )
     .await;
 
-    // The assignment summary stored in task_progress should reflect hydration.
-    let plans = fx.swarm_plans.read().await;
-    let plan = &plans[&fx.swarm_id];
-    let ui = plan.items.iter().find(|i| i.id == "ui").unwrap();
+    // The dispatched row's holder is in the list, where a claim is written.
+    let rows = fx.rows();
+    let ui = rows.iter().find(|i| i.id == "ui").unwrap();
     assert_eq!(ui.assigned_to.as_deref(), Some(fx.worker.as_str()));
 }
 
@@ -513,17 +490,7 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
     // where the list is, the way a dispatch writes it, and the plan follows.
     crate::todo::claim_row_on_disk(Some(fx.repo.path()), &fx.coord, "root", &planner)
         .expect("claim root for the planner");
-    {
-        let root_row = crate::todo::load_tasks(Some(fx.repo.path()), &fx.coord)
-            .expect("read the list")
-            .into_iter()
-            .find(|row| row.id == "root")
-            .expect("the root row");
-        let mut plans = fx.swarm_plans.write().await;
-        let plan = plans.get_mut(&fx.swarm_id).unwrap();
-        plan.sync_rows(&[root_row]);
-        plan.set_row_status("root", "running");
-    }
+    fx.set_row("root", Some(&planner), "running");
     handle_comm_expand_node(
         3,
         planner.clone(),
@@ -532,7 +499,7 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
         &fx.client_tx,
         &fx.swarm_members,
         &fx.swarms_by_id,
-        &fx.swarm_plans,
+        &fx.swarm_runs,
         &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
@@ -543,31 +510,21 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
     // The holder stays: it is the record of who integrates the children, so the
     // re-queued composite goes back to it with no side table.
     {
-        let plans = fx.swarm_plans.read().await;
-        let plan = &plans[&fx.swarm_id];
-        let root = plan.items.iter().find(|i| i.id == "root").unwrap();
+        let rows = fx.rows();
+        let root = rows.iter().find(|i| i.id == "root").unwrap();
         assert_eq!(root.assigned_to.as_deref(), Some(planner.as_str()));
     }
 
     // Complete the child so the composite root becomes runnable again.
     // The store owned the child's id, so read it back rather than assuming one.
-    let child_id = {
-        let plans = fx.swarm_plans.read().await;
-        let plan = &plans[&fx.swarm_id];
-        plan.items
-            .iter()
-            .find(|i| i.parent.as_deref() == Some("root"))
-            .expect("the decomposition wrote a child row")
-            .id
-            .clone()
-    };
-    {
-        let mut plans = fx.swarm_plans.write().await;
-        let plan = plans.get_mut(&fx.swarm_id).unwrap();
-        let child = plan.items.iter_mut().find(|i| i.id == child_id).unwrap();
-        child.status = "running".to_string();
-        child.assigned_to = Some(other.clone());
-    }
+    let child_id = fx
+        .rows()
+        .iter()
+        .find(|i| i.parent.as_deref() == Some("root"))
+        .expect("the decomposition wrote a child row")
+        .id
+        .clone();
+    fx.set_row(&child_id, Some(&other), "running");
     handle_comm_complete_node(
         4,
         other.clone(),
@@ -576,7 +533,7 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
         &fx.client_tx,
         &fx.swarm_members,
         &fx.swarms_by_id,
-        &fx.swarm_plans,
+        &fx.swarm_runs,
         &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
@@ -608,7 +565,7 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
         &fx.client_connections,
         &fx.swarm_members,
         &fx.swarms_by_id,
-        &fx.swarm_plans,
+        &fx.swarm_runs,
         &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
@@ -671,9 +628,9 @@ async fn e2e_solo_seeder_is_elected_coordinator_and_can_assign() {
         swarm_id.clone(),
         HashSet::from([seeder.clone(), worker.clone()]),
     )])));
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
+    let swarm_runs = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.clone(),
-        VersionedPlan::new(),
+        RunState::new(),
     )])));
     // No coordinator registered: this is the deep-mode solo-agent starting state.
     let swarm_coordinators: Arc<RwLock<HashMap<String, String>>> =
@@ -693,7 +650,7 @@ async fn e2e_solo_seeder_is_elected_coordinator_and_can_assign() {
         &client_tx,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -725,7 +682,7 @@ async fn e2e_solo_seeder_is_elected_coordinator_and_can_assign() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -734,12 +691,8 @@ async fn e2e_solo_seeder_is_elected_coordinator_and_can_assign() {
     )
     .await;
 
-    let plans = swarm_plans.read().await;
-    let explore = plans[&swarm_id]
-        .items
-        .iter()
-        .find(|i| i.id == "explore")
-        .unwrap();
+    let rows = crate::todo::load_tasks(Some(repo.path()), &worker).unwrap_or_default();
+    let explore = rows.iter().find(|i| i.id == "explore").unwrap();
     assert_eq!(
         explore.assigned_to.as_deref(),
         Some(worker.as_str()),
@@ -779,9 +732,9 @@ async fn e2e_seed_does_not_displace_live_coordinator() {
         swarm_id.clone(),
         HashSet::from([coord.clone(), worker.clone()]),
     )])));
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
+    let swarm_runs = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.clone(),
-        VersionedPlan::new(),
+        RunState::new(),
     )])));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.clone(),
@@ -798,7 +751,7 @@ async fn e2e_seed_does_not_displace_live_coordinator() {
         &client_tx,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -845,7 +798,7 @@ async fn e2e_solo_seeder_can_complete_its_own_seeded_node() {
         &fx.client_tx,
         &fx.swarm_members,
         &fx.swarms_by_id,
-        &fx.swarm_plans,
+        &fx.swarm_runs,
         &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
@@ -853,18 +806,16 @@ async fn e2e_solo_seeder_can_complete_its_own_seeded_node() {
     )
     .await;
 
-    let plans = fx.swarm_plans.read().await;
-    let plan = &plans[&fx.swarm_id];
+    let rows = fx.rows();
     assert!(
-        !plan.items.iter().any(|i| i.id == "probe"),
-        "a solo seeder completed its own row, so the plan no longer holds it"
+        !rows.iter().any(|i| i.id == "probe"),
+        "a solo seeder completed its own row, so the list no longer holds it"
     );
     // probe is the run's own top row, so it owns no records: its close is its own
     // result, which the store's commit carries.
-    let rows = crate::todo::load_tasks(Some(fx.repo.path()), &fx.coord).expect("read the list");
     assert!(
         !rows.iter().any(|row| row.id == "probe"),
-        "the close took the row out of the list too"
+        "the close took the row out of the list"
     );
 }
 
@@ -876,13 +827,7 @@ async fn e2e_self_claim_does_not_steal_foreign_assignment() {
     let mut fx = graph_fixture_named("swarm-no-steal", "coord-ns", "worker-ns").await;
     fx.seed(vec![node_spec("task", "explore", &[])])
         .await;
-    {
-        let mut plans = fx.swarm_plans.write().await;
-        let plan = plans.get_mut(&fx.swarm_id).unwrap();
-        let item = plan.items.iter_mut().find(|i| i.id == "task").unwrap();
-        item.assigned_to = Some(fx.worker.clone());
-        item.status = "queued".to_string();
-    }
+    fx.set_row("task", Some(&fx.worker.clone()), "queued");
 
     // The coordinator (not the assignee) tries to complete it -> rejected.
     handle_comm_complete_node(
@@ -898,7 +843,7 @@ async fn e2e_self_claim_does_not_steal_foreign_assignment() {
         &fx.client_tx,
         &fx.swarm_members,
         &fx.swarms_by_id,
-        &fx.swarm_plans,
+        &fx.swarm_runs,
         &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
@@ -906,9 +851,8 @@ async fn e2e_self_claim_does_not_steal_foreign_assignment() {
     )
     .await;
 
-    let plans = fx.swarm_plans.read().await;
-    let plan = &plans[&fx.swarm_id];
-    let task = plan.items.iter().find(|i| i.id == "task").unwrap();
+    let rows = fx.rows();
+    let task = rows.iter().find(|i| i.id == "task").unwrap();
     assert_eq!(
         task.status, "queued",
         "a foreign actor must not complete someone else's assignment"
@@ -925,14 +869,8 @@ async fn e2e_assignee_can_complete_queued_assignment() {
     let mut fx = graph_fixture_named("swarm-queued-own", "coord-qo", "worker-qo").await;
     fx.seed(vec![node_spec("mine", "explore", &[])])
         .await;
-    {
-        let mut plans = fx.swarm_plans.write().await;
-        let plan = plans.get_mut(&fx.swarm_id).unwrap();
-        let item = plan.items.iter_mut().find(|i| i.id == "mine").unwrap();
-        // Assigned but never flipped to running (live-client path).
-        item.assigned_to = Some(fx.worker.clone());
-        item.status = "queued".to_string();
-    }
+    // Assigned but never flipped to running (live-client path).
+    fx.set_row("mine", Some(&fx.worker.clone()), "queued");
 
     handle_comm_complete_node(
         2,
@@ -947,7 +885,7 @@ async fn e2e_assignee_can_complete_queued_assignment() {
         &fx.client_tx,
         &fx.swarm_members,
         &fx.swarms_by_id,
-        &fx.swarm_plans,
+        &fx.swarm_runs,
         &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
@@ -955,10 +893,8 @@ async fn e2e_assignee_can_complete_queued_assignment() {
     )
     .await;
 
-    let plans = fx.swarm_plans.read().await;
-    let plan = &plans[&fx.swarm_id];
     assert!(
-        !plan.items.iter().any(|i| i.id == "mine"),
-        "the assignee completed its queued assignment, so the row left the plan"
+        !fx.rows().iter().any(|i| i.id == "mine"),
+        "the assignee completed its queued assignment, so the row left the list"
     );
 }

@@ -6,8 +6,7 @@ use crate::protocol::ServerEvent;
 use crate::provider::{EventStream, Provider};
 use crate::server::comm_await::{CommAwaitMembersContext, handle_comm_await_members};
 use crate::server::{
-    AwaitMembersRuntime, SwarmEvent, SwarmEventType, SwarmMember, SwarmMutationRuntime,
-    VersionedPlan,
+    AwaitMembersRuntime, RunState, SwarmEvent, SwarmEventType, SwarmMember, SwarmMutationRuntime,
 };
 use crate::tool::Registry;
 use anyhow::Result;
@@ -100,6 +99,25 @@ async fn set_repo(members: &Arc<RwLock<HashMap<String, SwarmMember>>>, repo: &st
 /// holding every row for the session.
 fn write_list(repo: &std::path::Path, session_id: &str, rows: &[TaskItem]) {
     crate::todo::save_tasks(Some(repo), session_id, rows).expect("write the list");
+}
+
+/// Rows are the list's, so a fixture's rows are written there and the run map starts
+/// empty: a row with no run entry reads its own status.
+fn empty_run_state() -> Arc<RwLock<HashMap<String, RunState>>> {
+    Arc::new(RwLock::new(HashMap::new()))
+}
+
+/// A fixture's rows go where the rows live: the list in the repo. The run map starts
+/// empty, since a row with no run entry reads its own status.
+/// The rows in a fixture's list: the store is where the handlers write, so a test
+/// reads its expectations from there.
+fn rows_in(repo: &std::path::Path) -> Vec<TaskItem> {
+    crate::todo::load_tasks(Some(repo), "fixture").expect("read the list")
+}
+
+fn seeded(repo: &std::path::Path, rows: Vec<TaskItem>) -> Arc<RwLock<HashMap<String, RunState>>> {
+    write_list(repo, "fixture", &rows);
+    empty_run_state()
 }
 
 fn plan_item(id: &str, status: &str, priority: &str, blocked_by: &[&str]) -> TaskItem {

@@ -8,11 +8,11 @@ use super::swarm_mutation_state::{
     finish_request as finish_swarm_mutation_request, request_key as swarm_mutation_request_key,
 };
 use super::{
-    ClientConnectionInfo, SessionAgents, SwarmEvent, SwarmEventType, SwarmMember,
-    SwarmMutationRuntime, SwarmState, VersionedPlan, broadcast_swarm_plan,
-    broadcast_swarm_plan_with_previous, broadcast_swarm_status, fanout_session_event,
-    persist_swarm_state_for, queue_soft_interrupt_for_session, record_swarm_event,
-    set_member_task_label, truncate_detail, update_member_status, update_member_status_with_report,
+    ClientConnectionInfo, RunState, SessionAgents, SwarmEvent, SwarmEventType, SwarmMember,
+    SwarmMutationRuntime, SwarmState, broadcast_swarm_plan, broadcast_swarm_plan_with_previous,
+    broadcast_swarm_status, fanout_session_event, persist_swarm_state_for,
+    queue_soft_interrupt_for_session, record_swarm_event, set_member_task_label, truncate_detail,
+    update_member_status, update_member_status_with_report,
 };
 use crate::agent::Agent;
 use crate::plan::{
@@ -296,15 +296,23 @@ struct TaskSnapshot {
 async fn task_snapshot_for(
     swarm_id: &str,
     task_id: &str,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    requester: &str,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
 ) -> Option<TaskSnapshot> {
-    let plans = swarm_plans.read().await;
-    let plan = plans.get(swarm_id)?;
-    let item = plan.items.iter().find(|item| item.id == task_id)?;
+    let run = swarm_runs
+        .read()
+        .await
+        .get(swarm_id)
+        .cloned()
+        .unwrap_or_default();
+    let rows = super::swarm::swarm_rows(swarm_id, requester, swarm_members).await;
+    let items = super::swarm::rows_with_run_status(&rows, &run);
+    let item = items.iter().find(|item| item.id == task_id)?;
     // Hydrate with forward dataflow from completed upstream dependencies so
     // resume/start/wake re-injects the same artifact context an initial
     // assignment would carry.
-    let hydrated = kcode_plan::bridge::hydrate_assignment(plan, task_id, &item.content);
+    let hydrated = kcode_plan::bridge::hydrate_assignment(&items, task_id, &item.content);
     Some(TaskSnapshot {
         content: hydrated,
         status: item.status.clone(),
@@ -314,23 +322,29 @@ async fn task_snapshot_for(
 
 async fn plan_graph_status_for(
     swarm_id: &str,
+    requester: &str,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
 ) -> PlanGraphStatus {
     let assignee_details = super::swarm::member_details(swarm_members).await;
-    let plans = swarm_plans.read().await;
-    let plan = plans.get(swarm_id);
-    if let Some(plan) = plan {
-        PlanGraphStatus::from_versioned_plan(
-            swarm_id,
-            plan,
-            Some(8),
-            Vec::new(),
-            super::swarm::failed_reasons_for(&plan.items, &assignee_details),
-        )
-    } else {
-        PlanGraphStatus::empty_for_swarm(swarm_id)
+    let run = swarm_runs
+        .read()
+        .await
+        .get(swarm_id)
+        .cloned()
+        .unwrap_or_default();
+    let rows = super::swarm::swarm_rows(swarm_id, requester, swarm_members).await;
+    let items = super::swarm::rows_with_run_status(&rows, &run);
+    if items.is_empty() {
+        return PlanGraphStatus::empty_for_swarm(swarm_id);
     }
+    PlanGraphStatus::from_rows(
+        swarm_id,
+        &items,
+        Some(8),
+        Vec::new(),
+        super::swarm::failed_reasons_for(&items, &assignee_details),
+    )
 }
 
 /// Re-queue a task on its existing assignee for a task-control restart
@@ -348,35 +362,21 @@ async fn requeue_existing_assignment(
     assignee_session: &str,
     task_id: &str,
     working_dir: Option<&std::path::Path>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
-) -> Option<(String, usize)> {
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
+) -> bool {
     // The claim is written where the list is, as a dispatch's is, so a requeue
     // records the same fact the same way.
-    let row = match crate::todo::claim_row_on_disk(
-        working_dir,
-        req_session_id,
-        task_id,
-        assignee_session,
-    ) {
-        Ok(row) => row,
-        Err(error) => {
-            crate::logging::warn(&format!(
-                "swarm {swarm_id}: could not claim '{task_id}' for its assignee in the list: {error}"
-            ));
-            return None;
-        }
-    };
-    let mut plans = swarm_plans.write().await;
-    let plan = plans.get_mut(swarm_id)?;
-    plan.sync_rows(&[row]);
-    plan.set_row_status(task_id, "queued");
-    let content = plan
-        .items
-        .iter()
-        .find(|item| item.id == task_id)?
-        .content
-        .clone();
-    Some((content, plan.items.len()))
+    if let Err(error) =
+        crate::todo::claim_row_on_disk(working_dir, req_session_id, task_id, assignee_session)
+    {
+        crate::logging::warn(&format!(
+            "swarm {swarm_id}: could not claim '{task_id}' for its assignee in the list: {error}"
+        ));
+        return false;
+    }
+    let mut runs = swarm_runs.write().await;
+    super::swarm::set_run_status_for(&mut runs, swarm_id, task_id, "queued");
+    true
 }
 
 async fn active_swarm_member(
@@ -442,25 +442,41 @@ async fn resolve_assignment_target_session(
 
 async fn task_id_for_target_session(
     swarm_id: &str,
+    requesting_session: &str,
     target_session: &str,
     action: TaskControlAction,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
 ) -> Result<String, String> {
-    let plans = swarm_plans.read().await;
-    let Some(plan) = plans.get(swarm_id) else {
+    let run = swarm_runs
+        .read()
+        .await
+        .get(swarm_id)
+        .cloned()
+        .unwrap_or_default();
+    let rows = super::swarm::swarm_rows(swarm_id, requesting_session, swarm_members).await;
+    let items = super::swarm::rows_with_run_status(&rows, &run);
+    if items.is_empty() {
         return Err("No swarm plan exists for this swarm.".to_string());
-    };
-    task_control_target_item_id(&plan.items, target_session, action)
+    }
+    task_control_target_item_id(&items, target_session, action)
 }
 
 async fn next_handover_runnable_task_id(
     swarm_id: &str,
     req_session_id: &str,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
 ) -> Option<String> {
-    let plans = swarm_plans.read().await;
-    let plan = plans.get(swarm_id)?;
-    next_handover_runnable_item_id(plan, req_session_id)
+    let run = swarm_runs
+        .read()
+        .await
+        .get(swarm_id)
+        .cloned()
+        .unwrap_or_default();
+    let rows = super::swarm::swarm_rows(swarm_id, req_session_id, swarm_members).await;
+    let items = super::swarm::rows_with_run_status(&rows, &run);
+    next_handover_runnable_item_id(&items, req_session_id)
 }
 
 /// Which row a dispatch takes, and how the row is already held.
@@ -489,11 +505,11 @@ enum Dispatch {
 async fn next_dispatch(
     swarm_id: &str,
     req_session_id: &str,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
 ) -> Option<Dispatch> {
     if let Some(task_id) =
-        next_handover_runnable_task_id(swarm_id, req_session_id, swarm_plans).await
+        next_handover_runnable_task_id(swarm_id, req_session_id, swarm_members, swarm_runs).await
     {
         return Some(Dispatch::HandOver(task_id));
     }
@@ -526,37 +542,33 @@ async fn next_dispatch(
         }
     };
 
-    let held = {
-        let plans = swarm_plans.read().await;
-        plans.get(swarm_id).and_then(|plan| {
-            crate::plan::next_held_runnable_item_id(plan, &holder_can_work, req_session_id)
-        })
-    };
-    if let Some((task_id, holder)) = held {
+    let run = swarm_runs
+        .read()
+        .await
+        .get(swarm_id)
+        .cloned()
+        .unwrap_or_default();
+    let rows = super::swarm::swarm_rows(swarm_id, req_session_id, swarm_members).await;
+    let items = super::swarm::rows_with_run_status(&rows, &run);
+
+    if let Some((task_id, holder)) =
+        crate::plan::next_held_runnable_item_id(&items, &holder_can_work, req_session_id)
+    {
         return Some(Dispatch::HandBack { task_id, holder });
     }
 
-    let mut plans = swarm_plans.write().await;
-    let plan = plans.get_mut(swarm_id)?;
-    let stranded_id = crate::plan::next_stranded_runnable_item_id(plan, &assignee_is_dead)?;
-    // The claim is released where the list is, and the plan's copy follows the row
-    // it released: a holder that can never come back does not owe the row, so the
-    // next dispatch can seat it. The counter below is the cap's bookkeeping.
-    let released = match crate::todo::release_row_on_disk(
-        working_dir.as_deref(),
-        req_session_id,
-        &stranded_id,
-    ) {
-        Ok(row) => row,
-        Err(error) => {
-            crate::logging::warn(&format!(
-                "swarm {swarm_id}: could not release stranded task '{stranded_id}' in the list: {error}"
-            ));
-            return None;
-        }
-    };
-    plan.sync_rows(&[released]);
-    // nothing counts attempts: the bound belongs to the loop that repeats the work.
+    let stranded_id = crate::plan::next_stranded_runnable_item_id(&items, &assignee_is_dead)?;
+    // The claim is released where the list is: a holder that can never come back
+    // does not owe the row, so the next dispatch can pick it up. Nothing counts
+    // attempts, because the bound belongs to the loop that repeats the work.
+    if let Err(error) =
+        crate::todo::release_row_on_disk(working_dir.as_deref(), req_session_id, &stranded_id)
+    {
+        crate::logging::warn(&format!(
+            "swarm {swarm_id}: could not release stranded task '{stranded_id}' in the list: {error}"
+        ));
+        return None;
+    }
     crate::logging::info(&format!(
         "swarm {}: reclaimed stranded task '{}' from dead assignee for re-dispatch",
         swarm_id, stranded_id
@@ -570,7 +582,7 @@ async fn resolve_assignment_target_for_task(
     task_id: &str,
     requested_target: Option<&str>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
 ) -> Result<String, String> {
     if requested_target.is_some() {
         return resolve_assignment_target_session(
@@ -587,11 +599,18 @@ async fn resolve_assignment_target_for_task(
     // (see [`next_dispatch`]). This resolver only ever chooses a worker for a row
     // nobody holds.
     let affinities = {
-        let plans = swarm_plans.read().await;
-        let Some(plan) = plans.get(swarm_id) else {
+        let run = swarm_runs
+            .read()
+            .await
+            .get(swarm_id)
+            .cloned()
+            .unwrap_or_default();
+        let rows = super::swarm::swarm_rows(swarm_id, req_session_id, swarm_members).await;
+        let items = super::swarm::rows_with_run_status(&rows, &run);
+        if items.is_empty() {
             return Err("No runnable unassigned tasks are available in the swarm plan".to_string());
-        };
-        assignment_affinities_for_task(plan, task_id)?
+        }
+        assignment_affinities_for_task(&items, task_id)?
     };
 
     let members = swarm_members.read().await;
@@ -650,7 +669,7 @@ fn spawn_assigned_task_run(
     assignment_text: String,
     swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_plans: Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: Arc<RwLock<HashMap<String, String>>>,
     event_history: Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: Arc<std::sync::atomic::AtomicU64>,
@@ -659,22 +678,20 @@ fn spawn_assigned_task_run(
     let assignment_text = append_swarm_completion_report_instructions(&assignment_text);
     tokio::spawn(async move {
         {
-            let mut plans = swarm_plans.write().await;
-            if let Some(plan) = plans.get_mut(&swarm_id) {
-                plan.set_row_status(&task_id, "running");
-            }
+            let mut runs = swarm_runs.write().await;
+            super::swarm::set_run_status_for(&mut runs, &swarm_id, &task_id, "running");
         }
         let swarm_state = SwarmState {
             members: Arc::clone(&swarm_members),
             swarms_by_id: Arc::clone(&swarms_by_id),
-            plans: Arc::clone(&swarm_plans),
+            runs: Arc::clone(&swarm_runs),
             coordinators: Arc::clone(&swarm_coordinators),
         };
         persist_swarm_state_for(&swarm_id, &swarm_state).await;
         broadcast_swarm_plan(
             &swarm_id,
             Some("task_running".to_string()),
-            &swarm_plans,
+            &swarm_runs,
             &swarm_members,
             &swarms_by_id,
         )
@@ -720,13 +737,18 @@ fn spawn_assigned_task_run(
         };
         match result {
             Ok(_) => {
-                let previous_items = {
-                    let plans = swarm_plans.read().await;
-                    plans
-                        .get(&swarm_id)
-                        .map(|plan| plan.items.clone())
-                        .unwrap_or_default()
-                };
+                // The list is the row storage: this turn's view of the run's rows,
+                // read once for the whole tail.
+                let rows =
+                    super::swarm::swarm_rows(&swarm_id, &target_session, &swarm_members).await;
+                let run = swarm_runs
+                    .read()
+                    .await
+                    .get(&swarm_id)
+                    .cloned()
+                    .unwrap_or_default();
+                let items = super::swarm::rows_with_run_status(&rows, &run);
+                let previous_items = items.clone();
                 // The row the turn was handed, and the list it lives in: the acting
                 // session is the worker this turn ran as.
                 let working_dir = swarm_members
@@ -748,17 +770,14 @@ fn spawn_assigned_task_run(
                 // `complete_node` does, and the record lands where the row's work is
                 // owned.
                 let closes_its_row = {
-                    let plans = swarm_plans.read().await;
-                    plans.get(&swarm_id).is_some_and(|plan| {
-                        let composite = plan.is_composite(&task_id);
-                        plan.items
-                            .iter()
-                            .find(|item| item.id == task_id)
-                            .is_some_and(|item| {
-                                turn_end_disposition(&item.status, composite)
-                                    == TurnEndDisposition::AutoComplete
-                            })
-                    })
+                    let composite = crate::plan::is_composite(&rows, &task_id);
+                    items
+                        .iter()
+                        .find(|item| item.id == task_id)
+                        .is_some_and(|item| {
+                            turn_end_disposition(&item.status, composite)
+                                == TurnEndDisposition::AutoComplete
+                        })
                 };
                 if closes_its_row {
                     applied_disposition = TurnEndDisposition::AutoComplete;
@@ -777,10 +796,11 @@ fn spawn_assigned_task_run(
                         result,
                         artifact,
                     ) {
-                        Ok(touched) => {
-                            if let Some(plan) = swarm_plans.write().await.get_mut(&swarm_id) {
-                                plan.sync_rows(&touched);
-                                plan.drop_row(&task_id);
+                        Ok(_) => {
+                            // The row is gone from the list, so the run's own entry for
+                            // it goes too.
+                            if let Some(run) = swarm_runs.write().await.get_mut(&swarm_id) {
+                                run.remove(&task_id);
                             }
                         }
                         Err(error) => crate::logging::warn(&format!(
@@ -791,7 +811,7 @@ fn spawn_assigned_task_run(
                 let swarm_state = SwarmState {
                     members: Arc::clone(&swarm_members),
                     swarms_by_id: Arc::clone(&swarms_by_id),
-                    plans: Arc::clone(&swarm_plans),
+                    runs: Arc::clone(&swarm_runs),
                     coordinators: Arc::clone(&swarm_coordinators),
                 };
                 persist_swarm_state_for(&swarm_id, &swarm_state).await;
@@ -803,7 +823,7 @@ fn spawn_assigned_task_run(
                     &swarm_id,
                     Some(plan_reason.to_string()),
                     Some(&previous_items),
-                    &swarm_plans,
+                    &swarm_runs,
                     &swarm_members,
                     &swarms_by_id,
                 )
@@ -825,22 +845,20 @@ fn spawn_assigned_task_run(
             }
             Err(error) => {
                 {
-                    let mut plans = swarm_plans.write().await;
-                    if let Some(plan) = plans.get_mut(&swarm_id) {
-                        plan.set_row_status(&task_id, "failed");
-                    }
+                    let mut runs = swarm_runs.write().await;
+                    super::swarm::set_run_status_for(&mut runs, &swarm_id, &task_id, "failed");
                 }
                 let swarm_state = SwarmState {
                     members: Arc::clone(&swarm_members),
                     swarms_by_id: Arc::clone(&swarms_by_id),
-                    plans: Arc::clone(&swarm_plans),
+                    runs: Arc::clone(&swarm_runs),
                     coordinators: Arc::clone(&swarm_coordinators),
                 };
                 persist_swarm_state_for(&swarm_id, &swarm_state).await;
                 broadcast_swarm_plan(
                     &swarm_id,
                     Some("task_failed".to_string()),
-                    &swarm_plans,
+                    &swarm_runs,
                     &swarm_members,
                     &swarms_by_id,
                 )
@@ -955,7 +973,7 @@ pub(super) async fn handle_comm_assign_role(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -1076,7 +1094,7 @@ pub(super) async fn handle_comm_assign_role(
     let swarm_state = SwarmState {
         members: Arc::clone(swarm_members),
         swarms_by_id: Arc::clone(swarms_by_id),
-        plans: Arc::clone(swarm_plans),
+        runs: Arc::clone(swarm_runs),
         coordinators: Arc::clone(swarm_coordinators),
     };
     persist_swarm_state_for(&swarm_id, &swarm_state).await;
@@ -1134,7 +1152,7 @@ pub(super) async fn handle_comm_assign_task(
     client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
@@ -1154,7 +1172,7 @@ pub(super) async fn handle_comm_assign_task(
         client_connections,
         swarm_members,
         swarms_by_id,
-        swarm_plans,
+        swarm_runs,
         swarm_coordinators,
         event_history,
         event_counter,
@@ -1181,7 +1199,7 @@ async fn handle_comm_assign_task_with_mode(
     client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
@@ -1282,14 +1300,20 @@ async fn handle_comm_assign_task_with_mode(
         .get(&req_session_id)
         .and_then(|member| member.working_dir.clone());
 
+    // The list is where the rows are, so a dispatch reads it: the run's own rows and
+    // the unclaimed ones are what it may hand out.
+    let rows = super::swarm::swarm_rows(&swarm_id, &req_session_id, swarm_members).await;
     let (selected_task_id, task_content, plan_item_count, blocked_reason) = {
-        let mut plans = swarm_plans.write().await;
-        let plan = plans
-            .entry(swarm_id.clone())
-            .or_insert_with(VersionedPlan::new);
+        let run = swarm_runs
+            .read()
+            .await
+            .get(&swarm_id)
+            .cloned()
+            .unwrap_or_default();
+        let items = super::swarm::rows_with_run_status(&rows, &run);
         let selected_task_id = requested_task_id
             .clone()
-            .or_else(|| next_handover_runnable_item_id(plan, &req_session_id));
+            .or_else(|| next_handover_runnable_item_id(&items, &req_session_id));
         // Double-assignment guard: a direct assign_task naming an item that is
         // already assigned and actively worked is a coordination bug (observed
         // live: run_plan dispatched a node, then an explicit assign_task
@@ -1300,7 +1324,7 @@ async fn handle_comm_assign_task_with_mode(
         // so only an explicit task_id can conflict.
         let conflict_reason = if dedup_mode == AssignDedupMode::ReplayFinal {
             requested_task_id.as_deref().and_then(|task_id| {
-                plan.items
+                items
                     .iter()
                     .find(|item| item.id == task_id)
                     .and_then(|item| {
@@ -1318,13 +1342,12 @@ async fn handle_comm_assign_task_with_mode(
         let blocked_reason = conflict_reason.or_else(|| {
             requested_task_id
                 .as_deref()
-                .and_then(|task_id| explicit_task_blocked_reason(plan, task_id))
+                .and_then(|task_id| explicit_task_blocked_reason(&items, task_id))
         });
         // The holder is a fact about the list (rule 2), so the claim is written
         // where the list is, before the plan records it: a failed write fails the
         // dispatch instead of leaving the plan holding a row the list does not.
         // This is the shape the expand path already has.
-        let mut claimed_row = None;
         let blocked_reason = match (&blocked_reason, selected_task_id.as_deref()) {
             (None, Some(task_id)) => {
                 match crate::todo::claim_row_on_disk(
@@ -1333,10 +1356,8 @@ async fn handle_comm_assign_task_with_mode(
                     task_id,
                     &target_session,
                 ) {
-                    Ok(row) => {
-                        claimed_row = Some(row);
-                        None
-                    }
+                    // The row the store wrote is the row: nothing is copied.
+                    Ok(_) => None,
                     Err(error) => Some(format!(
                         "Task '{task_id}' could not be claimed in the list: {error}"
                     )),
@@ -1344,43 +1365,34 @@ async fn handle_comm_assign_task_with_mode(
             }
             _ => blocked_reason,
         };
-        let found_idx = if blocked_reason.is_some() {
+        let found = if blocked_reason.is_some() {
             None
         } else {
-            selected_task_id.as_ref().and_then(|selected_task_id| {
-                plan.items
-                    .iter()
-                    .position(|item| item.id == *selected_task_id)
-            })
+            selected_task_id
+                .as_ref()
+                .and_then(|id| items.iter().find(|item| item.id == *id).cloned())
         };
-        if let Some(found_idx) = found_idx {
-            // Resolve identity + forward-dataflow context before taking the
-            // mutable borrow, so hydration can read sibling artifacts immutably.
-            let item_id = plan.items[found_idx].id.clone();
-            let raw_content = plan.items[found_idx].content.clone();
+        if let Some(item) = found {
+            let item_id = item.id.clone();
             // A re-woken composite is the synthesis/join step: its original content
             // was the (now-stale) decomposition brief, so replace it with an explicit
             // synthesis instruction. Without this the planner replays the old "expand
             // me" prompt and reports instead of calling `complete_node`, leaving the
             // composite open forever.
-            let is_composite_synthesis = plan.is_composite(&item_id);
+            let is_composite_synthesis = crate::plan::is_composite(&rows, &item_id);
             let effective_content =
-                composite_synthesis_content(&item_id, &raw_content, is_composite_synthesis);
-            let hydrated =
-                kcode_plan::bridge::hydrate_assignment(plan, &item_id, &effective_content);
-            let content = hydrated;
-
-            // The row the store just claimed is the item now; the run's lifecycle
-            // for it is the plan's own field.
-            if let Some(row) = claimed_row.take() {
-                plan.sync_rows(&[row]);
-            }
-            plan.set_row_status(&item_id, "queued");
-            (Some(item_id.clone()), Some(content), plan.items.len(), None)
+                composite_synthesis_content(&item_id, &item.content, is_composite_synthesis);
+            let content =
+                kcode_plan::bridge::hydrate_assignment(&items, &item_id, &effective_content);
+            (Some(item_id), Some(content), items.len(), None)
         } else {
             (None, None, 0, blocked_reason)
         }
     };
+    if let Some(task_id) = selected_task_id.as_ref() {
+        let mut runs = swarm_runs.write().await;
+        super::swarm::set_run_status_for(&mut runs, &swarm_id, task_id, "queued");
+    }
 
     // The plan write above either recorded the assignment (which puts the
     // target's own status in flight) or abandoned it (no runnable task /
@@ -1428,7 +1440,7 @@ async fn handle_comm_assign_task_with_mode(
     let swarm_state = SwarmState {
         members: Arc::clone(swarm_members),
         swarms_by_id: Arc::clone(swarms_by_id),
-        plans: Arc::clone(swarm_plans),
+        runs: Arc::clone(swarm_runs),
         coordinators: Arc::clone(swarm_coordinators),
     };
     persist_swarm_state_for(&swarm_id, &swarm_state).await;
@@ -1436,7 +1448,7 @@ async fn handle_comm_assign_task_with_mode(
     broadcast_swarm_plan(
         &swarm_id,
         Some("task_assigned".to_string()),
-        swarm_plans,
+        swarm_runs,
         swarm_members,
         swarms_by_id,
     )
@@ -1520,7 +1532,7 @@ async fn handle_comm_assign_task_with_mode(
         let target_session_for_run = target_session.clone();
         let swarm_members_for_run = Arc::clone(swarm_members);
         let swarms_for_run = Arc::clone(swarms_by_id);
-        let swarm_plans_for_run = Arc::clone(swarm_plans);
+        let swarm_runs_for_run = Arc::clone(swarm_runs);
         let swarm_coordinators_for_run = Arc::clone(swarm_coordinators);
         let swarm_id_for_run = swarm_id.clone();
         let task_id_for_run = selected_task_id.clone();
@@ -1535,7 +1547,7 @@ async fn handle_comm_assign_task_with_mode(
             assignment_text,
             swarm_members_for_run,
             swarms_for_run,
-            swarm_plans_for_run,
+            swarm_runs_for_run,
             swarm_coordinators_for_run,
             event_history_for_run,
             event_counter_for_run,
@@ -1608,7 +1620,7 @@ pub(super) async fn handle_comm_assign_next(
     client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
@@ -1626,7 +1638,7 @@ pub(super) async fn handle_comm_assign_next(
             };
 
         let Some(dispatch) =
-            next_dispatch(&swarm_id, &req_session_id, swarm_plans, swarm_members).await
+            next_dispatch(&swarm_id, &req_session_id, swarm_runs, swarm_members).await
         else {
             let _ = client_event_tx.send(ServerEvent::Error {
                 id,
@@ -1655,7 +1667,7 @@ pub(super) async fn handle_comm_assign_next(
                 client_connections,
                 swarm_members,
                 swarms_by_id,
-                swarm_plans,
+                swarm_runs,
                 swarm_coordinators,
                 event_history,
                 event_counter,
@@ -1675,7 +1687,7 @@ pub(super) async fn handle_comm_assign_next(
             &selected_task_id,
             None,
             swarm_members,
-            swarm_plans,
+            swarm_runs,
         )
         .await;
 
@@ -1703,7 +1715,7 @@ pub(super) async fn handle_comm_assign_next(
                 swarm_members,
                 swarms_by_id,
                 swarm_coordinators,
-                swarm_plans,
+                swarm_runs,
                 event_history,
                 event_counter,
                 swarm_event_tx,
@@ -1726,7 +1738,7 @@ pub(super) async fn handle_comm_assign_next(
                         client_connections,
                         swarm_members,
                         swarms_by_id,
-                        swarm_plans,
+                        swarm_runs,
                         swarm_coordinators,
                         event_history,
                         event_counter,
@@ -1761,7 +1773,7 @@ pub(super) async fn handle_comm_assign_next(
                     client_connections,
                     swarm_members,
                     swarms_by_id,
-                    swarm_plans,
+                    swarm_runs,
                     swarm_coordinators,
                     event_history,
                     event_counter,
@@ -1797,7 +1809,7 @@ pub(super) async fn handle_comm_assign_next(
         client_connections,
         swarm_members,
         swarms_by_id,
-        swarm_plans,
+        swarm_runs,
         swarm_coordinators,
         event_history,
         event_counter,
@@ -1824,7 +1836,7 @@ pub(super) async fn handle_comm_task_control(
     client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
@@ -1864,7 +1876,16 @@ pub(super) async fn handle_comm_task_control(
             });
             return;
         };
-        match task_id_for_target_session(&swarm_id, target_session, action, swarm_plans).await {
+        match task_id_for_target_session(
+            &swarm_id,
+            &req_session_id,
+            target_session,
+            action,
+            swarm_members,
+            swarm_runs,
+        )
+        .await
+        {
             Ok(task_id) => task_id,
             Err(message) => {
                 let _ = client_event_tx.send(ServerEvent::Error {
@@ -1879,7 +1900,15 @@ pub(super) async fn handle_comm_task_control(
         task_id
     };
 
-    let Some(snapshot) = task_snapshot_for(&swarm_id, &task_id, swarm_plans).await else {
+    let Some(snapshot) = task_snapshot_for(
+        &swarm_id,
+        &task_id,
+        &req_session_id,
+        swarm_members,
+        swarm_runs,
+    )
+    .await
+    else {
         let _ = client_event_tx.send(ServerEvent::Error {
             id,
             message: format!("Task '{}' not found in swarm plan", task_id),
@@ -1999,22 +2028,21 @@ pub(super) async fn handle_comm_task_control(
                         &assignee,
                         &task_id,
                         working_dir.as_deref(),
-                        swarm_plans,
+                        swarm_runs,
                     )
                     .await
-                    .is_some()
                 {
                     let swarm_state = SwarmState {
                         members: Arc::clone(swarm_members),
                         swarms_by_id: Arc::clone(swarms_by_id),
-                        plans: Arc::clone(swarm_plans),
+                        runs: Arc::clone(swarm_runs),
                         coordinators: Arc::clone(swarm_coordinators),
                     };
                     persist_swarm_state_for(&swarm_id, &swarm_state).await;
                     broadcast_swarm_plan(
                         &swarm_id,
                         Some(format!("task_{}", action.as_str())),
-                        swarm_plans,
+                        swarm_runs,
                         swarm_members,
                         swarms_by_id,
                     )
@@ -2029,13 +2057,15 @@ pub(super) async fn handle_comm_task_control(
                     assignment_text,
                     Arc::clone(swarm_members),
                     Arc::clone(swarms_by_id),
-                    Arc::clone(swarm_plans),
+                    Arc::clone(swarm_runs),
                     Arc::clone(swarm_coordinators),
                     Arc::clone(event_history),
                     Arc::clone(event_counter),
                     swarm_event_tx.clone(),
                 );
-                let summary = plan_graph_status_for(&swarm_id, swarm_members, swarm_plans).await;
+                let summary =
+                    plan_graph_status_for(&swarm_id, &req_session_id, swarm_members, swarm_runs)
+                        .await;
                 let _ = client_event_tx.send(ServerEvent::CommTaskControlResponse {
                     id,
                     action: action.as_str().to_string(),
@@ -2062,7 +2092,9 @@ pub(super) async fn handle_comm_task_control(
                     sessions,
                 )
                 .await;
-                let summary = plan_graph_status_for(&swarm_id, swarm_members, swarm_plans).await;
+                let summary =
+                    plan_graph_status_for(&swarm_id, &req_session_id, swarm_members, swarm_runs)
+                        .await;
                 let _ = client_event_tx.send(ServerEvent::CommTaskControlResponse {
                     id,
                     action: action.as_str().to_string(),
@@ -2116,7 +2148,7 @@ pub(super) async fn handle_comm_task_control(
                 client_connections,
                 swarm_members,
                 swarms_by_id,
-                swarm_plans,
+                swarm_runs,
                 swarm_coordinators,
                 event_history,
                 event_counter,
@@ -2246,7 +2278,7 @@ pub(super) async fn handle_comm_task_control(
                 client_connections,
                 swarm_members,
                 swarms_by_id,
-                swarm_plans,
+                swarm_runs,
                 swarm_coordinators,
                 event_history,
                 event_counter,
@@ -2261,12 +2293,13 @@ pub(super) async fn handle_comm_task_control(
             // keeps the task). Without this the displaced worker keeps
             // editing the same files as its replacement until a human DMs it.
             let takeover_landed = {
-                let swarm_plans = swarm_plans.read().await;
-                swarm_plans
-                    .get(&swarm_id)
-                    .and_then(|plan| plan.items.iter().find(|item| item.id == displaced_task_id))
-                    .is_some_and(|item| {
-                        item.assigned_to.as_deref() == Some(displaced_new_target.as_str())
+                let rows =
+                    super::swarm::swarm_rows(&swarm_id, &displaced_req_session, swarm_members)
+                        .await;
+                rows.iter()
+                    .find(|row| row.id == displaced_task_id)
+                    .is_some_and(|row| {
+                        row.assigned_to.as_deref() == Some(displaced_new_target.as_str())
                     })
             };
             if takeover_landed {

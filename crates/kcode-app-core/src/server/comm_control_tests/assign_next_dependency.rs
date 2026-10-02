@@ -36,15 +36,7 @@ async fn assign_next_prefers_worker_with_dependency_context() {
     )])));
     let mut dependency = plan_item("dep", "completed", "high", &[]);
     dependency.assigned_to = Some(context_worker.to_string());
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        VersionedPlan {
-            items: vec![dependency, plan_item("next", "queued", "high", &["dep"])],
-        },
-    )])));
-    // The plan needs rows behind it: the file is what a dispatch writes to,
-    // and the repo root is that file's home.
-    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
+    let swarm_runs = seeded(repo.path(), vec![dependency, plan_item("next", "queued", "high", &["dep"])]);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -75,7 +67,7 @@ async fn assign_next_prefers_worker_with_dependency_context() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,

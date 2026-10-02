@@ -8,9 +8,9 @@
 //! back. This keeps a single source of truth and reuses the existing
 //! persistence/broadcast/scheduler machinery.
 
+use crate::TaskItem;
 use crate::artifact::HandoffArtifact;
 use crate::dag::{NodeKind, NodeSpec, NodeStatus, TaskGraph, TaskNode};
-use crate::{TaskItem, VersionedPlan};
 use std::collections::HashSet;
 
 /// Every kind the engine knows, in the order its words are listed.
@@ -100,10 +100,10 @@ pub fn seed_specs(rows: &[TaskItem], session_id: &str) -> Vec<NodeSpec> {
         .collect()
 }
 
-/// Lift a [`VersionedPlan`] into a validated [`TaskGraph`] for engine ops.
-pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
+/// Lift rows into a validated [`TaskGraph`] for engine ops.
+pub fn to_task_graph(rows: &[TaskItem]) -> TaskGraph {
     let mut graph = TaskGraph::new();
-    for item in &plan.items {
+    for item in rows {
         graph.push_node(TaskNode {
             id: item.id.clone(),
             content: item.content.clone(),
@@ -115,7 +115,7 @@ pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
             owner: item.assigned_to.clone(),
             parent: item.parent.clone(),
             depends_on: item.blocked_by.clone(),
-            expanded: plan.is_composite(&item.id),
+            expanded: crate::is_composite(rows, &item.id),
             priority: crate::priority_rank(&item.priority),
         });
     }
@@ -135,8 +135,8 @@ pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
 /// time to keep that path would be the duplicate this replaces.The artifact is the
 /// machine-readable half, and a close that left only its result words contributes
 /// nothing, exactly as before.
-pub fn upstream_context(plan: &VersionedPlan, task_id: &str) -> Option<String> {
-    let item = plan.items.iter().find(|item| item.id == task_id)?;
+pub fn upstream_context(rows: &[TaskItem], task_id: &str) -> Option<String> {
+    let item = rows.iter().find(|item| item.id == task_id)?;
 
     let mut sections = Vec::new();
     for record in &item.records {
@@ -163,8 +163,8 @@ pub fn upstream_context(plan: &VersionedPlan, task_id: &str) -> Option<String> {
 }
 
 /// Prepend upstream dependency context (if any) to a task's assignment content.
-pub fn hydrate_assignment(plan: &VersionedPlan, task_id: &str, content: &str) -> String {
-    match upstream_context(plan, task_id) {
+pub fn hydrate_assignment(rows: &[TaskItem], task_id: &str, content: &str) -> String {
+    match upstream_context(rows, task_id) {
         Some(context) => format!("{content}\n\n{context}"),
         None => content.to_string(),
     }
@@ -262,8 +262,7 @@ mod tests {
 
     #[test]
     fn round_trip_preserves_items_and_edges() {
-        let mut plan = VersionedPlan::new();
-        plan.items = vec![
+        let rows = vec![
             plan_item("a", "completed"),
             TaskItem {
                 blocked_by: vec!["a".to_string()],
@@ -271,7 +270,7 @@ mod tests {
             },
         ];
 
-        let graph = to_task_graph(&plan);
+        let graph = to_task_graph(&rows);
         assert_eq!(graph.len(), 2);
         assert!(graph.get("a").unwrap().is_done());
         assert_eq!(graph.get("b").unwrap().depends_on, vec!["a".to_string()]);
@@ -282,8 +281,7 @@ mod tests {
     /// record is what the row's own turn integrates.
     #[test]
     fn a_rows_context_is_the_work_that_closed_under_it() {
-        let mut plan = VersionedPlan::new();
-        plan.items = vec![
+        let rows = vec![
             TaskItem {
                 records: vec![
                     serde_json::json!({
@@ -304,7 +302,7 @@ mod tests {
             plan_item("leaf", "queued"),
         ];
 
-        let hydrated = hydrate_assignment(&plan, "parent", "integrate the children");
+        let hydrated = hydrate_assignment(&rows, "parent", "integrate the children");
         assert!(hydrated.contains("integrate the children"));
         assert!(hydrated.contains("Results of the work under this row"));
         assert!(hydrated.contains("## child-a"));
@@ -317,7 +315,7 @@ mod tests {
 
         // A row nothing closed under has no context, so its content is unchanged.
         assert_eq!(
-            hydrate_assignment(&plan, "leaf", "just do this"),
+            hydrate_assignment(&rows, "leaf", "just do this"),
             "just do this"
         );
     }

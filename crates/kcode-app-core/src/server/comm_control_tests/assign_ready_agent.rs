@@ -40,18 +40,10 @@ async fn assign_task_without_target_picks_ready_agent() {
             running_worker.to_string(),
         ]),
     )])));
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        VersionedPlan {
-            items: vec![
-                plan_item("setup", "completed", "high", &[]),
-                plan_item("next", "queued", "high", &["setup"]),
-            ],
-        },
-    )])));
-    // The plan needs rows behind it: the file is what a dispatch writes to,
-    // and the repo root is that file's home.
-    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
+    let swarm_runs = seeded(repo.path(), vec![
+        plan_item("setup", "completed", "high", &[]),
+        plan_item("next", "queued", "high", &["setup"]),
+    ]);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -73,7 +65,7 @@ async fn assign_task_without_target_picks_ready_agent() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,

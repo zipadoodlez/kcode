@@ -44,8 +44,8 @@ use super::provider_control::{
 };
 use super::{
     AwaitMembersRuntime, ChannelSubscriptions, ClientConnectionInfo, ClientDebugState,
-    FileTouchService, SessionAgents, SessionControlHandle, SessionInterruptQueues, SharedContext,
-    SwarmEvent, SwarmMember, SwarmMutationRuntime, VersionedPlan,
+    FileTouchService, RunState, SessionAgents, SessionControlHandle, SessionInterruptQueues,
+    SharedContext, SwarmEvent, SwarmMember, SwarmMutationRuntime,
     format_structured_completion_report, register_session_interrupt_queue,
     send_swarm_plan_to_session, truncate_detail, update_member_status,
     update_member_status_with_report, update_member_status_with_report_tldr,
@@ -441,7 +441,7 @@ pub(super) async fn handle_client(
     swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
     shared_context: Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
-    swarm_plans: Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: Arc<RwLock<HashMap<String, String>>>,
     file_touch: FileTouchService,
     channel_subscriptions: ChannelSubscriptions,
@@ -497,7 +497,7 @@ pub(super) async fn handle_client(
                             swarm_members: &swarm_members,
                             swarms_by_id: &swarms_by_id,
                             shared_context: &shared_context,
-                            swarm_plans: &swarm_plans,
+                            swarm_runs: &swarm_runs,
                             swarm_coordinators: &swarm_coordinators,
                             file_touch: &file_touch,
                             channel_subscriptions: &channel_subscriptions,
@@ -1487,7 +1487,7 @@ pub(super) async fn handle_client(
                         send_swarm_plan_to_session(
                             &client_session_id,
                             &swarm_members,
-                            &swarm_plans,
+                            &swarm_runs,
                         )
                         .await;
                     }
@@ -1547,7 +1547,7 @@ pub(super) async fn handle_client(
                         send_swarm_plan_to_session(
                             &client_session_id,
                             &swarm_members,
-                            &swarm_plans,
+                            &swarm_runs,
                         )
                         .await;
                     }
@@ -1668,7 +1668,7 @@ pub(super) async fn handle_client(
                                 &file_touch,
                                 &channel_subscriptions,
                                 &channel_subscriptions_by_session,
-                                &swarm_plans,
+                                &swarm_runs,
                                 &swarm_coordinators,
                                 &client_count,
                                 &writer,
@@ -1707,7 +1707,7 @@ pub(super) async fn handle_client(
                                 &swarms_by_id,
                                 &channel_subscriptions,
                                 &channel_subscriptions_by_session,
-                                &swarm_plans,
+                                &swarm_runs,
                                 &swarm_coordinators,
                                 &client_event_tx,
                                 &mcp_pool,
@@ -1743,7 +1743,7 @@ pub(super) async fn handle_client(
                             &swarms_by_id,
                             &channel_subscriptions,
                             &channel_subscriptions_by_session,
-                            &swarm_plans,
+                            &swarm_runs,
                             &swarm_coordinators,
                             &client_event_tx,
                             &mcp_pool,
@@ -1770,7 +1770,7 @@ pub(super) async fn handle_client(
                         &swarms_by_id,
                         &channel_subscriptions,
                         &channel_subscriptions_by_session,
-                        &swarm_plans,
+                        &swarm_runs,
                         &swarm_coordinators,
                         &client_event_tx,
                         &mcp_pool,
@@ -1813,7 +1813,7 @@ pub(super) async fn handle_client(
                 // (and the inline plan graph), so re-send it afterwards
                 // instead of leaving the graph blank until the next plan
                 // mutation broadcast.
-                send_swarm_plan_to_session(&client_session_id, &swarm_members, &swarm_plans).await;
+                send_swarm_plan_to_session(&client_session_id, &swarm_members, &swarm_runs).await;
                 if let Some(snapshot) = try_available_models_snapshot(&agent) {
                     last_available_models_snapshot = Some(snapshot);
                 }
@@ -1914,7 +1914,7 @@ pub(super) async fn handle_client(
                         &file_touch,
                         &channel_subscriptions,
                         &channel_subscriptions_by_session,
-                        &swarm_plans,
+                        &swarm_runs,
                         &swarm_coordinators,
                         &client_count,
                         &writer,
@@ -2101,7 +2101,7 @@ pub(super) async fn handle_client(
                     &swarm_coordinators,
                     &channel_subscriptions,
                     &channel_subscriptions_by_session,
-                    &swarm_plans,
+                    &swarm_runs,
                     &client_event_tx,
                 )
                 .await;
@@ -2358,7 +2358,7 @@ pub(super) async fn handle_client(
                     &client_event_tx,
                     &swarm_members,
                     &swarms_by_id,
-                    &swarm_plans,
+                    &swarm_runs,
                     &swarm_coordinators,
                     &event_history,
                     &event_counter,
@@ -2381,7 +2381,7 @@ pub(super) async fn handle_client(
                     &client_event_tx,
                     &swarm_members,
                     &swarms_by_id,
-                    &swarm_plans,
+                    &swarm_runs,
                     &swarm_coordinators,
                     &event_history,
                     &event_counter,
@@ -2404,7 +2404,7 @@ pub(super) async fn handle_client(
                     &client_event_tx,
                     &swarm_members,
                     &swarms_by_id,
-                    &swarm_plans,
+                    &swarm_runs,
                     &swarm_coordinators,
                     &event_history,
                     &event_counter,
@@ -2445,7 +2445,7 @@ pub(super) async fn handle_client(
                     &swarm_members,
                     &swarms_by_id,
                     &swarm_coordinators,
-                    &swarm_plans,
+                    &swarm_runs,
                     &channel_subscriptions,
                     &channel_subscriptions_by_session,
                     &event_history,
@@ -2491,7 +2491,7 @@ pub(super) async fn handle_client(
                     &swarm_members,
                     &swarms_by_id,
                     &swarm_coordinators,
-                    &swarm_plans,
+                    &swarm_runs,
                     &channel_subscriptions,
                     &channel_subscriptions_by_session,
                     &event_history,
@@ -2519,7 +2519,7 @@ pub(super) async fn handle_client(
                     &swarm_members,
                     &swarms_by_id,
                     &swarm_coordinators,
-                    &swarm_plans,
+                    &swarm_runs,
                     &event_history,
                     &event_counter,
                     &swarm_event_tx,
@@ -2609,7 +2609,7 @@ pub(super) async fn handle_client(
                     id,
                     req_session_id,
                     &swarm_members,
-                    &swarm_plans,
+                    &swarm_runs,
                     &client_event_tx,
                 )
                 .await;
@@ -2642,7 +2642,7 @@ pub(super) async fn handle_client(
                         client_event_tx: &client_event_tx,
                         swarm_members: &swarm_members,
                         swarms_by_id: &swarms_by_id,
-                        swarm_plans: &swarm_plans,
+                        swarm_runs: &swarm_runs,
                         swarm_coordinators: &swarm_coordinators,
                         event_history: &event_history,
                         event_counter: &event_counter,
@@ -2671,7 +2671,7 @@ pub(super) async fn handle_client(
                     &client_connections,
                     &swarm_members,
                     &swarms_by_id,
-                    &swarm_plans,
+                    &swarm_runs,
                     &swarm_coordinators,
                     &event_history,
                     &event_counter,
@@ -2710,7 +2710,7 @@ pub(super) async fn handle_client(
                     &client_connections,
                     &swarm_members,
                     &swarms_by_id,
-                    &swarm_plans,
+                    &swarm_runs,
                     &swarm_coordinators,
                     &event_history,
                     &event_counter,
@@ -2742,7 +2742,7 @@ pub(super) async fn handle_client(
                     &client_connections,
                     &swarm_members,
                     &swarms_by_id,
-                    &swarm_plans,
+                    &swarm_runs,
                     &swarm_coordinators,
                     &event_history,
                     &event_counter,
@@ -2927,7 +2927,7 @@ pub(super) async fn handle_client(
             &swarm_members,
             &swarms_by_id,
             &swarm_coordinators,
-            &swarm_plans,
+            &swarm_runs,
             &file_touch,
             &channel_subscriptions,
             &channel_subscriptions_by_session,

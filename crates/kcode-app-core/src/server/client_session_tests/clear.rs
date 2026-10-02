@@ -75,10 +75,7 @@ async fn handle_clear_session_replaces_runtime_handles_and_updates_shutdown_regi
         String,
         HashMap<String, HashSet<String>>,
     >::new()));
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        "swarm-test".to_string(),
-        VersionedPlan { items: Vec::new() },
-    )])));
+    let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     let event_history = Arc::new(RwLock::new(VecDeque::<SwarmEvent>::new()));
     let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel::<SwarmEvent>(8);
@@ -131,14 +128,9 @@ async fn handle_clear_session_replaces_runtime_handles_and_updates_shutdown_regi
             .get(&replacement_swarm_id)
             .is_some_and(|sessions| sessions.contains(&client_session_id))
     );
-    // The plan carries rows, not a participant list, so the identity check is that
-    // no row is left pointing at the cleared session.
-    let plans = swarm_plans.read().await;
-    assert!(plans["swarm-test"].items.iter().all(|item| {
-        item.assigned_to.as_deref() != Some(old_session_id)
-            && item.assigned_to.as_deref() != Some(client_session_id.as_str())
-    }));
-    drop(plans);
+    // A run's own state carries no identity, and the rows are the list's, so nothing
+    // is left pointing at the cleared session.
+    assert!(swarm_runs.read().await.values().all(|run| run.is_empty()));
 
     old_queue
         .lock()

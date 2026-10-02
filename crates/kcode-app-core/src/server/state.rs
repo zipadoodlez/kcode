@@ -1,5 +1,4 @@
 use crate::bus::FileOp;
-use crate::plan::VersionedPlan;
 use crate::protocol::{ServerEvent, SwarmLifecycleStatus};
 use kcode_agent_runtime::{
     InterruptSignal, SoftInterruptMessage, SoftInterruptQueue, SoftInterruptSource,
@@ -103,12 +102,26 @@ pub(super) fn latest_peer_touches(
     latest
 }
 
-/// Shared ownership of the core persisted swarm coordination state.
+/// What a run knows about one row while it lives: the lifecycle status a turn set
+/// for it. The rows themselves are the list's, and everything else a row says about
+/// itself is read from there.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RowRunState {
+    /// `queued`, `running` or `failed`, set by the turn working the row. Empty until
+    /// a dispatch sets it, which is when the row's own status stands.
+    pub status: String,
+}
+
+/// A run's own state, keyed by row id. In memory only: a restart forgets it, and the
+/// rows come back from the list.
+pub type RunState = HashMap<String, RowRunState>;
+
+/// Shared ownership of the core swarm coordination state.
 #[derive(Clone)]
 pub struct SwarmState {
     pub members: Arc<RwLock<HashMap<String, SwarmMember>>>,
     pub swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    pub plans: Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    pub runs: Arc<RwLock<HashMap<String, RunState>>>,
     pub coordinators: Arc<RwLock<HashMap<String, String>>>,
 }
 
@@ -119,12 +132,12 @@ pub struct SwarmRuntime {
     pub coordinator_session_id: Option<String>,
     pub member_session_ids: HashSet<String>,
     pub members: Vec<SwarmMember>,
-    pub plan: Option<VersionedPlan>,
+    pub run: RunState,
 }
 
 impl SwarmRuntime {
-    /// Whether anything about this swarm is durable. The plan is in-memory only, so
-    /// it says nothing about the files.
+    /// Whether anything about this swarm is durable. A run's own state is in memory
+    /// only, so it says nothing about the files.
     pub fn has_any_state(&self) -> bool {
         self.coordinator_session_id.is_some() || !self.members.is_empty()
     }
@@ -141,21 +154,21 @@ impl SwarmState {
     pub fn new(
         members: HashMap<String, SwarmMember>,
         swarms_by_id: HashMap<String, HashSet<String>>,
-        plans: HashMap<String, VersionedPlan>,
+        runs: HashMap<String, RunState>,
         coordinators: HashMap<String, String>,
     ) -> Self {
         Self {
             members: Arc::new(RwLock::new(members)),
             swarms_by_id: Arc::new(RwLock::new(swarms_by_id)),
-            plans: Arc::new(RwLock::new(plans)),
+            runs: Arc::new(RwLock::new(runs)),
             coordinators: Arc::new(RwLock::new(coordinators)),
         }
     }
 
     pub async fn load_runtime(&self, swarm_id: &str) -> SwarmRuntime {
-        let plan = {
-            let plans = self.plans.read().await;
-            plans.get(swarm_id).cloned()
+        let run = {
+            let runs = self.runs.read().await;
+            runs.get(swarm_id).cloned().unwrap_or_default()
         };
         let coordinator_session_id = {
             let coordinators = self.coordinators.read().await;
@@ -180,7 +193,7 @@ impl SwarmState {
             coordinator_session_id,
             member_session_ids,
             members,
-            plan,
+            run,
         }
     }
 }

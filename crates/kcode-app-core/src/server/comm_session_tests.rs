@@ -11,7 +11,7 @@ use crate::message::{Message, ToolDefinition};
 use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{NotificationType, ServerEvent};
 use crate::provider::{EventStream, Provider};
-use crate::server::{SwarmEventType, SwarmMember, VersionedPlan};
+use crate::server::{RunState, SwarmEventType, SwarmMember};
 use crate::tool::Registry;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -838,7 +838,7 @@ async fn spawn_bootstraps_coordinator_when_swarm_has_none() {
         HashSet::from(["req".to_string()]),
     )])));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::new()));
-    let swarm_plans = Arc::new(RwLock::new(HashMap::<String, VersionedPlan>::new()));
+    let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     let (req_member, _req_rx) = member("req", Some("swarm-1"), "agent");
     swarm_members
         .write()
@@ -853,7 +853,7 @@ async fn spawn_bootstraps_coordinator_when_swarm_has_none() {
         &swarm_members,
         &swarms_by_id,
         &swarm_coordinators,
-        &swarm_plans,
+        &swarm_runs,
         32,
     )
     .await;
@@ -896,7 +896,7 @@ async fn spawn_rejected_when_member_limit_reached() {
         "swarm-1".to_string(),
         "root".to_string(),
     )])));
-    let swarm_plans = Arc::new(RwLock::new(HashMap::<String, VersionedPlan>::new()));
+    let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     {
         let mut members = swarm_members.write().await;
         let (root, _rx) = member("root", Some("swarm-1"), "coordinator");
@@ -918,7 +918,7 @@ async fn spawn_rejected_when_member_limit_reached() {
         &swarm_members,
         &swarms_by_id,
         &swarm_coordinators,
-        &swarm_plans,
+        &swarm_runs,
         0,
     )
     .await;
@@ -940,7 +940,7 @@ async fn terminal_members_do_not_consume_spawn_capacity() {
         "swarm-1".to_string(),
         "root".to_string(),
     )])));
-    let swarm_plans = Arc::new(RwLock::new(HashMap::<String, VersionedPlan>::new()));
+    let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     {
         let mut members = swarm_members.write().await;
         let (root, _rx) = member("root", Some("swarm-1"), "coordinator");
@@ -967,7 +967,7 @@ async fn terminal_members_do_not_consume_spawn_capacity() {
         &swarm_members,
         &swarms_by_id,
         &swarm_coordinators,
-        &swarm_plans,
+        &swarm_runs,
         32,
     )
     .await;
@@ -983,7 +983,7 @@ async fn spawn_rejected_at_configured_live_agent_limit() {
         "swarm-1".to_string(),
         "root".to_string(),
     )])));
-    let swarm_plans = Arc::new(RwLock::new(HashMap::<String, VersionedPlan>::new()));
+    let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     {
         let mut members = swarm_members.write().await;
         let (root, _rx) = member("root", Some("swarm-1"), "coordinator");
@@ -1004,7 +1004,7 @@ async fn spawn_rejected_at_configured_live_agent_limit() {
         &swarm_members,
         &swarms_by_id,
         &swarm_coordinators,
-        &swarm_plans,
+        &swarm_runs,
         2,
     )
     .await;

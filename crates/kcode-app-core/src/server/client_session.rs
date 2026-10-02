@@ -2,15 +2,15 @@
 
 use super::client_state::{handle_get_history, spawn_model_prefetch_update};
 use super::{
-    ChannelSubscriptions, ClientConnectionInfo, ClientDebugState, FileTouchService, SessionAgents,
-    SessionInterruptQueues, SwarmEvent, SwarmMember, SwarmState, VersionedPlan,
+    ChannelSubscriptions, ClientConnectionInfo, ClientDebugState, FileTouchService, RunState,
+    SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmMember, SwarmState,
     broadcast_swarm_status, fanout_live_client_event, persist_swarm_state_for,
     register_background_tool_signal, register_session_event_sender,
     register_session_interrupt_queue, remove_background_tool_signal,
     remove_session_channel_subscriptions, remove_session_from_swarm,
-    remove_session_interrupt_queue, rename_background_tool_signal, rename_plan_participant,
-    rename_session_interrupt_queue, send_swarm_plan_to_session, swarm_id_for_session,
-    unregister_session_event_sender, update_member_status,
+    remove_session_interrupt_queue, rename_background_tool_signal, rename_session_interrupt_queue,
+    send_swarm_plan_to_session, swarm_id_for_session, unregister_session_event_sender,
+    update_member_status,
 };
 use crate::agent::Agent;
 use crate::message::ContentBlock;
@@ -600,7 +600,7 @@ pub(super) async fn handle_subscribe(
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     channel_subscriptions: &ChannelSubscriptions,
     channel_subscriptions_by_session: &ChannelSubscriptions,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     mcp_pool: &Arc<crate::mcp::SharedMcpPool>,
@@ -778,7 +778,7 @@ pub(super) async fn handle_subscribe(
                 let swarm_state = SwarmState {
                     members: Arc::clone(swarm_members),
                     swarms_by_id: Arc::clone(swarms_by_id),
-                    plans: Arc::clone(swarm_plans),
+                    runs: Arc::clone(swarm_runs),
                     coordinators: Arc::clone(swarm_coordinators),
                 };
                 persist_swarm_state_for(&old_id, &swarm_state).await;
@@ -881,7 +881,7 @@ pub(super) async fn handle_subscribe(
 
     // Re-send the current swarm plan so a reconnecting client renders the
     // plan graph immediately instead of waiting for the next plan mutation.
-    send_swarm_plan_to_session(client_session_id, swarm_members, swarm_plans).await;
+    send_swarm_plan_to_session(client_session_id, swarm_members, swarm_runs).await;
 
     // Tell the client which session it is bound to. Local clients learn this
     // from their own launch state, but a remote client (gateway/WebSocket) has
@@ -1061,7 +1061,7 @@ async fn cleanup_detached_source_session_if_unused(
     file_touch: &FileTouchService,
     channel_subscriptions: &ChannelSubscriptions,
     channel_subscriptions_by_session: &ChannelSubscriptions,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
 ) {
     unregister_session_event_sender(swarm_members, old_session_id, client_connection_id).await;
@@ -1110,7 +1110,7 @@ async fn cleanup_detached_source_session_if_unused(
             swarm_members,
             swarms_by_id,
             swarm_coordinators,
-            swarm_plans,
+            swarm_runs,
         )
         .await;
     }
@@ -1197,7 +1197,7 @@ pub(super) async fn handle_resume_session(
     file_touch: &FileTouchService,
     channel_subscriptions: &ChannelSubscriptions,
     channel_subscriptions_by_session: &ChannelSubscriptions,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     client_count: &Arc<RwLock<usize>>,
     writer: &Arc<Mutex<WriteHalf>>,
@@ -1288,7 +1288,7 @@ pub(super) async fn handle_resume_session(
             file_touch,
             channel_subscriptions,
             channel_subscriptions_by_session,
-            swarm_plans,
+            swarm_runs,
             swarm_coordinators,
         )
         .await;
@@ -1642,17 +1642,35 @@ pub(super) async fn handle_resume_session(
                 Some(swarm_event_tx),
             )
             .await;
+            // A holder lives in the list, so the rename is a list write: without it
+            // the renamed session's rows still name the id it just left, and it loses
+            // sight of its own work.
+            let rename_working_dir = {
+                let members = swarm_members.read().await;
+                members
+                    .get(&session_id)
+                    .and_then(|member| member.working_dir.clone())
+            };
+            if let Err(error) = crate::todo::rename_row_holder_on_disk(
+                rename_working_dir.as_deref(),
+                &old_session_id,
+                &old_session_id,
+                &session_id,
+            ) {
+                crate::logging::warn(&format!(
+                    "could not rename rows held by '{old_session_id}' to '{session_id}': {error}"
+                ));
+            }
             if let Some(swarm_id) = {
                 let members = swarm_members.read().await;
                 members
                     .get(&session_id)
                     .and_then(|member| member.swarm_id.clone())
             } {
-                rename_plan_participant(&swarm_id, &old_session_id, &session_id, swarm_plans).await;
                 let swarm_state = SwarmState {
                     members: Arc::clone(swarm_members),
                     swarms_by_id: Arc::clone(swarms_by_id),
-                    plans: Arc::clone(swarm_plans),
+                    runs: Arc::clone(swarm_runs),
                     coordinators: Arc::clone(swarm_coordinators),
                 };
                 persist_swarm_state_for(&swarm_id, &swarm_state).await;
@@ -1686,7 +1704,7 @@ pub(super) async fn handle_resume_session(
             // Re-send the swarm plan AFTER the History payload: the client
             // clears its plan snapshot on session change, so without this the
             // plan graph would stay blank until the next plan mutation.
-            send_swarm_plan_to_session(&session_id, swarm_members, swarm_plans).await;
+            send_swarm_plan_to_session(&session_id, swarm_members, swarm_runs).await;
             // Resolve project-local MCP config against the restored session's
             // working dir, not the server process cwd (issue #420).
             let mcp_working_dir = {

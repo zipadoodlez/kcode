@@ -11,7 +11,6 @@
 struct HandbackFixture {
     /// The repo the rows live in, kept alive for the test's lifetime.
     _repo: tempfile::TempDir,
-    swarm_id: &'static str,
     coord: &'static str,
     holder: &'static str,
     other: &'static str,
@@ -22,7 +21,7 @@ struct HandbackFixture {
     client_connections: Arc<RwLock<HashMap<String, crate::server::ClientConnectionInfo>>>,
     swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_plans: Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
     swarm_coordinators: Arc<RwLock<HashMap<String, String>>>,
     event_history: Arc<RwLock<VecDeque<SwarmEvent>>>,
     event_counter: Arc<AtomicU64>,
@@ -58,9 +57,9 @@ async fn handback_fixture(rows: Vec<TaskItem>) -> HandbackFixture {
     // The plan needs rows behind it: the file is what a dispatch writes to.
     write_list(repo.path(), coord, &rows);
     set_repo(&swarm_members, repo.path()).await;
+    crate::todo::save_tasks(Some(repo.path()), "fixture", &rows).expect("write the list");
     HandbackFixture {
         _repo: repo,
-        swarm_id,
         coord,
         holder,
         other,
@@ -74,12 +73,7 @@ async fn handback_fixture(rows: Vec<TaskItem>) -> HandbackFixture {
             swarm_id.to_string(),
             HashSet::from([coord.to_string(), holder.to_string(), other.to_string()]),
         )]))),
-        swarm_plans: Arc::new(RwLock::new(HashMap::from([(
-            swarm_id.to_string(),
-            VersionedPlan {
-                items: rows,
-            },
-        )]))),
+        swarm_runs: empty_run_state(),
         swarm_coordinators: Arc::new(RwLock::new(HashMap::from([(
             swarm_id.to_string(),
             coord.to_string(),
@@ -116,7 +110,7 @@ async fn assign_next(fx: &HandbackFixture, prefer_spawn: bool) {
         &fx.client_connections,
         &fx.swarm_members,
         &fx.swarms_by_id,
-        &fx.swarm_plans,
+        &fx.swarm_runs,
         &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
@@ -192,9 +186,8 @@ async fn a_held_row_is_not_granted_to_a_free_worker() {
 
     assign_next(&fx, true).await;
 
-    let plans = fx.swarm_plans.read().await;
-    let row = plans[fx.swarm_id]
-        .items
+    let rows = crate::todo::load_tasks(Some(fx._repo.path()), "fixture").expect("read the list");
+    let row = rows
         .iter()
         .find(|item| item.id == "held")
         .expect("the held row");
@@ -245,15 +238,13 @@ async fn a_stranded_row_is_released_in_the_list_when_it_is_reclaimed() {
 
     assign_next(&fx, false).await;
 
-    let plans = fx.swarm_plans.read().await;
-    let row = plans[fx.swarm_id]
-        .items
+    let rows = crate::todo::load_tasks(Some(fx._repo.path()), "fixture").expect("read the list");
+    let row = rows
         .iter()
-        .find(|item| item.id == "held")
+        .find(|row| row.id == "held")
         .expect("the row");
     assert_eq!(row.assigned_to, None, "the claim is cleared");
-    assert_eq!(row.status, "queued", "and the row is work again");
-    drop(plans);
+    assert_eq!(row.status, "queued", "the row's own status is the list's");
 
     let rows = crate::todo::load_tasks(Some(fx._repo.path()), fx.coord).expect("read the list");
     assert_eq!(

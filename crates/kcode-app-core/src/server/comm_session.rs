@@ -5,8 +5,8 @@ use super::swarm_mutation_state::{
     request_key,
 };
 use super::{
-    ChannelSubscriptions, SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmEventType,
-    SwarmMember, SwarmState, VersionedPlan, append_swarm_completion_report_instructions,
+    ChannelSubscriptions, RunState, SessionAgents, SessionInterruptQueues, SwarmEvent,
+    SwarmEventType, SwarmMember, SwarmState, append_swarm_completion_report_instructions,
     broadcast_swarm_plan, broadcast_swarm_status, create_headless_session, fanout_session_event,
     persist_swarm_state_for, record_swarm_event, record_swarm_event_for_session,
     remove_background_tool_signal, remove_session_channel_subscriptions, remove_session_from_swarm,
@@ -598,7 +598,7 @@ pub(super) async fn spawn_swarm_agent(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -704,7 +704,7 @@ pub(super) async fn spawn_swarm_agent(
                 swarm_members,
                 swarms_by_id,
                 swarm_coordinators,
-                swarm_plans,
+                swarm_runs,
                 soft_interrupt_queues,
                 coordinator_is_canary,
                 spawn_model.clone(),
@@ -734,7 +734,7 @@ pub(super) async fn spawn_swarm_agent(
     broadcast_swarm_plan(
         swarm_id,
         Some("participant_spawned".to_string()),
-        swarm_plans,
+        swarm_runs,
         swarm_members,
         swarms_by_id,
     )
@@ -764,7 +764,7 @@ pub(super) async fn spawn_swarm_agent(
     let swarm_state = SwarmState {
         members: Arc::clone(swarm_members),
         swarms_by_id: Arc::clone(swarms_by_id),
-        plans: Arc::clone(swarm_plans),
+        runs: Arc::clone(swarm_runs),
         coordinators: Arc::clone(swarm_coordinators),
     };
     persist_swarm_state_for(swarm_id, &swarm_state).await;
@@ -873,7 +873,7 @@ pub(super) async fn handle_comm_spawn(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     _channel_subscriptions: &ChannelSubscriptions,
     _channel_subscriptions_by_session: &ChannelSubscriptions,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
@@ -902,7 +902,7 @@ pub(super) async fn handle_comm_spawn(
         swarm_members,
         swarms_by_id,
         swarm_coordinators,
-        swarm_plans,
+        swarm_runs,
         crate::config::config().agents.swarm_max_concurrent_agents,
     )
     .await
@@ -955,7 +955,7 @@ pub(super) async fn handle_comm_spawn(
         swarm_members,
         swarms_by_id,
         swarm_coordinators,
-        swarm_plans,
+        swarm_runs,
         event_history,
         event_counter,
         swarm_event_tx,
@@ -1023,7 +1023,7 @@ pub(super) async fn handle_comm_stop(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     channel_subscriptions: &ChannelSubscriptions,
     channel_subscriptions_by_session: &ChannelSubscriptions,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
@@ -1151,7 +1151,7 @@ pub(super) async fn handle_comm_stop(
             swarm_members,
             swarms_by_id,
             swarm_coordinators,
-            swarm_plans,
+            swarm_runs,
         )
         .await;
     }
@@ -1244,7 +1244,7 @@ async fn ensure_spawn_coordinator_swarm(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
-    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     configured_live_agent_limit: usize,
 ) -> Option<String> {
     let (
@@ -1387,7 +1387,7 @@ async fn ensure_spawn_coordinator_swarm(
                 let swarm_state = SwarmState {
                     members: Arc::clone(swarm_members),
                     swarms_by_id: Arc::clone(swarms_by_id),
-                    plans: Arc::clone(swarm_plans),
+                    runs: Arc::clone(swarm_runs),
                     coordinators: Arc::clone(swarm_coordinators),
                 };
                 persist_swarm_state_for(&swarm_id, &swarm_state).await;

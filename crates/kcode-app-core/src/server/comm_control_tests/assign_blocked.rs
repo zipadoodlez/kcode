@@ -26,18 +26,10 @@ async fn assign_task_rejects_explicit_blocked_task() {
         swarm_id.to_string(),
         HashSet::from([requester.to_string(), worker.to_string()]),
     )])));
-    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        VersionedPlan {
-            items: vec![
-                plan_item("setup", "completed", "high", &[]),
-                plan_item("blocked", "queued", "high", &["missing-prereq"]),
-            ],
-        },
-    )])));
-    // The plan needs rows behind it: the file is what a dispatch writes to,
-    // and the repo root is that file's home.
-    write_list(repo.path(), "fixture", &swarm_plans.read().await[swarm_id].items);
+    let swarm_runs = seeded(repo.path(), vec![
+        plan_item("setup", "completed", "high", &[]),
+        plan_item("blocked", "queued", "high", &["missing-prereq"]),
+    ]);
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         swarm_id.to_string(),
         requester.to_string(),
@@ -59,7 +51,7 @@ async fn assign_task_rejects_explicit_blocked_task() {
         &client_connections,
         &swarm_members,
         &swarms_by_id,
-        &swarm_plans,
+        &swarm_runs,
         &swarm_coordinators,
         &event_history,
         &event_counter,
@@ -75,9 +67,8 @@ async fn assign_task_rejects_explicit_blocked_task() {
         other => panic!("expected error for blocked task assignment, got {other:?}"),
     }
 
-    let plans = swarm_plans.read().await;
-    let blocked = plans[swarm_id]
-        .items
+    let rows = rows_in(repo.path());
+    let blocked = rows
         .iter()
         .find(|item| item.id == "blocked")
         .expect("blocked task exists");
