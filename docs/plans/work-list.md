@@ -269,18 +269,38 @@ and the one build + test pass lands at the end of 0.4f.
       1. **An assignment is a file write.** Decided. The holder lives only in the plan
          today and the snapshot is what makes it durable, while the file's
          `assigned_to` is written only by the store's own paths
-         (`anchor_from_words`, the `todo` tool's claim), so the list does not show who
+         (`anchor_from_words`, and the `todo` tool's `add`/`update`), so the list does
+         not show who
          the plan handed work to, and "the file is the list" cannot be true while that
          holds. Expand and close already write the store first and let the plan follow;
          assign joins them. The paths that change a holder: dispatch
          (`handle_comm_assign_task`), `requeue_existing_assignment`,
          `reclaim_stranded_assignment` and its salvage sweep, and everything
          `task_control` routes through assign. One store function, one shape.
+         Read, the write operation already exists: the `todo` tool's `update` sets
+         `assigned_to` (`tool/todo.rs:103`) and its schema advertises the field
+         (`:265`), and `kcode-base/src/todo.rs` already has the `*_on_disk` shape for
+         the two mutations that rewrite the file (`close_row_on_disk`,
+         `expand_row_on_disk`). So this move is one more function of that shape, in
+         that home, plus the calls. No new concept, and the model can already hand a
+         row to anyone through the tool.
       2. **The plan is refreshed from the file, not a peer store.** Decided with move
-         1, and the rule that makes it a view instead of a cache that drifts: after a
-         row write the plan's items are re-read or rebuilt, so an item that names no
-         open row does not survive. Settle the exact rule (re-read per write, or
-         rebuild after write) by reading the plan's mutation paths before this lands.
+         1. The rule, settled by reading every plan mutation (2026-10-02): there is one
+         write path, so there is one refresh. A row write goes through the store, and
+         the plan's items are then rebuilt from the rows the store wrote, carrying a
+         by-id runtime overlay forward (`status`, and the reclaim counter) and dropping
+         an overlay whose row is gone. Not a patch per site, which would leave two
+         writers of the same field, and not a re-read per site, which would be five
+         parallel refreshes of one fact. The durable half lives in the file, the
+         overlay is what a run knows and the file cannot say, and on a reload the
+         overlay is rebuilt rather than restored, which is the model's "nothing durable
+         lives in the run". Where the overlay belongs, and whether `status` survives at
+         all, is 0.4g's `(decide)` and B3; s12 moves the durable half only.
+         A consequence worth taking: with the rows as the items, the bridge's
+         `apply_task_graph` stops being a writer of items and `node_meta` (it exists to
+         lower the engine's graph back into the plan), so the closed-item ghost dies at
+         its source and the bridge becomes a validation and op view over the rows. That
+         is moves 3 and 4 falling out rather than being chased.
       3. **The artifact's one home is the row's `record`.** The close already writes
          `{"id","result","artifact"}` onto the owning row (`kcode-base/src/todo.rs:279`)
          and the plan writes the same artifact into `node_meta`
