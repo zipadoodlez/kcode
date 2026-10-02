@@ -193,11 +193,12 @@ starts. 0.1, 0.2 and 0.3 have landed whole and are gone from this list; what 0.2
 was 0.3's last stage, and the two losses 0.1 and 0.3 named are in `docs/todo.md`. 0.4's
 gate stage (0.4a), row stage (0.4c), one-mode stage (0.4b), node-meta stage (0.4d),
 liveness stage (0.4e) and 0.4f have landed: the plan's items are the file's open rows,
-the holder and the artifact live where the list is, and a turn end is a close. **0.4g is
-in flight: g1 and g2 have landed** (no version, no participant list, no durable plan,
-and a loaded swarm rebuilds its plan from the list), and g3 is next. 0.4f's one build +
-full test pass ran with it (three pre-existing `session_flow` e2e failures, recorded in
-`docs/todo.md`).
+the holder and the artifact live where the list is, and a turn end is a close. **0.4g's
+g1, g2 and g3 have landed** (no version, no participant list, no durable plan, no item
+cache and no reclaim cap; a run keeps one sparse status per row and reads everything
+else from the list), so what is left of 0.4g is **g4, derived membership, and g5, the
+verb set**. 0.4f's one build + full test pass ran with it (three pre-existing
+`session_flow` e2e failures, recorded in `docs/todo.md`).
 
 ### 0. One way work gets done
 
