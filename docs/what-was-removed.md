@@ -49,7 +49,7 @@ gone as well:
 
 ## The model cut
 
-The 0.x work (`plans/work-list.md`) removed the machinery around the work list. Each
+The 0.x work (`plans/row-model.md`) removed the machinery around the work list. Each
 entry is a decision that dropped power, with what the drop cost.
 
 **One mode: spawning is the root's, and the `/effort` swarm rungs go** (0.4b,

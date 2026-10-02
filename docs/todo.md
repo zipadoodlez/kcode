@@ -1,160 +1,31 @@
 # Todo
 
 Open work, in the order that unblocks the most: every item is something to do, or a
-call to make. A decision that has landed is not here: its record and what it cost are
-in `what-was-removed.md`, and a deferred internal note lives in the code as a
-`# braid:` comment. See `README.md` for the conventions. The current project's
-destination, model and open steps are `plans/work-list.md`.
+call to make. The design lives with the item when it is short and in `plans/` when it is
+not; a landed decision is a record, not work, and lives in `what-was-removed.md`. See
+`README.md` for the conventions.
 
 ## 1. Shared shapes
 
-- [ ] **Condense swarm/comm** (`plans/work-list.md` step 0.4g; what remains is E2/H2's
-  half). The `SwarmState` handle pair is still threaded to ~40 functions and rebuilt as
-  a literal at each request arm, so folding it into the request context is undone. It
-  waits on splitting `handle_client`, whose request context is designed to hold it.
-  Design: `plans/work-list.md`; engine: `internals/swarm.md`.
+- [ ] **Condense swarm/comm**: the `SwarmState` handle pair is still threaded to ~40
+  functions and rebuilt as a literal at each request arm, so the request context that
+  ends it is the remaining half. `plans/row-model.md` (step 0.4g, the E2/H2 half);
+  engine: `internals/swarm.md`.
 
 ## 2. God modules
 
-Staged; each lands whole.
+Staged; each lands whole. The designs are in `plans/`, because none of them fits one
+screen: `plans/app-shape.md` for the app, `plans/server-shape.md` for the request path.
 
-- [ ] **Re-core `App`** (`crates/kcode-tui/src/tui/app.rs`), the largest single
-  cost in the tree. The shape is ratcheted (`scripts/check_app_shape.py`), so the
-  numbers are read where they are enforced, not here. Landed: the runtime
-  axis, `CopySelection`, `Redraw`, `Viewport`, the side-panel page and decoration,
-  `Swarm`, `HotkeyFeedback`, `ReloadState`, `TodosView`, `SplitView`, `Observe`,
-  `Catchup`, `RemoteServerInfo`, `RemoteStartup`, `HistoryRecovery`,
-  `PendingSplit`, `Transcript`, `BackgroundTaskBand`, `OvernightCard`, and the
-  input slices. Target: `App` as a coordinator of named sub-structs, each owning
-  the methods that touch only it (the pattern already in tree: `impl RemoteLogin`).
-  Renaming a field without moving its methods is churn, not progress. Group names
-  come from the `TuiState` trait's section headers; isolation first, coupling last;
-  re-measure cohesion before each extraction, since the first cut found no group
-  cleanly isolated and this order is provisional.
-  - `Panels` (12 fields, 89 sites): side panel and split view. The mirror pages
-    (split view, todos, observe, catchup) are out; `side_pane_*`/`diff_pane_*`
-    remain.
-  - Overlay/picker state: only the login picker remains.
-  - Stream/status: not a mechanical sweep. `is_processing`, `status`, `streaming`,
-    `status_detail`, `subagent_status`, `batch_progress`, `processing_started`,
-    `stream_message_ended`, `context_limit`, `context_info`, `context_revision`
-    collide with other structs or method names, and the remaining turn-lifecycle
-    fields (`pending_turn`, `cancel_requested`, `visible_turn_started`,
-    `last_stream_activity`, `last_user_interaction`, `deferred_stream_done_id`,
-    `last_stream_error`, `attempt_committed_assistant_messages`) serve different
-    consumers. Split per concept with the receiver type checked.
-  - Provider and model context: 15 fields but ~500 sites across 30+ files, mixing
-    provider connection (name/model/transport/credential/reasoning/service tier)
-    with model selection (picker cache, pending switch/route/reasoning). Split
-    along that seam first; do not create a second registry (coordinate with §1).
-    Two names also live on other structs (`upstream_provider`,
-    `provider_session_id`).
-  - `Input`: 21 fields, ~1940 direct sites, 69 files, and hyper-common names
-    (`input`, `cursor_pos` are also parameters, locals, and fields on
-    `backend`/`debug`/`session_picker`/`ui_input`). Remaining slices use the
-    receiver-aware rename plus a call-site guard (`input()` and
-    `command_suggestion_selected()` are `TuiState` accessors).
-  - Session/server leftovers: `server_spawning` vs `auto_server_reload` (the
-    latter is cached `display` config, not connection state), `remote_session_id`
-    (kept: active session identity, 86 sites), `pending_local_transfer`,
-    `route_next_prompt_to_new_session` (single fields with their own lifecycles,
-    not worth a struct).
-  - Revisit `TuiState` last: a 122-method trait with two impls, and `TestState`
-    (39 fields, 83 sites, 13 files) exists so render tests avoid constructing an
-    `App`. Deleting it is a trade, decided once `App` is cheap to construct.
-  - Out of scope here: `handle_client`, provider identity, the crate spine.
-  - Done when: field count and `impl App` count fall monotonically
-    (`check_app_shape.py`), `use super::*` falls from 116, and `app.rs` leaves
-    `code_size_budget.json`.
-  - [ ] **Behavior-check the landed extractions.** They were cut by cohesion
-    (which methods touch which fields), so tests prove the moves preserved
-    behavior, not that the boundaries are right. Trace the write sequences at
-    turn/reconnect/reset boundaries and confirm no transition spans two structs.
-    Highest risk: `ReloadState` (ten fields grouped as "session maintenance", never
-    behaviorally traced; may be two things), then `Swarm`, then the
-    `Redraw`/`Viewport` split. The outbound-input split was wrong for exactly this
-    reason: `queue_recovery.rs` converts soft interrupts, interleave messages, and
-    in-flight sends into `queued_messages`, so those are one pipeline.
-  - [ ] **Re-core the outbound user-input pipeline** rather than condense it.
-    `queued_messages`, `hidden_queued_system_messages`, `pending_soft_interrupts`,
-    `pending_soft_interrupt_requests`, `interleave_message`, `interleave_images`,
-    `queued_followup_starved_since`, `pending_queued_dispatch`,
-    `rate_limit_pending_message`, `rate_limit_reset` are parallel representations
-    of one thing, stitched by hand-written conversions in
-    `remote/queue_recovery.rs`. One representation (a queue of outbound items with
-    status and ack id) deletes the conversions; a struct keeps the duplication.
-    Needs fresh context.
-- [ ] **Split `handle_client`** (`crates/kcode-app-core/src/server/client_lifecycle.rs`,
-  3,620 lines; the function is 435-3029, ~2,595). Researched 2026-09-28: the arms
-  are already thin and mostly delegate, so the god-ness is not the arms. It is:
-  - **~750 lines of setup prologue** (435-1184): the read loop until `Subscribe`
-    (lightweight control requests answered inline and dropped), working-dir
-    resolution, provider fork, `Registry::new`,
-    `Agent::new_with_initial_working_dir`, prewarm, `SessionControlHandle`
-    registration, four `write().await` map inserts, and the event-forwarder spawn.
-  - **75 `Request::` arms, ~1,730 lines** (1185-2913): largest `Subscribe` 195,
-    `Message` 95, `SoftInterrupt` 81, `ResumeSession` 74, `Rewind` 61,
-    `RewindUndo` 60, `Clear` 47; the rest 15-40. The `Comm*` arms only unpack and
-    forward.
-  - **~116 lines of teardown** (2914-3029) that already calls
-    `client_disconnect_cleanup` helpers.
-  - **28 args** under `#[expect(clippy::too_many_arguments)]`, with one production
-    caller (`server/runtime.rs:261`) plus tests, so a context struct is mechanical.
-    Six args are swarm state: one `SwarmState` pair
-    (`swarm_members`/`swarm_runs` -> `members`, `runs`) and five loose Arcs beside it
-    (`shared_context`, `event_history`, `event_counter`, `swarm_event_tx`,
-    `await_members_runtime`, `swarm_mutation_runtime`). Every `Comm*` arm re-wraps
-    them into a `SwarmState { .. }` literal: that literal is §1's duplication, and
-    a request context is where it dies.
-  - **The prologue is four unnamed state machines** sharing ~15 locals by name
-    (accept-until-Subscribe, session creation, registration, forwarder spawn).
-  - **Per-client mutable locals** every arm mutates: turn lifecycle
-    (`client_is_processing`, `processing_task`, `processing_message_id`,
-    `processing_session_id`), subscribe stage (`client_subscribed`,
-    `provisional_session`, `pending_request`), connection flags
-    (`continue_on_disconnect`, `model_usage_updates_enabled`, `supports_pdf_panels`,
-    `client_selfdev`, `last_available_models_snapshot`,
-    `current_client_instance_id`).
-  - Order; H1-H3 are pure moves and can share a change. H1 **`ClientContext`**:
-    one struct for the 28 args (Arcs cloned once at the caller), deleting the
-    `#[expect]`. H2 **Fold swarm ownership in**: pass `SwarmState` plus one
-    `SwarmRuntimeHandles` for the six Arcs and delete the per-arm literals (gated
-    on §1, not H1). H3 **Name the prologue**: `accept_initial_request`,
-    `start_client_session`, `spawn_client_event_forwarder`, target under ~100 lines
-    of named calls before the `match`. H4 **Move the inline arms** into sibling
-    modules, largest first, so the file leaves `code_size_budget.json` (gated on
-    H1-H3). H5 **The turn-lifecycle locals**: one owner for the in-flight turn,
-    reusing the `App` result rather than re-deriving it.
-  - Done when: `handle_client` is under ~600 lines, the file is out of the size
-    budget, and no `SwarmState { .. }` literal is built inside a request arm.
-- [ ] **Condense `tool/communicate.rs`**: four concepts welded together, swarm
-  coordination, capacity cleanup (`cleanup_swarm_workers`,
-  `stop_swarm_sessions`), the run-plan driver (`run_swarm_plan_loop`, the
-  driver-claim helpers), and the `format_*`/`fetch_*` formatters around a large
-  `execute`. A census found these are *not* splits: `server/swarm.rs`,
-  `server/comm_control.rs` (covered by §1), and `agent/turn_streaming_mpsc.rs`.
-  `tool/session_search.rs` has two real seams (native index vs external-source
-  ingestion). Measure the size at the step; it moves.
-- [ ] **Unify the command surface**: slash-command identity is a string matched in
-  four tables, the registry `REGISTERED_COMMANDS`
-  (`app/state_ui_input_helpers.rs`, 108 entries), `app/commands.rs` (57),
-  `app/commands_dispatch.rs` (83), `app/remote/key_handling.rs` (53), plus
-  `app/input_help.rs` for the help text, which the list did not name: landing
-  `/auto` meant an entry in three of them. One table
-  (name, aliases, help, handler, remote-safe) fixes the `/help` gap and the dead
-  SSH-block commands. Shares `commands_dispatch.rs` with the `App` re-core, so
-  keep them in separate changes.
-- [ ] (decision) **Collapse `AppRuntimeMode::TestHarness`**: the local turn path is
-  deleted (`516de13d`), so the axis is only a marker. Decide whether it survives.
+- [ ] **Re-core `App`** (`crates/kcode-tui/src/tui/app.rs`), the largest single cost in
+  the tree. `plans/app-shape.md`.
+- [ ] **Split `handle_client`** (`crates/kcode-app-core/src/server/client_lifecycle.rs`).
+  `plans/server-shape.md`.
+- [ ] **Condense `tool/communicate.rs`**. `plans/server-shape.md`.
+- [ ] **Unify the command surface** (four tables, one identity). `plans/app-shape.md`.
+- [ ] (decision) **Collapse `AppRuntimeMode::TestHarness`**. `plans/app-shape.md`.
 - [ ] (decision) **Re-core the SSH-login state**
-  (`crates/kcode-tui/src/tui/app/auth_remote.rs`): one flow tracked by five
-  correlated fields (`phase`, `task`, `operation`, `input_kind`, `input`) with 12
-  guarded `.unwrap()`s. Target two enums, `Stage` and `Activity` (two, because a
-  background `Operation::Status` poll runs while the picker is open), which removes
-  the illegal combinations and the stringly-typed `input_kind`. Keep the
-  no-`Debug`/no-`Clone` secrecy and the `Drop` cleanup; a non-1:1 state is a
-  stop-and-report. Verify with `cargo test -p kcode-tui auth_remote` (21 tests).
-  Confirm before touching credential code.
+  (`crates/kcode-tui/src/tui/app/auth_remote.rs`). `plans/app-shape.md`.
 
 ## 3. Spine
 
@@ -166,51 +37,19 @@ Staged; each lands whole.
 
 ## 4. Tests
 
-After the shape work: the tree is coupled through `create_test_app`, so shape
-changes are paid for in test churn.
-
-- [ ] Replace the `include!`-wired test tree with real modules: `app/tests.rs`
-  `include!`s 55 files into one module (116 `include!` sites repo-wide), which is
-  why helper collisions and `use super::*` are everywhere.
-- [ ] Condense near-duplicate tables: `state_model_poke_03.rs`,
-  `session_tests/cases.rs`, `remote_events_reload_04.rs`. The ~40-51% figures
-  predate both the 2026-09-28 census (13 cross-file duplicated test names) and the
-  todo step 1 deletion, so re-measure before treating them as targets.
-- [ ] Move subsystem code out of test files: `smoothness_benchmark.rs` (313) sits
-  under `app/tests/`. Separately, `kcode-base/src/live_tests.rs` (3,080) is a
-  misnamed *production* module (`pub mod live_tests`, consumed by the TUI's
-  `/live` report); rename it to what it is.
-- [ ] `kcode-tui`'s
-  `test_remote_fallback_provider_suggestions_normalize_bare_openai_openrouter_routes`
-  fails on a clean tree, at the default thread count and single-threaded, so the
-  suite has one false positive to explain before a red run can be trusted. Cause not
-  diagnosed; it asserts that provider suggestions include
-  `/model openai/gpt-5.4@OpenAI`. `dev/testing.md` carries the note for a session that
-  just saw it.
-- [ ] Three `session_flow` e2e tests fail on a clean tree (2026-10-02, seen while
-  landing 0.4f): `test_debug_create_session_marks_debug`,
-  `test_debug_create_selfdev_session_marks_canary` and
-  `test_clear_preserves_debug_for_resumed_debug_session`, each dying with a bare
-  `No such file or directory (os error 2)` after `create_session` over the debug
-  socket. Verified pre-existing: all three fail identically with the s12 change
-  stashed, at the commit before it. The suite's other session tests pass, including
-  one that calls the same `Session::load`, so the failure is specific to a session
-  the *debug command* created. Cause not diagnosed; the next reader should start at
-  what `create_session` persists versus what `Session::load` reads. Re-checked after
-  0.4g's g1-g3 (2026-10-02): the same three, unchanged, and the plan's own suites pass
-  around them.
-- [ ] One home per duplicated test helper: 13 names are defined in more than one
-  file (`lock_env` 8, `test_agent` 7, `create_test_app` 3, then
-  `tracked_env_vars`, `clear_openai_compatible_runtime_env`,
-  `ensure_test_kcode_home_if_unset`, `empty_swarm_status_state`,
-  `available_models_display_seeds_from_persisted_catalog`, and the rest at 2).
-  Re-measure before ranking.
+- [ ] **The test tree's shape**: real modules instead of `include!`, fewer
+  near-duplicate tables, subsystem code out of test files, one home per duplicated
+  helper. After §2, because the tree is coupled through `create_test_app`.
+  `plans/test-tree.md`.
+- [ ] **The known red tests**: `kcode-tui`'s provider-suggestion test and three
+  `session_flow` e2e tests fail on a clean tree, undiagnosed, so a red run cannot be
+  read until they are explained. `plans/test-tree.md`.
 
 ## 5. Hygiene
 
 - [ ] The work list has no user doc. `tasks.jsonl` at the repo root, the `todo`
   tool's three actions, and the close's required result are described only in
-  `plans/work-list.md`, which is a plan rather than a manual. It goes in
+  `plans/row-model.md`, which is a plan rather than a manual. It goes in
   `docs/user/` when the list settles, which is late enough to be worth writing
   once: after 0.3, since that is where the row gains its `kind`.
 - [ ] Unknown config keys and sections are silently ignored (`toml::from_str` with no
@@ -240,14 +79,14 @@ changes are paid for in test churn.
   `load_tasks(dir, session_id)` at `:303`). The engine is already session-scoped on
   `assigned_to` (`bridge.rs:90` in `seed_specs`; `live_turn.rs:259` for ready
   work), so the server's list is the odd one out. Open with C5's client half in
-  `plans/work-list.md`: filter for every session, or only for runs? And how does a
+  `plans/row-model.md`: filter for every session, or only for runs? And how does a
   session first see rows it does not hold, so that adopting one is its decision?
   Not a rule: the model does not scope the user's session to its holdings.
 - [ ] Not every color derives from a role: `configured_native_color`
   (`kcode-tui-style/src/palette.rs`) attributes a shade to a role only when it
   equals that role's default, so hardcoded `Color::Rgb(...)` shades pass through
   and `/colors` cannot recolor them. The swarm path is covered by
-  `plans/work-list.md` D1; what remains is `login_picker.rs`
+  `plans/row-model.md` D1; what remains is `login_picker.rs`
   `PANEL_BG`/`PANEL_BORDER` and other orphans. Give each shade a role, or mark it
   intentionally fixed.
 - [ ] `now_ms` is defined 4x: `app/observe.rs:212`, `app/split_view.rs:295`,

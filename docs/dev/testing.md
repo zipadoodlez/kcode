@@ -85,7 +85,7 @@ failure (the compiler was killed), not this race.
 (`app/tests/state_model_poke_02/part_02.rs`) fails on a clean checkout, both
 single-threaded and parallel, so a red run is not necessarily your change. It
 asserts that provider suggestions include `/model openai/gpt-5.4@OpenAI`. The cause
-is not diagnosed; it is tracked in `docs/todo.md` §4.
+is not diagnosed; it is tracked in `plans/test-tree.md`.
 
 ## A rare fork hang
 

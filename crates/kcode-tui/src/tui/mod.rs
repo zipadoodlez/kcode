@@ -330,8 +330,8 @@ mod terminal_mode_tests {
 /// renderer needs from `App`. The methods are grouped into the domain sections
 /// below (transcript, input, scroll, stream/status, provider, session/server,
 /// workspace, diagram pane, diff pane, side panel, inline, overlay, copy
-/// selection, misc). See `docs/todo.md` (App re-core item) for the
-/// plan to group these into named structs and revisit this trait.
+/// selection, misc). See `plans/app-shape.md` for the plan to group these into
+/// named structs and revisit this trait.
 pub trait TuiState {
     // ---- Transcript ----
     fn display_messages(&self) -> &[DisplayMessage];

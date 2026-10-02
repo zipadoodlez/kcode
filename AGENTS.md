@@ -3,7 +3,7 @@
 ## Development Workflow
 
 - **Start at `docs/todo.md`** - It is the order of work, and the current project's
-  destination, model and open steps are `docs/plans/work-list.md`. Read the plan's
+  destination, model and open steps are `docs/plans/row-model.md`. Read the plan's
   Steps intro before changing anything there: it says where the work stands, and a
   step in flight is finished before a new one starts. `docs/README.md` lists every doc
   and what belongs in it.

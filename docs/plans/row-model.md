@@ -1,7 +1,9 @@
-# Work list
+# Row model
 
-Work on branch `work-list`. `docs/todo.md` points here. Tick a step when it lands
-and delete it; git has the history.
+`docs/todo.md` points here. Tick a step when it lands and delete it; git has the
+history. The open items this plan leaves behind are split by subject: the app's shape
+in `plans/app-shape.md`, the request path in `plans/server-shape.md`, the test tree in
+`plans/test-tree.md`.
 
 ## How a step lands
 
@@ -183,7 +185,7 @@ call sites a later step reshapes: 0.2 removed the poke the permission replaced, 
 
 After that, in the order of the moves: delete (D, the topic channels, the shared
 context, and the member projection written four times), then the re-cores (E, F,
-and the `app.rs` re-core, whose detail `docs/todo.md` §2 owns). The re-cores are the
+and the `app.rs` re-core, whose detail `plans/app-shape.md` owns). The re-cores are the
 tail and they are droppable: the least evidence and the most churn, nothing upstream
 depends on them, and finishing the model does not need them. Dropping them costs the
 duplication they would have removed and nothing else.
@@ -199,7 +201,7 @@ no reclaim cap, no stored membership, and one act where seven handoff verbs were
 keeps one sparse status per row, reads everything else from the list, derives who is in
 it, and closes only the rows it holds). **0.4g is whole, and 0.4 with it.** 0.4f's one
 build + full test pass ran with it (three pre-existing `session_flow` e2e failures,
-recorded in `docs/todo.md`).
+recorded in `plans/test-tree.md`).
 
 ### 0. One way work gets done
 
@@ -328,7 +330,8 @@ recorded in `docs/todo.md`).
   what it finds into this list: unscoped concepts, duplicate representations, modes and
   dead paths, ranked by surface removed. It runs after 0.4 and 0.5 so it audits the
   settled model rather than one in flight, and it feeds the tail (D, E, F) and the
-  `todo.md` §4 and §5 items. A finding is a step or a deletion, never a standalone
+  `plans/test-tree.md` and `todo.md` §5 items. A finding is a step or a deletion,
+  never a standalone
   report.
 
 ### B. The file is the list
@@ -401,7 +404,7 @@ Gated by C4 and C5.
   condense must land before this split, since the request context is designed to hold
   that state.
 - [ ] **E3.** Name the prologue, move the largest arms out, and settle the
-  turn-lifecycle locals. `todo.md` §2's H1 to H5 in order.
+  turn-lifecycle locals. `plans/server-shape.md`'s H1 to H5 in order.
 
 ### F. The swarm tool surface
 

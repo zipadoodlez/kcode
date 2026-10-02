@@ -29,7 +29,7 @@ that costs is named in `docs/what-was-removed.md`: two sessions cannot declare o
 environment variable, and a root that leaves no longer hands its subtree to an elected
 coordinator, so its workers become roots of their own runs.
 
-The swarm is one executor of the repo's work list (`plans/work-list.md`). The
+The swarm is one executor of the repo's work list (`plans/row-model.md`). The
 list is the shared contract and the work lives there; a run holds its own lifecycle for
 the rows it works and reads everything else from the file.
 The seed is the rows the
@@ -43,7 +43,7 @@ one, and a row the list already has is not seeded again.
 There is one engine and no mode axis. The former deep/light presets, the
 auto-inserted critique/verify gate, the gate-pass audit, the deep artifact
 validity check and the artifact-or-nothing turn-end rule were removed in 0.4a of
-`plans/work-list.md`; the engine keeps the DAG model, the scheduler, the typed
+`plans/row-model.md`; the engine keeps the DAG model, the scheduler, the typed
 handoff artifact and decomposition. What was lost (the automatic gate insertion
 and the refusal to close without an artifact) is named in `docs/what-was-removed.md`.
 

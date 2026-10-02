@@ -34,7 +34,7 @@ pub enum Request {
         no_reply: bool,
         /// The user asked this session to keep working its own work list after
         /// this turn, for as long as the rows it holds last. See rule 11 in
-        /// `docs/plans/work-list.md`.
+        /// `docs/plans/row-model.md`.
         #[serde(default, skip_serializing_if = "is_false")]
         may_continue: bool,
     },

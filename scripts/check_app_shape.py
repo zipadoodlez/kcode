@@ -3,7 +3,7 @@
 
 `App` (`crates/kcode-tui/src/tui/app.rs`) is the largest single cost in the
 tree: ~310 fields in one struct and 57 separate `impl App` blocks spread over 53
-files. The re-core (`docs/todo.md`, "Re-core `App`") turns it into a coordinator
+files. The re-core (`plans/app-shape.md`, "Re-core `App`") turns it into a coordinator
 holding named sub-structs, so the field count, the `impl App` block count, and
 the `use super::*` glob count must all fall.
 

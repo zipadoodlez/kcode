@@ -381,9 +381,11 @@ hooks, and the provider catalog.
 
 ## Status and known gaps
 
-Known gaps and work in progress are tracked in **[docs/todo.md](docs/todo.md)**:
-plans in flight, committed ideas that have no doc yet, and open items in the
-code. That is the single list; this README does not duplicate it.
+Work in progress has one entry point: **[docs/todo.md](docs/todo.md)**, the order of
+work. An item whose design fits a screen carries it; the rest link to a plan under
+**[docs/plans/](docs/plans/)**. What a cut cost is recorded in
+**[docs/what-was-removed.md](docs/what-was-removed.md)**. This README does not
+duplicate any of them.
 
 ---
 

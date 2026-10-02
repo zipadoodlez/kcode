@@ -52,7 +52,10 @@ not fit its row is a doc in the wrong place.
 |---|---|---|
 | `todo.md` | the order of work | open items with their design, and open calls; a landed record is not here |
 | `what-was-removed.md` | every deliberate removal and what it cost | the fork cut, the account cut, the model cut, and what was deliberately kept |
-| `plans/work-list.md` | the destination for the work list | one file of rows, one item type, one writer, one run; a swarm is a count, not a mode; not served to the model |
+| `plans/row-model.md` | the destination for the work list | one file of rows, one item type, one writer, one run; a swarm is a count, not a mode; not served to the model |
+| `plans/app-shape.md` | the app's shape | the `App` re-core's groups, the command surface, the two calls |
+| `plans/server-shape.md` | the request path's shape | the `handle_client` split (H1-H5) and the `communicate.rs` condense |
+| `plans/test-tree.md` | the test tree | its reshape items, and the tests red on a clean tree |
 | `plans/browser-provider-protocol.md` | a design for work not yet built | the protocol; not served to the model |
 | `user/cli.md` | the non-interactive surface | flags a wrapper needs and their traps |
 | `user/tui.md` | terminal input, picker, panels | input mechanics and their terminal quirks |

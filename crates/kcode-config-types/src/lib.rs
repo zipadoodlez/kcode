@@ -898,7 +898,7 @@ pub struct FeatureConfig {
     pub check_updates: bool,
     /// The standing form of `/auto`: every turn of this project's may keep working
     /// its own work list on its own, until the rows it holds run out (rule 11 in
-    /// `plans/work-list.md`; default: false). `/auto <what to work on>` grants the
+    /// `plans/row-model.md`; default: false). `/auto <what to work on>` grants the
     /// same permission for one run, and a headless member holds it inherently.
     #[serde(alias = "auto_poke")]
     pub auto_continue: bool,

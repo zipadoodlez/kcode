@@ -11,7 +11,7 @@
 //!
 //! This is the only driver ported from the Python trio. The timing-based and
 //! real-provider cases in `test_soft_interrupt.py` / `test_injection_*.py` were
-//! dropped rather than ported (see `docs/todo.md` §4).
+//! dropped rather than ported (see `docs/what-was-removed.md`).
 
 use crate::test_support::*;
 
