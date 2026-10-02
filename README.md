@@ -202,7 +202,6 @@ Slash commands inside the TUI. The registry lives in
 | `/context` | Full session context snapshot |
 | `/cache` | Cache stats / TTL |
 | `/fix` | Recover when the model cannot continue |
-| `/poke` | Resume with incomplete todos |
 | `/plan` | Plan-only response as a plan card |
 
 **Sessions**
@@ -229,7 +228,6 @@ Slash commands inside the TUI. The registry lives in
 | `/swarm`, `/swarm-prompt` | Swarm feature; routing prompt |
 | `/autoreview`, `/autojudge` | Automatic end-of-turn review/judging |
 | `/review`, `/judge` | One-shot review/judge session |
-| `/overnight` | Supervised overnight coordinator |
 | `/improve`, `/refactor`, `/test` | Autonomous improve; refactor loop; layered verification |
 
 **Workflow and git**
@@ -269,7 +267,7 @@ Slash commands inside the TUI. The registry lives in
 | `/reload`, `/restart`, `/rebuild`, `/update` | Restart / background rebuild / update |
 | `/client-reload`, `/server-reload` | Force reload client or server binary |
 | `/selfdev` | New self-dev session |
-| `/update-sim`, `/onboarding-preview`, `/onboarding-sim` | Simulators for update and onboarding UI |
+| `/update-sim` | Simulator for update UI |
 | `/fast-release`, `/fast-macos-release`, `/remote-release` | Release flows |
 | `/triage` | Triage and fix safe GitHub issues |
 | `/quit` | Exit |
