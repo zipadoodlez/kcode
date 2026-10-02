@@ -132,7 +132,6 @@ async fn assign_task_reuses_an_idle_worker_that_still_holds_a_row() {
             version: 1,
             participants: HashSet::from([requester.to_string(), holder.to_string()]),
             task_progress: HashMap::new(),
-            node_meta: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,

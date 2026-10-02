@@ -79,7 +79,7 @@ pub fn assemble_input(graph: &TaskGraph, node_id: &str) -> String {
     for dep in upstream {
         out.push('\n');
         if let Some(artifact) = &dep.output {
-            out.push_str(&artifact.render_section(&dep.id, kind_label(dep.kind)));
+            out.push_str(&artifact.render_section(&dep.id, Some(kind_label(dep.kind))));
         } else {
             out.push_str(&format!("## {} ({})\n", dep.id, kind_label(dep.kind)));
         }

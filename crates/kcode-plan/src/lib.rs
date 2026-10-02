@@ -68,17 +68,6 @@ pub struct SwarmExecutionState {
     pub items: Vec<SwarmExecutionItemState>,
 }
 
-/// Per-node task-DAG metadata, stored as a side map on `VersionedPlan` keyed by
-/// plan item id. The hierarchy is the row's own `parent` (one relation, the
-/// file's), so only what a row cannot say lives here.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NodeMeta {
-    /// The typed handoff artifact, present once the node completes. Serialized as
-    /// JSON text so the protocol/persistence layers need no extra types.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub artifact_json: Option<String>,
-}
-
 /// Versioned shared swarm plan state.
 #[derive(Clone, Debug)]
 pub struct VersionedPlan {
@@ -88,8 +77,6 @@ pub struct VersionedPlan {
     pub participants: HashSet<String>,
     /// Durable runtime task progress keyed by plan item id.
     pub task_progress: HashMap<String, SwarmTaskProgress>,
-    /// Per-node task-DAG metadata keyed by plan item id.
-    pub node_meta: HashMap<String, NodeMeta>,
 }
 
 impl VersionedPlan {
@@ -99,7 +86,6 @@ impl VersionedPlan {
             version: 0,
             participants: HashSet::new(),
             task_progress: HashMap::new(),
-            node_meta: HashMap::new(),
         }
     }
 
@@ -152,8 +138,6 @@ impl VersionedPlan {
     pub fn prune_side_maps(&mut self) {
         let item_ids: HashSet<&str> = self.items.iter().map(|item| item.id.as_str()).collect();
         self.task_progress
-            .retain(|task_id, _| item_ids.contains(task_id.as_str()));
-        self.node_meta
             .retain(|task_id, _| item_ids.contains(task_id.as_str()));
     }
 

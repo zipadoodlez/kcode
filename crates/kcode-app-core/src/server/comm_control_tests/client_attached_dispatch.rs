@@ -72,7 +72,6 @@ async fn assign_task_to_client_attached_session_skips_server_side_run() {
             version: 1,
             participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
-            node_meta: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,

@@ -34,7 +34,6 @@ async fn assign_task_without_task_id_picks_highest_priority_runnable_task() {
             version: 1,
             participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
-            node_meta: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,
@@ -143,7 +142,6 @@ async fn assign_task_marks_completed_worker_queued_before_returning() {
             version: 1,
             participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
-            node_meta: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,
@@ -244,7 +242,6 @@ async fn a_dispatch_refuses_a_row_the_list_does_not_have() {
             version: 1,
             participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
-            node_meta: HashMap::new(),
         },
     )])));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(

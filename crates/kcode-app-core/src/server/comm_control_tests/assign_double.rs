@@ -90,7 +90,6 @@ async fn double_assign_fixture(
             version: 1,
             participants: HashSet::from([requester.to_string(), holder.to_string()]),
             task_progress: HashMap::new(),
-            node_meta: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,

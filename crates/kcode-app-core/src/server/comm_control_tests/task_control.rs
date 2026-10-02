@@ -35,7 +35,6 @@ async fn task_control_wake_returns_structured_response_with_plan_summary() {
             version: 1,
             participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
-            node_meta: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,
@@ -130,7 +129,6 @@ async fn task_control_resume_without_task_id_uses_unique_target_assignment() {
             version: 1,
             participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
-            node_meta: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,
@@ -221,7 +219,6 @@ async fn task_control_without_task_id_rejects_ambiguous_target_assignments() {
             version: 1,
             participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
-            node_meta: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,
@@ -314,7 +311,6 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
             version: 1,
             participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::from([("busy-task".to_string(), prior_progress.clone())]),
-            node_meta: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,
@@ -405,7 +401,6 @@ async fn requeue_existing_assignment_preserves_the_reclaim_count() {
                     dead_assignee_reclaims: Some(1),
                 },
             )]),
-            node_meta: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,
@@ -485,7 +480,6 @@ async fn task_control_retry_re_dispatches_after_recent_identical_retry() {
             version: 1,
             participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
-            node_meta: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,

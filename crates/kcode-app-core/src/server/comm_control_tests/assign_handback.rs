@@ -85,7 +85,6 @@ async fn handback_fixture(rows: Vec<TaskItem>) -> HandbackFixture {
                     other.to_string(),
                 ]),
                 task_progress: HashMap::new(),
-                node_meta: HashMap::new(),
             },
         )]))),
         swarm_coordinators: Arc::new(RwLock::new(HashMap::from([(

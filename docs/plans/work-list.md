@@ -309,19 +309,23 @@ and the one build + test pass lands at the end of 0.4f.
          it existed to drive the engine's ops against plan-owned items, which is the
          shape this move removes, and nothing (no test, no doc, no script) referenced
          it.
-      3. **The artifact's one home is the row's `record`.** The close already writes
-         `{"id","result","artifact"}` onto the owning row (`kcode-base/src/todo.rs:279`)
-         and the plan writes the same artifact into `node_meta`
-         (`bridge::apply_task_graph`), so the artifact exists twice. `bridge`'s
-         `upstream_context` is the only production reader (`bridge.rs:206`), and it
-         should read the record. Then `NodeMeta` goes: the type, `prune_side_maps`'s
-         arm, the snapshot field, the bridge's lift and lower, and the two debug reads
-         (`debug_swarm_read.rs:275`, `:306`). A composite's own records are its
-         children's artifacts, which is exactly the map-reduce synthesis; a leaf reads
-         the closed work under its own parent. That last part is a widening, because
-         rule 7 drops a closed id from every dependent's `blocked_by`, so the file no
-         longer names the edge and no narrower read exists. It matches the model (a
-         run's records accumulate on its anchor) and is named as a loss.
+      3. **The artifact's one home is the row's `record`, and the context a row
+         carries is the work that closed under it.** Landed. The close writes
+         `{"id","result","artifact"}` onto the owning row, and the plan kept a second
+         copy in `node_meta`; `bridge`'s `upstream_context` was the only production
+         reader. Reading those call sites settled a bigger point than the copy: the
+         reader walked the row's `blocked_by` and read the *completed dependency's*
+         artifact, and rule 7 clears that id when the dependency closes, so that path
+         could only ever fire on a plan-built-by-hand state. A split row's synthesis
+         turn therefore got no children's artifacts at all, which is the case the model
+         exists for. So the context became the row's own `records`, which is the work
+         that closed under it: a split row gets its children, a run's top row gets the
+         run's results when it closes, and a plain leaf gets nothing. `NodeMeta` went
+         whole: the type, the plan field, `prune_side_maps`'s arm, the snapshot field,
+         the bridge's lift, the four-line write in the close handler, and the two debug
+         dumps. The section heading loses the kind, because a closed row's kind is gone
+         with it and the store keeps no engine vocabulary, so a record renders as
+         `## <id>`.
       4. **A close deletes the plan's item, not only the row, and a turn end is a
          close.** Decided. Three writers leave a
          closed item behind: the turn-end auto-complete (`comm_control.rs:706`), the
@@ -349,11 +353,12 @@ and the one build + test pass lands at the end of 0.4f.
       goes first and a failed mirror is logged. A reload then recovers holders from the
       file instead of the snapshot, and a hand edit of a holder becomes an input rather
       than a conflict.
-      Losses to name: a leaf whose dependency closed before a reload no longer gets
-      that dependency's context, because the file keeps no edge to a closed row; the
-      sibling widening above, where a row's context becomes the closed work under its
-      parent rather than the exact dependencies it named; and a turn that ends with no
-      report, where the close needs a rule this stage must write.
+      Losses to name: a dependent row no longer receives the artifact of the row it
+      was blocked by, because the list keeps no edge to a closed row (rule 7) and
+      carrying the artifact a second time to keep that path would be the duplicate this
+      move removes. The gain is the join and the run end, which the code did not
+      deliver before. Still owed by a later move: a turn that ends with no report needs
+      its close rule.
   - **0.4g. The swarm state gets one owner**: the `coordinators` map, any stored swarm
     id (including the `KCODE_SWARM_ID` shared-swarm opt-in), the `features.swarm` flag
     and per-session toggle (stored membership), the `assign_role` action that writes the

@@ -116,8 +116,6 @@ struct PersistedVersionedPlan {
     participants: Vec<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     task_progress: HashMap<String, SwarmTaskProgress>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    node_meta: HashMap<String, crate::plan::NodeMeta>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -274,7 +272,6 @@ fn from_persisted_plan(plan: PersistedVersionedPlan) -> VersionedPlan {
         version: plan.version,
         participants: plan.participants.into_iter().collect(),
         task_progress: plan.task_progress,
-        node_meta: plan.node_meta,
     };
     plan.prune_side_maps();
     plan
@@ -288,7 +285,6 @@ fn to_persisted_plan(plan: &VersionedPlan) -> PersistedVersionedPlan {
         version: plan.version,
         participants,
         task_progress: plan.task_progress.clone(),
-        node_meta: plan.node_meta.clone(),
     }
 }
 

@@ -430,9 +430,23 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
             !plan.items.iter().any(|i| i.id == "api"),
             "a close takes the row out of the plan, not just out of the list"
         );
+        // The artifact's home is the close's record, on the row that owns the work
+        // (api's parent, the run).
+        let run = plan
+            .items
+            .iter()
+            .find(|i| i.id == "run")
+            .expect("the run row");
+        let record = run
+            .records
+            .iter()
+            .find(|record| record["id"] == "api")
+            .expect("api's record on the run");
         assert!(
-            plan.node_meta["api"].artifact_json.is_some(),
-            "the artifact stays for the downstream row's context"
+            record["artifact"]["findings"]
+                .as_str()
+                .is_some_and(|findings| findings.contains("api")),
+            "the close's artifact travels with its record: {record}"
         );
         let ready = kcode_plan::next_runnable_item_ids(&plan.items, None);
         assert!(
@@ -849,9 +863,12 @@ async fn e2e_solo_seeder_can_complete_its_own_seeded_node() {
         !plan.items.iter().any(|i| i.id == "probe"),
         "a solo seeder completed its own row, so the plan no longer holds it"
     );
+    // probe is the run's own top row, so it owns no records: its close is its own
+    // result, which the store's commit carries.
+    let rows = crate::todo::load_tasks(Some(fx.repo.path()), &fx.coord).expect("read the list");
     assert!(
-        plan.node_meta["probe"].artifact_json.is_some(),
-        "artifact must be recorded"
+        !rows.iter().any(|row| row.id == "probe"),
+        "the close took the row out of the list too"
     );
 }
 

@@ -52,7 +52,6 @@ async fn assign_next_prefers_worker_with_matching_subsystem_metadata() {
                 other_worker.to_string(),
             ]),
             task_progress: HashMap::new(),
-            node_meta: HashMap::new(),
         },
     )])));
     // The plan needs rows behind it: the file is what a dispatch writes to,

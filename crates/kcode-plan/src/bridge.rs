@@ -103,11 +103,6 @@ pub fn seed_specs(rows: &[TaskItem], session_id: &str) -> Vec<NodeSpec> {
 pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
     let mut graph = TaskGraph::new();
     for item in &plan.items {
-        let meta = plan.node_meta.get(&item.id).cloned().unwrap_or_default();
-        let artifact = meta
-            .artifact_json
-            .as_deref()
-            .and_then(|json| serde_json::from_str::<HandoffArtifact>(json).ok());
         graph.push_node(TaskNode {
             id: item.id.clone(),
             content: item.content.clone(),
@@ -121,53 +116,49 @@ pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
             depends_on: item.blocked_by.clone(),
             expanded: plan.is_composite(&item.id),
             priority: crate::priority_rank(&item.priority),
-            output: artifact,
+            // The artifact's home is the row's record, so a lifted node starts with
+            // none: the engine fills it only for nodes it completes in its own graph.
+            output: None,
         });
     }
     graph
 }
 
-/// Build the forward-dataflow context for a task: the merged handoff artifacts of
-/// all its completed upstream dependencies, formatted for injection into the
-/// assigned worker's prompt. Returns `None` when the task has no completed
-/// dependencies with artifacts, so callers can skip appending anything.
+/// Build the forward-dataflow context for a task: the handoff artifacts of the work
+/// that closed under it, formatted for injection into the assigned worker's prompt.
+/// Returns `None` when that work left no artifact, so callers can skip appending
+/// anything.
 ///
-/// This is the live counterpart of `dag::assemble_input`, but it reads artifacts
-/// from the plan's `node_meta` side-map instead of a `TaskGraph`, so it can run
-/// directly on the assignment path without lifting the whole graph.
+/// The results of earlier work live on the row that owns it, so a row's own
+/// `records` are what it integrates: a row that was split gets its children's
+/// artifacts for its synthesis turn, and a run's top row gets the run's results when
+/// it closes. A row whose dependencies closed before it gets nothing here, because
+/// the list keeps no edge to a closed row (rule 7): carrying the artifacts a second
+/// time to keep that path would be the duplicate this replaces.The artifact is the
+/// machine-readable half, and a close that left only its result words contributes
+/// nothing, exactly as before.
 pub fn upstream_context(plan: &VersionedPlan, task_id: &str) -> Option<String> {
     let item = plan.items.iter().find(|item| item.id == task_id)?;
-    if item.blocked_by.is_empty() {
-        return None;
-    }
 
     let mut sections = Vec::new();
-    for dep_id in &item.blocked_by {
-        let Some(dep) = plan.items.iter().find(|i| &i.id == dep_id) else {
+    for record in &item.records {
+        let Some(id) = record.get("id").and_then(|value| value.as_str()) else {
             continue;
         };
-        if !crate::is_completed_status(&dep.status) {
-            continue;
-        }
-        let Some(meta) = plan.node_meta.get(dep_id) else {
+        let Some(artifact) = record.get("artifact") else {
             continue;
         };
-        let Some(json) = meta.artifact_json.as_deref() else {
+        let Ok(artifact) = serde_json::from_value::<HandoffArtifact>(artifact.clone()) else {
             continue;
         };
-        let Ok(artifact) = serde_json::from_str::<HandoffArtifact>(json) else {
-            continue;
-        };
-
-        let kind = dep.kind.as_deref().unwrap_or("task");
-        sections.push(artifact.render_section(dep_id, kind));
+        sections.push(artifact.render_section(id, None));
     }
 
     if sections.is_empty() {
         None
     } else {
         Some(format!(
-            "# Inputs from completed dependencies\n\n{}",
+            "# Results of the work under this row\n\n{}",
             sections.join("\n")
         ))
     }
@@ -184,7 +175,6 @@ pub fn hydrate_assignment(plan: &VersionedPlan, task_id: &str, content: &str) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::NodeMeta;
 
     fn plan_item(id: &str, status: &str) -> TaskItem {
         TaskItem {
@@ -289,62 +279,48 @@ mod tests {
         assert_eq!(graph.get("b").unwrap().depends_on, vec!["a".to_string()]);
     }
 
+    /// The context of a row is the work that closed under it: a close leaves its
+    /// record on the row that owns the work, and the machine-readable half of that
+    /// record is what the row's own turn integrates.
     #[test]
-    fn upstream_context_merges_completed_dependency_artifacts() {
+    fn a_rows_context_is_the_work_that_closed_under_it() {
         let mut plan = VersionedPlan::new();
         plan.items = vec![
             TaskItem {
-                kind: Some("explore".to_string()),
-                ..plan_item("dep", "completed")
+                records: vec![
+                    serde_json::json!({
+                        "id": "child-a",
+                        "result": "cargo test: 12 passed",
+                        "artifact": serde_json::to_value(HandoffArtifact {
+                            findings: "API in foo.rs".to_string(),
+                            evidence: vec!["crates/foo/api.rs:12".to_string()],
+                            ..HandoffArtifact::default()
+                        })
+                        .unwrap(),
+                    }),
+                    // A close that left only its words contributes nothing.
+                    serde_json::json!({"id": "child-b", "result": "done"}),
+                ],
+                ..plan_item("parent", "queued")
             },
-            TaskItem {
-                blocked_by: vec!["dep".to_string()],
-                ..plan_item("task", "queued")
-            },
+            plan_item("leaf", "queued"),
         ];
-        plan.node_meta.insert(
-            "dep".to_string(),
-            NodeMeta {
-                artifact_json: Some(
-                    serde_json::to_string(&HandoffArtifact {
-                        findings: "API in foo.rs".into(),
-                        evidence: vec!["crates/foo/api.rs:12".into()],
-                        ..HandoffArtifact::default()
-                    })
-                    .unwrap(),
-                ),
-            },
-        );
 
-        let hydrated = hydrate_assignment(&plan, "task", "do the work");
-        assert!(hydrated.contains("do the work"));
-        assert!(hydrated.contains("Inputs from completed dependencies"));
+        let hydrated = hydrate_assignment(&plan, "parent", "integrate the children");
+        assert!(hydrated.contains("integrate the children"));
+        assert!(hydrated.contains("Results of the work under this row"));
+        assert!(hydrated.contains("## child-a"));
         assert!(hydrated.contains("API in foo.rs"));
         assert!(hydrated.contains("crates/foo/api.rs:12"));
-
-        // A task with no deps is returned unchanged.
-        assert_eq!(hydrate_assignment(&plan, "dep", "x"), "x");
-    }
-
-    #[test]
-    fn upstream_context_skips_incomplete_dependencies() {
-        let mut plan = VersionedPlan::new();
-        plan.items = vec![
-            plan_item("dep", "running"),
-            TaskItem {
-                blocked_by: vec!["dep".to_string()],
-                ..plan_item("task", "queued")
-            },
-        ];
-        plan.node_meta.insert(
-            "dep".to_string(),
-            NodeMeta {
-                artifact_json: Some(
-                    serde_json::to_string(&HandoffArtifact::brief("partial")).unwrap(),
-                ),
-            },
+        assert!(
+            !hydrated.contains("child-b"),
+            "a record with no artifact adds no section"
         );
-        // dep is not completed, so no context is injected.
-        assert_eq!(upstream_context(&plan, "task"), None);
+
+        // A row nothing closed under has no context, so its content is unchanged.
+        assert_eq!(
+            hydrate_assignment(&plan, "leaf", "just do this"),
+            "just do this"
+        );
     }
 }

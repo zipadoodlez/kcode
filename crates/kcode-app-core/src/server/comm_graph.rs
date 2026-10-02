@@ -14,7 +14,7 @@ use super::{
 use crate::protocol::ServerEvent;
 use kcode_plan::bridge::to_task_graph;
 use kcode_plan::dag::{self, HandoffArtifact, NodeSpec, NodeStatus, TaskGraph};
-use kcode_plan::{MAX_PLAN_ITEMS, NodeMeta, TaskItem};
+use kcode_plan::{MAX_PLAN_ITEMS, TaskItem};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -467,7 +467,8 @@ pub(super) async fn handle_comm_complete_node(
 
     // The row's half of this close, kept before the engine op takes the artifact:
     // the row's words are the artifact's findings, and the machine-readable half is
-    // the artifact as written.
+    // the artifact as written. The store keeps both on the record it writes, so the
+    // plan needs no copy.
     let findings = artifact.findings.clone();
     let record_artifact = serde_json::to_value(&artifact).ok();
 
@@ -517,16 +518,6 @@ pub(super) async fn handle_comm_complete_node(
             if let Some(plan) = swarm_plans.write().await.get_mut(&swarm_id) {
                 plan.sync_rows(&touched);
                 plan.drop_row(&node_id);
-                // The artifact stays until the row's record is its only home (the
-                // plan's next move).
-                plan.node_meta.insert(
-                    node_id.clone(),
-                    NodeMeta {
-                        artifact_json: record_artifact
-                            .as_ref()
-                            .and_then(|value| serde_json::to_string(value).ok()),
-                    },
-                );
                 plan.version += 1;
             }
             finalize(

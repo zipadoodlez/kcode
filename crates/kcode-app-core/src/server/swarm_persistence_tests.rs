@@ -54,7 +54,6 @@ fn persisted_swarm_state_round_trips() {
                     dead_assignee_reclaims: Some(2),
                 },
             )]),
-            node_meta: HashMap::new(),
         },
     );
     let coordinators = HashMap::from([("swarm-alpha".to_string(), "session-2".to_string())]);
@@ -224,7 +223,6 @@ fn dormant_plan_expiry_preserves_active_work_and_prunes_old_unassigned_graphs() 
         version: 1,
         participants: Vec::new(),
         task_progress: HashMap::new(),
-        node_meta: HashMap::new(),
     };
     let now = 10_000_000u64;
     let retention = Duration::from_secs(60);
@@ -440,7 +438,6 @@ fn remove_swarm_state_deletes_persisted_snapshot() {
             version: 1,
             participants: Default::default(),
             task_progress: HashMap::new(),
-            node_meta: HashMap::new(),
         },
     )]);
     persist_swarm_state("swarm-beta", plans.get("swarm-beta"), None, &[]);
@@ -531,8 +528,7 @@ fn state_dir_is_durable_not_runtime() {
 /// `load_runtime_state()` and `recover_headless_sessions_on_startup`
 /// (server.rs:584-918) drives recovery from that state, so a regressed
 /// snapshot silently restores the older plan: work completed between v5 and
-/// v6 flips back to queued/running and newer node_meta artifacts are
-/// lost.
+/// v6 flips back to queued/running and the reclaim counter goes with it.
 ///
 #[tokio::test]
 #[allow(clippy::await_holding_lock)]
@@ -699,6 +695,8 @@ fn load_runtime_state_ignores_bak_when_primary_json_exists() {
             "version": 42u64,
             "participants": [],
             "task_progress": {},
+            // Keys an older format wrote: a snapshot must keep loading, because the
+            // plan is not a durable artifact this server owns alone.
             "mode": "light",
             "node_meta": {}
         },

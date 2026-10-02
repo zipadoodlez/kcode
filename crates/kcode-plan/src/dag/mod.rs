@@ -127,8 +127,15 @@ impl HandoffArtifact {
     /// Critically this includes `edge_cases_considered` and `what_i_did_not_check`:
     /// a downstream worker reads what its dependencies did *not* check, so
     /// dropping those fields here would hide that surface (doc sections 5, 6.3).
-    pub fn render_section(&self, id: &str, kind: &str) -> String {
-        let mut body = format!("## {id} ({kind})\n");
+    /// Render this artifact as one section of a prompt's context. `kind` is the
+    /// node's word for the work when the caller still has the node; a section built
+    /// from a closed row's record has no kind, because the store keeps no engine
+    /// vocabulary and the row is gone.
+    pub fn render_section(&self, id: &str, kind: Option<&str>) -> String {
+        let mut body = match kind {
+            Some(kind) => format!("## {id} ({kind})\n"),
+            None => format!("## {id}\n"),
+        };
         if !self.findings.trim().is_empty() {
             body.push_str(&self.findings);
             body.push('\n');
