@@ -896,8 +896,6 @@ pub struct FeatureConfig {
     /// Check for and install kcode updates during startup (default: true).
     /// Set this to false for the persistent equivalent of `--no-update`.
     pub check_updates: bool,
-    /// Enable swarm coordination features (default: true)
-    pub swarm: bool,
     /// The standing form of `/auto`: every turn of this project's may keep working
     /// its own work list on its own, until the rows it holds run out (rule 11 in
     /// `plans/work-list.md`; default: false). `/auto <what to work on>` grants the
@@ -921,7 +919,6 @@ impl Default for FeatureConfig {
     fn default() -> Self {
         Self {
             check_updates: true,
-            swarm: true,
             auto_continue: false,
             message_timestamps: true,
             kv_cache_miss_notices: true,

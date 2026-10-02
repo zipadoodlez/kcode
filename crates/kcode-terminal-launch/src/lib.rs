@@ -14,7 +14,7 @@ pub struct TerminalCommand {
     /// The kcode session this terminal will run, when known.
     /// Exported as `KCODE_SPAWN_SESSION_ID`.
     pub session_id: Option<String>,
-    /// Extra metadata env entries (e.g. `KCODE_SPAWN_SWARM_ID`) exported to
+    /// Extra metadata env entries (e.g. `KCODE_SPAWN_COORDINATOR_SESSION_ID`) exported to
     /// spawn hooks and spawned terminals. Applied after the first-class
     /// `KCODE_SPAWN_*` keys, so entries here win on key collisions.
     pub extra_env: Vec<(String, String)>,
@@ -527,7 +527,7 @@ pub fn expand_home(program: &str) -> PathBuf {
 /// - `KCODE_SPAWN_COMMAND`: the full command line, shell-escaped, for hooks
 ///   (like tmux) that take a single shell-command string.
 ///
-/// `TerminalCommand::extra_env` entries (e.g. `KCODE_SPAWN_SWARM_ID`,
+/// `TerminalCommand::extra_env` entries (e.g.
 /// `KCODE_SPAWN_COORDINATOR_SESSION_ID`) are appended last and win collisions.
 fn spawn_metadata_env(command: &TerminalCommand, cwd: &Path) -> Vec<(String, String)> {
     let mut env: Vec<(String, String)> = Vec::new();
@@ -1485,7 +1485,7 @@ mod tests {
         .title("🦊 kcode ses_abc")
         .kind("swarm-agent")
         .session_id("ses_abc")
-        .spawn_env("KCODE_SPAWN_SWARM_ID", "swarm-1")
+        .spawn_env("KCODE_SPAWN_COORDINATOR_SESSION_ID", "ses_parent")
         .fresh_spawn();
 
         let cmd = build_hook_spawn_command("tmux-hook --flag", &command, Path::new("/work/dir"))
@@ -1531,8 +1531,8 @@ mod tests {
             Some("'/usr/local/bin/kcode' '--resume' 'ses_abc'")
         );
         assert_eq!(
-            env_value(&cmd, "KCODE_SPAWN_SWARM_ID").as_deref(),
-            Some("swarm-1")
+            env_value(&cmd, "KCODE_SPAWN_COORDINATOR_SESSION_ID").as_deref(),
+            Some("ses_parent")
         );
         assert_eq!(env_value(&cmd, "KCODE_FRESH_SPAWN").as_deref(), Some("1"));
     }

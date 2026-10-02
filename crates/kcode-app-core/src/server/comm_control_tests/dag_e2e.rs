@@ -2,7 +2,7 @@
 //
 // Unlike the engine unit tests (which exercise `kcode_plan::dag` in isolation),
 // this drives the live `comm_graph` handlers against real server state
-// (swarm_members / swarms_by_id / swarm_runs / coordinators) and then the real
+// (swarm_members / swarm_runs) and then the real
 // `handle_comm_assign_task` path, proving the substrate works request-to-plan and
 // that forward dataflow reaches a downstream assignment.
 
@@ -54,11 +54,10 @@ fn write_rows(repo: &std::path::Path, session_id: &str, nodes: &[TaskItem]) {
     crate::todo::save_tasks(Some(repo), session_id, &rows).expect("write the rows");
 }
 
-/// Shared fixture: a two-member swarm (coordinator + worker) with an empty plan.
+/// Shared fixture: a two-member run (coordinator + worker) with an empty plan.
 struct GraphFixture {
     /// The seeder's repo: the rows the seed reads live here (rule 1).
     repo: tempfile::TempDir,
-    swarm_id: String,
     coord: String,
     worker: String,
     client_tx: mpsc::UnboundedSender<ServerEvent>,
@@ -67,9 +66,7 @@ struct GraphFixture {
     soft_interrupt_queues: crate::server::SessionInterruptQueues,
     client_connections: Arc<RwLock<HashMap<String, crate::server::ClientConnectionInfo>>>,
     swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
-    swarm_coordinators: Arc<RwLock<HashMap<String, String>>>,
     event_history: Arc<RwLock<VecDeque<SwarmEvent>>>,
     event_counter: Arc<AtomicU64>,
     swarm_event_tx: broadcast::Sender<SwarmEvent>,
@@ -99,11 +96,12 @@ impl GraphFixture {
 }
 
 async fn graph_fixture() -> GraphFixture {
-    graph_fixture_named("swarm-dag", "coord", "worker").await
+    graph_fixture_for("coord", "worker").await
 }
 
-async fn graph_fixture_named(swarm_id: &str, coord: &str, worker: &str) -> GraphFixture {
-    let swarm_id = swarm_id.to_string();
+/// The run is rooted at `coord`: it reports back to nobody and every other
+/// member reports back to it, which is the whole membership.
+async fn graph_fixture_for(coord: &str, worker: &str) -> GraphFixture {
     let coord = coord.to_string();
     let worker = worker.to_string();
     let repo = scratch_repo();
@@ -114,32 +112,22 @@ async fn graph_fixture_named(swarm_id: &str, coord: &str, worker: &str) -> Graph
     ])));
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
         (coord.clone(), {
-            let mut m = member(&coord, &swarm_id, "ready");
-            m.role = "coordinator".to_string();
+            let mut m = member(&coord, &coord, "ready");
             m.working_dir = Some(repo.path().to_path_buf());
             m
         }),
         (worker.clone(), {
-            let mut m = member(&worker, &swarm_id, "ready");
+            let mut m = owned_member(&worker, &coord, "ready", &coord);
             m.working_dir = Some(repo.path().to_path_buf());
             m
         }),
     ])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.clone(),
-        HashSet::from([coord.clone(), worker.clone()]),
-    )])));
     let swarm_runs = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.clone(),
-        RunState::new(),
-    )])));
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.clone(),
         coord.clone(),
+        RunState::new(),
     )])));
     GraphFixture {
         repo,
-        swarm_id,
         coord,
         worker,
         client_tx,
@@ -148,9 +136,7 @@ async fn graph_fixture_named(swarm_id: &str, coord: &str, worker: &str) -> Graph
         soft_interrupt_queues: Arc::new(RwLock::new(HashMap::new())),
         client_connections: Arc::new(RwLock::new(HashMap::new())),
         swarm_members,
-        swarms_by_id,
         swarm_runs,
-        swarm_coordinators,
         event_history: Arc::new(RwLock::new(VecDeque::new())),
         event_counter: Arc::new(AtomicU64::new(1)),
         swarm_event_tx: broadcast::channel(64).0,
@@ -166,9 +152,7 @@ impl GraphFixture {
             self.coord.clone(),
             &self.client_tx,
             &self.swarm_members,
-            &self.swarms_by_id,
             &self.swarm_runs,
-            &self.swarm_coordinators,
             &self.event_history,
             &self.event_counter,
             &self.swarm_event_tx,
@@ -207,7 +191,7 @@ async fn e2e_seed_creates_plan_with_kinds_and_edges() {
 #[tokio::test]
 async fn e2e_identical_seed_replay_succeeds_without_node_churn() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
-    let mut fx = graph_fixture_named("swarm-seed-replay", "coord-replay", "worker-replay").await;
+    let mut fx = graph_fixture_for("coord-replay", "worker-replay").await;
     let nodes = vec![
         node_spec("explore", "explore", &[]),
         node_spec("synth", "synthesize", &["explore"]),
@@ -234,7 +218,7 @@ async fn e2e_reseed_keeps_the_plans_existing_node() {
     // already in the list is not seeded again. A row edited after it was seeded is the
     // row the run works, because the list is the only place a row lives.
     let (_env, _runtime) = RuntimeEnvGuard::new();
-    let mut fx = graph_fixture_named("swarm-seed-conflict", "coord-conflict", "worker-conflict").await;
+    let mut fx = graph_fixture_for("coord-conflict", "worker-conflict").await;
     fx.seed(vec![node_spec("shared", "explore", &[])])
         .await;
     while fx.client_rx.try_recv().is_ok() {}
@@ -289,9 +273,7 @@ async fn e2e_complete_closes_the_row_and_keeps_its_record() {
         serde_json::json!({"findings": "it holds", "confidence": "high"}).to_string(),
         &fx.client_tx,
         &fx.swarm_members,
-        &fx.swarms_by_id,
         &fx.swarm_runs,
-        &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
         &fx.swarm_event_tx,
@@ -366,9 +348,7 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
         &fx.soft_interrupt_queues,
         &fx.client_connections,
         &fx.swarm_members,
-        &fx.swarms_by_id,
         &fx.swarm_runs,
-        &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
         &fx.swarm_event_tx,
@@ -389,9 +369,7 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
         artifact,
         &fx.client_tx,
         &fx.swarm_members,
-        &fx.swarms_by_id,
         &fx.swarm_runs,
-        &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
         &fx.swarm_event_tx,
@@ -441,9 +419,7 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
         &fx.soft_interrupt_queues,
         &fx.client_connections,
         &fx.swarm_members,
-        &fx.swarms_by_id,
         &fx.swarm_runs,
-        &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
         &fx.swarm_event_tx,
@@ -467,17 +443,12 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
     let other = "other".to_string();
     {
         let mut members = fx.swarm_members.write().await;
-        let mut planner_member = owned_member(&planner, &fx.swarm_id, "ready", &fx.coord);
+        let mut planner_member = owned_member(&planner, &fx.coord, "ready", &fx.coord);
         planner_member.working_dir = Some(fx.repo.path().to_path_buf());
         members.insert(planner.clone(), planner_member);
-        let mut other_member = owned_member(&other, &fx.swarm_id, "ready", &fx.coord);
+        let mut other_member = owned_member(&other, &fx.coord, "ready", &fx.coord);
         other_member.working_dir = Some(fx.repo.path().to_path_buf());
         members.insert(other.clone(), other_member);
-        let mut by_id = fx.swarms_by_id.write().await;
-        by_id
-            .get_mut(&fx.swarm_id)
-            .unwrap()
-            .extend([planner.clone(), other.clone()]);
         let mut sessions = fx.sessions.write().await;
         sessions.insert(planner.clone(), test_agent().await);
         sessions.insert(other.clone(), test_agent().await);
@@ -498,9 +469,7 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
         vec![node_spec("root.1", "explore", &[])],
         &fx.client_tx,
         &fx.swarm_members,
-        &fx.swarms_by_id,
         &fx.swarm_runs,
-        &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
         &fx.swarm_event_tx,
@@ -532,9 +501,7 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
         serde_json::json!({"findings": "child done"}).to_string(),
         &fx.client_tx,
         &fx.swarm_members,
-        &fx.swarms_by_id,
         &fx.swarm_runs,
-        &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
         &fx.swarm_event_tx,
@@ -564,9 +531,7 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
         &fx.soft_interrupt_queues,
         &fx.client_connections,
         &fx.swarm_members,
-        &fx.swarms_by_id,
         &fx.swarm_runs,
-        &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
         &fx.swarm_event_tx,
@@ -593,184 +558,6 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
     panic!("assign_next sent no dispatch response");
 }
 
-/// A solo deep-mode agent (no coordinator registered) seeds a graph. It must be
-/// elected coordinator so it can then drive the coordinator-gated assign path it
-/// just created work for.
-#[tokio::test]
-async fn e2e_solo_seeder_is_elected_coordinator_and_can_assign() {
-    let (_env, _runtime) = RuntimeEnvGuard::new();
-    let swarm_id = "swarm-solo".to_string();
-    let seeder = "seeder".to_string();
-    let worker = "worker".to_string();
-    let (client_tx, _client_rx) = mpsc::unbounded_channel();
-    let sessions: crate::server::SessionAgents = Arc::new(RwLock::new(HashMap::from([
-        (seeder.clone(), test_agent().await),
-        (worker.clone(), test_agent().await),
-    ])));
-    let repo = scratch_repo();
-    write_rows(
-        repo.path(),
-        &seeder,
-        &[
-            node_spec("explore", "explore", &[]),
-            node_spec("synth", "synthesize", &["explore"]),
-        ],
-    );
-    let swarm_members = Arc::new(RwLock::new(HashMap::from([
-        (seeder.clone(), {
-            let mut m = member(&seeder, &swarm_id, "ready");
-            m.working_dir = Some(repo.path().to_path_buf());
-            m
-        }),
-        (worker.clone(), member(&worker, &swarm_id, "ready")),
-    ])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.clone(),
-        HashSet::from([seeder.clone(), worker.clone()]),
-    )])));
-    let swarm_runs = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.clone(),
-        RunState::new(),
-    )])));
-    // No coordinator registered: this is the deep-mode solo-agent starting state.
-    let swarm_coordinators: Arc<RwLock<HashMap<String, String>>> =
-        Arc::new(RwLock::new(HashMap::new()));
-    let event_history = Arc::new(RwLock::new(VecDeque::new()));
-    let event_counter = Arc::new(AtomicU64::new(1));
-    let swarm_event_tx = broadcast::channel(64).0;
-    let mutation_runtime = SwarmMutationRuntime::default();
-    let soft_interrupt_queues: crate::server::SessionInterruptQueues =
-        Arc::new(RwLock::new(HashMap::new()));
-    let client_connections: Arc<RwLock<HashMap<String, crate::server::ClientConnectionInfo>>> =
-        Arc::new(RwLock::new(HashMap::new()));
-
-    handle_comm_seed_graph(
-        1,
-        seeder.clone(),
-        &client_tx,
-        &swarm_members,
-        &swarms_by_id,
-        &swarm_runs,
-        &swarm_coordinators,
-        &event_history,
-        &event_counter,
-        &swarm_event_tx,
-    )
-    .await;
-
-    // The seeder is now the coordinator of its swarm.
-    assert_eq!(
-        swarm_coordinators.read().await.get(&swarm_id).cloned(),
-        Some(seeder.clone()),
-        "solo seeder should be elected coordinator"
-    );
-    assert_eq!(
-        swarm_members.read().await.get(&seeder).unwrap().role,
-        "coordinator"
-    );
-
-    // And it can now drive the graph: assign the ready node to the worker.
-    handle_comm_assign_task(
-        2,
-        seeder.clone(),
-        Some(worker.clone()),
-        Some("explore".to_string()),
-        None,
-        &client_tx,
-        &sessions,
-        &soft_interrupt_queues,
-        &client_connections,
-        &swarm_members,
-        &swarms_by_id,
-        &swarm_runs,
-        &swarm_coordinators,
-        &event_history,
-        &event_counter,
-        &swarm_event_tx,
-        &mutation_runtime,
-    )
-    .await;
-
-    let rows = crate::todo::load_tasks(Some(repo.path()), &worker).unwrap_or_default();
-    let explore = rows.iter().find(|i| i.id == "explore").unwrap();
-    assert_eq!(
-        explore.assigned_to.as_deref(),
-        Some(worker.as_str()),
-        "elected coordinator should be able to assign the seeded task"
-    );
-}
-
-/// A live, non-headless coordinator must not be displaced by a different member
-/// that happens to seed a graph.
-#[tokio::test]
-async fn e2e_seed_does_not_displace_live_coordinator() {
-    let (_env, _runtime) = RuntimeEnvGuard::new();
-    let swarm_id = "swarm-live-coord".to_string();
-    let coord = "coord".to_string();
-    let worker = "worker".to_string();
-    let (client_tx, _client_rx) = mpsc::unbounded_channel();
-
-    // Build the coordinator with a *retained* receiver so its event channel is
-    // genuinely open (the shared `member()` helper drops the receiver, which would
-    // make the channel look closed and the coordinator look dead).
-    let (coord_tx, _coord_rx) = mpsc::unbounded_channel();
-    let mut coord_member = member(&coord, &swarm_id, "ready");
-    coord_member.event_tx = coord_tx;
-    coord_member.role = "coordinator".to_string();
-
-    let repo = scratch_repo();
-    write_rows(repo.path(), &worker, &[node_spec("root", "explore", &[])]);
-    let swarm_members = Arc::new(RwLock::new(HashMap::from([
-        (coord.clone(), coord_member),
-        (worker.clone(), {
-            let mut m = member(&worker, &swarm_id, "ready");
-            m.working_dir = Some(repo.path().to_path_buf());
-            m
-        }),
-    ])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.clone(),
-        HashSet::from([coord.clone(), worker.clone()]),
-    )])));
-    let swarm_runs = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.clone(),
-        RunState::new(),
-    )])));
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.clone(),
-        coord.clone(),
-    )])));
-    let event_history = Arc::new(RwLock::new(VecDeque::new()));
-    let event_counter = Arc::new(AtomicU64::new(1));
-    let swarm_event_tx = broadcast::channel(64).0;
-
-    // The non-coordinator worker seeds the graph.
-    handle_comm_seed_graph(
-        1,
-        worker.clone(),
-        &client_tx,
-        &swarm_members,
-        &swarms_by_id,
-        &swarm_runs,
-        &swarm_coordinators,
-        &event_history,
-        &event_counter,
-        &swarm_event_tx,
-    )
-    .await;
-
-    assert_eq!(
-        swarm_coordinators.read().await.get(&swarm_id).cloned(),
-        Some(coord.clone()),
-        "a live coordinator must not be displaced by a seeding worker"
-    );
-    assert_eq!(
-        swarm_members.read().await.get(&worker).unwrap().role,
-        "agent",
-        "the seeding worker should remain an agent"
-    );
-}
-
 /// Regression: a solo deep-mode seeder must be able to complete (and expand) a
 /// node it seeded. Seeded nodes are unowned and the assign path refuses
 /// self-assignment, so without the handler-level self-claim the seeder's
@@ -779,7 +566,7 @@ async fn e2e_seed_does_not_displace_live_coordinator() {
 #[tokio::test]
 async fn e2e_solo_seeder_can_complete_its_own_seeded_node() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
-    let mut fx = graph_fixture_named("swarm-self-claim", "coord-sc", "worker-sc").await;
+    let mut fx = graph_fixture_for("coord-sc", "worker-sc").await;
     fx.seed(vec![node_spec("probe", "explore", &[])])
         .await;
 
@@ -797,9 +584,7 @@ async fn e2e_solo_seeder_can_complete_its_own_seeded_node() {
         .to_string(),
         &fx.client_tx,
         &fx.swarm_members,
-        &fx.swarms_by_id,
         &fx.swarm_runs,
-        &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
         &fx.swarm_event_tx,
@@ -824,7 +609,7 @@ async fn e2e_solo_seeder_can_complete_its_own_seeded_node() {
 #[tokio::test]
 async fn e2e_self_claim_does_not_steal_foreign_assignment() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
-    let mut fx = graph_fixture_named("swarm-no-steal", "coord-ns", "worker-ns").await;
+    let mut fx = graph_fixture_for("coord-ns", "worker-ns").await;
     fx.seed(vec![node_spec("task", "explore", &[])])
         .await;
     fx.set_row("task", Some(&fx.worker.clone()), "queued");
@@ -842,9 +627,7 @@ async fn e2e_self_claim_does_not_steal_foreign_assignment() {
         .to_string(),
         &fx.client_tx,
         &fx.swarm_members,
-        &fx.swarms_by_id,
         &fx.swarm_runs,
-        &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
         &fx.swarm_event_tx,
@@ -866,7 +649,7 @@ async fn e2e_self_claim_does_not_steal_foreign_assignment() {
 #[tokio::test]
 async fn e2e_assignee_can_complete_queued_assignment() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
-    let mut fx = graph_fixture_named("swarm-queued-own", "coord-qo", "worker-qo").await;
+    let mut fx = graph_fixture_for("coord-qo", "worker-qo").await;
     fx.seed(vec![node_spec("mine", "explore", &[])])
         .await;
     // Assigned but never flipped to running (live-client path).
@@ -884,9 +667,7 @@ async fn e2e_assignee_can_complete_queued_assignment() {
         .to_string(),
         &fx.client_tx,
         &fx.swarm_members,
-        &fx.swarms_by_id,
         &fx.swarm_runs,
-        &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
         &fx.swarm_event_tx,

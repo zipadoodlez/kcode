@@ -8,7 +8,7 @@ use super::{
 use crate::protocol::SwarmLifecycleStatus;
 use anyhow::Result;
 use kcode_agent_runtime::InterruptSignal;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{RwLock, broadcast, mpsc};
@@ -88,8 +88,6 @@ pub(super) async fn cleanup_client_connection(
     processing_task: &mut Option<tokio::task::JoinHandle<()>>,
     event_handle: tokio::task::JoinHandle<()>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     file_touch: &FileTouchService,
     channel_subscriptions: &ChannelSubscriptions,
@@ -276,7 +274,6 @@ pub(super) async fn cleanup_client_connection(
             status,
             detail,
             swarm_members,
-            swarms_by_id,
             Some(event_history),
             Some(event_counter),
             Some(swarm_event_tx),
@@ -285,10 +282,10 @@ pub(super) async fn cleanup_client_connection(
 
         let (swarm_id, removed_name) = {
             let mut members = swarm_members.write().await;
-            if let Some(member) = members.remove(client_session_id) {
-                (member.swarm_id, member.friendly_name)
-            } else {
-                (None, None)
+            let root = super::swarm::swarm_root(&members, client_session_id);
+            match members.remove(client_session_id) {
+                Some(member) => (root, member.friendly_name),
+                None => (None, None),
             }
         };
         crate::session_metrics::forget(client_session_id);
@@ -306,15 +303,7 @@ pub(super) async fn cleanup_client_connection(
                 },
             )
             .await;
-            remove_session_from_swarm(
-                client_session_id,
-                swarm_id,
-                swarm_members,
-                swarms_by_id,
-                swarm_coordinators,
-                swarm_runs,
-            )
-            .await;
+            remove_session_from_swarm(client_session_id, swarm_id, swarm_members, swarm_runs).await;
         }
         remove_session_channel_subscriptions(
             client_session_id,

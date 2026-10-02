@@ -2,7 +2,6 @@
 async fn assign_next_prefers_worker_with_matching_subsystem_metadata() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let repo = scratch_repo();
-    let swarm_id = "swarm-metadata-score";
     let requester = "coord";
     let metadata_worker = "worker-metadata";
     let other_worker = "worker-other";
@@ -11,29 +10,17 @@ async fn assign_next_prefers_worker_with_matching_subsystem_metadata() {
     let soft_interrupt_queues = Arc::new(RwLock::new(HashMap::new()));
     let client_connections = Arc::new(RwLock::new(HashMap::new()));
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
-        (requester.to_string(), {
-            let mut member = member(requester, swarm_id, "ready");
-            member.role = "coordinator".to_string();
-            member
-        }),
+        (requester.to_string(), member(requester, requester, "ready")),
         (
             metadata_worker.to_string(),
-            owned_member(metadata_worker, swarm_id, "ready", requester),
+            owned_member(metadata_worker, requester, "ready", requester),
         ),
         (
             other_worker.to_string(),
-            owned_member(other_worker, swarm_id, "ready", requester),
+            owned_member(other_worker, requester, "ready", requester),
         ),
     ])));
     set_repo(&swarm_members, repo.path()).await;
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([
-            requester.to_string(),
-            metadata_worker.to_string(),
-            other_worker.to_string(),
-        ]),
-    )])));
     let mut prior = plan_item("prior", "completed", "high", &[]);
     prior.subsystem = Some("parser".to_string());
     prior.file_scope = vec!["src/parser.rs".to_string()];
@@ -42,10 +29,6 @@ async fn assign_next_prefers_worker_with_matching_subsystem_metadata() {
     next.subsystem = Some("parser".to_string());
     next.file_scope = vec!["src/parser.rs".to_string()];
     let swarm_runs = seeded(repo.path(), vec![prior, next]);
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        requester.to_string(),
-    )])));
     let event_history = Arc::new(RwLock::new(VecDeque::new()));
     let event_counter = Arc::new(AtomicU64::new(1));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
@@ -71,9 +54,7 @@ async fn assign_next_prefers_worker_with_matching_subsystem_metadata() {
         &soft_interrupt_queues,
         &client_connections,
         &swarm_members,
-        &swarms_by_id,
         &swarm_runs,
-        &swarm_coordinators,
         &event_history,
         &event_counter,
         &swarm_event_tx,

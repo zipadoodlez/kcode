@@ -194,10 +194,10 @@ was 0.3's last stage, and the two losses 0.1 and 0.3 named are in `docs/todo.md`
 gate stage (0.4a), row stage (0.4c), one-mode stage (0.4b), node-meta stage (0.4d),
 liveness stage (0.4e) and 0.4f have landed: the plan's items are the file's open rows,
 the holder and the artifact live where the list is, and a turn end is a close. **0.4g's
-g1, g2 and g3 have landed** (no version, no participant list, no durable plan, no item
-cache and no reclaim cap; a run keeps one sparse status per row and reads everything
-else from the list), so what is left of 0.4g is **g4, derived membership, and g5, the
-verb set**. 0.4f's one build + full test pass ran with it (three pre-existing
+g1-g4 have landed** (no version, no participant list, no durable plan, no item cache, no
+reclaim cap, and no stored membership: a run keeps one sparse status per row, reads
+everything else from the list, and derives who is in it), so what is left of 0.4g is
+**g5, the verb set**. 0.4f's one build + full test pass ran with it (three pre-existing
 `session_flow` e2e failures, recorded in `docs/todo.md`).
 
 ### 0. One way work gets done
@@ -256,16 +256,27 @@ verb set**. 0.4f's one build + full test pass ran with it (three pre-existing
        `swarm_rows` (`swarm.rs`), and a session rename now rewrites its rows' holder
        (`rename_row_holder_on_disk`), since the in-memory copy that used to carry it is
        gone.
-    4. **g4. Membership is derived** (behavior boundary: membership). Delete the
-       `coordinators` map (the coordinator is the session holding the run's anchor row),
-       the stored swarm id including `KCODE_SWARM_ID` (`server/util.rs:96`, `:116`),
-       `features.swarm`/the per-session toggle, and `assign_role`; the 25
-       `SwarmState { .. }` literals collapse into the request context E2 wants. Two
-       user-facing surfaces move with it, both in the same change: the spawn env vars a
-       hook reads, `KCODE_SPAWN_SWARM_ID` and `KCODE_SPAWN_COORDINATOR_SESSION_ID`
-       (`server/comm_session.rs:677`, `:678`), so `docs/user/hooks.md` changes with the
-       code, and the coordinator slot whose only remaining reader is `assign_role` and
-       the election path.
+    4. **g4. Membership is derived** (behavior boundary: membership). Landed. Membership
+       is the spawn edge: a session belongs to the run rooted at the end of its
+       `report_back_to_session_id` chain, and `swarm_root` (`server/swarm.rs`) is the one
+       derivation every reader calls. That makes the run's root its coordinator, since
+       spawning is root-only (0.4b) and the root is the session holding the run's anchor
+       row, so the coordinator slot and its election path are gone with the map that held
+       them. Deleted: `SwarmMember.swarm_id`/`swarm_enabled`/`role`, `SwarmState.coordinators`
+       and `SwarmState.swarms_by_id` (the state is `members` + `runs`), the stored swarm id
+       (`KCODE_SWARM_ID`, `swarm_id_for_dir`/`swarm_id_for_session`, and the now-dead
+       `git_common_dir_for`), `features.swarm`/`KCODE_SWARM_ENABLED` and the per-session
+       toggle (`FeatureToggle::Swarm`, `/swarm on|off`, now `/swarm [status]`), `assign_role`
+       (wire variant, tool action, handler and both dispatch arms), the debug `swarm:id:` and
+       `swarm:clear_coordinator` ops, and the hook env `KCODE_SPAWN_SWARM_ID`
+       (`KCODE_SPAWN_COORDINATOR_SESSION_ID` stays; `docs/user/hooks.md` moved with it).
+       **A refinement of the decision**, recorded in `docs/todo.md`: the decision said
+       membership derives from who holds rows under the anchor, and it landed as the spawn
+       edge instead, because a worker holds no row between `spawn` and its first assignment
+       and because a per-query row read is the item cache g3 deleted under another name.
+       Rows under the anchor stay what they already were: the run's scope (`swarm_rows`).
+       Measured: 95 files, +887/-3554 lines; no `VersionedPlan`, no `swarms_by_id`, no
+       `coordinators`, and no `SwarmState { .. }` literal survives.
     5. **g5. The verb set** (behavior boundary: the user's levers). One guard: a run
        refuses to work a row whose `assigned_to` is not itself, checked in the run's row
        write, since `claim_row_on_disk`/`close_row` (`kcode-base/src/todo.rs`) ignore the

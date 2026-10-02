@@ -9,7 +9,7 @@ use crate::message::{
 };
 use crate::protocol::{NotificationType, ServerEvent};
 use kcode_agent_runtime::SoftInterruptSource;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use tokio::sync::{RwLock, broadcast};
@@ -36,16 +36,11 @@ async fn emit_external_wake(
     true
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "background task completion needs session, interrupt, and swarm status state"
-)]
 pub(super) async fn dispatch_background_task_completion(
     task: &crate::bus::BackgroundTaskCompleted,
     sessions: &SessionAgents,
     soft_interrupt_queues: &SessionInterruptQueues,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     event_history: &Arc<RwLock<VecDeque<SwarmEvent>>>,
     event_counter: &Arc<AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -98,7 +93,6 @@ pub(super) async fn dispatch_background_task_completion(
             sessions,
             LiveTurnSwarmContext::new(
                 swarm_members,
-                swarms_by_id,
                 event_history,
                 event_counter,
                 swarm_event_tx,
@@ -127,16 +121,11 @@ pub(super) async fn dispatch_background_task_completion(
 /// Mirrors completion delivery: optionally notify attached clients, then wake
 /// an idle agent or queue a soft interrupt for a busy one. The task is still
 /// running; the message tells the agent to inspect and decide.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "background task stall delivery needs session, interrupt, and swarm status state"
-)]
 pub(super) async fn dispatch_background_task_stalled(
     task: &crate::bus::BackgroundTaskStalled,
     sessions: &SessionAgents,
     soft_interrupt_queues: &SessionInterruptQueues,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     event_history: &Arc<RwLock<VecDeque<SwarmEvent>>>,
     event_counter: &Arc<AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -189,7 +178,6 @@ pub(super) async fn dispatch_background_task_stalled(
             sessions,
             LiveTurnSwarmContext::new(
                 swarm_members,
-                swarms_by_id,
                 event_history,
                 event_counter,
                 swarm_event_tx,
@@ -217,16 +205,11 @@ pub(super) async fn dispatch_background_task_stalled(
 /// requesting session. Mirrors background-task completion delivery: optionally
 /// notify attached clients, then wake an idle agent or queue a soft interrupt
 /// for a busy one.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "swarm await completion needs session, interrupt, and swarm status state"
-)]
 pub(super) async fn dispatch_swarm_await_completion(
     event: &crate::bus::SwarmAwaitCompleted,
     sessions: &SessionAgents,
     soft_interrupt_queues: &SessionInterruptQueues,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     event_history: &Arc<RwLock<VecDeque<SwarmEvent>>>,
     event_counter: &Arc<AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -284,7 +267,6 @@ pub(super) async fn dispatch_swarm_await_completion(
         sessions,
         LiveTurnSwarmContext::new(
             swarm_members,
-            swarms_by_id,
             event_history,
             event_counter,
             swarm_event_tx,
@@ -343,7 +325,6 @@ pub(super) async fn dispatch_background_task_progress(
 pub(super) async fn dispatch_swarm_output_tail(
     tail: &crate::bus::SwarmOutputTail,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
 ) {
     let swarm_id = {
         let mut members = swarm_members.write().await;
@@ -351,10 +332,10 @@ pub(super) async fn dispatch_swarm_output_tail(
             return;
         };
         member.output_tail = Some(tail.tail.clone());
-        member.swarm_id.clone()
+        super::swarm::swarm_root(&members, &tail.session_id)
     };
     if let Some(swarm_id) = swarm_id {
-        super::swarm::broadcast_swarm_status(&swarm_id, swarm_members, swarms_by_id).await;
+        super::swarm::broadcast_swarm_status(&swarm_id, swarm_members).await;
     }
 }
 
@@ -366,7 +347,6 @@ pub(super) async fn dispatch_swarm_output_tail(
 pub(super) async fn dispatch_swarm_todo_progress(
     event: &crate::bus::TodoEvent,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
 ) {
     let total = event.todos.len() as u32;
     let completed = event
@@ -403,10 +383,10 @@ pub(super) async fn dispatch_swarm_todo_progress(
         }
         member.todo_progress = progress;
         member.todo_items = items;
-        member.swarm_id.clone()
+        super::swarm::swarm_root(&members, &event.session_id)
     };
     if let Some(swarm_id) = swarm_id {
-        super::swarm::broadcast_swarm_status(&swarm_id, swarm_members, swarms_by_id).await;
+        super::swarm::broadcast_swarm_status(&swarm_id, swarm_members).await;
     }
 }
 
@@ -415,7 +395,6 @@ pub(super) async fn dispatch_swarm_todo_progress(
 pub(super) async fn dispatch_swarm_tool_activity(
     event: &crate::bus::ToolEvent,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
 ) {
     let swarm_id = {
         let mut members = swarm_members.write().await;
@@ -425,18 +404,17 @@ pub(super) async fn dispatch_swarm_tool_activity(
         if !update_active_todo_tool(&mut member.todo_items, event) {
             return;
         }
-        member.swarm_id.clone()
+        super::swarm::swarm_root(&members, &event.session_id)
     };
 
     if let Some(swarm_id) = swarm_id {
-        super::swarm::broadcast_swarm_status(&swarm_id, swarm_members, swarms_by_id).await;
+        super::swarm::broadcast_swarm_status(&swarm_id, swarm_members).await;
     }
 }
 
 pub(super) async fn dispatch_swarm_runtime_status(
     event: &crate::bus::SubagentStatus,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
 ) {
     let Some(model) = event
         .model
@@ -454,17 +432,16 @@ pub(super) async fn dispatch_swarm_runtime_status(
             return;
         }
         member.runtime.model = Some(model.clone());
-        member.swarm_id.clone()
+        super::swarm::swarm_root(&members, &event.session_id)
     };
     if let Some(swarm_id) = swarm_id {
-        super::swarm::broadcast_swarm_status(&swarm_id, swarm_members, swarms_by_id).await;
+        super::swarm::broadcast_swarm_status(&swarm_id, swarm_members).await;
     }
 }
 
 pub(super) async fn dispatch_swarm_batch_progress(
     progress: &crate::bus::BatchProgress,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
 ) {
     if progress.total == 0 {
         return;
@@ -477,10 +454,10 @@ pub(super) async fn dispatch_swarm_batch_progress(
         if !update_active_todo_batch_progress(&mut member.todo_items, progress) {
             return;
         }
-        member.swarm_id.clone()
+        super::swarm::swarm_root(&members, &progress.session_id)
     };
     if let Some(swarm_id) = swarm_id {
-        super::swarm::broadcast_swarm_status(&swarm_id, swarm_members, swarms_by_id).await;
+        super::swarm::broadcast_swarm_status(&swarm_id, swarm_members).await;
     }
 }
 

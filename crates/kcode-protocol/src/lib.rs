@@ -588,7 +588,6 @@ impl Request {
             Request::CommSpawn { id, .. } => *id,
             Request::CommListModels { id, .. } => *id,
             Request::CommStop { id, .. } => *id,
-            Request::CommAssignRole { id, .. } => *id,
             Request::CommSummary { id, .. } => *id,
             Request::CommStatus { id, .. } => *id,
             Request::CommReport { id, .. } => *id,
@@ -621,7 +620,6 @@ impl Request {
                 | Request::CommSpawn { .. }
                 | Request::CommListModels { .. }
                 | Request::CommStop { .. }
-                | Request::CommAssignRole { .. }
                 | Request::CommSummary { .. }
                 | Request::CommStatus { .. }
                 | Request::CommReport { .. }

@@ -265,11 +265,6 @@ impl Config {
             }
         }
 
-        if let Ok(v) = std::env::var("KCODE_SWARM_ENABLED") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.features.swarm = parsed;
-            }
-        }
         if let Ok(v) = std::env::var("KCODE_CHECK_UPDATES") {
             if let Some(parsed) = parse_env_bool(&v) {
                 self.features.check_updates = parsed;

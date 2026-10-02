@@ -172,8 +172,6 @@ impl<'de> Deserialize<'de> for SwarmLifecycleStatus {
 pub struct SwarmMemberRecord {
     pub session_id: String,
     pub working_dir: Option<PathBuf>,
-    pub swarm_id: Option<String>,
-    pub swarm_enabled: bool,
     pub status: SwarmLifecycleStatus,
     pub detail: Option<String>,
     /// Stable label of the task/role this member was spawned or assigned for.
@@ -183,7 +181,6 @@ pub struct SwarmMemberRecord {
     pub report_back_to_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_completion_report: Option<String>,
-    pub role: SwarmRole,
     pub is_headless: bool,
 }
 

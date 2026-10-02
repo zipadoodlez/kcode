@@ -2,7 +2,6 @@
 async fn task_control_wake_returns_structured_response_with_plan_summary() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let repo = scratch_repo();
-    let swarm_id = "swarm-task-control";
     let requester = "coord";
     let worker = "worker";
     let (client_tx, mut client_rx) = mpsc::unbounded_channel();
@@ -14,25 +13,16 @@ async fn task_control_wake_returns_structured_response_with_plan_summary() {
     let soft_interrupt_queues = Arc::new(RwLock::new(HashMap::new()));
     let client_connections = Arc::new(RwLock::new(HashMap::new()));
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
-        (requester.to_string(), {
-            let mut member = member(requester, swarm_id, "ready");
-            member.role = "coordinator".to_string();
-            member
-        }),
-        (worker.to_string(), member(worker, swarm_id, "ready")),
+        (requester.to_string(), member(requester, requester, "ready")),
+        (
+            worker.to_string(),
+            owned_member(worker, requester, "ready", requester),
+        ),
     ])));
     set_repo(&swarm_members, repo.path()).await;
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([requester.to_string(), worker.to_string()]),
-    )])));
     let mut assigned = plan_item("active-task", "queued", "high", &[]);
     assigned.assigned_to = Some(worker.to_string());
     let swarm_runs = seeded(repo.path(), vec![assigned, plan_item("next", "queued", "high", &[])]);
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        requester.to_string(),
-    )])));
     let event_history = Arc::new(RwLock::new(VecDeque::new()));
     let event_counter = Arc::new(AtomicU64::new(1));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
@@ -50,9 +40,7 @@ async fn task_control_wake_returns_structured_response_with_plan_summary() {
         &soft_interrupt_queues,
         &client_connections,
         &swarm_members,
-        &swarms_by_id,
         &swarm_runs,
-        &swarm_coordinators,
         &event_history,
         &event_counter,
         &swarm_event_tx,
@@ -85,7 +73,6 @@ async fn task_control_wake_returns_structured_response_with_plan_summary() {
 async fn task_control_resume_without_task_id_uses_unique_target_assignment() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let repo = scratch_repo();
-    let swarm_id = "swarm-task-control-target";
     let requester = "coord";
     let worker = "worker";
     let (client_tx, mut client_rx) = mpsc::unbounded_channel();
@@ -97,25 +84,16 @@ async fn task_control_resume_without_task_id_uses_unique_target_assignment() {
     let soft_interrupt_queues = Arc::new(RwLock::new(HashMap::new()));
     let client_connections = Arc::new(RwLock::new(HashMap::new()));
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
-        (requester.to_string(), {
-            let mut member = member(requester, swarm_id, "ready");
-            member.role = "coordinator".to_string();
-            member
-        }),
-        (worker.to_string(), member(worker, swarm_id, "stopped")),
+        (requester.to_string(), member(requester, requester, "ready")),
+        (
+            worker.to_string(),
+            owned_member(worker, requester, "stopped", requester),
+        ),
     ])));
     set_repo(&swarm_members, repo.path()).await;
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([requester.to_string(), worker.to_string()]),
-    )])));
     let mut assigned = plan_item("resume-me", "queued", "high", &[]);
     assigned.assigned_to = Some(worker.to_string());
     let swarm_runs = seeded(repo.path(), vec![assigned]);
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        requester.to_string(),
-    )])));
     let event_history = Arc::new(RwLock::new(VecDeque::new()));
     let event_counter = Arc::new(AtomicU64::new(1));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
@@ -133,9 +111,7 @@ async fn task_control_resume_without_task_id_uses_unique_target_assignment() {
         &soft_interrupt_queues,
         &client_connections,
         &swarm_members,
-        &swarms_by_id,
         &swarm_runs,
-        &swarm_coordinators,
         &event_history,
         &event_counter,
         &swarm_event_tx,
@@ -166,7 +142,6 @@ async fn task_control_resume_without_task_id_uses_unique_target_assignment() {
 async fn task_control_without_task_id_rejects_ambiguous_target_assignments() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let repo = scratch_repo();
-    let swarm_id = "swarm-task-control-ambiguous";
     let requester = "coord";
     let worker = "worker";
     let (client_tx, mut client_rx) = mpsc::unbounded_channel();
@@ -174,27 +149,18 @@ async fn task_control_without_task_id_rejects_ambiguous_target_assignments() {
     let soft_interrupt_queues = Arc::new(RwLock::new(HashMap::new()));
     let client_connections = Arc::new(RwLock::new(HashMap::new()));
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
-        (requester.to_string(), {
-            let mut member = member(requester, swarm_id, "ready");
-            member.role = "coordinator".to_string();
-            member
-        }),
-        (worker.to_string(), member(worker, swarm_id, "stopped")),
+        (requester.to_string(), member(requester, requester, "ready")),
+        (
+            worker.to_string(),
+            owned_member(worker, requester, "stopped", requester),
+        ),
     ])));
     set_repo(&swarm_members, repo.path()).await;
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([requester.to_string(), worker.to_string()]),
-    )])));
     let mut first = plan_item("first", "queued", "high", &[]);
     first.assigned_to = Some(worker.to_string());
     let mut second = plan_item("second", "queued", "high", &[]);
     second.assigned_to = Some(worker.to_string());
     let swarm_runs = seeded(repo.path(), vec![first, second]);
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        requester.to_string(),
-    )])));
     let event_history = Arc::new(RwLock::new(VecDeque::new()));
     let event_counter = Arc::new(AtomicU64::new(1));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
@@ -212,9 +178,7 @@ async fn task_control_without_task_id_rejects_ambiguous_target_assignments() {
         &soft_interrupt_queues,
         &client_connections,
         &swarm_members,
-        &swarms_by_id,
         &swarm_runs,
-        &swarm_coordinators,
         &event_history,
         &event_counter,
         &swarm_event_tx,
@@ -242,7 +206,6 @@ async fn task_control_without_task_id_rejects_ambiguous_target_assignments() {
 async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let repo = scratch_repo();
-    let swarm_id = "swarm-task-control-busy";
     let requester = "coord";
     let worker = "worker";
     let (client_tx, mut client_rx) = mpsc::unbounded_channel();
@@ -254,25 +217,16 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
     let soft_interrupt_queues = Arc::new(RwLock::new(HashMap::new()));
     let client_connections = Arc::new(RwLock::new(HashMap::new()));
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
-        (requester.to_string(), {
-            let mut member = member(requester, swarm_id, "ready");
-            member.role = "coordinator".to_string();
-            member
-        }),
-        (worker.to_string(), member(worker, swarm_id, "running")),
+        (requester.to_string(), member(requester, requester, "ready")),
+        (
+            worker.to_string(),
+            owned_member(worker, requester, "running", requester),
+        ),
     ])));
     set_repo(&swarm_members, repo.path()).await;
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([requester.to_string(), worker.to_string()]),
-    )])));
     let mut assigned = plan_item("busy-task", "running", "high", &[]);
     assigned.assigned_to = Some(worker.to_string());
     let swarm_runs = seeded(repo.path(), vec![assigned]);
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        requester.to_string(),
-    )])));
     let event_history = Arc::new(RwLock::new(VecDeque::new()));
     let event_counter = Arc::new(AtomicU64::new(1));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
@@ -293,9 +247,7 @@ async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
         &soft_interrupt_queues,
         &client_connections,
         &swarm_members,
-        &swarms_by_id,
         &swarm_runs,
-        &swarm_coordinators,
         &event_history,
         &event_counter,
         &swarm_event_tx,
@@ -367,7 +319,6 @@ async fn requeue_existing_assignment_preserves_the_reclaim_count() {
 async fn task_control_retry_re_dispatches_after_recent_identical_retry() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let repo = scratch_repo();
-    let swarm_id = "swarm-retry-replay";
     let requester = "coord";
     let worker = "worker";
     let (client_tx, mut client_rx) = mpsc::unbounded_channel();
@@ -379,25 +330,16 @@ async fn task_control_retry_re_dispatches_after_recent_identical_retry() {
     let soft_interrupt_queues = Arc::new(RwLock::new(HashMap::new()));
     let client_connections = Arc::new(RwLock::new(HashMap::new()));
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
-        (requester.to_string(), {
-            let mut member = member(requester, swarm_id, "ready");
-            member.role = "coordinator".to_string();
-            member
-        }),
-        (worker.to_string(), member(worker, swarm_id, "ready")),
+        (requester.to_string(), member(requester, requester, "ready")),
+        (
+            worker.to_string(),
+            owned_member(worker, requester, "ready", requester),
+        ),
     ])));
     set_repo(&swarm_members, repo.path()).await;
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([requester.to_string(), worker.to_string()]),
-    )])));
     let mut assigned = plan_item("flaky-task", "failed", "high", &[]);
     assigned.assigned_to = Some(worker.to_string());
     let swarm_runs = seeded(repo.path(), vec![assigned]);
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        requester.to_string(),
-    )])));
     let event_history = Arc::new(RwLock::new(VecDeque::new()));
     let event_counter = Arc::new(AtomicU64::new(1));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
@@ -410,9 +352,7 @@ async fn task_control_retry_re_dispatches_after_recent_identical_retry() {
         let soft_interrupt_queues = Arc::clone(&soft_interrupt_queues);
         let client_connections = Arc::clone(&client_connections);
         let swarm_members = Arc::clone(&swarm_members);
-        let swarms_by_id = Arc::clone(&swarms_by_id);
         let swarm_runs = Arc::clone(&swarm_runs);
-        let swarm_coordinators = Arc::clone(&swarm_coordinators);
         let event_history = Arc::clone(&event_history);
         let event_counter = Arc::clone(&event_counter);
         let swarm_event_tx = swarm_event_tx.clone();
@@ -430,9 +370,7 @@ async fn task_control_retry_re_dispatches_after_recent_identical_retry() {
                 &soft_interrupt_queues,
                 &client_connections,
                 &swarm_members,
-                &swarms_by_id,
                 &swarm_runs,
-                &swarm_coordinators,
                 &event_history,
                 &event_counter,
                 &swarm_event_tx,

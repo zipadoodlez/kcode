@@ -94,10 +94,8 @@ pub(super) async fn maybe_handle_server_state_command(
     client_debug_state: &Arc<RwLock<ClientDebugState>>,
     server_identity: &ServerIdentity,
     server_start_time: Instant,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     shared_context: &Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     file_touch: &FileTouchService,
     channel_subscriptions: &ChannelSubscriptions,
     channel_subscriptions_by_session: &ChannelSubscriptions,
@@ -150,7 +148,7 @@ pub(super) async fn maybe_handle_server_state_command(
                 "model": model,
                 "is_processing": is_processing,
                 "working_dir": final_working_dir,
-                "swarm_id": member_info.and_then(|m| m.swarm_id.clone()),
+                "swarm_id": super::swarm::swarm_root(&members, sid),
                 "status": member_info.map(|m| m.status.clone()),
                 "detail": member_info.and_then(|m| m.detail.clone()),
                 "token_usage": token_usage,
@@ -196,10 +194,8 @@ pub(super) async fn maybe_handle_server_state_command(
             client_debug_state,
             server_identity,
             server_start_time,
-            swarms_by_id,
             shared_context,
             swarm_runs,
-            swarm_coordinators,
             file_touch,
             channel_subscriptions,
             channel_subscriptions_by_session,
@@ -266,7 +262,7 @@ pub(super) async fn maybe_handle_server_state_command(
                 "session_id": info.session_id,
                 "friendly_name": member.and_then(|m| m.friendly_name.clone()),
                 "working_dir": member.and_then(|m| m.working_dir.clone()),
-                "swarm_id": member.and_then(|m| m.swarm_id.clone()),
+                "swarm_id": super::swarm::swarm_root(&members, &info.session_id),
                 "status": member.map(|m| m.status.clone()),
                 "detail": member.and_then(|m| m.detail.clone()),
                 "connected_secs_ago": info.connected_at.elapsed().as_secs(),
@@ -411,9 +407,7 @@ async fn build_server_memory_incident_payload(
         if member.is_headless {
             headless_live_sessions += 1;
         }
-        let swarm_id = member
-            .swarm_id
-            .clone()
+        let swarm_id = super::swarm::swarm_root(&members, session_id)
             .unwrap_or_else(|| "<no-swarm>".to_string());
         let population =
             populations
@@ -713,10 +707,8 @@ async fn build_server_memory_payload(
     client_debug_state: &Arc<RwLock<ClientDebugState>>,
     server_identity: &ServerIdentity,
     server_start_time: Instant,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     shared_context: &Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     file_touch: &FileTouchService,
     channel_subscriptions: &ChannelSubscriptions,
     channel_subscriptions_by_session: &ChannelSubscriptions,
@@ -870,18 +862,20 @@ async fn build_server_memory_payload(
     let swarm_status_counts =
         summarize_status_counts(members.values().map(|member| member.status.as_str()));
     let swarm_member_count = members.len();
+    // A member's run is the root of its report-back chain, so the runs are the
+    // distinct roots and every member counts exactly once.
+    let mut swarm_membership_count = 0usize;
+    let mut swarms_estimate_bytes = 0usize;
+    let mut swarm_ids: HashSet<String> = HashSet::new();
+    for member in members.values() {
+        if let Some(root) = super::swarm::swarm_root(&members, &member.session_id) {
+            swarms_estimate_bytes += root.len() + member.session_id.len();
+            swarm_membership_count += 1;
+            swarm_ids.insert(root);
+        }
+    }
+    let swarm_count = swarm_ids.len();
     drop(members);
-
-    let swarms = swarms_by_id.read().await;
-    let swarm_membership_count: usize = swarms.values().map(|set| set.len()).sum();
-    let swarms_estimate_bytes: usize = swarms
-        .iter()
-        .map(|(swarm_id, members)| {
-            swarm_id.len() + members.iter().map(|sid| sid.len()).sum::<usize>()
-        })
-        .sum();
-    let swarm_count = swarms.len();
-    drop(swarms);
 
     let context = shared_context.read().await;
     let shared_context_entry_count: usize = context.values().map(|entries| entries.len()).sum();
@@ -897,14 +891,6 @@ async fn build_server_memory_payload(
     let swarm_run_count = runs.len();
     let swarm_run_entry_count: usize = runs.values().map(|run| run.len()).sum();
     drop(runs);
-
-    let coordinators = swarm_coordinators.read().await;
-    let swarm_coordinator_count = coordinators.len();
-    let swarm_coordinator_bytes: usize = coordinators
-        .iter()
-        .map(|(swarm_id, session_id)| swarm_id.len() + session_id.len())
-        .sum();
-    drop(coordinators);
 
     let touches = file_touch.snapshot().await;
     let file_touch_path_count = touches.len();
@@ -1052,8 +1038,6 @@ async fn build_server_memory_payload(
             "shared_context_estimate_bytes": shared_context_estimate_bytes,
             "run_count": swarm_run_count,
             "run_entry_count": swarm_run_entry_count,
-            "coordinator_count": swarm_coordinator_count,
-            "coordinator_estimate_bytes": swarm_coordinator_bytes,
         },
         "file_tracking": {
             "paths_with_touches": file_touch_path_count,
@@ -1128,16 +1112,10 @@ fn estimate_swarm_member_bytes(member: &SwarmMember) -> usize {
             .as_ref()
             .map(|value| value.len())
             .unwrap_or(0)
-        + member.role.len()
         + member
             .working_dir
             .as_ref()
             .map(|path| path_len(path))
-            .unwrap_or(0)
-        + member
-            .swarm_id
-            .as_ref()
-            .map(|value| value.len())
             .unwrap_or(0)
 }
 

@@ -1,6 +1,6 @@
 use super::SwarmMember;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{OnceCell, RwLock};
 
@@ -53,90 +53,13 @@ fn strip_deleted_suffix(path: PathBuf) -> PathBuf {
     path
 }
 
-pub(crate) fn git_common_dir_for(path: &Path) -> Option<PathBuf> {
-    let mut current = Some(path);
-    while let Some(dir) = current {
-        let dotgit = dir.join(".git");
-        if dotgit.is_dir() {
-            return Some(canonicalize_or(dotgit));
-        }
-        if dotgit.is_file() {
-            let content = std::fs::read_to_string(&dotgit).ok()?;
-            let gitdir_line = content
-                .lines()
-                .find(|line| line.trim_start().starts_with("gitdir:"))?;
-            let raw = gitdir_line
-                .trim_start()
-                .trim_start_matches("gitdir:")
-                .trim();
-            if raw.is_empty() {
-                return None;
-            }
-            let gitdir = if Path::new(raw).is_absolute() {
-                PathBuf::from(raw)
-            } else {
-                dir.join(raw)
-            };
-            let gitdir = canonicalize_or(gitdir);
-            // Worktree gitdir looks like: <repo>/.git/worktrees/<name>
-            if let Some(parent) = gitdir.parent()
-                && parent.file_name().and_then(|s| s.to_str()) == Some("worktrees")
-                && let Some(common) = parent.parent()
-            {
-                return Some(canonicalize_or(common.to_path_buf()));
-            }
-            return Some(gitdir);
-        }
-        current = dir.parent();
-    }
-    None
-}
-
-pub(crate) fn swarm_id_for_dir(dir: Option<PathBuf>) -> Option<String> {
-    if let Ok(sw_id) = std::env::var("KCODE_SWARM_ID") {
-        let trimmed = sw_id.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_string());
-        }
-    }
-    let dir = dir?;
-    if let Some(git_common) = git_common_dir_for(&dir) {
-        return Some(git_common.to_string_lossy().to_string());
-    }
-    Some(dir.to_string_lossy().to_string())
-}
-
-/// Return the swarm identity for an independently-created root session.
-///
-/// Swarm plans are keyed by swarm id. Deriving that id from the working
-/// directory made every session opened in one repository share one plan, even
-/// when those sessions were unrelated. Root sessions therefore own a swarm by
-/// default. `KCODE_SWARM_ID` remains an explicit opt-in to a shared swarm.
-pub(crate) fn swarm_id_for_session(session_id: &str) -> Option<String> {
-    if let Ok(sw_id) = std::env::var("KCODE_SWARM_ID") {
-        let trimmed = sw_id.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_string());
-        }
-    }
-    default_swarm_id_for_session(session_id)
-}
-
-fn default_swarm_id_for_session(session_id: &str) -> Option<String> {
-    if session_id.trim().is_empty() {
-        None
-    } else {
-        Some(format!("session:{session_id}"))
-    }
-}
-
 /// Swarm id of the swarm `session_id` is currently a member of, if any.
 pub(crate) async fn member_swarm_id(
     session_id: &str,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
 ) -> Option<String> {
     let members = swarm_members.read().await;
-    members.get(session_id).and_then(|m| m.swarm_id.clone())
+    super::swarm::swarm_root(&members, session_id)
 }
 
 /// Display name of `session_id`'s swarm membership, if any.
@@ -166,8 +89,8 @@ pub(crate) fn sanitize_session_id(session_id: &str) -> String {
 }
 
 #[cfg(test)]
-mod swarm_identity_tests {
-    use super::{default_swarm_id_for_session, sanitize_session_id};
+mod session_id_tests {
+    use super::sanitize_session_id;
 
     #[test]
     fn sanitize_session_id_strips_path_traversal_and_separators() {
@@ -179,37 +102,12 @@ mod swarm_identity_tests {
         // Already-safe ids are preserved verbatim.
         assert_eq!(sanitize_session_id("session-abc_123"), "session-abc_123");
     }
-
-    #[test]
-    fn independent_root_sessions_have_distinct_swarm_ids() {
-        assert_eq!(
-            default_swarm_id_for_session("session-one").as_deref(),
-            Some("session:session-one")
-        );
-        assert_eq!(
-            default_swarm_id_for_session("session-two").as_deref(),
-            Some("session:session-two")
-        );
-        assert_ne!(
-            default_swarm_id_for_session("session-one"),
-            default_swarm_id_for_session("session-two")
-        );
-    }
-
-    #[test]
-    fn empty_session_cannot_own_a_swarm() {
-        assert_eq!(default_swarm_id_for_session("  "), None);
-    }
 }
 
 /// The server never has an in-band update available: the operating system
 /// package manager is the source of truth for the installed version.
 pub(crate) fn server_has_newer_binary() -> bool {
     false
-}
-
-fn canonicalize_or(path: PathBuf) -> PathBuf {
-    std::fs::canonicalize(&path).unwrap_or(path)
 }
 
 /// Server identity for multi-server support

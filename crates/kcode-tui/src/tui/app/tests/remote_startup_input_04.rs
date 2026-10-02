@@ -65,7 +65,6 @@ fn test_handle_server_event_swarm_status_announces_member_completion() {
     };
 
     let mut app = create_test_app();
-    app.swarm_enabled = true;
     let self_id = app.session.id.clone();
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _guard = rt.enter();

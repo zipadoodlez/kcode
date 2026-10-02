@@ -1,5 +1,6 @@
 use super::ClientConnectionInfo;
 use super::client_lifecycle::process_message_streaming_mpsc;
+use super::swarm::swarm_root;
 use super::swarm_mutation_state::{
     PersistedSwarmMutationResponse, SwarmMutationRuntime, begin_or_replay, finish_request,
     request_key,
@@ -14,11 +15,11 @@ use super::{
     update_member_status_with_report,
 };
 use crate::config::SwarmSpawnMode;
+use crate::protocol::ServerEvent;
 use crate::protocol::SwarmLifecycleStatus;
-use crate::protocol::{NotificationType, ServerEvent};
 use crate::provider::Provider;
 use crate::session::Session;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock, Weak};
 use std::time::Instant;
@@ -477,7 +478,6 @@ async fn register_visible_spawned_member(
     has_startup_message: bool,
     report_back_to_session_id: Option<&str>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -508,15 +508,12 @@ async fn register_visible_spawned_member(
                 event_tx,
                 event_txs: HashMap::new(),
                 working_dir: working_dir.map(PathBuf::from),
-                swarm_id: Some(swarm_id.to_string()),
-                swarm_enabled: true,
                 status,
                 detail,
                 task_label: None,
                 friendly_name: Some(friendly_name),
                 report_back_to_session_id: report_back_to_session_id.map(str::to_string),
                 latest_completion_report: None,
-                role: "agent".to_string(),
                 joined_at: now,
                 last_status_change: now,
                 is_headless: false,
@@ -526,14 +523,6 @@ async fn register_visible_spawned_member(
                 runtime: crate::protocol::SwarmMemberRuntime::default(),
             },
         );
-    }
-
-    {
-        let mut swarms = swarms_by_id.write().await;
-        swarms
-            .entry(swarm_id.to_string())
-            .or_insert_with(HashSet::new)
-            .insert(session_id.to_string());
     }
 
     record_swarm_event_for_session(
@@ -547,7 +536,7 @@ async fn register_visible_spawned_member(
         swarm_event_tx,
     )
     .await;
-    broadcast_swarm_status(swarm_id, swarm_members, swarms_by_id).await;
+    broadcast_swarm_status(swarm_id, swarm_members).await;
 }
 
 /// Resolve the reasoning effort for a spawned swarm worker (#1165).
@@ -596,8 +585,6 @@ pub(super) async fn spawn_swarm_agent(
     global_session_id: &Arc<RwLock<String>>,
     provider_template: &Arc<dyn Provider>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
@@ -674,7 +661,6 @@ pub(super) async fn spawn_swarm_agent(
                 // Tag the headed window as a swarm-agent spawn so spawn hooks
                 // and terminals can identify and reroute it (KCODE_SPAWN_*).
                 let context = crate::session_launch::SessionSpawnContext::kind("swarm-agent")
-                    .env("KCODE_SPAWN_SWARM_ID", swarm_id)
                     .env("KCODE_SPAWN_COORDINATOR_SESSION_ID", req_session_id)
                     .with_client_terminal_env(client_terminal_env.clone());
                 spawn_visible_session_window_with_context(
@@ -702,8 +688,6 @@ pub(super) async fn spawn_swarm_agent(
                 provider_template,
                 &cmd,
                 swarm_members,
-                swarms_by_id,
-                swarm_coordinators,
                 swarm_runs,
                 soft_interrupt_queues,
                 coordinator_is_canary,
@@ -736,7 +720,6 @@ pub(super) async fn spawn_swarm_agent(
         Some("participant_spawned".to_string()),
         swarm_runs,
         swarm_members,
-        swarms_by_id,
     )
     .await;
     if !is_headless_fallback {
@@ -747,7 +730,6 @@ pub(super) async fn spawn_swarm_agent(
             startup_message.is_some(),
             Some(req_session_id),
             swarm_members,
-            swarms_by_id,
             event_history,
             event_counter,
             swarm_event_tx,
@@ -763,9 +745,7 @@ pub(super) async fn spawn_swarm_agent(
     }
     let swarm_state = SwarmState {
         members: Arc::clone(swarm_members),
-        swarms_by_id: Arc::clone(swarms_by_id),
         runs: Arc::clone(swarm_runs),
-        coordinators: Arc::clone(swarm_coordinators),
     };
     persist_swarm_state_for(swarm_id, &swarm_state).await;
 
@@ -791,7 +771,6 @@ pub(super) async fn spawn_swarm_agent(
         if let Some(agent_arc) = agent_arc {
             let sid_clone = new_session_id.clone();
             let swarm_members2 = Arc::clone(swarm_members);
-            let swarms_by_id2 = Arc::clone(swarms_by_id);
             let event_history2 = Arc::clone(event_history);
             let event_counter2 = Arc::clone(event_counter);
             let swarm_event_tx2 = swarm_event_tx.clone();
@@ -801,7 +780,6 @@ pub(super) async fn spawn_swarm_agent(
                     SwarmLifecycleStatus::Running,
                     Some(truncate_detail(&initial_msg, 120)),
                     &swarm_members2,
-                    &swarms_by_id2,
                     Some(&event_history2),
                     Some(&event_counter2),
                     Some(&swarm_event_tx2),
@@ -842,7 +820,6 @@ pub(super) async fn spawn_swarm_agent(
                     new_detail,
                     completion_report,
                     &swarm_members2,
-                    &swarms_by_id2,
                     Some(&event_history2),
                     Some(&event_counter2),
                     Some(&swarm_event_tx2),
@@ -871,8 +848,6 @@ pub(super) async fn handle_comm_spawn(
     global_session_id: &Arc<RwLock<String>>,
     provider_template: &Arc<dyn Provider>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     _channel_subscriptions: &ChannelSubscriptions,
     _channel_subscriptions_by_session: &ChannelSubscriptions,
@@ -887,12 +862,11 @@ pub(super) async fn handle_comm_spawn(
     // Hold this swarm's admission through member registration so concurrent
     // recursive requests cannot all pass the population check against stale
     // state. Unrelated swarms retain independent spawn throughput.
-    let admission_key = swarm_members
-        .read()
-        .await
-        .get(&req_session_id)
-        .and_then(|member| member.swarm_id.clone())
-        .unwrap_or_else(|| req_session_id.clone());
+    let admission_key = {
+        let members = swarm_members.read().await;
+        swarm_root(&members, &req_session_id)
+    }
+    .unwrap_or_else(|| req_session_id.clone());
     let admission_lock = spawn_admission_lock(&admission_key);
     let admission_guard = admission_lock.lock().await;
     let swarm_id = match ensure_spawn_coordinator_swarm(
@@ -900,8 +874,6 @@ pub(super) async fn handle_comm_spawn(
         &req_session_id,
         client_event_tx,
         swarm_members,
-        swarms_by_id,
-        swarm_coordinators,
         swarm_runs,
         crate::config::config().agents.swarm_max_concurrent_agents,
     )
@@ -953,8 +925,6 @@ pub(super) async fn handle_comm_spawn(
         global_session_id,
         provider_template,
         swarm_members,
-        swarms_by_id,
-        swarm_coordinators,
         swarm_runs,
         event_history,
         event_counter,
@@ -1021,8 +991,6 @@ pub(super) async fn handle_comm_stop(
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     sessions: &SessionAgents,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     channel_subscriptions: &ChannelSubscriptions,
     channel_subscriptions_by_session: &ChannelSubscriptions,
@@ -1039,9 +1007,7 @@ pub(super) async fn handle_comm_stop(
     // permission check happens below via `stop_allowed`.
     let swarm_id = {
         let members = swarm_members.read().await;
-        members
-            .get(&req_session_id)
-            .and_then(|member| member.swarm_id.clone())
+        swarm_root(&members, &req_session_id)
     };
     let Some(swarm_id) = swarm_id else {
         let _ = client_event_tx.send(ServerEvent::Error {
@@ -1126,8 +1092,11 @@ pub(super) async fn handle_comm_stop(
 
     let (removed_swarm_id, removed_name) = {
         let mut members = swarm_members.write().await;
+        // Read the departing member's run before the removal: afterwards its
+        // report-back edge is gone, and the derived membership with it.
+        let removed_swarm_id = swarm_root(&members, &target_session);
         if let Some(member) = members.remove(&target_session) {
-            (member.swarm_id, member.friendly_name)
+            (removed_swarm_id, member.friendly_name)
         } else {
             (None, None)
         }
@@ -1145,15 +1114,7 @@ pub(super) async fn handle_comm_stop(
             },
         )
         .await;
-        remove_session_from_swarm(
-            &target_session,
-            swarm_id,
-            swarm_members,
-            swarms_by_id,
-            swarm_coordinators,
-            swarm_runs,
-        )
-        .await;
+        remove_session_from_swarm(&target_session, swarm_id, swarm_members, swarm_runs).await;
     }
     remove_session_channel_subscriptions(
         &target_session,
@@ -1192,16 +1153,15 @@ async fn resolve_stop_target_session(
     }
 
     let members = swarm_members.read().await;
-    if members
-        .get(target)
-        .is_some_and(|member| member.swarm_id.as_deref() == Some(swarm_id))
+    if let Some(member) = members.get(target)
+        && swarm_root(&members, &member.session_id).as_deref() == Some(swarm_id)
     {
         return Ok(target.to_string());
     }
 
     let mut matches = members
         .iter()
-        .filter(|(_, member)| member.swarm_id.as_deref() == Some(swarm_id))
+        .filter(|(_, member)| swarm_root(&members, &member.session_id).as_deref() == Some(swarm_id))
         .filter(|(session_id, member)| {
             member.friendly_name.as_deref() == Some(target)
                 || session_id.starts_with(target)
@@ -1242,41 +1202,26 @@ async fn ensure_spawn_coordinator_swarm(
     req_session_id: &str,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
+    _swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     configured_live_agent_limit: usize,
 ) -> Option<String> {
-    let (
-        swarm_id,
-        from_name,
-        is_root,
-        coordinator_id,
-        coordinator_is_stale,
-        live_member_count,
-        live_spawned_agent_count,
-    ) = {
+    let (swarm_id, live_member_count, live_spawned_agent_count) = {
         let members = swarm_members.read().await;
-        let swarm_id = members
-            .get(req_session_id)
-            .and_then(|member| member.swarm_id.clone());
-        let from_name = members
-            .get(req_session_id)
-            .and_then(|member| member.friendly_name.clone());
-        // A session is a "root" when it has no spawner/owner above it.
-        let is_root = members
-            .get(req_session_id)
-            .and_then(|member| member.report_back_to_session_id.clone())
-            .is_none();
+        // The run a session belongs to is the root of its report-back chain; a
+        // session the server holds no record of is in no run.
+        let swarm_id = swarm_root(&members, req_session_id);
         // Count both all live members for the absolute hard cap and live spawned
         // agents for the configurable RAM-safety cap. User-created roots do not
-        // consume worker slots; every recursively spawned descendant does.
+        // consume worker slots; every spawned descendant does.
         let (live_member_count, live_spawned_agent_count) = swarm_id
             .as_ref()
             .map(|swarm_id| {
                 members
                     .values()
-                    .filter(|member| member.swarm_id.as_deref() == Some(swarm_id.as_str()))
+                    .filter(|member| {
+                        swarm_root(&members, &member.session_id).as_deref()
+                            == Some(swarm_id.as_str())
+                    })
                     .filter(|member| super::member_consumes_swarm_capacity(member))
                     .fold((0usize, 0usize), |(members, spawned), member| {
                         (
@@ -1286,36 +1231,7 @@ async fn ensure_spawn_coordinator_swarm(
                     })
             })
             .unwrap_or_default();
-        let coordinator_id = if let Some(ref swarm_id) = swarm_id {
-            let coordinators = swarm_coordinators.read().await;
-            coordinators.get(swarm_id).cloned()
-        } else {
-            None
-        };
-        let coordinator_is_stale = coordinator_id.as_ref().is_some_and(|coordinator| {
-            !members.get(coordinator).is_some_and(|member| {
-                // A coordinator is stale for slot-reclaim purposes when it left
-                // the swarm, reached a terminal status, or can no longer be
-                // reached at all (every event channel closed). The last case
-                // catches a wedged coordinator whose client died without a
-                // clean status transition; without it the slot stays blocked
-                // until the status sweep happens to notice.
-                let unreachable = member.event_tx.is_closed()
-                    && member.event_txs.values().all(|tx| tx.is_closed());
-                member.swarm_id.as_deref() == swarm_id.as_deref()
-                    && !member.status.is_dead()
-                    && !unreachable
-            })
-        });
-        (
-            swarm_id,
-            from_name,
-            is_root,
-            coordinator_id,
-            coordinator_is_stale,
-            live_member_count,
-            live_spawned_agent_count,
-        )
+        (swarm_id, live_member_count, live_spawned_agent_count)
     };
 
     let Some(swarm_id) = swarm_id else {
@@ -1357,55 +1273,9 @@ async fn ensure_spawn_coordinator_swarm(
         return None;
     }
 
-    // Coordinator-slot election is now only about the swarm-level coordinator used
-    // for shared plan operations (propose/approve/assign). Only a root session
-    // (depth 0, no spawner) claims it, and only when the slot is empty or stale.
-    // Authorized deep-swarm descendants coordinate their own subtree via
-    // report-back ownership and never disturb the swarm-level coordinator slot.
-    if is_root && coordinator_id.as_deref() != Some(req_session_id) {
-        let should_claim = coordinator_id.is_none() || coordinator_is_stale;
-        if should_claim {
-            let promoted = {
-                let mut coordinators = swarm_coordinators.write().await;
-                match coordinators.get(&swarm_id) {
-                    Some(existing) if existing == req_session_id => false,
-                    Some(_) if !coordinator_is_stale => false,
-                    _ => {
-                        coordinators.insert(swarm_id.clone(), req_session_id.to_string());
-                        true
-                    }
-                }
-            };
-
-            if promoted {
-                {
-                    let mut members = swarm_members.write().await;
-                    if let Some(member) = members.get_mut(req_session_id) {
-                        member.role = "coordinator".to_string();
-                    }
-                }
-                let swarm_state = SwarmState {
-                    members: Arc::clone(swarm_members),
-                    swarms_by_id: Arc::clone(swarms_by_id),
-                    runs: Arc::clone(swarm_runs),
-                    coordinators: Arc::clone(swarm_coordinators),
-                };
-                persist_swarm_state_for(&swarm_id, &swarm_state).await;
-                broadcast_swarm_status(&swarm_id, swarm_members, swarms_by_id).await;
-                let _ = client_event_tx.send(ServerEvent::Notification {
-                    from_session: req_session_id.to_string(),
-                    from_name,
-                    notification_type: NotificationType::Message {
-                        scope: Some("swarm".to_string()),
-                        channel: None,
-                        tldr: None,
-                    },
-                    message: "You are the coordinator for this swarm.".to_string(),
-                });
-            }
-        }
-    }
-
+    // The run's coordinator is derived, not elected: it is the session holding
+    // the run's anchor row, i.e. the root of the report-back chain reached above.
+    // Nothing to claim or persist here.
     Some(swarm_id)
 }
 

@@ -5,14 +5,14 @@ use super::{
     util::{member_friendly_name, member_swarm_id},
 };
 use crate::protocol::{AgentInfo, ContextEntry, NotificationType, ServerEvent};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{RwLock, broadcast, mpsc};
 
 #[expect(
     clippy::too_many_arguments,
-    reason = "comm share coordinates delivery state, sessions, swarm membership, and event fanout"
+    reason = "shared-context writes join swarm membership, context state, and event sinks"
 )]
 pub(super) async fn handle_comm_share(
     id: u64,
@@ -22,7 +22,6 @@ pub(super) async fn handle_comm_share(
     append: bool,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     shared_context: &Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
@@ -65,13 +64,8 @@ pub(super) async fn handle_comm_share(
             );
         }
 
-        let swarm_session_ids: Vec<String> = {
-            let swarms = swarms_by_id.read().await;
-            swarms
-                .get(&swarm_id)
-                .map(|sessions| sessions.iter().cloned().collect())
-                .unwrap_or_default()
-        };
+        let swarm_session_ids: Vec<String> =
+            super::swarm::swarm_session_ids(&swarm_id, swarm_members).await;
 
         // Shared-context updates are subtree-scoped like broadcasts: notify only
         // the sessions the writer (transitively) spawned, so a share cannot
@@ -82,9 +76,7 @@ pub(super) async fn handle_comm_share(
         // fanout loop: `fanout_session_event` takes a write lock on members.
         let notify_targets: Vec<String> = {
             let members = swarm_members.read().await;
-            let sender_is_coordinator = members
-                .get(&req_session_id)
-                .is_some_and(|member| member.role == "coordinator");
+            let sender_is_coordinator = super::swarm::swarm_is_root(&members, &req_session_id);
             swarm_session_ids
                 .iter()
                 .filter(|sid| *sid != &req_session_id)
@@ -192,16 +184,11 @@ pub(super) async fn handle_comm_read(
     let _ = client_event_tx.send(ServerEvent::CommContext { id, entries });
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "comm list joins swarm membership, file touches, live sessions, and connection activity"
-)]
 pub(super) async fn handle_comm_list(
     id: u64,
     req_session_id: String,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     file_touch: &FileTouchService,
     sessions: &super::SessionAgents,
     client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
@@ -209,13 +196,8 @@ pub(super) async fn handle_comm_list(
     let swarm_id = member_swarm_id(&req_session_id, swarm_members).await;
 
     if let Some(swarm_id) = swarm_id {
-        let swarm_session_ids: Vec<String> = {
-            let swarms = swarms_by_id.read().await;
-            swarms
-                .get(&swarm_id)
-                .map(|sessions| sessions.iter().cloned().collect())
-                .unwrap_or_default()
-        };
+        let swarm_session_ids: Vec<String> =
+            super::swarm::swarm_session_ids(&swarm_id, swarm_members).await;
 
         // Snapshot the static member fields first, releasing the members lock
         // before gathering per-session runtime extras (which briefly lock
@@ -256,7 +238,7 @@ pub(super) async fn handle_comm_list(
                             status: member.status.clone(),
                             detail: member.detail.clone(),
                             task_label: member.task_label.clone(),
-                            role: member.role.clone(),
+                            role: super::swarm::swarm_role(&members, sid).to_string(),
                             is_headless: member.is_headless,
                             report_back_to_session_id: member.report_back_to_session_id.clone(),
                             latest_completion_report: member.latest_completion_report.clone(),

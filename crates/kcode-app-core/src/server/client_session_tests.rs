@@ -10,6 +10,7 @@ use crate::agent::Agent;
 use crate::message::ContentBlock;
 use crate::message::{Message, ToolDefinition};
 use crate::protocol::ServerEvent;
+use crate::protocol::SwarmLifecycleStatus;
 use crate::provider::{EventStream, Provider};
 use crate::server::{
     ClientConnectionInfo, ClientDebugState, FileTouchService, RunState, SessionInterruptQueues,
@@ -101,15 +102,12 @@ fn test_swarm_member(session_id: &str, status: &str) -> SwarmMember {
         event_tx,
         event_txs: HashMap::new(),
         working_dir: None,
-        swarm_id: Some("swarm-test".to_string()),
-        swarm_enabled: true,
         status: status.into(),
         detail: None,
         task_label: None,
         friendly_name: Some(session_id.to_string()),
-        report_back_to_session_id: Some("coord".to_string()),
+        report_back_to_session_id: None,
         latest_completion_report: None,
-        role: "agent".to_string(),
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: false,
@@ -139,7 +137,7 @@ async fn subscribe_marks_non_running_member_ready() {
 }
 
 #[tokio::test]
-async fn resume_rename_releases_member_lock_before_waiting_for_swarm_map() {
+async fn resume_rename_moves_member_and_repoints_children() {
     let old_session_id = "session-old";
     let new_session_id = "session-new";
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
@@ -155,53 +153,26 @@ async fn resume_rename_releases_member_lock_before_waiting_for_swarm_map() {
             },
         ),
     ])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        "swarm-test".to_string(),
-        HashSet::from([old_session_id.to_string(), "child".to_string()]),
-    )])));
 
-    // Force the rename to wait for swarms_by_id. While it waits, the member map
-    // must remain readable or coordinator cleanup can form a permanent cycle.
-    let swarm_map_guard = swarms_by_id.write().await;
-    let rename_task = tokio::spawn({
-        let swarm_members = Arc::clone(&swarm_members);
-        let swarms_by_id = Arc::clone(&swarms_by_id);
-        async move {
-            rename_swarm_member_session(
-                old_session_id,
-                new_session_id,
-                &swarm_members,
-                &swarms_by_id,
-            )
-            .await;
-        }
-    });
+    rename_swarm_member_session(old_session_id, new_session_id, &swarm_members).await;
 
-    tokio::time::timeout(std::time::Duration::from_secs(1), async {
-        loop {
-            let members = swarm_members.read().await;
-            if members.contains_key(new_session_id) {
-                assert_eq!(
-                    members
-                        .get("child")
-                        .and_then(|member| member.report_back_to_session_id.as_deref()),
-                    Some(new_session_id)
-                );
-                break;
-            }
-            drop(members);
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("member map stayed locked while waiting for swarm map");
-
-    drop(swarm_map_guard);
-    rename_task.await.expect("rename task");
-    let swarms = swarms_by_id.read().await;
-    let swarm = swarms.get("swarm-test").expect("swarm remains present");
-    assert!(!swarm.contains(old_session_id));
-    assert!(swarm.contains(new_session_id));
+    let members = swarm_members.read().await;
+    assert!(
+        members.get(old_session_id).is_none(),
+        "the old session id must not survive the rename"
+    );
+    let renamed = members
+        .get(new_session_id)
+        .expect("renamed session should keep its swarm record");
+    assert_eq!(renamed.status, SwarmLifecycleStatus::Ready);
+    // The report-back edge is the membership: a child still naming the old id
+    // would root a run of its own instead of staying in the renamed run.
+    assert_eq!(
+        members
+            .get("child")
+            .and_then(|member| member.report_back_to_session_id.as_deref()),
+        Some(new_session_id)
+    );
 }
 
 #[async_trait]

@@ -579,7 +579,7 @@ fn canonical_swarm_action_passes_through_known_and_unknown_actions() {
     // Real actions are unchanged.
     assert_eq!(canonical_swarm_action("spawn"), "spawn");
     assert_eq!(canonical_swarm_action("dm"), "dm");
-    assert_eq!(canonical_swarm_action("assign_role"), "assign_role");
+    assert_eq!(canonical_swarm_action("task_graph"), "task_graph");
     // Genuinely unknown actions are returned unchanged for normal validation.
     assert_eq!(canonical_swarm_action("totally_made_up"), "totally_made_up");
 }
@@ -1104,7 +1104,6 @@ fn schema_advertises_supported_swarm_fields() {
         props["target_session"]["description"],
         json!("Session ID or unique friendly name for management actions. Alias of to_session.")
     );
-    assert!(props.contains_key("role"));
     assert!(props.contains_key("prompt"));
     assert!(props.contains_key("working_dir"));
     assert!(props.contains_key("limit"));
@@ -1346,30 +1345,6 @@ impl RawClient {
             ServerEvent::State { session_id, .. } => Ok(session_id),
             other => anyhow::bail!("unexpected state response: {other:?}"),
         }
-    }
-
-    async fn send_message(&mut self, content: &str) -> Result<u64> {
-        let id = self.next_id;
-        self.next_id += 1;
-        self.send_request(Request::Message {
-            id,
-            content: content.to_string(),
-            images: vec![],
-            system_reminder: None,
-            active_skill: None,
-            no_reply: false,
-            may_continue: false,
-        })
-        .await
-    }
-
-    async fn wait_for_done(&mut self, request_id: u64) -> Result<()> {
-        self.read_until(
-            Duration::from_secs(10),
-            |event| matches!(event, ServerEvent::Done { id } if *id == request_id),
-        )
-        .await?;
-        Ok(())
     }
 
     async fn comm_list(&mut self, session_id: &str) -> Result<Vec<AgentInfo>> {

@@ -163,14 +163,13 @@ pub(super) fn swarm_debug_help_text() -> String {
 MEMBERS & STRUCTURE:
   swarm                    - List all swarm members (alias for swarm:members)
   swarm:members            - List all swarm members with full details
-  swarm:list               - List all swarm IDs with member counts and coordinators
+  swarm:list               - List all run roots with member counts
   swarm:info:<swarm_id>    - Full info: members, coordinator, plan, context, conflicts
 
 COORDINATORS & ROLES:
-  swarm:coordinators            - List all coordinators (swarm_id -> session_id)
-  swarm:coordinator:<id>        - Get coordinator for specific swarm
-  swarm:clear_coordinator:<id>  - Admin: forcibly clear coordinator so any session can self-promote
-  swarm:roles                   - List all members with their roles
+  swarm:coordinators            - List every run root (a run's coordinator is its root session)
+  swarm:coordinator:<id>        - Get the coordinator of the run rooted at <id>
+  swarm:roles                   - List all members with their derived roles
 
 PLANS (server-scoped plan items):
   swarm:plans              - List all swarm plans with item counts
@@ -204,7 +203,6 @@ OPERATIONS (debug-only, bypass tool:communicate):
   swarm:set_context:<sess> <key> <value> - Set shared context as session
 
 UTILITIES:
-  swarm:id:<path>          - Compute swarm_id for a path and show provenance
 
 REAL-TIME EVENTS:
   events:recent            - Get recent 50 events

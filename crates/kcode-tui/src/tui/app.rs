@@ -974,8 +974,6 @@ pub struct App {
     // Last requested `/improve` mode for this session.
     improve_mode: Option<ImproveMode>,
     // Suppress duplicate memory injection messages for near-identical prompts.
-    // Swarm feature toggle for this session
-    swarm_enabled: bool,
     // Swarm member/plan snapshots and the inline panel's selection.
     swarm: swarm::Swarm,
     // Debug-only: force the inline swarm gallery active (bypasses spawn-mode

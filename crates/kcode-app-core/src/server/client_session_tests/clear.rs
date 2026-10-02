@@ -62,10 +62,6 @@ async fn handle_clear_session_replaces_runtime_handles_and_updates_shutdown_regi
         old_session_id.to_string(),
         test_swarm_member(old_session_id, "ready"),
     )])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        "swarm-test".to_string(),
-        HashSet::from([old_session_id.to_string()]),
-    )])));
     let file_touch = FileTouchService::new();
     let channel_subscriptions = Arc::new(RwLock::new(HashMap::<
         String,
@@ -75,7 +71,6 @@ async fn handle_clear_session_replaces_runtime_handles_and_updates_shutdown_regi
         String,
         HashMap<String, HashSet<String>>,
     >::new()));
-    let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     let event_history = Arc::new(RwLock::new(VecDeque::<SwarmEvent>::new()));
     let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel::<SwarmEvent>(8);
@@ -95,7 +90,6 @@ async fn handle_clear_session_replaces_runtime_handles_and_updates_shutdown_regi
         &soft_interrupt_queues,
         &client_connections,
         &swarm_members,
-        &swarms_by_id,
         &file_touch,
         &channel_subscriptions,
         &channel_subscriptions_by_session,
@@ -112,25 +106,11 @@ async fn handle_clear_session_replaces_runtime_handles_and_updates_shutdown_regi
     let replacement_member = members
         .get(&client_session_id)
         .expect("replacement session should remain registered for swarm tools");
-    assert!(replacement_member.swarm_enabled);
+    // `/clear` must not migrate the old membership: the replacement session
+    // reports back to nobody, so it roots a run of its own.
+    assert_eq!(replacement_member.report_back_to_session_id, None);
     assert_eq!(replacement_member.status, SwarmLifecycleStatus::Ready);
-    assert_ne!(replacement_member.swarm_id.as_deref(), Some("swarm-test"));
-    let replacement_swarm_id = replacement_member
-        .swarm_id
-        .clone()
-        .expect("replacement session should get a fresh swarm identity");
     drop(members);
-    assert!(swarms_by_id.read().await.get("swarm-test").is_none());
-    assert!(
-        swarms_by_id
-            .read()
-            .await
-            .get(&replacement_swarm_id)
-            .is_some_and(|sessions| sessions.contains(&client_session_id))
-    );
-    // A run's own state carries no identity, and the rows are the list's, so nothing
-    // is left pointing at the cleared session.
-    assert!(swarm_runs.read().await.values().all(|run| run.is_empty()));
 
     old_queue
         .lock()

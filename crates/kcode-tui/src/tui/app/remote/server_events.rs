@@ -1950,7 +1950,7 @@ pub(in crate::tui::app) fn handle_server_event(
             false
         }
         ServerEvent::SwarmStatus { members } => {
-            if app.swarm_enabled {
+            if !app.swarm.members.is_empty() || !members.is_empty() {
                 // Surface member lifecycle transitions (done/failed/blocked/
                 // stopped) as a status notice, the same way plan syncs are
                 // surfaced. Diff within the subtree this session manages (the

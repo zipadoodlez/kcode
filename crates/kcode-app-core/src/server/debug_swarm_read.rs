@@ -1,7 +1,7 @@
 use super::swarm_channels::list_channels_for_swarm;
 use super::{
     ChannelSubscriptions, FileTouchService, RunState, ServerIdentity, SessionAgents, SharedContext,
-    SwarmMember, SwarmState, git_common_dir_for, swarm_id_for_dir,
+    SwarmMember, SwarmState,
 };
 use crate::plan::{next_runnable_item_ids, summarize_plan_graph};
 use crate::protocol::SwarmLifecycleStatus;
@@ -19,19 +19,15 @@ pub(super) async fn maybe_handle_swarm_read_command(
     cmd: &str,
     sessions: &SessionAgents,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     shared_context: &Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     file_touch: &FileTouchService,
     channel_subscriptions: &ChannelSubscriptions,
     server_identity: &ServerIdentity,
 ) -> Result<Option<String>> {
     let swarm_state = SwarmState {
         members: Arc::clone(swarm_members),
-        swarms_by_id: Arc::clone(swarms_by_id),
         runs: Arc::clone(swarm_runs),
-        coordinators: Arc::clone(swarm_coordinators),
     };
 
     if cmd == "swarm" || cmd == "swarm_status" || cmd == "swarm:members" {
@@ -52,11 +48,11 @@ pub(super) async fn maybe_handle_swarm_read_command(
             out.push(serde_json::json!({
                 "session_id": member.session_id,
                 "friendly_name": member.friendly_name,
-                "swarm_id": member.swarm_id,
+                "swarm_id": super::swarm::swarm_root(&members, &member.session_id),
                 "working_dir": member.working_dir,
                 "status": member.status,
                 "detail": member.detail,
-                "role": member.role,
+                "role": super::swarm::swarm_role(&members, &member.session_id),
                 "is_headless": member.is_headless,
                 "live_attachments": member.event_txs.len(),
                 "joined_secs_ago": member.joined_at.elapsed().as_secs(),
@@ -73,14 +69,24 @@ pub(super) async fn maybe_handle_swarm_read_command(
     }
 
     if cmd == "swarm:list" {
-        let swarms = swarms_by_id.read().await;
-        let coordinators = swarm_coordinators.read().await;
         let members = swarm_members.read().await;
+        // A run is what its members' report-back chains root at, so the runs are
+        // the distinct roots and a run's coordinator is the root itself.
+        let mut swarms: HashMap<String, Vec<String>> = HashMap::new();
+        for member in members.values() {
+            if let Some(root) = super::swarm::swarm_root(&members, &member.session_id) {
+                swarms
+                    .entry(root)
+                    .or_default()
+                    .push(member.session_id.clone());
+            }
+        }
+        let mut swarm_ids: Vec<&String> = swarms.keys().collect();
+        swarm_ids.sort();
         let mut out: Vec<serde_json::Value> = Vec::new();
-        for (swarm_id, session_ids) in swarms.iter() {
-            let coordinator = coordinators.get(swarm_id);
-            let coordinator_name =
-                coordinator.and_then(|cid| members.get(cid).and_then(|m| m.friendly_name.clone()));
+        for swarm_id in swarm_ids {
+            let session_ids = &swarms[swarm_id];
+            let coordinator_name = members.get(swarm_id).and_then(|m| m.friendly_name.clone());
             let mut status_counts: HashMap<String, usize> = HashMap::new();
             let mut headless_count = 0usize;
             let mut attached_member_count = 0usize;
@@ -102,7 +108,7 @@ pub(super) async fn maybe_handle_swarm_read_command(
                         "friendly_name": member.friendly_name,
                         "status": member.status,
                         "detail": member.detail,
-                        "role": member.role,
+                        "role": super::swarm::swarm_role(&members, &member.session_id),
                         "is_headless": member.is_headless,
                         "live_attachments": member.event_txs.len(),
                     })
@@ -111,8 +117,8 @@ pub(super) async fn maybe_handle_swarm_read_command(
             out.push(serde_json::json!({
                 "swarm_id": swarm_id,
                 "member_count": session_ids.len(),
-                "members": session_ids.iter().collect::<Vec<_>>(),
-                "coordinator": coordinator,
+                "members": session_ids,
+                "coordinator": swarm_id,
                 "coordinator_name": coordinator_name,
                 "headless_count": headless_count,
                 "attached_member_count": attached_member_count,
@@ -127,16 +133,19 @@ pub(super) async fn maybe_handle_swarm_read_command(
     }
 
     if cmd == "swarm:coordinators" {
-        let coordinators = swarm_coordinators.read().await;
         let members = swarm_members.read().await;
+        let mut swarm_ids: Vec<String> = members
+            .values()
+            .filter_map(|member| super::swarm::swarm_root(&members, &member.session_id))
+            .collect();
+        swarm_ids.sort();
+        swarm_ids.dedup();
         let mut out: Vec<serde_json::Value> = Vec::new();
-        for (swarm_id, session_id) in coordinators.iter() {
-            let name = members
-                .get(session_id)
-                .and_then(|m| m.friendly_name.clone());
+        for swarm_id in swarm_ids {
+            let name = members.get(&swarm_id).and_then(|m| m.friendly_name.clone());
             out.push(serde_json::json!({
                 "swarm_id": swarm_id,
-                "coordinator_session": session_id,
+                "coordinator_session": swarm_id,
                 "coordinator_name": name,
             }));
         }
@@ -147,39 +156,36 @@ pub(super) async fn maybe_handle_swarm_read_command(
 
     if cmd.starts_with("swarm:coordinator:") {
         let swarm_id = cmd.strip_prefix("swarm:coordinator:").unwrap_or("").trim();
-        let coordinators = swarm_coordinators.read().await;
         let members = swarm_members.read().await;
-        let output = if let Some(session_id) = coordinators.get(swarm_id) {
-            let name = members
-                .get(session_id)
-                .and_then(|m| m.friendly_name.clone());
+        let exists = members.values().any(|member| {
+            super::swarm::swarm_root(&members, &member.session_id).as_deref() == Some(swarm_id)
+        });
+        if !exists {
+            return Err(anyhow::anyhow!("No coordinator for swarm '{}'", swarm_id));
+        }
+        // The run's root holds the coordinator role, so the coordinator of a
+        // swarm id is that id itself.
+        let name = members.get(swarm_id).and_then(|m| m.friendly_name.clone());
+        return Ok(Some(
             serde_json::json!({
                 "swarm_id": swarm_id,
-                "coordinator_session": session_id,
+                "coordinator_session": swarm_id,
                 "coordinator_name": name,
             })
-            .to_string()
-        } else {
-            return Err(anyhow::anyhow!("No coordinator for swarm '{}'", swarm_id));
-        };
-        return Ok(Some(output));
+            .to_string(),
+        ));
     }
 
     if cmd == "swarm:roles" {
         let members = swarm_members.read().await;
-        let coordinators = swarm_coordinators.read().await;
         let mut out: Vec<serde_json::Value> = Vec::new();
         for (sid, member) in members.iter() {
-            let is_coordinator = member
-                .swarm_id
-                .as_ref()
-                .map(|swid| coordinators.get(swid).map(|c| c == sid).unwrap_or(false))
-                .unwrap_or(false);
+            let is_coordinator = super::swarm::swarm_is_root(&members, sid);
             out.push(serde_json::json!({
                 "session_id": sid,
                 "friendly_name": member.friendly_name,
-                "role": member.role,
-                "swarm_id": member.swarm_id,
+                "role": super::swarm::swarm_role(&members, sid),
+                "swarm_id": super::swarm::swarm_root(&members, sid),
                 "status": member.status,
                 "is_coordinator": is_coordinator,
             }));
@@ -229,7 +235,7 @@ pub(super) async fn maybe_handle_swarm_read_command(
         let output = serde_json::json!({
             "swarm_id": runtime.swarm_id,
             "member_count": runtime.members.len(),
-            "coordinator": runtime.coordinator_session_id,
+            "coordinator": runtime.swarm_id,
             "rows": &rows,
             "run": &runtime.run,
             "ready_ids": summary.ready_ids,
@@ -347,7 +353,9 @@ pub(super) async fn maybe_handle_swarm_read_command(
             let swarm_id = arg.strip_prefix("swarm:").unwrap_or("");
             let swarm_sessions: HashSet<String> = members
                 .iter()
-                .filter(|(_, m)| m.swarm_id.as_deref() == Some(swarm_id))
+                .filter(|(_, m)| {
+                    super::swarm::swarm_root(&members, &m.session_id).as_deref() == Some(swarm_id)
+                })
                 .map(|(id, _)| id.clone())
                 .collect();
 
@@ -448,75 +456,71 @@ pub(super) async fn maybe_handle_swarm_read_command(
 
     if cmd.starts_with("swarm:info:") {
         let swarm_id = cmd.strip_prefix("swarm:info:").unwrap_or("").trim();
-        let swarms = swarms_by_id.read().await;
-        let coordinators = swarm_coordinators.read().await;
+        let session_ids = super::swarm::swarm_session_ids(swarm_id, swarm_members).await;
+        if session_ids.is_empty() {
+            return Err(anyhow::anyhow!("No swarm with id '{}'", swarm_id));
+        }
         let members = swarm_members.read().await;
         let plans = swarm_runs.read().await;
         let ctx = shared_context.read().await;
         let touches = file_touch.snapshot().await;
 
-        let output = if let Some(session_ids) = swarms.get(swarm_id) {
-            let coordinator = coordinators.get(swarm_id);
-            let coordinator_name =
-                coordinator.and_then(|cid| members.get(cid).and_then(|m| m.friendly_name.clone()));
+        let coordinator_name = members.get(swarm_id).and_then(|m| m.friendly_name.clone());
 
-            let member_details: Vec<_> = session_ids
-                .iter()
-                .filter_map(|sid| {
-                    members.get(sid).map(|m| {
-                        serde_json::json!({
-                            "session_id": m.session_id,
-                            "friendly_name": m.friendly_name,
-                            "status": m.status,
-                            "detail": m.detail,
-                            "working_dir": m.working_dir,
-                        })
+        let member_details: Vec<_> = session_ids
+            .iter()
+            .filter_map(|sid| {
+                members.get(sid).map(|m| {
+                    serde_json::json!({
+                        "session_id": m.session_id,
+                        "friendly_name": m.friendly_name,
+                        "status": m.status,
+                        "detail": m.detail,
+                        "working_dir": m.working_dir,
                     })
                 })
-                .collect();
-
-            let run = plans.get(swarm_id).cloned().unwrap_or_default();
-            let items = super::swarm::rows_with_run_status(
-                &super::swarm::swarm_rows(swarm_id, swarm_id, swarm_members).await,
-                &run,
-            );
-            let plan = serde_json::json!({ "items": items, "run": run });
-
-            let context_keys: Vec<_> = ctx
-                .get(swarm_id)
-                .map(|entries| entries.keys().cloned().collect())
-                .unwrap_or_default();
-
-            let conflicts: Vec<_> = touches
-                .iter()
-                .filter_map(|(path, accesses)| {
-                    let swarm_accesses: Vec<_> = accesses
-                        .iter()
-                        .filter(|a| session_ids.contains(&a.session_id))
-                        .collect();
-                    let unique: HashSet<_> = swarm_accesses.iter().map(|a| &a.session_id).collect();
-                    if unique.len() > 1 {
-                        Some(path.to_string_lossy().to_string())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            serde_json::json!({
-                "swarm_id": swarm_id,
-                "member_count": session_ids.len(),
-                "members": member_details,
-                "coordinator": coordinator,
-                "coordinator_name": coordinator_name,
-                "plan": plan,
-                "context_keys": context_keys,
-                "conflict_files": conflicts,
             })
-            .to_string()
-        } else {
-            return Err(anyhow::anyhow!("No swarm with id '{}'", swarm_id));
-        };
+            .collect();
+
+        let run = plans.get(swarm_id).cloned().unwrap_or_default();
+        let items = super::swarm::rows_with_run_status(
+            &super::swarm::swarm_rows(swarm_id, swarm_id, swarm_members).await,
+            &run,
+        );
+        let plan = serde_json::json!({ "items": items, "run": run });
+
+        let context_keys: Vec<_> = ctx
+            .get(swarm_id)
+            .map(|entries| entries.keys().cloned().collect())
+            .unwrap_or_default();
+
+        let conflicts: Vec<_> = touches
+            .iter()
+            .filter_map(|(path, accesses)| {
+                let swarm_accesses: Vec<_> = accesses
+                    .iter()
+                    .filter(|a| session_ids.contains(&a.session_id))
+                    .collect();
+                let unique: HashSet<_> = swarm_accesses.iter().map(|a| &a.session_id).collect();
+                if unique.len() > 1 {
+                    Some(path.to_string_lossy().to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let output = serde_json::json!({
+            "swarm_id": swarm_id,
+            "member_count": session_ids.len(),
+            "members": member_details,
+            "coordinator": swarm_id,
+            "coordinator_name": coordinator_name,
+            "plan": plan,
+            "context_keys": context_keys,
+            "conflict_files": conflicts,
+        })
+        .to_string();
         return Ok(Some(output));
     }
 
@@ -553,7 +557,7 @@ pub(super) async fn maybe_handle_swarm_read_command(
             serde_json::json!({
                 "session_id": target_session,
                 "friendly_name": member_info.and_then(|m| m.friendly_name.clone()),
-                "swarm_id": member_info.and_then(|m| m.swarm_id.clone()),
+                "swarm_id": super::swarm::swarm_root(&members, target_session),
                 "status": member_info.map(|m| m.status.clone()),
                 "detail": member_info.and_then(|m| m.detail.clone()),
                 "joined_secs_ago": member_info.map(|m| m.joined_at.elapsed().as_secs()),
@@ -596,34 +600,6 @@ pub(super) async fn maybe_handle_swarm_read_command(
         }
         return Ok(Some(
             serde_json::to_string_pretty(&out).unwrap_or_else(|_| "[]".to_string()),
-        ));
-    }
-
-    if cmd.starts_with("swarm:id:") {
-        let path_str = cmd.strip_prefix("swarm:id:").unwrap_or("").trim();
-        if path_str.is_empty() {
-            return Err(anyhow::anyhow!("swarm:id requires a path"));
-        }
-        let path = PathBuf::from(path_str);
-        let env_override = std::env::var("KCODE_SWARM_ID")
-            .ok()
-            .filter(|s| !s.trim().is_empty());
-        let git_common = git_common_dir_for(&path);
-        let swarm_id = swarm_id_for_dir(Some(path.clone()));
-        let is_git_repo = git_common.is_some();
-        return Ok(Some(
-            serde_json::json!({
-                "path": path_str,
-                "swarm_id": swarm_id,
-                "source": if env_override.is_some() { "env:KCODE_SWARM_ID" }
-                          else if is_git_repo { "git_common_dir" }
-                          else { "none" },
-                "env_override": env_override,
-                "git_common_dir": git_common.clone(),
-                "git_root": git_common,
-                "is_git_repo": is_git_repo,
-            })
-            .to_string(),
         ));
     }
 

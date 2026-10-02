@@ -8,7 +8,7 @@ use super::{
 use crate::protocol::{CommDeliveryMode, NotificationType, ServerEvent};
 use kcode_agent_runtime::SoftInterruptSource;
 use kcode_swarm_core::ChannelIndex;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast, mpsc};
 
@@ -93,7 +93,6 @@ pub(super) async fn handle_comm_message(
     sessions: &SessionAgents,
     soft_interrupt_queues: &SessionInterruptQueues,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     channel_subscriptions: &ChannelSubscriptions,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
@@ -137,13 +136,8 @@ pub(super) async fn handle_comm_message(
     if let Some(swarm_id) = swarm_id {
         let friendly_name = member_friendly_name(&from_session, swarm_members).await;
 
-        let swarm_session_ids: Vec<String> = {
-            let swarms = swarms_by_id.read().await;
-            swarms
-                .get(&swarm_id)
-                .map(|sessions| sessions.iter().cloned().collect())
-                .unwrap_or_default()
-        };
+        let swarm_session_ids: Vec<String> =
+            super::swarm::swarm_session_ids(&swarm_id, swarm_members).await;
 
         let resolved_to_session = if let Some(ref target) = to_session {
             match resolve_dm_target_session(target, &swarm_session_ids, swarm_members).await {
@@ -214,9 +208,7 @@ pub(super) async fn handle_comm_message(
         // notification storm (see docs/internals/swarm.md).
         let subtree_broadcast_targets: Vec<String> = {
             let members = swarm_members.read().await;
-            let sender_is_coordinator = members
-                .get(&from_session)
-                .is_some_and(|member| member.role == "coordinator");
+            let sender_is_coordinator = super::swarm::swarm_is_root(&members, &from_session);
             swarm_session_ids
                 .iter()
                 .filter(|session_id| *session_id != &from_session)
@@ -339,7 +331,6 @@ pub(super) async fn handle_comm_message(
                             sessions,
                             LiveTurnSwarmContext::new(
                                 swarm_members,
-                                swarms_by_id,
                                 event_history,
                                 event_counter,
                                 swarm_event_tx,

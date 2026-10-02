@@ -763,7 +763,6 @@ fn test_help_topic_suggestions_include_catchup_topics() {
 fn test_context_command_reports_session_context_snapshot() {
     with_temp_kcode_home(|| {
         let mut app = create_test_app();
-        app.swarm_enabled = true;
         app.queue_mode = true;
         app.active_skill = Some("debug".to_string());
         app.queued_messages.push("queued follow-up".to_string());

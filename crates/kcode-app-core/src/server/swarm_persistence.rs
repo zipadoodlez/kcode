@@ -51,16 +51,12 @@ fn swarm_file_lock(swarm_id: &str) -> Arc<StdMutex<()>> {
 }
 
 pub(super) struct LoadedSwarmRuntimeState {
-    pub coordinators: HashMap<String, String>,
     pub members: HashMap<String, SwarmMember>,
-    pub swarms_by_id: HashMap<String, HashSet<String>>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct PersistedSwarmState {
     swarm_id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    coordinator_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     members: Vec<PersistedSwarmMember>,
     updated_at_unix_ms: u64,
@@ -172,7 +168,6 @@ fn remove_snapshot_files(swarm_id: &str) -> bool {
     // already logically invalid even if physical cleanup is interrupted.
     let tombstone = PersistedSwarmState {
         swarm_id: swarm_id.to_string(),
-        coordinator_session_id: None,
         members: Vec::new(),
         updated_at_unix_ms: now_unix_ms(),
     };
@@ -321,15 +316,11 @@ pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
     let dir = state_dir();
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return LoadedSwarmRuntimeState {
-            coordinators: HashMap::new(),
             members: HashMap::new(),
-            swarms_by_id: HashMap::new(),
         };
     };
 
-    let mut coordinators = HashMap::new();
     let mut members = HashMap::new();
-    let mut swarms_by_id = HashMap::new();
     let loaded_at_unix_ms = now_unix_ms();
     let terminal_retention = super::swarm::swarm_terminal_member_retention();
     let mut pruned_terminal_members = 0usize;
@@ -355,14 +346,8 @@ pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
         let Ok(state) = storage::read_json::<PersistedSwarmState>(&path) else {
             continue;
         };
-        let swarm_id = state.swarm_id.clone();
-        if let Some(coordinator_session_id) = state.coordinator_session_id {
-            coordinators.insert(swarm_id, coordinator_session_id);
-        }
+        let file_swarm_id = state.swarm_id.clone();
         for member in state.members {
-            let Some(member_swarm_id) = member.record.swarm_id.clone() else {
-                continue;
-            };
             let member_session_id = member.record.session_id.clone();
             let Some(member) = from_persisted_member(
                 member,
@@ -372,63 +357,43 @@ pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
             ) else {
                 pruned_terminal_members += 1;
                 pruned_members_by_swarm
-                    .entry(member_swarm_id)
+                    .entry(file_swarm_id.clone())
                     .or_default()
                     .insert(member_session_id);
                 continue;
             };
-            swarms_by_id
-                .entry(member_swarm_id.clone())
-                .or_insert_with(HashSet::new)
-                .insert(member_session_id.clone());
             members.insert(member_session_id, member);
         }
     }
-    coordinators.retain(|swarm_id, session_id| {
-        !pruned_members_by_swarm
-            .get(swarm_id)
-            .is_some_and(|pruned| pruned.contains(session_id))
-    });
     // Rewrite every affected snapshot once so startup collection shrinks the
     // durable state too. Without this, the same expired records would be parsed
     // and discarded on every restart forever.
-    let rewritten_swarms: HashSet<String> = pruned_members_by_swarm.keys().cloned().collect();
-    for swarm_id in &rewritten_swarms {
-        let retained_members = swarms_by_id
-            .get(swarm_id)
-            .into_iter()
-            .flat_map(|session_ids| session_ids.iter())
-            .filter_map(|session_id| members.get(session_id).cloned())
+    for swarm_id in pruned_members_by_swarm.keys() {
+        let retained_members = members
+            .values()
+            .filter(|member| {
+                super::swarm::swarm_root(&members, &member.session_id).as_deref()
+                    == Some(swarm_id.as_str())
+            })
+            .cloned()
             .collect::<Vec<_>>();
-        persist_swarm_state(
-            swarm_id,
-            coordinators.get(swarm_id).map(String::as_str),
-            &retained_members,
-        );
+        persist_swarm_state(swarm_id, &retained_members);
     }
     if pruned_terminal_members > 0 {
         crate::logging::info(&format!(
             "Pruned {pruned_terminal_members} expired terminal swarm member(s) while loading durable state"
         ));
     }
-    LoadedSwarmRuntimeState {
-        coordinators,
-        members,
-        swarms_by_id,
-    }
+    LoadedSwarmRuntimeState { members }
 }
 
-pub(super) fn persist_swarm_state(
-    swarm_id: &str,
-    coordinator_session_id: Option<&str>,
-    swarm_members: &[SwarmMember],
-) {
+pub(super) fn persist_swarm_state(swarm_id: &str, swarm_members: &[SwarmMember]) {
     let file_lock = swarm_file_lock(swarm_id);
     let _guard = file_lock
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
 
-    if coordinator_session_id.is_none() && swarm_members.is_empty() {
+    if swarm_members.is_empty() {
         let _ = remove_snapshot_files(swarm_id);
         return;
     }
@@ -442,7 +407,6 @@ pub(super) fn persist_swarm_state(
 
     let state = PersistedSwarmState {
         swarm_id: swarm_id.to_string(),
-        coordinator_session_id: coordinator_session_id.map(str::to_string),
         members,
         updated_at_unix_ms: snapshot_unix_ms,
     };

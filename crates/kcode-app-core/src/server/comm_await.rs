@@ -2,11 +2,12 @@ use super::await_members_state::{
     PersistedAwaitMembersState, all_pending_await_members_including_expired, ensure_pending_state,
     load_state, persist_final_response, request_key, save_state,
 };
+use super::swarm::swarm_root;
 use super::{AwaitMembersRuntime, SwarmEvent, SwarmMember};
 use crate::bus::{Bus, BusEvent, SwarmAwaitCompleted, UiActivity};
 use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{AwaitedMemberStatus, ServerEvent, format_comm_awaited_members_with_reports};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::{RwLock, broadcast, mpsc};
@@ -17,24 +18,13 @@ pub(super) async fn awaited_member_statuses(
     requested_ids: &[String],
     target_status: &[String],
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
 ) -> Vec<AwaitedMemberStatus> {
     let watch_ids: Vec<String> = if requested_ids.is_empty() {
-        let mut watch_ids: Vec<String> = {
-            let swarms = swarms_by_id.read().await;
-            swarms
-                .get(swarm_id)
-                .map(|sessions| {
-                    sessions
-                        .iter()
-                        .filter(|session_id| session_id.as_str() != req_session_id)
-                        .cloned()
-                        .collect()
-                })
-                .unwrap_or_default()
-        };
-        watch_ids.sort();
-        watch_ids
+        super::swarm::swarm_session_ids(swarm_id, swarm_members)
+            .await
+            .into_iter()
+            .filter(|session_id| session_id.as_str() != req_session_id)
+            .collect()
     } else {
         requested_ids.to_vec()
     };
@@ -215,7 +205,6 @@ pub(super) async fn spawn_or_resume_await_members(
     state: PersistedAwaitMembersState,
     req_session_id: String,
     swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_event_tx: broadcast::Sender<SwarmEvent>,
     await_members_runtime: AwaitMembersRuntime,
 ) {
@@ -236,7 +225,6 @@ pub(super) async fn spawn_or_resume_await_members(
                 &requested_ids,
                 &target_status,
                 &swarm_members,
-                &swarms_by_id,
             )
             .await;
 
@@ -310,7 +298,6 @@ pub(super) async fn spawn_or_resume_await_members(
 pub(super) struct CommAwaitMembersContext<'a> {
     pub client_event_tx: &'a mpsc::UnboundedSender<ServerEvent>,
     pub swarm_members: &'a Arc<RwLock<HashMap<String, SwarmMember>>>,
-    pub swarms_by_id: &'a Arc<RwLock<HashMap<String, HashSet<String>>>>,
     pub swarm_event_tx: &'a broadcast::Sender<SwarmEvent>,
     pub await_members_runtime: &'a AwaitMembersRuntime,
 }
@@ -333,9 +320,7 @@ pub(super) async fn handle_comm_await_members(
 ) {
     let swarm_id = {
         let members = ctx.swarm_members.read().await;
-        members
-            .get(&req_session_id)
-            .and_then(|member| member.swarm_id.clone())
+        swarm_root(&members, &req_session_id)
     };
 
     if let Some(swarm_id) = swarm_id {
@@ -354,7 +339,6 @@ pub(super) async fn handle_comm_await_members(
             &requested_ids,
             &target_status,
             ctx.swarm_members,
-            ctx.swarms_by_id,
         )
         .await;
 
@@ -483,7 +467,6 @@ pub(super) async fn handle_comm_await_members(
                     state,
                     req_session_id,
                     ctx.swarm_members.clone(),
-                    ctx.swarms_by_id.clone(),
                     ctx.swarm_event_tx.clone(),
                     ctx.await_members_runtime.clone(),
                 )
@@ -528,7 +511,6 @@ pub(super) async fn handle_comm_await_members(
                 state,
                 req_session_id,
                 ctx.swarm_members.clone(),
-                ctx.swarms_by_id.clone(),
                 ctx.swarm_event_tx.clone(),
                 ctx.await_members_runtime.clone(),
             )
@@ -612,7 +594,6 @@ fn publish_await_started_card(
 /// contrast, deliver via notify/wake, so they can resume transparently.
 pub(super) async fn resume_background_awaits(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
     await_members_runtime: &AwaitMembersRuntime,
 ) {
@@ -638,7 +619,6 @@ pub(super) async fn resume_background_awaits(
                 &state.requested_ids,
                 &state.target_status,
                 swarm_members,
-                swarms_by_id,
             )
             .await;
             let (completed, summary) = if member_statuses.is_empty() {
@@ -667,7 +647,6 @@ pub(super) async fn resume_background_awaits(
                 state,
                 req_session_id,
                 swarm_members.clone(),
-                swarms_by_id.clone(),
                 swarm_event_tx.clone(),
                 await_members_runtime.clone(),
             )

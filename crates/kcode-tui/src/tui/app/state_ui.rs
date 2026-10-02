@@ -1760,10 +1760,6 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
         ));
         info.push_str(&format!("Terminal: {}\n", terminal_size));
         info.push_str(&format!("CWD: {}\n", cwd));
-        info.push_str(&format!(
-            "Features: swarm={}\n",
-            if app.swarm_enabled { "on" } else { "off" }
-        ));
 
         if let Some(ref model) = app.remote_provider_model {
             info.push_str(&format!("Model: {}\n", model));
@@ -1957,10 +1953,6 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
         context_report.push_str(&format!("- cwd: {}\n", cwd));
         context_report.push_str(&format!("- terminal: {}\n", terminal_size));
         context_report.push_str(&format!(
-            "- features: swarm={}\n",
-            if app.swarm_enabled { "on" } else { "off" }
-        ));
-        context_report.push_str(&format!(
             "- processing: {}\n",
             match &app.status {
                 ProcessingStatus::Idle => "idle".to_string(),
@@ -2053,7 +2045,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
             ));
         }
 
-        if app.swarm_enabled {
+        if !app.swarm.members.is_empty() {
             context_report.push_str("\nSwarm\n");
             context_report.push_str(&format!(
                 "- plan items: {}\n- remote members: {}\n- connected clients: {}\n",

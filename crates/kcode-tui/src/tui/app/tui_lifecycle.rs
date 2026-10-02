@@ -337,7 +337,6 @@ impl App {
             session.provider_key = crate::session::derive_session_provider_key(provider.name());
         }
         let display = config().display.clone();
-        let features = config().features.clone();
         let autoreview_enabled = session
             .autoreview_enabled
             .unwrap_or(config().autoreview.enabled);
@@ -467,7 +466,6 @@ impl App {
             autoreview_enabled,
             autojudge_enabled,
             improve_mode,
-            swarm_enabled: features.swarm,
             debug_force_inline_gallery: false,
             swarm: Default::default(),
             diff_mode: display.diff_mode,
@@ -571,7 +569,6 @@ impl App {
         session.provider_key = crate::session::derive_session_provider_key(provider.name());
         session.ensure_initial_session_context_message();
         let display = config().display.clone();
-        let features = config().features.clone();
         let autoreview_enabled = session
             .autoreview_enabled
             .unwrap_or(config().autoreview.enabled);
@@ -730,7 +727,6 @@ impl App {
             autoreview_enabled,
             autojudge_enabled,
             improve_mode,
-            swarm_enabled: features.swarm,
             debug_force_inline_gallery: false,
             swarm: Default::default(),
             diff_mode: display.diff_mode,

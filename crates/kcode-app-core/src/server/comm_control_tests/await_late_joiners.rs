@@ -1,8 +1,10 @@
 #[tokio::test]
 async fn await_members_includes_late_joiners_when_watching_swarm() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
-    let swarm_id = "swarm-a";
     let requester = "req";
+    // The run is the requester's: nobody spawned it, so it reports back to
+    // nobody, and every peer reports back to it.
+    let swarm_id = requester;
     let initial_peer = "peer-1";
     let late_peer = "peer-2";
     let await_runtime = AwaitMembersRuntime::default();
@@ -15,10 +17,6 @@ async fn await_members_includes_late_joiners_when_watching_swarm() {
             member(initial_peer, swarm_id, "running"),
         ),
     ])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([requester.to_string(), initial_peer.to_string()]),
-    )])));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
 
     handle_comm_await_members(
@@ -34,7 +32,6 @@ async fn await_members_includes_late_joiners_when_watching_swarm() {
         CommAwaitMembersContext {
             client_event_tx: &client_tx,
             swarm_members: &swarm_members,
-            swarms_by_id: &swarms_by_id,
             swarm_event_tx: &swarm_event_tx,
             await_members_runtime: &await_runtime,
         },
@@ -47,13 +44,6 @@ async fn await_members_includes_late_joiners_when_watching_swarm() {
             late_peer.to_string(),
             member(late_peer, swarm_id, "running"),
         );
-    }
-    {
-        let mut swarms = swarms_by_id.write().await;
-        swarms
-            .get_mut(swarm_id)
-            .expect("swarm exists")
-            .insert(late_peer.to_string());
     }
     let _ = swarm_event_tx.send(swarm_event(
         late_peer,

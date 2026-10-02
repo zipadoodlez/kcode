@@ -1,8 +1,10 @@
 #[tokio::test]
 async fn await_members_blocking_to_background_upgrade_survives_waiter_disconnect() {
     let (_env, _runtime_dir) = RuntimeEnvGuard::new();
-    let swarm_id = "swarm-upgrade";
     let requester = "req-upgrade";
+    // The run is the requester's: nobody spawned it, so it reports back to
+    // nobody, and every peer reports back to it.
+    let swarm_id = requester;
     let peer = "peer-1";
     let await_runtime = AwaitMembersRuntime::default();
 
@@ -10,10 +12,6 @@ async fn await_members_blocking_to_background_upgrade_survives_waiter_disconnect
         (requester.to_string(), member(requester, swarm_id, "ready")),
         (peer.to_string(), member(peer, swarm_id, "running")),
     ])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([requester.to_string(), peer.to_string()]),
-    )])));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
 
     let mut bus_rx = crate::bus::Bus::global().subscribe();
@@ -33,7 +31,6 @@ async fn await_members_blocking_to_background_upgrade_survives_waiter_disconnect
         CommAwaitMembersContext {
             client_event_tx: &blocking_tx,
             swarm_members: &swarm_members,
-            swarms_by_id: &swarms_by_id,
             swarm_event_tx: &swarm_event_tx,
             await_members_runtime: &await_runtime,
         },
@@ -57,7 +54,6 @@ async fn await_members_blocking_to_background_upgrade_survives_waiter_disconnect
         CommAwaitMembersContext {
             client_event_tx: &bg_tx,
             swarm_members: &swarm_members,
-            swarms_by_id: &swarms_by_id,
             swarm_event_tx: &swarm_event_tx,
             await_members_runtime: &await_runtime,
         },

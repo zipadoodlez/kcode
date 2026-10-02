@@ -7,8 +7,7 @@ use super::client_comm::{
 use super::client_writer::write_direct_event;
 use super::comm_await::{CommAwaitMembersContext, handle_comm_await_members};
 use super::comm_control::{
-    handle_comm_assign_next, handle_comm_assign_role, handle_comm_assign_task,
-    handle_comm_task_control,
+    handle_comm_assign_next, handle_comm_assign_task, handle_comm_task_control,
 };
 use super::comm_session::{handle_comm_list_models, handle_comm_spawn, handle_comm_stop};
 use super::comm_sync::{
@@ -26,7 +25,7 @@ use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{Request, ServerEvent};
 use crate::provider::Provider;
 use anyhow::Result;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 
@@ -58,10 +57,8 @@ pub(super) struct LightweightControlContext<'a> {
     pub(super) global_session_id: &'a Arc<RwLock<String>>,
     pub(super) provider_template: &'a Arc<dyn Provider>,
     pub(super) swarm_members: &'a Arc<RwLock<HashMap<String, SwarmMember>>>,
-    pub(super) swarms_by_id: &'a Arc<RwLock<HashMap<String, HashSet<String>>>>,
     pub(super) shared_context: &'a Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     pub(super) swarm_runs: &'a Arc<RwLock<HashMap<String, RunState>>>,
-    pub(super) swarm_coordinators: &'a Arc<RwLock<HashMap<String, String>>>,
     pub(super) file_touch: &'a FileTouchService,
     pub(super) channel_subscriptions: &'a ChannelSubscriptions,
     pub(super) channel_subscriptions_by_session: &'a ChannelSubscriptions,
@@ -85,10 +82,8 @@ pub(super) async fn handle_lightweight_control_request(
         global_session_id,
         provider_template,
         swarm_members,
-        swarms_by_id,
         shared_context,
         swarm_runs,
-        swarm_coordinators,
         file_touch,
         channel_subscriptions,
         channel_subscriptions_by_session,
@@ -149,7 +144,6 @@ pub(super) async fn handle_lightweight_control_request(
                     soft_interrupt_queues,
                     client_connections,
                     swarm_members,
-                    swarms_by_id,
                     event_history,
                     event_counter,
                     swarm_event_tx,
@@ -173,7 +167,6 @@ pub(super) async fn handle_lightweight_control_request(
                 append,
                 &client_event_tx,
                 swarm_members,
-                swarms_by_id,
                 shared_context,
                 event_history,
                 event_counter,
@@ -219,7 +212,6 @@ pub(super) async fn handle_lightweight_control_request(
                 sessions,
                 soft_interrupt_queues,
                 swarm_members,
-                swarms_by_id,
                 channel_subscriptions,
                 event_history,
                 event_counter,
@@ -237,7 +229,6 @@ pub(super) async fn handle_lightweight_control_request(
                 req_session_id,
                 &client_event_tx,
                 swarm_members,
-                swarms_by_id,
                 file_touch,
                 sessions,
                 client_connections,
@@ -281,9 +272,7 @@ pub(super) async fn handle_lightweight_control_request(
                 req_session_id,
                 &client_event_tx,
                 swarm_members,
-                swarms_by_id,
                 swarm_runs,
-                swarm_coordinators,
                 event_history,
                 event_counter,
                 swarm_event_tx,
@@ -303,9 +292,7 @@ pub(super) async fn handle_lightweight_control_request(
                 children,
                 &client_event_tx,
                 swarm_members,
-                swarms_by_id,
                 swarm_runs,
-                swarm_coordinators,
                 event_history,
                 event_counter,
                 swarm_event_tx,
@@ -325,9 +312,7 @@ pub(super) async fn handle_lightweight_control_request(
                 artifact_json,
                 &client_event_tx,
                 swarm_members,
-                swarms_by_id,
                 swarm_runs,
-                swarm_coordinators,
                 event_history,
                 event_counter,
                 swarm_event_tx,
@@ -364,8 +349,6 @@ pub(super) async fn handle_lightweight_control_request(
                 global_session_id,
                 provider_template,
                 swarm_members,
-                swarms_by_id,
-                swarm_coordinators,
                 swarm_runs,
                 channel_subscriptions,
                 channel_subscriptions_by_session,
@@ -402,8 +385,6 @@ pub(super) async fn handle_lightweight_control_request(
                 &client_event_tx,
                 sessions,
                 swarm_members,
-                swarms_by_id,
-                swarm_coordinators,
                 swarm_runs,
                 channel_subscriptions,
                 channel_subscriptions_by_session,
@@ -411,30 +392,6 @@ pub(super) async fn handle_lightweight_control_request(
                 event_counter,
                 swarm_event_tx,
                 soft_interrupt_queues,
-                swarm_mutation_runtime,
-            )
-            .await;
-        }
-        Request::CommAssignRole {
-            id,
-            session_id: req_session_id,
-            target_session,
-            role,
-        } => {
-            handle_comm_assign_role(
-                id,
-                req_session_id,
-                target_session,
-                role,
-                &client_event_tx,
-                sessions,
-                swarm_members,
-                swarms_by_id,
-                swarm_coordinators,
-                swarm_runs,
-                event_history,
-                event_counter,
-                swarm_event_tx,
                 swarm_mutation_runtime,
             )
             .await;
@@ -496,7 +453,6 @@ pub(super) async fn handle_lightweight_control_request(
                 Some(report.clone()),
                 tldr,
                 swarm_members,
-                swarms_by_id,
                 Some(event_history),
                 Some(event_counter),
                 Some(swarm_event_tx),
@@ -547,9 +503,7 @@ pub(super) async fn handle_lightweight_control_request(
                 &CommResyncPlanContext {
                     client_event_tx: &client_event_tx,
                     swarm_members,
-                    swarms_by_id,
                     swarm_runs,
-                    swarm_coordinators,
                     event_history,
                     event_counter,
                     swarm_event_tx,
@@ -575,9 +529,7 @@ pub(super) async fn handle_lightweight_control_request(
                 soft_interrupt_queues,
                 client_connections,
                 swarm_members,
-                swarms_by_id,
                 swarm_runs,
-                swarm_coordinators,
                 event_history,
                 event_counter,
                 swarm_event_tx,
@@ -613,9 +565,7 @@ pub(super) async fn handle_lightweight_control_request(
                 soft_interrupt_queues,
                 client_connections,
                 swarm_members,
-                swarms_by_id,
                 swarm_runs,
-                swarm_coordinators,
                 event_history,
                 event_counter,
                 swarm_event_tx,
@@ -644,9 +594,7 @@ pub(super) async fn handle_lightweight_control_request(
                 soft_interrupt_queues,
                 client_connections,
                 swarm_members,
-                swarms_by_id,
                 swarm_runs,
-                swarm_coordinators,
                 event_history,
                 event_counter,
                 swarm_event_tx,
@@ -716,7 +664,6 @@ pub(super) async fn handle_lightweight_control_request(
                 CommAwaitMembersContext {
                     client_event_tx: &client_event_tx,
                     swarm_members,
-                    swarms_by_id,
                     swarm_event_tx,
                     await_members_runtime,
                 },

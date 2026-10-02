@@ -112,7 +112,9 @@ impl App {
             "goals" => {
                 "/goals\nOpen the goals overview in the side panel.\n\n/goals resume\nResume the most relevant active goal for this session/project.\n\n/goals show <id>\nOpen a specific goal in the side panel."
             }
-            "swarm" => "/swarm [on|off|status]\nToggle swarm features for this session.",
+            "swarm" => {
+                "/swarm [status]\nShow this session's swarm status: the members of the run it roots."
+            }
             "auto" => {
                 "/auto <what to work on>\nThis turn grants the session permission to keep working its own work list on its own, for as long as the rows it holds last, then the permission is spent. Words that name an open row (its id, or its content) scope the run to that row and the work under it; any other words become the run's own row at the top of the list, and the run works that row last. The standing version is auto_continue = true under [features] in ~/.kcode/config.toml. Typing anything stops a run at its next turn."
             }

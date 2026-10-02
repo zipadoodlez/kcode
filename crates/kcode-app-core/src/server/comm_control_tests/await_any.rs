@@ -1,8 +1,10 @@
 #[tokio::test]
 async fn await_members_any_mode_returns_after_first_match() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
-    let swarm_id = "swarm-any";
     let requester = "req";
+    // The run is the requester's: nobody spawned it, so it reports back to
+    // nobody, and every peer reports back to it.
+    let swarm_id = requester;
     let peer_a = "peer-a";
     let peer_b = "peer-b";
     let await_runtime = AwaitMembersRuntime::default();
@@ -13,14 +15,6 @@ async fn await_members_any_mode_returns_after_first_match() {
         (peer_a.to_string(), member(peer_a, swarm_id, "running")),
         (peer_b.to_string(), member(peer_b, swarm_id, "running")),
     ])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([
-            requester.to_string(),
-            peer_a.to_string(),
-            peer_b.to_string(),
-        ]),
-    )])));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
 
     handle_comm_await_members(
@@ -36,7 +30,6 @@ async fn await_members_any_mode_returns_after_first_match() {
         CommAwaitMembersContext {
             client_event_tx: &client_tx,
             swarm_members: &swarm_members,
-            swarms_by_id: &swarms_by_id,
             swarm_event_tx: &swarm_event_tx,
             await_members_runtime: &await_runtime,
         },

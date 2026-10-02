@@ -421,7 +421,7 @@ swarm_max_concurrent_agents = 32
 #   KCODE_SPAWN_CWD         - session working directory (also the hook's cwd)
 #   KCODE_SPAWN_PROGRAM     - kcode binary path
 #   KCODE_SPAWN_COMMAND     - full shell-escaped command line
-#   KCODE_SPAWN_SWARM_ID / KCODE_SPAWN_COORDINATOR_SESSION_ID (swarm spawns)
+#   KCODE_SPAWN_COORDINATOR_SESSION_ID (swarm spawns)
 # If the hook fails to start, kcode falls back to built-in terminal detection.
 # Env override: KCODE_SPAWN_HOOK (set empty to disable a config hook).
 #

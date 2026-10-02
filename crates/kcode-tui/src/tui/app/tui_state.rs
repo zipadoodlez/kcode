@@ -1233,7 +1233,7 @@ impl crate::tui::TuiState for App {
     fn info_widget_data(&self) -> crate::tui::info_widget::InfoWidgetData {
         let session_id = self.active_client_session_id();
 
-        let todos_are_swarm_plan = self.swarm_enabled && !self.swarm.plan_items.is_empty();
+        let todos_are_swarm_plan = !self.swarm.plan_items.is_empty();
         let todos = if crate::config::config().display.pin_todos && !todos_are_swarm_plan {
             // The pinned band is the single source of truth while enabled. Do
             // not duplicate the same session todos in a margin or overview
@@ -1297,7 +1297,7 @@ impl crate::tui::TuiState for App {
         });
 
         // Gather swarm info
-        let swarm_info = if self.swarm_enabled {
+        let swarm_info = if !self.swarm.members.is_empty() {
             let subagent_status = self.subagent_status.clone();
             let mut members: Vec<crate::protocol::SwarmMemberStatus> = Vec::new();
             let (session_count, client_count, session_names, has_activity) = if self
@@ -1622,20 +1622,15 @@ impl crate::tui::TuiState for App {
         if self.debug_force_inline_gallery {
             return !self.inline_swarm_members().is_empty();
         }
-        self.swarm_enabled
-            && matches!(
-                crate::config::config().agents.swarm_spawn_mode,
-                crate::config::SwarmSpawnMode::Inline
-            )
-            && !self.inline_swarm_members().is_empty()
+        matches!(
+            crate::config::config().agents.swarm_spawn_mode,
+            crate::config::SwarmSpawnMode::Inline
+        ) && !self.inline_swarm_members().is_empty()
     }
 
     fn inline_swarm_members(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
         if self.debug_force_inline_gallery {
             return self.swarm.members.clone();
-        }
-        if !self.swarm_enabled {
-            return Vec::new();
         }
         // Scope the inline gallery to the subtree this session actually spawned.
         // Other sessions can share the same swarm (e.g. same repo) without this
@@ -1655,10 +1650,6 @@ impl crate::tui::TuiState for App {
     }
 
     fn swarm_members_for_transcript(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
-        if !self.swarm_enabled {
-            return Vec::new();
-        }
-
         // Start with the ownership-scoped gallery members. Then recover any
         // exact session IDs recorded by spawn tool results. The latter remains
         // safe in shared-repository swarms and survives a missing/stale parent

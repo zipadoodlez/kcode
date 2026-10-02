@@ -20,9 +20,7 @@ struct HandbackFixture {
     soft_interrupt_queues: crate::server::SessionInterruptQueues,
     client_connections: Arc<RwLock<HashMap<String, crate::server::ClientConnectionInfo>>>,
     swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
-    swarm_coordinators: Arc<RwLock<HashMap<String, String>>>,
     event_history: Arc<RwLock<VecDeque<SwarmEvent>>>,
     event_counter: Arc<AtomicU64>,
     swarm_event_tx: broadcast::Sender<SwarmEvent>,
@@ -33,25 +31,20 @@ struct HandbackFixture {
 }
 
 async fn handback_fixture(rows: Vec<TaskItem>) -> HandbackFixture {
-    let swarm_id = "swarm-handback";
     let coord = "coord";
     let holder = "worker-holder";
     let other = "worker-other";
     let (client_tx, client_rx) = mpsc::unbounded_channel();
     let repo = scratch_repo();
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
-        (coord.to_string(), {
-            let mut member = member(coord, swarm_id, "ready");
-            member.role = "coordinator".to_string();
-            member
-        }),
+        (coord.to_string(), member(coord, coord, "ready")),
         (
             holder.to_string(),
-            owned_member(holder, swarm_id, "ready", coord),
+            owned_member(holder, coord, "ready", coord),
         ),
         (
             other.to_string(),
-            owned_member(other, swarm_id, "ready", coord),
+            owned_member(other, coord, "ready", coord),
         ),
     ])));
     // The plan needs rows behind it: the file is what a dispatch writes to.
@@ -69,15 +62,7 @@ async fn handback_fixture(rows: Vec<TaskItem>) -> HandbackFixture {
         soft_interrupt_queues: Arc::new(RwLock::new(HashMap::new())),
         client_connections: Arc::new(RwLock::new(HashMap::new())),
         swarm_members,
-        swarms_by_id: Arc::new(RwLock::new(HashMap::from([(
-            swarm_id.to_string(),
-            HashSet::from([coord.to_string(), holder.to_string(), other.to_string()]),
-        )]))),
         swarm_runs: empty_run_state(),
-        swarm_coordinators: Arc::new(RwLock::new(HashMap::from([(
-            swarm_id.to_string(),
-            coord.to_string(),
-        )]))),
         event_history: Arc::new(RwLock::new(VecDeque::new())),
         event_counter: Arc::new(AtomicU64::new(1)),
         swarm_event_tx: broadcast::channel(32).0,
@@ -109,9 +94,7 @@ async fn assign_next(fx: &HandbackFixture, prefer_spawn: bool) {
         &fx.soft_interrupt_queues,
         &fx.client_connections,
         &fx.swarm_members,
-        &fx.swarms_by_id,
         &fx.swarm_runs,
-        &fx.swarm_coordinators,
         &fx.event_history,
         &fx.event_counter,
         &fx.swarm_event_tx,

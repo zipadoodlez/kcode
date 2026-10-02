@@ -1695,8 +1695,6 @@ struct CommunicateInput {
     #[serde(default)]
     target_session: Option<String>,
     #[serde(default)]
-    role: Option<String>,
-    #[serde(default)]
     working_dir: Option<String>,
     #[serde(default)]
     initial_message: Option<String>,
@@ -1833,7 +1831,7 @@ impl Tool for CommunicateTool {
                 "action": {
                     "type": "string",
                     "enum": ["share", "share_append", "read", "message", "broadcast", "dm", "channel", "list", "list_channels", "channel_members",
-                             "spawn", "stop", "assign_role",
+                             "spawn", "stop",
                              "status", "report", "plan_status", "summary", "read_context", "resync_plan", "assign_task", "assign_next", "fill_slots", "run_plan", "cleanup",
                              "task_graph", "expand_node", "complete_node",
                              "start", "start_task", "wake", "resume", "retry", "reassign", "replace", "salvage",
@@ -1878,10 +1876,6 @@ impl Tool for CommunicateTool {
                 "target_session": {
                     "type": "string",
                     "description": "Session ID or unique friendly name for management actions. Alias of to_session."
-                },
-                "role": {
-                    "type": "string",
-                    "enum": ["agent", "coordinator"]
                 },
                 "label": {
                     "type": "string",
@@ -2057,7 +2051,7 @@ impl Tool for CommunicateTool {
 
         // `to_session` and `target_session` both name a single session id. Historically
         // different actions required different field names (e.g. `dm` wanted `to_session`
-        // while `assign_role`/`summary`/`status`/`start`/`resume` wanted `target_session`),
+        // while `summary`/`status`/`start`/`resume` wanted `target_session`),
         // which models frequently confuse, producing repeated "'to_session' is required" /
         // "'target_session' is required" errors. Treat the two fields as interchangeable
         // aliases so either name works for any action that targets a session.
@@ -2497,40 +2491,6 @@ impl Tool for CommunicateTool {
             "cleanup" => cleanup_swarm_workers(&ctx, &params)
                 .await
                 .map(ToolOutput::new),
-
-            "assign_role" => {
-                let target_raw = params.target_session.ok_or_else(|| {
-                    anyhow::anyhow!("'target_session' is required for assign_role action")
-                })?;
-                let role = params
-                    .role
-                    .ok_or_else(|| anyhow::anyhow!("'role' is required for assign_role action"))?;
-
-                // Resolve "current" to the caller's own session ID
-                let target = if target_raw == "current" {
-                    ctx.session_id.clone()
-                } else {
-                    target_raw
-                };
-
-                let request = Request::CommAssignRole {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                    target_session: target.clone(),
-                    role: role.clone(),
-                };
-
-                match send_request(request).await {
-                    Ok(response) => {
-                        ensure_success(&response)?;
-                        Ok(ToolOutput::new(format!(
-                            "Assigned role '{}' to {}",
-                            role, target
-                        )))
-                    }
-                    Err(e) => Err(anyhow::anyhow!("Failed to assign role: {}", e)),
-                }
-            }
 
             "status" => {
                 let target =
@@ -3036,7 +2996,7 @@ impl Tool for CommunicateTool {
 
             _ => Err(anyhow::anyhow!(
                 "Unknown action '{}'. Valid actions: share, share_append, read, message, broadcast, dm, channel, list, list_channels, channel_members, \
-                 spawn, stop, assign_role, status, report, plan_status, summary, read_context, \
+                 spawn, stop, status, report, plan_status, summary, read_context, \
                  resync_plan, assign_task, assign_next, fill_slots, run_plan, cleanup, start, start_task, wake, resume, retry, reassign, replace, salvage, subscribe_channel, unsubscribe_channel, await_members. \
                  To read messages addressed to you, use action='read'.",
                 params.action

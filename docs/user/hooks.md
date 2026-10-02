@@ -186,7 +186,6 @@ Metadata environment:
 | `KCODE_SPAWN_CWD` | session working directory |
 | `KCODE_SPAWN_PROGRAM` | path of the kcode binary to execute |
 | `KCODE_SPAWN_COMMAND` | the full command line, shell-escaped, for launchers that take one shell string |
-| `KCODE_SPAWN_SWARM_ID` | (swarm spawns) the swarm the agent joins |
 | `KCODE_SPAWN_COORDINATOR_SESSION_ID` | (swarm spawns) the coordinator that requested it |
 | `KCODE_FRESH_SPAWN` | `1` when this is a fresh window handoff |
 
@@ -210,7 +209,7 @@ A router script, for placement that depends on why the spawn happened:
 # ~/bin/kcode-spawn-router     argv: the kcode command to run
 case "$KCODE_SPAWN_KIND" in
   swarm-agent)
-    tmux new-window -n "swarm:${KCODE_SPAWN_SWARM_ID:0:8}" "$@" 2>/dev/null \
+    tmux new-window -n "swarm:${KCODE_SPAWN_COORDINATOR_SESSION_ID:0:8}" "$@" 2>/dev/null \
       || tmux split-window "$@"
     ;;
   *)

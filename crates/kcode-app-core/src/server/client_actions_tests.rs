@@ -2,35 +2,31 @@
 
 use super::{
     NotifySessionContext, clone_split_session, handle_notify_session, handle_resume_all_sessions,
-    handle_set_feature, handle_split,
+    handle_split,
 };
 use crate::agent::Agent;
 use crate::message::{ContentBlock, Message, Role, StreamEvent, ToolDefinition};
+use crate::protocol::ServerEvent;
 use crate::protocol::SwarmLifecycleStatus;
-use crate::protocol::{FeatureToggle, ServerEvent};
 use crate::provider::{EventStream, Provider};
 use crate::server::{ClientConnectionInfo, SwarmMember};
 use crate::tool::Registry;
 use anyhow::Result;
 use async_stream::stream;
 use async_trait::async_trait;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::PathBuf;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio::time::{Duration, timeout};
 
-#[allow(clippy::type_complexity)]
 fn empty_swarm_status_state() -> (
-    Arc<RwLock<HashMap<String, std::collections::HashSet<String>>>>,
     Arc<RwLock<std::collections::VecDeque<crate::server::SwarmEvent>>>,
     Arc<std::sync::atomic::AtomicU64>,
     tokio::sync::broadcast::Sender<crate::server::SwarmEvent>,
 ) {
     let (swarm_event_tx, _) = tokio::sync::broadcast::channel(16);
     (
-        Arc::new(RwLock::new(HashMap::new())),
         Arc::new(RwLock::new(std::collections::VecDeque::new())),
         Arc::new(std::sync::atomic::AtomicU64::new(0)),
         swarm_event_tx,
@@ -373,106 +369,6 @@ fn split_corrupt_persisted_parent_is_not_hidden_by_live_fallback() {
 }
 
 #[tokio::test]
-async fn enabling_swarm_does_not_auto_elect_coordinator() {
-    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
-    let registry = Registry::new(provider.clone()).await;
-    let agent = Arc::new(Mutex::new(Agent::new(provider, registry)));
-    let (member_event_tx, _member_event_rx) = mpsc::unbounded_channel();
-    let now = Instant::now();
-    let session_id = "session_test_swarm_toggle";
-    let swarm_members = Arc::new(RwLock::new(HashMap::from([(
-        session_id.to_string(),
-        crate::server::SwarmMember {
-            session_id: session_id.to_string(),
-            event_tx: member_event_tx,
-            event_txs: HashMap::new(),
-            working_dir: Some(PathBuf::from("/tmp/kcode-passive-swarm")),
-            swarm_id: None,
-            swarm_enabled: false,
-            status: SwarmLifecycleStatus::Ready,
-            detail: None,
-            task_label: None,
-            friendly_name: Some("duck".to_string()),
-            report_back_to_session_id: None,
-            latest_completion_report: None,
-            role: "agent".to_string(),
-            joined_at: now,
-            last_status_change: now,
-            is_headless: false,
-            output_tail: None,
-            todo_progress: None,
-            todo_items: Vec::new(),
-            runtime: crate::protocol::SwarmMemberRuntime::default(),
-        },
-    )])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::<String, HashSet<String>>::new()));
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::<String, String>::new()));
-    let channel_subscriptions = Arc::new(RwLock::new(HashMap::<
-        String,
-        HashMap<String, HashSet<String>>,
-    >::new()));
-    let channel_subscriptions_by_session = Arc::new(RwLock::new(HashMap::<
-        String,
-        HashMap<String, HashSet<String>>,
-    >::new()));
-    let swarm_runs = Arc::new(RwLock::new(HashMap::new()));
-    let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
-    let mut swarm_enabled = false;
-
-    handle_set_feature(
-        42,
-        FeatureToggle::Swarm,
-        true,
-        &agent,
-        session_id,
-        &Some("duck".to_string()),
-        &mut swarm_enabled,
-        &swarm_members,
-        &swarms_by_id,
-        &swarm_coordinators,
-        &channel_subscriptions,
-        &channel_subscriptions_by_session,
-        &swarm_runs,
-        &client_event_tx,
-    )
-    .await;
-
-    assert!(swarm_enabled);
-    assert!(swarm_coordinators.read().await.is_empty());
-    assert_eq!(
-        swarm_members
-            .read()
-            .await
-            .get(session_id)
-            .and_then(|member| member.swarm_id.clone())
-            .as_deref(),
-        Some("session:session_test_swarm_toggle")
-    );
-    assert_eq!(
-        swarm_members
-            .read()
-            .await
-            .get(session_id)
-            .map(|member| member.role.as_str()),
-        Some("agent")
-    );
-
-    let events: Vec<_> = std::iter::from_fn(|| client_event_rx.try_recv().ok()).collect();
-    assert!(
-        events
-            .iter()
-            .any(|event| matches!(event, ServerEvent::Done { id: 42 }))
-    );
-    assert!(events.iter().all(|event| {
-        !matches!(
-            event,
-            ServerEvent::Notification { message, .. }
-                if message == "You are the coordinator for this swarm."
-        )
-    }));
-}
-
-#[tokio::test]
 async fn notify_session_runs_scheduled_task_immediately_for_idle_live_session() {
     let provider = Arc::new(StreamingMockProvider::default());
     provider.queue_response(vec![
@@ -511,15 +407,12 @@ async fn notify_session_runs_scheduled_task_immediately_for_idle_live_session() 
             event_tx: member_event_tx,
             event_txs: HashMap::new(),
             working_dir: None,
-            swarm_id: None,
-            swarm_enabled: false,
             status: SwarmLifecycleStatus::Ready,
             detail: None,
             task_label: None,
             friendly_name: Some("otter".to_string()),
             report_back_to_session_id: None,
             latest_completion_report: None,
-            role: "agent".to_string(),
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: false,
@@ -531,7 +424,7 @@ async fn notify_session_runs_scheduled_task_immediately_for_idle_live_session() 
     )])));
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
-    let (swarms_by_id, event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
+    let (event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
     handle_notify_session(
         77,
         session_id.clone(),
@@ -541,7 +434,6 @@ async fn notify_session_runs_scheduled_task_immediately_for_idle_live_session() 
             soft_interrupt_queues: &soft_interrupt_queues,
             client_connections: &client_connections,
             swarm_members: &swarm_members,
-            swarms_by_id: &swarms_by_id,
             event_history: &event_history,
             event_counter: &event_counter,
             swarm_event_tx: &swarm_event_tx,
@@ -629,15 +521,12 @@ async fn notify_session_queues_soft_interrupt_when_live_session_is_busy() {
             event_tx: member_event_tx,
             event_txs: HashMap::new(),
             working_dir: None,
-            swarm_id: None,
-            swarm_enabled: false,
             status: SwarmLifecycleStatus::Running,
             detail: None,
             task_label: None,
             friendly_name: Some("otter".to_string()),
             report_back_to_session_id: None,
             latest_completion_report: None,
-            role: "agent".to_string(),
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: false,
@@ -651,7 +540,7 @@ async fn notify_session_queues_soft_interrupt_when_live_session_is_busy() {
 
     let _busy_guard = agent.lock().await;
 
-    let (swarms_by_id, event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
+    let (event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
     handle_notify_session(
         88,
         session_id.clone(),
@@ -661,7 +550,6 @@ async fn notify_session_queues_soft_interrupt_when_live_session_is_busy() {
             soft_interrupt_queues: &soft_interrupt_queues,
             client_connections: &client_connections,
             swarm_members: &swarm_members,
-            swarms_by_id: &swarms_by_id,
             event_history: &event_history,
             event_counter: &event_counter,
             swarm_event_tx: &swarm_event_tx,
@@ -715,15 +603,12 @@ fn live_member(session_id: &str) -> (SwarmMember, mpsc::UnboundedReceiver<Server
         event_tx: mpsc::unbounded_channel().0,
         event_txs: HashMap::from([("client-1".to_string(), attach_tx)]),
         working_dir: None,
-        swarm_id: None,
-        swarm_enabled: false,
         status: SwarmLifecycleStatus::Ready,
         detail: None,
         task_label: None,
         friendly_name: Some("otter".to_string()),
         report_back_to_session_id: None,
         latest_completion_report: None,
-        role: "agent".to_string(),
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: false,
@@ -772,12 +657,11 @@ async fn resume_all_continues_interrupted_idle_live_session() {
     let swarm_members = Arc::new(RwLock::new(HashMap::from([(session_id.clone(), member)])));
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
-    let (swarms_by_id, event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
+    let (event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
     handle_resume_all_sessions(
         91,
         &sessions,
         &swarm_members,
-        &swarms_by_id,
         &event_history,
         &event_counter,
         &swarm_event_tx,
@@ -874,12 +758,11 @@ async fn resume_all_skips_session_with_completed_turn() {
     let swarm_members = Arc::new(RwLock::new(HashMap::from([(session_id.clone(), member)])));
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
-    let (swarms_by_id, event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
+    let (event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
     handle_resume_all_sessions(
         92,
         &sessions,
         &swarm_members,
-        &swarms_by_id,
         &event_history,
         &event_counter,
         &swarm_event_tx,

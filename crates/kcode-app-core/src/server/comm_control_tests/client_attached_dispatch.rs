@@ -16,7 +16,6 @@
 async fn assign_task_to_client_attached_session_skips_server_side_run() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let repo = scratch_repo();
-    let swarm_id = "swarm-client-attached";
     let requester = "coord";
     let worker = "worker-attached";
     let (client_tx, mut client_rx) = mpsc::unbounded_channel();
@@ -49,27 +48,15 @@ async fn assign_task_to_client_attached_session_skips_server_side_run() {
     )])));
 
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
-        (requester.to_string(), {
-            let mut member = member(requester, swarm_id, "ready");
-            member.role = "coordinator".to_string();
-            member
-        }),
+        (requester.to_string(), member(requester, requester, "ready")),
         // Owned visible worker: drivable for auto-pick, but client-attached.
         (
             worker.to_string(),
-            owned_member(worker, swarm_id, "ready", requester),
+            owned_member(worker, requester, "ready", requester),
         ),
     ])));
     set_repo(&swarm_members, repo.path()).await;
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([requester.to_string(), worker.to_string()]),
-    )])));
     let swarm_runs = seeded(repo.path(), vec![plan_item("solo", "queued", "high", &[])]);
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        requester.to_string(),
-    )])));
     let event_history = Arc::new(RwLock::new(VecDeque::new()));
     let event_counter = Arc::new(AtomicU64::new(1));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
@@ -86,9 +73,7 @@ async fn assign_task_to_client_attached_session_skips_server_side_run() {
         &soft_interrupt_queues,
         &client_connections,
         &swarm_members,
-        &swarms_by_id,
         &swarm_runs,
-        &swarm_coordinators,
         &event_history,
         &event_counter,
         &swarm_event_tx,
@@ -138,7 +123,6 @@ async fn assign_task_to_client_attached_session_skips_server_side_run() {
         SwarmLifecycleStatus::Ready,        None,
         Some("finished my turn".to_string()),
         &swarm_members,
-        &swarms_by_id,
         Some(&event_history),
         Some(&event_counter),
         Some(&swarm_event_tx),

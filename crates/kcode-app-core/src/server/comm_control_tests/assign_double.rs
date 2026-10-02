@@ -53,7 +53,6 @@ fn active_assignment_conflict_detects_any_claim_on_an_in_flight_item() {
 #[allow(clippy::type_complexity)]
 async fn double_assign_fixture(
     repo: &std::path::Path,
-    swarm_id: &str,
     requester: &str,
     holder: &str,
     intruder: &str,
@@ -61,41 +60,23 @@ async fn double_assign_fixture(
 ) -> (
     Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>,
     Arc<RwLock<HashMap<String, SwarmMember>>>,
-    Arc<RwLock<HashMap<String, HashSet<String>>>>,
     Arc<RwLock<HashMap<String, RunState>>>,
-    Arc<RwLock<HashMap<String, String>>>,
 ) {
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
-        (requester.to_string(), {
-            let mut member = member(requester, swarm_id, "ready");
-            member.role = "coordinator".to_string();
-            member
-        }),
-        (holder.to_string(), member(holder, swarm_id, "running")),
-        (intruder.to_string(), member(intruder, swarm_id, "ready")),
+        (requester.to_string(), member(requester, requester, "ready")),
+        (
+            holder.to_string(),
+            owned_member(holder, requester, "running", requester),
+        ),
+        (
+            intruder.to_string(),
+            owned_member(intruder, requester, "ready", requester),
+        ),
     ])));
     set_repo(&swarm_members, repo).await;
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([
-            requester.to_string(),
-            holder.to_string(),
-            intruder.to_string(),
-        ]),
-    )])));
     let swarm_runs = seeded(repo, vec![contested]);
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        requester.to_string(),
-    )])));
     let sessions = Arc::new(RwLock::new(HashMap::new()));
-    (
-        sessions,
-        swarm_members,
-        swarms_by_id,
-        swarm_runs,
-        swarm_coordinators,
-    )
+    (sessions, swarm_members, swarm_runs)
 }
 
 /// Live path: explicit assign_task against a claimed node is rejected and the
@@ -104,12 +85,11 @@ async fn double_assign_fixture(
 async fn assign_task_rejects_double_assignment_of_claimed_task() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let repo = scratch_repo();
-    let swarm_id = "swarm-double-assign";
     let (requester, holder, intruder) = ("coord", "snail", "penguin");
     let mut contested = plan_item("contested", "running", "high", &[]);
     contested.assigned_to = Some(holder.to_string());
-    let (sessions, swarm_members, swarms_by_id, swarm_runs, swarm_coordinators) =
-        double_assign_fixture(repo.path(), swarm_id, requester, holder, intruder, contested).await;
+    let (sessions, swarm_members, swarm_runs) =
+        double_assign_fixture(repo.path(), requester, holder, intruder, contested).await;
     sessions
         .write()
         .await
@@ -133,9 +113,7 @@ async fn assign_task_rejects_double_assignment_of_claimed_task() {
         &soft_interrupt_queues,
         &client_connections,
         &swarm_members,
-        &swarms_by_id,
         &swarm_runs,
-        &swarm_coordinators,
         &event_history,
         &event_counter,
         &swarm_event_tx,
@@ -177,12 +155,11 @@ async fn assign_task_rejects_double_assignment_of_claimed_task() {
 async fn assign_task_refuses_to_take_a_quietly_held_claim() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let repo = scratch_repo();
-    let swarm_id = "swarm-double-assign-quiet";
     let (requester, holder, intruder) = ("coord", "snail", "penguin");
     let mut stalled = plan_item("stalled", "queued", "high", &[]);
     stalled.assigned_to = Some(holder.to_string());
-    let (sessions, swarm_members, swarms_by_id, swarm_runs, swarm_coordinators) =
-        double_assign_fixture(repo.path(), swarm_id, requester, holder, intruder, stalled).await;
+    let (sessions, swarm_members, swarm_runs) =
+        double_assign_fixture(repo.path(), requester, holder, intruder, stalled).await;
     sessions
         .write()
         .await
@@ -206,9 +183,7 @@ async fn assign_task_refuses_to_take_a_quietly_held_claim() {
         &soft_interrupt_queues,
         &client_connections,
         &swarm_members,
-        &swarms_by_id,
         &swarm_runs,
-        &swarm_coordinators,
         &event_history,
         &event_counter,
         &swarm_event_tx,
@@ -249,12 +224,11 @@ async fn assign_task_refuses_to_take_a_quietly_held_claim() {
 async fn task_control_reassign_tells_displaced_worker_to_stand_down() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let repo = scratch_repo();
-    let swarm_id = "swarm-reassign-stand-down";
     let (requester, holder, intruder) = ("coord", "snail", "penguin");
     let mut contested = plan_item("contested", "running", "high", &[]);
     contested.assigned_to = Some(holder.to_string());
-    let (sessions, swarm_members, swarms_by_id, swarm_runs, swarm_coordinators) =
-        double_assign_fixture(repo.path(), swarm_id, requester, holder, intruder, contested).await;
+    let (sessions, swarm_members, swarm_runs) =
+        double_assign_fixture(repo.path(), requester, holder, intruder, contested).await;
     // Capture the displaced worker's server-event stream to observe the DM.
     let (holder_tx, mut holder_rx) = mpsc::unbounded_channel();
     swarm_members
@@ -291,9 +265,7 @@ async fn task_control_reassign_tells_displaced_worker_to_stand_down() {
         &soft_interrupt_queues,
         &client_connections,
         &swarm_members,
-        &swarms_by_id,
         &swarm_runs,
-        &swarm_coordinators,
         &event_history,
         &event_counter,
         &swarm_event_tx,
@@ -365,12 +337,11 @@ async fn task_control_reassign_tells_displaced_worker_to_stand_down() {
 async fn task_control_reassign_refuses_while_the_holder_is_live() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let repo = scratch_repo();
-    let swarm_id = "swarm-handoff-live";
     let (requester, holder, intruder) = ("coord", "live-holder", "penguin");
     let mut contested = plan_item("contested", "running", "high", &[]);
     contested.assigned_to = Some(holder.to_string());
-    let (sessions, swarm_members, swarms_by_id, swarm_runs, swarm_coordinators) =
-        double_assign_fixture(repo.path(), swarm_id, requester, holder, intruder, contested).await;
+    let (sessions, swarm_members, swarm_runs) =
+        double_assign_fixture(repo.path(), requester, holder, intruder, contested).await;
     // The holder is reporting activity, so the row is in flight.
     crate::session_metrics::record_activity(holder);
     sessions
@@ -401,9 +372,7 @@ async fn task_control_reassign_refuses_while_the_holder_is_live() {
         &soft_interrupt_queues,
         &client_connections,
         &swarm_members,
-        &swarms_by_id,
         &swarm_runs,
-        &swarm_coordinators,
         &event_history,
         &event_counter,
         &swarm_event_tx,

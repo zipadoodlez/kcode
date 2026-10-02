@@ -158,7 +158,7 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
         "Open initiatives overview / resume tracked initiatives",
     ),
     RegisteredCommand::public("/goals", "Legacy alias for /initiatives"),
-    RegisteredCommand::public("/swarm", "Toggle swarm feature"),
+    RegisteredCommand::public("/swarm", "Show swarm status"),
     RegisteredCommand::public("/auto", "Work the list on its own after this turn"),
     RegisteredCommand::public("/context", "Show the full session context snapshot"),
     RegisteredCommand::public(
@@ -886,14 +886,8 @@ impl App {
         }
 
         if prefix.starts_with("/swarm ") {
-            return self.rank_suggestions(
-                input,
-                vec![
-                    ("/swarm on".into(), "Enable swarm for this session"),
-                    ("/swarm off".into(), "Disable swarm for this session"),
-                    ("/swarm status".into(), "Show swarm feature status"),
-                ],
-            );
+            return self
+                .rank_suggestions(input, vec![("/swarm status".into(), "Show swarm status")]);
         }
 
         if prefix.starts_with("/subscription ") {

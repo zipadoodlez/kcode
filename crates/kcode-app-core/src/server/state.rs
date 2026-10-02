@@ -3,7 +3,7 @@ use crate::protocol::{ServerEvent, SwarmLifecycleStatus};
 use kcode_agent_runtime::{
     InterruptSignal, SoftInterruptMessage, SoftInterruptQueue, SoftInterruptSource,
 };
-use kcode_swarm_core::{SwarmMemberRecord, SwarmRole};
+use kcode_swarm_core::SwarmMemberRecord;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -120,16 +120,13 @@ pub type RunState = HashMap<String, RowRunState>;
 #[derive(Clone)]
 pub struct SwarmState {
     pub members: Arc<RwLock<HashMap<String, SwarmMember>>>,
-    pub swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
     pub runs: Arc<RwLock<HashMap<String, RunState>>>,
-    pub coordinators: Arc<RwLock<HashMap<String, String>>>,
 }
 
 /// First-class snapshot of a single swarm's logical runtime state.
 #[derive(Clone, Debug)]
 pub struct SwarmRuntime {
     pub swarm_id: String,
-    pub coordinator_session_id: Option<String>,
     pub member_session_ids: HashSet<String>,
     pub members: Vec<SwarmMember>,
     pub run: RunState,
@@ -139,7 +136,7 @@ impl SwarmRuntime {
     /// Whether anything about this swarm is durable. A run's own state is in memory
     /// only, so it says nothing about the files.
     pub fn has_any_state(&self) -> bool {
-        self.coordinator_session_id.is_some() || !self.members.is_empty()
+        !self.members.is_empty()
     }
 }
 
@@ -151,17 +148,10 @@ pub struct LiveSessionAttachment {
 }
 
 impl SwarmState {
-    pub fn new(
-        members: HashMap<String, SwarmMember>,
-        swarms_by_id: HashMap<String, HashSet<String>>,
-        runs: HashMap<String, RunState>,
-        coordinators: HashMap<String, String>,
-    ) -> Self {
+    pub fn new(members: HashMap<String, SwarmMember>, runs: HashMap<String, RunState>) -> Self {
         Self {
             members: Arc::new(RwLock::new(members)),
-            swarms_by_id: Arc::new(RwLock::new(swarms_by_id)),
             runs: Arc::new(RwLock::new(runs)),
-            coordinators: Arc::new(RwLock::new(coordinators)),
         }
     }
 
@@ -170,27 +160,26 @@ impl SwarmState {
             let runs = self.runs.read().await;
             runs.get(swarm_id).cloned().unwrap_or_default()
         };
-        let coordinator_session_id = {
-            let coordinators = self.coordinators.read().await;
-            coordinators.get(swarm_id).cloned()
-        };
-        let member_session_ids = {
-            let swarms = self.swarms_by_id.read().await;
-            swarms.get(swarm_id).cloned().unwrap_or_default()
-        };
-        let mut members = {
+        let members = {
             let members = self.members.read().await;
-            members
+            let mut members = members
                 .values()
-                .filter(|member| member.swarm_id.as_deref() == Some(swarm_id))
+                .filter(|member| {
+                    super::swarm::swarm_root(&members, &member.session_id).as_deref()
+                        == Some(swarm_id)
+                })
                 .cloned()
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            members.sort_by(|left, right| left.session_id.cmp(&right.session_id));
+            members
         };
-        members.sort_by(|left, right| left.session_id.cmp(&right.session_id));
+        let member_session_ids = members
+            .iter()
+            .map(|member| member.session_id.clone())
+            .collect();
 
         SwarmRuntime {
             swarm_id: swarm_id.to_string(),
-            coordinator_session_id,
             member_session_ids,
             members,
             run,
@@ -209,12 +198,8 @@ pub struct SwarmMember {
     pub event_tx: mpsc::UnboundedSender<ServerEvent>,
     /// Live client attachments for this session keyed by connection id.
     pub event_txs: HashMap<String, mpsc::UnboundedSender<ServerEvent>>,
-    /// Working directory (used to derive swarm id)
+    /// Working directory (used to resolve the run's rows)
     pub working_dir: Option<PathBuf>,
-    /// Swarm identifier (shared across worktrees)
-    pub swarm_id: Option<String>,
-    /// Whether swarm coordination is enabled for this member
-    pub swarm_enabled: bool,
     /// Lifecycle status (ready, running, completed, failed, stopped, etc.)
     pub status: SwarmLifecycleStatus,
     /// Optional detail (current task, error, etc.)
@@ -226,11 +211,11 @@ pub struct SwarmMember {
     /// Friendly name like "fox"
     pub friendly_name: Option<String>,
     /// Session that should receive direct completion report-back for this member, if any.
+    /// This edge is also the membership: a session belongs to the run rooted at the
+    /// end of its report-back chain.
     pub report_back_to_session_id: Option<String>,
     /// Latest explicit completion report submitted by this member.
     pub latest_completion_report: Option<String>,
-    /// Role: "agent" or "coordinator"
-    pub role: String,
     /// When this member joined the swarm
     pub joined_at: Instant,
     /// When status was last changed
@@ -259,15 +244,12 @@ impl SwarmMember {
         SwarmMemberRecord {
             session_id: self.session_id.clone(),
             working_dir: self.working_dir.clone(),
-            swarm_id: self.swarm_id.clone(),
-            swarm_enabled: self.swarm_enabled,
             status: self.status.clone(),
             detail: self.detail.clone(),
             task_label: self.task_label.clone(),
             friendly_name: self.friendly_name.clone(),
             report_back_to_session_id: self.report_back_to_session_id.clone(),
             latest_completion_report: self.latest_completion_report.clone(),
-            role: SwarmRole::from(self.role.clone()),
             is_headless: self.is_headless,
         }
     }
@@ -297,15 +279,12 @@ impl SwarmMember {
             event_tx,
             event_txs: HashMap::new(),
             working_dir: record.working_dir,
-            swarm_id: record.swarm_id,
-            swarm_enabled: record.swarm_enabled,
             status: record.status,
             detail: record.detail,
             task_label: record.task_label,
             friendly_name: record.friendly_name,
             report_back_to_session_id: record.report_back_to_session_id,
             latest_completion_report: record.latest_completion_report,
-            role: record.role.as_str().to_string(),
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: record.is_headless,

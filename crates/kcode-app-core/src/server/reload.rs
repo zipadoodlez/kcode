@@ -254,8 +254,8 @@ async fn persist_reload_recovery_intents(
                     "session_id": session_id,
                     "status": member.status,
                     "is_headless": member.is_headless,
-                    "swarm_id": member.swarm_id,
-                    "role": member.role,
+                    "swarm_id": super::swarm::swarm_root(&members, session_id),
+                    "role": super::swarm::swarm_role(&members, session_id),
                 })
             })
             .collect::<Vec<_>>();

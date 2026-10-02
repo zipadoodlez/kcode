@@ -836,7 +836,6 @@ fn test_remote_swarm_status_does_not_clobber_newer_session_history_on_disk() {
 
     let mut app = App::new_for_remote(Some(session_id.to_string()));
     app.remote_session_id = Some(session_id.to_string());
-    app.swarm_enabled = true;
 
     // Simulate the shared server advancing the authoritative session file after the
     // remote client already loaded its shadow copy.

@@ -49,21 +49,21 @@ impl Drop for RuntimeEnvGuard {
     }
 }
 
-fn member(session_id: &str, swarm_id: &str, status: &str) -> SwarmMember {
+/// A member of the run rooted at `root`: the root reports back to nobody, which
+/// is what makes it the run's coordinator, and every other session reports back
+/// to the root, which is the only membership edge there is.
+fn member(session_id: &str, root: &str, status: &str) -> SwarmMember {
     let (event_tx, _event_rx) = mpsc::unbounded_channel();
     SwarmMember {
         session_id: session_id.to_string(),
         event_tx,
         event_txs: HashMap::new(),
         working_dir: None,
-        swarm_id: Some(swarm_id.to_string()),
-        swarm_enabled: true,
         status: status.into(),
         detail: None,
         friendly_name: Some(session_id.to_string()),
-        report_back_to_session_id: None,
+        report_back_to_session_id: (session_id != root).then(|| root.to_string()),
         latest_completion_report: None,
-        role: "agent".to_string(),
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: false,
@@ -75,12 +75,14 @@ fn member(session_id: &str, swarm_id: &str, status: &str) -> SwarmMember {
     }
 }
 
-/// A swarm worker owned by `owner` (its spawning coordinator). Auto-assignment
-/// only targets such drivable workers, so test fixtures that model a spawned
-/// worker should use this rather than a bare `member()` (which represents a
-/// foreign/independent session and is intentionally not auto-assignable).
-fn owned_member(session_id: &str, swarm_id: &str, status: &str, owner: &str) -> SwarmMember {
-    let mut m = member(session_id, swarm_id, status);
+/// A worker in the run rooted at `root`: spawned by `owner`, so it reports back
+/// to it. Spawning is root-only, so the owner is the run's root and this edge is
+/// the membership: auto-assignment only targets such drivable workers, so test
+/// fixtures that model a spawned worker should use this rather than a bare
+/// `member(x, x, ..)` (a foreign/independent session, its own root, and
+/// intentionally not auto-assignable).
+fn owned_member(session_id: &str, root: &str, status: &str, owner: &str) -> SwarmMember {
+    let mut m = member(session_id, root, status);
     m.report_back_to_session_id = Some(owner.to_string());
     m
 }

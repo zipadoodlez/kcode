@@ -63,7 +63,6 @@ async fn handle_resume_session_allows_multiple_live_tui_attach() -> Result<()> {
         ),
     ])));
     let swarm_members = Arc::new(RwLock::new(HashMap::<String, SwarmMember>::new()));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::<String, HashSet<String>>::new()));
     let file_touch = FileTouchService::new();
     let channel_subscriptions = Arc::new(RwLock::new(HashMap::<
         String,
@@ -74,7 +73,6 @@ async fn handle_resume_session_allows_multiple_live_tui_attach() -> Result<()> {
         HashMap<String, HashSet<String>>,
     >::new()));
     let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::<String, String>::new()));
     let client_count = Arc::new(RwLock::new(2usize));
     let (writer, _peer_stream) = test_writer()?;
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel::<ServerEvent>();
@@ -105,12 +103,10 @@ async fn handle_resume_session_allows_multiple_live_tui_attach() -> Result<()> {
         &client_connections,
         &Arc::new(RwLock::new(ClientDebugState::default())),
         &swarm_members,
-        &swarms_by_id,
         &file_touch,
         &channel_subscriptions,
         &channel_subscriptions_by_session,
         &swarm_runs,
-        &swarm_coordinators,
         &client_count,
         &writer,
         "test-server",

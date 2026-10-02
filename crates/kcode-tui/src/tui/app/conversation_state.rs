@@ -424,13 +424,6 @@ impl App {
         spawns_agents.then_some("swarm_spawn")
     }
 
-    pub(super) fn set_swarm_feature_enabled(&mut self, enabled: bool) {
-        self.swarm_enabled = enabled;
-        if !enabled {
-            self.swarm.members.clear();
-        }
-    }
-
     pub(super) fn extract_thought_line(text: &str) -> Option<String> {
         let trimmed = text.trim();
         if trimmed.starts_with("Thought for ") && trimmed.ends_with('s') {

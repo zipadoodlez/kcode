@@ -349,7 +349,10 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         "/initiatives",
         "Open initiatives overview / resume an initiative",
     ));
-    lines.push(help_entry("/swarm [on|off]", "Toggle swarm features"));
+    lines.push(help_entry(
+        "/swarm [status]",
+        "Show this session's swarm status",
+    ));
 
     lines.push(Line::from(""));
     lines.push(separator());

@@ -74,7 +74,6 @@ async fn handle_resume_session_allows_same_client_instance_takeover_without_loca
     ])));
     let client_debug_state = Arc::new(RwLock::new(ClientDebugState::default()));
     let swarm_members = Arc::new(RwLock::new(HashMap::<String, SwarmMember>::new()));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::<String, HashSet<String>>::new()));
     let file_touch = FileTouchService::new();
     let channel_subscriptions = Arc::new(RwLock::new(HashMap::<
         String,
@@ -85,7 +84,6 @@ async fn handle_resume_session_allows_same_client_instance_takeover_without_loca
         HashMap<String, HashSet<String>>,
     >::new()));
     let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::<String, String>::new()));
     let client_count = Arc::new(RwLock::new(2usize));
     let (writer, _peer_stream) = test_writer()?;
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel::<ServerEvent>();
@@ -116,12 +114,10 @@ async fn handle_resume_session_allows_same_client_instance_takeover_without_loca
         &client_connections,
         &client_debug_state,
         &swarm_members,
-        &swarms_by_id,
         &file_touch,
         &channel_subscriptions,
         &channel_subscriptions_by_session,
         &swarm_runs,
-        &swarm_coordinators,
         &client_count,
         &writer,
         "test-server",

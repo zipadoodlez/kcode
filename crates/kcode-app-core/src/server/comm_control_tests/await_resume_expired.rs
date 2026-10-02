@@ -1,8 +1,10 @@
 #[tokio::test]
 async fn resume_background_awaits_finalizes_states_expired_while_down() {
     let (_env, _runtime_dir) = RuntimeEnvGuard::new();
-    let swarm_id = "swarm-resume-expired";
     let requester = "req-resume-expired";
+    // The run is the requester's: nobody spawned it, so it reports back to
+    // nobody, and every peer reports back to it.
+    let swarm_id = requester;
     let peer = "peer-1";
     let key = crate::server::await_members_state::request_key(
         requester,
@@ -38,17 +40,12 @@ async fn resume_background_awaits_finalizes_states_expired_while_down() {
         (requester.to_string(), member(requester, swarm_id, "ready")),
         (peer.to_string(), member(peer, swarm_id, "running")),
     ])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([requester.to_string(), peer.to_string()]),
-    )])));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
 
     let mut bus_rx = crate::bus::Bus::global().subscribe();
 
     crate::server::comm_await::resume_background_awaits(
         &swarm_members,
-        &swarms_by_id,
         &swarm_event_tx,
         &await_runtime,
     )

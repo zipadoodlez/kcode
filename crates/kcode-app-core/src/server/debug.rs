@@ -26,7 +26,7 @@ use crate::provider::Provider;
 use crate::transport::Stream;
 use anyhow::Result;
 use kcode_agent_runtime::InterruptSignal;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -239,10 +239,8 @@ pub(super) async fn handle_debug_client(
     provider: Arc<dyn Provider>,
     client_connections: Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
     swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
     shared_context: Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
-    swarm_coordinators: Arc<RwLock<HashMap<String, String>>>,
     file_touch: FileTouchService,
     channel_subscriptions: ChannelSubscriptions,
     channel_subscriptions_by_session: ChannelSubscriptions,
@@ -421,8 +419,6 @@ pub(super) async fn handle_debug_client(
                             &session_id,
                             &provider,
                             &swarm_members,
-                            &swarms_by_id,
-                            &swarm_coordinators,
                             &swarm_runs,
                             &event_history,
                             &event_counter,
@@ -441,10 +437,8 @@ pub(super) async fn handle_debug_client(
                             &client_debug_state,
                             &server_identity,
                             server_start_time,
-                            &swarms_by_id,
                             &shared_context,
                             &swarm_runs,
-                            &swarm_coordinators,
                             &file_touch,
                             &channel_subscriptions,
                             &channel_subscriptions_by_session,
@@ -460,10 +454,8 @@ pub(super) async fn handle_debug_client(
                             cmd,
                             &sessions,
                             &swarm_members,
-                            &swarms_by_id,
                             &shared_context,
                             &swarm_runs,
-                            &swarm_coordinators,
                             &file_touch,
                             &channel_subscriptions,
                             &server_identity,
@@ -476,10 +468,8 @@ pub(super) async fn handle_debug_client(
                             &DebugSwarmWriteContext {
                                 session_id: &session_id,
                                 swarm_members: &swarm_members,
-                                swarms_by_id: &swarms_by_id,
                                 shared_context: &shared_context,
                                 swarm_runs: &swarm_runs,
-                                swarm_coordinators: &swarm_coordinators,
                             },
                         )
                         .await?

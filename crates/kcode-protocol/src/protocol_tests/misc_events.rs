@@ -156,7 +156,6 @@ fn test_protocol_enum_roundtrips_cover_wire_names() -> Result<()> {
     }
 
     let feature_toggles = [
-        (FeatureToggle::Swarm, "swarm"),
         (FeatureToggle::Autoreview, "autoreview"),
         (FeatureToggle::Autojudge, "autojudge"),
     ];
@@ -174,7 +173,7 @@ fn test_protocol_enum_roundtrips_cover_wire_names() -> Result<()> {
 fn test_set_feature_roundtrip() -> Result<()> {
     let req = Request::SetFeature {
         id: 77,
-        feature: FeatureToggle::Swarm,
+        feature: FeatureToggle::Autoreview,
         enabled: true,
     };
     let json = serde_json::to_string(&req)?;
@@ -189,7 +188,7 @@ fn test_set_feature_roundtrip() -> Result<()> {
         return Err(anyhow!("expected SetFeature"));
     };
     assert_eq!(id, 77);
-    assert_eq!(feature, FeatureToggle::Swarm);
+    assert_eq!(feature, FeatureToggle::Autoreview);
     assert!(enabled);
     Ok(())
 }

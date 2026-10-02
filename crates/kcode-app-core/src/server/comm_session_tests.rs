@@ -8,14 +8,14 @@ use super::{
 };
 use crate::agent::Agent;
 use crate::message::{Message, ToolDefinition};
+use crate::protocol::ServerEvent;
 use crate::protocol::SwarmLifecycleStatus;
-use crate::protocol::{NotificationType, ServerEvent};
 use crate::provider::{EventStream, Provider};
 use crate::server::{RunState, SwarmEventType, SwarmMember};
 use crate::tool::Registry;
 use anyhow::Result;
 use async_trait::async_trait;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::time::Instant;
@@ -44,11 +44,7 @@ impl Provider for MockProvider {
     }
 }
 
-fn member(
-    session_id: &str,
-    swarm_id: Option<&str>,
-    role: &str,
-) -> (SwarmMember, mpsc::UnboundedReceiver<ServerEvent>) {
+fn member(session_id: &str) -> (SwarmMember, mpsc::UnboundedReceiver<ServerEvent>) {
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     (
         SwarmMember {
@@ -56,14 +52,11 @@ fn member(
             event_tx,
             event_txs: HashMap::new(),
             working_dir: None,
-            swarm_id: swarm_id.map(|id| id.to_string()),
-            swarm_enabled: true,
             status: SwarmLifecycleStatus::Ready,
             detail: None,
             friendly_name: Some(session_id.to_string()),
             report_back_to_session_id: None,
             latest_completion_report: None,
-            role: role.to_string(),
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: false,
@@ -120,7 +113,7 @@ async fn resolve_spawn_working_dir_prefers_explicit_then_spawner_agent_dir() {
 async fn resolve_spawn_working_dir_falls_back_to_member_dir() {
     let sessions = Arc::new(RwLock::new(HashMap::new()));
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let (mut req_member, _rx) = member("req", Some("swarm-1"), "coordinator");
+    let (mut req_member, _rx) = member("req");
     req_member.working_dir = Some(std::path::PathBuf::from("/tmp/member-dir"));
     swarm_members
         .write()
@@ -137,11 +130,11 @@ async fn resolve_spawn_working_dir_falls_back_to_member_dir() {
 
 #[test]
 fn stop_permission_defaults_to_sessions_spawned_by_requesting_coordinator() {
-    let (mut owned, _owned_rx) = member("worker-owned", Some("swarm-1"), "agent");
+    let (mut owned, _owned_rx) = member("worker-owned");
     owned.report_back_to_session_id = Some("coord".to_string());
-    let (mut user_created, _user_rx) = member("worker-user", Some("swarm-1"), "agent");
+    let (mut user_created, _user_rx) = member("worker-user");
     user_created.report_back_to_session_id = None;
-    let (mut other_owned, _other_rx) = member("worker-other", Some("swarm-1"), "agent");
+    let (mut other_owned, _other_rx) = member("worker-other");
     other_owned.report_back_to_session_id = Some("other-coord".to_string());
 
     assert!(swarm_stop_allowed_by_owner("coord", &owned, false));
@@ -153,12 +146,16 @@ fn stop_permission_defaults_to_sessions_spawned_by_requesting_coordinator() {
 #[tokio::test]
 async fn stop_target_resolves_unique_friendly_name_and_suffix() {
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let (mut worker, _worker_rx) = member("session_jellyfish_1234_abcd", Some("swarm-1"), "agent");
+    // The run root is a registered session; workers reach it through their
+    // report-back edge, which is the membership.
+    let (root, _root_rx) = member("swarm-1");
+    let (mut worker, _worker_rx) = member("session_jellyfish_1234_abcd");
+    worker.report_back_to_session_id = Some("swarm-1".to_string());
     worker.friendly_name = Some("jellyfish".to_string());
-    swarm_members
-        .write()
-        .await
-        .insert(worker.session_id.clone(), worker);
+    let mut members = swarm_members.write().await;
+    members.insert(root.session_id.clone(), root);
+    members.insert(worker.session_id.clone(), worker);
+    drop(members);
 
     assert_eq!(
         resolve_stop_target_session("swarm-1", "jellyfish", &swarm_members)
@@ -177,11 +174,15 @@ async fn stop_target_resolves_unique_friendly_name_and_suffix() {
 #[tokio::test]
 async fn stop_target_rejects_ambiguous_friendly_name() {
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let (mut first, _first_rx) = member("session_bear_1", Some("swarm-1"), "agent");
+    let (root, _root_rx) = member("swarm-1");
+    let (mut first, _first_rx) = member("session_bear_1");
+    first.report_back_to_session_id = Some("swarm-1".to_string());
     first.friendly_name = Some("bear".to_string());
-    let (mut second, _second_rx) = member("session_bear_2", Some("swarm-1"), "agent");
+    let (mut second, _second_rx) = member("session_bear_2");
+    second.report_back_to_session_id = Some("swarm-1".to_string());
     second.friendly_name = Some("bear".to_string());
     let mut members = swarm_members.write().await;
+    members.insert(root.session_id.clone(), root);
     members.insert(first.session_id.clone(), first);
     members.insert(second.session_id.clone(), second);
     drop(members);
@@ -195,7 +196,6 @@ async fn stop_target_rejects_ambiguous_friendly_name() {
 #[tokio::test]
 async fn register_visible_spawned_member_marks_startup_as_running() {
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
     let event_history = Arc::new(RwLock::new(VecDeque::new()));
     let event_counter = Arc::new(AtomicU64::new(0));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(8);
@@ -207,7 +207,6 @@ async fn register_visible_spawned_member_marks_startup_as_running() {
         true,
         Some("owner"),
         &swarm_members,
-        &swarms_by_id,
         &event_history,
         &event_counter,
         &swarm_event_tx,
@@ -218,20 +217,14 @@ async fn register_visible_spawned_member_marks_startup_as_running() {
     let member = members.get("child-1").expect("spawned member should exist");
     assert_eq!(member.status, SwarmLifecycleStatus::Running);
     assert_eq!(member.detail.as_deref(), Some("startup queued"));
-    assert_eq!(member.swarm_id.as_deref(), Some("swarm-1"));
+    // The report-back edge is the membership: a visible spawn reports to the
+    // session that asked for it.
+    assert_eq!(member.report_back_to_session_id.as_deref(), Some("owner"));
     assert_eq!(
         member.working_dir.as_deref(),
         Some(std::path::Path::new("/tmp/worktree"))
     );
     drop(members);
-
-    assert!(
-        swarms_by_id
-            .read()
-            .await
-            .get("swarm-1")
-            .is_some_and(|members| members.contains("child-1"))
-    );
 
     let history = event_history.read().await;
     assert!(history.iter().any(|event| {
@@ -819,9 +812,9 @@ async fn only_the_root_session_may_spawn() {
     // The root's effort no longer keys this: a member's deeper work is rows the
     // run dispatches, not a worker starting a worker.
     let mut members = HashMap::new();
-    let (root, _root_rx) = member("root", Some("swarm-1"), "coordinator");
+    let (root, _root_rx) = member("root");
     members.insert("root".to_string(), root);
-    let (mut child, _child_rx) = member("child", Some("swarm-1"), "agent");
+    let (mut child, _child_rx) = member("child");
     child.report_back_to_session_id = Some("root".to_string());
     members.insert("child".to_string(), child);
 
@@ -831,58 +824,27 @@ async fn only_the_root_session_may_spawn() {
 }
 
 #[tokio::test]
-async fn spawn_bootstraps_coordinator_when_swarm_has_none() {
+async fn spawn_resolves_the_requesting_session_as_run_root() {
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        "swarm-1".to_string(),
-        HashSet::from(["req".to_string()]),
-    )])));
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::new()));
     let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
-    let (req_member, _req_rx) = member("req", Some("swarm-1"), "agent");
+    let (req_member, _req_rx) = member("req");
     swarm_members
         .write()
         .await
         .insert("req".to_string(), req_member);
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
-    let swarm_id = ensure_spawn_coordinator_swarm(
-        1,
-        "req",
-        &client_event_tx,
-        &swarm_members,
-        &swarms_by_id,
-        &swarm_coordinators,
-        &swarm_runs,
-        32,
-    )
-    .await;
+    let run_id =
+        ensure_spawn_coordinator_swarm(1, "req", &client_event_tx, &swarm_members, &swarm_runs, 32)
+            .await;
 
-    assert_eq!(swarm_id.as_deref(), Some("swarm-1"));
-    assert_eq!(
-        swarm_coordinators
-            .read()
-            .await
-            .get("swarm-1")
-            .map(String::as_str),
-        Some("req")
+    // A session that reports back to nobody roots its own run; there is no
+    // coordinator slot to claim and no bootstrap message to send.
+    assert_eq!(run_id.as_deref(), Some("req"));
+    assert!(
+        client_event_rx.try_recv().is_err(),
+        "resolving an existing run must not emit anything to the requester"
     );
-    assert_eq!(
-        swarm_members
-            .read()
-            .await
-            .get("req")
-            .map(|member| member.role.as_str()),
-        Some("coordinator")
-    );
-    assert!(matches!(
-        client_event_rx.recv().await,
-        Some(ServerEvent::Notification {
-            notification_type: NotificationType::Message { .. },
-            message,
-            ..
-        }) if message == "You are the coordinator for this swarm."
-    ));
 }
 
 #[tokio::test]
@@ -891,37 +853,24 @@ async fn spawn_rejected_when_member_limit_reached() {
 
     // Fill the swarm to the member cap; the next spawn must be refused.
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
-        "swarm-1".to_string(),
-        "root".to_string(),
-    )])));
     let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     {
         let mut members = swarm_members.write().await;
-        let (root, _rx) = member("root", Some("swarm-1"), "coordinator");
+        let (root, _rx) = member("root");
         members.insert("root".to_string(), root);
         // Add filler members so the swarm holds exactly MAX_SWARM_MEMBERS total.
         for idx in 1..MAX_SWARM_MEMBERS {
             let id = format!("agent-{idx}");
-            let (mut m, _rx) = member(&id, Some("swarm-1"), "agent");
+            let (mut m, _rx) = member(&id);
             m.report_back_to_session_id = Some("root".to_string());
             members.insert(id, m);
         }
     }
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
-    let refused = ensure_spawn_coordinator_swarm(
-        7,
-        "root",
-        &client_event_tx,
-        &swarm_members,
-        &swarms_by_id,
-        &swarm_coordinators,
-        &swarm_runs,
-        0,
-    )
-    .await;
+    let refused =
+        ensure_spawn_coordinator_swarm(7, "root", &client_event_tx, &swarm_members, &swarm_runs, 0)
+            .await;
     assert!(refused.is_none());
     assert!(matches!(
         client_event_rx.recv().await,
@@ -935,19 +884,14 @@ async fn terminal_members_do_not_consume_spawn_capacity() {
     use crate::server::swarm::MAX_SWARM_MEMBERS;
 
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
-        "swarm-1".to_string(),
-        "root".to_string(),
-    )])));
     let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     {
         let mut members = swarm_members.write().await;
-        let (root, _rx) = member("root", Some("swarm-1"), "coordinator");
+        let (root, _rx) = member("root");
         members.insert("root".to_string(), root);
         for idx in 0..MAX_SWARM_MEMBERS {
             let id = format!("historical-{idx}");
-            let (mut historical, _rx) = member(&id, Some("swarm-1"), "agent");
+            let (mut historical, _rx) = member(&id);
             historical.status = if idx % 2 == 0 {
                 SwarmLifecycleStatus::Completed
             } else {
@@ -965,49 +909,34 @@ async fn terminal_members_do_not_consume_spawn_capacity() {
         "root",
         &client_event_tx,
         &swarm_members,
-        &swarms_by_id,
-        &swarm_coordinators,
         &swarm_runs,
         32,
     )
     .await;
 
-    assert_eq!(allowed.as_deref(), Some("swarm-1"));
+    assert_eq!(allowed.as_deref(), Some("root"));
 }
 
 #[tokio::test]
 async fn spawn_rejected_at_configured_live_agent_limit() {
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
-        "swarm-1".to_string(),
-        "root".to_string(),
-    )])));
     let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     {
         let mut members = swarm_members.write().await;
-        let (root, _rx) = member("root", Some("swarm-1"), "coordinator");
+        let (root, _rx) = member("root");
         members.insert("root".to_string(), root);
         for idx in 0..2 {
             let id = format!("agent-{idx}");
-            let (mut worker, _rx) = member(&id, Some("swarm-1"), "agent");
+            let (mut worker, _rx) = member(&id);
             worker.report_back_to_session_id = Some("root".to_string());
             members.insert(id, worker);
         }
     }
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
-    let refused = ensure_spawn_coordinator_swarm(
-        7,
-        "root",
-        &client_event_tx,
-        &swarm_members,
-        &swarms_by_id,
-        &swarm_coordinators,
-        &swarm_runs,
-        2,
-    )
-    .await;
+    let refused =
+        ensure_spawn_coordinator_swarm(7, "root", &client_event_tx, &swarm_members, &swarm_runs, 2)
+            .await;
 
     assert!(refused.is_none());
     assert!(matches!(

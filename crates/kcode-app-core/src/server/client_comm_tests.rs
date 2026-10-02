@@ -63,7 +63,6 @@ async fn comm_message_default_does_not_queue_soft_interrupt_for_connected_sessio
     let (target_event_tx, mut target_event_rx) = mpsc::unbounded_channel();
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
-    let swarm_id = "swarm-test".to_string();
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
         (
             sender_id.clone(),
@@ -72,14 +71,11 @@ async fn comm_message_default_does_not_queue_soft_interrupt_for_connected_sessio
                 event_tx: sender_event_tx,
                 event_txs: HashMap::new(),
                 working_dir: None,
-                swarm_id: Some(swarm_id.clone()),
-                swarm_enabled: true,
                 status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("falcon".to_string()),
                 report_back_to_session_id: None,
                 latest_completion_report: None,
-                role: "coordinator".to_string(),
                 joined_at: Instant::now(),
                 last_status_change: Instant::now(),
                 is_headless: false,
@@ -97,14 +93,11 @@ async fn comm_message_default_does_not_queue_soft_interrupt_for_connected_sessio
                 event_tx: target_event_tx,
                 event_txs: HashMap::new(),
                 working_dir: None,
-                swarm_id: Some(swarm_id.clone()),
-                swarm_enabled: true,
                 status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("bear".to_string()),
-                report_back_to_session_id: None,
+                report_back_to_session_id: Some(sender_id.clone()),
                 latest_completion_report: None,
-                role: "agent".to_string(),
                 joined_at: Instant::now(),
                 last_status_change: Instant::now(),
                 is_headless: false,
@@ -116,12 +109,8 @@ async fn comm_message_default_does_not_queue_soft_interrupt_for_connected_sessio
             },
         ),
     ])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.clone(),
-        HashSet::from([sender_id.clone(), target_id.clone()]),
-    )])));
     let channel_subscriptions = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.clone(),
+        sender_id.clone(),
         HashMap::from([(
             "religion-debate".to_string(),
             HashSet::from([target_id.clone()]),
@@ -160,7 +149,6 @@ async fn comm_message_default_does_not_queue_soft_interrupt_for_connected_sessio
         &sessions,
         &soft_interrupt_queues,
         &swarm_members,
-        &swarms_by_id,
         &channel_subscriptions,
         &event_history,
         &event_counter,
@@ -227,7 +215,6 @@ async fn comm_message_with_wake_queues_soft_interrupt_for_busy_connected_session
     let (target_event_tx, mut target_event_rx) = mpsc::unbounded_channel();
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
-    let swarm_id = "swarm-test".to_string();
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
         (
             sender_id.clone(),
@@ -236,14 +223,11 @@ async fn comm_message_with_wake_queues_soft_interrupt_for_busy_connected_session
                 event_tx: sender_event_tx,
                 event_txs: HashMap::new(),
                 working_dir: None,
-                swarm_id: Some(swarm_id.clone()),
-                swarm_enabled: true,
                 status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("falcon".to_string()),
                 report_back_to_session_id: None,
                 latest_completion_report: None,
-                role: "coordinator".to_string(),
                 joined_at: Instant::now(),
                 last_status_change: Instant::now(),
                 is_headless: false,
@@ -261,14 +245,11 @@ async fn comm_message_with_wake_queues_soft_interrupt_for_busy_connected_session
                 event_tx: target_event_tx,
                 event_txs: HashMap::new(),
                 working_dir: None,
-                swarm_id: Some(swarm_id.clone()),
-                swarm_enabled: true,
                 status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("bear".to_string()),
-                report_back_to_session_id: None,
+                report_back_to_session_id: Some(sender_id.clone()),
                 latest_completion_report: None,
-                role: "agent".to_string(),
                 joined_at: Instant::now(),
                 last_status_change: Instant::now(),
                 is_headless: false,
@@ -280,10 +261,6 @@ async fn comm_message_with_wake_queues_soft_interrupt_for_busy_connected_session
             },
         ),
     ])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.clone(),
-        HashSet::from([sender_id.clone(), target_id.clone()]),
-    )])));
     let channel_subscriptions = Arc::new(RwLock::new(HashMap::new()));
     let event_history: Arc<RwLock<std::collections::VecDeque<SwarmEvent>>> =
         Arc::new(RwLock::new(std::collections::VecDeque::new()));
@@ -322,7 +299,6 @@ async fn comm_message_with_wake_queues_soft_interrupt_for_busy_connected_session
             &sessions,
             &soft_interrupt_queues,
             &swarm_members,
-            &swarms_by_id,
             &channel_subscriptions,
             &event_history,
             &event_counter,
@@ -375,7 +351,6 @@ async fn comm_list_includes_member_status_and_detail() {
 
     let requester_id = requester.lock().await.session_id().to_string();
     let peer_id = peer.lock().await.session_id().to_string();
-    let swarm_id = "swarm-test".to_string();
 
     let (requester_event_tx, _requester_event_rx) = mpsc::unbounded_channel();
     let (peer_event_tx, _peer_event_rx) = mpsc::unbounded_channel();
@@ -389,14 +364,11 @@ async fn comm_list_includes_member_status_and_detail() {
                 event_tx: requester_event_tx,
                 event_txs: HashMap::new(),
                 working_dir: None,
-                swarm_id: Some(swarm_id.clone()),
-                swarm_enabled: true,
                 status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("falcon".to_string()),
                 report_back_to_session_id: None,
                 latest_completion_report: None,
-                role: "coordinator".to_string(),
                 joined_at: Instant::now(),
                 last_status_change: Instant::now(),
                 is_headless: false,
@@ -414,14 +386,11 @@ async fn comm_list_includes_member_status_and_detail() {
                 event_tx: peer_event_tx,
                 event_txs: HashMap::new(),
                 working_dir: None,
-                swarm_id: Some(swarm_id.clone()),
-                swarm_enabled: true,
                 status: SwarmLifecycleStatus::Running,
                 detail: Some("working on tests".to_string()),
                 friendly_name: Some("bear".to_string()),
-                report_back_to_session_id: None,
+                report_back_to_session_id: Some(requester_id.clone()),
                 latest_completion_report: None,
-                role: "agent".to_string(),
                 joined_at: Instant::now(),
                 last_status_change: Instant::now(),
                 is_headless: false,
@@ -433,10 +402,6 @@ async fn comm_list_includes_member_status_and_detail() {
             },
         ),
     ])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id,
-        HashSet::from([requester_id.clone(), peer_id.clone()]),
-    )])));
     let file_touch = crate::server::FileTouchService::new();
     let sessions = Arc::new(RwLock::new(HashMap::from([
         (requester_id.clone(), requester.clone()),
@@ -449,7 +414,6 @@ async fn comm_list_includes_member_status_and_detail() {
         requester_id,
         &client_event_tx,
         &swarm_members,
-        &swarms_by_id,
         &file_touch,
         &sessions,
         &client_connections,
@@ -477,7 +441,6 @@ async fn comm_message_accepts_friendly_name_dm_target() {
 
     let sender_id = sender.lock().await.session_id().to_string();
     let target_id = target.lock().await.session_id().to_string();
-    let swarm_id = "swarm-test".to_string();
 
     let sessions = Arc::new(RwLock::new(HashMap::from([
         (sender_id.clone(), sender.clone()),
@@ -497,14 +460,11 @@ async fn comm_message_accepts_friendly_name_dm_target() {
                 event_tx: sender_event_tx,
                 event_txs: HashMap::new(),
                 working_dir: None,
-                swarm_id: Some(swarm_id.clone()),
-                swarm_enabled: true,
                 status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("falcon".to_string()),
                 report_back_to_session_id: None,
                 latest_completion_report: None,
-                role: "coordinator".to_string(),
                 joined_at: Instant::now(),
                 last_status_change: Instant::now(),
                 is_headless: false,
@@ -522,14 +482,11 @@ async fn comm_message_accepts_friendly_name_dm_target() {
                 event_tx: target_event_tx,
                 event_txs: HashMap::new(),
                 working_dir: None,
-                swarm_id: Some(swarm_id.clone()),
-                swarm_enabled: true,
                 status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("bear".to_string()),
-                report_back_to_session_id: None,
+                report_back_to_session_id: Some(sender_id.clone()),
                 latest_completion_report: None,
-                role: "agent".to_string(),
                 joined_at: Instant::now(),
                 last_status_change: Instant::now(),
                 is_headless: false,
@@ -541,10 +498,6 @@ async fn comm_message_accepts_friendly_name_dm_target() {
             },
         ),
     ])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.clone(),
-        HashSet::from([sender_id.clone(), target_id.clone()]),
-    )])));
     let channel_subscriptions = Arc::new(RwLock::new(HashMap::new()));
     let event_history: Arc<RwLock<std::collections::VecDeque<SwarmEvent>>> =
         Arc::new(RwLock::new(std::collections::VecDeque::new()));
@@ -565,7 +518,6 @@ async fn comm_message_accepts_friendly_name_dm_target() {
         &sessions,
         &soft_interrupt_queues,
         &swarm_members,
-        &swarms_by_id,
         &channel_subscriptions,
         &event_history,
         &event_counter,
@@ -610,7 +562,6 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
     let sender_id = sender.lock().await.session_id().to_string();
     let target_one_id = target_one.lock().await.session_id().to_string();
     let target_two_id = target_two.lock().await.session_id().to_string();
-    let swarm_id = "swarm-test".to_string();
 
     let sessions = Arc::new(RwLock::new(HashMap::from([
         (sender_id.clone(), sender.clone()),
@@ -632,14 +583,11 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
                 event_tx: sender_event_tx,
                 event_txs: HashMap::new(),
                 working_dir: None,
-                swarm_id: Some(swarm_id.clone()),
-                swarm_enabled: true,
                 status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("falcon".to_string()),
                 report_back_to_session_id: None,
                 latest_completion_report: None,
-                role: "coordinator".to_string(),
                 joined_at: Instant::now(),
                 last_status_change: Instant::now(),
                 is_headless: false,
@@ -657,14 +605,11 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
                 event_tx: target_one_event_tx,
                 event_txs: HashMap::new(),
                 working_dir: None,
-                swarm_id: Some(swarm_id.clone()),
-                swarm_enabled: true,
                 status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("bear".to_string()),
-                report_back_to_session_id: None,
+                report_back_to_session_id: Some(sender_id.clone()),
                 latest_completion_report: None,
-                role: "agent".to_string(),
                 joined_at: Instant::now(),
                 last_status_change: Instant::now(),
                 is_headless: false,
@@ -682,14 +627,11 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
                 event_tx: target_two_event_tx,
                 event_txs: HashMap::new(),
                 working_dir: None,
-                swarm_id: Some(swarm_id.clone()),
-                swarm_enabled: true,
                 status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some("bear".to_string()),
-                report_back_to_session_id: None,
+                report_back_to_session_id: Some(sender_id.clone()),
                 latest_completion_report: None,
-                role: "agent".to_string(),
                 joined_at: Instant::now(),
                 last_status_change: Instant::now(),
                 is_headless: false,
@@ -701,14 +643,6 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
             },
         ),
     ])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.clone(),
-        HashSet::from([
-            sender_id.clone(),
-            target_one_id.clone(),
-            target_two_id.clone(),
-        ]),
-    )])));
     let channel_subscriptions = Arc::new(RwLock::new(HashMap::new()));
     let event_history: Arc<RwLock<std::collections::VecDeque<SwarmEvent>>> =
         Arc::new(RwLock::new(std::collections::VecDeque::new()));
@@ -729,7 +663,6 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
         &sessions,
         &soft_interrupt_queues,
         &swarm_members,
-        &swarms_by_id,
         &channel_subscriptions,
         &event_history,
         &event_counter,
@@ -758,9 +691,7 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
 async fn comm_broadcast_reaches_only_senders_spawned_subtree() {
     fn member(
         session_id: &str,
-        role: &str,
         report_back_to: Option<&str>,
-        swarm_id: &str,
     ) -> (SwarmMember, mpsc::UnboundedReceiver<ServerEvent>) {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
         (
@@ -769,14 +700,11 @@ async fn comm_broadcast_reaches_only_senders_spawned_subtree() {
                 event_tx,
                 event_txs: HashMap::new(),
                 working_dir: None,
-                swarm_id: Some(swarm_id.to_string()),
-                swarm_enabled: true,
                 status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 friendly_name: Some(session_id.to_string()),
                 report_back_to_session_id: report_back_to.map(str::to_string),
                 latest_completion_report: None,
-                role: role.to_string(),
                 joined_at: Instant::now(),
                 last_status_change: Instant::now(),
                 is_headless: true,
@@ -790,15 +718,14 @@ async fn comm_broadcast_reaches_only_senders_spawned_subtree() {
         )
     }
 
-    let swarm_id = "swarm-subtree";
-    // Tree: coord (coordinator, root)
-    //       sender (root peer) -> child -> grandchild
-    //       outsider (root peer, unrelated)
-    let (coord, mut coord_rx) = member("coord", "coordinator", None, swarm_id);
-    let (sender, _sender_rx) = member("sender", "agent", None, swarm_id);
-    let (child, mut child_rx) = member("child", "agent", Some("sender"), swarm_id);
-    let (grandchild, mut grandchild_rx) = member("grandchild", "agent", Some("child"), swarm_id);
-    let (outsider, mut outsider_rx) = member("outsider", "agent", None, swarm_id);
+    // The spawn edge is the membership: coord roots the run and every other
+    // member reports back up the chain that ends at coord.
+    // Tree: coord -> sender -> child -> grandchild; coord -> outsider.
+    let (coord, mut coord_rx) = member("coord", None);
+    let (sender, _sender_rx) = member("sender", Some("coord"));
+    let (child, mut child_rx) = member("child", Some("sender"));
+    let (grandchild, mut grandchild_rx) = member("grandchild", Some("child"));
+    let (outsider, mut outsider_rx) = member("outsider", Some("coord"));
 
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
         ("coord".to_string(), coord),
@@ -807,16 +734,6 @@ async fn comm_broadcast_reaches_only_senders_spawned_subtree() {
         ("grandchild".to_string(), grandchild),
         ("outsider".to_string(), outsider),
     ])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([
-            "coord".to_string(),
-            "sender".to_string(),
-            "child".to_string(),
-            "grandchild".to_string(),
-            "outsider".to_string(),
-        ]),
-    )])));
     let sessions = Arc::new(RwLock::new(HashMap::new()));
     let soft_interrupt_queues: SessionInterruptQueues = Arc::new(RwLock::new(HashMap::new()));
     let channel_subscriptions = Arc::new(RwLock::new(HashMap::new()));
@@ -840,7 +757,6 @@ async fn comm_broadcast_reaches_only_senders_spawned_subtree() {
         &sessions,
         &soft_interrupt_queues,
         &swarm_members,
-        &swarms_by_id,
         &channel_subscriptions,
         &event_history,
         &event_counter,
@@ -863,7 +779,7 @@ async fn comm_broadcast_reaches_only_senders_spawned_subtree() {
         grandchild_rx.try_recv(),
         Ok(ServerEvent::Notification { .. })
     ));
-    // Unrelated root peers and the coordinator do not.
+    // Siblings and the root do not.
     assert!(outsider_rx.try_recv().is_err());
     assert!(coord_rx.try_recv().is_err());
 
@@ -881,7 +797,6 @@ async fn comm_broadcast_reaches_only_senders_spawned_subtree() {
         &sessions,
         &soft_interrupt_queues,
         &swarm_members,
-        &swarms_by_id,
         &channel_subscriptions,
         &event_history,
         &event_counter,

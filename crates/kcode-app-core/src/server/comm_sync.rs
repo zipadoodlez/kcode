@@ -1,3 +1,4 @@
+use super::swarm::{swarm_is_root, swarm_role, swarm_root};
 use super::{
     ClientConnectionInfo, FileTouchService, RunState, SessionAgents, SwarmEvent, SwarmEventType,
     SwarmMember, SwarmState, broadcast_swarm_plan, persist_swarm_state_for, record_swarm_event,
@@ -6,16 +7,14 @@ use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{
     AgentStatusSnapshot, NotificationType, PlanGraphStatus, ServerEvent, SessionActivitySnapshot,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast, mpsc};
 
 pub(super) struct CommResyncPlanContext<'a> {
     pub(super) client_event_tx: &'a mpsc::UnboundedSender<ServerEvent>,
     pub(super) swarm_members: &'a Arc<RwLock<HashMap<String, SwarmMember>>>,
-    pub(super) swarms_by_id: &'a Arc<RwLock<HashMap<String, HashSet<String>>>>,
     pub(super) swarm_runs: &'a Arc<RwLock<HashMap<String, RunState>>>,
-    pub(super) swarm_coordinators: &'a Arc<RwLock<HashMap<String, String>>>,
     pub(super) event_history: &'a Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     pub(super) event_counter: &'a Arc<std::sync::atomic::AtomicU64>,
     pub(super) swarm_event_tx: &'a broadcast::Sender<SwarmEvent>,
@@ -166,12 +165,8 @@ async fn ensure_same_swarm_access(
     let (req_swarm, target_swarm) = {
         let members = swarm_members.read().await;
         (
-            members
-                .get(req_session_id)
-                .and_then(|member| member.swarm_id.clone()),
-            members
-                .get(target_session)
-                .and_then(|member| member.swarm_id.clone()),
+            swarm_root(&members, req_session_id),
+            swarm_root(&members, target_session),
         )
     };
 
@@ -200,10 +195,7 @@ async fn can_read_full_context(
     }
 
     let members = swarm_members.read().await;
-    members
-        .get(req_session_id)
-        .map(|member| member.role == "coordinator")
-        .unwrap_or(false)
+    swarm_is_root(&members, req_session_id)
 }
 
 pub(super) async fn handle_comm_summary(
@@ -323,10 +315,10 @@ pub(super) async fn handle_comm_status(
         AgentStatusSnapshot {
             session_id: member.session_id.clone(),
             friendly_name: member.friendly_name.clone(),
-            swarm_id: member.swarm_id.clone(),
+            swarm_id: swarm_root(&members, &target_session),
             status: Some(member.status.clone()),
             detail: member.detail.clone(),
-            role: Some(member.role.clone()),
+            role: Some(swarm_role(&members, &target_session).to_string()),
             is_headless: Some(member.is_headless),
             live_attachments: Some(member.event_txs.len()),
             status_age_secs: Some(member.last_status_change.elapsed().as_secs()),
@@ -409,9 +401,7 @@ pub(super) async fn handle_comm_plan_status(
 ) {
     let swarm_id = {
         let members = swarm_members.read().await;
-        members
-            .get(&req_session_id)
-            .and_then(|member| member.swarm_id.clone())
+        swarm_root(&members, &req_session_id)
     };
 
     let Some(swarm_id) = swarm_id else {
@@ -458,9 +448,7 @@ pub(super) async fn handle_comm_resync_plan(
 ) {
     let swarm_id = {
         let members = ctx.swarm_members.read().await;
-        members
-            .get(&req_session_id)
-            .and_then(|member| member.swarm_id.clone())
+        swarm_root(&members, &req_session_id)
     };
 
     if let Some(swarm_id) = swarm_id {
@@ -472,9 +460,7 @@ pub(super) async fn handle_comm_resync_plan(
         if item_count > 0 {
             let swarm_state = SwarmState {
                 members: Arc::clone(ctx.swarm_members),
-                swarms_by_id: Arc::clone(ctx.swarms_by_id),
                 runs: Arc::clone(ctx.swarm_runs),
-                coordinators: Arc::clone(ctx.swarm_coordinators),
             };
             persist_swarm_state_for(&swarm_id, &swarm_state).await;
             if let Some(member) = ctx.swarm_members.read().await.get(&req_session_id) {
@@ -494,7 +480,6 @@ pub(super) async fn handle_comm_resync_plan(
                 Some("resync".to_string()),
                 ctx.swarm_runs,
                 ctx.swarm_members,
-                ctx.swarms_by_id,
             )
             .await;
             record_swarm_event(

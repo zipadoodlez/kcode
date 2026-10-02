@@ -6,14 +6,14 @@ conventions. The current project's destination, model and open steps are
 
 ## 1. Shared shapes
 
-- [ ] **Condense swarm/comm** (`plans/work-list.md` step 0.4g): the state
-  gets one owner instead of being rebuilt at 25 `SwarmState { .. }` sites
-  (re-measured 2026-10-02, after g1-g3 removed the plan those literals carried), and
-  membership is derived from the file rather than stored, so the swarm id and the
-  coordinator map go.
-  Design and measurements: `plans/work-list.md`; engine: `internals/swarm.md`. Do
-  it before splitting `handle_client`, whose request context is designed to hold
-  that state.
+- [ ] **Condense swarm/comm** (`plans/work-list.md` step 0.4g). Landed with g4: the
+  swarm has one derived identity (`swarm_root`) and `SwarmState` is down to `members`
+  + `runs`, so the stored swarm id, the coordinator map and the member projection are
+  gone. What is left is the half E2/H2 owns: the `SwarmState` handle pair is still
+  threaded to ~40 functions and rebuilt as a literal at each request arm, so folding
+  it into the request context remains undone, and it is why this waits on
+  `handle_client` rather than the other way round.
+  Design and measurements: `plans/work-list.md`; engine: `internals/swarm.md`.
 
 ## 2. God modules
 
@@ -101,9 +101,8 @@ Staged; each lands whole.
     `client_disconnect_cleanup` helpers.
   - **28 args** under `#[expect(clippy::too_many_arguments)]`, with one production
     caller (`server/runtime.rs:261`) plus tests, so a context struct is mechanical.
-    Ten args are swarm state: four already modelled by `SwarmState`
-    (`swarm_members`/`swarms_by_id`/`swarm_runs`/`swarm_coordinators` -> `members`,
-    `swarms_by_id`, `runs`, `coordinators`) and six loose Arcs beside it
+    Six args are swarm state: one `SwarmState` pair
+    (`swarm_members`/`swarm_runs` -> `members`, `runs`) and five loose Arcs beside it
     (`shared_context`, `event_history`, `event_counter`, `swarm_event_tx`,
     `await_members_runtime`, `swarm_mutation_runtime`). Every `Comm*` arm re-wraps
     them into a `SwarmState { .. }` literal: that literal is §1's duplication, and
@@ -115,7 +114,7 @@ Staged; each lands whole.
     `processing_session_id`), subscribe stage (`client_subscribed`,
     `provisional_session`, `pending_request`), connection flags
     (`continue_on_disconnect`, `model_usage_updates_enabled`, `supports_pdf_panels`,
-    `client_selfdev`, `swarm_enabled`, `last_available_models_snapshot`,
+    `client_selfdev`, `last_available_models_snapshot`,
     `current_client_instance_id`).
   - Order; H1-H3 are pure moves and can share a change. H1 **`ClientContext`**:
     one struct for the 28 args (Arcs cloned once at the caller), deleting the
@@ -399,6 +398,27 @@ changes are paid for in test churn.
   run's anchor. What is lost: two working directories can no longer declare one shared
   swarm by environment variable; sharing a swarm becomes one anchor row two sessions
   hold.
+  Refined when g4 landed: membership landed as the **spawn edge**
+  (`report_back_to_session_id`) rather than as row-holding. A worker holds no row
+  between `spawn` and its first assignment, so a row-derived answer has a hole exactly
+  there, and answering it per query is a file read per membership question, which is the
+  item cache g3 deleted under another name. Rows under the anchor stay what they already
+  were for the run: its scope (`swarm_rows`). So a session is in a run when its
+  report-back chain ends at that run's root, and that root is the coordinator.
+- [x] **(decision)** The spawn edge is the membership, and g4 landed (2026-10-02). The
+  swarm has one derivation (`swarm_root`) and `SwarmState` is `members` + `runs`. What is
+  lost, all named here: a session's `swarm_id`/`swarm_enabled`/`role` fields, the
+  coordinator map, `swarms_by_id`, the `KCODE_SWARM_ID`/`KCODE_SWARM_ENABLED` env vars
+  and the per-session toggle; and with them three behaviours. (1) A root that leaves no
+  longer elects a coordinator: its workers become roots of their own runs, and their
+  completion reports have nowhere to go, where before the elected coordinator received
+  them. (2) `/swarm on|off` is gone (`/swarm [status]` reports the subtree), because a
+  session is a worker when it holds and works a row, not a state to be in. (3)
+  `assign_role` is gone from the tool, the wire and both dispatch arms, since the role
+  is derived. Two surfaces moved with it: the spawn hook env `KCODE_SPAWN_SWARM_ID`
+  (`docs/user/hooks.md`), and the debug ops `swarm:id:` and `swarm:clear_coordinator`.
+  Two sessions in one working directory no longer message each other unless one spawned
+  the other.
 - [x] **(decision)** A claim is a lock for a run and not for the user's session, so the
   verb family collapses (0.4g, 2026-10-02). A session with a client attached takes any
   row by writing it, and the displaced holder finds out on its next write; a run refuses

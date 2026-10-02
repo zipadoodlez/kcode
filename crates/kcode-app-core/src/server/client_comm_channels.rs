@@ -77,7 +77,7 @@ pub(super) async fn handle_comm_channel_members(
                     files_touched: Vec::new(),
                     status: Some(member.status.clone()),
                     detail: member.detail.clone(),
-                    role: Some(member.role.clone()),
+                    role: Some(super::swarm::swarm_role(&members, sid).to_string()),
                     is_headless: Some(member.is_headless),
                     report_back_to_session_id: member.report_back_to_session_id.clone(),
                     latest_completion_report: member.latest_completion_report.clone(),

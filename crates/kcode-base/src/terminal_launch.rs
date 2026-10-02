@@ -99,7 +99,7 @@ mod tests {
         std::fs::write(
             &hook_path,
             format!(
-                "#!/bin/sh\nprintf '%s|%s|%s|%s' \"$KCODE_SPAWN_KIND\" \"$KCODE_SPAWN_SESSION_ID\" \"$KCODE_SPAWN_SWARM_ID\" \"$*\" > {}\n",
+                "#!/bin/sh\nprintf '%s|%s|%s' \"$KCODE_SPAWN_KIND\" \"$KCODE_SPAWN_SESSION_ID\" \"$*\" > {}\n",
                 sh_escape(&record.to_string_lossy())
             ),
         )
@@ -113,7 +113,7 @@ mod tests {
         )
         .kind("swarm-agent")
         .session_id("ses_hooked")
-        .spawn_env("KCODE_SPAWN_SWARM_ID", "swarm-7");
+        .spawn_env("KCODE_SPAWN_COORDINATOR_SESSION_ID", "ses_parent");
 
         spawn_via_hook(&hook_path.to_string_lossy(), &command, temp.path())
             .expect("hook should spawn");

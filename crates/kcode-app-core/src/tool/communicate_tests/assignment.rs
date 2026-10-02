@@ -87,17 +87,6 @@ async fn communicate_assign_task_can_spawn_fallback_agent() {
     let tool = CommunicateTool::new();
     let ctx = test_ctx(&watcher_session, &repo_dir);
 
-    tool.execute(
-        json!({
-            "action": "assign_role",
-            "target_session": watcher_session,
-            "role": "coordinator"
-        }),
-        ctx.clone(),
-    )
-    .await
-    .expect("self-promotion to coordinator should succeed");
-
     write_rows(&repo_dir, &watcher_session, &[row("task-a", "implement", &[])]);
     seed_graph(&tool, &ctx).await;
 
@@ -189,17 +178,6 @@ async fn communicate_assign_next_assigns_next_runnable_task() {
     let tool = CommunicateTool::new();
     let ctx = test_ctx(&watcher_session, &repo_dir);
 
-    tool.execute(
-        json!({
-            "action": "assign_role",
-            "target_session": watcher_session,
-            "role": "coordinator"
-        }),
-        ctx.clone(),
-    )
-    .await
-    .expect("self-promotion to coordinator should succeed");
-
     let spawn_output = tool
         .execute(
             json!({
@@ -279,17 +257,6 @@ async fn communicate_assign_next_can_prefer_fresh_spawn_server_side() {
     let watcher_session = watcher.session_id().await.expect("watcher session id");
     let tool = CommunicateTool::new();
     let ctx = test_ctx(&watcher_session, &repo_dir);
-
-    tool.execute(
-        json!({
-            "action": "assign_role",
-            "target_session": watcher_session,
-            "role": "coordinator"
-        }),
-        ctx.clone(),
-    )
-    .await
-    .expect("self-promotion to coordinator should succeed");
 
     let existing_output = tool
         .execute(
@@ -377,17 +344,6 @@ async fn communicate_assign_next_can_spawn_if_needed_server_side() {
     let tool = CommunicateTool::new();
     let ctx = test_ctx(&watcher_session, &repo_dir);
 
-    tool.execute(
-        json!({
-            "action": "assign_role",
-            "target_session": watcher_session,
-            "role": "coordinator"
-        }),
-        ctx.clone(),
-    )
-    .await
-    .expect("self-promotion to coordinator should succeed");
-
     write_rows(&repo_dir, &watcher_session, &[row("task-d", "implement", &[])]);
     seed_graph(&tool, &ctx).await;
 
@@ -456,17 +412,6 @@ async fn communicate_fill_slots_tops_up_to_concurrency_limit() {
     let tool = CommunicateTool::new();
     let ctx = test_ctx(&watcher_session, &repo_dir);
 
-    tool.execute(
-        json!({
-            "action": "assign_role",
-            "target_session": watcher_session,
-            "role": "coordinator"
-        }),
-        ctx.clone(),
-    )
-    .await
-    .expect("self-promotion to coordinator should succeed");
-
     write_rows(
         &repo_dir,
         &watcher_session,
@@ -534,17 +479,6 @@ async fn communicate_assign_task_can_prefer_fresh_spawn_over_reuse() {
     let watcher_session = watcher.session_id().await.expect("watcher session id");
     let tool = CommunicateTool::new();
     let ctx = test_ctx(&watcher_session, &repo_dir);
-
-    tool.execute(
-        json!({
-            "action": "assign_role",
-            "target_session": watcher_session,
-            "role": "coordinator"
-        }),
-        ctx.clone(),
-    )
-    .await
-    .expect("self-promotion to coordinator should succeed");
 
     let existing_output = tool
         .execute(

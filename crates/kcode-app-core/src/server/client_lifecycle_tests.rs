@@ -300,7 +300,6 @@ async fn cancel_without_local_task_still_signals_session_control() {
     );
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel::<ServerEvent>();
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
     let event_history = Arc::new(RwLock::new(std::collections::VecDeque::new()));
     let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let (swarm_event_tx, _) = broadcast::channel(8);
@@ -320,7 +319,6 @@ async fn cancel_without_local_task_still_signals_session_control() {
         &client_event_tx,
         &SwarmStatusRefs {
             members: &swarm_members,
-            swarms_by_id: &swarms_by_id,
             event_history: &event_history,
             event_counter: &event_counter,
             event_tx: &swarm_event_tx,
@@ -366,7 +364,6 @@ async fn deferred_cancel_reset_does_not_erase_newer_cancel() {
     );
     let (client_event_tx, _client_event_rx) = mpsc::unbounded_channel::<ServerEvent>();
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
     let event_history = Arc::new(RwLock::new(std::collections::VecDeque::new()));
     let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let (swarm_event_tx, _) = broadcast::channel(8);
@@ -387,7 +384,6 @@ async fn deferred_cancel_reset_does_not_erase_newer_cancel() {
             &client_event_tx,
             &SwarmStatusRefs {
                 members: &swarm_members,
-                swarms_by_id: &swarms_by_id,
                 event_history: &event_history,
                 event_counter: &event_counter,
                 event_tx: &swarm_event_tx,
@@ -540,7 +536,6 @@ fn cancel_aborts_detached_streaming_turn_with_stale_stop_signal() -> anyhow::Res
         );
         let (client_event_tx, _client_event_rx) = mpsc::unbounded_channel::<ServerEvent>();
         let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-        let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
         let event_history = Arc::new(RwLock::new(std::collections::VecDeque::new()));
         let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let (swarm_event_tx, _) = broadcast::channel(8);
@@ -560,7 +555,6 @@ fn cancel_aborts_detached_streaming_turn_with_stale_stop_signal() -> anyhow::Res
             &client_event_tx,
             &SwarmStatusRefs {
                 members: &swarm_members,
-                swarms_by_id: &swarms_by_id,
                 event_history: &event_history,
                 event_counter: &event_counter,
                 event_tx: &swarm_event_tx,
@@ -622,7 +616,6 @@ fn idle_cancel_does_not_arm_the_signal_for_the_next_turn() -> anyhow::Result<()>
         );
         let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel::<ServerEvent>();
         let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-        let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
         let event_history = Arc::new(RwLock::new(std::collections::VecDeque::new()));
         let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let (swarm_event_tx, _) = broadcast::channel(8);
@@ -647,7 +640,6 @@ fn idle_cancel_does_not_arm_the_signal_for_the_next_turn() -> anyhow::Result<()>
             &client_event_tx,
             &SwarmStatusRefs {
                 members: &swarm_members,
-                swarms_by_id: &swarms_by_id,
                 event_history: &event_history,
                 event_counter: &event_counter,
                 event_tx: &swarm_event_tx,
@@ -936,7 +928,6 @@ fn reload_starting_rejects_new_turn_without_spawning_processing_task() {
         let mut processing_session_id = None;
         let mut processing_task = None;
         let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-        let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
         let event_history = Arc::new(RwLock::new(std::collections::VecDeque::new()));
         let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let (swarm_event_tx, _) = broadcast::channel(8);
@@ -962,7 +953,6 @@ fn reload_starting_rejects_new_turn_without_spawning_processing_task() {
             Vec::new(),
             &SwarmStatusRefs {
                 members: &swarm_members,
-                swarms_by_id: &swarms_by_id,
                 event_history: &event_history,
                 event_counter: &event_counter,
                 event_tx: &swarm_event_tx,
@@ -1014,15 +1004,12 @@ async fn client_initiated_turn_fans_out_stream_and_terminal_events_to_live_attac
             event_tx: origin_tx.clone(),
             event_txs: HashMap::from([("origin".to_string(), origin_tx.clone())]),
             working_dir: None,
-            swarm_id: None,
-            swarm_enabled: false,
             status: SwarmLifecycleStatus::Ready,
             detail: None,
             task_label: None,
             friendly_name: None,
             report_back_to_session_id: None,
             latest_completion_report: None,
-            role: "agent".to_string(),
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: false,
@@ -1032,7 +1019,6 @@ async fn client_initiated_turn_fans_out_stream_and_terminal_events_to_live_attac
             runtime: crate::protocol::SwarmMemberRuntime::default(),
         },
     )])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
     let event_history = Arc::new(RwLock::new(std::collections::VecDeque::new()));
     let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let (swarm_event_tx, _) = broadcast::channel(8);
@@ -1063,7 +1049,6 @@ async fn client_initiated_turn_fans_out_stream_and_terminal_events_to_live_attac
         Vec::new(),
         &SwarmStatusRefs {
             members: &swarm_members,
-            swarms_by_id: &swarms_by_id,
             event_history: &event_history,
             event_counter: &event_counter,
             event_tx: &swarm_event_tx,
@@ -1132,7 +1117,6 @@ async fn complete_turn(
     sessions: &SessionAgents,
     members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
 ) {
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
     let event_history = Arc::new(RwLock::new(std::collections::VecDeque::new()));
     let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let (swarm_event_tx, _) = broadcast::channel(8);
@@ -1144,7 +1128,6 @@ async fn complete_turn(
         sessions,
         &SwarmStatusRefs {
             members,
-            swarms_by_id: &swarms_by_id,
             event_history: &event_history,
             event_counter: &event_counter,
             event_tx: &swarm_event_tx,
@@ -1311,7 +1294,6 @@ fn accepted_reload_recovery_continuation_marks_intent_delivered() -> anyhow::Res
         let mut processing_session_id = None;
         let mut processing_task = None;
         let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-        let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
         let event_history = Arc::new(RwLock::new(std::collections::VecDeque::new()));
         let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let (swarm_event_tx, _) = broadcast::channel(8);
@@ -1337,7 +1319,6 @@ fn accepted_reload_recovery_continuation_marks_intent_delivered() -> anyhow::Res
             Vec::new(),
             &SwarmStatusRefs {
                 members: &swarm_members,
-                swarms_by_id: &swarms_by_id,
                 event_history: &event_history,
                 event_counter: &event_counter,
                 event_tx: &swarm_event_tx,
@@ -1389,7 +1370,6 @@ fn reload_starting_rejects_new_turns_for_multiple_sessions() {
         });
         let registry = Registry::new(Arc::clone(&provider)).await;
         let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-        let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
         let event_history = Arc::new(RwLock::new(std::collections::VecDeque::new()));
         let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let (swarm_event_tx, _) = broadcast::channel(8);
@@ -1437,7 +1417,6 @@ fn reload_starting_rejects_new_turns_for_multiple_sessions() {
                 Vec::new(),
                 &SwarmStatusRefs {
                     members: &swarm_members,
-                    swarms_by_id: &swarms_by_id,
                     event_history: &event_history,
                     event_counter: &event_counter,
                     event_tx: &swarm_event_tx,
@@ -1493,10 +1472,8 @@ async fn lightweight_comm_request_skips_full_session_initialization() {
     let client_count = Arc::new(RwLock::new(0usize));
     let client_connections = Arc::new(RwLock::new(HashMap::new()));
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
     let shared_context = Arc::new(RwLock::new(HashMap::new()));
     let swarm_runs = Arc::new(RwLock::new(HashMap::new()));
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::new()));
     let file_touch = FileTouchService::new();
     let channel_subscriptions = Arc::new(RwLock::new(HashMap::new()));
     let channel_subscriptions_by_session = Arc::new(RwLock::new(HashMap::new()));
@@ -1521,10 +1498,8 @@ async fn lightweight_comm_request_skips_full_session_initialization() {
         client_count,
         Arc::clone(&client_connections),
         swarm_members,
-        swarms_by_id,
         shared_context,
         swarm_runs,
-        swarm_coordinators,
         file_touch,
         channel_subscriptions,
         channel_subscriptions_by_session,

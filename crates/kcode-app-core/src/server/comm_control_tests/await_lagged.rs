@@ -1,8 +1,10 @@
 #[tokio::test]
 async fn await_members_watcher_survives_broadcast_lag() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
-    let swarm_id = "swarm-lag";
     let requester = "req";
+    // The run is the requester's: nobody spawned it, so it reports back to
+    // nobody, and every peer reports back to it.
+    let swarm_id = requester;
     let peer = "peer-1";
     let await_runtime = AwaitMembersRuntime::default();
 
@@ -11,10 +13,6 @@ async fn await_members_watcher_survives_broadcast_lag() {
         (requester.to_string(), member(requester, swarm_id, "ready")),
         (peer.to_string(), member(peer, swarm_id, "running")),
     ])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([requester.to_string(), peer.to_string()]),
-    )])));
     // Tiny capacity so a burst of unconsumed events deterministically lags the
     // watcher's broadcast receiver.
     let (swarm_event_tx, swarm_event_rx) = broadcast::channel(1);
@@ -33,7 +31,6 @@ async fn await_members_watcher_survives_broadcast_lag() {
         CommAwaitMembersContext {
             client_event_tx: &client_tx,
             swarm_members: &swarm_members,
-            swarms_by_id: &swarms_by_id,
             swarm_event_tx: &swarm_event_tx,
             await_members_runtime: &await_runtime,
         },

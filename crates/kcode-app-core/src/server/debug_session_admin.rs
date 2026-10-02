@@ -6,7 +6,7 @@ use super::{
 use crate::protocol::SwarmLifecycleStatus;
 use crate::provider::Provider;
 use anyhow::Result;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
 
@@ -56,8 +56,6 @@ pub(super) async fn maybe_handle_session_admin_command(
     session_id: &Arc<RwLock<String>>,
     provider: &Arc<dyn Provider>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
@@ -76,8 +74,6 @@ pub(super) async fn maybe_handle_session_admin_command(
             provider,
             &create_command,
             swarm_members,
-            swarms_by_id,
-            swarm_coordinators,
             swarm_runs,
             soft_interrupt_queues,
             selfdev_requested,
@@ -90,15 +86,22 @@ pub(super) async fn maybe_handle_session_admin_command(
         )
         .await?;
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(&created)
-            && let Some(swarm_id) = value.get("swarm_id").and_then(|value| value.as_str())
+            && let Some(created_session_id) =
+                value.get("session_id").and_then(|value| value.as_str())
         {
-            let swarm_state = SwarmState {
-                members: Arc::clone(swarm_members),
-                swarms_by_id: Arc::clone(swarms_by_id),
-                runs: Arc::clone(swarm_runs),
-                coordinators: Arc::clone(swarm_coordinators),
+            // Which run the new session joined is what its report-back chain
+            // roots at, not a field on the member.
+            let swarm_id = {
+                let members = swarm_members.read().await;
+                super::swarm::swarm_root(&members, created_session_id)
             };
-            persist_swarm_state_for(swarm_id, &swarm_state).await;
+            if let Some(swarm_id) = swarm_id {
+                let swarm_state = SwarmState {
+                    members: Arc::clone(swarm_members),
+                    runs: Arc::clone(swarm_runs),
+                };
+                persist_swarm_state_for(&swarm_id, &swarm_state).await;
+            }
         }
         return Ok(Some(created));
     }
@@ -123,9 +126,12 @@ pub(super) async fn maybe_handle_session_admin_command(
 
         let (swarm_id, friendly_name) = {
             let mut members = swarm_members.write().await;
+            // The run is read before removal: afterwards the member is gone from
+            // the map and has no root to report.
+            let swarm_id = super::swarm::swarm_root(&members, target_id);
             members
                 .remove(target_id)
-                .map(|member| (member.swarm_id, member.friendly_name))
+                .map(|member| (swarm_id, member.friendly_name))
                 .unwrap_or((None, None))
         };
 
@@ -156,45 +162,16 @@ pub(super) async fn maybe_handle_session_admin_command(
             )
             .await;
 
-            {
-                let mut swarms = swarms_by_id.write().await;
-                if let Some(swarm) = swarms.get_mut(swarm_id) {
-                    swarm.remove(target_id);
-                    if swarm.is_empty() {
-                        swarms.remove(swarm_id);
-                    }
-                }
-            }
-
-            let was_coordinator = {
-                let coordinators = swarm_coordinators.read().await;
-                coordinators
-                    .get(swarm_id)
-                    .map(|coordinator| coordinator == target_id)
-                    .unwrap_or(false)
-            };
-            if was_coordinator {
-                let new_coordinator = {
-                    let swarms = swarms_by_id.read().await;
-                    swarms
-                        .get(swarm_id)
-                        .and_then(|members| members.iter().min().cloned())
-                };
-                let mut coordinators = swarm_coordinators.write().await;
-                coordinators.remove(swarm_id);
-                if let Some(new_id) = new_coordinator {
-                    coordinators.insert(swarm_id.clone(), new_id);
-                }
-            }
+            // Membership is derived from the report-back chains, so removing the
+            // member is the whole edit: a child that reported back to it becomes
+            // a root of its own run, and a run left empty simply has no members.
             let swarm_state = SwarmState {
                 members: Arc::clone(swarm_members),
-                swarms_by_id: Arc::clone(swarms_by_id),
                 runs: Arc::clone(swarm_runs),
-                coordinators: Arc::clone(swarm_coordinators),
             };
             persist_swarm_state_for(swarm_id, &swarm_state).await;
 
-            broadcast_swarm_status(swarm_id, swarm_members, swarms_by_id).await;
+            broadcast_swarm_status(swarm_id, swarm_members).await;
         }
 
         return Ok(Some(format!("Session '{}' destroyed", target_id)));

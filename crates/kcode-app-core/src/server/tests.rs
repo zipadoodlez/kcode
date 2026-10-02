@@ -253,14 +253,12 @@ async fn test_agent(provider: Arc<dyn Provider>) -> Arc<Mutex<Agent>> {
 
 #[allow(clippy::type_complexity)]
 fn empty_swarm_status_state() -> (
-    Arc<RwLock<HashMap<String, std::collections::HashSet<String>>>>,
     Arc<RwLock<std::collections::VecDeque<super::SwarmEvent>>>,
     Arc<std::sync::atomic::AtomicU64>,
     broadcast::Sender<super::SwarmEvent>,
 ) {
     let (swarm_event_tx, _) = broadcast::channel(16);
     (
-        Arc::new(RwLock::new(HashMap::new())),
         Arc::new(RwLock::new(std::collections::VecDeque::new())),
         Arc::new(std::sync::atomic::AtomicU64::new(0)),
         swarm_event_tx,
@@ -276,14 +274,11 @@ pub(super) fn attached_swarm_member(
         event_tx,
         event_txs: HashMap::new(),
         working_dir: None,
-        swarm_id: None,
-        swarm_enabled: false,
         status: SwarmLifecycleStatus::Ready,
         detail: None,
         friendly_name: Some("otter".to_string()),
         report_back_to_session_id: None,
         latest_completion_report: None,
-        role: "agent".to_string(),
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: false,
@@ -295,26 +290,18 @@ pub(super) fn attached_swarm_member(
     }
 }
 
-fn persisted_headless_member(
-    session_id: &str,
-    swarm_id: &str,
-    status: &str,
-    detail: &str,
-) -> SwarmMember {
+fn persisted_headless_member(session_id: &str, status: &str, detail: &str) -> SwarmMember {
     let (event_tx, _event_rx) = mpsc::unbounded_channel();
     SwarmMember {
         session_id: session_id.to_string(),
         event_tx,
         event_txs: HashMap::new(),
         working_dir: None,
-        swarm_id: Some(swarm_id.to_string()),
-        swarm_enabled: true,
         status: status.into(),
         detail: Some(detail.to_string()),
         friendly_name: Some(session_id.to_string()),
         report_back_to_session_id: None,
         latest_completion_report: None,
-        role: "agent".to_string(),
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: true,
@@ -361,13 +348,12 @@ async fn background_task_wake_runs_live_session_immediately_when_idle() {
         wake: true,
     };
 
-    let (swarms_by_id, event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
+    let (event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
     dispatch_background_task_completion(
         &task,
         &sessions,
         &soft_interrupt_queues,
         &swarm_members,
-        &swarms_by_id,
         &event_history,
         &event_counter,
         &swarm_event_tx,
@@ -461,14 +447,13 @@ async fn external_background_task_wake_emits_request_without_starting_turn() {
         notify: false,
         wake: true,
     };
-    let (swarms_by_id, event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
+    let (event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
 
     dispatch_background_task_completion(
         &task,
         &sessions,
         &soft_interrupt_queues,
         &swarm_members,
-        &swarms_by_id,
         &event_history,
         &event_counter,
         &swarm_event_tx,
@@ -553,10 +538,9 @@ async fn wake_turn_holds_reservation_until_terminal_status_is_published() {
     let (member_event_tx, mut member_event_rx) = mpsc::unbounded_channel();
     let member = attached_swarm_member(&session_id, member_event_tx);
     let swarm_members = Arc::new(RwLock::new(HashMap::from([(session_id.clone(), member)])));
-    let (swarms_by_id, event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
+    let (event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
     let ctx = super::live_turn::LiveTurnSwarmContext::new(
         &swarm_members,
-        &swarms_by_id,
         &event_history,
         &event_counter,
         &swarm_event_tx,
@@ -623,17 +607,9 @@ async fn wake_turn_tracks_member_status_and_emits_terminal_done() {
         agent.clone(),
     )])));
     let (member_event_tx, mut member_event_rx) = mpsc::unbounded_channel();
-    let mut member = attached_swarm_member(&session_id, member_event_tx);
-    member.swarm_id = Some("test-swarm".to_string());
+    let member = attached_swarm_member(&session_id, member_event_tx);
     let swarm_members = Arc::new(RwLock::new(HashMap::from([(session_id.clone(), member)])));
-    let (swarms_by_id, event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
-    {
-        let mut swarms = swarms_by_id.write().await;
-        swarms.insert(
-            "test-swarm".to_string(),
-            std::collections::HashSet::from([session_id.clone()]),
-        );
-    }
+    let (event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
 
     let started = super::live_turn::run_live_turn_if_idle(
         &session_id,
@@ -646,7 +622,6 @@ async fn wake_turn_tracks_member_status_and_emits_terminal_done() {
         &sessions,
         super::live_turn::LiveTurnSwarmContext::new(
             &swarm_members,
-            &swarms_by_id,
             &event_history,
             &event_counter,
             &swarm_event_tx,
@@ -828,10 +803,9 @@ async fn live_run(rows: &[RowSpec<'_>], responses: usize) -> LiveRun {
         member_event_tx,
     )
     .await;
-    let (swarms_by_id, event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
+    let (event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
     let ctx = super::live_turn::LiveTurnSwarmContext::new(
         &swarm_members,
-        &swarms_by_id,
         &event_history,
         &event_counter,
         &swarm_event_tx,
@@ -957,13 +931,12 @@ async fn background_task_notify_without_wake_does_not_queue_soft_interrupt() {
         wake: false,
     };
 
-    let (swarms_by_id, event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
+    let (event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
     dispatch_background_task_completion(
         &task,
         &sessions,
         &soft_interrupt_queues,
         &swarm_members,
-        &swarms_by_id,
         &event_history,
         &event_counter,
         &swarm_event_tx,
@@ -1095,10 +1068,9 @@ async fn startup_recovery_resumes_interrupted_headless_sessions_after_reload() -
     let swarm_id = "swarm-reload-recovery";
     persist_swarm_state_snapshot(
         swarm_id,
-        None,
         &[
-            persisted_headless_member(&initiator.id, swarm_id, "running", "selfdev reload"),
-            persisted_headless_member(&peer.id, swarm_id, "running", "bash tool"),
+            persisted_headless_member(&initiator.id, "running", "selfdev reload"),
+            persisted_headless_member(&peer.id, "running", "bash tool"),
         ],
     );
 
@@ -1226,10 +1198,8 @@ async fn startup_recovery_preserves_headed_session_reload_context_for_later_reco
     let swarm_id = "swarm-reload-headed-mixed";
     persist_swarm_state_snapshot(
         swarm_id,
-        None,
         &[persisted_headless_member(
             &headless.id,
-            swarm_id,
             "running",
             "bash tool",
         )],
@@ -1298,10 +1268,8 @@ async fn startup_ready_signal_is_not_blocked_by_headless_recovery_delay() -> Res
     let swarm_id = "swarm-ready-before-recovery";
     persist_swarm_state_snapshot(
         swarm_id,
-        None,
         &[persisted_headless_member(
             &headless.id,
-            swarm_id,
             "running",
             "delay startup recovery",
         )],

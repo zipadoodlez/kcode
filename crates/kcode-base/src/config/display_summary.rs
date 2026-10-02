@@ -55,7 +55,6 @@ impl Config {
 
 **Features:**
 - Check updates: {}
-- Swarm: {}
 - Auto-poke: {}
 - Message timestamps: {}
 - KV cache miss notices: {}
@@ -152,7 +151,6 @@ impl Config {
                 format!("{} slot(s)", self.display.palette.len())
             },
             self.features.check_updates,
-            self.features.swarm,
             self.features.auto_continue,
             self.features.message_timestamps,
             self.features.kv_cache_miss_notices,

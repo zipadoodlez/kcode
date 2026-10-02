@@ -53,15 +53,12 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
             event_tx: placeholder_event_tx,
             event_txs: HashMap::new(),
             working_dir: None,
-            swarm_id: None,
-            swarm_enabled: false,
             status: SwarmLifecycleStatus::Ready,
             detail: None,
             task_label: None,
             friendly_name: Some("restore".to_string()),
             report_back_to_session_id: None,
             latest_completion_report: None,
-            role: "agent".to_string(),
             joined_at: now,
             last_status_change: now,
             is_headless: false,
@@ -71,7 +68,6 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
             runtime: crate::protocol::SwarmMemberRuntime::default(),
         },
     )])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::<String, HashSet<String>>::new()));
     let file_touch = FileTouchService::new();
     let channel_subscriptions = Arc::new(RwLock::new(HashMap::<
         String,
@@ -82,7 +78,6 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
         HashMap<String, HashSet<String>>,
     >::new()));
     let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::<String, String>::new()));
     let client_count = Arc::new(RwLock::new(1usize));
     let (writer, _peer_stream) = test_writer()?;
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel::<ServerEvent>();
@@ -105,12 +100,10 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
         let client_connections = Arc::clone(&client_connections);
         let client_debug_state = Arc::clone(&client_debug_state);
         let swarm_members = Arc::clone(&swarm_members);
-        let swarms_by_id = Arc::clone(&swarms_by_id);
         let file_touch = file_touch.clone();
         let channel_subscriptions = Arc::clone(&channel_subscriptions);
         let channel_subscriptions_by_session = Arc::clone(&channel_subscriptions_by_session);
         let swarm_runs = Arc::clone(&swarm_runs);
-        let swarm_coordinators = Arc::clone(&swarm_coordinators);
         let client_count = Arc::clone(&client_count);
         let writer = Arc::clone(&writer);
         let client_event_tx = client_event_tx.clone();
@@ -138,12 +131,10 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
                 &client_connections,
                 &client_debug_state,
                 &swarm_members,
-                &swarms_by_id,
                 &file_touch,
                 &channel_subscriptions,
                 &channel_subscriptions_by_session,
                 &swarm_runs,
-                &swarm_coordinators,
                 &client_count,
                 &writer,
                 "test-server",

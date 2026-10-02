@@ -16,7 +16,7 @@ use kcode_plan::MAX_PLAN_ITEMS;
 use kcode_plan::artifact::HandoffArtifact;
 use kcode_plan::bridge::to_task_graph;
 use kcode_plan::dag::{self, NodeSpec, NodeStatus, TaskGraph};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::{RwLock, broadcast};
@@ -35,78 +35,25 @@ async fn swarm_id_for(
     session_id: &str,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
 ) -> Option<String> {
-    swarm_members
-        .read()
-        .await
-        .get(session_id)
-        .and_then(|member| member.swarm_id.clone())
+    let members = swarm_members.read().await;
+    super::swarm::swarm_root(&members, session_id)
 }
 
 /// Ensure the seeding session can actually drive the graph it just created.
 ///
-/// Seeding sessions are frequently solo `agent`s with no coordinator elected,
-/// yet `assign_task` / `assign_next` / `run_plan` are coordinator-gated. Without
-/// this, a fresh agent can seed a task graph but then cannot dispatch any of it.
-/// We elect the seeder as coordinator when the swarm has no *live*
-/// coordinator, mirroring the self-promote rule used by `assign_role`. A live,
-/// non-headless coordinator is left untouched so a real coordinator is never
-/// displaced by a worker that happens to seed.
+/// Seeding sessions are frequently solo sessions that root their own run, yet
+/// `assign_task` / `assign_next` / `run_plan` are run-gated. Without this, a
+/// fresh session can seed a task graph but then cannot dispatch any of it.
 ///
-/// Returns true when the seeder was (or already is) the coordinator afterwards.
+/// Nothing is elected and nothing is written: a session that reports back to
+/// nobody roots its own run (`swarm_root`), so it is the run's coordinator for
+/// exactly as long as that is true. Returns whether it does.
 async fn ensure_seeder_can_coordinate(
-    swarm_id: &str,
     seeder_session_id: &str,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
 ) -> bool {
-    // 1. Read the current coordinator id without holding the lock across the
-    //    liveness check (matches the non-nested lock pattern used elsewhere).
-    let current = swarm_coordinators.read().await.get(swarm_id).cloned();
-    match &current {
-        Some(coord) if coord == seeder_session_id => return true,
-        _ => {}
-    }
-
-    // 2. Decide whether the existing coordinator is still a live driver.
-    let coordinator_is_live = match &current {
-        Some(coord) => {
-            let members = swarm_members.read().await;
-            members
-                .get(coord)
-                .map(|member| !member.event_tx.is_closed() && !member.is_headless)
-                .unwrap_or(false)
-        }
-        None => false,
-    };
-    if coordinator_is_live {
-        return false;
-    }
-
-    // 3. Promote the seeder; demote any prior (stale) coordinator member. Re-check
-    //    under the write lock that the coordinator is still the one we inspected
-    //    (compare-and-swap): two concurrent seeders race here, and the loser must
-    //    not silently displace the winner it never liveness-checked.
-    let prior = {
-        let mut coordinators = swarm_coordinators.write().await;
-        if coordinators.get(swarm_id) != current.as_ref() {
-            // Someone else changed the coordinator between our read and write.
-            return coordinators.get(swarm_id).map(String::as_str) == Some(seeder_session_id);
-        }
-        coordinators.insert(swarm_id.to_string(), seeder_session_id.to_string())
-    };
-    {
-        let mut members = swarm_members.write().await;
-        if let Some(member) = members.get_mut(seeder_session_id) {
-            member.role = "coordinator".to_string();
-        }
-        if let Some(prior) = prior
-            && prior != seeder_session_id
-            && let Some(member) = members.get_mut(&prior)
-        {
-            member.role = "agent".to_string();
-        }
-    }
-    true
+    let members = swarm_members.read().await;
+    super::swarm::swarm_root(&members, seeder_session_id).as_deref() == Some(seeder_session_id)
 }
 
 /// Auto-claim a queued node for the participant that is trying to mutate it.
@@ -158,9 +105,7 @@ async fn finalize(
     item_count: usize,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -173,9 +118,7 @@ async fn finalize(
 
     let swarm_state = SwarmState {
         members: Arc::clone(swarm_members),
-        swarms_by_id: Arc::clone(swarms_by_id),
         runs: Arc::clone(swarm_runs),
-        coordinators: Arc::clone(swarm_coordinators),
     };
     persist_swarm_state_for(swarm_id, &swarm_state).await;
     broadcast_swarm_plan(
@@ -183,7 +126,6 @@ async fn finalize(
         Some(reason.to_string()),
         swarm_runs,
         swarm_members,
-        swarms_by_id,
     )
     .await;
     record_swarm_event(
@@ -212,9 +154,7 @@ pub(super) async fn handle_comm_seed_graph(
     req_session_id: String,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -231,15 +171,10 @@ pub(super) async fn handle_comm_seed_graph(
         .get(&req_session_id)
         .and_then(|member| member.working_dir.clone());
 
-    // A solo seeder needs the coordinator slot to dispatch the graph it seeds via
-    // the coordinator-gated assign/run_plan paths.
-    ensure_seeder_can_coordinate(
-        &swarm_id,
-        &req_session_id,
-        swarm_members,
-        swarm_coordinators,
-    )
-    .await;
+    // A solo seeder roots its own run, which is what lets it dispatch the graph it
+    // seeds through the run-gated assign/run_plan paths. Nothing is elected or
+    // stored, so this only asks.
+    ensure_seeder_can_coordinate(&req_session_id, swarm_members).await;
 
     // The seed is the rows this session holds (the run's own scope), not a list the
     // caller types: the row's id is the node's id, so a row never becomes two nodes
@@ -301,9 +236,7 @@ pub(super) async fn handle_comm_seed_graph(
                 count,
                 client_event_tx,
                 swarm_members,
-                swarms_by_id,
                 swarm_runs,
-                swarm_coordinators,
                 event_history,
                 event_counter,
                 swarm_event_tx,
@@ -326,9 +259,7 @@ pub(super) async fn handle_comm_expand_node(
     children: Vec<kcode_plan::TaskItem>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -397,9 +328,7 @@ pub(super) async fn handle_comm_expand_node(
                 count,
                 client_event_tx,
                 swarm_members,
-                swarms_by_id,
                 swarm_runs,
-                swarm_coordinators,
                 event_history,
                 event_counter,
                 swarm_event_tx,
@@ -422,9 +351,7 @@ pub(super) async fn handle_comm_complete_node(
     artifact_json: String,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -510,9 +437,7 @@ pub(super) async fn handle_comm_complete_node(
                 1,
                 client_event_tx,
                 swarm_members,
-                swarms_by_id,
                 swarm_runs,
-                swarm_coordinators,
                 event_history,
                 event_counter,
                 swarm_event_tx,

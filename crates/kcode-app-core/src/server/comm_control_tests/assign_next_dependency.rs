@@ -2,7 +2,6 @@
 async fn assign_next_prefers_worker_with_dependency_context() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let repo = scratch_repo();
-    let swarm_id = "swarm-context-score";
     let requester = "coord";
     let context_worker = "worker-context";
     let other_worker = "worker-other";
@@ -11,36 +10,20 @@ async fn assign_next_prefers_worker_with_dependency_context() {
     let soft_interrupt_queues = Arc::new(RwLock::new(HashMap::new()));
     let client_connections = Arc::new(RwLock::new(HashMap::new()));
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
-        (requester.to_string(), {
-            let mut member = member(requester, swarm_id, "ready");
-            member.role = "coordinator".to_string();
-            member
-        }),
+        (requester.to_string(), member(requester, requester, "ready")),
         (
             context_worker.to_string(),
-            owned_member(context_worker, swarm_id, "ready", requester),
+            owned_member(context_worker, requester, "ready", requester),
         ),
         (
             other_worker.to_string(),
-            owned_member(other_worker, swarm_id, "ready", requester),
+            owned_member(other_worker, requester, "ready", requester),
         ),
     ])));
     set_repo(&swarm_members, repo.path()).await;
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([
-            requester.to_string(),
-            context_worker.to_string(),
-            other_worker.to_string(),
-        ]),
-    )])));
     let mut dependency = plan_item("dep", "completed", "high", &[]);
     dependency.assigned_to = Some(context_worker.to_string());
     let swarm_runs = seeded(repo.path(), vec![dependency, plan_item("next", "queued", "high", &["dep"])]);
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        requester.to_string(),
-    )])));
     let event_history = Arc::new(RwLock::new(VecDeque::new()));
     let event_counter = Arc::new(AtomicU64::new(1));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
@@ -66,9 +49,7 @@ async fn assign_next_prefers_worker_with_dependency_context() {
         &soft_interrupt_queues,
         &client_connections,
         &swarm_members,
-        &swarms_by_id,
         &swarm_runs,
-        &swarm_coordinators,
         &event_history,
         &event_counter,
         &swarm_event_tx,

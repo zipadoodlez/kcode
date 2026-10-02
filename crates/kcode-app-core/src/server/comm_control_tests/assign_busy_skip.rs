@@ -106,11 +106,7 @@ async fn assign_task_reuses_an_idle_worker_that_still_holds_a_row() {
     let soft_interrupt_queues = Arc::new(RwLock::new(HashMap::new()));
     let client_connections = Arc::new(RwLock::new(HashMap::new()));
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
-        (requester.to_string(), {
-            let mut member = member(requester, swarm_id, "ready");
-            member.role = "coordinator".to_string();
-            member
-        }),
+        (requester.to_string(), member(requester, swarm_id, "ready")),
         // "ready" lifecycle status but still holding an unfinished assignment:
         // the state the load count treated as busy.
         (
@@ -119,17 +115,9 @@ async fn assign_task_reuses_an_idle_worker_that_still_holds_a_row() {
         ),
     ])));
     set_repo(&swarm_members, repo.path()).await;
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([requester.to_string(), holder.to_string()]),
-    )])));
     let mut in_flight = plan_item("in-flight", "queued", "high", &[]);
     in_flight.assigned_to = Some(holder.to_string());
     let swarm_runs = seeded(repo.path(), vec![in_flight, plan_item("next", "queued", "high", &[])]);
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        requester.to_string(),
-    )])));
     let event_history = Arc::new(RwLock::new(VecDeque::new()));
     let event_counter = Arc::new(AtomicU64::new(1));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
@@ -146,9 +134,7 @@ async fn assign_task_reuses_an_idle_worker_that_still_holds_a_row() {
         &soft_interrupt_queues,
         &client_connections,
         &swarm_members,
-        &swarms_by_id,
         &swarm_runs,
-        &swarm_coordinators,
         &event_history,
         &event_counter,
         &swarm_event_tx,

@@ -168,9 +168,9 @@ async fn prune_expired_terminal_swarm_members(
                 member.status.is_terminal() && member.last_status_change.elapsed() >= retention
             });
             if still_expired {
-                members
-                    .remove(&session_id)
-                    .and_then(|member| member.swarm_id)
+                let root = swarm::swarm_root(&members, &session_id);
+                members.remove(&session_id);
+                root
             } else {
                 None
             }
@@ -183,8 +183,6 @@ async fn prune_expired_terminal_swarm_members(
             &session_id,
             &swarm_id,
             &swarm_state.members,
-            &swarm_state.swarms_by_id,
-            &swarm_state.coordinators,
             &swarm_state.runs,
         )
         .await;
@@ -241,7 +239,6 @@ async fn reap_idle_spawned_workers(
             let members = swarm_state.members.read().await;
             members.get(&session_id).is_some_and(|member| {
                 member.report_back_to_session_id.is_some()
-                    && member.role != "coordinator"
                     && (member.status == SwarmLifecycleStatus::Ready || member.status.is_terminal())
                     && member.last_status_change.elapsed() >= idle_after
             })
@@ -273,17 +270,15 @@ async fn reap_idle_spawned_workers(
 
         let removed_swarm_id = {
             let mut members = swarm_state.members.write().await;
-            members
-                .remove(&session_id)
-                .and_then(|member| member.swarm_id)
+            let root = swarm::swarm_root(&members, &session_id);
+            members.remove(&session_id);
+            root
         };
         if let Some(ref swarm_id) = removed_swarm_id {
             remove_session_from_swarm(
                 &session_id,
                 swarm_id,
                 &swarm_state.members,
-                &swarm_state.swarms_by_id,
-                &swarm_state.coordinators,
                 &swarm_state.runs,
             )
             .await;
@@ -309,11 +304,7 @@ pub(super) async fn persist_swarm_state_for(swarm_id: &str, swarm_state: &SwarmS
     let operation_lock = swarm_operation_lock(swarm_id);
     let _operation_guard = operation_lock.lock().await;
     let runtime = swarm_state.load_runtime(swarm_id).await;
-    persist_swarm_state_snapshot(
-        swarm_id,
-        runtime.coordinator_session_id.as_deref(),
-        &runtime.members,
-    );
+    persist_swarm_state_snapshot(swarm_id, &runtime.members);
 }
 
 fn headless_member_should_restore(status: &SwarmLifecycleStatus, is_headless: bool) -> bool {
@@ -591,10 +582,7 @@ use self::socket::{signal_ready_fd, socket_has_live_listener};
 
 pub use self::util::ServerIdentity;
 pub(crate) use self::util::server_has_newer_binary;
-use self::util::{
-    debug_control_allowed, git_common_dir_for, reload_exec_target,
-    startup_headless_recovery_test_delay, swarm_id_for_dir, swarm_id_for_session,
-};
+use self::util::{debug_control_allowed, reload_exec_target, startup_headless_recovery_test_delay};
 
 mod file_activity;
 use self::file_activity::file_activity_scope_label;
@@ -734,9 +722,7 @@ impl Server {
         crate::process_title::set_server_title(&identity.name);
 
         let LoadedSwarmRuntimeState {
-            coordinators: restored_swarm_coordinators,
             members: restored_swarm_members,
-            swarms_by_id: restored_swarms_by_id,
         } = load_persisted_swarm_runtime_state();
 
         Self {
@@ -751,12 +737,7 @@ impl Server {
             client_count: Arc::new(RwLock::new(0)),
             client_connections: Arc::new(RwLock::new(HashMap::new())),
             file_touch: FileTouchService::new(),
-            swarm_state: SwarmState::new(
-                restored_swarm_members,
-                restored_swarms_by_id,
-                HashMap::new(),
-                restored_swarm_coordinators,
-            ),
+            swarm_state: SwarmState::new(restored_swarm_members, HashMap::new()),
             shared_context: Arc::new(RwLock::new(HashMap::new())),
             client_debug_state: Arc::new(RwLock::new(ClientDebugState::default())),
             client_debug_response_tx,
@@ -869,7 +850,6 @@ impl Server {
                         SwarmLifecycleStatus::Failed,
                         Some(truncate_detail(&error.to_string(), 120)),
                         &self.swarm_state.members,
-                        &self.swarm_state.swarms_by_id,
                         Some(&self.event_history),
                         Some(&self.event_counter),
                         Some(&self.swarm_event_tx),
@@ -877,9 +857,7 @@ impl Server {
                     .await;
                     if let Some(swarm_id) = {
                         let members = self.swarm_state.members.read().await;
-                        members
-                            .get(&session_id)
-                            .and_then(|member| member.swarm_id.clone())
+                        swarm::swarm_root(&members, &session_id)
                     } {
                         persist_swarm_state_for(&swarm_id, &self.swarm_state).await;
                     }
@@ -969,7 +947,6 @@ impl Server {
                     SwarmLifecycleStatus::Ready,
                     None,
                     &self.swarm_state.members,
-                    &self.swarm_state.swarms_by_id,
                     Some(&self.event_history),
                     Some(&self.event_counter),
                     Some(&self.swarm_event_tx),
@@ -977,9 +954,7 @@ impl Server {
                 .await;
                 if let Some(swarm_id) = {
                     let members = self.swarm_state.members.read().await;
-                    members
-                        .get(&session_id)
-                        .and_then(|member| member.swarm_id.clone())
+                    swarm::swarm_root(&members, &session_id)
                 } {
                     swarms_to_persist.insert(swarm_id);
                 }
@@ -1014,7 +989,6 @@ impl Server {
                 "restored interrupted headless session after reload",
             );
             let recover_swarm_members = Arc::clone(&self.swarm_state.members);
-            let recover_swarms_by_id = Arc::clone(&self.swarm_state.swarms_by_id);
             let recover_event_history = Arc::clone(&self.event_history);
             let recover_event_counter = Arc::clone(&self.event_counter);
             let recover_swarm_event_tx = self.swarm_event_tx.clone();
@@ -1037,7 +1011,6 @@ impl Server {
                     SwarmLifecycleStatus::Running,
                     Some("resuming after reload".to_string()),
                     &recover_swarm_members,
-                    &recover_swarms_by_id,
                     Some(&recover_event_history),
                     Some(&recover_event_counter),
                     Some(&recover_swarm_event_tx),
@@ -1045,9 +1018,7 @@ impl Server {
                 .await;
                 if let Some(swarm_id) = {
                     let members = recover_swarm_members.read().await;
-                    members
-                        .get(&session_id)
-                        .and_then(|member| member.swarm_id.clone())
+                    swarm::swarm_root(&members, &session_id)
                 } {
                     persist_swarm_state_for(&swarm_id, &recover_swarm_state).await;
                 }
@@ -1128,7 +1099,6 @@ impl Server {
                     status,
                     detail,
                     &recover_swarm_members,
-                    &recover_swarms_by_id,
                     Some(&recover_event_history),
                     Some(&recover_event_counter),
                     Some(&recover_swarm_event_tx),
@@ -1136,9 +1106,7 @@ impl Server {
                 .await;
                 if let Some(swarm_id) = {
                     let members = recover_swarm_members.read().await;
-                    members
-                        .get(&session_id)
-                        .and_then(|member| member.swarm_id.clone())
+                    swarm::swarm_root(&members, &session_id)
                 } {
                     persist_swarm_state_for(&swarm_id, &recover_swarm_state).await;
                 }
@@ -1253,9 +1221,7 @@ impl Server {
         // Spawn the bus monitor for swarm coordination
         let monitor_file_touch = self.file_touch.clone();
         let monitor_swarm_members = Arc::clone(&self.swarm_state.members);
-        let monitor_swarms_by_id = Arc::clone(&self.swarm_state.swarms_by_id);
         let monitor_swarm_runs = Arc::clone(&self.swarm_state.runs);
-        let monitor_swarm_coordinators = Arc::clone(&self.swarm_state.coordinators);
         let monitor_shared_context = Arc::clone(&self.shared_context);
         let monitor_sessions = Arc::clone(&self.sessions);
         let monitor_soft_interrupt_queues = Arc::clone(&self.soft_interrupt_queues);
@@ -1266,9 +1232,7 @@ impl Server {
             Self::monitor_bus(
                 monitor_file_touch,
                 monitor_swarm_members,
-                monitor_swarms_by_id,
                 monitor_swarm_runs,
-                monitor_swarm_coordinators,
                 monitor_shared_context,
                 monitor_sessions,
                 monitor_soft_interrupt_queues,
@@ -1284,13 +1248,11 @@ impl Server {
         // they can pick up transparently without the agent rerunning the wait.
         {
             let resume_swarm_members = Arc::clone(&self.swarm_state.members);
-            let resume_swarms_by_id = Arc::clone(&self.swarm_state.swarms_by_id);
             let resume_swarm_event_tx = self.swarm_event_tx.clone();
             let resume_await_runtime = self.await_members_runtime.clone();
             tokio::spawn(async move {
                 comm_await::resume_background_awaits(
                     &resume_swarm_members,
-                    &resume_swarms_by_id,
                     &resume_swarm_event_tx,
                     &resume_await_runtime,
                 )
@@ -1299,22 +1261,14 @@ impl Server {
         }
 
         let stale_swarm_members = Arc::clone(&self.swarm_state.members);
-        let stale_swarms_by_id = Arc::clone(&self.swarm_state.swarms_by_id);
         let stale_swarm_runs = Arc::clone(&self.swarm_state.runs);
-        let stale_swarm_coordinators = Arc::clone(&self.swarm_state.coordinators);
         tokio::spawn(async move {
             let mut interval =
                 tokio::time::interval(crate::server::swarm::swarm_task_sweep_interval());
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 interval.tick().await;
-                salvage_dead_assignees(
-                    &stale_swarm_members,
-                    &stale_swarms_by_id,
-                    &stale_swarm_runs,
-                    &stale_swarm_coordinators,
-                )
-                .await;
+                salvage_dead_assignees(&stale_swarm_members, &stale_swarm_runs).await;
             }
         });
 
@@ -1817,9 +1771,7 @@ impl Server {
     async fn monitor_bus(
         file_touch: FileTouchService,
         swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
-        swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
         _swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
-        _swarm_coordinators: Arc<RwLock<HashMap<String, String>>>,
         _shared_context: Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
         sessions: Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>,
         soft_interrupt_queues: SessionInterruptQueues,
@@ -1865,7 +1817,7 @@ impl Server {
                         let members = swarm_members.read().await;
                         let member = members.get(&session_id);
                         let session_name = member.and_then(|m| m.friendly_name.clone());
-                        let swarm_id = member.and_then(|m| m.swarm_id.clone());
+                        let swarm_id = swarm::swarm_root(&members, &session_id);
 
                         drop(members);
                         record_swarm_event(
@@ -1889,19 +1841,12 @@ impl Server {
                     // Find the swarm this session belongs to
                     let swarm_session_ids: Vec<String> = {
                         let members = swarm_members.read().await;
-                        if let Some(member) = members.get(&session_id) {
-                            if let Some(ref swarm_id) = member.swarm_id {
-                                let swarms = swarms_by_id.read().await;
-                                if let Some(swarm) = swarms.get(swarm_id) {
-                                    swarm.iter().cloned().collect()
-                                } else {
-                                    vec![]
-                                }
-                            } else {
-                                vec![]
+                        match swarm::swarm_root(&members, &session_id) {
+                            Some(swarm_id) => {
+                                drop(members);
+                                swarm::swarm_session_ids(&swarm_id, &swarm_members).await
                             }
-                        } else {
-                            vec![]
+                            None => vec![],
                         }
                     };
 
@@ -2069,7 +2014,6 @@ impl Server {
                         &sessions,
                         &soft_interrupt_queues,
                         &swarm_members,
-                        &swarms_by_id,
                         &event_history,
                         &event_counter,
                         &swarm_event_tx,
@@ -2085,7 +2029,6 @@ impl Server {
                         &sessions,
                         &soft_interrupt_queues,
                         &swarm_members,
-                        &swarms_by_id,
                         &event_history,
                         &event_counter,
                         &swarm_event_tx,
@@ -2098,7 +2041,6 @@ impl Server {
                         &sessions,
                         &soft_interrupt_queues,
                         &swarm_members,
-                        &swarms_by_id,
                         &event_history,
                         &event_counter,
                         &swarm_event_tx,
@@ -2109,22 +2051,22 @@ impl Server {
                     dispatch_ui_activity(&activity, &swarm_members).await;
                 }
                 Ok(BusEvent::ToolUpdated(event)) => {
-                    dispatch_swarm_tool_activity(&event, &swarm_members, &swarms_by_id).await;
+                    dispatch_swarm_tool_activity(&event, &swarm_members).await;
                 }
                 Ok(BusEvent::SubagentStatus(event)) => {
-                    dispatch_swarm_runtime_status(&event, &swarm_members, &swarms_by_id).await;
+                    dispatch_swarm_runtime_status(&event, &swarm_members).await;
                 }
                 Ok(BusEvent::BatchProgress(progress)) => {
-                    dispatch_swarm_batch_progress(&progress, &swarm_members, &swarms_by_id).await;
+                    dispatch_swarm_batch_progress(&progress, &swarm_members).await;
                 }
                 // Session todos are private to the session's transcript, but the
                 // Compact todo names and progress are surfaced on the inline
                 // swarm strip so a coordinator can see each managed agent's work.
                 Ok(BusEvent::TodoUpdated(event)) => {
-                    dispatch_swarm_todo_progress(&event, &swarm_members, &swarms_by_id).await;
+                    dispatch_swarm_todo_progress(&event, &swarm_members).await;
                 }
                 Ok(BusEvent::SwarmOutputTail(tail)) => {
-                    dispatch_swarm_output_tail(&tail, &swarm_members, &swarms_by_id).await;
+                    dispatch_swarm_output_tail(&tail, &swarm_members).await;
                 }
                 Ok(_) => {
                     // Ignore other events

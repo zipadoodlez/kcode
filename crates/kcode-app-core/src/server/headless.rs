@@ -5,11 +5,11 @@ use crate::protocol::SwarmLifecycleStatus;
 use crate::provider::Provider;
 use crate::server::{
     RunState, SessionInterruptQueues, SwarmMember, broadcast_swarm_status,
-    register_background_tool_signal, register_session_interrupt_queue, swarm_id_for_session,
+    register_background_tool_signal, register_session_interrupt_queue, util::member_swarm_id,
 };
 use crate::tool::Registry;
 use anyhow::Result;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
@@ -24,8 +24,6 @@ pub(super) async fn create_headless_session(
     provider_template: &Arc<dyn Provider>,
     command: &str,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     _swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     soft_interrupt_queues: &SessionInterruptQueues,
     selfdev_requested: bool,
@@ -36,8 +34,6 @@ pub(super) async fn create_headless_session(
     mcp_pool: Option<Arc<crate::mcp::SharedMcpPool>>,
     report_back_to_session_id: Option<String>,
 ) -> Result<String> {
-    let swarm_enabled = crate::config::config().features.swarm;
-
     let working_dir = if let Some(path_str) = command.strip_prefix("create_session:") {
         let path_str = path_str.trim();
         if !path_str.is_empty() {
@@ -186,21 +182,6 @@ pub(super) async fn create_headless_session(
         )
     };
 
-    let swarm_id = if swarm_enabled {
-        // A spawned worker belongs to its parent's swarm. A standalone
-        // headless session is an independent root and gets its own swarm.
-        let parent_swarm_id = if let Some(parent_id) = report_back_to_session_id.as_deref() {
-            let members = swarm_members.read().await;
-            members
-                .get(parent_id)
-                .and_then(|member| member.swarm_id.clone())
-        } else {
-            None
-        };
-        parent_swarm_id.or_else(|| swarm_id_for_session(&client_session_id))
-    } else {
-        None
-    };
     let friendly_name = crate::id::extract_session_name(&client_session_id)
         .map(|s| s.to_string())
         .unwrap_or_else(|| client_session_id[..8.min(client_session_id.len())].to_string());
@@ -222,15 +203,12 @@ pub(super) async fn create_headless_session(
                 event_tx: event_tx.clone(),
                 event_txs: HashMap::new(),
                 working_dir: working_dir.clone(),
-                swarm_id: swarm_id.clone(),
-                swarm_enabled,
                 status: SwarmLifecycleStatus::Ready,
                 detail: None,
                 task_label: None,
                 friendly_name: Some(friendly_name.clone()),
                 report_back_to_session_id: report_back_to_session_id.clone(),
                 latest_completion_report: None,
-                role: "agent".to_string(),
                 joined_at: now,
                 last_status_change: now,
                 is_headless: true,
@@ -248,26 +226,13 @@ pub(super) async fn create_headless_session(
         );
     }
 
+    // Membership is derived: the run is the root of this session's report-back
+    // chain. The spawn path already set that edge to the requesting session, so a
+    // spawned worker lands in its spawner's run and a standalone session roots its
+    // own.
+    let swarm_id = member_swarm_id(&client_session_id, swarm_members).await;
     if let Some(ref id) = swarm_id {
-        let mut swarms = swarms_by_id.write().await;
-        swarms
-            .entry(id.clone())
-            .or_insert_with(HashSet::new)
-            .insert(client_session_id.clone());
-    }
-
-    // Headless sessions never auto-claim coordinator; only TUI-connected sessions do.
-    let is_new_coordinator = false;
-    let _ = swarm_coordinators;
-    if is_new_coordinator {
-        let mut members = swarm_members.write().await;
-        if let Some(m) = members.get_mut(&client_session_id) {
-            m.role = "coordinator".to_string();
-        }
-    }
-
-    if let Some(ref id) = swarm_id {
-        broadcast_swarm_status(id, swarm_members, swarms_by_id).await;
+        broadcast_swarm_status(id, swarm_members).await;
     }
 
     crate::runtime_memory_log::emit_event(

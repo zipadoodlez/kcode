@@ -1,8 +1,10 @@
 #[tokio::test]
 async fn await_members_reuses_persisted_deadline_after_reload_retry() {
     let (_env, _runtime_dir) = RuntimeEnvGuard::new();
-    let swarm_id = "swarm-c";
     let requester = "req";
+    // The run is the requester's: nobody spawned it, so it reports back to
+    // nobody, and every peer reports back to it.
+    let swarm_id = requester;
     let peer = "peer-1";
     let key = crate::server::await_members_state::request_key(
         requester,
@@ -38,10 +40,6 @@ async fn await_members_reuses_persisted_deadline_after_reload_retry() {
         (requester.to_string(), member(requester, swarm_id, "ready")),
         (peer.to_string(), member(peer, swarm_id, "running")),
     ])));
-    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
-        swarm_id.to_string(),
-        HashSet::from([requester.to_string(), peer.to_string()]),
-    )])));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
 
     handle_comm_await_members(
@@ -57,7 +55,6 @@ async fn await_members_reuses_persisted_deadline_after_reload_retry() {
         CommAwaitMembersContext {
             client_event_tx: &client_tx,
             swarm_members: &swarm_members,
-            swarms_by_id: &swarms_by_id,
             swarm_event_tx: &swarm_event_tx,
             await_members_runtime: &await_runtime,
         },

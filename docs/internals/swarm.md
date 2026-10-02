@@ -19,6 +19,16 @@ come back from the list), and the item cache itself, which had become a second c
 rows the store owns. The reclaim cap went with it: releasing the claim in the list is
 the whole recovery, and the bound belongs to the loop that repeats the work.
 
+The same step removed stored membership. A run's identity is its root session, the one
+holding the run's anchor row, and a session belongs to a run when its
+`report_back_to_session_id` chain ends there: the spawn edge is the membership, so
+there is no swarm id to declare, no coordinator map, and no per-session toggle. A
+session that reports back to nobody roots its own run. `swarm_root` in `server/swarm.rs`
+is the one derivation; everything that used to read a stored id reads it instead. What
+that costs is named in `docs/todo.md`: two sessions cannot declare one shared swarm by
+environment variable, and a root that leaves no longer hands its subtree to an elected
+coordinator, so its workers become roots of their own runs.
+
 The swarm is one executor of the repo's work list (`plans/work-list.md`). The
 list is the shared contract and the work lives there; a run holds its own lifecycle for
 the rows it works and reads everything else from the file.
@@ -101,12 +111,11 @@ explore surfaces the gaps its caller (or a follow-up row) can widen.
 ## Coordination and communication
 
 - A member's deeper work is rows the run dispatches; only the root session starts
-  agents. Membership is the whole authorization to drive a swarm's rows: a member's
-  record names its swarm, and the run drives the rows it holds. The per-swarm
-  coordinator slot is an election record only (who owns the subtree) until 0.4g's g4
-  derives it from the anchor row.
-- When the root leaves, its workers reparent to the live coordinator, or become
-  roots, so the spawn tree never holds dangling report-back edges. Session renames
+  agents. Membership is the whole authorization to drive a swarm's rows: the spawn edge
+  names the run, and the run drives the rows it holds. The coordinator is not a slot but
+  a derivation: the session that roots the run, holding its anchor row.
+- When the root leaves, its workers become roots of their own runs, so the spawn tree
+  never holds dangling report-back edges. Session renames
   rewrite children's report-back edges and the holder of the rows the session held
   (`rename_row_holder_on_disk`), so ownership, stop permission, and subtree scope
   survive churn.

@@ -2,11 +2,8 @@
 
 use super::client_lifecycle::process_message_streaming_mpsc;
 use super::{
-    ChannelSubscriptions, ClientConnectionInfo, RunState, SessionAgents, SessionInterruptQueues,
-    SwarmEvent, SwarmMember, SwarmState, broadcast_swarm_status, fanout_session_event,
-    persist_swarm_state_for, queue_soft_interrupt_for_session,
-    remove_session_channel_subscriptions, remove_session_from_swarm, swarm_id_for_session,
-    truncate_detail, update_member_status,
+    ClientConnectionInfo, SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmMember,
+    fanout_session_event, queue_soft_interrupt_for_session, truncate_detail, update_member_status,
 };
 use crate::agent::Agent;
 use crate::protocol::SwarmLifecycleStatus;
@@ -14,7 +11,7 @@ use crate::protocol::{FeatureToggle, NotificationType, ServerEvent};
 use crate::session::Session;
 use crate::util::truncate_str;
 use kcode_agent_runtime::{SoftInterruptSource, StreamError};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Instant;
@@ -75,7 +72,6 @@ pub(super) struct NotifySessionContext<'a> {
     pub soft_interrupt_queues: &'a SessionInterruptQueues,
     pub client_connections: &'a Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
     pub swarm_members: &'a Arc<RwLock<HashMap<String, SwarmMember>>>,
-    pub swarms_by_id: &'a Arc<RwLock<HashMap<String, HashSet<String>>>>,
     pub event_history: &'a Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     pub event_counter: &'a Arc<std::sync::atomic::AtomicU64>,
     pub swarm_event_tx: &'a broadcast::Sender<SwarmEvent>,
@@ -102,7 +98,6 @@ pub(super) async fn handle_notify_session(
             ctx.sessions,
             super::live_turn::LiveTurnSwarmContext::new(
                 ctx.swarm_members,
-                ctx.swarms_by_id,
                 ctx.event_history,
                 ctx.event_counter,
                 ctx.swarm_event_tx,
@@ -376,24 +371,13 @@ pub(super) fn handle_run_subagent(
     });
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "set feature mutates agent state, persistence, swarm/session metadata, and client notifications together"
-)]
 pub(super) async fn handle_set_feature(
     id: u64,
     feature: FeatureToggle,
     enabled: bool,
     agent: &Arc<Mutex<Agent>>,
-    client_session_id: &str,
+    _client_session_id: &str,
     _friendly_name: &Option<String>,
-    swarm_enabled: &mut bool,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
-    channel_subscriptions: &ChannelSubscriptions,
-    channel_subscriptions_by_session: &ChannelSubscriptions,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
 ) {
     match feature {
@@ -426,88 +410,6 @@ pub(super) async fn handle_set_feature(
                     });
                 }
             }
-        }
-        FeatureToggle::Swarm => {
-            if *swarm_enabled == enabled {
-                let _ = client_event_tx.send(ServerEvent::Done { id });
-                return;
-            }
-            *swarm_enabled = enabled;
-
-            let (old_swarm_id, working_dir) = {
-                let mut members = swarm_members.write().await;
-                if let Some(member) = members.get_mut(client_session_id) {
-                    let old = member.swarm_id.clone();
-                    let wd = member.working_dir.clone();
-                    member.swarm_enabled = enabled;
-                    if !enabled {
-                        member.swarm_id = None;
-                        member.role = "agent".to_string();
-                    }
-                    (old, wd)
-                } else {
-                    (None, None)
-                }
-            };
-
-            if let Some(ref old_id) = old_swarm_id {
-                remove_session_from_swarm(
-                    client_session_id,
-                    old_id,
-                    swarm_members,
-                    swarms_by_id,
-                    swarm_coordinators,
-                    swarm_runs,
-                )
-                .await;
-                remove_session_channel_subscriptions(
-                    client_session_id,
-                    channel_subscriptions,
-                    channel_subscriptions_by_session,
-                )
-                .await;
-            }
-
-            if enabled {
-                let _ = working_dir;
-                let new_swarm_id = swarm_id_for_session(client_session_id);
-                if let Some(ref id) = new_swarm_id {
-                    {
-                        let mut swarms = swarms_by_id.write().await;
-                        swarms
-                            .entry(id.clone())
-                            .or_insert_with(HashSet::new)
-                            .insert(client_session_id.to_string());
-                    }
-
-                    {
-                        let mut members = swarm_members.write().await;
-                        if let Some(member) = members.get_mut(client_session_id) {
-                            member.swarm_id = Some(id.clone());
-                            member.role = "agent".to_string();
-                        }
-                    }
-
-                    broadcast_swarm_status(id, swarm_members, swarms_by_id).await;
-                    let swarm_state = SwarmState {
-                        members: Arc::clone(swarm_members),
-                        swarms_by_id: Arc::clone(swarms_by_id),
-                        runs: Arc::clone(swarm_runs),
-                        coordinators: Arc::clone(swarm_coordinators),
-                    };
-                    persist_swarm_state_for(id, &swarm_state).await;
-                } else {
-                    let _ = client_event_tx.send(ServerEvent::SwarmStatus {
-                        members: Vec::new(),
-                    });
-                }
-            } else {
-                let _ = client_event_tx.send(ServerEvent::SwarmStatus {
-                    members: Vec::new(),
-                });
-            }
-
-            let _ = client_event_tx.send(ServerEvent::Done { id });
         }
     }
 }
@@ -797,15 +699,10 @@ fn live_session_owes_continuation(agent: &Agent) -> bool {
 /// the currently-live sessions, and for each idle one that still owes the model
 /// a continuation, injects the standard "continue where you left off" reminder
 /// so the session picks back up without the user having to open each one.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "resuming live sessions needs session, swarm membership, and status event state"
-)]
 pub(super) async fn handle_resume_all_sessions(
     id: u64,
     sessions: &SessionAgents,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -876,7 +773,6 @@ pub(super) async fn handle_resume_all_sessions(
             super::live_turn::RunGrant::denied(),
             super::live_turn::LiveTurnSwarmContext::new(
                 swarm_members,
-                swarms_by_id,
                 event_history,
                 event_counter,
                 swarm_event_tx,
@@ -964,7 +860,6 @@ pub(super) async fn handle_stdin_response(
 pub(super) struct AgentTaskContext<'a> {
     pub(super) client_event_tx: &'a mpsc::UnboundedSender<ServerEvent>,
     pub(super) swarm_members: &'a Arc<RwLock<HashMap<String, SwarmMember>>>,
-    pub(super) swarms_by_id: &'a Arc<RwLock<HashMap<String, HashSet<String>>>>,
     pub(super) event_history: &'a Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     pub(super) event_counter: &'a Arc<std::sync::atomic::AtomicU64>,
     pub(super) swarm_event_tx: &'a broadcast::Sender<SwarmEvent>,
@@ -982,7 +877,6 @@ pub(super) async fn handle_agent_task(
         SwarmLifecycleStatus::Running,
         Some(truncate_detail(&task, 120)),
         ctx.swarm_members,
-        ctx.swarms_by_id,
         Some(ctx.event_history),
         Some(ctx.event_counter),
         Some(ctx.swarm_event_tx),
@@ -1004,7 +898,6 @@ pub(super) async fn handle_agent_task(
                 SwarmLifecycleStatus::Completed,
                 None,
                 ctx.swarm_members,
-                ctx.swarms_by_id,
                 Some(ctx.event_history),
                 Some(ctx.event_counter),
                 Some(ctx.swarm_event_tx),
@@ -1018,7 +911,6 @@ pub(super) async fn handle_agent_task(
                 SwarmLifecycleStatus::Failed,
                 Some(truncate_detail(&e.to_string(), 120)),
                 ctx.swarm_members,
-                ctx.swarms_by_id,
                 Some(ctx.event_history),
                 Some(ctx.event_counter),
                 Some(ctx.swarm_event_tx),

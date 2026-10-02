@@ -33,7 +33,6 @@ use tokio::sync::{OwnedMutexGuard, RwLock, broadcast};
 #[derive(Clone)]
 pub(super) struct LiveTurnSwarmContext {
     pub members: Arc<RwLock<HashMap<String, SwarmMember>>>,
-    pub swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
     pub event_history: Arc<RwLock<VecDeque<SwarmEvent>>>,
     pub event_counter: Arc<AtomicU64>,
     pub event_tx: broadcast::Sender<SwarmEvent>,
@@ -42,14 +41,12 @@ pub(super) struct LiveTurnSwarmContext {
 impl LiveTurnSwarmContext {
     pub(super) fn new(
         members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-        swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
         event_history: &Arc<RwLock<VecDeque<SwarmEvent>>>,
         event_counter: &Arc<AtomicU64>,
         event_tx: &broadcast::Sender<SwarmEvent>,
     ) -> Self {
         Self {
             members: Arc::clone(members),
-            swarms_by_id: Arc::clone(swarms_by_id),
             event_history: Arc::clone(event_history),
             event_counter: Arc::clone(event_counter),
             event_tx: event_tx.clone(),
@@ -372,7 +369,6 @@ pub(super) async fn spawn_tracked_live_turn(
         SwarmLifecycleStatus::Running,
         seed.detail.clone(),
         &swarm.members,
-        &swarm.swarms_by_id,
         Some(&swarm.event_history),
         Some(&swarm.event_counter),
         Some(&swarm.event_tx),
@@ -446,7 +442,6 @@ pub(super) async fn spawn_tracked_live_turn(
                         None,
                         completion_report,
                         &swarm.members,
-                        &swarm.swarms_by_id,
                         Some(&swarm.event_history),
                         Some(&swarm.event_counter),
                         Some(&swarm.event_tx),
@@ -464,7 +459,6 @@ pub(super) async fn spawn_tracked_live_turn(
                         SwarmLifecycleStatus::Failed,
                         Some(truncate_detail(&error.to_string(), 120)),
                         &swarm.members,
-                        &swarm.swarms_by_id,
                         Some(&swarm.event_history),
                         Some(&swarm.event_counter),
                         Some(&swarm.event_tx),

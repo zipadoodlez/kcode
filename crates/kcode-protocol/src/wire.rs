@@ -519,15 +519,6 @@ pub enum Request {
         force: Option<bool>,
     },
 
-    /// Assign a role to an agent (coordinator only)
-    #[serde(rename = "comm_assign_role")]
-    CommAssignRole {
-        id: u64,
-        session_id: String,
-        target_session: String,
-        role: String,
-    },
-
     /// Get a summary of an agent's recent tool calls
     #[serde(rename = "comm_summary")]
     CommSummary {

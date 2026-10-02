@@ -1323,45 +1323,15 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     if trimmed == "/swarm" || trimmed == "/swarm status" {
-        let default_enabled = crate::config::config().features.swarm;
         app.push_display_message(DisplayMessage::system(format!(
-            "Swarm feature: {} (config default: {})",
-            if app.swarm_enabled {
-                "enabled"
-            } else {
-                "disabled"
-            },
-            if default_enabled {
-                "enabled"
-            } else {
-                "disabled"
-            }
+            "Swarm: {} member(s) in this session's subtree.",
+            app.swarm.members.len()
         )));
         return true;
     }
 
-    if trimmed == "/swarm on" {
-        app.set_swarm_feature_enabled(true);
-        app.set_status_notice("Swarm: ON");
-        app.push_display_message(DisplayMessage::system(
-            "Swarm feature enabled for this session.".to_string(),
-        ));
-        return true;
-    }
-
-    if trimmed == "/swarm off" {
-        app.set_swarm_feature_enabled(false);
-        app.set_status_notice("Swarm: OFF");
-        app.push_display_message(DisplayMessage::system(
-            "Swarm feature disabled for this session.".to_string(),
-        ));
-        return true;
-    }
-
     if trimmed.starts_with("/swarm ") {
-        app.push_display_message(DisplayMessage::error(
-            "Usage: /swarm [on|off|status]".to_string(),
-        ));
+        app.push_display_message(DisplayMessage::error("Usage: /swarm [status]".to_string()));
         return true;
     }
 
