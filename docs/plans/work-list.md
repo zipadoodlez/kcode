@@ -277,12 +277,12 @@ Last of the file work, whenever we want it.
   makes a completed row unrepresentable rather than stored, and 0.3's "position is
   priority" is what `priority` becomes. Every `add` still writes `status` and
   `priority` today. Dropping `status` is the larger half, because the plan
-  classifies by it everywhere: `summarize_plan_graph`
-  (`kcode-plan/src/lib.rs:508-560`), `completed_item_ids`, `is_active_status`
-  (`:267`), `newly_ready_item_ids` (`:813`, read by the swarm path at
-  `server/swarm.rs:830`), the task-control actions (`:358`, `:672`), and
-  `status_from_plan`/`status_to_plan` (`bridge.rs:74`). Afterwards a row is ready
-  when `blocked_by` is empty and liveness comes from the member, not the item.
+  classifies by it everywhere: `summarize_plan_graph`, `completed_item_ids`,
+  `is_active_status`, `newly_ready_item_ids` (read by the swarm path), the task-control
+  actions, and `status_from_plan`. `status_to_plan` is already gone: 0.4f's s12 stopped
+  lowering the engine's statuses back into items, so the engine's own statuses no longer
+  reach a row. Afterwards a row is ready when `blocked_by` is empty and liveness comes
+  from the member, not the item.
 
 ### C. The list reaches the client
 

@@ -12,8 +12,9 @@ plan adds to the file is the run's `version`, its `participants` and the per-tas
 reclaim counter.
 
 The swarm is one executor of the repo's work list (`plans/work-list.md`). The
-list is the shared contract; this engine's plan is its execution state, and the
-durable plan carries work while a run is in flight. The seed is the rows the
+list is the shared contract and the work lives there; the plan is a runtime view of
+the rows a run seated, with the run's version, its participants and the per-task
+reclaim counter on top. The seed is the rows the
 seeding session holds: `bridge::seed_specs` lifts them into nodes (the row's id,
 words, kind and `blocked_by` are the node's, its position is its priority), a row
 whose kind the engine cannot read stays out rather than being given a guessed
