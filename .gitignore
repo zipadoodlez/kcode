@@ -6,6 +6,10 @@ __pycache__/
 /.tmp/
 /.kcode/generated-images/
 
+# The work-list store keeps the previous list beside tasks.jsonl as a crash
+# recovery copy, so it is derived state that reappears on every write.
+/tasks.bak
+
 # Stray experiment/debug artifacts at the repo root. Real assets live under
 # assets/, docs/, and tests/ and are committed explicitly.
 /*.log

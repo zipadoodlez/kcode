@@ -22,8 +22,11 @@ spine is the one structural item; the two calls are the maintainer's.
  `CatchupBrief` live in `kcode-task-types` and are used only by
  `kcode-app-core/src/catchup.rs`; move them to the user so the crate named for the
  task concept holds the task concept. (A1.)
-- [ ] **`tasks.bak` goes.** It is tracked at the repo root (843 bytes, the last closed
- row) and stale; the store writes `tasks.jsonl` only. (A1.)
+- [x] **`tasks.bak` is the store's own backup, and it was tracked.** Landed
+ 2026-10-03: `storage::write_bytes` keeps the previous list as `<path>.bak` beside
+ `tasks.jsonl` for crash recovery, so the file is derived state that reappears on
+ every list write (it showed up as a diff during A2), not a stale copy. Untracked
+ and ignored. (A1.)
 - [ ] **Split the swarm gallery.** `kcode-tui-render/src/swarm_gallery.rs` is 3,100
  lines in one file, with a 750-line TUI adapter, 635-line `swarm_tiles.rs`, 690 lines
  of buffer tests and ~700 of examples around it; it renders member tiles, chat cards,
