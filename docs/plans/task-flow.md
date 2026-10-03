@@ -114,8 +114,9 @@ boundary this model deleted.
 Controlling a session you are not sitting in is attaching to it, and the server
 already does the flip: a client attaching sets that member's `is_headless` to false,
 so the run stops supplying turns and starts offering them, and detaching puts it
-back. Without a client the levers are the run's: message it, stop it, wake it,
-retry it, reassign or replace its work, and watch it through its status events.
+back. A run you are not sitting in has two levers and no more: **message it**, which hands a
+row to its holder, and **stop it**, which ends it. `wake`, `retry`, `reassign` and `replace`
+were the loop's job done by hand, and reading a run is reading the rows.
 
 Handing a row over is only a message. The run picks a row and a session, delivers a
 message naming the row and asking for the work, and the row's own words plus the
@@ -213,7 +214,7 @@ Measured 2026-10-03, all bodies read.
   (`comm_sync`), 607 lines of debug views, and a 3,100-line gallery rendering the same
   swarm state.
 
-The tool's action surface is 32 actions; S1 keeps three.
+The tool's action surface is 32 actions; S1 keeps four (spawn, stop, list_models, one message verb).
 
 ## Steps
 
@@ -227,28 +228,31 @@ the tail and it is droppable: nothing here depends on it.
 
 ### S1. The loop owns dispatch
 
-**Decide before the cuts: the levers over a run you are not sitting in.** The model names
-`stop it, wake it, retry it`, and this stage deletes all three, with `cleanup`, which today
-is the only thing that reaps a finished member (`cleanup_swarm_workers` ->
-`stop_swarm_sessions`, called only from `tool/communicate.rs`). So either the levers are
-exactly grant, attach, hand a row, close, and the reaping machinery goes with them, or one
-verb stays, because a permission with no revoke is not a permission. Either way the stage
-cannot leave a run's member sessions with nothing to end them: observed 2026-10-03, three idle
-headless members kept the swarm surface up until `cleanup` was called by hand.
+**The levers: `stop` stays, and it is the only control verb left.** `wake`, `retry` and
+`reassign`/`replace` were the loop's job done by hand, so they go; `cleanup` goes because the
+loop ends a run, and its members with it. `stop` is power, not surface: nothing else can end a
+session you are not attached to (`CommStop`, sent only from `tool/communicate.rs:245` and
+`:2509`, handled at `client_lifecycle.rs:2424`), and a permission with no revoke is not a
+permission. The other levers are the list's, not a verb's: you read a run by reading the rows,
+and you control one by attaching, granting a turn, messaging a row's holder, or writing.
 
 Delete: the tool's driver with all of its policies, `fill_slots`, `assign_next`,
-`assign_task`, `await_members`, `retry`, `wake`, `cleanup`, `stop`, the read views
+`assign_task`, `await_members`, `retry`, `wake`, `cleanup` (and `cleanup_swarm_workers`
+with it, leaving `stop_swarm_sessions` its one caller), the read views
 (`status`, `summary`, `report`, `plan_status`, `read_context`, `resync_plan`), the
 `report` action, and the instruction protocol around it (the spawn reminder, the
 assignment suffix, the tldr rule, the notification advice text). The channels and the
 shared-context KV store go with them: `share`, `share_append`, `read`, `broadcast`,
 `dm`, `channel`, `list_channels`, `channel_members`, `subscribe_channel`,
-`unsubscribe_channel`. Keep: `spawn` (root only) and one message verb, whose address is
-the owner of a named row.
+`unsubscribe_channel`. Keep: `spawn` (root only), `stop`, `list_models`, and one message verb, whose
+address is the owner of a named row.
 
 What replaces them: the loop's own dispatch (a holder write, plus the same wake a turn
 end already uses when the holder is headless), readiness as the wait, the close as the
-report, and the row's words as the handoff.
+report, and the row's words as the handoff. The loop also ends a run: when its ready rows are
+gone the anchor closes, and the run's member sessions stop with it. Nothing does that today,
+which is how three idle headless members kept the swarm surface up on 2026-10-03 until
+`cleanup` was called by hand.
 
 New code, one piece: a write hook that wakes a headless holder when a row becomes ready.
 Everything else in this stage is deletion.

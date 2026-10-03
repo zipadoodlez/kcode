@@ -53,7 +53,8 @@ subject is one checkbox below, with its design in the item.
 - [ ] **Condense `tool/communicate.rs`.** It lands after the verb cut
  (`plans/task-flow.md` S1), which removes two of the four concepts first. Four concepts
  are welded together: swarm
- coordination, capacity cleanup (`cleanup_swarm_workers`, `stop_swarm_sessions`), the
+ coordination, capacity cleanup (`cleanup_swarm_workers` goes with S1;
+ `stop_swarm_sessions` keeps its one caller), the
  run-plan driver (`run_swarm_plan_loop`, the driver-claim helpers), and the
  `format_*`/`fetch_*` formatters around a large `execute`. A census found these are
  *not* splits: `server/swarm.rs`, `server/comm_control.rs` (covered by the swarm-state
