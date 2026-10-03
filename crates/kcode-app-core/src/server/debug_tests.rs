@@ -69,7 +69,7 @@ mod tests {
     fn swarm_debug_help_text_mentions_core_swarm_sections() {
         let help = swarm_debug_help_text();
         assert!(help.contains("MEMBERS & STRUCTURE"));
-        assert!(help.contains("SHARED CONTEXT"));
+        assert!(help.contains("FILE TOUCHES"));
         assert!(help.contains("REAL-TIME EVENTS"));
         assert!(help.contains("swarm:list"));
     }

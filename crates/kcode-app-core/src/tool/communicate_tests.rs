@@ -328,12 +328,14 @@ fn schema_advertises_supported_swarm_fields() {
     assert!(props.contains_key("to_session"));
     assert_eq!(
         props["to_session"]["description"],
-        json!("Session ID or unique friendly name of one agent. Alias of target_session.")
+        json!("Session id or unique friendly name of one agent. Alias of target_session.")
     );
     assert!(props.contains_key("target_session"));
     assert_eq!(
         props["target_session"]["description"],
-        json!("Session ID or unique friendly name for management actions. Alias of to_session.")
+        json!(
+            "Session id or unique friendly name. For stop: naming a run's root ends the run; naming a member takes that member and everything it spawned. Alias of to_session."
+        )
     );
     assert!(props.contains_key("prompt"));
     assert!(props.contains_key("working_dir"));
