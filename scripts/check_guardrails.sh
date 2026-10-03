@@ -107,6 +107,13 @@ run_ratchet "wildcard re-export ratchet" check_wildcard_reexport_budget.py
 # separately from file size (app.rs could shrink while fields regroup inward).
 run_ratchet "App shape ratchet" check_app_shape.py
 
+# The build wrapper every cargo action goes through was untested by the gate.
+# These two stub cargo, so they cost seconds and compile nothing.
+echo ""
+echo "=== Build wrapper ==="
+run_gate "dev_cargo cwd handling" python3 scripts/test_dev_cargo_cwd.py
+run_gate "dev_cargo job sizing" bash scripts/test_dev_cargo_jobs.sh
+
 echo ""
 # CI installs the current `stable`; a stale local toolchain hides new lints.
 if command -v rustup >/dev/null 2>&1; then
