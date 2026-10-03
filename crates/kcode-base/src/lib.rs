@@ -65,6 +65,8 @@ pub mod soft_interrupt_store;
 pub mod stdin_detect;
 pub mod storage;
 pub mod terminal_launch;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_env;
 pub mod todo;
 pub mod transport;
 pub mod usage;

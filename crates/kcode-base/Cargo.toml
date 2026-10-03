@@ -17,6 +17,10 @@ path = "src/lib.rs"
 
 [dependencies]
 
+# Runs the test-process root install before the test harness's main; only in
+# test builds (see the `test-support` feature below).
+ctor = { version = "1", optional = true }
+
 # Async runtime
 tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 futures = "0.3"
@@ -116,7 +120,7 @@ default = ["bedrock"]
 # `pub` so downstream crates' test targets can reach them. Enabled as a
 # dev-dependency feature by kcode-app-core / kcode / etc.; never in normal
 # (non-test) builds.
-test-support = []
+test-support = ["dep:ctor"]
 # Live AWS Bedrock support (the ~20-crate AWS SDK stack) lives in
 # kcode-provider-bedrock (aws-sdk); forward there. Without it the Bedrock
 # provider still compiles but live calls return an explanatory error.
@@ -126,6 +130,8 @@ bedrock = ["kcode-provider-bedrock/aws-sdk"]
 global-hotkey = "0.7"
 
 [dev-dependencies]
+# The `ctor` attribute for the in-crate root install (src/test_env.rs).
+ctor = "1"
 # Dev-only cycle (cargo permits dev-dependencies on dependents): base's
 # MultiProvider routing tests exercise the real OpenRouter/OpenAI-compatible
 # runtime through the composition-root registry, exactly like the binary.
