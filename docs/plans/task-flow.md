@@ -199,27 +199,30 @@ the type disagree today, the type is behind: `TaskItem` still carries `status`,
 
 ## The duplication this removes
 
-Measured 2026-10-03, all bodies read.
+Measured 2026-10-03, all bodies read, and re-read after S1 landed. S1 removed the
+dispatch duplication (four schedulers, two dispatchers, two waiters, two disagreeing
+liveness predicates), the three artifact producers with the report action, and the
+channel index with the shared-context store; those cuts are recorded in
+`docs/what-was-removed.md`. What remains:
 
-- **Four schedulers** decide what runs next: the loop (`server/live_turn.rs`); `run_plan`'s
-  driver (`tool/communicate.rs:431-1460`, ~1,030 lines with its own concurrency policy,
-  200-loop cap, stall retries, credential breaker, cap recovery, utilization report and
-  background card); `fill_slots`/`assign_next` (mini loops over the same assign request);
-  and the turn-end auto-close (`server/comm_control.rs`).
-- **Two dispatchers** pick the worker: the run status map and a 15 s TTL claim map
-  (`auto_assign_claims`), because the plan write lands several awaits after the pick.
-- **Two liveness predicates** disagree: `salvage_dead_assignees` waits out the reload
-  grace, `next_dispatch` does not. The code carries a `braid:` note saying so.
-- **Two waiters**: in-memory socket waiters, and a durable one
-  (`server/await_members_state.rs`, 278 lines, persisted pending state and a startup
-  resume), plus a notify/wake bus event.
-- **Three artifact producers** write one form; **two report channels** carry one fact.
-- **A KV store and topic channels** (in-memory, swarm-scoped), **four member shapes**,
-  **a third event log** (the bounded swarm history), **five view handlers**
-  (`comm_sync`), 607 lines of debug views, and a 3,100-line gallery rendering the same
+- **Four renderers over one list**: the inline card, the side-panel page, the pinned
+  band and the info widget's pips each render the rows, over four caches (three
+  hashes in `todos_view.rs`, a 1s TTL cache with a refresh thread, and the
+  transcript's previous-list parse). `commands_improve.rs` repeats the same load six
+  times, and `turn_notify.rs`, `state_ui.rs` and `remote/key_handling.rs` read the
+  file again.
+- **A third copy of a session's rows** (`SwarmMemberRuntime.todo_items`, folded from
+  `TodoEvent`s), **four member shapes**, **a third event log** (the bounded swarm
+  history), 607 lines of debug views, and a 3,100-line gallery rendering the same
   swarm state.
+- **Two artifact shapes**: `tool/todo.rs` hand-builds a close from three fields while
+  `kcode-plan/src/artifact.rs` owns the seven-field `HandoffArtifact`.
+- **Four status vocabularies**, and the five fields the file does not need
+  (`status`, `priority`, `group`, `subsystem`, `file_scope`).
+- **The `SwarmState` pair**, rebuilt as a literal at each request arm and threaded to
+  ~40 functions.
 
-The tool's action surface is 32 actions; S1 keeps four (spawn, stop, list_models, one message verb).
+The tool's action surface is now four actions (spawn, stop, list_models, message).
 
 ## Steps
 
@@ -232,6 +235,11 @@ the worker's record is the one thing both of them touch. The `app.rs` re-core (`
 the tail and it is droppable: nothing here depends on it.
 
 ### S1. The loop owns dispatch
+
+Landed 2026-10-03 in S1a-S1f: the loop's dispatch and the write that wakes it, the
+run's end, `stop` as the subtree-wide control verb, and every deletion below. The
+design is kept here because the gate has not run yet; the cuts are in
+`docs/what-was-removed.md` and the engine's surviving shape in `internals/swarm.md`.
 
 **The levers: `stop` stays, and it is the only control verb left.** `wake`, `retry` and
 `reassign`/`replace` were the loop's job done by hand, so they go; `cleanup` goes because the

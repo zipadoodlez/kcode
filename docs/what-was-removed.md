@@ -123,7 +123,8 @@ the notice a displaced holder used to get: it is no longer told to stand down, i
 finds out on its next write. What remains and covers the ground: `assign_task` as the
 takeover, `retry`/`wake` as the same dispatch with a fixed sentence, the reclaim sweep
 for a dead holder, the picker's hand-back, and the row's own `note`, where `salvage`'s
-prior tool-call summaries now belong.
+prior tool-call summaries now belong. S1b/S1d then deleted `assign_task`,
+`retry`, `wake` and the rest of that family; see the control-surface entry below.
 
 **Fold the Python live drivers into Rust** (tests). What is lost: the
 streaming-timing cases (a wall-clock race; queueing while idle covers the same
@@ -246,6 +247,20 @@ lost: a mission file hand-written or left by an older build no longer injects a
 continuation reminder, and `/mission` and `/goal` are no longer recognized, so like
 any other unknown slash text they are sent to the model as a prompt rather than
 refused with a notice. The concept itself is rule 11's permission, which stays.
+
+**The tool's control surface is stop, message, spawn and list_models** (S1b/S1d,
+2026-10-03). The verbs that drove a run by hand go: `assign_task`, `assign_next` and
+`fill_slots` (hand a row to a session), `run_plan` (the driver with its concurrency
+policy, stall retries, credential breaker and cap recovery), `retry` and `wake` (the
+same assign with a fixed sentence), and `cleanup` (end finished workers by hand).
+`stop` loses `force`: it ends the target's subtree on the spawn edge, deepest first,
+and cannot reach a session outside it. What is lost: an agent can no longer hand a row
+to a peer, wake a stopped member, or retry a failed turn by naming it, and a
+coordinator can no longer stop a session outside its own run. What covers the ground:
+a write that makes a row ready wakes its headless holder (the loop's wake, landed with
+S1a), the run ends itself when none of its rows is ready (`end_spent_runs`), `message`
+carries the handoff to one addressed session, and `stop` on the run's root ends the run
+with every member under it.
 
 **The swarm tool's read views and the report action go** (S1c, 2026-10-03). An agent
 could ask the tool for a member's status snapshot, its recent tool calls, the run's

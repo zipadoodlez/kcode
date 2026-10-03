@@ -7,18 +7,19 @@ subject is one checkbox below, with its design in the item.
 ## Tasks
 
 - [ ] **Split `handle_client`**
- (`crates/kcode-app-core/src/server/client_lifecycle.rs`, 3,620 lines; the function is
- 435-3029, ~2,595). Researched 2026-09-28: the arms are already thin and mostly
+ (`crates/kcode-app-core/src/server/client_lifecycle.rs`, 2,952 lines; the function is
+ 417-2380, ~1,964, re-measured after S1). Researched 2026-09-28: the arms are already
+ thin and mostly
  delegate, so the god-ness is not the arms. It is:
-  - **~750 lines of setup prologue** (435-1184): the read loop until `Subscribe`
+  - **~734 lines of setup prologue** (417-1150): the read loop until `Subscribe`
     (lightweight control requests answered inline and dropped), working-dir resolution,
     provider fork, `Registry::new`, `Agent::new_with_initial_working_dir`, prewarm,
     `SessionControlHandle` registration, four `write().await` map inserts, and the
     event-forwarder spawn.
-  - **75 `Request::` arms, ~1,730 lines** (1185-2913): largest `Subscribe` 195, `Message`
+  - **51 `Request::` arms, ~1,120 lines** (1151-2270): largest `Subscribe` 195, `Message`
     95, `SoftInterrupt` 81, `ResumeSession` 74, `Rewind` 61, `RewindUndo` 60, `Clear`
     47; the rest 15-40. The `Comm*` arms only unpack and forward.
-  - **~116 lines of teardown** (2914-3029) that already calls
+  - **~85 lines of teardown** (2296-2380) that already calls
     `client_disconnect_cleanup` helpers.
   - **24 args** under `#[expect(clippy::too_many_arguments)]`, with one production
     caller (`server/runtime.rs:261`) plus tests, so a context struct is mechanical. Six
@@ -50,14 +51,11 @@ subject is one checkbox below, with its design in the item.
     `App` result rather than re-deriving it.
  Done when: `handle_client` is under ~600 lines, the file is out of the size budget,
  and no `SwarmState { .. }` literal is built inside a request arm.
-- [ ] **Condense `tool/communicate.rs`.** It lands after the verb cut
- (`plans/task-flow.md` S1), which removes two of the four concepts first. Four concepts
- are welded together: swarm
- coordination, capacity cleanup (`cleanup_swarm_workers` goes with S1;
- `stop_swarm_sessions` keeps its one caller), the
- run-plan driver (`run_swarm_plan_loop`, the driver-claim helpers), and the
- `format_*`/`fetch_*` formatters around a large `execute`. A census found these are
- *not* splits: `server/swarm.rs`, `server/comm_control.rs` (covered by the swarm-state
- condense, `plans/task-flow.md` D2), and `agent/turn_streaming_mpsc.rs`.
+- [ ] **Condense `tool/communicate.rs`.** The verb cut landed
+ (`plans/task-flow.md` S1), removing the assign verbs, the read views, the report
+ action and the channels, so the file is now 426 lines and two concepts remain: swarm
+ coordination (spawn, stop, list_models, message) and the model-list formatter, with
+ an `execute` match between them. Measure at the step: the formatter is the only
+ seam left, and if it is a pure function the item is closable as done.
  `tool/session_search.rs` has two real seams (native index vs external-source
- ingestion). Measure the size at the step; it moves.
+ ingestion).

@@ -54,7 +54,7 @@ spine is the one structural item; the two calls are the maintainer's.
 - [ ] **Not every color derives from a role**: `configured_native_color`
  (`kcode-tui-style/src/palette.rs`) attributes a shade to a role only when it equals
  that role's default, so hardcoded `Color::Rgb(...)` shades pass through and `/colors`
- cannot recolor them. The swarm path is `plans/task-flow.md` S1 and S3; what remains is
+ cannot recolor them. The swarm path is `plans/task-flow.md` S3; what remains is
  `login_picker.rs` `PANEL_BG`/`PANEL_BORDER` and other orphans. Give each shade a
  role, or mark it intentionally fixed.
 - [ ] **`now_ms` is defined 4x**: `app/observe.rs:212`, `app/split_view.rs:295`,
