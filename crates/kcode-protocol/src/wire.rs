@@ -480,8 +480,6 @@ pub enum Request {
         id: u64,
         session_id: String,
         target_session: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        force: Option<bool>,
     },
 
     /// Read another agent's full conversation context

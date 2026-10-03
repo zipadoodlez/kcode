@@ -1015,7 +1015,6 @@ pub(super) async fn handle_comm_stop(
     id: u64,
     req_session_id: String,
     target_session: String,
-    force: bool,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     sessions: &SessionAgents,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
@@ -1028,11 +1027,9 @@ pub(super) async fn handle_comm_stop(
     soft_interrupt_queues: &SessionInterruptQueues,
     swarm_mutation_runtime: &SwarmMutationRuntime,
 ) {
-    // Stopping is authorized per-target by ownership (the requester is the
-    // target's spawner or a transitive ancestor) rather than by the swarm-level
-    // coordinator slot, so that any parent can stop agents in its own subtree.
-    // We only require the requester to be a member of a swarm here; the concrete
-    // permission check happens below via `stop_allowed`.
+    // Stopping is authorized per-target by the spawn edge (the requester is the
+    // target itself or a transitive ancestor of it) rather than by a swarm-level
+    // coordinator slot, so any parent can end its own subtree.
     let swarm_id = {
         let members = swarm_members.read().await;
         swarm_root(&members, &req_session_id)
@@ -1059,31 +1056,32 @@ pub(super) async fn handle_comm_stop(
             }
         };
 
-    let stop_allowed = {
+    // The authority is the spawn edge, the same edge membership uses: a session may
+    // end itself or anything it spawned, transitively. The target set is that
+    // subtree, read once before anything ends, because ending a session re-parents
+    // its children and the walk would lose them.
+    let targets = {
         let members = swarm_members.read().await;
-        members
-            .get(&target_session)
-            .map(|member| {
-                swarm_stop_allowed_by_owner(&req_session_id, member, force)
-                    || (!force
-                        && super::swarm_is_self_or_ancestor(
-                            &members,
-                            &req_session_id,
-                            &target_session,
-                        ))
-            })
-            .unwrap_or(false)
+        if !members.contains_key(&target_session) {
+            let _ = client_event_tx.send(ServerEvent::Error {
+                id,
+                message: format!("Unknown session '{target_session}'"),
+                retry_after_secs: None,
+            });
+            return;
+        }
+        if !super::swarm_is_self_or_ancestor(&members, &req_session_id, &target_session) {
+            let _ = client_event_tx.send(ServerEvent::Error {
+                id,
+                message: format!(
+                    "Refusing to stop session '{target_session}': it is not this session or one it spawned."
+                ),
+                retry_after_secs: None,
+            });
+            return;
+        }
+        stop_targets(&members, &target_session)
     };
-    if !stop_allowed {
-        let _ = client_event_tx.send(ServerEvent::Error {
-            id,
-            message: format!(
-                "Refusing to stop session '{target_session}' because it was not spawned by this coordinator. Pass force=true to stop a non-owned/user-created swarm session explicitly."
-            ),
-            retry_after_secs: None,
-        });
-        return;
-    }
 
     let mutation_key = request_key(&req_session_id, "stop", &[swarm_id, target_session.clone()]);
     let Some(mutation_state) = begin_or_replay(
@@ -1099,27 +1097,32 @@ pub(super) async fn handle_comm_stop(
         return;
     };
 
-    let removed = end_session(
-        &target_session,
-        format!("Stopped by coordinator {req_session_id}"),
-        sessions,
-        soft_interrupt_queues,
-        swarm_members,
-        swarm_runs,
-        event_history,
-        event_counter,
-        swarm_event_tx,
-    )
-    .await;
+    let mut ended = 0;
+    for session_id in &targets {
+        if end_session(
+            session_id,
+            format!("Stopped by {req_session_id}"),
+            sessions,
+            soft_interrupt_queues,
+            swarm_members,
+            swarm_runs,
+            event_history,
+            event_counter,
+            swarm_event_tx,
+        )
+        .await
+        {
+            ended += 1;
+        }
+        remove_session_channel_subscriptions(
+            session_id,
+            channel_subscriptions,
+            channel_subscriptions_by_session,
+        )
+        .await;
+    }
 
-    remove_session_channel_subscriptions(
-        &target_session,
-        channel_subscriptions,
-        channel_subscriptions_by_session,
-    )
-    .await;
-
-    let response = if removed {
+    let response = if ended > 0 {
         PersistedSwarmMutationResponse::Done
     } else {
         PersistedSwarmMutationResponse::Error {
@@ -1130,12 +1133,23 @@ pub(super) async fn handle_comm_stop(
     finish_request(swarm_mutation_runtime, &mutation_state, response).await;
 }
 
-fn swarm_stop_allowed_by_owner(
-    req_session_id: &str,
-    target_member: &SwarmMember,
-    force: bool,
-) -> bool {
-    force || target_member.report_back_to_session_id.as_deref() == Some(req_session_id)
+/// The sessions one stop takes down: `target` and everything under it on the spawn
+/// edge, deepest first so a child is ended before the session that spawned it.
+fn stop_targets(members: &HashMap<String, SwarmMember>, target: &str) -> Vec<String> {
+    let mut targets: Vec<(usize, String)> = members
+        .values()
+        .filter(|member| super::swarm_is_self_or_ancestor(members, target, &member.session_id))
+        .map(|member| {
+            (
+                super::swarm::swarm_ancestors(members, &member.session_id).len(),
+                member.session_id.clone(),
+            )
+        })
+        .collect();
+    // Deepest first: a child is ended while the session that spawned it is still
+    // there to own the re-parenting and the salvage notification.
+    targets.sort_by(|left, right| right.0.cmp(&left.0).then(left.1.cmp(&right.1)));
+    targets.into_iter().map(|(_, id)| id).collect()
 }
 
 async fn resolve_stop_target_session(

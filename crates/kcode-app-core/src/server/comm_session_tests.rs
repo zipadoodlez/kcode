@@ -4,7 +4,7 @@ use super::{
     CoordinatorSpawnIdentity, ensure_spawn_coordinator_swarm, prepare_visible_spawn_session,
     register_visible_spawned_member, resolve_coordinator_spawn_identity, resolve_spawn_working_dir,
     resolve_stop_target_session, resolve_swarm_spawn_selection, session_may_spawn,
-    spawn_admission_lock, swarm_stop_allowed_by_owner,
+    spawn_admission_lock, stop_targets,
 };
 use crate::agent::Agent;
 use crate::message::{Message, ToolDefinition};
@@ -129,18 +129,27 @@ async fn resolve_spawn_working_dir_falls_back_to_member_dir() {
 }
 
 #[test]
-fn stop_permission_defaults_to_sessions_spawned_by_requesting_coordinator() {
-    let (mut owned, _owned_rx) = member("worker-owned");
-    owned.report_back_to_session_id = Some("coord".to_string());
-    let (mut user_created, _user_rx) = member("worker-user");
-    user_created.report_back_to_session_id = None;
-    let (mut other_owned, _other_rx) = member("worker-other");
-    other_owned.report_back_to_session_id = Some("other-coord".to_string());
+fn stop_takes_the_target_and_its_subtree_deepest_first() {
+    let run: HashMap<String, SwarmMember> = ["root", "a", "b", "a-child", "foreign"]
+        .into_iter()
+        .map(|id| {
+            let (mut member, _rx) = member(id);
+            member.report_back_to_session_id = match id {
+                "root" => None,
+                "a" | "b" => Some("root".to_string()),
+                "a-child" => Some("a".to_string()),
+                _ => Some("elsewhere".to_string()),
+            };
+            (id.to_string(), member)
+        })
+        .collect();
 
-    assert!(swarm_stop_allowed_by_owner("coord", &owned, false));
-    assert!(!swarm_stop_allowed_by_owner("coord", &user_created, false));
-    assert!(!swarm_stop_allowed_by_owner("coord", &other_owned, false));
-    assert!(swarm_stop_allowed_by_owner("coord", &user_created, true));
+    // Naming the root ends the run: the root and everything it spawned, a child
+    // before the session that spawned it, and nothing outside the run.
+    assert_eq!(stop_targets(&run, "root"), vec!["a-child", "a", "b", "root"]);
+    // Naming a member takes that member and its own subtree only.
+    assert_eq!(stop_targets(&run, "a"), vec!["a-child", "a"]);
+    assert_eq!(stop_targets(&run, "foreign"), vec!["foreign"]);
 }
 
 #[tokio::test]

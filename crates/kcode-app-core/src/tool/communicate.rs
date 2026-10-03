@@ -232,8 +232,6 @@ struct CommunicateInput {
     #[serde(default)]
     delivery: Option<CommDeliveryMode>,
     #[serde(default)]
-    force: Option<bool>,
-    #[serde(default)]
     spawn_mode: Option<String>,
     /// One-line summary shown collapsed in the recipient's UI for long
     /// message/report bodies. Required when the body exceeds the collapse
@@ -343,7 +341,7 @@ impl Tool for CommunicateTool {
                 },
                 "target_session": {
                     "type": "string",
-                    "description": "Session ID or unique friendly name for management actions. Alias of to_session."
+                    "description": "Session id or unique friendly name. For stop: naming a run's root ends the run; naming a member takes that member and everything it spawned. Alias of to_session."
                 },
                 "label": {
                     "type": "string",
@@ -393,10 +391,6 @@ impl Tool for CommunicateTool {
                 "notify": {
                     "type": "boolean",
                     "description": "For await_members/run_plan: show a notification when resolved. Defaults to true."
-                },
-                "force": {
-                    "type": "boolean",
-                    "description": "For stop: allow stopping a session this requester did not spawn. Defaults to false."
                 },
                 "wake": {
                     "type": "boolean",
@@ -785,13 +779,12 @@ impl Tool for CommunicateTool {
                     id: REQUEST_ID,
                     session_id: ctx.session_id.clone(),
                     target_session: target.clone(),
-                    force: params.force,
                 };
 
                 match send_request(request).await {
                     Ok(response) => {
                         ensure_success(&response)?;
-                        Ok(ToolOutput::new(format!("Stopped agent: {}", target)))
+                        Ok(ToolOutput::new(format!("Stopped {}.", target)))
                     }
                     Err(e) => Err(anyhow::anyhow!("Failed to stop agent: {}", e)),
                 }
