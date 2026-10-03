@@ -1,7 +1,8 @@
 # Row model
-Tick a step when it lands and delete it; git has the history. This is the one plan for
-the row/list work: the model, the rules the code cites, the duplication left to remove,
-and the stages that remove it. Subjects with another owner keep their own doc — the
+
+This is the one plan for the row/list work: the model, the rules the code cites, the
+duplication left to remove, the stages that remove it, and the landed record behind them.
+Subjects with another owner keep their own doc — the
 app's shape in `plans/app-shape.md`, the request path in `plans/server-shape.md`, the
 test tree in `plans/test-tree.md`, the loose ends in `plans/hygiene.md` — and losses are
 named in `docs/what-was-removed.md`.
@@ -188,19 +189,7 @@ the type disagree today, the type is behind: `TaskItem` still carries `status`,
     decided. Typing always wins, so the stop lever for a session with a human is the
     user's next turn.
 
-
-## Steps
-
-Landed work is in the record below; what is open is here.
-
-Every step lands whole, proven by the gate. The one `kcode run` probe against its own
-socket waits for the end of the list, where the user runs it, so no step is gated on it.
-Widest shared shape first, so no step sweeps call sites a later step reshapes: S1 opens
-the loop's path, S2 the client's, and S3-S5 delete what those leave behind. The `app.rs`
-re-core (`plans/app-shape.md`) is the tail and it is droppable: nothing here depends on
-it.
-
-### The duplication this removes
+## The duplication this removes
 
 Measured 2026-10-03, all bodies read.
 
@@ -223,6 +212,18 @@ Measured 2026-10-03, all bodies read.
   swarm state.
 
 The tool's action surface is 32 actions; S1 keeps three.
+
+## Steps
+
+Landed work is in the record below; what is open is here.
+
+Every step lands whole, proven by the gate. The one `kcode run` probe against its own
+socket waits for the end of the list, where the user runs it, so no step is gated on it.
+Widest shared shape first, so no step sweeps call sites a later step reshapes: S1 opens
+the loop's path and S2 the client's, and S3-S5 then delete what those leave behind. The
+numbers label the stages, they are not an order: S3 waits on S2 and S5, because the member
+record they reshape is the one it merges. The `app.rs` re-core (`plans/app-shape.md`) is
+the tail and it is droppable: nothing here depends on it.
 
 ### S1. The loop owns dispatch
 
@@ -352,7 +353,7 @@ engine's own statuses no longer reach a row. Afterwards a row is ready when `blo
 is empty and liveness comes from the member, not the item. surface: −5 fields,
 −4 vocabularies. lines ~−500. risk: med.
 
-### D2. The swarm/comm condense
+### D2. The swarm/comm condense (gates `plans/server-shape.md` H2)
 
 The `SwarmState` handle pair is still threaded to ~40 functions and rebuilt as a literal
 at each request arm, so the request context that ends it is the remaining half. Give the
@@ -393,9 +394,10 @@ The recovery dance disappears, because the loop does not spawn past the cap. The
 credential-wave breaker becomes a provider-health signal that fails a turn with a clear
 error, not a dispatcher rule.
 
-### What to verify before calling a stage done
+### What to verify when the list is done
 
-- S1's scratch-repo fan-out, by hand, on the loop alone.
+Each stage's own gate is in its section. These are the properties that outlive a stage.
+
 - A resume: a run interrupted between turns continues on the loop, with no stored run
   state anywhere.
 - Two runs in one repo: each sees its own rows, and a row moved mid-turn is refused on
