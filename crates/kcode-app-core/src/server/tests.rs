@@ -313,6 +313,38 @@ fn persisted_headless_member(session_id: &str, status: &str, detail: &str) -> Sw
     }
 }
 
+#[test]
+fn a_spent_run_takes_only_the_sessions_it_spawned() {
+    let (root_tx, _root_rx) = mpsc::unbounded_channel();
+    let mut root = attached_swarm_member("root", root_tx);
+    root.is_headless = false;
+
+    let mut worker = persisted_headless_member("worker", "ready", "");
+    worker.report_back_to_session_id = Some("root".to_string());
+
+    let mut detached = persisted_headless_member("detached", "ready", "");
+    detached.report_back_to_session_id = None;
+
+    let mut watched = persisted_headless_member("watched", "ready", "");
+    watched.is_headless = false;
+    watched.report_back_to_session_id = Some("root".to_string());
+
+    let mut stranger = persisted_headless_member("stranger", "ready", "");
+    stranger.report_back_to_session_id = Some("someone-else".to_string());
+
+    let members: HashMap<String, SwarmMember> = [root, worker, detached, watched, stranger]
+        .into_iter()
+        .map(|member| (member.session_id.clone(), member))
+        .collect();
+
+    assert_eq!(
+        Server::spent_run_members(&members, "root"),
+        vec!["worker".to_string()],
+        "only a headless member this run spawned goes with it: not the session a person \
+         is sitting in, not one that merely detached, and not another run's"
+    );
+}
+
 #[tokio::test]
 async fn background_task_wake_runs_live_session_immediately_when_idle() {
     let _env_lock = crate::storage::lock_test_env();

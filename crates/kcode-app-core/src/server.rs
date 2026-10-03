@@ -63,7 +63,8 @@ use self::swarm::{
     broadcast_swarm_status, expired_terminal_member_ids, member_consumes_swarm_capacity,
     record_swarm_event, record_swarm_event_for_session, remove_session_from_swarm,
     run_swarm_message, salvage_dead_assignees, send_swarm_plan_to_session, set_member_task_label,
-    swarm_is_self_or_ancestor, update_member_status, update_member_status_with_report,
+    swarm_is_self_or_ancestor, swarm_root, swarm_rows, update_member_status,
+    update_member_status_with_report,
     update_member_status_with_report_tldr,
 };
 use self::swarm_channels::{
@@ -1763,6 +1764,87 @@ impl Server {
             .any(|member| member.status == SwarmLifecycleStatus::Running)
     }
 
+    /// The sessions a run takes with it when it ends: the headless members it spawned.
+    ///
+    /// A session with a human attached is not the run's to end, and neither is one that
+    /// never came from the run: only a member whose spawn edge (`report_back_to_session_id`)
+    /// sits inside this run goes with it. That is also why a session whose client merely
+    /// detached is never reaped, since a detached session has no spawn edge.
+    fn spent_run_members(members: &HashMap<String, SwarmMember>, root: &str) -> Vec<String> {
+        let mut spent: Vec<String> = members
+            .values()
+            .filter(|member| member.is_headless)
+            .filter(|member| member.report_back_to_session_id.is_some())
+            .filter(|member| swarm_root(members, &member.session_id).as_deref() == Some(root))
+            .map(|member| member.session_id.clone())
+            .collect();
+        spent.sort();
+        spent.dedup();
+        spent
+    }
+
+    /// End the runs that are over, and take their sessions with them.
+    ///
+    /// A run with no rows left is over: the anchor closes last, so its close is the run's
+    /// end. A write is what empties it, so this runs where the wake does, and they are one
+    /// rule read twice: a write starts work, and a write ends a run that has none.
+    ///
+    /// The in-memory check comes first on purpose: a session with nothing spawned under it
+    /// costs no file read, so a plain session's writes never touch the list twice.
+    async fn end_spent_runs(
+        sessions: &SessionAgents,
+        soft_interrupt_queues: &SessionInterruptQueues,
+        swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+        swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
+        event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
+        event_counter: &Arc<std::sync::atomic::AtomicU64>,
+        swarm_event_tx: &broadcast::Sender<SwarmEvent>,
+    ) -> usize {
+        let roots: Vec<String> = {
+            let members = swarm_members.read().await;
+            let mut roots: Vec<String> = members
+                .values()
+                .filter_map(|member| swarm_root(&members, &member.session_id))
+                .collect();
+            roots.sort();
+            roots.dedup();
+            roots
+        };
+        let mut ended = 0;
+        for root in roots {
+            let spent = {
+                let members = swarm_members.read().await;
+                Self::spent_run_members(&members, &root)
+            };
+            if spent.is_empty() {
+                continue;
+            }
+            // The list is the state: the run is over exactly when the file holds none of
+            // its rows.
+            if !swarm_rows(&root, &root, swarm_members).await.is_empty() {
+                continue;
+            }
+            for session_id in spent {
+                if comm_session::end_session(
+                    &session_id,
+                    format!("the run {root} has nothing left to take"),
+                    sessions,
+                    soft_interrupt_queues,
+                    swarm_members,
+                    swarm_runs,
+                    event_history,
+                    event_counter,
+                    swarm_event_tx,
+                )
+                .await
+                {
+                    ended += 1;
+                }
+            }
+        }
+        ended
+    }
+
     /// Monitor the global Bus for FileTouch events and detect conflicts
     #[expect(
         clippy::too_many_arguments,
@@ -2076,6 +2158,16 @@ impl Server {
                             &swarm_event_tx,
                         ),
                         &swarm_runs,
+                    )
+                    .await;
+                    Self::end_spent_runs(
+                        &sessions,
+                        &soft_interrupt_queues,
+                        &swarm_members,
+                        &swarm_runs,
+                        &event_history,
+                        &event_counter,
+                        &swarm_event_tx,
                     )
                     .await;
                 }
