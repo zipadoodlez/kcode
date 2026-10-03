@@ -962,6 +962,68 @@ pub(super) async fn handle_comm_list_models(
     });
 }
 
+/// End one session: tell it, then take it out of the server and out of its run.
+///
+/// The one home for the act, so a run's end and a person's `stop` end a session the
+/// same way. Returns whether there was anything to end.
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn end_session(
+    session_id: &str,
+    reason: String,
+    sessions: &SessionAgents,
+    soft_interrupt_queues: &SessionInterruptQueues,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
+    event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
+    event_counter: &Arc<std::sync::atomic::AtomicU64>,
+    swarm_event_tx: &broadcast::Sender<SwarmEvent>,
+) -> bool {
+    let _ = fanout_session_event(
+        swarm_members,
+        session_id,
+        ServerEvent::SessionCloseRequested { reason },
+    )
+    .await;
+
+    let removed_agent = super::remove_session_entry(sessions, session_id).await;
+    let removed_live_agent = removed_agent.is_some();
+    if let Some(agent_arc) = removed_agent {
+        remove_session_interrupt_queue(soft_interrupt_queues, session_id).await;
+        remove_background_tool_signal(session_id);
+        if let Ok(mut agent) = agent_arc.try_lock() {
+            agent.mark_closed();
+        }
+    }
+
+    let (removed_swarm_id, removed_name) = {
+        let mut members = swarm_members.write().await;
+        // Read the departing member's run before the removal: afterwards its
+        // report-back edge is gone, and the derived membership with it.
+        let removed_swarm_id = swarm_root(&members, session_id);
+        if let Some(member) = members.remove(session_id) {
+            (removed_swarm_id, member.friendly_name)
+        } else {
+            (None, None)
+        }
+    };
+    if let Some(ref swarm_id) = removed_swarm_id {
+        record_swarm_event(
+            event_history,
+            event_counter,
+            swarm_event_tx,
+            session_id.to_string(),
+            removed_name.clone(),
+            Some(swarm_id.clone()),
+            SwarmEventType::MemberChange {
+                action: "left".to_string(),
+            },
+        )
+        .await;
+        remove_session_from_swarm(session_id, swarm_id, swarm_members, swarm_runs).await;
+    }
+    removed_live_agent || removed_swarm_id.is_some()
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn handle_comm_stop(
     id: u64,
@@ -1037,15 +1099,6 @@ pub(super) async fn handle_comm_stop(
         return;
     }
 
-    let _ = fanout_session_event(
-        swarm_members,
-        &target_session,
-        ServerEvent::SessionCloseRequested {
-            reason: format!("Stopped by coordinator {req_session_id}"),
-        },
-    )
-    .await;
-
     let mutation_key = request_key(&req_session_id, "stop", &[swarm_id, target_session.clone()]);
     let Some(mutation_state) = begin_or_replay(
         swarm_mutation_runtime,
@@ -1060,42 +1113,19 @@ pub(super) async fn handle_comm_stop(
         return;
     };
 
-    let removed_agent = super::remove_session_entry(sessions, &target_session).await;
-    let removed_live_agent = removed_agent.is_some();
-    if let Some(agent_arc) = removed_agent {
-        remove_session_interrupt_queue(soft_interrupt_queues, &target_session).await;
-        remove_background_tool_signal(&target_session);
-        if let Ok(mut agent) = agent_arc.try_lock() {
-            agent.mark_closed();
-        }
-    }
+    let removed = end_session(
+        &target_session,
+        format!("Stopped by coordinator {req_session_id}"),
+        sessions,
+        soft_interrupt_queues,
+        swarm_members,
+        swarm_runs,
+        event_history,
+        event_counter,
+        swarm_event_tx,
+    )
+    .await;
 
-    let (removed_swarm_id, removed_name) = {
-        let mut members = swarm_members.write().await;
-        // Read the departing member's run before the removal: afterwards its
-        // report-back edge is gone, and the derived membership with it.
-        let removed_swarm_id = swarm_root(&members, &target_session);
-        if let Some(member) = members.remove(&target_session) {
-            (removed_swarm_id, member.friendly_name)
-        } else {
-            (None, None)
-        }
-    };
-    if let Some(ref swarm_id) = removed_swarm_id {
-        record_swarm_event(
-            event_history,
-            event_counter,
-            swarm_event_tx,
-            target_session.clone(),
-            removed_name.clone(),
-            Some(swarm_id.clone()),
-            SwarmEventType::MemberChange {
-                action: "left".to_string(),
-            },
-        )
-        .await;
-        remove_session_from_swarm(&target_session, swarm_id, swarm_members, swarm_runs).await;
-    }
     remove_session_channel_subscriptions(
         &target_session,
         channel_subscriptions,
@@ -1103,7 +1133,7 @@ pub(super) async fn handle_comm_stop(
     )
     .await;
 
-    let response = if removed_live_agent || removed_swarm_id.is_some() {
+    let response = if removed {
         PersistedSwarmMutationResponse::Done
     } else {
         PersistedSwarmMutationResponse::Error {
