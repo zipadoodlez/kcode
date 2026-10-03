@@ -535,7 +535,6 @@ impl Request {
             Request::CommShare { id, .. } => *id,
             Request::CommRead { id, .. } => *id,
             Request::CommMessage { id, .. } => *id,
-            Request::CommList { id, .. } => *id,
             Request::CommListChannels { id, .. } => *id,
             Request::CommChannelMembers { id, .. } => *id,
             Request::CommSpawn { id, .. } => *id,
@@ -556,7 +555,6 @@ impl Request {
                 | Request::CommShare { .. }
                 | Request::CommRead { .. }
                 | Request::CommMessage { .. }
-                | Request::CommList { .. }
                 | Request::CommListChannels { .. }
                 | Request::CommChannelMembers { .. }
                 | Request::CommSpawn { .. }

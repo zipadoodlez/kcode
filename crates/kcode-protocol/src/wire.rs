@@ -432,10 +432,6 @@ pub enum Request {
         tldr: Option<String>,
     },
 
-    /// List agents and their activity
-    #[serde(rename = "comm_list")]
-    CommList { id: u64, session_id: String },
-
     /// List swarm channels and subscriber counts
     #[serde(rename = "comm_list_channels")]
     CommListChannels { id: u64, session_id: String },

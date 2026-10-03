@@ -1,10 +1,9 @@
-use super::debug::ClientConnectionInfo;
 use super::{
-    FileTouchService, SharedContext, SwarmEvent, SwarmEventType, SwarmMember, fanout_session_event,
+    SharedContext, SwarmEvent, SwarmEventType, SwarmMember, fanout_session_event,
     record_swarm_event,
     util::{member_friendly_name, member_swarm_id},
 };
-use crate::protocol::{AgentInfo, ContextEntry, NotificationType, ServerEvent};
+use crate::protocol::{ContextEntry, NotificationType, ServerEvent};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -182,121 +181,4 @@ pub(super) async fn handle_comm_read(
     };
 
     let _ = client_event_tx.send(ServerEvent::CommContext { id, entries });
-}
-
-pub(super) async fn handle_comm_list(
-    id: u64,
-    req_session_id: String,
-    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    file_touch: &FileTouchService,
-    sessions: &super::SessionAgents,
-    client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
-) {
-    let swarm_id = member_swarm_id(&req_session_id, swarm_members).await;
-
-    if let Some(swarm_id) = swarm_id {
-        let swarm_session_ids: Vec<String> =
-            super::swarm::swarm_session_ids(&swarm_id, swarm_members).await;
-
-        // Snapshot the static member fields first, releasing the members lock
-        // before gathering per-session runtime extras (which briefly lock
-        // individual agents and read the connection map).
-        struct MemberStatic {
-            session_id: String,
-            friendly_name: Option<String>,
-            files: Vec<String>,
-            status: crate::protocol::SwarmLifecycleStatus,
-            detail: Option<String>,
-            task_label: Option<String>,
-            role: String,
-            is_headless: bool,
-            report_back_to_session_id: Option<String>,
-            latest_completion_report: Option<String>,
-            live_attachments: usize,
-            status_age_secs: u64,
-        }
-
-        let statics: Vec<MemberStatic> = {
-            let members = swarm_members.read().await;
-            let touches = file_touch.reverse_snapshot().await;
-            swarm_session_ids
-                .iter()
-                .filter_map(|sid| {
-                    members.get(sid).map(|member| {
-                        let mut files: Vec<String> = touches
-                            .get(sid)
-                            .into_iter()
-                            .flat_map(|paths| paths.iter())
-                            .map(|path| path.display().to_string())
-                            .collect();
-                        files.sort();
-                        MemberStatic {
-                            session_id: sid.clone(),
-                            friendly_name: member.friendly_name.clone(),
-                            files,
-                            status: member.status.clone(),
-                            detail: member.detail.clone(),
-                            task_label: member.task_label.clone(),
-                            role: super::swarm::swarm_role(&members, sid).to_string(),
-                            is_headless: member.is_headless,
-                            report_back_to_session_id: member.report_back_to_session_id.clone(),
-                            latest_completion_report: member.latest_completion_report.clone(),
-                            live_attachments: member.event_txs.len(),
-                            status_age_secs: member.last_status_change.elapsed().as_secs(),
-                        }
-                    })
-                })
-                .collect()
-        };
-
-        let mut member_list: Vec<AgentInfo> = Vec::with_capacity(statics.len());
-        for m in statics {
-            let extras = super::comm_sync::member_runtime_extras(
-                &m.session_id,
-                m.status == crate::protocol::SwarmLifecycleStatus::Running,
-                sessions,
-                client_connections,
-            )
-            .await;
-
-            member_list.push(AgentInfo {
-                session_id: m.session_id,
-                friendly_name: m.friendly_name,
-                files_touched: m.files,
-                status: Some(m.status),
-                detail: m.detail,
-                task_label: m.task_label,
-                role: Some(m.role),
-                is_headless: Some(m.is_headless),
-                report_back_to_session_id: m.report_back_to_session_id,
-                latest_completion_report: m.latest_completion_report,
-                live_attachments: Some(m.live_attachments),
-                status_age_secs: Some(m.status_age_secs),
-                last_activity_age_secs: extras.last_activity_age_secs,
-                activity: extras.activity,
-                provider_name: extras.provider_name,
-                provider_model: extras.provider_model,
-                provider_effort: extras.provider_effort,
-                turn_count: extras.turn_count,
-                recent_total_tokens: extras.recent_total_tokens,
-                recent_output_tokens: extras.recent_output_tokens,
-                recent_window_secs: extras.recent_window_secs,
-                cumulative_total_tokens: extras.cumulative_total_tokens,
-                todos_completed: extras.todos_completed,
-                todos_total: extras.todos_total,
-            });
-        }
-
-        let _ = client_event_tx.send(ServerEvent::CommMembers {
-            id,
-            members: member_list,
-        });
-    } else {
-        let _ = client_event_tx.send(ServerEvent::Error {
-            id,
-            message: "Not in a swarm. Use a git repository to enable swarm features.".to_string(),
-            retry_after_secs: None,
-        });
-    }
 }

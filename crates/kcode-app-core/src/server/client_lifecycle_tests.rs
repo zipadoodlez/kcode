@@ -1517,7 +1517,7 @@ async fn lightweight_comm_request_skips_full_session_initialization() {
 
     let (client_reader, mut client_writer) = client_stream.into_split();
     let mut client_reader = BufReader::new(client_reader);
-    let request = Request::CommList {
+    let request = Request::CommListChannels {
         id: 7,
         session_id: "not-in-swarm".to_string(),
     };

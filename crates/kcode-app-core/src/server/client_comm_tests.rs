@@ -1,4 +1,4 @@
-use super::{handle_comm_list, handle_comm_message};
+use super::handle_comm_message;
 use crate::agent::Agent;
 use crate::message::{Message, ToolDefinition};
 use crate::protocol::SwarmLifecycleStatus;
@@ -343,97 +343,6 @@ async fn comm_message_with_wake_queues_soft_interrupt_for_busy_connected_session
         kcode_agent_runtime::SoftInterruptSource::System
     );
 }
-
-#[tokio::test]
-async fn comm_list_includes_member_status_and_detail() {
-    let requester = test_agent().await;
-    let peer = test_agent().await;
-
-    let requester_id = requester.lock().await.session_id().to_string();
-    let peer_id = peer.lock().await.session_id().to_string();
-
-    let (requester_event_tx, _requester_event_rx) = mpsc::unbounded_channel();
-    let (peer_event_tx, _peer_event_rx) = mpsc::unbounded_channel();
-    let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
-
-    let swarm_members = Arc::new(RwLock::new(HashMap::from([
-        (
-            requester_id.clone(),
-            SwarmMember {
-                session_id: requester_id.clone(),
-                event_tx: requester_event_tx,
-                event_txs: HashMap::new(),
-                working_dir: None,
-                status: SwarmLifecycleStatus::Ready,
-                detail: None,
-                friendly_name: Some("falcon".to_string()),
-                report_back_to_session_id: None,
-                latest_completion_report: None,
-                joined_at: Instant::now(),
-                last_status_change: Instant::now(),
-                is_headless: false,
-                output_tail: None,
-                todo_progress: None,
-                todo_items: Vec::new(),
-                runtime: crate::protocol::SwarmMemberRuntime::default(),
-                task_label: None,
-            },
-        ),
-        (
-            peer_id.clone(),
-            SwarmMember {
-                session_id: peer_id.clone(),
-                event_tx: peer_event_tx,
-                event_txs: HashMap::new(),
-                working_dir: None,
-                status: SwarmLifecycleStatus::Running,
-                detail: Some("working on tests".to_string()),
-                friendly_name: Some("bear".to_string()),
-                report_back_to_session_id: Some(requester_id.clone()),
-                latest_completion_report: None,
-                joined_at: Instant::now(),
-                last_status_change: Instant::now(),
-                is_headless: false,
-                output_tail: None,
-                todo_progress: None,
-                todo_items: Vec::new(),
-                runtime: crate::protocol::SwarmMemberRuntime::default(),
-                task_label: None,
-            },
-        ),
-    ])));
-    let file_touch = crate::server::FileTouchService::new();
-    let sessions = Arc::new(RwLock::new(HashMap::from([
-        (requester_id.clone(), requester.clone()),
-        (peer_id.clone(), peer.clone()),
-    ])));
-    let client_connections = Arc::new(RwLock::new(HashMap::new()));
-
-    handle_comm_list(
-        1,
-        requester_id,
-        &client_event_tx,
-        &swarm_members,
-        &file_touch,
-        &sessions,
-        &client_connections,
-    )
-    .await;
-
-    match client_event_rx.recv().await.expect("comm list response") {
-        ServerEvent::CommMembers { id, members } => {
-            assert_eq!(id, 1);
-            let peer = members
-                .into_iter()
-                .find(|member| member.friendly_name.as_deref() == Some("bear"))
-                .expect("peer entry present");
-            assert_eq!(peer.status, Some(SwarmLifecycleStatus::Running));
-            assert_eq!(peer.detail.as_deref(), Some("working on tests"));
-        }
-        other => panic!("unexpected response: {other:?}"),
-    }
-}
-
 #[tokio::test]
 async fn comm_message_accepts_friendly_name_dm_target() {
     let sender = test_agent().await;

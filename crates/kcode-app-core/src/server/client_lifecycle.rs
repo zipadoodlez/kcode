@@ -5,9 +5,8 @@ use super::client_actions::{
     handle_split, handle_stdin_response, handle_transfer,
 };
 use super::client_comm::{
-    handle_comm_channel_members, handle_comm_list, handle_comm_list_channels, handle_comm_message,
-    handle_comm_read, handle_comm_share, handle_comm_subscribe_channel,
-    handle_comm_unsubscribe_channel,
+    handle_comm_channel_members, handle_comm_list_channels, handle_comm_message, handle_comm_read,
+    handle_comm_share, handle_comm_subscribe_channel, handle_comm_unsubscribe_channel,
 };
 use super::client_disconnect_cleanup::{cleanup_client_connection, detach_client_attachment};
 use super::client_lifecycle_logging::{
@@ -486,7 +485,6 @@ pub(super) async fn handle_client(
                             swarm_members: &swarm_members,
                             shared_context: &shared_context,
                             swarm_runs: &swarm_runs,
-                            file_touch: &file_touch,
                             channel_subscriptions: &channel_subscriptions,
                             channel_subscriptions_by_session: &channel_subscriptions_by_session,
                             client_connections: &client_connections,
@@ -2245,22 +2243,6 @@ pub(super) async fn handle_client(
                     &event_history,
                     &event_counter,
                     &swarm_event_tx,
-                    &client_connections,
-                )
-                .await;
-            }
-
-            Request::CommList {
-                id,
-                session_id: req_session_id,
-            } => {
-                handle_comm_list(
-                    id,
-                    req_session_id,
-                    &client_event_tx,
-                    &swarm_members,
-                    &file_touch,
-                    &sessions,
                     &client_connections,
                 )
                 .await;

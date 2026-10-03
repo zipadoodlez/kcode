@@ -1,13 +1,12 @@
 use super::{
     ACTIONS, CommunicateInput, CommunicateTool, canonical_swarm_action,
-    cleanup_candidate_session_ids, default_await_target_statuses, default_cleanup_target_statuses,
-    format_awaited_members, format_awaited_members_with_reports, format_swarm_model_list,
+    default_await_target_statuses, format_awaited_members, format_awaited_members_with_reports, format_swarm_model_list,
     latest_assistant_report,
 };
 use crate::message::{Message, StreamEvent, ToolDefinition};
 use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{
-    AgentInfo, AwaitedMemberStatus, HistoryMessage, NotificationType, Request, ServerEvent,
+    AwaitedMemberStatus, HistoryMessage, NotificationType, Request, ServerEvent,
 };
 use crate::provider::{EventStream, Provider};
 use crate::server::Server;
@@ -580,25 +579,6 @@ impl RawClient {
         }
     }
 
-    async fn comm_list(&mut self, session_id: &str) -> Result<Vec<AgentInfo>> {
-        let id = self.next_id;
-        self.next_id += 1;
-        self.send_request(Request::CommList {
-            id,
-            session_id: session_id.to_string(),
-        })
-        .await?;
-        match self
-                .read_until(Duration::from_secs(5), |event| {
-                    matches!(event, ServerEvent::CommMembers { id: event_id, .. } if *event_id == id)
-                })
-                .await?
-            {
-                ServerEvent::CommMembers { members, .. } => Ok(members),
-                other => anyhow::bail!("unexpected comm_list response: {other:?}"),
-            }
-    }
-
     async fn next_message_notification(&mut self, timeout: Duration) -> Result<Option<String>> {
         match self
             .read_until(timeout, |event| {
@@ -661,54 +641,43 @@ fn test_ctx(session_id: &str, working_dir: &Path) -> ToolContext {
     }
 }
 
+/// Wait until `target_session` reports `expected_status` on the event stream.
+///
+/// A member's status is what the client is told (`SwarmStatus`). The read this
+/// used to poll (`comm_list`) went with the swarm tool's read views, so the fixture
+/// observes what a client observes.
 async fn wait_for_member_status(
     client: &mut RawClient,
-    requester_session: &str,
     target_session: &str,
     expected_status: &str,
-) -> Result<Vec<AgentInfo>> {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-    loop {
-        let members = client.comm_list(requester_session).await?;
-        if members
-            .iter()
-            .find(|member| member.session_id == target_session)
-            .and_then(|member| member.status.as_ref())
-            .map(|status| status.as_str())
-            == Some(expected_status)
-        {
-            return Ok(members);
-        }
-        if tokio::time::Instant::now() >= deadline {
-            anyhow::bail!(
-                "timed out waiting for member {} to reach status {}",
-                target_session,
-                expected_status
-            );
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
+) -> Result<()> {
+    client
+        .read_until(Duration::from_secs(5), |event| {
+            matches!(
+                event,
+                ServerEvent::SwarmStatus { members }
+                    if members
+                        .iter()
+                        .any(|member| member.session_id == target_session
+                            && member.status.as_str() == expected_status)
+            )
+        })
+        .await?;
+    Ok(())
 }
 
-async fn wait_for_member_presence(
-    client: &mut RawClient,
-    requester_session: &str,
-    target_session: &str,
-) -> Result<Vec<AgentInfo>> {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-    loop {
-        let members = client.comm_list(requester_session).await?;
-        if members
-            .iter()
-            .any(|member| member.session_id == target_session)
-        {
-            return Ok(members);
-        }
-        if tokio::time::Instant::now() >= deadline {
-            anyhow::bail!("timed out waiting for member {} to appear", target_session);
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
+/// Wait until `target_session` appears in a status event at all.
+async fn wait_for_member_presence(client: &mut RawClient, target_session: &str) -> Result<()> {
+    client
+        .read_until(Duration::from_secs(5), |event| {
+            matches!(
+                event,
+                ServerEvent::SwarmStatus { members }
+                    if members.iter().any(|member| member.session_id == target_session)
+            )
+        })
+        .await?;
+    Ok(())
 }
 
 #[test]

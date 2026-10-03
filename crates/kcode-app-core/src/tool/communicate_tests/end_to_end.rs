@@ -99,7 +99,7 @@ async fn communicate_await_members_background_returns_immediately_and_notifies()
         "Reply with a short acknowledgement.",
     )
     .await;
-    wait_for_member_status(&mut watcher, &watcher_session, &peer_session, "running")
+    wait_for_member_status(&mut watcher, &peer_session, "running")
         .await
         .expect("spawned worker should enter running state");
 
@@ -148,7 +148,7 @@ async fn communicate_await_members_background_returns_immediately_and_notifies()
         message
     );
 
-    wait_for_member_status(&mut watcher, &watcher_session, &peer_session, "ready")
+    wait_for_member_status(&mut watcher, &peer_session, "ready")
         .await
         .expect("spawned worker should return to ready state");
 
@@ -278,7 +278,7 @@ async fn communicate_message_routes_as_dm_while_broadcast_targets_swarm() {
         "Reply with a short acknowledgement.",
     )
     .await;
-    wait_for_member_presence(&mut sender, &sender_session, &peer_session)
+    wait_for_member_presence(&mut sender, &peer_session)
         .await
         .expect("spawned worker should join the sender's run");
 

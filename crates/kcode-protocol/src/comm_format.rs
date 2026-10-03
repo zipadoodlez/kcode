@@ -1,26 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use super::{AgentInfo, AwaitedMemberStatus, ContextEntry, HistoryMessage, SwarmChannelInfo};
-
-pub fn default_comm_cleanup_target_statuses() -> Vec<String> {
-    vec![
-        "ready".to_string(),
-        "completed".to_string(),
-        "failed".to_string(),
-        "stopped".to_string(),
-        "crashed".to_string(),
-    ]
-}
-
-pub fn default_comm_run_await_statuses() -> Vec<String> {
-    vec![
-        "ready".to_string(),
-        "completed".to_string(),
-        "failed".to_string(),
-        "stopped".to_string(),
-        "crashed".to_string(),
-    ]
-}
+use super::{AwaitedMemberStatus, ContextEntry, HistoryMessage, SwarmChannelInfo};
 
 pub fn default_comm_await_target_statuses() -> Vec<String> {
     vec![
@@ -30,35 +10,6 @@ pub fn default_comm_await_target_statuses() -> Vec<String> {
         "failed".to_string(),
         "crashed".to_string(),
     ]
-}
-
-pub fn comm_cleanup_candidate_session_ids(
-    owner_session_id: &str,
-    members: &[AgentInfo],
-    target_status: &[String],
-    requested_session_ids: &[String],
-    force: bool,
-) -> Vec<String> {
-    let status_filter: HashSet<&str> = target_status.iter().map(String::as_str).collect();
-    let requested: HashSet<&str> = requested_session_ids.iter().map(String::as_str).collect();
-    let restrict_to_requested = !requested.is_empty();
-    let mut ids = members
-        .iter()
-        .filter(|member| member.session_id != owner_session_id)
-        .filter(|member| !restrict_to_requested || requested.contains(member.session_id.as_str()))
-        .filter(|member| {
-            member
-                .status
-                .as_ref()
-                .is_some_and(|status| status_filter.contains(status.as_str()))
-        })
-        .filter(|member| {
-            force || member.report_back_to_session_id.as_deref() == Some(owner_session_id)
-        })
-        .map(|member| member.session_id.clone())
-        .collect::<Vec<_>>();
-    ids.sort();
-    ids
 }
 
 pub fn format_comm_context_entries(entries: &[ContextEntry]) -> String {

@@ -2,9 +2,8 @@
 
 use super::{Tool, ToolContext, ToolOutput};
 use crate::protocol::{
-    AgentInfo, AwaitedMemberStatus, CommDeliveryMode, ContextEntry, HistoryMessage, Request,
-    ServerEvent, SwarmChannelInfo, comm_cleanup_candidate_session_ids,
-    default_comm_await_target_statuses, default_comm_cleanup_target_statuses,
+    AwaitedMemberStatus, CommDeliveryMode, ContextEntry, HistoryMessage, Request,
+    ServerEvent, SwarmChannelInfo, default_comm_await_target_statuses,
     format_comm_awaited_members_with_reports, format_comm_channels, format_comm_context_entries,
     latest_assistant_comm_report,
 };
@@ -32,7 +31,6 @@ const ACTIONS: &[&str] = &[
     "channel_members",
     "spawn",
     "stop",
-    "cleanup",
     "subscribe_channel",
     "unsubscribe_channel",
     "await_members",
@@ -56,123 +54,6 @@ fn ensure_success(response: &ServerEvent) -> Result<()> {
     } else {
         Ok(())
     }
-}
-
-fn default_cleanup_target_statuses() -> Vec<String> {
-    default_comm_cleanup_target_statuses()
-}
-
-fn cleanup_candidate_session_ids(
-    owner_session_id: &str,
-    members: &[AgentInfo],
-    target_status: &[String],
-    requested_session_ids: &[String],
-    force: bool,
-) -> Vec<String> {
-    comm_cleanup_candidate_session_ids(
-        owner_session_id,
-        members,
-        target_status,
-        requested_session_ids,
-        force,
-    )
-}
-
-async fn fetch_swarm_members(session_id: &str) -> Result<Vec<AgentInfo>> {
-    let request = Request::CommList {
-        id: REQUEST_ID,
-        session_id: session_id.to_string(),
-    };
-    match send_request(request).await {
-        Ok(ServerEvent::CommMembers { members, .. }) => Ok(members),
-        Ok(response) => {
-            ensure_success(&response)?;
-            Ok(Vec::new())
-        }
-        Err(e) => Err(anyhow::anyhow!("Failed to list swarm members: {}", e)),
-    }
-}
-
-async fn cleanup_swarm_workers(ctx: &ToolContext, params: &CommunicateInput) -> Result<String> {
-    let members = fetch_swarm_members(&ctx.session_id).await?;
-    let target_status = params
-        .target_status
-        .clone()
-        .unwrap_or_else(default_cleanup_target_statuses);
-    let session_ids = params.session_ids.clone().unwrap_or_default();
-    let force = params.force.unwrap_or(false);
-    let candidates = cleanup_candidate_session_ids(
-        &ctx.session_id,
-        &members,
-        &target_status,
-        &session_ids,
-        force,
-    );
-
-    if candidates.is_empty() {
-        return Ok(format!(
-            "No cleanup candidates found. Default cleanup only stops sessions spawned by this coordinator with status in [{}].",
-            target_status.join(", ")
-        ));
-    }
-
-    Ok(stop_swarm_sessions(ctx, candidates, force).await.describe())
-}
-
-/// Result of stopping a batch of swarm sessions: which stops succeeded and
-/// which failed (with reasons). Split from the human-readable formatting so
-/// callers like the mid-run capacity recovery can count freed slots.
-struct WorkerCleanupOutcome {
-    stopped: Vec<String>,
-    failed: Vec<String>,
-}
-
-impl WorkerCleanupOutcome {
-    fn describe(&self) -> String {
-        let mut output = String::new();
-        if self.stopped.is_empty() {
-            output.push_str("Stopped no swarm workers.");
-        } else {
-            output.push_str(&format!(
-                "Stopped {} swarm worker(s): {}",
-                self.stopped.len(),
-                self.stopped.join(", ")
-            ));
-        }
-        if !self.failed.is_empty() {
-            output.push_str(&format!(
-                "\nFailed to stop {} worker(s): {}",
-                self.failed.len(),
-                self.failed.join(", ")
-            ));
-        }
-        output
-    }
-}
-
-async fn stop_swarm_sessions(
-    ctx: &ToolContext,
-    candidates: Vec<String>,
-    force: bool,
-) -> WorkerCleanupOutcome {
-    let mut stopped = Vec::new();
-    let mut failed = Vec::new();
-    for target in candidates {
-        let request = Request::CommStop {
-            id: REQUEST_ID,
-            session_id: ctx.session_id.clone(),
-            target_session: target.clone(),
-            force: Some(force),
-        };
-        match send_request(request).await {
-            Ok(response) => match ensure_success(&response) {
-                Ok(()) => stopped.push(target),
-                Err(error) => failed.push(format!("{} ({})", target, error)),
-            },
-            Err(error) => failed.push(format!("{} ({})", target, error)),
-        }
-    }
-    WorkerCleanupOutcome { stopped, failed }
 }
 
 fn format_context_entries(entries: &[ContextEntry]) -> ToolOutput {
@@ -515,7 +396,7 @@ impl Tool for CommunicateTool {
                 },
                 "force": {
                     "type": "boolean",
-                    "description": "For stop/cleanup: allow stopping non-owned/user-created swarm sessions. Defaults to false."
+                    "description": "For stop: allow stopping a session this requester did not spawn. Defaults to false."
                 },
                 "wake": {
                     "type": "boolean",
@@ -915,10 +796,6 @@ impl Tool for CommunicateTool {
                     Err(e) => Err(anyhow::anyhow!("Failed to stop agent: {}", e)),
                 }
             }
-
-            "cleanup" => cleanup_swarm_workers(&ctx, &params)
-                .await
-                .map(ToolOutput::new),
 
             "subscribe_channel" => {
                 let channel = params.channel.ok_or_else(|| {

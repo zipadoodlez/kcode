@@ -1,15 +1,14 @@
 use super::client_actions::{NotifySessionContext, handle_notify_session};
 use super::client_comm::{
-    handle_comm_channel_members, handle_comm_list, handle_comm_list_channels, handle_comm_message,
-    handle_comm_read, handle_comm_share, handle_comm_subscribe_channel,
-    handle_comm_unsubscribe_channel,
+    handle_comm_channel_members, handle_comm_list_channels, handle_comm_message, handle_comm_read,
+    handle_comm_share, handle_comm_subscribe_channel, handle_comm_unsubscribe_channel,
 };
 use super::client_writer::write_direct_event;
 use super::comm_await::{CommAwaitMembersContext, handle_comm_await_members};
 use super::comm_session::{handle_comm_list_models, handle_comm_spawn, handle_comm_stop};
 use super::comm_sync::handle_comm_read_context;
 use super::{
-    AwaitMembersRuntime, ChannelSubscriptions, ClientConnectionInfo, FileTouchService, RunState,
+    AwaitMembersRuntime, ChannelSubscriptions, ClientConnectionInfo, RunState,
     SessionAgents, SessionInterruptQueues, SharedContext, SwarmEvent, SwarmMember,
     SwarmMutationRuntime,
 };
@@ -51,7 +50,6 @@ pub(super) struct LightweightControlContext<'a> {
     pub(super) swarm_members: &'a Arc<RwLock<HashMap<String, SwarmMember>>>,
     pub(super) shared_context: &'a Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     pub(super) swarm_runs: &'a Arc<RwLock<HashMap<String, RunState>>>,
-    pub(super) file_touch: &'a FileTouchService,
     pub(super) channel_subscriptions: &'a ChannelSubscriptions,
     pub(super) channel_subscriptions_by_session: &'a ChannelSubscriptions,
     pub(super) client_connections: &'a Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
@@ -76,7 +74,6 @@ pub(super) async fn handle_lightweight_control_request(
         swarm_members,
         shared_context,
         swarm_runs,
-        file_touch,
         channel_subscriptions,
         channel_subscriptions_by_session,
         client_connections,
@@ -208,21 +205,6 @@ pub(super) async fn handle_lightweight_control_request(
                 event_history,
                 event_counter,
                 swarm_event_tx,
-                client_connections,
-            )
-            .await;
-        }
-        Request::CommList {
-            id,
-            session_id: req_session_id,
-        } => {
-            handle_comm_list(
-                id,
-                req_session_id,
-                &client_event_tx,
-                swarm_members,
-                file_touch,
-                sessions,
                 client_connections,
             )
             .await;
