@@ -3,7 +3,8 @@
 Tick a step when it lands and delete it; git has the history. The open items this plan
 leaves behind are split by subject: the app's shape in `plans/app-shape.md`, the
 request path in `plans/server-shape.md`, the test tree in `plans/test-tree.md`, and the
-loose ends in `plans/hygiene.md`.
+loose ends in `plans/hygiene.md`. The destination this plan is half of, and the lane
+that finishes it (F1, D1, D2 and the tail read there), is `plans/one-flow.md`.
 
 ## How a step lands
 
