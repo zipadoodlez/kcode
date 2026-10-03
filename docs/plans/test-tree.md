@@ -85,3 +85,18 @@ through `create_test_app`. The two diagnoses are independent of everything.
  whose `working_dir` sits under this repo after a suite run (2026-10-02: 2,027 of
  2,537 session files, 2,425 marked crashed, nearly all from these tests and swarm
  workers).
+- [ ] **Stop routing test configuration through the process environment.** The
+ full suite runs serial (`test.sh full` passes `--test-threads=1` to its
+ lib-bins group, and `docs/dev/testing.md` tells a session that hits the
+ kcode-tui flake to pass it too) because tests read `KCODE_HOME`,
+ `KCODE_SSH_*`, `KCODE_MODEL`, `KCODE_PROVIDER` and the rest from the process
+ env while other tests mutate them. The lock does not fix it: mutating tests
+ hold `lock_test_env()` but readers never take it, so the exclusion buys
+ nothing; guarding the readers serializes the suite (`create_test_app` alone is
+ ~810 call sites, measured at >10 minutes) and can deadlock with worker threads
+ that read the same accessors. `docs/dev/testing.md` carries the full flake
+ section and the evidence. Same root as "Stop the session tests writing into
+ the real store" above: one config root per test process, injected, not global.
+ Measured by `scripts/test.sh full` passing green at the default thread count
+ on a clean environment, and by its wall time (2026-10-04: 5,367 test functions
+ across 519 files, run on one core today).
