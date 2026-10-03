@@ -42,7 +42,8 @@ and TUI reds in `plans/test-tree.md` appear; `full` cannot show them.
 
 The suites cover the wiring they can reach; these are the ends they cannot, so a build
 meant to be lived in gets them looked at once. Keep the list short: an item not worth
-five seconds of looking is an item that will be skipped.
+five seconds of looking is an item that will be skipped, and one that proved a landed
+piece is dropped once it has.
 
 - Open a TUI on the build, no install needed (`./target/selfdev/kcode --socket <path>`
   serves its own daemon), and read `/info` against what the session holds: model,
@@ -56,6 +57,12 @@ five seconds of looking is an item that will be skipped.
   that is not a fixture.
 - A `config.toml` carrying keys removed since the last build starts clean and sets
   nothing. A line that is silently ignored is worth noticing once per removal.
+- A fan-out on the loop alone: grant a turn (`/auto`), spawn two workers, hand each one a
+  row, and let them close. A row write is now the only thing that starts a worker's turn,
+  and no test crosses the bus monitor where that wake lives.
+- A run with nothing ready stays quiet: a worker that closed its only row takes no further
+  turn, and a row it left open does not restart it. A run that spins is the failure this
+  half can produce, and only a live model shows it.
 
 ## Known flakiness: `kcode-tui` lib tests under parallel execution
 
