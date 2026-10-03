@@ -25,10 +25,7 @@ use super::client_state::{
 };
 use super::client_writer::write_direct_event;
 use super::comm_await::{CommAwaitMembersContext, handle_comm_await_members};
-use super::comm_control::{
-    handle_client_debug_command, handle_client_debug_response, handle_comm_assign_next,
-    handle_comm_assign_task,
-};
+use super::comm_control::{handle_client_debug_command, handle_client_debug_response};
 use super::comm_session::{handle_comm_spawn, handle_comm_stop};
 use super::comm_sync::{
     CommResyncPlanContext, handle_comm_plan_status, handle_comm_read_context,
@@ -2564,71 +2561,6 @@ pub(super) async fn handle_client(
                         event_counter: &event_counter,
                         swarm_event_tx: &swarm_event_tx,
                     },
-                )
-                .await;
-            }
-
-            Request::CommAssignTask {
-                id,
-                session_id: req_session_id,
-                target_session,
-                task_id,
-                message,
-                redispatch,
-            } => {
-                handle_comm_assign_task(
-                    id,
-                    req_session_id,
-                    target_session,
-                    task_id,
-                    message,
-                    redispatch,
-                    &client_event_tx,
-                    &sessions,
-                    &soft_interrupt_queues,
-                    &client_connections,
-                    &swarm_members,
-                    &swarm_runs,
-                    &event_history,
-                    &event_counter,
-                    &swarm_event_tx,
-                    &swarm_mutation_runtime,
-                )
-                .await;
-            }
-
-            Request::CommAssignNext {
-                id,
-                session_id: req_session_id,
-                target_session,
-                working_dir,
-                prefer_spawn,
-                spawn_if_needed,
-                message,
-                model,
-            } => {
-                handle_comm_assign_next(
-                    id,
-                    req_session_id,
-                    target_session,
-                    working_dir,
-                    prefer_spawn,
-                    spawn_if_needed,
-                    message,
-                    model,
-                    &client_event_tx,
-                    &sessions,
-                    &global_session_id,
-                    &provider_template,
-                    &soft_interrupt_queues,
-                    &client_connections,
-                    &swarm_members,
-                    &swarm_runs,
-                    &event_history,
-                    &event_counter,
-                    &swarm_event_tx,
-                    &mcp_pool,
-                    &swarm_mutation_runtime,
                 )
                 .await;
             }

@@ -146,17 +146,9 @@ async fn control_driven_begin_re_dispatches_despite_persisted_final_state() {
     let state = begin_or_join_in_flight(&runtime, &key, "assign_task", "coord", 1, &first_tx)
         .await
         .expect("first attempt should start execution");
-    finish_request(
-        &runtime,
-        &state,
-        PersistedSwarmMutationResponse::AssignTask {
-            task_id: "task-1".to_string(),
-            target_session: "worker-1".to_string(),
-        },
-    )
-    .await;
+    finish_request(&runtime, &state, PersistedSwarmMutationResponse::Done).await;
     match first_rx.recv().await.expect("first response") {
-        ServerEvent::CommAssignTaskResponse { id, .. } => assert_eq!(id, 1),
+        ServerEvent::Done { id } => assert_eq!(id, 1),
         other => panic!("expected assign response, got {other:?}"),
     }
 

@@ -571,44 +571,6 @@ pub enum Request {
     #[serde(rename = "comm_plan_status")]
     CommPlanStatus { id: u64, session_id: String },
 
-    /// Assign a task from the plan to a specific agent (coordinator only)
-    #[serde(rename = "comm_assign_task")]
-    CommAssignTask {
-        id: u64,
-        session_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        target_session: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        task_id: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        message: Option<String>,
-        /// Dispatch even when an identical request finished moments ago. A retry or
-        /// a wake is a deliberate act, not a resend to answer from the record.
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-        redispatch: bool,
-    },
-
-    /// Assign the next runnable unassigned task from the plan (coordinator only)
-    #[serde(rename = "comm_assign_next")]
-    CommAssignNext {
-        id: u64,
-        session_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        target_session: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        working_dir: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        prefer_spawn: Option<bool>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        spawn_if_needed: Option<bool>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        message: Option<String>,
-        /// Optional model override for workers spawned by this assignment
-        /// (same semantics as CommSpawn::model).
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        model: Option<String>,
-    },
-
     /// Subscribe to a named channel in the swarm
     #[serde(rename = "comm_subscribe_channel")]
     CommSubscribeChannel {
@@ -1272,14 +1234,6 @@ pub enum ServerEvent {
     /// Response to comm_plan_status request
     #[serde(rename = "comm_plan_status_response")]
     CommPlanStatusResponse { id: u64, summary: PlanGraphStatus },
-
-    /// Response to comm_assign_task request
-    #[serde(rename = "comm_assign_task_response")]
-    CommAssignTaskResponse {
-        id: u64,
-        task_id: String,
-        target_session: String,
-    },
 
     /// Response to comm_read_context request
     #[serde(rename = "comm_context_history")]

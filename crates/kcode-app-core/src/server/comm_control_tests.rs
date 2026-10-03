@@ -1,4 +1,3 @@
-use super::{handle_comm_assign_next, handle_comm_assign_task};
 use crate::agent::Agent;
 use crate::message::{Message, StreamEvent, ToolDefinition};
 use crate::plan::TaskItem;
@@ -89,6 +88,18 @@ fn owned_member(session_id: &str, root: &str, status: &str, owner: &str) -> Swar
 
 /// Put every member of a fixture in `repo`, so the list a dispatch writes is this
 /// test's own (rule 1: the rows live where the session lives).
+
+/// Write `rows` as `session_id`'s list, exactly as given, so a fixture's plan has
+/// rows behind it: the file is the list, and a plan row with no row is exactly the
+/// state the plan is being cut down to. `write_rows` (dag_e2e) is this plus
+/// holding every row for the session.
+
+/// A fixture's rows go where the rows live: the list in the repo. The run map starts
+/// empty, since a row with no run entry reads its own status.
+/// The rows in a fixture's list: the store is where the handlers write, so a test
+/// reads its expectations from there.
+/// Put every member of a fixture in `repo`, so the list a dispatch writes is this
+/// test's own (rule 1: the rows live where the session lives).
 async fn set_repo(members: &Arc<RwLock<HashMap<String, SwarmMember>>>, repo: &std::path::Path) {
     for member in members.write().await.values_mut() {
         member.working_dir = Some(repo.to_path_buf());
@@ -109,10 +120,6 @@ fn empty_run_state() -> Arc<RwLock<HashMap<String, RunState>>> {
     Arc::new(RwLock::new(HashMap::new()))
 }
 
-/// A fixture's rows go where the rows live: the list in the repo. The run map starts
-/// empty, since a row with no run entry reads its own status.
-/// The rows in a fixture's list: the store is where the handlers write, so a test
-/// reads its expectations from there.
 fn rows_in(repo: &std::path::Path) -> Vec<TaskItem> {
     crate::todo::load_tasks(Some(repo), "fixture").expect("read the list")
 }
@@ -178,15 +185,6 @@ async fn test_agent() -> Arc<Mutex<Agent>> {
 }
 
 use crate::protocol::SwarmLifecycleStatus;
-include!("comm_control_tests/assign_task.rs");
-include!("comm_control_tests/assign_blocked.rs");
-include!("comm_control_tests/assign_double.rs");
-include!("comm_control_tests/retry_redispatch.rs");
-include!("comm_control_tests/assign_ready_agent.rs");
-include!("comm_control_tests/assign_handback.rs");
-include!("comm_control_tests/assign_busy_skip.rs");
-include!("comm_control_tests/assign_next_dependency.rs");
-include!("comm_control_tests/assign_next_metadata.rs");
 include!("comm_control_tests/await_late_joiners.rs");
 include!("comm_control_tests/await_disconnect.rs");
 include!("comm_control_tests/await_any.rs");
@@ -197,5 +195,3 @@ include!("comm_control_tests/await_resume_expired.rs");
 include!("comm_control_tests/await_background_expired.rs");
 include!("comm_control_tests/await_upgrade_background.rs");
 include!("comm_control_tests/dag_e2e.rs");
-include!("comm_control_tests/auto_worker_filter.rs");
-include!("comm_control_tests/client_attached_dispatch.rs");

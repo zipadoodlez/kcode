@@ -257,116 +257,6 @@ fn test_comm_await_members_response_roundtrip() -> Result<()> {
 }
 
 #[test]
-fn test_comm_assign_task_roundtrip_without_explicit_task_id() -> Result<()> {
-    let req = Request::CommAssignTask {
-        id: 57,
-        session_id: "sess_coord".to_string(),
-        target_session: None,
-        task_id: None,
-        message: Some("Take the next highest-priority runnable task.".to_string()),
-        redispatch: false,
-    };
-    let json = serde_json::to_string(&req)?;
-    assert!(json.contains("\"type\":\"comm_assign_task\""));
-    assert!(!json.contains("\"task_id\""));
-    // A plain assignment may be answered from the record; a retry may not.
-    assert!(!json.contains("\"redispatch\""));
-    let retry = Request::CommAssignTask {
-        id: 58,
-        session_id: "sess_coord".to_string(),
-        target_session: Some("sess_worker".to_string()),
-        task_id: Some("task-1".to_string()),
-        message: None,
-        redispatch: true,
-    };
-    assert!(serde_json::to_string(&retry)?.contains("\"redispatch\":true"));
-    let decoded = parse_request_json(&json)?;
-    assert_eq!(decoded.id(), 57);
-    let Request::CommAssignTask {
-        session_id,
-        target_session,
-        task_id,
-        message,
-        ..
-    } = decoded
-    else {
-        return Err(anyhow!("expected CommAssignTask"));
-    };
-    assert_eq!(session_id, "sess_coord");
-    assert_eq!(target_session, None);
-    assert_eq!(task_id, None);
-    assert_eq!(
-        message.as_deref(),
-        Some("Take the next highest-priority runnable task.")
-    );
-    Ok(())
-}
-
-#[test]
-fn test_comm_assign_task_response_roundtrip() -> Result<()> {
-    let event = ServerEvent::CommAssignTaskResponse {
-        id: 60,
-        task_id: "task-7".to_string(),
-        target_session: "sess_worker".to_string(),
-    };
-    let json = encode_event(&event);
-    assert!(json.contains("\"type\":\"comm_assign_task_response\""));
-    let decoded = parse_event_json(json.trim())?;
-    let ServerEvent::CommAssignTaskResponse {
-        id,
-        task_id,
-        target_session,
-    } = decoded
-    else {
-        return Err(anyhow!("expected CommAssignTaskResponse"));
-    };
-    assert_eq!(id, 60);
-    assert_eq!(task_id, "task-7");
-    assert_eq!(target_session, "sess_worker");
-    Ok(())
-}
-
-#[test]
-fn test_comm_assign_next_roundtrip() -> Result<()> {
-    let req = Request::CommAssignNext {
-        id: 60,
-        session_id: "sess_coord".to_string(),
-        target_session: Some("sess_worker".to_string()),
-        working_dir: Some("/tmp/project".to_string()),
-        prefer_spawn: Some(true),
-        spawn_if_needed: Some(true),
-        message: Some("Take the next runnable task.".to_string()),
-        model: Some("openai-api:gpt-5.5".to_string()),
-    };
-    let json = serde_json::to_string(&req)?;
-    assert!(json.contains("\"type\":\"comm_assign_next\""));
-    assert!(json.contains("\"model\":\"openai-api:gpt-5.5\""));
-    let decoded = parse_request_json(&json)?;
-    assert_eq!(decoded.id(), 60);
-    let Request::CommAssignNext {
-        session_id,
-        target_session,
-        working_dir,
-        prefer_spawn,
-        spawn_if_needed,
-        message,
-        model,
-        ..
-    } = decoded
-    else {
-        return Err(anyhow!("expected CommAssignNext"));
-    };
-    assert_eq!(session_id, "sess_coord");
-    assert_eq!(target_session.as_deref(), Some("sess_worker"));
-    assert_eq!(working_dir.as_deref(), Some("/tmp/project"));
-    assert_eq!(prefer_spawn, Some(true));
-    assert_eq!(spawn_if_needed, Some(true));
-    assert_eq!(message.as_deref(), Some("Take the next runnable task."));
-    assert_eq!(model.as_deref(), Some("openai-api:gpt-5.5"));
-    Ok(())
-}
-
-#[test]
 fn test_comm_stop_roundtrip_with_force() -> Result<()> {
     let req = Request::CommStop {
         id: 61,
@@ -438,8 +328,8 @@ fn test_comm_spawn_roundtrip_with_optional_nonce() -> Result<()> {
 }
 
 #[test]
-fn test_comm_spawn_and_assign_next_decode_model_alone() -> Result<()> {
-    for request_type in ["comm_spawn", "comm_assign_next"] {
+fn test_comm_spawn_decode_model_alone() -> Result<()> {
+    for request_type in ["comm_spawn"] {
         let json = serde_json::json!({
             "type": request_type,
             "id": 60,
@@ -454,18 +344,15 @@ fn test_comm_spawn_and_assign_next_decode_model_alone() -> Result<()> {
                 assert_eq!(model.as_deref(), Some("gpt-5.5"));
                 assert_eq!(label, None);
             }
-            Request::CommAssignNext { model, .. } => {
-                assert_eq!(model.as_deref(), Some("gpt-5.5"));
-            }
-            _ => return Err(anyhow!("expected spawn or assign_next")),
+            _ => return Err(anyhow!("expected spawn")),
         }
     }
     Ok(())
 }
 
 #[test]
-fn test_comm_spawn_and_assign_next_roundtrip_omitted_or_null_model() -> Result<()> {
-    for request_type in ["comm_spawn", "comm_assign_next"] {
+fn test_comm_spawn_roundtrip_omitted_or_null_model() -> Result<()> {
+    for request_type in ["comm_spawn"] {
         for explicit_null in [false, true] {
             // Older clients omit the optional field. Explicit null must also work.
             let mut json = serde_json::json!({
@@ -488,10 +375,7 @@ fn test_comm_spawn_and_assign_next_roundtrip_omitted_or_null_model() -> Result<(
                         assert_eq!(model, None);
                         assert_eq!(label, None);
                     }
-                    Request::CommAssignNext { model, .. } => {
-                        assert_eq!(model, None);
-                    }
-                    _ => return Err(anyhow!("expected spawn or assign_next")),
+                    _ => return Err(anyhow!("expected spawn")),
                 }
             }
         }

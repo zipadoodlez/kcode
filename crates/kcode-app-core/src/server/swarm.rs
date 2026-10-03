@@ -77,18 +77,6 @@ pub(super) fn rows_with_run_status(rows: &[TaskItem], run: &RunState) -> Vec<Tas
         .collect()
 }
 
-/// Set a row's run status for a swarm, creating the swarm's run state when it has
-/// none yet: a row a dispatch just touched is work whatever the map held before.
-pub(super) fn set_run_status_for(
-    runs: &mut HashMap<String, RunState>,
-    swarm_id: &str,
-    row_id: &str,
-    status: &str,
-) {
-    let run = runs.entry(swarm_id.to_string()).or_default();
-    set_run_status(run, row_id, status);
-}
-
 /// The run's lifecycle for one row, in the run's own map.
 pub(super) fn set_run_status(run: &mut RunState, id: &str, status: &str) {
     run.entry(id.to_string()).or_default().status = status.to_string();

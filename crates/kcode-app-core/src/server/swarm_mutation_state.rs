@@ -15,10 +15,6 @@ const PENDING_STATE_TTL: Duration = Duration::from_secs(30 * 60);
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) enum PersistedSwarmMutationResponse {
     Done,
-    AssignTask {
-        task_id: String,
-        target_session: String,
-    },
     Error {
         message: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -33,14 +29,6 @@ impl PersistedSwarmMutationResponse {
     fn into_server_event(self, id: u64, session_id: &str) -> ServerEvent {
         match self {
             Self::Done => ServerEvent::Done { id },
-            Self::AssignTask {
-                task_id,
-                target_session,
-            } => ServerEvent::CommAssignTaskResponse {
-                id,
-                task_id,
-                target_session,
-            },
             Self::Error {
                 message,
                 retry_after_secs,
@@ -151,26 +139,6 @@ pub(super) fn persist_final_response(
     next
 }
 
-pub(super) async fn begin_or_replay(
-    runtime: &SwarmMutationRuntime,
-    key: &str,
-    action: &str,
-    session_id: &str,
-    request_id: u64,
-    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
-) -> Option<PersistedSwarmMutationState> {
-    begin_with_mode(
-        runtime,
-        key,
-        action,
-        session_id,
-        request_id,
-        client_event_tx,
-        true,
-    )
-    .await
-}
-
 /// Like [`begin_or_replay`], but never replays a persisted final response.
 ///
 /// Explicit control-driven mutations (retry/reassign/replace/salvage) must
@@ -194,6 +162,26 @@ pub(super) async fn begin_or_join_in_flight(
         request_id,
         client_event_tx,
         false,
+    )
+    .await
+}
+
+pub(super) async fn begin_or_replay(
+    runtime: &SwarmMutationRuntime,
+    key: &str,
+    action: &str,
+    session_id: &str,
+    request_id: u64,
+    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
+) -> Option<PersistedSwarmMutationState> {
+    begin_with_mode(
+        runtime,
+        key,
+        action,
+        session_id,
+        request_id,
+        client_event_tx,
+        true,
     )
     .await
 }
