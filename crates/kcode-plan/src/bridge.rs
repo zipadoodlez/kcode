@@ -62,7 +62,7 @@ fn status_from_plan(status: &str) -> NodeStatus {
 }
 
 /// The nodes one session's rows seed: the rows it holds, in file order, lifted
-/// into the engine's node specs. See `docs/plans/row-model.md`, "Rows are the
+/// into the engine's node specs. See `docs/plans/task-flow.md`, "Rows are the
 /// run's seed source".
 ///
 /// The row's id is the node's id, its words are the node's content, its kind is

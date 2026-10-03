@@ -1,6 +1,6 @@
-# Row model
+# Task flow
 
-This is the one plan for the row/list work: the model, the rules the code cites, the
+This is the one plan for the task flow: the model, the rules the code cites, the
 duplication left to remove, and the stages that remove it. Subjects with another owner
 keep their own doc — the
 app's shape in `plans/app-shape.md`, the request path in `plans/server-shape.md`, the
@@ -227,6 +227,15 @@ the tail and it is droppable: nothing here depends on it.
 
 ### S1. The loop owns dispatch
 
+**Decide before the cuts: the levers over a run you are not sitting in.** The model names
+`stop it, wake it, retry it`, and this stage deletes all three, with `cleanup`, which today
+is the only thing that reaps a finished member (`cleanup_swarm_workers` ->
+`stop_swarm_sessions`, called only from `tool/communicate.rs`). So either the levers are
+exactly grant, attach, hand a row, close, and the reaping machinery goes with them, or one
+verb stays, because a permission with no revoke is not a permission. Either way the stage
+cannot leave a run's member sessions with nothing to end them: observed 2026-10-03, three idle
+headless members kept the swarm surface up until `cleanup` was called by hand.
+
 Delete: the tool's driver with all of its policies, `fill_slots`, `assign_next`,
 `assign_task`, `await_members`, `retry`, `wake`, `cleanup`, `stop`, the read views
 (`status`, `summary`, `report`, `plan_status`, `read_context`, `resync_plan`), the
@@ -252,8 +261,6 @@ is the only driver that has ever run a fan-out.
 
 F2's shape lands with this: what remains of `tool/communicate.rs` after the verb cut is
 `plans/server-shape.md`'s condense task, which owns the file.
-
-The rows this stage works are `tasks.jsonl` t1-t14, scoped 2026-10-03.
 
 surface: −28 actions, −1 driver, −1 durable waiter store, −2 report channels, −1 KV,
 −1 channel index, −3 artifact producers, −4 member shapes. lines ~−6,500 with tests.
@@ -364,7 +371,7 @@ is empty and liveness comes from the member, not the item. surface: −5 fields,
 The `SwarmState` handle pair is still threaded to ~40 functions and rebuilt as a literal
 at each request arm, so the request context that ends it is the remaining half. Give the
 swarm state its one owner and delete the pair. Engine: `internals/swarm.md`. This is the
-only row-model work `plans/server-shape.md`'s H1-H5 carry: H2 (the swarm state in the
+the only work here that `plans/server-shape.md`'s H1-H5 carry: H2 (the swarm state in the
 client context) waits on it. (A1 measured 19 `SwarmState { .. }` literals and 244
 `swarm_runs` references on the settled tree.)
 
@@ -372,8 +379,7 @@ client context) waits on it. (A1 measured 19 `SwarmState { .. }` literals and 24
 
 - **B2.** This repo's own list migrates: what is open in this doc becomes the content of
   `tasks.jsonl`. The landed steps live in git, and a step that dropped power is in
-  `docs/what-was-removed.md`. S1's rows landed 2026-10-03 (t1-t14); the rest follow as
-  their stages start.
+  `docs/what-was-removed.md`. A stage's rows are written when it starts.
 - **G1.** Restore the two size ratchets in `scripts/check_guardrails.sh` and re-baseline
   both with `--update`. They are paused, with the reason at the call site.
 - **G2.** The one live `kcode run` probe against its own socket, in a scratch repo, run by

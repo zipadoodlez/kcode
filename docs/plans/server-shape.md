@@ -40,7 +40,7 @@ subject is one checkbox below, with its design in the item.
     caller), deleting the `#[expect]`.
   - [ ] H2 **Fold swarm ownership in**: pass `SwarmState` plus one
     `SwarmRuntimeHandles` for the six Arcs and delete the per-arm literals (gated on
-    the swarm-state condense, `plans/row-model.md` D2, not on H1).
+    the swarm-state condense, `plans/task-flow.md` D2, not on H1).
   - [ ] H3 **Name the prologue**: `accept_initial_request`, `start_client_session`,
     `spawn_client_event_forwarder`, target under ~100 lines of named calls before the
     `match`.
@@ -51,12 +51,12 @@ subject is one checkbox below, with its design in the item.
  Done when: `handle_client` is under ~600 lines, the file is out of the size budget,
  and no `SwarmState { .. }` literal is built inside a request arm.
 - [ ] **Condense `tool/communicate.rs`.** It lands after the verb cut
- (`plans/row-model.md` S1), which removes two of the four concepts first. Four concepts
+ (`plans/task-flow.md` S1), which removes two of the four concepts first. Four concepts
  are welded together: swarm
  coordination, capacity cleanup (`cleanup_swarm_workers`, `stop_swarm_sessions`), the
  run-plan driver (`run_swarm_plan_loop`, the driver-claim helpers), and the
  `format_*`/`fetch_*` formatters around a large `execute`. A census found these are
  *not* splits: `server/swarm.rs`, `server/comm_control.rs` (covered by the swarm-state
- condense, `plans/row-model.md` D2), and `agent/turn_streaming_mpsc.rs`.
+ condense, `plans/task-flow.md` D2), and `agent/turn_streaming_mpsc.rs`.
  `tool/session_search.rs` has two real seams (native index vs external-source
  ingestion). Measure the size at the step; it moves.

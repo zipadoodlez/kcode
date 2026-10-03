@@ -31,7 +31,7 @@ spine is the one structural item; the two calls are the maintainer's.
  lines in one file, with a 750-line TUI adapter, 635-line `swarm_tiles.rs`, 690 lines
  of buffer tests and ~700 of examples around it; it renders member tiles, chat cards,
  the strip and the full page. Split by surface (tile, card, page) with the shared
- layout in one place, after `plans/row-model.md` S3 removes the member todo cache it
+ layout in one place, after `plans/task-flow.md` S3 removes the member todo cache it
  draws. (A1.)
 - [ ] **The crate spine.** `kcode-base` -> `kcode-app-core` -> `kcode-tui` -> root,
  with `pub use kcode_*::*` making every module path global, so no call site names its
@@ -54,7 +54,7 @@ spine is the one structural item; the two calls are the maintainer's.
 - [ ] **Not every color derives from a role**: `configured_native_color`
  (`kcode-tui-style/src/palette.rs`) attributes a shade to a role only when it equals
  that role's default, so hardcoded `Color::Rgb(...)` shades pass through and `/colors`
- cannot recolor them. The swarm path is `plans/row-model.md` S1 and S3; what remains is
+ cannot recolor them. The swarm path is `plans/task-flow.md` S1 and S3; what remains is
  `login_picker.rs` `PANEL_BG`/`PANEL_BORDER` and other orphans. Give each shade a
  role, or mark it intentionally fixed.
 - [ ] **`now_ms` is defined 4x**: `app/observe.rs:212`, `app/split_view.rs:295`,

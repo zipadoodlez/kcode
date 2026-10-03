@@ -49,7 +49,7 @@ gone as well:
 
 ## The model cut
 
-The 0.x work (`plans/row-model.md`) removed the machinery around the work list. Each
+The 0.x work (`plans/task-flow.md`) removed the machinery around the work list. Each
 entry is a decision that dropped power, with what the drop cost.
 
 **One mode: spawning is the root's, and the `/effort` swarm rungs go** (0.4b,
@@ -153,7 +153,7 @@ result is now.
 
 **The critique/verify pass and strict artifact validation go with 0.4** (2026-10-01).
 Deep mode inserted a gate per node and refused a close whose artifact did not account
-for its dependencies; the row model has no room for a node that is not a row, so gates
+for its dependencies; the task flow has no room for a node that is not a row, so gates
 and the deep/light axis are deleted. What is lost: the automatic insertion and the
 refusal; what stays is the record every close leaves on the row that owns the work.
 Add the pass back as work, not as machinery: a row typed `critique` whose close needs

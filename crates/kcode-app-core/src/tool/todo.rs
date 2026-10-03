@@ -58,7 +58,7 @@ struct TodoInput {
 ///
 /// The write rules live here rather than in the schema: a close needs a result
 /// that says what proves the task done, and a parent's row cannot go while a
-/// child names it. See `docs/plans/row-model.md`, rules 3 and 4.
+/// child names it. See `docs/plans/task-flow.md`, rules 3 and 4.
 fn apply(input: &TodoInput, rows: &mut Vec<TaskItem>, session_id: &str) -> Result<()> {
     check_kind(input.kind.as_deref())?;
     match input.action.unwrap_or(Action::List) {

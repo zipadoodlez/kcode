@@ -6,7 +6,7 @@ removal (2026-09-30), and the recipe works for any behavioral A/B on this tree.
 Phase 1 has landed, so the pre-change side now comes from the sha you choose,
 not from a checkout that still has the tier. The comparison was not run before
 the landing, and it is still worth running: whether the nudge bought verification
-is what the result every close has to carry, in `plans/row-model.md`, has to
+is what the result every close has to carry, in `plans/task-flow.md`, has to
 replace.
 
 ## What is being compared

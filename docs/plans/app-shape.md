@@ -35,7 +35,7 @@ design in the item; the tasks are independent except where a line names a gate.
     provider connection (name/model/transport/credential/reasoning/service tier) with
     model selection (picker cache, pending switch/route/reasoning). Split along that
     seam first; do not create a second registry (coordinate with the swarm/comm
-    condense, `plans/row-model.md` D2). Two names also live on other structs
+    condense, `plans/task-flow.md` D2). Two names also live on other structs
     (`upstream_provider`, `provider_session_id`).
   - [ ] `Input`: 21 fields, ~1940 direct sites, 69 files, and hyper-common names
     (`input`, `cursor_pos` are also parameters, locals, and fields on
@@ -84,7 +84,7 @@ design in the item; the tasks are independent except where a line names a gate.
 - [ ] **One path for local and remote.** The TUI carries a second implementation of
   every surface behind a guard: 26,399 lines under `crates/kcode-tui/src/tui/app/remote*`,
   75 `is_ssh_remote` call sites across 26 files, and per-surface remote forks (the todo
-  reads are one instance, `plans/row-model.md` S2). The local turn path is already
+  reads are one instance, `plans/task-flow.md` S2). The local turn path is already
   deleted (`516de13d`), so the question is what the local branch still does that the
   server path does not; answer that per surface, then collapse to one path with the
   transport behind it. (A1, 2026-10-03; re-core, high risk, keep as a scoped proposal
