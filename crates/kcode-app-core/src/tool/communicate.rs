@@ -527,51 +527,6 @@ fn canonical_swarm_action(action: &str) -> &str {
     }
 }
 
-/// The row a retry or a wake acts on, and whoever holds it.
-///
-/// A retry goes back to the same assignee, so the holder is read from the list: the
-/// row itself names who owes the work. `task_id` names the row; `target_session`
-/// names the holder, and then that session must hold exactly one open row. The two
-/// are the same read, because the caller's session's list is the list the run works.
-fn held_row(
-    ctx: &ToolContext,
-    task_id: Option<&str>,
-    target_session: Option<&str>,
-) -> Result<(String, String)> {
-    fn trimmed(value: Option<&str>) -> Option<&str> {
-        value.map(str::trim).filter(|value| !value.is_empty())
-    }
-
-    let rows = crate::todo::load_tasks(ctx.working_dir.as_deref(), &ctx.session_id)?;
-    if let Some(task_id) = trimmed(task_id) {
-        let row = rows.iter().find(|row| row.id == task_id).ok_or_else(|| {
-            anyhow::anyhow!(
-                "no task {task_id:?}; open ids: {}",
-                crate::todo::open_ids(&rows)
-            )
-        })?;
-        let holder = row.assigned_to.clone().ok_or_else(|| {
-            anyhow::anyhow!(
-                "task {task_id:?} has no assignee; use assign_task to create the first assignment"
-            )
-        })?;
-        return Ok((task_id.to_string(), holder));
-    }
-
-    let Some(target) = trimmed(target_session) else {
-        return Err(anyhow::anyhow!("'task_id' or 'target_session' is required"));
-    };
-    let mut held = rows
-        .iter()
-        .filter(|row| row.assigned_to.as_deref() == Some(target));
-    let (Some(row), None) = (held.next(), held.next()) else {
-        return Err(anyhow::anyhow!(
-            "'{target}' must hold exactly one open task to retry or wake; pass task_id"
-        ));
-    };
-    Ok((row.id.clone(), target.to_string()))
-}
-
 #[async_trait]
 impl Tool for CommunicateTool {
     fn name(&self) -> &str {
@@ -594,8 +549,7 @@ impl Tool for CommunicateTool {
                              "spawn", "stop",
                              "status", "report", "plan_status", "summary", "read_context", "resync_plan", "cleanup",
                              "task_graph", "expand_node", "complete_node",
-                             "retry", "wake",
-                             "subscribe_channel", "unsubscribe_channel", "await_members", "list_models"],
+                                                          "subscribe_channel", "unsubscribe_channel", "await_members", "list_models"],
                     "description": "Action. spawn requires label and should include prompt. list_models shows available models/routes."
                 },
                 "key": {
@@ -1353,43 +1307,6 @@ impl Tool for CommunicateTool {
                         Ok(ToolOutput::new("Swarm plan re-synced to your session."))
                     }
                     Err(e) => Err(anyhow::anyhow!("Failed to resync plan: {}", e)),
-                }
-            }
-
-            "retry" | "wake" => {
-                let (task_id, holder) = held_row(
-                    &ctx,
-                    params.task_id.as_deref(),
-                    params.target_session.as_deref(),
-                )?;
-                let instruction = if params.action == "retry" {
-                    "Retry your assigned task. Fix any earlier issues and continue toward completion."
-                } else {
-                    "Continue your assigned task: you were woken to keep working it."
-                };
-                let message = match params.message.as_deref().map(str::trim) {
-                    Some(extra) if !extra.is_empty() => {
-                        format!("{instruction}\n\nAdditional coordinator instructions:\n{extra}")
-                    }
-                    _ => instruction.to_string(),
-                };
-                let request = Request::CommAssignTask {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                    target_session: Some(holder.clone()),
-                    task_id: Some(task_id.clone()),
-                    message: Some(message),
-                    redispatch: true,
-                };
-                match send_request(request).await {
-                    Ok(response) => {
-                        ensure_success(&response)?;
-                        Ok(ToolOutput::new(format!(
-                            "Task '{task_id}' {} -> {holder}",
-                            params.action
-                        )))
-                    }
-                    Err(e) => Err(anyhow::anyhow!("Failed to {} task: {}", params.action, e)),
                 }
             }
 
