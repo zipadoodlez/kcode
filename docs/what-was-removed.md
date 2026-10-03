@@ -20,6 +20,10 @@ Roughly **241,000 lines across 1,079 files**, in one commit
 - the macOS computer-use tool, the menubar app, the client installer
 - the iOS app, the telemetry worker, the TypeScript SDK
 
+Math returned on 2026-09-29 as Unicode rather than images: `$...$` and `$$...$$`
+render as glyphs through `crates/kcode-render-core` (`41771c58`), so the LaTeX
+line above covers the fork-cut commit, not the tree today.
+
 ## The account cut
 
 The jcode.sh account, subscription and hosted-model surface:

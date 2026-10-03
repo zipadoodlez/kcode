@@ -25,9 +25,11 @@ through `create_test_app`. The two diagnoses are independent of everything.
  report); rename it to what it is.
 - [ ] **One home per duplicated test helper.** 13 names are defined in more than one
  file (`lock_env` 8, `test_agent` 7, `create_test_app` 3, then `tracked_env_vars`,
- `clear_openai_compatible_runtime_env`, `ensure_test_kcode_home_if_unset`,
- `empty_swarm_status_state`, `available_models_display_seeds_from_persisted_catalog`,
- and the rest at 2). Re-measure before ranking.
+ `clear_openai_compatible_runtime_env`, `empty_swarm_status_state`,
+ `available_models_display_seeds_from_persisted_catalog`, and the rest at 2).
+ `ensure_test_kcode_home_if_unset` is gone: its three copies and 25 call sites
+ were removed in favour of kcode-base's process-wide install (`test_env.rs`).
+ Re-measure before ranking.
 - [ ] **Diagnose the provider-suggestion failure.** `kcode-tui`'s
  `test_remote_fallback_provider_suggestions_normalize_bare_openai_openrouter_routes`
  fails at the default thread count and single-threaded. Cause not diagnosed; it asserts

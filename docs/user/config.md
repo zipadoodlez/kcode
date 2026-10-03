@@ -34,15 +34,14 @@ Layers, in order:
 
 1. **Base system prompt** - built-in `crates/kcode-base/src/prompt/system_prompt.md`,
    overridable by file (below).
-2. Capability modules (for example, mermaid guidance).
-3. Product-specific self-dev guidance. A session rooted in a kcode Desktop
+2. Product-specific self-dev guidance. A session rooted in a kcode Desktop
    checkout gets the Desktop prompt and `desktop_selfdev` tool, separate from the
    CLI/TUI self-dev flags.
-4. `AGENTS.md` - project `./AGENTS.md` and global `~/AGENTS.md`.
-5. Prompt overlay - `./.kcode/prompt-overlay.md` and `~/.kcode/prompt-overlay.md`.
-6. Preferred tools - `./.kcode/preferred-tools.md` and
+3. `AGENTS.md` - project `./AGENTS.md` and global `~/AGENTS.md`.
+4. Prompt overlay - `./.kcode/prompt-overlay.md` and `~/.kcode/prompt-overlay.md`.
+5. Preferred tools - `./.kcode/preferred-tools.md` and
    `~/.kcode/preferred-tools.md`.
-7. Memory and the active skill prompt (dynamic, not cached).
+6. Memory and the active skill prompt (dynamic, not cached).
 
 Note the asymmetry: project files live under a `.kcode/` directory in the
 project; global files live under `~/.kcode/`. When the project and global paths

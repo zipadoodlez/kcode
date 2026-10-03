@@ -9,23 +9,28 @@ or tell an agent to run it, after a major change and before committing.
 ## The gate
 
 ```sh
-scripts/check_guardrails.sh              # non-zero on failure
-scripts/check_guardrails.sh --fix        # rustfmt + rebaseline ratchets
-scripts/check_guardrails.sh --skip-slow  # skip cargo clippy
+scripts/gate.sh                             # the boundary: gate + full suite, once per tree
+scripts/check_guardrails.sh                 # the gate alone, non-zero on failure
+scripts/check_guardrails.sh --fix           # rustfmt + rebaseline ratchets
+scripts/check_guardrails.sh --skip-slow     # skip cargo clippy
+scripts/check_guardrails.sh --all-features  # add the release-only feature
 ```
 
-It must pass before a push. It is not a per-commit tax: a change that cannot
-affect the build (docs, comments, markdown) needs none of it, and a small Rust
-change can be checked narrowly first with `cargo fmt --all --check`, the ratchet
-covering what it touched, and `cargo clippy -p <crate> --all-targets
---all-features -- -D warnings`. Keep `--all-targets --all-features` on the narrow
-run, since the full gate uses them and dropping them can pass where it fails.
-Do not run a separate `cargo check`: clippy builds every target, and switching
-between profiles rebuilds the tree (`testing.md`).
+`scripts/gate.sh` is the boundary and must pass before a push:
+`.githooks/pre-push` runs it, and it is stamped by tree hash, so many commits cost
+one run. It is not a per-commit tax: a change that cannot affect the build (docs,
+comments, markdown) needs none of it, and a small Rust change can be checked
+narrowly first with `cargo fmt --all --check`, the ratchet covering what it
+touched, and `cargo clippy -p <crate> --all-targets -- -D warnings`. Do not run a
+separate `cargo check`: clippy builds every target, and switching between profiles
+rebuilds the tree (`testing.md`).
 
-It runs the old CI guardrail set locally: `cargo fmt --check`, `cargo clippy --
--D warnings` (which also compiles every target), `Cargo.lock` freshness, the
-size, wildcard, and `App`-shape ratchets, and crate dependency boundaries.
+The gate runs the old CI guardrail set locally: `cargo fmt --check`, `cargo clippy
+-- -D warnings` (which also compiles every target, on default features),
+`Cargo.lock` freshness, the wildcard and `App`-shape ratchets, crate dependency
+boundaries, and the `dev_cargo` wrapper's own tests. The two size ratchets are
+paused (`plans/task-flow.md` G1). The boundary adds `--all-features`, whose only
+extra is `linux-compat-vendored-openssl` for the CentOS 7 release image.
 
 A compile or clippy failure is a real regression; do not commit past it.
 
