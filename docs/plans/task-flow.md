@@ -221,8 +221,8 @@ Every step lands whole, proven by the gate. The one `kcode run` probe against it
 socket waits for the end of the list, where the user runs it, so no step is gated on it.
 Widest shared shape first, so no step sweeps call sites a later step reshapes: S1 opens
 the loop's path and S2 the client's, and S3-S5 then delete what those leave behind. The
-numbers label the stages, they are not an order: S3 waits on S2 and S5, because the member
-record they reshape is the one it merges. The `app.rs` re-core (`plans/app-shape.md`) is
+numbers label the stages, they are not an order: S3 waits on S2, and C4 waits on S3, because
+the worker's record is the one thing both of them touch. The `app.rs` re-core (`plans/app-shape.md`) is
 the tail and it is droppable: nothing here depends on it.
 
 ### S1. The loop owns dispatch
@@ -263,7 +263,8 @@ F2's shape lands with this: what remains of `tool/communicate.rs` after the verb
 `plans/server-shape.md`'s condense task, which owns the file.
 
 surface: −28 actions, −1 driver, −1 durable waiter store, −2 report channels, −1 KV,
-−1 channel index, −3 artifact producers, −4 member shapes. lines ~−6,500 with tests.
+−1 channel index. lines ~−6,500 with tests. This stage strands the artifact producers and
+the member shapes; their types go in S4 and S3, and each owner counts its own cut.
 risk: high; this stage is the lane's test.
 
 Gate: one fan-out run in a scratch repo, end to end, on the loop alone. A root grants,
@@ -321,8 +322,10 @@ read (`comm_sync.rs:133-140`, a `completed/total` counter the forwarded bus even
 carries), the four member shapes, and the third event log. `tool_intents` is not a row
 fact: it is the gallery's "which tool is this worker running" display, nested under the
 compacted item by `update_active_todo_tool`, so it moves onto `SwarmMemberStatus` rather
-than dying with the cache. Gated by S2 and S5 (C5 and C4); the gallery is the only
-consumer. surface: −3 protocol types, −4 shapes, −1 event log, −2 liveness predicates.
+than dying with the cache. Gated by S2 (C5); the gallery is the only consumer, and C4 lands
+after this stage so the fields it moves land in one record instead of four.
+
+surface: −3 protocol types, −4 shapes, −1 event log, −2 liveness predicates.
 lines ~−1,000. risk: med.
 
 The projection becomes one type, so member appearance follows the typed status:
@@ -346,25 +349,33 @@ This is A7 and nothing else. `tool/todo.rs:144-168` hand-builds the close artifa
 three fields while `kcode-plan/src/artifact.rs` owns the seven-field `HandoffArtifact`,
 so a field added on one side drifts silently; the cut this item named (the tool building
 the type) would harden a type this stage deletes, so the drift closes by deletion
-instead. surface: −1 type, −7 fields, −2 tool vocabularies. lines ~−300. risk: med.
+instead. S1 strands the three producers that write the form; their shape is this stage's.
+
+surface: −1 type, −7 fields, −3 producers, −2 tool vocabularies. lines ~−300. risk: med.
 
 ### S5. The file's fields
 
-`status`, `priority`, `group`, `subsystem` and `file_scope` go (B3, C4), with the four
-status vocabularies they keep alive: five status helpers in `kcode-plan/src/lib.rs`,
+Two cuts with different dependencies.
+
+**S5a. `status`, `priority` and `group` leave the type** (B3), with the four status
+vocabularies they keep alive: five status helpers in `kcode-plan/src/lib.rs`,
 `canonical_todo_status` plus its two wrappers in `kcode-base/src/todo.rs`, and
 `normalize_plan_status_for_todo`, `status_badge` and a second `priority_rank` in the TUI.
-`subsystem` and `file_scope` are the scheduler's inputs (assignment affinity matches them
-against a worker's metadata), not list fields, and 0.4 deleted the `node_meta` side-map
-that was once named as their destination.
 
 Dropping `status` is the larger half, because the plan classifies by it everywhere:
 `summarize_plan_graph`, `completed_item_ids`, `is_active_status`, `newly_ready_item_ids`
 (read by the swarm path), the task-control actions and `status_from_plan`. `status_to_plan`
 is already gone: 0.4f's s12 stopped lowering the engine's statuses back into items, so the
 engine's own statuses no longer reach a row. Afterwards a row is ready when `blocked_by`
-is empty and liveness comes from the member, not the item. surface: −5 fields,
-−4 vocabularies. lines ~−500. risk: med.
+is empty and liveness comes from the member, not the item.
+
+**S5b (C4). `subsystem` and `file_scope` move onto the worker's record.** They are the
+scheduler's inputs (assignment affinity matches them against a worker's metadata), not list
+fields, and 0.4 deleted the `node_meta` side-map that was once named as their destination.
+This waits on S3, which merges the member projection: before that, landing the two fields
+would write them into four hand-written shapes and merge them afterwards.
+
+surface: −5 fields, −4 vocabularies. lines ~−500. risk: med.
 
 ### D2. The swarm/comm condense (gates `plans/server-shape.md` H2)
 
