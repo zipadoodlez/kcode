@@ -488,24 +488,6 @@ pub enum Request {
         force: Option<bool>,
     },
 
-    /// Get a summary of an agent's recent tool calls
-    #[serde(rename = "comm_summary")]
-    CommSummary {
-        id: u64,
-        session_id: String,
-        target_session: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        limit: Option<usize>,
-    },
-
-    /// Get a lightweight status snapshot for an agent, even while it is busy
-    #[serde(rename = "comm_status")]
-    CommStatus {
-        id: u64,
-        session_id: String,
-        target_session: String,
-    },
-
     /// Submit a structured swarm completion/progress report for this session
     #[serde(rename = "comm_report")]
     CommReport {
@@ -535,14 +517,6 @@ pub enum Request {
         session_id: String,
         target_session: String,
     },
-
-    /// Attach/resync this session with the swarm plan
-    #[serde(rename = "comm_resync_plan")]
-    CommResyncPlan { id: u64, session_id: String },
-
-    /// Get a lightweight summary of the current swarm plan graph
-    #[serde(rename = "comm_plan_status")]
-    CommPlanStatus { id: u64, session_id: String },
 
     /// Subscribe to a named channel in the swarm
     #[serde(rename = "comm_subscribe_channel")]
@@ -1181,21 +1155,6 @@ pub enum ServerEvent {
         channels: Vec<SwarmChannelInfo>,
     },
 
-    /// Response to comm_summary request
-    #[serde(rename = "comm_summary_response")]
-    CommSummaryResponse {
-        id: u64,
-        session_id: String,
-        tool_calls: Vec<ToolCallSummary>,
-    },
-
-    /// Response to comm_status request
-    #[serde(rename = "comm_status_response")]
-    CommStatusResponse {
-        id: u64,
-        snapshot: AgentStatusSnapshot,
-    },
-
     /// Response to comm_report request
     #[serde(rename = "comm_report_response")]
     CommReportResponse {
@@ -1203,10 +1162,6 @@ pub enum ServerEvent {
         status: String,
         message: String,
     },
-
-    /// Response to comm_plan_status request
-    #[serde(rename = "comm_plan_status_response")]
-    CommPlanStatusResponse { id: u64, summary: PlanGraphStatus },
 
     /// Response to comm_read_context request
     #[serde(rename = "comm_context_history")]

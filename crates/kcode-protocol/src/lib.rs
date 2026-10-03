@@ -290,42 +290,6 @@ pub struct AgentInfo {
     pub todos_total: Option<usize>,
 }
 
-/// Lightweight status snapshot for a swarm member.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentStatusSnapshot {
-    pub session_id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub friendly_name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub swarm_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status: Option<SwarmLifecycleStatus>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub detail: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub role: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub is_headless: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub live_attachments: Option<usize>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status_age_secs: Option<u64>,
-    /// Seconds since the last observed activity (tokens, turns, tool events,
-    /// or swarm task heartbeats), independent of lifecycle transitions.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_activity_age_secs: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub joined_age_secs: Option<u64>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub files_touched: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub activity: Option<SessionActivitySnapshot>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_model: Option<String>,
-}
-
 /// Lightweight swarm plan graph summary for planner-friendly reads.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PlanGraphStatus {
@@ -585,12 +549,8 @@ impl Request {
             Request::CommSpawn { id, .. } => *id,
             Request::CommListModels { id, .. } => *id,
             Request::CommStop { id, .. } => *id,
-            Request::CommSummary { id, .. } => *id,
-            Request::CommStatus { id, .. } => *id,
             Request::CommReport { id, .. } => *id,
             Request::CommReadContext { id, .. } => *id,
-            Request::CommResyncPlan { id, .. } => *id,
-            Request::CommPlanStatus { id, .. } => *id,
             Request::CommSubscribeChannel { id, .. } => *id,
             Request::CommUnsubscribeChannel { id, .. } => *id,
             Request::CommAwaitMembers { id, .. } => *id,
@@ -611,12 +571,8 @@ impl Request {
                 | Request::CommSpawn { .. }
                 | Request::CommListModels { .. }
                 | Request::CommStop { .. }
-                | Request::CommSummary { .. }
-                | Request::CommStatus { .. }
                 | Request::CommReport { .. }
-                | Request::CommPlanStatus { .. }
                 | Request::CommReadContext { .. }
-                | Request::CommResyncPlan { .. }
                 | Request::CommSubscribeChannel { .. }
                 | Request::CommUnsubscribeChannel { .. }
                 | Request::CommAwaitMembers { .. }

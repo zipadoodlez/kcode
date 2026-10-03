@@ -1,15 +1,13 @@
 use super::{
-    CommunicateInput, CommunicateTool, canonical_swarm_action, cleanup_candidate_session_ids,
-    default_await_target_statuses, default_cleanup_target_statuses, format_awaited_members,
-    format_awaited_members_with_reports, format_members, format_plan_status,
-    format_swarm_model_list, latest_assistant_report, resolve_optional_target_session,
-    resolve_run_plan_concurrency,
+    ACTIONS, CommunicateInput, CommunicateTool, canonical_swarm_action,
+    cleanup_candidate_session_ids, default_await_target_statuses, default_cleanup_target_statuses,
+    format_awaited_members, format_awaited_members_with_reports, format_swarm_model_list,
+    latest_assistant_report,
 };
 use crate::message::{Message, StreamEvent, ToolDefinition};
 use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{
-    AgentInfo, AgentStatusSnapshot, AwaitedMemberStatus, HistoryMessage, NotificationType, Request,
-    ServerEvent, SessionActivitySnapshot, ToolCallSummary,
+    AgentInfo, AwaitedMemberStatus, HistoryMessage, NotificationType, Request, ServerEvent,
 };
 use crate::provider::{EventStream, Provider};
 use crate::server::Server;
@@ -29,61 +27,6 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 fn tool_is_named_swarm() {
     assert_eq!(CommunicateTool::new().name(), "swarm");
 }
-
-#[test]
-fn run_plan_concurrency_reads_the_configured_cap() {
-    // No explicit limit: fan out wide using the configured cap.
-    assert_eq!(resolve_run_plan_concurrency(None, 32), 32);
-    assert_eq!(resolve_run_plan_concurrency(None, 64), 64);
-
-    // A cap of 0 means "no extra cap": dispatch the whole ready set, bounded
-    // only by the swarm member cap.
-    assert_eq!(resolve_run_plan_concurrency(None, 0), usize::MAX);
-
-    // An explicit request always wins, and is clamped to at least 1.
-    assert_eq!(resolve_run_plan_concurrency(Some(5), 32), 5);
-    assert_eq!(resolve_run_plan_concurrency(Some(0), 32), 1);
-}
-
-#[test]
-fn plan_status_budget_line_nudges_serialized_graphs() {
-    let base = crate::protocol::PlanGraphStatus {
-        swarm_id: Some("swarm-a".to_string()),
-        item_count: 10,
-        ready_ids: vec!["a".to_string()],
-        blocked_ids: Vec::new(),
-        active_ids: vec!["b".to_string()],
-        failed_ids: Vec::new(),
-        failed_reasons: Default::default(),
-        cycle_ids: Vec::new(),
-        unresolved_dependency_ids: Vec::new(),
-        next_ready_ids: Vec::new(),
-        newly_ready_ids: Vec::new(),
-    };
-
-    // Narrow frontier (2 of 32) with 7 more items serialized behind edges ->
-    // budget line plus the widen nudge.
-    let narrow = super::plan_status_budget_line(&base, 32).expect("a budget line");
-    assert!(narrow.contains("Parallel budget: 32"));
-    assert!(narrow.contains("ready set is 1 wide (1 active)"));
-    assert!(narrow.contains("expand_node"));
-
-    // The frontier is all that remains: two rows failed, one ready, one active, so
-    // nothing is serialized behind an edge -> line but no nudge.
-    let almost_done = crate::protocol::PlanGraphStatus {
-        item_count: 3,
-        failed_ids: vec!["f".to_string(), "g".to_string()],
-        ..base.clone()
-    };
-    let line = super::plan_status_budget_line(&almost_done, 32).unwrap();
-    assert!(line.contains("Parallel budget: 32"));
-    assert!(!line.contains("expand_node"));
-
-    // cap=0 (unbounded) surfaces the member cap as the budget.
-    let unbounded = super::plan_status_budget_line(&base, 0).unwrap();
-    assert!(unbounded.contains("1000 (member cap)"));
-}
-
 #[test]
 fn canonical_swarm_action_maps_common_synonyms() {
     assert_eq!(canonical_swarm_action("inbox"), "read");
@@ -128,29 +71,6 @@ fn communicate_input_aliases_to_session_and_target_session() {
     assert_eq!(from_to.to_session.as_deref(), Some("worker-2"));
     assert_eq!(from_to.target_session, None);
 }
-
-#[test]
-fn format_plan_status_includes_next_ready() {
-    let output = format_plan_status(&crate::protocol::PlanGraphStatus {
-        swarm_id: Some("swarm-a".to_string()),
-        item_count: 4,
-        ready_ids: vec!["task-2".to_string(), "task-3".to_string()],
-        blocked_ids: vec!["task-4".to_string()],
-        active_ids: vec!["task-1".to_string()],
-        failed_ids: Vec::new(),
-        failed_reasons: Default::default(),
-        cycle_ids: Vec::new(),
-        unresolved_dependency_ids: Vec::new(),
-        next_ready_ids: vec!["task-2".to_string()],
-        newly_ready_ids: vec!["task-3".to_string()],
-    });
-    let text = output.output;
-    assert!(text.contains("Plan status for swarm swarm-a"));
-    assert!(text.contains("Next up: task-2"));
-    assert!(text.contains("Newly ready: task-3"));
-    assert!(text.contains("Blocked: task-4"));
-}
-
 #[test]
 fn latest_assistant_report_uses_last_non_empty_assistant_message() {
     let messages = vec![
@@ -210,23 +130,6 @@ fn format_awaited_members_includes_completion_reports() {
     assert!(output.contains("Structured report wins."));
     assert!(!output.contains("Outcome: finished"));
 }
-
-#[test]
-fn resolve_optional_target_session_defaults_to_current() {
-    assert_eq!(
-        resolve_optional_target_session(None, "session_current"),
-        "session_current"
-    );
-    assert_eq!(
-        resolve_optional_target_session(Some("current".to_string()), "session_current"),
-        "session_current"
-    );
-    assert_eq!(
-        resolve_optional_target_session(Some("session_other".to_string()), "session_current"),
-        "session_other"
-    );
-}
-
 #[test]
 fn schema_still_requires_action() {
     let schema = CommunicateTool::new().parameters_schema();
@@ -506,7 +409,6 @@ fn schema_advertises_supported_swarm_fields() {
     );
     assert!(props.contains_key("prompt"));
     assert!(props.contains_key("working_dir"));
-    assert!(props.contains_key("limit"));
     assert!(props.contains_key("session_ids"));
     assert!(props.contains_key("mode"));
     assert_eq!(
@@ -528,29 +430,12 @@ fn schema_advertises_supported_swarm_fields() {
         props["delivery"]["enum"],
         json!(["notify", "interrupt", "wake"])
     );
-    assert!(
-        schema["properties"]["action"]["enum"]
-            .as_array()
-            .expect("action enum")
-            .contains(&json!("status"))
-    );
-    assert!(
-        schema["properties"]["action"]["enum"]
-            .as_array()
-            .expect("action enum")
-            .contains(&json!("report"))
-    );
-    assert!(
-        schema["properties"]["action"]["enum"]
-            .as_array()
-            .expect("action enum")
-            .contains(&json!("plan_status"))
-    );
-    assert!(
-        schema["properties"]["action"]["enum"]
-            .as_array()
-            .expect("action enum")
-            .contains(&json!("cleanup"))
+    // The schema's enum is the one action list, so the choices the model is given
+    // and the actions the dispatch accepts cannot drift apart.
+    assert_eq!(
+        props["action"]["enum"],
+        json!(ACTIONS),
+        "the schema must advertise exactly the actions the tool takes"
     );
 }
 
@@ -717,32 +602,6 @@ impl RawClient {
             }
     }
 
-    async fn comm_status(
-        &mut self,
-        session_id: &str,
-        target_session: &str,
-    ) -> Result<AgentStatusSnapshot> {
-        let id = self.next_id;
-        self.next_id += 1;
-        self.send_request(Request::CommStatus {
-            id,
-            session_id: session_id.to_string(),
-            target_session: target_session.to_string(),
-        })
-        .await?;
-        match self
-                .read_until(Duration::from_secs(5), |event| {
-                    matches!(event, ServerEvent::CommStatusResponse { id: event_id, .. } if *event_id == id)
-                })
-                .await?
-            {
-                ServerEvent::CommStatusResponse { snapshot, .. } => Ok(snapshot),
-                other => anyhow::bail!("unexpected comm_status response: {other:?}"),
-            }
-    }
-
-    /// Wait for the next `Message` notification and return its scope
-    /// ("dm", "channel", or "broadcast"). Other events are skipped.
     async fn next_message_notification(&mut self, timeout: Duration) -> Result<Option<String>> {
         match self
             .read_until(timeout, |event| {

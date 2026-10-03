@@ -45,48 +45,6 @@ fn test_swarm_plan_event_roundtrip_with_summary() -> Result<()> {
     assert_eq!(summary.next_ready_ids, vec!["task-1"]);
     Ok(())
 }
-
-#[test]
-fn test_comm_status_roundtrip() -> Result<()> {
-    let req = Request::CommStatus {
-        id: 56,
-        session_id: "sess_watcher".to_string(),
-        target_session: "sess_peer".to_string(),
-    };
-    let json = serde_json::to_string(&req)?;
-    assert!(json.contains("\"type\":\"comm_status\""));
-    let decoded = parse_request_json(&json)?;
-    assert_eq!(decoded.id(), 56);
-    let Request::CommStatus {
-        session_id,
-        target_session,
-        ..
-    } = decoded
-    else {
-        return Err(anyhow!("expected CommStatus"));
-    };
-    assert_eq!(session_id, "sess_watcher");
-    assert_eq!(target_session, "sess_peer");
-    Ok(())
-}
-
-#[test]
-fn test_comm_plan_status_roundtrip() -> Result<()> {
-    let req = Request::CommPlanStatus {
-        id: 59,
-        session_id: "sess_coord".to_string(),
-    };
-    let json = serde_json::to_string(&req)?;
-    assert!(json.contains("\"type\":\"comm_plan_status\""));
-    let decoded = parse_request_json(&json)?;
-    assert_eq!(decoded.id(), 59);
-    let Request::CommPlanStatus { session_id, .. } = decoded else {
-        return Err(anyhow!("expected CommPlanStatus"));
-    };
-    assert_eq!(session_id, "sess_coord");
-    Ok(())
-}
-
 #[test]
 fn test_comm_members_roundtrip_includes_status() -> Result<()> {
     let event = ServerEvent::CommMembers {
@@ -146,49 +104,5 @@ fn test_session_close_requested_roundtrip() -> Result<()> {
         return Err(anyhow!("expected SessionCloseRequested"));
     };
     assert_eq!(reason, "Stopped by coordinator coord");
-    Ok(())
-}
-
-#[test]
-fn test_comm_status_response_roundtrip() -> Result<()> {
-    let event = ServerEvent::CommStatusResponse {
-        id: 57,
-        snapshot: AgentStatusSnapshot {
-            session_id: "sess-peer".to_string(),
-            friendly_name: Some("bear".to_string()),
-            swarm_id: Some("swarm-test".to_string()),
-            status: Some(crate::SwarmLifecycleStatus::Running),
-            detail: Some("working on tests".to_string()),
-            role: Some("agent".to_string()),
-            is_headless: Some(true),
-            live_attachments: Some(0),
-            status_age_secs: Some(5),
-            last_activity_age_secs: Some(2),
-            joined_age_secs: Some(30),
-            files_touched: vec!["src/main.rs".to_string()],
-            activity: Some(SessionActivitySnapshot {
-                is_processing: true,
-                current_tool_name: Some("bash".to_string()),
-            }),
-            provider_name: None,
-            provider_model: None,
-        },
-    };
-
-    let json = encode_event(&event);
-    assert!(json.contains("\"type\":\"comm_status_response\""));
-    let decoded = parse_event_json(json.trim())?;
-    let ServerEvent::CommStatusResponse { id, snapshot } = decoded else {
-        return Err(anyhow!("expected CommStatusResponse"));
-    };
-    assert_eq!(id, 57);
-    assert_eq!(snapshot.session_id, "sess-peer");
-    assert_eq!(snapshot.friendly_name.as_deref(), Some("bear"));
-    assert_eq!(
-        snapshot
-            .activity
-            .and_then(|activity| activity.current_tool_name),
-        Some("bash".to_string())
-    );
     Ok(())
 }

@@ -2,13 +2,11 @@
 
 use super::{Tool, ToolContext, ToolOutput};
 use crate::protocol::{
-    AgentInfo, AgentStatusSnapshot, AwaitedMemberStatus, CommDeliveryMode, ContextEntry,
-    HistoryMessage, PlanGraphStatus, Request, ServerEvent, SwarmChannelInfo, ToolCallSummary,
-    comm_cleanup_candidate_session_ids, default_comm_await_target_statuses,
-    default_comm_cleanup_target_statuses, format_comm_awaited_members_with_reports,
-    format_comm_channels, format_comm_context_entries, format_comm_context_history,
-    format_comm_members, format_comm_plan_status, format_comm_status_snapshot,
-    format_comm_tool_summary, latest_assistant_comm_report, resolve_optional_comm_target_session,
+    AgentInfo, AwaitedMemberStatus, CommDeliveryMode, ContextEntry, HistoryMessage, Request,
+    ServerEvent, SwarmChannelInfo, comm_cleanup_candidate_session_ids,
+    default_comm_await_target_statuses, default_comm_cleanup_target_statuses,
+    format_comm_awaited_members_with_reports, format_comm_channels, format_comm_context_entries,
+    latest_assistant_comm_report,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -18,6 +16,29 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 
 const REQUEST_ID: u64 = 1;
+
+/// Every action this tool takes. One list, because the schema's `enum` and the
+/// error a bad action gets both read it: a verb that goes cannot leave its name
+/// behind in a message the model still reads.
+const ACTIONS: &[&str] = &[
+    "share",
+    "share_append",
+    "read",
+    "message",
+    "broadcast",
+    "dm",
+    "channel",
+    "list_channels",
+    "channel_members",
+    "spawn",
+    "stop",
+    "cleanup",
+    "report",
+    "subscribe_channel",
+    "unsubscribe_channel",
+    "await_members",
+    "list_models",
+];
 
 mod transport;
 use transport::{send_request, send_request_with_timeout};
@@ -35,21 +56,6 @@ fn ensure_success(response: &ServerEvent) -> Result<()> {
         Err(anyhow::anyhow!(message.to_string()))
     } else {
         Ok(())
-    }
-}
-
-async fn fetch_plan_status(session_id: &str) -> Result<PlanGraphStatus> {
-    let request = Request::CommPlanStatus {
-        id: REQUEST_ID,
-        session_id: session_id.to_string(),
-    };
-    match send_request(request).await {
-        Ok(ServerEvent::CommPlanStatusResponse { summary, .. }) => Ok(summary),
-        Ok(response) => {
-            ensure_success(&response)?;
-            Err(anyhow::anyhow!("No plan status returned."))
-        }
-        Err(e) => Err(anyhow::anyhow!("Failed to get plan status: {}", e)),
     }
 }
 
@@ -170,93 +176,8 @@ async fn stop_swarm_sessions(
     WorkerCleanupOutcome { stopped, failed }
 }
 
-/// Decide how many swarm workers `run_plan` keeps active at once.
-///
-/// Policy:
-///   * an explicit `requested` limit always wins (clamped to >= 1);
-///   * with no explicit limit, fan out wide: use the configured `cap`, where
-///     `0` means "no extra cap" (`usize::MAX`) so the whole ready set is
-///     dispatched, bounded only by the swarm member cap.
-///
-/// Pure and side-effect free so the concurrency contract is unit-testable
-/// without a live swarm.
-fn resolve_run_plan_concurrency(requested: Option<usize>, cap: usize) -> usize {
-    match requested {
-        Some(explicit) => explicit.max(1),
-        None if cap == 0 => usize::MAX,
-        None => cap,
-    }
-}
-
 fn format_context_entries(entries: &[ContextEntry]) -> ToolOutput {
     ToolOutput::new(format_comm_context_entries(entries))
-}
-
-fn format_members(ctx: &ToolContext, members: &[AgentInfo]) -> ToolOutput {
-    ToolOutput::new(format_comm_members(&ctx.session_id, members))
-}
-
-fn format_tool_summary(target: &str, calls: &[ToolCallSummary]) -> ToolOutput {
-    ToolOutput::new(format_comm_tool_summary(target, calls))
-}
-
-fn format_status_snapshot(snapshot: &AgentStatusSnapshot) -> ToolOutput {
-    ToolOutput::new(format_comm_status_snapshot(snapshot))
-}
-
-fn format_plan_status(summary: &PlanGraphStatus) -> ToolOutput {
-    let mut output = format_comm_plan_status(summary);
-    if let Some(budget_line) = plan_status_budget_line(
-        summary,
-        crate::config::config().agents.swarm_max_concurrent_agents,
-    ) {
-        output.push_str(&budget_line);
-    }
-    ToolOutput::new(output)
-}
-
-/// Budget line for `plan_status`: how wide the ready frontier is
-/// versus the concurrency budget, with a widen-the-graph nudge when the ready
-/// set cannot fill the slots. This makes under-utilization visible at plan
-/// time, before `run_plan` even starts, so the coordinator can restructure the
-/// graph instead of discovering the waste after the run. Pure over its inputs
-/// for unit testing.
-fn plan_status_budget_line(summary: &PlanGraphStatus, cap: usize) -> Option<String> {
-    let budget = resolve_run_plan_concurrency(None, cap);
-    let budget_label = if budget == usize::MAX {
-        format!("{} (member cap)", kcode_swarm_core::MAX_SWARM_MEMBERS)
-    } else {
-        budget.to_string()
-    };
-    let ready_width = summary.ready_ids.len();
-    let active_width = summary.active_ids.len();
-    let mut line = format!(
-        "  Parallel budget: {} concurrent worker slot(s); ready set is {} wide ({} active).\n",
-        budget_label, ready_width, active_width
-    );
-    let effective_budget = if budget == usize::MAX {
-        kcode_swarm_core::MAX_SWARM_MEMBERS
-    } else {
-        budget
-    };
-    // Nudge only when narrowness is structural: the frontier cannot fill the
-    // budget while other non-terminal work exists but is serialized behind
-    // depends_on edges. A small plan that is simply almost done gets no nudge.
-    let frontier = ready_width + active_width;
-    let terminal = summary.failed_ids.len() + summary.cycle_ids.len();
-    let serialized_remaining = summary.item_count > terminal + frontier;
-    if frontier < effective_budget && serialized_remaining {
-        line.push_str(
-            "  The ready frontier is narrower than the budget while more work waits behind \
-             depends_on edges: prefer expand_node with MANY independent siblings (depends_on \
-             only for real data dependencies) to widen it.\n",
-        );
-    }
-    Some(line)
-}
-
-fn format_context_history(target: &str, messages: &[HistoryMessage]) -> ToolOutput {
-    ToolOutput::new(format_comm_context_history(target, messages))
 }
 
 #[cfg(test)]
@@ -270,10 +191,6 @@ fn format_awaited_members(
 
 fn latest_assistant_report(messages: &[HistoryMessage]) -> Option<String> {
     latest_assistant_comm_report(messages)
-}
-
-fn resolve_optional_target_session(target: Option<String>, current_session: &str) -> String {
-    resolve_optional_comm_target_session(target, current_session)
 }
 
 fn format_awaited_members_with_reports(
@@ -419,8 +336,6 @@ struct CommunicateInput {
     #[serde(default)]
     prompt: Option<String>,
     #[serde(default)]
-    limit: Option<usize>,
-    #[serde(default)]
     target_status: Option<Vec<String>>,
     #[serde(default)]
     session_ids: Option<Vec<String>>,
@@ -526,10 +441,7 @@ impl Tool for CommunicateTool {
                 "intent": super::intent_schema_property(),
                 "action": {
                     "type": "string",
-                    "enum": ["share", "share_append", "read", "message", "broadcast", "dm", "channel", "list", "list_channels", "channel_members",
-                             "spawn", "stop",
-                             "status", "report", "plan_status", "summary", "read_context", "resync_plan", "cleanup",
-                                                          "subscribe_channel", "unsubscribe_channel", "await_members", "list_models"],
+                    "enum": ACTIONS,
                     "description": "Action. spawn requires label and should include prompt. list_models shows available models/routes."
                 },
                 "key": {
@@ -587,11 +499,6 @@ impl Tool for CommunicateTool {
                 "initial_message": {
                     "type": "string",
                     "description": "Alias of prompt for spawn; wins when both are set."
-                },
-                "limit": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "description": "Optional max items for summary-style reads."
                 },
                 "spawn_mode": {
                     "type": "string",
@@ -897,24 +804,6 @@ impl Tool for CommunicateTool {
                 }
             }
 
-            "list" => {
-                let request = Request::CommList {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                };
-
-                match send_request(request).await {
-                    Ok(ServerEvent::CommMembers { members, .. }) => {
-                        Ok(format_members(&ctx, &members))
-                    }
-                    Ok(response) => {
-                        ensure_success(&response)?;
-                        Ok(ToolOutput::new("No agents found."))
-                    }
-                    Err(e) => Err(anyhow::anyhow!("Failed to list agents: {}", e)),
-                }
-            }
-
             "list_channels" => {
                 let request = Request::CommListChannels {
                     id: REQUEST_ID,
@@ -1050,28 +939,6 @@ impl Tool for CommunicateTool {
                 .await
                 .map(ToolOutput::new),
 
-            "status" => {
-                let target =
-                    resolve_optional_target_session(params.target_session, &ctx.session_id);
-
-                let request = Request::CommStatus {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                    target_session: target.clone(),
-                };
-
-                match send_request(request).await {
-                    Ok(ServerEvent::CommStatusResponse { snapshot, .. }) => {
-                        Ok(format_status_snapshot(&snapshot))
-                    }
-                    Ok(response) => {
-                        ensure_success(&response)?;
-                        Ok(ToolOutput::new("No status snapshot returned."))
-                    }
-                    Err(e) => Err(anyhow::anyhow!("Failed to get status snapshot: {}", e)),
-                }
-            }
-
             "report" => {
                 let message = params
                     .message
@@ -1098,73 +965,6 @@ impl Tool for CommunicateTool {
                         Ok(ToolOutput::new("Report recorded."))
                     }
                     Err(e) => Err(anyhow::anyhow!("Failed to record report: {}", e)),
-                }
-            }
-
-            "plan_status" => {
-                let summary = fetch_plan_status(&ctx.session_id).await?;
-                Ok(format_plan_status(&summary))
-            }
-
-            "summary" => {
-                let target = params.target_session.ok_or_else(|| {
-                    anyhow::anyhow!("'target_session' is required for summary action")
-                })?;
-
-                let request = Request::CommSummary {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                    target_session: target.clone(),
-                    limit: params.limit,
-                };
-
-                match send_request(request).await {
-                    Ok(ServerEvent::CommSummaryResponse { tool_calls, .. }) => {
-                        Ok(format_tool_summary(&target, &tool_calls))
-                    }
-                    Ok(response) => {
-                        ensure_success(&response)?;
-                        Ok(ToolOutput::new("No tool call data returned."))
-                    }
-                    Err(e) => Err(anyhow::anyhow!("Failed to get summary: {}", e)),
-                }
-            }
-
-            "read_context" => {
-                let target = params.target_session.ok_or_else(|| {
-                    anyhow::anyhow!("'target_session' is required for read_context action")
-                })?;
-
-                let request = Request::CommReadContext {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                    target_session: target.clone(),
-                };
-
-                match send_request(request).await {
-                    Ok(ServerEvent::CommContextHistory { messages, .. }) => {
-                        Ok(format_context_history(&target, &messages))
-                    }
-                    Ok(response) => {
-                        ensure_success(&response)?;
-                        Ok(ToolOutput::new("No context data returned."))
-                    }
-                    Err(e) => Err(anyhow::anyhow!("Failed to read context: {}", e)),
-                }
-            }
-
-            "resync_plan" => {
-                let request = Request::CommResyncPlan {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                };
-
-                match send_request(request).await {
-                    Ok(response) => {
-                        ensure_success(&response)?;
-                        Ok(ToolOutput::new("Swarm plan re-synced to your session."))
-                    }
-                    Err(e) => Err(anyhow::anyhow!("Failed to resync plan: {}", e)),
                 }
             }
 
@@ -1282,11 +1082,10 @@ impl Tool for CommunicateTool {
             }
 
             _ => Err(anyhow::anyhow!(
-                "Unknown action '{}'. Valid actions: share, share_append, read, message, broadcast, dm, channel, list, list_channels, channel_members, \
-                 spawn, stop, status, report, plan_status, summary, read_context, \
-                 resync_plan, assign_task, assign_next, fill_slots, run_plan, cleanup, retry, wake, subscribe_channel, unsubscribe_channel, await_members. \
+                "Unknown action '{}'. Valid actions: {}. \
                  To read messages addressed to you, use action='read'.",
-                params.action
+                params.action,
+                ACTIONS.join(", ")
             )),
         }
     }

@@ -64,20 +64,6 @@ impl FileTouchService {
         self.touches.read().await.get(path).cloned()
     }
 
-    /// Sorted, display-formatted list of the distinct files a session has
-    /// touched (empty if the session has touched nothing).
-    pub(crate) async fn sorted_file_strings_for_session(&self, session_id: &str) -> Vec<String> {
-        let by_session = self.by_session.read().await;
-        let mut files: Vec<String> = by_session
-            .get(session_id)
-            .into_iter()
-            .flat_map(|paths| paths.iter())
-            .map(|path| path.display().to_string())
-            .collect();
-        files.sort();
-        files
-    }
-
     /// Cloned snapshot of the entire forward (`path -> accesses`) index.
     ///
     /// Used by read-only reporting paths (debug commands, memory accounting)

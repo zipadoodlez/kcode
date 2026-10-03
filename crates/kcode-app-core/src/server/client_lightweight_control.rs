@@ -7,10 +7,7 @@ use super::client_comm::{
 use super::client_writer::write_direct_event;
 use super::comm_await::{CommAwaitMembersContext, handle_comm_await_members};
 use super::comm_session::{handle_comm_list_models, handle_comm_spawn, handle_comm_stop};
-use super::comm_sync::{
-    CommResyncPlanContext, handle_comm_plan_status, handle_comm_read_context,
-    handle_comm_resync_plan, handle_comm_status, handle_comm_summary,
-};
+use super::comm_sync::handle_comm_read_context;
 use super::{
     AwaitMembersRuntime, ChannelSubscriptions, ClientConnectionInfo, FileTouchService, RunState,
     SessionAgents, SessionInterruptQueues, SharedContext, SwarmEvent, SwarmMember,
@@ -335,40 +332,6 @@ pub(super) async fn handle_lightweight_control_request(
             )
             .await;
         }
-        Request::CommSummary {
-            id,
-            session_id: req_session_id,
-            target_session,
-            limit,
-        } => {
-            handle_comm_summary(
-                id,
-                req_session_id,
-                target_session,
-                limit,
-                sessions,
-                swarm_members,
-                &client_event_tx,
-            )
-            .await;
-        }
-        Request::CommStatus {
-            id,
-            session_id: req_session_id,
-            target_session,
-        } => {
-            handle_comm_status(
-                id,
-                req_session_id,
-                target_session,
-                sessions,
-                swarm_members,
-                client_connections,
-                file_touch,
-                &client_event_tx,
-            )
-            .await;
-        }
         Request::CommReport {
             id,
             session_id: req_session_id,
@@ -404,19 +367,6 @@ pub(super) async fn handle_lightweight_control_request(
                     .to_string(),
             });
         }
-        Request::CommPlanStatus {
-            id,
-            session_id: req_session_id,
-        } => {
-            handle_comm_plan_status(
-                id,
-                req_session_id,
-                swarm_members,
-                swarm_runs,
-                &client_event_tx,
-            )
-            .await;
-        }
         Request::CommReadContext {
             id,
             session_id: req_session_id,
@@ -429,24 +379,6 @@ pub(super) async fn handle_lightweight_control_request(
                 sessions,
                 swarm_members,
                 &client_event_tx,
-            )
-            .await;
-        }
-        Request::CommResyncPlan {
-            id,
-            session_id: req_session_id,
-        } => {
-            handle_comm_resync_plan(
-                id,
-                req_session_id,
-                &CommResyncPlanContext {
-                    client_event_tx: &client_event_tx,
-                    swarm_members,
-                    swarm_runs,
-                    event_history,
-                    event_counter,
-                    swarm_event_tx,
-                },
             )
             .await;
         }

@@ -1,24 +1,14 @@
-use super::swarm::{swarm_is_root, swarm_role, swarm_root};
-use super::{
-    ClientConnectionInfo, FileTouchService, RunState, SessionAgents, SwarmEvent, SwarmEventType,
-    SwarmMember, SwarmState, broadcast_swarm_plan, persist_swarm_state_for, record_swarm_event,
-};
-use crate::protocol::SwarmLifecycleStatus;
-use crate::protocol::{
-    AgentStatusSnapshot, NotificationType, PlanGraphStatus, ServerEvent, SessionActivitySnapshot,
-};
+//! The two reads a request still needs, with the views they were written for gone:
+//! `handle_comm_read_context` serves the await path's transcript read until S1e
+//! deletes it, and `member_runtime_extras` enriches the shared-context view until
+//! S1f deletes that. Everything else in this file was a read view of the run.
+
+use super::swarm::{swarm_is_root, swarm_root};
+use super::{ClientConnectionInfo, SessionAgents, SwarmMember};
+use crate::protocol::{ServerEvent, SessionActivitySnapshot};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{RwLock, broadcast, mpsc};
-
-pub(super) struct CommResyncPlanContext<'a> {
-    pub(super) client_event_tx: &'a mpsc::UnboundedSender<ServerEvent>,
-    pub(super) swarm_members: &'a Arc<RwLock<HashMap<String, SwarmMember>>>,
-    pub(super) swarm_runs: &'a Arc<RwLock<HashMap<String, RunState>>>,
-    pub(super) event_history: &'a Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
-    pub(super) event_counter: &'a Arc<std::sync::atomic::AtomicU64>,
-    pub(super) swarm_event_tx: &'a broadcast::Sender<SwarmEvent>,
-}
+use tokio::sync::{RwLock, mpsc};
 
 fn live_activity_snapshot(
     connections: &HashMap<String, ClientConnectionInfo>,
@@ -198,142 +188,6 @@ async fn can_read_full_context(
     swarm_is_root(&members, req_session_id)
 }
 
-pub(super) async fn handle_comm_summary(
-    id: u64,
-    req_session_id: String,
-    target_session: String,
-    limit: Option<usize>,
-    sessions: &SessionAgents,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
-) {
-    if !ensure_same_swarm_access(
-        id,
-        &req_session_id,
-        &target_session,
-        swarm_members,
-        client_event_tx,
-    )
-    .await
-    {
-        return;
-    }
-
-    let limit = limit.unwrap_or(10);
-    let agent_sessions = sessions.read().await;
-    if let Some(agent) = agent_sessions.get(&target_session) {
-        let tool_calls = if let Ok(agent) = agent.try_lock() {
-            agent.get_tool_call_summaries(limit)
-        } else {
-            let _ = client_event_tx.send(ServerEvent::Error {
-                id,
-                message: format!(
-                    "Session '{}' is busy; try summary again shortly",
-                    target_session
-                ),
-                retry_after_secs: Some(1),
-            });
-            return;
-        };
-        let _ = client_event_tx.send(ServerEvent::CommSummaryResponse {
-            id,
-            session_id: target_session,
-            tool_calls,
-        });
-    } else {
-        let _ = client_event_tx.send(ServerEvent::CommSummaryResponse {
-            id,
-            session_id: target_session,
-            tool_calls: Vec::new(),
-        });
-    }
-}
-
-#[expect(
-    clippy::too_many_arguments,
-    reason = "status snapshots combine live connection state, session metadata, files touched, and optional provider/model hints"
-)]
-pub(super) async fn handle_comm_status(
-    id: u64,
-    req_session_id: String,
-    target_session: String,
-    sessions: &SessionAgents,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
-    file_touch: &FileTouchService,
-    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
-) {
-    if !ensure_same_swarm_access(
-        id,
-        &req_session_id,
-        &target_session,
-        swarm_members,
-        client_event_tx,
-    )
-    .await
-    {
-        return;
-    }
-
-    let snapshot = {
-        let members = swarm_members.read().await;
-        let Some(member) = members.get(&target_session) else {
-            let _ = client_event_tx.send(ServerEvent::Error {
-                id,
-                message: format!("Unknown session '{target_session}'"),
-                retry_after_secs: None,
-            });
-            return;
-        };
-
-        let files_touched = file_touch
-            .sorted_file_strings_for_session(&target_session)
-            .await;
-
-        let activity = {
-            let connections = client_connections.read().await;
-            live_activity_snapshot(
-                &connections,
-                &target_session,
-                member.status == SwarmLifecycleStatus::Running,
-            )
-        };
-
-        let (provider_name, provider_model) = {
-            let agent_sessions = sessions.read().await;
-            if let Some(agent) = agent_sessions.get(&target_session) {
-                if let Ok(agent) = agent.try_lock() {
-                    (Some(agent.provider_name()), Some(agent.provider_model()))
-                } else {
-                    (None, None)
-                }
-            } else {
-                (None, None)
-            }
-        };
-
-        AgentStatusSnapshot {
-            session_id: member.session_id.clone(),
-            friendly_name: member.friendly_name.clone(),
-            swarm_id: swarm_root(&members, &target_session),
-            status: Some(member.status.clone()),
-            detail: member.detail.clone(),
-            role: Some(swarm_role(&members, &target_session).to_string()),
-            is_headless: Some(member.is_headless),
-            live_attachments: Some(member.event_txs.len()),
-            status_age_secs: Some(member.last_status_change.elapsed().as_secs()),
-            last_activity_age_secs: crate::session_metrics::last_activity_age_secs(&target_session),
-            joined_age_secs: Some(member.joined_at.elapsed().as_secs()),
-            files_touched,
-            activity,
-            provider_name,
-            provider_model,
-        }
-    };
-
-    let _ = client_event_tx.send(ServerEvent::CommStatusResponse { id, snapshot });
-}
-
 pub(super) async fn handle_comm_read_context(
     id: u64,
     req_session_id: String,
@@ -357,7 +211,7 @@ pub(super) async fn handle_comm_read_context(
     if !can_read_full_context(&req_session_id, &target_session, swarm_members).await {
         let _ = client_event_tx.send(ServerEvent::Error {
             id,
-            message: "Only the coordinator, worktree manager, or the target session may read full context. Use summary for lightweight access.".to_string(),
+            message: "Only the coordinator, worktree manager, or the target session may read full context.".to_string(),
             retry_after_secs: None,
         });
         return;
@@ -387,126 +241,6 @@ pub(super) async fn handle_comm_read_context(
         let _ = client_event_tx.send(ServerEvent::Error {
             id,
             message: format!("Unknown session '{target_session}'"),
-            retry_after_secs: None,
-        });
-    }
-}
-
-pub(super) async fn handle_comm_plan_status(
-    id: u64,
-    req_session_id: String,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
-    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
-) {
-    let swarm_id = {
-        let members = swarm_members.read().await;
-        swarm_root(&members, &req_session_id)
-    };
-
-    let Some(swarm_id) = swarm_id else {
-        let _ = client_event_tx.send(ServerEvent::Error {
-            id,
-            message: "Not in a swarm.".to_string(),
-            retry_after_secs: None,
-        });
-        return;
-    };
-
-    let summary = {
-        let run = swarm_runs
-            .read()
-            .await
-            .get(&swarm_id)
-            .cloned()
-            .unwrap_or_default();
-        let rows = super::swarm::swarm_rows(&swarm_id, &req_session_id, swarm_members).await;
-        let items = super::swarm::rows_with_run_status(&rows, &run);
-        if items.is_empty() {
-            PlanGraphStatus::empty_for_swarm(swarm_id.clone())
-        } else {
-            PlanGraphStatus::from_rows(
-                swarm_id.clone(),
-                &items,
-                Some(8),
-                Vec::new(),
-                super::swarm::failed_reasons_for(
-                    &items,
-                    &super::swarm::member_details(swarm_members).await,
-                ),
-            )
-        }
-    };
-
-    let _ = client_event_tx.send(ServerEvent::CommPlanStatusResponse { id, summary });
-}
-
-pub(super) async fn handle_comm_resync_plan(
-    id: u64,
-    req_session_id: String,
-    ctx: &CommResyncPlanContext<'_>,
-) {
-    let swarm_id = {
-        let members = ctx.swarm_members.read().await;
-        swarm_root(&members, &req_session_id)
-    };
-
-    if let Some(swarm_id) = swarm_id {
-        let item_count = {
-            let rows =
-                super::swarm::swarm_rows(&swarm_id, &req_session_id, ctx.swarm_members).await;
-            rows.len()
-        };
-        if item_count > 0 {
-            let swarm_state = SwarmState {
-                members: Arc::clone(ctx.swarm_members),
-                runs: Arc::clone(ctx.swarm_runs),
-            };
-            persist_swarm_state_for(&swarm_id, &swarm_state).await;
-            if let Some(member) = ctx.swarm_members.read().await.get(&req_session_id) {
-                let _ = member.event_tx.send(ServerEvent::Notification {
-                    from_session: req_session_id.clone(),
-                    from_name: member.friendly_name.clone(),
-                    notification_type: NotificationType::Message {
-                        scope: Some("plan".to_string()),
-                        channel: None,
-                        tldr: None,
-                    },
-                    message: format!("Plan attached to this session ({} items).", item_count),
-                });
-            }
-            broadcast_swarm_plan(
-                &swarm_id,
-                Some("resync".to_string()),
-                ctx.swarm_runs,
-                ctx.swarm_members,
-            )
-            .await;
-            record_swarm_event(
-                ctx.event_history,
-                ctx.event_counter,
-                ctx.swarm_event_tx,
-                req_session_id.clone(),
-                None,
-                Some(swarm_id.clone()),
-                SwarmEventType::PlanUpdate {
-                    swarm_id: swarm_id.clone(),
-                    item_count,
-                },
-            )
-            .await;
-            let _ = ctx.client_event_tx.send(ServerEvent::Done { id });
-        } else {
-            let _ = ctx.client_event_tx.send(ServerEvent::Error {
-                id,
-                message: "No swarm plan exists for this swarm.".to_string(),
-                retry_after_secs: None,
-            });
-        }
-    } else {
-        let _ = ctx.client_event_tx.send(ServerEvent::Error {
-            id,
-            message: "Not in a swarm.".to_string(),
             retry_after_secs: None,
         });
     }
