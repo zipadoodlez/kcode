@@ -244,6 +244,12 @@ report, and the row's words as the handoff.
 New code, one piece: a write hook that wakes a headless holder when a row becomes ready.
 Everything else in this stage is deletion.
 
+Order inside the stage: the hook and the loop's dispatch land and are proven by the hand
+fan-out first, and only then do the deletions follow. This is the plan's own rule applied
+within the stage, and it is the one place it matters most: a deletion program whose
+replacement is unproven on the tree has already cut its fallback, and the fallback here
+is the only driver that has ever run a fan-out.
+
 F2's shape lands with this: what remains of `tool/communicate.rs` after the verb cut is
 `plans/server-shape.md`'s condense task, which owns the file.
 
