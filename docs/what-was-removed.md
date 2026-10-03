@@ -288,6 +288,19 @@ resumed after a reload anyway, since its socket waiter dies with the process, so
 durable state bought only the background case, which the loop's own dispatch makes
 unnecessary.
 
+**The channel index and the shared-context store go** (S1f, 2026-10-03). Swarm
+agents could publish named key/value entries every peer could read, and subscribe to
+named channels so a message reached only that channel's members. Both go, with the
+verbs that fed them (`share`, `share_append`, `read`, `subscribe_channel`,
+`unsubscribe_channel`, `list_channels`, `channel_members`), the channel and delivery
+shapes of `message`, and the one-line `tldr` that let a long message arrive collapsed.
+What is lost: agents can no longer share a scratch key-value space or address a named
+group, and the group verbs (`broadcast`, `dm`, `channel`) collapse into the one
+`message` verb, which names a single session. A run keeps its shared state in the rows
+it works and hands work over one message at a time, which is what the model already
+asks for. The `tldr` collapse goes with its rule, so a long message now renders in
+full rather than behind a one-line summary.
+
 ## Deliberately kept from upstream
 
 - `/account` and `/accounts` - the multi-account picker for Claude and OpenAI.

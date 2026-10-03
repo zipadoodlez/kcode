@@ -299,12 +299,12 @@ spawns two workers, hands them rows, the workers close, the root integrates and 
 the anchor. By hand, on the user's own socket, with the run's words in the transcript.
 If it fails, stop and report; do not patch around it.
 
-S1's later steps landed without a build, by the user's call (2026-10-03): S1c, S1d and S1e
-are deletion stages, and this plan already goes blind across those ("a deletion and a
-behavior change are checked differently"), so the stage's first compile and its first test
-run are the gate below rather than each step. What that costs: a compile error or a stale
-test left by S1c, S1d or S1e surfaces at the gate. Each step's evidence is in its commits,
-its row, and the README of the ledger when it dropped power.
+S1's later steps landed without a build, by the user's call (2026-10-03): S1c, S1d, S1e
+and S1f are deletion stages, and this plan already goes blind across those ("a deletion and
+a behavior change are checked differently"), so the stage's first compile and its first
+test run are the gate below rather than each step. What that costs: a compile error or a
+stale test left by S1c, S1d, S1e or S1f surfaces at the gate. Each step's evidence is in
+its commits, its row, and the README of the ledger when it dropped power.
 
 ### S2. One view
 
