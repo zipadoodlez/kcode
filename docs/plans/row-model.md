@@ -1,8 +1,8 @@
 # Row model
 
 This is the one plan for the row/list work: the model, the rules the code cites, the
-duplication left to remove, the stages that remove it, and the landed record behind them.
-Subjects with another owner keep their own doc — the
+duplication left to remove, and the stages that remove it. Subjects with another owner
+keep their own doc — the
 app's shape in `plans/app-shape.md`, the request path in `plans/server-shape.md`, the
 test tree in `plans/test-tree.md`, the loose ends in `plans/hygiene.md` — and losses are
 named in `docs/what-was-removed.md`.
@@ -28,7 +28,9 @@ written. Four rules, each one paid for by a failure this plan already had:
 - **A step lands whole; a big one lands in ordered stages.** A stage is one commit,
   and a symbol goes only once its last caller is gone, so each stage builds on its
   own and the order is the caller graph, outside in. Each stage compiles before it is
-  committed; the full gate runs once, when the step is done. The doc line rides the
+  committed; the full gate runs once, when the step is done. Tick a step when it lands
+  and delete it: the plan holds open work, the commit holds the history, and a step
+  that dropped power is recorded in `docs/what-was-removed.md`. The doc line rides the
   code, and prose does not outrun landings: a plan that grows faster than the tree
   shrinks is not this plan.
 - **A decision on a step's path is taken with that step.** A `(decide)` item is
@@ -215,8 +217,6 @@ The tool's action surface is 32 actions; S1 keeps three.
 
 ## Steps
 
-Landed work is in the record below; what is open is here.
-
 Every step lands whole, proven by the gate. The one `kcode run` probe against its own
 socket waits for the end of the list, where the user runs it, so no step is gated on it.
 Widest shared shape first, so no step sweeps call sites a later step reshapes: S1 opens
@@ -365,7 +365,7 @@ client context) waits on it. (A1 measured 19 `SwarmState { .. }` literals and 24
 ### Close out
 
 - **B2.** This repo's own list migrates: what is open in this doc becomes the content of
-  `tasks.jsonl`. Its landed records have already moved, as they land, to
+  `tasks.jsonl`. The landed steps live in git, and a step that dropped power is in
   `docs/what-was-removed.md`. S1's rows landed 2026-10-03 (t1-t14); the rest follow as
   their stages start.
 - **G1.** Restore the two size ratchets in `scripts/check_guardrails.sh` and re-baseline
@@ -414,205 +414,3 @@ in `client_lifecycle`, the channel handlers, the member-shape definitions and th
 gallery's data adapter, `client_comm_message`, `todo.rs:330-470`, and the TUI's render
 internals. The stages rest on the schedulers, waiters, dispatchers, artifact producers
 and liveness predicates, all of which were read in full.
-
-## Landed record
-
-Tick a step when it lands and delete it; git has the history. The losses each step named
-are in `docs/what-was-removed.md`.
-
-### 0. One way work gets done
-
-- [x] **0.4. The cuts the run makes redundant.** Landed whole, stage by stage in
-  git: the gate and the deep/light axis, the row model, one spawn level, the growth
-  report, liveness on the member's clock, and `VersionedPlan` becoming a view of the
-  file (0.4f: the holder and the artifact live where the list is, a turn end is a
-  close, and the engine carries no artifact), and 0.4g below. Losses are in
-  `docs/what-was-removed.md`.
-  - **0.4g. The swarm state gets one owner.** One step, five commits, one gate, decided
-    2026-10-02. All four questions are answered: the plan object goes; per-row run state
-    lives in memory on the runtime owner; a claim is a lock for a run and not for the
-    user's session; the verb cut rides this step rather than a separate 0.4h. The losses
-    are in `docs/what-was-removed.md`. Measured before the stage: the `SwarmState { .. }` rebuild
-    sites were 26 (31 in the older note), `VersionedPlan` appeared in 48 files, and
-    `swarm_persistence.rs` was 621 lines with 924 test lines. Measured after g3: 25
-    rebuild sites, no `VersionedPlan` anywhere, 469 lines with 676 test lines, and
-    `swarm_coordinators` referenced 329 times, which is g4's number to move.
-    1. **g1. Ordering replaces `version`.** Landed. `version` guarded a stale durable
-       write and client ordering; the first left with the field (the persist guard went
-       with it, one piece of g2 pulled forward because the field's last caller was the
-       guard) and the second is now construction: the event is built and sent while a
-       per-swarm lock is held. g1 held the plan's lock for that; g3b deleted the plan, so
-       the lock is `swarm_operation_lock` (the one the persist path already takes), and
-       holding it across the send cannot block because a member's `event_tx` is an
-       `mpsc::UnboundedSender` (`server/state.rs:209`). Deleted `version` and
-       `participants` (the broadcast's recipients are the swarm's sessions, which was
-       already its fallback), the client's `plan_version` and stale-regression branch,
-       `RemoteSwarmPlanSnapshot.version`, the replay record's fields, the
-       `swarm:plan_version:` debug read, and member notices built from the participant
-       list. The broadcast's ordering is pinned by
-       `swarm_plan_broadcasts_cannot_invert_on_one_member_channel`, which replaces the
-       test that demonstrated the inversion.
-    2. **g2. The plan stops being durable** (behavior boundary: restart). Landed. Deleted
-       `PersistedVersionedPlan` and the snapshot's plan field, the plan converters, the
-       dormant-plan retention rule, its `KCODE_SWARM_DORMANT_PLAN_RETENTION_SECS` env var
-       and constant, the plan argument threaded through the persist callers, and
-       `swarm:clear_plan`'s re-persist; `SwarmRuntime::has_any_state` came to mean durable
-       state, so the plan no longer counts. It also took g3's first half, because
-       deleting the durable copy leaves nothing to source the in-memory plan after a
-       restart: the load path seated the swarm's rows from the list. g3b then deleted
-       that seating too, so a loaded swarm now holds no plan at all and the reads go
-       straight to the list; the load tests pin the member and coordinator round trip.
-    3. **g3. The item cache dies** (behavior boundary: the status readers). Landed in
-       three commits: g3a removed the reclaim cap and its counter, g3b removed the plan
-       object, g3c removed the summary's completed segment. `VersionedPlan`,
-       `SwarmTaskProgress`, `sync_rows`, `drop_row`, `set_row_status`, `prune_side_maps`,
-       `rename_session`, `is_composite`, `execution_state`, `plan_definition` and the
-       debug-only plan DTOs are gone, every item read comes from the list, and what
-       replaces them is one rule and one map: a swarm's rows are the open rows its
-       members hold, the rows nobody holds, and the rows whose holder left the swarm (the
-       sweep's case, and the one that decided the scope), the run keeps a sparse `status`
-       per row id while the process lives, and every read uses the run's status when it
-       set one and the row's own otherwise. Re-measured facts: the scope rule is
-       `swarm_rows` (`swarm.rs`), and a session rename now rewrites its rows' holder
-       (`rename_row_holder_on_disk`), since the in-memory copy that used to carry it is
-       gone.
-    4. **g4. Membership is derived** (behavior boundary: membership). Landed. Membership
-       is the spawn edge: a session belongs to the run rooted at the end of its
-       `report_back_to_session_id` chain, and `swarm_root` (`server/swarm.rs`) is the one
-       derivation every reader calls. That makes the run's root its coordinator, since
-       spawning is root-only (0.4b) and the root is the session holding the run's anchor
-       row, so the coordinator slot and its election path are gone with the map that held
-       them. Deleted: `SwarmMember.swarm_id`/`swarm_enabled`/`role`, `SwarmState.coordinators`
-       and `SwarmState.swarms_by_id` (the state is `members` + `runs`), the stored swarm id
-       (`KCODE_SWARM_ID`, `swarm_id_for_dir`/`swarm_id_for_session`, and the now-dead
-       `git_common_dir_for`), `features.swarm`/`KCODE_SWARM_ENABLED` and the per-session
-       toggle (`FeatureToggle::Swarm`, `/swarm on|off`, now `/swarm [status]`), `assign_role`
-       (wire variant, tool action, handler and both dispatch arms), the debug `swarm:id:` and
-       `swarm:clear_coordinator` ops, and the hook env `KCODE_SPAWN_SWARM_ID`
-       (`KCODE_SPAWN_COORDINATOR_SESSION_ID` stays; `docs/user/hooks.md` moved with it).
-       **A refinement of the decision**, recorded in `docs/what-was-removed.md`: the decision said
-       membership derives from who holds rows under the anchor, and it landed as the spawn
-       edge instead, because a worker holds no row between `spawn` and its first assignment
-       and because a per-query row read is the item cache g3 deleted under another name.
-       Rows under the anchor stay what they already were: the run's scope (`swarm_rows`).
-       Measured: 95 files, +887/-3554 lines; no `VersionedPlan`, no `swarms_by_id`, no
-       `coordinators`, and no `SwarmState { .. }` literal survives.
-    5. **g5. The verb set** (behavior boundary: the user's levers). Landed. One guard,
-       one line: `close_row_on_disk` (`kcode-base/src/todo.rs`) refuses a row whose
-       `assigned_to` is not the caller, so a turn that ends after its row moved is
-       refused rather than closing work that is no longer its own. The person's path is
-       a different function (the `todo` tool closes in memory), so it still closes
-       anything. Deleted: `TaskControlAction` and its seven variants, both status
-       tables, the target-resolution helper, `RestartInstructionPrefix`'s texts,
-       `build_control_assignment_text`, `handle_comm_task_control` and its helpers
-       (`task_snapshot_for`, `task_id_for_target_session`, `requeue_existing_assignment`,
-       `TaskSnapshot`, `plan_graph_status_for`, `active_swarm_member`,
-       `task_agent_session`, `format_salvage_message`), `Request::CommTaskControl` and
-       `CommTaskControlResponse` with both dispatch arms, the double-assignment refusal
-       (`active_assignment_conflict`/`active_assignment_error`), the five tool actions
-       (`start`, `start_task`, `resume`, `reassign`, `replace`, `salvage`), the dead
-       `requeue_failed` DAG op, and the TUI's action names for them.
-       Two refinements of the decision, both in `docs/what-was-removed.md`: the takeover is gated on
-       `swarm_is_root` (the 0.4b derivation) rather than on "a session with a client",
-       since a headless root reaches only its own run's rows either way; and `retry`/`wake`
-       are the assign request with a fixed sentence, carrying a `redispatch` flag so the
-       replay layer cannot answer a deliberate retry from the record of the last one.
-       `require_plan_driver_swarm` became `require_run_root`, which now checks something.
-    Then the gate: one build and the full suite for 0.4f's tail and g1-g5, with the
-    three known `session_flow` failures recorded.
-  `parse_kind`/`kind_str` stay, since they are what reads and writes a row's word.
-  `Synthesize` stays as well: the word lives on the row (`tool/todo.rs` offers every
-  `KINDS` entry), so a run's own join row has a word to be typed with. Nothing in the
-  engine branches on it, so it costs one enum variant and one word.
-
-### 0.5. One level, low, and no second way to say it
-
-Landed whole 2026-10-03, stage by stage in git: one level and the session's, with no
-argument to say otherwise; the `low` default moved into the model table; and config
-stopped setting a level at all, with the picker reading the session's. One order and one
-home remain: the session's stored level, else the model table, else nothing, read where
-the request is built, so a model with no ladder still means `default`. Gate (t5):
-`check_guardrails.sh` green; `test.sh full` green bar the three `session_flow` reds; the
-touched crates' own suites green bar the reds `plans/test-tree.md` records; and the live
-probe on its own socket against a local mock, where a fresh session reported `low`,
-`/effort high` then a resume kept `high` and the request carried `high`, and a config
-still carrying `provider.openai_reasoning_effort`/`agents.swarm_effort` started clean and
-sent `low`. Losses: `docs/what-was-removed.md`.
-
-### A. Audit
-
-- [x] **A1. A braid audit of the tree.** Ran 2026-10-03 with `/braid-audit` over the
-  settled 0.5 tree, row-list first. The row-list findings are A2-A7; the ones with
-  another owner went to `plans/hygiene.md` (the provider dispatch fan-out, the provider
-  tiers, the mislaid catchup types, `tasks.bak`). Measured, row-list tier: the
-  coordination machine is 16,395 lines in `kcode-app-core/src/server/{comm*,swarm*}`
-  (in-file tests included), 6,551 in `tool/communicate*`, 5,957 in the TUI and render
-  `swarm*` files, 498 in `kcode-swarm-core`, over 23 `Comm*` wire requests and 19
-  `SwarmState { .. }` literals. D1/D2/F1 still own that cut; A2-A7 are what they miss.
-  B3's status cut measured again: five status helpers in `kcode-plan/src/lib.rs`,
-  `canonical_todo_status` plus its two wrappers in `kcode-base/src/todo.rs`, and
-  `normalize_plan_status_for_todo`, `status_badge` and a second `priority_rank` in the
-  TUI.
-- [x] **A2. The goals/initiatives store is a second work list with no producer.**
-  Decided delete (no external writer expected) and landed 2026-10-03: deleted
-  `kcode-base/src/goal.rs` (620) with `goal_tests.rs` (82), the `Goal*` types in
-  `kcode-task-types` (185), the `/initiatives` and `/goals` commands with their
-  registry, suggestion, help and status-notice entries (`commands.rs`,
-  `commands_dispatch.rs`, `state_ui_input_helpers.rs`, `input_help.rs`,
-  `ui_overlays.rs`, the remote key-handling call site), the goal-panel tests, and the
-  README row. The loss is recorded in `docs/what-was-removed.md`. Gate: the build and
-  clippy `--all-targets --all-features -- -D warnings` on `kcode-task-types`,
-  `kcode-base` and `kcode-tui`, `check_guardrails.sh` green, `kcode-tui` serial 1760
-  passed with its one known red
-  (`test_remote_fallback_provider_suggestions_normalize_bare_openai_openrouter_routes`),
-  `kcode-base` green, and `scripts/test.sh full` green bar the three `session_flow` e2e
-  reds `plans/test-tree.md` records. Two `kcode-tui` tests that only used the removed
-  command as their input were repointed at commands the tree still has, not dropped.
-- [x] **A3. The mission store goes.** Landed 2026-10-03: deleted `mission.rs` (185)
-  and `pub mod mission`, `prompt/mission_continuation.md` (58) with
-  `MISSION_CONTINUATION_TEMPLATE`, the reminder hook (`mission_turn_reminder`) with
-  its two call sites, the disabled-command shim with its local and remote call sites,
-  and the TUI's `current_turn_system_reminder` field with its initializers and debug
-  reporting, since the hook was its only writer and no send ever read it (every
-  `begin_remote_send` passed `None`). The loss is in `docs/what-was-removed.md`:
-  a reminder from a mission file left by an older build is gone, and `/mission` and
-  `/goal` are unknown slash text now, which the tree sends to the model as a prompt.
-  Gate: `check_guardrails.sh` green with the App shape baseline tightened and recorded
-  (`app_fields` 181 -> 180), clippy `--all-targets --all-features -- -D warnings` on
-  `kcode-app-core`, `kcode-base` and `kcode-tui`, `kcode-tui` serial 1759 passed with
-  its one known red, `kcode-app-core` 948 passed, `kcode-base` green, and
-  `scripts/test.sh full` green bar the three `session_flow` e2e reds.
-- **A4, A5 and A7 are stages now, not items:** A4 is S3, A5 is S2, and A7 is S4, which
-  deletes the type A7 would have unified rather than unifying it.
-- [x] **A6. What 0.4 claimed to delete and did not.** Landed 2026-10-03: deleted
-  `SwarmPlanItemSpec` (`kcode-plan/src/lib.rs`) with the serde import it alone used, and
-  gated the simulator (`#[cfg(test)] pub mod sim;` in `dag/mod.rs`, its doc link
-  reworded so a non-test build does not point at a test-only module). Gate: clippy
-  `--all-targets --all-features -- -D warnings` green on `kcode-plan`, `kcode-base` and
-  `kcode-tui`; `kcode-plan` 34 passed.
-- [x] **A8. The client stops writing the rows into session files.** Landed
-  2026-10-03, writers only: deleted `record_swarm_status_event` and
-  `record_swarm_plan_event`, the TUI's `persist_swarm_status_snapshot` and
-  `persist_swarm_plan_snapshot` with their call sites, so no swarm status or plan
-  broadcast triggers a full session save any more. The two `StoredReplayEventKind`
-  variants and their redaction arms stay: `load_from_path` parses the snapshot with
-  no tolerance, and 52 of the 2437 session files on this machine carry those events,
-  so removing the variants would make real sessions unloadable. The redaction test
-  now builds the legacy shapes directly and round-trips them through
-  `write_json_fast` + `load_from_path`, so the compat property is pinned. A deeper
-  read of the same log is A9. Gate: `kcode-base` 1097 passed serial with the new
-  round trip, `check_guardrails.sh` green, `kcode-tui` serial 1759 passed with its one
-  known red, and `scripts/test.sh full` green bar the three `session_flow` e2e reds.
-- [x] **A9. The replay-event log has no reader.** Landed 2026-10-03: deleted
-  `record_replay_display_message`, the TUI's `persist_replay_display_message` with its
-  four call sites, `mark_replay_events_append_dirty`, the journal's
-  `append_replay_events` and the persist state's `replay_events_len`/`_mode`, the delta
-  computation and its `delta_replay_events` telemetry, and the memory-profile
-  accounting for the field (`SessionMemoryProfileSnapshot.replay_event_count` included).
-  The field, the three variants and the redaction arms stay for A8's load-compat reason;
-  new sessions simply never fill the log. Two behavior notes: a display notice no longer
-  triggers `session.save()`, so it no longer re-stamps `updated_at` (the resume picker's
-  recency stops moving on a notice), and the memory-profile payload loses its
-  replay-event keys. Gate: `kcode-base` 1097 passed serial with the round-trip test,
-  `check_guardrails.sh` green, `kcode-tui` serial 1759 passed with its one known red,
-  and `scripts/test.sh full` green bar the three `session_flow` e2e reds.
