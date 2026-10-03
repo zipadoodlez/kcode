@@ -91,6 +91,9 @@ cargo build --release -p kcode --bin kcode
 ./target/release/kcode
 ```
 
+kcode does not install, update, or repoint itself. Older installs may still carry a
+`~/.kcode/builds` tree from the upstream self-dev machinery; it is inert.
+
 ---
 
 ## Quick start

@@ -509,26 +509,11 @@ fn test_selfdev_prompt_describes_fork_build_workflow() {
     // The prompt must name the build path that exists in this fork...
     assert!(prompt.contains("There is no `selfdev` build tool in this fork"));
     assert!(prompt.contains("scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode"));
-    assert!(prompt.contains("cargo build --profile selfdev -p kcode --bin kcode"));
     assert!(prompt.contains("its own socket"));
     // ...and must not carry instructions for machinery this fork does not ship.
     assert!(!prompt.contains("Prefer coordinated builds"));
     assert!(!prompt.contains("Do not wait for user input"));
     assert!(!prompt.contains("If a remote build host is configured"));
-}
-
-#[test]
-fn test_selfdev_prompt_welcomes_outside_contributions() {
-    let full = build_system_prompt_with_selfdev(None, &[], true);
-    let (split, _) = build_system_prompt_split(None, &[], true, None);
-
-    for prompt in [&full, &split.static_part] {
-        assert!(prompt.contains("Pull requests from everyone are welcome"));
-        assert!(prompt.contains("Good PRs can be merged directly after review and validation"));
-        assert!(prompt.contains("Do not require a maintainer-authored rewrite"));
-        assert!(prompt.contains("preserve unrelated changes"));
-        assert!(prompt.contains("merge a PR without user authorization"));
-    }
 }
 
 #[test]

@@ -2,36 +2,14 @@
 
 You are working on the kcode codebase itself.
 
-Tools:
-- `debug_socket` helps with visual debugging, tester instances, and state inspection.
+## Building and running
 
-## Pull requests and contributions
+When you need to build or run the binary, this is how. There is no `selfdev` build tool in this fork; `selfdev build`, `selfdev reload`, and the remote build host are upstream jcode and not available here.
 
-Pull requests from everyone are welcome, including first-time contributors and authors who are not maintainers or existing contributors. Review contributions on correctness, tests, security, architecture, and maintainability, not author status. Good PRs can be merged directly after review and validation. Do not require a maintainer-authored rewrite merely because of who submitted the change or whether they used code generation.
-
-When the user asks you to review or integrate a PR or branch, you may inspect, test, and integrate it regardless of author status. Keep the work scoped, preserve unrelated changes, and do not pull in unrelated branches or merge a PR without user authorization. Follow the repository's `AGENTS.md` and `CONTRIBUTING.md` for its workflow and contribution policy.
-
-## Workflow
-
-There is no `selfdev` build tool in this fork. There is no `selfdev build`,
-`selfdev build-reload`, `selfdev cancel-build`, `selfdev reload`, or remote build
-host; those belong to upstream jcode and are not available here. Build directly:
-
-1. Build with `scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode`,
-   or plain `cargo build --profile selfdev -p kcode --bin kcode`. Avoid slow
-   release or signoff profiles like `release-lto` unless you specifically need
-   them.
-2. A build proves nothing about behavior on its own. `run` and interactive
-   sessions are served by the installed daemon, so exercise a fresh build
-   against its own socket instead of the shared one:
+1. `scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode`. Avoid slow release or signoff profiles unless you specifically need them.
+2. A build proves a deletion; a behavior change needs the running binary. `run` and interactive sessions are served by the installed daemon, so exercise a fresh build against its own socket:
    `./target/selfdev/kcode run --socket /run/user/$UID/kcode-mytest.sock '<prompt>'`.
-3. The daemon's debug `reload` command re-execs the installed binary, which the
-   OS package manager owns. It does not pick up `target/selfdev`, so a build
-   never reaches a live session until the package is installed and the daemon
-   restarted.
-4. Prefer `eprintln!` for throwaway diagnostics. `crate::logging::info` writes to
-   a log file rather than stderr, so instrumenting a path with it prints nothing
-   under `--trace`.
-5. For UI changes, use `debug_socket` testers and frames.
+3. The daemon's debug `reload` re-execs the installed binary, which the OS package manager owns, and never picks up `target/selfdev`. Installing over the user's binary and restarting their daemon is the user's call, not yours.
+4. Prefer `eprintln!` for throwaway diagnostics. `crate::logging::info` writes to a log file rather than stderr, so instrumenting a path with it prints nothing under `--trace`.
 
 __SELFDEV_PRODUCT_FOCUS__
