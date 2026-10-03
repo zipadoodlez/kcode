@@ -510,7 +510,6 @@ fn schema_advertises_supported_swarm_fields() {
     assert!(props.contains_key("prompt"));
     assert!(props.contains_key("working_dir"));
     assert!(props.contains_key("limit"));
-    assert!(props.contains_key("task_id"));
     assert!(props.contains_key("spawn_if_needed"));
     assert!(props.contains_key("prefer_spawn"));
     assert!(props.contains_key("session_ids"));
@@ -522,7 +521,6 @@ fn schema_advertises_supported_swarm_fields() {
     );
     assert!(props.contains_key("target_status"));
     assert!(props.contains_key("timeout_minutes"));
-    assert!(props.contains_key("concurrency_limit"));
     assert!(props.contains_key("wake"));
     assert!(props.contains_key("delivery"));
     assert!(props.contains_key("initial_message"));

@@ -424,8 +424,6 @@ struct CommunicateInput {
     #[serde(default)]
     limit: Option<usize>,
     #[serde(default)]
-    task_id: Option<String>,
-    #[serde(default)]
     spawn_if_needed: Option<bool>,
     #[serde(default)]
     prefer_spawn: Option<bool>,
@@ -453,8 +451,6 @@ struct CommunicateInput {
     notify: Option<bool>,
     #[serde(default)]
     delivery: Option<CommDeliveryMode>,
-    #[serde(default)]
-    concurrency_limit: Option<usize>,
     #[serde(default)]
     force: Option<bool>,
     #[serde(default)]
@@ -613,10 +609,6 @@ impl Tool for CommunicateTool {
                     "minimum": 1,
                     "description": "Optional max items for summary-style reads."
                 },
-                "task_id": {
-                    "type": "string",
-                    "description": "Optional plan task ID. When omitted the coordinator picks or resumes the relevant task."
-                },
                 "spawn_if_needed": {
                     "type": "boolean",
                     "description": "For assign_task: spawn a fresh agent when no reusable one is available."
@@ -656,11 +648,6 @@ impl Tool for CommunicateTool {
                 "notify": {
                     "type": "boolean",
                     "description": "For await_members/run_plan: show a notification when resolved. Defaults to true."
-                },
-                "concurrency_limit": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "description": "Max live workers. Required for fill_slots; optional override for run_plan."
                 },
                 "force": {
                     "type": "boolean",
