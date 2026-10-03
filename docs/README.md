@@ -69,7 +69,7 @@ not fit its row is a doc in the wrong place.
 | `user/auth.md` | where credentials live | the two-path model, traps, the import sources |
 | `user/ssh.md` | remote attach | the security and disconnect contract, verification |
 | `internals/architecture.md` | the runtime shape | server/client/session model, paths, lifecycle |
-| `internals/swarm.md` | coordinated agents | the DAG, decomposition, member semantics; one executor of the work list |
+| `internals/swarm.md` | coordinated agents | the loop, the rows as the one graph, membership, the close's record |
 | `internals/browser.md` | the browser tool | what it does and what is not live evidence |
 | `internals/websocket.md` | OpenAI WebSocket transport | the wire contract with the peer |
 | `internals/soft-interrupt.md` | interrupting a turn | the stop semantics |
