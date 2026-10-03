@@ -139,33 +139,6 @@ pub(super) fn persist_final_response(
     next
 }
 
-/// Like [`begin_or_replay`], but never replays a persisted final response.
-///
-/// Explicit control-driven mutations (retry/reassign/replace/salvage) must
-/// re-dispatch even when an identical mutation finished moments ago: a worker
-/// that fails within `FINAL_STATE_TTL` would otherwise turn the coordinator's
-/// follow-up retry into a silent no-op replay. Concurrent in-flight duplicates
-/// still join the active execution as waiters.
-pub(super) async fn begin_or_join_in_flight(
-    runtime: &SwarmMutationRuntime,
-    key: &str,
-    action: &str,
-    session_id: &str,
-    request_id: u64,
-    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
-) -> Option<PersistedSwarmMutationState> {
-    begin_with_mode(
-        runtime,
-        key,
-        action,
-        session_id,
-        request_id,
-        client_event_tx,
-        false,
-    )
-    .await
-}
-
 pub(super) async fn begin_or_replay(
     runtime: &SwarmMutationRuntime,
     key: &str,

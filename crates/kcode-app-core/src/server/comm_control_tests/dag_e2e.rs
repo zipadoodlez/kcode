@@ -61,15 +61,11 @@ struct GraphFixture {
     worker: String,
     client_tx: mpsc::UnboundedSender<ServerEvent>,
     client_rx: mpsc::UnboundedReceiver<ServerEvent>,
-    sessions: crate::server::SessionAgents,
-    soft_interrupt_queues: crate::server::SessionInterruptQueues,
-    client_connections: Arc<RwLock<HashMap<String, crate::server::ClientConnectionInfo>>>,
     swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
     event_history: Arc<RwLock<VecDeque<SwarmEvent>>>,
     event_counter: Arc<AtomicU64>,
     swarm_event_tx: broadcast::Sender<SwarmEvent>,
-    mutation_runtime: SwarmMutationRuntime,
 }
 
 impl GraphFixture {
@@ -105,10 +101,6 @@ async fn graph_fixture_for(coord: &str, worker: &str) -> GraphFixture {
     let worker = worker.to_string();
     let repo = scratch_repo();
     let (client_tx, client_rx) = mpsc::unbounded_channel();
-    let sessions = Arc::new(RwLock::new(HashMap::from([
-        (coord.clone(), test_agent().await),
-        (worker.clone(), test_agent().await),
-    ])));
     let swarm_members = Arc::new(RwLock::new(HashMap::from([
         (coord.clone(), {
             let mut m = member(&coord, &coord, "ready");
@@ -131,15 +123,11 @@ async fn graph_fixture_for(coord: &str, worker: &str) -> GraphFixture {
         worker,
         client_tx,
         client_rx,
-        sessions,
-        soft_interrupt_queues: Arc::new(RwLock::new(HashMap::new())),
-        client_connections: Arc::new(RwLock::new(HashMap::new())),
         swarm_members,
         swarm_runs,
         event_history: Arc::new(RwLock::new(VecDeque::new())),
         event_counter: Arc::new(AtomicU64::new(1)),
         swarm_event_tx: broadcast::channel(64).0,
-        mutation_runtime: SwarmMutationRuntime::default(),
     }
 }
 

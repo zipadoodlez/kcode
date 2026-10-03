@@ -510,8 +510,6 @@ fn schema_advertises_supported_swarm_fields() {
     assert!(props.contains_key("prompt"));
     assert!(props.contains_key("working_dir"));
     assert!(props.contains_key("limit"));
-    assert!(props.contains_key("spawn_if_needed"));
-    assert!(props.contains_key("prefer_spawn"));
     assert!(props.contains_key("session_ids"));
     assert!(props.contains_key("mode"));
     assert_eq!(

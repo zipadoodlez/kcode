@@ -67,26 +67,6 @@ fn communicate_input_accepts_delivery_and_share_append() {
 }
 
 #[test]
-fn communicate_input_accepts_spawn_if_needed() {
-    let parsed: CommunicateInput = serde_json::from_value(serde_json::json!({
-        "action": "assign_task",
-        "spawn_if_needed": true
-    }))
-    .expect("spawn_if_needed should deserialize");
-    assert_eq!(parsed.spawn_if_needed, Some(true));
-}
-
-#[test]
-fn communicate_input_accepts_prefer_spawn() {
-    let parsed: CommunicateInput = serde_json::from_value(serde_json::json!({
-        "action": "assign_task",
-        "prefer_spawn": true
-    }))
-    .expect("prefer_spawn should deserialize");
-    assert_eq!(parsed.prefer_spawn, Some(true));
-}
-
-#[test]
 fn cleanup_candidates_default_to_owned_terminal_workers() {
     let members = vec![
         AgentInfo {

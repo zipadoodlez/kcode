@@ -403,9 +403,7 @@ impl CommunicateTool {
 #[derive(Clone, Deserialize)]
 struct CommunicateInput {
     action: String,
-    #[serde(default)]
     key: Option<String>,
-    #[serde(default)]
     value: Option<String>,
     #[serde(default)]
     message: Option<String>,
@@ -423,10 +421,6 @@ struct CommunicateInput {
     prompt: Option<String>,
     #[serde(default)]
     limit: Option<usize>,
-    #[serde(default)]
-    spawn_if_needed: Option<bool>,
-    #[serde(default)]
-    prefer_spawn: Option<bool>,
     #[serde(default)]
     node_id: Option<String>,
     /// Child rows for the expand_node action. Each: content, kind?, blocked_by?.
@@ -608,14 +602,6 @@ impl Tool for CommunicateTool {
                     "type": "integer",
                     "minimum": 1,
                     "description": "Optional max items for summary-style reads."
-                },
-                "spawn_if_needed": {
-                    "type": "boolean",
-                    "description": "For assign_task: spawn a fresh agent when no reusable one is available."
-                },
-                "prefer_spawn": {
-                    "type": "boolean",
-                    "description": "For assign_task: prefer spawning fresh over reusing an idle worker."
                 },
                 "spawn_mode": {
                     "type": "string",
