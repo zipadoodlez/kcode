@@ -229,6 +229,12 @@ impl Agent {
         self.reset_runtime_state_for_session_change();
         self.provider_session_id = None;
         self.seed_compaction_from_session();
+
+        // The client is handed this session's new id, so it must be on disk to
+        // attach or resume; the lazy-save gate would otherwise skip it as empty.
+        if let Err(err) = self.session.save_persistent() {
+            logging::error(&format!("Failed to persist cleared session state: {}", err));
+        }
     }
 
     /// Clear provider session so the next turn sends full context.
@@ -331,7 +337,9 @@ impl Agent {
             self.unlock_tools();
         }
         self.session.set_canary(build_hash);
-        if let Err(err) = self.session.save() {
+        // A canary session is one a client must be able to attach to by id, so
+        // bypass the lazy-save gate that skips an empty session.
+        if let Err(err) = self.session.save_persistent() {
             logging::error(&format!("Failed to persist canary session state: {}", err));
         }
     }
@@ -345,7 +353,9 @@ impl Agent {
 
     pub fn set_debug(&mut self, is_debug: bool) {
         self.session.set_debug(is_debug);
-        if let Err(err) = self.session.save() {
+        // A debug session is one a client must be able to attach to by id, so
+        // bypass the lazy-save gate that skips an empty session.
+        if let Err(err) = self.session.save_persistent() {
             logging::error(&format!("Failed to persist debug session state: {}", err));
         }
     }
