@@ -14,7 +14,7 @@ pub struct TaskItem {
     pub id: String,
     /// The run's word for this row's work: "explore" | "implement" | "verify" |
     /// "fix" | "synthesize" | "critique". The vocabulary is the plan engine's
-    /// (`kcode_plan::bridge`: `parse_kind` reads it, `kind_str` writes it) and the
+    /// (`kcode_plan::kind`: `parse_kind` reads it, `kind_str` writes it) and the
     /// word is stored as written, so the store learns no engine type and takes no
     /// dependency on the engine (rule 5). Absent is a real state, not a default:
     /// rule 8 forbids guessing a kind for a row that has none.

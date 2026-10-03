@@ -156,7 +156,7 @@ pub(super) fn resolve_grant(
     // A fresh anchor is the run's own row: its result is the rows under it
     // integrated, so the engine's word for it is `synthesize`, and it needs one at
     // all because rule 8 forbids guessing a kind for a row that has none.
-    let fresh_kind = kcode_plan::bridge::kind_str(kcode_plan::bridge::NodeKind::Synthesize);
+    let fresh_kind = kcode_plan::kind::kind_str(kcode_plan::kind::NodeKind::Synthesize);
     match crate::todo::anchor_from_words(working_dir, session_id, words, Some(fresh_kind)) {
         Ok(anchor) => (RunGrant::scoped(anchor.id), anchor.content),
         Err(error) => {

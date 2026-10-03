@@ -7,8 +7,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// decomposed graphs while bounding server, disk, and per-client state.
 pub const MAX_PLAN_ITEMS: usize = 1024;
 
-pub mod artifact;
-pub mod bridge;
+pub mod kind;
 
 /// A swarm plan item: the same task type the `todo` tool and the work list use.
 ///
@@ -53,17 +52,6 @@ pub fn is_failed_status(status: &str) -> bool {
 
 pub fn is_runnable_status(status: &str) -> bool {
     matches!(status, "queued" | "ready" | "pending" | "todo")
-}
-
-pub fn combine_assignment_text(content: &str, message: Option<&str>) -> String {
-    if let Some(extra) = message {
-        format!(
-            "{}\n\nAdditional coordinator instructions:\n{}",
-            content, extra
-        )
-    } else {
-        content.to_string()
-    }
 }
 
 pub fn priority_rank(priority: &str) -> u8 {

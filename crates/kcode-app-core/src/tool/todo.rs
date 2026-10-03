@@ -174,10 +174,10 @@ fn check_kind(kind: Option<&str>) -> Result<()> {
     let Some(kind) = kind_or_none(kind) else {
         return Ok(());
     };
-    if kcode_plan::bridge::parse_kind(Some(&kind)).is_none() {
+    if kcode_plan::kind::parse_kind(Some(&kind)).is_none() {
         bail!(
             "{kind:?} is not a kind; the words are: {}",
-            kcode_plan::bridge::kind_words()
+            kcode_plan::kind::kind_words()
         );
     }
     Ok(())
@@ -250,7 +250,7 @@ impl Tool for TodoTool {
                 },
                 "kind": {
                     "type": "string",
-                    "enum": kcode_plan::bridge::KINDS.map(kcode_plan::bridge::kind_str),
+                    "enum": kcode_plan::kind::KINDS.map(kcode_plan::kind::kind_str),
                     "description": "The run's word for this row's work."
                 },
                 "parent": {
