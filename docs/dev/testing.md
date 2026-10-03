@@ -20,6 +20,20 @@ but prefer the script so a run matches how the suites are meant to be exercised.
 for this repository (from the same log the wrapper writes) and whether this tree
 still matches the one it ran on, so you can decide whether a rerun is worth it.
 
+## The boundary
+
+`scripts/gate.sh` is the expensive tier: `check_guardrails.sh --all-features`
+(the default-feature gate plus the release-only feature) and `test.sh full`. It
+runs once per tree, not once per change, and stamps the tree hash (HEAD plus
+`git status --porcelain`) under `${KCODE_HOME:-~/.kcode}/logs/gate-stamps/`, so a
+re-run on an unchanged tree is skipped. `.githooks/pre-push` triggers it on a
+push, and a step landing may run it by hand; both are the same boundary. Bypass
+with `git push --no-verify` when there is a reason.
+
+`check_guardrails.sh` lints default features on its own; `--all-features` adds
+`linux-compat-vendored-openssl`, which exists only for the CentOS 7 release
+image, so the boundary takes it and iteration does not.
+
 ## Profiles: build each one once
 
 `cargo check`, `cargo clippy` and `cargo test` build different profiles, so

@@ -8,4 +8,4 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 git config core.hooksPath .githooks
-echo "core.hooksPath -> .githooks (post-commit/post-checkout graph refresh)"
+echo "core.hooksPath -> .githooks (pre-push gate; post-commit/post-checkout graph refresh)"

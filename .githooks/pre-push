@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# The push boundary. See scripts/gate.sh; the stamp means many commits cost one
+# run. Bypass with `git push --no-verify` when you have a reason.
+set -uo pipefail
+exec "$(dirname "$0")/../scripts/gate.sh"

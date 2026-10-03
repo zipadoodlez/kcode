@@ -9,6 +9,7 @@
 #   scripts/check_guardrails.sh              # check only, non-zero on failure
 #   scripts/check_guardrails.sh --fix        # rustfmt + rebaseline ratchets
 #   scripts/check_guardrails.sh --skip-slow  # skip cargo clippy
+#   scripts/check_guardrails.sh --all-features  # also lint the non-default feature set
 #
 # Note: this runs on your local `stable` toolchain. If it is behind the latest
 # stable, clippy can pass here and fail on a machine that has updated, so the
@@ -19,11 +20,13 @@ cd "$(dirname "$0")/.."
 
 FIX=false
 SKIP_SLOW=false
+ALL_FEATURES=false
 for arg in "$@"; do
     case "$arg" in
         --fix) FIX=true ;;
         --skip-slow) SKIP_SLOW=true ;;
-        -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --all-features) ALL_FEATURES=true ;;
+        -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown flag: $arg (try --help)" >&2; exit 2 ;;
     esac
 done
@@ -72,8 +75,16 @@ else
     # clippy compiles every target with every feature, so it subsumes a
     # separate `cargo check`: a compile error fails it too, and the two run
     # different compiler drivers, so having both compiles the tree twice.
+    #
+    # Default features only. The sole non-default feature,
+    # `linux-compat-vendored-openssl`, exists for the CentOS 7 release image,
+    # so the boundary (`scripts/gate.sh`) takes it and iteration does not.
+    clippy_feature_args=()
+    if $ALL_FEATURES; then
+        clippy_feature_args=(--all-features)
+    fi
     run_gate "cargo clippy -- -D warnings" \
-        cargo clippy --all-targets --all-features -j "$JOBS" -- -D warnings
+        cargo clippy --all-targets "${clippy_feature_args[@]}" -j "$JOBS" -- -D warnings
 fi
 
 # A stale lockfile otherwise passes the fast jobs and only fails at the
