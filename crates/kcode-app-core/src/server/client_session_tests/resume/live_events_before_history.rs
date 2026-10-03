@@ -1,7 +1,7 @@
 #[tokio::test]
 async fn handle_resume_session_registers_live_events_before_history_replay() -> Result<()> {
     let _guard = crate::storage::lock_test_env();
-    let (_runtime, prev_runtime) = setup_runtime_dir()?;
+    let (_home, _env) = setup_test_env()?;
 
     let target_session_id = "session_restore_target";
     let temp_session_id = "session_restore_temp";
@@ -180,6 +180,5 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
         "restore resume should not emit error events: {events:?}"
     );
 
-    restore_runtime_dir(prev_runtime);
     Ok(())
 }

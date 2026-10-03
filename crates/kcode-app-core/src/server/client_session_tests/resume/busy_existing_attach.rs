@@ -1,7 +1,7 @@
 #[tokio::test]
 async fn handle_resume_session_allows_live_attach_when_existing_agent_is_busy() -> Result<()> {
     let _guard = crate::storage::lock_test_env();
-    let (_runtime, prev_runtime) = setup_runtime_dir()?;
+    let (_home, _env) = setup_test_env()?;
 
     let target_session_id = "session_existing_live_busy";
     let temp_session_id = "session_temp_connecting_busy";
@@ -205,6 +205,5 @@ async fn handle_resume_session_allows_live_attach_when_existing_agent_is_busy() 
         other => panic!("expected history event, got {other:?}"),
     }
 
-    restore_runtime_dir(prev_runtime);
     Ok(())
 }

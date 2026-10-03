@@ -476,6 +476,26 @@ async fn apply_subscribe_working_dir_keeps_project_when_client_reports_home() {
     );
 }
 
+/// Point a test at a throwaway home and runtime through the shared helper, so
+/// the session store here can never resolve to the developer's real `~/.kcode`.
+/// The tempdir is returned so it outlives the guard that restores the env.
+fn setup_test_env() -> Result<(tempfile::TempDir, super::super::tests::EnvGuard)> {
+    let home = tempfile::TempDir::new()?;
+    let guard = super::super::tests::configure_test_env(&home);
+    Ok((home, guard))
+}
+
+#[test]
+fn setup_test_env_keeps_the_session_store_out_of_the_real_home() {
+    let (home, _env) = setup_test_env().expect("test env");
+    let dir = crate::storage::kcode_dir().expect("kcode dir");
+    assert!(
+        dir.starts_with(home.path()),
+        "the session store resolved to {dir:?}, outside the test home {:?}",
+        home.path()
+    );
+}
+
 #[path = "client_session_tests/clear.rs"]
 mod clear_tests;
 #[path = "client_session_tests/reload.rs"]

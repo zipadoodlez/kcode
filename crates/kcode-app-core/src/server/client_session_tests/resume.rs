@@ -2,21 +2,6 @@ use super::*;
 use crate::transport::WriteHalf;
 use anyhow::{Result, anyhow};
 
-fn setup_runtime_dir() -> Result<(tempfile::TempDir, Option<std::ffi::OsString>)> {
-    let runtime = tempfile::TempDir::new().map_err(|e| anyhow!(e))?;
-    let prev_runtime = std::env::var_os("KCODE_RUNTIME_DIR");
-    crate::env::set_var("KCODE_RUNTIME_DIR", runtime.path());
-    Ok((runtime, prev_runtime))
-}
-
-fn restore_runtime_dir(prev_runtime: Option<std::ffi::OsString>) {
-    if let Some(prev_runtime) = prev_runtime {
-        crate::env::set_var("KCODE_RUNTIME_DIR", prev_runtime);
-    } else {
-        crate::env::remove_var("KCODE_RUNTIME_DIR");
-    }
-}
-
 fn test_writer() -> Result<(Arc<Mutex<WriteHalf>>, crate::transport::Stream)> {
     let (stream_a, stream_b) = crate::transport::stream_pair().map_err(|e| anyhow!(e))?;
     let (_reader, writer_half) = stream_a.into_split();

@@ -1,7 +1,7 @@
 #[tokio::test]
 async fn handle_resume_session_allows_attach_from_different_client_instance() -> Result<()> {
     let _guard = crate::storage::lock_test_env();
-    let (_runtime, prev_runtime) = setup_runtime_dir()?;
+    let (_home, _env) = setup_test_env()?;
 
     let target_session_id = "session_existing_live_local_history_rejected";
     let temp_session_id = "session_temp_connecting_local_history_rejected";
@@ -156,6 +156,5 @@ async fn handle_resume_session_allows_attach_from_different_client_instance() ->
     ));
     assert!(!sessions_guard.contains_key(temp_session_id));
 
-    restore_runtime_dir(prev_runtime);
     Ok(())
 }
