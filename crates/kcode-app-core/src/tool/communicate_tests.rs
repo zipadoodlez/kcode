@@ -566,5 +566,19 @@ fn test_ctx(session_id: &str, working_dir: &Path) -> ToolContext {
     }
 }
 
+/// Wait until `target_session` appears in a status event at all.
+async fn wait_for_member_presence(client: &mut RawClient, target_session: &str) -> Result<()> {
+    client
+        .read_until(Duration::from_secs(5), |event| {
+            matches!(
+                event,
+                ServerEvent::SwarmStatus { members }
+                    if members.iter().any(|member| member.session_id == target_session)
+            )
+        })
+        .await?;
+    Ok(())
+}
+
 include!("communicate_tests/input_format.rs");
 include!("communicate_tests/end_to_end.rs");
