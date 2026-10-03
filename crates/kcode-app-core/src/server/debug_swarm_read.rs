@@ -7,10 +7,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "swarm read debug commands inspect sessions, swarm state, plans and file touches together"
-)]
 pub(super) async fn maybe_handle_swarm_read_command(
     cmd: &str,
     sessions: &SessionAgents,
