@@ -114,9 +114,14 @@ boundary this model deleted.
 Controlling a session you are not sitting in is attaching to it, and the server
 already does the flip: a client attaching sets that member's `is_headless` to false,
 so the run stops supplying turns and starts offering them, and detaching puts it
-back. A run you are not sitting in has two levers and no more: **message it**, which hands a
-row to its holder, and **stop it**, which ends it. `wake`, `retry`, `reassign` and `replace`
-were the loop's job done by hand, and reading a run is reading the rows.
+back. A run has two levers over itself and no more: **message it**, which hands a row to its
+holder, and **stop it**, which ends it. `wake`, `retry`, `reassign` and `replace` were the
+loop's job done by hand, and reading a run is reading the rows.
+
+A person pulls those levers by sitting down: attaching to a member makes it a session with a
+human, the client's interrupt takes the turn it was running, and that session then writes rows
+or stops the run. So the verb is the run's, called by its root, and the person's door is the
+attach they already have: no new verb, and no second client request.
 
 Handing a row over is only a message. The run picks a row and a session, delivers a
 message naming the row and asking for the work, and the row's own words plus the
@@ -235,7 +240,8 @@ session you are not attached to (`CommStop`, sent only from `tool/communicate.rs
 `:2509`, handled at `client_lifecycle.rs:2424`), and a permission with no revoke is not a
 permission.
 
-`stop` is addressed to the run, not to one member. Its target is a session and the sessions
+`stop` is the run's own lever, called by its root through the tool, and it is addressed to the
+run, not to one member. Its target is a session and the sessions
 under it on the spawn edge, which is the derivation membership already uses: naming the run's
 root ends the run, and naming a member takes that member and its own subtree. There is no batch
 form and no `all` flag; the set is derived from the target. Today it stops exactly one session
