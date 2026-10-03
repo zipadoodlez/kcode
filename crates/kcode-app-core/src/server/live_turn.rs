@@ -382,15 +382,21 @@ pub(super) async fn wake_ready_owners(
         let runs = runs.read().await;
         rows.iter()
             .filter(|row| row_is_ready(rows, row))
-            .filter_map(|row| row.assigned_to.as_deref().map(|owner| (owner, row.id.as_str())))
-            .filter(|(owner, _)| members.get(*owner).is_some_and(|member| member.is_headless))
-            .filter(|(owner, row_id)| match super::swarm::swarm_root(&members, owner) {
-                Some(root) => runs
-                    .get(&root)
-                    .and_then(|run| run.get(*row_id))
-                    .is_none_or(|state| state.status.is_empty()),
-                None => true,
+            .filter_map(|row| {
+                row.assigned_to
+                    .as_deref()
+                    .map(|owner| (owner, row.id.as_str()))
             })
+            .filter(|(owner, _)| members.get(*owner).is_some_and(|member| member.is_headless))
+            .filter(
+                |(owner, row_id)| match super::swarm::swarm_root(&members, owner) {
+                    Some(root) => runs
+                        .get(&root)
+                        .and_then(|run| run.get(*row_id))
+                        .is_none_or(|state| state.status.is_empty()),
+                    None => true,
+                },
+            )
             .map(|(owner, _)| owner.to_string())
             .collect()
     };
@@ -633,9 +639,15 @@ mod tests {
             row("t4", Some("me"), &[]),
         ];
         assert!(!row_is_ready(&rows, &rows[0]), "a blocker keeps it unready");
-        assert!(row_is_ready(&rows, &rows[1]), "a row with no blocker is ready");
+        assert!(
+            row_is_ready(&rows, &rows[1]),
+            "a row with no blocker is ready"
+        );
         assert!(row_is_ready(&rows, &rows[2]), "a held leaf is ready");
-        assert!(!row_is_ready(&rows, &rows[3]), "an open child keeps it unready");
+        assert!(
+            !row_is_ready(&rows, &rows[3]),
+            "an open child keeps it unready"
+        );
         rows[0].blocked_by.clear();
         assert!(
             row_is_ready(&rows, &rows[0]),

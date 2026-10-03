@@ -525,12 +525,7 @@ fn existing_tool_keeps_prompt_while_new_tool_loads_edit() {
 
 #[test]
 fn spawning_action_inputs_preserve_requested_model() {
-    for action in [
-        "spawn",
-        "assign_task",
-        "assign_next",
-        "fill_slots",
-    ] {
+    for action in ["spawn", "assign_task", "assign_next", "fill_slots"] {
         for model in [
             "z-ai/glm-5.2:free",
             "openai-api:gpt-5.5",
@@ -551,12 +546,7 @@ fn spawning_action_inputs_preserve_requested_model() {
 
 #[test]
 fn spawning_action_inputs_allow_omitted_or_null_model() {
-    for action in [
-        "spawn",
-        "assign_task",
-        "assign_next",
-        "fill_slots",
-    ] {
+    for action in ["spawn", "assign_task", "assign_next", "fill_slots"] {
         let without_model: CommunicateInput =
             serde_json::from_value(json!({"action": action, "label": "reviewer"})).unwrap();
         assert!(without_model.model.is_none());
