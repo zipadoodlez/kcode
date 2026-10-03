@@ -34,7 +34,6 @@ impl Provider for MockProvider {
 }
 
 fn create_test_app() -> crate::tui::app::App {
-    ensure_test_kcode_home_if_unset();
     // `has_notification()` (via `unfocused_redraw_warranted`) consults a
     // process-wide ambient-info cache that another test may have populated
     // from its own KCODE_HOME (scheduled reminders read as a notification).
@@ -46,28 +45,6 @@ fn create_test_app() -> crate::tui::app::App {
     app.queue_mode = false;
     app.diff_mode = crate::config::DiffDisplayMode::Inline;
     app
-}
-
-/// Point KCODE_HOME at a per-process temp dir when the environment does not
-/// already pin one, so tests never read the developer's real `~/.kcode`
-/// state (e.g. a populated ambient queue turns `has_notification()` on and
-/// breaks the unfocused-redraw assertions). Mirrors the helper of the same
-/// name used by the main app test suite.
-fn ensure_test_kcode_home_if_unset() {
-    use std::sync::OnceLock;
-
-    static TEST_HOME: OnceLock<std::path::PathBuf> = OnceLock::new();
-
-    if std::env::var_os("KCODE_HOME").is_some() {
-        return;
-    }
-
-    let path = TEST_HOME.get_or_init(|| {
-        let path = std::env::temp_dir().join(format!("kcode-test-home-{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&path);
-        path
-    });
-    crate::env::set_var("KCODE_HOME", path);
 }
 
 #[test]

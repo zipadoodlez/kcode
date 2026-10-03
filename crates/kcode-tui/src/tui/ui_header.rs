@@ -1008,7 +1008,6 @@ mod tests {
     use anyhow::Result;
     use async_trait::async_trait;
     use std::sync::Arc;
-    use std::sync::OnceLock;
 
     struct MockProvider;
 
@@ -1035,24 +1034,7 @@ mod tests {
         }
     }
 
-    fn ensure_test_kcode_home_if_unset() {
-        static TEST_HOME: OnceLock<std::path::PathBuf> = OnceLock::new();
-
-        if std::env::var_os("KCODE_HOME").is_some() {
-            return;
-        }
-
-        let path = TEST_HOME.get_or_init(|| {
-            let path = std::env::temp_dir().join(format!("kcode-test-home-{}", std::process::id()));
-            let _ = std::fs::create_dir_all(&path);
-            path
-        });
-        crate::env::set_var("KCODE_HOME", path);
-    }
-
     fn create_test_app() -> crate::tui::app::App {
-        ensure_test_kcode_home_if_unset();
-
         let provider: Arc<dyn Provider> = Arc::new(MockProvider);
         let rt = tokio::runtime::Runtime::new().expect("test runtime");
         let registry = rt.block_on(Registry::new(provider.clone()));

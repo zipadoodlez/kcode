@@ -157,7 +157,6 @@ impl Provider for AsyncAuthRefreshingMockProvider {
 }
 
 fn create_auth_refresh_test_app() -> App {
-    ensure_test_kcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 
@@ -242,7 +241,6 @@ impl Provider for AntigravityMockProvider {
 }
 
 fn create_antigravity_picker_test_app() -> App {
-    ensure_test_kcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 
@@ -363,7 +361,6 @@ impl Provider for LoginSmokeModelProvider {
 }
 
 fn create_login_smoke_model_app() -> App {
-    ensure_test_kcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 
@@ -421,7 +418,6 @@ impl Provider for FailingModelSwitchProvider {
 }
 
 fn create_failing_model_switch_test_app() -> App {
-    ensure_test_kcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 
@@ -552,7 +548,6 @@ impl Provider for DualMethodMockProvider {
 }
 
 fn create_dual_method_test_app() -> (App, StdArc<StdMutex<Option<String>>>) {
-    ensure_test_kcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 

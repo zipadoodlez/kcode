@@ -175,7 +175,6 @@ impl Provider for OpenRouterSpecCaptureProvider {
 }
 
 pub(crate) fn create_test_app() -> App {
-    ensure_test_kcode_home_if_unset();
     clear_persisted_test_ui_state();
     // `clear_test_render_state_for_tests` wipes process-global render state
     // (flicker history, layout snapshots, copy targets) and internally takes
@@ -196,7 +195,6 @@ pub(crate) fn create_test_app() -> App {
 }
 
 fn create_named_provider_test_app(name: &'static str, model: &'static str) -> App {
-    ensure_test_kcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 
@@ -222,7 +220,6 @@ fn wait_for_model_picker_load(app: &mut App) {
 }
 
 fn create_refresh_summary_test_app(summary: crate::provider::ModelCatalogRefreshSummary) -> App {
-    ensure_test_kcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 
@@ -236,7 +233,6 @@ fn create_refresh_summary_test_app(summary: crate::provider::ModelCatalogRefresh
 }
 
 fn create_openrouter_spec_capture_test_app() -> (App, StdArc<StdMutex<Vec<String>>>) {
-    ensure_test_kcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 
@@ -319,27 +315,17 @@ fn shared_test_kcode_home() -> &'static std::path::Path {
     })
 }
 
-fn ensure_test_kcode_home_if_unset() {
-    if std::env::var_os("KCODE_HOME").is_some() {
-        return;
-    }
-
-    // Serialize the unset -> set transition against tests that scope their
-    // own KCODE_HOME under `lock_test_env`. The mutex is not reentrant and
-    // several tests hold it while calling `create_test_app` (e.g. the
-    // pinned-todo-band test), so a blocking `lock_test_env()` here would
-    // self-deadlock whenever a preceding test removed KCODE_HOME on drop.
-    // `try_lock` keeps the serialization when the lock is free and degrades
-    // to the caller's own exclusion when this thread already holds it: if
-    // try_lock fails because *we* hold the lock, no other thread can race
-    // this read-modify-write anyway.
-    let _env_lock = crate::storage::test_env_lock().try_lock();
-
-    if std::env::var_os("KCODE_HOME").is_some() {
-        return;
-    }
-
-    crate::env::set_var("KCODE_HOME", shared_test_kcode_home());
+/// `kcode-base`'s `test-support` install must have run before any test here;
+/// without it `KCODE_HOME` falls back to the developer's real `~/.kcode`. Pins
+/// the dev-feature dependency so dropping it fails loudly here.
+#[test]
+fn the_process_home_is_a_temp_dir() {
+    let home = std::env::var_os("KCODE_HOME")
+        .expect("kcode-base's test-support install must set KCODE_HOME");
+    assert!(
+        std::path::Path::new(&home).starts_with(std::env::temp_dir()),
+        "KCODE_HOME = {home:?}, outside the temp dir"
+    );
 }
 
 fn clear_persisted_test_ui_state() {

@@ -32,7 +32,6 @@ fn kv_cache_baseline_identity_stays_canonical_while_the_label_is_the_profile() {
         }
     }
 
-    ensure_test_kcode_home_if_unset();
     let provider: Arc<dyn Provider> = Arc::new(SlotProvider);
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
     let registry = rt.block_on(Registry::new(provider.clone()));
