@@ -255,9 +255,13 @@ control one by attaching, granting a turn, messaging a row's holder, or writing.
 Delete: the tool's driver with all of its policies, `fill_slots`, `assign_next`,
 `assign_task`, `await_members`, `retry`, `wake`, `cleanup` (and `cleanup_swarm_workers`
 with it, leaving `stop_swarm_sessions` its one caller), the read views
-(`status`, `summary`, `report`, `plan_status`, `read_context`, `resync_plan`), the
-`report` action, and the instruction protocol around it (the spawn reminder, the
-assignment suffix, the tldr rule, the notification advice text). The channels and the
+(`status`, `summary`, `report`, `plan_status`, `read_context`, `resync_plan`, `list`,
+and `task_graph`/`expand_node`/`complete_node`, which are the `todo` tool's add and
+close in a second vocabulary and the only door to the dag engine), the `report` action,
+and the instruction protocol around it (the spawn reminder, the assignment suffix, the
+notification advice text). The tldr rule is not deleted here: four of its five callers
+go in this stage, and its last one is the single message verb, so it goes with that verb
+in S1f. The channels and the
 shared-context KV store go with them: `share`, `share_append`, `read`, `broadcast`,
 `dm`, `channel`, `list_channels`, `channel_members`, `subscribe_channel`,
 `unsubscribe_channel`. Keep: `spawn` (root only), `stop`, `list_models`, and one message verb, whose
@@ -373,6 +377,9 @@ three fields while `kcode-plan/src/artifact.rs` owns the seven-field `HandoffArt
 so a field added on one side drifts silently; the cut this item named (the tool building
 the type) would harden a type this stage deletes, so the drift closes by deletion
 instead. S1 strands the three producers that write the form; their shape is this stage's.
+`HandoffArtifact` itself went in S1c: its last reader was the assignment suffix
+(`bridge::upstream_context`), so the file had no reference left. What S4 still owns is the
+tool's `close_artifact` and the engine's writers, and the record's shape.
 
 surface: −1 type, −7 fields, −3 producers, −2 tool vocabularies. lines ~−300. risk: med.
 
@@ -395,8 +402,10 @@ is empty and liveness comes from the member, not the item.
 **S5b (C4). `subsystem` and `file_scope` move onto the worker's record.** They are the
 scheduler's inputs (assignment affinity matches them against a worker's metadata), not list
 fields, and 0.4 deleted the `node_meta` side-map that was once named as their destination.
-This waits on S3, which merges the member projection: before that, landing the two fields
-would write them into four hand-written shapes and merge them afterwards.
+S1 changes this cut: the affinity was the scheduler's, and the scheduler went in S1b, so the
+two fields are now write-never and read-never (`assignment_affinities_for_task` was their
+only reader, and S1c deleted it). There is nothing to move them onto: the cut is two fields
+off `TaskItem`, and it no longer waits on S3.
 
 surface: −5 fields, −4 vocabularies. lines ~−500. risk: med.
 

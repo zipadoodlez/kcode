@@ -247,6 +247,32 @@ continuation reminder, and `/mission` and `/goal` are no longer recognized, so l
 any other unknown slash text they are sent to the model as a prompt rather than
 refused with a notice. The concept itself is rule 11's permission, which stays.
 
+**The swarm tool's read views and the report action go** (S1c, 2026-10-03). An agent
+could ask the tool for a member's status snapshot, its recent tool calls, the run's
+plan status, another session's transcript, and the member roster. Those five go, and
+so does `report`: the structured completion report a worker pushed to its
+coordinator (status, validation, follow-ups, tldr). What is lost: an agent can no
+longer ask the tool about a peer at all. It reads the rows it may work, and the
+holder's own state is the client's to render (S2/S3), so the roster's per-member
+detail (files touched, live activity, provider and model, token churn, turns) is
+client-only from here. A worker's words still reach its coordinator, but as the
+close's `result` on the row that owns the work, not as a pushed report; the status
+notification keeps the lifecycle fact alone. The instruction protocol that fed those reads goes with them:
+the spawn reminder that told every worker to call `action="report"` before finishing
+is deleted rather than replaced, because the discipline it stood for is already
+enforced where the words are written (`close_row` refuses an empty result).
+
+**The task-DAG verbs and the engine behind them go** (S1c, 2026-10-03).
+`task_graph`/`seed_graph`, `expand_node` and `complete_node` were the `todo` tool's
+add and close in a second vocabulary, and the only door to `kcode-plan`'s DAG engine:
+the model, its ops, its scheduler, its deterministic simulator, and the typed
+`HandoffArtifact`. The row list is the one graph, and the same writes went through it
+while both existed, so nothing a user could do stopped working. What is lost is one
+guard: the engine refused a `blocked_by` cycle, and nothing refuses one now. A cycle
+written through the tool or by hand shows as a row that never becomes ready, with its
+`blocked_by` visible in the list, which is why it was not carried over; the row's
+`parent` edges and the loop's readiness walk are both cycle-safe.
+
 ## Deliberately kept from upstream
 
 - `/account` and `/accounts` - the multi-account picker for Claude and OpenAI.
