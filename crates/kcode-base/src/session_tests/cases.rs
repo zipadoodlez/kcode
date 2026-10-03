@@ -468,7 +468,14 @@ fn load_startup_stub_preserves_metadata_but_skips_heavy_vectors() -> Result<()> 
         5,
         Vec::new(),
     );
-    session.record_replay_display_message("system", Some("Launch".to_string()), "boot");
+    session.replay_events.push(StoredReplayEvent {
+        timestamp: chrono::Utc::now(),
+        kind: StoredReplayEventKind::DisplayMessage {
+            role: "system".to_string(),
+            title: Some("Launch".to_string()),
+            content: "boot".to_string(),
+        },
+    });
     session.save()?;
 
     let stub = Session::load_startup_stub(session_id)?;
@@ -542,7 +549,14 @@ fn load_for_remote_startup_preserves_messages_and_replay_but_skips_heavy_vectors
         5,
         Vec::new(),
     );
-    session.record_replay_display_message("system", Some("Launch".to_string()), "boot");
+    session.replay_events.push(StoredReplayEvent {
+        timestamp: chrono::Utc::now(),
+        kind: StoredReplayEventKind::DisplayMessage {
+            role: "system".to_string(),
+            title: Some("Launch".to_string()),
+            content: "boot".to_string(),
+        },
+    });
     session.save()?;
 
     let loaded = Session::load_for_remote_startup(session_id)?;
@@ -1202,13 +1216,17 @@ fn test_redacted_for_export_redacts_replay_events() -> Result<()> {
         Some("redacted replay events".to_string()),
     );
 
-    session.record_replay_display_message(
-        "swarm",
-        Some("DM from fox".to_string()),
-        "OPENROUTER_API_KEY=sk-or-v1-secret-value",
-    );
-    // The two swarm shapes are no longer written (A8), but session files on disk
-    // still carry them, so `redacted_for_export` has to keep covering them.
+    session.replay_events.push(StoredReplayEvent {
+        timestamp: chrono::Utc::now(),
+        kind: StoredReplayEventKind::DisplayMessage {
+            role: "swarm".to_string(),
+            title: Some("DM from fox".to_string()),
+            content: "OPENROUTER_API_KEY=sk-or-v1-secret-value".to_string(),
+        },
+    });
+    // No writer fills this log any more (A9), and the two swarm shapes stopped
+    // being written earlier (A8); session files on disk still carry all three, so
+    // `redacted_for_export` and the loader have to keep covering them.
     session.replay_events.push(StoredReplayEvent {
         timestamp: chrono::Utc::now(),
         kind: StoredReplayEventKind::SwarmStatus {

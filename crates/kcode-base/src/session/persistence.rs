@@ -181,7 +181,6 @@ impl Session {
         self.env_snapshots.extend(entry.append_env_snapshots);
         self.memory_injections
             .extend(entry.append_memory_injections);
-        self.replay_events.extend(entry.append_replay_events);
         self.mark_memory_profile_dirty();
     }
 
@@ -262,7 +261,7 @@ impl Session {
             return Ok(session);
         }
         crate::logging::info(&format!(
-            "[TIMING] session_load: session={}, snapshot={}ms, journal={}ms, finalize={}ms, snapshot_bytes={}, journal_bytes={}, journal_entries={}, messages={}, env_snapshots={}, replay_events={}, total={}ms",
+            "[TIMING] session_load: session={}, snapshot={}ms, journal={}ms, finalize={}ms, snapshot_bytes={}, journal_bytes={}, journal_entries={}, messages={}, env_snapshots={}, total={}ms",
             session.id,
             snapshot_ms,
             journal_ms,
@@ -272,7 +271,6 @@ impl Session {
             journal_entries,
             session.messages.len(),
             session.env_snapshots.len(),
-            session.replay_events.len(),
             load_elapsed.as_millis(),
         ));
         crate::logging::event_info(
@@ -284,7 +282,6 @@ impl Session {
                 ("status", format!("{:?}", session.status)),
                 ("messages", session.messages.len().to_string()),
                 ("env_snapshots", session.env_snapshots.len().to_string()),
-                ("replay_events", session.replay_events.len().to_string()),
                 ("snapshot_bytes", snapshot_bytes.to_string()),
                 ("journal_bytes", journal_bytes.to_string()),
                 ("journal_entries", journal_entries.to_string()),
@@ -331,7 +328,6 @@ impl Session {
             journal_entries += 1;
             session.apply_journal_meta(entry.meta);
             session.messages.extend(entry.append_messages);
-            session.replay_events.extend(entry.append_replay_events);
         })?;
         let journal_ms = journal_start.elapsed().as_millis();
         let finalize_start = Instant::now();
@@ -426,12 +422,9 @@ impl Session {
             || self.persist_state.messages_mode == PersistVectorMode::Full
             || self.persist_state.env_snapshots_mode == PersistVectorMode::Full
             || self.persist_state.memory_injections_mode == PersistVectorMode::Full
-            || self.persist_state.replay_events_mode == PersistVectorMode::Full
             || self.messages.len() < self.persist_state.messages_len
             || self.env_snapshots.len() < self.persist_state.env_snapshots_len
-            || self.memory_injections.len() < self.persist_state.memory_injections_len
-            || self.replay_events.len() < self.persist_state.replay_events_len;
-
+            || self.memory_injections.len() < self.persist_state.memory_injections_len;
         let delta_messages = self
             .messages
             .len()
@@ -444,10 +437,6 @@ impl Session {
             .memory_injections
             .len()
             .saturating_sub(self.persist_state.memory_injections_len);
-        let delta_replay_events = self
-            .replay_events
-            .len()
-            .saturating_sub(self.persist_state.replay_events_len);
         let (
             result,
             save_mode,
@@ -479,8 +468,6 @@ impl Session {
                     .to_vec(),
                 append_memory_injections: self.memory_injections
                     [self.persist_state.memory_injections_len..]
-                    .to_vec(),
-                append_replay_events: self.replay_events[self.persist_state.replay_events_len..]
                     .to_vec(),
             };
             let entry_build_ms = entry_build_start.elapsed().as_millis();
@@ -545,7 +532,7 @@ impl Session {
         let result_ok = result.is_ok();
         if elapsed.as_millis() > 50 {
             crate::logging::info(&format!(
-                "Session save slow: total={:.0}ms mode={} metadata_snapshot={} vectors_snapshot={} entry_build={}ms append={}ms journal_stat={}ms checkpoint={}ms messages={} delta_messages={} delta_env_snapshots={} delta_memory_injections={} delta_replay_events={} snapshot_bytes_before={} journal_bytes_before={} journal_bytes_after={}",
+                "Session save slow: total={:.0}ms mode={} metadata_snapshot={} vectors_snapshot={} entry_build={}ms append={}ms journal_stat={}ms checkpoint={}ms messages={} delta_messages={} delta_env_snapshots={} delta_memory_injections={} snapshot_bytes_before={} journal_bytes_before={} journal_bytes_after={}",
                 elapsed.as_secs_f64() * 1000.0,
                 save_mode,
                 metadata_needs_snapshot,
@@ -558,7 +545,6 @@ impl Session {
                 delta_messages,
                 delta_env_snapshots,
                 delta_memory_injections,
-                delta_replay_events,
                 snapshot_bytes_before,
                 journal_bytes_before,
                 journal_bytes_after,
@@ -580,7 +566,6 @@ impl Session {
                 "delta_memory_injections",
                 delta_memory_injections.to_string(),
             ),
-            ("delta_replay_events", delta_replay_events.to_string()),
             ("snapshot_bytes_before", snapshot_bytes_before.to_string()),
             ("snapshot_bytes_after", snapshot_bytes_after.to_string()),
             ("journal_bytes_before", journal_bytes_before.to_string()),

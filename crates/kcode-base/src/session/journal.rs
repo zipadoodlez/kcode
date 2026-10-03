@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     EnvSnapshot, SessionImproveMode, SessionStatus, StoredCompactionState, StoredMemoryInjection,
-    StoredMessage, StoredReplayEvent,
+    StoredMessage,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -46,8 +46,6 @@ pub(super) struct SessionJournalEntry {
     pub(super) append_env_snapshots: Vec<EnvSnapshot>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(super) append_memory_injections: Vec<StoredMemoryInjection>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(super) append_replay_events: Vec<StoredReplayEvent>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -64,11 +62,9 @@ pub(super) struct SessionPersistState {
     pub(super) messages_len: usize,
     pub(super) env_snapshots_len: usize,
     pub(super) memory_injections_len: usize,
-    pub(super) replay_events_len: usize,
     pub(super) messages_mode: PersistVectorMode,
     pub(super) env_snapshots_mode: PersistVectorMode,
     pub(super) memory_injections_mode: PersistVectorMode,
-    pub(super) replay_events_mode: PersistVectorMode,
     pub(super) last_meta: Option<SessionJournalMeta>,
 }
 

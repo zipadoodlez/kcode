@@ -422,8 +422,6 @@ impl Session {
             self.env_snapshots.iter().map(estimate_json_bytes).sum();
         let memory_injections_json_bytes: usize =
             self.memory_injections.iter().map(estimate_json_bytes).sum();
-        let replay_events_json_bytes: usize =
-            self.replay_events.iter().map(estimate_json_bytes).sum();
         let compaction_json_bytes = self
             .compaction
             .as_ref()
@@ -477,10 +475,6 @@ impl Session {
                 "count": self.memory_injections.len(),
                 "json_bytes": memory_injections_json_bytes,
             },
-            "replay_events": {
-                "count": self.replay_events.len(),
-                "json_bytes": replay_events_json_bytes,
-            },
             "provider_messages_cache": {
                 "count": self.provider_messages_cache.len(),
                 "source_len": self.provider_messages_cache_len,
@@ -494,7 +488,6 @@ impl Session {
                     + provider_messages_cache_json_bytes
                     + env_snapshots_json_bytes
                     + memory_injections_json_bytes
-                    + replay_events_json_bytes
                     + compaction_json_bytes,
                 "canonical_transcript_json_bytes": session_message_json_bytes,
                 "provider_cache_json_bytes": provider_messages_cache_json_bytes,
@@ -541,11 +534,9 @@ impl Session {
             messages_len: self.messages.len(),
             env_snapshots_len: self.env_snapshots.len(),
             memory_injections_len: self.memory_injections.len(),
-            replay_events_len: self.replay_events.len(),
             messages_mode: PersistVectorMode::Clean,
             env_snapshots_mode: PersistVectorMode::Clean,
             memory_injections_mode: PersistVectorMode::Clean,
-            replay_events_mode: PersistVectorMode::Clean,
             last_meta: Some(self.journal_meta()),
         };
     }
@@ -619,8 +610,6 @@ impl Session {
                 .iter()
                 .map(estimate_json_bytes)
                 .sum(),
-            replay_events_count: self.replay_events.len(),
-            replay_events_json_bytes: self.replay_events.iter().map(estimate_json_bytes).sum(),
             provider_cache_count: self.provider_messages_cache.len(),
             provider_cache_json_bytes: self
                 .provider_messages_cache
@@ -651,13 +640,11 @@ impl Session {
             provider_cache_message_count: self.memory_profile_cache.provider_cache_count,
             env_snapshot_count: self.memory_profile_cache.env_snapshots_count,
             memory_injection_count: self.memory_profile_cache.memory_injections_count,
-            replay_event_count: self.memory_profile_cache.replay_events_count,
             payload_text_bytes: self.memory_profile_cache.message_stats.payload_text_bytes(),
             total_json_bytes: self.memory_profile_cache.messages_json_bytes
                 + self.memory_profile_cache.provider_cache_json_bytes
                 + self.memory_profile_cache.env_snapshots_json_bytes
                 + self.memory_profile_cache.memory_injections_json_bytes
-                + self.memory_profile_cache.replay_events_json_bytes
                 + compaction_json_bytes,
             provider_cache_json_bytes: self.memory_profile_cache.provider_cache_json_bytes,
             canonical_tool_result_bytes: self.memory_profile_cache.message_stats.tool_result_bytes,
@@ -700,12 +687,6 @@ impl Session {
     fn mark_memory_injections_append_dirty(&mut self) {
         if self.persist_state.memory_injections_mode != PersistVectorMode::Full {
             self.persist_state.memory_injections_mode = PersistVectorMode::Append;
-        }
-    }
-
-    fn mark_replay_events_append_dirty(&mut self) {
-        if self.persist_state.replay_events_mode != PersistVectorMode::Full {
-            self.persist_state.replay_events_mode = PersistVectorMode::Append;
         }
     }
 
@@ -1391,26 +1372,6 @@ request in this new forked session, using the inherited conversation only as con
             ids.extend(injection.memory_ids.iter().cloned());
         }
         ids.into_iter().collect()
-    }
-
-    pub fn record_replay_display_message(
-        &mut self,
-        role: impl Into<String>,
-        title: Option<String>,
-        content: impl Into<String>,
-    ) {
-        let event = StoredReplayEvent {
-            timestamp: Utc::now(),
-            kind: StoredReplayEventKind::DisplayMessage {
-                role: role.into(),
-                title,
-                content: content.into(),
-            },
-        };
-        self.memory_profile_cache.replay_events_count += 1;
-        self.memory_profile_cache.replay_events_json_bytes += estimate_json_bytes(&event);
-        self.replay_events.push(event);
-        self.mark_replay_events_append_dirty();
     }
 
     pub fn provider_messages(&mut self) -> &[Message] {

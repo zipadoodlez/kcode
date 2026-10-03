@@ -1,21 +1,5 @@
 use super::*;
 
-pub(super) fn persist_replay_display_message(
-    app: &mut App,
-    role: &str,
-    title: Option<String>,
-    content: &str,
-) {
-    if app.is_remote_client() {
-        // In remote mode, the server owns authoritative session history. Persisting the
-        // client's stale shadow copy can roll back newer turns after reconnect/reload.
-        return;
-    }
-    app.session
-        .record_replay_display_message(role.to_string(), title, content.to_string());
-    let _ = app.session.save();
-}
-
 pub(super) fn persist_remote_session_metadata<F>(app: &mut App, update: F) -> Result<()>
 where
     F: FnOnce(&mut crate::session::Session),

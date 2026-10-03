@@ -415,14 +415,19 @@ sent `low`. Losses: `docs/what-was-removed.md`.
   read of the same log is A9. Gate: `kcode-base` 1097 passed serial with the new
   round trip, `check_guardrails.sh` green, `kcode-tui` serial 1759 passed with its one
   known red, and `scripts/test.sh full` green bar the three `session_flow` e2e reds.
-- [ ] **A9. The replay-event log has no reader.** `Session::replay_events` is written
-  by `record_replay_display_message` (four TUI sites, `remote/server_events.rs:2373`
-  to `:2449`) and never read back; the only consumers are the journal and persistence
-  plumbing, the redaction pass and one `shrink_to_fit`. With A8's writers gone the log
-  only grows from display notices. Delete the writer and the persistence half (append
-  deltas, `PersistVectorMode`, memory-profile accounting, the `delta_replay_events`
-  telemetry), keep the field and the variant for A8's load-compat reason, and
-  re-measure the session-file bytes. (A8's read, 2026-10-03.)
+- [x] **A9. The replay-event log has no reader.** Landed 2026-10-03: deleted
+  `record_replay_display_message`, the TUI's `persist_replay_display_message` with its
+  four call sites, `mark_replay_events_append_dirty`, the journal's
+  `append_replay_events` and the persist state's `replay_events_len`/`_mode`, the delta
+  computation and its `delta_replay_events` telemetry, and the memory-profile
+  accounting for the field (`SessionMemoryProfileSnapshot.replay_event_count` included).
+  The field, the three variants and the redaction arms stay for A8's load-compat reason;
+  new sessions simply never fill the log. Two behavior notes: a display notice no longer
+  triggers `session.save()`, so it no longer re-stamps `updated_at` (the resume picker's
+  recency stops moving on a notice), and the memory-profile payload loses its
+  replay-event keys. Gate: `kcode-base` 1097 passed serial with the round-trip test,
+  `check_guardrails.sh` green, `kcode-tui` serial 1759 passed with its one known red,
+  and `scripts/test.sh full` green bar the three `session_flow` e2e reds.
 
 ### B. The file is the list
 

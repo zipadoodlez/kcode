@@ -2368,11 +2368,9 @@ pub(in crate::tui::app) fn handle_server_event(
                 } else if scope == "background_activity" {
                     if !app.background_tasks.upsert_started(&message) {
                         app.push_display_message(DisplayMessage::background_task(message.clone()));
-                        persist_replay_display_message(app, "background_task", None, &message);
                     }
                 } else {
                     app.push_display_message(DisplayMessage::system(message.clone()));
-                    persist_replay_display_message(app, "system", None, &message);
                 }
                 app.set_status_notice(runtime_activity_status_notice(&message));
                 return false;
@@ -2425,12 +2423,6 @@ pub(in crate::tui::app) fn handle_server_event(
                             crate::tui::ui::SWARM_AGENT_SNAPSHOT_TITLE,
                             snapshot.clone(),
                         ));
-                        persist_replay_display_message(
-                            app,
-                            "swarm",
-                            Some(crate::tui::ui::SWARM_AGENT_SNAPSHOT_TITLE.to_string()),
-                            &snapshot,
-                        );
                     }
                 }
                 app.set_status_notice(format!(
@@ -2444,12 +2436,6 @@ pub(in crate::tui::app) fn handle_server_event(
                 presentation.title.clone(),
                 presentation.message.clone(),
             ));
-            persist_replay_display_message(
-                app,
-                "swarm",
-                Some(presentation.title.clone()),
-                &presentation.message,
-            );
             app.set_status_notice(presentation.status_notice);
             false
         }
