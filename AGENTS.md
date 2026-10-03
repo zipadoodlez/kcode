@@ -5,7 +5,8 @@
 - **Start at `docs/README.md`** - its map is the only list of docs, and `docs/plans/`
   holds the work: one lane per subject, each a task checklist with the design beside
   its item, and a lane's tasks do not touch each other. The current project's
-  destination, model and open steps are `docs/plans/row-model.md`. Read the plan's
+  destination, model and open steps are `docs/plans/row-model.md`, whose second half
+  (`docs/plans/one-flow.md`) is the lane that finishes the orchestration cut. Read the plan's
   Steps intro before changing anything there: it says where the work stands, and a step
   in flight is finished before a new one starts.
 - **Use the user's Git identity** - Create commits with the configured
