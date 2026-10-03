@@ -280,17 +280,21 @@ pub(super) async fn cleanup_client_connection(
         )
         .await;
 
+        // Read the run and the departing name first, and leave the member in the map:
+        // the departure below resolves the work list from the session that held the
+        // rows, so it must still be there when it runs.
         let (swarm_id, removed_name) = {
-            let mut members = swarm_members.write().await;
+            let members = swarm_members.read().await;
             let root = super::swarm::swarm_root(&members, client_session_id);
-            match members.remove(client_session_id) {
-                Some(member) => (root, member.friendly_name),
-                None => (None, None),
-            }
+            let name = members
+                .get(client_session_id)
+                .and_then(|member| member.friendly_name.clone());
+            (root, name)
         };
         crate::session_metrics::forget(client_session_id);
 
         if let Some(ref swarm_id) = swarm_id {
+            remove_session_from_swarm(client_session_id, swarm_id, swarm_members, swarm_runs).await;
             record_swarm_event(
                 event_history,
                 event_counter,
@@ -303,7 +307,10 @@ pub(super) async fn cleanup_client_connection(
                 },
             )
             .await;
-            remove_session_from_swarm(client_session_id, swarm_id, swarm_members, swarm_runs).await;
+        }
+        {
+            let mut members = swarm_members.write().await;
+            members.remove(client_session_id);
         }
         remove_session_channel_subscriptions(
             client_session_id,

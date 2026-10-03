@@ -895,19 +895,19 @@ async fn cleanup_detached_source_session_if_unused(
     .await;
     file_touch.clear_session(old_session_id).await;
 
-    // The run is derived from the report-back chain, so read it while the member
-    // is still there: `remove_session_from_swarm` needs it to reparent the
-    // member's children and salvage its rows.
+    // The departure runs while the member is still in the map, and before the map
+    // forgets it: the salvage resolves the work list from the session that held the
+    // rows, and the re-parenting reads the spawn edge.
     let removed_swarm_id = {
         let members = swarm_members.read().await;
         swarm_root(&members, old_session_id)
     };
+    if let Some(swarm_id) = removed_swarm_id {
+        remove_session_from_swarm(old_session_id, &swarm_id, swarm_members, swarm_runs).await;
+    }
     {
         let mut members = swarm_members.write().await;
         members.remove(old_session_id);
-    }
-    if let Some(swarm_id) = removed_swarm_id {
-        remove_session_from_swarm(old_session_id, &swarm_id, swarm_members, swarm_runs).await;
     }
 }
 

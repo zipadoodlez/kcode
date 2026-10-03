@@ -981,16 +981,21 @@ pub(super) async fn end_session(
         }
     }
 
-    let (removed_swarm_id, removed_name) = {
+    let removed_swarm_id = {
+        let members = swarm_members.read().await;
+        swarm_root(&members, session_id)
+    };
+    // The departure runs while the member is still in the map, because both of its
+    // readers want it: the salvage resolves the work list from the session that held
+    // the rows, and the re-parenting reads the spawn edge that names its children. A
+    // member removed first leaves a run's last session with nothing to resolve its
+    // list from, and its rows stay held by a session that no longer exists.
+    if let Some(ref swarm_id) = removed_swarm_id {
+        remove_session_from_swarm(session_id, swarm_id, swarm_members, swarm_runs).await;
+    }
+    let removed_name = {
         let mut members = swarm_members.write().await;
-        // Read the departing member's run before the removal: afterwards its
-        // report-back edge is gone, and the derived membership with it.
-        let removed_swarm_id = swarm_root(&members, session_id);
-        if let Some(member) = members.remove(session_id) {
-            (removed_swarm_id, member.friendly_name)
-        } else {
-            (None, None)
-        }
+        members.remove(session_id).and_then(|member| member.friendly_name)
     };
     if let Some(ref swarm_id) = removed_swarm_id {
         record_swarm_event(
@@ -1005,7 +1010,9 @@ pub(super) async fn end_session(
             },
         )
         .await;
-        remove_session_from_swarm(session_id, swarm_id, swarm_members, swarm_runs).await;
+        // The departure broadcast the run while this member was still in it, so the
+        // run's clients hear the membership that is actually left.
+        broadcast_swarm_status(swarm_id, swarm_members).await;
     }
     removed_live_agent || removed_swarm_id.is_some()
 }
