@@ -233,8 +233,18 @@ the tail and it is droppable: nothing here depends on it.
 loop ends a run, and its members with it. `stop` is power, not surface: nothing else can end a
 session you are not attached to (`CommStop`, sent only from `tool/communicate.rs:245` and
 `:2509`, handled at `client_lifecycle.rs:2424`), and a permission with no revoke is not a
-permission. The other levers are the list's, not a verb's: you read a run by reading the rows,
-and you control one by attaching, granting a turn, messaging a row's holder, or writing.
+permission.
+
+`stop` is addressed to the run, not to one member. Its target is a session and the sessions
+under it on the spawn edge, which is the derivation membership already uses: naming the run's
+root ends the run, and naming a member takes that member and its own subtree. There is no batch
+form and no `all` flag; the set is derived from the target. Today it stops exactly one session
+and stops there (`handle_comm_stop` removes one entry), while the authority to stop is already
+subtree-wide (`swarm_is_self_or_ancestor`), so a run's root stopping itself leaves its members
+live. S1 closes that gap, and `cleanup`'s candidate selection goes with `cleanup`.
+
+The other levers are the list's, not a verb's: you read a run by reading the rows, and you
+control one by attaching, granting a turn, messaging a row's holder, or writing.
 
 Delete: the tool's driver with all of its policies, `fill_slots`, `assign_next`,
 `assign_task`, `await_members`, `retry`, `wake`, `cleanup` (and `cleanup_swarm_workers`
