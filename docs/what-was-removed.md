@@ -273,6 +273,21 @@ written through the tool or by hand shows as a row that never becomes ready, wit
 `blocked_by` visible in the list, which is why it was not carried over; the row's
 `parent` edges and the loop's readiness walk are both cycle-safe.
 
+**The await_members waiter goes** (S1e, 2026-10-03). A tool action let an agent park a
+turn, or hand off to a detached watcher, until named swarm members reached a target
+status, with a timeout, an any/all mode, and a durable pending state that survived a
+server reload and resumed. All of it goes: the action and its inputs, the request pair
+on the wire, the transcript read it used to pull each member's last assistant message
+as a report, `latest_completion_report` on the member, its durable record and the
+channel-member copy, and the background-await notification card. What is lost: an agent
+can no longer block a turn on another session's status, and a run has no barrier
+primitive. Readiness is the wait: a run ends when none of its rows is ready, and a
+write that makes a row ready wakes its holder (the loop's wake, landed with S1), so
+waiting for a worker is holding the row that will tell you. The blocking half never
+resumed after a reload anyway, since its socket waiter dies with the process, so the
+durable state bought only the background case, which the loop's own dispatch makes
+unnecessary.
+
 ## Deliberately kept from upstream
 
 - `/account` and `/accounts` - the multi-account picker for Claude and OpenAI.
