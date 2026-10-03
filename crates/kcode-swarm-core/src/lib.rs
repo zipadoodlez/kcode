@@ -1,55 +1,6 @@
 use kcode_plan::TaskItem;
-use std::collections::{HashMap, HashSet};
 
 pub use kcode_session_types::{SwarmLifecycleStatus, SwarmMemberRecord, SwarmRole};
-
-/// Message/report bodies longer than this require a sender-provided `tldr`
-/// so receiving UIs can render them collapsed to one line with an expand
-/// control instead of dumping the full body into the transcript.
-pub const SWARM_TLDR_REQUIRED_OVER_CHARS: usize = 240;
-
-/// Upper bound for a sender-provided `tldr`. Anything longer defeats the
-/// purpose of a one-line collapsed summary.
-pub const MAX_SWARM_TLDR_CHARS: usize = 200;
-
-/// Validate a sender-provided `tldr` against the message body it summarizes.
-///
-/// Returns the normalized (trimmed, whitespace-collapsed) tldr when present,
-/// `Ok(None)` when the body is short enough to not need one, and a
-/// human/model-actionable error when a long body is missing a tldr or the
-/// tldr itself is malformed (too long or multi-line).
-pub fn validate_swarm_tldr(
-    tldr: Option<&str>,
-    body: &str,
-    context: &str,
-) -> Result<Option<String>, String> {
-    let normalized = tldr
-        .map(|t| t.split_whitespace().collect::<Vec<_>>().join(" "))
-        .filter(|t| !t.is_empty());
-
-    if let Some(ref tldr) = normalized {
-        let chars = tldr.chars().count();
-        if chars > MAX_SWARM_TLDR_CHARS {
-            return Err(format!(
-                "'tldr' for {context} is too long ({chars} chars, max {MAX_SWARM_TLDR_CHARS}). \
-                 Provide a single short line summarizing the message."
-            ));
-        }
-        return Ok(normalized);
-    }
-
-    let body_chars = body.chars().count();
-    if body_chars > SWARM_TLDR_REQUIRED_OVER_CHARS {
-        return Err(format!(
-            "'tldr' is required for {context} because the body is {body_chars} chars \
-             (over {SWARM_TLDR_REQUIRED_OVER_CHARS}). Add a one-line 'tldr' (under \
-             {MAX_SWARM_TLDR_CHARS} chars) summarizing it; recipients see the tldr \
-             collapsed with an expand control."
-        ));
-    }
-
-    Ok(None)
-}
 
 /// Absolute maximum number of live members in a single swarm. Servers also apply
 /// the lower configurable live-worker RAM budget before reaching this hard stop.
@@ -81,128 +32,6 @@ pub fn derive_swarm_task_label(text: &str) -> Option<String> {
         .take(MAX_SWARM_TASK_LABEL_CHARS.saturating_sub(1))
         .collect();
     Some(format!("{}…", truncated.trim_end()))
-}
-
-/// Bidirectional index for swarm channel subscriptions.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ChannelIndex {
-    pub by_swarm_channel: HashMap<String, HashMap<String, HashSet<String>>>,
-    pub by_session: HashMap<String, HashMap<String, HashSet<String>>>,
-}
-
-impl ChannelIndex {
-    pub fn subscribe(&mut self, session_id: &str, swarm_id: &str, channel: &str) {
-        self.by_swarm_channel
-            .entry(swarm_id.to_string())
-            .or_default()
-            .entry(channel.to_string())
-            .or_default()
-            .insert(session_id.to_string());
-        self.by_session
-            .entry(session_id.to_string())
-            .or_default()
-            .entry(swarm_id.to_string())
-            .or_default()
-            .insert(channel.to_string());
-    }
-
-    pub fn unsubscribe(&mut self, session_id: &str, swarm_id: &str, channel: &str) {
-        let mut remove_swarm = false;
-        if let Some(swarm_subs) = self.by_swarm_channel.get_mut(swarm_id) {
-            if let Some(members) = swarm_subs.get_mut(channel) {
-                members.remove(session_id);
-                if members.is_empty() {
-                    swarm_subs.remove(channel);
-                }
-            }
-            remove_swarm = swarm_subs.is_empty();
-        }
-        if remove_swarm {
-            self.by_swarm_channel.remove(swarm_id);
-        }
-
-        let mut remove_session_entry = false;
-        if let Some(session_subs) = self.by_session.get_mut(session_id) {
-            let mut remove_swarm_entry = false;
-            if let Some(channels) = session_subs.get_mut(swarm_id) {
-                channels.remove(channel);
-                remove_swarm_entry = channels.is_empty();
-            }
-            if remove_swarm_entry {
-                session_subs.remove(swarm_id);
-            }
-            remove_session_entry = session_subs.is_empty();
-        }
-        if remove_session_entry {
-            self.by_session.remove(session_id);
-        }
-    }
-
-    pub fn remove_session(&mut self, session_id: &str) {
-        if let Some(session_subscriptions) = self.by_session.remove(session_id) {
-            for (swarm_id, channels) in session_subscriptions {
-                let mut remove_swarm = false;
-                if let Some(swarm_subs) = self.by_swarm_channel.get_mut(&swarm_id) {
-                    for channel_name in channels {
-                        if let Some(members) = swarm_subs.get_mut(&channel_name) {
-                            members.remove(session_id);
-                            if members.is_empty() {
-                                swarm_subs.remove(&channel_name);
-                            }
-                        }
-                    }
-                    remove_swarm = swarm_subs.is_empty();
-                }
-                if remove_swarm {
-                    self.by_swarm_channel.remove(&swarm_id);
-                }
-            }
-            return;
-        }
-
-        let swarm_ids: Vec<String> = self.by_swarm_channel.keys().cloned().collect();
-        for swarm_id in swarm_ids {
-            let mut remove_swarm = false;
-            if let Some(swarm_subs) = self.by_swarm_channel.get_mut(&swarm_id) {
-                let channel_names: Vec<String> = swarm_subs.keys().cloned().collect();
-                for channel_name in channel_names {
-                    if let Some(members) = swarm_subs.get_mut(&channel_name) {
-                        members.remove(session_id);
-                        if members.is_empty() {
-                            swarm_subs.remove(&channel_name);
-                        }
-                    }
-                }
-                remove_swarm = swarm_subs.is_empty();
-            }
-            if remove_swarm {
-                self.by_swarm_channel.remove(&swarm_id);
-            }
-        }
-    }
-
-    pub fn members(&self, swarm_id: &str, channel: &str) -> Vec<String> {
-        let mut members = self
-            .by_swarm_channel
-            .get(swarm_id)
-            .and_then(|swarm_subs| swarm_subs.get(channel))
-            .map(|members| members.iter().cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
-        members.sort();
-        members
-    }
-
-    #[cfg(test)]
-    pub fn channels_for_session(&self, session_id: &str, swarm_id: &str) -> Vec<String> {
-        let mut channels = self
-            .by_session
-            .get(session_id)
-            .and_then(|session_subs| session_subs.get(swarm_id))
-            .map(|channels| channels.iter().cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
-        channels.sort();
-        channels
-    }
 }
 
 /// The one line a member's status change notifies its coordinator with. The
@@ -268,45 +97,6 @@ mod tests {
     }
 
     #[test]
-    fn validate_swarm_tldr_allows_short_body_without_tldr() {
-        assert_eq!(validate_swarm_tldr(None, "quick note", "this DM"), Ok(None));
-    }
-
-    #[test]
-    fn validate_swarm_tldr_requires_tldr_for_long_body() {
-        let body = "x".repeat(SWARM_TLDR_REQUIRED_OVER_CHARS + 1);
-        let err = validate_swarm_tldr(None, &body, "this DM").unwrap_err();
-        assert!(err.contains("'tldr' is required"), "{err}");
-        assert!(err.contains("this DM"), "{err}");
-    }
-
-    #[test]
-    fn validate_swarm_tldr_normalizes_whitespace() {
-        let body = "x".repeat(SWARM_TLDR_REQUIRED_OVER_CHARS + 1);
-        assert_eq!(
-            validate_swarm_tldr(Some("  did\nthe   thing  "), &body, "this report"),
-            Ok(Some("did the thing".to_string()))
-        );
-    }
-
-    #[test]
-    fn validate_swarm_tldr_rejects_overlong_tldr() {
-        let tldr = "y".repeat(MAX_SWARM_TLDR_CHARS + 1);
-        let err = validate_swarm_tldr(Some(&tldr), "body", "this message").unwrap_err();
-        assert!(err.contains("too long"), "{err}");
-    }
-
-    #[test]
-    fn validate_swarm_tldr_blank_tldr_counts_as_missing() {
-        let body = "x".repeat(SWARM_TLDR_REQUIRED_OVER_CHARS + 1);
-        assert!(validate_swarm_tldr(Some("   "), &body, "this DM").is_err());
-        assert_eq!(
-            validate_swarm_tldr(Some("   "), "short", "this DM"),
-            Ok(None)
-        );
-    }
-
-    #[test]
     fn summarize_plan_items_limits_output() {
         let items = vec![
             plan_item("a", "first"),
@@ -315,30 +105,6 @@ mod tests {
         ];
         assert_eq!(summarize_plan_items(&items, 2), "first; second (+1 more)");
     }
-    #[test]
-    fn channel_index_keeps_bidirectional_maps_in_sync() {
-        let mut index = ChannelIndex::default();
-        index.subscribe("worker-1", "swarm-a", "build");
-        index.subscribe("worker-1", "swarm-a", "tests");
-        index.subscribe("worker-2", "swarm-a", "build");
-
-        assert_eq!(
-            index.members("swarm-a", "build"),
-            vec!["worker-1", "worker-2"]
-        );
-        assert_eq!(
-            index.channels_for_session("worker-1", "swarm-a"),
-            vec!["build", "tests"]
-        );
-
-        index.unsubscribe("worker-1", "swarm-a", "build");
-        assert_eq!(index.members("swarm-a", "build"), vec!["worker-2"]);
-
-        index.remove_session("worker-1");
-        assert!(index.channels_for_session("worker-1", "swarm-a").is_empty());
-        assert_eq!(index.members("swarm-a", "tests"), Vec::<String>::new());
-    }
-
     #[test]
     fn task_label_takes_first_line_strips_prefixes_and_collapses_whitespace() {
         assert_eq!(

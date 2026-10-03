@@ -143,18 +143,6 @@ fn test_protocol_enum_roundtrips_cover_wire_names() -> Result<()> {
         assert_eq!(decoded, mode);
     }
 
-    let delivery_modes = [
-        (CommDeliveryMode::Notify, "notify"),
-        (CommDeliveryMode::Interrupt, "interrupt"),
-        (CommDeliveryMode::Wake, "wake"),
-    ];
-    for (mode, wire) in delivery_modes {
-        let json = serde_json::to_string(&mode)?;
-        assert_eq!(json, format!("\"{}\"", wire));
-        let decoded: CommDeliveryMode = serde_json::from_str(&json)?;
-        assert_eq!(decoded, mode);
-    }
-
     let feature_toggles = [
         (FeatureToggle::Autoreview, "autoreview"),
         (FeatureToggle::Autojudge, "autojudge"),

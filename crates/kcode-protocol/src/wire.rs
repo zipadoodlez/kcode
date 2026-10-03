@@ -392,56 +392,16 @@ pub enum Request {
     AgentContext { id: u64 },
 
     // === Agent communication ===
-    /// Share context with other agents
-    #[serde(rename = "comm_share")]
-    CommShare {
-        id: u64,
-        session_id: String,
-        key: String,
-        value: String,
-        #[serde(default)]
-        append: bool,
-    },
-
-    /// Read shared context from other agents
-    #[serde(rename = "comm_read")]
-    CommRead {
-        id: u64,
-        session_id: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        key: Option<String>,
-    },
-
     /// Send a message to other agents
     #[serde(rename = "comm_message")]
     CommMessage {
         id: u64,
         from_session: String,
         message: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        to_session: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        channel: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        delivery: Option<CommDeliveryMode>,
+        /// The agent the message is addressed to.
+        to_session: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         wake: Option<bool>,
-        /// Sender-provided one-line summary. Receiving UIs render long
-        /// message bodies collapsed to this with an expand control.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        tldr: Option<String>,
-    },
-
-    /// List swarm channels and subscriber counts
-    #[serde(rename = "comm_list_channels")]
-    CommListChannels { id: u64, session_id: String },
-
-    /// List members subscribed to a swarm channel
-    #[serde(rename = "comm_channel_members")]
-    CommChannelMembers {
-        id: u64,
-        session_id: String,
-        channel: String,
     },
 
     /// Spawn a new agent session (coordinator only)
@@ -480,22 +440,6 @@ pub enum Request {
         id: u64,
         session_id: String,
         target_session: String,
-    },
-
-    /// Subscribe to a named channel in the swarm
-    #[serde(rename = "comm_subscribe_channel")]
-    CommSubscribeChannel {
-        id: u64,
-        session_id: String,
-        channel: String,
-    },
-
-    /// Unsubscribe from a named channel in the swarm
-    #[serde(rename = "comm_unsubscribe_channel")]
-    CommUnsubscribeChannel {
-        id: u64,
-        session_id: String,
-        channel: String,
     },
 }
 
@@ -1070,25 +1014,6 @@ pub enum ServerEvent {
     /// Completed `!cmd` shell execution for a connected remote client.
     #[serde(rename = "input_shell_result")]
     InputShellResult { result: InputShellResult },
-
-    /// Response to comm_read request
-    #[serde(rename = "comm_context")]
-    CommContext {
-        id: u64,
-        /// Shared context entries
-        entries: Vec<ContextEntry>,
-    },
-
-    /// Response to comm_list request
-    #[serde(rename = "comm_members")]
-    CommMembers { id: u64, members: Vec<AgentInfo> },
-
-    /// Response to comm_list_channels request
-    #[serde(rename = "comm_channels")]
-    CommChannels {
-        id: u64,
-        channels: Vec<SwarmChannelInfo>,
-    },
 
     /// Response to comm_spawn request
     #[serde(rename = "comm_spawn_response")]

@@ -9,11 +9,9 @@
 
 use serde::{Deserialize, Serialize};
 
-mod comm_format;
 mod notifications;
 mod side_panel;
 
-pub use comm_format::*;
 pub use notifications::{FeatureToggle, NotificationType};
 
 use kcode_message_types::BatchProgress;
@@ -42,14 +40,6 @@ pub enum TranscriptMode {
     Replace,
     #[default]
     Send,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum CommDeliveryMode {
-    Notify,
-    Interrupt,
-    Wake,
 }
 
 /// A message in conversation history (for sync)
@@ -189,95 +179,6 @@ pub type ReloadRecoverySnapshot = ReloadRecoveryDirective;
 
 mod wire;
 pub use wire::{Request, ServerEvent};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SwarmChannelInfo {
-    pub channel: String,
-    pub member_count: usize,
-}
-
-/// A shared context entry
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ContextEntry {
-    pub key: String,
-    pub value: String,
-    pub from_session: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub from_name: Option<String>,
-}
-
-/// Info about an agent
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct AgentInfo {
-    pub session_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub friendly_name: Option<String>,
-    /// Files this agent has touched
-    pub files_touched: Vec<String>,
-    /// Current lifecycle status (ready, running, completed, failed, stopped, etc.)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status: Option<SwarmLifecycleStatus>,
-    /// Optional status detail (current task, error, etc.)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub detail: Option<String>,
-    /// Stable label of the task/role this member was spawned or assigned for.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub task_label: Option<String>,
-    /// Role: "agent" or "coordinator"
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub role: Option<String>,
-    /// Whether this member is a headless spawned session.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub is_headless: Option<bool>,
-    /// Session that owns report-back/cleanup responsibility for this member.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub report_back_to_session_id: Option<String>,
-    /// Number of currently attached live client connections.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub live_attachments: Option<usize>,
-    /// Seconds since the last status change.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status_age_secs: Option<u64>,
-    /// Seconds since the last observed activity (token usage, turn start,
-    /// tool events, or swarm task heartbeats). Unlike `status_age_secs`,
-    /// which measures the last lifecycle transition, this reflects whether
-    /// the agent is actually doing work right now.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_activity_age_secs: Option<u64>,
-    /// Live activity (whether processing + current tool name).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub activity: Option<SessionActivitySnapshot>,
-    /// Provider name (e.g. "anthropic").
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_name: Option<String>,
-    /// Provider model id.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_model: Option<String>,
-    /// Reasoning effort the agent's provider is running with.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_effort: Option<String>,
-    /// Number of turns the agent has run this session.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub turn_count: Option<u64>,
-    /// Tokens churned (total, including cache) within the recent lookback window.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub recent_total_tokens: Option<u64>,
-    /// Output tokens produced within the recent lookback window.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub recent_output_tokens: Option<u64>,
-    /// Width of the recent-token lookback window, in seconds.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub recent_window_secs: Option<u64>,
-    /// Cumulative total tokens observed for the session lifetime.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cumulative_total_tokens: Option<u64>,
-    /// Number of completed todos for this agent's session.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub todos_completed: Option<usize>,
-    /// Total number of todos for this agent's session.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub todos_total: Option<usize>,
-}
 
 /// Lightweight swarm plan graph summary for planner-friendly reads.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -515,16 +416,10 @@ impl Request {
             Request::AgentTask { id, .. } => *id,
             Request::AgentCapabilities { id } => *id,
             Request::AgentContext { id } => *id,
-            Request::CommShare { id, .. } => *id,
-            Request::CommRead { id, .. } => *id,
             Request::CommMessage { id, .. } => *id,
-            Request::CommListChannels { id, .. } => *id,
-            Request::CommChannelMembers { id, .. } => *id,
             Request::CommSpawn { id, .. } => *id,
             Request::CommListModels { id, .. } => *id,
             Request::CommStop { id, .. } => *id,
-            Request::CommSubscribeChannel { id, .. } => *id,
-            Request::CommUnsubscribeChannel { id, .. } => *id,
         }
     }
 
@@ -533,16 +428,10 @@ impl Request {
             self,
             Request::Ping { .. }
                 | Request::NotifySession { .. }
-                | Request::CommShare { .. }
-                | Request::CommRead { .. }
                 | Request::CommMessage { .. }
-                | Request::CommListChannels { .. }
-                | Request::CommChannelMembers { .. }
                 | Request::CommSpawn { .. }
                 | Request::CommListModels { .. }
                 | Request::CommStop { .. }
-                | Request::CommSubscribeChannel { .. }
-                | Request::CommUnsubscribeChannel { .. }
         )
     }
 }
