@@ -887,8 +887,6 @@ fn test_remote_final_catalog_replaces_post_login_loading_state_in_place() {
             from_name: Some("Kcode".to_string()),
             notification_type: crate::protocol::NotificationType::Message {
                 scope: Some("catalog_activity".to_string()),
-                channel: None,
-                tldr: None,
             },
             message: "**Model ready:** `claude-opus-4.6`\nAnthropic catalog changed: models +1/-0, routes +1/-0/~0. Use `/model`.".to_string(),
         },

@@ -203,8 +203,6 @@ fn test_remote_runtime_activity_notification_renders_as_system_message() {
             from_name: Some("Kcode".to_string()),
             notification_type: crate::protocol::NotificationType::Message {
                 scope: Some("auth_activity".to_string()),
-                channel: None,
-                tldr: None,
             },
             message: "**Auth Change Received**\n\nThe server is refreshing provider credentials."
                 .to_string(),
@@ -236,8 +234,6 @@ fn test_remote_final_catalog_activity_is_two_lines_and_completes_model_setup() {
             from_name: Some("Kcode".to_string()),
             notification_type: crate::protocol::NotificationType::Message {
                 scope: Some("catalog_activity".to_string()),
-                channel: None,
-                tldr: None,
             },
             message: message.to_string(),
         },
@@ -301,8 +297,6 @@ fn test_remote_catalog_activity_notification_upserts_compact_row() {
                 from_name: Some("Kcode".to_string()),
                 notification_type: crate::protocol::NotificationType::Message {
                     scope: Some("catalog_activity".to_string()),
-                    channel: None,
-                    tldr: None,
                 },
                 message,
             },

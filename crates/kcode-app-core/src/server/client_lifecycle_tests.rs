@@ -1469,11 +1469,8 @@ async fn lightweight_comm_request_skips_full_session_initialization() {
     let client_count = Arc::new(RwLock::new(0usize));
     let client_connections = Arc::new(RwLock::new(HashMap::new()));
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let shared_context = Arc::new(RwLock::new(HashMap::new()));
     let swarm_runs = Arc::new(RwLock::new(HashMap::new()));
     let file_touch = FileTouchService::new();
-    let channel_subscriptions = Arc::new(RwLock::new(HashMap::new()));
-    let channel_subscriptions_by_session = Arc::new(RwLock::new(HashMap::new()));
     let client_debug_state = Arc::new(RwLock::new(ClientDebugState::default()));
     let (_debug_response_tx, _) = broadcast::channel(8);
     let event_history = Arc::new(RwLock::new(std::collections::VecDeque::new()));
@@ -1495,11 +1492,8 @@ async fn lightweight_comm_request_skips_full_session_initialization() {
         client_count,
         Arc::clone(&client_connections),
         swarm_members,
-        shared_context,
         swarm_runs,
         file_touch,
-        channel_subscriptions,
-        channel_subscriptions_by_session,
         client_debug_state,
         _debug_response_tx,
         event_history,
@@ -1515,9 +1509,12 @@ async fn lightweight_comm_request_skips_full_session_initialization() {
 
     let (client_reader, mut client_writer) = client_stream.into_split();
     let mut client_reader = BufReader::new(client_reader);
-    let request = Request::CommListChannels {
+    let request = Request::CommMessage {
         id: 7,
-        session_id: "not-in-swarm".to_string(),
+        from_session: "not-in-swarm".to_string(),
+        message: "hello".to_string(),
+        to_session: "someone".to_string(),
+        wake: None,
     };
     let payload = serde_json::to_string(&request).expect("serialize request") + "\n";
     client_writer

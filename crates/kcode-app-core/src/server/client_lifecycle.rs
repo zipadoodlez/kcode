@@ -4,10 +4,7 @@ use super::client_actions::{
     handle_notify_session, handle_run_subagent, handle_set_feature, handle_set_subagent_model,
     handle_split, handle_stdin_response, handle_transfer,
 };
-use super::client_comm::{
-    handle_comm_channel_members, handle_comm_list_channels, handle_comm_message, handle_comm_read,
-    handle_comm_share, handle_comm_subscribe_channel, handle_comm_unsubscribe_channel,
-};
+use super::client_comm::handle_comm_message;
 use super::client_disconnect_cleanup::{cleanup_client_connection, detach_client_attachment};
 use super::client_lifecycle_logging::{
     ServerRequestLifecycleFields, interrupt_request_log_fields, request_payload_summary,
@@ -34,10 +31,10 @@ use super::provider_control::{
     try_available_models_updated_event,
 };
 use super::{
-    ChannelSubscriptions, ClientConnectionInfo, ClientDebugState, FileTouchService, RunState,
-    SessionAgents, SessionControlHandle, SessionInterruptQueues, SharedContext, SwarmEvent,
-    SwarmMember, SwarmMutationRuntime, register_session_interrupt_queue,
-    send_swarm_plan_to_session, truncate_detail, update_member_status,
+    ClientConnectionInfo, ClientDebugState, FileTouchService, RunState, SessionAgents,
+    SessionControlHandle, SessionInterruptQueues, SwarmEvent, SwarmMember, SwarmMutationRuntime,
+    register_session_interrupt_queue, send_swarm_plan_to_session, truncate_detail,
+    update_member_status,
 };
 use crate::agent::Agent;
 use crate::bus::{Bus, BusEvent};
@@ -427,11 +424,8 @@ pub(super) async fn handle_client(
     client_count: Arc<RwLock<usize>>,
     client_connections: Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
     swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
-    shared_context: Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
     file_touch: FileTouchService,
-    channel_subscriptions: ChannelSubscriptions,
-    channel_subscriptions_by_session: ChannelSubscriptions,
     client_debug_state: Arc<RwLock<ClientDebugState>>,
     client_debug_response_tx: broadcast::Sender<(u64, String)>,
     event_history: Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
@@ -480,10 +474,7 @@ pub(super) async fn handle_client(
                             global_session_id: &global_session_id,
                             provider_template: &provider_template,
                             swarm_members: &swarm_members,
-                            shared_context: &shared_context,
                             swarm_runs: &swarm_runs,
-                            channel_subscriptions: &channel_subscriptions,
-                            channel_subscriptions_by_session: &channel_subscriptions_by_session,
                             client_connections: &client_connections,
                             event_history: &event_history,
                             event_counter: &event_counter,
@@ -1396,8 +1387,6 @@ pub(super) async fn handle_client(
                         &client_connections,
                         &swarm_members,
                         &file_touch,
-                        &channel_subscriptions,
-                        &channel_subscriptions_by_session,
                         &event_history,
                         &event_counter,
                         &swarm_event_tx,
@@ -1639,8 +1628,6 @@ pub(super) async fn handle_client(
                                 &client_debug_state,
                                 &swarm_members,
                                 &file_touch,
-                                &channel_subscriptions,
-                                &channel_subscriptions_by_session,
                                 &swarm_runs,
                                 &client_count,
                                 &writer,
@@ -1868,8 +1855,6 @@ pub(super) async fn handle_client(
                         &client_debug_state,
                         &swarm_members,
                         &file_touch,
-                        &channel_subscriptions,
-                        &channel_subscriptions_by_session,
                         &swarm_runs,
                         &client_count,
                         &writer,
@@ -2173,103 +2158,26 @@ pub(super) async fn handle_client(
             }
 
             // === Agent communication ===
-            Request::CommShare {
-                id,
-                session_id: req_session_id,
-                key,
-                value,
-                append,
-            } => {
-                handle_comm_share(
-                    id,
-                    req_session_id,
-                    key,
-                    value,
-                    append,
-                    &client_event_tx,
-                    &swarm_members,
-                    &shared_context,
-                    &event_history,
-                    &event_counter,
-                    &swarm_event_tx,
-                )
-                .await;
-            }
-
-            Request::CommRead {
-                id,
-                session_id: req_session_id,
-                key,
-            } => {
-                handle_comm_read(
-                    id,
-                    req_session_id,
-                    key,
-                    &client_event_tx,
-                    &swarm_members,
-                    &shared_context,
-                )
-                .await;
-            }
-
             Request::CommMessage {
                 id,
                 from_session,
                 message,
                 to_session,
-                channel,
-                delivery,
                 wake,
-                tldr,
             } => {
                 handle_comm_message(
                     id,
                     from_session,
                     message,
                     to_session,
-                    channel,
-                    delivery,
                     wake,
-                    tldr,
                     &client_event_tx,
                     &sessions,
                     &soft_interrupt_queues,
                     &swarm_members,
-                    &channel_subscriptions,
                     &event_history,
                     &event_counter,
                     &swarm_event_tx,
-                    &client_connections,
-                )
-                .await;
-            }
-
-            Request::CommListChannels {
-                id,
-                session_id: req_session_id,
-            } => {
-                handle_comm_list_channels(
-                    id,
-                    req_session_id,
-                    &client_event_tx,
-                    &swarm_members,
-                    &channel_subscriptions,
-                )
-                .await;
-            }
-
-            Request::CommChannelMembers {
-                id,
-                session_id: req_session_id,
-                channel,
-            } => {
-                handle_comm_channel_members(
-                    id,
-                    req_session_id,
-                    channel,
-                    &client_event_tx,
-                    &swarm_members,
-                    &channel_subscriptions,
                 )
                 .await;
             }
@@ -2303,8 +2211,6 @@ pub(super) async fn handle_client(
                     &provider_template,
                     &swarm_members,
                     &swarm_runs,
-                    &channel_subscriptions,
-                    &channel_subscriptions_by_session,
                     &event_history,
                     &event_counter,
                     &swarm_event_tx,
@@ -2345,53 +2251,11 @@ pub(super) async fn handle_client(
                     &sessions,
                     &swarm_members,
                     &swarm_runs,
-                    &channel_subscriptions,
-                    &channel_subscriptions_by_session,
                     &event_history,
                     &event_counter,
                     &swarm_event_tx,
                     &soft_interrupt_queues,
                     &swarm_mutation_runtime,
-                )
-                .await;
-            }
-
-            Request::CommSubscribeChannel {
-                id,
-                session_id: req_session_id,
-                channel,
-            } => {
-                handle_comm_subscribe_channel(
-                    id,
-                    req_session_id,
-                    channel,
-                    &client_event_tx,
-                    &swarm_members,
-                    &channel_subscriptions,
-                    &channel_subscriptions_by_session,
-                    &event_history,
-                    &event_counter,
-                    &swarm_event_tx,
-                )
-                .await;
-            }
-
-            Request::CommUnsubscribeChannel {
-                id,
-                session_id: req_session_id,
-                channel,
-            } => {
-                handle_comm_unsubscribe_channel(
-                    id,
-                    req_session_id,
-                    channel,
-                    &client_event_tx,
-                    &swarm_members,
-                    &channel_subscriptions,
-                    &channel_subscriptions_by_session,
-                    &event_history,
-                    &event_counter,
-                    &swarm_event_tx,
                 )
                 .await;
             }
@@ -2497,8 +2361,6 @@ pub(super) async fn handle_client(
             &swarm_members,
             &swarm_runs,
             &file_touch,
-            &channel_subscriptions,
-            &channel_subscriptions_by_session,
             &client_debug_state,
             &client_debug_id,
             &client_connections,

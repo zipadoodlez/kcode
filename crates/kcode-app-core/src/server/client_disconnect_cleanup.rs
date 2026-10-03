@@ -1,9 +1,8 @@
 use super::{
-    ChannelSubscriptions, ClientConnectionInfo, ClientDebugState, FileTouchService, RunState,
-    SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember,
-    record_swarm_event, remove_background_tool_signal, remove_session_channel_subscriptions,
-    remove_session_from_swarm, remove_session_interrupt_queue, unregister_session_event_sender,
-    update_member_status,
+    ClientConnectionInfo, ClientDebugState, FileTouchService, RunState, SessionAgents,
+    SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember, record_swarm_event,
+    remove_background_tool_signal, remove_session_from_swarm, remove_session_interrupt_queue,
+    unregister_session_event_sender, update_member_status,
 };
 use crate::protocol::SwarmLifecycleStatus;
 use anyhow::Result;
@@ -90,8 +89,6 @@ pub(super) async fn cleanup_client_connection(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     file_touch: &FileTouchService,
-    channel_subscriptions: &ChannelSubscriptions,
-    channel_subscriptions_by_session: &ChannelSubscriptions,
     client_debug_state: &Arc<RwLock<ClientDebugState>>,
     client_debug_id: &str,
     client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
@@ -312,12 +309,6 @@ pub(super) async fn cleanup_client_connection(
             let mut members = swarm_members.write().await;
             members.remove(client_session_id);
         }
-        remove_session_channel_subscriptions(
-            client_session_id,
-            channel_subscriptions,
-            channel_subscriptions_by_session,
-        )
-        .await;
         file_touch.clear_session(client_session_id).await;
     }
 

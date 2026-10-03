@@ -77,10 +77,8 @@ SWARM COMMANDS (swarm: prefix):
   swarm:coordinators       - List all coordinators
   swarm:roles              - List all members with roles
   swarm:plans              - List all swarm plans
-  swarm:context            - List all shared context
   swarm:touches            - List all file touches
   swarm:conflicts          - Files touched by multiple sessions
-  swarm:channels           - List channel subscriptions
   swarm:broadcast:<msg>    - Broadcast to swarm members
   swarm:notify:<sid> <msg> - Send DM to specific session
   swarm:help               - Full swarm command reference
@@ -176,11 +174,6 @@ PLANS (server-scoped plan items):
   swarm:plan:<swarm_id>    - Get plan items for specific swarm
   swarm:clear_plan:<id>    - Admin: delete a swarm's plan (memory + persisted state)
 
-SHARED CONTEXT (key-value store):
-  swarm:context            - List all shared context entries
-  swarm:context:<swarm_id> - List context for specific swarm
-  swarm:context:<swarm_id>:<key> - Get specific context value
-
 FILE TOUCHES (conflict detection):
   swarm:touches            - List all file touches (path, session, op, age, timestamp)
   swarm:touches:<path>     - Get touches for specific file
@@ -195,12 +188,6 @@ NOTIFICATIONS:
 EXECUTION STATE:
   swarm:session:<id>       - Detailed session state (interrupts, provider, usage)
   swarm:interrupts         - List pending interrupts across all sessions
-
-CHANNELS:
-  swarm:channels           - List channel subscriptions per swarm
-
-OPERATIONS (debug-only, bypass tool:communicate):
-  swarm:set_context:<sess> <key> <value> - Set shared context as session
 
 UTILITIES:
 

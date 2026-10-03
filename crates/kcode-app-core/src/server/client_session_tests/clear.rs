@@ -63,14 +63,6 @@ async fn handle_clear_session_replaces_runtime_handles_and_updates_shutdown_regi
         test_swarm_member(old_session_id, "ready"),
     )])));
     let file_touch = FileTouchService::new();
-    let channel_subscriptions = Arc::new(RwLock::new(HashMap::<
-        String,
-        HashMap<String, HashSet<String>>,
-    >::new()));
-    let channel_subscriptions_by_session = Arc::new(RwLock::new(HashMap::<
-        String,
-        HashMap<String, HashSet<String>>,
-    >::new()));
     let event_history = Arc::new(RwLock::new(VecDeque::<SwarmEvent>::new()));
     let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let (swarm_event_tx, _swarm_event_rx) = broadcast::channel::<SwarmEvent>(8);
@@ -91,8 +83,6 @@ async fn handle_clear_session_replaces_runtime_handles_and_updates_shutdown_regi
         &client_connections,
         &swarm_members,
         &file_touch,
-        &channel_subscriptions,
-        &channel_subscriptions_by_session,
         &event_history,
         &event_counter,
         &swarm_event_tx,

@@ -3,8 +3,8 @@ use super::debug::{ClientConnectionInfo, ClientDebugState, handle_debug_client};
 use super::debug_jobs::DebugJob;
 use super::util::get_shared_mcp_pool;
 use super::{
-    ChannelSubscriptions, FileTouchService, ServerIdentity, SessionInterruptQueues, SharedContext,
-    SwarmEvent, SwarmMutationRuntime, SwarmState,
+    FileTouchService, ServerIdentity, SessionInterruptQueues, SwarmEvent, SwarmMutationRuntime,
+    SwarmState,
 };
 use crate::agent::Agent;
 use crate::protocol::ServerEvent;
@@ -93,10 +93,7 @@ pub(super) struct ServerRuntime {
     client_count: Arc<RwLock<usize>>,
     client_connections: Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
     swarm_state: SwarmState,
-    shared_context: Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     file_touch: FileTouchService,
-    channel_subscriptions: ChannelSubscriptions,
-    channel_subscriptions_by_session: ChannelSubscriptions,
     client_debug_state: Arc<RwLock<ClientDebugState>>,
     client_debug_response_tx: broadcast::Sender<(u64, String)>,
     debug_jobs: Arc<RwLock<HashMap<String, DebugJob>>>,
@@ -124,10 +121,7 @@ impl ServerRuntime {
             client_count: Arc::clone(&server.client_count),
             client_connections: Arc::clone(&server.client_connections),
             swarm_state: server.swarm_state.clone(),
-            shared_context: Arc::clone(&server.shared_context),
             file_touch: server.file_touch.clone(),
-            channel_subscriptions: Arc::clone(&server.channel_subscriptions),
-            channel_subscriptions_by_session: Arc::clone(&server.channel_subscriptions_by_session),
             client_debug_state: Arc::clone(&server.client_debug_state),
             client_debug_response_tx: server.client_debug_response_tx.clone(),
             debug_jobs: Arc::clone(&server.debug_jobs),
@@ -266,11 +260,8 @@ impl ServerRuntime {
                     Arc::clone(&self.client_count),
                     Arc::clone(&self.client_connections),
                     Arc::clone(&self.swarm_state.members),
-                    Arc::clone(&self.shared_context),
                     Arc::clone(&self.swarm_state.runs),
                     self.file_touch.clone(),
-                    Arc::clone(&self.channel_subscriptions),
-                    Arc::clone(&self.channel_subscriptions_by_session),
                     Arc::clone(&self.client_debug_state),
                     self.client_debug_response_tx.clone(),
                     Arc::clone(&self.event_history),
@@ -315,11 +306,8 @@ impl ServerRuntime {
                 Arc::clone(&self.provider),
                 Arc::clone(&self.client_connections),
                 Arc::clone(&self.swarm_state.members),
-                Arc::clone(&self.shared_context),
                 Arc::clone(&self.swarm_state.runs),
                 self.file_touch.clone(),
-                Arc::clone(&self.channel_subscriptions),
-                Arc::clone(&self.channel_subscriptions_by_session),
                 Arc::clone(&self.client_debug_state),
                 self.client_debug_response_tx.clone(),
                 Arc::clone(&self.debug_jobs),

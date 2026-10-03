@@ -581,8 +581,6 @@ fn test_handle_server_event_notification_background_task_scope_uses_failed_row()
             from_name: Some("background task".to_string()),
             notification_type: crate::protocol::NotificationType::Message {
                 scope: Some("background_task".to_string()),
-                channel: None,
-                tldr: None,
             },
             message: "**Background task** `abc123` · `bash` · ✗ failed · 7.1s · exit 1\n\n```text\n[stderr] line one\n[stderr] line two\n```\n\n_Full output:_ `bg action=\"output\" task_id=\"abc123\"`".to_string(),
         },
@@ -646,8 +644,6 @@ fn test_swarm_completion_notification_inserts_agent_snapshot_without_report_pros
             from_name: Some("cow".to_string()),
             notification_type: crate::protocol::NotificationType::Message {
                 scope: Some("swarm".to_string()),
-                channel: None,
-                tldr: Some("Demo completed".to_string()),
             },
             message: "Demo completed; README first heading is kcode.".to_string(),
         },
@@ -696,8 +692,6 @@ fn test_swarm_await_notification_inserts_only_compact_summary() {
             from_name: Some("swarm await".to_string()),
             notification_type: crate::protocol::NotificationType::Message {
                 scope: Some("swarm_await".to_string()),
-                channel: None,
-                tldr: None,
             },
             message: "🐝 **Swarm await finished**\n\nAll members done. All 1 members are done: elephant\n\nMember statuses:\n  ✓ elephant (completed)\n\nCompletion reports:\n\n--- elephant (completed) ---\nCompact card demo finished.\n\nValidation:\nParser tests pass."
                 .to_string(),

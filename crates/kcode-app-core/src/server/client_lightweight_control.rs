@@ -1,13 +1,10 @@
 use super::client_actions::{NotifySessionContext, handle_notify_session};
-use super::client_comm::{
-    handle_comm_channel_members, handle_comm_list_channels, handle_comm_message, handle_comm_read,
-    handle_comm_share, handle_comm_subscribe_channel, handle_comm_unsubscribe_channel,
-};
+use super::client_comm::handle_comm_message;
 use super::client_writer::write_direct_event;
 use super::comm_session::{handle_comm_list_models, handle_comm_spawn, handle_comm_stop};
 use super::{
-    ChannelSubscriptions, ClientConnectionInfo, RunState, SessionAgents, SessionInterruptQueues,
-    SharedContext, SwarmEvent, SwarmMember, SwarmMutationRuntime,
+    ClientConnectionInfo, RunState, SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmMember,
+    SwarmMutationRuntime,
 };
 use crate::config::SwarmSpawnMode;
 use crate::protocol::{Request, ServerEvent};
@@ -45,10 +42,7 @@ pub(super) struct LightweightControlContext<'a> {
     pub(super) global_session_id: &'a Arc<RwLock<String>>,
     pub(super) provider_template: &'a Arc<dyn Provider>,
     pub(super) swarm_members: &'a Arc<RwLock<HashMap<String, SwarmMember>>>,
-    pub(super) shared_context: &'a Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     pub(super) swarm_runs: &'a Arc<RwLock<HashMap<String, RunState>>>,
-    pub(super) channel_subscriptions: &'a ChannelSubscriptions,
-    pub(super) channel_subscriptions_by_session: &'a ChannelSubscriptions,
     pub(super) client_connections: &'a Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
     pub(super) event_history: &'a Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     pub(super) event_counter: &'a Arc<std::sync::atomic::AtomicU64>,
@@ -68,10 +62,7 @@ pub(super) async fn handle_lightweight_control_request(
         global_session_id,
         provider_template,
         swarm_members,
-        shared_context,
         swarm_runs,
-        channel_subscriptions,
-        channel_subscriptions_by_session,
         client_connections,
         event_history,
         event_counter,
@@ -136,99 +127,26 @@ pub(super) async fn handle_lightweight_control_request(
             )
             .await;
         }
-        Request::CommShare {
-            id,
-            session_id: req_session_id,
-            key,
-            value,
-            append,
-        } => {
-            handle_comm_share(
-                id,
-                req_session_id,
-                key,
-                value,
-                append,
-                &client_event_tx,
-                swarm_members,
-                shared_context,
-                event_history,
-                event_counter,
-                swarm_event_tx,
-            )
-            .await;
-        }
-        Request::CommRead {
-            id,
-            session_id: req_session_id,
-            key,
-        } => {
-            handle_comm_read(
-                id,
-                req_session_id,
-                key,
-                &client_event_tx,
-                swarm_members,
-                shared_context,
-            )
-            .await;
-        }
         Request::CommMessage {
             id,
             from_session,
             message,
             to_session,
-            channel,
-            delivery,
             wake,
-            tldr,
         } => {
             handle_comm_message(
                 id,
                 from_session,
                 message,
                 to_session,
-                channel,
-                delivery,
                 wake,
-                tldr,
                 &client_event_tx,
                 sessions,
                 soft_interrupt_queues,
                 swarm_members,
-                channel_subscriptions,
                 event_history,
                 event_counter,
                 swarm_event_tx,
-                client_connections,
-            )
-            .await;
-        }
-        Request::CommListChannels {
-            id,
-            session_id: req_session_id,
-        } => {
-            handle_comm_list_channels(
-                id,
-                req_session_id,
-                &client_event_tx,
-                swarm_members,
-                channel_subscriptions,
-            )
-            .await;
-        }
-        Request::CommChannelMembers {
-            id,
-            session_id: req_session_id,
-            channel,
-        } => {
-            handle_comm_channel_members(
-                id,
-                req_session_id,
-                channel,
-                &client_event_tx,
-                swarm_members,
-                channel_subscriptions,
             )
             .await;
         }
@@ -261,8 +179,6 @@ pub(super) async fn handle_lightweight_control_request(
                 provider_template,
                 swarm_members,
                 swarm_runs,
-                channel_subscriptions,
-                channel_subscriptions_by_session,
                 event_history,
                 event_counter,
                 swarm_event_tx,
@@ -295,8 +211,6 @@ pub(super) async fn handle_lightweight_control_request(
                 sessions,
                 swarm_members,
                 swarm_runs,
-                channel_subscriptions,
-                channel_subscriptions_by_session,
                 event_history,
                 event_counter,
                 swarm_event_tx,
@@ -305,44 +219,7 @@ pub(super) async fn handle_lightweight_control_request(
             )
             .await;
         }
-        Request::CommSubscribeChannel {
-            id,
-            session_id: req_session_id,
-            channel,
-        } => {
-            handle_comm_subscribe_channel(
-                id,
-                req_session_id,
-                channel,
-                &client_event_tx,
-                swarm_members,
-                channel_subscriptions,
-                channel_subscriptions_by_session,
-                event_history,
-                event_counter,
-                swarm_event_tx,
-            )
-            .await;
-        }
-        Request::CommUnsubscribeChannel {
-            id,
-            session_id: req_session_id,
-            channel,
-        } => {
-            handle_comm_unsubscribe_channel(
-                id,
-                req_session_id,
-                channel,
-                &client_event_tx,
-                swarm_members,
-                channel_subscriptions,
-                channel_subscriptions_by_session,
-                event_history,
-                event_counter,
-                swarm_event_tx,
-            )
-            .await;
-        }
+
         other => {
             let _ = client_event_tx.send(ServerEvent::Error {
                 id: other.id(),

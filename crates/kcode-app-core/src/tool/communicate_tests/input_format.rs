@@ -42,26 +42,3 @@ fn spawn_initial_message_accepts_prompt_alias_and_prefers_explicit_initial_messa
     .expect("spawn payload should deserialize");
     assert_eq!(blank_messages.spawn_initial_message(), None);
 }
-
-#[test]
-fn communicate_input_accepts_delivery_and_share_append() {
-    let delivery: CommunicateInput = serde_json::from_value(serde_json::json!({
-        "action": "dm",
-        "message": "ping",
-        "to_session": "sess-2",
-        "delivery": "wake"
-    }))
-    .expect("delivery mode should deserialize");
-    assert_eq!(
-        delivery.delivery,
-        Some(crate::protocol::CommDeliveryMode::Wake)
-    );
-
-    let append: CommunicateInput = serde_json::from_value(serde_json::json!({
-        "action": "share_append",
-        "key": "task/123/notes",
-        "value": "new line"
-    }))
-    .expect("share_append should deserialize");
-    assert_eq!(append.action, "share_append");
-}

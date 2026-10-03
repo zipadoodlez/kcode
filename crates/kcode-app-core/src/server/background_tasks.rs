@@ -56,8 +56,6 @@ pub(super) async fn dispatch_background_task_completion(
                 from_name: Some("background task".to_string()),
                 notification_type: NotificationType::Message {
                     scope: Some("background_task".to_string()),
-                    channel: None,
-                    tldr: None,
                 },
                 message: notification.clone(),
             },
@@ -141,8 +139,6 @@ pub(super) async fn dispatch_background_task_stalled(
                 from_name: Some("background task".to_string()),
                 notification_type: NotificationType::Message {
                     scope: Some("background_task".to_string()),
-                    channel: None,
-                    tldr: None,
                 },
                 message: notification.clone(),
             },
@@ -214,8 +210,6 @@ pub(super) async fn dispatch_background_task_progress(
             from_name: Some("background task".to_string()),
             notification_type: NotificationType::Message {
                 scope: Some("background_task".to_string()),
-                channel: None,
-                tldr: None,
             },
             message: notification,
         },
@@ -593,8 +587,6 @@ pub(super) async fn dispatch_ui_activity(
             from_name: Some("Kcode".to_string()),
             notification_type: NotificationType::Message {
                 scope: Some(activity.kind.scope().to_string()),
-                channel: None,
-                tldr: None,
             },
             message: activity.message.clone(),
         },

@@ -292,19 +292,6 @@ impl SwarmMember {
     }
 }
 
-/// A shared context entry stored by the server
-#[derive(Clone, Debug)]
-pub struct SharedContext {
-    pub key: String,
-    pub value: String,
-    pub from_session: String,
-    pub from_name: Option<String>,
-    /// When this context was created
-    pub created_at: Instant,
-    /// When this context was last updated
-    pub updated_at: Instant,
-}
-
 /// Event types for real-time event subscription
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]

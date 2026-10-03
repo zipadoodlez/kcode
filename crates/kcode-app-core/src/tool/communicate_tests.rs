@@ -22,20 +22,16 @@ fn tool_is_named_swarm() {
 }
 #[test]
 fn canonical_swarm_action_maps_common_synonyms() {
-    assert_eq!(canonical_swarm_action("inbox"), "read");
-    assert_eq!(canonical_swarm_action("read_messages"), "read");
     assert_eq!(canonical_swarm_action("send"), "message");
     assert_eq!(canonical_swarm_action("msg"), "message");
-    assert_eq!(canonical_swarm_action("direct_message"), "dm");
-    assert_eq!(canonical_swarm_action("announce"), "broadcast");
-    assert_eq!(canonical_swarm_action("agents"), "list");
-    assert_eq!(canonical_swarm_action("plan"), "plan_status");
+    assert_eq!(canonical_swarm_action("direct_message"), "message");
+    assert_eq!(canonical_swarm_action("models"), "list_models");
     assert_eq!(canonical_swarm_action("kill"), "stop");
 }
 
 #[test]
 fn canonical_swarm_action_is_case_insensitive_and_trims() {
-    assert_eq!(canonical_swarm_action("  Inbox  "), "read");
+    assert_eq!(canonical_swarm_action("  Kill  "), "stop");
     assert_eq!(canonical_swarm_action("SEND"), "message");
 }
 
@@ -43,7 +39,7 @@ fn canonical_swarm_action_is_case_insensitive_and_trims() {
 fn canonical_swarm_action_passes_through_known_and_unknown_actions() {
     // Real actions are unchanged.
     assert_eq!(canonical_swarm_action("spawn"), "spawn");
-    assert_eq!(canonical_swarm_action("dm"), "dm");
+    assert_eq!(canonical_swarm_action("message"), "message");
     // Genuinely unknown actions are returned unchanged for normal validation.
     assert_eq!(canonical_swarm_action("totally_made_up"), "totally_made_up");
 }
@@ -328,15 +324,12 @@ fn schema_advertises_supported_swarm_fields() {
         .expect("swarm schema should have properties");
 
     assert!(props.contains_key("action"));
-    assert!(props.contains_key("key"));
-    assert!(props.contains_key("value"));
     assert!(props.contains_key("message"));
     assert!(props.contains_key("to_session"));
     assert_eq!(
         props["to_session"]["description"],
         json!("Session ID or unique friendly name of one agent. Alias of target_session.")
     );
-    assert!(props.contains_key("channel"));
     assert!(props.contains_key("target_session"));
     assert_eq!(
         props["target_session"]["description"],
@@ -345,12 +338,7 @@ fn schema_advertises_supported_swarm_fields() {
     assert!(props.contains_key("prompt"));
     assert!(props.contains_key("working_dir"));
     assert!(props.contains_key("wake"));
-    assert!(props.contains_key("delivery"));
     assert!(props.contains_key("initial_message"));
-    assert_eq!(
-        props["delivery"]["enum"],
-        json!(["notify", "interrupt", "wake"])
-    );
     // The schema's enum is the one action list, so the choices the model is given
     // and the actions the dispatch accepts cannot drift apart.
     assert_eq!(

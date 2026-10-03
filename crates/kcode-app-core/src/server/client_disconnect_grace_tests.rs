@@ -125,8 +125,6 @@ impl Fixture {
             &self.members,
             &Arc::new(RwLock::new(HashMap::new())),
             &FileTouchService::new(),
-            &Arc::new(RwLock::new(HashMap::new())),
-            &Arc::new(RwLock::new(HashMap::new())),
             &Arc::new(RwLock::new(ClientDebugState::default())),
             "debug-original",
             &self.connections,

@@ -3,8 +3,6 @@ mod background_tasks;
 mod client_actions;
 mod client_api;
 mod client_comm;
-mod client_comm_channels;
-mod client_comm_context;
 mod client_comm_message;
 mod client_disconnect_cleanup;
 mod client_lifecycle;
@@ -37,7 +35,6 @@ mod reload_trace;
 mod runtime;
 mod socket;
 mod swarm;
-mod swarm_channels;
 mod swarm_mutation_state;
 mod swarm_persistence;
 pub(crate) mod util;
@@ -59,10 +56,6 @@ use self::swarm::{
     remove_session_from_swarm, run_swarm_message, salvage_dead_assignees,
     send_swarm_plan_to_session, set_member_task_label, swarm_is_self_or_ancestor, swarm_root,
     swarm_rows, update_member_status,
-};
-use self::swarm_channels::{
-    remove_session_channel_subscriptions, subscribe_session_to_channel,
-    unsubscribe_session_from_channel,
 };
 pub(super) use self::swarm_mutation_state::SwarmMutationRuntime;
 use self::swarm_persistence::{
@@ -92,9 +85,6 @@ use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, OnceCell, RwLock, broadcast, mpsc};
 
 pub(super) type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
-pub(super) type ChannelSubscriptions =
-    Arc<RwLock<HashMap<String, HashMap<String, HashSet<String>>>>>;
-
 fn idle_monitor_should_start(client_count: usize, has_live_headless_worker: bool) -> bool {
     client_count == 0 && !has_live_headless_worker
 }
@@ -132,8 +122,6 @@ const SWARM_TERMINAL_MEMBER_GC_BATCH_SIZE: usize = 64;
 async fn prune_expired_terminal_swarm_members(
     sessions: &SessionAgents,
     swarm_state: &SwarmState,
-    channel_subscriptions: &ChannelSubscriptions,
-    channel_subscriptions_by_session: &ChannelSubscriptions,
 ) -> usize {
     let retention = swarm::swarm_terminal_member_retention();
     let mut candidates = {
@@ -177,12 +165,6 @@ async fn prune_expired_terminal_swarm_members(
             &swarm_state.runs,
         )
         .await;
-        remove_session_channel_subscriptions(
-            &session_id,
-            channel_subscriptions,
-            channel_subscriptions_by_session,
-        )
-        .await;
         pruned += 1;
     }
 
@@ -207,8 +189,6 @@ async fn prune_expired_terminal_swarm_members(
 async fn reap_idle_spawned_workers(
     sessions: &SessionAgents,
     swarm_state: &SwarmState,
-    channel_subscriptions: &ChannelSubscriptions,
-    channel_subscriptions_by_session: &ChannelSubscriptions,
     soft_interrupt_queues: &SessionInterruptQueues,
 ) -> usize {
     let Some(idle_after) = swarm::swarm_idle_worker_reap_after() else {
@@ -274,12 +254,6 @@ async fn reap_idle_spawned_workers(
             )
             .await;
         }
-        remove_session_channel_subscriptions(
-            &session_id,
-            channel_subscriptions,
-            channel_subscriptions_by_session,
-        )
-        .await;
         crate::logging::info(&format!(
             "Reaped idle spawned swarm worker {session_id} (idle > {}s)",
             idle_after.as_secs()
@@ -538,8 +512,8 @@ mod state;
 
 use self::state::latest_peer_touches;
 pub use self::state::{
-    FileAccess, RowRunState, RunState, SessionControlHandle, SharedContext, SwarmEvent,
-    SwarmEventType, SwarmMember, SwarmState,
+    FileAccess, RowRunState, RunState, SessionControlHandle, SwarmEvent, SwarmEventType,
+    SwarmMember, SwarmState,
 };
 use self::state::{
     SessionInterruptQueues, fanout_live_client_event, fanout_session_event,
@@ -645,18 +619,12 @@ pub struct Server {
     file_touch: FileTouchService,
     /// Shared ownership of core swarm coordination state.
     swarm_state: SwarmState,
-    /// Shared context by swarm (swarm_id -> key -> SharedContext)
-    shared_context: Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     /// Active and available TUI debug channels (request_id, command)
     client_debug_state: Arc<RwLock<ClientDebugState>>,
     /// Channel to receive client debug responses from TUI (request_id, response)
     client_debug_response_tx: broadcast::Sender<(u64, String)>,
     /// Background debug jobs (async debug commands)
     debug_jobs: Arc<RwLock<HashMap<String, DebugJob>>>,
-    /// Channel subscriptions (swarm_id -> channel -> session_ids)
-    channel_subscriptions: ChannelSubscriptions,
-    /// Reverse index for channel subscriptions: session_id -> swarm_id -> channels
-    channel_subscriptions_by_session: ChannelSubscriptions,
     /// Event history for real-time event subscription (ring buffer)
     event_history: Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     /// Counter for event IDs
@@ -726,12 +694,9 @@ impl Server {
             client_connections: Arc::new(RwLock::new(HashMap::new())),
             file_touch: FileTouchService::new(),
             swarm_state: SwarmState::new(restored_swarm_members, HashMap::new()),
-            shared_context: Arc::new(RwLock::new(HashMap::new())),
             client_debug_state: Arc::new(RwLock::new(ClientDebugState::default())),
             client_debug_response_tx,
             debug_jobs: Arc::new(RwLock::new(HashMap::new())),
-            channel_subscriptions: Arc::new(RwLock::new(HashMap::new())),
-            channel_subscriptions_by_session: Arc::new(RwLock::new(HashMap::new())),
             event_history: Arc::new(RwLock::new(std::collections::VecDeque::new())),
             event_counter: Arc::new(std::sync::atomic::AtomicU64::new(1)),
             swarm_event_tx: broadcast::channel(256).0,
@@ -1209,7 +1174,6 @@ impl Server {
         let monitor_file_touch = self.file_touch.clone();
         let monitor_swarm_members = Arc::clone(&self.swarm_state.members);
         let monitor_swarm_runs = Arc::clone(&self.swarm_state.runs);
-        let monitor_shared_context = Arc::clone(&self.shared_context);
         let monitor_sessions = Arc::clone(&self.sessions);
         let monitor_soft_interrupt_queues = Arc::clone(&self.soft_interrupt_queues);
         let monitor_event_history = Arc::clone(&self.event_history);
@@ -1220,7 +1184,6 @@ impl Server {
                 monitor_file_touch,
                 monitor_swarm_members,
                 monitor_swarm_runs,
-                monitor_shared_context,
                 monitor_sessions,
                 monitor_soft_interrupt_queues,
                 monitor_event_history,
@@ -1244,33 +1207,18 @@ impl Server {
 
         let gc_sessions = Arc::clone(&self.sessions);
         let gc_swarm_state = self.swarm_state.clone();
-        let gc_channel_subscriptions = Arc::clone(&self.channel_subscriptions);
-        let gc_channel_subscriptions_by_session =
-            Arc::clone(&self.channel_subscriptions_by_session);
         let gc_soft_interrupt_queues = Arc::clone(&self.soft_interrupt_queues);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(swarm::swarm_terminal_member_gc_interval());
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 interval.tick().await;
-                prune_expired_terminal_swarm_members(
-                    &gc_sessions,
-                    &gc_swarm_state,
-                    &gc_channel_subscriptions,
-                    &gc_channel_subscriptions_by_session,
-                )
-                .await;
+                prune_expired_terminal_swarm_members(&gc_sessions, &gc_swarm_state).await;
                 // Backstop for coordinator cleanup: close finished spawned
                 // workers that have been idle past the reap window so they do
                 // not accumulate one leaked client process each.
-                reap_idle_spawned_workers(
-                    &gc_sessions,
-                    &gc_swarm_state,
-                    &gc_channel_subscriptions,
-                    &gc_channel_subscriptions_by_session,
-                    &gc_soft_interrupt_queues,
-                )
-                .await;
+                reap_idle_spawned_workers(&gc_sessions, &gc_swarm_state, &gc_soft_interrupt_queues)
+                    .await;
             }
         });
 
@@ -1823,7 +1771,6 @@ impl Server {
         file_touch: FileTouchService,
         swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
         swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
-        _shared_context: Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
         sessions: Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>,
         soft_interrupt_queues: SessionInterruptQueues,
         event_history: Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,

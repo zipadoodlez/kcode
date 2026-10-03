@@ -6,11 +6,10 @@ use super::swarm_mutation_state::{
     request_key,
 };
 use super::{
-    ChannelSubscriptions, RunState, SessionAgents, SessionInterruptQueues, SwarmEvent,
-    SwarmEventType, SwarmMember, SwarmState, broadcast_swarm_plan, broadcast_swarm_status,
-    create_headless_session, fanout_session_event, persist_swarm_state_for, record_swarm_event,
-    record_swarm_event_for_session, remove_background_tool_signal,
-    remove_session_channel_subscriptions, remove_session_from_swarm,
+    RunState, SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember,
+    SwarmState, broadcast_swarm_plan, broadcast_swarm_status, create_headless_session,
+    fanout_session_event, persist_swarm_state_for, record_swarm_event,
+    record_swarm_event_for_session, remove_background_tool_signal, remove_session_from_swarm,
     remove_session_interrupt_queue, set_member_task_label, truncate_detail, update_member_status,
 };
 use crate::config::SwarmSpawnMode;
@@ -816,8 +815,6 @@ pub(super) async fn handle_comm_spawn(
     provider_template: &Arc<dyn Provider>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
-    _channel_subscriptions: &ChannelSubscriptions,
-    _channel_subscriptions_by_session: &ChannelSubscriptions,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -1027,8 +1024,6 @@ pub(super) async fn handle_comm_stop(
     sessions: &SessionAgents,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
-    channel_subscriptions: &ChannelSubscriptions,
-    channel_subscriptions_by_session: &ChannelSubscriptions,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -1122,12 +1117,6 @@ pub(super) async fn handle_comm_stop(
         {
             ended += 1;
         }
-        remove_session_channel_subscriptions(
-            session_id,
-            channel_subscriptions,
-            channel_subscriptions_by_session,
-        )
-        .await;
     }
 
     let response = if ended > 0 {

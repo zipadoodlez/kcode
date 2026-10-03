@@ -407,9 +407,8 @@ async fn background_task_wake_runs_live_session_immediately_when_idle() {
     .expect("background task notification should arrive promptly");
 
     match notification.0 {
-        NotificationType::Message { scope, channel, .. } => {
+        NotificationType::Message { scope, .. } => {
             assert_eq!(scope.as_deref(), Some("background_task"));
-            assert!(channel.is_none());
         }
         other => panic!("unexpected notification type: {other:?}"),
     }
@@ -1025,9 +1024,8 @@ async fn background_task_progress_notifies_attached_clients() {
             ..
         } => {
             match notification_type {
-                NotificationType::Message { scope, channel, .. } => {
+                NotificationType::Message { scope, .. } => {
                     assert_eq!(scope.as_deref(), Some("background_task"));
-                    assert!(channel.is_none());
                 }
                 other => panic!("unexpected notification type: {other:?}"),
             }

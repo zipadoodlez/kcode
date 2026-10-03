@@ -1,7 +1,6 @@
 use super::{
-    ChannelSubscriptions, ClientConnectionInfo, ClientDebugState, DebugJob, FileAccess,
-    FileTouchService, RunState, ServerIdentity, SessionAgents, SessionInterruptQueues,
-    SharedContext, SwarmEvent, SwarmMember,
+    ClientConnectionInfo, ClientDebugState, DebugJob, FileAccess, FileTouchService, RunState,
+    ServerIdentity, SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmMember,
 };
 use crate::agent::Agent;
 use anyhow::Result;
@@ -94,11 +93,8 @@ pub(super) async fn maybe_handle_server_state_command(
     client_debug_state: &Arc<RwLock<ClientDebugState>>,
     server_identity: &ServerIdentity,
     server_start_time: Instant,
-    shared_context: &Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     file_touch: &FileTouchService,
-    channel_subscriptions: &ChannelSubscriptions,
-    channel_subscriptions_by_session: &ChannelSubscriptions,
     debug_jobs: &Arc<RwLock<HashMap<String, DebugJob>>>,
     event_history: &Arc<RwLock<VecDeque<SwarmEvent>>>,
     shutdown_signals: &Arc<RwLock<HashMap<String, kcode_agent_runtime::InterruptSignal>>>,
@@ -194,11 +190,8 @@ pub(super) async fn maybe_handle_server_state_command(
             client_debug_state,
             server_identity,
             server_start_time,
-            shared_context,
             swarm_runs,
             file_touch,
-            channel_subscriptions,
-            channel_subscriptions_by_session,
             debug_jobs,
             event_history,
             shutdown_signals,
@@ -707,11 +700,8 @@ async fn build_server_memory_payload(
     client_debug_state: &Arc<RwLock<ClientDebugState>>,
     server_identity: &ServerIdentity,
     server_start_time: Instant,
-    shared_context: &Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     file_touch: &FileTouchService,
-    channel_subscriptions: &ChannelSubscriptions,
-    channel_subscriptions_by_session: &ChannelSubscriptions,
     debug_jobs: &Arc<RwLock<HashMap<String, DebugJob>>>,
     event_history: &Arc<RwLock<VecDeque<SwarmEvent>>>,
     shutdown_signals: &Arc<RwLock<HashMap<String, kcode_agent_runtime::InterruptSignal>>>,
@@ -877,16 +867,6 @@ async fn build_server_memory_payload(
     let swarm_count = swarm_ids.len();
     drop(members);
 
-    let context = shared_context.read().await;
-    let shared_context_entry_count: usize = context.values().map(|entries| entries.len()).sum();
-    let shared_context_estimate_bytes: usize = context
-        .values()
-        .flat_map(|entries| entries.values())
-        .map(estimate_shared_context_bytes)
-        .sum();
-    let shared_context_swarm_count = context.len();
-    drop(context);
-
     let runs = swarm_runs.read().await;
     let swarm_run_count = runs.len();
     let swarm_run_entry_count: usize = runs.values().map(|run| run.len()).sum();
@@ -916,44 +896,6 @@ async fn build_server_memory_payload(
         })
         .sum();
     drop(touched_by_session);
-
-    let subscriptions = channel_subscriptions.read().await;
-    let subscription_swarm_count = subscriptions.len();
-    let subscription_channel_count: usize = subscriptions.values().map(|map| map.len()).sum();
-    let subscription_member_count: usize = subscriptions
-        .values()
-        .flat_map(|channels| channels.values())
-        .map(|members| members.len())
-        .sum();
-    let subscription_estimate_bytes: usize = subscriptions
-        .iter()
-        .map(|(swarm_id, channels)| {
-            swarm_id.len()
-                + channels
-                    .iter()
-                    .map(|(channel, members)| {
-                        channel.len() + members.iter().map(|sid| sid.len()).sum::<usize>()
-                    })
-                    .sum::<usize>()
-        })
-        .sum();
-    drop(subscriptions);
-
-    let subscriptions_by_session = channel_subscriptions_by_session.read().await;
-    let subscriptions_by_session_count = subscriptions_by_session.len();
-    let subscriptions_by_session_estimate_bytes: usize = subscriptions_by_session
-        .iter()
-        .map(|(session_id, swarms)| {
-            session_id.len()
-                + swarms
-                    .iter()
-                    .map(|(swarm_id, channels)| {
-                        swarm_id.len() + channels.iter().map(|channel| channel.len()).sum::<usize>()
-                    })
-                    .sum::<usize>()
-        })
-        .sum();
-    drop(subscriptions_by_session);
 
     let jobs = debug_jobs.read().await;
     let debug_job_count = jobs.len();
@@ -1033,9 +975,6 @@ async fn build_server_memory_payload(
             "swarm_count": swarm_count,
             "swarm_membership_count": swarm_membership_count,
             "swarms_estimate_bytes": swarms_estimate_bytes,
-            "shared_context_swarm_count": shared_context_swarm_count,
-            "shared_context_entry_count": shared_context_entry_count,
-            "shared_context_estimate_bytes": shared_context_estimate_bytes,
             "run_count": swarm_run_count,
             "run_entry_count": swarm_run_entry_count,
         },
@@ -1045,14 +984,6 @@ async fn build_server_memory_payload(
             "touch_estimate_bytes": file_touch_estimate_bytes,
             "files_touched_by_session_count": touched_session_count,
             "files_touched_by_session_estimate_bytes": touched_session_estimate_bytes,
-        },
-        "channels": {
-            "subscription_swarms": subscription_swarm_count,
-            "subscription_channels": subscription_channel_count,
-            "subscription_memberships": subscription_member_count,
-            "subscription_estimate_bytes": subscription_estimate_bytes,
-            "subscriptions_by_session_count": subscriptions_by_session_count,
-            "subscriptions_by_session_estimate_bytes": subscriptions_by_session_estimate_bytes,
         },
         "debug": {
             "job_count": debug_job_count,
@@ -1116,17 +1047,6 @@ fn estimate_swarm_member_bytes(member: &SwarmMember) -> usize {
             .working_dir
             .as_ref()
             .map(|path| path_len(path))
-            .unwrap_or(0)
-}
-
-fn estimate_shared_context_bytes(context: &SharedContext) -> usize {
-    context.key.len()
-        + context.value.len()
-        + context.from_session.len()
-        + context
-            .from_name
-            .as_ref()
-            .map(|value| value.len())
             .unwrap_or(0)
 }
 

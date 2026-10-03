@@ -535,8 +535,6 @@ async fn notify_coordinator_of_salvage(
             from_name: Some(label.clone()),
             notification_type: NotificationType::Message {
                 scope: Some("swarm".to_string()),
-                channel: None,
-                tldr: None,
             },
             message: outcome.describe(&label),
         },
@@ -1219,8 +1217,6 @@ pub(super) async fn update_member_status(
                         from_name: agent_name.clone(),
                         notification_type: NotificationType::Message {
                             scope: Some("swarm".to_string()),
-                            channel: None,
-                            tldr: None,
                         },
                         message: msg,
                     },

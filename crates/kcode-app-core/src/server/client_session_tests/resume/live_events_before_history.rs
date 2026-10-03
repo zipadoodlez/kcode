@@ -68,14 +68,6 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
         },
     )])));
     let file_touch = FileTouchService::new();
-    let channel_subscriptions = Arc::new(RwLock::new(HashMap::<
-        String,
-        HashMap<String, HashSet<String>>,
-    >::new()));
-    let channel_subscriptions_by_session = Arc::new(RwLock::new(HashMap::<
-        String,
-        HashMap<String, HashSet<String>>,
-    >::new()));
     let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     let client_count = Arc::new(RwLock::new(1usize));
     let (writer, _peer_stream) = test_writer()?;
@@ -100,8 +92,6 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
         let client_debug_state = Arc::clone(&client_debug_state);
         let swarm_members = Arc::clone(&swarm_members);
         let file_touch = file_touch.clone();
-        let channel_subscriptions = Arc::clone(&channel_subscriptions);
-        let channel_subscriptions_by_session = Arc::clone(&channel_subscriptions_by_session);
         let swarm_runs = Arc::clone(&swarm_runs);
         let client_count = Arc::clone(&client_count);
         let writer = Arc::clone(&writer);
@@ -131,8 +121,6 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
                 &client_debug_state,
                 &swarm_members,
                 &file_touch,
-                &channel_subscriptions,
-                &channel_subscriptions_by_session,
                 &swarm_runs,
                 &client_count,
                 &writer,

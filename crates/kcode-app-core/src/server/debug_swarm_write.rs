@@ -1,15 +1,13 @@
-use super::{RunState, SharedContext, SwarmMember, SwarmState, persist_swarm_state_for};
+use super::{RunState, SwarmMember, SwarmState, persist_swarm_state_for};
 use crate::protocol::{NotificationType, ServerEvent};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Instant;
 use tokio::sync::RwLock;
 
 pub(super) struct DebugSwarmWriteContext<'a> {
     pub(super) session_id: &'a Arc<RwLock<String>>,
     pub(super) swarm_members: &'a Arc<RwLock<HashMap<String, SwarmMember>>>,
-    pub(super) shared_context: &'a Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     pub(super) swarm_runs: &'a Arc<RwLock<HashMap<String, RunState>>>,
 }
 
@@ -115,8 +113,6 @@ pub(super) async fn maybe_handle_swarm_write_command(
                             from_name: from_name.clone(),
                             notification_type: NotificationType::Message {
                                 scope: Some("broadcast".to_string()),
-                                channel: None,
-                                tldr: None,
                             },
                             message: message.clone(),
                         };
@@ -165,8 +161,6 @@ pub(super) async fn maybe_handle_swarm_write_command(
                     from_name: from_name.clone(),
                     notification_type: NotificationType::Message {
                         scope: Some("dm".to_string()),
-                        channel: None,
-                        tldr: None,
                     },
                     message: message.to_string(),
                 };
@@ -188,88 +182,6 @@ pub(super) async fn maybe_handle_swarm_write_command(
 
         return Err(anyhow::anyhow!(
             "Usage: swarm:notify:<session_id> <message>"
-        ));
-    }
-
-    if cmd.starts_with("swarm:set_context:") {
-        let rest = cmd.strip_prefix("swarm:set_context:").unwrap_or("").trim();
-        let parts: Vec<&str> = rest.splitn(3, ' ').collect();
-        if parts.len() < 3 {
-            return Err(anyhow::anyhow!(
-                "Usage: swarm:set_context:<session_id> <key> <value>"
-            ));
-        }
-
-        let acting_session = parts[0];
-        let key = parts[1].to_string();
-        let value = parts[2].to_string();
-
-        let (swarm_id, friendly_name) = {
-            let members = ctx.swarm_members.read().await;
-            let swarm_id = super::swarm::swarm_root(&members, acting_session);
-            let name = members
-                .get(acting_session)
-                .and_then(|member| member.friendly_name.clone());
-            (swarm_id, name)
-        };
-
-        if let Some(swarm_id) = swarm_id {
-            {
-                let mut shared_ctx = ctx.shared_context.write().await;
-                let swarm_ctx = shared_ctx
-                    .entry(swarm_id.clone())
-                    .or_insert_with(HashMap::new);
-                let now = Instant::now();
-                let created_at = swarm_ctx
-                    .get(&key)
-                    .map(|context| context.created_at)
-                    .unwrap_or(now);
-                swarm_ctx.insert(
-                    key.clone(),
-                    SharedContext {
-                        key: key.clone(),
-                        value: value.clone(),
-                        from_session: acting_session.to_string(),
-                        from_name: friendly_name.clone(),
-                        created_at,
-                        updated_at: now,
-                    },
-                );
-            }
-
-            let swarm_session_ids =
-                super::swarm::swarm_session_ids(&swarm_id, ctx.swarm_members).await;
-            let members = ctx.swarm_members.read().await;
-            for sid in &swarm_session_ids {
-                if sid != acting_session
-                    && let Some(member) = members.get(sid)
-                {
-                    let _ = member.event_tx.send(ServerEvent::Notification {
-                        from_session: acting_session.to_string(),
-                        from_name: friendly_name.clone(),
-                        notification_type: NotificationType::SharedContext {
-                            key: key.clone(),
-                            value: value.clone(),
-                        },
-                        message: format!("Shared context: {} = {}", key, value),
-                    });
-                }
-            }
-
-            return Ok(Some(
-                serde_json::json!({
-                    "swarm_id": swarm_id,
-                    "key": key,
-                    "value": value,
-                    "from_session": acting_session,
-                })
-                .to_string(),
-            ));
-        }
-
-        return Err(anyhow::anyhow!(
-            "Session '{}' is not in a swarm",
-            acting_session
         ));
     }
 

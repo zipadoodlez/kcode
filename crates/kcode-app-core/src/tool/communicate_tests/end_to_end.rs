@@ -114,8 +114,6 @@ async fn communicate_spawn_reports_completion_back_to_spawner() {
                     from_session,
                     notification_type: crate::protocol::NotificationType::Message {
                         scope: Some(scope),
-                        channel: None,
-                        tldr: None,
                     },
                     message,
                     ..
@@ -135,7 +133,7 @@ async fn communicate_spawn_reports_completion_back_to_spawner() {
 /// Regression test for the bug where `message` and `broadcast` were identical
 /// because the tool discarded `to_session`/`channel` for both.
 #[tokio::test]
-async fn communicate_message_routes_as_dm_while_broadcast_targets_swarm() {
+async fn communicate_message_reaches_its_address() {
     let _env_lock = crate::storage::lock_test_env();
     let runtime_dir = tempfile::TempDir::new().expect("runtime tempdir");
     let repo_dir = std::env::current_dir().expect("repo cwd");
@@ -167,8 +165,7 @@ async fn communicate_message_routes_as_dm_while_broadcast_targets_swarm() {
     let tool = CommunicateTool::new();
     let ctx = test_ctx(&sender_session, &repo_dir);
 
-    // The peer is a worker the sender spawned: the sender roots its own run, so
-    // the worker is inside the subtree a broadcast from the sender reaches.
+    // The peer is a worker the sender spawned, so it is in the sender's run.
     let peer_session = spawn_worker(
         &tool,
         &ctx,
@@ -189,7 +186,7 @@ async fn communicate_message_routes_as_dm_while_broadcast_targets_swarm() {
         .await
         .expect("attach to the spawned worker");
 
-    // `message` with a `to_session` should arrive at the peer scoped as a DM.
+    // The message should arrive at its address, scoped as a DM.
     let dm_output = tool
         .execute(
             json!({
@@ -202,8 +199,8 @@ async fn communicate_message_routes_as_dm_while_broadcast_targets_swarm() {
         .await
         .expect("message with to_session should succeed");
     assert!(
-        dm_output.output.contains("Direct message sent to"),
-        "message with to_session should report a DM, got: {}",
+        dm_output.output.contains("Message sent to"),
+        "message should report its address, got: {}",
         dm_output.output
     );
     let dm_scope = peer
@@ -213,36 +210,7 @@ async fn communicate_message_routes_as_dm_while_broadcast_targets_swarm() {
     assert_eq!(
         dm_scope.as_deref(),
         Some("dm"),
-        "message with to_session should be delivered with dm scope"
-    );
-
-    // `broadcast` should reach the peer scoped as a broadcast even though no
-    // explicit target is supplied: the peer is in the sender's spawned subtree.
-    let broadcast_output = tool
-        .execute(
-            json!({
-                "action": "broadcast",
-                "message": "ping-all"
-            }),
-            ctx.clone(),
-        )
-        .await
-        .expect("broadcast should succeed");
-    assert!(
-        broadcast_output
-            .output
-            .contains("Broadcast sent to your spawned subtree"),
-        "broadcast should report a subtree-scoped group send, got: {}",
-        broadcast_output.output
-    );
-    let broadcast_scope = peer
-        .next_message_notification(Duration::from_secs(5))
-        .await
-        .expect("spawned worker should receive the broadcast");
-    assert_eq!(
-        broadcast_scope.as_deref(),
-        Some("broadcast"),
-        "broadcast should be delivered with broadcast scope"
+        "the message should be delivered with dm scope"
     );
 
     server_task.abort();

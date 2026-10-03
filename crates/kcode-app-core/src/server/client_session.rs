@@ -3,11 +3,10 @@
 use super::client_state::{handle_get_history, spawn_model_prefetch_update};
 use super::swarm::{record_swarm_event_for_session, swarm_root};
 use super::{
-    ChannelSubscriptions, ClientConnectionInfo, ClientDebugState, FileTouchService, RunState,
-    SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmMember, SwarmState,
-    fanout_live_client_event, persist_swarm_state_for, register_background_tool_signal,
-    register_session_event_sender, register_session_interrupt_queue, remove_background_tool_signal,
-    remove_session_channel_subscriptions, remove_session_from_swarm,
+    ClientConnectionInfo, ClientDebugState, FileTouchService, RunState, SessionAgents,
+    SessionInterruptQueues, SwarmEvent, SwarmMember, SwarmState, fanout_live_client_event,
+    persist_swarm_state_for, register_background_tool_signal, register_session_event_sender,
+    register_session_interrupt_queue, remove_background_tool_signal, remove_session_from_swarm,
     remove_session_interrupt_queue, rename_background_tool_signal, rename_session_interrupt_queue,
     send_swarm_plan_to_session, unregister_session_event_sender, update_member_status,
 };
@@ -142,8 +141,6 @@ pub(super) async fn handle_clear_session(
     client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     file_touch: &FileTouchService,
-    channel_subscriptions: &ChannelSubscriptions,
-    channel_subscriptions_by_session: &ChannelSubscriptions,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -234,12 +231,6 @@ pub(super) async fn handle_clear_session(
         }
     };
     file_touch.clear_session(client_session_id).await;
-    remove_session_channel_subscriptions(
-        client_session_id,
-        channel_subscriptions,
-        channel_subscriptions_by_session,
-    )
-    .await;
     // The connection remains subscribed across `/clear`, so there is no later
     // subscribe request to register the replacement session. Register it as a
     // fresh root while deliberately leaving the old swarm and plan behind.
@@ -857,8 +848,6 @@ async fn cleanup_detached_source_session_if_unused(
     client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     file_touch: &FileTouchService,
-    channel_subscriptions: &ChannelSubscriptions,
-    channel_subscriptions_by_session: &ChannelSubscriptions,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
 ) {
     unregister_session_event_sender(swarm_members, old_session_id, client_connection_id).await;
@@ -886,12 +875,6 @@ async fn cleanup_detached_source_session_if_unused(
     }
     remove_background_tool_signal(old_session_id);
     remove_session_interrupt_queue(soft_interrupt_queues, old_session_id).await;
-    remove_session_channel_subscriptions(
-        old_session_id,
-        channel_subscriptions,
-        channel_subscriptions_by_session,
-    )
-    .await;
     file_touch.clear_session(old_session_id).await;
 
     // The departure runs while the member is still in the map, and before the map
@@ -988,8 +971,6 @@ pub(super) async fn handle_resume_session(
     client_debug_state: &Arc<RwLock<ClientDebugState>>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     file_touch: &FileTouchService,
-    channel_subscriptions: &ChannelSubscriptions,
-    channel_subscriptions_by_session: &ChannelSubscriptions,
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     client_count: &Arc<RwLock<usize>>,
     writer: &Arc<Mutex<WriteHalf>>,
@@ -1077,8 +1058,6 @@ pub(super) async fn handle_resume_session(
             client_connections,
             swarm_members,
             file_touch,
-            channel_subscriptions,
-            channel_subscriptions_by_session,
             swarm_runs,
         )
         .await;
@@ -1405,12 +1384,6 @@ pub(super) async fn handle_resume_session(
             }
 
             rename_swarm_member_session(&old_session_id, &session_id, swarm_members).await;
-            remove_session_channel_subscriptions(
-                &old_session_id,
-                channel_subscriptions,
-                channel_subscriptions_by_session,
-            )
-            .await;
             file_touch.clear_session(&old_session_id).await;
             update_member_status(
                 &session_id,
