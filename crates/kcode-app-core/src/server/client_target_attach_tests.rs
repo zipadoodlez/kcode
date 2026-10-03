@@ -161,7 +161,6 @@ async fn target_subscribe_busy_live_agent_uses_member_root_without_waiting() {
             task_label: None,
             friendly_name: None,
             report_back_to_session_id: None,
-            latest_completion_report: None,
             joined_at: now,
             last_status_change: now,
             is_headless: false,

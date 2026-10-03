@@ -39,7 +39,6 @@ fn persisted_member(session_id: &str) -> SwarmMember {
         detail: None,
         friendly_name: None,
         report_back_to_session_id: None,
-        latest_completion_report: None,
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: false,
@@ -83,7 +82,6 @@ fn persisted_swarm_state_round_trips() {
             detail: None,
             friendly_name: Some("owl".to_string()),
             report_back_to_session_id: None,
-            latest_completion_report: None,
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: false,
@@ -102,7 +100,6 @@ fn persisted_swarm_state_round_trips() {
             detail: Some("writing tests".to_string()),
             friendly_name: Some("fox".to_string()),
             report_back_to_session_id: Some("session-2".to_string()),
-            latest_completion_report: None,
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: true,
@@ -137,10 +134,10 @@ fn persisted_swarm_state_round_trips() {
 }
 
 #[test]
-fn ready_headless_member_with_report_stops_without_losing_report() {
+fn ready_headless_member_stops_on_restart() {
     // A headless worker that finished its task has no process after restart.
-    // Preserve its report, but do not eagerly reconstruct the full Agent just
-    // to keep an idle worker reusable indefinitely.
+    // Do not eagerly reconstruct the full Agent just to keep an idle worker
+    // reusable indefinitely.
     let dir = tempfile::TempDir::new().expect("tempdir");
     let _env = test_env(&dir);
 
@@ -154,7 +151,6 @@ fn ready_headless_member_with_report_stops_without_losing_report() {
         detail: None,
         friendly_name: Some("pig".to_string()),
         report_back_to_session_id: Some("session-coordinator".to_string()),
-        latest_completion_report: Some("Done. Built the worker; all tests pass.".to_string()),
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: true,
@@ -174,10 +170,6 @@ fn ready_headless_member_with_report_stops_without_losing_report() {
         recovered.detail.as_deref(),
         Some("idle worker not restored after server restart")
     );
-    assert_eq!(
-        recovered.latest_completion_report.as_deref(),
-        Some("Done. Built the worker; all tests pass.")
-    );
 }
 
 #[test]
@@ -195,7 +187,6 @@ fn ready_detached_client_stops_on_reload_until_it_reattaches() {
         detail: None,
         friendly_name: Some("finch".to_string()),
         report_back_to_session_id: None,
-        latest_completion_report: None,
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: false,
@@ -217,7 +208,7 @@ fn ready_detached_client_stops_on_reload_until_it_reattaches() {
 }
 
 #[test]
-fn terminal_member_retention_preserves_recent_reports_and_prunes_expired_records() {
+fn terminal_member_retention_keeps_recent_and_prunes_expired_records() {
     let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
     let member = SwarmMember {
         session_id: "session-terminal".to_string(),
@@ -228,7 +219,6 @@ fn terminal_member_retention_preserves_recent_reports_and_prunes_expired_records
         detail: Some("done".to_string()),
         friendly_name: Some("otter".to_string()),
         report_back_to_session_id: Some("session-coordinator".to_string()),
-        latest_completion_report: Some("All targeted tests passed.".to_string()),
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: true,
@@ -249,10 +239,6 @@ fn terminal_member_retention_preserves_recent_reports_and_prunes_expired_records
         Duration::from_secs(60),
     )
     .expect("recent terminal member remains inspectable");
-    assert_eq!(
-        recent.latest_completion_report.as_deref(),
-        Some("All targeted tests passed.")
-    );
     assert!(recent.last_status_change.elapsed() >= Duration::from_secs(30));
 
     assert!(
@@ -273,7 +259,6 @@ fn legacy_terminal_member_uses_snapshot_time_as_retention_fallback() {
         detail: Some("old failure".to_string()),
         friendly_name: Some("badger".to_string()),
         report_back_to_session_id: None,
-        latest_completion_report: Some("legacy report".to_string()),
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: true,
@@ -311,7 +296,6 @@ fn recovery_induced_terminal_status_starts_retention_at_load_time() {
         detail: None,
         friendly_name: Some("hare".to_string()),
         report_back_to_session_id: None,
-        latest_completion_report: Some("finished just before restart".to_string()),
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: true,
@@ -350,7 +334,6 @@ fn startup_gc_removes_expired_terminal_members_from_durable_snapshot() {
         detail: None,
         friendly_name: Some("fox".to_string()),
         report_back_to_session_id: None,
-        latest_completion_report: Some("report retained until expiry".to_string()),
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: true,
@@ -590,7 +573,6 @@ fn persisted_swarm_state_without_plan_still_restores_members() {
         detail: None,
         friendly_name: Some("owl".to_string()),
         report_back_to_session_id: None,
-        latest_completion_report: None,
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: false,

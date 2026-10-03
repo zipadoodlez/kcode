@@ -67,8 +67,8 @@ pub(super) async fn send_request_with_timeout(
 
     // Read lines until we find the terminal response for our request ID.
     // Skip: ack events, notification events, swarm_status broadcasts, etc.
-    // Terminal events: done, error, comm_spawn_response, comm_await_members_response,
-    //                  and any other typed response with matching id.
+    // Terminal events: done, error, comm_spawn_response, and any other typed
+    //                  response with matching id.
     loop {
         line.clear();
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());

@@ -1,11 +1,5 @@
-#![cfg_attr(test, allow(clippy::items_after_test_module))]
-
 use crate::protocol::ServerEvent;
 use tokio::sync::{broadcast, mpsc};
-
-#[cfg(test)]
-#[path = "comm_control_tests.rs"]
-mod tests;
 
 pub(super) async fn handle_client_debug_command(
     id: u64,

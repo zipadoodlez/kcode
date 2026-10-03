@@ -56,7 +56,6 @@ fn member(session_id: &str) -> (SwarmMember, mpsc::UnboundedReceiver<ServerEvent
             detail: None,
             friendly_name: Some(session_id.to_string()),
             report_back_to_session_id: None,
-            latest_completion_report: None,
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: false,
@@ -146,7 +145,10 @@ fn stop_takes_the_target_and_its_subtree_deepest_first() {
 
     // Naming the root ends the run: the root and everything it spawned, a child
     // before the session that spawned it, and nothing outside the run.
-    assert_eq!(stop_targets(&run, "root"), vec!["a-child", "a", "b", "root"]);
+    assert_eq!(
+        stop_targets(&run, "root"),
+        vec!["a-child", "a", "b", "root"]
+    );
     // Naming a member takes that member and its own subtree only.
     assert_eq!(stop_targets(&run, "a"), vec!["a-child", "a"]);
     assert_eq!(stop_targets(&run, "foreign"), vec!["foreign"]);
@@ -913,7 +915,6 @@ async fn terminal_members_do_not_consume_spawn_capacity() {
             } else {
                 SwarmLifecycleStatus::Stopped
             };
-            historical.latest_completion_report = Some(format!("report {idx}"));
             historical.report_back_to_session_id = Some("root".to_string());
             members.insert(id, historical);
         }

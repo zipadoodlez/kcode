@@ -58,7 +58,6 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
             task_label: None,
             friendly_name: Some("restore".to_string()),
             report_back_to_session_id: None,
-            latest_completion_report: None,
             joined_at: now,
             last_status_change: now,
             is_headless: false,

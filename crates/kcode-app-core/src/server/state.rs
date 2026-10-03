@@ -15,7 +15,7 @@ use tokio::sync::{RwLock, mpsc};
 ///
 /// The background-tool ("move tool to background", Alt+B/Ctrl+B) signal lives on
 /// the `Agent`, so a `SessionControlHandle` can normally only obtain it by
-/// locking the agent mutex. When a turn is busy (e.g. running `await_members`),
+/// locking the agent mutex. When a turn is busy (e.g. running a long tool),
 /// `refresh_session_control_handle` falls back to a lock-free `cancel_only`
 /// handle that historically dropped the background signal entirely, which made
 /// Alt+B/Ctrl+B silently no-op (`BACKGROUND_TOOL_SIGNAL_FIRE result=no_signal_handle`).
@@ -214,8 +214,6 @@ pub struct SwarmMember {
     /// This edge is also the membership: a session belongs to the run rooted at the
     /// end of its report-back chain.
     pub report_back_to_session_id: Option<String>,
-    /// Latest explicit completion report submitted by this member.
-    pub latest_completion_report: Option<String>,
     /// When this member joined the swarm
     pub joined_at: Instant,
     /// When status was last changed
@@ -249,7 +247,6 @@ impl SwarmMember {
             task_label: self.task_label.clone(),
             friendly_name: self.friendly_name.clone(),
             report_back_to_session_id: self.report_back_to_session_id.clone(),
-            latest_completion_report: self.latest_completion_report.clone(),
             is_headless: self.is_headless,
         }
     }
@@ -284,7 +281,6 @@ impl SwarmMember {
             task_label: record.task_label,
             friendly_name: record.friendly_name,
             report_back_to_session_id: record.report_back_to_session_id,
-            latest_completion_report: record.latest_completion_report,
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: record.is_headless,
@@ -532,7 +528,7 @@ impl SessionControlHandle {
         let session_id = session_id.into();
         // Mirror the signal into the process-global registry so the lock-free
         // `cancel_only` fallback (used while the agent mutex is busy, e.g. during
-        // `await_members`) can still fire it. Without this, Alt+B/Ctrl+B silently
+        // a long tool) can still fire it. Without this, Alt+B/Ctrl+B silently
         // no-ops for busy turns.
         register_background_tool_signal(&session_id, background_tool_signal.clone());
         Self {
@@ -646,7 +642,7 @@ impl SessionControlHandle {
         // Prefer the directly-held signal; fall back to the process-global
         // registry for lock-free (`cancel_only`) handles built while the agent
         // mutex was busy. This is what makes Alt+B/Ctrl+B work during a busy
-        // turn such as `await_members`.
+        // turn such as a long tool call.
         let signal = self
             .background_tool_signal
             .clone()

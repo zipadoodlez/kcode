@@ -65,29 +65,3 @@ fn communicate_input_accepts_delivery_and_share_append() {
     .expect("share_append should deserialize");
     assert_eq!(append.action, "share_append");
 }
-#[test]
-fn format_awaited_members_disambiguates_duplicate_friendly_names() {
-    let output = format_awaited_members(
-        true,
-        "done",
-        &[
-            AwaitedMemberStatus {
-                session_id: "session_shark_1234567890_aaaaaaaaaaaa0001".to_string(),
-                friendly_name: Some("shark".to_string()),
-                status: SwarmLifecycleStatus::Ready,
-                done: true,
-                completion_report: None,
-            },
-            AwaitedMemberStatus {
-                session_id: "session_shark_1234567890_bbbbbbbbbbbb0002".to_string(),
-                friendly_name: Some("shark".to_string()),
-                status: SwarmLifecycleStatus::Ready,
-                done: true,
-                completion_report: None,
-            },
-        ],
-    );
-
-    assert!(output.output.contains("✓ shark [aa0001] (ready)"));
-    assert!(output.output.contains("✓ shark [bb0002] (ready)"));
-}

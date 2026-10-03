@@ -2,17 +2,14 @@
 
 use super::{Tool, ToolContext, ToolOutput};
 use crate::protocol::{
-    AwaitedMemberStatus, CommDeliveryMode, ContextEntry, HistoryMessage, Request,
-    ServerEvent, SwarmChannelInfo, default_comm_await_target_statuses,
-    format_comm_awaited_members_with_reports, format_comm_channels, format_comm_context_entries,
-    latest_assistant_comm_report,
+    CommDeliveryMode, ContextEntry, Request, ServerEvent, SwarmChannelInfo, format_comm_channels,
+    format_comm_context_entries,
 };
 use anyhow::Result;
 use async_trait::async_trait;
 use kcode_swarm_core::validate_swarm_tldr;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::collections::HashMap;
 
 const REQUEST_ID: u64 = 1;
 
@@ -33,12 +30,11 @@ const ACTIONS: &[&str] = &[
     "stop",
     "subscribe_channel",
     "unsubscribe_channel",
-    "await_members",
     "list_models",
 ];
 
 mod transport;
-use transport::{send_request, send_request_with_timeout};
+use transport::send_request;
 
 fn check_error(response: &ServerEvent) -> Option<&str> {
     if let ServerEvent::Error { message, .. } = response {
@@ -58,62 +54,6 @@ fn ensure_success(response: &ServerEvent) -> Result<()> {
 
 fn format_context_entries(entries: &[ContextEntry]) -> ToolOutput {
     ToolOutput::new(format_comm_context_entries(entries))
-}
-
-#[cfg(test)]
-fn format_awaited_members(
-    completed: bool,
-    summary: &str,
-    members: &[AwaitedMemberStatus],
-) -> ToolOutput {
-    format_awaited_members_with_reports(completed, summary, members, &HashMap::new())
-}
-
-fn latest_assistant_report(messages: &[HistoryMessage]) -> Option<String> {
-    latest_assistant_comm_report(messages)
-}
-
-fn format_awaited_members_with_reports(
-    completed: bool,
-    summary: &str,
-    members: &[AwaitedMemberStatus],
-    reports: &HashMap<String, String>,
-) -> ToolOutput {
-    ToolOutput::new(format_comm_awaited_members_with_reports(
-        completed, summary, members, reports,
-    ))
-}
-
-async fn fetch_awaited_member_reports(
-    ctx: &ToolContext,
-    members: &[AwaitedMemberStatus],
-) -> HashMap<String, String> {
-    let mut reports = HashMap::new();
-    for member in members.iter().filter(|member| member.done) {
-        let request = Request::CommReadContext {
-            id: REQUEST_ID,
-            session_id: ctx.session_id.clone(),
-            target_session: member.session_id.clone(),
-        };
-        match send_request(request).await {
-            Ok(ServerEvent::CommContextHistory { messages, .. }) => {
-                if let Some(report) = latest_assistant_report(&messages) {
-                    reports.insert(member.session_id.clone(), report);
-                }
-            }
-            Ok(response) => {
-                if check_error(&response).is_some() {
-                    continue;
-                }
-            }
-            Err(_) => continue,
-        }
-    }
-    reports
-}
-
-fn default_await_target_statuses() -> Vec<String> {
-    default_comm_await_target_statuses()
 }
 
 fn format_channels(channels: &[SwarmChannelInfo]) -> ToolOutput {
@@ -216,19 +156,7 @@ struct CommunicateInput {
     #[serde(default)]
     prompt: Option<String>,
     #[serde(default)]
-    target_status: Option<Vec<String>>,
-    #[serde(default)]
-    session_ids: Option<Vec<String>>,
-    #[serde(default)]
-    mode: Option<String>,
-    #[serde(default)]
-    timeout_minutes: Option<u64>,
-    #[serde(default)]
     wake: Option<bool>,
-    #[serde(default)]
-    background: Option<bool>,
-    #[serde(default)]
-    notify: Option<bool>,
     #[serde(default)]
     delivery: Option<CommDeliveryMode>,
     #[serde(default)]
@@ -369,32 +297,9 @@ impl Tool for CommunicateTool {
                     "type": "string",
                     "description": "Model for a spawned worker, e.g. 'gpt-6-astra' or 'openai-api:gpt-5.6-luna'. Overrides agents.swarm_model. Omit to use that default or inherit the coordinator if unset. Use 'inherit' to force the coordinator's model and route. See list_models."
                 },
-                "session_ids": {
-                    "type": "array",
-                    "items": {"type": "string"}
-                },
-                "mode": {
-                    "type": "string",
-                    "enum": ["all", "any"],
-                    "description": "await_members: all or any."
-                },
-                "target_status": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Optional completion statuses for await_members. Defaults to ready/completed/stopped/failed."
-                },
-                "timeout_minutes": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "description": "Optional timeout for await_members."
-                },
-                "notify": {
-                    "type": "boolean",
-                    "description": "For await_members/run_plan: show a notification when resolved. Defaults to true."
-                },
                 "wake": {
                     "type": "boolean",
-                    "description": "Wake this agent when a message or awaited background task resolves (default true)."
+                    "description": "Wake this agent when a message resolves (default true)."
                 },
                 "delivery": {
                     "type": "string",
@@ -829,80 +734,6 @@ impl Tool for CommunicateTool {
                     Err(e) => Err(anyhow::anyhow!("Failed to unsubscribe: {}", e)),
                 }
             }
-
-            "await_members" => {
-                let target_status = params
-                    .target_status
-                    .unwrap_or_else(default_await_target_statuses);
-                let mut session_ids = params.session_ids.unwrap_or_default();
-                if let Some(target_session) = params.target_session.clone()
-                    && !session_ids.iter().any(|id| id == &target_session)
-                {
-                    session_ids.push(target_session);
-                }
-                let timeout_minutes = params.timeout_minutes.unwrap_or(60);
-                let timeout_secs = timeout_minutes * 60;
-                // Public member waits are always asynchronous. The blocking
-                // CommAwaitMembers protocol remains available internally for the
-                // run_plan coordination loop, but agents must not park an entire
-                // turn waiting on a worker or a long-lived socket.
-                let blocking_was_requested = params.background == Some(false);
-                let background = true;
-                let notify = params.notify.unwrap_or(true);
-                let wake = params.wake.unwrap_or(true);
-
-                let request = Request::CommAwaitMembers {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                    target_status,
-                    session_ids,
-                    mode: params.mode.clone(),
-                    timeout_secs: Some(timeout_secs),
-                    background,
-                    notify,
-                    wake,
-                };
-
-                // Background waits return promptly with a snapshot; only blocking
-                // waits need the long socket timeout that covers the full wait.
-                let socket_timeout = if background {
-                    std::time::Duration::from_secs(30)
-                } else {
-                    std::time::Duration::from_secs(timeout_secs + 30)
-                };
-
-                match send_request_with_timeout(request, Some(socket_timeout)).await {
-                    Ok(ServerEvent::CommAwaitMembersResponse {
-                        completed,
-                        members,
-                        summary,
-                        background_started,
-                        ..
-                    }) => {
-                        if background_started {
-                            let compatibility_note = if blocking_was_requested {
-                                "\n\n(Blocking member waits are no longer supported; this wait was started asynchronously.)"
-                            } else {
-                                "\n\n(You can keep working; this wait runs in the background.)"
-                            };
-                            return Ok(ToolOutput::new(format!(
-                                "{}{}",
-                                summary, compatibility_note
-                            )));
-                        }
-                        let reports = fetch_awaited_member_reports(&ctx, &members).await;
-                        Ok(format_awaited_members_with_reports(
-                            completed, &summary, &members, &reports,
-                        ))
-                    }
-                    Ok(response) => {
-                        ensure_success(&response)?;
-                        Ok(ToolOutput::new("Await completed."))
-                    }
-                    Err(e) => Err(anyhow::anyhow!("Failed to await members: {}", e)),
-                }
-            }
-
             _ => Err(anyhow::anyhow!(
                 "Unknown action '{}'. Valid actions: {}. \
                  To read messages addressed to you, use action='read'.",

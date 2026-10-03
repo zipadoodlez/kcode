@@ -107,7 +107,7 @@ async fn refreshed_session_control_handle_does_not_wait_for_busy_agent_lock() {
 #[tokio::test]
 async fn busy_session_background_tool_signal_fires_via_registry_fallback() {
     // Regression: pressing Alt+B/Ctrl+B while a turn owns the agent mutex (e.g.
-    // running `await_members`) used to silently no-op because the lock-free
+    // running a long tool) used to silently no-op because the lock-free
     // `cancel_only` control handle dropped the background-tool signal
     // (BACKGROUND_TOOL_SIGNAL_FIRE result=no_signal_handle). Building a full
     // SessionControlHandle now registers the signal in a process-global registry
@@ -1009,7 +1009,6 @@ async fn client_initiated_turn_fans_out_stream_and_terminal_events_to_live_attac
             task_label: None,
             friendly_name: None,
             report_back_to_session_id: None,
-            latest_completion_report: None,
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: false,
@@ -1511,7 +1510,6 @@ async fn lightweight_comm_request_skips_full_session_initialization() {
         mcp_pool,
         shutdown_signals,
         soft_interrupt_queues,
-        AwaitMembersRuntime::default(),
         SwarmMutationRuntime::default(),
     ));
 

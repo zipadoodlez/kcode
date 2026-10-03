@@ -1,13 +1,8 @@
 use super::{
-    ACTIONS, CommunicateInput, CommunicateTool, canonical_swarm_action,
-    default_await_target_statuses, format_awaited_members, format_awaited_members_with_reports, format_swarm_model_list,
-    latest_assistant_report,
+    ACTIONS, CommunicateInput, CommunicateTool, canonical_swarm_action, format_swarm_model_list,
 };
 use crate::message::{Message, StreamEvent, ToolDefinition};
-use crate::protocol::SwarmLifecycleStatus;
-use crate::protocol::{
-    AwaitedMemberStatus, HistoryMessage, NotificationType, Request, ServerEvent,
-};
+use crate::protocol::{NotificationType, Request, ServerEvent};
 use crate::provider::{EventStream, Provider};
 use crate::server::Server;
 use crate::tool::{Tool, ToolContext, ToolExecutionMode};
@@ -16,7 +11,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 use futures::StreamExt;
 use serde_json::json;
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -70,65 +64,7 @@ fn communicate_input_aliases_to_session_and_target_session() {
     assert_eq!(from_to.to_session.as_deref(), Some("worker-2"));
     assert_eq!(from_to.target_session, None);
 }
-#[test]
-fn latest_assistant_report_uses_last_non_empty_assistant_message() {
-    let messages = vec![
-        HistoryMessage {
-            response_stats: None,
-            role: "assistant".to_string(),
-            content: " earlier ".to_string(),
-            tool_calls: None,
-            tool_data: None,
-        },
-        HistoryMessage {
-            response_stats: None,
-            role: "user".to_string(),
-            content: "ignored".to_string(),
-            tool_calls: None,
-            tool_data: None,
-        },
-        HistoryMessage {
-            response_stats: None,
-            role: "assistant".to_string(),
-            content: " final report ".to_string(),
-            tool_calls: None,
-            tool_data: None,
-        },
-    ];
 
-    assert_eq!(
-        latest_assistant_report(&messages).as_deref(),
-        Some("final report")
-    );
-}
-
-#[test]
-fn format_awaited_members_includes_completion_reports() {
-    let members = vec![AwaitedMemberStatus {
-        session_id: "session_worker".to_string(),
-        friendly_name: Some("worker".to_string()),
-        status: SwarmLifecycleStatus::Ready,
-        done: true,
-        completion_report: Some("Structured report wins.".to_string()),
-    }];
-    let reports = HashMap::from([(
-        "session_worker".to_string(),
-        "Outcome: finished. Validation: tests passed.".to_string(),
-    )]);
-
-    let output = format_awaited_members_with_reports(
-        true,
-        "All 1 members are done: worker",
-        &members,
-        &reports,
-    )
-    .output;
-
-    assert!(output.contains("Completion reports:"));
-    assert!(output.contains("--- worker (ready) ---"));
-    assert!(output.contains("Structured report wins."));
-    assert!(!output.contains("Outcome: finished"));
-}
 #[test]
 fn schema_still_requires_action() {
     let schema = CommunicateTool::new().parameters_schema();
@@ -408,20 +344,9 @@ fn schema_advertises_supported_swarm_fields() {
     );
     assert!(props.contains_key("prompt"));
     assert!(props.contains_key("working_dir"));
-    assert!(props.contains_key("session_ids"));
-    assert!(props.contains_key("mode"));
-    assert_eq!(
-        props["mode"]["enum"],
-        json!(["all", "any"]),
-        "mode must advertise the await_members values"
-    );
-    assert!(props.contains_key("target_status"));
-    assert!(props.contains_key("timeout_minutes"));
     assert!(props.contains_key("wake"));
     assert!(props.contains_key("delivery"));
     assert!(props.contains_key("initial_message"));
-    assert!(props.contains_key("force"));
-    assert!(props.contains_key("notify"));
     assert_eq!(
         props["delivery"]["enum"],
         json!(["notify", "interrupt", "wake"])
@@ -639,53 +564,6 @@ fn test_ctx(session_id: &str, working_dir: &Path) -> ToolContext {
         graceful_shutdown_signal: None,
         execution_mode: ToolExecutionMode::Direct,
     }
-}
-
-/// Wait until `target_session` reports `expected_status` on the event stream.
-///
-/// A member's status is what the client is told (`SwarmStatus`). The read this
-/// used to poll (`comm_list`) went with the swarm tool's read views, so the fixture
-/// observes what a client observes.
-async fn wait_for_member_status(
-    client: &mut RawClient,
-    target_session: &str,
-    expected_status: &str,
-) -> Result<()> {
-    client
-        .read_until(Duration::from_secs(5), |event| {
-            matches!(
-                event,
-                ServerEvent::SwarmStatus { members }
-                    if members
-                        .iter()
-                        .any(|member| member.session_id == target_session
-                            && member.status.as_str() == expected_status)
-            )
-        })
-        .await?;
-    Ok(())
-}
-
-/// Wait until `target_session` appears in a status event at all.
-async fn wait_for_member_presence(client: &mut RawClient, target_session: &str) -> Result<()> {
-    client
-        .read_until(Duration::from_secs(5), |event| {
-            matches!(
-                event,
-                ServerEvent::SwarmStatus { members }
-                    if members.iter().any(|member| member.session_id == target_session)
-            )
-        })
-        .await?;
-    Ok(())
-}
-
-#[test]
-fn default_await_members_targets_include_ready() {
-    assert_eq!(
-        default_await_target_statuses(),
-        vec!["ready", "completed", "stopped", "failed", "crashed"]
-    );
 }
 
 include!("communicate_tests/input_format.rs");

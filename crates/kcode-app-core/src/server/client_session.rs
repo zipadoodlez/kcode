@@ -363,7 +363,6 @@ async fn ensure_client_swarm_member(
                     task_label: None,
                     friendly_name: member_name.clone(),
                     report_back_to_session_id: None,
-                    latest_completion_report: None,
                     joined_at: now,
                     last_status_change: now,
                     is_headless: false,

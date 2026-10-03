@@ -61,8 +61,6 @@ pub(super) fn request_type_is_read_only(kind: &str) -> bool {
             | "comm_list"
             | "comm_list_channels"
             | "comm_channel_members"
-            | "comm_read_context"
-            | "comm_await_members"
     )
 }
 

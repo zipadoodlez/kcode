@@ -4,13 +4,10 @@ use super::client_comm::{
     handle_comm_share, handle_comm_subscribe_channel, handle_comm_unsubscribe_channel,
 };
 use super::client_writer::write_direct_event;
-use super::comm_await::{CommAwaitMembersContext, handle_comm_await_members};
 use super::comm_session::{handle_comm_list_models, handle_comm_spawn, handle_comm_stop};
-use super::comm_sync::handle_comm_read_context;
 use super::{
-    AwaitMembersRuntime, ChannelSubscriptions, ClientConnectionInfo, RunState,
-    SessionAgents, SessionInterruptQueues, SharedContext, SwarmEvent, SwarmMember,
-    SwarmMutationRuntime,
+    ChannelSubscriptions, ClientConnectionInfo, RunState, SessionAgents, SessionInterruptQueues,
+    SharedContext, SwarmEvent, SwarmMember, SwarmMutationRuntime,
 };
 use crate::config::SwarmSpawnMode;
 use crate::protocol::{Request, ServerEvent};
@@ -58,7 +55,6 @@ pub(super) struct LightweightControlContext<'a> {
     pub(super) swarm_event_tx: &'a broadcast::Sender<SwarmEvent>,
     pub(super) mcp_pool: &'a Arc<crate::mcp::SharedMcpPool>,
     pub(super) soft_interrupt_queues: &'a SessionInterruptQueues,
-    pub(super) await_members_runtime: &'a AwaitMembersRuntime,
     pub(super) swarm_mutation_runtime: &'a SwarmMutationRuntime,
 }
 
@@ -82,7 +78,6 @@ pub(super) async fn handle_lightweight_control_request(
         swarm_event_tx,
         mcp_pool,
         soft_interrupt_queues,
-        await_members_runtime,
         swarm_mutation_runtime,
     } = context;
     if let Request::Ping { id } = request {
@@ -310,21 +305,6 @@ pub(super) async fn handle_lightweight_control_request(
             )
             .await;
         }
-        Request::CommReadContext {
-            id,
-            session_id: req_session_id,
-            target_session,
-        } => {
-            handle_comm_read_context(
-                id,
-                req_session_id,
-                target_session,
-                sessions,
-                swarm_members,
-                &client_event_tx,
-            )
-            .await;
-        }
         Request::CommSubscribeChannel {
             id,
             session_id: req_session_id,
@@ -360,36 +340,6 @@ pub(super) async fn handle_lightweight_control_request(
                 event_history,
                 event_counter,
                 swarm_event_tx,
-            )
-            .await;
-        }
-        Request::CommAwaitMembers {
-            id,
-            session_id: req_session_id,
-            target_status,
-            session_ids: requested_ids,
-            mode,
-            timeout_secs,
-            background,
-            notify,
-            wake,
-        } => {
-            handle_comm_await_members(
-                id,
-                req_session_id,
-                target_status,
-                requested_ids,
-                mode,
-                timeout_secs,
-                background,
-                notify,
-                wake,
-                CommAwaitMembersContext {
-                    client_event_tx: &client_event_tx,
-                    swarm_members,
-                    swarm_event_tx,
-                    await_members_runtime,
-                },
             )
             .await;
         }

@@ -497,7 +497,6 @@ pub enum Request {
         session_id: String,
         channel: String,
     },
-
 }
 
 /// Server event sent to client

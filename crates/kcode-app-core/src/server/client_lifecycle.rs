@@ -23,10 +23,8 @@ use super::client_state::{
     handle_get_compacted_history, handle_get_history, handle_get_model_catalog, handle_get_state,
 };
 use super::client_writer::write_direct_event;
-use super::comm_await::{CommAwaitMembersContext, handle_comm_await_members};
 use super::comm_control::{handle_client_debug_command, handle_client_debug_response};
 use super::comm_session::{handle_comm_spawn, handle_comm_stop};
-use super::comm_sync::handle_comm_read_context;
 use super::live_turn::RunGrant;
 use super::provider_control::{
     handle_cycle_model, handle_notify_auth_changed, handle_refresh_models,
@@ -36,9 +34,9 @@ use super::provider_control::{
     try_available_models_updated_event,
 };
 use super::{
-    AwaitMembersRuntime, ChannelSubscriptions, ClientConnectionInfo, ClientDebugState,
-    FileTouchService, RunState, SessionAgents, SessionControlHandle, SessionInterruptQueues,
-    SharedContext, SwarmEvent, SwarmMember, SwarmMutationRuntime, register_session_interrupt_queue,
+    ChannelSubscriptions, ClientConnectionInfo, ClientDebugState, FileTouchService, RunState,
+    SessionAgents, SessionControlHandle, SessionInterruptQueues, SharedContext, SwarmEvent,
+    SwarmMember, SwarmMutationRuntime, register_session_interrupt_queue,
     send_swarm_plan_to_session, truncate_detail, update_member_status,
 };
 use crate::agent::Agent;
@@ -444,7 +442,6 @@ pub(super) async fn handle_client(
     mcp_pool: Arc<crate::mcp::SharedMcpPool>,
     shutdown_signals: Arc<RwLock<HashMap<String, InterruptSignal>>>,
     soft_interrupt_queues: SessionInterruptQueues,
-    await_members_runtime: AwaitMembersRuntime,
     swarm_mutation_runtime: SwarmMutationRuntime,
 ) -> Result<()> {
     let (reader, writer) = stream.into_split();
@@ -493,7 +490,6 @@ pub(super) async fn handle_client(
                             swarm_event_tx: &swarm_event_tx,
                             mcp_pool: &mcp_pool,
                             soft_interrupt_queues: &soft_interrupt_queues,
-                            await_members_runtime: &await_members_runtime,
                             swarm_mutation_runtime: &swarm_mutation_runtime,
                         },
                     )
@@ -2360,22 +2356,6 @@ pub(super) async fn handle_client(
                 .await;
             }
 
-            Request::CommReadContext {
-                id,
-                session_id: req_session_id,
-                target_session,
-            } => {
-                handle_comm_read_context(
-                    id,
-                    req_session_id,
-                    target_session,
-                    &sessions,
-                    &swarm_members,
-                    &client_event_tx,
-                )
-                .await;
-            }
-
             Request::CommSubscribeChannel {
                 id,
                 session_id: req_session_id,
@@ -2412,37 +2392,6 @@ pub(super) async fn handle_client(
                     &event_history,
                     &event_counter,
                     &swarm_event_tx,
-                )
-                .await;
-            }
-
-            Request::CommAwaitMembers {
-                id,
-                session_id: req_session_id,
-                target_status,
-                session_ids: requested_ids,
-                mode,
-                timeout_secs,
-                background,
-                notify,
-                wake,
-            } => {
-                handle_comm_await_members(
-                    id,
-                    req_session_id,
-                    target_status,
-                    requested_ids,
-                    mode,
-                    timeout_secs,
-                    background,
-                    notify,
-                    wake,
-                    CommAwaitMembersContext {
-                        client_event_tx: &client_event_tx,
-                        swarm_members: &swarm_members,
-                        swarm_event_tx: &swarm_event_tx,
-                        await_members_runtime: &await_members_runtime,
-                    },
                 )
                 .await;
             }

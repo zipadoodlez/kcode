@@ -1526,7 +1526,6 @@ mod tests {
                 task_label: None,
                 friendly_name: Some(session_id.to_string()),
                 report_back_to_session_id: report_back_to.map(str::to_string),
-                latest_completion_report: None,
                 joined_at: Instant::now(),
                 last_status_change: Instant::now(),
                 is_headless,

@@ -286,28 +286,6 @@ pub struct GitStatusCompleted {
     pub result: std::result::Result<String, String>,
 }
 
-/// A backgrounded `swarm await_members` watcher reached a terminal result
-/// (members satisfied the target status, or the wait timed out).
-///
-/// Carries the already-rendered notification/wake payloads so the server's bus
-/// monitor can deliver completion through the same notify/wake path as
-/// background tasks, without re-coupling `kcode-base` to swarm internals.
-#[derive(Clone, Debug)]
-pub struct SwarmAwaitCompleted {
-    /// Session that requested the await (delivery target).
-    pub session_id: String,
-    /// Whether the await completed successfully (false = timed out).
-    pub completed: bool,
-    /// Human-readable summary line (e.g. "All 2 members are done: fox, wolf").
-    pub summary: String,
-    /// Rich, already-formatted notification body (member statuses + reports).
-    pub notification: String,
-    /// Surface a notification card to attached clients.
-    pub notify: bool,
-    /// Wake an idle requesting agent (or soft-interrupt it when busy).
-    pub wake: bool,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SidePanelUpdated {
     pub session_id: String,
@@ -401,8 +379,6 @@ pub enum BusEvent {
     BackgroundTaskProgress(BackgroundTaskProgressEvent),
     /// Background task stall watchdog fired: no output/progress for its window
     BackgroundTaskStalled(BackgroundTaskStalled),
-    /// A backgrounded `swarm await_members` watcher reached a terminal result.
-    SwarmAwaitCompleted(SwarmAwaitCompleted),
     /// Usage report fetched from providers
     UsageReport(Vec<kcode_usage_types::ProviderUsage>),
     /// Progressive usage report update while providers are still loading

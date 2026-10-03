@@ -516,7 +516,6 @@ async fn register_visible_spawned_member(
                 task_label: None,
                 friendly_name: Some(friendly_name),
                 report_back_to_session_id: report_back_to_session_id.map(str::to_string),
-                latest_completion_report: None,
                 joined_at: now,
                 last_status_change: now,
                 is_headless: false,
@@ -995,7 +994,9 @@ pub(super) async fn end_session(
     }
     let removed_name = {
         let mut members = swarm_members.write().await;
-        members.remove(session_id).and_then(|member| member.friendly_name)
+        members
+            .remove(session_id)
+            .and_then(|member| member.friendly_name)
     };
     if let Some(ref swarm_id) = removed_swarm_id {
         record_swarm_event(

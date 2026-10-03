@@ -1,5 +1,4 @@
 mod available_models_dedup;
-mod await_members_state;
 mod background_tasks;
 mod client_actions;
 mod client_api;
@@ -14,10 +13,8 @@ mod client_lightweight_control;
 mod client_session;
 mod client_state;
 mod client_writer;
-mod comm_await;
 mod comm_control;
 mod comm_session;
-mod comm_sync;
 mod debug;
 mod debug_command_exec;
 mod debug_events;
@@ -45,12 +42,11 @@ mod swarm_mutation_state;
 mod swarm_persistence;
 pub(crate) mod util;
 
-pub(super) use self::await_members_state::AwaitMembersRuntime;
 use self::background_tasks::{
     dispatch_background_task_completion, dispatch_background_task_progress,
-    dispatch_background_task_stalled, dispatch_swarm_await_completion,
-    dispatch_swarm_batch_progress, dispatch_swarm_output_tail, dispatch_swarm_runtime_status,
-    dispatch_swarm_todo_progress, dispatch_swarm_tool_activity, dispatch_ui_activity,
+    dispatch_background_task_stalled, dispatch_swarm_batch_progress, dispatch_swarm_output_tail,
+    dispatch_swarm_runtime_status, dispatch_swarm_todo_progress, dispatch_swarm_tool_activity,
+    dispatch_ui_activity,
 };
 use self::debug::{ClientConnectionInfo, ClientDebugState};
 use self::debug_jobs::DebugJob;
@@ -554,7 +550,6 @@ use self::state::{
 };
 pub use crate::plan::TaskItem;
 
-pub use self::await_members_state::pending_await_members_for_session;
 use self::reload_state::clear_reload_marker_if_stale_for_pid;
 #[cfg(test)]
 pub(crate) use self::reload_state::subscribe_reload_signal_for_tests;
@@ -676,8 +671,6 @@ pub struct Server {
     /// Soft interrupt queues by session_id (stored outside agent mutex so swarm/debug
     /// notifications can be enqueued while an agent is actively processing)
     soft_interrupt_queues: SessionInterruptQueues,
-    /// Persisted communicate await_members wait registry.
-    await_members_runtime: AwaitMembersRuntime,
     /// Persisted dedupe registry for mutating swarm coordinator operations.
     swarm_mutation_runtime: SwarmMutationRuntime,
 }
@@ -745,7 +738,6 @@ impl Server {
             mcp_pool: Arc::new(OnceCell::new()),
             shutdown_signals: Arc::new(RwLock::new(HashMap::new())),
             soft_interrupt_queues: Arc::new(RwLock::new(HashMap::new())),
-            await_members_runtime: AwaitMembersRuntime::default(),
             swarm_mutation_runtime: SwarmMutationRuntime::default(),
         }
     }
@@ -1237,23 +1229,6 @@ impl Server {
             )
             .await;
         });
-
-        // Resume any background `swarm await_members` watchers that were active
-        // before this (re)start. Their results are delivered via notify/wake, so
-        // they can pick up transparently without the agent rerunning the wait.
-        {
-            let resume_swarm_members = Arc::clone(&self.swarm_state.members);
-            let resume_swarm_event_tx = self.swarm_event_tx.clone();
-            let resume_await_runtime = self.await_members_runtime.clone();
-            tokio::spawn(async move {
-                comm_await::resume_background_awaits(
-                    &resume_swarm_members,
-                    &resume_swarm_event_tx,
-                    &resume_await_runtime,
-                )
-                .await;
-            });
-        }
 
         let stale_swarm_members = Arc::clone(&self.swarm_state.members);
         let stale_swarm_runs = Arc::clone(&self.swarm_state.runs);
@@ -2102,18 +2077,6 @@ impl Server {
                 Ok(BusEvent::BackgroundTaskStalled(task)) => {
                     dispatch_background_task_stalled(
                         &task,
-                        &sessions,
-                        &soft_interrupt_queues,
-                        &swarm_members,
-                        &event_history,
-                        &event_counter,
-                        &swarm_event_tx,
-                    )
-                    .await;
-                }
-                Ok(BusEvent::SwarmAwaitCompleted(event)) => {
-                    dispatch_swarm_await_completion(
-                        &event,
                         &sessions,
                         &soft_interrupt_queues,
                         &swarm_members,

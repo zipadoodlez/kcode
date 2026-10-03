@@ -210,38 +210,5 @@ pub fn persisted_background_tasks_note(session_id: &str) -> String {
         ));
     }
 
-    // Background awaits auto-resume on the new server and report via
-    // notify/wake, so they need no agent action. Only blocking awaits, whose
-    // socket waiter dies with the old process, must be rerun by the agent.
-    let pending_awaits: Vec<_> = crate::server::pending_await_members_for_session(session_id)
-        .into_iter()
-        .filter(|state| !state.background)
-        .collect();
-    if !pending_awaits.is_empty() {
-        let await_list = pending_awaits
-            .iter()
-            .map(|state| {
-                let watch = if state.requested_ids.is_empty() {
-                    "entire swarm".to_string()
-                } else {
-                    state.requested_ids.join(", ")
-                };
-                let remaining_secs = state.remaining_timeout().as_secs();
-                format!(
-                    "{} -> [{}], {}s remaining",
-                    watch,
-                    state.target_status.join(", "),
-                    remaining_secs
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("; ");
-
-        notes.push_str(&format!(
-            "\nPersisted blocking `swarm await_members` wait(s) are still pending: {}. If you still need those coordination points after reload, rerun the same `swarm` call with action `await_members` to resume them with the remaining timeout instead of starting over. (Background awaits resume automatically and will notify you.)",
-            await_list
-        ));
-    }
-
     notes
 }

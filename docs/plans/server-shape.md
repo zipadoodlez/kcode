@@ -20,11 +20,11 @@ subject is one checkbox below, with its design in the item.
     47; the rest 15-40. The `Comm*` arms only unpack and forward.
   - **~116 lines of teardown** (2914-3029) that already calls
     `client_disconnect_cleanup` helpers.
-  - **28 args** under `#[expect(clippy::too_many_arguments)]`, with one production
-    caller (`server/runtime.rs:261`) plus tests, so a context struct is mechanical. Six
+  - **27 args** under `#[expect(clippy::too_many_arguments)]`, with one production
+    caller (`server/runtime.rs:261`) plus tests, so a context struct is mechanical. Seven
     args are swarm state: one `SwarmState` pair (`swarm_members`/`swarm_runs` ->
     `members`, `runs`) and five loose Arcs beside it (`shared_context`, `event_history`,
-    `event_counter`, `swarm_event_tx`, `await_members_runtime`, `swarm_mutation_runtime`).
+    `event_counter`, `swarm_event_tx`, `swarm_mutation_runtime`).
     Every `Comm*` arm re-wraps them into a `SwarmState { .. }` literal: that literal is
     the swarm-state condense's duplication, and a request context is where it dies.
   - **The prologue is four unnamed state machines** sharing ~15 locals by name
