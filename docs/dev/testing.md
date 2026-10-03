@@ -60,6 +60,9 @@ piece is dropped once it has.
 - A fan-out on the loop alone: grant a turn (`/auto`), spawn two workers, hand each one a
   row, and let them close. A row write is now the only thing that starts a worker's turn,
   and no test crosses the bus monitor where that wake lives.
+- A stop puts the rows back: stop a run with a worker holding a row and read the list, where
+  that row must be held by nobody. The release resolves the list from the session that held the
+  row, which is the one thing the stop path cannot prove in a unit test.
 - A run with nothing ready stays quiet: a worker that closed its only row takes no further
   turn, and a row it left open does not restart it. A run that spins is the failure this
   half can produce, and only a live model shows it.
