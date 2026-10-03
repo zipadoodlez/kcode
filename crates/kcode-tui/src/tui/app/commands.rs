@@ -1314,10 +1314,6 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    if handle_disabled_mission_command(app, trimmed) {
-        return true;
-    }
-
     if trimmed == "/swarm" || trimmed == "/swarm status" {
         app.push_display_message(DisplayMessage::system(format!(
             "Swarm: {} member(s) in this session's subtree.",
@@ -1684,19 +1680,6 @@ fn handle_remote_release_command_local(app: &mut App) {
         app.push_display_message(DisplayMessage::system(remote_release_launch_notice(false)));
         super::commands_improve::start_synthetic_user_turn(app, prompt);
     }
-}
-
-pub(super) fn handle_disabled_mission_command(app: &mut App, trimmed: &str) -> bool {
-    if slash_command_rest(trimmed, "/mission").is_none()
-        && slash_command_rest(trimmed, "/goal").is_none()
-    {
-        return false;
-    }
-
-    app.push_display_message(DisplayMessage::system(
-        "The /mission and /goal commands are disabled in this build.".to_string(),
-    ));
-    true
 }
 
 pub(super) fn handle_test_command(app: &mut App, trimmed: &str) -> bool {

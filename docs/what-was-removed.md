@@ -234,6 +234,19 @@ no longer a thing the app knows about. It was a second work representation besid
 the row list, with its own statuses, milestones, steps and progress; the row list is
 the one representation the model keeps. Bring it back as rows if it is wanted.
 
+**The mission store goes** (A3, 2026-10-03). The mission module had no writer:
+`mission::set`, `checkpoint`, `clear`, `update_status`, `render_status` and
+`render_mission_continuation_prompt` had zero callers, `/mission` and `/goal` were
+refused as "disabled in this build", and the only live path was the TUI's per-turn
+reminder reading a file nothing in the tree writes. Deleted `mission.rs`, the
+`mission_continuation.md` template with `MISSION_CONTINUATION_TEMPLATE`, the reminder
+hook, the disabled-command shim, and the TUI's `current_turn_system_reminder` field,
+of which that hook was the only writer (every send already passed `None`). What is
+lost: a mission file hand-written or left by an older build no longer injects a
+continuation reminder, and `/mission` and `/goal` are no longer recognized, so like
+any other unknown slash text they are sent to the model as a prompt rather than
+refused with a notice. The concept itself is rule 11's permission, which stays.
+
 ## Deliberately kept from upstream
 
 - `/account` and `/accounts` - the multi-account picker for Claude and OpenAI.

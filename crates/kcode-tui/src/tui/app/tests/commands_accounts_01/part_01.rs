@@ -982,57 +982,6 @@ fn test_save_command_bookmarks_session_with_memory_enabled() {
 }
 
 #[test]
-fn test_mission_and_goal_commands_are_disabled() {
-    let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("tempdir");
-    let prev_home = std::env::var_os("KCODE_HOME");
-    crate::env::set_var("KCODE_HOME", temp.path());
-
-    let mut app = create_test_app();
-    app.composer.input = "/mission make browser control reliable".to_string();
-    app.submit_input();
-    assert!(!app.is_processing, "/mission must not start a turn");
-    assert!(
-        !app.pending_queued_dispatch,
-        "/mission must not queue dispatch"
-    );
-    assert!(
-        app.queued_messages.is_empty(),
-        "/mission must not queue prompts"
-    );
-    assert!(
-        crate::mission::load(&app.session.id)
-            .expect("load mission")
-            .is_none(),
-        "/mission must not create a mission"
-    );
-
-    app.composer.input = "/goal status".to_string();
-    app.submit_input();
-    assert!(!app.is_processing, "/goal must not start a turn");
-    assert!(
-        !app.pending_queued_dispatch,
-        "/goal must not queue dispatch"
-    );
-    assert!(
-        app.queued_messages.is_empty(),
-        "/goal must not queue prompts"
-    );
-    assert!(
-        crate::mission::load(&app.session.id)
-            .expect("load mission")
-            .is_none(),
-        "/goal must not create a mission"
-    );
-
-    if let Some(prev_home) = prev_home {
-        crate::env::set_var("KCODE_HOME", prev_home);
-    } else {
-        crate::env::remove_var("KCODE_HOME");
-    }
-}
-
-#[test]
 fn test_test_command_queues_layered_verification_prompt() {
     let mut app = create_test_app();
     app.composer.input = "/test browser control is reliable".to_string();

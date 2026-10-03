@@ -1,7 +1,7 @@
 {
   "version": 1,
   "metrics": {
-    "app_fields": 181,
+    "app_fields": 180,
     "impl_app_blocks": 52,
     "super_glob_imports": 116
   }

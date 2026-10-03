@@ -203,8 +203,8 @@ it, and closes only the rows it holds). **0.4g is whole, and 0.4 with it.** 0.4f
 build + full test pass ran with it (three pre-existing `session_flow` e2e failures,
 recorded in `plans/test-tree.md`). **0.5 has landed too**, its gate and live probe with
 it, so no row is open; **A1's audit has run too** (2026-10-03, folded as A2-A7 and the
-`plans/hygiene.md` items) and **A2 has landed** with it, so the open work is A3-A7
-with the tail the audit feeds.
+`plans/hygiene.md` items), and **A2 and A3 have landed** with it, so the open work is
+A4-A7 with the tail the audit feeds.
 
 ### 0. One way work gets done
 
@@ -354,15 +354,20 @@ sent `low`. Losses: `docs/what-was-removed.md`.
   `kcode-base` green, and `scripts/test.sh full` green bar the three `session_flow` e2e
   reds `plans/test-tree.md` records. Two `kcode-tui` tests that only used the removed
   command as their input were repointed at commands the tree still has, not dropped.
-- [ ] **A3. The mission store goes.** `mission::set`, `checkpoint`, `clear`,
-  `update_status`, `render_status` and `render_mission_continuation_prompt` have zero
-  callers, `/mission` and `/goal` are refused (`commands.rs:1798`, "disabled in this
-  build"), and the only live path is the per-turn reminder (`input.rs:69`) reading a
-  file nothing in the tree writes. Rule 11's permission replaced the concept: delete
-  `mission.rs` (185), `prompt/mission_continuation.md` (58) with
-  `MISSION_CONTINUATION_TEMPLATE`, the reminder hook and the disabled-command shim.
-  Name the loss in `docs/what-was-removed.md` only if a mission file written by an
-  older build is a real input.
+- [x] **A3. The mission store goes.** Landed 2026-10-03: deleted `mission.rs` (185)
+  and `pub mod mission`, `prompt/mission_continuation.md` (58) with
+  `MISSION_CONTINUATION_TEMPLATE`, the reminder hook (`mission_turn_reminder`) with
+  its two call sites, the disabled-command shim with its local and remote call sites,
+  and the TUI's `current_turn_system_reminder` field with its initializers and debug
+  reporting, since the hook was its only writer and no send ever read it (every
+  `begin_remote_send` passed `None`). The loss is in `docs/what-was-removed.md`:
+  a reminder from a mission file left by an older build is gone, and `/mission` and
+  `/goal` are unknown slash text now, which the tree sends to the model as a prompt.
+  Gate: `check_guardrails.sh` green with the App shape baseline tightened and recorded
+  (`app_fields` 181 -> 180), clippy `--all-targets --all-features -- -D warnings` on
+  `kcode-app-core`, `kcode-base` and `kcode-tui`, `kcode-tui` serial 1759 passed with
+  its one known red, `kcode-app-core` 948 passed, `kcode-base` green, and
+  `scripts/test.sh full` green bar the three `session_flow` e2e reds.
 - [ ] **A4. The member runtime stops carrying the rows.** `SwarmMemberRuntime.todo_items`
   (`protocol/src/lib.rs:450`) is the third copy of a session's rows, after the file and
   the run's sparse status: folded from `TodoEvent`s by `compact_todo_items` and the two

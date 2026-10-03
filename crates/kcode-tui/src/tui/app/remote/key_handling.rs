@@ -1670,10 +1670,6 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
-                if app_mod::commands::handle_disabled_mission_command(app, trimmed) {
-                    return Ok(());
-                }
-
                 if trimmed == "/swarm" || trimmed == "/swarm status" {
                     app.push_display_message(DisplayMessage::system(format!(
                         "Swarm: {} member(s) in this session's subtree.",

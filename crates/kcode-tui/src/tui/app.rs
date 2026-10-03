@@ -790,7 +790,6 @@ pub struct App {
     // Message queueing
     queued_messages: Vec<String>,
     hidden_queued_system_messages: Vec<String>,
-    current_turn_system_reminder: Option<String>,
     // Upstream provider (e.g., which provider OpenRouter routed to)
     upstream_provider: Option<String>,
     // Active stream connection type (websocket/https/etc.)

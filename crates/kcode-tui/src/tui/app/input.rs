@@ -66,13 +66,6 @@ pub(super) fn strip_reasoning_lines(content: &str) -> String {
     result.trim_end().to_string()
 }
 
-fn mission_turn_reminder(session_id: &str) -> Option<String> {
-    crate::mission::active_system_reminder(session_id)
-        .map_err(|err| crate::logging::warn(&format!("failed to load active mission: {err}")))
-        .ok()
-        .flatten()
-}
-
 pub(super) fn extract_input_shell_command(input: &str) -> Option<&str> {
     input.trim().strip_prefix('!').map(str::trim)
 }
@@ -3521,7 +3514,6 @@ impl App {
             ));
         }
         if images.is_empty() {
-            self.current_turn_system_reminder = mission_turn_reminder(&self.session.id);
             self.add_provider_message(Message::user(&input));
             self.session.add_message(
                 Role::User,
@@ -3531,7 +3523,6 @@ impl App {
                 }],
             );
         } else {
-            self.current_turn_system_reminder = mission_turn_reminder(&self.session.id);
             self.add_provider_message(Message::user_with_images(&input, images.clone()));
             let mut blocks: Vec<ContentBlock> = images
                 .into_iter()

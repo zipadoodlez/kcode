@@ -37,7 +37,6 @@ pub mod build;
 pub mod catchup;
 pub mod client_mode;
 pub mod external_auth;
-pub mod mission;
 pub mod network_retry;
 pub mod perf;
 pub mod restart_snapshot;
