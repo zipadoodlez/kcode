@@ -88,7 +88,7 @@ use crate::protocol::{NotificationType, ServerEvent, SwarmLifecycleStatus};
 use crate::session::Session;
 use anyhow::Result;
 use futures::future::try_join_all;
-use kcode_swarm_core::{completion_notification_message, normalize_completion_report};
+use kcode_swarm_core::completion_status_intro;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -1090,63 +1090,6 @@ pub(super) async fn update_member_status(
     event_counter: Option<&Arc<std::sync::atomic::AtomicU64>>,
     swarm_event_tx: Option<&broadcast::Sender<SwarmEvent>>,
 ) {
-    update_member_status_with_report(
-        session_id,
-        status,
-        detail,
-        None,
-        swarm_members,
-        event_history,
-        event_counter,
-        swarm_event_tx,
-    )
-    .await;
-}
-
-#[expect(
-    clippy::too_many_arguments,
-    reason = "member status updates need swarm membership, optional report text, and event history sinks"
-)]
-pub(super) async fn update_member_status_with_report(
-    session_id: &str,
-    status: SwarmLifecycleStatus,
-    detail: Option<String>,
-    completion_report: Option<String>,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    event_history: Option<&Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>>,
-    event_counter: Option<&Arc<std::sync::atomic::AtomicU64>>,
-    swarm_event_tx: Option<&broadcast::Sender<SwarmEvent>>,
-) {
-    update_member_status_with_report_tldr(
-        session_id,
-        status,
-        detail,
-        completion_report,
-        None,
-        swarm_members,
-        event_history,
-        event_counter,
-        swarm_event_tx,
-    )
-    .await
-}
-
-#[expect(
-    clippy::too_many_arguments,
-    reason = "member status updates need swarm membership, broadcast state, optional report text, and event history sinks"
-)]
-pub(super) async fn update_member_status_with_report_tldr(
-    session_id: &str,
-    status: SwarmLifecycleStatus,
-    detail: Option<String>,
-    completion_report: Option<String>,
-    report_tldr: Option<String>,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    event_history: Option<&Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>>,
-    event_counter: Option<&Arc<std::sync::atomic::AtomicU64>>,
-    swarm_event_tx: Option<&broadcast::Sender<SwarmEvent>>,
-) {
-    let completion_report = normalize_completion_report(completion_report);
     let detail_present = detail.is_some();
     let (
         agent_name,
@@ -1161,9 +1104,7 @@ pub(super) async fn update_member_status_with_report_tldr(
             let previous_status = member.status.clone();
             let status_changed = member.status != status;
             let detail_changed = member.detail != detail;
-            let report_changed =
-                completion_report.is_some() && member.latest_completion_report != completion_report;
-            let member_changed = status_changed || detail_changed || report_changed;
+            let member_changed = status_changed || detail_changed;
             if status_changed {
                 member.last_status_change = Instant::now();
                 if status.is_active() {
@@ -1182,9 +1123,6 @@ pub(super) async fn update_member_status_with_report_tldr(
             // stale in-progress text after the turn finishes.
             if status.is_terminal() || matches!(status, SwarmLifecycleStatus::Ready) {
                 member.output_tail = None;
-            }
-            if completion_report.is_some() {
-                member.latest_completion_report = completion_report.clone();
             }
             (
                 name,
@@ -1216,10 +1154,6 @@ pub(super) async fn update_member_status_with_report_tldr(
                 ("new_status", status.to_string()),
                 ("status_changed", status_changed.to_string()),
                 ("detail_present", detail_present.to_string()),
-                (
-                    "completion_report_present",
-                    completion_report.is_some().to_string(),
-                ),
                 (
                     "report_back_to_session_id",
                     report_back_to_session_id
@@ -1276,11 +1210,7 @@ pub(super) async fn update_member_status_with_report_tldr(
                 let name = agent_name
                     .as_deref()
                     .unwrap_or(&session_id[..8.min(session_id.len())]);
-                let msg = completion_notification_message(
-                    name,
-                    status.as_str(),
-                    completion_report.as_deref(),
-                );
+                let msg = completion_status_intro(name, status.as_str());
                 let _ = fanout_session_event(
                     swarm_members,
                     &recipient_session_id,
@@ -1290,7 +1220,7 @@ pub(super) async fn update_member_status_with_report_tldr(
                         notification_type: NotificationType::Message {
                             scope: Some("swarm".to_string()),
                             channel: None,
-                            tldr: report_tldr.clone(),
+                            tldr: None,
                         },
                         message: msg,
                     },
@@ -1506,15 +1436,12 @@ mod tests {
         member_in_status_broadcast, parse_swarm_tasks, remove_session_from_swarm,
         salvage_assignments_of_dead_member, salvage_dead_assignees, swarm_ancestors, swarm_is_root,
         swarm_is_self_or_ancestor, swarm_spawn_depth, update_member_status,
-        update_member_status_with_report,
     };
     use crate::plan::TaskItem;
     use crate::protocol::SwarmLifecycleStatus;
     use crate::protocol::{NotificationType, ServerEvent};
     use crate::server::{RunState, SwarmMember};
-    use kcode_swarm_core::{
-        append_swarm_completion_report_instructions, summarize_plan_items, truncate_detail,
-    };
+    use kcode_swarm_core::{summarize_plan_items, truncate_detail};
     use std::collections::HashMap;
     use std::sync::Arc;
     use std::time::{Duration, Instant};
@@ -1577,21 +1504,6 @@ mod tests {
         assert_eq!(tasks[0].prompt, "B");
         assert_eq!(tasks[0].subagent_type.as_deref(), Some("general"));
     }
-
-    #[test]
-    fn append_swarm_completion_report_instructions_is_idempotent() {
-        let prompt = "Implement the task.";
-        let with_instructions = append_swarm_completion_report_instructions(prompt);
-
-        assert!(with_instructions.starts_with(prompt));
-        assert!(with_instructions.contains("SWARM COMPLETION REPORT REQUIRED"));
-        assert!(with_instructions.contains("swarm tool with action=\"report\""));
-        assert_eq!(
-            append_swarm_completion_report_instructions(&with_instructions),
-            with_instructions
-        );
-    }
-
     /// A member and the receiver of its event channel.
     ///
     /// `report_back_to` is the spawn edge, and the spawn edge is the membership: a
@@ -2261,46 +2173,6 @@ mod tests {
             )
         }));
     }
-
-    #[tokio::test]
-    async fn update_member_status_includes_completion_report_in_owner_notification() {
-        let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-
-        let (coord, mut coord_rx) = swarm_member("coord", None, false);
-        let (mut worker, _worker_rx) = swarm_member("worker", Some("coord"), true);
-        worker.status = SwarmLifecycleStatus::Running;
-        {
-            let mut members = swarm_members.write().await;
-            members.insert("coord".to_string(), coord);
-            members.insert("worker".to_string(), worker);
-        }
-
-        update_member_status_with_report(
-            "worker",
-            SwarmLifecycleStatus::Ready,
-            None,
-            Some("Validated the parser and all tests passed.".to_string()),
-            &swarm_members,
-            None,
-            None,
-            None,
-        )
-        .await;
-
-        let events: Vec<_> = std::iter::from_fn(|| coord_rx.try_recv().ok()).collect();
-        assert!(events.iter().any(|event| {
-            matches!(
-                event,
-                ServerEvent::Notification {
-                    notification_type: NotificationType::Message { .. },
-                    message,
-                    ..
-                } if message.contains("Report:\nValidated the parser")
-                    && !message.contains("No final textual report")
-            )
-        }));
-    }
-
     #[tokio::test]
     async fn update_member_status_skips_noop_broadcasts() {
         let swarm_members = Arc::new(RwLock::new(HashMap::new()));

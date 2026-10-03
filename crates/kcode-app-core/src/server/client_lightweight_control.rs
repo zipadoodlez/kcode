@@ -11,11 +11,9 @@ use super::comm_sync::handle_comm_read_context;
 use super::{
     AwaitMembersRuntime, ChannelSubscriptions, ClientConnectionInfo, FileTouchService, RunState,
     SessionAgents, SessionInterruptQueues, SharedContext, SwarmEvent, SwarmMember,
-    SwarmMutationRuntime, format_structured_completion_report, truncate_detail,
-    update_member_status_with_report_tldr,
+    SwarmMutationRuntime,
 };
 use crate::config::SwarmSpawnMode;
-use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{Request, ServerEvent};
 use crate::provider::Provider;
 use anyhow::Result;
@@ -331,41 +329,6 @@ pub(super) async fn handle_lightweight_control_request(
                 swarm_mutation_runtime,
             )
             .await;
-        }
-        Request::CommReport {
-            id,
-            session_id: req_session_id,
-            status,
-            message,
-            validation,
-            follow_up,
-            tldr,
-        } => {
-            let status = SwarmLifecycleStatus::from(status.unwrap_or_else(|| "ready".to_string()));
-            let report = format_structured_completion_report(
-                &message,
-                validation.as_deref(),
-                follow_up.as_deref(),
-            );
-            let detail = Some(truncate_detail(&message, 160));
-            update_member_status_with_report_tldr(
-                &req_session_id,
-                status.clone(),
-                detail,
-                Some(report.clone()),
-                tldr,
-                swarm_members,
-                Some(event_history),
-                Some(event_counter),
-                Some(swarm_event_tx),
-            )
-            .await;
-            let _ = client_event_tx.send(ServerEvent::CommReportResponse {
-                id,
-                status: status.to_string(),
-                message: "Report recorded and delivered to the coordinator when applicable."
-                    .to_string(),
-            });
         }
         Request::CommReadContext {
             id,

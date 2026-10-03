@@ -1095,11 +1095,10 @@ async fn client_initiated_turn_fans_out_stream_and_terminal_events_to_live_attac
         }
     }
 
-    let (done_id, result, _) =
-        tokio::time::timeout(Duration::from_secs(2), processing_done_rx.recv())
-            .await
-            .expect("processing should complete promptly")
-            .expect("processing completion channel should remain open");
+    let (done_id, result) = tokio::time::timeout(Duration::from_secs(2), processing_done_rx.recv())
+        .await
+        .expect("processing should complete promptly")
+        .expect("processing completion channel should remain open");
     assert_eq!(done_id, 479);
     result.expect("turn should complete successfully");
 
@@ -1123,7 +1122,6 @@ async fn complete_turn(
     record_processing_completion(
         Some(session_id),
         Ok(()),
-        None,
         grant,
         sessions,
         &SwarmStatusRefs {
@@ -1335,7 +1333,7 @@ fn accepted_reload_recovery_continuation_marks_intent_delivered() -> anyhow::Res
             "server acceptance of the exact hidden continuation should consume the durable intent"
         );
 
-        let (done_id, result, _report) =
+        let (done_id, result) =
             tokio::time::timeout(std::time::Duration::from_secs(5), processing_done_rx.recv())
                 .await
                 .expect("processing task should finish")

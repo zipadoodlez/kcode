@@ -3,9 +3,6 @@ use std::collections::{HashMap, HashSet};
 
 pub use kcode_session_types::{SwarmLifecycleStatus, SwarmMemberRecord, SwarmRole};
 
-pub const MAX_SWARM_COMPLETION_REPORT_CHARS: usize = 4000;
-pub const SWARM_COMPLETION_REPORT_MARKER: &str = "SWARM COMPLETION REPORT REQUIRED";
-
 /// Message/report bodies longer than this require a sender-provided `tldr`
 /// so receiving UIs can render them collapsed to one line with an expand
 /// control instead of dumping the full body into the transcript.
@@ -208,111 +205,16 @@ impl ChannelIndex {
     }
 }
 
-pub fn append_swarm_completion_report_instructions(message: &str) -> String {
-    if message.contains(SWARM_COMPLETION_REPORT_MARKER) {
-        return message.to_string();
-    }
-
-    let mut out = message.trim_end().to_string();
-    if !out.is_empty() {
-        out.push_str("\n\n");
-    }
-    out.push_str("<system-reminder>\n");
-    out.push_str(SWARM_COMPLETION_REPORT_MARKER);
-    out.push_str(
-        "\nBefore finishing, call the swarm tool with action=\"report\" to submit your completion report. \
-Include a concise message, validation/tests performed, and blockers or follow-ups. \
-After the report tool succeeds, also write a brief final assistant response. \
-Do not finish with only tool output, a lifecycle status change, or no final response. \
-Do not send a separate DM for the final report unless you need interactive coordination before finishing.\n",
-    );
-    out.push_str("</system-reminder>");
-    out
-}
-
-pub fn format_structured_completion_report(
-    message: &str,
-    validation: Option<&str>,
-    follow_up: Option<&str>,
-) -> String {
-    let mut report = message.trim().to_string();
-    if let Some(validation) = validation.map(str::trim).filter(|value| !value.is_empty()) {
-        if !report.is_empty() {
-            report.push_str("\n\n");
-        }
-        report.push_str("Validation:\n");
-        report.push_str(validation);
-    }
-    if let Some(follow_up) = follow_up.map(str::trim).filter(|value| !value.is_empty()) {
-        if !report.is_empty() {
-            report.push_str("\n\n");
-        }
-        report.push_str("Follow-ups/blockers:\n");
-        report.push_str(follow_up);
-    }
-    report
-}
-
-pub fn normalize_completion_report(report: Option<String>) -> Option<String> {
-    let report = report?.trim().to_string();
-    if report.is_empty() {
-        return None;
-    }
-
-    let char_count = report.chars().count();
-    if char_count <= MAX_SWARM_COMPLETION_REPORT_CHARS {
-        return Some(report);
-    }
-
-    let suffix = "\n\n[Report truncated by kcode before delivery.]";
-    let keep_chars = MAX_SWARM_COMPLETION_REPORT_CHARS.saturating_sub(suffix.chars().count());
-    let mut truncated: String = report.chars().take(keep_chars).collect();
-    truncated.push_str(suffix);
-    Some(truncated)
-}
-
-fn completion_status_intro(name: &str, status: &str) -> String {
+/// The one line a member's status change notifies its coordinator with. The
+/// report it used to carry, and the advice it used to append, are the row's now:
+/// a closer's words are the close, and the coordinator reads them there.
+pub fn completion_status_intro(name: &str, status: &str) -> String {
     match status {
         "ready" => format!("Agent {} finished their work and is ready for more.", name),
         "failed" => format!("Agent {} finished with status failed.", name),
         "stopped" => format!("Agent {} stopped.", name),
         "crashed" => format!("Agent {} crashed while working.", name),
         _ => format!("Agent {} completed their work.", name),
-    }
-}
-
-fn completion_followup(status: &str, has_report: bool) -> &'static str {
-    match (status, has_report) {
-        ("ready", true) => {
-            "Use assign_task to give them more work, stop to remove them, or summary/read_context for full context."
-        }
-        ("ready", false) => {
-            "Use summary/read_context to inspect results, assign_task for more work, or stop to remove them."
-        }
-        ("failed", true) => {
-            "Use summary/read_context for full context, retry with guidance, or stop to remove them."
-        }
-        ("failed", false) => {
-            "Use summary/read_context to inspect results, assign_task to retry with guidance, or stop to remove them."
-        }
-        ("stopped", _) => "Use summary/read_context to inspect results or stop to remove them.",
-        ("crashed", _) => {
-            "Any swarm task assignments they held are requeued automatically where possible. \
-             Check plan_status, and spawn a replacement or use retry/assign_task if work remains."
-        }
-        (_, true) => {
-            "Use assign_task to give them new work, stop to remove them, or summary/read_context for full context."
-        }
-        (_, false) => "Use assign_task to give them new work, or stop to remove them.",
-    }
-}
-
-pub fn completion_notification_message(name: &str, status: &str, report: Option<&str>) -> String {
-    let intro = completion_status_intro(name, status);
-    let followup = completion_followup(status, report.is_some());
-    match report {
-        Some(report) => format!("{intro}\n\nReport:\n{report}\n\n{followup}"),
-        None => format!("{intro}\n\nNo final textual report was produced. {followup}"),
     }
 }
 
@@ -413,34 +315,6 @@ mod tests {
         ];
         assert_eq!(summarize_plan_items(&items, 2), "first; second (+1 more)");
     }
-
-    #[test]
-    fn append_swarm_completion_report_instructions_is_idempotent() {
-        let prompt = "Do work";
-        let with_instructions = append_swarm_completion_report_instructions(prompt);
-        assert!(with_instructions.contains(SWARM_COMPLETION_REPORT_MARKER));
-        assert_eq!(
-            append_swarm_completion_report_instructions(&with_instructions),
-            with_instructions
-        );
-    }
-
-    #[test]
-    fn completion_report_normalization_trims_and_truncates() {
-        assert_eq!(
-            normalize_completion_report(Some("  done  ".to_string())),
-            Some("done".to_string())
-        );
-        assert_eq!(normalize_completion_report(Some("   ".to_string())), None);
-        let long = "x".repeat(MAX_SWARM_COMPLETION_REPORT_CHARS + 100);
-        let normalized = normalize_completion_report(Some(long)).unwrap();
-        assert_eq!(
-            normalized.chars().count(),
-            MAX_SWARM_COMPLETION_REPORT_CHARS
-        );
-        assert!(normalized.ends_with("[Report truncated by kcode before delivery.]"));
-    }
-
     #[test]
     fn channel_index_keeps_bidirectional_maps_in_sync() {
         let mut index = ChannelIndex::default();

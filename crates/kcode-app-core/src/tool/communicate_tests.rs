@@ -423,9 +423,6 @@ fn schema_advertises_supported_swarm_fields() {
     assert!(props.contains_key("initial_message"));
     assert!(props.contains_key("force"));
     assert!(props.contains_key("notify"));
-    assert!(props.contains_key("status"));
-    assert!(props.contains_key("validation"));
-    assert!(props.contains_key("follow_up"));
     assert_eq!(
         props["delivery"]["enum"],
         json!(["notify", "interrupt", "wake"])

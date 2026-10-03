@@ -191,14 +191,6 @@ mod wire;
 pub use wire::{Request, ServerEvent};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolCallSummary {
-    pub tool_name: String,
-    pub brief_output: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp_secs: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SwarmChannelInfo {
     pub channel: String,
     pub member_count: usize,
@@ -549,7 +541,6 @@ impl Request {
             Request::CommSpawn { id, .. } => *id,
             Request::CommListModels { id, .. } => *id,
             Request::CommStop { id, .. } => *id,
-            Request::CommReport { id, .. } => *id,
             Request::CommReadContext { id, .. } => *id,
             Request::CommSubscribeChannel { id, .. } => *id,
             Request::CommUnsubscribeChannel { id, .. } => *id,
@@ -571,7 +562,6 @@ impl Request {
                 | Request::CommSpawn { .. }
                 | Request::CommListModels { .. }
                 | Request::CommStop { .. }
-                | Request::CommReport { .. }
                 | Request::CommReadContext { .. }
                 | Request::CommSubscribeChannel { .. }
                 | Request::CommUnsubscribeChannel { .. }

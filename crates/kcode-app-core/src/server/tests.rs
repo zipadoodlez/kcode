@@ -698,18 +698,15 @@ async fn wake_turn_tracks_member_status_and_emits_terminal_done() {
         "member status should be running while the wake turn streams"
     );
 
-    // After completion the member returns to ready with a completion report.
-    let (final_status, report) = timeout(Duration::from_secs(2), async {
+    // After completion the member returns to ready.
+    let final_status = timeout(Duration::from_secs(2), async {
         loop {
             {
                 let members = swarm_members.read().await;
                 if let Some(member) = members.get(&session_id)
                     && member.status == SwarmLifecycleStatus::Ready
                 {
-                    return (
-                        member.status.clone(),
-                        member.latest_completion_report.clone(),
-                    );
+                    return member.status.clone();
                 }
             }
             tokio::time::sleep(Duration::from_millis(5)).await;
@@ -718,10 +715,6 @@ async fn wake_turn_tracks_member_status_and_emits_terminal_done() {
     .await
     .expect("member should return to ready after the wake turn");
     assert_eq!(final_status, SwarmLifecycleStatus::Ready);
-    assert!(
-        report.is_some_and(|report| report.contains("Wake turn finished.")),
-        "completion report should capture the wake turn's assistant text"
-    );
 }
 
 /// One row of the fixture's work list: `(id, held by someone else, blockers, parent)`.

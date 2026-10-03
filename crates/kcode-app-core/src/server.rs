@@ -62,8 +62,7 @@ use self::swarm::{
     member_consumes_swarm_capacity, record_swarm_event, record_swarm_event_for_session,
     remove_session_from_swarm, run_swarm_message, salvage_dead_assignees,
     send_swarm_plan_to_session, set_member_task_label, swarm_is_self_or_ancestor, swarm_root,
-    swarm_rows, update_member_status, update_member_status_with_report,
-    update_member_status_with_report_tldr,
+    swarm_rows, update_member_status,
 };
 use self::swarm_channels::{
     remove_session_channel_subscriptions, subscribe_session_to_channel,
@@ -89,10 +88,7 @@ use crate::session_recovery::ReloadContext;
 use crate::transport::Listener;
 use anyhow::Result;
 use kcode_agent_runtime::{InterruptSignal, SoftInterruptSource};
-use kcode_swarm_core::{
-    append_swarm_completion_report_instructions, format_structured_completion_report,
-    truncate_detail,
-};
+use kcode_swarm_core::truncate_detail;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;

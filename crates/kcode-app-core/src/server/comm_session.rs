@@ -7,12 +7,11 @@ use super::swarm_mutation_state::{
 };
 use super::{
     ChannelSubscriptions, RunState, SessionAgents, SessionInterruptQueues, SwarmEvent,
-    SwarmEventType, SwarmMember, SwarmState, append_swarm_completion_report_instructions,
-    broadcast_swarm_plan, broadcast_swarm_status, create_headless_session, fanout_session_event,
-    persist_swarm_state_for, record_swarm_event, record_swarm_event_for_session,
-    remove_background_tool_signal, remove_session_channel_subscriptions, remove_session_from_swarm,
+    SwarmEventType, SwarmMember, SwarmState, broadcast_swarm_plan, broadcast_swarm_status,
+    create_headless_session, fanout_session_event, persist_swarm_state_for, record_swarm_event,
+    record_swarm_event_for_session, remove_background_tool_signal,
+    remove_session_channel_subscriptions, remove_session_from_swarm,
     remove_session_interrupt_queue, set_member_task_label, truncate_detail, update_member_status,
-    update_member_status_with_report,
 };
 use crate::config::SwarmSpawnMode;
 use crate::protocol::ServerEvent;
@@ -622,9 +621,7 @@ pub(super) async fn spawn_swarm_agent(
         spawn_route_api_method,
     ));
 
-    let startup_message = initial_message
-        .as_deref()
-        .map(append_swarm_completion_report_instructions);
+    let startup_message = initial_message.clone();
 
     let visible_spawn = match resolved_spawn_mode {
         // Inline workers run in-process like headless ones; the difference is
@@ -772,10 +769,6 @@ pub(super) async fn spawn_swarm_agent(
                     sid_clone.clone(),
                     Arc::clone(&swarm_members2),
                 );
-                let start_message_index = {
-                    let agent = agent_arc.lock().await;
-                    agent.message_count()
-                };
                 let result = process_message_streaming_mpsc(
                     Arc::clone(&agent_arc),
                     &initial_msg,
@@ -784,12 +777,6 @@ pub(super) async fn spawn_swarm_agent(
                     event_tx,
                 )
                 .await;
-                let completion_report = if result.is_ok() {
-                    let agent = agent_arc.lock().await;
-                    agent.latest_assistant_text_after(start_message_index)
-                } else {
-                    None
-                };
                 let (new_status, new_detail) = match result {
                     Ok(()) => (SwarmLifecycleStatus::Ready, None),
                     Err(ref error) => (
@@ -797,11 +784,10 @@ pub(super) async fn spawn_swarm_agent(
                         Some(truncate_detail(&error.to_string(), 120)),
                     ),
                 };
-                update_member_status_with_report(
+                update_member_status(
                     &sid_clone,
                     new_status,
                     new_detail,
-                    completion_report,
                     &swarm_members2,
                     Some(&event_history2),
                     Some(&event_counter2),

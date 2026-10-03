@@ -245,53 +245,6 @@ pub fn has_rendered_images(session: &Session) -> bool {
     })
 }
 
-pub fn summarize_tool_calls(
-    session: &Session,
-    limit: usize,
-) -> Vec<crate::protocol::ToolCallSummary> {
-    let mut calls: Vec<crate::protocol::ToolCallSummary> = Vec::new();
-
-    for msg in session.messages.iter().rev() {
-        if calls.len() >= limit {
-            break;
-        }
-
-        let text_summary = msg
-            .content
-            .iter()
-            .filter_map(|block| match block {
-                ContentBlock::Text { text, .. } => Some(text.as_str()),
-                ContentBlock::OpenAICompaction { .. } => Some("[OpenAI native compaction]"),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        for block in &msg.content {
-            if calls.len() >= limit {
-                break;
-            }
-
-            if let ContentBlock::ToolUse { name, input, .. } = block {
-                let fallback = input.to_string();
-                let brief = if text_summary.trim().is_empty() {
-                    crate::util::truncate_str(&fallback, 200).to_string()
-                } else {
-                    crate::util::truncate_str(&text_summary, 200).to_string()
-                };
-                calls.push(crate::protocol::ToolCallSummary {
-                    tool_name: name.clone(),
-                    brief_output: brief,
-                    timestamp_secs: msg.timestamp.map(|ts| ts.timestamp().max(0) as u64),
-                });
-            }
-        }
-    }
-
-    calls.reverse();
-    calls
-}
-
 /// Convert stored session messages into renderable messages (including tool output).
 pub fn render_messages(session: &Session) -> Vec<RenderedMessage> {
     render_messages_and_images(session).0

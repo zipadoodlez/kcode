@@ -39,10 +39,8 @@ use super::provider_control::{
 use super::{
     AwaitMembersRuntime, ChannelSubscriptions, ClientConnectionInfo, ClientDebugState,
     FileTouchService, RunState, SessionAgents, SessionControlHandle, SessionInterruptQueues,
-    SharedContext, SwarmEvent, SwarmMember, SwarmMutationRuntime,
-    format_structured_completion_report, register_session_interrupt_queue,
+    SharedContext, SwarmEvent, SwarmMember, SwarmMutationRuntime, register_session_interrupt_queue,
     send_swarm_plan_to_session, truncate_detail, update_member_status,
-    update_member_status_with_report, update_member_status_with_report_tldr,
 };
 use crate::agent::Agent;
 use crate::bus::{Bus, BusEvent};
@@ -550,7 +548,7 @@ pub(super) async fn handle_client(
     // Per-client state
     let mut client_is_processing = false;
     let (processing_done_tx, mut processing_done_rx) =
-        mpsc::unbounded_channel::<(u64, Result<()>, Option<String>)>();
+        mpsc::unbounded_channel::<(u64, Result<()>)>();
     let mut processing_task: Option<tokio::task::JoinHandle<()>> = None;
     let mut processing_message_id: Option<u64> = None;
     let mut processing_session_id: Option<String> = None;
@@ -802,7 +800,7 @@ pub(super) async fn handle_client(
                 }
             }
             done = processing_done_rx.recv() => {
-                if let Some((done_id, result, completion_report)) = done {
+                if let Some((done_id, result)) = done {
                     if Some(done_id) != processing_message_id {
                         crate::logging::warn(&format!(
                             "Done event id={} doesn't match processing_message_id={:?}, dropping",
@@ -828,7 +826,7 @@ pub(super) async fn handle_client(
 
                     let done_session = processing_session_id.take();
                     record_processing_completion(
-                        done_session.as_deref(), result, completion_report,
+                        done_session.as_deref(), result,
                         processing_grant.clone(),
                         &sessions,
                         &SwarmStatusRefs {
@@ -2382,42 +2380,6 @@ pub(super) async fn handle_client(
                 .await;
             }
 
-            Request::CommReport {
-                id,
-                session_id: req_session_id,
-                status,
-                message,
-                validation,
-                follow_up,
-                tldr,
-            } => {
-                let status = SwarmLifecycleStatus::from(status.unwrap_or_else(|| "ready".to_string()));
-                let report = format_structured_completion_report(
-                    &message,
-                    validation.as_deref(),
-                    follow_up.as_deref(),
-                );
-                let detail = Some(truncate_detail(&message, 160));
-                update_member_status_with_report_tldr(
-                    &req_session_id,
-                    status.clone(),
-                    detail,
-                    Some(report),
-                    tldr,
-                    &swarm_members,
-                    Some(&event_history),
-                    Some(&event_counter),
-                    Some(&swarm_event_tx),
-                )
-                .await;
-                let _ = client_event_tx.send(ServerEvent::CommReportResponse {
-                    id,
-                    status: status.to_string(),
-                    message: "Report recorded and delivered to the coordinator when applicable."
-                        .to_string(),
-                });
-            }
-
             Request::CommReadContext {
                 id,
                 session_id: req_session_id,
@@ -2564,12 +2526,11 @@ pub(super) async fn handle_client(
                 client_session_id
             ));
             let _ = handle.await;
-            while let Ok((done_id, result, report)) = processing_done_rx.try_recv() {
+            while let Ok((done_id, result)) = processing_done_rx.try_recv() {
                 if Some(done_id) == processing_message_id {
                     record_processing_completion(
                         processing_session_id.as_deref(),
                         result,
-                        report,
                         processing_grant.clone(),
                         &sessions,
                         &SwarmStatusRefs {
@@ -2629,7 +2590,6 @@ pub(super) async fn handle_client(
 async fn record_processing_completion(
     done_session: Option<&str>,
     result: Result<()>,
-    completion_report: Option<String>,
     grant: RunGrant,
     sessions: &SessionAgents,
     swarm: &SwarmStatusRefs<'_>,
@@ -2637,11 +2597,10 @@ async fn record_processing_completion(
     match result {
         Ok(()) => {
             if let Some(session_id) = done_session {
-                update_member_status_with_report(
+                update_member_status(
                     session_id,
                     SwarmLifecycleStatus::Ready,
                     None,
-                    completion_report,
                     swarm.members,
                     Some(swarm.event_history),
                     Some(swarm.event_counter),
@@ -2742,7 +2701,7 @@ async fn start_processing_message(
     state: &mut ProcessingState<'_>,
     agent: &Arc<Mutex<Agent>>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
-    processing_done_tx: &mpsc::UnboundedSender<(u64, Result<()>, Option<String>)>,
+    processing_done_tx: &mpsc::UnboundedSender<(u64, Result<()>)>,
     client_terminal_env: Vec<(String, String)>,
     swarm: &SwarmStatusRefs<'_>,
 ) {
@@ -2813,12 +2772,7 @@ async fn start_processing_message(
     )
     .await;
 
-    let start_message_index = {
-        let agent_guard = agent.lock().await;
-        agent_guard.message_count()
-    };
     let agent = Arc::clone(agent);
-    let report_agent = Arc::clone(&agent);
     let tx = super::state::session_event_fanout_sender_with_fallback(
         client_session_id.to_string(),
         Arc::clone(swarm.members),
@@ -2861,12 +2815,6 @@ async fn start_processing_message(
                 id, error
             )),
         }
-        let completion_report = if result.is_ok() {
-            let agent = report_agent.lock().await;
-            agent.latest_assistant_text_after(start_message_index)
-        } else {
-            None
-        };
         // Keep the terminal event on the same ordered fanout channel as the
         // stream. Sending it later from the owning client's event loop could
         // race ahead of the final MessageEnd for newly attached clients.
@@ -2881,7 +2829,7 @@ async fn start_processing_message(
             },
         };
         let _ = tx.send(terminal_event);
-        let _ = done_tx.send((id, result, completion_report));
+        let _ = done_tx.send((id, result));
     }));
 }
 

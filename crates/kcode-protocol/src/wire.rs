@@ -488,28 +488,6 @@ pub enum Request {
         force: Option<bool>,
     },
 
-    /// Submit a structured swarm completion/progress report for this session
-    #[serde(rename = "comm_report")]
-    CommReport {
-        id: u64,
-        session_id: String,
-        /// Completion status to record for this member. Defaults to ready.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        status: Option<String>,
-        /// Main report body.
-        message: String,
-        /// Optional validation/testing summary.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        validation: Option<String>,
-        /// Optional blockers/follow-up summary.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        follow_up: Option<String>,
-        /// Reporter-provided one-line summary. Receiving UIs render long
-        /// report bodies collapsed to this with an expand control.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        tldr: Option<String>,
-    },
-
     /// Read another agent's full conversation context
     #[serde(rename = "comm_read_context")]
     CommReadContext {
@@ -1153,14 +1131,6 @@ pub enum ServerEvent {
     CommChannels {
         id: u64,
         channels: Vec<SwarmChannelInfo>,
-    },
-
-    /// Response to comm_report request
-    #[serde(rename = "comm_report_response")]
-    CommReportResponse {
-        id: u64,
-        status: String,
-        message: String,
     },
 
     /// Response to comm_read_context request

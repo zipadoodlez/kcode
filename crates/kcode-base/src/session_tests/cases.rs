@@ -1319,33 +1319,6 @@ fn test_redacted_for_export_redacts_replay_events() -> Result<()> {
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
 }
-
-#[test]
-fn test_summarize_tool_calls_includes_tool_only_assistant_messages() {
-    let mut session = Session::create_with_id(
-        "session_tool_summary_test".to_string(),
-        None,
-        Some("tool summary test".to_string()),
-    );
-
-    session.add_message(
-        Role::Assistant,
-        vec![ContentBlock::ToolUse {
-            id: "tool_1".to_string(),
-            name: "bash".to_string(),
-            input: serde_json::json!({
-                "command": "pwd"
-            }),
-            thought_signature: None,
-        }],
-    );
-
-    let summaries = summarize_tool_calls(&session, 10);
-    assert_eq!(summaries.len(), 1);
-    assert_eq!(summaries[0].tool_name, "bash");
-    assert!(summaries[0].brief_output.contains("pwd"));
-}
-
 #[test]
 fn test_render_messages_honors_system_display_role_override() {
     let mut session = Session::create_with_id(

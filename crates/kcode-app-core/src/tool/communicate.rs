@@ -33,7 +33,6 @@ const ACTIONS: &[&str] = &[
     "spawn",
     "stop",
     "cleanup",
-    "report",
     "subscribe_channel",
     "unsubscribe_channel",
     "await_members",
@@ -354,12 +353,6 @@ struct CommunicateInput {
     #[serde(default)]
     force: Option<bool>,
     #[serde(default)]
-    status: Option<String>,
-    #[serde(default)]
-    validation: Option<String>,
-    #[serde(default)]
-    follow_up: Option<String>,
-    #[serde(default)]
     spawn_mode: Option<String>,
     /// One-line summary shown collapsed in the recipient's UI for long
     /// message/report bodies. Required when the body exceeds the collapse
@@ -457,19 +450,7 @@ impl Tool for CommunicateTool {
                 },
                 "tldr": {
                     "type": "string",
-                    "description": "One-line summary under ~120 chars. Required for message/report bodies longer than 240 chars."
-                },
-                "status": {
-                    "type": "string",
-                    "description": "For report: usually ready, blocked, failed, or completed. Defaults to ready."
-                },
-                "validation": {
-                    "type": "string",
-                    "description": "For action=report: tests or validation performed."
-                },
-                "follow_up": {
-                    "type": "string",
-                    "description": "For action=report: blockers or follow-up work."
+                    "description": "One-line summary under ~120 chars. Required for message bodies longer than 240 chars."
                 },
                 "to_session": {
                     "type": "string",
@@ -938,35 +919,6 @@ impl Tool for CommunicateTool {
             "cleanup" => cleanup_swarm_workers(&ctx, &params)
                 .await
                 .map(ToolOutput::new),
-
-            "report" => {
-                let message = params
-                    .message
-                    .ok_or_else(|| anyhow::anyhow!("'message' is required for report action"))?;
-                let tldr = validate_swarm_tldr(params.tldr.as_deref(), &message, "this report")
-                    .map_err(|e| anyhow::anyhow!(e))?;
-                let request = Request::CommReport {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                    status: params.status,
-                    message,
-                    validation: params.validation,
-                    follow_up: params.follow_up,
-                    tldr,
-                };
-                match send_request(request).await {
-                    Ok(ServerEvent::CommReportResponse {
-                        status, message, ..
-                    }) => Ok(ToolOutput::new(format!(
-                        "Report recorded with status `{status}`. {message}"
-                    ))),
-                    Ok(response) => {
-                        ensure_success(&response)?;
-                        Ok(ToolOutput::new("Report recorded."))
-                    }
-                    Err(e) => Err(anyhow::anyhow!("Failed to record report: {}", e)),
-                }
-            }
 
             "subscribe_channel" => {
                 let channel = params.channel.ok_or_else(|| {
