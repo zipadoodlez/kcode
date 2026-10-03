@@ -1872,7 +1872,7 @@ impl Tool for CommunicateTool {
                     "type": "string",
                     "enum": ["share", "share_append", "read", "message", "broadcast", "dm", "channel", "list", "list_channels", "channel_members",
                              "spawn", "stop",
-                             "status", "report", "plan_status", "summary", "read_context", "resync_plan", "assign_task", "assign_next", "fill_slots", "run_plan", "cleanup",
+                             "status", "report", "plan_status", "summary", "read_context", "resync_plan", "assign_task", "assign_next", "fill_slots", "cleanup",
                              "task_graph", "expand_node", "complete_node",
                              "retry", "wake",
                              "subscribe_channel", "unsubscribe_channel", "await_members", "list_models"],
@@ -1978,10 +1978,6 @@ impl Tool for CommunicateTool {
                     "type": "integer",
                     "minimum": 1,
                     "description": "Optional timeout for await_members."
-                },
-                "background": {
-                    "type": "boolean",
-                    "description": "For run_plan: detach as a background task (default true); false blocks until the plan resolves."
                 },
                 "notify": {
                     "type": "boolean",
@@ -2819,18 +2815,6 @@ impl Tool for CommunicateTool {
                         output.push_str(&format!("\n{}", format_plan_followup(&summary)));
                     }
                     Ok(ToolOutput::new(output))
-                }
-            }
-
-            "run_plan" => {
-                // Background-by-default: the plan driver runs as a managed
-                // background task (progress card, bg tool, notify/wake) so the
-                // coordinating agent stays responsive. Pass background=false
-                // to block inline until the plan reaches a terminal state.
-                if params.background.unwrap_or(true) {
-                    run_swarm_plan_in_background(&ctx, params.clone()).await
-                } else {
-                    run_swarm_plan_to_terminal(&ctx, &params, &RunPlanReporter::inline()).await
                 }
             }
 

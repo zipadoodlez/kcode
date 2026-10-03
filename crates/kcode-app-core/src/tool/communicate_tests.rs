@@ -999,7 +999,6 @@ fn spawning_action_inputs_preserve_requested_model() {
         "assign_task",
         "assign_next",
         "fill_slots",
-        "run_plan",
     ] {
         for model in [
             "z-ai/glm-5.2:free",
@@ -1026,7 +1025,6 @@ fn spawning_action_inputs_allow_omitted_or_null_model() {
         "assign_task",
         "assign_next",
         "fill_slots",
-        "run_plan",
     ] {
         let without_model: CommunicateInput =
             serde_json::from_value(json!({"action": action, "label": "reviewer"})).unwrap();
@@ -1123,14 +1121,6 @@ fn schema_advertises_supported_swarm_fields() {
     assert!(props.contains_key("initial_message"));
     assert!(props.contains_key("force"));
     assert!(props.contains_key("retain_agents"));
-    assert!(props.contains_key("background"));
-    assert!(
-        props["background"]["description"]
-            .as_str()
-            .expect("background description")
-            .contains("run_plan"),
-        "background flag should document run_plan support"
-    );
     assert!(props.contains_key("notify"));
     assert!(props.contains_key("status"));
     assert!(props.contains_key("validation"));
@@ -1168,12 +1158,6 @@ fn schema_advertises_supported_swarm_fields() {
             .as_array()
             .expect("action enum")
             .contains(&json!("fill_slots"))
-    );
-    assert!(
-        schema["properties"]["action"]["enum"]
-            .as_array()
-            .expect("action enum")
-            .contains(&json!("run_plan"))
     );
     assert!(
         schema["properties"]["action"]["enum"]

@@ -87,18 +87,6 @@ fn communicate_input_accepts_prefer_spawn() {
 }
 
 #[test]
-fn communicate_input_accepts_cleanup_lifecycle_flags() {
-    let parsed: CommunicateInput = serde_json::from_value(serde_json::json!({
-        "action": "run_plan",
-        "force": true,
-        "retain_agents": true
-    }))
-    .expect("lifecycle flags should deserialize");
-    assert_eq!(parsed.force, Some(true));
-    assert_eq!(parsed.retain_agents, Some(true));
-}
-
-#[test]
 fn cleanup_candidates_default_to_owned_terminal_workers() {
     let members = vec![
         AgentInfo {
