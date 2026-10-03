@@ -203,10 +203,11 @@ keeps one sparse status per row, reads everything else from the list, derives wh
 it, and closes only the rows it holds). **0.4g is whole, and 0.4 with it.** 0.4f's one
 build + full test pass ran with it (three pre-existing `session_flow` e2e failures,
 recorded in `plans/test-tree.md`). **0.5 has landed too**, its gate and live probe with
-it, so no row is open; **A1's audit has run too** (2026-10-03, folded as A2-A8 and the
-`plans/hygiene.md` items, A8 added by the C5 read), and **A2 and A3 have landed** with
-it; the open work is A4, A5, A7 and A9, C5's scope is decided (the rows this session
-may work), and the tail is what the audit feeds.
+it, so no row is open; **A1's audit has run** (2026-10-03, folded as A2-A8 and the
+`plans/hygiene.md` items), and **A2, A3, A6, A8 and A9 have landed** with it. Of the
+audit only A4 and A5 remain, and both are `plans/one-flow.md` stages (S3 and S2), which
+is where the row/list tail executes; a cut named there is not repeated here as open.
+What this plan still owns as open work is B2, D1, D2 and the G close-out.
 
 ### 0. One way work gets done
 
@@ -370,7 +371,8 @@ sent `low`. Losses: `docs/what-was-removed.md`.
   `kcode-app-core`, `kcode-base` and `kcode-tui`, `kcode-tui` serial 1759 passed with
   its one known red, `kcode-app-core` 948 passed, `kcode-base` green, and
   `scripts/test.sh full` green bar the three `session_flow` e2e reds.
-- [ ] **A4. The member runtime stops carrying the rows.** `SwarmMemberRuntime.todo_items`
+- **A4 (executed as `plans/one-flow.md` S3). The member runtime stops carrying the rows.**
+  `SwarmMemberRuntime.todo_items`
   (`protocol/src/lib.rs:450`) is the third copy of a session's rows, after the file and
   the run's sparse status: folded from `TodoEvent`s by `compact_todo_items` and the two
   `update_active_todo_*` helpers (`server/background_tasks.rs:362-505`), then mapped
@@ -384,7 +386,8 @@ sent `low`. Losses: `docs/what-was-removed.md`.
   with the cache. And `member_runtime_extras` reads the whole list per member per
   `swarm list` for a `completed/total` counter (`comm_sync.rs:133-140`), which the
   forwarded bus event already carries.
-- [ ] **A5. One read of the list and one render, not four.** The inline card, the
+- **A5 (executed as `plans/one-flow.md` S2). One read of the list and one render, not four.**
+  The inline card, the
   side-panel page (its own comment says "legacy"), the pinned band and the info
   widget's pips each render the list, and the client keeps four caches over one file:
   three hashes in `todos_view.rs`, a 1s TTL cache with a refresh thread
@@ -399,10 +402,11 @@ sent `low`. Losses: `docs/what-was-removed.md`.
   reworded so a non-test build does not point at a test-only module). Gate: clippy
   `--all-targets --all-features -- -D warnings` green on `kcode-plan`, `kcode-base` and
   `kcode-tui`; `kcode-plan` 34 passed.
-- [ ] **A7. One artifact shape.** `tool/todo.rs:144-168` hand-builds the close artifact
-  from three fields while `kcode-plan/artifact.rs` owns the seven-field
-  `HandoffArtifact`; a field added on one side drifts silently. The tool builds a
-  `HandoffArtifact` and serializes it.
+- **A7. One artifact shape: subsumed by `plans/one-flow.md` S4, not done.** The cut this
+  item named (the tool building the seven-field `HandoffArtifact` to stop it drifting from
+  the hand-built three) would harden a type S4 deletes, so the drift closes by deletion
+  there instead: the record is `{id, result}`. Kept as the record of why the item was
+  dropped rather than worked.
 - [x] **A8. The client stops writing the rows into session files.** Landed
   2026-10-03, writers only: deleted `record_swarm_status_event` and
   `record_swarm_plan_event`, the TUI's `persist_swarm_status_snapshot` and
@@ -437,7 +441,8 @@ Last of the file work, whenever we want it.
 - [ ] **B2.** This repo's own list migrates: the open checkboxes in `plans/*.md`
   become the first content of `tasks.jsonl`. Its landed records have already moved, as
   they land, to `docs/what-was-removed.md`; what is left to migrate is the open items.
-- [ ] **B3.** Drop `group`, `status` and `priority` from the type. The gate has
+- **B3 (executed as `plans/one-flow.md` S5).** Drop `group`, `status` and `priority` from
+  the type. The gate has
   already landed: `parent` is what `group` was grouping by, the close action is what
   makes a completed row unrepresentable rather than stored, and 0.3's "position is
   priority" is what `priority` becomes. Every `add` still writes `status` and
@@ -451,12 +456,14 @@ Last of the file work, whenever we want it.
 
 ### C. The list reaches the client
 
-- [ ] **C4.** Move `subsystem` and `file_scope` off the shared type onto the
+- **C4 (executed as `plans/one-flow.md` S5).** Move `subsystem` and `file_scope` off the
+  shared type onto the
   worker's own record. They are the scheduler's inputs (assignment affinity matches
   them against a worker's metadata), not list fields, and neither destination the
   old text named can hold them: 0.4 deleted the `node_meta` side-map and claimed
   `SwarmPlanItemSpec`, which survived (A6).
-- [ ] **C5.** The client renders the list from server events instead of reading
+- **C5 (executed as `plans/one-flow.md` S2).** The client renders the list from server
+  events instead of reading (A8, the writing half, was added by this item's read).
   the file itself. Today it resolves the repo from its own working directory,
   which is the same thing for a local session and the wrong repo for a remote
   attach. Two facts make this plumbing rather than new machinery: a run's rows
@@ -513,7 +520,8 @@ row-model work that path carries.
 
 ### F. The swarm tool surface
 
-- [ ] **F1. The tool keeps the model's verbs; the app takes the rest.** After 0.4 a node
+- **F1 (executed as `plans/one-flow.md` S1). The tool keeps the model's verbs; the app
+  takes the rest.** After 0.4 a node
   is a row, so the model's verbs are row verbs, which the `todo` tool already serves.
   The orchestration actions (`spawn`, `assign_task`/`assign_next`/`fill_slots`,
   `run_plan`, `cleanup`, `await_members`) become the run's own behavior, not calls. The

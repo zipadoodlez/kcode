@@ -78,7 +78,7 @@ spawns two workers, hands them rows, the workers close, the root integrates and 
 the anchor. By hand, on the user's own socket, with the run's words in the transcript.
 If it fails, stop and report; do not patch around it.
 
-### S2. One view
+### S2. One view (row-model C5, A5)
 
 The server sends each session the rows it may work (C5's answer, local sessions
 included). The client renders one surface: the rows, with the holder named per row and
@@ -94,7 +94,7 @@ member types, −1 item cache. lines ~−1,300. risk: med.
 Gate: the four old surfaces gone; a live TUI check on a run with two workers, showing
 progress, holder and status; the client suite.
 
-### S3. One status
+### S3. One status (row-model A4)
 
 Liveness derives from the holder's own session status plus the rule that a holder who
 can never return releases its rows, through one `assignee_is_dead` used by both the
@@ -106,7 +106,7 @@ third event log. The gallery's tool-intent display moves onto the holder's statu
 surface: −3 protocol types, −4 shapes, −1 event log, −2 liveness predicates.
 lines ~−1,000. risk: med.
 
-### S4. The record is the words
+### S4. The record is the words (row-model A7)
 
 The artifact form goes; a record is `{id, result}`. The discipline lives in the close
 instruction: state what proves it, what it showed, and what you did not check. Kinds
