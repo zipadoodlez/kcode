@@ -15,7 +15,7 @@
 
 use super::client_lifecycle::process_locked_message_streaming_mpsc;
 use super::{
-    SessionAgents, SwarmEvent, SwarmMember, session_event_fanout_sender, truncate_detail,
+    RunState, SessionAgents, SwarmEvent, SwarmMember, session_event_fanout_sender, truncate_detail,
     update_member_status, update_member_status_with_report,
 };
 use crate::agent::Agent;
@@ -255,15 +255,24 @@ fn next_held_ready_row<'a>(
     let ready = |row: &TaskItem| {
         row.assigned_to.as_deref() == Some(session_id)
             && !worked.contains(&row.id)
-            && row.blocked_by.is_empty()
-            && !rows
-                .iter()
-                .any(|child| child.parent.as_deref() == Some(&row.id))
+            && row_is_ready(rows, row)
             && scope.is_none_or(|anchor| descends_from(rows, &row.id, anchor))
     };
     rows.iter()
         .find(|row| ready(row) && Some(row.id.as_str()) != scope)
         .or_else(|| rows.iter().find(|row| ready(row)))
+}
+
+/// Whether this row is ready: nothing blocks it, and no open row belongs to it.
+///
+/// Readiness is a join against the file, never a field. An empty `blocked_by` means
+/// every id it named was closed, because a close removes its id from every dependent;
+/// a row other rows belong to waits for them, because its result is theirs (rule 3).
+fn row_is_ready(rows: &[TaskItem], row: &TaskItem) -> bool {
+    row.blocked_by.is_empty()
+        && !rows
+            .iter()
+            .any(|child| child.parent.as_deref() == Some(row.id.as_str()))
 }
 
 /// Whether `id` is `anchor` or descends from it, by walking `parent`. A parent
@@ -345,6 +354,57 @@ pub(super) async fn continue_with_next_row(
     };
     let seed = TurnSeed::row(row);
     run_live_turn_if_idle(session_id, seed, grant, sessions, swarm).await
+}
+
+/// Wake the holder of every row this write made ready.
+///
+/// The write is the only thing that starts work. The verbs that used to poke a worker
+/// are gone, so a row that becomes ready wakes the session that owes it, and the turn
+/// that follows carries the row's own words (`next_row_turn`). Only a headless member
+/// is woken: a session with a human owns its own turns (rule 11). A row the run's own
+/// map already carries a status for is work it took, so a row left open does not
+/// restart the run that left it.
+///
+/// A ready row *nobody* holds wakes nobody: the pick takes only what the session
+/// holds, so the model's other half ("held by me or nobody") is the loop's dispatch,
+/// and it lands with the verbs that dispatch today.
+/// # braid: unheld rows wake nobody, surpassed by the pick taking "mine or nobody".
+///
+/// Returns how many sessions were woken.
+pub(super) async fn wake_ready_owners(
+    rows: &[TaskItem],
+    sessions: &SessionAgents,
+    swarm: LiveTurnSwarmContext,
+    runs: &Arc<RwLock<HashMap<String, RunState>>>,
+) -> usize {
+    let mut owners: Vec<String> = {
+        let members = swarm.members.read().await;
+        let runs = runs.read().await;
+        rows.iter()
+            .filter(|row| row_is_ready(rows, row))
+            .filter_map(|row| row.assigned_to.as_deref().map(|owner| (owner, row.id.as_str())))
+            .filter(|(owner, _)| members.get(*owner).is_some_and(|member| member.is_headless))
+            .filter(|(owner, row_id)| match super::swarm::swarm_root(&members, owner) {
+                Some(root) => runs
+                    .get(&root)
+                    .and_then(|run| run.get(*row_id))
+                    .is_none_or(|state| state.status.is_empty()),
+                None => true,
+            })
+            .map(|(owner, _)| owner.to_string())
+            .collect()
+    };
+    owners.sort();
+    owners.dedup();
+    let mut woken = 0;
+    for owner in owners {
+        // A headless member holds the continuation permission inherently: it was
+        // spawned with no human, so the run supplies every turn (rule 11).
+        if continue_with_next_row(&owner, sessions, swarm.clone(), RunGrant::whole_list()).await {
+            woken += 1;
+        }
+    }
+    woken
 }
 
 /// Spawn `seed` as a full tracked turn in a live session.
@@ -562,6 +622,25 @@ mod tests {
             "git init"
         );
         repo
+    }
+
+    #[test]
+    fn readiness_is_the_blockers_and_the_open_children() {
+        let mut rows = vec![
+            row("t1", Some("me"), &["t2"]),
+            row("t2", None, &[]),
+            child("t3", "me", "t4"),
+            row("t4", Some("me"), &[]),
+        ];
+        assert!(!row_is_ready(&rows, &rows[0]), "a blocker keeps it unready");
+        assert!(row_is_ready(&rows, &rows[1]), "a row with no blocker is ready");
+        assert!(row_is_ready(&rows, &rows[2]), "a held leaf is ready");
+        assert!(!row_is_ready(&rows, &rows[3]), "an open child keeps it unready");
+        rows[0].blocked_by.clear();
+        assert!(
+            row_is_ready(&rows, &rows[0]),
+            "the close empties `blocked_by`, which is what makes it ready"
+        );
     }
 
     #[test]

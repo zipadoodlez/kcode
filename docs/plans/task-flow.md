@@ -270,8 +270,11 @@ gone the anchor closes, and the run's member sessions stop with it. Nothing does
 which is how three idle headless members kept the swarm surface up on 2026-10-03 until
 `cleanup` was called by hand.
 
-New code, one piece: a write hook that wakes a headless holder when a row becomes ready.
-Everything else in this stage is deletion.
+New code, one piece: a write hook that wakes a headless holder when a row becomes ready,
+hung off the `TodoUpdated` event the tool already publishes and landing in the bus monitor,
+where the run state is already in hand. A ready row nobody holds wakes nobody: the pick takes
+only what the session holds, so the run's dispatch is what assigns it, and the assign is the
+write that wakes. Everything else in this stage is deletion.
 
 Order inside the stage: the hook and the loop's dispatch land and are proven by the hand
 fan-out first, and only then do the deletions follow. This is the plan's own rule applied

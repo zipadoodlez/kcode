@@ -1771,7 +1771,7 @@ impl Server {
     async fn monitor_bus(
         file_touch: FileTouchService,
         swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
-        _swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
+        swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
         _shared_context: Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
         sessions: Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>,
         soft_interrupt_queues: SessionInterruptQueues,
@@ -2064,6 +2064,20 @@ impl Server {
                 // swarm strip so a coordinator can see each managed agent's work.
                 Ok(BusEvent::TodoUpdated(event)) => {
                     dispatch_swarm_todo_progress(&event, &swarm_members).await;
+                    // A write is the only thing that starts work: the row that became
+                    // ready wakes whoever owes it, and nothing else starts a turn.
+                    live_turn::wake_ready_owners(
+                        &event.todos,
+                        &sessions,
+                        live_turn::LiveTurnSwarmContext::new(
+                            &swarm_members,
+                            &event_history,
+                            &event_counter,
+                            &swarm_event_tx,
+                        ),
+                        &swarm_runs,
+                    )
+                    .await;
                 }
                 Ok(BusEvent::SwarmOutputTail(tail)) => {
                     dispatch_swarm_output_tail(&tail, &swarm_members).await;
