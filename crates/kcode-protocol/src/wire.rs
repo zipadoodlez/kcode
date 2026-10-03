@@ -482,14 +482,6 @@ pub enum Request {
         target_session: String,
     },
 
-    /// Read another agent's full conversation context
-    #[serde(rename = "comm_read_context")]
-    CommReadContext {
-        id: u64,
-        session_id: String,
-        target_session: String,
-    },
-
     /// Subscribe to a named channel in the swarm
     #[serde(rename = "comm_subscribe_channel")]
     CommSubscribeChannel {
@@ -506,34 +498,6 @@ pub enum Request {
         channel: String,
     },
 
-    /// Wait until specified (or all) swarm members reach a target status
-    #[serde(rename = "comm_await_members")]
-    CommAwaitMembers {
-        id: u64,
-        session_id: String,
-        /// Statuses that count as "done" (e.g. ["completed", "stopped"])
-        target_status: Vec<String>,
-        /// Specific session IDs to watch. If empty, watches all non-self members.
-        #[serde(default)]
-        session_ids: Vec<String>,
-        /// Whether to wait for all matching members or wake when any member matches.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        mode: Option<String>,
-        /// Timeout in seconds (default 3600 = 1 hour)
-        #[serde(default)]
-        timeout_secs: Option<u64>,
-        /// Run the wait as a detached background watcher instead of blocking the
-        /// requesting turn. Defaults to true so the agent stays responsive.
-        #[serde(default = "default_true")]
-        background: bool,
-        /// When backgrounded, surface a notification card on completion.
-        #[serde(default = "default_true")]
-        notify: bool,
-        /// When backgrounded, wake an idle requesting agent with the result (or
-        /// soft-interrupt it if busy). Defaults to true.
-        #[serde(default = "default_true")]
-        wake: bool,
-    },
 }
 
 /// Server event sent to client
@@ -1127,14 +1091,6 @@ pub enum ServerEvent {
         channels: Vec<SwarmChannelInfo>,
     },
 
-    /// Response to comm_read_context request
-    #[serde(rename = "comm_context_history")]
-    CommContextHistory {
-        id: u64,
-        session_id: String,
-        messages: Vec<HistoryMessage>,
-    },
-
     /// Response to comm_spawn request
     #[serde(rename = "comm_spawn_response")]
     CommSpawnResponse {
@@ -1158,23 +1114,6 @@ pub enum ServerEvent {
         /// method + availability + rough cost estimate).
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         model_routes: Vec<kcode_provider_core::ModelRoute>,
-    },
-
-    /// Response to comm_await_members request
-    #[serde(rename = "comm_await_members_response")]
-    CommAwaitMembersResponse {
-        id: u64,
-        /// Whether the condition was met (false = timed out)
-        completed: bool,
-        /// Final status of each watched member
-        members: Vec<AwaitedMemberStatus>,
-        /// Human-readable summary
-        summary: String,
-        /// True when the wait was handed off to a detached background watcher.
-        /// In that case `members`/`completed` describe the current snapshot, not
-        /// a final result; completion is delivered later via notify/wake.
-        #[serde(default)]
-        background_started: bool,
     },
 
     /// Response to split request — new session created with cloned conversation

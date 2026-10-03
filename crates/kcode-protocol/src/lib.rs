@@ -232,9 +232,6 @@ pub struct AgentInfo {
     /// Session that owns report-back/cleanup responsibility for this member.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub report_back_to_session_id: Option<String>,
-    /// Latest structured completion report submitted by this member, if any.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub latest_completion_report: Option<String>,
     /// Number of currently attached live client connections.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub live_attachments: Option<usize>,
@@ -469,20 +466,6 @@ pub struct SwarmToolProgress {
     pub unit: Option<String>,
 }
 
-/// Status of a member being awaited by comm_await_members
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AwaitedMemberStatus {
-    pub session_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub friendly_name: Option<String>,
-    pub status: SwarmLifecycleStatus,
-    /// Whether this member reached the target status
-    pub done: bool,
-    /// Latest structured completion report submitted by this member, if any.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub completion_report: Option<String>,
-}
-
 impl Request {
     pub fn id(&self) -> u64 {
         match self {
@@ -540,10 +523,8 @@ impl Request {
             Request::CommSpawn { id, .. } => *id,
             Request::CommListModels { id, .. } => *id,
             Request::CommStop { id, .. } => *id,
-            Request::CommReadContext { id, .. } => *id,
             Request::CommSubscribeChannel { id, .. } => *id,
             Request::CommUnsubscribeChannel { id, .. } => *id,
-            Request::CommAwaitMembers { id, .. } => *id,
         }
     }
 
@@ -560,10 +541,8 @@ impl Request {
                 | Request::CommSpawn { .. }
                 | Request::CommListModels { .. }
                 | Request::CommStop { .. }
-                | Request::CommReadContext { .. }
                 | Request::CommSubscribeChannel { .. }
                 | Request::CommUnsubscribeChannel { .. }
-                | Request::CommAwaitMembers { .. }
         )
     }
 }

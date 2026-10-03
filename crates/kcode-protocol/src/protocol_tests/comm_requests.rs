@@ -81,139 +81,19 @@ fn test_stdin_request_event_defaults() -> Result<()> {
 }
 
 #[test]
-fn test_comm_await_members_roundtrip() -> Result<()> {
-    let req = Request::CommAwaitMembers {
-        id: 55,
-        session_id: "sess_waiter".to_string(),
-        target_status: vec!["completed".to_string(), "stopped".to_string()],
-        session_ids: vec!["sess_a".to_string(), "sess_b".to_string()],
-        mode: Some("any".to_string()),
-        timeout_secs: Some(120),
-        background: false,
-        notify: false,
-        wake: false,
-    };
-    let json = serde_json::to_string(&req)?;
-    assert!(json.contains("\"type\":\"comm_await_members\""));
-    let decoded = parse_request_json(&json)?;
-    assert_eq!(decoded.id(), 55);
-    let Request::CommAwaitMembers {
-        session_id,
-        target_status,
-        session_ids,
-        mode,
-        timeout_secs,
-        background,
-        notify,
-        wake,
-        ..
-    } = decoded
-    else {
-        return Err(anyhow!("expected CommAwaitMembers"));
-    };
-    assert_eq!(session_id, "sess_waiter");
-    assert_eq!(target_status, vec!["completed", "stopped"]);
-    assert_eq!(session_ids, vec!["sess_a", "sess_b"]);
-    assert_eq!(mode.as_deref(), Some("any"));
-    assert_eq!(timeout_secs, Some(120));
-    assert!(!background);
-    assert!(!notify);
-    assert!(!wake);
-    Ok(())
-}
-
-#[test]
-fn test_comm_await_members_defaults() -> Result<()> {
-    let json =
-        r#"{"type":"comm_await_members","id":1,"session_id":"s1","target_status":["completed"]}"#;
-    let decoded = parse_request_json(json)?;
-    let Request::CommAwaitMembers {
-        session_ids,
-        mode,
-        timeout_secs,
-        background,
-        notify,
-        wake,
-        ..
-    } = decoded
-    else {
-        return Err(anyhow!("expected CommAwaitMembers"));
-    };
-    assert!(
-        session_ids.is_empty(),
-        "session_ids should default to empty"
-    );
-    assert_eq!(mode, None, "mode should default to None");
-    assert_eq!(timeout_secs, None, "timeout_secs should default to None");
-    assert!(background, "background should default to true");
-    assert!(notify, "notify should default to true");
-    assert!(wake, "wake should default to true");
-    Ok(())
-}
-#[test]
-fn test_comm_await_members_response_roundtrip() -> Result<()> {
-    let event = ServerEvent::CommAwaitMembersResponse {
-        id: 55,
-        completed: true,
-        members: vec![
-            AwaitedMemberStatus {
-                session_id: "sess_a".to_string(),
-                friendly_name: Some("fox".to_string()),
-                status: crate::SwarmLifecycleStatus::Completed,
-                done: true,
-                completion_report: None,
-            },
-            AwaitedMemberStatus {
-                session_id: "sess_b".to_string(),
-                friendly_name: Some("wolf".to_string()),
-                status: crate::SwarmLifecycleStatus::Stopped,
-                done: true,
-                completion_report: None,
-            },
-        ],
-        summary: "All 2 members are done: fox, wolf".to_string(),
-        background_started: false,
-    };
-    let json = encode_event(&event);
-    assert!(json.contains("\"type\":\"comm_await_members_response\""));
-    let decoded = parse_event_json(json.trim())?;
-    let ServerEvent::CommAwaitMembersResponse {
-        id,
-        completed,
-        members,
-        summary,
-        ..
-    } = decoded
-    else {
-        return Err(anyhow!("expected CommAwaitMembersResponse"));
-    };
-    assert_eq!(id, 55);
-    assert!(completed);
-    assert_eq!(members.len(), 2);
-    assert_eq!(members[0].friendly_name.as_deref(), Some("fox"));
-    assert!(members[0].done);
-    assert_eq!(members[1].status, crate::SwarmLifecycleStatus::Stopped);
-    assert!(summary.contains("fox"));
-    Ok(())
-}
-
-#[test]
-fn test_comm_stop_roundtrip_with_force() -> Result<()> {
+fn test_comm_stop_roundtrip() -> Result<()> {
     let req = Request::CommStop {
         id: 61,
         session_id: "sess_coord".to_string(),
         target_session: "sess_worker".to_string(),
-        force: Some(true),
     };
     let json = serde_json::to_string(&req)?;
     assert!(json.contains("\"type\":\"comm_stop\""));
-    assert!(json.contains("\"force\":true"));
     let decoded = parse_request_json(&json)?;
     assert_eq!(decoded.id(), 61);
     let Request::CommStop {
         session_id,
         target_session,
-        force,
         ..
     } = decoded
     else {
@@ -221,7 +101,6 @@ fn test_comm_stop_roundtrip_with_force() -> Result<()> {
     };
     assert_eq!(session_id, "sess_coord");
     assert_eq!(target_session, "sess_worker");
-    assert_eq!(force, Some(true));
     Ok(())
 }
 
