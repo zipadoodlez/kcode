@@ -202,9 +202,10 @@ keeps one sparse status per row, reads everything else from the list, derives wh
 it, and closes only the rows it holds). **0.4g is whole, and 0.4 with it.** 0.4f's one
 build + full test pass ran with it (three pre-existing `session_flow` e2e failures,
 recorded in `plans/test-tree.md`). **0.5 has landed too**, its gate and live probe with
-it, so no row is open; **A1's audit has run too** (2026-10-03, folded as A2-A7 and the
-`plans/hygiene.md` items), and **A2 and A3 have landed** with it, so the open work is
-A4-A7 with the tail the audit feeds.
+it, so no row is open; **A1's audit has run too** (2026-10-03, folded as A2-A8 and the
+`plans/hygiene.md` items, A8 added by the C5 read), and **A2 and A3 have landed** with
+it; the open work is A4-A8, C5's scope is decided (the rows this session may work), and
+the tail is what the audit feeds.
 
 ### 0. One way work gets done
 
@@ -375,7 +376,13 @@ sent `low`. Losses: `docs/what-was-removed.md`.
   again into `GalleryTodo` for the gallery. Read the rows where the list is, keep only
   the per-row status the run set, and delete `SwarmTodoItem`, `SwarmToolIntent`, the
   compact and update helpers and the TUI mapping (`info_widget_swarm_gallery.rs:98`).
-  Gated by C5; the gallery is the only consumer.
+  Gated by C5; the gallery is the only consumer. Two things the audit's first pass
+  missed. `tool_intents` is not a row fact: it is the gallery's "which tool is this
+  worker running" display, nested under the compacted item by
+  `update_active_todo_tool`, so it moves onto `SwarmMemberStatus` rather than dying
+  with the cache. And `member_runtime_extras` reads the whole list per member per
+  `swarm list` for a `completed/total` counter (`comm_sync.rs:133-140`), which the
+  forwarded bus event already carries.
 - [ ] **A5. One read of the list and one render, not four.** The inline card, the
   side-panel page (its own comment says "legacy"), the pinned band and the info
   widget's pips each render the list, and the client keeps four caches over one file:
@@ -393,6 +400,16 @@ sent `low`. Losses: `docs/what-was-removed.md`.
   from three fields while `kcode-plan/artifact.rs` owns the seven-field
   `HandoffArtifact`; a field added on one side drifts silently. The tool builds a
   `HandoffArtifact` and serializes it.
+- [ ] **A8. The client's durable copies of the rows go.**
+  `Session::record_swarm_plan_event` (`session.rs:1433`) with
+  `StoredReplayEventKind::SwarmPlan`, its redaction arm (`:1155`) and the TUI's
+  `persist_swarm_plan_snapshot` (called at `remote/server_events.rs:2004`) write a
+  copy of the run's rows into every local client's session file; nothing reads them
+  back, so the redaction pass is their only consumer. The `SwarmStatus` pair
+  (`session.rs:1415`, `:1148`, `persist_swarm_status_snapshot`) is the same shape.
+  Delete both: two event kinds, two TUI persists, one recorder and the session test
+  that pins them, roughly 120 lines plus the session-file bytes. (A1's re-read,
+  2026-10-03.)
 
 ### B. The file is the list
 
@@ -423,21 +440,27 @@ Last of the file work, whenever we want it.
 - [ ] **C5.** The client renders the list from server events instead of reading
   the file itself. Today it resolves the repo from its own working directory,
   which is the same thing for a local session and the wrong repo for a remote
-  attach.
-  - `(decide)` **A session's todo view shows the rows it holds, and adopting a row
-    is the session's decision, not automatic.** The view already claims the scope
-    and does not do it: `todos_view.rs:373` is `load_current_session_todos`, the
-    panel text says "dedicated to the current session's todo list" (`:269`) and
-    the placeholder "Waiting for a session todo list" (`:524`), but the read is
-    `load_tasks`, which returns the whole repo file. The engine is already scoped
-    to the session's holdings (`bridge.rs:79` in `seed_specs`; `live_turn.rs:259`
-    for ready work), so the view is the odd one out. Open: filter for every
-    session, or only for runs, so a plain session still sees the whole list? And
-    how does a session first *see* rows it does not hold, so that adopting one is
-    a decision it can make? The model does not scope the user's session to its
-    holdings, so the answer cannot be a new rule. The server's read is the same odd
-    one: `Action::List` returns every row, not the session's (`tool/todo.rs:64`, over
-    `load_tasks(dir, session_id)` at `:303`).
+  attach. Two facts make this plumbing rather than new machinery: a run's rows
+  already cross as `ServerEvent::SwarmPlan { swarm_id, items, reason, summary }`
+  (`wire.rs:837`, produced at `server/swarm.rs:836` and `:894`, applied at
+  `remote/server_events.rs:1995`, where `plan_items` already feeds the info widget
+  and plan progress), and the full rows already cross the bus on every write
+  (`BusEvent::TodoUpdated { session_id, todos }`, `tool/todo.rs:307`), which the
+  server only folds into the compacted member cache (`server.rs:2065`). What is
+  missing is the arm that forwards that bus event to the owning session's clients
+  and the client rendering its surfaces from it; A4 then deletes the member cache,
+  including `SwarmTodoItem`, which is lossy (capped content, no id, `parent`,
+  `blocked_by` or `kind`) and so cannot stand in for the list.
+  - **The view is the rows this session may work, computed once on the server**
+    (decided 2026-10-03). A session in a run gets the run's rows (`swarm_rows`,
+    `server/swarm.rs:12`); a session outside a run gets the whole list. Measured:
+    `swarm_rows` already keeps every unheld row and every row held outside the run,
+    so this differs from "always the whole list" only when two runs share one repo,
+    and the client renders one list either way, so no user-visible mode appears.
+    `Action::List` takes the same rule, which is what ends its whole-file read
+    (`tool/todo.rs:64` over `load_tasks` at `:303`). Rejected: scoping every session
+    to its holdings, which would hide rows the person may pick up and contradict
+    "the user's session changes any row".
 
 ### D. Delete what the file makes redundant
 
