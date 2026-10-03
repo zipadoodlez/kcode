@@ -1972,7 +1972,6 @@ pub(in crate::tui::app) fn handle_server_event(
                     }
                 }
                 app.swarm.members = members;
-                persist_swarm_status_snapshot(app);
             } else {
                 app.swarm.members.clear();
             }
@@ -2001,7 +2000,6 @@ pub(in crate::tui::app) fn handle_server_event(
             let notice = snapshot.status_notice();
             app.swarm.plan_swarm_id = Some(snapshot.swarm_id.clone());
             app.swarm.plan_items = snapshot.items.clone();
-            persist_swarm_plan_snapshot(app, snapshot.swarm_id, snapshot.items, snapshot.reason);
             app.set_status_notice(notice);
             false
         }

@@ -16,30 +16,6 @@ pub(super) fn persist_replay_display_message(
     let _ = app.session.save();
 }
 
-pub(super) fn persist_swarm_status_snapshot(app: &mut App) {
-    if app.is_remote_client() {
-        // Avoid clobbering the server-owned session file from a remote client's shadow copy.
-        return;
-    }
-    app.session
-        .record_swarm_status_event(app.swarm.members.clone());
-    let _ = app.session.save();
-}
-
-pub(super) fn persist_swarm_plan_snapshot(
-    app: &mut App,
-    swarm_id: String,
-    items: Vec<crate::plan::TaskItem>,
-    reason: Option<String>,
-) {
-    if app.is_remote_client() {
-        // Avoid clobbering the server-owned session file from a remote client's shadow copy.
-        return;
-    }
-    app.session.record_swarm_plan_event(swarm_id, items, reason);
-    let _ = app.session.save();
-}
-
 pub(super) fn persist_remote_session_metadata<F>(app: &mut App, update: F) -> Result<()>
 where
     F: FnOnce(&mut crate::session::Session),

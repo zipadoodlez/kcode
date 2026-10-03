@@ -1145,6 +1145,8 @@ request in this new forked session, using the inherited conversation only as con
                     }
                     *content = crate::message::redact_secrets(content);
                 }
+                // Legacy shapes: no longer written, still redacted because old
+                // session files carry them (A8).
                 StoredReplayEventKind::SwarmStatus { members } => {
                     for member in members {
                         if let Some(detail) = member.detail.as_mut() {
@@ -1404,53 +1406,6 @@ request in this new forked session, using the inherited conversation only as con
                 title,
                 content: content.into(),
             },
-        };
-        self.memory_profile_cache.replay_events_count += 1;
-        self.memory_profile_cache.replay_events_json_bytes += estimate_json_bytes(&event);
-        self.replay_events.push(event);
-        self.mark_replay_events_append_dirty();
-    }
-
-    pub fn record_swarm_status_event(&mut self, members: Vec<crate::protocol::SwarmMemberStatus>) {
-        let kind = StoredReplayEventKind::SwarmStatus { members };
-        if self
-            .replay_events
-            .last()
-            .is_some_and(|last| last.kind == kind)
-        {
-            return;
-        }
-        let event = StoredReplayEvent {
-            timestamp: Utc::now(),
-            kind,
-        };
-        self.memory_profile_cache.replay_events_count += 1;
-        self.memory_profile_cache.replay_events_json_bytes += estimate_json_bytes(&event);
-        self.replay_events.push(event);
-        self.mark_replay_events_append_dirty();
-    }
-
-    pub fn record_swarm_plan_event(
-        &mut self,
-        swarm_id: String,
-        items: Vec<crate::plan::TaskItem>,
-        reason: Option<String>,
-    ) {
-        let kind = StoredReplayEventKind::SwarmPlan {
-            swarm_id,
-            items,
-            reason,
-        };
-        if self
-            .replay_events
-            .last()
-            .is_some_and(|last| last.kind == kind)
-        {
-            return;
-        }
-        let event = StoredReplayEvent {
-            timestamp: Utc::now(),
-            kind,
         };
         self.memory_profile_cache.replay_events_count += 1;
         self.memory_profile_cache.replay_events_json_bytes += estimate_json_bytes(&event);

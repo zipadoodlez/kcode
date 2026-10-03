@@ -1207,33 +1207,44 @@ fn test_redacted_for_export_redacts_replay_events() -> Result<()> {
         Some("DM from fox".to_string()),
         "OPENROUTER_API_KEY=sk-or-v1-secret-value",
     );
-    session.record_swarm_status_event(vec![crate::protocol::SwarmMemberStatus {
-        session_id: "session_fox".to_string(),
-        friendly_name: Some("fox".to_string()),
-        status: "running".into(),
-        detail: Some("ANTHROPIC_API_KEY=sk-ant-secret-value".to_string()),
-        role: Some("agent".to_string()),
-        is_headless: None,
-        live_attachments: None,
-        status_age_secs: None,
-        output_tail: None,
-        report_back_to_session_id: None,
-        todo_progress: None,
-        todo_items: Vec::new(),
-        task_label: None,
-        runtime: crate::protocol::SwarmMemberRuntime::default(),
-    }]);
-    session.record_swarm_plan_event(
-        "swarm_test".to_string(),
-        vec![crate::plan::TaskItem {
-            content: "OPENROUTER_API_KEY=sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789".to_string(),
-            status: "pending".to_string(),
-            priority: "high".to_string(),
-            id: "task-1".to_string(),
-            ..Default::default()
-        }],
-        Some("ANTHROPIC_API_KEY=sk-ant-secret-value".to_string()),
-    );
+    // The two swarm shapes are no longer written (A8), but session files on disk
+    // still carry them, so `redacted_for_export` has to keep covering them.
+    session.replay_events.push(StoredReplayEvent {
+        timestamp: chrono::Utc::now(),
+        kind: StoredReplayEventKind::SwarmStatus {
+            members: vec![crate::protocol::SwarmMemberStatus {
+                session_id: "session_fox".to_string(),
+                friendly_name: Some("fox".to_string()),
+                status: "running".into(),
+                detail: Some("ANTHROPIC_API_KEY=sk-ant-secret-value".to_string()),
+                role: Some("agent".to_string()),
+                is_headless: None,
+                live_attachments: None,
+                status_age_secs: None,
+                output_tail: None,
+                report_back_to_session_id: None,
+                todo_progress: None,
+                todo_items: Vec::new(),
+                task_label: None,
+                runtime: crate::protocol::SwarmMemberRuntime::default(),
+            }],
+        },
+    });
+    session.replay_events.push(StoredReplayEvent {
+        timestamp: chrono::Utc::now(),
+        kind: StoredReplayEventKind::SwarmPlan {
+            swarm_id: "swarm_test".to_string(),
+            items: vec![crate::plan::TaskItem {
+                content: "OPENROUTER_API_KEY=sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789"
+                    .to_string(),
+                status: "pending".to_string(),
+                priority: "high".to_string(),
+                id: "task-1".to_string(),
+                ..Default::default()
+            }],
+            reason: Some("ANTHROPIC_API_KEY=sk-ant-secret-value".to_string()),
+        },
+    });
 
     let redacted = session.redacted_for_export();
     assert_eq!(redacted.replay_events.len(), 3);
@@ -1269,6 +1280,25 @@ fn test_redacted_for_export_redacts_replay_events() -> Result<()> {
     let reason = reason.as_deref().unwrap_or_default();
     assert!(reason.contains("ANTHROPIC_API_KEY=[REDACTED_SECRET]"));
     assert!(!reason.contains("sk-ant-secret-value"));
+
+    // The two legacy shapes also have to keep deserializing: `load_from_path`
+    // rejects an unknown variant and session files on disk carry these events.
+    let dir =
+        std::env::temp_dir().join(format!("kcode-legacy-swarm-replay-{}", std::process::id()));
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join("legacy_swarm_replay.json");
+    crate::storage::write_json_fast(&path, &session)?;
+    let loaded = Session::load_from_path(&path)?;
+    assert_eq!(loaded.replay_events.len(), 3);
+    assert!(matches!(
+        loaded.replay_events[1].kind,
+        StoredReplayEventKind::SwarmStatus { .. }
+    ));
+    assert!(matches!(
+        loaded.replay_events[2].kind,
+        StoredReplayEventKind::SwarmPlan { .. }
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
     Ok(())
 }
 

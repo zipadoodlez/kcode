@@ -48,10 +48,7 @@ pub(super) use reconnect::{
     should_allow_reconnect_takeover, should_use_same_session_fast_path,
 };
 use reconnect::{format_disconnect_reason, reconnect_status_message};
-use session_persistence::{
-    persist_remote_session_metadata, persist_replay_display_message, persist_swarm_plan_snapshot,
-    persist_swarm_status_snapshot,
-};
+use session_persistence::{persist_remote_session_metadata, persist_replay_display_message};
 use workspace::{handle_workspace_command, handle_workspace_navigation_key};
 
 // Re-export the remote input dispatch helpers for sibling modules/tests that go

@@ -20,12 +20,15 @@ pub enum StoredReplayEventKind {
         title: Option<String>,
         content: String,
     },
-    /// Historical swarm member status snapshot.
+    /// Historical swarm member status snapshot. Nothing writes this any more
+    /// (A8, 2026-10-03), but session files on disk carry it and session load
+    /// rejects an unknown variant, so the shape and its redaction stay.
     #[serde(rename = "swarm_status")]
     SwarmStatus {
         members: Vec<crate::protocol::SwarmMemberStatus>,
     },
-    /// Historical swarm plan snapshot.
+    /// Historical swarm plan snapshot. Read-only for the same reason as
+    /// [`Self::SwarmStatus`].
     #[serde(rename = "swarm_plan")]
     SwarmPlan {
         swarm_id: String,

@@ -6,13 +6,14 @@
 //! those tasks.
 //!
 //! The model here is deliberately decoupled from the server/runtime wiring so it
-//! can be exercised end-to-end by the deterministic simulator in [`crate::dag::sim`]
-//! before being attached to live swarm sessions.
+//! can be exercised end-to-end by the deterministic simulator in `dag::sim`, which
+//! is compiled for tests only, before being attached to live swarm sessions.
 
 use serde::{Deserialize, Serialize};
 
 mod ops;
 mod schedule;
+#[cfg(test)]
 pub mod sim;
 
 #[cfg(test)]

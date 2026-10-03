@@ -1,4 +1,3 @@
-use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 /// Hard upper bound for one swarm's durable plan graph. A plan is coordination
@@ -17,19 +16,6 @@ pub mod dag;
 /// The definition lives in `kcode-task-types`, because the plan, the `todo`
 /// tool, and the list file all read and write the same entries.
 pub use kcode_task_types::TaskItem;
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SwarmPlanItemSpec {
-    pub id: String,
-    pub content: String,
-    pub priority: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub subsystem: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub file_scope: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub blocked_by: Vec<String>,
-}
 
 /// Whether `id` is a row other rows belong to: a composite join/synthesis point
 /// rather than a leaf. Derived, never stored: a child that is still a row names its

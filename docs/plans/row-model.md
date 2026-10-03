@@ -204,8 +204,8 @@ build + full test pass ran with it (three pre-existing `session_flow` e2e failur
 recorded in `plans/test-tree.md`). **0.5 has landed too**, its gate and live probe with
 it, so no row is open; **A1's audit has run too** (2026-10-03, folded as A2-A8 and the
 `plans/hygiene.md` items, A8 added by the C5 read), and **A2 and A3 have landed** with
-it; the open work is A4-A8, C5's scope is decided (the rows this session may work), and
-the tail is what the audit feeds.
+it; the open work is A4, A5, A7 and A9, C5's scope is decided (the rows this session
+may work), and the tail is what the audit feeds.
 
 ### 0. One way work gets done
 
@@ -392,24 +392,37 @@ sent `low`. Losses: `docs/what-was-removed.md`.
   `turn_notify.rs:220`, `state_ui.rs:1811` and `remote/key_handling.rs` (four sites)
   read it again. Decide which surfaces stay, then keep one read and one model with the
   renderers as pure functions; C5 makes the read a server event and lands first.
-- [ ] **A6. What 0.4 claimed to delete and did not.** `SwarmPlanItemSpec`
-  (`kcode-plan/src/lib.rs:21-32`) has one hit, its definition, though C4 records that
-  0.4 deleted it; `dag::sim` (108) is referenced only from `dag/tests.rs`, so the
-  shipping lib compiles a test harness. Delete the type and gate the simulator.
+- [x] **A6. What 0.4 claimed to delete and did not.** Landed 2026-10-03: deleted
+  `SwarmPlanItemSpec` (`kcode-plan/src/lib.rs`) with the serde import it alone used, and
+  gated the simulator (`#[cfg(test)] pub mod sim;` in `dag/mod.rs`, its doc link
+  reworded so a non-test build does not point at a test-only module). Gate: clippy
+  `--all-targets --all-features -- -D warnings` green on `kcode-plan`, `kcode-base` and
+  `kcode-tui`; `kcode-plan` 34 passed.
 - [ ] **A7. One artifact shape.** `tool/todo.rs:144-168` hand-builds the close artifact
   from three fields while `kcode-plan/artifact.rs` owns the seven-field
   `HandoffArtifact`; a field added on one side drifts silently. The tool builds a
   `HandoffArtifact` and serializes it.
-- [ ] **A8. The client's durable copies of the rows go.**
-  `Session::record_swarm_plan_event` (`session.rs:1433`) with
-  `StoredReplayEventKind::SwarmPlan`, its redaction arm (`:1155`) and the TUI's
-  `persist_swarm_plan_snapshot` (called at `remote/server_events.rs:2004`) write a
-  copy of the run's rows into every local client's session file; nothing reads them
-  back, so the redaction pass is their only consumer. The `SwarmStatus` pair
-  (`session.rs:1415`, `:1148`, `persist_swarm_status_snapshot`) is the same shape.
-  Delete both: two event kinds, two TUI persists, one recorder and the session test
-  that pins them, roughly 120 lines plus the session-file bytes. (A1's re-read,
-  2026-10-03.)
+- [x] **A8. The client stops writing the rows into session files.** Landed
+  2026-10-03, writers only: deleted `record_swarm_status_event` and
+  `record_swarm_plan_event`, the TUI's `persist_swarm_status_snapshot` and
+  `persist_swarm_plan_snapshot` with their call sites, so no swarm status or plan
+  broadcast triggers a full session save any more. The two `StoredReplayEventKind`
+  variants and their redaction arms stay: `load_from_path` parses the snapshot with
+  no tolerance, and 52 of the 2437 session files on this machine carry those events,
+  so removing the variants would make real sessions unloadable. The redaction test
+  now builds the legacy shapes directly and round-trips them through
+  `write_json_fast` + `load_from_path`, so the compat property is pinned. A deeper
+  read of the same log is A9. Gate: `kcode-base` 1097 passed serial with the new
+  round trip, `check_guardrails.sh` green, `kcode-tui` serial 1759 passed with its one
+  known red, and `scripts/test.sh full` green bar the three `session_flow` e2e reds.
+- [ ] **A9. The replay-event log has no reader.** `Session::replay_events` is written
+  by `record_replay_display_message` (four TUI sites, `remote/server_events.rs:2373`
+  to `:2449`) and never read back; the only consumers are the journal and persistence
+  plumbing, the redaction pass and one `shrink_to_fit`. With A8's writers gone the log
+  only grows from display notices. Delete the writer and the persistence half (append
+  deltas, `PersistVectorMode`, memory-profile accounting, the `delta_replay_events`
+  telemetry), keep the field and the variant for A8's load-compat reason, and
+  re-measure the session-file bytes. (A8's read, 2026-10-03.)
 
 ### B. The file is the list
 
