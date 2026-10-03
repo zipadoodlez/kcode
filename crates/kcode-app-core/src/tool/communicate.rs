@@ -1,7 +1,6 @@
 #![cfg_attr(test, allow(clippy::await_holding_lock))]
 
 use super::{Tool, ToolContext, ToolOutput};
-use crate::background::TaskResult;
 use crate::plan::TaskItem;
 use crate::protocol::SwarmLifecycleStatus;
 use crate::protocol::{
@@ -495,13 +494,6 @@ impl RunPlanUtilization {
     }
 }
 
-/// Extract the background task id from its output file path
-/// (`<task_id>.output`), mirroring the bash tool's convention so progress
-/// updates can be routed back to the background task manager.
-fn task_id_from_output_path(path: &std::path::Path) -> Option<&str> {
-    path.file_name()?.to_str()?.strip_suffix(".output")
-}
-
 /// Progress/log sink for a `run_plan` execution.
 ///
 /// In background mode this appends human-readable lines to the background
@@ -519,13 +511,6 @@ impl RunPlanReporter {
         Self {
             task_id: None,
             output_path: None,
-        }
-    }
-
-    fn background(output_path: &std::path::Path) -> Self {
-        Self {
-            task_id: task_id_from_output_path(output_path).map(str::to_string),
-            output_path: Some(output_path.to_path_buf()),
         }
     }
 
@@ -721,107 +706,6 @@ fn try_claim_run_plan_driver(
 /// shared `BackgroundTaskManager` (task id, progress card, `bg` tool
 /// integration), and completion is delivered through the standard notify/wake
 /// path like any other background task.
-async fn run_swarm_plan_in_background(
-    ctx: &ToolContext,
-    params: CommunicateInput,
-) -> Result<ToolOutput> {
-    // Validate the plan inline so an empty/broken plan errors immediately
-    // instead of as a delayed background failure.
-    let initial_summary = fetch_plan_status(&ctx.session_id).await?;
-    if initial_summary.item_count == 0 {
-        return Ok(ToolOutput::new("No swarm plan items to run."));
-    }
-
-    // Refuse to start a second driver for the same session: two concurrent
-    // run_plan loops would race on assignments and double-spawn workers. The
-    // claim is check-and-insert under one lock, so two run_plan calls in the
-    // same batch cannot both pass. Only drivers live in this process count; a
-    // stale "running" status file left by a server reload must not block
-    // restarting the driver (the claim map is per-process and dead task ids
-    // fail the is_live_task check).
-    let manager = crate::background::global();
-    let claim = match try_claim_run_plan_driver(manager, &ctx.session_id) {
-        RunPlanDriverClaimResult::Claimed(claim) => claim,
-        RunPlanDriverClaimResult::AlreadyRunning(existing) => {
-            return Ok(ToolOutput::new(match existing {
-                Some(task_id) => format!(
-                    "A swarm run_plan driver is already running for this session (task {}). \
-                     Check it with `bg action=\"status\" task_id=\"{}\"` or `swarm plan_status` instead of starting another.",
-                    task_id, task_id
-                ),
-                None => "A swarm run_plan driver is already starting for this session. \
-                         Check it with `swarm plan_status` instead of starting another."
-                    .to_string(),
-            }));
-        }
-    };
-
-    let notify = params.notify.unwrap_or(true);
-    let wake = params.wake.unwrap_or(true);
-    // Keep the display name free of the "·" separator used by the background
-    // notification markdown header, or downstream parsing mis-splits the label.
-    let display_name = format!("run_plan ({} nodes)", initial_summary.item_count);
-
-    let bg_ctx = ctx.clone();
-    let info = crate::background::global()
-        .spawn_with_notify(
-            "swarm",
-            Some(display_name.clone()),
-            &ctx.session_id,
-            notify,
-            wake,
-            move |output_path| async move {
-                let reporter = RunPlanReporter::background(&output_path);
-                match run_swarm_plan_to_terminal(&bg_ctx, &params, &reporter).await {
-                    Ok(output) => {
-                        reporter.finalize(&output.output).await;
-                        Ok(TaskResult::completed(Some(0)))
-                    }
-                    Err(error) => {
-                        let message = format!("run_plan failed: {}", error);
-                        reporter.finalize(&message).await;
-                        Ok(TaskResult::failed(None, message))
-                    }
-                }
-            },
-        )
-        .await;
-    claim.record_task(&info.task_id);
-
-    let delivery_note = if wake {
-        "You'll be woken with the result when the plan reaches a terminal state."
-    } else if notify {
-        "A notification will appear when the plan reaches a terminal state."
-    } else {
-        "Notifications disabled. Use the `bg` tool to check status."
-    };
-    let output = format!(
-        "🐝 Swarm plan running in background.\n\n\
-         Task ID: {}\n\
-         Plan: {} node(s)\n\
-         Output file: {}\n\n\
-         {}\n\
-         Check progress: use the `bg` tool with action=\"status\" and task_id=\"{}\", or `swarm plan_status`.\n\
-         Note: a server reload stops this driver (workers keep running); rerun `swarm run_plan` to resume driving the same plan.",
-        info.task_id,
-        initial_summary.item_count,
-        info.output_file.display(),
-        delivery_note,
-        info.task_id,
-    );
-
-    Ok(ToolOutput::new(output)
-        .with_title(format!("Swarm run_plan in background: {}", info.task_id))
-        .with_metadata(json!({
-            "background": true,
-            "swarm": true,
-            "task_id": info.task_id,
-            "display_name": display_name,
-            "output_file": info.output_file.to_string_lossy(),
-            "status_file": info.status_file.to_string_lossy(),
-        })))
-}
-
 /// Hint appended to every `run_plan` driver failure: the driver exits without
 /// the end-of-run cleanup, so spawned workers keep running even when
 /// `retain_agents=false`, and the caller must know how to stop or resume them.
