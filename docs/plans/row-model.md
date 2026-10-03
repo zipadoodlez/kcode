@@ -1,10 +1,10 @@
 # Row model
-
-Tick a step when it lands and delete it; git has the history. The open items this plan
-leaves behind are split by subject: the app's shape in `plans/app-shape.md`, the
-request path in `plans/server-shape.md`, the test tree in `plans/test-tree.md`, and the
-loose ends in `plans/hygiene.md`. The destination this plan is half of, and the lane
-that finishes it (F1, D1, D2 and the tail read there), is `plans/one-flow.md`.
+Tick a step when it lands and delete it; git has the history. This is the one plan for
+the row/list work: the model, the rules the code cites, the duplication left to remove,
+and the stages that remove it. Subjects with another owner keep their own doc — the
+app's shape in `plans/app-shape.md`, the request path in `plans/server-shape.md`, the
+test tree in `plans/test-tree.md`, the loose ends in `plans/hygiene.md` — and losses are
+named in `docs/what-was-removed.md`.
 
 ## How a step lands
 
@@ -141,7 +141,7 @@ the children added underneath.
 
 These are the model the steps drive the tree to, not the tree. Where a rule and
 the type disagree today, the type is behind: `TaskItem` still carries `status`,
-`priority`, `group`, `subsystem` and `file_scope`, and B3 and C4 remove them.
+`priority`, `group`, `subsystem` and `file_scope`, and S5 removes them.
 
 1. **One file per repo**, `tasks.jsonl` at the root, found from git so a session in
    `crates/foo` reads the same list; outside a repo, a session scratch location.
@@ -176,38 +176,232 @@ the type disagree today, the type is behind: `TaskItem` still carries `status`,
     decided. Typing always wins, so the stop lever for a session with a human is the
     user's next turn.
 
+
 ## Steps
 
-Every step lands whole, proven by the gate. The one `kcode run` probe against its
-own socket waits for the end of the list, where the user runs it, so no step is
-gated on it. Widest shared shape first, so no step sweeps
-call sites a later step reshapes: 0.2 removed the poke the permission replaced, and
-0.3 makes the file the seed so 0.4 can delete the plan's durable half.
+Landed work is in the record below; what is open is here.
 
-After that, in the order of the moves: delete (D, the topic channels, the shared
-context, and the member projection written four times), then the re-cores (E, F,
-and the `app.rs` re-core, whose detail `plans/app-shape.md` owns). The re-cores are the
-tail and they are droppable: the least evidence and the most churn, nothing upstream
-depends on them, and finishing the model does not need them. Dropping them costs the
-duplication they would have removed and nothing else.
+Every step lands whole, proven by the gate. The one `kcode run` probe against its own
+socket waits for the end of the list, where the user runs it, so no step is gated on it.
+Widest shared shape first, so no step sweeps call sites a later step reshapes: S1 opens
+the loop's path, S2 the client's, and S3-S5 delete what those leave behind. The `app.rs`
+re-core (`plans/app-shape.md`) is the tail and it is droppable: nothing here depends on
+it.
 
-**Here is where the work stands**, and a step in flight is finished before a new one
-starts. 0.1, 0.2 and 0.3 have landed whole and are gone from this list; what 0.2 owed
-was 0.3's last stage, and the two losses 0.1 and 0.3 named are in `docs/what-was-removed.md`. 0.4's
-gate stage (0.4a), row stage (0.4c), one-mode stage (0.4b), node-meta stage (0.4d),
-liveness stage (0.4e) and 0.4f have landed: the plan's items are the file's open rows,
-the holder and the artifact live where the list is, and a turn end is a close. **0.4g's
-g1-g5 have landed** (no version, no participant list, no durable plan, no item cache,
-no reclaim cap, no stored membership, and one act where seven handoff verbs were: a run
-keeps one sparse status per row, reads everything else from the list, derives who is in
-it, and closes only the rows it holds). **0.4g is whole, and 0.4 with it.** 0.4f's one
-build + full test pass ran with it (three pre-existing `session_flow` e2e failures,
-recorded in `plans/test-tree.md`). **0.5 has landed too**, its gate and live probe with
-it, so no row is open; **A1's audit has run** (2026-10-03, folded as A2-A8 and the
-`plans/hygiene.md` items), and **A2, A3, A6, A8 and A9 have landed** with it. Of the
-audit only A4 and A5 remain, and both are `plans/one-flow.md` stages (S3 and S2), which
-is where the row/list tail executes; a cut named there is not repeated here as open.
-What this plan still owns as open work is B2, D1, D2 and the G close-out.
+### The duplication this removes
+
+Measured 2026-10-03, all bodies read.
+
+- **Four schedulers** decide what runs next: the loop (`server/live_turn.rs`); `run_plan`'s
+  driver (`tool/communicate.rs:431-1460`, ~1,030 lines with its own concurrency policy,
+  200-loop cap, stall retries, credential breaker, cap recovery, utilization report and
+  background card); `fill_slots`/`assign_next` (mini loops over the same assign request);
+  and the turn-end auto-close (`server/comm_control.rs`).
+- **Two dispatchers** pick the worker: the run status map and a 15 s TTL claim map
+  (`auto_assign_claims`), because the plan write lands several awaits after the pick.
+- **Two liveness predicates** disagree: `salvage_dead_assignees` waits out the reload
+  grace, `next_dispatch` does not. The code carries a `braid:` note saying so.
+- **Two waiters**: in-memory socket waiters, and a durable one
+  (`server/await_members_state.rs`, 278 lines, persisted pending state and a startup
+  resume), plus a notify/wake bus event.
+- **Three artifact producers** write one form; **two report channels** carry one fact.
+- **A KV store and topic channels** (in-memory, swarm-scoped), **four member shapes**,
+  **a third event log** (the bounded swarm history), **five view handlers**
+  (`comm_sync`), 607 lines of debug views, and a 3,100-line gallery rendering the same
+  swarm state.
+
+The tool's action surface is 32 actions; S1 keeps three.
+
+### S1. The loop owns dispatch
+
+Delete: the tool's driver with all of its policies, `fill_slots`, `assign_next`,
+`assign_task`, `await_members`, `retry`, `wake`, `cleanup`, `stop`, the read views
+(`status`, `summary`, `report`, `plan_status`, `read_context`, `resync_plan`), the
+`report` action, and the instruction protocol around it (the spawn reminder, the
+assignment suffix, the tldr rule, the notification advice text). The channels and the
+shared-context KV store go with them: `share`, `share_append`, `read`, `broadcast`,
+`dm`, `channel`, `list_channels`, `channel_members`, `subscribe_channel`,
+`unsubscribe_channel`. Keep: `spawn` (root only) and one message verb, whose address is
+the owner of a named row.
+
+What replaces them: the loop's own dispatch (a holder write, plus the same wake a turn
+end already uses when the holder is headless), readiness as the wait, the close as the
+report, and the row's words as the handoff.
+
+New code, one piece: a write hook that wakes a headless holder when a row becomes ready.
+Everything else in this stage is deletion.
+
+The rows this stage works are `tasks.jsonl` t1-t14, scoped 2026-10-03.
+
+surface: −28 actions, −1 driver, −1 durable waiter store, −2 report channels, −1 KV,
+−1 channel index, −3 artifact producers, −4 member shapes. lines ~−6,500 with tests.
+risk: high; this stage is the lane's test.
+
+Gate: one fan-out run in a scratch repo, end to end, on the loop alone. A root grants,
+spawns two workers, hands them rows, the workers close, the root integrates and closes
+the anchor. By hand, on the user's own socket, with the run's words in the transcript.
+If it fails, stop and report; do not patch around it.
+
+### S2. One view
+
+The server sends each session the rows it may work, local sessions included. The client
+renders one surface: the rows, with the holder named per row and the holder's state
+(model, status, tokens) beside it. That surface absorbs the inline card, the side-panel
+page, the pinned band, the info pips, and the gallery's at-a-glance role. It is the one
+place this lane allows new code, because it absorbs the others.
+
+The read is C5. A run's rows already cross as `ServerEvent::SwarmPlan`
+(`wire.rs:837`, produced at `server/swarm.rs:836` and `:894`, applied at
+`remote/server_events.rs:1995`), and the full rows already cross the bus on every write
+(`BusEvent::TodoUpdated { session_id, todos }`, `tool/todo.rs:307`), which the server
+only folds into the compacted member cache (`server.rs:2065`). What is missing is the arm
+that forwards that bus event to the owning session's clients, and the client rendering
+its surfaces from it. The view is the rows this session may work, computed once on the
+server: a session in a run gets the run's rows (`swarm_rows`, `server/swarm.rs:12`); a
+session outside a run gets the whole list. `Action::List` takes the same rule, which is
+what ends its whole-file read (`tool/todo.rs:64` over `load_tasks` at `:303`).
+
+The render is A5. The inline card, the side-panel page (its own comment says "legacy"),
+the pinned band and the info widget's pips each render the list, and the client keeps four
+caches over one file: three hashes in `todos_view.rs`, a 1s TTL cache with a refresh
+thread (`helpers.rs:969-...`), and the transcript's previous-list parse in
+`ui_todo_changes.rs`. `commands_improve.rs` repeats the same load six times, and
+`turn_notify.rs:220`, `state_ui.rs:1811` and `remote/key_handling.rs` (four sites) read it
+again. Keep one read and one model with the renderers as pure functions.
+
+Delete: four renderers and their caches, 15 file reads, the gallery's separate member
+rendering, the compacted member row cache. surface: −4 renderers, −4 caches, −3 protocol
+member types, −1 item cache. lines ~−1,300. risk: med.
+
+Gate: the four old surfaces gone; a live TUI check on a run with two workers, showing
+progress, holder and status; the client suite.
+
+### S3. One status
+
+Liveness derives from the holder's own session status plus the rule that a holder who can
+never return releases its rows, through one `assignee_is_dead` used by both the sweep and
+dispatch. The member projection and the runtime extras go.
+
+Delete (A4): `SwarmMemberRuntime.todo_items` (`protocol/src/lib.rs:450`, the third copy
+of a session's rows after the file and the run's sparse status, folded from `TodoEvent`s
+by `compact_todo_items` and the two `update_active_todo_*` helpers
+(`server/background_tasks.rs:362-505`) and mapped again into `GalleryTodo` for the
+gallery), `SwarmTodoItem`, `SwarmToolIntent`, the two `update_active_todo_*` helpers, the
+TUI mapping (`info_widget_swarm_gallery.rs:98`), `member_runtime_extras`' per-member list
+read (`comm_sync.rs:133-140`, a `completed/total` counter the forwarded bus event already
+carries), the four member shapes, and the third event log. `tool_intents` is not a row
+fact: it is the gallery's "which tool is this worker running" display, nested under the
+compacted item by `update_active_todo_tool`, so it moves onto `SwarmMemberStatus` rather
+than dying with the cache. S1's channel cut gates this one: the gallery is the only
+consumer. surface: −3 protocol types, −4 shapes, −1 event log, −2 liveness predicates.
+lines ~−1,000. risk: med.
+
+The projection becomes one type, so member appearance follows the typed status:
+`kcode-tui-render` takes `SwarmLifecycleStatus` (a dependency on the data-only
+`kcode-session-types`), so the string matches in `swarm_gallery.rs` and
+`is_active_status` become enum matches; one module owns accent, glyph, label and sort
+rank, with an `is_working` predicate kept distinct from lifecycle `is_active` so a
+stalled node does not spin; the duplicate map
+`info_widget_swarm_background::swarm_status_style` goes; and the swarm-path `Color::Rgb`
+literals become `kcode_tui_style` role accessors so `/colors` can recolor them (the small
+default shift is accepted). The projection's `RunningStale` goes with it: 0.4f removed
+its only producer (a plan item's status), so the variant is unreachable.
+
+### S4. The record is the words
+
+The artifact form goes; a record is `{id, result}`. The discipline lives in the close
+instruction: state what proves it, what it showed, and what you did not check. Kinds stay
+the run's word for the work, not six result schemas.
+
+This is A7 and nothing else. `tool/todo.rs:144-168` hand-builds the close artifact from
+three fields while `kcode-plan/src/artifact.rs` owns the seven-field `HandoffArtifact`,
+so a field added on one side drifts silently; the cut this item named (the tool building
+the type) would harden a type this stage deletes, so the drift closes by deletion
+instead. surface: −1 type, −7 fields, −2 tool vocabularies. lines ~−300. risk: med.
+
+### S5. The file's fields
+
+`status`, `priority`, `group`, `subsystem` and `file_scope` go (B3, C4), with the four
+status vocabularies they keep alive: five status helpers in `kcode-plan/src/lib.rs`,
+`canonical_todo_status` plus its two wrappers in `kcode-base/src/todo.rs`, and
+`normalize_plan_status_for_todo`, `status_badge` and a second `priority_rank` in the TUI.
+`subsystem` and `file_scope` are the scheduler's inputs (assignment affinity matches them
+against a worker's metadata), not list fields, and 0.4 deleted the `node_meta` side-map
+that was once named as their destination.
+
+Dropping `status` is the larger half, because the plan classifies by it everywhere:
+`summarize_plan_graph`, `completed_item_ids`, `is_active_status`, `newly_ready_item_ids`
+(read by the swarm path), the task-control actions and `status_from_plan`. `status_to_plan`
+is already gone: 0.4f's s12 stopped lowering the engine's statuses back into items, so the
+engine's own statuses no longer reach a row. Afterwards a row is ready when `blocked_by`
+is empty and liveness comes from the member, not the item. surface: −5 fields,
+−4 vocabularies. lines ~−500. risk: med.
+
+### D2. The swarm/comm condense
+
+The `SwarmState` handle pair is still threaded to ~40 functions and rebuilt as a literal
+at each request arm, so the request context that ends it is the remaining half. Give the
+swarm state its one owner and delete the pair. Engine: `internals/swarm.md`. This is the
+only row-model work `plans/server-shape.md`'s H1-H5 carry: H2 (the swarm state in the
+client context) waits on it. (A1 measured 19 `SwarmState { .. }` literals and 244
+`swarm_runs` references on the settled tree.)
+
+### Close out
+
+- **B2.** This repo's own list migrates: what is open in this doc becomes the content of
+  `tasks.jsonl`. Its landed records have already moved, as they land, to
+  `docs/what-was-removed.md`. S1's rows landed 2026-10-03 (t1-t14); the rest follow as
+  their stages start.
+- **G1.** Restore the two size ratchets in `scripts/check_guardrails.sh` and re-baseline
+  both with `--update`. They are paused, with the reason at the call site.
+- **G2.** The one live `kcode run` probe against its own socket, in a scratch repo, run by
+  the user: the permission (a granted turn continues, a wake does not) and the poke's
+  removal (no client continuation; every non-retryable error gets the short budget). It is
+  the step's landing proof, so it runs when the list is done, not per step.
+- **G3.** The work list gets its user doc under `docs/user/`: `tasks.jsonl` at the repo
+  root, the `todo` tool's actions, and the close's required result are described only in
+  this plan, which is a design rather than a manual. It waits until the list settles,
+  which is worth writing once: the row gains its `kind` at 0.3, and S5's field cuts land
+  before the shape stops moving.
+
+### The bound (decide)
+
+Today two limits protect the machine: the hard constant `MAX_SWARM_MEMBERS = 1000` live
+members per swarm, and a soft live-worker budget (`agents.swarm_max_concurrent_agents`,
+32 by default) that the spawn path and `run_plan` both consult. `run_plan` adds its own
+recovery dance when the cap is hit (free finished workers, retry, reuse-only, give up).
+
+The proposal: exactly one software limit, an admission cap read where a spawn or a wake is
+admitted (constant as the hard stop, config for the soft number), nothing on a row,
+nothing in a grant. A run's work bound stays what it already is: no ready row ends it.
+The recovery dance disappears, because the loop does not spawn past the cap. The
+credential-wave breaker becomes a provider-health signal that fails a turn with a clear
+error, not a dispatcher rule.
+
+### What to verify before calling a stage done
+
+- S1's scratch-repo fan-out, by hand, on the loop alone.
+- A resume: a run interrupted between turns continues on the loop, with no stored run
+  state anywhere.
+- Two runs in one repo: each sees its own rows, and a row moved mid-turn is refused on
+  close, as today.
+- A dead holder: its rows return to the list, and one predicate decides it.
+- A thin report: a close whose words say nothing is visible to the integrator.
+- The gate: `check_guardrails.sh`, the touched crates' suites, `scripts/test.sh full`.
+
+### Unread at the time of writing
+
+`comm_session`'s spawn body (~150 of 1,264 lines read), `comm_sync`'s five handlers,
+`comm_graph`'s seed and expand write paths (the complete path was read), the `Comm*` arms
+in `client_lifecycle`, the channel handlers, the member-shape definitions and the
+gallery's data adapter, `client_comm_message`, `todo.rs:330-470`, and the TUI's render
+internals. The stages rest on the schedulers, waiters, dispatchers, artifact producers
+and liveness predicates, all of which were read in full.
+
+## Landed record
+
+Tick a step when it lands and delete it; git has the history. The losses each step named
+are in `docs/what-was-removed.md`.
 
 ### 0. One way work gets done
 
@@ -371,42 +565,14 @@ sent `low`. Losses: `docs/what-was-removed.md`.
   `kcode-app-core`, `kcode-base` and `kcode-tui`, `kcode-tui` serial 1759 passed with
   its one known red, `kcode-app-core` 948 passed, `kcode-base` green, and
   `scripts/test.sh full` green bar the three `session_flow` e2e reds.
-- **A4 (executed as `plans/one-flow.md` S3). The member runtime stops carrying the rows.**
-  `SwarmMemberRuntime.todo_items`
-  (`protocol/src/lib.rs:450`) is the third copy of a session's rows, after the file and
-  the run's sparse status: folded from `TodoEvent`s by `compact_todo_items` and the two
-  `update_active_todo_*` helpers (`server/background_tasks.rs:362-505`), then mapped
-  again into `GalleryTodo` for the gallery. Read the rows where the list is, keep only
-  the per-row status the run set, and delete `SwarmTodoItem`, `SwarmToolIntent`, the
-  compact and update helpers and the TUI mapping (`info_widget_swarm_gallery.rs:98`).
-  Gated by C5; the gallery is the only consumer. Two things the audit's first pass
-  missed. `tool_intents` is not a row fact: it is the gallery's "which tool is this
-  worker running" display, nested under the compacted item by
-  `update_active_todo_tool`, so it moves onto `SwarmMemberStatus` rather than dying
-  with the cache. And `member_runtime_extras` reads the whole list per member per
-  `swarm list` for a `completed/total` counter (`comm_sync.rs:133-140`), which the
-  forwarded bus event already carries.
-- **A5 (executed as `plans/one-flow.md` S2). One read of the list and one render, not four.**
-  The inline card, the
-  side-panel page (its own comment says "legacy"), the pinned band and the info
-  widget's pips each render the list, and the client keeps four caches over one file:
-  three hashes in `todos_view.rs`, a 1s TTL cache with a refresh thread
-  (`helpers.rs:969-...`), and the transcript's previous-list parse in
-  `ui_todo_changes.rs`. `commands_improve.rs` repeats the same load six times, and
-  `turn_notify.rs:220`, `state_ui.rs:1811` and `remote/key_handling.rs` (four sites)
-  read it again. Decide which surfaces stay, then keep one read and one model with the
-  renderers as pure functions; C5 makes the read a server event and lands first.
+- **A4, A5 and A7 are stages now, not items:** A4 is S3, A5 is S2, and A7 is S4, which
+  deletes the type A7 would have unified rather than unifying it.
 - [x] **A6. What 0.4 claimed to delete and did not.** Landed 2026-10-03: deleted
   `SwarmPlanItemSpec` (`kcode-plan/src/lib.rs`) with the serde import it alone used, and
   gated the simulator (`#[cfg(test)] pub mod sim;` in `dag/mod.rs`, its doc link
   reworded so a non-test build does not point at a test-only module). Gate: clippy
   `--all-targets --all-features -- -D warnings` green on `kcode-plan`, `kcode-base` and
   `kcode-tui`; `kcode-plan` 34 passed.
-- **A7. One artifact shape: subsumed by `plans/one-flow.md` S4, not done.** The cut this
-  item named (the tool building the seven-field `HandoffArtifact` to stop it drifting from
-  the hand-built three) would harden a type S4 deletes, so the drift closes by deletion
-  there instead: the record is `{id, result}`. Kept as the record of why the item was
-  dropped rather than worked.
 - [x] **A8. The client stops writing the rows into session files.** Landed
   2026-10-03, writers only: deleted `record_swarm_status_event` and
   `record_swarm_plan_event`, the TUI's `persist_swarm_status_snapshot` and
@@ -433,114 +599,3 @@ sent `low`. Losses: `docs/what-was-removed.md`.
   replay-event keys. Gate: `kcode-base` 1097 passed serial with the round-trip test,
   `check_guardrails.sh` green, `kcode-tui` serial 1759 passed with its one known red,
   and `scripts/test.sh full` green bar the three `session_flow` e2e reds.
-
-### B. The file is the list
-
-Last of the file work, whenever we want it.
-
-- [ ] **B2.** This repo's own list migrates: the open checkboxes in `plans/*.md`
-  become the first content of `tasks.jsonl`. Its landed records have already moved, as
-  they land, to `docs/what-was-removed.md`; what is left to migrate is the open items.
-- **B3 (executed as `plans/one-flow.md` S5).** Drop `group`, `status` and `priority` from
-  the type. The gate has
-  already landed: `parent` is what `group` was grouping by, the close action is what
-  makes a completed row unrepresentable rather than stored, and 0.3's "position is
-  priority" is what `priority` becomes. Every `add` still writes `status` and
-  `priority` today. Dropping `status` is the larger half, because the plan
-  classifies by it everywhere: `summarize_plan_graph`, `completed_item_ids`,
-  `is_active_status`, `newly_ready_item_ids` (read by the swarm path), the task-control
-  actions, and `status_from_plan`. `status_to_plan` is already gone: 0.4f's s12 stopped
-  lowering the engine's statuses back into items, so the engine's own statuses no longer
-  reach a row. Afterwards a row is ready when `blocked_by` is empty and liveness comes
-  from the member, not the item.
-
-### C. The list reaches the client
-
-- **C4 (executed as `plans/one-flow.md` S5).** Move `subsystem` and `file_scope` off the
-  shared type onto the
-  worker's own record. They are the scheduler's inputs (assignment affinity matches
-  them against a worker's metadata), not list fields, and neither destination the
-  old text named can hold them: 0.4 deleted the `node_meta` side-map and claimed
-  `SwarmPlanItemSpec`, which survived (A6).
-- **C5 (executed as `plans/one-flow.md` S2).** The client renders the list from server
-  events instead of reading (A8, the writing half, was added by this item's read).
-  the file itself. Today it resolves the repo from its own working directory,
-  which is the same thing for a local session and the wrong repo for a remote
-  attach. Two facts make this plumbing rather than new machinery: a run's rows
-  already cross as `ServerEvent::SwarmPlan { swarm_id, items, reason, summary }`
-  (`wire.rs:837`, produced at `server/swarm.rs:836` and `:894`, applied at
-  `remote/server_events.rs:1995`, where `plan_items` already feeds the info widget
-  and plan progress), and the full rows already cross the bus on every write
-  (`BusEvent::TodoUpdated { session_id, todos }`, `tool/todo.rs:307`), which the
-  server only folds into the compacted member cache (`server.rs:2065`). What is
-  missing is the arm that forwards that bus event to the owning session's clients
-  and the client rendering its surfaces from it; A4 then deletes the member cache,
-  including `SwarmTodoItem`, which is lossy (capped content, no id, `parent`,
-  `blocked_by` or `kind`) and so cannot stand in for the list.
-  - **The view is the rows this session may work, computed once on the server**
-    (decided 2026-10-03). A session in a run gets the run's rows (`swarm_rows`,
-    `server/swarm.rs:12`); a session outside a run gets the whole list. Measured:
-    `swarm_rows` already keeps every unheld row and every row held outside the run,
-    so this differs from "always the whole list" only when two runs share one repo,
-    and the client renders one list either way, so no user-visible mode appears.
-    `Action::List` takes the same rule, which is what ends its whole-file read
-    (`tool/todo.rs:64` over `load_tasks` at `:303`). Rejected: scoping every session
-    to its holdings, which would hide rows the person may pick up and contradict
-    "the user's session changes any row".
-
-### D. Delete what the file makes redundant
-
-- [ ] **D1.** The topic channels and the shared-context key-value store, the
-  removal `internals/swarm.md` recorded as pending and never did, plus the member
-  projection `AgentInfo`, `SwarmMemberStatus`, `MemberStatic` and `SwarmMember`
-  write four times by hand. With the projection one type, member appearance follows
-  the typed status: `kcode-tui-render` takes `SwarmLifecycleStatus` (a dependency on
-  the data-only `kcode-session-types`), so the string matches in `swarm_gallery.rs`
-  and `is_active_status` become enum matches; one module owns accent, glyph, label
-  and sort rank, with an `is_working` predicate kept distinct from lifecycle
-  `is_active` so a stalled node does not spin; the duplicate map
-  `info_widget_swarm_background::swarm_status_style` goes; and the swarm-path
-  `Color::Rgb` literals become `kcode_tui_style` role accessors so `/colors` can
-  recolor them (the small default shift is accepted). The projection's `RunningStale`
-  goes with it: 0.4f removes its only producer (a plan item's status), so the variant
-  is unreachable.
-
-  Gated by C4 and C5.
-- [ ] **D2. The swarm/comm condense.** The `SwarmState` handle pair is still
-  threaded to ~40 functions and rebuilt as a literal at each request arm, so the
-  request context that ends it is the remaining half. Give the swarm state its one
-  owner and delete the pair. Engine: `internals/swarm.md`. (A1 measured 19
-  `SwarmState { .. }` literals and 244 `swarm_runs` references on the settled tree.)
-
-### E. The server shape
-
-The request-path split is `plans/server-shape.md`'s H1-H5, and this plan owns none of
-it: H2 (the swarm state in the client context) waits on D2 above, which is the only
-row-model work that path carries.
-
-### F. The swarm tool surface
-
-- **F1 (executed as `plans/one-flow.md` S1). The tool keeps the model's verbs; the app
-  takes the rest.** After 0.4 a node
-  is a row, so the model's verbs are row verbs, which the `todo` tool already serves.
-  The orchestration actions (`spawn`, `assign_task`/`assign_next`/`fill_slots`,
-  `run_plan`, `cleanup`, `await_members`) become the run's own behavior, not calls. The
-  exact cut is decided at the step; likely one task tool.
-F2's shape lands with F1: what remains of `tool/communicate.rs` after the verb cut is
-`plans/server-shape.md`'s condense task, which owns the file.
-
-### G. Close out
-
-- [ ] **G1.** Restore the two size ratchets in `scripts/check_guardrails.sh` and
-  re-baseline both with `--update`. They are paused, with the reason at the call
-  site.
-- [ ] **G2.** The one live `kcode run` probe against its own socket, in a scratch
-  repo, run by the user: the permission (a granted turn continues, a wake does not)
-  and the poke's removal (no client continuation; every non-retryable error gets the
-  short budget). It is the step's landing proof, so it runs when the list is done,
-  not per step.
-- [ ] **G3.** The work list gets its user doc under `docs/user/`: `tasks.jsonl` at the
-  repo root, the `todo` tool's actions, and the close's required result are described
-  only in this plan, which is a design rather than a manual. It waits until the list
-  settles, which is worth writing once: the row gains its `kind` at 0.3, and B3's
-  field cuts land before the shape stops moving.

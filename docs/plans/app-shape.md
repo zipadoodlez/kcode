@@ -84,7 +84,7 @@ design in the item; the tasks are independent except where a line names a gate.
 - [ ] **One path for local and remote.** The TUI carries a second implementation of
   every surface behind a guard: 26,399 lines under `crates/kcode-tui/src/tui/app/remote*`,
   75 `is_ssh_remote` call sites across 26 files, and per-surface remote forks (the todo
-  reads are one instance, `plans/row-model.md` A5). The local turn path is already
+  reads are one instance, `plans/row-model.md` S2). The local turn path is already
   deleted (`516de13d`), so the question is what the local branch still does that the
   server path does not; answer that per surface, then collapse to one path with the
   transport behind it. (A1, 2026-10-03; re-core, high risk, keep as a scoped proposal

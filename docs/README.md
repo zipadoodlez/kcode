@@ -55,8 +55,7 @@ not fit its row is a doc in the wrong place.
 | doc | purpose | holds |
 |---|---|---|
 | `what-was-removed.md` | every deliberate removal and what it cost | the fork cut, the account cut, the model cut, and what was deliberately kept |
-| `plans/row-model.md` | the destination lane: the row model | the model, its rules, its steps and where the work stands; not served to the model |
-| `plans/one-flow.md` | the destination's second half: one flow of work | the one-page model, the duplication this lane removes, its stages, and the bound call; not served to the model |
+| `plans/row-model.md` | the row/list work: one plan | the model, its rules, the duplication left to remove, the stages that remove it and the bound call; not served to the model |
 | `plans/app-shape.md` | the app's shape | the `App` re-core's tasks, the command surface, the two calls |
 | `plans/server-shape.md` | the request path's shape | the `handle_client` split (H1-H5) and the `communicate.rs` condense |
 | `plans/test-tree.md` | the test tree | its reshape tasks, and the tests red on a clean tree |
