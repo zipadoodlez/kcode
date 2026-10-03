@@ -582,9 +582,6 @@ impl Request {
             Request::CommList { id, .. } => *id,
             Request::CommListChannels { id, .. } => *id,
             Request::CommChannelMembers { id, .. } => *id,
-            Request::CommSeedGraph { id, .. } => *id,
-            Request::CommExpandNode { id, .. } => *id,
-            Request::CommCompleteNode { id, .. } => *id,
             Request::CommSpawn { id, .. } => *id,
             Request::CommListModels { id, .. } => *id,
             Request::CommStop { id, .. } => *id,
@@ -611,9 +608,6 @@ impl Request {
                 | Request::CommList { .. }
                 | Request::CommListChannels { .. }
                 | Request::CommChannelMembers { .. }
-                | Request::CommSeedGraph { .. }
-                | Request::CommExpandNode { .. }
-                | Request::CommCompleteNode { .. }
                 | Request::CommSpawn { .. }
                 | Request::CommListModels { .. }
                 | Request::CommStop { .. }

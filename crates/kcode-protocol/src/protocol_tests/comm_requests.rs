@@ -329,54 +329,50 @@ fn test_comm_spawn_roundtrip_with_optional_nonce() -> Result<()> {
 
 #[test]
 fn test_comm_spawn_decode_model_alone() -> Result<()> {
-    for request_type in ["comm_spawn"] {
-        let json = serde_json::json!({
-            "type": request_type,
-            "id": 60,
-            "session_id": "sess_coord",
-            "model": "gpt-5.5"
-        });
-        let decoded = parse_request_json(&json.to_string())?;
-        match decoded {
-            Request::CommSpawn {
-                model, label, ..
-            } => {
-                assert_eq!(model.as_deref(), Some("gpt-5.5"));
-                assert_eq!(label, None);
-            }
-            _ => return Err(anyhow!("expected spawn")),
+    let json = serde_json::json!({
+        "type": "comm_spawn",
+        "id": 60,
+        "session_id": "sess_coord",
+        "model": "gpt-5.5"
+    });
+    let decoded = parse_request_json(&json.to_string())?;
+    match decoded {
+        Request::CommSpawn {
+            model, label, ..
+        } => {
+            assert_eq!(model.as_deref(), Some("gpt-5.5"));
+            assert_eq!(label, None);
         }
+        _ => return Err(anyhow!("expected spawn")),
     }
     Ok(())
 }
 
 #[test]
 fn test_comm_spawn_roundtrip_omitted_or_null_model() -> Result<()> {
-    for request_type in ["comm_spawn"] {
-        for explicit_null in [false, true] {
-            // Older clients omit the optional field. Explicit null must also work.
-            let mut json = serde_json::json!({
-                "type": request_type,
-                "id": 60,
-                "session_id": "sess_coord"
-            });
-            if explicit_null {
-                json["model"] = serde_json::Value::Null;
-            }
-            let decoded = parse_request_json(&json.to_string())?;
-            let encoded = serde_json::to_string(&decoded)?;
-            let roundtripped = parse_request_json(&encoded)?;
-            for request in [decoded, roundtripped] {
-                assert_eq!(request.id(), 60);
-                match request {
-                    Request::CommSpawn {
-                        model, label, ..
-                    } => {
-                        assert_eq!(model, None);
-                        assert_eq!(label, None);
-                    }
-                    _ => return Err(anyhow!("expected spawn")),
+    for explicit_null in [false, true] {
+        // Older clients omit the optional field. Explicit null must also work.
+        let mut json = serde_json::json!({
+            "type": "comm_spawn",
+            "id": 60,
+            "session_id": "sess_coord"
+        });
+        if explicit_null {
+            json["model"] = serde_json::Value::Null;
+        }
+        let decoded = parse_request_json(&json.to_string())?;
+        let encoded = serde_json::to_string(&decoded)?;
+        let roundtripped = parse_request_json(&encoded)?;
+        for request in [decoded, roundtripped] {
+            assert_eq!(request.id(), 60);
+            match request {
+                Request::CommSpawn {
+                    model, label, ..
+                } => {
+                    assert_eq!(model, None);
+                    assert_eq!(label, None);
                 }
+                _ => return Err(anyhow!("expected spawn")),
             }
         }
     }

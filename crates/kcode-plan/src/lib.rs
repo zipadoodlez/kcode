@@ -9,26 +9,12 @@ pub const MAX_PLAN_ITEMS: usize = 1024;
 
 pub mod artifact;
 pub mod bridge;
-pub mod dag;
 
 /// A swarm plan item: the same task type the `todo` tool and the work list use.
 ///
 /// The definition lives in `kcode-task-types`, because the plan, the `todo`
 /// tool, and the list file all read and write the same entries.
 pub use kcode_task_types::TaskItem;
-
-/// Whether `id` is a row other rows belong to: a composite join/synthesis point
-/// rather than a leaf. Derived, never stored: a child that is still a row names its
-/// parent, and a close deletes the child and leaves its record on the parent
-/// (`kcode_base::todo::close_row`), so a row with an open child or a nonempty
-/// `records` was decomposed and still is.
-pub fn is_composite(rows: &[TaskItem], id: &str) -> bool {
-    rows.iter().any(|row| row.parent.as_deref() == Some(id))
-        || rows
-            .iter()
-            .find(|row| row.id == id)
-            .is_some_and(|row| !row.records.is_empty())
-}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PlanGraphSummary {

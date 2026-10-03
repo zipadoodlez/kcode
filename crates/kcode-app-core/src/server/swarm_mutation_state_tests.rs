@@ -122,12 +122,6 @@ async fn swarm_mutation_concurrent_duplicates_share_final_done_response() {
     }
 }
 
-/// Regression: a control-driven mutation (retry/reassign/replace/salvage)
-/// must re-dispatch even when an identical mutation persisted a success
-/// within the final-state TTL. Replaying the stale success would turn the
-/// coordinator's deliberate retry into a silent no-op whenever the worker
-/// failed in under the TTL.
-
 /// Concurrent in-flight duplicates of a control-driven mutation still
 /// coalesce onto the active execution instead of double-dispatching.
 #[tokio::test]

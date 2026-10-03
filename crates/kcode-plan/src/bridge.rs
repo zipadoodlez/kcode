@@ -1,15 +1,31 @@
-//! Bridge between the validated [`crate::dag`] engine and the rows the swarm
-//! runtime works.
+//! The kind a row's work is: the one vocabulary the words, the parser that reads
+//! them back, and the option list a schema shows all share.
 //!
-//! The `dag` engine is the brain: it owns validation (acyclicity, ownership) and the
-//! reference simulator. The rows are the work list's, so server handlers lift them into
-//! a `TaskGraph`, apply an engine op, and read the result: one source of truth, because
-//! there is no second copy to keep in step.
+//! A kind is stored as the word the writer wrote (`TaskItem::kind`), so the store
+//! learns no engine type (rule 5) and this module is the only place that turns a
+//! word into the engine's kind and back.
 
 use crate::TaskItem;
 use crate::artifact::HandoffArtifact;
-use crate::dag::{NodeKind, NodeSpec, NodeStatus, TaskGraph, TaskNode};
-use std::collections::HashSet;
+use serde::{Deserialize, Serialize};
+
+/// The terminal action a row represents. The work list is kind-agnostic: the
+/// vocabulary is the engine's, and a row writes one of these words or none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NodeKind {
+    /// Research/analysis. Artifact = findings.
+    Explore,
+    /// Code change. Artifact = diff/commit ref.
+    Implement,
+    /// Acceptance check (build/tests).
+    Verify,
+    /// Repair after a failed verify.
+    Fix,
+    /// Map-reduce rollup of a composite node's children.
+    Synthesize,
+    /// Adversarial gap-finder for exploration.
+    Critique,
+}
 
 /// Every kind the engine knows, in the order its words are listed.
 pub const KINDS: [NodeKind; 6] = [
@@ -49,75 +65,6 @@ pub fn kind_str(kind: NodeKind) -> &'static str {
 /// for a word the engine does not know.
 pub fn kind_words() -> String {
     KINDS.map(kind_str).join(", ")
-}
-
-/// Map a plan status string to an engine [`NodeStatus`].
-fn status_from_plan(status: &str) -> NodeStatus {
-    match status {
-        "running" => NodeStatus::Running,
-        "completed" | "done" => NodeStatus::Done,
-        "failed" | "stopped" | "crashed" => NodeStatus::Failed,
-        _ => NodeStatus::Queued,
-    }
-}
-
-/// The nodes one session's rows seed: the rows it holds, in file order, lifted
-/// into the engine's node specs. See `docs/plans/task-flow.md`, "Rows are the
-/// run's seed source".
-///
-/// The row's id is the node's id, its words are the node's content, its kind is
-/// the node's kind, and its position is its priority rank, so the engine's order
-/// and the file's order agree. A row is seeded only when it is seedable at all:
-/// the engine knows its kind (rule 8 forbids guessing one), and every row it is
-/// blocked by is also this session's. A blocker held by someone else is not this
-/// run's to start, and an edge naming a node the graph does not have is not a
-/// graph, so the pair is left for whoever holds the blocker.
-pub fn seed_specs(rows: &[TaskItem], session_id: &str) -> Vec<NodeSpec> {
-    let held: Vec<(usize, &TaskItem, NodeKind)> = rows
-        .iter()
-        .enumerate()
-        .filter(|(_, row)| row.assigned_to.as_deref() == Some(session_id))
-        .filter_map(|(position, row)| {
-            parse_kind(row.kind.as_deref()).map(|kind| (position, row, kind))
-        })
-        .collect();
-    let in_scope: HashSet<&str> = held.iter().map(|(_, row, _)| row.id.as_str()).collect();
-    held.into_iter()
-        .filter(|(_, row, _)| {
-            row.blocked_by
-                .iter()
-                .all(|blocker| in_scope.contains(blocker.as_str()))
-        })
-        .map(|(position, row, kind)| NodeSpec {
-            id: Some(row.id.clone()),
-            content: row.content.clone(),
-            kind,
-            depends_on: row.blocked_by.clone(),
-            priority: position.min(u8::MAX as usize) as u8,
-        })
-        .collect()
-}
-
-/// Lift rows into a validated [`TaskGraph`] for engine ops.
-pub fn to_task_graph(rows: &[TaskItem]) -> TaskGraph {
-    let mut graph = TaskGraph::new();
-    for item in rows {
-        graph.push_node(TaskNode {
-            id: item.id.clone(),
-            content: item.content.clone(),
-            // A lifted node must have a kind, and `Explore` is what an unwritten
-            // kind has always rendered as; a row with no word is refused by the
-            // seed, not here.
-            kind: parse_kind(item.kind.as_deref()).unwrap_or(NodeKind::Explore),
-            status: status_from_plan(&item.status),
-            owner: item.assigned_to.clone(),
-            parent: item.parent.clone(),
-            depends_on: item.blocked_by.clone(),
-            expanded: crate::is_composite(rows, &item.id),
-            priority: crate::priority_rank(&item.priority),
-        });
-    }
-    graph
 }
 
 /// Build the forward-dataflow context for a task: the handoff artifacts of the work
@@ -201,77 +148,6 @@ mod tests {
             kind_words(),
             "explore, implement, verify, fix, synthesize, critique"
         );
-    }
-
-    fn kinded(id: &str, kind: &str, deps: &[&str]) -> TaskItem {
-        TaskItem {
-            kind: Some(kind.to_string()),
-            blocked_by: deps.iter().map(|dep| (*dep).to_string()).collect(),
-            assigned_to: Some("me".to_string()),
-            ..plan_item(id, "queued")
-        }
-    }
-
-    /// The seed is the rows the session holds: the id, the words, the kind, the
-    /// blocker edges and the position all come from the row, and a row that cannot
-    /// be seated is left out instead of being given a guessed kind or an edge to a
-    /// node the graph will not have.
-    #[test]
-    fn the_seed_is_the_rows_the_session_holds() {
-        let rows = vec![
-            kinded("t1", "explore", &[]),
-            kinded("t2", "verify", &["t1"]),
-            kinded("t3", "", &[]),
-            TaskItem {
-                assigned_to: Some("someone-else".to_string()),
-                ..kinded("t4", "fix", &[])
-            },
-            kinded("t5", "explore", &["t4"]),
-        ];
-
-        let specs = seed_specs(&rows, "me");
-
-        let ids: Vec<&str> = specs
-            .iter()
-            .map(|spec| spec.id.as_deref().unwrap_or_default())
-            .collect();
-        assert_eq!(
-            ids,
-            ["t1", "t2"],
-            "a kindless row, a foreign row, and a row blocked outside the run stay out"
-        );
-        assert_eq!(
-            specs[0].content, "task t1",
-            "the row's words are the node's"
-        );
-        assert_eq!(
-            specs[1].kind,
-            NodeKind::Verify,
-            "the row's kind is the node's"
-        );
-        assert_eq!(
-            specs[1].depends_on,
-            vec!["t1".to_string()],
-            "the row's blockers are the node's edges"
-        );
-        assert_eq!(specs[0].priority, 0, "position is priority");
-        assert_eq!(specs[1].priority, 1);
-    }
-
-    #[test]
-    fn round_trip_preserves_items_and_edges() {
-        let rows = vec![
-            plan_item("a", "completed"),
-            TaskItem {
-                blocked_by: vec!["a".to_string()],
-                ..plan_item("b", "queued")
-            },
-        ];
-
-        let graph = to_task_graph(&rows);
-        assert_eq!(graph.len(), 2);
-        assert!(graph.get("a").unwrap().is_done());
-        assert_eq!(graph.get("b").unwrap().depends_on, vec!["a".to_string()]);
     }
 
     /// The context of a row is the work that closed under it: a close leaves its

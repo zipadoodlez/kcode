@@ -260,62 +260,6 @@ pub(super) async fn handle_lightweight_control_request(
             )
             .await;
         }
-        Request::CommSeedGraph {
-            id,
-            session_id: req_session_id,
-        } => {
-            super::comm_graph::handle_comm_seed_graph(
-                id,
-                req_session_id,
-                &client_event_tx,
-                swarm_members,
-                swarm_runs,
-                event_history,
-                event_counter,
-                swarm_event_tx,
-            )
-            .await;
-        }
-        Request::CommExpandNode {
-            id,
-            session_id: req_session_id,
-            node_id,
-            children,
-        } => {
-            super::comm_graph::handle_comm_expand_node(
-                id,
-                req_session_id,
-                node_id,
-                children,
-                &client_event_tx,
-                swarm_members,
-                swarm_runs,
-                event_history,
-                event_counter,
-                swarm_event_tx,
-            )
-            .await;
-        }
-        Request::CommCompleteNode {
-            id,
-            session_id: req_session_id,
-            node_id,
-            artifact_json,
-        } => {
-            super::comm_graph::handle_comm_complete_node(
-                id,
-                req_session_id,
-                node_id,
-                artifact_json,
-                &client_event_tx,
-                swarm_members,
-                swarm_runs,
-                event_history,
-                event_counter,
-                swarm_event_tx,
-            )
-            .await;
-        }
         Request::CommSpawn {
             id,
             session_id: req_session_id,

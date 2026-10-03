@@ -1,7 +1,6 @@
 #![cfg_attr(test, allow(clippy::await_holding_lock))]
 
 use super::{Tool, ToolContext, ToolOutput};
-use crate::plan::TaskItem;
 use crate::protocol::{
     AgentInfo, AgentStatusSnapshot, AwaitedMemberStatus, CommDeliveryMode, ContextEntry,
     HistoryMessage, PlanGraphStatus, Request, ServerEvent, SwarmChannelInfo, ToolCallSummary,
@@ -422,14 +421,6 @@ struct CommunicateInput {
     #[serde(default)]
     limit: Option<usize>,
     #[serde(default)]
-    node_id: Option<String>,
-    /// Child rows for the expand_node action. Each: content, kind?, blocked_by?.
-    #[serde(default)]
-    nodes: Option<Vec<TaskItem>>,
-    /// Handoff artifact (object) for complete_node.
-    #[serde(default)]
-    artifact: Option<serde_json::Value>,
-    #[serde(default)]
     target_status: Option<Vec<String>>,
     #[serde(default)]
     session_ids: Option<Vec<String>>,
@@ -538,7 +529,6 @@ impl Tool for CommunicateTool {
                     "enum": ["share", "share_append", "read", "message", "broadcast", "dm", "channel", "list", "list_channels", "channel_members",
                              "spawn", "stop",
                              "status", "report", "plan_status", "summary", "read_context", "resync_plan", "cleanup",
-                             "task_graph", "expand_node", "complete_node",
                                                           "subscribe_channel", "unsubscribe_channel", "await_members", "list_models"],
                     "description": "Action. spawn requires label and should include prompt. list_models shows available models/routes."
                 },
@@ -618,7 +608,7 @@ impl Tool for CommunicateTool {
                 },
                 "mode": {
                     "type": "string",
-                    "enum": ["all", "any", "deep", "light"],
+                    "enum": ["all", "any"],
                     "description": "await_members: all or any."
                 },
                 "target_status": {
@@ -653,35 +643,6 @@ impl Tool for CommunicateTool {
 
         // Task-DAG properties are added after the macro to keep `json!` nesting
         // depth under the macro recursion limit.
-        if let Some(props) = schema
-            .get_mut("properties")
-            .and_then(|value| value.as_object_mut())
-        {
-            props.insert(
-                "node_id".to_string(),
-                json!({
-                    "type": "string",
-                    "description": "Task-DAG node id for expand_node/complete_node."
-                }),
-            );
-            props.insert(
-                "nodes".to_string(),
-                json!({
-                    "type": "array",
-                    "description": "Child rows for expand_node. Each: {content, kind?, blocked_by?}. The store assigns ids.",
-                    "items": { "type": "object", "additionalProperties": true }
-                }),
-            );
-            props.insert(
-                "artifact".to_string(),
-                json!({
-                    "type": "object",
-                    "description": "Handoff artifact for complete_node: findings, evidence[], validation, open_questions[], confidence.",
-                    "additionalProperties": true
-                }),
-            );
-        }
-
         // `swarm` is a multi-action tool, so putting `label` in the top-level
         // `required` array would incorrectly require it for read/list/message and
         // every other action. Use mutually exclusive action branches instead:
@@ -1005,82 +966,6 @@ impl Tool for CommunicateTool {
                         Ok(ToolOutput::new("No channel members found."))
                     }
                     Err(e) => Err(anyhow::anyhow!("Failed to list channel members: {}", e)),
-                }
-            }
-
-            "task_graph" | "seed_graph" => {
-                // The seed is the rows this session holds; the server reads them. There
-                // is nothing to retry and no id to collide with, because a row's id is
-                // the node's id (the node id is the row id).
-                let request = Request::CommSeedGraph {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                };
-                let response = send_request(request)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to seed task graph: {}", e))?;
-                ensure_success(&response)?;
-                let summary = fetch_plan_status(&ctx.session_id).await?;
-                Ok(ToolOutput::new(format!(
-                    "Seeded the task graph from the rows this session holds; it now has {} items.",
-                    summary.item_count
-                )))
-            }
-
-            "expand_node" => {
-                let node_id = params.node_id.clone().ok_or_else(|| {
-                    anyhow::anyhow!("'node_id' is required for expand_node action")
-                })?;
-                let children = params.nodes.clone().ok_or_else(|| {
-                    anyhow::anyhow!("'nodes' (children) is required for expand_node action")
-                })?;
-                if children.is_empty() {
-                    return Err(anyhow::anyhow!("expand_node requires at least one child"));
-                }
-                let count = children.len();
-                let request = Request::CommExpandNode {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                    node_id: node_id.clone(),
-                    children,
-                };
-                match send_request(request).await {
-                    Ok(response) => {
-                        ensure_success(&response)?;
-                        Ok(ToolOutput::new(format!(
-                            "Decomposed '{}' into {} children.",
-                            node_id, count
-                        )))
-                    }
-                    Err(e) => Err(anyhow::anyhow!("Failed to expand node: {}", e)),
-                }
-            }
-
-            "complete_node" => {
-                let node_id = params.node_id.clone().ok_or_else(|| {
-                    anyhow::anyhow!("'node_id' is required for complete_node action")
-                })?;
-                let artifact_json = match params.artifact.clone() {
-                    Some(value) => serde_json::to_string(&value)
-                        .map_err(|e| anyhow::anyhow!("invalid artifact: {}", e))?,
-                    None => {
-                        return Err(anyhow::anyhow!(
-                            "'artifact' object is required for complete_node action"
-                        ));
-                    }
-                };
-                let request = Request::CommCompleteNode {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                    node_id: node_id.clone(),
-                    artifact_json,
-                };
-                match send_request(request).await {
-                    Ok(response) => {
-                        ensure_success(&response)?;
-                        Ok(ToolOutput::new(format!("Completed node '{}'.", node_id)))
-                    }
-                    Err(e) => Err(anyhow::anyhow!("Failed to complete node: {}", e)),
                 }
             }
 

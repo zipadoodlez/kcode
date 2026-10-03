@@ -108,7 +108,6 @@ fn canonical_swarm_action_passes_through_known_and_unknown_actions() {
     // Real actions are unchanged.
     assert_eq!(canonical_swarm_action("spawn"), "spawn");
     assert_eq!(canonical_swarm_action("dm"), "dm");
-    assert_eq!(canonical_swarm_action("task_graph"), "task_graph");
     // Genuinely unknown actions are returned unchanged for normal validation.
     assert_eq!(canonical_swarm_action("totally_made_up"), "totally_made_up");
 }
@@ -432,18 +431,16 @@ fn spawning_action_inputs_preserve_requested_model() {
 
 #[test]
 fn spawning_action_inputs_allow_omitted_or_null_model() {
-    for action in ["spawn"] {
-        let without_model: CommunicateInput =
-            serde_json::from_value(json!({"action": action, "label": "reviewer"})).unwrap();
-        assert!(without_model.model.is_none());
-        let null_model: CommunicateInput = serde_json::from_value(json!({
-            "action": action,
-            "label": "reviewer",
-            "model": null
-        }))
-        .unwrap();
-        assert!(null_model.model.is_none());
-    }
+    let without_model: CommunicateInput =
+        serde_json::from_value(json!({"action": "spawn", "label": "reviewer"})).unwrap();
+    assert!(without_model.model.is_none());
+    let null_model: CommunicateInput = serde_json::from_value(json!({
+        "action": "spawn",
+        "label": "reviewer",
+        "model": null
+    }))
+    .unwrap();
+    assert!(null_model.model.is_none());
 }
 
 #[test]
@@ -514,8 +511,8 @@ fn schema_advertises_supported_swarm_fields() {
     assert!(props.contains_key("mode"));
     assert_eq!(
         props["mode"]["enum"],
-        json!(["all", "any", "deep", "light"]),
-        "mode must advertise both task_graph and await_members values"
+        json!(["all", "any"]),
+        "mode must advertise the await_members values"
     );
     assert!(props.contains_key("target_status"));
     assert!(props.contains_key("timeout_minutes"));

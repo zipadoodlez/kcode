@@ -448,33 +448,6 @@ pub enum Request {
         channel: String,
     },
 
-    /// Seed the swarm task DAG from the rows the calling session holds. The plan
-    /// gets the rows' ids, words, kinds and dependency edges; rows already in the
-    /// plan are not seeded again.
-    #[serde(rename = "comm_seed_graph")]
-    CommSeedGraph { id: u64, session_id: String },
-
-    /// Decompose a node the caller holds into child rows. Each child is a row:
-    /// content, optional kind, and blockers on rows that already exist. The store
-    /// owns the child ids.
-    #[serde(rename = "comm_expand_node")]
-    CommExpandNode {
-        id: u64,
-        session_id: String,
-        node_id: String,
-        children: Vec<TaskItem>,
-    },
-
-    /// Complete a node the caller owns with a typed handoff artifact.
-    #[serde(rename = "comm_complete_node")]
-    CommCompleteNode {
-        id: u64,
-        session_id: String,
-        node_id: String,
-        /// Handoff artifact as a JSON object string.
-        artifact_json: String,
-    },
-
     /// Spawn a new agent session (coordinator only)
     #[serde(rename = "comm_spawn")]
     CommSpawn {
