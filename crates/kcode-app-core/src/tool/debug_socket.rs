@@ -46,7 +46,7 @@ impl Tool for DebugSocketTool {
     }
 
     fn description(&self) -> &str {
-        "Send a debug socket command."
+        "Send a debug socket command to control visual debugging, spawn tester instances, and inspect agent state."
     }
 
     fn parameters_schema(&self) -> Value {
