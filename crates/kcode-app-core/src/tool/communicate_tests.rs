@@ -1,10 +1,9 @@
 use super::{
     CommunicateInput, CommunicateTool, canonical_swarm_action, cleanup_candidate_session_ids,
-    coordination_in_flight_count, default_await_target_statuses, default_cleanup_target_statuses,
-    format_awaited_members, format_awaited_members_with_reports, format_members,
-    format_plan_status, format_swarm_model_list, latest_assistant_report,
-    resolve_optional_target_session, resolve_run_plan_concurrency, swarm_member_is_drivable_worker,
-    swarm_member_is_in_flight,
+    default_await_target_statuses, default_cleanup_target_statuses, format_awaited_members,
+    format_awaited_members_with_reports, format_members, format_plan_status,
+    format_swarm_model_list, latest_assistant_report, resolve_optional_target_session,
+    resolve_run_plan_concurrency,
 };
 use crate::message::{Message, StreamEvent, ToolDefinition};
 use crate::protocol::SwarmLifecycleStatus;
@@ -95,7 +94,6 @@ fn canonical_swarm_action_maps_common_synonyms() {
     assert_eq!(canonical_swarm_action("announce"), "broadcast");
     assert_eq!(canonical_swarm_action("agents"), "list");
     assert_eq!(canonical_swarm_action("plan"), "plan_status");
-    assert_eq!(canonical_swarm_action("assign"), "assign_task");
     assert_eq!(canonical_swarm_action("kill"), "stop");
 }
 
@@ -152,118 +150,6 @@ fn format_plan_status_includes_next_ready() {
     assert!(text.contains("Next up: task-2"));
     assert!(text.contains("Newly ready: task-3"));
     assert!(text.contains("Blocked: task-4"));
-}
-
-#[test]
-fn in_flight_slot_accounting_counts_queued_workers_not_coordinator() {
-    let summary = crate::protocol::PlanGraphStatus {
-        swarm_id: Some("swarm-a".to_string()),
-        item_count: 4,
-        ready_ids: vec!["queued-assigned".to_string()],
-        blocked_ids: Vec::new(),
-        active_ids: vec!["running-plan-task".to_string()],
-        failed_ids: Vec::new(),
-        failed_reasons: Default::default(),
-        cycle_ids: Vec::new(),
-        unresolved_dependency_ids: Vec::new(),
-        next_ready_ids: vec!["queued-assigned".to_string()],
-        newly_ready_ids: Vec::new(),
-    };
-    let members = vec![
-        AgentInfo {
-            session_id: "coord".to_string(),
-            friendly_name: None,
-            files_touched: Vec::new(),
-            status: Some(SwarmLifecycleStatus::Running),
-            detail: None,
-            role: Some("coordinator".to_string()),
-            is_headless: Some(false),
-            report_back_to_session_id: None,
-            latest_completion_report: None,
-            live_attachments: None,
-            status_age_secs: None,
-            ..Default::default()
-        },
-        AgentInfo {
-            session_id: "worker-queued".to_string(),
-            friendly_name: None,
-            files_touched: Vec::new(),
-            status: Some(SwarmLifecycleStatus::Queued),
-            detail: None,
-            role: Some("agent".to_string()),
-            is_headless: Some(true),
-            report_back_to_session_id: Some("coord".to_string()),
-            latest_completion_report: None,
-            live_attachments: None,
-            status_age_secs: None,
-            ..Default::default()
-        },
-        AgentInfo {
-            session_id: "worker-ready".to_string(),
-            friendly_name: None,
-            files_touched: Vec::new(),
-            status: Some(SwarmLifecycleStatus::Ready),
-            detail: None,
-            role: Some("agent".to_string()),
-            is_headless: Some(true),
-            report_back_to_session_id: Some("coord".to_string()),
-            latest_completion_report: None,
-            live_attachments: None,
-            status_age_secs: None,
-            ..Default::default()
-        },
-    ];
-
-    assert!(swarm_member_is_in_flight(&members[1]));
-    assert!(!swarm_member_is_in_flight(&members[2]));
-    assert_eq!(coordination_in_flight_count(&summary, &members, "coord"), 1);
-}
-
-#[test]
-fn in_flight_count_excludes_foreign_queued_session() {
-    // A stale, independent (non-owned, client-attached) session that merely shares
-    // the swarm and happens to sit in `queued` must NOT count as in-flight for
-    // run_plan: it is never auto-driven, so awaiting it would hang the run even
-    // though no plan task is assigned to it. Regression for the run_plan stall.
-    let summary = crate::protocol::PlanGraphStatus {
-        swarm_id: Some("swarm-a".to_string()),
-        item_count: 1,
-        ready_ids: Vec::new(),
-        blocked_ids: Vec::new(),
-        active_ids: Vec::new(),
-        failed_ids: Vec::new(),
-        failed_reasons: Default::default(),
-        cycle_ids: Vec::new(),
-        unresolved_dependency_ids: Vec::new(),
-        next_ready_ids: Vec::new(),
-        newly_ready_ids: Vec::new(),
-    };
-    let members = vec![
-        AgentInfo {
-            session_id: "coord".to_string(),
-            status: Some(SwarmLifecycleStatus::Running),
-            role: Some("coordinator".to_string()),
-            is_headless: Some(false),
-            report_back_to_session_id: None,
-            ..Default::default()
-        },
-        AgentInfo {
-            session_id: "foreign-human".to_string(),
-            status: Some(SwarmLifecycleStatus::Queued),
-            role: Some("agent".to_string()),
-            is_headless: Some(false),
-            // Not owned by coord, and a live client is attached.
-            report_back_to_session_id: None,
-            live_attachments: Some(1),
-            ..Default::default()
-        },
-    ];
-
-    // It is technically "in flight" by status, but not a drivable worker, so the
-    // scoped count is zero and run_plan can reach its terminal check.
-    assert!(swarm_member_is_in_flight(&members[1]));
-    assert!(!swarm_member_is_drivable_worker(&members[1], "coord"));
-    assert_eq!(coordination_in_flight_count(&summary, &members, "coord"), 0);
 }
 
 #[test]
@@ -525,7 +411,7 @@ fn existing_tool_keeps_prompt_while_new_tool_loads_edit() {
 
 #[test]
 fn spawning_action_inputs_preserve_requested_model() {
-    for action in ["spawn", "assign_task", "assign_next", "fill_slots"] {
+    for action in ["spawn"] {
         for model in [
             "z-ai/glm-5.2:free",
             "openai-api:gpt-5.5",
@@ -546,7 +432,7 @@ fn spawning_action_inputs_preserve_requested_model() {
 
 #[test]
 fn spawning_action_inputs_allow_omitted_or_null_model() {
-    for action in ["spawn", "assign_task", "assign_next", "fill_slots"] {
+    for action in ["spawn"] {
         let without_model: CommunicateInput =
             serde_json::from_value(json!({"action": action, "label": "reviewer"})).unwrap();
         assert!(without_model.model.is_none());
@@ -666,18 +552,6 @@ fn schema_advertises_supported_swarm_fields() {
             .as_array()
             .expect("action enum")
             .contains(&json!("plan_status"))
-    );
-    assert!(
-        schema["properties"]["action"]["enum"]
-            .as_array()
-            .expect("action enum")
-            .contains(&json!("assign_next"))
-    );
-    assert!(
-        schema["properties"]["action"]["enum"]
-            .as_array()
-            .expect("action enum")
-            .contains(&json!("fill_slots"))
     );
     assert!(
         schema["properties"]["action"]["enum"]
@@ -998,4 +872,3 @@ fn default_await_members_targets_include_ready() {
 
 include!("communicate_tests/input_format.rs");
 include!("communicate_tests/end_to_end.rs");
-include!("communicate_tests/assignment.rs");

@@ -8,9 +8,8 @@ use crate::protocol::{
     comm_cleanup_candidate_session_ids, default_comm_await_target_statuses,
     default_comm_cleanup_target_statuses, format_comm_awaited_members_with_reports,
     format_comm_channels, format_comm_context_entries, format_comm_context_history,
-    format_comm_members, format_comm_plan_followup, format_comm_plan_status,
-    format_comm_status_snapshot, format_comm_tool_summary, latest_assistant_comm_report,
-    resolve_optional_comm_target_session,
+    format_comm_members, format_comm_plan_status, format_comm_status_snapshot,
+    format_comm_tool_summary, latest_assistant_comm_report, resolve_optional_comm_target_session,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -23,14 +22,6 @@ const REQUEST_ID: u64 = 1;
 
 mod transport;
 use transport::{send_request, send_request_with_timeout};
-
-fn fresh_spawn_request_nonce(ctx: &ToolContext) -> String {
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    format!("{}-{}-{}", ctx.session_id, ctx.message_id, now_ms)
-}
 
 fn check_error(response: &ServerEvent) -> Option<&str> {
     if let ServerEvent::Error { message, .. } = response {
@@ -63,10 +54,6 @@ async fn fetch_plan_status(session_id: &str) -> Result<PlanGraphStatus> {
     }
 }
 
-fn format_plan_followup(summary: &PlanGraphStatus) -> String {
-    format_comm_plan_followup(summary)
-}
-
 fn default_cleanup_target_statuses() -> Vec<String> {
     default_comm_cleanup_target_statuses()
 }
@@ -87,14 +74,6 @@ fn cleanup_candidate_session_ids(
     )
 }
 
-fn auto_assignment_needs_spawn(response: &ServerEvent) -> bool {
-    check_error(response).is_some_and(|message| {
-        message.contains(
-            "No ready or completed swarm agents are available for automatic task assignment",
-        )
-    })
-}
-
 async fn fetch_swarm_members(session_id: &str) -> Result<Vec<AgentInfo>> {
     let request = Request::CommList {
         id: REQUEST_ID,
@@ -108,37 +87,6 @@ async fn fetch_swarm_members(session_id: &str) -> Result<Vec<AgentInfo>> {
         }
         Err(e) => Err(anyhow::anyhow!("Failed to list swarm members: {}", e)),
     }
-}
-
-fn swarm_member_is_in_flight(member: &AgentInfo) -> bool {
-    member
-        .status
-        .as_ref()
-        .is_some_and(|status| status.is_in_flight())
-}
-
-fn coordination_in_flight_count(
-    summary: &PlanGraphStatus,
-    members: &[AgentInfo],
-    current_session_id: &str,
-) -> usize {
-    summary.active_ids.len().max(
-        members
-            .iter()
-            .filter(|member| member.session_id != current_session_id)
-            .filter(|member| swarm_member_is_in_flight(member))
-            .filter(|member| swarm_member_is_drivable_worker(member, current_session_id))
-            .count(),
-    )
-}
-
-/// Whether `member` is a worker `run_plan` can rely on to autonomously execute an
-/// assignment (and therefore one it is safe to await): a spawned headless worker,
-/// or one owned by the coordinator that issued the run. Foreign client-attached
-/// sessions are not drivable and must not gate `run_plan` completion.
-fn swarm_member_is_drivable_worker(member: &AgentInfo, coordinator_session_id: &str) -> bool {
-    member.is_headless.unwrap_or(false)
-        || member.report_back_to_session_id.as_deref() == Some(coordinator_session_id)
 }
 
 async fn cleanup_swarm_workers(ctx: &ToolContext, params: &CommunicateInput) -> Result<String> {
@@ -238,70 +186,6 @@ fn resolve_run_plan_concurrency(requested: Option<usize>, cap: usize) -> usize {
         Some(explicit) => explicit.max(1),
         None if cap == 0 => usize::MAX,
         None => cap,
-    }
-}
-
-async fn spawn_assignment_session(ctx: &ToolContext, params: &CommunicateInput) -> Result<String> {
-    let spawn_request = Request::CommSpawn {
-        id: REQUEST_ID,
-        session_id: ctx.session_id.clone(),
-        working_dir: params.working_dir.clone(),
-        initial_message: None,
-        request_nonce: Some(fresh_spawn_request_nonce(ctx)),
-        spawn_mode: params.spawn_mode.clone(),
-        model: params.model.clone(),
-        label: None,
-    };
-
-    match send_request(spawn_request).await {
-        Ok(ServerEvent::CommSpawnResponse { new_session_id, .. }) if !new_session_id.is_empty() => {
-            Ok(new_session_id)
-        }
-        Ok(spawn_response) => {
-            ensure_success(&spawn_response)?;
-            Err(anyhow::anyhow!(
-                "Spawn succeeded but new session ID was not returned."
-            ))
-        }
-        Err(e) => Err(anyhow::anyhow!(
-            "Failed to spawn agent for task assignment: {}",
-            e
-        )),
-    }
-}
-
-async fn assign_task_to_session(
-    ctx: &ToolContext,
-    params: &CommunicateInput,
-    target_session: String,
-    spawned_suffix: &str,
-) -> Result<ToolOutput> {
-    let retry_request = Request::CommAssignTask {
-        id: REQUEST_ID,
-        session_id: ctx.session_id.clone(),
-        target_session: Some(target_session.clone()),
-        task_id: params.task_id.clone(),
-        message: params.message.clone(),
-        redispatch: false,
-    };
-
-    match send_request(retry_request).await {
-        Ok(ServerEvent::CommAssignTaskResponse { task_id, .. }) => Ok(ToolOutput::new(format!(
-            "Task '{}' assigned to {}{}",
-            task_id, target_session, spawned_suffix
-        ))),
-        Ok(retry_response) => {
-            ensure_success(&retry_response)?;
-            Ok(ToolOutput::new(format!(
-                "Assigned next runnable task to {}{}",
-                target_session, spawned_suffix
-            )))
-        }
-        Err(e) => Err(anyhow::anyhow!(
-            "Failed to assign task after selecting {}: {}",
-            target_session,
-            e
-        )),
     }
 }
 
@@ -638,7 +522,6 @@ fn canonical_swarm_action(action: &str) -> &str {
         "agents" | "members" | "list_agents" | "list_members" | "roster" => "list",
         "models" | "model_list" | "list_model" | "list_providers" | "list_routes" => "list_models",
         "plan" | "status_plan" => "plan_status",
-        "assign" => "assign_task",
         "kill" | "terminate" => "stop",
         _ => action,
     }
@@ -709,7 +592,7 @@ impl Tool for CommunicateTool {
                     "type": "string",
                     "enum": ["share", "share_append", "read", "message", "broadcast", "dm", "channel", "list", "list_channels", "channel_members",
                              "spawn", "stop",
-                             "status", "report", "plan_status", "summary", "read_context", "resync_plan", "assign_task", "assign_next", "fill_slots", "cleanup",
+                             "status", "report", "plan_status", "summary", "read_context", "resync_plan", "cleanup",
                              "task_graph", "expand_node", "complete_node",
                              "retry", "wake",
                              "subscribe_channel", "unsubscribe_channel", "await_members", "list_models"],
@@ -1473,187 +1356,6 @@ impl Tool for CommunicateTool {
                 }
             }
 
-            "assign_task" => {
-                let target = params
-                    .target_session
-                    .clone()
-                    .unwrap_or_else(|| "next available agent".to_string());
-                let spawn_if_needed = params.spawn_if_needed.unwrap_or(false);
-                let prefer_spawn = params.prefer_spawn.unwrap_or(false);
-
-                if prefer_spawn && params.target_session.is_none() {
-                    let spawned_session = spawn_assignment_session(&ctx, &params).await?;
-                    return assign_task_to_session(
-                        &ctx,
-                        &params,
-                        spawned_session,
-                        " (spawned by planner preference)",
-                    )
-                    .await;
-                }
-
-                let request = Request::CommAssignTask {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                    target_session: params.target_session.clone(),
-                    task_id: params.task_id.clone(),
-                    message: params.message.clone(),
-                    redispatch: false,
-                };
-
-                match send_request(request).await {
-                    Ok(ServerEvent::CommAssignTaskResponse {
-                        task_id,
-                        target_session,
-                        ..
-                    }) => {
-                        let mut output =
-                            format!("Task '{}' assigned to {}", task_id, target_session);
-                        if let Ok(summary) = fetch_plan_status(&ctx.session_id).await {
-                            output.push_str(&format!("\n{}", format_plan_followup(&summary)));
-                        }
-                        Ok(ToolOutput::new(output))
-                    }
-                    Ok(response)
-                        if spawn_if_needed
-                            && params.target_session.is_none()
-                            && auto_assignment_needs_spawn(&response) =>
-                    {
-                        let spawned_session = spawn_assignment_session(&ctx, &params).await?;
-                        assign_task_to_session(
-                            &ctx,
-                            &params,
-                            spawned_session,
-                            " (spawned automatically)",
-                        )
-                        .await
-                    }
-                    Ok(response) => {
-                        ensure_success(&response)?;
-                        let msg = params.task_id.as_deref().map_or_else(
-                            || format!("Assigned next runnable task to {}", target),
-                            |task_id| format!("Task '{}' assigned to {}", task_id, target),
-                        );
-                        Ok(ToolOutput::new(msg))
-                    }
-                    Err(e) => Err(anyhow::anyhow!("Failed to assign task: {}", e)),
-                }
-            }
-
-            "assign_next" => {
-                let target = params
-                    .target_session
-                    .clone()
-                    .unwrap_or_else(|| "next available agent".to_string());
-
-                let request = Request::CommAssignNext {
-                    id: REQUEST_ID,
-                    session_id: ctx.session_id.clone(),
-                    target_session: params.target_session.clone(),
-                    working_dir: params.working_dir.clone(),
-                    prefer_spawn: params.prefer_spawn,
-                    spawn_if_needed: params.spawn_if_needed,
-                    message: params.message.clone(),
-                    model: params.model.clone(),
-                };
-
-                match send_request(request).await {
-                    Ok(ServerEvent::CommAssignTaskResponse {
-                        task_id,
-                        target_session,
-                        ..
-                    }) => Ok(ToolOutput::new(format!(
-                        "Task '{}' assigned to {}",
-                        task_id, target_session
-                    ))),
-                    Ok(response) => {
-                        ensure_success(&response)?;
-                        Ok(ToolOutput::new(format!(
-                            "Assigned next runnable task to {}",
-                            target
-                        )))
-                    }
-                    Err(e) => Err(anyhow::anyhow!("Failed to assign next task: {}", e)),
-                }
-            }
-
-            "fill_slots" => {
-                let concurrency_limit = params.concurrency_limit.ok_or_else(|| {
-                    anyhow::anyhow!("'concurrency_limit' is required for fill_slots action")
-                })?;
-
-                let summary = fetch_plan_status(&ctx.session_id).await?;
-                let members = fetch_swarm_members(&ctx.session_id).await?;
-
-                let active_count =
-                    coordination_in_flight_count(&summary, &members, &ctx.session_id);
-                if active_count >= concurrency_limit {
-                    return Ok(ToolOutput::new(format!(
-                        "Window already full: {} active/in-flight task(s) >= limit {}",
-                        active_count, concurrency_limit
-                    )));
-                }
-
-                let mut assignments = Vec::new();
-                let available_slots = concurrency_limit.saturating_sub(active_count);
-                for _ in 0..available_slots {
-                    let request = Request::CommAssignNext {
-                        id: REQUEST_ID,
-                        session_id: ctx.session_id.clone(),
-                        target_session: params.target_session.clone(),
-                        working_dir: params.working_dir.clone(),
-                        prefer_spawn: params.prefer_spawn,
-                        spawn_if_needed: params.spawn_if_needed,
-                        message: params.message.clone(),
-                        model: params.model.clone(),
-                    };
-
-                    match send_request(request).await {
-                        Ok(ServerEvent::CommAssignTaskResponse {
-                            task_id,
-                            target_session,
-                            ..
-                        }) => assignments.push(format!("{} -> {}", task_id, target_session)),
-                        Ok(ServerEvent::Error { message, .. })
-                            if message.contains("No runnable unassigned tasks")
-                                || message.contains("No ready or completed swarm agents") =>
-                        {
-                            break;
-                        }
-                        Ok(response) => {
-                            ensure_success(&response)?;
-                        }
-                        Err(e) => {
-                            return Err(anyhow::anyhow!("Failed to fill slots: {}", e));
-                        }
-                    }
-                }
-
-                if assignments.is_empty() {
-                    Ok(ToolOutput::new(format!(
-                        "No assignments made. Active: {}, limit: {}",
-                        active_count, concurrency_limit
-                    )))
-                } else {
-                    let mut output = format!(
-                        "Filled {} slot(s):\n{}",
-                        assignments.len(),
-                        assignments
-                            .into_iter()
-                            .map(|line| format!("- {}", line))
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    );
-                    if let Ok(summary) = fetch_plan_status(&ctx.session_id).await {
-                        output.push_str(&format!("\n{}", format_plan_followup(&summary)));
-                    }
-                    Ok(ToolOutput::new(output))
-                }
-            }
-
-            // A retry and a wake are the same act: hand the row back to whoever
-            // holds it, with words. The assign request claims it for that holder
-            // again and, when nobody is attached to it, starts a turn there.
             "retry" | "wake" => {
                 let (task_id, holder) = held_row(
                     &ctx,
