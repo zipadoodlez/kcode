@@ -53,9 +53,13 @@ One file holds the open work: rows of `id`, `content`, optional `kind`, `parent`
 `blocked_by`, `assigned_to`, `note`, and `records` (the opaque closes of the rows
 worked under this one). A row is free or held, and there is nothing else about it.
 
+Two nouns and two verbs. A write is the only mutation, in three shapes: add a row,
+update a row, close a row. Ready is the only question, asked on read: not blocked, no
+open child, held by me or nobody, in my scope, not already worked in this run.
+
 A **run** is a session working the rows it holds. A swarm is a count, not a mode:
-one member and eight are the same code. Membership, the coordinator, liveness, and
-the ready set are derived, never stored.
+one member and eight are the same code. Membership, the coordinator, liveness, the
+ready set and progress (open children plus records) are derived, never stored.
 
 Rows become nodes once, when a run takes them. Three things cross back, and only
 these: a claim, a note, a close. The close carries the record, so the durable
@@ -136,6 +140,14 @@ blocks, retypes a row whose kind was wrong, and closes what it holds. Picking is
 claim and not a move, so there is no reorder act. A close always states its
 outcome, so a drop is "dropped because X" and a split is "split into a, b, c" with
 the children added underneath.
+
+The loop decides the next turn in one place: is a human attached? then the human owns
+the turn; do I hold a ready row I have not worked in this run? then take it; else sleep.
+Nothing else starts work, and a write that makes a row ready is what wakes the loop.
+
+The test for anything new: it is a write of a fact the model has, or a view computed on
+read. A third noun, a second store, or a verb that is not "write" or "what is ready" is
+the second system growing back.
 
 ## Rules
 
@@ -231,6 +243,9 @@ report, and the row's words as the handoff.
 New code, one piece: a write hook that wakes a headless holder when a row becomes ready.
 Everything else in this stage is deletion.
 
+F2's shape lands with this: what remains of `tool/communicate.rs` after the verb cut is
+`plans/server-shape.md`'s condense task, which owns the file.
+
 The rows this stage works are `tasks.jsonl` t1-t14, scoped 2026-10-03.
 
 surface: −28 actions, −1 driver, −1 durable waiter store, −2 report channels, −1 KV,
@@ -292,7 +307,7 @@ read (`comm_sync.rs:133-140`, a `completed/total` counter the forwarded bus even
 carries), the four member shapes, and the third event log. `tool_intents` is not a row
 fact: it is the gallery's "which tool is this worker running" display, nested under the
 compacted item by `update_active_todo_tool`, so it moves onto `SwarmMemberStatus` rather
-than dying with the cache. S1's channel cut gates this one: the gallery is the only
+than dying with the cache. Gated by S2 and S5 (C5 and C4); the gallery is the only
 consumer. surface: −3 protocol types, −4 shapes, −1 event log, −2 liveness predicates.
 lines ~−1,000. risk: med.
 
