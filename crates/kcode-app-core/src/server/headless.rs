@@ -70,15 +70,6 @@ pub(super) async fn create_headless_session(
         working_dir_string.as_deref(),
         report_back_to_session_id.clone(),
     );
-    // Inline swarm mode renders a live gallery of worker viewports in the
-    // coordinator TUI; enable the per-agent output tap so this worker streams a
-    // throttled output tail onto the bus.
-    if matches!(
-        crate::config::config().agents.swarm_spawn_mode,
-        crate::config::SwarmSpawnMode::Inline
-    ) {
-        new_agent.set_inline_output_tap(true);
-    }
     if provider_key_override.is_some() {
         new_agent.set_session_provider_key(provider_key_override.clone());
     }
@@ -211,7 +202,6 @@ pub(super) async fn create_headless_session(
                 joined_at: now,
                 last_status_change: now,
                 is_headless: true,
-                output_tail: None,
                 runtime: crate::protocol::SwarmMemberRuntime {
                     model: Some(provider_model),
                     provider: Some(provider_name),

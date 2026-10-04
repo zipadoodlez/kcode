@@ -375,6 +375,28 @@ sweep frees them, and the grace that covers reload recovery stays. The `braid` c
 asking to unify that rule with a dispatch-time predicate was already satisfied, because S1
 removed the second predicate's site, so the comment went with the rule now stated once.
 
+**The inline output tap goes, and the spawn mode named after it** (S2, 2026-10-04). A
+worker session could stream a rolling tail of its in-progress assistant text onto the bus,
+through a per-session tap (`Agent::set_inline_output_tap`), a throttled publish inside the
+streaming loop, a buffer class of its own (`agent/inline_tail.rs`) and a bus event, so the
+coordinator could render the worker's live viewport. The gallery was the only reader, so
+the whole chain goes: the tap and its buffer, the six branches in the streaming loop, the
+bus event and its dispatcher, `SwarmMember.output_tail` with its write and clear, and
+`SwarmMemberStatus.output_tail` on the wire. What is lost: a coordinator can no longer see
+a worker's partial output as it streams. It sees the row that worker holds, with the
+holder's name, model and age, and reads the transcript by attaching. The background task
+`output_tail` in `kcode-background-types` is the same name for a different concept and
+stays; only the swarm member's went.
+
+With its only switch gone, the `inline` spawn mode was the same mode as `headless`, so the
+variant collapses into `Headless`, which is now the default. A config or env that says
+`inline` still loads, through a parse alias and a serde alias on the variant, because any
+full config save had baked that then-default into users' files; what changes is that
+`as_str` writes `headless`, the default config file says `headless`, the
+visible-to-current migration writes `headless`, and the spawn tool no longer advertises an
+`inline` mode. The stale default-config line for the removed `swarm_panel_focus` keybind
+went with the panel.
+
 ## Deliberately kept from upstream
 
 - `/account` and `/accounts` - the multi-account picker for Claude and OpenAI.

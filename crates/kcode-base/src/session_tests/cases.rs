@@ -1239,7 +1239,6 @@ fn test_redacted_for_export_redacts_replay_events() -> Result<()> {
                 is_headless: None,
                 live_attachments: None,
                 status_age_secs: None,
-                output_tail: None,
                 report_back_to_session_id: None,
                 task_label: None,
                 runtime: crate::protocol::SwarmMemberRuntime::default(),

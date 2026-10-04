@@ -477,12 +477,13 @@ impl Default for AgentsConfig {
 pub enum SwarmSpawnMode {
     /// Open a visible/headed terminal window. This was the historical default.
     Visible,
-    /// Create the worker in-process without opening a terminal window.
-    Headless,
-    /// Like headless (no terminal window), but the coordinator renders a live
-    /// inline gallery viewport of each worker's streaming output.
+    /// Create the worker in-process without opening a terminal window, and the
+    /// default. The historical name for this mode was `inline`, which still
+    /// parses to it: the coordinator used to render each worker's output, and
+    /// nothing distinguishes the two now.
+    #[serde(alias = "inline")]
     #[default]
-    Inline,
+    Headless,
     /// Try visible first and fall back to headless if a window cannot be opened.
     Auto,
 }
@@ -491,8 +492,7 @@ impl SwarmSpawnMode {
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "visible" | "headed" => Some(Self::Visible),
-            "headless" => Some(Self::Headless),
-            "inline" => Some(Self::Inline),
+            "headless" | "inline" => Some(Self::Headless),
             "auto" => Some(Self::Auto),
             _ => None,
         }
@@ -503,7 +503,6 @@ impl SwarmSpawnMode {
         match self {
             Self::Visible => "visible",
             Self::Headless => "headless",
-            Self::Inline => "inline",
             Self::Auto => "auto",
         }
     }

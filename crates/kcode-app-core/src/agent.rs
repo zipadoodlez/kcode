@@ -2,7 +2,6 @@
 
 mod compaction;
 mod environment;
-mod inline_tail;
 mod interrupts;
 mod messages;
 #[cfg(test)]
@@ -250,14 +249,6 @@ pub struct Agent {
     stdin_request_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::tool::StdinInputRequest>>,
     /// Canonical reducer-backed view of runtime provider/model selection.
     provider_runtime_state: ProviderRuntimeState,
-    /// When true, this session is an inline swarm worker: stream a throttled
-    /// output tail to the global bus so the coordinator's inline gallery can
-    /// render a live viewport. Off for normal sessions to avoid bus traffic.
-    inline_output_tap: bool,
-    /// Rolling activity tail (text + tool markers) for the inline output tap.
-    /// Persists across turns so the coordinator's viewport never blanks at
-    /// turn boundaries or freezes during long tool calls.
-    inline_tail: inline_tail::InlineTailBuffer,
 }
 
 impl Agent {
@@ -329,8 +320,6 @@ impl Agent {
             rewind_undo_snapshot: None,
             stdin_request_tx: None,
             provider_runtime_state: ProviderRuntimeState::observed(initial_provider_model),
-            inline_output_tap: false,
-            inline_tail: inline_tail::InlineTailBuffer::default(),
         }
     }
 

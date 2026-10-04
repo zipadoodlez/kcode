@@ -56,7 +56,6 @@ fn test_handle_server_event_swarm_status_stores_members_without_a_notice() {
         is_headless: Some(true),
         live_attachments: None,
         status_age_secs: Some(1),
-        output_tail: None,
         report_back_to_session_id: parent.map(str::to_string),
         runtime: crate::protocol::SwarmMemberRuntime::default(),
     };

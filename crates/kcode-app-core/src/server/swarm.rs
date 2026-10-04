@@ -661,7 +661,6 @@ async fn broadcast_swarm_status_now(
                     is_headless: Some(m.is_headless),
                     live_attachments: Some(m.event_txs.len()),
                     status_age_secs: Some(status_age_secs(m.last_status_change)),
-                    output_tail: m.output_tail.clone(),
                     report_back_to_session_id: m.report_back_to_session_id.clone(),
                     runtime: crate::protocol::SwarmMemberRuntime {
                         model: m.runtime.model.clone(),
@@ -968,12 +967,6 @@ pub(super) async fn update_member_status(
             let report_back_to_session_id = member.report_back_to_session_id.clone();
             member.status = status.clone();
             member.detail = detail;
-            // Clear any live output tail when the worker reaches a terminal or
-            // idle state so the inline gallery viewport doesn't keep showing
-            // stale in-progress text after the turn finishes.
-            if status.is_terminal() || matches!(status, SwarmLifecycleStatus::Ready) {
-                member.output_tail = None;
-            }
             (
                 name,
                 member_changed,
@@ -1360,7 +1353,6 @@ mod tests {
                 joined_at: Instant::now(),
                 last_status_change: Instant::now(),
                 is_headless,
-                output_tail: None,
                 runtime: crate::protocol::SwarmMemberRuntime::default(),
             },
             event_rx,

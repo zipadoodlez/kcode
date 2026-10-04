@@ -290,13 +290,6 @@ impl Agent {
 
             let mut text_content = String::new();
             let mut text_wrapped_detected = false;
-            // Inline swarm worker output tap: publish a throttled tail of the
-            // in-progress assistant text to the bus so a coordinator can render
-            // a live inline gallery viewport.
-            let inline_output_tap = self.inline_output_tap();
-            let mut inline_tap_last = Instant::now()
-                .checked_sub(std::time::Duration::from_millis(1000))
-                .unwrap_or_else(Instant::now);
             // Throttled "this session is alive" marks while tokens stream, so
             // swarm status can distinguish a busy worker from a dead one
             // without paying a registry lock per token.
@@ -494,13 +487,6 @@ impl Agent {
                             });
                         }
                         text_content.push_str(&text);
-                        if inline_output_tap {
-                            self.inline_tail.set_live(&text_content);
-                            if inline_tap_last.elapsed() >= std::time::Duration::from_millis(200) {
-                                inline_tap_last = Instant::now();
-                                self.publish_inline_tail();
-                            }
-                        }
                         if !text_wrapped_detected {
                             // Scan only the new delta (plus a short overlap for
                             // markers straddling the boundary) instead of the
@@ -711,11 +697,6 @@ impl Agent {
                             ],
                         );
                         text_content.clear();
-                        if inline_output_tap {
-                            // The provider replays from the top; drop the
-                            // discarded partial from the live tail too.
-                            self.inline_tail.clear_live();
-                        }
                         text_wrapped_detected = false;
                         tool_calls.clear();
                         current_tool = None;
@@ -740,12 +721,6 @@ impl Agent {
                         stop_reason: reason,
                     } => {
                         saw_message_end = true;
-                        if inline_output_tap {
-                            // Fold the finished text into the rolling tail so
-                            // it survives the next turn/continuation.
-                            self.inline_tail.set_live(&text_content);
-                            self.inline_tail.commit_live();
-                        }
                         // Close any still-open reasoning region (e.g. a reasoning-only
                         // step) so the client flushes its live partial line.
                         if reasoning_open {
@@ -1328,13 +1303,6 @@ impl Agent {
 
                 logging::info(&format!("Tool starting: {}", tc.name));
                 crate::session_metrics::record_activity(&self.session.id);
-                if inline_output_tap {
-                    // Surface the tool execution on the coordinator's inline
-                    // viewport immediately: workers spend most wall-clock time
-                    // here, where no assistant text streams.
-                    self.inline_tail.start_tool(&tc.name, &tc.input);
-                    self.publish_inline_tail();
-                }
                 let tool_start = Instant::now();
 
                 // Spawn tool in its own task so we can detach it to background on Alt+B
@@ -1401,12 +1369,6 @@ impl Agent {
                         tc.name,
                         tool_elapsed.as_secs_f64()
                     ));
-                    if inline_output_tap {
-                        // Update the tool marker in place with duration/error.
-                        self.inline_tail
-                            .finish_tool(tool_elapsed.as_secs_f64(), result.is_err());
-                        self.publish_inline_tail();
-                    }
 
                     match result {
                         Ok(output) => {

@@ -1328,7 +1328,6 @@ mod tests {
             is_headless: Some(true),
             live_attachments: None,
             status_age_secs: None,
-            output_tail: None,
             report_back_to_session_id: None,
             runtime: Default::default(),
         }

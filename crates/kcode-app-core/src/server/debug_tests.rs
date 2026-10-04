@@ -125,7 +125,6 @@ mod transcript_routing_tests {
             joined_at: now,
             last_status_change: now,
             is_headless: false,
-            output_tail: None,
             runtime: crate::protocol::SwarmMemberRuntime::default(),
             task_label: None,
         }

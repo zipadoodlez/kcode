@@ -138,10 +138,10 @@ fn preserve_reasoning_context_defaults_to_enabled() {
 }
 
 #[test]
-fn swarm_spawn_mode_defaults_to_inline() {
+fn swarm_spawn_mode_defaults_to_headless() {
     assert_eq!(
         Config::default().agents.swarm_spawn_mode,
-        SwarmSpawnMode::Inline
+        SwarmSpawnMode::Headless
     );
 }
 
@@ -210,6 +210,12 @@ fn swarm_spawn_mode_parses_supported_values() {
     let cfg: Config = toml::from_str("[agents]\nswarm_spawn_mode = \"visible\"\n")
         .expect("visible swarm_spawn_mode should parse");
     assert_eq!(cfg.agents.swarm_spawn_mode, SwarmSpawnMode::Visible);
+
+    // "inline" was this mode's name until the coordinator stopped rendering its
+    // workers' output, and a config saved back then still has to load.
+    let cfg: Config = toml::from_str("[agents]\nswarm_spawn_mode = \"inline\"\n")
+        .expect("the historical inline name should still parse");
+    assert_eq!(cfg.agents.swarm_spawn_mode, SwarmSpawnMode::Headless);
 }
 
 #[test]
@@ -662,7 +668,7 @@ fn test_generated_default_config_has_expected_user_defaults() {
     // The generated file must always be valid TOML for the current Config schema.
     let parsed: Config =
         toml::from_str(&content).expect("generated default config should parse as Config");
-    assert_eq!(parsed.agents.swarm_spawn_mode, SwarmSpawnMode::Inline);
+    assert_eq!(parsed.agents.swarm_spawn_mode, SwarmSpawnMode::Headless);
     assert!(
         parsed.display.show_thinking,
         "freshly created user config should request model reasoning"
@@ -1168,7 +1174,7 @@ fn populate_context_limits_from_config_seeds_qualified_runtime_model_shapes() {
 }
 
 #[test]
-fn migrate_legacy_swarm_spawn_mode_flips_visible_to_inline_once() {
+fn migrate_legacy_swarm_spawn_mode_flips_visible_to_headless_once() {
     let _guard = crate::storage::lock_test_env();
     let prev_home = std::env::var_os("KCODE_HOME");
     let dir = tempfile::TempDir::new().expect("tempdir");
@@ -1184,14 +1190,14 @@ fn migrate_legacy_swarm_spawn_mode_flips_visible_to_inline_once() {
     );
     let migrated = std::fs::read_to_string(&config_path).expect("read config");
     assert!(
-        migrated.contains("swarm_spawn_mode = \"inline\""),
-        "spawn mode should be flipped to inline: {migrated}"
+        migrated.contains("swarm_spawn_mode = \"headless\""),
+        "spawn mode should be flipped to headless: {migrated}"
     );
     // The rest of the file is untouched.
     assert!(migrated.contains("centered = true"));
     assert!(migrated.contains("swarm_max_concurrent_agents = 32"));
     let parsed: Config = toml::from_str(&migrated).expect("migrated config parses");
-    assert_eq!(parsed.agents.swarm_spawn_mode, SwarmSpawnMode::Inline);
+    assert_eq!(parsed.agents.swarm_spawn_mode, SwarmSpawnMode::Headless);
 
     // Marker written: a later explicit "visible" survives future launches.
     std::fs::write(&config_path, "[agents]\nswarm_spawn_mode = \"visible\"\n")

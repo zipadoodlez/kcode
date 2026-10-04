@@ -1012,7 +1012,6 @@ async fn client_initiated_turn_fans_out_stream_and_terminal_events_to_live_attac
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: false,
-            output_tail: None,
             runtime: crate::protocol::SwarmMemberRuntime::default(),
         },
     )])));

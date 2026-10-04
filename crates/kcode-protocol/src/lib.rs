@@ -206,17 +206,12 @@ pub struct SwarmMemberStatus {
     /// Seconds since the last status change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_age_secs: Option<u64>,
-    /// Recent streamed output tail for live inline rendering (last few lines of
-    /// the agent's in-progress assistant text). Only populated for swarm
-    /// members when inline streaming taps are active.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub output_tail: Option<String>,
     /// Session id this member reports back to (its spawner/parent in the swarm
-    /// tree). Walking this chain reconstructs the spawn tree, which lets a
-    /// client scope the inline gallery to the subtree it actually spawned.
+    /// tree). Walking this chain reconstructs the spawn tree, which is also the
+    /// membership: a session belongs to the run rooted at the end of its chain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub report_back_to_session_id: Option<String>,
-    /// Ephemeral runtime metadata used by the live swarm card.
+    /// Ephemeral runtime metadata for the pinned list's holder line.
     #[serde(default, skip_serializing_if = "SwarmMemberRuntime::is_empty")]
     pub runtime: SwarmMemberRuntime,
 }

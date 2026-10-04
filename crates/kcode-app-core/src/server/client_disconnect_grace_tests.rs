@@ -92,7 +92,6 @@ impl Fixture {
                 joined_at: Instant::now(),
                 last_status_change: Instant::now(),
                 is_headless: false,
-                output_tail: None,
                 runtime: Default::default(),
             },
         )])));

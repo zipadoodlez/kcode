@@ -41,8 +41,7 @@ pub(crate) mod util;
 
 use self::background_tasks::{
     dispatch_background_task_completion, dispatch_background_task_progress,
-    dispatch_background_task_stalled, dispatch_swarm_output_tail, dispatch_swarm_runtime_status,
-    dispatch_ui_activity,
+    dispatch_background_task_stalled, dispatch_swarm_runtime_status, dispatch_ui_activity,
 };
 use self::debug::{ClientConnectionInfo, ClientDebugState};
 use self::debug_jobs::DebugJob;
@@ -2065,9 +2064,6 @@ impl Server {
                     // The list is one file, so any write changes what any session
                     // may work: refresh every session's clients from the server.
                     broadcast_todos(&swarm_members).await;
-                }
-                Ok(BusEvent::SwarmOutputTail(tail)) => {
-                    dispatch_swarm_output_tail(&tail, &swarm_members).await;
                 }
                 Ok(_) => {
                     // Ignore other events

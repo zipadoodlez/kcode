@@ -333,13 +333,6 @@ impl App {
                     "fox", "owl", "bee", "elk", "ant", "cat", "dog", "jay", "ram", "yak", "ox",
                     "emu",
                 ];
-                let samples = [
-                    "Editing crates/kcode-tui/src/tui/ui.rs\n  carving the gallery band off chat_area",
-                    "Thinking about how to wire the bus tap\n  into the streaming loop without",
-                    "Running cargo build --profile selfdev\n  Compiling kcode-app-core",
-                    "Done: 4 tests passed, committed.",
-                    "Waiting on coordinator approval for plan",
-                ];
                 self.swarm.members = (0..n)
                     .map(|i| crate::protocol::SwarmMemberStatus {
                         session_id: format!("session_{:02}", i),
@@ -357,7 +350,6 @@ impl App {
                         is_headless: Some(i != 0),
                         live_attachments: Some(1),
                         status_age_secs: Some((i as u64) * 7),
-                        output_tail: Some(samples[i % samples.len()].to_string()),
                         report_back_to_session_id: None,
                         runtime: crate::protocol::SwarmMemberRuntime {
                             model: Some("gpt-5.6".into()),
@@ -368,7 +360,7 @@ impl App {
                         },
                     })
                     .collect();
-                format!("OK: injected {n} inline swarm members; gallery forced active")
+                format!("OK: injected {n} synthetic swarm members")
             }
         } else if cmd == "swarm" || cmd == "swarm-status" {
             if self.is_remote_client() {
@@ -405,7 +397,6 @@ impl App {
                         is_headless: Some(false),
                         live_attachments: Some(1),
                         status_age_secs: Some(0),
-                        output_tail: None,
                         report_back_to_session_id: None,
                         runtime: crate::protocol::SwarmMemberRuntime::default(),
                     }],

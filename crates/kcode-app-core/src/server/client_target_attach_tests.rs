@@ -164,7 +164,6 @@ async fn target_subscribe_busy_live_agent_uses_member_root_without_waiting() {
             joined_at: now,
             last_status_change: now,
             is_headless: false,
-            output_tail: None,
             runtime: Default::default(),
         },
     )])));

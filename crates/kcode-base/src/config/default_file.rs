@@ -75,12 +75,6 @@ diagram_pane_toggle = "alt+t"
 typing_scroll_lock_toggle = "alt+s"
 diff_mode_cycle = "alt+g"
 info_widget_toggle = "alt+i"
-# Focus the inline swarm panel (list of agents this session manages). Press
-# again to cycle agents. While focused: alt+↑/↓ select, alt+o pops the agent
-# out to a new terminal, esc exits. Plain typing still goes to the chat input.
-# Active only with agents.swarm_spawn_mode = "inline".
-swarm_panel_focus = "alt+n"
-
 # Spawn a fresh kcode session in a new terminal window, reusing the current
 # session's working directory.
 # Default: Cmd+Shift+; on macOS, Alt+Shift+; elsewhere. Set "" to disable.
@@ -364,13 +358,13 @@ wake_mode = "internal"
 # swarm_model = "inherit"
 #
 # How swarm-created agents are spawned:
-#   "inline"   - in-process (no window), shown as a live gallery viewport in the coordinator (default)
+#   "headless" - create the worker in-process with no terminal window (default;
+#                the historical name "inline" still parses to it)
 #   "visible"  - open a headed terminal window (alias: "headed")
-#   "headless" - create the worker in-process with no terminal window
 #   "auto"     - try visible first, fall back to headless if no window can open
 # The swarm tool's per-call `spawn_mode` overrides this when set.
 # Env override: KCODE_SWARM_SPAWN_MODE
-swarm_spawn_mode = "inline"
+swarm_spawn_mode = "headless"
 #
 # Max live swarm worker agents in one swarm. This RAM-safety budget applies to
 # spawned workers. Completed/stopped workers free their slots. 0 disables this

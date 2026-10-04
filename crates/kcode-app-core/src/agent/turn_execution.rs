@@ -360,32 +360,6 @@ impl Agent {
         }
     }
 
-    /// Mark this session as an inline swarm worker. When enabled, the streaming
-    /// loop publishes a throttled output tail to the global bus so a
-    /// coordinator can render a live inline gallery viewport for it.
-    pub fn set_inline_output_tap(&mut self, enabled: bool) {
-        self.inline_output_tap = enabled;
-    }
-
-    /// Whether this session streams an inline output tail to the bus.
-    pub(crate) fn inline_output_tap(&self) -> bool {
-        self.inline_output_tap
-    }
-
-    /// Publish the current rolling activity tail to the bus for the
-    /// coordinator's inline gallery. No-op unless the inline tap is enabled.
-    pub(crate) fn publish_inline_tail(&self) {
-        if !self.inline_output_tap {
-            return;
-        }
-        crate::bus::Bus::global().publish(crate::bus::BusEvent::SwarmOutputTail(
-            crate::bus::SwarmOutputTail {
-                session_id: self.session.id.clone(),
-                tail: self.inline_tail.render(),
-            },
-        ));
-    }
-
     /// Set the stdin request channel for interactive stdin forwarding
     pub fn set_stdin_request_tx(
         &mut self,

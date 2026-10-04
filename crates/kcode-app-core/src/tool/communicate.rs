@@ -232,8 +232,8 @@ impl Tool for CommunicateTool {
                 },
                 "spawn_mode": {
                     "type": "string",
-                    "enum": ["visible", "headless", "inline", "auto"],
-                    "description": "Spawn UI mode: visible terminal, headless, inline gallery, or auto. Defaults to inline."
+                    "enum": ["visible", "headless", "auto"],
+                    "description": "Spawn UI mode: visible terminal, headless in-process, or auto. Defaults to headless."
                 },
                 "model": {
                     "type": "string",

@@ -208,15 +208,17 @@ impl Config {
     }
 
     /// One-time migration: flip a persisted legacy `swarm_spawn_mode =
-    /// "visible"` to the current `"inline"` default.
+    /// "visible"` to the current `"headless"` default.
     ///
     /// Historically `visible` was the default, and any full-config
     /// `Config::save()` (model switches, display toggles, ...) baked that
-    /// then-default into the user's config.toml. When the default changed to
-    /// `inline`, those users stayed pinned to `visible` forever. This rewrites
-    /// exactly that one line (preserving the rest of the file byte-for-byte)
-    /// and drops a marker so it runs at most once. A user who explicitly sets
-    /// `visible` after the migration is never flipped again.
+    /// then-default into the user's config.toml. When the default changed,
+    /// those users stayed pinned to `visible` forever. This rewrites exactly
+    /// that one line (preserving the rest of the file byte-for-byte) and drops a
+    /// marker so it runs at most once. A user who explicitly sets `visible`
+    /// after the migration is never flipped again. The marker keeps its
+    /// historical name, because renaming it would re-run the rewrite for the
+    /// users whose config already carries the mode it writes.
     ///
     /// Returns `true` when it rewrote the config. Best-effort: errors are
     /// logged and swallowed.
@@ -263,7 +265,7 @@ impl Config {
                 if matches!(value, "visible" | "headed") {
                     changed = true;
                     let indent = &line[..line.len() - trimmed.len()];
-                    format!("{indent}swarm_spawn_mode = \"inline\"")
+                    format!("{indent}swarm_spawn_mode = \"headless\"")
                 } else {
                     line.to_string()
                 }
@@ -284,7 +286,7 @@ impl Config {
                 Self::invalidate_cache();
                 write_marker();
                 crate::logging::info(
-                    "Migrated legacy swarm_spawn_mode \"visible\" to \"inline\" in config.toml",
+                    "Migrated legacy swarm_spawn_mode \"visible\" to \"headless\" in config.toml",
                 );
                 true
             }

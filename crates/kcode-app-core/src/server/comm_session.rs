@@ -518,7 +518,6 @@ async fn register_visible_spawned_member(
                 joined_at: now,
                 last_status_change: now,
                 is_headless: false,
-                output_tail: None,
                 runtime: crate::protocol::SwarmMemberRuntime::default(),
             },
         );
@@ -620,11 +619,7 @@ pub(super) async fn spawn_swarm_agent(
     let startup_message = initial_message.clone();
 
     let visible_spawn = match resolved_spawn_mode {
-        // Inline workers run in-process like headless ones; the difference is
-        // purely how the coordinator renders them (a live inline gallery).
-        SwarmSpawnMode::Headless | SwarmSpawnMode::Inline => {
-            Err(anyhow::anyhow!("headless spawn requested"))
-        }
+        SwarmSpawnMode::Headless => Err(anyhow::anyhow!("headless spawn requested")),
         SwarmSpawnMode::Visible | SwarmSpawnMode::Auto => prepare_visible_spawn_session(
             resolved_working_dir.as_deref(),
             spawn_model.as_deref(),

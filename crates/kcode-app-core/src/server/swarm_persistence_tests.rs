@@ -42,7 +42,6 @@ fn persisted_member(session_id: &str) -> SwarmMember {
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: false,
-        output_tail: None,
         runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }
@@ -83,7 +82,6 @@ fn persisted_swarm_state_round_trips() {
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: false,
-            output_tail: None,
             runtime: crate::protocol::SwarmMemberRuntime::default(),
             task_label: None,
         },
@@ -99,7 +97,6 @@ fn persisted_swarm_state_round_trips() {
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: true,
-            output_tail: None,
             runtime: crate::protocol::SwarmMemberRuntime::default(),
             task_label: None,
         },
@@ -148,7 +145,6 @@ fn ready_headless_member_stops_on_restart() {
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: true,
-        output_tail: None,
         runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }];
@@ -182,7 +178,6 @@ fn ready_detached_client_stops_on_reload_until_it_reattaches() {
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: false,
-        output_tail: None,
         runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }];
@@ -212,7 +207,6 @@ fn terminal_member_retention_keeps_recent_and_prunes_expired_records() {
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: true,
-        output_tail: None,
         runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: Some("retention test".to_string()),
     };
@@ -250,7 +244,6 @@ fn legacy_terminal_member_uses_snapshot_time_as_retention_fallback() {
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: true,
-        output_tail: None,
         runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     };
@@ -285,7 +278,6 @@ fn recovery_induced_terminal_status_starts_retention_at_load_time() {
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: true,
-        output_tail: None,
         runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     };
@@ -321,7 +313,6 @@ fn startup_gc_removes_expired_terminal_members_from_durable_snapshot() {
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: true,
-        output_tail: None,
         runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }];
@@ -558,7 +549,6 @@ fn persisted_swarm_state_without_plan_still_restores_members() {
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: false,
-        output_tail: None,
         runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }];
