@@ -1,5 +1,6 @@
 use crate::storage;
 use anyhow::{Result, bail};
+use chrono::Utc;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
@@ -328,24 +329,36 @@ pub fn rename_row_holder_on_disk(
     Ok(touched)
 }
 
-/// The next `t<n>` id: above every id the file still names, so a number a record
-/// holds is not handed to a new row while that record sits on one. An id the file
-/// no longer names cannot be confused with a new one, so it is not remembered: a
-/// counter would be a second store, and the file is the one store (rule 2).
+/// The next id: the row's creation minute as three base36 digits. The value comes
+/// from the clock, so a closed row's id is not handed back the way a counter's was,
+/// and the same value comes round again after 36^3 minutes (32 days). A value the
+/// file still names is skipped, so the key the file reads stays unique.
+///
+/// The loop runs at most once per live row: every candidate it skips is a distinct
+/// value some row holds.
 fn next_id(rows: &[TaskItem]) -> String {
-    let highest = rows
-        .iter()
-        .map(|row| row.id.as_str())
-        .chain(
-            rows.iter()
-                .flat_map(|row| row.records.iter())
-                .filter_map(|record| record.get("id").and_then(serde_json::Value::as_str)),
-        )
-        .filter_map(|id| id.strip_prefix('t'))
-        .filter_map(|number| number.parse::<u32>().ok())
-        .max()
-        .unwrap_or(0);
-    format!("t{}", highest + 1)
+    let mut minute = Utc::now().timestamp() / 60;
+    loop {
+        let id = short_id(minute);
+        if !rows.iter().any(|row| row.id == id) {
+            return id;
+        }
+        minute += 1;
+    }
+}
+
+/// The three base36 digits of a minute count, zero-padded, so every id is the same
+/// width and the alphabet is stdlib's own (`char::from_digit`).
+fn short_id(mut minute: i64) -> String {
+    let mut id = String::with_capacity(3);
+    for _ in 0..3 {
+        id.insert(
+            0,
+            char::from_digit((minute % 36) as u32, 36).expect("a base36 digit"),
+        );
+        minute /= 36;
+    }
+    id
 }
 
 /// One task per line, blank lines skipped, so an insert, a claim, or a close is a
@@ -470,7 +483,8 @@ mod tests {
             Some("synthesize"),
         )
         .expect("fresh anchor");
-        assert_eq!(fresh.id, "t2");
+        assert_ne!(fresh.id, "t1", "a fresh anchor takes an id of its own");
+        assert_eq!(fresh.id.len(), 3, "an id is three base36 digits");
         assert_eq!(fresh.content, "work the list until it is done");
         assert_eq!(fresh.parent, None, "a run's anchor has no parent");
         assert_eq!(
@@ -652,41 +666,41 @@ mod tests {
         );
     }
 
-    /// A new row takes a number above every id the file still names, so a record
-    /// on a row is never handed to a new row (the reported collision: a closed
-    /// child's id came back because only the open rows were counted).
+    /// The id is the creation minute, not a count of the file's own ids, so two rows
+    /// made inside one minute still take different ones: the second skips the value
+    /// the first holds, and the file's key stays unique.
     #[test]
-    fn a_new_id_clears_the_ids_the_file_still_names() {
-        let mut parent = TaskItem {
-            id: "t1".to_string(),
-            content: "the run".to_string(),
-            assigned_to: Some("me".to_string()),
-            ..Default::default()
-        };
-        parent.kind = Some("synthesize".to_string());
-        let mut child = TaskItem {
-            id: "t2".to_string(),
-            content: "the work".to_string(),
-            assigned_to: Some("me".to_string()),
-            parent: Some("t1".to_string()),
-            ..Default::default()
-        };
-        child.kind = Some("implement".to_string());
-        let mut rows = vec![parent, child];
-
-        close_row(&mut rows, "me", "t2", "cargo test: 12 passed").expect("close");
-        let id = add_row(
+    fn two_rows_in_one_minute_take_different_ids() {
+        let mut rows = Vec::new();
+        let first = add_row(
             &mut rows,
             TaskItem {
-                content: "next".to_string(),
+                content: "the run".to_string(),
                 ..Default::default()
             },
         )
-        .expect("add");
-        assert_eq!(
-            id, "t3",
-            "t2 is named by the parent's record and must not be reused"
+        .expect("first");
+        let second = add_row(
+            &mut rows,
+            TaskItem {
+                content: "the work".to_string(),
+                ..Default::default()
+            },
+        )
+        .expect("second");
+
+        assert_ne!(
+            first, second,
+            "the second row skips the value the first one holds"
         );
+        for id in [&first, &second] {
+            assert_eq!(id.len(), 3, "an id is three base36 digits: {id}");
+            assert!(
+                id.chars()
+                    .all(|digit| digit.is_ascii_digit() || digit.is_ascii_lowercase()),
+                "an id is base36: {id}"
+            );
+        }
     }
 
     /// A row that owns nothing keeps no record: there is no parent row to hold it,

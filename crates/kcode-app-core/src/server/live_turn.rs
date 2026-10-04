@@ -794,9 +794,14 @@ mod tests {
 
         let (grant, words) =
             resolve_grant("work the list until it is done", Some(repo.path()), "me");
+        let rows = crate::todo::load_tasks(Some(repo.path()), "me").expect("read");
+        let anchor = rows
+            .iter()
+            .find(|row| row.content == "work the list until it is done")
+            .expect("the grant's words became a row");
         assert_eq!(
             grant.scope.as_deref(),
-            Some("t2"),
+            Some(anchor.id.as_str()),
             "words that name no row become the run's anchor"
         );
         assert_eq!(words, "work the list until it is done");

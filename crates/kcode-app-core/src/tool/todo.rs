@@ -281,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    fn add_claims_the_task_and_hands_out_the_next_id() {
+    fn add_claims_the_task_and_gives_it_its_own_id() {
         let mut rows = vec![row("t1", "first")];
         apply(
             &input(json!({"action": "add", "content": "second"})),
@@ -289,7 +289,8 @@ mod tests {
             "session-a",
         )
         .expect("add");
-        assert_eq!(rows[1].id, "t2");
+        assert_eq!(rows[1].id.len(), 3, "an id is three base36 digits");
+        assert_ne!(rows[1].id, rows[0].id, "a new row takes an id of its own");
         assert_eq!(rows[1].assigned_to.as_deref(), Some("session-a"));
     }
 

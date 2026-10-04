@@ -253,10 +253,6 @@ last write, and the next write re-reads the file first (rule 2).
   the user: the permission (a granted turn continues, a wake does not) and the poke's
   removal (no client continuation; every non-retryable error gets the short budget). It is
   the step's landing proof, so it runs when the list is done, not per step.
-- **(decision) An id is unique among live rows only.** A close deletes a top-level row, so
-  `next_id` hands its number out again (`t31`, `t32`, `t33` and `t34` have each been used
-  twice). Keep that, or make an id permanent: a time-based id (`t<unix_ms>`), or a close
-  that leaves something a number can be read from.
 
 ### What to verify when the list is done
 
