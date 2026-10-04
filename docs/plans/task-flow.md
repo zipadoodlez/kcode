@@ -295,13 +295,14 @@ the TUI's `normalize_plan_status_for_todo`, `status_badge` and `priority_rank` w
 the surfaces that used them.
 
 Dropping `status` is the larger half, because the plan classifies by it everywhere:
-`summarize_plan_graph`, `completed_item_ids`, `is_active_status`, `newly_ready_item_ids`
-(read by the swarm path), the task-control actions and `status_from_plan`. `status_to_plan`
-is already gone: 0.4f's s12 stopped lowering the engine's statuses back into items, so the
-engine's own statuses no longer reach a row. Afterwards a row is ready when `blocked_by`
-is empty and liveness comes from the member, not the item.
+`summarize_plan_graph`, `completed_item_ids`, `is_active_status` (read by the swarm path),
+the task-control actions and `status_from_plan`. `newly_ready_item_ids` went with S2's
+plan broadcast (t31), and `status_to_plan` is already gone: 0.4f's s12 stopped lowering
+the engine's statuses back into items, so the engine's own statuses no longer reach a
+row. Afterwards a row is ready when `blocked_by` is empty and liveness comes from the
+member, not the item.
 
-surface: −3 fields, −4 vocabularies. lines ~−500. risk: med.
+surface: −3 fields, and the plan and base status vocabularies go with them. lines ~−400. risk: med.
 
 ### D2. The swarm/comm condense (gates `plans/server-shape.md` H2)
 
