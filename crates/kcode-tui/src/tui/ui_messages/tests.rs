@@ -1741,9 +1741,6 @@ fn batched_retry_renders_the_todo_row_count_from_a_nested_call() {
     let todos = vec![crate::todo::TaskItem {
         id: "inspect".to_string(),
         content: "Inspect the starter project".to_string(),
-        status: "in_progress".to_string(),
-        priority: "high".to_string(),
-        group: Some("pelican-bike".to_string()),
         ..Default::default()
     }];
     let todo_output = serde_json::to_string_pretty(&todos).unwrap();

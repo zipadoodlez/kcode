@@ -168,9 +168,8 @@ the second system growing back.
 
 ## Rules
 
-These are the model the steps drive the tree to, not the tree. Where a rule and
-the type disagree today, the type is behind: `TaskItem` still carries `status`,
-`priority` and `group`, and S5 removes them.
+These are the model the steps drove the tree to, and the type agrees with them as
+of S5 landing on 2026-10-04.
 
 1. **One file per repo**, `tasks.jsonl` at the root, found from git so a session in
    `crates/foo` reads the same list; outside a repo, a session scratch location.
@@ -215,13 +214,9 @@ the four list surfaces, the roster, the 3,100-line gallery renderer, and the mem
 cache with its wire fields. Those cuts are recorded in `docs/what-was-removed.md`. What
 remains:
 
-- **The three fields the file does not need** (`status`, `priority`, `group`) with the
-  status vocabularies they keep alive.
 - **The `SwarmState` pair**, rebuilt as a literal at each request arm and threaded to ~40
   functions, with the swarm event history threaded beside it.
 - **607 lines of debug views**, which no step in this lane claims.
-- **The `SwarmState` pair**, rebuilt as a literal at each request arm and threaded to
-  ~40 functions.
 
 The tool's action surface is now four actions (spawn, stop, list_models, message).
 
@@ -230,11 +225,10 @@ The tool's action surface is now four actions (spawn, stop, list_models, message
 Every step lands whole, proven by the gate. The one `kcode run` probe against its own
 socket waits for the end of the list, where the user runs it, so no step is gated on it.
 Widest shared shape first, so no step sweeps call sites a later step reshapes: S2 opened
-the client's path and S3-S5 delete what it left behind. S2 landed 2026-10-04, S3 on the
-same day. The numbers label the stages, they are not an order: S5 waited on S3 because
-removing `TaskItem.status` would have stranded the member todo cache, which S3a deleted,
-so S5 is next. D2 waits on nothing. The `app.rs` re-core (`plans/app-shape.md`) is the
-tail and it is droppable: nothing here depends on it.
+the client's path and S3-S5 deleted what it left behind. S2, S3 and S5 all landed
+2026-10-04. The numbers label the stages, they are not an order. What remains is D2, which
+waits on nothing. The `app.rs` re-core (`plans/app-shape.md`) is the tail and it is
+droppable: nothing here depends on it.
 
 ### The live check for S2 and S3 (row t30)
 
@@ -254,24 +248,6 @@ repo with a `tasks.jsonl`:
 
 A hand edit of `tasks.jsonl` is read on the next write, not pushed: the list shows the
 last write, and the next write re-reads the file first (rule 2).
-
-### S5. The file's fields
-
-**`status`, `priority` and `group` leave the type** (B3), with the status vocabularies
-they keep alive: the status helpers in `kcode-plan/src/lib.rs` and
-`canonical_todo_status` plus its two wrappers in `kcode-base/src/todo.rs`. S2 landed, so
-the TUI's `normalize_plan_status_for_todo`, `status_badge` and `priority_rank` went with
-the surfaces that used them.
-
-Dropping `status` is the larger half, because the plan classifies by it everywhere:
-`summarize_plan_graph`, `completed_item_ids`, `is_active_status` (read by the swarm path),
-the task-control actions and `status_from_plan`. `newly_ready_item_ids` went with S2's
-plan broadcast (t31), and `status_to_plan` is already gone: 0.4f's s12 stopped lowering
-the engine's statuses back into items, so the engine's own statuses no longer reach a
-row. Afterwards a row is ready when `blocked_by` is empty and liveness comes from the
-member, not the item.
-
-surface: −3 fields, and the plan and base status vocabularies go with them. lines ~−400. risk: med.
 
 ### D2. The swarm/comm condense (gates `plans/server-shape.md` H2)
 
@@ -305,8 +281,7 @@ Each stage's own gate is in its section. These are the properties that outlive a
 
 ### Unread at the time of writing
 
-Still un-read, and the open stages rest on them: the four member-shape definitions and the
-`kcode-tui-render` gallery's remaining consumers (S3), `todo.rs:330-470` (S5), and the
-`Comm*` arms in `client_lifecycle` (D2). The schedulers, waiters, dispatchers, artifact
-producers and liveness predicates were read in full before the loop's stage landed; S2's
-surface is read now, since it landed.
+Still un-read, and D2 rests on it: the `Comm*` arms in `client_lifecycle`. The
+schedulers, waiters, dispatchers, artifact producers and liveness predicates were read in
+full before the loop's stage landed, and S2's, S3's and S5's surfaces were read before
+they landed.

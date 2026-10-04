@@ -1882,10 +1882,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
             todo_lines.push_str("- none\n");
         } else {
             for todo in todos.iter().take(8) {
-                todo_lines.push_str(&format!(
-                    "- [{}|{}] {}\n",
-                    todo.status, todo.priority, todo.content
-                ));
+                todo_lines.push_str(&format!("- {}\n", todo.content));
             }
             if todos.len() > 8 {
                 todo_lines.push_str(&format!("- … {} more\n", todos.len() - 8));

@@ -276,7 +276,6 @@ mod tests {
         TaskItem {
             id: id.to_string(),
             content: content.to_string(),
-            status: "pending".to_string(),
             ..Default::default()
         }
     }

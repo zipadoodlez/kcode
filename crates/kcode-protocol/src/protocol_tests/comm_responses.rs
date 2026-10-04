@@ -4,8 +4,6 @@ fn test_swarm_plan_event_roundtrip() -> Result<()> {
         swarm_id: "swarm_123".to_string(),
         items: vec![TaskItem {
             content: "Investigate planner state".to_string(),
-            status: "queued".to_string(),
-            priority: "high".to_string(),
             id: "task-1".to_string(),
             ..Default::default()
         }],

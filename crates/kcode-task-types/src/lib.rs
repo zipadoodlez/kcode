@@ -9,8 +9,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskItem {
     pub content: String,
-    pub status: String,
-    pub priority: String,
     pub id: String,
     /// The run's word for this row's work: "explore" | "implement" | "verify" |
     /// "fix" | "synthesize" | "critique". The vocabulary is the plan engine's
@@ -20,11 +18,6 @@ pub struct TaskItem {
     /// rule 8 forbids guessing a kind for a row that has none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
-    /// Optional group label. Todos that share a group are displayed together
-    /// under a single header. Use one group per coherent goal; when work is
-    /// steered into a new area, start a new group instead of renaming.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub group: Option<String>,
     /// The task this one is part of, if any. A parent is work: its result is its
     /// children's results integrated, and its row stays until that is done.
     #[serde(default, skip_serializing_if = "Option::is_none")]

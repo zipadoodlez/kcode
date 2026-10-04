@@ -267,76 +267,33 @@ pub(super) fn build_turn_notification(
     }
 }
 
-/// "3/5 todos" plus "· 1 blocked" when relevant; None when no todos exist.
+/// "3 todos open" plus "· 1 blocked" when relevant; None when the list is empty.
 fn todo_progress_line(todos: &[TaskItem]) -> Option<String> {
     if todos.is_empty() {
         return None;
     }
-    let total = todos.len();
-    let completed = todos.iter().filter(|t| t.status == "completed").count();
-    let blocked = todos
-        .iter()
-        .filter(|t| t.status != "completed" && !t.blocked_by.is_empty())
-        .count();
-    let mut line = if completed == total {
-        format!("✓ all {} todos", total)
-    } else {
-        format!("{}/{} todos", completed, total)
-    };
+    let blocked = todos.iter().filter(|t| !t.blocked_by.is_empty()).count();
+    let mut line = format!("{} todos open", todos.len());
     if blocked > 0 {
         line.push_str(&format!(" · {} blocked", blocked));
     }
     Some(line)
 }
 
-/// Names the salient todo work for the body: a blocker if one is the reason the
-/// turn stopped, otherwise the most recently completed item and what's next.
-/// Returns None when there are no todos (caller falls back to the snippet).
+/// Names the blocker that the turn ran into, when it ran into one. Returns None
+/// otherwise, so the body falls back to the assistant's own words.
 fn todo_work_line(todos: &[TaskItem]) -> Option<String> {
-    if todos.is_empty() {
-        return None;
-    }
-
-    // A blocked, not-yet-done todo is the most actionable thing to surface.
-    if let Some(blocked) = todos
+    let blocked = todos.iter().find(|t| !t.blocked_by.is_empty())?;
+    let dep = blocked
+        .blocked_by
         .iter()
-        .find(|t| t.status != "completed" && !t.blocked_by.is_empty())
-    {
-        let dep = blocked
-            .blocked_by
-            .iter()
-            .find_map(|id| resolve_todo_title(todos, id))
-            .unwrap_or_else(|| blocked.blocked_by.join(", "));
-        return Some(format!(
-            "⊘ {} needs {}",
-            clip_todo(&blocked.content),
-            clip_todo(&dep)
-        ));
-    }
-
-    let in_progress = todos
-        .iter()
-        .find(|t| t.status == "in_progress" || t.status == "in-progress");
-    let last_done = todos.iter().rev().find(|t| t.status == "completed");
-
-    let mut parts = Vec::new();
-    if let Some(done) = last_done {
-        parts.push(format!("✓ {}", clip_todo(&done.content)));
-    }
-    if let Some(next) = in_progress {
-        parts.push(format!("→ {}", clip_todo(&next.content)));
-    } else if last_done.is_none() {
-        // Nothing completed and nothing in progress: name the next pending item.
-        if let Some(pending) = todos.iter().find(|t| t.status == "pending") {
-            parts.push(format!("→ {}", clip_todo(&pending.content)));
-        }
-    }
-
-    if parts.is_empty() {
-        None
-    } else {
-        Some(parts.join(" · "))
-    }
+        .find_map(|id| resolve_todo_title(todos, id))
+        .unwrap_or_else(|| blocked.blocked_by.join(", "));
+    Some(format!(
+        "⊘ {} needs {}",
+        clip_todo(&blocked.content),
+        clip_todo(&dep)
+    ))
 }
 
 fn resolve_todo_title(todos: &[TaskItem], id: &str) -> Option<String> {
@@ -409,32 +366,14 @@ fn format_duration_compact(secs: f32) -> String {
 mod tests {
     use super::*;
 
-    fn todo(status: &str, blocked: bool) -> TaskItem {
-        todo_named("x", status, &[]).tap(|t| {
-            if blocked {
-                t.blocked_by = vec!["other".to_string()];
-            }
-        })
-    }
-
-    fn todo_named(content: &str, status: &str, blocked_by: &[&str]) -> TaskItem {
+    fn todo(content: &str, blocked_by: &[&str]) -> TaskItem {
         TaskItem {
             content: content.to_string(),
-            status: status.to_string(),
-            priority: "medium".to_string(),
             id: content.to_string(),
             blocked_by: blocked_by.iter().map(|s| s.to_string()).collect(),
             ..Default::default()
         }
     }
-
-    trait Tap: Sized {
-        fn tap(mut self, f: impl FnOnce(&mut Self)) -> Self {
-            f(&mut self);
-            self
-        }
-    }
-    impl Tap for TaskItem {}
 
     #[test]
     fn title_includes_session_and_compact_duration() {
@@ -445,38 +384,23 @@ mod tests {
     }
 
     #[test]
-    fn subtitle_holds_progress_and_body_names_the_work() {
-        let todos = vec![
-            todo_named("wire up parser", "completed", &[]),
-            todo_named("handle reconnect", "in_progress", &[]),
-        ];
+    fn subtitle_counts_open_rows_and_body_falls_back_to_the_snippet() {
+        let todos = vec![todo("wire up parser", &[]), todo("handle reconnect", &[])];
         let n = build_turn_notification(None, 200.0, &todos, Some("Fixed the parser bug."));
         assert_eq!(n.title, "kcode · done in 3m 20s");
-        assert_eq!(n.subtitle.as_deref(), Some("1/2 todos"));
-        // Names actual todo work, not the prose snippet.
-        assert_eq!(n.body, "✓ wire up parser · → handle reconnect");
+        assert_eq!(n.subtitle.as_deref(), Some("2 todos open"));
+        assert_eq!(n.body, "Fixed the parser bug.");
     }
 
     #[test]
     fn body_names_blocker_and_its_dependency() {
         let todos = vec![
-            todo_named("run migration", "pending", &[]),
-            todo_named("deploy", "pending", &["run migration"]),
+            todo("run migration", &[]),
+            todo("deploy", &["run migration"]),
         ];
         let n = build_turn_notification(None, 200.0, &todos, None);
-        assert_eq!(n.subtitle.as_deref(), Some("0/2 todos · 1 blocked"));
+        assert_eq!(n.subtitle.as_deref(), Some("2 todos open · 1 blocked"));
         assert_eq!(n.body, "⊘ deploy needs run migration");
-    }
-
-    #[test]
-    fn all_complete_celebrated_in_subtitle() {
-        let done = vec![
-            todo_named("a", "completed", &[]),
-            todo_named("b", "completed", &[]),
-        ];
-        let n = build_turn_notification(None, 200.0, &done, None);
-        assert_eq!(n.subtitle.as_deref(), Some("✓ all 2 todos"));
-        assert_eq!(n.body, "✓ b");
     }
 
     #[test]
@@ -510,9 +434,9 @@ mod tests {
 
     #[test]
     fn still_counts_blocked_in_subtitle() {
-        let blocked = vec![todo("completed", false), todo("pending", true)];
+        let blocked = vec![todo("first", &[]), todo("second", &["first"])];
         let n = build_turn_notification(None, 200.0, &blocked, None);
-        assert_eq!(n.subtitle.as_deref(), Some("1/2 todos · 1 blocked"));
+        assert_eq!(n.subtitle.as_deref(), Some("2 todos open · 1 blocked"));
     }
 
     #[test]
@@ -527,12 +451,12 @@ mod tests {
     fn kitty_notification_is_one_completed_clickable_message() {
         let n = TurnNotification {
             title: "kcode · fox".to_string(),
-            subtitle: Some("2/3 todos".to_string()),
+            subtitle: Some("2 todos open".to_string()),
             body: "Finished parser".to_string(),
         };
         assert_eq!(
             kitty_notification_sequence(&n, "session:fox/123"),
-            "\x1b]99;i=kcode-turn-sessionfox123:d=0:e=1:p=title;a2NvZGUgwrcgZm94\x1b\\\x1b]99;i=kcode-turn-sessionfox123:d=1:e=1:p=body:a=focus;Mi8zIHRvZG9zCkZpbmlzaGVkIHBhcnNlcg==\x1b\\"
+            "\x1b]99;i=kcode-turn-sessionfox123:d=0:e=1:p=title;a2NvZGUgwrcgZm94\x1b\\\x1b]99;i=kcode-turn-sessionfox123:d=1:e=1:p=body:a=focus;MiB0b2RvcyBvcGVuCkZpbmlzaGVkIHBhcnNlcg==\x1b\\"
         );
     }
 

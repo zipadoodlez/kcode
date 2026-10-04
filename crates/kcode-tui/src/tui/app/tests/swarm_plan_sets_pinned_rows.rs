@@ -9,8 +9,6 @@ fn swarm_plan_event_sets_the_pinned_rows_without_a_transcript_message() {
 
     let item = crate::plan::TaskItem {
         content: "write a haiku".to_string(),
-        status: "running".to_string(),
-        priority: "high".to_string(),
         id: "haiku-1".to_string(),
         assigned_to: Some("worker-fox".to_string()),
         ..Default::default()

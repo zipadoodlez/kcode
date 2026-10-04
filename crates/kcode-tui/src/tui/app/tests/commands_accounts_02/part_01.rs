@@ -696,15 +696,11 @@ fn test_improve_status_summarizes_current_todos() {
                 crate::todo::TaskItem {
                     id: "one".to_string(),
                     content: "Profile startup path".to_string(),
-                    status: "in_progress".to_string(),
-                    priority: "high".to_string(),
                     ..Default::default()
                 },
                 crate::todo::TaskItem {
                     id: "two".to_string(),
                     content: "Add regression test".to_string(),
-                    status: "completed".to_string(),
-                    priority: "medium".to_string(),
                     ..Default::default()
                 },
             ],
@@ -720,11 +716,9 @@ fn test_improve_status_summarizes_current_todos() {
             .last()
             .expect("missing improve status");
         assert!(msg.content.contains("Improve status"));
-        assert!(
-            msg.content
-                .contains("1 incomplete · 1 completed · 0 cancelled")
-        );
-        assert!(msg.content.contains("Profile startup path"));
+        assert!(msg.content.contains("Todos: 2 open"), "{}", msg.content);
+        assert!(msg.content.contains("- Profile startup path"));
+        assert!(msg.content.contains("- Add regression test"));
     });
 }
 
@@ -790,8 +784,6 @@ fn test_improve_resume_uses_saved_mode_and_current_todos() {
             &[crate::todo::TaskItem {
                 id: "resume1".to_string(),
                 content: "Refactor command parsing".to_string(),
-                status: "in_progress".to_string(),
-                priority: "high".to_string(),
                 ..Default::default()
             }],
         )

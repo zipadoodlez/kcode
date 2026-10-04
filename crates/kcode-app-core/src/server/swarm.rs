@@ -449,11 +449,10 @@ fn held_row_ids(rows: &[TaskItem], run: &RunState, session_id: &str) -> Vec<Stri
         .filter(|row| row.assigned_to.as_deref() == Some(session_id))
         .map(|row| row.id.clone())
         .filter(|id| {
-            let status = run
-                .get(id)
-                .map(|state| state.status.as_str())
-                .unwrap_or(&rows[0].status);
-            !crate::plan::is_terminal_status(status)
+            // Only the run's own map speaks for a row it has tracked; a row it
+            // has not is still this holder's.
+            run.get(id)
+                .is_none_or(|state| !crate::plan::is_terminal_status(&state.status))
         })
         .collect()
 }
@@ -1291,8 +1290,6 @@ mod tests {
     fn plan_item(id: &str, content: &str) -> TaskItem {
         TaskItem {
             content: content.to_string(),
-            status: "pending".to_string(),
-            priority: "medium".to_string(),
             id: id.to_string(),
             ..Default::default()
         }
@@ -1382,7 +1379,6 @@ mod tests {
         TaskItem {
             id: id.to_string(),
             assigned_to: Some(holder.to_string()),
-            status: "pending".to_string(),
             ..Default::default()
         }
     }

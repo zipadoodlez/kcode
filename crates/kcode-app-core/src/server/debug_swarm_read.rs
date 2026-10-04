@@ -1,5 +1,5 @@
 use super::{FileTouchService, RunState, ServerIdentity, SessionAgents, SwarmMember, SwarmState};
-use crate::plan::{next_runnable_item_ids, summarize_plan_graph};
+use crate::plan::summarize_plan_graph;
 use crate::protocol::SwarmLifecycleStatus;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -198,17 +198,13 @@ pub(super) async fn maybe_handle_swarm_read_command(
             return Ok(Some("[]".to_string()));
         }
         let summary = summarize_plan_graph(&items);
-        let next_ready_ids = next_runnable_item_ids(&items, Some(8));
         let output = serde_json::json!({
             "swarm_id": runtime.swarm_id,
             "member_count": runtime.members.len(),
             "coordinator": runtime.swarm_id,
             "rows": &items,
             "run": &runtime.run,
-            "ready_ids": summary.ready_ids,
             "blocked_ids": summary.blocked_ids,
-            "active_ids": summary.active_ids,
-            "next_ready_ids": next_ready_ids,
             "cycle_ids": summary.cycle_ids,
             "unresolved_dependency_ids": summary.unresolved_dependency_ids,
         })

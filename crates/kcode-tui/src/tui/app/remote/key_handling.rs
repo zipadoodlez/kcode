@@ -1994,13 +1994,6 @@ async fn handle_remote_key_internal(
                                 &session_id,
                             )
                             .unwrap_or_default();
-                            let incomplete: Vec<_> = todos
-                                .iter()
-                                .filter(|todo| {
-                                    todo.status != "completed" && todo.status != "cancelled"
-                                })
-                                .collect();
-
                             let mode = app
                                 .improve_mode
                                 .or_else(|| {
@@ -2023,7 +2016,7 @@ async fn handle_remote_key_internal(
                             })?;
                             app.improve_mode = Some(mode);
                             let prompt =
-                                app_mod::commands::build_improve_resume_prompt(mode, &incomplete);
+                                app_mod::commands::build_improve_resume_prompt(mode, &todos);
 
                             if app.is_processing {
                                 remote.cancel_with_reason("slash_improve_resume").await?;
@@ -2066,10 +2059,6 @@ async fn handle_remote_key_internal(
                                 &session_id,
                             )
                             .unwrap_or_default();
-                            let has_incomplete = todos.iter().any(|todo| {
-                                todo.status != "completed" && todo.status != "cancelled"
-                            });
-
                             let active_improve_mode = app
                                 .improve_mode
                                 .or_else(|| {
@@ -2081,7 +2070,7 @@ async fn handle_remote_key_internal(
 
                             if active_improve_mode.is_none()
                                 && !app.is_processing
-                                && !has_incomplete
+                                && todos.is_empty()
                             {
                                 app.push_display_message(DisplayMessage::system(
                                     "No active improve loop to stop. Use /improve to start one."
@@ -2184,13 +2173,6 @@ async fn handle_remote_key_internal(
                                 &session_id,
                             )
                             .unwrap_or_default();
-                            let incomplete: Vec<_> = todos
-                                .iter()
-                                .filter(|todo| {
-                                    todo.status != "completed" && todo.status != "cancelled"
-                                })
-                                .collect();
-
                             let mode = app
                                 .improve_mode
                                 .or_else(|| {
@@ -2213,7 +2195,7 @@ async fn handle_remote_key_internal(
                             })?;
                             app.improve_mode = Some(mode);
                             let prompt =
-                                app_mod::commands::build_refactor_resume_prompt(mode, &incomplete);
+                                app_mod::commands::build_refactor_resume_prompt(mode, &todos);
 
                             if app.is_processing {
                                 remote.cancel_with_reason("slash_refactor_resume").await?;
@@ -2256,10 +2238,6 @@ async fn handle_remote_key_internal(
                                 &session_id,
                             )
                             .unwrap_or_default();
-                            let has_incomplete = todos.iter().any(|todo| {
-                                todo.status != "completed" && todo.status != "cancelled"
-                            });
-
                             let active_refactor_mode = app
                                 .improve_mode
                                 .or_else(|| {
@@ -2271,7 +2249,7 @@ async fn handle_remote_key_internal(
 
                             if active_refactor_mode.is_none()
                                 && !app.is_processing
-                                && !has_incomplete
+                                && todos.is_empty()
                             {
                                 app.push_display_message(DisplayMessage::system(
                                     "No active refactor loop to stop. Use /refactor to start one."

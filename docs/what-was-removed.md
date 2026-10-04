@@ -397,6 +397,25 @@ visible-to-current migration writes `headless`, and the spawn tool no longer adv
 `inline` mode. The stale default-config line for the removed `swarm_panel_focus` keybind
 went with the panel.
 
+**A row's status, priority and group go** (S5, 2026-10-04). The work file's entries
+carried three fields no writer set: `add_row` wrote the constant `pending` and an empty
+priority, and nothing wrote `group` at all. Rule 4 already says there is no completed
+state, because a row leaves the file when its result is durable, so the three fields were
+the last of an older shape: a "3/5 todos" subtitle that always read zero, an improve
+prompt that could not tell an in-progress row from a pending one, a `[status|priority]`
+tag in the session-context report, and a plan-graph summary whose active/completed/failed
+buckets classified by a word nothing wrote. All of it goes, with `kcode-plan`'s status
+helpers and `priority_rank`, the dead status vocabulary in `kcode-base`'s store
+(`canonical_todo_status` and its two wrappers, which had no caller), and the graph
+summary's status buckets along with the debug view's ready and next-ready lists and
+`next_runnable_item_ids`. What is lost: a row can no longer be called high priority,
+grouped under a header, or in progress. The improve and refactor status commands now count
+open rows instead of completed ones, their listings are the row's words alone, and the
+turn-finished notification says "N todos open" where it said "C/5 todos". Whether a row is
+being worked is read from its holder's status, which is where liveness has lived since S3.
+An existing `tasks.jsonl` line keeps its old keys, which are ignored on read and dropped
+when that row is next written; legacy session replays carrying rows are the same.
+
 ## Deliberately kept from upstream
 
 - `/account` and `/accounts` - the multi-account picker for Claude and OpenAI.

@@ -81,8 +81,6 @@ mod tests {
         TaskItem {
             id: id.to_string(),
             content: content.to_string(),
-            status: "queued".to_string(),
-            priority: "normal".to_string(),
             ..Default::default()
         }
     }

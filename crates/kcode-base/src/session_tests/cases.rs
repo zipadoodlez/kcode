@@ -1252,8 +1252,6 @@ fn test_redacted_for_export_redacts_replay_events() -> Result<()> {
             items: vec![crate::plan::TaskItem {
                 content: "OPENROUTER_API_KEY=sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789"
                     .to_string(),
-                status: "pending".to_string(),
-                priority: "high".to_string(),
                 id: "task-1".to_string(),
                 ..Default::default()
             }],

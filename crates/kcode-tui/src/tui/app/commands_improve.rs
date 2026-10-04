@@ -294,7 +294,7 @@ pub(super) fn refactor_stop_prompt() -> String {
 
 pub(super) fn build_improve_resume_prompt(
     mode: ImproveMode,
-    incomplete: &[&crate::todo::TaskItem],
+    incomplete: &[crate::todo::TaskItem],
 ) -> String {
     if incomplete.is_empty() {
         return match mode {
@@ -308,15 +308,7 @@ pub(super) fn build_improve_resume_prompt(
 
     let mut todo_list = String::new();
     for todo in incomplete {
-        let icon = if todo.status == "in_progress" {
-            "🔄"
-        } else {
-            "⬜"
-        };
-        todo_list.push_str(&format!(
-            "  {} [{}] {}\n",
-            icon, todo.priority, todo.content
-        ));
+        todo_list.push_str(&format!("  {}\n", todo.content));
     }
 
     match mode {
@@ -341,7 +333,7 @@ pub(super) fn build_improve_resume_prompt(
 
 pub(super) fn build_refactor_resume_prompt(
     mode: ImproveMode,
-    incomplete: &[&crate::todo::TaskItem],
+    incomplete: &[crate::todo::TaskItem],
 ) -> String {
     if incomplete.is_empty() {
         return match mode {
@@ -355,15 +347,7 @@ pub(super) fn build_refactor_resume_prompt(
 
     let mut todo_list = String::new();
     for todo in incomplete {
-        let icon = if todo.status == "in_progress" {
-            "🔄"
-        } else {
-            "⬜"
-        };
-        todo_list.push_str(&format!(
-            "  {} [{}] {}\n",
-            icon, todo.priority, todo.content
-        ));
+        todo_list.push_str(&format!("  {}\n", todo.content));
     }
 
     match mode {
@@ -460,23 +444,14 @@ pub(super) fn format_improve_status(app: &App) -> String {
         &session_id,
     )
     .unwrap_or_default();
-    let completed = todos.iter().filter(|t| t.status == "completed").count();
-    let cancelled = todos.iter().filter(|t| t.status == "cancelled").count();
-    let incomplete: Vec<_> = todos
-        .iter()
-        .filter(|t| t.status != "completed" && t.status != "cancelled")
-        .collect();
-
     let phase = if app.is_processing {
-        if current_mode_for(app, ImproveMode::is_improve).is_some() || !incomplete.is_empty() {
+        if current_mode_for(app, ImproveMode::is_improve).is_some() || !todos.is_empty() {
             "running"
         } else {
             "busy (no improve batch detected yet)"
         }
-    } else if !incomplete.is_empty() {
+    } else if !todos.is_empty() {
         "paused / resumable"
-    } else if completed > 0 || cancelled > 0 {
-        "idle (last improve batch finished)"
     } else {
         "idle"
     };
@@ -488,27 +463,17 @@ pub(super) fn format_improve_status(app: &App) -> String {
     let mut lines = vec![
         format!("Improve status: {}", phase),
         format!("Last requested mode: {}", mode),
-        format!(
-            "Todos: {} incomplete · {} completed · {} cancelled",
-            incomplete.len(),
-            completed,
-            cancelled
-        ),
+        format!("Todos: {} open", todos.len()),
     ];
 
-    if !incomplete.is_empty() {
+    if !todos.is_empty() {
         lines.push(String::new());
         lines.push("Current improve batch:".to_string());
-        for todo in incomplete.iter().take(5) {
-            let icon = if todo.status == "in_progress" {
-                "🔄"
-            } else {
-                "⬜"
-            };
-            lines.push(format!("- {} [{}] {}", icon, todo.priority, todo.content));
+        for todo in todos.iter().take(5) {
+            lines.push(format!("- {}", todo.content));
         }
-        if incomplete.len() > 5 {
-            lines.push(format!("- …and {} more", incomplete.len() - 5));
+        if todos.len() > 5 {
+            lines.push(format!("- …and {} more", todos.len() - 5));
         }
     } else {
         lines.push(String::new());
@@ -527,23 +492,14 @@ pub(super) fn format_refactor_status(app: &App) -> String {
         &session_id,
     )
     .unwrap_or_default();
-    let completed = todos.iter().filter(|t| t.status == "completed").count();
-    let cancelled = todos.iter().filter(|t| t.status == "cancelled").count();
-    let incomplete: Vec<_> = todos
-        .iter()
-        .filter(|t| t.status != "completed" && t.status != "cancelled")
-        .collect();
-
     let phase = if app.is_processing {
-        if current_mode_for(app, ImproveMode::is_refactor).is_some() || !incomplete.is_empty() {
+        if current_mode_for(app, ImproveMode::is_refactor).is_some() || !todos.is_empty() {
             "running"
         } else {
             "busy (no refactor batch detected yet)"
         }
-    } else if !incomplete.is_empty() {
+    } else if !todos.is_empty() {
         "paused / resumable"
-    } else if completed > 0 || cancelled > 0 {
-        "idle (last refactor batch finished)"
     } else {
         "idle"
     };
@@ -555,27 +511,17 @@ pub(super) fn format_refactor_status(app: &App) -> String {
     let mut lines = vec![
         format!("Refactor status: {}", phase),
         format!("Last requested mode: {}", mode),
-        format!(
-            "Todos: {} incomplete · {} completed · {} cancelled",
-            incomplete.len(),
-            completed,
-            cancelled
-        ),
+        format!("Todos: {} open", todos.len()),
     ];
 
-    if !incomplete.is_empty() {
+    if !todos.is_empty() {
         lines.push(String::new());
         lines.push("Current refactor batch:".to_string());
-        for todo in incomplete.iter().take(5) {
-            let icon = if todo.status == "in_progress" {
-                "🔄"
-            } else {
-                "⬜"
-            };
-            lines.push(format!("- {} [{}] {}", icon, todo.priority, todo.content));
+        for todo in todos.iter().take(5) {
+            lines.push(format!("- {}", todo.content));
         }
-        if incomplete.len() > 5 {
-            lines.push(format!("- …and {} more", incomplete.len() - 5));
+        if todos.len() > 5 {
+            lines.push(format!("- …and {} more", todos.len() - 5));
         }
     } else {
         lines.push(String::new());
@@ -596,11 +542,6 @@ pub(super) fn handle_improve_command_local(app: &mut App, command: ImproveComman
                 &session_id,
             )
             .unwrap_or_default();
-            let incomplete: Vec<_> = todos
-                .iter()
-                .filter(|todo| todo.status != "completed" && todo.status != "cancelled")
-                .collect();
-
             let mode = current_mode_for(app, ImproveMode::is_improve);
             let Some(mode) = mode else {
                 app.push_display_message(DisplayMessage::system(
@@ -611,7 +552,7 @@ pub(super) fn handle_improve_command_local(app: &mut App, command: ImproveComman
             };
 
             persist_improve_mode_local(app, Some(mode));
-            let prompt = build_improve_resume_prompt(mode, &incomplete);
+            let prompt = build_improve_resume_prompt(mode, &todos);
             if app.is_processing {
                 interrupt_and_queue_synthetic_message(
                     app,
@@ -637,13 +578,9 @@ pub(super) fn handle_improve_command_local(app: &mut App, command: ImproveComman
                 &session_id,
             )
             .unwrap_or_default();
-            let has_incomplete = todos
-                .iter()
-                .any(|todo| todo.status != "completed" && todo.status != "cancelled");
-
             if current_mode_for(app, ImproveMode::is_improve).is_none()
                 && !app.is_processing
-                && !has_incomplete
+                && todos.is_empty()
             {
                 app.push_display_message(DisplayMessage::system(
                     "No active improve loop to stop. Use /improve to start one.".to_string(),
@@ -701,11 +638,6 @@ pub(super) fn handle_refactor_command_local(app: &mut App, command: RefactorComm
                 &session_id,
             )
             .unwrap_or_default();
-            let incomplete: Vec<_> = todos
-                .iter()
-                .filter(|todo| todo.status != "completed" && todo.status != "cancelled")
-                .collect();
-
             let mode = current_mode_for(app, ImproveMode::is_refactor);
             let Some(mode) = mode else {
                 app.push_display_message(DisplayMessage::system(
@@ -716,7 +648,7 @@ pub(super) fn handle_refactor_command_local(app: &mut App, command: RefactorComm
             };
 
             persist_improve_mode_local(app, Some(mode));
-            let prompt = build_refactor_resume_prompt(mode, &incomplete);
+            let prompt = build_refactor_resume_prompt(mode, &todos);
             if app.is_processing {
                 interrupt_and_queue_synthetic_message(
                     app,
@@ -742,13 +674,9 @@ pub(super) fn handle_refactor_command_local(app: &mut App, command: RefactorComm
                 &session_id,
             )
             .unwrap_or_default();
-            let has_incomplete = todos
-                .iter()
-                .any(|todo| todo.status != "completed" && todo.status != "cancelled");
-
             if current_mode_for(app, ImproveMode::is_refactor).is_none()
                 && !app.is_processing
-                && !has_incomplete
+                && todos.is_empty()
             {
                 app.push_display_message(DisplayMessage::system(
                     "No active refactor loop to stop. Use /refactor to start one.".to_string(),

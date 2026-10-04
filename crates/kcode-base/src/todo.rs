@@ -12,42 +12,6 @@ pub use kcode_task_types::TaskItem;
 /// root. See `docs/plans/task-flow.md` (rule 7).
 const WORK_LIST_FILE: &str = "tasks.jsonl";
 
-/// Return the canonical todo status for model-written status vocabulary.
-///
-/// The todo tool historically accepted any string, so persisted sessions can
-/// contain natural completion synonyms such as `done` or `finished`. Keep this
-/// helper tolerant for those sessions even though new tool calls advertise a
-/// constrained vocabulary.
-pub fn canonical_todo_status(status: &str) -> Option<&'static str> {
-    let status = status.trim();
-    if status.eq_ignore_ascii_case("pending") {
-        Some("pending")
-    } else if status.eq_ignore_ascii_case("in_progress")
-        || status.eq_ignore_ascii_case("in progress")
-        || status.eq_ignore_ascii_case("in-progress")
-    {
-        Some("in_progress")
-    } else if status.eq_ignore_ascii_case("completed")
-        || status.eq_ignore_ascii_case("complete")
-        || status.eq_ignore_ascii_case("done")
-        || status.eq_ignore_ascii_case("finished")
-    {
-        Some("completed")
-    } else if status.eq_ignore_ascii_case("cancelled") || status.eq_ignore_ascii_case("canceled") {
-        Some("cancelled")
-    } else {
-        None
-    }
-}
-
-pub fn todo_status_is_completed(status: &str) -> bool {
-    canonical_todo_status(status) == Some("completed")
-}
-
-pub fn todo_status_is_cancelled(status: &str) -> bool {
-    canonical_todo_status(status) == Some("cancelled")
-}
-
 /// Where a session's work list lives: `tasks.jsonl` at the repo root of
 /// `working_dir`, or, with no repo, a session-scoped file under the kcode dir.
 ///
@@ -203,10 +167,10 @@ fn names_row(row: &TaskItem, words: &str) -> bool {
     row.id == words || row.content.trim().eq_ignore_ascii_case(words)
 }
 
-/// Add one open row and hand back its id. The caller brings the row's words; the
-/// store owns what every new row is (an id, `pending`, no priority rank) and what
-/// no row may be (empty), so the `todo` tool and a grant's anchor are the same
-/// writer with the same invariants (rule 2).
+/// Add one open row and hand back its id. The caller brings the row's words and
+/// its other fields; the store owns the id and what no row may be (empty), so the
+/// `todo` tool and a grant's anchor are the same writer with the same invariants
+/// (rule 2).
 pub fn add_row(rows: &mut Vec<TaskItem>, mut row: TaskItem) -> Result<String> {
     let content = row.content.trim();
     if content.is_empty() {
@@ -216,8 +180,6 @@ pub fn add_row(rows: &mut Vec<TaskItem>, mut row: TaskItem) -> Result<String> {
     let id = next_id(rows);
     rows.push(TaskItem {
         id: id.clone(),
-        status: "pending".to_string(),
-        priority: String::new(),
         ..row
     });
     Ok(id)
@@ -432,8 +394,6 @@ mod tests {
             TaskItem {
                 id: "a".to_string(),
                 content: "first".to_string(),
-                status: "pending".to_string(),
-                priority: "high".to_string(),
                 ..Default::default()
             },
             TaskItem {

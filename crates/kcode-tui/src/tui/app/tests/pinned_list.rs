@@ -1,10 +1,8 @@
-/// Simple todo used by the pinned-band tests.
-fn pinned_band_todo(id: &str, content: &str, status: &str) -> crate::todo::TaskItem {
+/// Simple row used by the pinned-list tests.
+fn pinned_row(id: &str, content: &str) -> crate::todo::TaskItem {
     crate::todo::TaskItem {
         id: id.to_string(),
         content: content.to_string(),
-        status: status.to_string(),
-        priority: "high".to_string(),
         ..Default::default()
     }
 }
@@ -13,7 +11,7 @@ fn pinned_band_todo(id: &str, content: &str, status: &str) -> crate::todo::TaskI
 fn pinned_todos_hide_todo_tool_messages_from_the_transcript() {
     let _env_lock = crate::storage::lock_test_env();
     let mut app = create_test_app();
-    app.swarm.plan_items = vec![pinned_band_todo("pinned", "PINNED_ONLY", "in_progress")];
+    app.swarm.plan_items = vec![pinned_row("pinned", "PINNED_ONLY")];
     app.transcript.set_all(vec![
         DisplayMessage::tool(
             "duplicate todo transcript card",
@@ -50,7 +48,7 @@ fn pinned_todo_band_renders_below_sticky_prompt_without_separator() {
     let _env_lock = crate::storage::lock_test_env();
     let _render_lock = crate::tui::ui::render_state_test_lock();
     let mut app = create_test_app();
-    app.swarm.plan_items = vec![pinned_band_todo("t1", "pinned band item", "in_progress")];
+    app.swarm.plan_items = vec![pinned_row("t1", "pinned band item")];
 
     app.transcript.set_all(vec![
         DisplayMessage {
@@ -272,15 +270,15 @@ fn clicking_pinned_todo_more_row_expands_the_band() {
 }
 
 #[test]
-fn pinned_todo_card_shows_tasks_without_expanding() {
+fn pinned_todo_band_shows_tasks_without_expanding() {
     let _env_lock = crate::storage::lock_test_env();
     let _render_lock = crate::tui::ui::render_state_test_lock();
     let mut app = create_test_app();
     app.session.short_name = Some("test".to_string());
     let todos = vec![
-        pinned_band_todo("done", "Finished task", "completed"),
-        pinned_band_todo("active", "Current task", "in_progress"),
-        pinned_band_todo("next", "Queued task", "pending"),
+        pinned_row("done", "Finished task"),
+        pinned_row("active", "Current task"),
+        pinned_row("next", "Queued task"),
     ];
     app.swarm.plan_items = todos;
     app.push_display_message(DisplayMessage::assistant("ordinary transcript content"));

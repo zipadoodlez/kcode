@@ -787,8 +787,6 @@ fn test_context_command_reports_session_context_snapshot() {
             &[crate::todo::TaskItem {
                 id: "one".to_string(),
                 content: "Inspect context summary".to_string(),
-                status: "pending".to_string(),
-                priority: "high".to_string(),
                 ..Default::default()
             }],
         )
