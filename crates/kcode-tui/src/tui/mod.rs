@@ -345,15 +345,22 @@ pub trait TuiState {
     /// Version counter for display_messages (monotonic, increments on mutation)
     fn display_messages_version(&self) -> u64;
     fn streaming_text(&self) -> &str;
-    /// JSON payload for the pinned todo band rendered at the top of the chat
-    /// viewport when `display.pin_todos` is enabled. `None` when the feature
-    /// is off or the session has no todos.
-    fn pinned_todos_payload(&self) -> Option<&str> {
-        None
+    /// The rows of the pinned work list: what this session may work, as the
+    /// server sent them (rule 1). Empty until the server sends its first push.
+    fn pinned_todo_rows(&self) -> &[crate::plan::TaskItem] {
+        &[]
     }
-    /// Whether the pinned todo band is temporarily expanded to show every row.
+    /// The sessions holding those rows, so a line can show its holder's state.
+    fn pinned_todo_members(&self) -> &[crate::protocol::SwarmMemberStatus] {
+        &[]
+    }
+    /// Whether the pinned work list is temporarily expanded to show every row.
     fn pinned_todos_expanded(&self) -> bool {
         false
+    }
+    /// Spinner frame for a row that is being worked right now.
+    fn spinner_frame(&self) -> usize {
+        0
     }
     /// Running and recently completed background tasks rendered beneath pinned todos.
     fn background_task_rows(&self) -> &[BackgroundTaskRow] {

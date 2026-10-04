@@ -51,11 +51,10 @@ use self::headless::create_headless_session;
 use self::reload::await_reload_signal;
 use self::runtime::ServerRuntime;
 use self::swarm::{
-    broadcast_swarm_plan, broadcast_swarm_status, expired_terminal_member_ids,
+    broadcast_swarm_status, broadcast_todos, expired_terminal_member_ids,
     member_consumes_swarm_capacity, record_swarm_event, record_swarm_event_for_session,
-    remove_session_from_swarm, run_swarm_message, salvage_dead_assignees,
-    send_swarm_plan_to_session, set_member_task_label, swarm_is_self_or_ancestor, swarm_root,
-    swarm_rows, update_member_status,
+    remove_session_from_swarm, run_swarm_message, salvage_dead_assignees, send_todos_to_session,
+    set_member_task_label, swarm_is_self_or_ancestor, swarm_root, swarm_rows, update_member_status,
 };
 pub(super) use self::swarm_mutation_state::SwarmMutationRuntime;
 use self::swarm_persistence::{
@@ -2074,6 +2073,9 @@ impl Server {
                         &swarm_event_tx,
                     )
                     .await;
+                    // The list is one file, so any write changes what any session
+                    // may work: refresh every session's clients from the server.
+                    broadcast_todos(&swarm_members).await;
                 }
                 Ok(BusEvent::SwarmOutputTail(tail)) => {
                     dispatch_swarm_output_tail(&tail, &swarm_members).await;

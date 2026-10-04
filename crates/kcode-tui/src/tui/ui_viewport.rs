@@ -1,4 +1,5 @@
 use super::*;
+use kcode_tui_style::theme::{error_color, warning_color};
 use unicode_width::UnicodeWidthStr;
 
 #[cfg(target_os = "macos")]
@@ -958,22 +959,13 @@ fn pinned_todo_band_lines(
         .iter()
         .map(|task| active_background_task_line(task, width))
         .collect();
-    let card_lines = if crate::config::config().display.pin_todos {
-        app.pinned_todos_payload()
-            .map(|payload| {
-                let msg = crate::tui::DisplayMessage::todos(payload.to_string());
-                super::messages::get_cached_message_lines(
-                    &msg,
-                    width,
-                    app.diff_mode(),
-                    super::messages::render_todos_message,
-                )
-            })
-            .unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-    if card_lines.is_empty() && task_lines.is_empty() {
+    let row_lines = render_todo_rows(
+        app.pinned_todo_rows(),
+        app.pinned_todo_members(),
+        app.spinner_frame(),
+        width,
+    );
+    if row_lines.is_empty() && task_lines.is_empty() {
         return (Vec::new(), None);
     }
 
@@ -981,22 +973,120 @@ fn pinned_todo_band_lines(
     let budget = ((viewport_height as usize) / 3).clamp(2, 12);
     let content_budget = budget.saturating_sub(task_lines.len()).max(2);
     let mut lines: Vec<Line<'static>> = Vec::new();
-    let has_more = card_lines.len() > content_budget && !app.pinned_todos_expanded();
+    let has_more = row_lines.len() > content_budget && !app.pinned_todos_expanded();
     let mut more_line = None;
     if has_more {
         let shown = content_budget.saturating_sub(1);
-        let hidden = card_lines.len() - shown;
-        lines.extend(card_lines.into_iter().take(shown));
+        let hidden = row_lines.len() - shown;
+        lines.extend(row_lines.into_iter().take(shown));
         more_line = Some(lines.len());
         lines.push(Line::from(Span::styled(
             format!("  … +{} more (todo)", hidden),
             Style::default().fg(dim_color()),
         )));
     } else {
-        lines.extend(card_lines);
+        lines.extend(row_lines);
     }
     lines.extend(task_lines);
     (lines, more_line)
+}
+
+/// The pinned work list: one line per open row, indented by its `parent` chain,
+/// colored by the row's own facts plus its holder's live status, with the row's
+/// id beside its words. The rows come from the server (rule 1): nothing here
+/// reads the file.
+fn render_todo_rows(
+    rows: &[crate::plan::TaskItem],
+    members: &[crate::protocol::SwarmMemberStatus],
+    spinner_frame: usize,
+    width: u16,
+) -> Vec<Line<'static>> {
+    rows.iter()
+        .map(|row| todo_row_line(rows, row, members, spinner_frame, width))
+        .collect()
+}
+
+/// How deep `row` sits under its `parent` chain. A `parent` naming no open row,
+/// or a hand-written cycle, ends the walk at the depth reached.
+fn parent_depth(rows: &[crate::plan::TaskItem], row: &crate::plan::TaskItem) -> usize {
+    let mut depth = 0;
+    let mut current = row.parent.as_deref();
+    for _ in 0..=rows.len() {
+        let Some(parent) = current else {
+            break;
+        };
+        let Some(parent_row) = rows.iter().find(|candidate| candidate.id == parent) else {
+            break;
+        };
+        depth += 1;
+        current = parent_row.parent.as_deref();
+    }
+    depth
+}
+
+fn holder_label(member: &crate::protocol::SwarmMemberStatus) -> String {
+    member
+        .friendly_name
+        .clone()
+        .unwrap_or_else(|| member.session_id.chars().take(8).collect())
+}
+
+fn todo_row_line(
+    rows: &[crate::plan::TaskItem],
+    row: &crate::plan::TaskItem,
+    members: &[crate::protocol::SwarmMemberStatus],
+    spinner_frame: usize,
+    width: u16,
+) -> Line<'static> {
+    use kcode_tui_render::swarm_gallery::{is_active_status, status_glyph};
+
+    let indent = parent_depth(rows, row);
+    let holder = row.assigned_to.as_deref();
+    let member = holder.and_then(|id| members.iter().find(|member| member.session_id == id));
+    let status = member
+        .map(|member| member.status.as_str())
+        .unwrap_or_default();
+    let blocked = !row.blocked_by.is_empty();
+
+    let (icon, icon_color) = if is_active_status(status) {
+        (status_glyph(status, spinner_frame), warning_color())
+    } else if matches!(status, "failed" | "crashed" | "stopped") {
+        ("✗", error_color())
+    } else if blocked {
+        ("⊳", dim_color())
+    } else if holder.is_some() {
+        ("●", warning_color())
+    } else {
+        ("○", accent_color())
+    };
+
+    let holder_suffix = member
+        .map(|member| format!(" @{}", holder_label(member)))
+        .unwrap_or_default();
+    let prefix_width = indent * 2 + 2 + row.id.chars().count() + 1 + holder_suffix.chars().count();
+    let content_width = (width as usize).saturating_sub(prefix_width).max(1);
+    let content = truncate_to_width(&row.content, content_width);
+
+    let mut spans = vec![
+        Span::raw(" ".repeat(indent * 2)),
+        Span::styled(format!("{icon} "), Style::default().fg(icon_color)),
+        Span::styled(format!("{} ", row.id), Style::default().fg(dim_color())),
+        Span::styled(
+            content,
+            Style::default().fg(if blocked {
+                dim_color()
+            } else {
+                pending_color()
+            }),
+        ),
+    ];
+    if !holder_suffix.is_empty() {
+        spans.push(Span::styled(
+            holder_suffix,
+            Style::default().fg(dim_color()),
+        ));
+    }
+    Line::from(spans)
 }
 
 fn active_background_task_line(task: &crate::tui::BackgroundTaskRow, width: u16) -> Line<'static> {
@@ -1040,7 +1130,7 @@ fn active_background_task_line(task: &crate::tui::BackgroundTaskRow, width: u16)
         format!("◌ bg   {} {}{}", active_bar, remaining_bar, status_label).as_str(),
     );
     let max_label_width = (width as usize).saturating_sub(fixed_width).max(1);
-    let label = truncate_background_task_label(&task.label, max_label_width);
+    let label = truncate_to_width(&task.label, max_label_width);
 
     Line::from(vec![
         Span::styled(icon, Style::default().fg(task_color)),
@@ -1056,7 +1146,7 @@ fn active_background_task_line(task: &crate::tui::BackgroundTaskRow, width: u16)
     ])
 }
 
-fn truncate_background_task_label(label: &str, max_width: usize) -> String {
+fn truncate_to_width(label: &str, max_width: usize) -> String {
     let label = label.replace(['\r', '\n'], " ");
     if UnicodeWidthStr::width(label.as_str()) <= max_width {
         return label;
@@ -1173,5 +1263,101 @@ mod tests {
             "Option"
         );
         assert_eq!(super::copy_badge_alt_label_from_config("⌥"), "⌥");
+    }
+
+    fn row(
+        id: &str,
+        content: &str,
+        parent: Option<&str>,
+        blocked: &[&str],
+        holder: Option<&str>,
+    ) -> crate::plan::TaskItem {
+        crate::plan::TaskItem {
+            id: id.to_string(),
+            content: content.to_string(),
+            parent: parent.map(str::to_string),
+            blocked_by: blocked.iter().map(|id| id.to_string()).collect(),
+            assigned_to: holder.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    fn member(
+        id: &str,
+        name: &str,
+        status: crate::protocol::SwarmLifecycleStatus,
+    ) -> crate::protocol::SwarmMemberStatus {
+        crate::protocol::SwarmMemberStatus {
+            session_id: id.to_string(),
+            friendly_name: Some(name.to_string()),
+            status,
+            detail: None,
+            task_label: None,
+            role: None,
+            is_headless: Some(true),
+            live_attachments: None,
+            status_age_secs: None,
+            output_tail: None,
+            report_back_to_session_id: None,
+            todo_progress: None,
+            todo_items: Vec::new(),
+            runtime: Default::default(),
+        }
+    }
+
+    fn text(line: &ratatui::text::Line<'static>) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect()
+    }
+
+    /// A row carries its id and indents under its parent chain, so a reader can
+    /// name what an agent is talking about and see what belongs to what.
+    #[test]
+    fn a_row_shows_its_id_and_indents_under_its_parent() {
+        let rows = vec![
+            row("t1", "the run", None, &[], None),
+            row("t2", "the work", Some("t1"), &[], None),
+        ];
+        let lines = super::render_todo_rows(&rows, &[], 0, 80);
+        let parent = text(&lines[0]);
+        let child = text(&lines[1]);
+        assert!(
+            parent.contains("t1") && parent.contains("the run"),
+            "{parent:?}"
+        );
+        assert!(
+            !parent.starts_with(' '),
+            "a root row is not indented: {parent:?}"
+        );
+        assert!(child.starts_with("  "), "a child row indents: {child:?}");
+        assert!(
+            child.contains("t2") && child.contains("the work"),
+            "{child:?}"
+        );
+    }
+
+    /// A row whose holder is running animates and names the holder: that is the
+    /// claim, and it borrows the holder's liveness rather than a row status.
+    #[test]
+    fn a_working_holder_animates_its_row_and_names_the_holder() {
+        let rows = vec![row("t1", "the work", None, &[], Some("s1"))];
+        let members = vec![member(
+            "s1",
+            "fox",
+            crate::protocol::SwarmLifecycleStatus::Running,
+        )];
+        let line = text(&super::render_todo_rows(&rows, &members, 0, 80)[0]);
+        assert!(line.contains("@fox"), "{line:?}");
+        assert!(!line.contains('○'), "a working row is not open: {line:?}");
+    }
+
+    /// A row with a blocker is marked, even before any member holds it.
+    #[test]
+    fn a_blocked_row_is_marked() {
+        let rows = vec![row("t1", "the work", None, &["t9"], None)];
+        let line = text(&super::render_todo_rows(&rows, &[], 0, 80)[0]);
+        assert!(line.contains('⊳'), "{line:?}");
     }
 }

@@ -3,7 +3,6 @@ use crate::side_panel::SidePanelPage;
 use crate::todo::TaskItem;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::time::Instant;
 
 pub(super) const TODOS_VIEW_PAGE_ID: &str = "session_todos";
 const TODOS_VIEW_TITLE: &str = "Todos";
@@ -22,13 +21,6 @@ pub(super) struct TodosView {
     /// Hash of the payload rendered into the inline chat todo card, so the card
     /// stays live-updating while it sits in the transcript.
     pub(super) card_rendered_hash: u64,
-    /// JSON payload for the pinned todo band (`display.pin_todos`). `None` when
-    /// the feature is off or the session has no todos.
-    pub(super) pinned_payload: Option<String>,
-    /// Hash of `pinned_payload`, to skip re-serializing unchanged ticks.
-    pub(super) pinned_rendered_hash: u64,
-    /// Last time the pinned band re-read todos from disk (1s throttle).
-    pub(super) pinned_checked_at: Option<Instant>,
     /// User-expanded state for the pinned band's `+N more` row.
     pub(super) pinned_expanded: bool,
 }
@@ -36,13 +28,6 @@ pub(super) struct TodosView {
 impl TodosView {
     pub(super) fn enabled(&self) -> bool {
         self.enabled
-    }
-
-    /// The pinned-band renderer that reads this is landing separately, so the
-    /// accessor is allowed to be unused (outside tests) until it does.
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(super) fn pinned_payload_ref(&self) -> Option<&str> {
-        self.pinned_payload.as_deref()
     }
 
     fn clear_cache(&mut self) {
@@ -144,62 +129,6 @@ impl App {
         self.todos_view.card_rendered_hash = next_hash;
         let content = todo_card_payload_json(&todos);
         self.replace_display_message_content(idx, content)
-    }
-
-    /// Live-refresh the payload behind the pinned todo band
-    /// (`display.pin_todos`). Returns true when the payload changed and the
-    /// viewport should redraw. Disk reads are throttled to once per second.
-    pub(super) fn refresh_pinned_todos_if_needed(&mut self) -> bool {
-        if crate::tui::is_ssh_remote() {
-            return false;
-        }
-        if !crate::config::config().display.pin_todos {
-            if self.todos_view.pinned_payload.is_some() {
-                self.todos_view.pinned_payload = None;
-                self.todos_view.pinned_rendered_hash = 0;
-                return true;
-            }
-            return false;
-        }
-        const REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
-        if let Some(checked_at) = self.todos_view.pinned_checked_at
-            && checked_at.elapsed() < REFRESH_INTERVAL
-        {
-            return false;
-        }
-        self.todos_view.pinned_checked_at = Some(Instant::now());
-        let session_id = self.active_client_session_id().map(str::to_string);
-        let todos = load_current_session_todos(
-            self.session
-                .working_dir
-                .as_deref()
-                .map(std::path::Path::new),
-            session_id.as_deref(),
-        );
-        if todos.is_empty() {
-            if self.todos_view.pinned_payload.is_some() {
-                self.todos_view.pinned_payload = None;
-                self.todos_view.pinned_rendered_hash = 0;
-                return true;
-            }
-            return false;
-        }
-        let next_hash = hash_todos_payload(session_id.as_deref(), &todos);
-        if next_hash == self.todos_view.pinned_rendered_hash
-            && self.todos_view.pinned_payload.is_some()
-        {
-            return false;
-        }
-        self.todos_view.pinned_rendered_hash = next_hash;
-        self.todos_view.pinned_payload = Some(todo_card_payload_json(&todos));
-        true
-    }
-
-    /// Force the pinned todo band to re-read state on the next tick, bypassing
-    /// the 1s throttle. Used right after the user toggles `/todos pin`.
-    pub(super) fn refresh_pinned_todos_now(&mut self) {
-        self.todos_view.pinned_checked_at = None;
-        self.refresh_pinned_todos_if_needed();
     }
 
     pub(super) fn set_todos_view_enabled(&mut self, enabled: bool, focus: bool) {
@@ -328,33 +257,6 @@ pub(super) fn handle_todos_view_command(app: &mut App, trimmed: &str) -> bool {
                 "Todo screen disabled.".to_string(),
             ));
         }
-        // Pin the full todo list to the top of the chat transcript.
-        "pin" | "pin on" | "pin off" => {
-            let enabled = match arg {
-                "pin on" => true,
-                "pin off" => false,
-                _ => !crate::config::config().display.pin_todos,
-            };
-            app.set_status_notice(if enabled {
-                "Pinned todos: ON"
-            } else {
-                "Pinned todos: OFF"
-            });
-            match crate::config::Config::set_pin_todos(enabled) {
-                Ok(()) => app.push_display_message(crate::tui::DisplayMessage::system(
-                    if enabled {
-                        "Pinned todo band enabled. The todo list stays pinned to the top of the transcript while it scrolls."
-                    } else {
-                        "Pinned todo band disabled."
-                    }
-                    .to_string(),
-                )),
-                Err(error) => app.push_display_message(crate::tui::DisplayMessage::error(
-                    format!("Failed to save display.pin_todos: {}", error),
-                )),
-            }
-            app.refresh_pinned_todos_now();
-        }
         "status" => {
             app.push_display_message(crate::tui::DisplayMessage::system(
                 todos_view_status_message(app),
@@ -362,7 +264,7 @@ pub(super) fn handle_todos_view_command(app: &mut App, trimmed: &str) -> bool {
         }
         _ => {
             app.push_display_message(crate::tui::DisplayMessage::error(
-                "Usage: /todos [card|panel|pin|on|off|status]".to_string(),
+                "Usage: /todos [card|panel|on|off|status]".to_string(),
             ));
         }
     }

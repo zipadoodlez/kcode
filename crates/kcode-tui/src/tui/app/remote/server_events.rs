@@ -1997,10 +1997,14 @@ pub(in crate::tui::app) fn handle_server_event(
                 reason: reason.clone(),
                 summary,
             };
-            let notice = snapshot.status_notice();
+            // A plain rows push (no reason, no summary) is the server keeping the
+            // pinned list current, not a plan mutation: no notice for it.
+            if reason.is_some() || snapshot.summary.is_some() {
+                let notice = snapshot.status_notice();
+                app.set_status_notice(notice);
+            }
             app.swarm.plan_swarm_id = Some(snapshot.swarm_id.clone());
             app.swarm.plan_items = snapshot.items.clone();
-            app.set_status_notice(notice);
             false
         }
         ServerEvent::McpStatus { servers } => {

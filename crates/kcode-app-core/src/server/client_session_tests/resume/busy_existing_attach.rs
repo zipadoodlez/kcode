@@ -143,7 +143,6 @@ async fn handle_resume_session_allows_live_attach_when_existing_agent_is_busy() 
             &existing_agent,
             &new_registry,
             &swarm_members,
-            &swarm_runs,
             &client_event_tx,
             &mcp_pool,
             &event_history,

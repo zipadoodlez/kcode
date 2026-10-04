@@ -125,83 +125,9 @@ fn pinned_band_todo(id: &str, content: &str, status: &str) -> crate::todo::TaskI
     }
 }
 
-/// RAII guard for the KCODE_PIN_TODOS env override used by the band tests.
-struct PinTodosEnvGuard;
-
-impl PinTodosEnvGuard {
-    fn enable() -> Self {
-        crate::env::set_var("KCODE_PIN_TODOS", "1");
-        // kcode-base's config cache throttles env re-checks (the zero
-        // interval under cfg!(test) applies only when kcode-base itself is
-        // the crate under test), so force a reload or a sibling test's
-        // KCODE_PIN_TODOS state leaks into this one for up to 500ms.
-        crate::config::invalidate_config_cache();
-        Self
-    }
-
-    fn disable() -> Self {
-        crate::env::set_var("KCODE_PIN_TODOS", "0");
-        crate::config::invalidate_config_cache();
-        Self
-    }
-}
-
-impl Drop for PinTodosEnvGuard {
-    fn drop(&mut self) {
-        crate::env::remove_var("KCODE_PIN_TODOS");
-        // See enable(): flush the removal too, so later tests that expect
-        // pin_todos off do not observe this test's stale cached config.
-        crate::config::invalidate_config_cache();
-    }
-}
-
-#[test]
-fn pinned_todos_payload_stays_empty_when_config_off() {
-    let _env_lock = crate::storage::lock_test_env();
-    let _pin_guard = PinTodosEnvGuard::disable();
-    let mut app = create_test_app();
-    let session_id = app.session.id.clone();
-    crate::todo::save_tasks(None, &session_id, &[pinned_band_todo("t1", "pin me", "pending")]).unwrap();
-
-    // display.pin_todos defaults to false: no payload, no redraw churn.
-    assert!(!app.refresh_pinned_todos_if_needed());
-    assert!(app.todos_view.pinned_payload_ref().is_none());
-
-    let _ = crate::todo::save_tasks(None, &session_id, &[]);
-}
-
-#[test]
-fn pinned_todos_payload_refreshes_and_clears_with_config_and_todos() {
-    let _env_lock = crate::storage::lock_test_env();
-    let _pin = PinTodosEnvGuard::enable();
-    let mut app = create_test_app();
-    let session_id = app.session.id.clone();
-
-    // No todos yet: enabled but nothing to pin.
-    app.refresh_pinned_todos_now();
-    assert!(app.todos_view.pinned_payload_ref().is_none());
-
-    crate::todo::save_tasks(None, &session_id, &[pinned_band_todo("t1", "pin me", "pending")]).unwrap();
-    app.refresh_pinned_todos_now();
-    let payload = app
-        .todos_view
-        .pinned_payload_ref()
-        .expect("payload populated when enabled with todos");
-    assert!(payload.contains("pin me"));
-
-    // Unchanged todos within the throttle window: no redraw.
-    assert!(!app.refresh_pinned_todos_if_needed());
-
-    // Todos cleared: payload clears too.
-    crate::todo::save_tasks(None, &session_id, &[]).unwrap();
-    app.refresh_pinned_todos_now();
-    assert!(app.todos_view.pinned_payload_ref().is_none());
-}
-
 #[test]
 fn pinned_todos_are_omitted_from_info_widgets() {
     let _env_lock = crate::storage::lock_test_env();
-    let _pin = PinTodosEnvGuard::enable();
     let app = create_test_app();
     let session_id = app.session.id.clone();
     crate::todo::save_tasks(None, 
@@ -220,15 +146,8 @@ fn pinned_todos_are_omitted_from_info_widgets() {
 #[test]
 fn pinned_todos_hide_todo_tool_messages_from_the_transcript() {
     let _env_lock = crate::storage::lock_test_env();
-    let _pin = PinTodosEnvGuard::enable();
     let mut app = create_test_app();
-    let session_id = app.session.id.clone();
-    crate::todo::save_tasks(None, 
-        &session_id,
-        &[pinned_band_todo("pinned", "PINNED_ONLY", "in_progress")],
-    )
-    .unwrap();
-    app.refresh_pinned_todos_now();
+    app.swarm.plan_items = vec![pinned_band_todo("pinned", "PINNED_ONLY", "in_progress")];
     app.transcript.set_all(vec![
         DisplayMessage::tool(
             "duplicate todo transcript card",
@@ -258,23 +177,14 @@ fn pinned_todos_hide_todo_tool_messages_from_the_transcript() {
     let transcript = render_and_snap(&app, &mut terminal);
     assert!(!transcript.contains("duplicate todo transcript card"));
     assert!(transcript.contains("PINNED_ONLY"), "{transcript}");
-    let _ = crate::todo::save_tasks(None, &session_id, &[]);
 }
 
 #[test]
 fn pinned_todo_band_renders_below_sticky_prompt_without_separator() {
     let _env_lock = crate::storage::lock_test_env();
     let _render_lock = crate::tui::ui::render_state_test_lock();
-    let _pin = PinTodosEnvGuard::enable();
     let mut app = create_test_app();
-    let session_id = app.session.id.clone();
-    crate::todo::save_tasks(None, 
-        &session_id,
-        &[pinned_band_todo("t1", "pinned band item", "in_progress")],
-    )
-    .unwrap();
-    app.refresh_pinned_todos_now();
-    assert!(app.todos_view.pinned_payload_ref().is_some());
+    app.swarm.plan_items = vec![pinned_band_todo("t1", "pinned band item", "in_progress")];
 
     app.transcript.set_all(vec![
         DisplayMessage {
@@ -335,8 +245,6 @@ fn pinned_todo_band_renders_below_sticky_prompt_without_separator() {
         "pinned todo band should not render a horizontal separator, got:\n{}",
         text
     );
-
-    let _ = crate::todo::save_tasks(None, &session_id, &[]);
 }
 
 #[test]
@@ -501,7 +409,6 @@ fn clicking_pinned_todo_more_row_expands_the_band() {
 fn pinned_todo_card_shows_tasks_without_expanding() {
     let _env_lock = crate::storage::lock_test_env();
     let _render_lock = crate::tui::ui::render_state_test_lock();
-    let _pin = PinTodosEnvGuard::enable();
     let mut app = create_test_app();
     app.session.short_name = Some("test".to_string());
     let todos = vec![
@@ -509,7 +416,7 @@ fn pinned_todo_card_shows_tasks_without_expanding() {
         pinned_band_todo("active", "Current task", "in_progress"),
         pinned_band_todo("next", "Queued task", "pending"),
     ];
-    app.todos_view.pinned_payload = Some(serde_json::json!({"todos": todos}).to_string());
+    app.swarm.plan_items = todos;
     app.push_display_message(DisplayMessage::assistant("ordinary transcript content"));
     for width in [40, 80, 120] {
         let mut terminal =

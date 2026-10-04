@@ -7,7 +7,7 @@ use super::swarm_mutation_state::{
 };
 use super::{
     RunState, SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember,
-    SwarmState, broadcast_swarm_plan, broadcast_swarm_status, create_headless_session,
+    SwarmState, broadcast_swarm_status, broadcast_todos, create_headless_session,
     fanout_session_event, persist_swarm_state_for, record_swarm_event,
     record_swarm_event_for_session, remove_background_tool_signal, remove_session_from_swarm,
     remove_session_interrupt_queue, set_member_task_label, truncate_detail, update_member_status,
@@ -693,13 +693,7 @@ pub(super) async fn spawn_swarm_agent(
     }?;
 
     let startup_message = startup_message.clone();
-    broadcast_swarm_plan(
-        swarm_id,
-        Some("participant_spawned".to_string()),
-        swarm_runs,
-        swarm_members,
-    )
-    .await;
+    broadcast_todos(swarm_members).await;
     if !is_headless_fallback {
         register_visible_spawned_member(
             &new_session_id,

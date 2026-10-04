@@ -539,12 +539,20 @@ impl crate::tui::TuiState for App {
         &self.streaming.streaming_text
     }
 
-    fn pinned_todos_payload(&self) -> Option<&str> {
-        self.todos_view.pinned_payload_ref()
+    fn pinned_todo_rows(&self) -> &[crate::plan::TaskItem] {
+        &self.swarm.plan_items
+    }
+
+    fn pinned_todo_members(&self) -> &[crate::protocol::SwarmMemberStatus] {
+        &self.swarm.members
     }
 
     fn pinned_todos_expanded(&self) -> bool {
         self.todos_view.pinned_expanded
+    }
+
+    fn spinner_frame(&self) -> usize {
+        (self.animation_elapsed() * kcode_tui_render::swarm_gallery::STRIP_SPINNER_FPS) as usize
     }
 
     fn background_task_rows(&self) -> &[crate::tui::BackgroundTaskRow] {

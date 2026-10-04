@@ -193,8 +193,7 @@ pub(super) async fn maybe_handle_swarm_read_command(
             .first()
             .map(|member| member.session_id.as_str())
             .unwrap_or(swarm_id);
-        let rows = super::swarm::swarm_rows(swarm_id, requester, swarm_members).await;
-        let items = super::swarm::rows_with_run_status(&rows, &runtime.run);
+        let items = super::swarm::swarm_rows(swarm_id, requester, swarm_members).await;
         if items.is_empty() {
             return Ok(Some("[]".to_string()));
         }
@@ -204,7 +203,7 @@ pub(super) async fn maybe_handle_swarm_read_command(
             "swarm_id": runtime.swarm_id,
             "member_count": runtime.members.len(),
             "coordinator": runtime.swarm_id,
-            "rows": &rows,
+            "rows": &items,
             "run": &runtime.run,
             "ready_ids": summary.ready_ids,
             "blocked_ids": summary.blocked_ids,
@@ -384,10 +383,7 @@ pub(super) async fn maybe_handle_swarm_read_command(
             .collect();
 
         let run = plans.get(swarm_id).cloned().unwrap_or_default();
-        let items = super::swarm::rows_with_run_status(
-            &super::swarm::swarm_rows(swarm_id, swarm_id, swarm_members).await,
-            &run,
-        );
+        let items = super::swarm::swarm_rows(swarm_id, swarm_id, swarm_members).await;
         let plan = serde_json::json!({ "items": items, "run": run });
 
         let conflicts: Vec<_> = touches

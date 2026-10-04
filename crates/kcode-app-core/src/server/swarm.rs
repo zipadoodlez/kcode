@@ -63,18 +63,58 @@ pub(super) async fn swarm_session_ids(
 /// The rows as the run sees them: a row the run set a status for reads that status,
 /// and a row it did not reads its own. Cheap because the run's map holds only the
 /// rows a turn touched.
-pub(super) fn rows_with_run_status(rows: &[TaskItem], run: &RunState) -> Vec<TaskItem> {
-    rows.iter()
-        .map(|row| {
-            let mut row = row.clone();
-            if let Some(state) = run.get(&row.id)
-                && !state.status.is_empty()
-            {
-                row.status = state.status.clone();
-            }
-            row
-        })
-        .collect()
+/// The rows a session's client shows: a run's rows when the session is in a run,
+/// the whole list when it stands alone. The list is one file, so the server reads
+/// it and the client renders what it is sent (rules 1 and 7).
+pub(super) async fn session_rows(
+    session_id: &str,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+) -> Vec<TaskItem> {
+    let (root, working_dir, in_run) = {
+        let members = swarm_members.read().await;
+        let root = swarm_root(&members, session_id);
+        let working_dir = members
+            .get(session_id)
+            .and_then(|member| member.working_dir.clone());
+        let in_run = root.as_deref().is_some_and(|root| {
+            members.values().any(|member| {
+                member.session_id != session_id
+                    && swarm_root(&members, &member.session_id).as_deref() == Some(root)
+            })
+        });
+        (root, working_dir, in_run)
+    };
+    match root {
+        Some(root) if in_run => swarm_rows(&root, session_id, swarm_members).await,
+        _ => crate::todo::load_tasks(working_dir.as_deref(), session_id).unwrap_or_default(),
+    }
+}
+
+/// Send one session its rows.
+pub(super) async fn send_todos_to_session(
+    session_id: &str,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+) {
+    let items = session_rows(session_id, swarm_members).await;
+    let event = ServerEvent::SwarmPlan {
+        swarm_id: session_id.to_string(),
+        items,
+        reason: None,
+        summary: None,
+    };
+    fanout_session_event(swarm_members, session_id, event).await;
+}
+
+/// Refresh every session's list. Called on any write, because the file is shared:
+/// a write in one session can unblock a row in another.
+pub(super) async fn broadcast_todos(swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>) {
+    let session_ids: Vec<String> = {
+        let members = swarm_members.read().await;
+        members.keys().cloned().collect()
+    };
+    for session_id in session_ids {
+        send_todos_to_session(&session_id, swarm_members).await;
+    }
 }
 
 /// The run's lifecycle for one row, in the run's own map.
@@ -83,7 +123,7 @@ pub(super) fn set_run_status(run: &mut RunState, id: &str, status: &str) {
 }
 use super::persist_swarm_state_for;
 use crate::agent::Agent;
-use crate::plan::{TaskItem, newly_ready_item_ids, summarize_plan_graph};
+use crate::plan::TaskItem;
 use crate::protocol::{NotificationType, ServerEvent, SwarmLifecycleStatus};
 use crate::session::Session;
 use anyhow::Result;
@@ -487,13 +527,7 @@ pub(super) async fn salvage_assignments_of_dead_member(
         runs: Arc::clone(swarm_runs),
     };
     persist_swarm_state_for(swarm_id, &swarm_state).await;
-    broadcast_swarm_plan(
-        swarm_id,
-        Some("task_salvaged_dead_worker".to_string()),
-        swarm_runs,
-        swarm_members,
-    )
-    .await;
+    broadcast_todos(swarm_members).await;
     notify_coordinator_of_salvage(session_id, &outcome, swarm_members).await;
     outcome
 }
@@ -595,45 +629,6 @@ pub(super) async fn salvage_dead_assignees(
     for (swarm_id, session_id) in salvage_candidates {
         salvage_assignments_of_dead_member(&session_id, &swarm_id, swarm_members, swarm_runs).await;
     }
-}
-
-/// The last status detail of every member, keyed by session id.
-///
-/// The plan keeps no per-node history, so a node's failure reason is its
-/// assignee's own detail: this is the projection the plan snapshots need.
-pub(super) async fn member_details(
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-) -> HashMap<String, String> {
-    swarm_members
-        .read()
-        .await
-        .iter()
-        .filter_map(|(session_id, member)| {
-            member
-                .detail
-                .clone()
-                .map(|detail| (session_id.clone(), detail))
-        })
-        .collect()
-}
-
-/// Failure reason per failed plan item id, read from [`member_details`].
-pub(super) fn failed_reasons_for(
-    items: &[TaskItem],
-    member_details: &HashMap<String, String>,
-) -> std::collections::BTreeMap<String, String> {
-    summarize_plan_graph(items)
-        .failed_ids
-        .into_iter()
-        .filter_map(|id| {
-            let assignee = items
-                .iter()
-                .find(|item| item.id == id)?
-                .assigned_to
-                .as_deref()?;
-            Some((id, member_details.get(assignee)?.clone()))
-        })
-        .collect()
 }
 
 fn swarm_broadcast_key(
@@ -756,136 +751,6 @@ pub(super) async fn broadcast_swarm_status(
             break;
         }
     });
-}
-
-/// Broadcast the authoritative swarm plan snapshot to the swarm's sessions.
-///
-/// The plan lock is held until every event is queued. A mutation cannot take the
-/// write lock until this broadcast has sent, so two racing mutations cannot deliver
-/// out of order; the sender is an unbounded queue, so holding the lock cannot block.
-pub(super) async fn broadcast_swarm_plan(
-    swarm_id: &str,
-    reason: Option<String>,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-) {
-    broadcast_swarm_plan_with_previous(swarm_id, reason, None, swarm_runs, swarm_members).await;
-}
-
-pub(super) async fn broadcast_swarm_plan_with_previous(
-    swarm_id: &str,
-    reason: Option<String>,
-    previous_items: Option<&[TaskItem]>,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-) {
-    // One per-swarm ordering domain, the same one the persist path takes: the read
-    // and the send happen together, so two mutations cannot deliver out of order.
-    let _ordering = crate::server::swarm_operation_lock(swarm_id)
-        .lock_owned()
-        .await;
-    let assignee_details = member_details(swarm_members).await;
-    let rows = swarm_rows(swarm_id, swarm_id, swarm_members).await;
-    let run = swarm_runs
-        .read()
-        .await
-        .get(swarm_id)
-        .cloned()
-        .unwrap_or_default();
-    let items = rows_with_run_status(&rows, &run);
-    let newly_ready_ids = previous_items
-        .map(|before| newly_ready_item_ids(before, &items))
-        .unwrap_or_default();
-    let summary = crate::protocol::PlanGraphStatus::from_rows(
-        swarm_id,
-        &items,
-        Some(3),
-        newly_ready_ids,
-        failed_reasons_for(&items, &assignee_details),
-    );
-
-    let participants = swarm_session_ids(swarm_id, swarm_members).await;
-    if participants.is_empty() {
-        return;
-    }
-
-    let item_count = items.len();
-    let reason_label = reason.clone().unwrap_or_else(|| "unspecified".to_string());
-    let event = ServerEvent::SwarmPlan {
-        swarm_id: swarm_id.to_string(),
-        items,
-        reason,
-        summary: Some(summary),
-    };
-
-    let members = swarm_members.read().await;
-    let participant_count = participants.len();
-    let mut delivered_count = 0usize;
-    for sid in participants {
-        if let Some(member) = members.get(&sid)
-            && member.event_tx.send(event.clone()).is_ok()
-        {
-            delivered_count += 1;
-        }
-    }
-    log_swarm_lifecycle(
-        "plan_broadcast",
-        vec![
-            ("swarm_id", swarm_id.to_string()),
-            ("item_count", item_count.to_string()),
-            ("participant_count", participant_count.to_string()),
-            ("delivered_count", delivered_count.to_string()),
-            ("reason", reason_label),
-        ],
-    );
-}
-
-/// Send the current swarm plan snapshot to ONE session (subscribe/resume
-/// refresh). Unlike [`broadcast_swarm_plan`] this does not fan out to all
-/// participants: reconnecting clients would otherwise show no plan graph
-/// until the next plan mutation happens to broadcast.
-pub(super) async fn send_swarm_plan_to_session(
-    session_id: &str,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
-) {
-    let swarm_id = {
-        let members = swarm_members.read().await;
-        swarm_root(&members, session_id)
-    };
-    let Some(swarm_id) = swarm_id else {
-        return;
-    };
-
-    let assignee_details = member_details(swarm_members).await;
-    let rows = swarm_rows(&swarm_id, session_id, swarm_members).await;
-    let run = swarm_runs
-        .read()
-        .await
-        .get(&swarm_id)
-        .cloned()
-        .unwrap_or_default();
-    let items = rows_with_run_status(&rows, &run);
-    if items.is_empty() {
-        return;
-    }
-    let event = ServerEvent::SwarmPlan {
-        swarm_id: swarm_id.clone(),
-        items: items.clone(),
-        reason: Some("reconnect".to_string()),
-        summary: Some(crate::protocol::PlanGraphStatus::from_rows(
-            &swarm_id,
-            &items,
-            Some(3),
-            Vec::new(),
-            failed_reasons_for(&items, &assignee_details),
-        )),
-    };
-
-    let members = swarm_members.read().await;
-    if let Some(member) = members.get(session_id) {
-        let _ = member.event_tx.send(event);
-    }
 }
 
 pub(super) async fn remove_session_from_swarm(
@@ -1420,10 +1285,10 @@ fn parse_swarm_tasks(text: &str) -> Vec<SwarmTaskSpec> {
 #[cfg(test)]
 mod tests {
     use super::{
-        broadcast_swarm_plan, broadcast_swarm_plan_with_previous, broadcast_swarm_status,
-        member_in_status_broadcast, parse_swarm_tasks, remove_session_from_swarm,
-        salvage_assignments_of_dead_member, salvage_dead_assignees, swarm_ancestors, swarm_is_root,
-        swarm_is_self_or_ancestor, swarm_spawn_depth, update_member_status,
+        broadcast_swarm_status, member_in_status_broadcast, parse_swarm_tasks,
+        remove_session_from_swarm, salvage_assignments_of_dead_member, salvage_dead_assignees,
+        swarm_ancestors, swarm_is_root, swarm_is_self_or_ancestor, swarm_spawn_depth,
+        update_member_status,
     };
     use crate::plan::TaskItem;
     use crate::protocol::SwarmLifecycleStatus;
@@ -1443,23 +1308,6 @@ mod tests {
             id: id.to_string(),
             ..Default::default()
         }
-    }
-
-    /// A row as the store would write it: words, a status, and a holder.
-    fn row(id: &str, status: &str, holder: Option<&str>) -> TaskItem {
-        TaskItem {
-            content: format!("task {id}"),
-            status: status.to_string(),
-            priority: "medium".to_string(),
-            id: id.to_string(),
-            assigned_to: holder.map(str::to_string),
-            ..Default::default()
-        }
-    }
-
-    /// Write the fixture's list back, exactly as given.
-    fn write_list(repo: &std::path::Path, rows: &[TaskItem]) {
-        crate::todo::save_tasks(Some(repo), "worker", rows).expect("write the list");
     }
 
     #[test]
@@ -1698,169 +1546,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn broadcast_swarm_plan_with_previous_includes_newly_ready_ids() {
-        let repo = list_repo(&[
-            row("setup", "running", Some("worker")),
-            row("follow-up", "queued", Some("worker")),
-        ]);
-        let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
-        let (worker, mut worker_rx) = swarm_member_in(&repo, "worker", None, false);
-        let swarm_members = Arc::new(RwLock::new(HashMap::from([("worker".to_string(), worker)])));
-        let previous_items = vec![
-            TaskItem {
-                content: "setup".to_string(),
-                status: "running".to_string(),
-                priority: "high".to_string(),
-                id: "setup".to_string(),
-                assigned_to: Some("worker".to_string()),
-                ..Default::default()
-            },
-            TaskItem {
-                content: "follow-up".to_string(),
-                status: "queued".to_string(),
-                priority: "high".to_string(),
-                id: "follow-up".to_string(),
-                blocked_by: vec!["setup".to_string()],
-                ..Default::default()
-            },
-        ];
-
-        broadcast_swarm_plan_with_previous(
-            "worker",
-            Some("task_completed".to_string()),
-            Some(&previous_items),
-            &swarm_runs,
-            &swarm_members,
-        )
-        .await;
-
-        match worker_rx.recv().await.expect("swarm plan event") {
-            ServerEvent::SwarmPlan {
-                reason,
-                summary: Some(summary),
-                ..
-            } => {
-                assert_eq!(reason.as_deref(), Some("task_completed"));
-                assert_eq!(summary.newly_ready_ids, vec!["follow-up".to_string()]);
-                assert_eq!(summary.next_ready_ids, vec!["follow-up".to_string()]);
-            }
-            other => panic!("expected SwarmPlan event, got {other:?}"),
-        }
-    }
-
-    /// A mutation cannot reach a member before a broadcast that started earlier.
-    ///
-    /// `broadcast_swarm_plan_with_previous` holds the plan read lock until every
-    /// event is queued, so a second mutator cannot take the write lock, and cannot
-    /// send, until the first broadcast has sent. This test parks broadcast A behind a
-    /// held `swarm_runs.write()` guard - the first lock it takes after snapshotting
-    /// the rows, so A already holds the plan lock and the rows it will send - and
-    /// lets mutator B queue behind A's plan lock; releasing the guard delivers one
-    /// item then two, in order.
-    #[tokio::test]
-    async fn swarm_plan_broadcasts_cannot_invert_on_one_member_channel() {
-        let repo = std::sync::Arc::new(list_repo(&[plan_item("t1", "task one")]));
-        let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
-        let (worker, mut worker_rx) = swarm_member_in(&repo, "worker", None, false);
-        let swarm_members = Arc::new(RwLock::new(HashMap::from([("worker".to_string(), worker)])));
-
-        // Hold the run-state lock so broadcast A parks on it, already holding the
-        // plan lock it took first and the rows it read before it.
-        let gate = swarm_runs.write().await;
-
-        let a = tokio::spawn({
-            let swarm_runs = Arc::clone(&swarm_runs);
-            let swarm_members = Arc::clone(&swarm_members);
-            async move {
-                broadcast_swarm_plan(
-                    "worker",
-                    Some("mutator_1".to_string()),
-                    &swarm_runs,
-                    &swarm_members,
-                )
-                .await;
-            }
-        });
-        for _ in 0..16 {
-            tokio::task::yield_now().await;
-        }
-
-        // Mutator B writes the plan and broadcasts it. It queues behind A's plan
-        // lock rather than interleaving with it.
-        let b = tokio::spawn({
-            let swarm_runs = Arc::clone(&swarm_runs);
-            let swarm_members = Arc::clone(&swarm_members);
-            let repo = std::sync::Arc::clone(&repo);
-            async move {
-                // The mutation is a write to the list, which is where rows live.
-                write_list(
-                    repo.path(),
-                    &[
-                        row("t1", "pending", Some("worker")),
-                        row("t2", "pending", Some("worker")),
-                    ],
-                );
-                broadcast_swarm_plan(
-                    "worker",
-                    Some("mutator_2".to_string()),
-                    &swarm_runs,
-                    &swarm_members,
-                )
-                .await;
-            }
-        });
-        for _ in 0..16 {
-            tokio::task::yield_now().await;
-        }
-
-        drop(gate);
-        a.await.expect("broadcast task");
-        b.await.expect("mutator task");
-
-        let mut item_counts = Vec::new();
-        while let Ok(event) = worker_rx.try_recv() {
-            if let ServerEvent::SwarmPlan { items, .. } = event {
-                item_counts.push(items.len());
-            }
-        }
-        assert_eq!(
-            item_counts,
-            vec![1, 2],
-            "the broadcast that started first must reach the member first"
-        );
-    }
-
-    /// Deterministic demonstration of the SwarmStatus immediate-path
-    /// snapshot-vs-send inversion (wiring-audit.status-proposal-ordering).
-    ///
-    /// `broadcast_swarm_status_now` snapshots member statuses under
-    /// `swarm_members.read()`, drops the guard, then awaits
-    /// `fanout_session_event` (a `swarm_members.write()` acquisition) before
-    /// sending. Swarms below `KCODE_SWARM_STATUS_DEBOUNCE_MEMBER_THRESHOLD`
-    /// (default 2) take this immediate, non-debounced path on every status
-    /// change, so two concurrent broadcasts can deliver an old snapshot after
-    /// a newer one on the same ordered mpsc channel. A last-write-wins
-    /// consumer (the TUI SwarmStatus handler) is then left showing the stale
-    /// status until the next unrelated broadcast.
-    ///
-    /// Unlike the SwarmPlan path, whose broadcast now holds the plan lock through
-    /// the send, there is no second lock we can gate on here: the status path snapshots from the same `swarm_members`
-    /// lock it later writes, so holding any guard also blocks the mutator.
-    /// Instead this test uses tokio's cooperative budget (128 units per task
-    /// poll on a current-thread runtime; every RwLock acquisition consumes
-    /// exactly one). Draining 126 units leaves broadcast A exactly enough for
-    /// the two `swarm_members.read()` acquisitions (session-id list + status
-    /// snapshot), forcing a yield at the (uncontended)
-    /// `swarm_members.write()` inside `fanout_session_event`, i.e. precisely
-    /// inside the race window between snapshot and send.
-    ///
-    /// If this test starts failing with `["running", "running"]` or
-    /// `["ready", "running"]`, the race has been fixed (e.g. by holding the
-    /// read lock through the send, or by stamping a monotonic sequence on
-    /// SwarmStatus and dropping stale ones consumer-side); update the wiring
-    /// audit. If it fails because broadcast A parks somewhere else, the tokio
-    /// coop budget constants changed: re-derive the `128 - 2` drain count.
-    #[tokio::test]
     async fn swarm_status_immediate_broadcasts_can_invert_on_one_member_channel() {
         let (worker, mut worker_rx) = swarm_member("worker", None, false);
         let swarm_members = Arc::new(RwLock::new(HashMap::from([("worker".to_string(), worker)])));
@@ -1919,34 +1604,6 @@ mod tests {
     /// A restored member with a dead channel does not starve the live ones: the
     /// recipients are the swarm's sessions, not a hand-kept participant list, so a
     /// session whose channel has closed simply fails to receive.
-    #[tokio::test]
-    async fn a_closed_member_channel_does_not_starve_live_members_of_plan_broadcasts() {
-        let repo = list_repo(&[row("t1", "pending", Some("live"))]);
-        let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
-        // Ghost member as produced by swarm_persistence restore: present in
-        // the member map but with a closed event channel.
-        let (ghost, ghost_rx) = swarm_member_in(&repo, "ghost", Some("live"), true);
-        drop(ghost_rx);
-        let (live, mut live_rx) = swarm_member_in(&repo, "live", None, false);
-        let swarm_members = Arc::new(RwLock::new(HashMap::from([
-            ("ghost".to_string(), ghost),
-            ("live".to_string(), live),
-        ])));
-
-        broadcast_swarm_plan(
-            "live",
-            Some("test".to_string()),
-            &swarm_runs,
-            &swarm_members,
-        )
-        .await;
-
-        assert!(
-            live_rx.try_recv().is_ok(),
-            "every live member of the swarm receives the plan broadcast"
-        );
-    }
-
     #[tokio::test]
     async fn remove_session_reparents_children_to_live_grandparent() {
         let swarm_members = Arc::new(RwLock::new(HashMap::new()));

@@ -8,7 +8,7 @@ use super::{
     persist_swarm_state_for, register_background_tool_signal, register_session_event_sender,
     register_session_interrupt_queue, remove_background_tool_signal, remove_session_from_swarm,
     remove_session_interrupt_queue, rename_background_tool_signal, rename_session_interrupt_queue,
-    send_swarm_plan_to_session, unregister_session_event_sender, update_member_status,
+    send_todos_to_session, unregister_session_event_sender, update_member_status,
 };
 use crate::agent::Agent;
 use crate::message::ContentBlock;
@@ -544,7 +544,6 @@ pub(super) async fn handle_subscribe(
     agent: &Arc<Mutex<Agent>>,
     registry: &Registry,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     mcp_pool: &Arc<crate::mcp::SharedMcpPool>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
@@ -688,7 +687,7 @@ pub(super) async fn handle_subscribe(
 
     // Re-send the current swarm plan so a reconnecting client renders the
     // plan graph immediately instead of waiting for the next plan mutation.
-    send_swarm_plan_to_session(client_session_id, swarm_members, swarm_runs).await;
+    send_todos_to_session(client_session_id, swarm_members).await;
 
     // Tell the client which session it is bound to. Local clients learn this
     // from their own launch state, but a remote client (gateway/WebSocket) has
@@ -1453,7 +1452,7 @@ pub(super) async fn handle_resume_session(
             // Re-send the swarm plan AFTER the History payload: the client
             // clears its plan snapshot on session change, so without this the
             // plan graph would stay blank until the next plan mutation.
-            send_swarm_plan_to_session(&session_id, swarm_members, swarm_runs).await;
+            send_todos_to_session(&session_id, swarm_members).await;
             // Resolve project-local MCP config against the restored session's
             // working dir, not the server process cwd (issue #420).
             let mcp_working_dir = {
