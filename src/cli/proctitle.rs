@@ -27,6 +27,7 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::Model(_)) => "kcode model".to_string(),
         Some(Command::ProviderTestCoverage { .. }) => "kcode provider-test-coverage".to_string(),
         Some(Command::ProviderDoctor { .. }) => "kcode provider-doctor".to_string(),
+        Some(Command::SearchShim { .. }) => "kcode search-shim".to_string(),
         Some(Command::AuthTest { .. }) => "kcode auth-test".to_string(),
         Some(Command::Restart { .. }) => "kcode restart".to_string(),
         None => {

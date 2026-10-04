@@ -129,6 +129,9 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
     }
 
     match args.command {
+        Some(Command::SearchShim { argv }) => {
+            std::process::exit(crate::tool::search_shim::run(&argv));
+        }
         Some(Command::Serve {
             temporary_server,
             owner_pid,

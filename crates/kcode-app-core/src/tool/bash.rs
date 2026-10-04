@@ -14,7 +14,7 @@ use std::fs::OpenOptions;
 use std::path::Path;
 use std::process::Command as StdCommand;
 use std::process::Stdio;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, OnceLock};
 use std::time::Duration;
 use std::time::Instant;
 use tokio::io::AsyncReadExt;
@@ -613,9 +613,47 @@ fn tool_scratch_dir() -> Option<std::path::PathBuf> {
 }
 
 fn configure_tool_scratch(command: &mut TokioCommand) {
-    if let Some(dir) = tool_scratch_dir() {
-        command.env("TMPDIR", &dir).env("KCODE_SCRATCH_DIR", dir);
+    if let Some((dir, prelude)) = tool_shell_env() {
+        command.env("TMPDIR", &dir).env("KCODE_SCRATCH_DIR", &dir);
+        if let Some(prelude) = prelude {
+            command.env("BASH_ENV", prelude);
+        }
     }
+}
+
+/// The `BASH_ENV` prelude that points `grep` at the search front end, written
+/// once per process beside the scratch directory.
+///
+/// The function it defines is unconditional, and the front end is total: an
+/// argv it does not model is handed to the real `grep(1)`, so shadowing the
+/// command cannot break a script. `KCODE_SEARCH_SHIM_DISABLE` turns it off
+/// without a release.
+fn search_shim_prelude() -> Option<std::path::PathBuf> {
+    static PRELUDE: OnceLock<Option<std::path::PathBuf>> = OnceLock::new();
+    PRELUDE
+        .get_or_init(|| {
+            if std::env::var_os("KCODE_SEARCH_SHIM_DISABLE").is_some_and(|value| !value.is_empty())
+            {
+                return None;
+            }
+            let dir = tool_scratch_dir()?;
+            let binary = std::env::current_exe().ok()?;
+            let body = format!(
+                "grep() {{ \"${{KCODE_SEARCH_SHIM_BIN:-{}}}\" __search-shim \"$@\"; }}\n",
+                shell_single_quote(&binary.to_string_lossy())
+            );
+            let path = dir.join("search-shim.bash");
+            std::fs::write(&path, body).ok()?;
+            Some(path)
+        })
+        .clone()
+}
+
+/// Every tool shell's environment: the scratch directory, and the prelude that
+/// reroutes `grep`. The one home for which variables the prelude needs.
+fn tool_shell_env() -> Option<(std::path::PathBuf, Option<std::path::PathBuf>)> {
+    let dir = tool_scratch_dir()?;
+    Some((dir, search_shim_prelude()))
 }
 
 struct ProcessGroupKillGuard {
@@ -663,8 +701,11 @@ fn build_detached_shell_wrapper(command: &str) -> StdCommand {
             r#"eval "$KCODE_RELOAD_DETACH_COMMAND"; status=$?; printf '\n--- Command finished with exit code: %s ---\n' "$status"; exit "$status""#,
         )
         .env("KCODE_RELOAD_DETACH_COMMAND", command);
-    if let Some(dir) = tool_scratch_dir() {
-        cmd.env("TMPDIR", &dir).env("KCODE_SCRATCH_DIR", dir);
+    if let Some((dir, prelude)) = tool_shell_env() {
+        cmd.env("TMPDIR", &dir).env("KCODE_SCRATCH_DIR", &dir);
+        if let Some(prelude) = prelude {
+            cmd.env("BASH_ENV", prelude);
+        }
     }
     cmd
 }

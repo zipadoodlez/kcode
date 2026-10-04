@@ -62,6 +62,7 @@ use tokio::sync::RwLock;
 pub(crate) use kcode_tool_core::intent_schema_property;
 pub use kcode_tool_core::{StdinInputRequest, Tool, ToolContext, ToolExecutionMode};
 pub use kcode_tool_core::{ToolImage, ToolOutput};
+pub use kgrep::shim as search_shim;
 pub(crate) use session_search::spawn_recent_index_warmup;
 
 #[derive(Clone, Debug, Default)]

@@ -1220,3 +1220,49 @@ async fn test_detached_promoted_command_reports_intermediate_progress() {
     let _ = tokio::fs::remove_file(output_file).await;
     let _ = tokio::fs::remove_file(status_file).await;
 }
+
+#[test]
+fn the_search_prelude_points_grep_at_the_front_end() {
+    let prelude = search_shim_prelude().expect("the prelude is written beside the scratch dir");
+    let body = std::fs::read_to_string(&prelude).expect("read the prelude");
+    assert!(body.contains("grep() {"), "{body}");
+    assert!(body.contains("__search-shim \"$@\""), "{body}");
+
+    let envs: Vec<String> = build_shell_command("true")
+        .as_std()
+        .get_envs()
+        .map(|(key, _)| key.to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        envs.iter().any(|key| key == "BASH_ENV"),
+        "the tool shell must source the prelude: {envs:?}"
+    );
+}
+
+/// The prelude has to reach a real shell, or the shadow is theoretical. A stub
+/// stands in for the binary so the wiring is provable without it on disk.
+#[test]
+fn a_shell_sources_the_prelude_and_grep_calls_the_front_end() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("kcode-search-wire-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let stub = dir.join("stub.sh");
+    std::fs::write(&stub, "#!/bin/sh\nprintf 'STUB:%s\\n' \"$*\"\n").expect("write stub");
+    std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+
+    let output = StdCommand::new("bash")
+        .arg("-c")
+        .arg("grep -rn needle .")
+        .env("BASH_ENV", search_shim_prelude().expect("prelude"))
+        .env("KCODE_SEARCH_SHIM_BIN", &stub)
+        .current_dir(&dir)
+        .output()
+        .expect("run the shell");
+
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "STUB:__search-shim -rn needle ."
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

@@ -134,6 +134,13 @@ pub(crate) struct Args {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum Command {
+    /// Internal: the `grep(1)`-shaped front end the shell shim calls.
+    #[command(name = "__search-shim", hide = true)]
+    SearchShim {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        argv: Vec<String>,
+    },
+
     /// Start the agent server (background daemon)
     Serve {
         /// Internal: mark this server as temporary so it can self-clean when its owner exits.

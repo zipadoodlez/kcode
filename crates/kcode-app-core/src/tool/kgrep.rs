@@ -13,12 +13,13 @@ use std::time::Duration;
 const KGREP_FOREGROUND_BUDGET: Duration = Duration::from_secs(5);
 
 mod args;
+pub mod shim;
 
 #[cfg(test)]
 use self::args::trace_or_smart_terms_owned;
 use self::args::{query_from_params, summarize_kgrep_request};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct KgrepInput {
     #[serde(default = "default_kgrep_mode")]
     mode: String,
