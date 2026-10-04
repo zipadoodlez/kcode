@@ -404,24 +404,6 @@ fn render_background_task_progress_message_uses_box_with_progress_bar() {
     assert!(!plain.contains("**Background task progress**"));
 }
 
-#[test]
-fn render_todos_message_empty_list_shows_placeholder() {
-    let msg = DisplayMessage::todos("[]");
-    let plain = render_todos_message(&msg, 100, crate::config::DiffDisplayMode::Off)
-        .iter()
-        .map(extract_line_text)
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(!plain.contains("Todos"), "{plain}");
-    assert!(plain.contains("No tasks yet"), "{plain}");
-}
-
-#[test]
-fn render_todos_message_bad_payload_falls_back_to_system() {
-    let msg = DisplayMessage::todos("not json");
-    let lines = render_todos_message(&msg, 100, crate::config::DiffDisplayMode::Off);
-    assert!(!lines.is_empty());
-}
 
 #[test]
 fn render_background_task_messages_prefer_display_name() {
@@ -1750,13 +1732,13 @@ fn render_empty_todo_tool_result_collapses_to_compact_line() {
         .join("\n");
 
     assert!(!plain.contains("No tasks yet"), "{plain}");
-    assert!(plain.contains("no tasks"), "{plain}");
+    assert!(plain.contains("no rows"), "{plain}");
 }
 
 #[test]
-fn batched_retry_renders_the_todo_card_from_a_nested_call() {
-    // A todo call nested inside a batch result must still render as a card,
-    // including when the batch carries other subcalls beside it.
+fn batched_retry_renders_the_todo_row_count_from_a_nested_call() {
+    // A todo call nested inside a batch result keeps one compact line naming
+    // the row count; the pinned list is the surface, not the transcript.
     let todos = vec![crate::todo::TaskItem {
         id: "inspect".to_string(),
         content: "Inspect the starter project".to_string(),
@@ -1795,13 +1777,9 @@ fn batched_retry_renders_the_todo_card_from_a_nested_call() {
         .map(extract_line_text)
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(rendered.contains("pelican-bike"), "{rendered}");
+    assert!(rendered.contains("todo 1 rows"), "{rendered}");
     assert!(
-        rendered.contains("Inspect the starter project"),
-        "{rendered}"
-    );
-    assert!(
-        rendered.contains('●'),
-        "the in-progress glyph should render:\n{rendered}"
+        !rendered.contains("Inspect the starter project"),
+        "the pinned list is the surface, not the transcript:\n{rendered}"
     );
 }

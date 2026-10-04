@@ -79,8 +79,6 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     ),
     RegisteredCommand::public("/subagent", "Launch a subagent manually"),
     RegisteredCommand::public("/observe", "Show the latest tool context in the side panel"),
-    RegisteredCommand::public("/todos", "Show the session todo list as a card in the chat"),
-    RegisteredCommand::hidden("/todo", "Alias for /todos"),
     RegisteredCommand::public("/splitview", "Mirror the current chat in the side panel"),
     RegisteredCommand::public("/split-view", "Alias for /splitview"),
     RegisteredCommand::public("/btw", "Ask a side question in the side panel"),
@@ -1305,7 +1303,6 @@ impl App {
                 | "/git"
                 | "/transcript"
                 | "/observe"
-                | "/todos"
                 | "/splitview"
                 | "/split-view"
                 | "/model"

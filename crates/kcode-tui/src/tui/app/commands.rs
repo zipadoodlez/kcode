@@ -21,7 +21,6 @@ pub(super) use super::commands_review::{
     prepare_review_spawned_session, queue_review_spawn_remote, reset_current_session,
     review_kind_from_label,
 };
-pub(super) use super::todos_view::handle_todos_view_command;
 use super::{App, DisplayMessage, LocalRewindUndoSnapshot, ProcessingStatus};
 use crate::bus::{Bus, BusEvent, GitStatusCompleted, ManualToolCompleted, ToolEvent, ToolStatus};
 use crate::id;
@@ -1166,7 +1165,6 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         || app.handle_terminal_setup_command(trimmed)
         || handle_subagent_command(app, trimmed)
         || handle_observe_command(app, trimmed)
-        || handle_todos_view_command(app, trimmed)
         || super::split_view::handle_split_view_command(app, trimmed)
         || handle_btw_command(app, trimmed)
         || handle_fork_command(app, trimmed)

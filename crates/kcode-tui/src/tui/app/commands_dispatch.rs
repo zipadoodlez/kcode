@@ -81,8 +81,6 @@ pub(super) fn ssh_unsupported_command(input: &str) -> bool {
             | "/zstatus"
             | "/autoreview"
             | "/autojudge"
-            | "/todo"
-            | "/todos"
             | "/observe"
             | "/splitview"
             | "/split-view"
@@ -283,7 +281,6 @@ mod tests {
             "/transfer",
             "/workspace",
             "/workspace split",
-            "/todos",
             "/review",
             "/subagent investigate",
         ] {

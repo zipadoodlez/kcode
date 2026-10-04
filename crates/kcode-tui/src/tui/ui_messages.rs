@@ -740,34 +740,23 @@ pub(crate) fn render_usage_message(
     )
 }
 
-#[derive(serde::Deserialize)]
-#[serde(untagged)]
-enum TodoCardPayload {
-    Current {
-        #[serde(default)]
-        todos: Vec<crate::todo::TaskItem>,
-    },
-    Legacy(Vec<crate::todo::TaskItem>),
-}
-
-// Todo cards sit directly on the terminal background, so the global
-// `dim_color()` (RGB 80) is too faint for meaningful metadata. Keep a compact
-// semantic palette here: cool colors describe structure/state, while amber is
-// reserved for priority and blocked work.
-fn todo_group_color() -> Color {
-    file_link_color()
-}
-
 fn todo_meta_color() -> Color {
     pending_color()
 }
 
-impl TodoCardPayload {
-    fn into_todos(self) -> Vec<crate::todo::TaskItem> {
-        match self {
-            Self::Current { todos } | Self::Legacy(todos) => todos,
-        }
-    }
+/// A `todo` result is the whole list, and the pinned list is that surface: keep
+/// the transcript to one dim line naming the row count.
+fn todo_result_lines(parsed: &ParsedTodoToolOutput, indent: &str) -> Vec<Line<'static>> {
+    let label = if parsed.todos.is_empty() {
+        "no rows".to_string()
+    } else {
+        format!("{} rows", parsed.todos.len())
+    };
+    vec![Line::from(vec![
+        Span::raw(indent.to_string()),
+        Span::styled("todo ", Style::default().fg(todo_meta_color())),
+        Span::styled(label, Style::default().fg(dim_color())),
+    ])]
 }
 
 struct ParsedTodoToolOutput {
@@ -834,218 +823,6 @@ fn strip_tool_result_timestamp_header(content: &str) -> &str {
 /// Render the inline todo-list card (`role == "todos"`). New payloads contain
 /// both todo items and goal assessments; the legacy item-array shape remains
 /// supported so older transcript entries keep rendering.
-pub(crate) fn render_todos_message(
-    msg: &DisplayMessage,
-    width: u16,
-    diff_mode: crate::config::DiffDisplayMode,
-) -> Vec<Line<'static>> {
-    let Ok(payload) = serde_json::from_str::<TodoCardPayload>(&msg.content) else {
-        return render_system_message(msg, width, diff_mode);
-    };
-    let todos = payload.into_todos();
-
-    let centered = markdown::center_code_blocks();
-    let meta_style = Style::default().fg(todo_meta_color());
-    let card_width = if centered {
-        (width.saturating_sub(4) as usize).min(120)
-    } else {
-        (width.saturating_sub(2) as usize).min(100)
-    }
-    .max(1);
-    let base_indent = if centered { "" } else { "  " };
-    let inner_width = card_width.saturating_sub(base_indent.width()).max(1);
-
-    let mut lines = Vec::new();
-    if todos.is_empty() {
-        lines.push(todo_card_line(
-            vec![Span::styled(
-                "No tasks yet. The model populates them as work is planned.",
-                meta_style,
-            )],
-            base_indent,
-            inner_width,
-        ));
-    } else {
-        // Partition into first-seen-order groups (ungrouped bucket last). When
-        // no todo declares a group, keep a flat list without headers.
-        let group_of = |todo: &crate::todo::TaskItem| -> Option<String> {
-            todo.group
-                .as_deref()
-                .map(str::trim)
-                .filter(|g| !g.is_empty())
-                .map(str::to_string)
-        };
-        let has_groups = todos.iter().any(|t| group_of(t).is_some());
-        if has_groups {
-            let mut groups: Vec<(Option<String>, Vec<&crate::todo::TaskItem>)> = Vec::new();
-            for todo in &todos {
-                let key = group_of(todo);
-                if let Some(entry) = groups.iter_mut().find(|(existing, _)| *existing == key) {
-                    entry.1.push(todo);
-                } else {
-                    groups.push((key, vec![todo]));
-                }
-            }
-            groups.sort_by_key(|(key, _)| key.is_none());
-            for (group, items) in &groups {
-                let label = group.as_deref().unwrap_or("other");
-                lines.push(render_todo_group_header(
-                    label,
-                    items,
-                    base_indent,
-                    inner_width,
-                ));
-                for todo in items {
-                    lines.push(render_todo_card_item_line(todo, base_indent, inner_width));
-                }
-            }
-        } else {
-            lines.push(render_todo_status_header(
-                todos.iter(),
-                base_indent,
-                inner_width,
-            ));
-            for todo in &todos {
-                lines.push(render_todo_card_item_line(todo, base_indent, inner_width));
-            }
-        }
-    }
-
-    if centered {
-        left_pad_lines_for_centered_mode(&mut lines, width);
-    }
-    lines
-}
-
-fn todo_card_line(
-    spans: Vec<Span<'static>>,
-    base_indent: &str,
-    inner_width: usize,
-) -> Line<'static> {
-    let mut prefixed = vec![Span::raw(base_indent.to_string())];
-    prefixed.extend(spans);
-    super::truncate_line_with_ellipsis_to_width(
-        &Line::from(prefixed),
-        inner_width.saturating_add(base_indent.width()),
-    )
-}
-
-fn push_todo_status_pips<'a>(
-    spans: &mut Vec<Span<'static>>,
-    todos: impl IntoIterator<Item = &'a crate::todo::TaskItem>,
-    max_pips: usize,
-) {
-    let (completed, in_progress, total) =
-        todos
-            .into_iter()
-            .fold((0usize, 0usize, 0usize), |counts, todo| {
-                (
-                    counts.0 + usize::from(todo.status == "completed"),
-                    counts.1 + usize::from(todo.status == "in_progress"),
-                    counts.2 + 1,
-                )
-            });
-    if total == 0 || max_pips == 0 {
-        return;
-    }
-
-    let (done_pips, active_pips, open_pips) = if total <= max_pips.max(12) {
-        (
-            completed,
-            in_progress,
-            total.saturating_sub(completed + in_progress),
-        )
-    } else {
-        let scale =
-            |count: usize| ((count as f64 / total as f64) * max_pips as f64).round() as usize;
-        let mut done = scale(completed);
-        let mut active = scale(in_progress);
-        if completed > 0 && done == 0 {
-            done = 1;
-        }
-        if in_progress > 0 && active == 0 {
-            active = 1;
-        }
-        done = done.min(max_pips);
-        active = active.min(max_pips.saturating_sub(done));
-        (done, active, max_pips.saturating_sub(done + active))
-    };
-
-    for _ in 0..done_pips {
-        spans.push(Span::styled("●", Style::default().fg(success_color())));
-    }
-    for _ in 0..active_pips {
-        spans.push(Span::styled("●", Style::default().fg(asap_color())));
-    }
-    for _ in 0..open_pips {
-        spans.push(Span::styled(
-            "○",
-            Style::default().fg(kcode_tui_style::theme::border_color()),
-        ));
-    }
-}
-
-fn render_todo_status_header<'a>(
-    todos: impl IntoIterator<Item = &'a crate::todo::TaskItem>,
-    base_indent: &str,
-    inner_width: usize,
-) -> Line<'static> {
-    let mut spans = Vec::new();
-    push_todo_status_pips(&mut spans, todos, inner_width);
-    todo_card_line(spans, base_indent, inner_width)
-}
-
-fn render_todo_group_header(
-    label: &str,
-    todos: &[&crate::todo::TaskItem],
-    base_indent: &str,
-    inner_width: usize,
-) -> Line<'static> {
-    let label_width = label.width();
-    let mut spans = vec![Span::styled(
-        label.to_string(),
-        Style::default().fg(todo_group_color()).bold(),
-    )];
-    spans.push(Span::raw("  "));
-    push_todo_status_pips(
-        &mut spans,
-        todos.iter().copied(),
-        inner_width.saturating_sub(label_width + 2),
-    );
-    todo_card_line(spans, base_indent, inner_width)
-}
-
-fn render_todo_card_item_line(
-    todo: &crate::todo::TaskItem,
-    base_indent: &str,
-    inner_width: usize,
-) -> Line<'static> {
-    let blocked = !todo.blocked_by.is_empty() && todo.status != "completed";
-    let (glyph, glyph_color) = if blocked {
-        ("⊳", warning_color())
-    } else {
-        match todo.status.as_str() {
-            "completed" => ("✓", ai_color()),
-            "in_progress" => ("●", asap_color()),
-            "cancelled" => ("✗", error_color()),
-            _ => ("○", pending_color()),
-        }
-    };
-    let text_color = match todo.status.as_str() {
-        "completed" => pending_color(),
-        "cancelled" => pending_color(),
-        "in_progress" => user_text(),
-        _ => header_name_color(),
-    };
-    let spans = vec![
-        Span::raw("  "),
-        Span::styled(format!("{} ", glyph), Style::default().fg(glyph_color)),
-        Span::styled(todo.content.clone(), Style::default().fg(text_color)),
-    ];
-    todo_card_line(spans, base_indent, inner_width)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 struct ParsedScheduledSessionMessage {
     task: String,
     working_dir: Option<String>,
@@ -1056,7 +833,6 @@ struct ParsedScheduledSessionMessage {
     scheduled_by_session: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 struct ParsedScheduledToolMessage {
     task: String,
     when: String,
@@ -2283,22 +2059,7 @@ pub(crate) fn render_tool_message(
         && !tools_ui::tool_output_looks_failed(&msg.content)
         && let Some(parsed) = parse_todo_tool_output(&msg.content)
     {
-        // An empty todo read (the model probing the list before planning) has
-        // nothing to show. Rendering the "No tasks yet" placeholder card there
-        // just adds transcript noise, so collapse it to a compact line.
-        if parsed.todos.is_empty() {
-            return vec![Line::from(vec![
-                Span::raw("  "),
-                Span::styled("todo", Style::default().fg(todo_meta_color())),
-                Span::styled("  no tasks", Style::default().fg(dim_color())),
-            ])];
-        }
-        let payload = serde_json::json!({ "todos": parsed.todos }).to_string();
-        return render_todos_message(
-            &DisplayMessage::todos(payload),
-            width,
-            crate::config::DiffDisplayMode::Off,
-        );
+        return todo_result_lines(&parsed, "  ");
     }
 
     let mut lines: Vec<Line<'static>> = Vec::new();
@@ -2596,17 +2357,7 @@ pub(crate) fn render_tool_message(
                 && let Some(result) = sub_result
                 && let Some(parsed) = parse_todo_tool_output(&result.content)
             {
-                let nested_width = row_width.saturating_sub(4).max(1).min(u16::MAX as usize) as u16;
-                let payload = serde_json::json!({ "todos": parsed.todos }).to_string();
-                let mut todo_lines = render_todos_message(
-                    &DisplayMessage::todos(payload),
-                    nested_width,
-                    crate::config::DiffDisplayMode::Off,
-                );
-                for line in &mut todo_lines {
-                    line.spans.insert(0, Span::raw("    "));
-                }
-                lines.extend(todo_lines);
+                lines.extend(todo_result_lines(&parsed, "    "));
             }
         }
     }

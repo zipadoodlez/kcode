@@ -1499,19 +1499,18 @@ fn test_preview_is_left_aligned_independently_of_chat_markdown_context() {
 
 #[test]
 fn test_preview_structured_messages_stay_left_aligned() {
-    let todos = serde_json::json!([{
-        "id": "alignment", "content": "Verify structured preview alignment",
-        "status": "completed", "priority": "high", "confidence": "verified"
-    }]);
+    let tool_output = serde_json::json!({
+        "command": "verify structured preview alignment"
+    });
     let mut session = make_session(
         "structured_alignment",
         "alignment",
         false,
         SessionStatus::Closed,
     );
-    session.messages_preview[1].tool_calls = vec!["todo".to_string()];
+    session.messages_preview[1].tool_calls = vec!["bash".to_string()];
     for (role, content, tool) in [
-        ("tool", todos.to_string(), Some("todo")),
+        ("tool", tool_output.to_string(), Some("bash")),
         ("system", "🔍 Reviewing the weak points of this turn for you...".to_string(), None),
         ("tool", "Command completed successfully (no output)".to_string(), Some("bash")),
         ("background_task", "**Background task** `alignment-task` · `selfdev test` (`selfdev-test`) · ✓ completed · 18.5s · exit 0\n\n```text\nAll alignment checks passed\n```".to_string(), None),
@@ -1542,7 +1541,6 @@ fn test_preview_structured_messages_stay_left_aligned() {
             let cache = picker.preview_cache.as_ref().unwrap();
             for needle in [
                 "tool:",
-                "Verify structured preview alignment",
                 "Reviewing the weak points",
                 "Check structured preview alignment",
                 "All alignment checks passed",

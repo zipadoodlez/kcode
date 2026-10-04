@@ -20,7 +20,6 @@ pub(super) struct RestoredReloadInput {
     pub observe_page_markdown: String,
     pub observe_page_updated_at_ms: u64,
     pub split_view_enabled: bool,
-    pub todos_view_enabled: bool,
 }
 
 impl App {
@@ -130,7 +129,6 @@ impl App {
             && resume_prompt.is_none()
             && !self.observe.enabled
             && !self.split_view.enabled
-            && !self.todos_view.enabled
         {
             // Nothing to save, but a stale file from an earlier run could
             // still hold old queued messages/input. Leaving it behind would
@@ -219,7 +217,6 @@ impl App {
                 "observe_page_markdown": self.observe.page_markdown,
                 "observe_page_updated_at_ms": self.observe.page_updated_at_ms,
                 "split_view_enabled": self.split_view.enabled,
-                "todos_view_enabled": self.todos_view.enabled,
             });
             let _ = std::fs::write(&path, data.to_string());
         }
@@ -251,7 +248,6 @@ impl App {
                 "observe_page_markdown": "",
                 "observe_page_updated_at_ms": 0,
                 "split_view_enabled": false,
-                "todos_view_enabled": false,
             });
             let _ = std::fs::write(&path, data.to_string());
         }
@@ -432,10 +428,6 @@ impl App {
                 .get("split_view_enabled")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            let todos_view_enabled = value
-                .get("todos_view_enabled")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
             let cursor = cursor.min(input.len());
             return Some(RestoredReloadInput {
                 input,
@@ -455,7 +447,6 @@ impl App {
                 observe_page_markdown,
                 observe_page_updated_at_ms,
                 split_view_enabled,
-                todos_view_enabled,
             });
         }
 
@@ -480,7 +471,6 @@ impl App {
             observe_page_markdown: String::new(),
             observe_page_updated_at_ms: 0,
             split_view_enabled: false,
-            todos_view_enabled: false,
         })
     }
 
@@ -513,14 +503,6 @@ impl App {
             && self.side_panel.focused_page_id.as_deref() == Some(super::observe::OBSERVE_PAGE_ID);
         let snapshot = if self.split_view.enabled {
             self.decorate_side_panel_with_page(snapshot, self.split_view.page(), focus_split)
-        } else {
-            snapshot
-        };
-        let focus_todos = self.todos_view.enabled
-            && self.side_panel.focused_page_id.as_deref()
-                == Some(super::todos_view::TODOS_VIEW_PAGE_ID);
-        let snapshot = if self.todos_view.enabled {
-            self.decorate_side_panel_with_page(snapshot, self.todos_view.page(), focus_todos)
         } else {
             snapshot
         };
@@ -563,7 +545,6 @@ impl App {
                 (Some(super::split_view::SPLIT_VIEW_PAGE_ID), _) => {
                     self.set_status_notice("Split view")
                 }
-                (Some(super::todos_view::TODOS_VIEW_PAGE_ID), _) => self.set_status_notice("Todos"),
                 (Some(super::observe::OBSERVE_PAGE_ID), _) => self.set_status_notice("Observe"),
                 _ => {}
             }

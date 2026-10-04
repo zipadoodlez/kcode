@@ -1419,18 +1419,6 @@ fn render_message_into(
                 acc.push_auto(align_if_unset(line, align));
             }
         }
-        "todos" => {
-            let content_width = width.saturating_sub(4);
-            let cached = get_cached_message_lines(
-                msg,
-                content_width,
-                app.diff_mode(),
-                super::messages::render_todos_message,
-            );
-            for line in cached {
-                acc.push_auto(align_if_unset(line, align));
-            }
-        }
         "error" => {
             let error_start_line = acc.lines.len();
             if let Some(target) = error_copy_target(&msg.content, 1) {

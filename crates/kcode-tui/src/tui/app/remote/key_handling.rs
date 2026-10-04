@@ -519,13 +519,6 @@ async fn handle_remote_key_internal(
         app.toggle_typing_scroll_lock();
         return Ok(());
     }
-    if app.keybinds.toggle_keys.todo_card.matches(code, modifiers) {
-        if app_mod::commands_dispatch::ssh_local_action_blocked(app, "Local todo view") {
-            return Ok(());
-        }
-        app.toggle_todo_card();
-        return Ok(());
-    }
     if app.keybinds.centered_toggle_keys.matches(code, modifiers) {
         app.record_keybinding_fast(crate::tui::app::shortcut_hints::LearnableAction::Alignment);
         app.toggle_centered_mode();
@@ -1646,13 +1639,6 @@ async fn handle_remote_key_internal(
                     || trimmed == "/observe on"
                     || trimmed == "/observe off"
                     || trimmed == "/observe status"
-                    || trimmed == "/todo"
-                    || trimmed == "/todos"
-                    || trimmed == "/todos card"
-                    || trimmed == "/todos panel"
-                    || trimmed == "/todos on"
-                    || trimmed == "/todos off"
-                    || trimmed == "/todos status"
                     || trimmed == "/splitview"
                     || trimmed == "/splitview on"
                     || trimmed == "/splitview off"

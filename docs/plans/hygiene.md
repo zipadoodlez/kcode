@@ -57,8 +57,8 @@ spine is the one structural item; the two calls are the maintainer's.
  cannot recolor them. The swarm path is `plans/task-flow.md` S3; what remains is
  `login_picker.rs` `PANEL_BG`/`PANEL_BORDER` and other orphans. Give each shade a
  role, or mark it intentionally fixed.
-- [ ] **`now_ms` is defined 4x**: `app/observe.rs:212`, `app/split_view.rs:295`,
- `app/todos_view.rs:500`, `kcode-base/src/side_panel.rs:557`. The existing clock home
+- [ ] **`now_ms` is defined 3x**: `app/observe.rs:212`, `app/split_view.rs:295`,
+ `kcode-base/src/side_panel.rs:557`. The existing clock home
  is `tui::test_harness::now_ms()`, and routing through it changes behavior under the
  test clock, so that is a fix needing its own verification.
 - [ ] **Reduce the always-on per-request tool cost.** Two suite tests that capped tool

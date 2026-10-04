@@ -548,7 +548,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn pinned_todos_expanded(&self) -> bool {
-        self.todos_view.pinned_expanded
+        self.pinned_todos_expanded
     }
 
     fn spinner_frame(&self) -> usize {

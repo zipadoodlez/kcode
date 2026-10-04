@@ -251,36 +251,33 @@ renders one surface: the rows, with the holder named per row and the holder's st
 page, the pinned band, the info pips, and the gallery's at-a-glance role. It is the one
 place this lane allows new code, because it absorbs the others.
 
-A run's rows already cross as `ServerEvent::SwarmPlan`
-(`wire.rs:837`, produced at `server/swarm.rs:836` and `:894`, applied at
-`remote/server_events.rs:1995`), and the full rows already cross the bus on every write
-(`BusEvent::TodoUpdated { session_id, todos }`, `tool/todo.rs:307`), which the server
-only folds into the compacted member cache (`server.rs:2065`). What is missing is the arm
-that forwards that bus event to the owning session's clients, and the client rendering
-its surfaces from it. The view is the rows this session may work, computed once on the
-server: a session in a run gets the run's rows (`swarm_rows`, `server/swarm.rs:12`); a
-session outside a run gets the whole list. `Action::List` takes the same rule, which is
-what ends its whole-file read (`tool/todo.rs:64` over `load_tasks` at `:303`).
+The rows cross as `ServerEvent::SwarmPlan` (`wire.rs:625`, applied at
+`remote/server_events.rs:1984`), sent on every write and on subscribe by
+`broadcast_todos`/`send_todos_to_session` (`server/swarm.rs`); `TodoUpdated` is the bus
+event both hang off (`tool/todo.rs`). The view is the rows this session may work,
+computed once on the server (`session_rows`): a session in a run gets the run's rows
+(`swarm_rows`); a session outside one gets the whole list.
 
-The render is A5. The inline card, the side-panel page (its own comment says "legacy"),
-the pinned band and the info widget's pips each render the list, and the client keeps four
-caches over one file: three hashes in `todos_view.rs`, a 1s TTL cache with a refresh
-thread (`helpers.rs:969-...`), and the transcript's previous-list parse in
-`ui_todo_changes.rs`. `commands_improve.rs` repeats the same load six times, and
-`turn_notify.rs:220`, `state_ui.rs:1811` and `remote/key_handling.rs` (four sites) read it
-again. Keep one read and one model with the renderers as pure functions.
+Remaining renderers: the info widget's pips and the separate swarm roster (the card and
+the side-panel page are gone). The client still reads the file for the info widget's
+rows: the 1s TTL cache in `helpers.rs` (`gather_todos_for_session`), `swarm_plan_todos`
+and the transcript's previous-list parse. Keep one read and one model, the renderers as
+pure functions.
 
-Delete: four renderers and their caches, 15 file reads, the gallery's separate member
-rendering, the compacted member row cache. surface: −4 renderers, −4 caches, −3 protocol
-member types, −1 item cache. lines ~−1,300. risk: med.
+Delete: the pips and the widget's rows, that cache, the roster. surface: −2 renderers,
+−1 cache, −3 protocol member types, −1 item cache. lines ~−3,500 (the gallery is 3,100).
+risk: med.
 
-**Landed 2026-10-04 (first half).** The server is the one reader: on every write and on
-subscribe it sends each session the rows it may work, and the pinned band renders them
-with its own vocabulary (id, indentation by `parent`, a glyph and color from the row plus
-its holder's live status, the holder's name). Deleted: the pinned band's file read, its
-1-second cache and its refresh thread, the plan broadcast, `rows_with_run_status`,
-`failed_reasons_for`, `member_details` and the plan's derived summary. Kept for the second
-half: the card, the side-panel page, the info widget's pips and the separate roster.
+**Landed 2026-10-04.** The server is the one reader: on every write and on subscribe it
+sends each session the rows it may work, and the pinned band renders them with its own
+vocabulary (id, indentation by `parent`, a glyph and color from the row plus its holder's
+live status, the holder's name). Deleted: the pinned band's file read, its 1-second cache
+and its refresh thread; the plan broadcast, `rows_with_run_status`, `failed_reasons_for`,
+`member_details` and the plan's derived summary; and then the inline card and the
+side-panel page with them (`TodosView`, `DisplayMessage::todos`, `render_todos_message`,
+the `/todos` command and its keybind, the `todo_card_toggle` binding, the card tests), so
+a `todo` result is one compact line naming its row count. Kept for the second half: the
+info widget's pips, its `gather_todos_for_session` cache, and the separate roster.
 
 **Smoke test (the second half is not landed, so check this on what is).** Build
 `scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode`, then in a scratch repo

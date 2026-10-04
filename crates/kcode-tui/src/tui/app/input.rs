@@ -2097,10 +2097,6 @@ pub(super) fn handle_pre_control_shortcuts(
         app.set_status_notice(status);
         return true;
     }
-    if app.keybinds.toggle_keys.todo_card.matches(code, modifiers) {
-        app.toggle_todo_card();
-        return true;
-    }
     // Swarm views: Alt+N cycles chat → inline controls → full live page → chat.
     // Selection/open/prompt controls stay available in both active views, while
     // plain typing continues to flow to the chat input.

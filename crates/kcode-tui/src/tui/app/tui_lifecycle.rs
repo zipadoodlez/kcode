@@ -35,7 +35,6 @@ impl App {
         self.observe.page_updated_at_ms = restored.observe_page_updated_at_ms;
         self.set_observe_mode_enabled(restored.observe_mode_enabled, restored.observe_mode_enabled);
         self.set_split_view_enabled(restored.split_view_enabled, restored.split_view_enabled);
-        self.set_todos_view_enabled(restored.todos_view_enabled, restored.todos_view_enabled);
 
         let mut queued_messages = restored.queued_messages;
         let mut recovered_followups = Vec::new();
@@ -479,7 +478,7 @@ impl App {
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
             observe: Default::default(),
             split_view: Default::default(),
-            todos_view: Default::default(),
+            pinned_todos_expanded: false,
             background_tasks: Default::default(),
             last_side_panel_refresh: None,
             last_side_panel_focus_id: None,
@@ -739,7 +738,7 @@ impl App {
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
             observe: Default::default(),
             split_view: Default::default(),
-            todos_view: Default::default(),
+            pinned_todos_expanded: false,
             background_tasks: Default::default(),
             last_side_panel_refresh: None,
             last_side_panel_focus_id: None,

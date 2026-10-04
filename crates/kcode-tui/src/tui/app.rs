@@ -97,7 +97,6 @@ mod swarm;
 mod swarm_hint;
 mod terminal_liveness;
 mod terminal_setup_command;
-mod todos_view;
 mod transcript;
 mod tui_lifecycle;
 mod tui_lifecycle_runtime;
@@ -996,7 +995,7 @@ pub struct App {
     side_panel: crate::side_panel::SidePanelSnapshot,
     observe: observe::Observe,
     split_view: split_view::SplitView,
-    todos_view: todos_view::TodosView,
+    pinned_todos_expanded: bool,
     /// Running and terminal background tasks shown beneath the pinned todo band.
     background_tasks: background_tasks::BackgroundTaskBand,
     last_side_panel_refresh: Option<Instant>,
