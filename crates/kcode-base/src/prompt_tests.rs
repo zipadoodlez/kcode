@@ -467,6 +467,10 @@ fn test_default_swarm_prompt_mentions_model_and_list_models() {
     assert!(DEFAULT_SWARM_PROMPT.contains("model"));
     assert!(DEFAULT_SWARM_PROMPT.contains("effort"));
     assert!(DEFAULT_SWARM_PROMPT.contains("root session may spawn agents"));
+    assert!(
+        !DEFAULT_SWARM_PROMPT.contains("run_plan"),
+        "the plan/assignment verbs are gone from the tool: {DEFAULT_SWARM_PROMPT}"
+    );
     assert!(!DEFAULT_SWARM_PROMPT.contains("swarm-deep"));
 }
 

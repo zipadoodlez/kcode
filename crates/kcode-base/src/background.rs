@@ -555,11 +555,10 @@ impl BackgroundTaskManager {
             // Drop this task from the live map now that its terminal status is
             // persisted. Order matters: pruning only after the status-file
             // write keeps "in the live map while the status file says Running"
-            // equivalent to "a task future is actually executing", which the
-            // run_plan duplicate-driver guard and self-dev build reconciliation
-            // rely on. Awaiting registration first means a task that finishes
-            // instantly cannot race the insert below and leave a permanent
-            // phantom entry in the map.
+            // equivalent to "a task future is actually executing", which
+            // self-dev build reconciliation relies on. Awaiting registration
+            // first means a task that finishes instantly cannot race the insert
+            // below and leave a permanent phantom entry in the map.
             let _ = registered_rx.await;
             tasks_for_prune.write().await.remove(&task_id_clone);
 

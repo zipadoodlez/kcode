@@ -95,8 +95,13 @@ impl CommunicateTool {
     }
 
     fn new_for_working_dir(working_dir: Option<&std::path::Path>) -> Self {
-        const BASE_DESCRIPTION: &str =
-            "Coordinate agents: spawn workers with a prompt, message them, and manage swarm plans.";
+        // The mechanic a coordinator cannot infer: work is handed over by
+        // assigning a row to a worker, and the names that address a worker are
+        // the ones `resolve_member_session` reads. Model-visible and always on.
+        const BASE_DESCRIPTION: &str = "Coordinate agents: spawn a worker with a prompt, message one to hand it work, or stop one. \
+A worker works the rows assigned to it: put the worker's session id in the row's assigned_to with the todo tool, and saving the row wakes it. \
+Address a worker by the session id spawn returned, the row's holder, or the label you gave it. \
+Read the row list to see who holds what and what each close wrote onto the row above.";
         let swarm_prompt = crate::prompt::load_swarm_prompt(working_dir);
         let description = if swarm_prompt.is_empty() {
             BASE_DESCRIPTION.to_string()

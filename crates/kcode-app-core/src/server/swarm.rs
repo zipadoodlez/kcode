@@ -218,6 +218,63 @@ pub(super) fn swarm_role(members: &HashMap<String, SwarmMember>, session_id: &st
     }
 }
 
+/// Resolve the name a worker is referred to by to its session id, within one run.
+///
+/// The vocabulary is everything the model holds: the exact session id (`spawn`
+/// returns it and a row's `assigned_to` carries it), a unique id prefix or
+/// suffix, a unique friendly name, or the unique `label` the worker was spawned
+/// with. One resolver for every action, so the name that addressed a worker for
+/// one of them works for the rest.
+pub(super) async fn resolve_member_session(
+    swarm_id: &str,
+    target: &str,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+) -> std::result::Result<String, String> {
+    let target = target.trim();
+    if target.is_empty() {
+        return Err("target_session is required.".to_string());
+    }
+
+    let members = swarm_members.read().await;
+    let mut matches: Vec<(String, String)> = members
+        .iter()
+        .filter(|(_, member)| swarm_root(&members, &member.session_id).as_deref() == Some(swarm_id))
+        .filter(|(session_id, member)| {
+            session_id.as_str() == target
+                || member.friendly_name.as_deref() == Some(target)
+                || member.task_label.as_deref() == Some(target)
+                || session_id.starts_with(target)
+                || session_id.ends_with(target)
+        })
+        .map(|(session_id, member)| {
+            (
+                session_id.clone(),
+                member
+                    .friendly_name
+                    .as_deref()
+                    .unwrap_or(session_id)
+                    .to_string(),
+            )
+        })
+        .collect();
+    matches.sort_by(|left, right| left.0.cmp(&right.0));
+
+    match matches.len() {
+        0 => Err(format!(
+            "Unknown swarm session '{target}'. Use the session id spawn returned, a row's holder, a unique friendly name, or the label you gave it."
+        )),
+        1 => Ok(matches.remove(0).0),
+        _ => Err(format!(
+            "Ambiguous swarm session '{target}' matched: {}. Use an exact session id.",
+            matches
+                .iter()
+                .map(|(session_id, friendly)| format!("{friendly} [{session_id}]"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+    }
+}
+
 /// Depth of `session_id` in the spawn tree: number of ancestors reachable via
 /// the report-back chain. Root coordinators (no report-back owner) are depth 0.
 ///
@@ -440,7 +497,7 @@ impl DeadMemberSalvage {
             self.released_task_ids.join(", ")
         ));
         parts.push(
-            "Assign them again with assign_next/run_plan, or hand them to someone; they stay open either way."
+            "Hand them to a worker with a message, or leave them; they stay open either way."
                 .to_string(),
         );
         parts.join(" ")

@@ -151,7 +151,7 @@ pub(super) async fn await_reload_signal(
         );
 
         // Finalize in-process background tasks (selfdev builds/tests, bash
-        // tasks, run_plan drivers) before exec replaces this process image.
+        // tasks) before exec replaces this process image.
         // exec runs no destructors, so without this the task futures vanish:
         // kill_on_drop build children leak, and their status files read
         // Running until the next process's orphan sweep. Aborting here kills

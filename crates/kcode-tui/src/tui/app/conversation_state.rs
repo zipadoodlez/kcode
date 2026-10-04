@@ -407,19 +407,7 @@ impl App {
             return None;
         }
 
-        let action = tool.input.get("action").and_then(|value| value.as_str());
-        let spawns_agents = matches!(action, Some("spawn") | Some("fill_slots"))
-            || matches!(action, Some("assign_task") | Some("assign_next"))
-                && (tool
-                    .input
-                    .get("spawn_if_needed")
-                    .and_then(|value| value.as_bool())
-                    .unwrap_or(false)
-                    || tool
-                        .input
-                        .get("prefer_spawn")
-                        .and_then(|value| value.as_bool())
-                        .unwrap_or(false));
+        let spawns_agents = tool.input.get("action").and_then(|value| value.as_str()) == Some("spawn");
 
         spawns_agents.then_some("swarm_spawn")
     }
@@ -727,27 +715,11 @@ mod tests {
     }
 
     #[test]
-    fn experimental_feature_key_marks_spawn_if_needed_assignment() {
-        let tool = ToolCall {
-            id: "tc".to_string(),
-            name: "swarm".to_string(),
-            input: serde_json::json!({"action": "assign_task", "spawn_if_needed": true}),
-            intent: None,
-            thought_signature: None,
-        };
-
-        assert_eq!(
-            App::experimental_feature_key_for_tool(&tool),
-            Some("swarm_spawn")
-        );
-    }
-
-    #[test]
     fn experimental_feature_key_ignores_non_spawning_swarm_actions() {
         let tool = ToolCall {
             id: "tc".to_string(),
             name: "swarm".to_string(),
-            input: serde_json::json!({"action": "status"}),
+            input: serde_json::json!({"action": "message"}),
             intent: None,
             thought_signature: None,
         };

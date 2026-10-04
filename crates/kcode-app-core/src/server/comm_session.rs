@@ -1023,7 +1023,8 @@ pub(super) async fn handle_comm_stop(
     };
 
     let target_session =
-        match resolve_stop_target_session(&swarm_id, &target_session, swarm_members).await {
+        match super::swarm::resolve_member_session(&swarm_id, &target_session, swarm_members).await
+        {
             Ok(target_session) => target_session,
             Err(message) => {
                 let _ = client_event_tx.send(ServerEvent::Error {
@@ -1041,14 +1042,6 @@ pub(super) async fn handle_comm_stop(
     // its children and the walk would lose them.
     let targets = {
         let members = swarm_members.read().await;
-        if !members.contains_key(&target_session) {
-            let _ = client_event_tx.send(ServerEvent::Error {
-                id,
-                message: format!("Unknown session '{target_session}'"),
-                retry_after_secs: None,
-            });
-            return;
-        }
         if !super::swarm_is_self_or_ancestor(&members, &req_session_id, &target_session) {
             let _ = client_event_tx.send(ServerEvent::Error {
                 id,
@@ -1122,60 +1115,6 @@ fn stop_targets(members: &HashMap<String, SwarmMember>, target: &str) -> Vec<Str
     // there to own the re-parenting and the salvage notification.
     targets.sort_by(|left, right| right.0.cmp(&left.0).then(left.1.cmp(&right.1)));
     targets.into_iter().map(|(_, id)| id).collect()
-}
-
-async fn resolve_stop_target_session(
-    swarm_id: &str,
-    target: &str,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-) -> std::result::Result<String, String> {
-    let target = target.trim();
-    if target.is_empty() {
-        return Err("target_session is required.".to_string());
-    }
-
-    let members = swarm_members.read().await;
-    if let Some(member) = members.get(target)
-        && swarm_root(&members, &member.session_id).as_deref() == Some(swarm_id)
-    {
-        return Ok(target.to_string());
-    }
-
-    let mut matches = members
-        .iter()
-        .filter(|(_, member)| swarm_root(&members, &member.session_id).as_deref() == Some(swarm_id))
-        .filter(|(session_id, member)| {
-            member.friendly_name.as_deref() == Some(target)
-                || session_id.starts_with(target)
-                || session_id.ends_with(target)
-        })
-        .map(|(session_id, member)| {
-            (
-                session_id.clone(),
-                member
-                    .friendly_name
-                    .as_deref()
-                    .unwrap_or(session_id)
-                    .to_string(),
-            )
-        })
-        .collect::<Vec<_>>();
-    matches.sort_by(|a, b| a.0.cmp(&b.0));
-
-    match matches.len() {
-        0 => Err(format!(
-            "Unknown swarm session '{target}'. Use an exact session ID, unique friendly name, or unique session ID prefix/suffix."
-        )),
-        1 => Ok(matches.remove(0).0),
-        _ => Err(format!(
-            "Ambiguous swarm session '{target}' matched: {}. Use an exact session ID.",
-            matches
-                .iter()
-                .map(|(session_id, friendly)| format!("{friendly} [{session_id}]"))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )),
-    }
 }
 
 #[allow(clippy::too_many_arguments)]

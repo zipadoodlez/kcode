@@ -216,7 +216,7 @@ impl Tool for TodoTool {
                 "kind": {
                     "type": "string",
                     "enum": kcode_plan::kind::KINDS.map(kcode_plan::kind::kind_str),
-                    "description": "The run's word for this row's work."
+                    "description": "The run's word for this row's work. A row without one is never started by a run."
                 },
                 "parent": {
                     "type": "string",

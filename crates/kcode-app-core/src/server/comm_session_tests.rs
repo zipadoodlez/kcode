@@ -3,14 +3,14 @@
 use super::{
     CoordinatorSpawnIdentity, ensure_spawn_coordinator_swarm, prepare_visible_spawn_session,
     register_visible_spawned_member, resolve_coordinator_spawn_identity, resolve_spawn_working_dir,
-    resolve_stop_target_session, resolve_swarm_spawn_selection, session_may_spawn,
-    spawn_admission_lock, stop_targets,
+    resolve_swarm_spawn_selection, session_may_spawn, spawn_admission_lock, stop_targets,
 };
 use crate::agent::Agent;
 use crate::message::{Message, ToolDefinition};
 use crate::protocol::ServerEvent;
 use crate::protocol::SwarmLifecycleStatus;
 use crate::provider::{EventStream, Provider};
+use crate::server::swarm::resolve_member_session;
 use crate::server::{SwarmEventType, SwarmMember};
 use crate::tool::Registry;
 use anyhow::Result;
@@ -166,13 +166,13 @@ async fn stop_target_resolves_unique_friendly_name_and_suffix() {
     drop(members);
 
     assert_eq!(
-        resolve_stop_target_session("swarm-1", "jellyfish", &swarm_members)
+        resolve_member_session("swarm-1", "jellyfish", &swarm_members)
             .await
             .as_deref(),
         Ok("session_jellyfish_1234_abcd")
     );
     assert_eq!(
-        resolve_stop_target_session("swarm-1", "abcd", &swarm_members)
+        resolve_member_session("swarm-1", "abcd", &swarm_members)
             .await
             .as_deref(),
         Ok("session_jellyfish_1234_abcd")
@@ -195,10 +195,33 @@ async fn stop_target_rejects_ambiguous_friendly_name() {
     members.insert(second.session_id.clone(), second);
     drop(members);
 
-    let err = resolve_stop_target_session("swarm-1", "bear", &swarm_members)
+    let err = resolve_member_session("swarm-1", "bear", &swarm_members)
         .await
         .expect_err("ambiguous friendly names should be rejected");
     assert!(err.contains("Ambiguous swarm session 'bear'"));
+}
+
+/// The label is the one name the model is told to give a worker, so it addresses
+/// that worker like the session id does: one resolver, one vocabulary, every action.
+#[tokio::test]
+async fn target_resolves_the_label_a_worker_was_spawned_with() {
+    let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+    let (root, _root_rx) = member("swarm-1");
+    let (mut worker, _worker_rx) = member("session_jellyfish_1234_abcd");
+    worker.report_back_to_session_id = Some("swarm-1".to_string());
+    worker.friendly_name = Some("jellyfish".to_string());
+    worker.task_label = Some("api reviewer".to_string());
+    let mut members = swarm_members.write().await;
+    members.insert(root.session_id.clone(), root);
+    members.insert(worker.session_id.clone(), worker);
+    drop(members);
+
+    assert_eq!(
+        resolve_member_session("swarm-1", "api reviewer", &swarm_members)
+            .await
+            .as_deref(),
+        Ok("session_jellyfish_1234_abcd")
+    );
 }
 
 #[tokio::test]
