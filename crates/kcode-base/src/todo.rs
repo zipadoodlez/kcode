@@ -366,11 +366,20 @@ pub fn rename_row_holder_on_disk(
     Ok(touched)
 }
 
-/// The next free `t<n>` id.
+/// The next `t<n>` id: above every id the file still names, so a number a record
+/// holds is not handed to a new row while that record sits on one. An id the file
+/// no longer names cannot be confused with a new one, so it is not remembered: a
+/// counter would be a second store, and the file is the one store (rule 2).
 fn next_id(rows: &[TaskItem]) -> String {
     let highest = rows
         .iter()
-        .filter_map(|row| row.id.strip_prefix('t'))
+        .map(|row| row.id.as_str())
+        .chain(
+            rows.iter()
+                .flat_map(|row| row.records.iter())
+                .filter_map(|record| record.get("id").and_then(serde_json::Value::as_str)),
+        )
+        .filter_map(|id| id.strip_prefix('t'))
         .filter_map(|number| number.parse::<u32>().ok())
         .max()
         .unwrap_or(0);
@@ -680,6 +689,43 @@ mod tests {
             record.as_object().map(|record| record.len()),
             Some(2),
             "a record is the close's own words: id and result, nothing else"
+        );
+    }
+
+    /// A new row takes a number above every id the file still names, so a record
+    /// on a row is never handed to a new row (the reported collision: a closed
+    /// child's id came back because only the open rows were counted).
+    #[test]
+    fn a_new_id_clears_the_ids_the_file_still_names() {
+        let mut parent = TaskItem {
+            id: "t1".to_string(),
+            content: "the run".to_string(),
+            assigned_to: Some("me".to_string()),
+            ..Default::default()
+        };
+        parent.kind = Some("synthesize".to_string());
+        let mut child = TaskItem {
+            id: "t2".to_string(),
+            content: "the work".to_string(),
+            assigned_to: Some("me".to_string()),
+            parent: Some("t1".to_string()),
+            ..Default::default()
+        };
+        child.kind = Some("implement".to_string());
+        let mut rows = vec![parent, child];
+
+        close_row(&mut rows, "me", "t2", "cargo test: 12 passed").expect("close");
+        let id = add_row(
+            &mut rows,
+            TaskItem {
+                content: "next".to_string(),
+                ..Default::default()
+            },
+        )
+        .expect("add");
+        assert_eq!(
+            id, "t3",
+            "t2 is named by the parent's record and must not be reused"
         );
     }
 
