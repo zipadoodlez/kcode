@@ -289,7 +289,7 @@ mod tests {
             "session-a",
         )
         .expect("add");
-        assert_eq!(rows[1].id.len(), 3, "an id is three base36 digits");
+        assert_eq!(rows[1].id.len(), 4, "an id is four base36 digits");
         assert_ne!(rows[1].id, rows[0].id, "a new row takes an id of its own");
         assert_eq!(rows[1].assigned_to.as_deref(), Some("session-a"));
     }
