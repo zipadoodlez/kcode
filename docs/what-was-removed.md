@@ -341,10 +341,12 @@ read-only in the client.
 shapes nothing read any more. The gallery renderer goes whole: `swarm_gallery.rs` and
 `swarm_tiles.rs` in `kcode-tui-render` (3,735 lines: member tiles, chat cards, the strip,
 the page, the dock, the grid allocator and their buffer tests), the two examples that
-rendered it and the fuzz audit over it. The pinned list and the session picker keep the
-spinner cadence, `spinner_glyph`, `is_active_status` and `humanize_age`, which move to
-`kcode-tui-render/src/status.rs`, and the one live helper the grid file held
-(`split_by_display_width`) moves to the crate root. The plan summary goes with the
+rendered it and the fuzz audit over it. The gallery's spinner was a second copy of the
+one `kcode-tui-style::theme` already had, so the pinned list and the session picker now
+call `activity_indicator(elapsed, ACTIVITY_INDICATOR_FPS)` (the `12.5` fps literal they
+each spelled out is the same constant), the list's two local facts (`is_active_status`,
+`humanize_age`) move into the module that draws it, and the one live helper the grid file
+held (`split_by_display_width`) moves to the render crate's root. The plan summary goes with the
 producer S2 removed: `PlanGraphStatus` and its `from_rows`, the always-`None` `summary`
 and `reason` on the plan event, `kcode-plan`'s `newly_ready_item_ids`, and the client's
 `plan_swarm_id`, which was written and cleared but never read. The config for the deleted

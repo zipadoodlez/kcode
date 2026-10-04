@@ -358,10 +358,6 @@ pub trait TuiState {
     fn pinned_todos_expanded(&self) -> bool {
         false
     }
-    /// Spinner frame for a row that is being worked right now.
-    fn spinner_frame(&self) -> usize {
-        0
-    }
     /// Running and recently completed background tasks rendered beneath pinned todos.
     fn background_task_rows(&self) -> &[BackgroundTaskRow] {
         &[]

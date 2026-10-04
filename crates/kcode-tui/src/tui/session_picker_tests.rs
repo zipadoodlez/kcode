@@ -873,13 +873,13 @@ fn test_active_rows_render_working_and_ready_badges() {
     );
 
     let first_frame = picker
-        .render_session_item_lines_at_frame(&working, false, 0)
+        .render_session_item_lines_at_frame(&working, false, "⠋")
         .iter()
         .map(line_text)
         .collect::<Vec<_>>()
         .join("\n");
     let second_frame = picker
-        .render_session_item_lines_at_frame(&working, false, 1)
+        .render_session_item_lines_at_frame(&working, false, "⠙")
         .iter()
         .map(line_text)
         .collect::<Vec<_>>()

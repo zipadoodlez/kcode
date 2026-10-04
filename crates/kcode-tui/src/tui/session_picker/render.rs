@@ -1,17 +1,20 @@
 use super::*;
 use kcode_tui_style::theme::{
-    accent_color, ai_color, ai_text, asap_color, dim_color, error_color, file_link_color,
-    header_name_color, queued_color, success_color, tool_color, user_bg, user_color, warning_color,
+    ACTIVITY_INDICATOR_FPS, accent_color, activity_indicator, ai_color, ai_text, asap_color,
+    dim_color, error_color, file_link_color, header_name_color, queued_color, success_color,
+    tool_color, user_bg, user_color, warning_color,
 };
 use ratatui::widgets::Wrap;
 
 impl SessionPicker {
-    fn running_spinner_frame() -> usize {
-        std::time::SystemTime::now()
+    /// The spinner cell for "this session is working", from wall-clock time so
+    /// every row agrees on it.
+    fn running_spinner() -> &'static str {
+        let elapsed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
-            .as_millis()
-            .saturating_div(u128::from(kcode_tui_render::status::SPINNER_FRAME_MS)) as usize
+            .as_secs_f32();
+        activity_indicator(elapsed, ACTIVITY_INDICATOR_FPS)
     }
 
     pub(super) fn crash_reason_line(session: &SessionInfo) -> Option<Line<'static>> {
@@ -172,14 +175,14 @@ impl SessionPicker {
         session: &SessionInfo,
         is_selected: bool,
     ) -> Vec<Line<'static>> {
-        self.render_session_item_lines_at_frame(session, is_selected, Self::running_spinner_frame())
+        self.render_session_item_lines_at_frame(session, is_selected, Self::running_spinner())
     }
 
     pub(super) fn render_session_item_lines_at_frame(
         &self,
         session: &SessionInfo,
         is_selected: bool,
-        spinner_frame: usize,
+        spinner: &'static str,
     ) -> Vec<Line<'static>> {
         let dim: Color = kcode_tui_style::theme::border_color();
         let dimmer: Color = dim_color();
@@ -222,12 +225,7 @@ impl SessionPicker {
                     Some(elapsed) => format!("working {}", format_short_duration(elapsed)),
                     None => "working".to_string(),
                 };
-                Some((
-                    kcode_tui_render::status::SPINNER_FRAMES
-                        [spinner_frame % kcode_tui_render::status::SPINNER_FRAMES.len()],
-                    queued_color(),
-                    label,
-                ))
+                Some((spinner, queued_color(), label))
             } else {
                 Some(("●", success_color(), "ready".to_string()))
             }
@@ -412,11 +410,11 @@ impl SessionPicker {
         &self,
         session: &SessionInfo,
         is_selected: bool,
-        spinner_frame: usize,
+        spinner: &'static str,
     ) -> ListItem<'static> {
         let batch_row_bg: Color = user_bg();
         let in_batch_restore = self.crashed_session_ids.contains(&session.id);
-        let rows = self.render_session_item_lines_at_frame(session, is_selected, spinner_frame);
+        let rows = self.render_session_item_lines_at_frame(session, is_selected, spinner);
         let mut item = ListItem::new(rows);
         if in_batch_restore && !is_selected {
             item = item.style(Style::default().bg(batch_row_bg));
@@ -427,9 +425,7 @@ impl SessionPicker {
     pub(super) fn render_session_list(&mut self, frame: &mut Frame, area: Rect) {
         let server_color: Color = warning_color();
         let dim: Color = kcode_tui_style::theme::border_color();
-        let spinner_frame = Self::running_spinner_frame();
-        let spinner = kcode_tui_render::status::SPINNER_FRAMES
-            [spinner_frame % kcode_tui_render::status::SPINNER_FRAMES.len()];
+        let spinner = Self::running_spinner();
 
         let items: Vec<ListItem> = if let Some(message) = self.loading_message.as_deref() {
             vec![
@@ -529,9 +525,7 @@ impl SessionPicker {
                                     .and_then(|i| self.visible_sessions.get(i).copied())
                                     .and_then(|session_ref| self.session_by_ref(session_ref))
                             })
-                            .map(|session| {
-                                self.render_session_item(session, is_selected, spinner_frame)
-                            })
+                            .map(|session| self.render_session_item(session, is_selected, spinner))
                             .unwrap_or_else(|| ListItem::new(Line::from(""))),
                     }
                 })

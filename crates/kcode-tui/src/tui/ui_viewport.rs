@@ -1,5 +1,7 @@
 use super::*;
-use kcode_tui_style::theme::{error_color, warning_color};
+use kcode_tui_style::theme::{
+    ACTIVITY_INDICATOR_FPS, activity_indicator, error_color, warning_color,
+};
 use unicode_width::UnicodeWidthStr;
 
 #[cfg(target_os = "macos")]
@@ -962,7 +964,7 @@ fn pinned_todo_band_lines(
     let row_lines = render_todo_rows(
         app.pinned_todo_rows(),
         app.pinned_todo_members(),
-        app.spinner_frame(),
+        activity_indicator(app.animation_elapsed(), ACTIVITY_INDICATOR_FPS),
         width,
     );
     if row_lines.is_empty() && task_lines.is_empty() {
@@ -998,11 +1000,11 @@ fn pinned_todo_band_lines(
 fn render_todo_rows(
     rows: &[crate::plan::TaskItem],
     members: &[crate::protocol::SwarmMemberStatus],
-    spinner_frame: usize,
+    spinner: &'static str,
     width: u16,
 ) -> Vec<Line<'static>> {
     rows.iter()
-        .map(|row| todo_row_line(rows, row, members, spinner_frame, width))
+        .map(|row| todo_row_line(rows, row, members, spinner, width))
         .collect()
 }
 
@@ -1024,11 +1026,27 @@ fn parent_depth(rows: &[crate::plan::TaskItem], row: &crate::plan::TaskItem) -> 
     depth
 }
 
+/// Whether a member status means its session is mid-turn.
+fn is_active_status(status: &str) -> bool {
+    matches!(status, "running" | "streaming" | "thinking")
+}
+
+/// Compact age for a holder (now/Ns/Nm/Nh).
+fn humanize_age(age: u64) -> String {
+    if age < 2 {
+        "now".to_string()
+    } else if age < 60 {
+        format!("{age}s")
+    } else if age < 3600 {
+        format!("{}m", age / 60)
+    } else {
+        format!("{}h", age / 3600)
+    }
+}
+
 /// The holder named on a row, with the state the roster used to carry: its
 /// model and how long it has been on the row.
 fn holder_label(member: &crate::protocol::SwarmMemberStatus) -> String {
-    use kcode_tui_render::status::humanize_age;
-
     let name = member
         .friendly_name
         .clone()
@@ -1052,11 +1070,9 @@ fn todo_row_line(
     rows: &[crate::plan::TaskItem],
     row: &crate::plan::TaskItem,
     members: &[crate::protocol::SwarmMemberStatus],
-    spinner_frame: usize,
+    spinner: &'static str,
     width: u16,
 ) -> Line<'static> {
-    use kcode_tui_render::status::{is_active_status, spinner_glyph};
-
     let indent = parent_depth(rows, row);
     let holder = row.assigned_to.as_deref();
     let member = holder.and_then(|id| members.iter().find(|member| member.session_id == id));
@@ -1066,7 +1082,7 @@ fn todo_row_line(
     let blocked = !row.blocked_by.is_empty();
 
     let (icon, icon_color) = if is_active_status(status) {
-        (spinner_glyph(spinner_frame), warning_color())
+        (spinner, warning_color())
     } else if matches!(status, "failed" | "crashed" | "stopped") {
         ("✗", error_color())
     } else if blocked {
@@ -1335,7 +1351,7 @@ mod tests {
             row("t1", "the run", None, &[], None),
             row("t2", "the work", Some("t1"), &[], None),
         ];
-        let lines = super::render_todo_rows(&rows, &[], 0, 80);
+        let lines = super::render_todo_rows(&rows, &[], "⠋", 80);
         let parent = text(&lines[0]);
         let child = text(&lines[1]);
         assert!(
@@ -1362,7 +1378,7 @@ mod tests {
         holder.runtime.model = Some("claude-sonnet".to_string());
         holder.runtime.elapsed_secs = Some(95);
         let members = vec![holder];
-        let line = text(&super::render_todo_rows(&rows, &members, 0, 80)[0]);
+        let line = text(&super::render_todo_rows(&rows, &members, "⠋", 80)[0]);
         assert!(!line.contains('○'), "a working row is not open: {line:?}");
         assert!(
             line.contains("@fox") && line.contains("claude-sonnet") && line.contains("1m"),
@@ -1374,7 +1390,7 @@ mod tests {
     #[test]
     fn a_blocked_row_is_marked() {
         let rows = vec![row("t1", "the work", None, &["t9"], None)];
-        let line = text(&super::render_todo_rows(&rows, &[], 0, 80)[0]);
+        let line = text(&super::render_todo_rows(&rows, &[], "⠋", 80)[0]);
         assert!(line.contains('⊳'), "{line:?}");
     }
 }

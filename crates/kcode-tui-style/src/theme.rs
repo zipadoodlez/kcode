@@ -87,28 +87,15 @@ const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦
 /// expensive full-frame redraws.
 pub const LIVENESS_INDICATOR_FPS: f32 = 1.5;
 
-/// Frame rate for the low-cost single-cell circular spinner when decorative
-/// animations are disabled. Unlike the full-line indicators above, this spinner
-/// is patched by the cheap one-cell fast path between full redraws, so it can
-pub fn spinner_frame_index(elapsed: f32, fps: f32) -> usize {
-    ((elapsed * fps) as usize) % SPINNER_FRAMES.len()
-}
-
-pub fn spinner_frame(elapsed: f32, fps: f32) -> &'static str {
-    SPINNER_FRAMES[spinner_frame_index(elapsed, fps)]
-}
-
-/// Whether `symbol` is one of the cells owned by the primary activity spinner.
+/// Cadence for the animated single-cell spinner: 80 ms per frame.
 ///
-/// The TUI's single-cell spinner redraw uses this to avoid patching a status-row
-/// cell after a late overlay, such as the slash-command palette, has taken
-/// ownership of it.
-pub fn is_activity_indicator_frame(symbol: &str) -> bool {
-    SPINNER_FRAMES.contains(&symbol)
-}
+/// Unlike the full-line indicators above, this spinner is patched one cell at a
+/// time between full redraws, so it can run this fast without forcing a
+/// full-frame repaint.
+pub const ACTIVITY_INDICATOR_FPS: f32 = 12.5;
 
 pub fn activity_indicator_frame_index(elapsed: f32, fps: f32) -> usize {
-    spinner_frame_index(elapsed, fps)
+    ((elapsed * fps) as usize) % SPINNER_FRAMES.len()
 }
 
 pub fn activity_indicator(elapsed: f32, fps: f32) -> &'static str {
@@ -125,16 +112,13 @@ mod tests {
             SPINNER_FRAMES,
             &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         );
-        assert!(is_activity_indicator_frame("⠋"));
-        assert!(is_activity_indicator_frame("⠏"));
-        assert!(!is_activity_indicator_frame("/"));
     }
 
     #[test]
-    fn spinner_frame_wraps_at_sequence_length() {
+    fn activity_indicator_wraps_at_sequence_length() {
         let fps = 10.0;
-        assert_eq!(spinner_frame(0.0, fps), "⠋");
-        assert_eq!(spinner_frame(0.9, fps), "⠏");
-        assert_eq!(spinner_frame(1.0, fps), "⠋");
+        assert_eq!(activity_indicator(0.0, fps), "⠋");
+        assert_eq!(activity_indicator(0.9, fps), "⠏");
+        assert_eq!(activity_indicator(1.0, fps), "⠋");
     }
 }

@@ -14,8 +14,9 @@ use crate::tui::info_widget::occasional_status_tip;
 use crate::tui::layout_utils;
 use crate::tui::session_facts;
 use kcode_tui_style::theme::{
-    border_color, error_color, file_link_color, header_icon_color, header_name_color,
-    header_session_color, info_color, success_color, system_message_color, user_bg,
+    ACTIVITY_INDICATOR_FPS, border_color, error_color, file_link_color, header_icon_color,
+    header_name_color, header_session_color, info_color, success_color, system_message_color,
+    user_bg,
 };
 use ratatui::{prelude::*, style::Modifier, widgets::Paragraph};
 
@@ -823,7 +824,7 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
             ),
         ])
     } else if app.is_processing() {
-        let spinner = super::activity_indicator(elapsed, 12.5);
+        let spinner = super::activity_indicator(elapsed, ACTIVITY_INDICATOR_FPS);
 
         match app.status() {
             ProcessingStatus::Idle => Line::from(""),

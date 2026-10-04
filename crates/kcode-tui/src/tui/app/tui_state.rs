@@ -550,10 +550,6 @@ impl crate::tui::TuiState for App {
         self.pinned_todos_expanded
     }
 
-    fn spinner_frame(&self) -> usize {
-        (self.animation_elapsed() * kcode_tui_render::status::SPINNER_FPS) as usize
-    }
-
     fn background_task_rows(&self) -> &[crate::tui::BackgroundTaskRow] {
         self.background_tasks.rows()
     }

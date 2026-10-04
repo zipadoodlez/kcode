@@ -1,6 +1,8 @@
 use super::*;
 use crate::tui::ui::{self, WrappedLineMap};
-use kcode_tui_style::theme::{accent_color, ai_text, error_color, user_color, warning_color};
+use kcode_tui_style::theme::{
+    ACTIVITY_INDICATOR_FPS, accent_color, ai_text, error_color, user_color, warning_color,
+};
 
 /// Auxiliary render data for an assistant message that is otherwise recomputed
 /// by re-parsing markdown on every body rebuild. Building the body misses its
@@ -375,7 +377,8 @@ pub(super) fn active_batch_progress_hash(app: &dyn TuiState) -> u64 {
 
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     if progress.completed < progress.total {
-        super::activity_indicator_frame_index(app.animation_elapsed(), 12.5).hash(&mut hasher);
+        super::activity_indicator_frame_index(app.animation_elapsed(), ACTIVITY_INDICATOR_FPS)
+            .hash(&mut hasher);
     }
     progress.total.hash(&mut hasher);
     progress.completed.hash(&mut hasher);
@@ -408,7 +411,7 @@ fn prepare_active_batch_progress(
 
     let centered = app.centered_mode();
     let accent = warning_color();
-    let spinner = super::activity_indicator(app.animation_elapsed(), 12.5);
+    let spinner = super::activity_indicator(app.animation_elapsed(), ACTIVITY_INDICATOR_FPS);
     let block_width = if centered {
         super::centered_content_block_width(width, 96)
     } else {
