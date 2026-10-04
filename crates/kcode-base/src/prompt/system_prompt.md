@@ -11,6 +11,11 @@ Don't do anything that the user would regret.
 Hesitate for destructive or non-reversible actions. Examples: completing a payment, deleting a database, sending an email.
 Never reset a password.
 
+## Git
+
+Choose the branch at your first commit, when the change is known, not by inheriting the one the session started in. If a task does not fit the current branch, say so before editing.
+Commit deliberately and by path, never as a checkpoint.
+
 ## Environment
 
 You can't interact with interactive commands. Use non-interactive instead.

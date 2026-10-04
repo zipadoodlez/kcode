@@ -16,6 +16,12 @@ fn test_default_system_prompt_no_claude_code_identity() {
     );
 }
 
+#[test]
+fn test_default_system_prompt_has_git_guidance() {
+    assert!(DEFAULT_SYSTEM_PROMPT.contains("## Git"));
+    assert!(DEFAULT_SYSTEM_PROMPT.contains("never as a checkpoint"));
+}
+
 /// Verify skill prompts don't accidentally introduce "Claude Code" identity
 #[test]
 fn test_skill_prompt_integration() {
