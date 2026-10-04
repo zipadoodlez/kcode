@@ -244,8 +244,8 @@ pub fn open_ids(rows: &[TaskItem]) -> String {
 /// close: rule 3 keeps a parent while a child does, which is what makes the
 /// parent's result its children's results integrated. The record then goes onto
 /// the row that owns the work, the parent for a row that has one, so a finished
-/// row is not gone with nothing kept: `artifact` is the machine-readable half a
-/// closer may bring (the words of the result stay the result's).
+/// row is not gone with nothing kept: the record is the close's own words,
+/// `{id, result}`.
 ///
 /// A run works the rows it holds, so a row that names another session as its holder
 /// is refused: the user's session takes a row by writing it first, and a row that
@@ -253,16 +253,12 @@ pub fn open_ids(rows: &[TaskItem]) -> String {
 ///
 /// The row is the last thing to go, and the close drops its id from every
 /// dependent's `blocked_by`; an entry there always names an open row (rule 7).
-pub fn close_row(
-    rows: &mut Vec<TaskItem>,
-    session_id: &str,
-    id: &str,
-    result: &str,
-    artifact: Option<serde_json::Value>,
-) -> Result<()> {
+pub fn close_row(rows: &mut Vec<TaskItem>, session_id: &str, id: &str, result: &str) -> Result<()> {
     let result = result.trim();
     if result.is_empty() {
-        bail!("close needs result: name the check that proves it, and what it showed");
+        bail!(
+            "close needs result: name the check that proves it, what it showed, and what you did not check"
+        );
     }
     let row = rows
         .iter()
@@ -289,13 +285,9 @@ pub fn close_row(
     if let Some(parent_id) = row.parent.as_deref()
         && let Some(parent) = rows.iter_mut().find(|row| row.id == parent_id)
     {
-        let mut record = serde_json::Map::new();
-        record.insert("id".to_string(), serde_json::Value::from(id));
-        record.insert("result".to_string(), serde_json::Value::from(result));
-        if let Some(artifact) = artifact {
-            record.insert("artifact".to_string(), artifact);
-        }
-        parent.records.push(serde_json::Value::Object(record));
+        parent
+            .records
+            .push(serde_json::json!({"id": id, "result": result}));
     }
 
     for row in rows.iter_mut() {
@@ -536,7 +528,7 @@ mod tests {
             ..Default::default()
         }];
 
-        let err = close_row(&mut rows, "moved-away", "t1", "done: x", None).unwrap_err();
+        let err = close_row(&mut rows, "moved-away", "t1", "done: x").unwrap_err();
         assert!(
             err.to_string().contains("held by worker"),
             "unexpected error: {err}"
@@ -545,14 +537,8 @@ mod tests {
 
         // Taking it is a write, and then it is anybody's to close.
         rows[0].assigned_to = None;
-        close_row(
-            &mut rows,
-            "me",
-            "t1",
-            "done: the work is in commit abc",
-            None,
-        )
-        .expect("a row nobody holds is anybody's to close");
+        close_row(&mut rows, "me", "t1", "done: the work is in commit abc")
+            .expect("a row nobody holds is anybody's to close");
         assert!(rows.is_empty());
     }
 
@@ -664,7 +650,7 @@ mod tests {
 
     /// A close keeps its result on the row that owns the work: the parent for a row
     /// that has one, so a finished row is not gone with nothing kept (rule 4). The
-    /// machine-readable half a closer brings travels with it.
+    /// record is the close's own words, `{id, result}`.
     #[test]
     fn a_close_keeps_its_record_on_the_row_that_owns_the_work() {
         let mut parent = TaskItem {
@@ -684,20 +670,17 @@ mod tests {
         child.kind = Some("implement".to_string());
         let mut rows = vec![parent, child];
 
-        close_row(
-            &mut rows,
-            "me",
-            "t2",
-            "cargo test -p kcode-base: 7 passed",
-            Some(serde_json::json!({"findings": "the store owns it", "confidence": "high"})),
-        )
-        .expect("close");
+        close_row(&mut rows, "me", "t2", "cargo test -p kcode-base: 7 passed").expect("close");
 
         assert_eq!(rows.len(), 1, "the closed row is gone");
         let record = &rows[0].records[0];
         assert_eq!(record["id"], "t2");
         assert_eq!(record["result"], "cargo test -p kcode-base: 7 passed");
-        assert_eq!(record["artifact"]["confidence"], "high");
+        assert_eq!(
+            record.as_object().map(|record| record.len()),
+            Some(2),
+            "a record is the close's own words: id and result, nothing else"
+        );
     }
 
     /// A row that owns nothing keeps no record: there is no parent row to hold it,
@@ -710,7 +693,7 @@ mod tests {
             assigned_to: Some("me".to_string()),
             ..Default::default()
         }];
-        close_row(&mut rows, "me", "t1", "done: nothing to run", None).expect("close");
+        close_row(&mut rows, "me", "t1", "done: nothing to run").expect("close");
         assert!(rows.is_empty());
     }
 
@@ -731,9 +714,9 @@ mod tests {
                 ..Default::default()
             },
         ];
-        let err = close_row(&mut rows, "me", "t1", "done", None).unwrap_err();
+        let err = close_row(&mut rows, "me", "t1", "done").unwrap_err();
         assert!(err.to_string().contains("still has open children"), "{err}");
-        let err = close_row(&mut rows, "me", "t2", "   ", None).unwrap_err();
+        let err = close_row(&mut rows, "me", "t2", "   ").unwrap_err();
         assert!(err.to_string().contains("close needs result"), "{err}");
         assert_eq!(rows.len(), 2, "a refused close writes nothing");
     }

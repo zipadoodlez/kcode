@@ -38,10 +38,9 @@ pub struct TaskItem {
     /// result is its children's results integrated").
     ///
     /// The store keeps each entry as the closer wrote it and reads none of it: the
-    /// shape is `{"id", "result", "artifact"}`, where `artifact` is the
-    /// machine-readable half a closer may supply (findings, evidence,
-    /// `what_i_did_not_check`, confidence). Kept as JSON so the store learns no
-    /// engine type (rule 5): it writes what a closer gave it and reads none of it.
+    /// shape is `{"id", "result"}`, the closer's own words. Kept as JSON so the
+    /// store learns no engine type (rule 5): it writes what a closer gave it and
+    /// reads none of it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub records: Vec<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

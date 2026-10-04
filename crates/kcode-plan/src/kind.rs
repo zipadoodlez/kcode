@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 /// vocabulary is the engine's, and a row writes one of these words or none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NodeKind {
-    /// Research/analysis. Artifact = findings.
+    /// Research/analysis.
     Explore,
-    /// Code change. Artifact = diff/commit ref.
+    /// Code change.
     Implement,
     /// Acceptance check (build/tests).
     Verify,
