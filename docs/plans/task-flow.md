@@ -224,8 +224,6 @@ channel index with the shared-context store; those cuts are recorded in
   `TodoEvent`s), **four member shapes**, **a third event log** (the bounded swarm
   history), 607 lines of debug views, and a 3,100-line gallery rendering the same
   swarm state.
-- **Two artifact shapes**: `tool/todo.rs` hand-builds a close from three fields while
-  `kcode-plan/src/artifact.rs` owns the seven-field `HandoffArtifact`.
 - **Four status vocabularies**, and the three fields the file does not need
   (`status`, `priority`, `group`).
 - **The `SwarmState` pair**, rebuilt as a literal at each request arm and threaded to
@@ -239,8 +237,10 @@ Every step lands whole, proven by the gate. The one `kcode run` probe against it
 socket waits for the end of the list, where the user runs it, so no step is gated on it.
 Widest shared shape first, so no step sweeps call sites a later step reshapes: S2 opens
 the client's path and S3-S5 then delete what it leaves behind. The numbers label the
-stages, they are not an order: S3 waits on S2, which delivers the rows it renders, and
-nothing else waits. The `app.rs` re-core (`plans/app-shape.md`) is the tail and it is
+stages, they are not an order: S3 waits on S2, which delivers the rows it renders, and S5
+waits on S3 too (measured 2026-10-04): removing `TaskItem.status` strands
+`dispatch_swarm_todo_progress`/`compact_todo_items` and `SwarmMemberRuntime.todo_items`,
+which is S3's deletion and is gated by S2, so S5 cannot land first. D2 waits on nothing. The `app.rs` re-core (`plans/app-shape.md`) is the tail and it is
 droppable: nothing here depends on it.
 
 ### S2. One view
@@ -308,39 +308,6 @@ stalled node does not spin; the duplicate map
 literals become `kcode_tui_style` role accessors so `/colors` can recolor them (the small
 default shift is accepted). The projection's `RunningStale` goes with it: 0.4f removed
 its only producer (a plan item's status), so the variant is unreachable.
-
-### S4. The record is the words
-
-The artifact form goes; a record is `{id, result}`. The discipline lives in the close
-instruction: state what proves it, what it showed, and what you did not check. Kinds stay
-the run's word for the work, not six result schemas.
-
-This is A7 and nothing else. `tool/todo.rs:144-168` hand-builds the close artifact from
-three fields while `kcode-plan/src/artifact.rs` owns the seven-field `HandoffArtifact`,
-so a field added on one side drifts silently; the cut this item named (the tool building
-the type) would harden a type this stage deletes, so the drift closes by deletion
-instead. S1 strands the three producers that write the form; their shape is this stage's.
-`HandoffArtifact` itself went in S1c: its last reader was the assignment suffix
-(`bridge::upstream_context`), so the file had no reference left. What S4 still owns is the
-tool's `close_artifact` and the engine's writers, and the record's shape.
-
-Decided 2026-10-04: the record stays `{id, result}`, the close's own words, and the
-question does not survive with them. A child's `content` goes when its row does, on the
-model's own ground that nothing durable needs the plan, and the reader who would miss it
-does not exist: the integrator wrote the children's rows, a resumed run works the open
-ones, and only a model ever reads a record, since records are neither rendered in the TUI
-nor a wire field. Measured on the first fan-out run's anchor, two children cost 460 bytes,
-about 115 tokens, of which the artifact is 176 bytes and the store reads none of it, so
-this stage's cut halves the record. The close instruction carries the discipline instead.
-
-A note is for a row that stays open, so a close ignores one: the tool's `close` arm passes
-only the result and the artifact (`tool/todo.rs:114`), and the record on the parent holds
-`{id, result, artifact}`. The schema nonetheless offers `note` on every action, so a model
-can spend the field on a close and get no error, which the first fan-out run's `hatchling`
-did. A clause on the schema's `note` description saying that a close carries its words in
-the result is the whole fix.
-
-surface: −1 type, −7 fields, −3 producers, −2 tool vocabularies. lines ~−300. risk: med.
 
 ### S5. The file's fields
 
