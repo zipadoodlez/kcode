@@ -157,11 +157,6 @@ pub(super) fn build_registry(inputs: &RegistryInputs<'_>) -> Vec<KnownHotkey> {
         "toggle the info widget",
     );
     push(
-        inputs.toggles.swarm_panel_focus.binding().cloned(),
-        "swarm_panel_focus",
-        "focus the swarm panel",
-    );
-    push(
         inputs.new_terminal.binding.clone(),
         "new_terminal",
         "open a fresh session in a new terminal",
@@ -1095,7 +1090,6 @@ mod tests {
             ),
             ("diff_mode_cycle", toggles.diff_mode_cycle.binding()),
             ("info_widget_toggle", toggles.info_widget.binding()),
-            ("swarm_panel_focus", toggles.swarm_panel_focus.binding()),
         ];
         for (name, binding) in toggle_bindings {
             let Some(binding) = binding else { continue };

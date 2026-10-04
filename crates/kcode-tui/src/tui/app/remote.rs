@@ -25,7 +25,6 @@ mod server_event_handlers;
 mod server_events;
 mod session_persistence;
 mod swarm_plan_core;
-mod swarm_status_core;
 mod workspace;
 
 #[cfg(test)]

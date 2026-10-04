@@ -2097,34 +2097,6 @@ pub(super) fn handle_pre_control_shortcuts(
         app.set_status_notice(status);
         return true;
     }
-    // Swarm views: Alt+N cycles chat → inline controls → full live page → chat.
-    // Selection/open/prompt controls stay available in both active views, while
-    // plain typing continues to flow to the chat input.
-    if app
-        .keybinds
-        .toggle_keys
-        .swarm_panel_focus
-        .matches(code, modifiers)
-    {
-        match app.cycle_swarm_panel_view() {
-            super::tui_state::SwarmPanelView::Chat => {
-                app.set_status_notice("Swarm view closed");
-            }
-            super::tui_state::SwarmPanelView::Controls => {
-                app.set_status_notice(crate::tui::keybind::swarm_view_hint("full page"));
-            }
-            super::tui_state::SwarmPanelView::FullPage => {
-                app.set_status_notice(crate::tui::keybind::swarm_page_hint());
-            }
-        }
-        return true;
-    }
-    {
-        use crate::tui::TuiState as _;
-        if app.swarm_panel_focused() && app.handle_swarm_panel_key(code, modifiers) {
-            return true;
-        }
-    }
     if app.new_terminal_key_matches(code, modifiers) {
         app.handle_new_terminal_hotkey();
         return true;

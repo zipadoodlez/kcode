@@ -397,64 +397,6 @@ pub(super) fn active_batch_progress_hash(app: &dyn TuiState) -> u64 {
     hasher.finish()
 }
 
-fn swarm_members_signature(members: &[crate::protocol::SwarmMemberStatus]) -> u64 {
-    // Chat only renders a stable one-line identity/status summary. Excluding
-    // elapsed time, age, output tails, todos, tool progress, and runtime details
-    // prevents high-frequency live swarm updates from invalidating the entire
-    // transcript preparation cache.
-    let mut ordered: Vec<_> = members.iter().collect();
-    ordered.sort_by(|a, b| a.session_id.cmp(&b.session_id));
-    let mut hasher = DefaultHasher::new();
-    for member in ordered {
-        member.session_id.hash(&mut hasher);
-        member.friendly_name.hash(&mut hasher);
-        member.status.hash(&mut hasher);
-        member.task_label.hash(&mut hasher);
-    }
-    hasher.finish()
-}
-
-fn spawned_member_for_tool<'a>(
-    msg: &DisplayMessage,
-    members: &'a [crate::protocol::SwarmMemberStatus],
-) -> Option<&'a crate::protocol::SwarmMemberStatus> {
-    let tool = msg.tool_data.as_ref()?;
-    if tools_ui::canonical_tool_name(&tool.name) != "swarm" {
-        return None;
-    }
-
-    // Live remote tool output is decorated as `[swarm] Spawned new agent: …`.
-    // The completed ToolCall can also lose its parsed input across a reload or
-    // event race, so the server-issued session ID is the authoritative signal.
-    let session_id = msg
-        .content
-        .lines()
-        .find_map(|line| line.split_once("Spawned new agent: ").map(|(_, id)| id))
-        .map(str::trim);
-    if let Some(member) = session_id.and_then(|session_id| {
-        members
-            .iter()
-            .find(|member| member.session_id == session_id)
-    }) {
-        return Some(member);
-    }
-
-    // The server may publish the member snapshot before or after the tool result,
-    // and older/reformatted tool results may not retain the exact session-id line.
-    // The spawn label is copied into `task_label`, so use a unique label match as
-    // a safe fallback. Requiring uniqueness prevents an old spawn row from
-    // adopting a newer worker when labels are reused.
-    if tool.input.get("action").and_then(|value| value.as_str()) != Some("spawn") {
-        return None;
-    }
-    let label = tool.input.get("label").and_then(|value| value.as_str())?;
-    let mut matching = members
-        .iter()
-        .filter(|member| member.task_label.as_deref() == Some(label));
-    let member = matching.next()?;
-    matching.next().is_none().then_some(member)
-}
-
 fn prepare_active_batch_progress(
     app: &dyn TuiState,
     width: u16,
@@ -556,7 +498,6 @@ pub(super) fn prepare_messages(
         streaming_text_len: app.streaming_text().len(),
         streaming_text_hash: super::hash_text_for_cache(app.streaming_text()),
         batch_progress_hash: active_batch_progress_hash(app),
-        swarm_members_signature: swarm_members_signature(&app.swarm_members_for_transcript()),
     };
 
     super::note_full_prep_request();
@@ -947,7 +888,6 @@ fn prepare_body_cached(app: &dyn TuiState, width: u16) -> Arc<PreparedMessages> 
         diff_mode: app.diff_mode(),
         messages_version: app.display_messages_version(),
         centered: app.centered_mode(),
-        swarm_members_signature: swarm_members_signature(&app.swarm_members_for_transcript()),
     };
     let msg_count = app.display_messages().len();
     let cache_lookup_start = Instant::now();
@@ -1083,7 +1023,6 @@ struct BodyRenderCtx<'a> {
     /// number of prompts hidden by compaction.
     prompt_number_offset: usize,
     messages: &'a [DisplayMessage],
-    swarm_members: Vec<crate::protocol::SwarmMemberStatus>,
 }
 
 /// Mutable accumulator for one body build. Both `prepare_body` (full) and
@@ -1288,14 +1227,6 @@ fn render_message_into(
             for line in cached {
                 acc.push_auto(align_if_unset(line, align));
             }
-            if let Some(member) = spawned_member_for_tool(msg, &ctx.swarm_members) {
-                for line in crate::tui::info_widget::swarm_gallery::render_swarm_chat_card_lines(
-                    std::slice::from_ref(member),
-                    width.saturating_sub(1) as usize,
-                ) {
-                    acc.push_auto(line.alignment(ratatui::layout::Alignment::Left));
-                }
-            }
             for line in todo_change_lines(ctx.messages, msg_global_idx, msg, width) {
                 acc.push_auto(align_if_unset(line, align));
             }
@@ -1477,7 +1408,6 @@ pub(super) fn prepare_body_incremental(
         centered,
         prompt_number_offset: app.compacted_hidden_user_prompts(),
         messages,
-        swarm_members: app.swarm_members_for_transcript(),
     };
 
     let mut acc = BodyAcc {
@@ -1759,7 +1689,6 @@ pub(super) fn prepare_body_prepended(
         centered,
         prompt_number_offset: app.compacted_hidden_user_prompts(),
         messages,
-        swarm_members: app.swarm_members_for_transcript(),
     };
 
     // The head sits at the very top of the transcript, so it starts with the
@@ -1979,7 +1908,6 @@ pub(super) fn prepare_body(
         // Images anchored to transcript messages render inline right after the
         // message that produced them (tool result or user prompt).
         messages,
-        swarm_members: app.swarm_members_for_transcript(),
     };
 
     let mut acc = BodyAcc::default();

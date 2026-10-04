@@ -320,6 +320,23 @@ it works and hands work over one message at a time, which is what the model alre
 asks for. The `tldr` collapse goes with its rule, so a long message now renders in
 full rather than behind a one-line summary.
 
+**The four list surfaces and the swarm roster go, and the pinned list is the one
+surface** (S2, 2026-10-04). The client rendered the work list in four places over four
+caches (the inline chat card, the side-panel page, the pinned band, the info widget's
+pips) and read `tasks.jsonl` itself; the roster rendered the agents in three more (the
+inline strip, the `alt+n` panel page, the SwarmStatus dock widget), each with its own
+scoping, spinner cadence and stand-down machinery. All of it goes. The server is now the
+one reader: on every write and on subscribe it sends each session the rows it may work,
+and the pinned list renders them (id, indentation by `parent`, a glyph and color from the
+row plus its holder's live status, the holder's name, model and age). What is lost: the
+list can no longer be shown as a chat card, a side page or a pin band, and `/todos`,
+`display.pin_todos`, `todo_card_toggle` and `KCODE_PIN_TODOS` go with them. The agent
+roster goes too, so an agent that holds no row is not shown, the spawn tree is not
+rendered, and `alt+n`, the panel's `alt+o` pop-out and the agent lifecycle status notices
+are gone; an agent reads on the list through the row it holds, and the coordinator sees
+its state there. The work list's own vocabulary is unchanged: server-pushed rows,
+read-only in the client.
+
 ## Deliberately kept from upstream
 
 - `/account` and `/accounts` - the multi-account picker for Claude and OpenAI.

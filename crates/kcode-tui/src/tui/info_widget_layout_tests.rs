@@ -13,8 +13,7 @@
 
 use super::*;
 use crate::tui::info_widget::{
-    BackgroundInfo, CacheHitInfo, CompactionInfo, GitInfo, InfoWidgetData, SwarmInfo, UsageInfo,
-    UsageProvider,
+    BackgroundInfo, CacheHitInfo, CompactionInfo, GitInfo, InfoWidgetData, UsageInfo, UsageProvider,
 };
 
 /// Kitchen-sink data: every enabled widget kind is eligible at once, so the
@@ -28,49 +27,6 @@ fn contended_data() -> InfoWidgetData {
         context_info: Some(crate::prompt::ContextInfo {
             system_prompt_chars: 20_000,
             total_chars: 60_000,
-            ..Default::default()
-        }),
-        swarm_info: Some(SwarmInfo {
-            session_count: 4,
-            subagent_status: Some("running subtask".to_string()),
-            session_names: vec!["alpha".to_string(), "beta".to_string()],
-            // Managed agents make the SwarmStatus dock eligible, adding a
-            // high-priority contender to the placement contention.
-            managed_members: vec![
-                crate::protocol::SwarmMemberStatus {
-                    session_id: "worker-1".to_string(),
-                    friendly_name: Some("worker-1".to_string()),
-                    status: "running".into(),
-                    detail: None,
-                    task_label: None,
-                    role: Some("coordinator".to_string()),
-                    is_headless: Some(true),
-                    live_attachments: None,
-                    status_age_secs: Some(2),
-                    output_tail: Some("doing work".to_string()),
-                    report_back_to_session_id: Some("parent".to_string()),
-                    todo_progress: Some((1, 4)),
-                    todo_items: Vec::new(),
-                    runtime: crate::protocol::SwarmMemberRuntime::default(),
-                },
-                crate::protocol::SwarmMemberStatus {
-                    session_id: "worker-2".to_string(),
-                    friendly_name: Some("worker-2".to_string()),
-                    status: "blocked".into(),
-                    detail: None,
-                    task_label: None,
-                    role: None,
-                    is_headless: Some(true),
-                    live_attachments: None,
-                    status_age_secs: Some(30),
-                    output_tail: None,
-                    report_back_to_session_id: Some("parent".to_string()),
-                    todo_progress: None,
-                    todo_items: Vec::new(),
-                    runtime: crate::protocol::SwarmMemberRuntime::default(),
-                },
-            ],
-            plan_progress: Some((3, 1, 7)),
             ..Default::default()
         }),
         background_info: Some(BackgroundInfo {
@@ -233,53 +189,6 @@ fn overview_suppresses_mergeable_widgets_under_contention() {
             );
         }
     }
-}
-
-/// (c) The swarm dock widget is gated on managed members: a session that
-/// manages agents (spawn subtree) gets the dock in layout, while plain swarm
-/// presence data (session counts/names) must never place it. The inline strip
-/// stands down while the dock is visible so agents never render twice.
-#[test]
-fn swarm_status_dock_requires_managed_members() {
-    // With managed members (contended_data has them) the dock is eligible and
-    // can be placed. The inline strip avoids double-rendering by standing
-    // down while the dock is visible (see ui.rs swarm_strip_lines gating).
-    let data = contended_data();
-    assert!(
-        data.has_data_for(WidgetKind::SwarmStatus),
-        "SwarmStatus dock must be eligible while this session manages agents"
-    );
-    assert!(data.available_widgets().contains(&WidgetKind::SwarmStatus));
-
-    // Without managed members the widget stays out of layout entirely, no
-    // matter how rich the rest of swarm_info is (legacy session-list data).
-    let mut without = contended_data();
-    without
-        .swarm_info
-        .as_mut()
-        .expect("swarm info")
-        .managed_members
-        .clear();
-    assert!(
-        !without.has_data_for(WidgetKind::SwarmStatus),
-        "SwarmStatus must stay hidden without managed agents"
-    );
-    assert!(
-        !without
-            .available_widgets()
-            .contains(&WidgetKind::SwarmStatus)
-    );
-
-    let area = Rect::new(0, 0, 100, 40);
-    let outcome =
-        calculate_placements_anchored(area, &margins_for(40, 40, true), &without, true, &[]);
-    assert!(
-        outcome
-            .visible
-            .iter()
-            .all(|p| p.kind != WidgetKind::SwarmStatus),
-        "SwarmStatus should never be placed without managed agents"
-    );
 }
 
 /// A margin profile longer than the messages area (caller bug or stale data)

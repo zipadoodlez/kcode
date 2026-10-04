@@ -75,20 +75,6 @@ fn primary_status_spinner_active(state: &dyn TuiState) -> bool {
 }
 
 /// Whether the swarm strip (above the status line) or the SwarmStatus dock
-/// widget is currently animating a status spinner for an active agent.
-///
-/// Both surfaces derive the spinner glyph from the wall clock, but managed
-/// agents keep running long after the coordinator session itself goes quiet.
-/// Unfocused clients skip this so backgrounded windows do not burn CPU
-/// animating a glyph nobody can see.
-fn swarm_spinner_redraw_active(state: &dyn TuiState) -> bool {
-    state.client_focused()
-        && state
-            .inline_swarm_members()
-            .iter()
-            .any(|m| kcode_tui_render::swarm_gallery::is_active_status(m.status.as_str()))
-}
-
 /// Whether the open `/resume` picker is showing at least one running session.
 /// The picker uses the same spinner cells as the swarm strip, so it needs an
 /// explicit wakeup even when the session underneath the overlay is idle.
@@ -126,7 +112,6 @@ pub(crate) fn wants_fast_tick(state: &dyn TuiState) -> bool {
         || !state.streaming_text().is_empty()
         || state.copy_selection_edge_autoscroll_active()
         || primary_status_spinner_active(state)
-        || swarm_spinner_redraw_active(state)
         || session_picker_spinner_redraw_active(state)
         || rate_limit_countdown_redraw_active(state)
 }

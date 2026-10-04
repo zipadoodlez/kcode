@@ -1881,15 +1881,6 @@ pub(crate) fn render_swarm_message(
     width: u16,
     _diff_mode: crate::config::DiffDisplayMode,
 ) -> Vec<Line<'static>> {
-    if msg.title.as_deref() == Some(SWARM_AGENT_SNAPSHOT_TITLE)
-        && let Ok(member) = serde_json::from_str::<crate::protocol::SwarmMemberStatus>(&msg.content)
-    {
-        return crate::tui::info_widget::swarm_gallery::render_swarm_chat_card_lines(
-            &[member],
-            width as usize,
-        );
-    }
-
     let centered = markdown::center_code_blocks();
     let title = msg.title.as_deref().unwrap_or("Swarm").trim();
     if let Some(lines) = render_compact_agent_notification(title, &msg.content, width) {

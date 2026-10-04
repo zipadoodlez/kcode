@@ -133,9 +133,6 @@ pub struct InfoWidgetSummary {
     pub reasoning_effort: Option<String>,
     pub session_count: Option<usize>,
     pub client_count: Option<usize>,
-    pub swarm_session_count: Option<usize>,
-    pub swarm_member_count: Option<usize>,
-    pub swarm_subagent_status: Option<String>,
     pub background_running: Option<usize>,
     pub background_tasks: Option<usize>,
     pub usage_available: Option<bool>,
@@ -696,8 +693,8 @@ fn write_frame(file: &mut File, frame: &FrameCapture) -> std::io::Result<()> {
         )?;
         writeln!(
             file,
-            "  session_count: {:?}, client_count: {:?}, swarm_members: {:?}",
-            info.summary.session_count, info.summary.client_count, info.summary.swarm_member_count
+            "  session_count: {:?}, client_count: {:?}",
+            info.summary.session_count, info.summary.client_count
         )?;
     }
 

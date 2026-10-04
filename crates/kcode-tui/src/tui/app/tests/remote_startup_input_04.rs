@@ -41,12 +41,11 @@ fn test_handle_server_event_transcript_replace_updates_input() {
     );
 }
 
-/// SwarmStatus snapshots must surface member lifecycle transitions (an agent
-/// finishing) as a status notice, scoped to this session's spawn subtree so a
-/// shared swarm's unrelated agents stay silent. Live member details render from
-/// their own snapshot and must not churn the global transcript cache version.
+/// SwarmStatus snapshots are stored for the pinned list's holder names and
+/// must not churn the global transcript cache version. Transitions are not
+/// announced: the list is the surface.
 #[test]
-fn test_handle_server_event_swarm_status_announces_member_completion() {
+fn test_handle_server_event_swarm_status_stores_members_without_a_notice() {
     let member = |id: &str, status: &str, parent: Option<&str>| crate::protocol::SwarmMemberStatus {
         session_id: id.to_string(),
         friendly_name: Some(id.to_string()),
@@ -88,14 +87,10 @@ fn test_handle_server_event_swarm_status_announces_member_completion() {
         "live swarm snapshots must not invalidate global transcript caches"
     );
     assert_eq!(app.swarm.members.len(), 3);
-    assert_eq!(
-        app.status_notice(),
-        None,
-        "first snapshot has no transitions to announce"
-    );
+    assert_eq!(app.status_notice(), None);
 
-    // One of our workers finishes; the unrelated agent also finishes but must
-    // not be announced (outside our spawn subtree).
+    // A second snapshot updates the members in place; the pinned list reads
+    // them for holder state, and nothing is announced.
     app.handle_server_event(
         crate::protocol::ServerEvent::SwarmStatus {
             members: vec![
@@ -106,8 +101,6 @@ fn test_handle_server_event_swarm_status_announces_member_completion() {
         },
         &mut remote,
     );
-    assert_eq!(
-        app.status_notice(),
-        Some("🐝 ant done · 1/2 active".to_string())
-    );
+    assert_eq!(app.swarm.members.len(), 3);
+    assert_eq!(app.status_notice(), None);
 }

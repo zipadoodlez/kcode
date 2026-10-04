@@ -258,13 +258,8 @@ event both hang off (`tool/todo.rs`). The view is the rows this session may work
 computed once on the server (`session_rows`): a session in a run gets the run's rows
 (`swarm_rows`); a session outside one gets the whole list.
 
-Remaining renderer: the separate swarm roster (the card, the page and the info widget's
-pips are gone). The client reads the file nowhere now: `gather_todos_for_session` and its
-1s TTL cache are deleted with `display.pin_todos`. Keep one read, one model, the
-renderers as pure functions.
-
-Delete: the roster and its adapter. surface: −1 renderer, −3 protocol member types.
-lines ~−3,500 (the gallery is 3,100). risk: med.
+**Landed 2026-10-04, whole.** One read (server), one model (the pushed rows), one surface
+(the pinned list: card, page, pips and the roster are gone).
 
 **Landed 2026-10-04.** The server is the one reader: on every write and on subscribe it
 sends each session the rows it may work, and the pinned band renders them with its own
@@ -278,10 +273,12 @@ a `todo` result is one compact line naming its row count; and then the info widg
 region and pips (`info_widget_todos.rs`, `WidgetKind::Todos`, `InfoWidgetData.todos`,
 `swarm_plan_todos`, the overview page machinery), the client's last file read
 (`gather_todos_for_session` with its 1s TTL cache) and `display.pin_todos` with it. The
-list then took the roster's state: a held row reads `@name · model · age` from the member
-status. Kept for the last half: the roster and the panel that opens it, where the
-boundary is a call (the adapter also feeds the SwarmStatus dock, and the panel exists only
-for the page).
+list then took the roster's state (a held row reads `@name · model · age`), and last the
+roster itself went: the adapter (`info_widget_swarm_gallery.rs`), the strip and page in
+`ui.rs`, the `alt+n` panel and its keybind, the SwarmStatus dock widget and its
+stand-down/flicker machinery, the swarm spawn cards in the transcript, the status-transition
+notice and `swarm_status_core.rs`. An agent reads on the list through the row it holds;
+one holding nothing is not shown.
 
 **Smoke test (the second half is not landed, so check this on what is).** Build
 `scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode`, then in a scratch repo

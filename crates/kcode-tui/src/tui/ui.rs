@@ -177,7 +177,6 @@ thread_local! {
     static TEST_LAST_RESOLVED_CHAT_SCROLL: Cell<usize> = const { Cell::new(0) };
     static TEST_LAST_USER_PROMPT_POSITIONS: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
     static TEST_LAST_LAYOUT: RefCell<Option<LayoutSnapshot>> = const { RefCell::new(None) };
-    static TEST_LAST_STATUS_AREA: RefCell<Option<Rect>> = const { RefCell::new(None) };
     static TEST_VISIBLE_COPY_TARGETS: RefCell<Vec<VisibleCopyTarget>> = RefCell::new(Vec::new());
     static TEST_VISIBLE_EXPAND_EDIT_BADGE: Cell<bool> = const { Cell::new(false) };
     static TEST_VISIBLE_EXPAND_EDIT_BADGE_LINE: Cell<Option<usize>> = const { Cell::new(None) };
@@ -668,20 +667,6 @@ struct BodyCacheKey {
     diff_mode: crate::config::DiffDisplayMode,
     messages_version: u64,
     centered: bool,
-    /// Mermaid render geometry depends on the scoped transcript/pane aspect
-    /// profile as well as width. A vertical terminal resize can change this
-    /// bucket without changing `width`, so it must invalidate the prepared body.
-    /// Whether inline images render at all (Alt+M hides them).
-    /// Whether inline images render expanded or as collapsed label stubs
-    /// (Alt+Shift+I toggles; persisted).
-    /// Signature of the inline image set; anchored images render inside the
-    /// body, so the body must rebuild when images arrive or change.
-    /// Monotonic per-image expand-level version. Anchored images embed their
-    /// expand-level geometry into the body, so a level change must rebuild the
-    /// body exactly like an image-set change does.
-    /// Live swarm-member data renders beneath the tool call that spawned each
-    /// member, so status/todo/tool-intent updates must invalidate the body.
-    swarm_members_signature: u64,
 }
 
 #[derive(Clone)]
@@ -754,10 +739,9 @@ impl BodyCacheState {
                     && entry.key.width == key.width
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.centered == key.centered
-                    // Anchored inline images render inside the body, and a
-                    // late-arriving image may target an already-prepared
-                    // message; only reuse bases built with the same image set.
-                    && entry.key.swarm_members_signature == key.swarm_members_signature
+                // Anchored inline images render inside the body, and a
+                // late-arriving image may target an already-prepared
+                // message; only reuse bases built with the same image set.
             })
             .max_by_key(|entry| entry.msg_count)
             .map(|entry| (entry.prepared.clone(), entry.msg_count));
@@ -769,10 +753,9 @@ impl BodyCacheState {
                     && entry.key.width == key.width
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.centered == key.centered
-                    // Anchored inline images render inside the body, and a
-                    // late-arriving image may target an already-prepared
-                    // message; only reuse bases built with the same image set.
-                    && entry.key.swarm_members_signature == key.swarm_members_signature
+                // Anchored inline images render inside the body, and a
+                // late-arriving image may target an already-prepared
+                // message; only reuse bases built with the same image set.
             })
             .max_by_key(|entry| entry.msg_count)
             .map(|entry| (entry.prepared.clone(), entry.msg_count));
@@ -803,10 +786,9 @@ impl BodyCacheState {
                     && entry.key.width == key.width
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.centered == key.centered
-                    // Anchored inline images render inside the body, and a
-                    // late-arriving image may target an already-prepared
-                    // message; only reuse bases built with the same image set.
-                    && entry.key.swarm_members_signature == key.swarm_members_signature
+                // Anchored inline images render inside the body, and a
+                // late-arriving image may target an already-prepared
+                // message; only reuse bases built with the same image set.
             })
             .max_by_key(|(_, entry)| entry.msg_count)
             .map(|(idx, entry)| (false, idx, entry.msg_count));
@@ -819,10 +801,9 @@ impl BodyCacheState {
                     && entry.key.width == key.width
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.centered == key.centered
-                    // Anchored inline images render inside the body, and a
-                    // late-arriving image may target an already-prepared
-                    // message; only reuse bases built with the same image set.
-                    && entry.key.swarm_members_signature == key.swarm_members_signature
+                // Anchored inline images render inside the body, and a
+                // late-arriving image may target an already-prepared
+                // message; only reuse bases built with the same image set.
             })
             .max_by_key(|(_, entry)| entry.msg_count)
             .map(|(idx, entry)| (true, idx, entry.msg_count));
@@ -920,11 +901,6 @@ struct FullPrepCacheKey {
     streaming_text_len: usize,
     streaming_text_hash: u64,
     batch_progress_hash: u64,
-    /// Whether inline images render expanded or as collapsed label stubs.
-    /// Per-image expand-level version; anchored image geometry is embedded in
-    /// the prepared frame, so a level change must invalidate it.
-    /// Signature of live swarm member cards embedded beneath spawn tool calls.
-    swarm_members_signature: u64,
 }
 
 #[derive(Clone)]
@@ -1030,45 +1006,6 @@ static FULL_PREP_CACHE: OnceLock<Mutex<FullPrepCacheState>> = OnceLock::new();
 
 fn full_prep_cache() -> &'static Mutex<FullPrepCacheState> {
     FULL_PREP_CACHE.get_or_init(|| Mutex::new(FullPrepCacheState::default()))
-}
-
-#[cfg(not(test))]
-static LAST_STATUS_AREA: OnceLock<Mutex<Option<Rect>>> = OnceLock::new();
-
-#[cfg(not(test))]
-fn last_status_area_state() -> &'static Mutex<Option<Rect>> {
-    LAST_STATUS_AREA.get_or_init(|| Mutex::new(None))
-}
-
-pub(crate) fn record_status_area(area: Rect) {
-    #[cfg(test)]
-    {
-        TEST_LAST_STATUS_AREA.with(|snapshot| {
-            *snapshot.borrow_mut() = Some(area);
-        });
-        return;
-    }
-    #[cfg(not(test))]
-    {
-        if let Ok(mut snapshot) = last_status_area_state().lock() {
-            *snapshot = Some(area);
-        }
-    }
-}
-
-#[cfg(test)]
-pub(crate) fn last_status_area() -> Option<Rect> {
-    #[cfg(test)]
-    {
-        return TEST_LAST_STATUS_AREA.with(|snapshot| *snapshot.borrow());
-    }
-    #[cfg(not(test))]
-    {
-        last_status_area_state()
-            .lock()
-            .ok()
-            .and_then(|snapshot| *snapshot)
-    }
 }
 
 use frame_metrics::{
@@ -1243,9 +1180,6 @@ fn clear_test_render_state_locked() {
     // assertion (click mapping, snapshot rows).
     frame_metrics::clear_flicker_frame_history_for_tests();
     TEST_LAST_LAYOUT.with(|snapshot| {
-        *snapshot.borrow_mut() = None;
-    });
-    TEST_LAST_STATUS_AREA.with(|snapshot| {
         *snapshot.borrow_mut() = None;
     });
     set_visible_copy_targets(Vec::new());
@@ -2277,20 +2211,17 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     } else {
         None
     };
-    let swarm_page_active = app.swarm_panel_full_page();
-
-    let has_side_panel_content = !swarm_page_active && app.side_panel().focused_page().is_some();
+    let has_side_panel_content = app.side_panel().focused_page().is_some();
     let diff_mode = app.diff_mode();
     let collect_diffs = diff_mode.is_pinned();
     // The side panel only handles pinned file diffs; inline images render in the
     // transcript instead.
-    let has_pinned_content = if collect_diffs && !swarm_page_active {
+    let has_pinned_content = if collect_diffs {
         collect_pinned_diffs_cached(app.display_messages(), app.display_messages_version())
     } else {
         false
     };
-    let has_file_diff_edits =
-        !swarm_page_active && diff_mode.is_file() && app.has_display_edit_tool_messages();
+    let has_file_diff_edits = diff_mode.is_file() && app.has_display_edit_tool_messages();
     let has_right_side_pane_content =
         has_side_panel_content || has_pinned_content || has_file_diff_edits;
     let chat_area = area;
@@ -2340,51 +2271,9 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         (chat_area, None)
     };
 
-    // Inline swarm strip: when `swarm_spawn_mode = inline` and this session
-    // manages agents, render a compact strip (vertical agent list by default,
-    // see `agents.swarm_strip_layout`) directly above the status line instead
-    // of a big gallery band. When the panel is focused (alt+n), the selected
-    // agent's row expands in place with its live transcript tail and todos;
-    // alt+↑/↓ select, alt+o pops out, alt+shift+p opens the swarm prompt,
-    // esc exits, and plain typing keeps flowing to the chat input. The strip stands
-    // down while the SwarmStatus dock widget (margin HUD) is showing the same
-    // agents, unless the panel is focused (keyboard interaction lives here).
-    // The stand-down is sticky (anchored blinks count as engaged, plus a short
-    // linger after disengagement) because each strip appearance adds a row to
-    // the bottom chrome and shoves the transcript up: reacting to raw
-    // frame-by-frame dock visibility made the strip pop in and out and the
-    // whole screen bounce (flicker).
-    let swarm_strip_lines: Vec<Line<'static>> = if !swarm_page_active
-        && app.inline_swarm_gallery_active()
-        && (app.swarm_panel_focused() || !super::info_widget::swarm_strip_stands_down_for_dock())
-    {
-        let members = app.inline_swarm_members();
-        if chat_area.width >= 24 {
-            let focus_key = crate::tui::keybind::swarm_panel_focus_key_label();
-            // Use the same smooth cadence as the primary status spinner.
-            let spinner_frame = (app.animation_elapsed()
-                * kcode_tui_render::swarm_gallery::STRIP_SPINNER_FPS)
-                as usize;
-            // Focused budget: chips + hints + a ~14-line detail viewport, but
-            // never more than a third of the chat column so the transcript
-            // stays usable on short terminals.
-            let focused_budget = ((chat_area.height as usize) / 3).clamp(3, 16);
-            super::info_widget::swarm_gallery::render_swarm_strip_lines(
-                &members,
-                app.swarm_panel_selected(),
-                app.swarm_panel_focused(),
-                &focus_key,
-                spinner_frame,
-                chat_area.width as usize,
-                focused_budget,
-            )
-        } else {
-            Vec::new()
-        }
-    } else {
-        Vec::new()
-    };
-    let swarm_strip_height = swarm_strip_lines.len() as u16;
+    // braid: the inline swarm strip is gone, so this slot is always 0; drop the
+    // chunk and renumber the layout when the vertical chunks are next touched.
+    let swarm_strip_height: u16 = 0;
 
     // Calculate pending messages (queued + interleave) for numbering and layout
     let pending_count = input_ui::pending_prompt_count(app);
@@ -2496,7 +2385,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // after `clear`: the prompt sits at the top and the history is one scroll
     // away. Scrolling up, new output, or streaming all end the state (see
     // `terminal_clear_collapsed`) and restore the normal layout.
-    let terminal_clear_collapsed = !swarm_page_active && app.terminal_clear_collapsed();
+    let terminal_clear_collapsed = app.terminal_clear_collapsed();
     let content_height = if terminal_clear_collapsed {
         0
     } else {
@@ -2504,8 +2393,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     };
 
     // Use packed layout when content fits, scrolling layout otherwise
-    let use_packed = terminal_clear_collapsed
-        || (!swarm_page_active && content_height + fixed_height <= available_height);
+    let use_packed = terminal_clear_collapsed || content_height + fixed_height <= available_height;
 
     // Layout: messages (includes header), queued, status, notification, inline UI, gap, input, donut
     // All vertical chunks are within the chat_area (left column).
@@ -2541,13 +2429,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
             ]
         })
         .split(chat_area);
-    record_status_area(chunks[3]);
-
-    // Draw the inline swarm strip directly above the status line if present.
-    if swarm_strip_height > 0 {
-        clear_area(frame, chunks[2]);
-        frame.render_widget(Paragraph::new(swarm_strip_lines.clone()), chunks[2]);
-    }
 
     // Capture layout info for visual debug
     if let Some(ref mut capture) = debug_capture {
@@ -2608,7 +2489,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
 
     // Messages area is chunks[0] within the chat column (already excludes diagram).
     let messages_area = chunks[0];
-    let _ = swarm_strip_height;
     note_chat_layout(ChatLayoutMetrics {
         chat_area,
         messages_area,
@@ -2626,26 +2506,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     }
     record_layout_snapshot(messages_area, diff_pane_area, Some(chunks[7]));
 
-    let margins = if swarm_page_active {
-        let members = app.inline_swarm_members();
-        let spinner_frame =
-            (app.animation_elapsed() * kcode_tui_render::swarm_gallery::STRIP_SPINNER_FPS) as usize;
-        let lines = super::info_widget::swarm_gallery::render_swarm_page_lines(
-            &members,
-            app.swarm_panel_selected(),
-            spinner_frame,
-            messages_area.width as usize,
-            messages_area.height as usize,
-        );
-        clear_area(frame, messages_area);
-        frame.render_widget(Paragraph::new(lines), messages_area);
-        info_widget::Margins {
-            right_widths: Vec::new(),
-            left_widths: Vec::new(),
-            centered: false,
-            ..Default::default()
-        }
-    } else if terminal_clear_collapsed {
+    let margins = if terminal_clear_collapsed {
         // Collapsed terminal-style clear: the messages chunk is zero-height, so
         // there is nothing to draw. Deliberately skip `draw_messages` so it does
         // not publish a zero-height viewport/max-scroll geometry that the scroll
@@ -2762,7 +2623,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let mut widget_render_ms: Option<f32> = None;
     let mut placements: Vec<info_widget::WidgetPlacement> = Vec::new();
     let widget_bounds = messages_area;
-    if app.info_widget_overlays_enabled() && !widget_data.is_empty() && !swarm_page_active {
+    if app.info_widget_overlays_enabled() && !widget_data.is_empty() {
         if let Some(ref mut capture) = debug_capture {
             capture.render_order.push("render_info_widgets".to_string());
         }

@@ -452,34 +452,6 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    // Swarm views: Alt+N cycles chat → inline controls → full live page → chat.
-    // Selection/open/prompt controls stay available in both active views, while
-    // plain typing continues to flow to the chat input.
-    if app
-        .keybinds
-        .toggle_keys
-        .swarm_panel_focus
-        .matches(code, modifiers)
-    {
-        match app.cycle_swarm_panel_view() {
-            app_mod::tui_state::SwarmPanelView::Chat => {
-                app.set_status_notice("Swarm view closed");
-            }
-            app_mod::tui_state::SwarmPanelView::Controls => {
-                app.set_status_notice(crate::tui::keybind::swarm_view_hint("full page"));
-            }
-            app_mod::tui_state::SwarmPanelView::FullPage => {
-                app.set_status_notice(crate::tui::keybind::swarm_page_hint());
-            }
-        }
-        return Ok(());
-    }
-    {
-        use crate::tui::TuiState as _;
-        if app.swarm_panel_focused() && app.handle_swarm_panel_key(code, modifiers) {
-            return Ok(());
-        }
-    }
     let macos_option_shortcut =
         crate::tui::keybind::shortcut_char_for_macos_option_key(code, modifiers);
     if let Some(direction) = app

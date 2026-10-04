@@ -155,11 +155,6 @@ struct TestState {
     cache_ttl_status: Option<crate::tui::CacheTtlInfo>,
     status_notice: Option<String>,
     time_since_user_interaction: Option<Duration>,
-    swarm_members: Vec<crate::protocol::SwarmMemberStatus>,
-    transcript_swarm_members: Option<Vec<crate::protocol::SwarmMemberStatus>>,
-    swarm_panel_selected: usize,
-    swarm_panel_focused: bool,
-    swarm_panel_full_page: bool,
 }
 
 impl crate::tui::TuiState for TestState {
@@ -314,26 +309,6 @@ impl crate::tui::TuiState for TestState {
     fn time_since_user_interaction(&self) -> Option<Duration> {
         self.time_since_user_interaction
     }
-    fn inline_swarm_gallery_active(&self) -> bool {
-        !self.swarm_members.is_empty()
-    }
-    fn inline_swarm_members(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
-        self.swarm_members.clone()
-    }
-    fn swarm_members_for_transcript(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
-        self.transcript_swarm_members
-            .clone()
-            .unwrap_or_else(|| self.swarm_members.clone())
-    }
-    fn swarm_panel_selected(&self) -> usize {
-        self.swarm_panel_selected
-    }
-    fn swarm_panel_focused(&self) -> bool {
-        self.swarm_panel_focused
-    }
-    fn swarm_panel_full_page(&self) -> bool {
-        self.swarm_panel_full_page
-    }
     fn remote_startup_phase_active(&self) -> bool {
         self.remote_startup_phase_active
     }
@@ -476,7 +451,5 @@ mod inline_picker;
 mod prepared_messages_tests;
 #[path = "rendering.rs"]
 mod rendering;
-#[path = "swarm_buffer.rs"]
-mod swarm_buffer;
 #[path = "tools.rs"]
 mod tools;

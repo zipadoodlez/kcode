@@ -357,7 +357,6 @@ mod tests {
             session_name: None,
             working_dir: None,
             client_count: None,
-            swarm_info: None,
             background_info: None,
             usage_info: None,
             usage_display_used: false,
