@@ -1024,11 +1024,28 @@ fn parent_depth(rows: &[crate::plan::TaskItem], row: &crate::plan::TaskItem) -> 
     depth
 }
 
+/// The holder named on a row, with the state the roster used to carry: its
+/// model and how long it has been on the row.
 fn holder_label(member: &crate::protocol::SwarmMemberStatus) -> String {
-    member
+    use kcode_tui_render::swarm_gallery::humanize_age;
+
+    let name = member
         .friendly_name
         .clone()
-        .unwrap_or_else(|| member.session_id.chars().take(8).collect())
+        .unwrap_or_else(|| member.session_id.chars().take(8).collect());
+    let mut suffix = format!(" @{name}");
+    if let Some(model) = member
+        .runtime
+        .model
+        .as_deref()
+        .filter(|m| !m.trim().is_empty())
+    {
+        suffix.push_str(&format!(" · {model}"));
+    }
+    if let Some(elapsed) = member.runtime.elapsed_secs {
+        suffix.push_str(&format!(" · {}", humanize_age(elapsed)));
+    }
+    suffix
 }
 
 fn todo_row_line(
@@ -1060,9 +1077,7 @@ fn todo_row_line(
         ("○", accent_color())
     };
 
-    let holder_suffix = member
-        .map(|member| format!(" @{}", holder_label(member)))
-        .unwrap_or_default();
+    let holder_suffix = member.map(holder_label).unwrap_or_default();
     let prefix_width = indent * 2 + 2 + row.id.chars().count() + 1 + holder_suffix.chars().count();
     let content_width = (width as usize).saturating_sub(prefix_width).max(1);
     let content = truncate_to_width(&row.content, content_width);
@@ -1341,16 +1356,18 @@ mod tests {
     /// A row whose holder is running animates and names the holder: that is the
     /// claim, and it borrows the holder's liveness rather than a row status.
     #[test]
-    fn a_working_holder_animates_its_row_and_names_the_holder() {
+    fn a_working_holder_animates_its_row_and_names_its_state() {
         let rows = vec![row("t1", "the work", None, &[], Some("s1"))];
-        let members = vec![member(
-            "s1",
-            "fox",
-            crate::protocol::SwarmLifecycleStatus::Running,
-        )];
+        let mut holder = member("s1", "fox", crate::protocol::SwarmLifecycleStatus::Running);
+        holder.runtime.model = Some("claude-sonnet".to_string());
+        holder.runtime.elapsed_secs = Some(95);
+        let members = vec![holder];
         let line = text(&super::render_todo_rows(&rows, &members, 0, 80)[0]);
-        assert!(line.contains("@fox"), "{line:?}");
         assert!(!line.contains('○'), "a working row is not open: {line:?}");
+        assert!(
+            line.contains("@fox") && line.contains("claude-sonnet") && line.contains("1m"),
+            "the holder, its model and its age ride the row: {line:?}"
+        );
     }
 
     /// A row with a blocker is marked, even before any member holds it.
