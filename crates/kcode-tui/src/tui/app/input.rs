@@ -18,8 +18,8 @@ use std::time::{Duration, Instant};
 
 #[cfg(test)]
 mod drop_tests;
-/// Streaming reasoning region, split out to keep this file under the
-/// code-size budget. See the module docs for the byte-offset invariant.
+/// Streaming reasoning region, split out to keep this file from growing.
+/// See the module docs for the byte-offset invariant.
 mod reasoning_region;
 
 const INPUT_SHELL_MAX_OUTPUT_LEN: usize = 30_000;

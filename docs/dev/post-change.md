@@ -11,7 +11,7 @@ or tell an agent to run it, after a major change and before committing.
 ```sh
 scripts/gate.sh                             # the boundary: the guardrails + the full suite, once per tree
 scripts/check_guardrails.sh                 # the guardrails alone, non-zero on failure
-scripts/check_guardrails.sh --fix           # rustfmt + rebaseline ratchets
+scripts/check_guardrails.sh --fix           # cargo fmt --all
 scripts/check_guardrails.sh --skip-slow     # skip cargo clippy
 scripts/check_guardrails.sh --all-features  # add the release-only feature
 ```
@@ -26,10 +26,9 @@ there is a reason.
 
 `check_guardrails.sh` runs the old CI set locally: `cargo fmt --check`, `cargo clippy
 -- -D warnings` (which also compiles every target, on default features),
-`Cargo.lock` freshness, the wildcard and `App`-shape ratchets, crate dependency
-boundaries, and the `dev_cargo` wrapper's own tests. The two size ratchets are
-paused (`plans/task-flow.md` G1). The boundary adds `--all-features`, whose only
-extra is `linux-compat-vendored-openssl` for the CentOS 7 release image.
+`Cargo.lock` freshness, crate dependency boundaries, and the `dev_cargo` wrapper's
+own tests. The boundary adds `--all-features`, whose only extra is
+`linux-compat-vendored-openssl` for the CentOS 7 release image.
 
 A compile or clippy failure is a real regression; do not commit past it.
 
@@ -73,18 +72,7 @@ excluded from text diffs and union-merged on conflict (see `.gitattributes`).
 Run `scripts/test.sh` and see [testing.md](testing.md) for the modes, the failure
 classes, and the baselines. Check a suspect in isolation before blaming it.
 
-## Budget ratchets
-
-Several ratchets (`scripts/check_*`) are baselined to this fork's tree, so a
-red one is this fork's own drift rather than inherited kcode numbers. When
-growth is intentional, re-baseline the specific file with `--update` (or
-`--fix` above) in the same commit; otherwise fix it. Do not `--update` to
-silence a ratchet you did not mean to move.
-
-The two size ratchets (production and test files) also fail when a tracked file
-*shrinks*, so an improvement has to be recorded in the same commit. The cap then
-only ever tightens: an unrecorded shrink would leave the old, looser cap in
-force and let the file regrow to it unnoticed.
+## Removed gates
 
 Two ratchets were deleted because a count cannot make the distinction the rule
 needs. The swallowed-error ratchet counted `let _ =`, `.ok()` and

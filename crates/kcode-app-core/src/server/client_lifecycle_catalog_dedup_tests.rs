@@ -1,7 +1,6 @@
 //! Tests for the `AvailableModelsUpdated` dedup key.
 //!
-//! Split out of `client_lifecycle_tests.rs` to keep that file under the
-//! test-size ratchet.
+//! Split out of `client_lifecycle_tests.rs` so that file stays small.
 
 use super::{available_models_dedup_key, strip_relative_age_text};
 use crate::protocol::ServerEvent;

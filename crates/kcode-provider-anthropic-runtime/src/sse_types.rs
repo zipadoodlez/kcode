@@ -1,7 +1,6 @@
 //! Deserialization types for the Anthropic streaming (SSE) response format.
 //!
-//! Extracted from `lib.rs` so the runtime entry point stays within the
-//! oversized-file ratchet.
+//! Extracted from `lib.rs` so that file stays small.
 
 use serde::Deserialize;
 

@@ -1,8 +1,8 @@
 //! Config tests for user-configurable colors.
 //!
-//! Split out of `config_tests.rs` to keep that file under the test-size
-//! ratchet, and because these exercise one coherent contract: the `/colors`
-//! surface writing to and reading from a real config file.
+//! Split out of `config_tests.rs` to keep that file small; these also exercise
+//! one coherent contract: the `/colors` surface writing to and reading from a
+//! real config file.
 
 use super::Config;
 

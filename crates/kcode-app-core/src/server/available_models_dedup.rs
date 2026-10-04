@@ -1,7 +1,6 @@
 //! Dedup key for `AvailableModelsUpdated` catalog broadcasts.
 //!
-//! Split out of `client_lifecycle.rs` to keep that file off the code-size
-//! ratchet's growth list.
+//! Split out of `client_lifecycle.rs` so that file stays small.
 
 use crate::protocol::ServerEvent;
 

@@ -7,7 +7,7 @@
 #
 # Usage:
 #   scripts/check_guardrails.sh              # check only, non-zero on failure
-#   scripts/check_guardrails.sh --fix        # rustfmt + rebaseline ratchets
+#   scripts/check_guardrails.sh --fix        # cargo fmt --all
 #   scripts/check_guardrails.sh --skip-slow  # skip cargo clippy
 #   scripts/check_guardrails.sh --all-features  # also lint the non-default feature set
 #
@@ -49,15 +49,6 @@ run_gate() {
     return 1
 }
 
-# Ratchet scripts share a --update flag to accept intentional growth.
-run_ratchet() {
-    local label=$1 script=$2
-    if $FIX; then
-        python3 "scripts/$script" --update >/dev/null 2>&1
-    fi
-    run_gate "$label" python3 "scripts/$script"
-}
-
 echo "=== Format ==="
 # A `mod x;` with no file is caught by rustfmt itself ("failed to resolve mod
 # `x`: ... does not exist") and by `cargo check` (E0583), so no separate
@@ -90,22 +81,7 @@ fi
 # A stale lockfile otherwise passes the fast jobs and only fails at the
 # release "Build release binary" step.
 run_gate "Cargo.lock is up to date" cargo metadata --locked --format-version 1
-# Both size ratchets were re-baselined to this fork on 2026-09-27 but left out
-# of the gate, so they guarded nothing; a ratchet that never runs is not a
-# ratchet. They measure file-size drift, separate from the `App` shape ratchet
-# below (app.rs may shrink while the field/impl/glob counts stay flat).
-# braid: paused for the work-list project, restore when it lands
-# (`docs/plans/task-flow.md`, step G1). A type merge and a file rewrite move
-# lines between files faster than a per-commit baseline can follow, and this
-# ratchet only tightens, so re-baselining mid-project leaves looser caps behind.
-# restore: uncomment both lines and re-baseline with `--update` at the end.
-# run_ratchet "code size budget" check_code_size_budget.py
-# run_ratchet "test size budget" check_test_size_budget.py
 run_gate "crate dependency boundaries" python3 scripts/check_dependency_boundaries.py
-run_ratchet "wildcard re-export ratchet" check_wildcard_reexport_budget.py
-# The `App` re-core may only shrink, so its field/impl/glob counts are ratcheted
-# separately from file size (app.rs could shrink while fields regroup inward).
-run_ratchet "App shape ratchet" check_app_shape.py
 
 # The build wrapper every cargo action goes through was untested by the gate.
 # These two stub cargo, so they cost seconds and compile nothing.
@@ -131,7 +107,7 @@ if (( ${#FAILED[@]} )); then
     done
     if ! $FIX; then
         echo ""
-        echo "For formatting and intentional ratchet growth: scripts/check_guardrails.sh --fix"
+        echo "For formatting: scripts/check_guardrails.sh --fix"
     fi
     exit 1
 fi

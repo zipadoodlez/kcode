@@ -1,8 +1,8 @@
 //! Streaming reasoning region: the live "thinking" block rendered as dim,
 //! italic text in the streaming buffer.
 //!
-//! Extracted from `input.rs`, which is over the code-size budget. Grouped here
-//! because these methods share one fragile invariant: `reasoning.partial_len`
+//! Extracted from `input.rs`. Grouped here because these methods share one
+//! fragile invariant: `reasoning.partial_len`
 //! and `reasoning.block_start` are **byte offsets into
 //! `streaming.streaming_text`**, recorded at one point and used to slice the
 //! buffer later. If the buffer is replaced in between, those offsets describe

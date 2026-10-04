@@ -29,8 +29,8 @@ spine is the one structural item; the two calls are the maintainer's.
  and ignored. (A1.)
 - [ ] **The crate spine.** `kcode-base` -> `kcode-app-core` -> `kcode-tui` -> root,
  with `pub use kcode_*::*` making every module path global, so no call site names its
- owning crate. `scripts/check_wildcard_reexport_budget.py` ratchets it (baseline 13,
- goal 0). Drive it to zero, or declare the layout cosmetic and collapse it. Easier
+ owning crate. 13 `pub use kcode_*::*` re-exports today (measured at the step), goal 0.
+ Drive it to zero, or declare the layout cosmetic and collapse it. Easier
  once `plans/app-shape.md` and `plans/server-shape.md` have shrunk the cross-crate
  surface.
 - [ ] **Unknown config keys and sections are silently ignored** (`toml::from_str`

@@ -47,7 +47,7 @@ pub(super) fn destructive_command_refusal(
 /// destructive-command gate consumes.
 ///
 /// Lives beside the gate so the schema and the policy that reads it stay in
-/// sync, and so bash.rs stays inside the code-size budget.
+/// sync.
 pub(super) fn bash_parameters_schema() -> serde_json::Value {
     let cmd_desc =
         "The bash command to execute. Put large temp files under `$KCODE_SCRATCH_DIR`, not `/tmp`.";

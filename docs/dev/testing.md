@@ -29,7 +29,7 @@ The expensive tier that wraps these suites with the guardrails is
 `cargo check`, `cargo clippy` and `cargo test` build different profiles, so
 alternating them rebuilds the tree. The commands that cover a change are:
 
-- `cargo fmt --all --check`, the ratchet covering what it touched, and
+- `cargo fmt --all --check` and
   `cargo clippy -p <crate> --all-targets -- -D warnings` while iterating, because
   clippy compiles every target (a separate `cargo check` adds a second, mostly
   redundant compile);
