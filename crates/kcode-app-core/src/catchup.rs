@@ -2,9 +2,30 @@ use crate::message::ContentBlock;
 use crate::session::{Session, SessionStatus};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use std::collections::{BTreeMap, HashSet};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
-pub use kcode_task_types::{CatchupBrief, PersistedCatchupState};
+/// The persisted per-session "seen" marks, as written to `catchup_seen.json`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PersistedCatchupState {
+    #[serde(default)]
+    pub seen_at_ms_by_session: HashMap<String, i64>,
+}
+
+/// The summary a catch-up surface renders for one session.
+#[derive(Debug, Clone)]
+pub struct CatchupBrief {
+    pub reason: String,
+    pub tags: Vec<String>,
+    pub last_user_prompt: Option<String>,
+    pub activity_steps: Vec<String>,
+    pub files_touched: Vec<String>,
+    pub tool_counts: Vec<(String, usize)>,
+    pub validation_notes: Vec<String>,
+    pub latest_agent_response: Option<String>,
+    pub needs_from_user: String,
+    pub updated_at: DateTime<Utc>,
+}
 
 const CATCHUP_STATE_FILE: &str = "catchup_seen.json";
 

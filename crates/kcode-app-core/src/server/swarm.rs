@@ -881,7 +881,13 @@ pub(super) async fn remove_session_from_swarm(
 
     persist_swarm_state_for(swarm_id, swarm_members).await;
 
-    let remaining_member_count = swarm_session_ids(swarm_id, swarm_members).await.len();
+    // Some callers remove the departing member before this runs and some after, so
+    // exclude it here and report the count after this member leaves.
+    let remaining_member_count = swarm_session_ids(swarm_id, swarm_members)
+        .await
+        .iter()
+        .filter(|id| id.as_str() != session_id)
+        .count();
     log_swarm_lifecycle(
         "member_remove_done",
         vec![

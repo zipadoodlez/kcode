@@ -485,11 +485,8 @@ pub fn build_session_context(working_dir: Option<&Path>) -> String {
     lines.extend(session_datetime_lines());
     lines.push(format!("OS: {}", std::env::consts::OS));
     lines.push(format!("Architecture: {}", std::env::consts::ARCH));
-    lines.push(format!(
-        "Kcode version: {} ({})",
-        kcode_build_meta::version(),
-        kcode_build_meta::git_hash()
-    ));
+    // `version()` already carries the abbreviated hash, e.g. `v0.1.0-dev (cd3656e7)`.
+    lines.push(format!("Kcode version: {}", kcode_build_meta::version()));
 
     if let Some(hardware) = hardware_context() {
         lines.push(hardware);

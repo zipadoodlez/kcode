@@ -18,10 +18,6 @@ spine is the one structural item; the two calls are the maintainer's.
  and `kcode-provider-bedrock` is referenced once from outside its crate. Decide which
  tier owns the catalog, then collapse. This is the repo's largest non-TUI surface and
  it is not the audit's safe tier. (A1.)
-- [ ] **The catchup types are in the wrong crate.** `PersistedCatchupState` and
- `CatchupBrief` live in `kcode-task-types` and are used only by
- `kcode-app-core/src/catchup.rs`; move them to the user so the crate named for the
- task concept holds the task concept. (A1.)
 - [x] **`tasks.bak` is the store's own backup, and it was tracked.** Landed
  2026-10-03: `storage::write_bytes` keeps the previous list as `<path>.bak` beside
  `tasks.jsonl` for crash recovery, so the file is derived state that reappears on
@@ -89,20 +85,10 @@ spine is the one structural item; the two calls are the maintainer's.
  this fork deleted. Pick one: delete both notes, give the port-back a plan of its
  own, or make the `AGENTS.md` line name what is actually tracked. The notes call
  themselves scratch, so deleting them is the default.
-- [ ] **The session context block prints the version hash twice, and its fat half is
- unproven.** `build_session_context` (`kcode-base/src/prompt.rs:482`) is added once per
- session (`session.rs:879`) and carried on every request after that. Measured on a
- worker's transcript (2026-10-04): 516 chars, about 129 tokens, split date/time/zone ~90,
- OS/arch/version ~90, Hardware ~230 (45 percent; the GPU line alone is 92), cwd and git
- ~110. The certain defect: the version line reads `v0.1.0-dev (cd3656e7) (cd3656e7)`,
- because `version()` already formats `v{semver} ({hash})` (`kcode-build-meta/src/lib.rs:64`)
- and `prompt.rs:488` wraps it again, so one line drops the second parenthetical. The open
- question is whether the Hardware block ever steers a decision, which is a read of real
- transcripts rather than a benchmark. The cost is already reported per prompt layer
- (`prompt.rs:220`).
-- [ ] **`remaining_member_count` counts the departing member.** `server/swarm.rs:992`
- reports `swarm_session_ids(...).len()` while the leaving member is still in the map (the
- removal is the caller's, and some callers take it out first), so the field over-reports
- by one: the first fan-out run logged 3 after the first of three members left and 2 after
- the second, which reads as a leak when nothing leaked (2026-10-04). Name it for what it
- is, or take the count after the removal.
+- [ ] **The session context block's Hardware half is unproven.** `build_session_context`
+  (`kcode-base/src/prompt.rs:482`) is added once per session (`session.rs:879`) and carried
+  on every request after that. Measured on a worker's transcript (2026-10-04): 516 chars,
+  about 129 tokens, split date/time/zone ~90, OS/arch/version ~90, Hardware ~230 (45
+  percent; the GPU line alone is 92), cwd and git ~110. The open question is whether the
+  Hardware block ever steers a decision, which is a read of real transcripts rather than a
+  benchmark. The cost is already reported per prompt layer (`prompt.rs:220`).

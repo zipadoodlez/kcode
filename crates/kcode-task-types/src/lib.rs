@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// One entry of a repo's work list: the single task type behind the `todo` tool,
@@ -40,26 +39,4 @@ pub struct TaskItem {
     pub blocked_by: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assigned_to: Option<String>,
-}
-
-use std::collections::HashMap;
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct PersistedCatchupState {
-    #[serde(default)]
-    pub seen_at_ms_by_session: HashMap<String, i64>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CatchupBrief {
-    pub reason: String,
-    pub tags: Vec<String>,
-    pub last_user_prompt: Option<String>,
-    pub activity_steps: Vec<String>,
-    pub files_touched: Vec<String>,
-    pub tool_counts: Vec<(String, usize)>,
-    pub validation_notes: Vec<String>,
-    pub latest_agent_response: Option<String>,
-    pub needs_from_user: String,
-    pub updated_at: DateTime<Utc>,
 }
