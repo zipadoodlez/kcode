@@ -33,7 +33,11 @@ alternating them rebuilds the tree. The commands that cover a change are:
   `cargo clippy -p <crate> --all-targets -- -D warnings` while iterating, because
   clippy compiles every target (a separate `cargo check` adds a second, mostly
   redundant compile);
-- `scripts/test.sh` to run tests, which uses one profile for the whole run.
+- `scripts/test.sh crate <crate> <filter>` for the tests that name the behavior you
+  changed, which is what proves it. The crate's whole suite is for a change whose
+  behavior you cannot name, and under memory pressure it is minutes against the
+  filter's seconds; a deletion is proven by the build and runs nothing.
+  `scripts/test.sh` uses one profile for the whole run.
 
 Avoid `cargo check` before `check_guardrails.sh` for this reason; its clippy
 already covers the compile errors `cargo check` would find.
