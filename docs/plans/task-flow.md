@@ -214,12 +214,6 @@ liveness predicates), the three artifact producers with the report action, and t
 channel index with the shared-context store; those cuts are recorded in
 `docs/what-was-removed.md`. What remains:
 
-- **Four renderers over one list**: the inline card, the side-panel page, the pinned
-  band and the info widget's pips each render the rows, over four caches (three
-  hashes in `todos_view.rs`, a 1s TTL cache with a refresh thread, and the
-  transcript's previous-list parse). `commands_improve.rs` repeats the same load six
-  times, and `turn_notify.rs`, `state_ui.rs` and `remote/key_handling.rs` read the
-  file again.
 - **A third copy of a session's rows** (`SwarmMemberRuntime.todo_items`, folded from
   `TodoEvent`s), **four member shapes**, **a third event log** (the bounded swarm
   history), 607 lines of debug views, and a 3,100-line gallery rendering the same
@@ -235,69 +229,13 @@ The tool's action surface is now four actions (spawn, stop, list_models, message
 
 Every step lands whole, proven by the gate. The one `kcode run` probe against its own
 socket waits for the end of the list, where the user runs it, so no step is gated on it.
-Widest shared shape first, so no step sweeps call sites a later step reshapes: S2 opens
-the client's path and S3-S5 then delete what it leaves behind. The numbers label the
-stages, they are not an order: S3 waits on S2, which delivers the rows it renders, and S5
-waits on S3 too (measured 2026-10-04): removing `TaskItem.status` strands
+Widest shared shape first, so no step sweeps call sites a later step reshapes: S2 opened
+the client's path and S3-S5 delete what it left behind. S2 landed 2026-10-04. The numbers
+label the stages, they are not an order: S5 waits on S3 (measured 2026-10-04), because
+removing `TaskItem.status` strands
 `dispatch_swarm_todo_progress`/`compact_todo_items` and `SwarmMemberRuntime.todo_items`,
-which is S3's deletion and is gated by S2, so S5 cannot land first. D2 waits on nothing. The `app.rs` re-core (`plans/app-shape.md`) is the tail and it is
+which is S3's deletion. D2 waits on nothing. The `app.rs` re-core (`plans/app-shape.md`) is the tail and it is
 droppable: nothing here depends on it.
-
-### S2. One view
-
-The server sends each session the rows it may work, local sessions included. The client
-renders one surface: the rows, with the holder named per row and the holder's state
-(model, status, tokens) beside it. That surface absorbs the inline card, the side-panel
-page, the pinned band, the info pips, and the gallery's at-a-glance role. It is the one
-place this lane allows new code, because it absorbs the others.
-
-The rows cross as `ServerEvent::SwarmPlan` (`wire.rs:625`, applied at
-`remote/server_events.rs:1984`), sent on every write and on subscribe by
-`broadcast_todos`/`send_todos_to_session` (`server/swarm.rs`); `TodoUpdated` is the bus
-event both hang off (`tool/todo.rs`). The view is the rows this session may work,
-computed once on the server (`session_rows`): a session in a run gets the run's rows
-(`swarm_rows`); a session outside one gets the whole list.
-
-**Landed 2026-10-04, whole.** One read (server), one model (the pushed rows), one surface
-(the pinned list: card, page, pips and the roster are gone).
-
-**Landed 2026-10-04.** The server is the one reader: on every write and on subscribe it
-sends each session the rows it may work, and the pinned band renders them with its own
-vocabulary (id, indentation by `parent`, a glyph and color from the row plus its holder's
-live status, the holder's name). Deleted: the pinned band's file read, its 1-second cache
-and its refresh thread; the plan broadcast, `rows_with_run_status`, `failed_reasons_for`,
-`member_details` and the plan's derived summary; and then the inline card and the
-side-panel page with them (`TodosView`, `DisplayMessage::todos`, `render_todos_message`,
-the `/todos` command and its keybind, the `todo_card_toggle` binding, the card tests), so
-a `todo` result is one compact line naming its row count; and then the info widget's todo
-region and pips (`info_widget_todos.rs`, `WidgetKind::Todos`, `InfoWidgetData.todos`,
-`swarm_plan_todos`, the overview page machinery), the client's last file read
-(`gather_todos_for_session` with its 1s TTL cache) and `display.pin_todos` with it. The
-list then took the roster's state (a held row reads `@name · model · age`), and last the
-roster itself went: the adapter (`info_widget_swarm_gallery.rs`), the strip and page in
-`ui.rs`, the `alt+n` panel and its keybind, the SwarmStatus dock widget and its
-stand-down/flicker machinery, the swarm spawn cards in the transcript, the status-transition
-notice and `swarm_status_core.rs`. An agent reads on the list through the row it holds;
-one holding nothing is not shown.
-
-**Smoke test (the second half is not landed, so check this on what is).** Build
-`scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode`, then in a scratch repo
-with a `tasks.jsonl`:
-
-1. Add rows with the `todo` tool: two root rows, one child naming a root as `parent`, and
-   one row blocked by another. The pinned list at the top should show `<id> <words>` per
-   row, the child indented under its parent, and the blocked row marked. Fixing the list
-   should need no command: it is always on.
-2. Run `/auto <words>` (or spawn a worker by hand) so a member takes a row. That row's
-   glyph should animate and its holder's name (`@name`) should appear beside it.
-3. Stop the holder mid-row (`swarm stop`). Its row should go red.
-4. Close a blocker with the tool; the blocked row should lose its mark on that write.
-
-A hand edit of `tasks.jsonl` is read on the next write, not pushed: the list shows the
-last write, and the next write re-reads the file first (rule 2).
-
-Gate: the four old surfaces gone; a live TUI check on a run with two workers, showing
-progress, holder and status; the client suite.
 
 ### S3. One status
 
@@ -330,6 +268,24 @@ stalled node does not spin; the duplicate map
 literals become `kcode_tui_style` role accessors so `/colors` can recolor them (the small
 default shift is accepted). The projection's `RunningStale` goes with it: 0.4f removed
 its only producer (a plan item's status), so the variant is unreachable.
+
+**Live check (row t30), run with S2's surface after S3 lands.** Build
+`scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode`, then in a scratch repo
+with a `tasks.jsonl`:
+
+1. Add rows with the `todo` tool: two root rows, one child naming a root as `parent`, and
+   one row blocked by another. The pinned list at the top should show `<id> <words>` per
+   row, the child indented under its parent, and the blocked row marked. Fixing the list
+   should need no command: it is always on, and no card, side page, pin band or roster
+   surface should appear.
+2. Run `/auto <words>` (or spawn a worker by hand) so a member takes a row. That row's
+   glyph should animate and its holder, model and age (`@name · model · age`) should appear
+   beside it.
+3. Stop the holder mid-row (`swarm stop`). Its row should go red.
+4. Close a blocker with the tool; the blocked row should lose its mark on that write.
+
+A hand edit of `tasks.jsonl` is read on the next write, not pushed: the list shows the
+last write, and the next write re-reads the file first (rule 2).
 
 ### S5. The file's fields
 
