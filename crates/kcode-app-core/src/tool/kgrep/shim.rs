@@ -6,6 +6,9 @@
 //! translated; every other invocation is handed to the real `grep(1)`
 //! untouched, which is what makes shadowing the command safe.
 
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
 use kgrep::lexical;
 use kgrep::model::Verb;
 use kgrep::packet::render_grep_text;
@@ -15,11 +18,39 @@ use super::{
     KgrepInput, budget_from_params, exact_search_file_path, filter_packet_to_exact_file,
     normalized_kgrep_glob_owned,
 };
-use crate::tool::{ToolContext, ToolExecutionMode};
+use crate::tool::ToolContext;
+use crate::tool::bash::shell_single_quote;
 
 /// The only short flags translated. Anything else, including `-i`, `-c`, `-v`,
 /// `-o`, `-w`, `-A/-B/-C` and `-P`, leaves the call to `grep(1)`.
 const TRANSLATED_SHORT: &str = "rRnEFGlq";
+
+/// The `BASH_ENV` prelude that points `grep` here, written beside the scratch
+/// directory once per process.
+///
+/// A tool shell sources it, which defines one function and touches nothing else.
+/// The front end is total, so an argv it does not model reaches the real
+/// `grep(1)` and shadowing the command cannot break a script; a caller that
+/// wants the binary says so with the shell's own `command grep`.
+///
+/// `KCODE_SEARCH_SHIM` overrides the binary the function calls, which is how a
+/// test stands in a stub. Unset, it is this process's own executable, so the
+/// prelude cannot outlive the binary that wrote it.
+pub fn bash_env(dir: &Path) -> Option<PathBuf> {
+    static PRELUDE: OnceLock<Option<PathBuf>> = OnceLock::new();
+    PRELUDE.get_or_init(|| write_bash_env(dir)).clone()
+}
+
+fn write_bash_env(dir: &Path) -> Option<PathBuf> {
+    let binary = std::env::current_exe().ok()?;
+    let body = format!(
+        "grep() {{ \"${{KCODE_SEARCH_SHIM:-{}}}\" __search-shim \"$@\"; }}\n",
+        shell_single_quote(&binary.to_string_lossy())
+    );
+    let path = dir.join("search-shim.bash");
+    std::fs::write(&path, body).ok()?;
+    Some(path)
+}
 
 /// Answer one `grep` invocation. The exit code is `grep`'s convention (0 match,
 /// 1 none, 2 error) because callers branch on it.
@@ -33,7 +64,7 @@ pub fn run(argv: &[String]) -> i32 {
 /// The search, or `None` when the engine will not answer it, which sends the
 /// whole invocation to `grep(1)` instead.
 fn search(params: &KgrepInput, quiet: bool) -> Option<i32> {
-    let context = context();
+    let context = ToolContext::for_cli(std::env::current_dir().ok());
     let query = query_from_params(params, &context).ok()?;
     if !matches!(&query.verb, Verb::Lexical { .. }) {
         return None;
@@ -51,25 +82,12 @@ fn search(params: &KgrepInput, quiet: bool) -> Option<i32> {
 
 /// Hand the invocation to `grep(1)` unchanged. This is the fallback that makes
 /// the shim total: an unmodelled flag, a second root, a stdin pipe or an engine
-/// error all land here.
+/// error all land here. `grep` resolves through `PATH`, so this must stay a
+/// plain process spawn and never a PATH shim, or it would call itself.
 fn real_grep(argv: &[String]) -> i32 {
     match std::process::Command::new("grep").args(argv).status() {
         Ok(status) => status.code().unwrap_or(2),
         Err(_) => 127,
-    }
-}
-
-/// A context just for path resolution: the front end runs outside a turn, so
-/// only the working directory is real.
-fn context() -> ToolContext {
-    ToolContext {
-        session_id: String::new(),
-        message_id: String::new(),
-        tool_call_id: String::new(),
-        working_dir: std::env::current_dir().ok(),
-        stdin_request_tx: None,
-        graceful_shutdown_signal: None,
-        execution_mode: ToolExecutionMode::Direct,
     }
 }
 
@@ -102,24 +120,14 @@ fn parse(argv: &[String]) -> Option<(KgrepInput, bool)> {
             "--" => options_done = true,
             // `-` is stdin, which the engine does not read.
             "-" => return None,
-            "-e" => {
-                let value = argv.get(index)?;
-                index += 1;
-                if pattern.is_some() {
-                    return None;
-                }
-                pattern = Some(value.clone());
-            }
             "--include" => {
                 let value = argv.get(index)?;
                 index += 1;
                 glob = normalized_kgrep_glob_owned(Some(value.as_str()));
             }
-            "--color" | "--colour" => {}
             _ if arg.starts_with("--include=") => {
                 glob = normalized_kgrep_glob_owned(Some(&arg["--include=".len()..]));
             }
-            _ if arg.starts_with("--color=") || arg.starts_with("--colour=") => {}
             _ if arg.starts_with("--") => return None,
             _ => {
                 for flag in arg[1..].chars() {

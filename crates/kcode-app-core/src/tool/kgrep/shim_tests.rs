@@ -30,9 +30,6 @@ fn flags_and_globs_map_onto_the_query() {
         parse(&argv(&["-qrn", "needle"])).expect("-q with -r searches the working directory");
     assert!(quiet);
 
-    let (params, _) = parse(&argv(&["-e", "needle", "-rn"])).expect("-e names the pattern");
-    assert_eq!(params.query.as_deref(), Some("needle"));
-
     // One named file without `-r` is a plain single-file search.
     let (params, _) =
         parse(&argv(&["needle", "src/main.rs"])).expect("a single named file translates");
@@ -49,6 +46,8 @@ fn everything_else_stays_greps() {
         vec!["-o", "-rn", "needle", "."],
         vec!["-A", "3", "-rn", "needle", "."],
         vec!["--exclude-dir=target", "-rn", "needle", "."],
+        // `-e` is not modelled: it is the same pattern, spelled longer.
+        vec!["-e", "needle", "-rn"],
         // Two roots, and a `-` root, which is stdin.
         vec!["-rn", "needle", ".", "src"],
         vec!["-rn", "needle", "-"],
@@ -67,6 +66,7 @@ fn everything_else_stays_greps() {
 #[test]
 fn a_match_exits_zero_and_a_miss_exits_one() {
     let dir = std::env::temp_dir().join(format!("kcode-search-shim-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
     std::fs::create_dir_all(&dir).expect("temp dir");
     std::fs::write(dir.join("sample.rs"), "fn needle_marker() {}\n").expect("write sample");
     let root = dir.to_string_lossy().to_string();

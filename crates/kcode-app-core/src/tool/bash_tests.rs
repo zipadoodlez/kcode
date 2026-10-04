@@ -1223,9 +1223,10 @@ async fn test_detached_promoted_command_reports_intermediate_progress() {
 
 #[test]
 fn the_search_prelude_points_grep_at_the_front_end() {
-    let prelude = search_shim_prelude().expect("the prelude is written beside the scratch dir");
+    let dir = tool_scratch_dir().expect("the tool scratch directory");
+    let prelude = crate::tool::search_shim::bash_env(&dir).expect("the prelude is written");
     let body = std::fs::read_to_string(&prelude).expect("read the prelude");
-    assert!(body.contains("grep() {"), "{body}");
+    assert!(body.contains("grep()"), "{body}");
     assert!(body.contains("__search-shim \"$@\""), "{body}");
 
     let envs: Vec<String> = build_shell_command("true")
@@ -1246,16 +1247,21 @@ fn a_shell_sources_the_prelude_and_grep_calls_the_front_end() {
     use std::os::unix::fs::PermissionsExt;
 
     let dir = std::env::temp_dir().join(format!("kcode-search-wire-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
     std::fs::create_dir_all(&dir).expect("temp dir");
     let stub = dir.join("stub.sh");
     std::fs::write(&stub, "#!/bin/sh\nprintf 'STUB:%s\\n' \"$*\"\n").expect("write stub");
     std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).expect("chmod");
 
+    let prelude = tool_scratch_dir()
+        .and_then(|dir| crate::tool::search_shim::bash_env(&dir))
+        .expect("prelude");
+
     let output = StdCommand::new("bash")
         .arg("-c")
         .arg("grep -rn needle .")
-        .env("BASH_ENV", search_shim_prelude().expect("prelude"))
-        .env("KCODE_SEARCH_SHIM_BIN", &stub)
+        .env("BASH_ENV", prelude)
+        .env("KCODE_SEARCH_SHIM", &stub)
         .current_dir(&dir)
         .output()
         .expect("run the shell");

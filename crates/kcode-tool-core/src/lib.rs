@@ -116,6 +116,21 @@ pub enum ToolExecutionMode {
 }
 
 impl ToolContext {
+    /// A context for a tool front end invoked straight from the command line,
+    /// outside any turn. Only the working directory is real; there is no
+    /// session, message or call to name.
+    pub fn for_cli(working_dir: Option<PathBuf>) -> Self {
+        Self {
+            session_id: String::new(),
+            message_id: String::new(),
+            tool_call_id: String::new(),
+            working_dir,
+            stdin_request_tx: None,
+            graceful_shutdown_signal: None,
+            execution_mode: ToolExecutionMode::Direct,
+        }
+    }
+
     pub fn for_subcall(&self, tool_call_id: String) -> Self {
         Self {
             session_id: self.session_id.clone(),

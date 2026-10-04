@@ -14,7 +14,7 @@ use std::fs::OpenOptions;
 use std::path::Path;
 use std::process::Command as StdCommand;
 use std::process::Stdio;
-use std::sync::{LazyLock, OnceLock};
+use std::sync::LazyLock;
 use std::time::Duration;
 use std::time::Instant;
 use tokio::io::AsyncReadExt;
@@ -30,7 +30,7 @@ const CHECKPOINT_MARKER_PREFIX: &str = "KCODE_CHECKPOINT ";
 const BACKGROUND_PROGRESS_GUIDANCE: &str = "For long-running background commands, prefer scripts or commands that periodically print progress updates. Best format: print lines starting with `KCODE_PROGRESS ` followed by JSON like {\"percent\":42,\"message\":\"Running\"} or {\"current\":120,\"total\":1000,\"unit\":\"batches\",\"message\":\"Epoch 2/5\",\"eta_seconds\":30}. Supported JSON fields are `percent`, `message`, `current`, `total`, `unit`, `eta_seconds`, and optional `kind`=`indeterminate` or `kind`=`checkpoint`. For milestone-style wakeups, print `KCODE_CHECKPOINT {\"message\":\"Unit tests passed\"}`. Generic fallback output that can be parsed includes `42%`, `3/10 tests`, `3 of 10 steps`, `1.5/3.0 GiB`, or phase lines like `Compiling ...`, `Downloading ...`, `Running ...`, and `Building ...`. If you are writing the script yourself, add these progress/checkpoint lines explicitly. Put large temporary files, worktrees, and virtual environments under `$KCODE_SCRATCH_DIR`, not `/tmp`, because `/tmp` may be RAM-backed.";
 const BASH_TOOL_DESCRIPTION: &str = "Run a bash command.";
 
-fn shell_single_quote(value: &str) -> String {
+pub(super) fn shell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
@@ -612,48 +612,15 @@ fn tool_scratch_dir() -> Option<std::path::PathBuf> {
     Some(dir)
 }
 
-fn configure_tool_scratch(command: &mut TokioCommand) {
-    if let Some((dir, prelude)) = tool_shell_env() {
+/// The scratch directory every tool shell runs under, and the `BASH_ENV`
+/// prelude that reroutes `grep` inside it.
+fn configure_tool_shell(command: &mut TokioCommand) {
+    if let Some(dir) = tool_scratch_dir() {
         command.env("TMPDIR", &dir).env("KCODE_SCRATCH_DIR", &dir);
-        if let Some(prelude) = prelude {
+        if let Some(prelude) = crate::tool::search_shim::bash_env(&dir) {
             command.env("BASH_ENV", prelude);
         }
     }
-}
-
-/// The `BASH_ENV` prelude that points `grep` at the search front end, written
-/// once per process beside the scratch directory.
-///
-/// The function it defines is unconditional, and the front end is total: an
-/// argv it does not model is handed to the real `grep(1)`, so shadowing the
-/// command cannot break a script. `KCODE_SEARCH_SHIM_DISABLE` turns it off
-/// without a release.
-fn search_shim_prelude() -> Option<std::path::PathBuf> {
-    static PRELUDE: OnceLock<Option<std::path::PathBuf>> = OnceLock::new();
-    PRELUDE
-        .get_or_init(|| {
-            if std::env::var_os("KCODE_SEARCH_SHIM_DISABLE").is_some_and(|value| !value.is_empty())
-            {
-                return None;
-            }
-            let dir = tool_scratch_dir()?;
-            let binary = std::env::current_exe().ok()?;
-            let body = format!(
-                "grep() {{ \"${{KCODE_SEARCH_SHIM_BIN:-{}}}\" __search-shim \"$@\"; }}\n",
-                shell_single_quote(&binary.to_string_lossy())
-            );
-            let path = dir.join("search-shim.bash");
-            std::fs::write(&path, body).ok()?;
-            Some(path)
-        })
-        .clone()
-}
-
-/// Every tool shell's environment: the scratch directory, and the prelude that
-/// reroutes `grep`. The one home for which variables the prelude needs.
-fn tool_shell_env() -> Option<(std::path::PathBuf, Option<std::path::PathBuf>)> {
-    let dir = tool_scratch_dir()?;
-    Some((dir, search_shim_prelude()))
 }
 
 struct ProcessGroupKillGuard {
@@ -682,7 +649,7 @@ fn build_shell_command(cmd_str: &str) -> TokioCommand {
     {
         let mut cmd = TokioCommand::new("bash");
         cmd.arg("-c").arg(cmd_str);
-        configure_tool_scratch(&mut cmd);
+        configure_tool_shell(&mut cmd);
         cmd
     }
 }
@@ -701,9 +668,9 @@ fn build_detached_shell_wrapper(command: &str) -> StdCommand {
             r#"eval "$KCODE_RELOAD_DETACH_COMMAND"; status=$?; printf '\n--- Command finished with exit code: %s ---\n' "$status"; exit "$status""#,
         )
         .env("KCODE_RELOAD_DETACH_COMMAND", command);
-    if let Some((dir, prelude)) = tool_shell_env() {
+    if let Some(dir) = tool_scratch_dir() {
         cmd.env("TMPDIR", &dir).env("KCODE_SCRATCH_DIR", &dir);
-        if let Some(prelude) = prelude {
+        if let Some(prelude) = crate::tool::search_shim::bash_env(&dir) {
             cmd.env("BASH_ENV", prelude);
         }
     }
