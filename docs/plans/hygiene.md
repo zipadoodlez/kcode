@@ -48,9 +48,9 @@ spine is the one structural item; the two calls are the maintainer's.
 - [ ] **Not every color derives from a role**: `configured_native_color`
  (`kcode-tui-style/src/palette.rs`) attributes a shade to a role only when it equals
  that role's default, so hardcoded `Color::Rgb(...)` shades pass through and `/colors`
- cannot recolor them. The swarm path is `plans/task-flow.md` S3; what remains is
- `login_picker.rs` `PANEL_BG`/`PANEL_BORDER` and other orphans. Give each shade a
- role, or mark it intentionally fixed.
+ cannot recolor them. The swarm path went with its gallery (2026-10-04); what remains is
+ `login_picker.rs` `PANEL_BG`/`PANEL_BORDER`/`PANEL_BORDER_ACTIVE` and other orphans.
+ Give each shade a role, or mark it intentionally fixed.
 - [ ] **`now_ms` is defined 3x**: `app/observe.rs:212`, `app/split_view.rs:295`,
  `kcode-base/src/side_panel.rs:557`. The existing clock home
  is `tui::test_harness::now_ms()`, and routing through it changes behavior under the
