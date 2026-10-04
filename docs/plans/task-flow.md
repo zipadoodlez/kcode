@@ -277,8 +277,11 @@ the `/todos` command and its keybind, the `todo_card_toggle` binding, the card t
 a `todo` result is one compact line naming its row count; and then the info widget's todo
 region and pips (`info_widget_todos.rs`, `WidgetKind::Todos`, `InfoWidgetData.todos`,
 `swarm_plan_todos`, the overview page machinery), the client's last file read
-(`gather_todos_for_session` with its 1s TTL cache) and `display.pin_todos` with it. Kept
-for the last half: the separate swarm roster.
+(`gather_todos_for_session` with its 1s TTL cache) and `display.pin_todos` with it. The
+list then took the roster's state: a held row reads `@name · model · age` from the member
+status. Kept for the last half: the roster and the panel that opens it, where the
+boundary is a call (the adapter also feeds the SwarmStatus dock, and the panel exists only
+for the page).
 
 **Smoke test (the second half is not landed, so check this on what is).** Build
 `scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode`, then in a scratch repo
