@@ -216,15 +216,6 @@ pub struct SwarmMemberStatus {
     /// client scope the inline gallery to the subtree it actually spawned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub report_back_to_session_id: Option<String>,
-    /// Todo/plan progress as (completed, total) for this member, when known.
-    /// Surfaced on the inline swarm strip as a compact "C/T" counter.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub todo_progress: Option<(u32, u32)>,
-    /// Compact snapshot of this member's todo list (content + status), capped
-    /// by the producer. Rendered in the focused inline swarm panel so the
-    /// coordinator can see what each agent is working through.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub todo_items: Vec<SwarmTodoItem>,
     /// Ephemeral runtime metadata used by the live swarm card.
     #[serde(default, skip_serializing_if = "SwarmMemberRuntime::is_empty")]
     pub runtime: SwarmMemberRuntime,
@@ -253,41 +244,6 @@ impl SwarmMemberRuntime {
             && self.effort.is_none()
             && self.elapsed_secs.is_none()
     }
-}
-
-/// One compact todo entry crossing the swarm status boundary. Only the
-/// display essentials travel; full todo metadata stays in the owning session.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SwarmTodoItem {
-    pub content: String,
-    /// "pending", "in_progress", or "completed".
-    pub status: String,
-    /// The three most recent tool calls made while this todo was active.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tool_intents: Vec<SwarmToolIntent>,
-}
-
-/// Display-only tool activity nested beneath an active swarm todo.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SwarmToolIntent {
-    /// Internal correlation key used by the server to update a running call.
-    /// It is intentionally omitted from the wire payload.
-    #[serde(default, skip_serializing)]
-    pub tool_call_id: String,
-    pub tool_name: String,
-    pub intent: String,
-    /// "running", "completed", or "error".
-    pub status: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub progress: Option<SwarmToolProgress>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SwarmToolProgress {
-    pub current: u64,
-    pub total: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub unit: Option<String>,
 }
 
 impl Request {

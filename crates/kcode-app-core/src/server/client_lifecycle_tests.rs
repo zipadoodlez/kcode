@@ -1013,8 +1013,6 @@ async fn client_initiated_turn_fans_out_stream_and_terminal_events_to_live_attac
             last_status_change: Instant::now(),
             is_headless: false,
             output_tail: None,
-            todo_progress: None,
-            todo_items: Vec::new(),
             runtime: crate::protocol::SwarmMemberRuntime::default(),
         },
     )])));

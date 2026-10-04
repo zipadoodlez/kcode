@@ -240,33 +240,18 @@ droppable: nothing here depends on it.
 ### S3. One status
 
 Liveness derives from the holder's own session status plus the rule that a holder who can
-never return releases its rows, through one `assignee_is_dead` used by both the sweep and
-dispatch. The member projection and the runtime extras go.
+never return releases its rows, through one `assignee_is_dead` used by both the sweep
+(`held_row_ids`) and dispatch (`server/swarm.rs:616`), where a comment already asks for
+the union. The two paths must agree: a holder whose session status is dead for longer than
+the salvage grace releases its rows, and dispatch must not wait on it.
 
-Delete (A4): `SwarmMemberRuntime.todo_items` (`protocol/src/lib.rs`, the third copy of a
-session's rows after the file and the run's sparse status, folded from `TodoEvent`s by
-`compact_todo_items` and the two `update_active_todo_*` helpers
-(`server/background_tasks.rs:362-505`)), `SwarmTodoItem`, `SwarmToolIntent`, the two
-`update_active_todo_*` helpers, the four member shapes, and the third event log.
-`tool_intents` is not a row fact: it is the "which tool is this worker running" display,
-nested under the compacted item by `update_active_todo_tool`, so it moves onto
-`SwarmMemberStatus` rather than dying with the cache. S2 landed, so the adapter that built
-`GalleryTodo`/`GalleryToolIntent`, the strip/page call sites and the `member_runtime_extras`
-list read are gone with the surfaces that consumed them; `GalleryTodo`,
-`GalleryToolIntent` and `members_to_tiles` in `kcode-tui-render` now have no consumer.
+S3a landed 2026-10-04: the member todo cache went, with its wire fields and the
+`tool_intents` display, which had no reader after the roster left. The three remaining
+member shapes (the server's live `SwarmMember`, the wire's `SwarmMemberStatus`, and the
+durable `SwarmMemberRecord`) stay: each has a different lifetime, and collapsing them is
+not sized here.
 
-surface: −3 protocol types, −4 shapes, −1 event log, −2 liveness predicates.
-lines ~−1,000. risk: med.
-
-The projection becomes one type, so member appearance follows the typed status:
-`kcode-tui-render` takes `SwarmLifecycleStatus` (a dependency on the data-only
-`kcode-session-types`), so the string matches the pinned list still makes
-(`is_active_status`, `status_glyph`, `status_accent`) become enum matches; one module owns
-accent, glyph, label and sort rank, with an `is_working` predicate kept distinct from
-lifecycle `is_active` so a stalled node does not spin. S2 landed, so the duplicate
-`swarm_status_style` map and the swarm-path `Color::Rgb` literals went with the adapter
-they lived in. The projection's `RunningStale` goes with it: 0.4f removed its only
-producer (a plan item's status), so the variant is unreachable.
+surface: −2 liveness predicates. lines ~−30. risk: med.
 
 **Live check (row t30), run with S2's surface after S3 lands.** Build
 `scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode`, then in a scratch repo

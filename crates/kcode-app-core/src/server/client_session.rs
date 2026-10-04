@@ -358,8 +358,6 @@ async fn ensure_client_swarm_member(
                     last_status_change: now,
                     is_headless: false,
                     output_tail: None,
-                    todo_progress: None,
-                    todo_items: Vec::new(),
                     runtime: crate::protocol::SwarmMemberRuntime::default(),
                 },
             );

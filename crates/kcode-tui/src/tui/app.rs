@@ -973,9 +973,6 @@ pub struct App {
     // Suppress duplicate memory injection messages for near-identical prompts.
     // Swarm member/plan snapshots and the inline panel's selection.
     swarm: swarm::Swarm,
-    // Debug-only: force the inline swarm gallery active (bypasses spawn-mode
-    // and members-present gating) so visual tests can drive it deterministically.
-    debug_force_inline_gallery: bool,
     // Diff display mode (toggle with Alt+G)
     diff_mode: crate::config::DiffDisplayMode,
     // Center all content (from config)

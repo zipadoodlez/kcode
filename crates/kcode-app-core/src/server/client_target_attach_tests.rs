@@ -165,8 +165,6 @@ async fn target_subscribe_busy_live_agent_uses_member_root_without_waiting() {
             last_status_change: now,
             is_headless: false,
             output_tail: None,
-            todo_progress: None,
-            todo_items: vec![],
             runtime: Default::default(),
         },
     )])));

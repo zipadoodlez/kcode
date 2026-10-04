@@ -58,8 +58,6 @@ fn test_handle_server_event_swarm_status_stores_members_without_a_notice() {
         status_age_secs: Some(1),
         output_tail: None,
         report_back_to_session_id: parent.map(str::to_string),
-        todo_progress: None,
-        todo_items: Vec::new(),
         runtime: crate::protocol::SwarmMemberRuntime::default(),
     };
 

@@ -111,8 +111,6 @@ fn test_swarm_member(session_id: &str, status: &str) -> SwarmMember {
         last_status_change: Instant::now(),
         is_headless: false,
         output_tail: None,
-        todo_progress: None,
-        todo_items: Vec::new(),
         runtime: crate::protocol::SwarmMemberRuntime::default(),
     }
 }

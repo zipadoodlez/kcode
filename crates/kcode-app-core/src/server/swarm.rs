@@ -664,8 +664,6 @@ async fn broadcast_swarm_status_now(
                     status_age_secs: Some(status_age_secs(m.last_status_change)),
                     output_tail: m.output_tail.clone(),
                     report_back_to_session_id: m.report_back_to_session_id.clone(),
-                    todo_progress: m.todo_progress,
-                    todo_items: m.todo_items.clone(),
                     runtime: crate::protocol::SwarmMemberRuntime {
                         model: m.runtime.model.clone(),
                         provider: m.runtime.provider.clone(),
@@ -1364,8 +1362,6 @@ mod tests {
                 last_status_change: Instant::now(),
                 is_headless,
                 output_tail: None,
-                todo_progress: None,
-                todo_items: Vec::new(),
                 runtime: crate::protocol::SwarmMemberRuntime::default(),
             },
             event_rx,

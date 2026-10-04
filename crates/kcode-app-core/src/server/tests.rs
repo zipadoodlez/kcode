@@ -282,8 +282,6 @@ pub(super) fn attached_swarm_member(
         last_status_change: Instant::now(),
         is_headless: false,
         output_tail: None,
-        todo_progress: None,
-        todo_items: Vec::new(),
         runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }
@@ -304,8 +302,6 @@ fn persisted_headless_member(session_id: &str, status: &str, detail: &str) -> Sw
         last_status_change: Instant::now(),
         is_headless: true,
         output_tail: None,
-        todo_progress: None,
-        todo_items: Vec::new(),
         runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }

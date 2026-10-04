@@ -318,15 +318,14 @@ impl App {
             let limit = raw.parse::<usize>().ok();
             self.debug_picker_state_json(limit)
         } else if let Some(raw) = cmd.strip_prefix("swarm-gallery:") {
-            // Debug-only: inject synthetic inline swarm members and force the
-            // inline gallery active so the band can be captured in a frame.
+            // Debug-only: inject synthetic swarm members so the pinned list's
+            // holder line can be captured in a frame.
             // Format: swarm-gallery:<N>  (N synthetic agents), or
-            //         swarm-gallery:off  (clear injected members + force flag).
+            //         swarm-gallery:off  (clear injected members).
             let raw = raw.trim();
             if raw == "off" {
-                self.debug_force_inline_gallery = false;
                 self.swarm.members.clear();
-                "OK: inline swarm gallery cleared".to_string()
+                "OK: synthetic swarm members cleared".to_string()
             } else {
                 let n: usize = raw.parse().unwrap_or(3);
                 let statuses = ["running", "thinking", "ready", "completed", "blocked"];
@@ -360,54 +359,6 @@ impl App {
                         status_age_secs: Some((i as u64) * 7),
                         output_tail: Some(samples[i % samples.len()].to_string()),
                         report_back_to_session_id: None,
-                        todo_progress: Some(((i as u32 * 3) % 9, 9)),
-                        todo_items: (0..5)
-                            .map(|t| {
-                                let status = if (t as u32) < (i as u32 * 3) % 9 {
-                                    "completed".to_string()
-                                } else if t as u32 == (i as u32 * 3) % 9 {
-                                    "in_progress".to_string()
-                                } else {
-                                    "pending".to_string()
-                                };
-                                let tool_intents = if status == "in_progress" {
-                                    vec![
-                                        crate::protocol::SwarmToolIntent {
-                                            tool_call_id: String::new(),
-                                            tool_name: "kgrep".into(),
-                                            intent: "Locate the affected rendering path".into(),
-                                            status: "completed".into(),
-                                            progress: None,
-                                        },
-                                        crate::protocol::SwarmToolIntent {
-                                            tool_call_id: String::new(),
-                                            tool_name: "read".into(),
-                                            intent: "Inspect the active todo state".into(),
-                                            status: "completed".into(),
-                                            progress: None,
-                                        },
-                                        crate::protocol::SwarmToolIntent {
-                                            tool_call_id: String::new(),
-                                            tool_name: "bash".into(),
-                                            intent: "Run targeted swarm card tests".into(),
-                                            status: "running".into(),
-                                            progress: Some(crate::protocol::SwarmToolProgress {
-                                                current: 27,
-                                                total: 43,
-                                                unit: Some("tests".into()),
-                                            }),
-                                        },
-                                    ]
-                                } else {
-                                    Vec::new()
-                                };
-                                crate::protocol::SwarmTodoItem {
-                                    content: format!("step {} of synthetic plan", t + 1),
-                                    status,
-                                    tool_intents,
-                                }
-                            })
-                            .collect(),
                         runtime: crate::protocol::SwarmMemberRuntime {
                             model: Some("gpt-5.6".into()),
                             provider: Some("OpenAI".into()),
@@ -417,7 +368,6 @@ impl App {
                         },
                     })
                     .collect();
-                self.debug_force_inline_gallery = true;
                 format!("OK: injected {n} inline swarm members; gallery forced active")
             }
         } else if cmd == "swarm" || cmd == "swarm-status" {
@@ -457,8 +407,6 @@ impl App {
                         status_age_secs: Some(0),
                         output_tail: None,
                         report_back_to_session_id: None,
-                        todo_progress: None,
-                        todo_items: Vec::new(),
                         runtime: crate::protocol::SwarmMemberRuntime::default(),
                     }],
                 })

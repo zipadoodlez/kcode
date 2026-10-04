@@ -416,8 +416,6 @@ async fn notify_session_runs_scheduled_task_immediately_for_idle_live_session() 
             last_status_change: Instant::now(),
             is_headless: false,
             output_tail: None,
-            todo_progress: None,
-            todo_items: Vec::new(),
             runtime: crate::protocol::SwarmMemberRuntime::default(),
         },
     )])));
@@ -529,8 +527,6 @@ async fn notify_session_queues_soft_interrupt_when_live_session_is_busy() {
             last_status_change: Instant::now(),
             is_headless: false,
             output_tail: None,
-            todo_progress: None,
-            todo_items: Vec::new(),
             runtime: crate::protocol::SwarmMemberRuntime::default(),
         },
     )])));
@@ -610,8 +606,6 @@ fn live_member(session_id: &str) -> (SwarmMember, mpsc::UnboundedReceiver<Server
         last_status_change: Instant::now(),
         is_headless: false,
         output_tail: None,
-        todo_progress: None,
-        todo_items: Vec::new(),
         runtime: crate::protocol::SwarmMemberRuntime::default(),
     };
     (member, attach_rx)

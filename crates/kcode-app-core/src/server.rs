@@ -41,8 +41,7 @@ pub(crate) mod util;
 
 use self::background_tasks::{
     dispatch_background_task_completion, dispatch_background_task_progress,
-    dispatch_background_task_stalled, dispatch_swarm_batch_progress, dispatch_swarm_output_tail,
-    dispatch_swarm_runtime_status, dispatch_swarm_todo_progress, dispatch_swarm_tool_activity,
+    dispatch_background_task_stalled, dispatch_swarm_output_tail, dispatch_swarm_runtime_status,
     dispatch_ui_activity,
 };
 use self::debug::{ClientConnectionInfo, ClientDebugState};
@@ -2035,20 +2034,10 @@ impl Server {
                 Ok(BusEvent::UiActivity(activity)) => {
                     dispatch_ui_activity(&activity, &swarm_members).await;
                 }
-                Ok(BusEvent::ToolUpdated(event)) => {
-                    dispatch_swarm_tool_activity(&event, &swarm_members).await;
-                }
                 Ok(BusEvent::SubagentStatus(event)) => {
                     dispatch_swarm_runtime_status(&event, &swarm_members).await;
                 }
-                Ok(BusEvent::BatchProgress(progress)) => {
-                    dispatch_swarm_batch_progress(&progress, &swarm_members).await;
-                }
-                // Session todos are private to the session's transcript, but the
-                // Compact todo names and progress are surfaced on the inline
-                // swarm strip so a coordinator can see each managed agent's work.
                 Ok(BusEvent::TodoUpdated(event)) => {
-                    dispatch_swarm_todo_progress(&event, &swarm_members).await;
                     // A write is the only thing that starts work: the row that became
                     // ready wakes whoever owes it, and nothing else starts a turn.
                     live_turn::wake_ready_owners(

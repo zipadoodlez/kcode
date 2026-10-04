@@ -225,14 +225,6 @@ pub struct SwarmMember {
     /// text), captured for inline swarm gallery rendering. Updated by the bus
     /// monitor from worker streaming taps; not persisted.
     pub output_tail: Option<String>,
-    /// Aggregate todo progress (completed, total) for this member's session,
-    /// updated from `TodoUpdated` bus events. Surfaced on the inline swarm
-    /// strip; not persisted.
-    pub todo_progress: Option<(u32, u32)>,
-    /// Compact snapshot of this member's todo list (content + status), capped
-    /// at a few entries by the bus monitor. Rendered in the focused inline
-    /// swarm panel; not persisted.
-    pub todo_items: Vec<crate::protocol::SwarmTodoItem>,
     /// Ephemeral model/timing metadata for the inline swarm card.
     pub runtime: crate::protocol::SwarmMemberRuntime,
 }
@@ -285,8 +277,6 @@ impl SwarmMember {
             last_status_change: Instant::now(),
             is_headless: record.is_headless,
             output_tail: None,
-            todo_progress: None,
-            todo_items: Vec::new(),
             runtime: crate::protocol::SwarmMemberRuntime::default(),
         }
     }
