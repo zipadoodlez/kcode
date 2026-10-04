@@ -248,12 +248,11 @@ of a session's rows after the file and the run's sparse status, folded from `Tod
 by `compact_todo_items` and the two `update_active_todo_*` helpers
 (`server/background_tasks.rs:362-505`) and mapped again into `GalleryTodo` for the
 gallery), `SwarmTodoItem`, `SwarmToolIntent`, the two `update_active_todo_*` helpers, the
-TUI mapping (`info_widget_swarm_gallery.rs:98`), `member_runtime_extras`' per-member list
-read (`comm_sync.rs:133-140`, a `completed/total` counter the forwarded bus event already
-carries), the four member shapes, and the third event log. `tool_intents` is not a row
-fact: it is the gallery's "which tool is this worker running" display, nested under the
-compacted item by `update_active_todo_tool`, so it moves onto `SwarmMemberStatus` rather
-than dying with the cache. Gated by S2; the gallery is the only consumer.
+four member shapes, and the third event log. `tool_intents` is not a row fact: it is the
+"which tool is this worker running" display, nested under the compacted item by
+`update_active_todo_tool`, so it moves onto `SwarmMemberStatus` rather than dying with the
+cache. S2 landed, so the TUI mapping and the `member_runtime_extras` list read are gone
+with the surfaces that consumed them.
 
 surface: −3 protocol types, −4 shapes, −1 event log, −2 liveness predicates.
 lines ~−1,000. risk: med.
@@ -335,8 +334,8 @@ Each stage's own gate is in its section. These are the properties that outlive a
 
 ### Unread at the time of writing
 
-Still un-read, and the open stages rest on them: the TUI's render internals and the
-gallery's data adapter (S2, S3), the four member-shape definitions (S3),
-`todo.rs:330-470` (S5), and the `Comm*` arms in `client_lifecycle` (D2). The
-schedulers, waiters, dispatchers, artifact producers and liveness predicates were read in
-full before the loop's stage landed.
+Still un-read, and the open stages rest on them: the four member-shape definitions and the
+`kcode-tui-render` gallery's remaining consumers (S3), `todo.rs:330-470` (S5), and the
+`Comm*` arms in `client_lifecycle` (D2). The schedulers, waiters, dispatchers, artifact
+producers and liveness predicates were read in full before the loop's stage landed; S2's
+surface is read now, since it landed.
