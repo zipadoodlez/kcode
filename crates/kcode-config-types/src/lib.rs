@@ -459,10 +459,10 @@ pub struct AgentsConfig {
     /// as chips on a single row.
     #[serde(default)]
     pub swarm_strip_layout: SwarmStripLayout,
-    /// Maximum number of live swarm worker agents in one swarm: the RAM safety
-    /// budget for spawned workers. Completed/stopped workers do not consume
-    /// slots. `0` disables this guard, leaving only the absolute
-    /// `MAX_SWARM_MEMBERS` hard cap.
+    /// Maximum number of live spawned swarm workers in one run: the machine-safety
+    /// budget. A member that finished its turn still counts until its run ends,
+    /// because its session outlives the turn; a session the user opened consumes
+    /// no slot. `0` disables the guard.
     /// Env override: `KCODE_SWARM_MAX_CONCURRENT_AGENTS`.
     #[serde(default = "default_swarm_max_concurrent_agents")]
     pub swarm_max_concurrent_agents: usize,

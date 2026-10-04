@@ -2,10 +2,6 @@ use kcode_plan::TaskItem;
 
 pub use kcode_session_types::{SwarmLifecycleStatus, SwarmMemberRecord, SwarmRole};
 
-/// Absolute maximum number of live members in a single swarm. Servers also apply
-/// the lower configurable live-worker RAM budget before reaching this hard stop.
-pub const MAX_SWARM_MEMBERS: usize = 1000;
-
 /// Upper bound for a member's derived task label, sized for one-line UI chips.
 pub const MAX_SWARM_TASK_LABEL_CHARS: usize = 48;
 

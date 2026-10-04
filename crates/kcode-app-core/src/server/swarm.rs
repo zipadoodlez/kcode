@@ -102,14 +102,6 @@ fn status_age_secs(last_status_change: Instant) -> u64 {
     last_status_change.elapsed().as_secs()
 }
 
-/// Maximum number of live members (agents) in a single swarm. Re-exported from
-/// `kcode_swarm_core` so the server, tools, and prompts all agree on the one
-/// runaway-prevention cap for the task-graph model. Normal and light swarms are
-/// root-only, one-level fan-out. Deep-swarm roots may create recursive trees with
-/// no depth limit, but both the configurable live-worker budget and this absolute
-/// cap still apply.
-pub(super) use kcode_swarm_core::MAX_SWARM_MEMBERS;
-
 /// Walk the `report_back_to_session_id` chain upward from `session_id`,
 /// returning the list of ancestor session ids (parent first, root last).
 ///

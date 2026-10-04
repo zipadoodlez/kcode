@@ -866,48 +866,15 @@ async fn spawn_resolves_the_requesting_session_as_run_root() {
 }
 
 #[tokio::test]
-async fn spawn_rejected_when_member_limit_reached() {
-    use crate::server::swarm::MAX_SWARM_MEMBERS;
-
-    // Fill the swarm to the member cap; the next spawn must be refused.
-    let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
-    {
-        let mut members = swarm_members.write().await;
-        let (root, _rx) = member("root");
-        members.insert("root".to_string(), root);
-        // Add filler members so the swarm holds exactly MAX_SWARM_MEMBERS total.
-        for idx in 1..MAX_SWARM_MEMBERS {
-            let id = format!("agent-{idx}");
-            let (mut m, _rx) = member(&id);
-            m.report_back_to_session_id = Some("root".to_string());
-            members.insert(id, m);
-        }
-    }
-    let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
-
-    let refused =
-        ensure_spawn_coordinator_swarm(7, "root", &client_event_tx, &swarm_members, &swarm_runs, 0)
-            .await;
-    assert!(refused.is_none());
-    assert!(matches!(
-        client_event_rx.recv().await,
-        Some(ServerEvent::Error { message, .. })
-            if message.contains("Swarm member limit reached")
-    ));
-}
-
-#[tokio::test]
 async fn terminal_members_do_not_consume_spawn_capacity() {
-    use crate::server::swarm::MAX_SWARM_MEMBERS;
-
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
     let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     {
         let mut members = swarm_members.write().await;
         let (root, _rx) = member("root");
         members.insert("root".to_string(), root);
-        for idx in 0..MAX_SWARM_MEMBERS {
+        // More finished members than the configured limit below.
+        for idx in 0..64 {
             let id = format!("historical-{idx}");
             let (mut historical, _rx) = member(&id);
             historical.status = if idx % 2 == 0 {

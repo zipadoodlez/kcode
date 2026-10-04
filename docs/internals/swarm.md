@@ -92,11 +92,12 @@ member and everything it spawned, deepest first. There is no batch form and no
 
 ## Limits
 
-One hard cap and one throttle, both read where a spawn is admitted
-(`server/comm_session.rs`): `MAX_SWARM_MEMBERS` = **1000** live members per run is
-the hard stop, and `agents.swarm_max_concurrent_agents` (32 by default) is the
-machine-safety budget below it. A run's own bound is a run property, never a row
-field, and the default is none: no ready row ends it.
+One limit, read where a spawn is admitted (`server/comm_session.rs`):
+`agents.swarm_max_concurrent_agents`, 32 by default and 0 to switch it off, counts
+the live spawned members of a run. A member that finished its turn still counts
+until its run ends, because its session outlives its turn so the run can hand it
+the next row; a session the user opened consumes no slot. A run's own bound is a
+run property, never a row field, and the default is none: no ready row ends it.
 
 The graph orders work but does not do mutual exclusion. Two subtrees editing the
 same files is still the no-locks case, resolved by direct contact between the

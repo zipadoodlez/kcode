@@ -1212,15 +1212,15 @@ async fn ensure_spawn_coordinator_swarm(
     _swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     configured_live_agent_limit: usize,
 ) -> Option<String> {
-    let (swarm_id, live_member_count, live_spawned_agent_count) = {
+    let (swarm_id, live_spawned_agent_count) = {
         let members = swarm_members.read().await;
         // The run a session belongs to is the root of its report-back chain; a
         // session the server holds no record of is in no run.
         let swarm_id = swarm_root(&members, req_session_id);
-        // Count both all live members for the absolute hard cap and live spawned
-        // agents for the configurable RAM-safety cap. User-created roots do not
-        // consume worker slots; every spawned descendant does.
-        let (live_member_count, live_spawned_agent_count) = swarm_id
+        // The budget counts live spawned agents: a session the user opened is not
+        // a worker slot, and a member that finished its turn still counts until
+        // its run ends, because its session outlives the turn.
+        let live_spawned_agent_count = swarm_id
             .as_ref()
             .map(|swarm_id| {
                 members
@@ -1230,15 +1230,11 @@ async fn ensure_spawn_coordinator_swarm(
                             == Some(swarm_id.as_str())
                     })
                     .filter(|member| super::member_consumes_swarm_capacity(member))
-                    .fold((0usize, 0usize), |(members, spawned), member| {
-                        (
-                            members + 1,
-                            spawned + usize::from(member.report_back_to_session_id.is_some()),
-                        )
-                    })
+                    .filter(|member| member.report_back_to_session_id.is_some())
+                    .count()
             })
             .unwrap_or_default();
-        (swarm_id, live_member_count, live_spawned_agent_count)
+        (swarm_id, live_spawned_agent_count)
     };
 
     let Some(swarm_id) = swarm_id else {
@@ -1250,30 +1246,13 @@ async fn ensure_spawn_coordinator_swarm(
         return None;
     };
 
-    // Keep an absolute hard ceiling even when the configurable limit is disabled.
-    if live_member_count >= super::MAX_SWARM_MEMBERS {
+    // `swarm_max_concurrent_agents` is the machine-safety budget: nested agents
+    // could otherwise grow without bound and exhaust RAM. 0 switches it off.
+    if configured_live_agent_limit > 0 && live_spawned_agent_count >= configured_live_agent_limit {
         let _ = client_event_tx.send(ServerEvent::Error {
             id,
             message: format!(
-                "Swarm member limit reached (hard max {}). This swarm already has {live_member_count} live members; it cannot spawn more. Let existing agents finish and free up capacity, or narrow the task decomposition before spawning further.",
-                super::MAX_SWARM_MEMBERS
-            ),
-            retry_after_secs: None,
-        });
-        return None;
-    }
-
-    // `swarm_max_concurrent_agents` is the machine-safety budget shared by
-    // run_plan and deep recursive spawning. Previously only run_plan obeyed it,
-    // so nested agents could grow to the 1000-member hard cap and exhaust RAM.
-    let live_agent_limit = (configured_live_agent_limit > 0)
-        .then(|| configured_live_agent_limit.min(super::MAX_SWARM_MEMBERS));
-    if live_agent_limit.is_some_and(|limit| live_spawned_agent_count >= limit) {
-        let limit = live_agent_limit.unwrap_or(super::MAX_SWARM_MEMBERS);
-        let _ = client_event_tx.send(ServerEvent::Error {
-            id,
-            message: format!(
-                "Swarm live-agent limit reached (max {limit}, configured by agents.swarm_max_concurrent_agents). This swarm already has {live_spawned_agent_count} active spawned agents. Let existing agents finish or stop them before spawning more."
+                "Swarm live-agent limit reached (max {configured_live_agent_limit}, configured by agents.swarm_max_concurrent_agents). This swarm already has {live_spawned_agent_count} active spawned agents. Let existing agents finish or stop them before spawning more."
             ),
             retry_after_secs: None,
         });

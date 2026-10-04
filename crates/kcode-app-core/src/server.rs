@@ -51,7 +51,7 @@ use self::headless::create_headless_session;
 use self::reload::await_reload_signal;
 use self::runtime::ServerRuntime;
 use self::swarm::{
-    MAX_SWARM_MEMBERS, broadcast_swarm_plan, broadcast_swarm_status, expired_terminal_member_ids,
+    broadcast_swarm_plan, broadcast_swarm_status, expired_terminal_member_ids,
     member_consumes_swarm_capacity, record_swarm_event, record_swarm_event_for_session,
     remove_session_from_swarm, run_swarm_message, salvage_dead_assignees,
     send_swarm_plan_to_session, set_member_task_label, swarm_is_self_or_ancestor, swarm_root,
