@@ -10,15 +10,20 @@ it.
 The open work is one file per repo, `tasks.jsonl` at the root, found from git so a
 session in `crates/foo` reads the same list; outside a repo it is a scratch file.
 A row is `id`, `content`, optional `kind`, `parent`, `blocked_by`, `assigned_to`,
-`note`, and `records` (the closes of the rows worked under it). The `todo` tool is
-the only writer: it owns the write protocol and re-reads the file before each
-write, so a human edit is an input, not a conflict.
+`note`, and `records` (the closes of the rows worked under it), and nothing else:
+no status, priority or group, and line order promises nothing. One item type for
+all of it, `TaskItem` in `kcode-task-types`, so the file, the `todo` tool and a plan
+read the same struct. `parent` and `blocked_by` are two fields because they are two
+facts: the work a row is part of, and the work that must close before it starts. The
+`todo` tool is the only writer: it owns the write protocol and re-reads the file
+before each write, so a human edit is an input, not a conflict.
 
 Readiness is asked on read, never stored: a row is ready when it is not blocked,
-has no open child, is held by me or nobody, is in my scope, and has not already
-been worked in this run. A close deletes the row and removes its id from every
-dependent's `blocked_by`, so an entry there always names an open row and a row
-with none is ready.
+has no open child, is held by me or nobody, is in my scope, has a `kind`, and has
+not already been worked in this run. A close deletes the row and removes its id from
+every dependent's `blocked_by`, so an entry there always names an open row and a row
+with none is ready. The file keys on `id`; the conversation refers to a row by its
+words.
 
 ## Membership is the spawn edge
 

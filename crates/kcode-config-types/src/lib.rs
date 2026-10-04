@@ -829,9 +829,9 @@ pub struct FeatureConfig {
     /// Set this to false for the persistent equivalent of `--no-update`.
     pub check_updates: bool,
     /// The standing form of `/auto`: every turn of this project's may keep working
-    /// its own work list on its own, until the rows it holds run out (rule 11 in
-    /// `plans/task-flow.md`; default: false). `/auto <what to work on>` grants the
-    /// same permission for one run, and a headless member holds it inherently.
+    /// its own work list on its own, until the rows it holds run out (default:
+    /// false). `/auto <what to work on>` grants the same permission for one run, and
+    /// a headless member holds it inherently.
     #[serde(alias = "auto_poke")]
     pub auto_continue: bool,
     /// Inject timestamps into user messages and tool results sent to the model (default: true)

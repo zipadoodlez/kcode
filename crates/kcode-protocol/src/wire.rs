@@ -33,8 +33,7 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "is_false")]
         no_reply: bool,
         /// The user asked this session to keep working its own work list after
-        /// this turn, for as long as the rows it holds last. See rule 11 in
-        /// `docs/plans/task-flow.md`.
+        /// this turn, for as long as the rows it holds last.
         #[serde(default, skip_serializing_if = "is_false")]
         may_continue: bool,
     },

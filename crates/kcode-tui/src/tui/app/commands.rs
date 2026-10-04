@@ -34,8 +34,7 @@ pub(super) const REVIEW_PREFERRED_MODEL: &str = "gpt-5.5";
 /// `/auto <words>`: this turn grants the session permission to keep working its
 /// own work list on its own, for as long as the rows it holds last, and scopes the
 /// run to the row the words name (the server resolves that; `todo::anchor_run`).
-/// The words are required, because the grant rides a real turn. See rule 11 in
-/// `docs/plans/task-flow.md`.
+/// The words are required, because the grant rides a real turn.
 pub(super) fn parse_auto_command(trimmed: &str) -> Option<Result<String, String>> {
     let rest = trimmed.strip_prefix("/auto")?;
     if !rest.is_empty() && !rest.starts_with(' ') {

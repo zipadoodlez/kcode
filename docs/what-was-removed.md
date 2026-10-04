@@ -66,14 +66,14 @@ crate dependency boundaries and the `dev_cargo` wrapper's tests.
  oversized file is visible in review.
 - **The wildcard re-export ratchet** (`check_wildcard_reexport_budget.py`, baseline 13)
  counted `pub use kcode_*::*`. What is lost: the count is read at the step; the crate
- spine (`plans/hygiene.md`) keeps its goal of zero.
+ spine keeps its goal of zero.
 - **The App shape ratchet** (`check_app_shape.py`: `app_fields`, `impl_app_blocks`,
- `super_glob_imports`). What is lost: the `App` re-core (`plans/app-shape.md`) reads
+ `super_glob_imports`). What is lost: the `App` re-core reads
  its field and impl counts at the step instead of against a baseline.
 
 ## The model cut
 
-The 0.x work (`plans/task-flow.md`) removed the machinery around the work list. Each
+The 0.x work removed the machinery around the work list. Each
 entry is a decision that dropped power, with what the drop cost.
 
 **One mode: spawning is the root's, and the `/effort` swarm rungs go** (0.4b,

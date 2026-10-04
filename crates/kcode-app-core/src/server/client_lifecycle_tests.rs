@@ -1103,9 +1103,8 @@ async fn client_initiated_turn_fans_out_stream_and_terminal_events_to_live_attac
     }
 }
 
-/// Complete one client turn for `session_id`, which is where the permission is read
-/// (rule 11 in `plans/task-flow.md`). The swarm tables are empty because this
-/// decision reads members only.
+/// Complete one client turn for `session_id`, which is where the permission is read.
+/// The swarm tables are empty because this decision reads members only.
 async fn complete_turn(
     session_id: &str,
     grant: RunGrant,
@@ -1130,7 +1129,7 @@ async fn complete_turn(
     .await;
 }
 
-/// The standing default (rule 11 in `plans/task-flow.md`): a turn nobody granted
+/// The standing default: a turn nobody granted
 /// continues over the rows this session holds only when the project says every
 /// turn of yours may, which is `features.auto_continue`. The loop tests pass the grant
 /// explicitly, so this is the only cover for the config half of that decision.

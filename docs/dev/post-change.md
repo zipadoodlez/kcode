@@ -93,7 +93,7 @@ code that is not a defect. The panic ratchet counted `.unwrap()`, `.expect()`
 and `panic!` in production paths: it could not tell a justified
 `.expect("invariant")` from a careless `.unwrap()`, so it blocked correct new
 code, and the one place it pointed at (the SSH-login flow's guarded unwraps) is
-tracked as work in `plans/app-shape.md` instead. If the policy is ever wanted back,
+tracked as work instead. If the policy is ever wanted back,
 clippy's `unwrap_used`/`expect_used`/`panic` lints express it with a per-site
 `#[allow(..., reason = "...")]`.
 

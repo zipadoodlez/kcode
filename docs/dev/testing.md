@@ -45,7 +45,7 @@ already covers the compile errors `cargo check` would find.
 `full` runs the root package's lib and bins plus the `provider_matrix` and `e2e`
 suites. It does not run a workspace crate's own unit tests, so a change inside
 `crates/` needs `scripts/test.sh crate <name>` as well. That is where the provider
-and TUI reds in `plans/test-tree.md` appear; `full` cannot show them.
+and TUI reds appear; `full` cannot show them.
 
 ## Smoke, by hand, once per build
 
@@ -127,7 +127,7 @@ failure (the compiler was killed), not this race.
 (`app/tests/state_model_poke_02/part_02.rs`) fails on a clean checkout, both
 single-threaded and parallel, so a red run is not necessarily your change. It
 asserts that provider suggestions include `/model openai/gpt-5.4@OpenAI`. The cause
-is not diagnosed; it is tracked in `plans/test-tree.md`.
+is not diagnosed.
 
 ## A rare fork hang
 

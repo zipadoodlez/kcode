@@ -10,7 +10,7 @@ use std::sync::{LazyLock, Mutex};
 pub use kcode_task_types::TaskItem;
 
 /// The file that holds a repo's open work, one JSON object per line, at the repo
-/// root. See `docs/plans/task-flow.md` (rule 7).
+/// root.
 const WORK_LIST_FILE: &str = "tasks.jsonl";
 
 /// Where a session's work list lives: `tasks.jsonl` at the repo root of
@@ -78,7 +78,7 @@ pub fn save_tasks(working_dir: Option<&Path>, session_id: &str, tasks: &[TaskIte
 }
 
 /// The row a granted run is scoped to (its anchor), resolved from the words the
-/// grant typed. See `docs/plans/task-flow.md`, the model and rules 2 and 10.
+/// grant typed.
 ///
 /// Words that name an open row - its id, or its content as a user says it - make
 /// that row the run's anchor and claim it for `session_id`, so the run's scope is
@@ -126,8 +126,8 @@ pub fn anchor_from_words(
 }
 
 /// The anchor of a run that typed none: the one row at the top of the rows a
-/// session holds. See `docs/plans/task-flow.md`: for a run scoped to the whole
-/// list, the run's first row is the anchor, and the rest name it as their `parent`.
+/// session holds. For a run scoped to the whole list, the run's first row is the
+/// anchor, and the rest name it as their `parent`.
 ///
 /// The rule, in full. If the rows this session holds include one that belongs to
 /// nothing, the first such row is the anchor and the other rows it holds that
@@ -200,7 +200,7 @@ pub fn open_ids(rows: &[TaskItem]) -> String {
 }
 
 /// Close one row with the result that proves it, and keep that result where the
-/// work belongs. See `docs/plans/task-flow.md`, rules 3 and 4.
+/// work belongs.
 ///
 /// The close states an outcome, so a nonempty `result` is required, and it names
 /// the check that proves the row done. A row with a child still naming it cannot

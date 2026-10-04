@@ -71,5 +71,4 @@ the real `BrowserTool::execute` and need an existing `BROWSER_SESSION`; see
 not live evidence.
 
 The multi-backend *provider* protocol (Firefox Agent Bridge, CDP, WebDriver,
-Safari adapters) is a design, not implemented here; see
-[plans/browser-provider-protocol.md](../plans/browser-provider-protocol.md).
+Safari adapters) is a design, not implemented here.

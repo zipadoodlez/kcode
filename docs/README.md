@@ -45,8 +45,7 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 ## Start here
 
 - Install and usage: [`../README.md`](../README.md)
-- The work: one lane per subject under [`plans/`](plans/), with
-  [`plans/task-flow.md`](plans/task-flow.md) as the destination.
+- The work: one lane per subject under [`plans/`](plans/).
 
 ## The map
 
@@ -57,7 +56,6 @@ not fit its row is a doc in the wrong place.
 | doc | purpose | holds |
 |---|---|---|
 | `what-was-removed.md` | every deliberate removal and what it cost | the fork cut, the account cut, the model cut, and what was deliberately kept |
-| `plans/task-flow.md` | the task flow: one plan | the model, its rules, the duplication left to remove, the stages that remove it and the bound call; not served to the model |
 | `plans/app-shape.md` | the app's shape | the `App` re-core's tasks, the command surface, the two calls |
 | `plans/server-shape.md` | the request path's shape | the `handle_client` split (H1-H5) and the `communicate.rs` condense |
 | `plans/test-tree.md` | the test tree | its reshape tasks, and the tests red on a clean tree |
