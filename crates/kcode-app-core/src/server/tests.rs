@@ -796,6 +796,7 @@ async fn live_run(rows: &[RowSpec<'_>], responses: usize) -> LiveRun {
         .map(|(id, foreign, blocked_by, parent)| crate::todo::TaskItem {
             id: (*id).to_string(),
             content: format!("row {id}"),
+            kind: Some("implement".to_string()),
             assigned_to: Some(if *foreign {
                 "someone-else".to_string()
             } else {

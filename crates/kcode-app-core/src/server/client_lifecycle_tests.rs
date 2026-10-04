@@ -1164,12 +1164,14 @@ async fn the_standing_default_continues_an_ungranted_turn() {
             crate::todo::TaskItem {
                 id: "t1".to_string(),
                 content: "row t1".to_string(),
+                kind: Some("implement".to_string()),
                 assigned_to: Some(session_id.to_string()),
                 ..Default::default()
             },
             crate::todo::TaskItem {
                 id: "t2".to_string(),
                 content: "row t2".to_string(),
+                kind: Some("implement".to_string()),
                 assigned_to: Some(session_id.to_string()),
                 ..Default::default()
             },

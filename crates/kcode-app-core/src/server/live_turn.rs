@@ -263,13 +263,21 @@ fn next_held_ready_row<'a>(
         .or_else(|| rows.iter().find(|row| ready(row)))
 }
 
-/// Whether this row is ready: nothing blocks it, and no open row belongs to it.
+/// The row's kind as the loop reads it: rule 8, a row with no kind is not seedable,
+/// and a blank is no kind.
+fn kind_of(row: &TaskItem) -> Option<&str> {
+    row.kind.as_deref().filter(|kind| !kind.trim().is_empty())
+}
+
+/// Whether this row is ready to work: it has a kind, nothing blocks it, and no open
+/// row belongs to it.
 ///
 /// Readiness is a join against the file, never a field. An empty `blocked_by` means
 /// every id it named was closed, because a close removes its id from every dependent;
 /// a row other rows belong to waits for them, because its result is theirs (rule 3).
 fn row_is_ready(rows: &[TaskItem], row: &TaskItem) -> bool {
-    row.blocked_by.is_empty()
+    kind_of(row).is_some()
+        && row.blocked_by.is_empty()
         && !rows
             .iter()
             .any(|child| child.parent.as_deref() == Some(row.id.as_str()))
@@ -301,6 +309,9 @@ fn row_turn_message(row: &TaskItem) -> String {
         "Continue the work list. Next row: {}\ncontent: {}",
         row.id, row.content
     );
+    if let Some(kind) = kind_of(row) {
+        message.push_str(&format!("\nkind: {kind}"));
+    }
     if let Some(note) = row.note.as_deref().filter(|note| !note.trim().is_empty()) {
         message.push_str(&format!("\nnote: {note}"));
     }
@@ -596,6 +607,7 @@ mod tests {
         TaskItem {
             id: id.to_string(),
             content: format!("row {id}"),
+            kind: Some("implement".to_string()),
             assigned_to: holder.map(str::to_string),
             blocked_by: blocked.iter().map(|b| b.to_string()).collect(),
             ..Default::default()
@@ -695,6 +707,31 @@ mod tests {
         assert_eq!(picked.id, "t4");
     }
 
+    /// Rule 8: the kind decides what the row's result has to be, so a row with none
+    /// is not seedable and the loop leaves it alone until someone types one.
+    #[test]
+    fn a_row_with_no_kind_is_not_ready() {
+        let mut kindless = row("t1", Some("me"), &[]);
+        kindless.kind = None;
+        assert!(
+            !row_is_ready(&[kindless.clone()], &kindless),
+            "a row with no kind is not seedable"
+        );
+    }
+
+    #[test]
+    fn the_pick_skips_a_row_with_no_kind() {
+        let mut kindless = row("t1", Some("me"), &[]);
+        kindless.kind = None;
+        let rows = vec![kindless.clone(), row("t2", Some("me"), &[])];
+        let picked = next_held_ready_row(&rows, "me", &HashSet::new(), None);
+        assert_eq!(picked.map(|row| row.id.as_str()), Some("t2"));
+        assert!(
+            next_held_ready_row(&[kindless], "me", &HashSet::new(), None).is_none(),
+            "a run holding only a kindless row has nothing to work"
+        );
+    }
+
     #[test]
     fn the_message_carries_the_rows_own_words() {
         let mut held = row("t7", Some("me"), &[]);
@@ -702,6 +739,7 @@ mod tests {
         let message = row_turn_message(&held);
         assert!(message.contains("t7"));
         assert!(message.contains("row t7"));
+        assert!(message.contains("kind: implement"));
         assert!(message.contains("paths first"));
     }
 
