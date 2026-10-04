@@ -14,7 +14,7 @@ shape, or a mode, and a step that only adds surface is reconsidered before it is
 written. Four rules, each one paid for by a failure this plan already had:
 
 - **Every cut names its code and the evidence.** A step quotes the file and count it
-  measured (`31 SwarmState { .. }` sites, `app_fields=182`, the `SwarmMember`
+  measured (`8 SwarmState { .. }` sites, `app_fields=182`, the `SwarmMember`
   literal count), and the claim is grepped again before the step is written. 0.4
   shipped two claims that were false on this tree, and `internals/swarm.md` had
   repeated one of them. 0.4d is the third: `parent` looked like a duplicate of the
@@ -40,9 +40,8 @@ written. Four rules, each one paid for by a failure this plan already had:
   deleted overnight preflight did.
 
 Zonytail's measure is the codebase after the step, not the diff: fields, `impl`
-blocks, wildcard re-exports and lines per file, ratcheted by
-`scripts/check_guardrails.sh`. A step that must grow records the reason in the same
-commit, because the App shape ratchet only tightens.
+blocks, wildcard re-exports and lines per file. A step that must grow records the
+reason in the same commit.
 
 **The go/no-go is where a run's finished-but-not-integrated nodes live.** It reads
 one store: the close's record goes onto the owning row, so nothing durable needs the
@@ -208,15 +207,14 @@ of S5 landing on 2026-10-04.
 ## The duplication this removes
 
 Measured 2026-10-03, all bodies read, re-read after S1 landed, then after S2's deadwood
-(t31) and S3 (t34). S1 removed the dispatch duplication, the three artifact producers with
-the report action, and the channel index with the shared-context store; S2 and S3 removed
-the four list surfaces, the roster, the 3,100-line gallery renderer, and the member todo
-cache with its wire fields. Those cuts are recorded in `docs/what-was-removed.md`. What
-remains:
-
-- **The `SwarmState` pair**, rebuilt as a literal at each request arm and threaded to ~40
-  functions, with the swarm event history threaded beside it.
-- **607 lines of debug views**, which no step in this lane claims.
+(t31) and S3 (t34), and re-measured 2026-10-04 for D2, which landed that day. S1 removed the
+dispatch duplication, the three artifact producers with the report action, and the channel
+index with the shared-context store; S2 and S3 removed the four list surfaces, the roster,
+the 3,100-line gallery renderer, and the member todo cache with its wire fields; D2 removed
+the `SwarmState` pair and, with the run map, the run half of the debug views (the
+`swarm:plan:` run field, `swarm:info:`'s run, `swarm:clear_plan`, and the `server:memory` run
+counters). Those cuts are recorded in `docs/what-was-removed.md`. What remains: the debug
+views' other half, which no step in this lane claims.
 
 The tool's action surface is now four actions (spawn, stop, list_models, message).
 
@@ -225,10 +223,10 @@ The tool's action surface is now four actions (spawn, stop, list_models, message
 Every step lands whole, proven by the gate. The one `kcode run` probe against its own
 socket waits for the end of the list, where the user runs it, so no step is gated on it.
 Widest shared shape first, so no step sweeps call sites a later step reshapes: S2 opened
-the client's path and S3-S5 deleted what it left behind. S2, S3 and S5 all landed
-2026-10-04. The numbers label the stages, they are not an order. What remains is D2, which
-waits on nothing. The `app.rs` re-core (`plans/app-shape.md`) is the tail and it is
-droppable: nothing here depends on it.
+the client's path and S3-S5 deleted what it left behind. S2, S3, S5 and D2 all landed
+2026-10-04. The numbers label the stages, they are not an order. What remains is the Close
+out below. The `app.rs` re-core (`plans/app-shape.md`) is the tail and it is droppable:
+nothing here depends on it.
 
 ### The live check for S2 and S3 (row t30)
 
@@ -249,23 +247,16 @@ repo with a `tasks.jsonl`:
 A hand edit of `tasks.jsonl` is read on the next write, not pushed: the list shows the
 last write, and the next write re-reads the file first (rule 2).
 
-### D2. The swarm/comm condense (gates `plans/server-shape.md` H2)
-
-The `SwarmState` handle pair is still threaded to ~40 functions and rebuilt as a literal
-at each request arm, so the request context that ends it is the remaining half. Give the
-swarm state its one owner and delete the pair. Engine: `internals/swarm.md`. This is the
-the only work here that `plans/server-shape.md`'s H1-H5 carry: H2 (the swarm state in the
-client context) waits on it. (A1 measured 19 `SwarmState { .. }` literals and 244
-`swarm_runs` references on the settled tree.)
-
 ### Close out
 
-- **G1.** Restore the two size ratchets in `scripts/check_guardrails.sh` and re-baseline
-  both with `--update`. They are paused, with the reason at the call site.
 - **G2.** The one live `kcode run` probe against its own socket, in a scratch repo, run by
   the user: the permission (a granted turn continues, a wake does not) and the poke's
   removal (no client continuation; every non-retryable error gets the short budget). It is
   the step's landing proof, so it runs when the list is done, not per step.
+- **(decision) An id is unique among live rows only.** A close deletes a top-level row, so
+  `next_id` hands its number out again (`t31`, `t32`, `t33` and `t34` have each been used
+  twice). Keep that, or make an id permanent: a time-based id (`t<unix_ms>`), or a close
+  that leaves something a number can be read from.
 
 ### What to verify when the list is done
 
@@ -278,10 +269,3 @@ Each stage's own gate is in its section. These are the properties that outlive a
 - A dead holder: its rows return to the list, and one predicate decides it.
 - A thin report: a close whose words say nothing is visible to the integrator.
 - The gate: `check_guardrails.sh`, the touched crates' suites, `scripts/test.sh full`.
-
-### Unread at the time of writing
-
-Still un-read, and D2 rests on it: the `Comm*` arms in `client_lifecycle`. The
-schedulers, waiters, dispatchers, artifact producers and liveness predicates were read in
-full before the loop's stage landed, and S2's, S3's and S5's surfaces were read before
-they landed.

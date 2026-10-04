@@ -51,6 +51,26 @@ gone as well:
 - `AmbientTranscript` and `SafetySystem::save_transcript` in `kcode-base` (zero
   callers).
 
+## The guardrail ratchets
+
+`check_guardrails.sh` ran four baselined ratchets. All four went on 2026-10-04,
+leaving `cargo fmt --check`, `cargo clippy -D warnings`, `Cargo.lock` freshness, the
+crate dependency boundaries and the `dev_cargo` wrapper's tests.
+
+- **The two size ratchets** (`check_code_size_budget.py`, `check_test_size_budget.py`;
+  100 baseline entries over production and test files above 1,200 lines). A tracked
+ file that shrank failed the gate until the baseline recorded it, so every deletion
+ owed a re-baseline, and `--update` raised every other cap to current in the same
+ pass, so "only tightens" held in name only. Under the work-list cut they fired on
+ every improvement. What is lost: no automatic signal that a file grew. A new
+ oversized file is visible in review.
+- **The wildcard re-export ratchet** (`check_wildcard_reexport_budget.py`, baseline 13)
+ counted `pub use kcode_*::*`. What is lost: the count is read at the step; the crate
+ spine (`plans/hygiene.md`) keeps its goal of zero.
+- **The App shape ratchet** (`check_app_shape.py`: `app_fields`, `impl_app_blocks`,
+ `super_glob_imports`). What is lost: the `App` re-core (`plans/app-shape.md`) reads
+ its field and impl counts at the step instead of against a baseline.
+
 ## The model cut
 
 The 0.x work (`plans/task-flow.md`) removed the machinery around the work list. Each
@@ -415,6 +435,20 @@ turn-finished notification says "N todos open" where it said "C/5 todos". Whethe
 being worked is read from its holder's status, which is where liveness has lived since S3.
 An existing `tasks.jsonl` line keeps its old keys, which are ignored on read and dropped
 when that row is next written; legacy session replays carrying rows are the same.
+
+**The run's per-row state goes, and a run's plan is only its rows** (D2, 2026-10-04).
+`SwarmState` was a pair: the live member registry and a per-row run map a turn set a
+`queued`/`running` status into. The map's only writer set `queued`, nothing set a terminal
+status, and the loop already tracked the rows it had worked in a local set, so the map was
+a second, always-stale copy of a fact the rows and the member registry already held. It
+goes, with `RunState`, `RowRunState`, `set_run_status`, the `runs` half of every signature,
+`load_runtime`/`SwarmRuntime`/`has_any_state`, and `SwarmState` itself, which was left as
+one Arc with no behavior; the registry is now the `SwarmMembers` alias. What is lost: the
+debug reads served from that map go with it, so `swarm:plan:` and `swarm:info:` no longer
+carry a `run` object, `server:memory` no longer reports run and run-entry counts, and
+`swarm:clear_plan`, which existed only to empty the map, is removed with its help line.
+Nothing user-facing changes: a run's progress is its open rows and the records on the
+anchor, which is what the model says it always was.
 
 ## Deliberately kept from upstream
 
